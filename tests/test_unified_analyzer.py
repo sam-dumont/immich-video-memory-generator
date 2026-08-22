@@ -885,3 +885,45 @@ class TestLLMFramesComeFromTheProxy:
 
         analysed_path = content_analyzer.analyze_segment.call_args.args[0]
         assert analysed_path == visual, f"LLM frames decoded from {analysed_path}, expected proxy"
+
+
+class TestVideoAdvantageIsEarned:
+    """Video should outrank photo — but only when the footage earns it.
+
+    A flawless photo reaches 0.80 after its penalty. Video is allowed past
+    that so an equally good video wins. Paid flat, the bonuses let a mediocre
+    clip reach 0.90 and beat a 0.85 photo that was plainly better.
+    """
+
+    @pytest.fixture
+    def analyzer(self):
+        # WHY: visual scoring needs real frames and OpenCV; this test is about
+        # how the total is composed, not how the parts are measured.
+        return UnifiedSegmentAnalyzer(
+            scorer=MagicMock(),
+            min_segment_duration=2.0,
+            max_segment_duration=15.0,
+            duration_weight=0.0,
+            audio_content_config=AudioContentConfig(),
+            analysis_config=AnalysisConfig(),
+        )
+
+    def _total(self, analyzer, base: float) -> float:
+        segment = MagicMock()
+        segment.visual_score = base
+        segment.audio_score = base
+        segment.duration_score = base
+        segment.content_score = 1.0
+        segment.cut_quality = 1.0
+        segment.has_laughter = False
+        return analyzer._compute_total_score(segment)
+
+    def test_a_good_video_outranks_an_equally_good_photo(self, analyzer) -> None:
+        photo_at_its_best = 0.8
+
+        assert self._total(analyzer, 0.8) > photo_at_its_best
+
+    def test_a_mediocre_video_does_not_outrank_a_better_photo(self, analyzer) -> None:
+        a_better_photo = 0.85
+
+        assert self._total(analyzer, 0.65) < a_better_photo
