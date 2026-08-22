@@ -1,0 +1,26 @@
+[
+  {
+    "label": "month-2019-12",
+    "note": "monthly_highlights @60s",
+    "args": ["--memory-type", "monthly_highlights", "--year", "2019", "--month", "12",
+             "--duration", "60", "--no-music", "--quiet"]
+  },
+  {
+    "label": "year-2024",
+    "note": "year_in_review @180s",
+    "args": ["--memory-type", "year_in_review", "--year", "2024",
+             "--duration", "180", "--no-music", "--quiet"]
+  },
+  {
+    "label": "person-2024-from-birthday",
+    "note": "person_spotlight, birthday-anchored year @120s",
+    "args": ["--memory-type", "person_spotlight", "--person", "Some Person",
+             "--year", "2024", "--birthday", "07/02",
+             "--duration", "120", "--no-music", "--quiet"]
+  },
+  {
+    "label": "holiday-long-auto",
+    "note": "holiday, auto duration",
+    "args": ["--memory-type", "holiday", "--years-back", "10", "--no-music", "--quiet"]
+  }
+]
