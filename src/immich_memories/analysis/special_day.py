@@ -9,7 +9,7 @@ second busiest is 413 of one street performer.
 What separates them, measured on labelled days, is how long the day stayed
 alive:
 
-    birth of a son     289 photos   18 active hours   +
+    a birth            289 photos   18 active hours   +
     wedding party       48 photos   12 active hours   +
     track day          133 photos    7 active hours   +
     apartment viewing  258 photos    5 active hours   -
@@ -144,10 +144,11 @@ def candidate_days(
     }
 
 
-# A day ends when the photographs stop for this long, not at midnight. the child
-# was born at 23:57: the night ran from 22:13 the evening before to the
-# following afternoon as one continuous 45-hour run, and grouping by calendar
-# date cut it into three, leaving the detector looking at the middle slice.
+# A day ends when the photographs stop for this long, not at midnight. One
+# labelled day was a birth that ran past midnight: the run began the evening
+# before and ended the following afternoon as one continuous 45-hour run, and
+# grouping by calendar date cut it into three, leaving the detector looking at
+# the middle slice.
 _NIGHT_GAP_HOURS = 5
 
 
@@ -436,7 +437,7 @@ def _describe(assets: list) -> str:
             bits.append(where)
         # Coordinates as well as the place name: a model that knows the area
         # can tell a racing circuit from the village it is named after, and
-        # "50.6358, 4.3630" is a fact the pictures cannot contradict.
+        # a coordinate pair is a fact the pictures cannot contradict.
         lat = getattr(exif, "latitude", None) if exif else None
         lon = getattr(exif, "longitude", None) if exif else None
         if lat and lon:

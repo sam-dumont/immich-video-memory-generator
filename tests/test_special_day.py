@@ -286,14 +286,14 @@ class TestAPlaceHasToBeSomewhereTheDayWas:
 class TestADayEndsWhenThePhotographsDo:
     """Midnight is an arbitrary place to cut an occasion in half.
 
-    A birth ran past midnight. The night ran from the evening before through the following afternoon — one continuous 45-hour
-    run of 393 photographs — and grouping by calendar date cut it into three,
-    leaving the detector looking at the middle slice.
+    A birth ran past midnight: one continuous run from the evening before
+    through the following afternoon, which grouping by calendar date cut into
+    three, leaving the detector looking at the middle slice.
     """
 
     def _at(self, day: int, hour: int, minute: int = 0) -> SimpleNamespace:
         return SimpleNamespace(
-            file_created_at=datetime(2024, 2, day, hour, minute, tzinfo=UTC),
+            file_created_at=datetime(2024, 3, day, hour, minute, tzinfo=UTC),
             exif_info=SimpleNamespace(city="Anytown", state=None, country="Belgium"),
             people=[],
         )
@@ -308,7 +308,7 @@ class TestADayEndsWhenThePhotographsDo:
         candidates = candidate_days(night)
 
         assert len(candidates) == 1, f"the night was split into {len(candidates)} days"
-        assert next(iter(candidates)) == date(2024, 2, 6), "and it belongs to the evening it began"
+        assert next(iter(candidates)) == date(2024, 3, 6), "and it belongs to the evening it began"
 
     def test_two_ordinary_days_stay_two_days(self) -> None:
         """A night's sleep between them is exactly what separates them."""
