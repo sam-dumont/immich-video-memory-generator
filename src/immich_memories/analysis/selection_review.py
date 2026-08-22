@@ -60,7 +60,10 @@ Judge the SET as a whole: feel, coherence, variety. Drop a clip when it is
 - NOT A MEMORY: it records a thing rather than a moment — an object or a
   product photographed on its own, a screen or a video game, a document or
   a receipt, an empty room, a photo taken to remember information rather
-  than an occasion.
+  than an occasion. A person can be in one of these: a head-and-shoulders
+  portrait against a blank wall, facing the camera, no expression and no
+  surroundings, is an identity photo taken for a form. Nothing happened when
+  it was taken, and several of them in one set is a giveaway.
 
 A memory of a trip or an occasion is not only the people in it. If every
 clip is a person facing the camera, say so by dropping the weakest of them:

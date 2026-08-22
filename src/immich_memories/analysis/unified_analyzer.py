@@ -672,7 +672,13 @@ class UnifiedSegmentAnalyzer:
         # Extra bonus for segments with laughter (highly desirable for memories)
         laughter_bonus = self._laughter_bonus if segment.has_laughter else 0.0
 
-        return base_score + llm_bonus + cut_bonus + laughter_bonus
+        # Bounded to the range the score claims to be in. Photos are clamped
+        # to 1.0 and then carry the 20% penalty, so they top out at 0.80;
+        # letting a video reach 1.25 on bonuses puts the two on different
+        # scales in a pool where they compete directly, which is a bigger
+        # advantage than the penalty ever intended. Seen on a real sheet: a
+        # clip scoring 1.01.
+        return min(1.0, base_score + llm_bonus + cut_bonus + laughter_bonus)
 
     def _score_segments_visual_only(
         self,
