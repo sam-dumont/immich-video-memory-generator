@@ -297,6 +297,10 @@ e2e-full:  ## Run ALL E2E tests including full generation pipeline (~10min)
 	uv run pytest tests/e2e/ -v -m e2e --log-cli-level=INFO --tb=short \
 		--junitxml=tests/e2e-junit.xml
 
+contact-sheets:  ## Render contact sheets for a sweep of memories (SPEC=path OUT=dir)
+	@test -n "$(SPEC)" || (echo "SPEC=path/to/spec.json required — see scripts/sweep-spec.example.json"; exit 1)
+	uv run python scripts/sweep_contact_sheets.py --spec "$(SPEC)" --out "$(or $(OUT),output/contact-sheets)"
+
 screenshots:  ## Capture UI screenshots in light + dark mode (coverage from server subprocess)
 	uv run pytest tests/e2e/test_screenshots.py -v -m visual --log-cli-level=INFO --tb=short \
 		--junitxml=tests/e2e-junit.xml
