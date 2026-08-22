@@ -214,8 +214,14 @@ def enforce_photo_cap(
     if len(photos) <= max_photos:
         return clips
 
-    # Keep protected photos, then the highest-scored of the rest
-    protected = protected_ids or set()
+    # Keep protected photos, then the highest-scored of the rest. A favorite
+    # is protected wherever it appears: a February of newborn photos lost
+    # three starred clips here to a ratio meant to stop a film becoming a
+    # slideshow, when a slideshow of exactly those photos is what was asked
+    # for.
+    protected = (protected_ids or set()) | {
+        c.clip.asset.id for c in photos if c.clip.asset.is_favorite
+    }
     kept_photos = [c for c in photos if c.clip.asset.id in protected]
     others = sorted(
         (c for c in photos if c.clip.asset.id not in protected),

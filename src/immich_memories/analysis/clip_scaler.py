@@ -94,27 +94,32 @@ def _fit_temporally_distributed(
     return sorted(selected, key=lambda c: c.clip.asset.file_created_at or datetime.min)
 
 
-# How much of a squeezed cut the user's own choices are entitled to. The rest
-# holds coverage, so a period still cannot vanish entirely.
-_FAVORITE_SHARE_WHEN_SQUEEZED = 0.7
+# Beyond a month, a period carries its own weight: a year that skips March
+# because six other months are starred reads as a gap. Within a month it does
+# not — the story is the month, and a Tuesday nobody photographed is not owed
+# a slot.
+_SPAN_WHERE_PERIODS_MATTER_DAYS = 31
+_FAVORITE_SHARE_ACROSS_PERIODS = 0.7
 
 
 def _fit_protected(protected: list[ClipWithSegment], max_duration: float) -> list[ClipWithSegment]:
     """Fit a protected set that cannot fit, favorites first.
 
-    Spreading evenly over the whole span fights a period whose story is
-    concentrated: a February built around one week kept reaching for days that
-    held nothing starred, and shipped 4 of its 19 favorites. Favorites take
-    most of the runtime, spread among themselves; coverage keeps the rest so a
-    period is still not lost.
+    When the user has starred more than the runtime can hold, the runtime is
+    theirs: a February with 41 favorites has no reason to show anything else.
+    Over a longer span coverage keeps a share, so a whole month cannot vanish
+    from a year.
     """
     starred = [c for c in protected if c.clip.asset.is_favorite]
     rest = [c for c in protected if not c.clip.asset.is_favorite]
     if not starred or not rest:
         return _fit_temporally_distributed(protected, max_duration)
 
-    favorite_budget = max_duration * _FAVORITE_SHARE_WHEN_SQUEEZED
-    kept = _fit_temporally_distributed(starred, favorite_budget)
+    dates = [c.clip.asset.file_created_at for c in protected if c.clip.asset.file_created_at]
+    span_days = (max(dates) - min(dates)).days if dates else 0
+    share = 1.0 if span_days <= _SPAN_WHERE_PERIODS_MATTER_DAYS else _FAVORITE_SHARE_ACROSS_PERIODS
+
+    kept = _fit_temporally_distributed(starred, max_duration * share)
     spent = sum(c.end_time - c.start_time for c in kept)
     kept += _fit_temporally_distributed(rest, max_duration - spent)
     return sorted(kept, key=lambda c: c.clip.asset.file_created_at or datetime.min)
