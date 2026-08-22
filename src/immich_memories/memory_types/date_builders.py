@@ -195,6 +195,12 @@ _FIXED_HOLIDAYS = {
 }
 
 
+# Everything resolve_holiday answers to. Add a holiday to _FIXED_HOLIDAYS or a
+# branch below and name it here, and every caller that asks "which dates are
+# already a holiday memory" picks it up without being edited.
+KNOWN_HOLIDAYS = (*_FIXED_HOLIDAYS, "easter", "thanksgiving", "mothers_day", "fathers_day")
+
+
 def _easter(year: int) -> date:
     """Western Easter Sunday, by the anonymous Gregorian algorithm.
 
@@ -245,7 +251,7 @@ def resolve_holiday(holiday: str, year: int) -> date:
         month_str, day_str = holiday.strip().split("-")
         return date(year, int(month_str), int(day_str))
     except (ValueError, TypeError) as exc:
-        known = ", ".join(sorted([*_FIXED_HOLIDAYS, "easter", "thanksgiving"]))
+        known = ", ".join(sorted(KNOWN_HOLIDAYS))
         raise ValueError(
             f"Unknown holiday {holiday!r}. Use one of: {known}, or a MM-DD date."
         ) from exc
