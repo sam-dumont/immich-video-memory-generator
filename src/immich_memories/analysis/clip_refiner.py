@@ -238,9 +238,11 @@ def _choose_backfill_candidate(
             ),
             default=0.0,
         )
+        # Favorite before the prefer-a-video rule: preferring footage is a
+        # heuristic about pacing, and a star is the user telling us directly.
         return (
-            photo_cap_bypassed and item.clip.asset.type != AssetType.IMAGE,
             item.clip.asset.is_favorite,
+            photo_cap_bypassed and item.clip.asset.type != AssetType.IMAGE,
             temporal_distance,
             item.score,
         )
