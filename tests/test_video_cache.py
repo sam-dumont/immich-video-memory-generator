@@ -665,3 +665,27 @@ class TestCachedVideo:
         cv = CachedVideo(path=Path("/tmp/test.mp4"), asset_id="abc123")
         assert cv.path == Path("/tmp/test.mp4")
         assert cv.asset_id == "abc123"
+
+
+def test_a_still_never_reaches_the_video_decoder(tmp_path) -> None:
+    """A HEIC handed to OpenCV ends the run, not just the clip.
+
+    Two year_in_review sweeps died on "Couldn't read video stream" over a
+    plain IMG_*.HEIC that had no live-photo component.
+    """
+    from unittest.mock import MagicMock
+
+    from immich_memories.api.models import AssetType
+    from immich_memories.cache.video_cache import VideoDownloadCache
+
+    cache = VideoDownloadCache(cache_dir=tmp_path, max_size_gb=1)
+    still = MagicMock()
+    still.type = AssetType.IMAGE
+    still.live_photo_video_id = None
+    still.id = "still-1"
+    still.original_file_name = "IMG_8981.HEIC"
+    # WHY: the Immich client is the network boundary; it must not be reached.
+    client = MagicMock()
+
+    assert cache.download_or_get(client, still) is None
+    client.download_asset.assert_not_called()
