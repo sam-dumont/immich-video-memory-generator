@@ -27,6 +27,7 @@ from immich_memories.analysis.clip_distribution import (
     _partition_photos_per_day,
     _period_key,
     enforce_photo_cap,
+    photos_per_day_for,
 )
 
 logger = logging.getLogger(__name__)
@@ -830,7 +831,17 @@ class ClipRefiner:
         # Measured before the per-day cap flattens every day into the same
         # narrow range (#488).
         event_periods = _event_periods_of(all_analyzed)
-        analyzed, _photo_overflow = _partition_photos_per_day(all_analyzed)
+        active_days = len(
+            {
+                c.clip.asset.file_created_at.date()
+                for c in all_analyzed
+                if c.clip.asset.file_created_at
+            }
+        )
+        analyzed, _photo_overflow = _partition_photos_per_day(
+            all_analyzed,
+            photos_per_day_for(self.config.target_clips, active_days),
+        )
         trace.record("per-day photo cap", all_analyzed, analyzed)
 
         target_with_buffer = int(self.config.target_clips * 1.2)

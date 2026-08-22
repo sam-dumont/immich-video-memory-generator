@@ -16,11 +16,14 @@ from __future__ import annotations
 
 import argparse
 import io
+import logging
 import sys
 from collections import Counter
 from pathlib import Path
 
 from immich_memories.analysis.smart_pipeline import SmartPipeline
+
+logger = logging.getLogger(__name__)
 
 THUMB_W, THUMB_H, PAD, LABEL_H, HEADER_H, COLUMNS = 320, 240, 10, 34, 54, 4
 
@@ -82,12 +85,49 @@ def _thumbnail(client, asset_id: str):
     """
     from PIL import Image
 
+    last: Exception | None = None
     for size in ("preview", "thumbnail"):
         try:
             return Image.open(io.BytesIO(client.get_asset_thumbnail(asset_id, size))).convert("RGB")
-        except Exception:  # noqa: BLE001, PERF203 - try the next size, then give up
+        except Exception as exc:  # noqa: BLE001, PERF203 - try the next size, then give up
+            last = exc
             continue
+    frame = _frame_from_cache(asset_id)
+    if frame is not None:
+        return frame
+    logger.warning("No thumbnail for %s: %s", asset_id, type(last).__name__)
     return None
+
+
+def _frame_from_cache(asset_id: str):
+    """Grab a frame from the locally cached video, if we have one.
+
+    Immich does not always hold a thumbnail — measured at 8% of assets on this
+    library, all of them standalone .MOV files. Those are perfectly good clips
+    that the pipeline selected on merit; only the review sheet could not show
+    them, and a grey rectangle is the one thing a reviewer cannot judge.
+    """
+    import subprocess
+    import tempfile
+
+    from PIL import Image
+
+    cache = Path.home() / ".immich-memories" / "cache" / "video-cache"
+    matches = list(cache.glob(f"*/{asset_id}.*")) if cache.is_dir() else []
+    if not matches:
+        return None
+    with tempfile.NamedTemporaryFile(suffix=".jpg") as tmp:
+        try:
+            subprocess.run(
+                ["ffmpeg", "-y", "-v", "error", "-ss", "0.5", "-i", str(matches[0]),
+                 "-frames:v", "1", "-q:v", "4", tmp.name],
+                capture_output=True,
+                timeout=20,
+                check=False,
+            )  # fmt: skip
+            return Image.open(tmp.name).convert("RGB")
+        except Exception:  # noqa: BLE001 - a tile is not worth failing the sheet
+            return None
 
 
 def _fonts():
