@@ -134,6 +134,7 @@ def score_and_select_photos(
     memory_type: str | None = None,
     transition_duration: float = 0.5,
     provider_circuit: Any = None,
+    thumbnail_cache: Any = None,
 ) -> PhotoSelectionResult:
     """Score photos and select within unified budget.
 
@@ -143,6 +144,11 @@ def score_and_select_photos(
     if not photo_assets:
         return PhotoSelectionResult(scored_photos=[], selection=UnifiedSelection())
 
+    # WHY every argument: score_photos degrades silently without them. No
+    # app_config and the VLM never scores a photo; no thumbnail_cache and both
+    # burst dedup and the frame-quality re-weighting return early, leaving the
+    # metadata lattice that ties hundreds of photos onto a handful of values;
+    # no db_path and every LLM score is paid for again next run.
     scored = score_photos(
         assets=photo_assets,
         config=config.photos,
@@ -151,6 +157,9 @@ def score_and_select_photos(
         download_fn=download_fn,
         thumbnail_fn=thumbnail_fn,
         provider_circuit=provider_circuit,
+        app_config=config,
+        db_path=config.cache.database_path,
+        thumbnail_cache=thumbnail_cache,
     )
 
     if not scored:
@@ -444,11 +453,7 @@ def _enhance_with_llm(
     cache = _get_score_cache(db_path) if db_path else None
     asset_ids = [a.id for a, _ in scored]
     model_version = app_config.llm.model
-    cached = (
-        cache.get_asset_scores_batch(asset_ids, model_version=model_version)
-        if cache and model_version
-        else {}
-    )
+    cached = _cached_scores(cache, asset_ids, model_version)
 
     cache_hits = 0
     enhanced: list[tuple[Asset, float]] = []
@@ -556,13 +561,40 @@ def _llm_score_photo(
         return None
 
 
+def _cached_scores(cache, asset_ids: list[str], model_version: str | None) -> dict:
+    """Previously computed scores, or nothing if the cache cannot answer.
+
+    The cache opens lazily, so an unwritable database survives construction
+    and raises on the first read instead — which took photo scoring down with
+    it. Losing the cache costs LLM calls, not the run.
+    """
+    import sqlite3
+
+    if not cache or not model_version:
+        return {}
+    try:
+        return cache.get_asset_scores_batch(asset_ids, model_version=model_version)
+    except (OSError, sqlite3.Error) as exc:
+        logger.debug("Photo score cache unreadable (%s): rescoring", exc)
+        return {}
+
+
 def _get_score_cache(db_path: Path):
-    """Get the asset score cache for score lookups."""
+    """Get the asset score cache, or None when it cannot be opened.
+
+    sqlite raises OperationalError rather than OSError for an unwritable or
+    missing directory, so that case escaped the guard and took photo scoring
+    down with it. A cache that cannot be opened costs repeated LLM calls, not
+    a failed run.
+    """
+    import sqlite3
+
     try:
         from immich_memories.cache.asset_score_cache import AssetScoreCache
 
         return AssetScoreCache(db_path=db_path)
-    except (ImportError, OSError):
+    except (ImportError, OSError, sqlite3.Error) as exc:
+        logger.debug("Photo score cache unavailable (%s): scores will not persist", exc)
         return None
 
 
