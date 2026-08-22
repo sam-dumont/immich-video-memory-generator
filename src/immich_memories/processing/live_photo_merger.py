@@ -316,6 +316,52 @@ def probe_clip_has_audio(clip_path: Path) -> bool:
         return False
 
 
+_FALLBACK_BURST_FPS = 30.0
+
+
+def probe_clip_fps(clip_path: Path) -> float | None:
+    """Frames per second of a clip's video stream, or None if unreadable."""
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=r_frame_rate",
+                "-of",
+                "csv=p=0",
+                str(clip_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        num, _, den = result.stdout.strip().partition("/")
+        rate = float(num) / float(den or 1)
+    except (OSError, ValueError, ZeroDivisionError, subprocess.SubprocessError) as e:
+        logging.getLogger(__name__).debug("ffprobe fps check failed: %s", e)
+        return None
+    return rate if rate > 0 else None
+
+
+def burst_fps(clip_paths: list[Path]) -> float:
+    """The rate to normalise a burst to: the fastest clip in it.
+
+    Concat needs every input at one rate, and this was pinned to 30 with a
+    comment that iPhone Live Photos always are. This library says otherwise —
+    components at 23.94, 29.97, 120 and 240 fps — so the pin quietly decimated
+    the fast ones. Taking the maximum resamples the slow clips up, which
+    duplicates frames, rather than throwing away frames that exist.
+    """
+    rates = [fps for fps in (probe_clip_fps(p) for p in clip_paths) if fps]
+    return max(rates) if rates else _FALLBACK_BURST_FPS
+
+
 def _detect_clip_hdr(clip_path: Path) -> bool:
     """Check if a video clip is HDR by probing color_transfer."""
     import subprocess
@@ -516,7 +562,9 @@ def build_merge_command(
     for path in clip_paths:
         cmd.extend(["-i", str(path)])
 
-    parts, v_labels, a_labels = _build_trim_filters(trim_points, a_trims, n, has_audio)
+    parts, v_labels, a_labels = _build_trim_filters(
+        trim_points, a_trims, n, has_audio, burst_fps(clip_paths) if n > 1 else 0.0
+    )
     _build_concat_and_map(cmd, parts, v_labels, a_labels, n, has_audio)
 
     _append_encoding_args(cmd, is_hdr, has_audio, output)
@@ -528,6 +576,7 @@ def _build_trim_filters(
     a_trims: list[tuple[float, float]],
     n: int,
     has_audio: bool,
+    target_fps: float,
 ) -> tuple[list[str], list[str], list[str]]:
     """Build per-clip trim + normalize filter strings."""
     parts: list[str] = []
@@ -537,8 +586,9 @@ def _build_trim_filters(
 
     for i, (v_start, v_end) in enumerate(v_trims):
         normalize = ",normalize=smoothing=20:independence=0:strength=0.4"
-        # TODO: use assembly target_fps when available (iPhone live photos are always 30fps)
-        fps_filter = ",fps=30" if n > 1 else ""
+        # Concat needs one rate across every input; the burst's fastest clip
+        # is it, so nothing is decimated on the way in.
+        fps_filter = f",fps={target_fps:g}" if n > 1 else ""
         parts.append(
             f"[{i}:v]trim=start={v_start}:end={v_end},setpts=PTS-STARTPTS{normalize}{fps_filter}[v{i}]"
         )
