@@ -30,7 +30,7 @@ def _context(**overrides) -> _BackfillContext:
         "photo_count": 4,
         "non_favorite_count": 6,
         "temporal_window": 0.0,
-        "occupied_temporal_buckets": set(),
+        "occupied_moments": [],
     }
     defaults.update(overrides)
     return _BackfillContext(**defaults)

@@ -12,7 +12,7 @@ from __future__ import annotations
 import contextlib
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -394,6 +394,47 @@ class SmartPipeline:
             result = self.refiner.phase_refine(list(by_id.values()), self.tracker)
         return result, list(by_id.values())
 
+    def _final_review_drop(
+        self,
+        analyzed: list[ClipWithSegment],
+        result: PipelineResult,
+    ) -> tuple[PipelineResult, list[ClipWithSegment]]:
+        """One last review that drops without refilling.
+
+        The iterating review always leaves its own last refill unjudged: it
+        stops when the budget runs out, and by then it has just re-selected.
+        Refilling again would only admit more unseen clips, so this pass takes
+        the cut it has and removes what does not belong.
+        """
+        if not self._app_config.content_analysis.enabled:
+            return result, analyzed
+        from immich_memories.analysis.selection_review import review_selection
+
+        by_id = {c.clip.asset.id: c for c in analyzed}
+        selected = [by_id[c.asset.id] for c in result.selected_clips if c.asset.id in by_id]
+        drops = set(review_selection(selected, self._app_config.llm))
+        if not drops:
+            return result, analyzed
+
+        kept = [c for c in result.selected_clips if c.asset.id not in drops]
+        if not kept:
+            return result, analyzed
+        logger.info(
+            "Selection review: budget spent, dropping %d unreviewed clip(s) "
+            "rather than shipping them",
+            len(result.selected_clips) - len(kept),
+        )
+        trimmed = replace(
+            result,
+            selected_clips=kept,
+            clip_segments={
+                asset_id: seg
+                for asset_id, seg in result.clip_segments.items()
+                if asset_id not in drops
+            },
+        )
+        return trimmed, [c for c in analyzed if c.clip.asset.id not in drops]
+
     def _needs_a_real_look(self, member: ClipWithSegment) -> bool:
         """Would the LLM review be judging this clip blind?
 
@@ -573,11 +614,12 @@ class SmartPipeline:
                     # exactly like a judge drop — same stabilization.
                     result, analyzed = self._stabilize_selection(analyzed, result)
                 if review_changed:
-                    logger.info(
-                        "Selection review: budget spent after %d passes — whatever the "
-                        "last refill admitted ships unreviewed",
-                        max(1, self.config.max_refinement_passes),
-                    )
+                    # Every pass so far dropped something and refilled, so the
+                    # last refill has never been looked at — which is how a
+                    # photo of a games console ended a December cut. Judge it
+                    # once more and simply drop what fails: a cut four seconds
+                    # short beats a cut that ends on a shelf.
+                    result, analyzed = self._final_review_drop(analyzed, result)
             self.tracker.finish()
             return result
         except (

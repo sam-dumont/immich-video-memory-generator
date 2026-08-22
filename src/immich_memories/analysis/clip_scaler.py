@@ -13,11 +13,47 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def temporal_cluster_key(clip: ClipWithSegment, time_window_minutes: float) -> str:
-    """Return the bucket key used by temporal deduplication."""
-    timestamp = clip.clip.asset.file_created_at
-    bucket_minutes = int(timestamp.timestamp() / 60 / time_window_minutes)
-    return f"{timestamp.date()}_{bucket_minutes}"
+def is_same_moment(
+    when: datetime | None,
+    others: list[datetime],
+    time_window_minutes: float,
+) -> bool:
+    """Is this within the window of a moment already in the cut?
+
+    Distance, not a grid. Bucketing on int(epoch / window) made "the same
+    moment" depend on where two shots fell against an arbitrary boundary
+    rather than how far apart they were: 15:55 and 15:57 collapsed, while
+    15:54 and 15:56 — the same two minutes — both shipped.
+    """
+    if when is None or time_window_minutes <= 0:
+        return False
+    window = time_window_minutes * 60
+    return any(abs((when - other).total_seconds()) < window for other in others)
+
+
+def group_by_moment(
+    clips: list[ClipWithSegment],
+    time_window_minutes: float,
+) -> list[list[ClipWithSegment]]:
+    """Group clips into runs separated by more than the window.
+
+    A cluster ends where the gap to the next shot exceeds the window, so a
+    held shutter stays one moment however it lands on the clock.
+    """
+    dated = sorted(
+        (c for c in clips if c.clip.asset.file_created_at is not None),
+        key=lambda c: c.clip.asset.file_created_at,
+    )
+    undated = [c for c in clips if c.clip.asset.file_created_at is None]
+    groups: list[list[ClipWithSegment]] = []
+    window = time_window_minutes * 60
+    for clip in dated:
+        when = clip.clip.asset.file_created_at
+        if groups and (when - groups[-1][-1].clip.asset.file_created_at).total_seconds() < window:
+            groups[-1].append(clip)
+        else:
+            groups.append([clip])
+    return groups + [[c] for c in undated]
 
 
 def _fit_temporally_distributed(
@@ -225,20 +261,17 @@ class ClipScaler:
         if not clips:
             return clips
 
-        time_clusters: dict[str, list[ClipWithSegment]] = defaultdict(list)
-        for clip in clips:
-            time_clusters[temporal_cluster_key(clip, time_window_minutes)].append(clip)
-
         result = []
         removed_count = 0
         clusters_with_duplicates = 0
 
-        for time_key, cluster_clips in time_clusters.items():
+        for cluster_clips in group_by_moment(clips, time_window_minutes):
             if len(cluster_clips) == 1:
                 result.append(cluster_clips[0])
                 continue
 
-            best, removed = self._pick_best_from_cluster(time_key, cluster_clips)
+            when = cluster_clips[0].clip.asset.file_created_at
+            best, removed = self._pick_best_from_cluster(str(when), cluster_clips)
             result.append(best)
             if removed > 0:
                 removed_count += removed
