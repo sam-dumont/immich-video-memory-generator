@@ -271,6 +271,7 @@ def is_taichi_available() -> bool:
 _generate_linear_gradient = None
 _generate_radial_gradient = None
 _gaussian_blur_h = None
+_catmull_rom_blend = None
 _gaussian_blur_v = None
 _apply_vignette = None
 _render_bokeh_particles = None
@@ -289,9 +290,58 @@ _finalize_to_output_u16 = None
 _apply_vignette_and_noise = None
 
 
+def _compile_catmull_rom():
+    """Build the slow-mo blend kernel.
+
+    Its own function so the kernel's loops do not land on _compile_kernels,
+    which is already the largest thing in this file by a wide margin and is
+    ratcheted against growth.
+    """
+
+    @ti.kernel
+    def catmull_rom_blend(
+        sources: ti.types.ndarray(dtype=ti.u8, ndim=4),
+        output: ti.types.ndarray(dtype=ti.f32, ndim=3),
+        i0: ti.i32,
+        i1: ti.i32,
+        i2: ti.i32,
+        i3: ti.i32,
+        t: ti.f32,
+        scale: ti.f32,
+    ):
+        """Catmull-Rom blend of four resident source frames into `output`.
+
+        The slow-mo background reads the same handful of source frames over
+        and over — 15 of them served 105 output frames — and did this blend in
+        numpy, ten passes over 25 MB arrays, then uploaded the f32 result every
+        frame. Measured at 5.0ms of a 14.9ms frame, before the transfer. The
+        sources do not change, so they live on the device and only the four
+        indices and the weight cross per frame.
+        """
+        height = output.shape[0]
+        width = output.shape[1]
+        t2 = t * t
+        t3 = t2 * t
+        for y, x in ti.ndrange(height, width):
+            for c in ti.static(range(3)):
+                p0 = ti.cast(sources[i0, y, x, c], ti.f32) * scale
+                p1 = ti.cast(sources[i1, y, x, c], ti.f32) * scale
+                p2 = ti.cast(sources[i2, y, x, c], ti.f32) * scale
+                p3 = ti.cast(sources[i3, y, x, c], ti.f32) * scale
+                value = 0.5 * (
+                    2.0 * p1
+                    + (-p0 + p2) * t
+                    + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
+                    + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3
+                )
+                output[y, x, c] = ti.min(1.0, ti.max(0.0, value))
+
+    return catmull_rom_blend
+
+
 def _compile_kernels():
     """Compile all Taichi kernels. Must be called AFTER ti.init()."""
-    global _kernels_compiled, _generate_linear_gradient, _generate_radial_gradient, _gaussian_blur_h, _gaussian_blur_v, _apply_vignette, _render_bokeh_particles, _apply_noise_grain, _generate_aurora_gradient, _composite_rgba_over, _composite_text_with_offset, _apply_color_pulse, _render_sdf_text, _copy_field_3, _zero_field_4, _blend_fields, _finalize_to_output_u8, _finalize_to_output_u16, _apply_vignette_and_noise  # noqa: PLW0603, E501
+    global _kernels_compiled, _catmull_rom_blend, _generate_linear_gradient, _generate_radial_gradient, _gaussian_blur_h, _gaussian_blur_v, _apply_vignette, _render_bokeh_particles, _apply_noise_grain, _generate_aurora_gradient, _composite_rgba_over, _composite_text_with_offset, _apply_color_pulse, _render_sdf_text, _copy_field_3, _zero_field_4, _blend_fields, _finalize_to_output_u8, _finalize_to_output_u16, _apply_vignette_and_noise  # noqa: PLW0603, E501
 
     if _kernels_compiled or not TAICHI_AVAILABLE:
         return
@@ -707,6 +757,7 @@ def _compile_kernels():
 
     _generate_linear_gradient = generate_linear_gradient
     _generate_radial_gradient = generate_radial_gradient
+    _catmull_rom_blend = _compile_catmull_rom()
     _gaussian_blur_h = gaussian_blur_h
     _gaussian_blur_v = gaussian_blur_v
     _apply_vignette = apply_vignette
@@ -777,6 +828,7 @@ class GPUBuffers:
         out_dtype = ti.u16 if hdr else ti.u8
         self.output = ti.ndarray(dtype=out_dtype, shape=(h, w, 3))
         self.sharp: ti.ndarray | None = None
+        self.sources: ti.ndarray | None = None
 
     def load_background(self, bg: np.ndarray) -> None:
         """CPU to GPU: load background frame (one transfer per frame)."""
@@ -785,6 +837,27 @@ class GPUBuffers:
     def read_output(self) -> np.ndarray:
         """GPU to CPU: read finalized uint8/uint16 frame."""
         return self.output.to_numpy()
+
+    def load_sources(self, frames: list[np.ndarray]) -> bool:
+        """Put the slow-mo source frames on the device, once.
+
+        Stored as u8 rather than f32: a quarter of the memory, and the
+        conversion is free inside the kernel. At 1080p fifteen frames is
+        about 93 MB.
+        """
+        if not frames:
+            return False
+        first = frames[0]
+        if first.dtype != np.uint8 or first.shape[:2] != (self.h, self.w):
+            return False
+        self.sources = ti.ndarray(dtype=ti.u8, shape=(len(frames), self.h, self.w, 3))
+        self.sources.from_numpy(np.ascontiguousarray(np.stack(frames)))
+        return True
+
+    def blend_sources(self, indices: tuple[int, int, int, int], t: float) -> None:
+        """Catmull-Rom the resident sources straight into the frame buffer."""
+        i0, i1, i2, i3 = indices
+        _catmull_rom_blend(self.sources, self.frame, i0, i1, i2, i3, t, 1.0 / 255.0)
 
     def ensure_sharp(self) -> None:
         """Lazily allocate sharp buffer for animated deblur."""

@@ -232,6 +232,15 @@ class TaichiTitleRenderer:
         from .taichi_kernels import GPUBuffers
 
         self.gpu = GPUBuffers(h, w, hdr=self.config.hdr)
+        # The slow-mo sources are the same handful of frames for the whole
+        # animation, so they go to the device once and the per-frame blend
+        # happens there. Falls back to the numpy path when the reader cannot
+        # offer them — different resolution, 16-bit HDR, or no reader at all.
+        reader = self.config.background_reader
+        frames: list = getattr(reader, "source_frames", None) or [] if reader else []
+        self._sources_resident = bool(frames) and self.gpu.load_sources(frames)
+        if self._sources_resident:
+            logger.debug("Slow-mo sources resident on device: %d frames", len(frames))
 
         self._blur_kernel_np = _create_gaussian_kernel(self.config.blur_radius)
 
@@ -300,21 +309,8 @@ class TaichiTitleRenderer:
         progress = frame_number / self.total_frames
         cfg = self.config
 
-        # 1. Background → GPU (single CPU→GPU transfer)
-        has_animated_bg = False
-        if cfg.background_reader is not None:
-            bg_frame = cfg.background_reader.read_frame()
-            if bg_frame is not None:
-                self.gpu.load_background(bg_frame)
-                has_animated_bg = True
-            elif cfg.background_image is not None:
-                self.gpu.load_background(cfg.background_image)
-            else:
-                self._render_gradient(t, progress, cfg)
-        elif cfg.background_image is not None:
-            self.gpu.load_background(cfg.background_image)
-        else:
-            self._render_gradient(t, progress, cfg)
+        # 1. Background into the frame buffer
+        has_animated_bg = self._load_background(cfg, t, progress)
 
         # 2. Blur (GPU→GPU, no transfers)
         if has_animated_bg:
@@ -355,6 +351,33 @@ class TaichiTitleRenderer:
         max_val = 65535.0 if cfg.hdr else 255.0
         taichi_kernels._finalize_to_output(self.gpu.frame, self.gpu.output, max_val, hdr=cfg.hdr)
         return self.gpu.read_output()
+
+    def _load_background(self, cfg, t: float, progress: float) -> bool:
+        """Fill the frame buffer for this frame; True when it came from footage.
+
+        Three sources in order of preference: the slow-mo reader, a still
+        background image, a generated gradient.
+        """
+        reader = cfg.background_reader
+        if reader is not None:
+            if self._sources_resident:
+                # Sources already on the device: interpolate there and send
+                # four indices instead of a 25 MB frame.
+                window = reader.next_blend()
+                if window is not None:
+                    self.gpu.blend_sources(*window)
+                    return True
+            else:
+                bg_frame = reader.read_frame()
+                if bg_frame is not None:
+                    self.gpu.load_background(bg_frame)
+                    return True
+
+        if cfg.background_image is not None:
+            self.gpu.load_background(cfg.background_image)
+        else:
+            self._render_gradient(t, progress, cfg)
+        return False
 
     def _apply_animated_deblur(self, progress: float, cfg: TaichiTitleConfig) -> None:
         """Apply animated blur transition (all GPU-resident).
