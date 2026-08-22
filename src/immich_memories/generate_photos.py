@@ -117,6 +117,7 @@ def _apply_unified_budget(
     Returns (filtered_video_clips, rendered_photo_clips).
     """
     from immich_memories.analysis.unified_budget import BudgetCandidate
+    from immich_memories.cache import ThumbnailCache
     from immich_memories.photos.photo_pipeline import render_photo_clips, score_and_select_photos
 
     target = target_override or params.target_duration_seconds
@@ -158,6 +159,10 @@ def _apply_unified_budget(
         clip_dates=clip_dates,
         memory_type=params.memory_type,
         transition_duration=params.transition_duration,
+        thumbnail_cache=ThumbnailCache(
+            cache_dir=params.config.cache.cache_path / "thumbnails",
+            max_size_mb=params.config.cache.thumbnail_cache_max_size_mb,
+        ),
     )
 
     selection = photo_result.selection
