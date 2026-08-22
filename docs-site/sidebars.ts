@@ -64,6 +64,7 @@ const sidebars: SidebarsConfig = {
           type: 'category',
           label: 'Understanding the Pipeline',
           items: [
+            'create/pipeline/pipeline-overview',
             'create/pipeline/clip-selection-scoring',
             'create/pipeline/face-aware-cropping',
             'create/pipeline/scene-detection',

@@ -21,10 +21,13 @@ const config: Config = {
   // TODO(launch): flip to 'throw' once the full docs build reports zero broken anchors.
   onBrokenAnchors: 'warn',
   markdown: {
+    mermaid: true,
     hooks: {
       onBrokenMarkdownLinks: 'throw',
     },
   },
+
+  themes: ['@docusaurus/theme-mermaid'],
 
   i18n: {
     defaultLocale: 'en',
@@ -49,6 +52,9 @@ const config: Config = {
   ],
 
   themeConfig: {
+    mermaid: {
+      theme: {light: 'neutral', dark: 'dark'},
+    },
     colorMode: {
       respectPrefersColorScheme: true,
     },
