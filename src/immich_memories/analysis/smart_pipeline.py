@@ -85,11 +85,7 @@ class PipelineConfig:
     prioritize_favorites: bool = True  # Prioritize favorite clips
     max_non_favorite_ratio: float = 0.70  # Max ratio of non-favorites (0.70 = at most 70%)
 
-    # Resolution filtering - exclude small videos that would look bad upscaled
-    # Set to 0 to disable, or specify minimum resolution
-    # If output_resolution is set, min_resolution defaults to output/2 (4K->1080, 1080->720)
-    min_resolution: int = 0  # 0 = auto based on output, or explicit minimum
-    output_resolution: int = 2160  # Output resolution (2160=4K, 1080=HD) for auto min calc
+    output_resolution: int = 2160  # Output resolution (2160=4K, 1080=HD)
 
     # Analysis settings
     analyze_all: bool = False  # Analyze all clips (slow but better selection)
@@ -687,95 +683,6 @@ class SmartPipeline:
         )
 
         return deduplicated
-
-    def _apply_non_favorite_filters(
-        self,
-        non_favorites: list[VideoClipInfo],
-        all_favorites: list[VideoClipInfo],
-    ) -> list[VideoClipInfo]:
-        """Apply quality filters to non-favorites only.
-
-        Applies HDR, compilation, and resolution filters sequentially.
-        """
-        filtered = non_favorites
-
-        # HDR filter
-        if self.config.hdr_only:
-            before = len(filtered)
-            filtered = [c for c in filtered if c.is_hdr]
-            logger.info(f"HDR filter on non-favorites: {before} -> {len(filtered)}")
-
-        # Compilation filter
-        before = len(filtered)
-        filtered = [c for c in filtered if c.is_camera_original]
-        compilations_removed = before - len(filtered)
-        if compilations_removed > 0:
-            logger.info(
-                f"Compilation filter: removed {compilations_removed} non-camera videos "
-                f"(no make/model EXIF)"
-            )
-
-        compilation_favorites = [c for c in all_favorites if not c.is_camera_original]
-        if compilation_favorites:
-            logger.warning(
-                f"Note: {len(compilation_favorites)} favorites appear to be compilations "
-                f"(no camera EXIF) - keeping them anyway"
-            )
-
-        # Resolution filter
-        min_res = self.config.min_resolution
-        if min_res == 0 and self.config.output_resolution > 0:
-            min_res = self.config.output_resolution // 2
-            min_res = max(min_res, 480)
-
-        if min_res > 0:
-            before = len(filtered)
-            # WHY: 0x0 = unknown resolution (live photo video components) — let them through
-            filtered = [
-                c
-                for c in filtered
-                if max(c.width, c.height) >= min_res or max(c.width, c.height) == 0
-            ]
-            logger.info(
-                f"Resolution filter on non-favorites: {before} -> {len(filtered)} "
-                f"(min {min_res}px for {self.config.output_resolution}p output)"
-            )
-
-        return filtered
-
-    def _select_gap_fillers(
-        self,
-        all_favorites: list[VideoClipInfo],
-        filtered_non_favorites: list[VideoClipInfo],
-    ) -> list[VideoClipInfo]:
-        """Select non-favorites from weeks that have no favorites."""
-        from collections import defaultdict
-
-        weeks_with_favorites: set[str] = set()
-        non_favorites_by_week: dict[str, list] = defaultdict(list)
-
-        weeks_with_favorites.update(
-            clip.asset.file_created_at.strftime("%Y-W%W") for clip in all_favorites
-        )
-
-        for clip in filtered_non_favorites:
-            non_favorites_by_week[clip.asset.file_created_at.strftime("%Y-W%W")].append(clip)
-
-        weeks_needing_fill = set(non_favorites_by_week.keys()) - weeks_with_favorites
-
-        gap_fillers: list[VideoClipInfo] = []
-        for week in sorted(weeks_needing_fill):
-            week_clips = non_favorites_by_week[week]
-            week_clips.sort(
-                key=lambda c: (
-                    c.width * c.height if c.width and c.height else 0,
-                    c.bitrate or 0,
-                ),
-                reverse=True,
-            )
-            gap_fillers.extend(week_clips[:3])
-
-        return gap_fillers
 
     def _adapt_target_for_content(self, clips: list[VideoClipInfo]) -> None:
         """Reduce target_clips when available content is sparse."""
