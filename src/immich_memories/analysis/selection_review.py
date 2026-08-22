@@ -37,7 +37,21 @@ Judge the SET as a whole: feel, coherence, variety. Drop a clip when it is
 
 - REDUNDANT: the same moment, scene or kind of shot is already in the set.
   Self-portraits and mirror shots repeat hard — three of them from three days
-  is one idea shown three times, however different the days were.
+  is one idea shown three times, however different the days were. A selfie of
+  one person alone is the weakest way to record a day: prefer the clip that
+  shows what they were doing, or who they were with, and drop the solo shot
+  when the set already has one.
+- CROWDING OUT: the same THING recurring until it takes over — a pet, a room,
+  an object photographed on unrelated days while nothing else happens. Keep
+  the best two or three and drop the rest, even when each is a fine
+  photograph. Two exceptions, and they matter more than the rule:
+    * A person is never crowding out. When someone appears through most of a
+      period they are usually its story: a new baby, a companion on a trip.
+      Repetition of a person is REDUNDANT only when it is the same SHOT
+      repeated, never merely the same face living their life.
+    * A thing that CHANGES across the set is a project, not repetition — a
+      house being renovated, a car being restored, furniture being built.
+      Progress is the story. Keep the sequence and let it read in order.
 - CLASHING: it breaks the feel the rest of the set has,
 - NOT A MEMORY: it records a thing rather than a moment — an object or a
   product photographed on its own, a screen or a video game, a document or
