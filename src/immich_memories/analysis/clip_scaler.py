@@ -67,22 +67,57 @@ def _fit_temporally_distributed(
         c for c in ordered if c not in selected and c.end_time - c.start_time <= remaining
     ]:
         if not selected:
-            chosen = max(candidates, key=lambda c: c.score)
+            chosen = max(candidates, key=lambda c: (c.clip.asset.is_favorite, c.score))
         else:
             selected_dates = [c.clip.asset.file_created_at for c in selected]
+            # Spread to the nearest day, THEN quality. Distance in raw seconds
+            # never ties, so score was unreachable and favorites were never
+            # consulted at all: a February with 19 starred clips in the
+            # protected set shipped two of them, beaten by whatever happened
+            # to sit furthest from the rest. Days are the unit a viewer feels.
             chosen = max(
                 candidates,
                 key=lambda c: (
-                    min(
-                        abs((c.clip.asset.file_created_at - d).total_seconds())
-                        for d in selected_dates
+                    round(
+                        min(
+                            abs((c.clip.asset.file_created_at - d).total_seconds())
+                            for d in selected_dates
+                        )
+                        / 86400
                     ),
+                    c.clip.asset.is_favorite,
                     c.score,
                 ),
             )
         selected.append(chosen)
         remaining -= chosen.end_time - chosen.start_time
     return sorted(selected, key=lambda c: c.clip.asset.file_created_at or datetime.min)
+
+
+# How much of a squeezed cut the user's own choices are entitled to. The rest
+# holds coverage, so a period still cannot vanish entirely.
+_FAVORITE_SHARE_WHEN_SQUEEZED = 0.7
+
+
+def _fit_protected(protected: list[ClipWithSegment], max_duration: float) -> list[ClipWithSegment]:
+    """Fit a protected set that cannot fit, favorites first.
+
+    Spreading evenly over the whole span fights a period whose story is
+    concentrated: a February built around one week kept reaching for days that
+    held nothing starred, and shipped 4 of its 19 favorites. Favorites take
+    most of the runtime, spread among themselves; coverage keeps the rest so a
+    period is still not lost.
+    """
+    starred = [c for c in protected if c.clip.asset.is_favorite]
+    rest = [c for c in protected if not c.clip.asset.is_favorite]
+    if not starred or not rest:
+        return _fit_temporally_distributed(protected, max_duration)
+
+    favorite_budget = max_duration * _FAVORITE_SHARE_WHEN_SQUEEZED
+    kept = _fit_temporally_distributed(starred, favorite_budget)
+    spent = sum(c.end_time - c.start_time for c in kept)
+    kept += _fit_temporally_distributed(rest, max_duration - spent)
+    return sorted(kept, key=lambda c: c.clip.asset.file_created_at or datetime.min)
 
 
 def _find_sole_month_representatives(
@@ -160,10 +195,7 @@ class ClipScaler:
             logger.info(
                 "Protected clips exceed the strict duration budget; retaining a distributed subset"
             )
-            # Favorites and coverage compete on equal footing here: both are
-            # protected, and a distributed subset keeps a period from vanishing
-            # while still spending most of the runtime on starred clips.
-            return _fit_temporally_distributed(sole_reps, max_allowed)
+            return _fit_protected(sole_reps, max_allowed)
 
         if sole_reps:
             logger.info(
