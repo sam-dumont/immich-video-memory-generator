@@ -52,6 +52,7 @@ def _collect(rows: list[dict]):
                     "score": round(member.score, 2) if member else 0.0,
                     "secs": round(end - start, 1),
                     "res": short_side,
+                    "fav": bool(getattr(clip.asset, "is_favorite", False)),
                 }
             )
         raise _SelectionIsFinal
@@ -114,7 +115,8 @@ def _draw(rows: list[dict], label: str, subtitle: str, out: Path) -> Path:
             on_busiest = row["day"] in dict(busiest)
             draw.text(
                 (x + 2, y + THUMB_H + 4),
-                f"{i + 1:2d}. {row['when']}  {row['kind']}  {row['secs']}s",
+                f"{i + 1:2d}. {row['when']}  {row['kind']}  {row['secs']}s"
+                + ("  \u2605" if row["fav"] else ""),
                 (255, 205, 90) if on_busiest else (200, 200, 205),
                 font=font,
             )
@@ -163,7 +165,14 @@ def main() -> int:
     seconds = Counter()
     for row in rows:
         seconds[row["day"]] += row["secs"]
-    subtitle = "busiest: " + ", ".join(f"{d} {s:.0f}s" for d, s in seconds.most_common(2))
+    starred = sum(1 for r in rows if r["fav"])
+    subtitle = (
+        f"{starred} favorite"
+        + ("s" if starred != 1 else "")
+        + ", "
+        + "busiest: "
+        + ", ".join(f"{d} {s:.0f}s" for d, s in seconds.most_common(2))
+    )
     path = _draw(rows, args.label, subtitle, args.out / f"{args.label}.png")
     print(f"{args.label}: {len(rows)} clips -> {path}")
     return 0
