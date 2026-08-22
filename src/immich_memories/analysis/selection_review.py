@@ -45,6 +45,10 @@ Judge the SET as a whole: feel, coherence, variety. Drop a clip when it is
   an object photographed on unrelated days while nothing else happens. Keep
   the best two or three and drop the rest, even when each is a fine
   photograph. Two exceptions, and they matter more than the rule:
+    * A subject that is NEW is the story of the period it arrives in, not
+      repetition — a kitten, a puppy, a first home, a first instrument. A
+      quiet month whose one development is a new animal is allowed to be
+      mostly that animal.
     * A person is never crowding out. When someone appears through most of a
       period they are usually its story: a new baby, a companion on a trip.
       Repetition of a person is REDUNDANT only when it is the same SHOT
