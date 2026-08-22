@@ -48,7 +48,7 @@ class _BackfillContext:
     photo_count: int
     non_favorite_count: int
     temporal_window: float
-    occupied_temporal_buckets: set[str]
+    occupied_moments: list[datetime]
 
 
 @dataclass(frozen=True)
@@ -71,17 +71,19 @@ def _is_backfill_candidate_admissible(
     enforce_temporal_spacing: bool = True,
 ) -> bool:
     """Return whether a leftover preserves active selection constraints."""
-    from immich_memories.analysis.clip_scaler import temporal_cluster_key
+    from immich_memories.analysis.clip_scaler import is_same_moment
     from immich_memories.api.models import AssetType
 
     candidate_duration = candidate.end_time - candidate.start_time
     if candidate_duration <= 0 or candidate_duration > remaining_budget + 1e-6:
         return False
 
-    if enforce_temporal_spacing and context.temporal_window > 0:
-        bucket = temporal_cluster_key(candidate, context.temporal_window)
-        if bucket in context.occupied_temporal_buckets:
-            return False
+    if enforce_temporal_spacing and is_same_moment(
+        candidate.clip.asset.file_created_at,
+        context.occupied_moments,
+        context.temporal_window,
+    ):
+        return False
 
     new_total = context.selected_count + 1
     if (
@@ -255,16 +257,18 @@ def _initial_backfill_photo_limit(
     return config.photo_max_ratio
 
 
-def _initial_temporal_buckets(
+def _occupied_moments(
     selected: list[ClipWithSegment],
     temporal_window: float,
-) -> set[str]:
-    """Build the occupied temporal buckets for backfill deduplication."""
+) -> list[datetime]:
+    """When the cut is already covered, so backfill cannot re-add a moment."""
     if temporal_window <= 0:
-        return set()
-    from immich_memories.analysis.clip_scaler import temporal_cluster_key
-
-    return {temporal_cluster_key(item, temporal_window) for item in selected}
+        return []
+    return [
+        item.clip.asset.file_created_at
+        for item in selected
+        if item.clip.asset.file_created_at is not None
+    ]
 
 
 def _build_backfill_context(
@@ -272,7 +276,7 @@ def _build_backfill_context(
     *,
     config: PipelineConfig,
     temporal_window: float,
-    occupied_temporal_buckets: set[str],
+    occupied_moments: list[datetime],
 ) -> _BackfillContext:
     """Summarize the changing selection state for candidate evaluation."""
     from immich_memories.api.models import AssetType
@@ -283,7 +287,7 @@ def _build_backfill_context(
         photo_count=sum(1 for item in selected if item.clip.asset.type == AssetType.IMAGE),
         non_favorite_count=sum(1 for item in selected if not item.clip.asset.is_favorite),
         temporal_window=temporal_window,
-        occupied_temporal_buckets=occupied_temporal_buckets,
+        occupied_moments=occupied_moments,
     )
 
 
@@ -734,7 +738,6 @@ class ClipRefiner:
         photo_cap_bypassed: bool,
     ) -> list[ClipWithSegment]:
         """Fill post-filter duration holes from unused, constraint-safe candidates."""
-        from immich_memories.analysis.clip_scaler import temporal_cluster_key
 
         selected_ids = {item.clip.asset.id for item in selected}
         available = [item for item in candidates if item.clip.asset.id not in selected_ids]
@@ -748,7 +751,7 @@ class ClipRefiner:
         logged_relaxation_tiers: set[str] = set()
 
         temporal_window = self.config.temporal_dedup_window_minutes
-        occupied_temporal_buckets = _initial_temporal_buckets(
+        occupied_moments = _occupied_moments(
             selected,
             temporal_window,
         )
@@ -762,7 +765,7 @@ class ClipRefiner:
                 selected,
                 config=self.config,
                 temporal_window=temporal_window,
-                occupied_temporal_buckets=occupied_temporal_buckets,
+                occupied_moments=occupied_moments,
             )
             resolved = _resolve_backfill_candidates(
                 available,
@@ -792,8 +795,8 @@ class ClipRefiner:
             available.remove(chosen)
             total_duration += chosen.end_time - chosen.start_time
             backfilled += 1
-            if temporal_window > 0:
-                occupied_temporal_buckets.add(temporal_cluster_key(chosen, temporal_window))
+            if temporal_window > 0 and chosen.clip.asset.file_created_at is not None:
+                occupied_moments.append(chosen.clip.asset.file_created_at)
 
         _log_backfill_summary(
             backfilled=backfilled,

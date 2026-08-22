@@ -82,7 +82,6 @@ class TestBackfillPolicyHelpers:
             _BackfillContext,
             _is_backfill_candidate_admissible,
         )
-        from immich_memories.analysis.clip_scaler import temporal_cluster_key
         from immich_memories.analysis.smart_pipeline import PipelineConfig
 
         base = datetime(2026, 7, 1, 12, 0, tzinfo=UTC)
@@ -93,7 +92,7 @@ class TestBackfillPolicyHelpers:
             photo_count=0,
             non_favorite_count=0,
             temporal_window=10.0,
-            occupied_temporal_buckets={temporal_cluster_key(candidate, 10.0)},
+            occupied_moments=[candidate.clip.asset.file_created_at],
         )
 
         assert not _is_backfill_candidate_admissible(
@@ -121,7 +120,7 @@ class TestBackfillPolicyHelpers:
             photo_count=1,
             non_favorite_count=0,
             temporal_window=0.0,
-            occupied_temporal_buckets=set(),
+            occupied_moments=[],
         )
 
         assert not _is_backfill_candidate_admissible(
@@ -172,7 +171,7 @@ class TestBackfillPolicyHelpers:
             photo_count=0,
             non_favorite_count=0,
             temporal_window=0.0,
-            occupied_temporal_buckets=set(),
+            occupied_moments=[],
         )
 
         resolved = _resolve_backfill_candidates(
@@ -190,7 +189,6 @@ class TestBackfillPolicyHelpers:
             _BackfillContext,
             _resolve_backfill_candidates,
         )
-        from immich_memories.analysis.clip_scaler import temporal_cluster_key
         from immich_memories.analysis.smart_pipeline import PipelineConfig
 
         candidate = _make_clip("nearby-leftover", datetime(2026, 7, 2, 12, 2, tzinfo=UTC))
@@ -200,7 +198,7 @@ class TestBackfillPolicyHelpers:
             photo_count=0,
             non_favorite_count=0,
             temporal_window=10.0,
-            occupied_temporal_buckets={temporal_cluster_key(candidate, 10.0)},
+            occupied_moments=[candidate.clip.asset.file_created_at],
         )
 
         resolved = _resolve_backfill_candidates(
@@ -232,7 +230,7 @@ class TestBackfillPolicyHelpers:
             photo_count=1,
             non_favorite_count=0,
             temporal_window=0.0,
-            occupied_temporal_buckets=set(),
+            occupied_moments=[],
         )
 
         resolved = _resolve_backfill_candidates(
@@ -265,7 +263,7 @@ class TestBackfillPolicyHelpers:
             photo_count=0,
             non_favorite_count=0,
             temporal_window=0.0,
-            occupied_temporal_buckets=set(),
+            occupied_moments=[],
         )
 
         resolved = _resolve_backfill_candidates(
