@@ -251,24 +251,15 @@ class SlowmoBackgroundReader:
         if self._output_index >= self._total_output_frames:
             return None
 
-        # WHY: ease-in cubic maps output time to source time with acceleration.
-        # Starts very slow (dreamy slow-mo), ends near real-time speed so the
-        # hard cut to the clip doesn't "jump" from slow to fast.
-        n_src = len(self._source_frames)
-        progress = self._output_index / max(1, self._total_output_frames - 1)
-        eased = progress * progress * progress  # cubic ease-in
-        src_pos = eased * (n_src - 1)
-
-        idx = min(int(src_pos), n_src - 2)
-        t = src_pos - idx  # fractional position [0, 1)
+        indices, t = self._blend_window()
 
         # WHY: Catmull-Rom cubic interpolation uses 4 frames instead of 2.
         # This eliminates the "pop" at frame pair boundaries that linear
         # interpolation creates (C1 continuity vs C0).
-        p0 = self._as_float(max(0, idx - 1))
-        p1 = self._as_float(idx)
-        p2 = self._as_float(min(idx + 1, n_src - 1))
-        p3 = self._as_float(min(idx + 2, n_src - 1))
+        p0 = self._as_float(indices[0])
+        p1 = self._as_float(indices[1])
+        p2 = self._as_float(indices[2])
+        p3 = self._as_float(indices[3])
 
         frame = 0.5 * (
             2.0 * p1
@@ -280,6 +271,42 @@ class SlowmoBackgroundReader:
 
         self._output_index += 1
         return frame
+
+    def _blend_window(self) -> tuple[tuple[int, int, int, int], float]:
+        """Which four source frames the next output frame blends, and by how much.
+
+        WHY: ease-in cubic maps output time to source time with acceleration.
+        Starts very slow (dreamy slow-mo), ends near real-time speed so the
+        hard cut to the clip doesn't "jump" from slow to fast.
+
+        Shared by the numpy path and the GPU one so the two cannot drift.
+        """
+        n_src = len(self._source_frames)
+        progress = self._output_index / max(1, self._total_output_frames - 1)
+        eased = progress * progress * progress  # cubic ease-in
+        src_pos = eased * (n_src - 1)
+        idx = min(int(src_pos), n_src - 2)
+        return (
+            (max(0, idx - 1), idx, min(idx + 1, n_src - 1), min(idx + 2, n_src - 1)),
+            src_pos - idx,
+        )
+
+    @property
+    def source_frames(self) -> list[np.ndarray]:
+        """The frames the whole animation interpolates between."""
+        return self._source_frames
+
+    def next_blend(self) -> tuple[tuple[int, int, int, int], float] | None:
+        """Advance one output frame and report its blend, doing no pixel work.
+
+        For callers that can interpolate on the device: the sources never
+        change, so only four indices and a weight need to cross per frame.
+        """
+        if not self.is_active or self._output_index >= self._total_output_frames:
+            return None
+        window = self._blend_window()
+        self._output_index += 1
+        return window
 
     def _as_float(self, idx: int) -> np.ndarray:
         """Normalized float32 view of one source frame, cached for the 4-frame
