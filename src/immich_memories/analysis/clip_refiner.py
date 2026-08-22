@@ -815,6 +815,7 @@ class ClipRefiner:
         tracker: object,
     ) -> PipelineResult:
         """Phase 4: Refine final selection."""
+        from immich_memories.analysis import selection_trace as trace
         from immich_memories.analysis.progress import PipelinePhase
         from immich_memories.analysis.smart_pipeline import PipelineResult
 
@@ -828,6 +829,7 @@ class ClipRefiner:
         # narrow range (#488).
         event_periods = _event_periods_of(all_analyzed)
         analyzed, _photo_overflow = _partition_photos_per_day(all_analyzed)
+        trace.record("per-day photo cap", all_analyzed, analyzed)
 
         target_with_buffer = int(self.config.target_clips * 1.2)
 
@@ -837,23 +839,28 @@ class ClipRefiner:
             selected = self.select_clips_distributed_by_date(
                 analyzed, target_with_buffer, event_periods
             )
+        trace.record("distribute by date", analyzed, selected)
 
         target_duration = self.config.duration_target
         max_overrun = (
             0.0 if self.config.target_duration_seconds is not None else target_duration * 0.10
         )
         coverage_ids: set[str] = getattr(self, "_coverage_ids", set())
+        before_scale = selected
         selected = self.scaler.scale_to_target_duration(
             selected,
             target_duration,
             protected_ids=coverage_ids,
             max_overrun_seconds=max_overrun,
         )
+        trace.record(f"fit to {target_duration:.0f}s", before_scale, selected)
 
         if self.config.temporal_dedup_window_minutes > 0:
+            before_dedup = selected
             selected = self.scaler.deduplicate_temporal_clusters(
                 selected, time_window_minutes=self.config.temporal_dedup_window_minutes
             )
+            trace.record("same-moment dedup", before_dedup, selected)
 
         if self.config.max_non_favorite_ratio < 1.0 and self.config.prioritize_favorites:
             favorites = [c for c in selected if c.clip.asset.is_favorite]
@@ -890,19 +897,23 @@ class ClipRefiner:
             # Even when photos may ultimately fill freely, first normalize a
             # photo-biased selection so backfill has room to use every valid
             # video candidate. The backfill exemption then admits photos again.
+            before_cap = selected
             selected = enforce_photo_cap(
                 selected,
                 self.config.photo_max_ratio,
                 videos_scarce=False,
                 protected_ids=coverage_ids,
             )
+            trace.record("photo ratio cap", before_cap, selected)
 
+        before_backfill = selected
         selected = self._backfill_to_duration(
             selected,
             all_analyzed,
             target_duration + max_overrun,
             photo_cap_bypassed=photo_cap_bypassed,
         )
+        trace.record("duration backfill", before_backfill, selected)
 
         selected.sort(key=lambda c: c.clip.asset.file_created_at or datetime.min)
 
