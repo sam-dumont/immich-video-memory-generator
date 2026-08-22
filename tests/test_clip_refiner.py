@@ -78,7 +78,7 @@ def test_strict_budget_outweighs_protection_preference() -> None:
 
 class TestBackfillPolicyHelpers:
     def test_backfill_policy_rejects_an_occupied_temporal_bucket(self) -> None:
-        from immich_memories.analysis.clip_refiner import (
+        from immich_memories.analysis.clip_backfill import (
             _BackfillContext,
             _is_backfill_candidate_admissible,
         )
@@ -103,7 +103,7 @@ class TestBackfillPolicyHelpers:
         )
 
     def test_backfill_policy_rejects_a_photo_above_the_active_cap(self) -> None:
-        from immich_memories.analysis.clip_refiner import (
+        from immich_memories.analysis.clip_backfill import (
             _BackfillContext,
             _is_backfill_candidate_admissible,
         )
@@ -131,7 +131,7 @@ class TestBackfillPolicyHelpers:
         )
 
     def test_backfill_choice_keeps_favorite_priority_over_temporal_distance(self) -> None:
-        from immich_memories.analysis.clip_refiner import _choose_backfill_candidate
+        from immich_memories.analysis.clip_backfill import _choose_backfill_candidate
 
         base = datetime(2026, 7, 1, tzinfo=UTC)
         favorite = _make_clip(
@@ -151,7 +151,7 @@ class TestBackfillPolicyHelpers:
         assert chosen is favorite
 
     def test_backfill_relaxes_favorite_ratio_before_leaving_a_duration_hole(self) -> None:
-        from immich_memories.analysis.clip_refiner import (
+        from immich_memories.analysis.clip_backfill import (
             _BackfillContext,
             _resolve_backfill_candidates,
         )
@@ -185,7 +185,7 @@ class TestBackfillPolicyHelpers:
         assert resolved.tier == "favorite_ratio"
 
     def test_backfill_relaxes_temporal_spacing_after_favorite_ratio(self) -> None:
-        from immich_memories.analysis.clip_refiner import (
+        from immich_memories.analysis.clip_backfill import (
             _BackfillContext,
             _resolve_backfill_candidates,
         )
@@ -212,7 +212,7 @@ class TestBackfillPolicyHelpers:
         assert resolved.tier == "temporal_spacing"
 
     def test_backfill_can_remove_photo_ratio_as_last_content_constraint(self) -> None:
-        from immich_memories.analysis.clip_refiner import (
+        from immich_memories.analysis.clip_backfill import (
             _BackfillContext,
             _resolve_backfill_candidates,
         )
@@ -245,7 +245,7 @@ class TestBackfillPolicyHelpers:
         assert resolved.tier == "photo_ratio_unlimited"
 
     def test_backfill_uses_two_second_overrun_only_after_content_relaxations(self) -> None:
-        from immich_memories.analysis.clip_refiner import (
+        from immich_memories.analysis.clip_backfill import (
             _BackfillContext,
             _resolve_backfill_candidates,
         )
