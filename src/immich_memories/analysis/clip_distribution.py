@@ -10,6 +10,7 @@ entirely (#488).
 from __future__ import annotations
 
 import logging
+import math
 from collections import defaultdict
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 _MAX_PHOTOS_PER_DAY = 2
+_MAX_SHARE_FROM_ONE_DAY = 0.25
 _EVENT_DENSITY_MULTIPLE = 3.0
 _EVENT_CAP_MULTIPLE = 3
 _EVENT_CLIPS_PER_PERIOD = 3
@@ -130,6 +132,27 @@ def _photo_caps_per_day(
     events = _event_periods(by_day)
     event_cap = base_cap * _EVENT_CAP_MULTIPLE
     return {day: event_cap if day in events else base_cap for day in by_day}
+
+
+def photos_per_day_for(target_clips: int, active_days: int) -> int:
+    """How many photos a day may contribute before it counts as flooding.
+
+    "Flooding" is relative to how many slots the memory has. Two a day suits a
+    60-second month; for a four-day trip needing forty clips it left selection
+    with eight photos to work with, so it filled a fifth of the runtime and
+    duration backfill supplied the other four fifths — by relaxed constraints,
+    where selection would have chosen. Measured on a 967-asset trip: 55
+    candidates reached selection, 49 of the 55 final clips came from backfill.
+    """
+    if target_clips <= 0 or active_days <= 0:
+        return _MAX_PHOTOS_PER_DAY
+    # Twice the per-day share, so selection chooses rather than merely accepts,
+    # but never more than a quarter of the whole cut from one day — six photos
+    # of one race day in a seven-clip recap was the failure that put this cap
+    # here in the first place.
+    headroom = math.ceil(target_clips / active_days) * 2
+    one_day_ceiling = int(target_clips * _MAX_SHARE_FROM_ONE_DAY)
+    return max(_MAX_PHOTOS_PER_DAY, min(headroom, one_day_ceiling))
 
 
 def _partition_photos_per_day(

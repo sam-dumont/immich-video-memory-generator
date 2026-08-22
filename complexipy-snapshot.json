@@ -6,35 +6,31 @@
       {
         "name": "ClipRefiner::_fill_empty_weeks",
         "complexity": 20,
-        "line_start": 507,
-        "line_end": 550,
+        "line_start": 508,
+        "line_end": 551,
         "line_complexities": [
           {
-            "line": 517,
-            "complexity": 0
-          },
-          {
             "line": 518,
-            "complexity": 1
+            "complexity": 0
           },
           {
             "line": 519,
-            "complexity": 0
+            "complexity": 1
           },
           {
-            "line": 522,
+            "line": 520,
             "complexity": 0
           },
           {
             "line": 523,
-            "complexity": 1
-          },
-          {
-            "line": 524,
             "complexity": 0
           },
           {
-            "line": 527,
+            "line": 524,
+            "complexity": 1
+          },
+          {
+            "line": 525,
             "complexity": 0
           },
           {
@@ -42,7 +38,7 @@
             "complexity": 0
           },
           {
-            "line": 530,
+            "line": 529,
             "complexity": 0
           },
           {
@@ -51,50 +47,54 @@
           },
           {
             "line": 532,
-            "complexity": 1
+            "complexity": 0
           },
           {
             "line": 533,
-            "complexity": 0
+            "complexity": 1
           },
           {
             "line": 534,
-            "complexity": 2
-          },
-          {
-            "line": 536,
             "complexity": 0
           },
           {
-            "line": 538,
+            "line": 535,
+            "complexity": 2
+          },
+          {
+            "line": 537,
             "complexity": 0
           },
           {
             "line": 539,
-            "complexity": 1
-          },
-          {
-            "line": 540,
-            "complexity": 2
-          },
-          {
-            "line": 541,
             "complexity": 0
           },
           {
+            "line": 540,
+            "complexity": 1
+          },
+          {
+            "line": 541,
+            "complexity": 2
+          },
+          {
             "line": 542,
+            "complexity": 0
+          },
+          {
+            "line": 543,
             "complexity": 3
           },
           {
-            "line": 544,
+            "line": 545,
             "complexity": 4
           },
           {
-            "line": 545,
+            "line": 546,
             "complexity": 5
           },
           {
-            "line": 550,
+            "line": 551,
             "complexity": 0
           }
         ]
