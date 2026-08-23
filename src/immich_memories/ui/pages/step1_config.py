@@ -193,7 +193,7 @@ def _make_date_range_updater(
             if dr is None:
                 date_range_label.set_text("")
                 return
-            state.date_range = dr
+            state.date_ranges = [dr]
             date_range_label.set_text(f"{dr.description} ({dr.days} days)")
             auto_duration = max(1, min(60, round(dr.days / 365 * 10)))
             state.target_duration = auto_duration
