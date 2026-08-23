@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from uuid import uuid4
 
 from immich_memories.api.compatibility import ApiVersionPolicy
+from immich_memories.timeperiod import DateRange
 from immich_memories.tracking.models import DeliveryStatus
 
 if TYPE_CHECKING:
@@ -17,7 +18,6 @@ if TYPE_CHECKING:
     from immich_memories.cache.thumbnail_cache import ThumbnailCache
     from immich_memories.config_loader import Config
     from immich_memories.processing.timeline_budget import TimelinePlan
-    from immich_memories.timeperiod import DateRange
 
 
 @dataclass
@@ -52,7 +52,9 @@ class AppState:
     period_unit: str = "years"  # "months" or "years"
     custom_start: date | None = None
     custom_end: date | None = None
-    date_range: DateRange | None = None
+    # Every window the memory covers. On This Day and Holiday build one per
+    # year, Then and Now builds two far apart; the rest build exactly one.
+    date_ranges: list[DateRange] = field(default_factory=list)
 
     # Person selection
     selected_person: Person | None = None
@@ -157,6 +159,23 @@ class AppState:
     # file does not.
     thumbnail_hashes: dict[str, str] = field(default_factory=dict)
     analysis_cache: Any = None  # AnalysisCache
+
+    @property
+    def date_range(self) -> DateRange | None:
+        """The whole period the memory covers — for titles, filenames and labels.
+
+        Anything that *fetches* must use `date_ranges` instead. The span of a
+        Then and Now is a decade it has no interest in, and the span of an On
+        This Day is years it wants three days out of.
+        """
+        if not self.date_ranges:
+            return None
+        if len(self.date_ranges) == 1:
+            return self.date_ranges[0]
+        return DateRange(
+            start=min(r.start for r in self.date_ranges),
+            end=max(r.end for r in self.date_ranges),
+        )
 
     @property
     def scope_is_selected(self) -> bool:

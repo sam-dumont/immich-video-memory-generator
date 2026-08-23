@@ -1545,12 +1545,26 @@ class TestRunOneOutcomes:
             result = _execute_generate(["immich-memories", "generate"])
 
         assert result == ProcessResult(0, "stdout", "stderr")
-        run.assert_called_once_with(
-            ["immich-memories", "generate"],
-            capture_output=True,
-            text=True,
-            timeout=7200,
-        )
+        assert run.call_args.args[0] == ["immich-memories", "generate"]
+        assert run.call_args.kwargs["capture_output"] is True
+        assert run.call_args.kwargs["text"] is True
+        assert run.call_args.kwargs["timeout"] == 7200
+
+    def test_execute_adapter_states_the_child_environment_instead_of_inheriting_it(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Under launchd the parent's environment is the whole story — spell it out."""
+        monkeypatch.setenv("ACESTEP_MLX_VAE_CHUNK", "384")
+        completed = subprocess.CompletedProcess(["generate"], 0, "", "")
+
+        # WHY: subprocess.run would fork a real generation
+        with patch(
+            "immich_memories.automation.runner.subprocess.run", return_value=completed
+        ) as run:
+            _execute_generate(["immich-memories", "generate"])
+
+        assert run.call_args.kwargs["env"]["ACESTEP_MLX_VAE_CHUNK"] == "384"
+        assert "PATH" in run.call_args.kwargs["env"]
 
 
 class TestBuildGenerateCommand:

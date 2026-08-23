@@ -1,0 +1,115 @@
+---
+sidebar_label: "Holiday & Then and Now"
+---
+
+# Holiday and Then and Now
+
+Two memory types that do **not** cover one continuous stretch of time. Each builds a separate window per year, and the pipeline queries every one of them — a Holiday memory across five years asks Immich for five windows around that holiday, not for the five years between them.
+
+That is the whole reason they exist. A year in review is a period; these two are a **recurrence**.
+
+## Holiday
+
+The same occasion, across the years. Christmas 2022, 2023, 2024, 2025 and 2026 in one video.
+
+```bash
+immich-memories generate --memory-type holiday --holiday christmas --years-back 5
+```
+
+`--holiday` is required. `--years-back` defaults to **5**, and `--years-back 0` is read as *unset* rather than as an error — pass a positive number.
+
+### What `--holiday` accepts
+
+Ten names the pipeline resolves for any year:
+
+| Name | Falls on |
+|------|----------|
+| `new_year` | 1 January |
+| `valentines` | 14 February |
+| `easter` | computed — Western Easter Sunday |
+| `mothers_day` | second Sunday of May |
+| `fathers_day` | third Sunday of June |
+| `halloween` | 31 October |
+| `thanksgiving` | fourth Thursday of November |
+| `christmas_eve` | 24 December |
+| `christmas` | 25 December |
+| `new_years_eve` | 31 December |
+
+The moving ones are calculated rather than tabulated, so they stay correct in years nobody has thought about yet.
+
+Anything else is read as **`MM-DD`**, which is how a household's own occasion works:
+
+```bash
+# The day you moved in, every year since
+immich-memories generate --memory-type holiday --holiday 09-14 --years-back 4
+```
+
+An unrecognised name that is not a valid `MM-DD` fails immediately with the list of known holidays rather than generating something wrong.
+
+### The window around the date
+
+Each year contributes **the holiday ± 2 days** — a five-day window. A celebration that starts on Christmas Eve and runs into Boxing Day is one memory, not three. This is not exposed as a CLI flag.
+
+### Asking before the holiday has happened
+
+If you omit `--year`, the starting year steps back when the occasion has not occurred yet. Asking for Christmas in August would otherwise spend one of your requested years on a window no photo can fall in.
+
+An explicit `--year` is treated as a deliberate choice and is left alone:
+
+```bash
+# In August 2026 this covers Christmas 2025, 2024, 2023
+immich-memories generate --memory-type holiday --holiday christmas --years-back 3
+
+# ...but this covers 2026, 2025, 2024 — even though 2026's has not happened
+immich-memories generate --memory-type holiday --holiday christmas --years-back 3 --year 2026
+```
+
+### When to use it
+
+When the material exists **because** of the date. A holiday is the day a library reliably has something every single year, which is what makes it worth spanning years rather than covering one occasion. If a year is missing photos, that year simply contributes nothing.
+
+## Then and Now
+
+One early year beside the present one. Not the decade between them — just the two ends.
+
+```bash
+immich-memories generate --memory-type then_and_now --years-back 10
+```
+
+`--years-back` defaults to **10** and is the gap between the two years, not a count of them. There are always exactly two.
+
+```bash
+# 2016 and 2026
+immich-memories generate --memory-type then_and_now --year 2026 --years-back 10
+```
+
+Pass a positive number. `--years-back 0` is read as *unset* and falls back to 10 rather than erroring — the flag uses a falsy default, so zero and omitted are indistinguishable to it. The web UI's picker starts at 1, so the ambiguity cannot be reached there.
+
+The gap is required either way: a then-and-now with no distance between its two years is just a now.
+
+### Two whole years, not two windows
+
+Unlike Holiday, each side is a **full calendar year**. A narrow window in a year long past is usually empty, and the point is to have enough material on both sides for the contrast to read.
+
+Clips play most recent first, so the video opens on now and reaches back.
+
+### When to use it
+
+When the subject changed and the change is the story — a child, a house, a garden, a face. It is deliberately blunt: two years, no interpolation, and the viewer does the arithmetic.
+
+## Both in the web UI
+
+Both appear as cards in Step 1. **Holiday** takes the holiday, the most recent year to include, and how many years to span. **Then and Now** takes the recent year and how far back the other sits.
+
+See [Step 1 — Configuration](../web-ui/step1-configuration.mdx).
+
+## Titles
+
+Neither is titled after its span, because the span describes neither of them — five Christmases run across five years, and a then-and-now spans a decade it deliberately skips.
+
+| Type | Title | Subtitle |
+|------|-------|----------|
+| Holiday | the occasion — "Christmas" | "Through the Years" |
+| Then and Now | both ends — "2016 & 2026" | "Then and Now" |
+
+A custom `MM-DD` holiday with no name of its own is titled by its date ("14 September").

@@ -219,28 +219,65 @@ once a day itself. See [automated generation](../recipes/automated-generation.md
 | `--cooldown` | int | `24` | Cooldown hours between runs |
 | `--uninstall` | flag | `false` | Remove installed scheduler |
 | `--show` | flag | `false` | Print config without installing |
-| `--force` | flag | `false` | Install even from a linked git worktree |
+| `--force` | flag | `false` | Install even when the checkout is a worktree or behind its upstream |
 
 | Platform | What gets created | How to activate |
 |----------|-------------------|-----------------|
-| **macOS** | `~/Library/LaunchAgents/com.immich-memories.auto.plist` | `launchctl load <path>` |
-| **Linux** | systemd user service + timer in `~/.config/systemd/user/` | `systemctl --user enable --now immich-memories-auto.timer` |
-| **Other** | Prints a crontab entry | `crontab -e` |
+| **macOS** | launcher in `~/.immich-memories/bin/` + `~/Library/LaunchAgents/com.immich-memories.auto.plist` | `launchctl load <path>` |
+| **Linux** | launcher in `~/.immich-memories/bin/` + systemd user service and timer in `~/.config/systemd/user/` | `systemctl --user enable --now immich-memories-auto.timer` |
+| **Other** | launcher in `~/.immich-memories/bin/` + prints a crontab entry | `crontab -e` |
 
 On macOS the plist uses `StartCalendarInterval`; launchd runs a missed job the next time the Mac wakes rather than waking it from sleep. If the Mac is asleep at the scheduled time, expect the run once it wakes.
 
 ### Which binary gets scheduled
 
-The installer writes the absolute path of the `immich-memories` on your `PATH` into the plist,
-unit, or crontab line. The OS never re-resolves it, so whichever environment you install from is
-the one the nightly job runs forever.
+The OS never re-resolves the command it was given, so `auto install` does not hand it a path that
+can go stale. It writes a small launcher at `~/.immich-memories/bin/immich-memories-auto` and
+schedules *that*. The launcher re-runs the `immich-memories` lookup on every fire, with the
+directory you installed from first on its `PATH`. Upgrade or reinstall the package in place and the
+nightly job picks it up; no reinstall of the scheduler is needed.
 
-That is fine for a system install, a venv, or a plain clone. It is a trap inside a **linked git
-worktree** (`git worktree add`): a worktree stays frozen on the commit it was left at, or gets
-pruned, and the scheduled job keeps quietly running that stale code. `auto install` detects this
-(a linked worktree's root holds a `.git` *file* rather than a directory) and refuses, naming the
-worktree. Re-run it from your canonical checkout. `--force` schedules the worktree path anyway if
-you really mean it.
+`auto install --uninstall` removes the launcher along with the plist or unit files.
+
+### Refusing to schedule stale code
+
+Nothing updates a checkout on your behalf, and a scheduled job re-runs whatever that checkout holds
+every night while the logs look completely normal. `auto install` refuses two cases:
+
+- **A linked git worktree** (`git worktree add`) — its root holds a `.git` *file* rather than a
+  directory. A worktree stays frozen on the commit it was left at, or gets pruned.
+- **A checkout already behind its tracking branch** — measured with `git rev-list HEAD..@{upstream}`
+  against refs you have already fetched. `auto install` never fetches, so this only sees drift your
+  own `git pull` or `git fetch` recorded.
+
+Both name the offending path and the drift. Update the checkout and re-run, or pass `--force` to
+schedule it as it is.
+
+Every `auto run` also states which code it is executing, and `auto status` shows the same thing —
+see [auto status](#auto-status).
+
+### What environment the scheduled job sees
+
+A scheduled job does **not** inherit your interactive shell. launchd and cron start it from a
+login-less environment, so anything you `export` in `.zshrc` is absent at 03:00 — which is how a
+scheduled ACE-Step render ends up tuned differently from the one you tested by hand.
+
+`auto install` captures these variables from the shell you install from and writes them into the
+plist or unit alongside `PATH`:
+
+| Variable | Why it is carried |
+|----------|-------------------|
+| `PATH` | So FFmpeg and the launcher's own lookup work |
+| `ACESTEP_CHECKPOINTS_DIR` | Model cache location |
+| `ACESTEP_MLX_VAE_CHUNK` | ACE-Step MLX VAE decode chunk |
+| `IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32` | ACE-Step MLX decoder precision |
+| `PYTORCH_MPS_HIGH_WATERMARK_RATIO` | torch MPS allocator ceiling |
+
+Nothing else is copied. `IMMICH_MEMORIES_*` also holds the Immich API key and the UI password, and
+a plist in `~/Library` is not a secret store — put credentials in your config file or a `.env` the
+app reads, not in the scheduler. Change any of these and re-run `auto install` to update the job.
+
+Crontab entries carry no environment; set what you need in the crontab itself.
 
 ### Installing with a custom config
 
@@ -273,9 +310,36 @@ Shows recent auto-generated memories: date, type, date range, output file.
 immich-memories auto status [--json]
 ```
 
-Shows the external scheduler state, last automation attempt, last completed automatic run, cooldown, the last six categories, current variety rejection rules, and the live suggestion status. It is diagnostic: it does not generate a video or install, load, unload, or rewrite a scheduler.
+Shows which code is running, the external scheduler state, last automation attempt, last completed automatic run, cooldown, the last six categories, current variety rejection rules, and the live suggestion status. It is diagnostic: it does not generate a video or install, load, unload, or rewrite a scheduler.
 
 Use `--json` for the full machine-readable object. If Immich discovery is temporarily unavailable, durable attempt and run history still appears and `suggestion.outcome` explains the discovery failure.
+
+### Knowing which code is running
+
+The `Running code:` line names the version, the short commit, the checkout it came from, and how
+many commits that checkout is behind its tracking branch. When it is behind, the line is printed as
+an error rather than as info.
+
+The same object is in `--json` under `runtime`:
+
+```json
+{
+  "runtime": {
+    "version": "0.54.0",
+    "checkout": "/home/me/immich-video-memory-generator",
+    "commit": "08e4cd3",
+    "upstream": "origin/main",
+    "commits_behind": 32,
+    "stale": true
+  }
+}
+```
+
+`auto run` reports the same object. Under `--quiet` it is the `runtime` key of the single JSON line
+it prints, so a scheduled run records which code produced it in `auto.log`; if the checkout is
+behind, `auto run` additionally writes a `warning: scheduled code is stale` line to stderr, which
+`--quiet` cannot suppress. `commit`, `upstream`, and `commits_behind` are `null` for an install that
+is not a git checkout (pip, pipx, Docker); `version` is always present.
 
 ## auto test-notification
 

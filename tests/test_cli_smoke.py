@@ -14,6 +14,7 @@ from click.testing import CliRunner, Result
 import immich_memories
 from immich_memories.automation.candidates import CandidateCategory, MemoryCandidate
 from immich_memories.automation.models import AutoAction, AutoOutcome, AutoRejection, AutoRunResult
+from immich_memories.automation.runtime_provenance import CheckoutDrift, RuntimeProvenance
 from immich_memories.automation.system_scheduler import (
     SchedulerInstallResult,
     WorktreePinnedBinaryError,
@@ -407,7 +408,9 @@ class TestAutoRunOutput:
 
         assert result.exit_code == 0
         assert result.stdout.count("\n") == 1
-        assert json.loads(result.stdout) == {
+        payload = json.loads(result.stdout)
+        assert payload.pop("runtime")["version"] == immich_memories.__version__
+        assert payload == {
             "outcome": "completed",
             "action": "generation",
             "reason": "generation completed",
@@ -419,6 +422,35 @@ class TestAutoRunOutput:
             "recent_categories": [],
             "rejections": [],
         }
+
+    def test_stale_checkout_warns_on_stderr_even_when_quiet(self) -> None:
+        """--quiet silences logging, so the one thing #573 needed must not go through it."""
+        auto_runner = MagicMock()
+        auto_runner.run_one.return_value = AutoRunResult(
+            outcome=AutoOutcome.SKIPPED, reason="cooldown active"
+        )
+        stale = RuntimeProvenance(
+            version="1.2.3",
+            checkout=Path("/home/me/.immich-memories/runtime"),
+            commit="ea892ad",
+            drift=CheckoutDrift(upstream="origin/main", commits_behind=32),
+        )
+
+        # WHY: AutoRunner is the whole generation pipeline — Immich, LLM, FFmpeg.
+        with (
+            patch("immich_memories.automation.runner.AutoRunner", return_value=auto_runner),
+            # WHY: runtime_provenance shells out to git against the real checkout
+            patch(
+                "immich_memories.automation.runtime_provenance.runtime_provenance",
+                return_value=stale,
+            ),
+        ):
+            result = _invoke(["auto", "run", "--quiet"])
+
+        assert result.exit_code == 0
+        assert "32 commit(s)" in result.stderr
+        assert "origin/main" in result.stderr
+        assert json.loads(result.stdout)["runtime"]["stale"] is True
 
     def test_human_completed_states_outcome_and_reason(self, tmp_path: Path) -> None:
         output = tmp_path / "memory.mp4"
@@ -450,7 +482,9 @@ class TestAutoRunOutput:
             result = _invoke(["auto", "run", "--quiet"])
 
         assert result.exit_code == 0
-        assert json.loads(result.stdout) == {
+        payload = json.loads(result.stdout)
+        assert payload.pop("runtime")["version"] == immich_memories.__version__
+        assert payload == {
             "outcome": "skipped",
             "action": "generation",
             "reason": "cooldown active",
@@ -500,7 +534,9 @@ class TestAutoRunOutput:
             result = _invoke(["auto", "run", "--quiet", "--dry-run"])
 
         assert result.exit_code == 0
-        assert json.loads(result.stdout) == {
+        payload = json.loads(result.stdout)
+        assert payload.pop("runtime")["version"] == immich_memories.__version__
+        assert payload == {
             "outcome": "skipped",
             "action": "generation",
             "reason": "no eligible candidates",
@@ -557,7 +593,9 @@ class TestAutoRunOutput:
             result = _invoke(["auto", "run", "--quiet"])
 
         assert result.exit_code == 1
-        assert json.loads(result.stdout) == {
+        payload = json.loads(result.stdout)
+        assert payload.pop("runtime")["version"] == immich_memories.__version__
+        assert payload == {
             "outcome": "failed",
             "action": "generation",
             "reason": "generation subprocess exited with code 7",

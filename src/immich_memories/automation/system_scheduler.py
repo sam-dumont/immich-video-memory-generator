@@ -12,6 +12,12 @@ import textwrap
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from immich_memories.automation.runtime_provenance import (
+    CheckoutDrift,
+    checkout_drift,
+    git_checkout_root,
+)
+
 
 @dataclass
 class SchedulerInstallResult:
@@ -36,9 +42,23 @@ class SchedulerStatus:
 _LAUNCHD_LABEL = "com.immich-memories.auto"
 _SYSTEMD_SERVICE = "immich-memories-auto.service"
 _SYSTEMD_TIMER = "immich-memories-auto.timer"
+_LAUNCHER_SHIM_NAME = "immich-memories-auto"
+
+# Non-secret tuning knobs documented on the environment-variables page. Anything that can
+# hold a credential is deliberately excluded — see `_scheduled_environment`.
+_SCHEDULED_TUNING_VARS = (
+    "ACESTEP_CHECKPOINTS_DIR",
+    "ACESTEP_MLX_VAE_CHUNK",
+    "IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32",
+    "PYTORCH_MPS_HIGH_WATERMARK_RATIO",
+)
 
 
-class WorktreePinnedBinaryError(RuntimeError):
+class StaleScheduledCodeError(RuntimeError):
+    """The code this install would schedule is already frozen or already behind."""
+
+
+class WorktreePinnedBinaryError(StaleScheduledCodeError):
     """The binary that would be persisted into the scheduler lives in a linked git worktree."""
 
     def __init__(self, binary: str, worktree: Path) -> None:
@@ -48,6 +68,19 @@ class WorktreePinnedBinaryError(RuntimeError):
             "gets pruned — so the scheduled job would silently keep running stale code. "
             "Install from your canonical checkout (or a system/user install) instead, "
             "or pass --force to schedule this exact path anyway."
+        )
+
+
+class StaleCheckoutError(StaleScheduledCodeError):
+    """The checkout backing this binary is already behind the branch it tracks."""
+
+    def __init__(self, binary: str, checkout: Path, drift: CheckoutDrift) -> None:
+        super().__init__(
+            f"Refusing to schedule {binary}: its checkout {checkout} is "
+            f"{drift.commits_behind} commit(s) behind {drift.upstream}. Nothing updates a "
+            "checkout on your behalf, so the scheduled job would re-run this exact code every "
+            "night while the logs look normal. Update it (git pull) and reinstall, or pass "
+            "--force to schedule it as it is."
         )
 
 
@@ -87,8 +120,96 @@ def _linked_worktree_root(binary: str) -> Path | None:
     return None
 
 
+def _guard_scheduled_code_freshness(binary: str) -> None:
+    """Refuse to schedule code that is already frozen, or already behind its upstream.
+
+    Both refusals describe the same #573 failure: a scheduled job re-runs one checkout
+    forever, so anything already stale at install time stays stale silently for months.
+    """
+    worktree = _linked_worktree_root(binary)
+    if worktree is not None:
+        raise WorktreePinnedBinaryError(binary, worktree)
+
+    checkout = git_checkout_root(Path(binary))
+    if checkout is None:
+        return
+    drift = checkout_drift(checkout)
+    if drift is not None:
+        raise StaleCheckoutError(binary, checkout, drift)
+
+
 def _default_log_dir() -> Path:
     return Path.home() / ".immich-memories" / "logs"
+
+
+def _install_time_path() -> str:
+    return os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")
+
+
+def _scheduled_environment() -> dict[str, str]:
+    """Environment the scheduled job gets, captured from the shell that installed it.
+
+    launchd and cron start a job from a login-less environment, so ACE-Step tuning
+    exported in an interactive shell is simply absent at 03:00 — the scheduled and manual
+    runs in #573 were tuned differently for exactly this reason. Only the documented
+    tuning knobs are copied: `IMMICH_MEMORIES_*` also carries the Immich API key and the
+    UI password, and a plist under ~/Library is no place for either.
+    """
+    env = {"PATH": _install_time_path()}
+    env.update({name: os.environ[name] for name in _SCHEDULED_TUNING_VARS if name in os.environ})
+    return env
+
+
+def _launcher_shim_path() -> Path:
+    return Path.home() / ".immich-memories" / "bin" / _LAUNCHER_SHIM_NAME
+
+
+def _launcher_search_path(binary: str) -> str:
+    """Put the install's own bin directory first, then the rest of the install-time PATH."""
+    own_bin = str(Path(binary).parent)
+    entries = [
+        own_bin,
+        *(part for part in _install_time_path().split(os.pathsep) if part != own_bin),
+    ]
+    return os.pathsep.join(entries)
+
+
+def render_launcher_shim(path_env: str) -> str:
+    """Render the launcher that schedulers store in place of a resolved binary path.
+
+    launchd, systemd, and cron keep the path they were handed forever and never re-resolve
+    it, so a `shutil.which()` result frozen at install time keeps executing whichever
+    checkout happened to be first on PATH that day (#573). This shim is the durable address
+    instead: it re-runs the lookup on every fire, so upgrading or reinstalling the package
+    is enough to change what the scheduled job executes.
+    """
+    return textwrap.dedent(f"""\
+        #!/bin/sh
+        # Managed by `immich-memories auto install`; rewritten on every reinstall.
+        PATH={shlex.quote(path_env)}
+        export PATH
+        if ! command -v immich-memories >/dev/null 2>&1; then
+            echo "immich-memories is not on the scheduled job's PATH: $PATH" >&2
+            exit 127
+        fi
+        exec immich-memories "$@"
+    """)
+
+
+def _write_launcher_shim(binary: str) -> Path:
+    shim = _launcher_shim_path()
+    shim.parent.mkdir(parents=True, exist_ok=True)
+    shim.write_text(render_launcher_shim(_launcher_search_path(binary)))
+    shim.chmod(0o755)
+    return shim
+
+
+def _remove_launcher_shim() -> bool:
+    shim = _launcher_shim_path()
+    if not shim.exists():
+        return False
+    shim.unlink()
+    return True
 
 
 def _auto_command(binary_path: str, cooldown_hours: int, config_path: Path | None) -> list[str]:
@@ -119,8 +240,6 @@ def generate_launchd_plist(
 ) -> str:
     """Generate a macOS launchd plist XML string for scheduled auto-generation."""
     log_dir = log_dir or _default_log_dir()
-    # PATH from current env so FFmpeg, etc. are discoverable
-    env_path = os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")
 
     payload = {
         "Label": _LAUNCHD_LABEL,
@@ -129,7 +248,7 @@ def generate_launchd_plist(
         "StandardOutPath": str(log_dir / "auto.log"),
         "StandardErrorPath": str(log_dir / "auto-error.log"),
         "WorkingDirectory": str(Path.home()),
-        "EnvironmentVariables": {"PATH": env_path},
+        "EnvironmentVariables": _scheduled_environment(),
     }
     return plistlib.dumps(payload, sort_keys=False).decode()
 
@@ -145,19 +264,26 @@ def generate_systemd_units(
     command = " ".join(
         _systemd_quote_arg(arg) for arg in _auto_command(binary_path, cooldown_hours, config_path)
     )
-    service = textwrap.dedent(f"""\
-        [Unit]
-        Description=Immich Memories auto-generation
-        After=network-online.target
-        Wants=network-online.target
-
-        [Service]
-        Type=oneshot
-        ExecStart={command}
-
-        [Install]
-        WantedBy=default.target
-    """)
+    service = "\n".join(
+        [
+            "[Unit]",
+            "Description=Immich Memories auto-generation",
+            "After=network-online.target",
+            "Wants=network-online.target",
+            "",
+            "[Service]",
+            "Type=oneshot",
+            *(
+                f"Environment={_systemd_quote_arg(f'{key}={value}')}"
+                for key, value in _scheduled_environment().items()
+            ),
+            f"ExecStart={command}",
+            "",
+            "[Install]",
+            "WantedBy=default.target",
+            "",
+        ]
+    )
 
     timer = textwrap.dedent(f"""\
         [Unit]
@@ -297,26 +423,29 @@ def install_scheduler(
 ) -> SchedulerInstallResult:
     """Detect platform, generate scheduler files, write them, and return result.
 
-    Raises WorktreePinnedBinaryError when the resolved binary sits inside a linked git worktree,
-    unless `force` is set — the OS never re-resolves the absolute path persisted here.
+    Raises StaleScheduledCodeError when the resolved binary is backed by a linked git
+    worktree or by a checkout already behind its tracking branch, unless `force` is set.
     """
     platform = detect_platform()
     binary = _resolve_binary()
-    worktree = None if force else _linked_worktree_root(binary)
-    if worktree is not None:
-        raise WorktreePinnedBinaryError(binary, worktree)
+    if not force:
+        _guard_scheduled_code_freshness(binary)
 
+    launcher = _write_launcher_shim(binary)
     if platform == "launchd":
-        return _install_launchd(
-            binary, schedule_hour, schedule_minute, cooldown_hours, config_path=config_path
+        result = _install_launchd(
+            str(launcher), schedule_hour, schedule_minute, cooldown_hours, config_path=config_path
         )
-    if platform == "systemd":
-        return _install_systemd(
-            binary, schedule_hour, schedule_minute, cooldown_hours, config_path=config_path
+    elif platform == "systemd":
+        result = _install_systemd(
+            str(launcher), schedule_hour, schedule_minute, cooldown_hours, config_path=config_path
         )
-    return _install_crontab(
-        binary, schedule_hour, schedule_minute, cooldown_hours, config_path=config_path
-    )
+    else:
+        result = _install_crontab(
+            str(launcher), schedule_hour, schedule_minute, cooldown_hours, config_path=config_path
+        )
+    result.files_written.insert(0, launcher)
+    return result
 
 
 def _install_launchd(
@@ -390,17 +519,17 @@ def _install_crontab(
 def uninstall_scheduler() -> bool:
     """Remove installed scheduler files. Returns True if something was removed."""
     platform = detect_platform()
+    removed = _remove_launcher_shim()
 
     if platform == "launchd":
         plist = _launchd_plist_path()
         if plist.exists():
             plist.unlink()
-            return True
-        return False
+            removed = True
+        return removed
 
     if platform == "systemd":
         user_dir = _systemd_user_dir()
-        removed = False
         for name in (_SYSTEMD_SERVICE, _SYSTEMD_TIMER):
             path = user_dir / name
             if path.exists():
@@ -408,8 +537,8 @@ def uninstall_scheduler() -> bool:
                 removed = True
         return removed
 
-    # crontab: nothing to remove on disk
-    return False
+    # crontab: the launcher is the only thing this app put on disk
+    return removed
 
 
 def show_scheduler_config(
@@ -419,10 +548,11 @@ def show_scheduler_config(
     config_path: Path | None = None,
 ) -> str | None:
     """Generate scheduler config for current platform without writing files."""
-    binary = shutil.which("immich-memories")
-    if not binary:
+    if not shutil.which("immich-memories"):
         return None
 
+    # Preview the launcher `install_scheduler` would write, not today's resolved path.
+    binary = str(_launcher_shim_path())
     platform = detect_platform()
 
     if platform == "launchd":

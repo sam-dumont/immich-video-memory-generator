@@ -27,6 +27,7 @@ const sidebars: SidebarsConfig = {
             'create/web-ui/step2-clip-review',
             'create/web-ui/step3-generation-options',
             'create/web-ui/step4-preview-export',
+            'create/web-ui/settings',
           ],
         },
         {
@@ -49,6 +50,7 @@ const sidebars: SidebarsConfig = {
           items: [
             'create/memory-types/year-in-review',
             'create/memory-types/monthly-person-season',
+            'create/memory-types/holiday-then-and-now',
             'create/memory-types/trip-memories',
             'create/memory-types/album-memories',
           ],

@@ -15,6 +15,7 @@ from immich_memories.automation.candidate_discovery import ImmichDiscoveryError
 from immich_memories.automation.candidates import CandidateCategory, MemoryCandidate
 from immich_memories.automation.models import AutoOutcome
 from immich_memories.automation.runner import AutoRunner
+from immich_memories.automation.runtime_provenance import CheckoutDrift, RuntimeProvenance
 from immich_memories.automation.state_store import AutomationStateStore
 from immich_memories.automation.status import SuggestOutcome, SuggestStatus
 from immich_memories.automation.system_scheduler import SchedulerStatus
@@ -148,6 +149,7 @@ def test_status_json_reports_durable_attempt_rotation_and_scheduler(tmp_path: Pa
         "pending_delivery_count",
         "oldest_pending_delivery",
         "notification_health",
+        "runtime",
     }
     assert payload["last_attempt"]["outcome"] == "failed"
     assert payload["last_attempt"]["error"] == "connection refused"
@@ -289,6 +291,46 @@ def test_status_refreshes_and_reports_current_rejection_reasons(tmp_path: Path) 
     assert payload["suggestion"] == {"outcome": "ready", "error": None}
     assert payload["rejection_reasons"] == ["same_category_as_previous"]
     suggest.assert_called_once()
+
+
+def test_status_names_the_code_that_would_run_and_flags_it_when_stale(tmp_path: Path) -> None:
+    """#573 stayed invisible for a week because no surface said which code was running."""
+    config = _config(tmp_path)
+    scheduler = SchedulerStatus(platform="launchd", installed=True, active=True)
+    stale = RuntimeProvenance(
+        version="1.2.3",
+        checkout=Path("/home/me/.immich-memories/runtime"),
+        commit="ea892ad",
+        drift=CheckoutDrift(upstream="origin/main", commits_behind=32),
+    )
+    # WHY: suggest reads the Immich library; get_scheduler_status shells out to launchctl.
+    with (
+        patch.object(AutoRunner, "suggest", return_value=[]),
+        patch(
+            "immich_memories.automation.system_scheduler.get_scheduler_status",
+            return_value=scheduler,
+        ),
+        # WHY: runtime_provenance shells out to git against the real checkout
+        patch(
+            "immich_memories.automation.runtime_provenance.runtime_provenance",
+            return_value=stale,
+        ),
+    ):
+        json_result = _invoke(config, ["auto", "status", "--json"])
+        human_result = _invoke(config, ["auto", "status"])
+
+    assert json_result.exit_code == 0
+    assert json.loads(json_result.output)["runtime"] == {
+        "version": "1.2.3",
+        "checkout": "/home/me/.immich-memories/runtime",
+        "commit": "ea892ad",
+        "upstream": "origin/main",
+        "commits_behind": 32,
+        "stale": True,
+    }
+    assert human_result.exit_code == 0
+    assert "ea892ad" in human_result.output
+    assert "32 commit(s)" in human_result.output
 
 
 def test_status_json_is_one_document_on_a_fresh_database(tmp_path: Path) -> None:

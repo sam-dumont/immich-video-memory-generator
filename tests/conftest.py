@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 import tempfile
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -85,6 +86,49 @@ def isolated_user_paths() -> Iterator[Path]:
         config.output.output_path,
     }
     assert not resolved_paths & normal_user_paths
+
+
+@pytest.fixture()
+def git_checkout_factory() -> Callable[[Path, int], Path]:
+    """Build a real checkout whose HEAD trails an already-fetched tracking branch.
+
+    Real git rather than a mocked one: the staleness guard's whole job is reading refs
+    that only git can produce, and a faked `rev-list` would prove nothing about it.
+    """
+
+    # GIT_DIR and friends beat `-C`, so under a git hook (pre-commit runs the suite as
+    # one) every command below would target the real repository instead of tmp_path.
+    env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
+
+    def run(root: Path, *args: str) -> str:
+        result = subprocess.run(
+            ["git", "-C", str(root), *args],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=10,
+            env=env,
+        )
+        return result.stdout.strip()
+
+    def build(root: Path, commits_behind: int = 0) -> Path:
+        root.mkdir(parents=True, exist_ok=True)
+        run(root, "init", "-b", "main", "-q")
+        run(root, "config", "user.email", "test@example.invalid")
+        run(root, "config", "user.name", "Test")
+        # The upstream needs a registered remote for its fetch refspec to resolve.
+        run(root, "remote", "add", "origin", "https://example.invalid/repo.git")
+        run(root, "commit", "--allow-empty", "-q", "-m", "base")
+        base = run(root, "rev-parse", "HEAD")
+        for index in range(commits_behind):
+            run(root, "commit", "--allow-empty", "-q", "-m", f"upstream-{index}")
+        run(root, "update-ref", "refs/remotes/origin/main", "HEAD")
+        run(root, "reset", "--hard", "-q", base)
+        run(root, "config", "branch.main.remote", "origin")
+        run(root, "config", "branch.main.merge", "refs/heads/main")
+        return root
+
+    return build
 
 
 def make_asset(

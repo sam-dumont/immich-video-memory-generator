@@ -343,6 +343,7 @@ def test_brussels_daily_auto_run_is_not_inside_24_hour_cooldown(
     )
     runner = AutoRunner(config)
 
+    # WHY: the clock decides the cooldown, and suggest would query the real Immich library.
     with (
         patch("immich_memories.automation.status.datetime", wraps=datetime) as clock,
         patch.object(runner, "suggest", return_value=[]),

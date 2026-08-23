@@ -115,7 +115,8 @@ class TestTheMachineReadableResult:
 
         return json.loads(
             _auto_result_to_json(
-                AutoRunResult(outcome=AutoOutcome.FAILED, reason="generation failed", **kwargs)
+                AutoRunResult(outcome=AutoOutcome.FAILED, reason="generation failed", **kwargs),
+                {"version": "0.0.0"},
             )
         )
 

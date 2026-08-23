@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -133,6 +134,10 @@ def _execute_generate(cmd: list[str]) -> ProcessResult:
         capture_output=True,
         text=True,
         timeout=_GENERATION_TIMEOUT_SECONDS,
+        # WHY: a scheduled run's environment is whatever launchd/systemd handed this
+        # process, not the shell's. Passing it explicitly makes what the child sees a
+        # stated fact and gives `auto install`'s captured tuning a path through (#573).
+        env=os.environ.copy(),
     )
     return ProcessResult(
         returncode=result.returncode,

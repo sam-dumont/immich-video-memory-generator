@@ -48,9 +48,11 @@ Env: `IMMICH_MEMORIES_PRESET=fast`. One-off on the CLI: `immich-memories --prese
 (root option, before the subcommand). The settings page names the active preset; Step 3 defaults
 its resolution to the preset's and says so.
 
-Caveat: the settings page's "save" writes every value to `config.yaml`, after which they all count
-as "set by you" — remove the keys you want the preset to own again. (`server.host` is the single
-exception; see [Server (UI)](#server-ui).)
+Caveat: **Step 1's "Save Config"** writes every value to `config.yaml`, not just the connection
+fields it appears to be about — after which they all count as "set by you", and the preset has
+nothing left to fill in. Remove the keys you want the preset to own again. (`server.host` is the
+single exception; see [Server (UI)](#server-ui).) The `/settings/config` page is read-only and
+does not save; see [Settings](../create/web-ui/settings.mdx).
 
 ## Immich connection
 

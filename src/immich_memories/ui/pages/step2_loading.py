@@ -67,27 +67,51 @@ def _fetch_album(state) -> tuple[list[VideoClipInfo], list]:
             use_photos=state.include_photos,
         )
     if media.date_range is not None:
-        state.date_range = media.date_range
+        state.date_ranges = [media.date_range]
     clips, photos = album_media_as_clips(media)
     if state.duration_mode == "auto":
         state.target_duration = album_target_minutes(clips, photos)
     return clips, photos
 
 
+def _dedup_by_id(assets: list) -> list:
+    """First occurrence wins, order preserved.
+
+    Windows can overlap — a holiday window two days either side of the date
+    collides with itself when two requested years are consecutive leap-adjusted
+    neighbours, and On This Day windows overlap outright if years_back exceeds
+    the gap. The same asset must not be analysed twice.
+    """
+    seen: set[str] = set()
+    unique = []
+    for asset in assets:
+        if asset.id not in seen:
+            seen.add(asset.id)
+            unique.append(asset)
+    return unique
+
+
 def _fetch_assets(state) -> list:
-    """Blocking: fetch video assets from Immich API."""
-    date_range = state.date_range
+    """Blocking: fetch video assets from Immich API, one query per window."""
     with SyncImmichClient(
         base_url=state.immich_url,
         api_key=state.immich_api_key,
         api_version=state.immich_api_version,
     ) as client:
         multi_ids = state.memory_preset_params.get("person_ids", [])
-        if len(multi_ids) >= 2:
-            return client.get_videos_for_all_persons(multi_ids, date_range)
-        if state.selected_person:
-            return client.get_videos_for_person_and_date_range(state.selected_person.id, date_range)
-        return client.get_videos_for_date_range(date_range)
+        assets: list = []
+        for date_range in state.date_ranges:
+            if len(multi_ids) >= 2:
+                assets.extend(client.get_videos_for_all_persons(multi_ids, date_range))
+            elif state.selected_person:
+                assets.extend(
+                    client.get_videos_for_person_and_date_range(
+                        state.selected_person.id, date_range
+                    )
+                )
+            else:
+                assets.extend(client.get_videos_for_date_range(date_range))
+        return _dedup_by_id(assets)
 
 
 def _filter_near_home(assets: list, state) -> list:
@@ -122,19 +146,22 @@ def _build_clips(assets: list) -> tuple[list[VideoClipInfo], int]:
     return clips, skipped
 
 
-def _fetch_photos(state, date_range) -> list:
-    """Fetch photo assets (blocking)."""
+def _fetch_photos(state) -> list:
+    """Fetch photo assets (blocking), one query per window."""
     person_id = state.selected_person.id if state.selected_person else None
     with SyncImmichClient(
         base_url=state.immich_url,
         api_key=state.immich_api_key,
         api_version=state.immich_api_version,
     ) as client:
-        return client.get_photos_for_date_range(date_range, person_id=person_id)
+        photos: list = []
+        for date_range in state.date_ranges:
+            photos.extend(client.get_photos_for_date_range(date_range, person_id=person_id))
+        return _dedup_by_id(photos)
 
 
-def _fetch_live_photos(state, date_range) -> tuple[list[VideoClipInfo], set[str]]:
-    """Fetch live photo clips (blocking)."""
+def _fetch_live_photos(state) -> tuple[list[VideoClipInfo], set[str]]:
+    """Fetch live photo clips (blocking), one query per window."""
     lp_person_id = state.selected_person.id if state.selected_person else None
     multi_ids = state.memory_preset_params.get("person_ids", [])
 
@@ -143,13 +170,25 @@ def _fetch_live_photos(state, date_range) -> tuple[list[VideoClipInfo], set[str]
         api_key=state.immich_api_key,
         api_version=state.immich_api_version,
     ) as lp_client:
-        return fetch_live_photo_clips(
-            lp_client,
-            date_range,
-            person_id=lp_person_id,
-            person_ids=multi_ids if len(multi_ids) >= 2 else None,
-            config=state.config,
-        )
+        clips: list[VideoClipInfo] = []
+        video_ids: set[str] = set()
+        for date_range in state.date_ranges:
+            window_clips, window_video_ids = fetch_live_photo_clips(
+                lp_client,
+                date_range,
+                person_id=lp_person_id,
+                person_ids=multi_ids if len(multi_ids) >= 2 else None,
+                config=state.config,
+            )
+            clips.extend(window_clips)
+            video_ids |= window_video_ids
+        seen: set[str] = set()
+        unique_clips = []
+        for clip in clips:
+            if clip.asset.id not in seen:
+                seen.add(clip.asset.id)
+                unique_clips.append(clip)
+        return unique_clips, video_ids
 
 
 def _merge_live_photos(
@@ -198,8 +237,7 @@ async def _finish_load(state, clips, photo_assets, status_label, progress_bar) -
 
 async def _collect_date_range_media(state, status_label, progress_bar):
     """Discover the clip and photo pools for a date-range memory."""
-    date_range = state.date_range
-    if date_range is None:
+    if not state.date_ranges:
         raise ValueError("No date range configured")
 
     assets = _filter_near_home(await io_bound_result(_fetch_assets, state), state)
@@ -217,13 +255,13 @@ async def _collect_date_range_media(state, status_label, progress_bar):
     clips, _ = _build_clips(assets)
     if state.include_live_photos:
         status_label.set_text("Fetching Live Photos...")
-        live_clips, live_video_ids = await io_bound_result(_fetch_live_photos, state, date_range)
+        live_clips, live_video_ids = await io_bound_result(_fetch_live_photos, state)
         clips = _merge_live_photos(clips, live_clips, live_video_ids)
 
     photo_assets = []
     if state.include_photos:
         status_label.set_text("Fetching photos...")
-        photo_assets = await io_bound_result(_fetch_photos, state, date_range)
+        photo_assets = await io_bound_result(_fetch_photos, state)
         logger.info(f"Found {len(photo_assets)} photos")
 
     clips.sort(key=lambda c: c.asset.file_created_at)

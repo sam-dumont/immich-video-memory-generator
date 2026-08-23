@@ -11,8 +11,10 @@ from unittest.mock import patch
 
 import pytest
 
+from immich_memories.automation import system_scheduler
 from immich_memories.automation.system_scheduler import (
     SchedulerInstallResult,
+    StaleCheckoutError,
     WorktreePinnedBinaryError,
     detect_platform,
     generate_crontab_entry,
@@ -23,6 +25,16 @@ from immich_memories.automation.system_scheduler import (
     show_scheduler_config,
     uninstall_scheduler,
 )
+
+
+@pytest.fixture(autouse=True)
+def launcher_shim(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> Path:
+    """Keep install/uninstall away from the developer's real ~/.immich-memories/bin."""
+    shim = tmp_path_factory.mktemp("launcher") / "immich-memories-auto"
+    monkeypatch.setattr(system_scheduler, "_launcher_shim_path", lambda: shim)
+    return shim
 
 
 def _checkout_binary(checkout: Path) -> str:
@@ -116,6 +128,38 @@ class TestGenerateLaunchdPlist:
             "--cooldown",
             "24",
         ]
+
+
+class TestScheduledEnvironment:
+    """launchd and cron start from a login-less environment; shell tuning is not there."""
+
+    def test_launchd_plist_carries_ace_step_tuning_from_the_install_shell(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ACESTEP_MLX_VAE_CHUNK", "384")
+        monkeypatch.setenv("IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32", "1")
+
+        parsed = plistlib.loads(generate_launchd_plist("/bin/im").encode())
+
+        assert parsed["EnvironmentVariables"]["ACESTEP_MLX_VAE_CHUNK"] == "384"
+        assert parsed["EnvironmentVariables"]["IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32"] == "1"
+        assert "PATH" in parsed["EnvironmentVariables"]
+
+    def test_launchd_plist_never_carries_credentials(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The plist is a plain file in ~/Library — an API key does not belong in it."""
+        monkeypatch.setenv("IMMICH_MEMORIES_IMMICH__API_KEY", "not-a-real-key-573")
+        monkeypatch.setenv("IMMICH_MEMORIES_AUTH_PASSWORD", "not-a-real-password-573")
+
+        assert "not-a-real-key-573" not in generate_launchd_plist("/bin/im")
+        assert "not-a-real-password-573" not in generate_launchd_plist("/bin/im")
+
+    def test_systemd_service_carries_ace_step_tuning(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ACESTEP_MLX_VAE_CHUNK", "384")
+
+        service, _ = generate_systemd_units("/bin/im")
+
+        assert 'Environment="ACESTEP_MLX_VAE_CHUNK=384"' in service
+        assert service.index("Environment=") < service.index("ExecStart=")
 
 
 class TestGenerateSystemdUnits:
@@ -244,18 +288,20 @@ class TestInstallScheduler:
             result = install_scheduler()
 
         assert result.platform == "systemd"
-        assert len(result.files_written) == 2
+        assert len(result.files_written) == 3
         assert (tmp_path / "immich-memories-auto.service").exists()
         assert (tmp_path / "immich-memories-auto.timer").exists()
         assert "systemctl --user enable" in result.activate_command
 
     @patch("immich_memories.automation.system_scheduler.detect_platform", return_value="crontab")
     @patch("immich_memories.automation.system_scheduler._resolve_binary", return_value="/bin/im")
-    def test_crontab_returns_command(self, _bin: object, _plat: object) -> None:
+    def test_crontab_returns_command(
+        self, _bin: object, _plat: object, launcher_shim: Path
+    ) -> None:
         # WHY: _resolve_binary checks PATH, detect_platform checks OS
         result = install_scheduler()
         assert result.platform == "crontab"
-        assert result.files_written == []
+        assert result.files_written == [launcher_shim]
         assert "crontab" in result.activate_command
 
     @patch(
@@ -291,7 +337,9 @@ class TestEphemeralBinaryRefusal:
 
     # WHY: detect_platform reads the host OS
     @patch("immich_memories.automation.system_scheduler.detect_platform", return_value="crontab")
-    def test_binary_inside_plain_clone_is_installed(self, _plat: object, tmp_path: Path) -> None:
+    def test_binary_inside_plain_clone_is_installed(
+        self, _plat: object, tmp_path: Path, launcher_shim: Path
+    ) -> None:
         """Self-hosters deploy by cloning — only the ephemeral worktree case is rejected."""
         clone = tmp_path / "immich-video-memory-generator"
         (clone / ".git").mkdir(parents=True)
@@ -301,12 +349,12 @@ class TestEphemeralBinaryRefusal:
         with patch("immich_memories.automation.system_scheduler.shutil.which", return_value=binary):
             result = install_scheduler()
 
-        assert binary in result.activate_command
+        assert str(launcher_shim) in result.activate_command
 
     # WHY: detect_platform reads the host OS
     @patch("immich_memories.automation.system_scheduler.detect_platform", return_value="crontab")
     def test_force_schedules_the_worktree_binary_anyway(
-        self, _plat: object, tmp_path: Path
+        self, _plat: object, tmp_path: Path, launcher_shim: Path
     ) -> None:
         worktree = tmp_path / "agent-branch"
         worktree.mkdir()
@@ -319,7 +367,144 @@ class TestEphemeralBinaryRefusal:
         with patch("immich_memories.automation.system_scheduler.shutil.which", return_value=binary):
             result = install_scheduler(force=True)
 
-        assert binary in result.activate_command
+        assert str(launcher_shim) in result.activate_command
+        assert str(worktree) in launcher_shim.read_text()
+
+
+class TestStableLauncher:
+    # WHY: detect_platform reads the host OS
+    @patch("immich_memories.automation.system_scheduler.detect_platform", return_value="crontab")
+    def test_scheduled_command_is_not_the_install_time_binary(
+        self, _plat: object, tmp_path: Path, launcher_shim: Path
+    ) -> None:
+        """The OS never re-resolves what it stores, so store a launcher, not today's path."""
+        clone = tmp_path / "checkout"
+        (clone / ".git").mkdir(parents=True)
+        binary = _checkout_binary(clone)
+
+        # WHY: shutil.which reads the real PATH
+        with patch("immich_memories.automation.system_scheduler.shutil.which", return_value=binary):
+            result = install_scheduler()
+
+        assert binary not in result.activate_command
+        assert str(launcher_shim) in result.activate_command
+        assert launcher_shim in result.files_written
+
+    def test_launcher_re_resolves_the_binary_on_every_run(self, launcher_shim: Path) -> None:
+        clone_bin = "/opt/frozen-checkout/.venv/bin/immich-memories"
+
+        # WHY: shutil.which reads the real PATH
+        with (
+            patch(
+                "immich_memories.automation.system_scheduler.shutil.which", return_value=clone_bin
+            ),
+            patch(
+                "immich_memories.automation.system_scheduler.detect_platform",
+                return_value="crontab",
+            ),
+        ):
+            install_scheduler()
+
+        shim = launcher_shim.read_text()
+        assert clone_bin not in shim
+        assert "exec immich-memories" in shim
+        assert launcher_shim.stat().st_mode & 0o111
+
+    def test_launcher_carries_the_install_time_path_so_a_venv_stays_findable(
+        self, launcher_shim: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("PATH", "/home/me/venvs/immich/bin:/usr/bin")
+
+        # WHY: shutil.which reads the real PATH
+        with (
+            patch(
+                "immich_memories.automation.system_scheduler.shutil.which",
+                return_value="/home/me/venvs/immich/bin/immich-memories",
+            ),
+            patch(
+                "immich_memories.automation.system_scheduler.detect_platform",
+                return_value="crontab",
+            ),
+        ):
+            install_scheduler()
+
+        assert "/home/me/venvs/immich/bin:/usr/bin" in launcher_shim.read_text()
+
+    # WHY: detect_platform reads the host OS
+    @patch("immich_memories.automation.system_scheduler.detect_platform", return_value="crontab")
+    def test_uninstall_removes_the_launcher(self, _plat: object, launcher_shim: Path) -> None:
+        # WHY: shutil.which reads the real PATH
+        with patch(
+            "immich_memories.automation.system_scheduler.shutil.which", return_value="/bin/im"
+        ):
+            install_scheduler()
+        assert launcher_shim.exists()
+
+        assert uninstall_scheduler() is True
+        assert not launcher_shim.exists()
+
+    # WHY: shutil.which checks PATH, detect_platform checks OS
+    @patch("immich_memories.automation.system_scheduler.shutil.which", return_value="/bin/im")
+    @patch("immich_memories.automation.system_scheduler.detect_platform", return_value="launchd")
+    def test_show_previews_the_launcher_without_writing_it(
+        self, _plat: object, _which: object, launcher_shim: Path
+    ) -> None:
+        preview = show_scheduler_config()
+
+        assert preview is not None
+        assert str(launcher_shim) in preview
+        assert not launcher_shim.exists()
+
+
+class TestStaleCheckoutRefusal:
+    # WHY: detect_platform reads the host OS
+    @patch("immich_memories.automation.system_scheduler.detect_platform", return_value="crontab")
+    def test_checkout_behind_its_tracking_branch_is_refused(
+        self, _plat: object, tmp_path: Path, git_checkout_factory: object
+    ) -> None:
+        """A plain clone nobody pulls is the same failure class as a frozen worktree."""
+        clone = git_checkout_factory(tmp_path / "runtime", 32)  # type: ignore[operator]
+        binary = _checkout_binary(clone)
+
+        # WHY: shutil.which reads the real PATH
+        with (
+            patch("immich_memories.automation.system_scheduler.shutil.which", return_value=binary),
+            pytest.raises(StaleCheckoutError) as excinfo,
+        ):
+            install_scheduler()
+
+        message = str(excinfo.value)
+        assert "32" in message
+        assert "origin/main" in message
+        assert "--force" in message
+
+    # WHY: detect_platform reads the host OS
+    @patch("immich_memories.automation.system_scheduler.detect_platform", return_value="crontab")
+    def test_force_installs_a_behind_checkout_anyway(
+        self, _plat: object, tmp_path: Path, git_checkout_factory: object, launcher_shim: Path
+    ) -> None:
+        clone = git_checkout_factory(tmp_path / "runtime", 5)  # type: ignore[operator]
+        binary = _checkout_binary(clone)
+
+        # WHY: shutil.which reads the real PATH
+        with patch("immich_memories.automation.system_scheduler.shutil.which", return_value=binary):
+            result = install_scheduler(force=True)
+
+        assert str(launcher_shim) in result.activate_command
+
+    # WHY: detect_platform reads the host OS
+    @patch("immich_memories.automation.system_scheduler.detect_platform", return_value="crontab")
+    def test_checkout_level_with_its_upstream_installs(
+        self, _plat: object, tmp_path: Path, git_checkout_factory: object, launcher_shim: Path
+    ) -> None:
+        clone = git_checkout_factory(tmp_path / "runtime", 0)  # type: ignore[operator]
+        binary = _checkout_binary(clone)
+
+        # WHY: shutil.which reads the real PATH
+        with patch("immich_memories.automation.system_scheduler.shutil.which", return_value=binary):
+            result = install_scheduler()
+
+        assert str(launcher_shim) in result.activate_command
 
 
 class TestUninstallScheduler:
