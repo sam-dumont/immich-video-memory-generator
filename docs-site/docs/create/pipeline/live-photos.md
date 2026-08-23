@@ -51,6 +51,17 @@ If there aren't enough regular videos to fill the target, live photos get select
 
 When you rapid-fire photos, each Live Photo's video overlaps with the next. The merger uses **audio spectrogram fingerprinting** to find the exact overlap, then cuts at the midpoint between consecutive shutter presses.
 
+### How the merged file is encoded
+
+Bursts are merged while clips are still downloading, before the run has resolved the encoding plan
+for its final video. The merge resolves its own: your hardware encoder if `hardware.enabled` is on
+and a real test encode succeeded, software otherwise, at CRF 18.
+
+It deliberately does not adopt the run's output settings. The merged file is an intermediate that
+gets re-encoded during assembly, and an HLG burst in a memory you asked to output as SDR H.264 would
+be tone-mapped here — before anything had decided to. So HDR bursts stay H.265 10-bit with their
+transfer intact, and the assembler decides what to do with them later.
+
 ### Why audio alignment?
 
 Timestamps alone aren't precise enough: each clip's video doesn't start at exactly `shutter_time - 1.5s`. The actual start varies by up to 200ms. On rapid bursts, that's enough to cause audible clicks and gaps.

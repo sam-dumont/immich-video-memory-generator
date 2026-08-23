@@ -11,7 +11,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from immich_memories.processing.streaming_assembler import blend_crossfade
+from immich_memories.processing.streaming_frame_blender import blend_crossfade
 
 
 def _exact(a: np.ndarray, b: np.ndarray, alpha: float) -> np.ndarray:

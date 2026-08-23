@@ -1259,30 +1259,7 @@ class TestOllamaAnalyzerClient:
 
 
 class TestOpenAIAnalyzerClient:
-    """Test OpenAI-compatible analyzer client lifecycle."""
-
-    def test_client_with_api_key(self):
-        from immich_memories.audio.mood_analyzer_backends import OpenAICompatibleMoodAnalyzer
-
-        analyzer = OpenAICompatibleMoodAnalyzer(api_key="test-key-123")
-        client = analyzer.client
-        assert "Authorization" in client.headers
-
-    def test_client_without_api_key(self):
-        from immich_memories.audio.mood_analyzer_backends import OpenAICompatibleMoodAnalyzer
-
-        analyzer = OpenAICompatibleMoodAnalyzer(api_key="")
-        client = analyzer.client
-        assert "Authorization" not in client.headers
-
-    @pytest.mark.asyncio
-    async def test_close_client(self):
-        from immich_memories.audio.mood_analyzer_backends import OpenAICompatibleMoodAnalyzer
-
-        analyzer = OpenAICompatibleMoodAnalyzer(api_key="key")
-        _ = analyzer.client
-        await analyzer.close()
-        assert analyzer._client is None
+    """Test the OpenAI-compatible analyzer."""
 
     @pytest.mark.asyncio
     async def test_analyze_video_no_frames_returns_default(self):

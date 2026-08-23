@@ -56,10 +56,11 @@ def _cap_analysis_candidates(
 
     fav = [c for c in selected if c.asset.is_favorite]
     non_fav = [c for c in selected if not c.asset.is_favorite]
-    non_fav.sort(
-        key=lambda c: c.width * c.height if c.width and c.height else 0,
-        reverse=True,
-    )
+    # Asset id breaks resolution ties. Without it the sort is stable over an
+    # order that came from iterating a set, so on a library where nearly every
+    # clip is the same resolution "which clips get analyzed" changed between
+    # runs on identical input.
+    non_fav.sort(key=lambda c: (-(c.width * c.height if c.width and c.height else 0), c.asset.id))
     keep = max(0, max_candidates - len(fav))
     result = fav + non_fav[:keep] if keep > 0 else fav[:max_candidates]
     logger.info(f"Capped analysis candidates to {len(result)} (1.5x target {target_clips})")
@@ -114,6 +115,23 @@ class PipelineConfig:
 
     # Analysis depth: auto budgets misses, fast favors speed, thorough analyzes all.
     analysis_depth: str = "auto"
+
+    @classmethod
+    def from_app_config(cls, config: Config, **overrides: object) -> PipelineConfig:
+        """Build a pipeline config, taking its dials from user configuration.
+
+        Every field here is one a user sets in YAML and the pipeline enforces.
+        They live on this classmethod rather than at the call sites because
+        there are two of those — CLI and UI — and photos.max_ratio spent its
+        life documented as a dial while neither site plumbed it, so the
+        enforced cap was the dataclass default whatever the YAML said.
+        Anything the caller decides instead arrives as an override.
+        """
+        return cls(
+            photo_max_ratio=config.photos.max_ratio,
+            max_refinement_passes=config.analysis.max_refinement_passes,
+            **overrides,
+        )
 
     @property
     def duration_target(self) -> float:
@@ -596,7 +614,10 @@ class SmartPipeline:
 
         # Build clip lists
         clip_map = {c.asset.id: c for c in clips}
-        selected = [clip_map[aid] for aid in selected_ids if aid in clip_map]
+        # sorted, not set order: string hashing is randomised per process, so
+        # the unsorted list differs run to run and the cap below then trims a
+        # different set of equally-good clips each time.
+        selected = [clip_map[aid] for aid in sorted(selected_ids) if aid in clip_map]
         selected = _cap_analysis_candidates(selected, self.config.target_clips)
 
         fav_count = sum(1 for c in selected if c.asset.is_favorite)

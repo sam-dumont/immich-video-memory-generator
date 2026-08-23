@@ -14,6 +14,8 @@ import httpx
 from immich_memories.analysis.llm_query import query_llm
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from immich_memories.config_models_llm import LLMConfig
 
 logger = logging.getLogger(__name__)
@@ -183,8 +185,14 @@ async def generate_title_with_llm(
     smart_objects: list[str] | None = None,
     llm_config: LLMConfig | None = None,
     temperature: float = 0.1,
+    cache_path: Path | None = None,
 ) -> TitleSuggestion | None:
-    """Generate a title using the LLM. Returns None on failure."""
+    """Generate a title using the LLM. Returns None on failure.
+
+    With cache_path, a title asked for twice about the same memory is paid for
+    once: the prompt carries the dates, places, people and clip descriptions,
+    so anything that would change the answer changes the key.
+    """
     if llm_config is None:
         return None
 
@@ -209,6 +217,7 @@ async def generate_title_with_llm(
             max_tokens=8000,
             timeout_seconds=300,
             thinking=True,
+            cache_path=cache_path,
         )
         return parse_title_response(raw)
     except (httpx.HTTPError, RuntimeError, ValueError, OSError) as e:

@@ -70,6 +70,9 @@ jobs:
       - name: CLI reference drift
         if: '!cancelled()'
         run: make docs-cli-check
+      - name: Config reference drift
+        if: '!cancelled()'
+        run: make docs-config-check
       - name: Type Check (mypy)
         if: '!cancelled()'
         run: make typecheck
@@ -293,11 +296,11 @@ jobs:
         include:
           # speech (onnxruntime/kaldi-native-fbank, the default and only
           # engine) runs in the main `test` job -- it doesn't need torch.
-          # This job now only covers the torch-heavy face/audio-ml extras.
+          # This job now only covers the torch-heavy audio-ml extras.
           - os: ubuntu-latest
-            extras: "dev,face,audio,audio-ml,gpu"
+            extras: "dev,audio,audio-ml,gpu"
           - os: macos-latest
-            extras: "dev,mac,audio,audio-ml,face,gpu"
+            extras: "dev,mac,audio,audio-ml,gpu"
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
       - name: Create LFS cache key
@@ -386,8 +389,11 @@ jobs:
             INSTALL_EXTRAS=all
             VCS_REF=${{ github.sha }}
             SOURCE_URL=https://github.com/${{ github.repository }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # WHY scoped: both platform jobs wrote the same default cache scope
+          # and clobbered each other — measured ZERO cached layers on every PR
+          # build, a full image rebuild each time.
+          cache-from: type=gha,scope=docker-${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=docker-${{ matrix.platform }}
 
   docs:
     name: Docs Build

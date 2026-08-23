@@ -293,6 +293,7 @@ immich-memories generate [OPTIONS]
 | `--include-live-photos` | boolean | - | Include Live Photo video clips (3s iPhone clips, merged when burst-captured) |
 | `--include-photos` | boolean | - | Include photos as animated Ken Burns clips (blur background, face-aware pan) |
 | `--photo-duration` | float | - | Duration per photo clip in seconds (default: 4.0) |
+| `--refinement-passes` | integer range | - | How many times selection may verify, judge and review before settling (default: 10). The biggest dial on warm-run time, and on the bill when llm.base_url points at a paid API |
 | `--analysis-depth` | choice: `auto` \| `fast` \| `thorough` | - | Analysis depth: auto (full analysis for manageable pools), fast (favorites first), or thorough (every eligible clip) |
 | `--trip-index` | integer | - | Select a specific trip by index (use with --memory-type trip) |
 | `--all-trips` | boolean | false | Generate a video for every detected trip (use with --memory-type trip) |

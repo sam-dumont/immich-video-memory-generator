@@ -21,6 +21,7 @@ from immich_memories.config_models_llm import LLMConfig
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -135,8 +136,15 @@ async def query_llm(
     thinking: bool = False,
     images: Sequence[bytes] = (),
     image_detail: str = "low",
+    cache_path: Path | None = None,
 ) -> str:
     """Send a prompt, optionally with JPEG images, and return the response.
+
+    cache_path opts this call into reuse: an identical question to an identical
+    model gets the answer it got before, rather than being paid for again.
+    Deliberately opt-in — a health probe must reach the server every time — and
+    deliberately refused for image-bearing calls, whose pictures a prompt hash
+    cannot see.
 
     thinking=True asks a reasoning model to reason before answering — only
     honored when the config says the server supports it (llm.thinking), never
@@ -145,6 +153,73 @@ async def query_llm(
     for judgement calls: measured cost is 5-10x latency and 10-20x tokens.
     """
     llm_config = _resolved(llm_config)
+    # A prompt hash cannot see the pictures, so an image-bearing call with a
+    # fixed prompt template — "one line per picture, in order" — would key
+    # identically for two entirely different days and serve one the other's
+    # answer. Vision is cached per asset upstream, where the key is the asset
+    # id, so there is nothing for this layer to add and everything to get
+    # wrong.
+    remembered = _remembered(cache_path, llm_config, prompt, thinking) if not images else None
+    if remembered is not None:
+        logger.debug("Reusing the answer to an identical question")
+        return remembered
+    answer = await _dispatch(
+        prompt,
+        llm_config,
+        temperature,
+        max_tokens,
+        timeout_seconds,
+        thinking,
+        images,
+        image_detail,
+    )
+    if not images:
+        _remember(cache_path, llm_config, prompt, thinking, answer)
+    return answer
+
+
+def _cache_key(llm_config: LLMConfig, prompt: str, thinking: bool) -> str:
+    from immich_memories.cache.judgment_cache import judgment_key
+
+    return judgment_key(
+        model=getattr(llm_config, "model", None),
+        prompt=prompt,
+        thinking=bool(thinking and getattr(llm_config, "thinking", False)),
+    )
+
+
+def _remembered(
+    cache_path: Path | None, llm_config: LLMConfig, prompt: str, thinking: bool
+) -> str | None:
+    """What this exact question was answered with before, if it was."""
+    if cache_path is None:
+        return None
+    from immich_memories.cache.judgment_cache import JudgmentCache
+
+    return JudgmentCache(cache_path).answer_for(_cache_key(llm_config, prompt, thinking))
+
+
+def _remember(
+    cache_path: Path | None, llm_config: LLMConfig, prompt: str, thinking: bool, answer: str
+) -> None:
+    """Keep an answer. Silence is never kept — a failed call must not stick."""
+    if cache_path is None or not answer:
+        return
+    from immich_memories.cache.judgment_cache import JudgmentCache
+
+    JudgmentCache(cache_path).remember(_cache_key(llm_config, prompt, thinking), answer)
+
+
+async def _dispatch(
+    prompt: str,
+    llm_config: LLMConfig,
+    temperature: float,
+    max_tokens: int,
+    timeout_seconds: int,
+    thinking: bool,
+    images: Sequence[bytes],
+    image_detail: str,
+) -> str:
     if llm_config.provider == "ollama":
         return await _query_ollama(prompt, llm_config, temperature, timeout_seconds, images)
     think = thinking and llm_config.thinking and not images
@@ -174,6 +249,13 @@ async def _query_ollama(
     # Ollama takes bare base64 in its own field, not a data: URI in a message.
     if images:
         payload["images"] = [base64.b64encode(image).decode("utf-8") for image in images]
+    # Ollama keeps its per-request knobs (num_ctx, num_predict) under `options`,
+    # so extras aimed at that key merge into it instead of replacing temperature.
+    for name, value in config.extra_params.items():
+        if name == "options":
+            payload["options"].update(value)
+        else:
+            payload[name] = value
     async with httpx.AsyncClient(timeout=build_llm_timeout(float(timeout))) as client:
         resp = await client.post(f"{base_url}/api/generate", json=payload)
         resp.raise_for_status()

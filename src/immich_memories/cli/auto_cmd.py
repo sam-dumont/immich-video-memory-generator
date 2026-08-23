@@ -151,7 +151,8 @@ def auto() -> None:
 @click.pass_context
 def suggest(ctx: click.Context, as_json: bool, limit: int, memory_type: str | None) -> None:
     """Show prioritized memory candidates."""
-    from immich_memories.automation.runner import AutoRunner, SuggestOutcome
+    from immich_memories.automation.runner import AutoRunner
+    from immich_memories.automation.status import SuggestOutcome
 
     config: Config = ctx.obj["config"]
     runner = AutoRunner(config, config_path=ctx.obj["config_path"])

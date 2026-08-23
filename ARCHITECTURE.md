@@ -59,6 +59,12 @@ injected service.
 - `EndingService` (ending_service.py): fade-to-white ending generation
 - `TripService` (trip_service.py): trip map and location card screens
 
+**`assemble_streaming()`** (processing/streaming_assembler.py) is the streaming render path,
+a three-stage pipe rather than a class: `make_decoder()` (streaming_frame_decoder.py) turns a
+clip into normalized raw frames, `FrameBlender` (streaming_frame_blender.py) writes those
+frames to a `FrameSink` and crossfades across clip boundaries, and `StreamingEncoder` (the
+sink it is constructed with) pipes them into FFmpeg.
+
 **`generate_memory()`** (generate.py) is the top-level orchestrator above the four; it runs
 the `OperationalPhase` lifecycle end to end (there is no `GenerationPipeline` class) with
 these helper modules:
@@ -146,7 +152,9 @@ src/immich_memories/
 │   ├── assembly_engine.py      # AssemblyEngine (composes ConcatService)
 │   ├── ffmpeg_filter_graph.py  # ConcatService: batch merge/direct assembly
 │   ├── assembly_config.py      # Dataclasses: AssemblySettings, AssemblyClip, etc.
-│   ├── streaming_assembler.py  # StreamingAssembler: low-memory 4K assembly via frame blending
+│   ├── streaming_assembler.py  # StreamingEncoder + assemble_streaming(): low-memory 4K assembly
+│   ├── streaming_frame_decoder.py # FrameDecoder / make_decoder(): clip -> normalized raw frames
+│   ├── streaming_frame_blender.py # FrameBlender: frames -> sink, crossfades, progress/preview
 │   ├── streaming_audio.py      # Streaming audio processing helpers
 │   ├── ffmpeg_prober.py        # FFmpegProber: ffprobe-based duration/resolution
 │   ├── filter_builder.py       # FilterBuilder: FFmpeg filter graph construction
@@ -300,7 +308,8 @@ src/immich_memories/
 │
 ├── cache/                      # Analysis caching system
 │   ├── __init__.py             # Re-exports public API
-│   ├── database.py             # VideoAnalysisCache class (SQLite)
+│   ├── database.py             # VideoAnalysisCache class (SQLite reads/writes)
+│   ├── schema_migrator.py      # SchemaMigrator: schema ladder v1..vN, DDL
 │   ├── database_models.py      # CachedSegment, CachedVideoAnalysis, SimilarVideo
 │   ├── database_rows.py        # SQLite row <-> model conversion
 │   ├── versions.py             # SCHEMA_VERSION / ANALYSIS_VERSION (independent)
@@ -320,17 +329,19 @@ src/immich_memories/
 │   ├── __init__.py             # Public API re-exports
 │   ├── candidates.py           # Memory candidate detection
 │   ├── candidate_scorer.py     # Candidate scoring & ranking
+│   ├── candidate_discovery.py  # CandidateDiscovery: one library snapshot -> ranked candidates
 │   ├── event_detectors.py      # Event-based detectors (activity bursts)
 │   ├── calendar_detectors.py   # Calendar-based detectors (monthly, yearly)
 │   ├── variety.py              # Cadence and rotation rules for candidates
 │   ├── models.py               # Typed values returned/persisted by automation
 │   ├── generation_request.py   # Typed boundary from candidates to the `generate` CLI
 │   ├── state_store.py          # SQLite persistence for automation attempts
+│   ├── status.py               # Cooldown gate + read-only AutomationStatus contract
 │   ├── delivery_retry.py       # Durable state for one pending delivery retry
 │   ├── notification_state.py   # Durable, sanitized notification delivery health
 │   ├── trip_input_cache.py     # Durable, identity-checked inputs for auto trip discovery
 │   ├── notifications.py        # Apprise notification integration
-│   ├── runner.py               # Auto-run orchestrator
+│   ├── runner.py               # Auto-run orchestrator (lease, subprocess, attempt record)
 │   ├── in_process_scheduler.py # Daily timer inside the UI/Docker process
 │   └── system_scheduler.py     # OS scheduler integration (launchd/systemd/cron)
 │

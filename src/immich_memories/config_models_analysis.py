@@ -45,6 +45,16 @@ class AnalysisConfig(BaseModel):
         le=8,
         description="Concurrent isolated clients used for video and thumbnail prefetching",
     )
+    max_refinement_passes: int = Field(
+        default=10,
+        ge=1,
+        le=20,
+        description="How many times selection may verify, judge and review before "
+        "settling (#503). Three refinement loops run up to this many times, so it "
+        "is the largest multiplier on warm-run time — and on the bill for anyone "
+        "pointing llm.base_url at a paid API. Lower it to spend less per run; the "
+        "cost is that a late refill may ship less scrutinised.",
+    )
     max_album_assets: int = Field(
         default=10000,
         ge=1,

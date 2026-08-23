@@ -124,6 +124,7 @@ have not set explicitly; the flags below still win. Persistent form: `preset: fa
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
+| `--refinement-passes` | — | integer | `10` | How many times selection may verify, judge and review before it settles. Three loops run up to this many times, so it is the largest multiplier on a warm run — and on the bill if `llm.base_url` is a paid API. `preset: fast` uses 3 |
 | `--analysis-depth` | — | choice | `auto` | `auto` (all manageable cache misses, shortlist large pools), `fast` (favorites first), or `thorough` (every eligible clip). Under `preset: fast`, `auto` runs as `fast` |
 | `--include-photos` | — | flag | — | Include photos alongside videos |
 | `--photo-duration` | — | float | `4.0` | Seconds per photo clip (use with `--include-photos`) |

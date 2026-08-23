@@ -103,12 +103,16 @@ async def generate_music_for_video(
     app_config: object | None = None,
     memory_type: str | None = None,
     photo_cadence_seconds: float | None = None,
+    separate_stems: bool = True,
 ) -> MusicGenerationResult:
     """Generate multiple music versions for a video with per-clip moods.
 
     If app_config is provided and has ACE-Step/MusicGen enabled, uses the
     multi-provider pipeline (ACE-Step → MusicGen fallback). Otherwise falls
     back to direct MusicGen client for backwards compatibility.
+
+    Callers that cannot consume stems pass ``separate_stems=False`` rather than
+    paying for a Demucs run they will drop (#499).
 
     Args:
         timeline: Video timeline with per-clip mood information
@@ -126,7 +130,7 @@ async def generate_music_for_video(
     if app_config is not None and _has_pipeline_backends(app_config):
         from immich_memories.audio.music_pipeline import create_pipeline
 
-        pipeline = create_pipeline(app_config)
+        pipeline = create_pipeline(app_config, separate_stems=separate_stems)
         num_versions = getattr(config, "num_versions", 3) if config else 3
         async with pipeline:
             return await pipeline.generate_music_for_video(

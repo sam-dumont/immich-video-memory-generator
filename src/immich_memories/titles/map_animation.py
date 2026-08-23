@@ -18,6 +18,7 @@ from staticmap import CircleMarker, StaticMap
 from immich_memories.processing.encoding_plan import EncodingPlan
 from immich_memories.titles.ffmpeg_pipe import StderrDrain
 
+from .colors import ceil_rgb_for_hdr
 from .encoding import standalone_title_encoding_plan, title_color_filter, title_encoder_args
 from .map_renderer import _draw_gradient_band, _overlay_composite, _wrap_text
 
@@ -53,6 +54,8 @@ class _FlyConfig:
     width: int = 1920
     height: int = 1080
     dest_zoom: float = 9.0  # zoom level at destination (pins reference size)
+    # Graphics drawn straight onto the tiles, so they need the HDR ceiling (#506)
+    hdr: bool = False
 
 
 _tile_cache: dict[str, bytes] = {}
@@ -204,12 +207,10 @@ def _draw_pins(
     cam_lat: float,
     cam_lon: float,
     zoom: float,
-    pins: list[_PinData],
-    dest_zoom: float,
-    w: int,
-    h: int,
+    cfg: _FlyConfig,
 ) -> Image.Image:
     """Draw destination pins + city labels, fading in near destination zoom."""
+    pins, dest_zoom, w, h = cfg.pins, cfg.dest_zoom, cfg.width, cfg.height
     if not pins:
         return frame
     pin_alpha = max(0.0, min(1.0, (zoom - dest_zoom + 2.5) / 2.5))
@@ -224,6 +225,7 @@ def _draw_pins(
     font = _get_font(max(12, int(min(w, h) * 0.022)), bold=True)
     a_w, a_f = int(200 * pin_alpha), int(230 * pin_alpha)
     a_l, a_s = int(220 * pin_alpha), int(140 * pin_alpha)
+    white = ceil_rgb_for_hdr((255, 255, 255)) if cfg.hdr else (255, 255, 255)
 
     for pin in pins:
         sx, sy = _geo_to_screen(pin.lat, pin.lon, cam_lat, cam_lon, zoom, w, h)
@@ -231,7 +233,7 @@ def _draw_pins(
         if sx < -margin or sx > w + margin or sy < -margin or sy > h + margin:
             continue
         r_out = base_r + 3
-        draw.ellipse((sx - r_out, sy - r_out, sx + r_out, sy + r_out), fill=(255, 255, 255, a_w))
+        draw.ellipse((sx - r_out, sy - r_out, sx + r_out, sy + r_out), fill=(*white, a_w))
         draw.ellipse((sx - base_r, sy - base_r, sx + base_r, sy + base_r), fill=(232, 93, 74, a_f))
 
         if pin.name:
@@ -239,7 +241,7 @@ def _draw_pins(
             lx = sx - (bbox[2] - bbox[0]) // 2
             ly = sy - r_out - getattr(font, "size", 14) - 6
             draw.text((lx + 1, ly + 1), pin.name, fill=(0, 0, 0, a_s), font=font)
-            draw.text((lx, ly), pin.name, fill=(255, 255, 255, a_l), font=font)
+            draw.text((lx, ly), pin.name, fill=(*white, a_l), font=font)
 
     return Image.alpha_composite(frame.convert("RGBA"), overlay).convert("RGB")
 
@@ -252,7 +254,7 @@ def _render_frame(
 ) -> Image.Image:
     """Render satellite + pins + title for one animation frame."""
     frame = _render_satellite(lat, lon, zoom, cfg.width, cfg.height)
-    return _draw_pins(frame, lat, lon, zoom, cfg.pins, cfg.dest_zoom, cfg.width, cfg.height)
+    return _draw_pins(frame, lat, lon, zoom, cfg)
 
 
 def _destination_overview(
@@ -312,13 +314,15 @@ def create_map_fly_video(
     ]
 
     dz = math.log2(width / w_overview) if w_overview > 0 else float(_CITY_ZOOM)
+    hdr = bool(encoding_plan and encoding_plan.hdr)
     cfg = _FlyConfig(
         interps=interps,
         pins=pins,
-        title_overlay=_render_title_overlay(title_text, width, height),
+        title_overlay=_render_title_overlay(title_text, width, height, hdr),
         width=width,
         height=height,
         dest_zoom=max(3.0, min(14.0, dz)),
+        hdr=hdr,
     )
 
     _tile_cache.clear()
@@ -469,7 +473,7 @@ def _title_alpha(p: float) -> float:
     return max(0.0, (1.0 - p) / 0.15) if p > 0.85 else 1.0
 
 
-def _render_title_overlay(text: str, w: int, h: int) -> Image.Image | None:
+def _render_title_overlay(text: str, w: int, h: int, hdr: bool = False) -> Image.Image | None:
     """Pre-render title text as an RGBA overlay — big, centered."""
     if not text:
         return None
@@ -482,6 +486,7 @@ def _render_title_overlay(text: str, w: int, h: int) -> Image.Image | None:
     fs = int(w * 0.12) if is_portrait else int(h * 0.09)
     font = _get_font(fs, bold=True)
 
+    white = ceil_rgb_for_hdr((255, 255, 255)) if hdr else (255, 255, 255)
     lines = _wrap_text(text, draw, font, int(w * 0.88))
     line_h = int(fs * 1.2)
     total_h = line_h * len(lines)
@@ -494,6 +499,6 @@ def _render_title_overlay(text: str, w: int, h: int) -> Image.Image | None:
         x = (w - tw) // 2
         y = block_y + i * line_h
         draw.text((x + 2, y + 2), line, fill=(0, 0, 0, 130), font=font)
-        draw.text((x, y), line, fill=(255, 255, 255, 240), font=font)
+        draw.text((x, y), line, fill=(*white, 240), font=font)
 
     return img

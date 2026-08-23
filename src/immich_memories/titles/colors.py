@@ -142,6 +142,42 @@ def ensure_minimum_brightness(
     return brighten_color(rgb, factor)
 
 
+# HLG graphics white — 0xBF, 75% of full range. Measured on the 10-bit pipe: text
+# drawn at plain white lands at 872/1023, above the diffuse white of the picture
+# behind it, so it glows on an HDR display; ceilinged it lands at 721. Same value
+# the per-clip date captions use (processing/clip_caption.py).
+HDR_GRAPHICS_WHITE = 0xBF
+
+# Above this, a colour is carrying real hue — an accent that happens to be bright,
+# not a white. Off-whites in the palettes sit well under it (#E0F2FE is 0.12).
+_NEUTRAL_SATURATION = 0.15
+
+
+def ceil_rgb_for_hdr(rgb: tuple[int, int, int]) -> tuple[int, int, int]:
+    """Bring a white or near-white down to HLG graphics white.
+
+    Graphics rendered at full white sit above the diffuse white of the HDR
+    picture behind them, so title text glows rather than reads as paper white.
+    A colour carrying real hue comes back untouched — this is a ceiling on
+    whites, not a global dimmer — as does anything already below the ceiling.
+    Tinted whites keep their tint: every channel scales by the same factor.
+    """
+    r, g, b = rgb
+    peak = max(r, g, b)
+    if peak <= HDR_GRAPHICS_WHITE:
+        return rgb
+    if (peak - min(r, g, b)) / peak > _NEUTRAL_SATURATION:
+        return rgb
+
+    scale = HDR_GRAPHICS_WHITE / peak
+    return (round(r * scale), round(g * scale), round(b * scale))
+
+
+def ceil_white_for_hdr(hex_color: str) -> str:
+    """`ceil_rgb_for_hdr` for the renderers that carry colours as hex strings."""
+    return rgb_to_hex(ceil_rgb_for_hdr(hex_to_rgb(hex_color)))
+
+
 def quantize_colors(
     colors: list[tuple[int, int, int]],
     num_clusters: int = 8,

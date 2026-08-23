@@ -88,8 +88,10 @@ def detect_silence_gaps(
 ) -> list[tuple[float, float]]:
     """Detect silence gaps in a video's audio track.
 
-    Uses ffmpeg with explicit stream selection to handle iPhone videos
-    with spatial audio (apac codec) that moviepy can't process.
+    Uses ffmpeg with explicit stream selection so iPhone videos carrying
+    spatial audio (apac codec) resolve to the right stream. Audio that
+    cannot be extracted yields no gaps, which callers treat as "make no
+    silence-based boundary adjustment".
 
     Args:
         video_path: Path to video file.
@@ -109,9 +111,7 @@ def detect_silence_gaps(
             audio_array, sample_rate, threshold_db, min_silence_duration, window_size
         )
 
-    # Fall back to moviepy if ffmpeg extraction fails
-    logger.debug("Falling back to moviepy for audio extraction")
-    return _detect_silence_gaps_moviepy(video_path, threshold_db, min_silence_duration, window_size)
+    return []
 
 
 def _collect_silence_gaps(
@@ -199,57 +199,6 @@ def _analyze_audio_for_silence(
 
     logger.debug(f"Found {len(silence_gaps)} silence gaps")
     return silence_gaps
-
-
-def _detect_silence_gaps_moviepy(
-    video_path: Path,
-    threshold_db: float,
-    min_silence_duration: float,
-    window_size: float,
-) -> list[tuple[float, float]]:
-    """Detect silence gaps using moviepy (legacy fallback).
-
-    Args:
-        video_path: Path to video file.
-        threshold_db: Volume threshold in dB.
-        min_silence_duration: Minimum silence duration.
-        window_size: Analysis window size.
-
-    Returns:
-        List of (start, end) tuples for silence gaps.
-    """
-    try:
-        try:
-            from moviepy.editor import VideoFileClip
-        except ImportError:
-            from moviepy import VideoFileClip
-    except ImportError:
-        logger.debug("moviepy not available for silence detection")
-        return []
-
-    try:
-        with VideoFileClip(str(video_path)) as video:
-            if video.audio is None:
-                logger.debug(f"No audio track in {video_path}")
-                return []
-
-            # Get audio parameters
-            fps = video.audio.fps
-
-            # Extract audio as numpy array
-            audio_array = video.audio.to_soundarray(fps=fps)
-
-            # Convert to mono if stereo
-            if len(audio_array.shape) > 1:
-                audio_array = np.mean(audio_array, axis=1)
-
-            return _analyze_audio_for_silence(
-                audio_array, int(fps), threshold_db, min_silence_duration, window_size
-            )
-
-    except (OSError, RuntimeError, ValueError) as e:
-        logger.debug(f"moviepy silence detection failed: {e}")
-        return []
 
 
 def find_nearest_silence(

@@ -1,35 +1,102 @@
 """Provider implementations for content analysis.
 
-Contains OllamaContentAnalyzer and OpenAICompatibleContentAnalyzer,
-which use local Ollama or OpenAI-compatible APIs respectively.
+Contains OllamaContentAnalyzer and OpenAICompatibleContentAnalyzer. Both send
+their frames through ``query_llm`` like every other LLM call in the project;
+what stays here is what is genuinely theirs — how many frames the model can
+hold, and how a sick server is recognised and turned off for the run.
 """
 
 from __future__ import annotations
 
-import base64
+import asyncio
 import contextlib
 import logging
 from pathlib import Path
 
 import httpx
 
-from immich_memories.analysis.llm_query import build_llm_timeout
+from immich_memories.analysis.llm_query import build_llm_timeout, query_llm
 from immich_memories.analysis.llm_response_parser import (
     ContentAnalysis,
     ContentAnalyzer,
     build_content_analysis_prompt,
 )
 from immich_memories.analysis.request_heartbeat import RequestHeartbeat
+from immich_memories.config_models_llm import LLMConfig
 
 logger = logging.getLogger(__name__)
 
-# A local vision model doing real inference can take minutes, so `read` keeps
-# the full user-configured budget (llm.timeout_seconds, can be an hour). The
-# other phases are short on purpose: connecting or acquiring a pooled
-# connection should never take long, and a request body of a handful of
-# base64 JPEG frames uploads in well under these windows even on a slow
-# network. A server that is down or unreachable now fails in seconds instead
-# of silently borrowing the read budget.
+# The health probe keeps its own client. A local vision model doing real
+# inference can take minutes, so `read` keeps the full user-configured budget
+# (llm.timeout_seconds, can be an hour). The other phases are short on purpose:
+# a server that is down now fails in seconds instead of silently borrowing the
+# read budget.
+
+# Room for the JSON answer plus whatever preamble a chatty model puts in front
+# of it.
+_ANSWER_MAX_TOKENS = 1024
+
+# Small vision models answer with nothing often enough that a batch loses a
+# measurable fraction of its clips without a retry. query_llm retries a null
+# content field; Ollama returns an empty string rather than null and gets no
+# retry there, so the near-empty check lives here and covers both dialects.
+_ANSWER_ATTEMPTS = 3
+_MIN_USABLE_ANSWER_CHARS = 10
+
+# Bulk analysis is the fast tier by design, so the request is deliberately
+# plain: low temperature for parseable JSON and never `thinking=True`, which is
+# a measured runaway once several images are in the same call.
+_ANSWER_TEMPERATURE = 0.3
+
+
+def _unusable_answer() -> ContentAnalysis:
+    """What a clip scores when the model kept answering with nothing."""
+    return ContentAnalysis(
+        description="(analysis unavailable)",
+        interestingness=0.5,
+        quality=0.5,
+        confidence=0.2,
+    )
+
+
+def _ask_vision_model(
+    prompt: str,
+    images: list[bytes],
+    config: LLMConfig,
+    image_detail: str,
+) -> str:
+    """Ask the configured model about frames, retrying while it says nothing.
+
+    Returns the model's answer, or an empty string once it has had its tries.
+    """
+    for attempt in range(_ANSWER_ATTEMPTS):
+        with RequestHeartbeat(f"LLM request (model={config.model}, url={config.base_url})"):
+            try:
+                answer = asyncio.run(
+                    query_llm(
+                        prompt,
+                        config,
+                        temperature=_ANSWER_TEMPERATURE,
+                        max_tokens=_ANSWER_MAX_TOKENS,
+                        timeout_seconds=config.timeout_seconds,
+                        images=images,
+                        image_detail=image_detail,
+                    )
+                )
+            except ValueError:
+                # query_llm has already asked three times and been handed null
+                # content each time; asking again only repeats it.
+                logger.warning("Model returned null content, giving up on this segment")
+                return ""
+        if len(answer.strip()) >= _MIN_USABLE_ANSWER_CHARS:
+            return answer
+        logger.warning(
+            "Model returned a near-empty response (attempt %d/%d, len: %d)",
+            attempt + 1,
+            _ANSWER_ATTEMPTS,
+            len(answer),
+        )
+    return ""
 
 
 class OllamaContentAnalyzer(ContentAnalyzer):
@@ -64,6 +131,15 @@ class OllamaContentAnalyzer(ContentAnalyzer):
         self.num_ctx = num_ctx
         self.timeout = timeout
         self._client: httpx.Client | None = None
+        self._llm_config = LLMConfig(
+            provider="ollama",
+            base_url=self.base_url,
+            model=model,
+            timeout_seconds=int(timeout),
+            # Ollama defaults to a 2048-token context, which the prompt plus
+            # several frames overruns, so the window has to be asked for.
+            extra_params={"options": {"num_ctx": num_ctx}},
+        )
 
         # Check if this model needs single image mode (small context)
         model_base = model.split(":")[0].lower()
@@ -73,7 +149,7 @@ class OllamaContentAnalyzer(ContentAnalyzer):
 
     @property
     def client(self) -> httpx.Client:
-        """Get or create HTTP client."""
+        """Get or create the HTTP client used by the health probe."""
         if self._client is None or self._client.is_closed:
             self._client = httpx.Client(timeout=build_llm_timeout(self.timeout))
         return self._client
@@ -129,48 +205,6 @@ class OllamaContentAnalyzer(ContentAnalyzer):
         self.circuit.set_health(health)
         return health
 
-    def _ollama_request_with_retry(
-        self, payload: dict, images: list[str], max_retries: int = 2
-    ) -> ContentAnalysis:
-        """POST to Ollama /api/generate, retrying on near-empty responses."""
-        for attempt in range(max_retries + 1):
-            with RequestHeartbeat(f"LLM request (model={self.model}, url={self.base_url})"):
-                response = self.client.post(f"{self.base_url}/api/generate", json=payload)
-            response.raise_for_status()
-            data = response.json()
-
-            raw_response = data.get("response", "")
-            prompt_tokens = data.get("prompt_eval_count", 0)
-            completion_tokens = data.get("eval_count", 0)
-
-            if completion_tokens <= 5 or len(raw_response.strip()) < 10:
-                if attempt < max_retries:
-                    logger.warning(
-                        f"Model returned near-empty response (attempt {attempt + 1}/{max_retries + 1}), "
-                        f"retrying... (tokens: {completion_tokens}, len: {len(raw_response)})"
-                    )
-                    continue
-                logger.warning(f"Model failed after {max_retries + 1} attempts, using fallback")
-                result = ContentAnalysis(
-                    description="(analysis unavailable)",
-                    interestingness=0.5,
-                    quality=0.5,
-                    confidence=0.2,
-                )
-                self._log_analysis_result(result, prompt_tokens, completion_tokens, len(images))
-                return result
-
-            result = self._parse_content_response(raw_response)
-            self._log_analysis_result(
-                result,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                num_images=len(images),
-            )
-            return result
-
-        return ContentAnalysis(confidence=0.0)
-
     def analyze_segment(
         self,
         video_path: Path,
@@ -186,6 +220,7 @@ class OllamaContentAnalyzer(ContentAnalyzer):
             start_time: Segment start time in seconds.
             end_time: Segment end time in seconds.
             num_frames: Number of frames to analyze.
+            transcript: Speech heard around this moment, or None.
 
         Returns:
             ContentAnalysis with description and scores.
@@ -208,20 +243,13 @@ class OllamaContentAnalyzer(ContentAnalyzer):
             return ContentAnalysis(confidence=0.0)
 
         try:
-            images = []
-            for path in frames[:max_images]:
-                with path.open("rb") as f:
-                    images.append(base64.b64encode(f.read()).decode("utf-8"))
-
-            payload = {
-                "model": self.model,
-                "prompt": build_content_analysis_prompt(transcript),
-                "images": images,
-                "stream": False,
-                "options": {"temperature": 0.3, "num_ctx": self.num_ctx},
-            }
-
-            return self._ollama_request_with_retry(payload, images)
+            images = [path.read_bytes() for path in frames[:max_images]]
+            answer = _ask_vision_model(
+                build_content_analysis_prompt(transcript), images, self._llm_config, "low"
+            )
+            result = self._parse_content_response(answer) if answer else _unusable_answer()
+            self._log_analysis_result(result, num_images=len(images))
+            return result
 
         except httpx.HTTPError as e:
             logger.warning(f"Ollama API error: {e}")
@@ -264,10 +292,17 @@ class OpenAICompatibleContentAnalyzer(ContentAnalyzer):
         self.max_height = max_height
         self.timeout = timeout
         self._client: httpx.Client | None = None
+        self._llm_config = LLMConfig(
+            provider="openai-compatible",
+            base_url=self.base_url,
+            model=model,
+            api_key=api_key,
+            timeout_seconds=int(timeout),
+        )
 
     @property
     def client(self) -> httpx.Client:
-        """Get or create HTTP client."""
+        """Get or create the HTTP client used by the health probe."""
         if self._client is None or self._client.is_closed:
             headers: dict[str, str] = {"Content-Type": "application/json"}
             if self.api_key:
@@ -337,67 +372,19 @@ class OpenAICompatibleContentAnalyzer(ContentAnalyzer):
             return ContentAnalysis(confidence=0.0)
 
         try:
-            # Build content with images
-            content: list[dict] = [
-                {"type": "text", "text": build_content_analysis_prompt(transcript)}
-            ]
-
-            for path in frames[:4]:
-                with path.open("rb") as f:
-                    b64 = base64.b64encode(f.read()).decode("utf-8")
-                content.append(
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{b64}",
-                            "detail": self.image_detail,  # "low"=85 tokens, "high"=1889 tokens
-                        },
-                    }
-                )
-
-            payload = {
-                "model": self.model,
-                "messages": [{"role": "user", "content": content}],
-                "max_tokens": 1024,  # Extra room for thinking models (Qwen3.5, etc.)
-            }
-
-            with RequestHeartbeat(f"LLM request (model={self.model}, url={self.base_url})"):
-                response = self.client.post(
-                    f"{self.base_url}/chat/completions",
-                    json=payload,
-                )
-            response.raise_for_status()
-            data = response.json()
-
-            # Parse response and extract token counts
-            response_text = data["choices"][0]["message"]["content"]
-            result = self._parse_content_response(response_text)
-
-            # Extract token usage from response
-            usage = data.get("usage", {})
-            prompt_tokens = usage.get("prompt_tokens", 0)
-            completion_tokens = usage.get("completion_tokens", 0)
-
-            # Log result with token tracking
-            self._log_analysis_result(
-                result,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                num_images=len(frames[:4]),
+            images = [path.read_bytes() for path in frames[:4]]
+            answer = _ask_vision_model(
+                build_content_analysis_prompt(transcript),
+                images,
+                self._llm_config,
+                self.image_detail,
             )
-
+            result = self._parse_content_response(answer) if answer else _unusable_answer()
+            self._log_analysis_result(result, num_images=len(images))
             return result
 
         except httpx.HTTPStatusError as e:
-            from immich_memories.analysis.provider_health import classify_openai_response
-
-            try:
-                body = e.response.json()
-            except ValueError:
-                body = {}
-            health = classify_openai_response(e.response.status_code, body, self.model)
-            if 400 <= e.response.status_code < 500 and self.circuit.set_health(health):
-                logger.warning("Content analysis disabled for this run: %s", health.message)
+            self._note_rejection(e.response)
             return ContentAnalysis(confidence=0.0)
         except httpx.HTTPError:
             if self.circuit.disable("content-analysis provider is unreachable"):
@@ -409,3 +396,15 @@ class OpenAICompatibleContentAnalyzer(ContentAnalyzer):
             for frame in frames:
                 with contextlib.suppress(OSError):
                     frame.unlink()
+
+    def _note_rejection(self, response: httpx.Response) -> None:
+        """Read a rejected response for what it says about the provider."""
+        from immich_memories.analysis.provider_health import classify_openai_response
+
+        try:
+            body = response.json()
+        except ValueError:
+            body = {}
+        health = classify_openai_response(response.status_code, body, self.model)
+        if 400 <= response.status_code < 500 and self.circuit.set_health(health):
+            logger.warning("Content analysis disabled for this run: %s", health.message)
