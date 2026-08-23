@@ -23,8 +23,8 @@ def _run(**kwargs):
     clip.width, clip.height = 1920, 1080
     config = Config()
 
+    # WHY: Immich is the external boundary — no live server in a unit test.
     with (
-        # WHY: Immich is the external boundary — no live server in a unit test.
         patch("immich_memories.generate.assets_to_clips", return_value=[clip]),
         # WHY: the pipeline is the collaborator under inspection.
         patch("immich_memories.analysis.smart_pipeline.SmartPipeline") as pipeline_type,
@@ -82,6 +82,7 @@ def test_the_flag_exists_and_says_what_it_does() -> None:
 
     from immich_memories.cli import main
 
+    # WHY: config-dir creation is a filesystem boundary; --help must not touch it.
     with patch("immich_memories.cli.init_config_dir"):
         help_text = CliRunner().invoke(main, ["generate", "--help"]).output
 
