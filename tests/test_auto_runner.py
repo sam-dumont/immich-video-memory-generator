@@ -15,15 +15,17 @@ import pytest
 from rich.console import Console
 
 from immich_memories.api.compatibility import ApiVersionPolicy
+from immich_memories.automation.candidate_discovery import (
+    _build_last_runs_by_type,
+    _trailing_year_range,
+)
 from immich_memories.automation.candidate_scorer import score_and_rank
 from immich_memories.automation.candidates import CandidateCategory, MemoryCandidate
 from immich_memories.automation.models import AutoOutcome, ProcessResult
 from immich_memories.automation.runner import (
     AutoRunner,
     _build_generate_command,
-    _build_last_runs_by_type,
     _execute_generate,
-    _trailing_year_range,
 )
 from immich_memories.cli.auto_cmd import _candidates_to_json, _print_candidates_table
 from immich_memories.config_loader import Config
@@ -182,7 +184,7 @@ class TestSuggestReturnsCandidates:
                 "immich_memories.analysis.trip_detection.detect_trips",
                 return_value=[trip],
             ),
-            patch("immich_memories.automation.runner.date") as clock,
+            patch("immich_memories.automation.candidate_discovery.date") as clock,
         ):
             clock.today.return_value = today
             clock.side_effect = date
@@ -267,7 +269,7 @@ class TestSuggestReturnsCandidates:
                 "immich_memories.preflight.check_immich",
                 return_value=MagicMock(status=CheckStatus.OK),
             ),
-            patch("immich_memories.automation.runner.date") as mock_date,
+            patch("immich_memories.automation.candidate_discovery.date") as mock_date,
         ):
             mock_date.today.return_value = date(2026, 8, 11)
             runner = AutoRunner(config)
@@ -302,7 +304,7 @@ class TestSuggestReturnsCandidates:
                 "immich_memories.preflight.check_immich",
                 return_value=MagicMock(status=CheckStatus.OK),
             ),
-            patch("immich_memories.automation.runner.date") as mock_date,
+            patch("immich_memories.automation.candidate_discovery.date") as mock_date,
         ):
             mock_date.today.return_value = date(2025, 3, 10)
             mock_date.side_effect = date
@@ -337,7 +339,7 @@ class TestSuggestReturnsCandidates:
                 "immich_memories.preflight.check_immich",
                 return_value=MagicMock(status=CheckStatus.OK),
             ),
-            patch("immich_memories.automation.runner.date") as mock_date,
+            patch("immich_memories.automation.candidate_discovery.date") as mock_date,
         ):
             mock_date.today.return_value = date(2025, 12, 27)
             mock_date.side_effect = date
@@ -411,7 +413,7 @@ class TestSuggestReturnsCandidates:
                 "immich_memories.preflight.check_immich",
                 return_value=MagicMock(status=CheckStatus.OK),
             ),
-            patch("immich_memories.automation.runner.date") as mock_date,
+            patch("immich_memories.automation.candidate_discovery.date") as mock_date,
             patch.object(runner.db, "list_runs", wraps=runner.db.list_runs) as mock_list_runs,
         ):
             mock_date.today.return_value = date(2026, 8, 11)
@@ -460,9 +462,9 @@ class TestSuggestReturnsCandidates:
                 "immich_memories.preflight.check_immich",
                 return_value=MagicMock(status=CheckStatus.OK),
             ),
-            patch("immich_memories.automation.runner.date") as mock_date,
+            patch("immich_memories.automation.candidate_discovery.date") as mock_date,
             patch(
-                "immich_memories.automation.runner.score_and_rank",
+                "immich_memories.automation.candidate_discovery.score_and_rank",
                 wraps=score_and_rank,
             ) as mock_score,
         ):
@@ -550,9 +552,9 @@ class TestSuggestReturnsCandidates:
                 "immich_memories.preflight.check_immich",
                 return_value=MagicMock(status=CheckStatus.OK),
             ),
-            patch("immich_memories.automation.runner.date") as mock_date,
+            patch("immich_memories.automation.candidate_discovery.date") as mock_date,
             patch(
-                "immich_memories.automation.runner._run_all_detectors",
+                "immich_memories.automation.candidate_discovery._run_all_detectors",
                 return_value=[monthly, alice],
             ),
         ):
@@ -739,10 +741,10 @@ class TestRunOneNoCandidates:
             ),
             patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
             patch(
-                "immich_memories.automation.runner._run_all_detectors",
+                "immich_memories.automation.candidate_discovery._run_all_detectors",
                 return_value=rejected_candidates,
             ),
-            patch("immich_memories.automation.runner.date") as clock,
+            patch("immich_memories.automation.candidate_discovery.date") as clock,
         ):
             clock.today.return_value = date(2026, 8, 11)
             clock.side_effect = date
@@ -1739,7 +1741,7 @@ class TestFailedCandidateBackoff:
                 return_value=MagicMock(status=CheckStatus.OK),
             ),
             # WHY: pins today so the month fixtures stay in range
-            patch("immich_memories.automation.runner.date") as mock_date,
+            patch("immich_memories.automation.candidate_discovery.date") as mock_date,
         ):
             mock_date.today.return_value = date(2026, 8, 11)
             runner = AutoRunner(config)
