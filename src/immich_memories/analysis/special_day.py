@@ -527,6 +527,33 @@ def _ask(
     )
 
 
+# A model that cannot answer is not a verdict — that fail-open is deliberate,
+# because an unreachable LLM must not turn every day of a library into an
+# ordinary one. It swallowed our own mistakes too: a keyword argument that did
+# not match a callee's signature came back as a quiet special=False, and across
+# a scan that shape means zero special days found, every day, with nothing in
+# the log to say why.
+#
+# Named rather than inferred, and inverted on purpose: anything unrecognised
+# keeps failing open, so a transport error nobody anticipated stays quiet
+# instead of becoming a crash.
+_OUR_OWN_BUGS = (TypeError, AttributeError, NameError, KeyError, IndexError)
+
+
+def _stop_if_this_is_our_bug(exc: Exception, doing: str) -> None:
+    """Let a bug in this code stop the scan; let an unreachable model pass.
+
+    Raised as well as logged. A bug here is the same on every candidate day, so
+    a scan that swallows it does not degrade — it runs for hours and finds
+    nothing, which costs more than failing on the first day. The ERROR line
+    carries the traceback so the diagnosis survives a catch added upstream
+    later.
+    """
+    if isinstance(exc, _OUR_OWN_BUGS):
+        logger.error("Special-day %s hit a bug in our own code", doing, exc_info=exc)
+        raise exc
+
+
 _LOOK_PROMPT = "One line per picture, in order, numbered: what is in it."
 
 # Reasoning about a judgement call costs 5-10x the latency of a fast answer, and
@@ -554,6 +581,7 @@ def _look_at(
     try:
         raw = _ask(_LOOK_PROMPT, llm_config, timeout_seconds, [image for _, image in thumbnails])
     except Exception as exc:  # noqa: BLE001 - a look that fails is not a verdict
+        _stop_if_this_is_our_bug(exc, "look")
         logger.debug("Special-day look failed: %s", type(exc).__name__)
         return []
     # A null content is documented mlx-vlm behaviour, and the rest of this
@@ -616,6 +644,7 @@ def ask_if_special(
     try:
         raw = _ask(prompt, llm_config, timeout_seconds, images, thinking=reasons)
     except Exception as exc:  # noqa: BLE001 - an unreachable model is not a verdict
+        _stop_if_this_is_our_bug(exc, "question")
         logger.debug("Special-day question failed: %s", type(exc).__name__)
         return SpecialDay(special=False)
 
