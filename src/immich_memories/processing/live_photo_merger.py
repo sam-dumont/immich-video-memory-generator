@@ -19,9 +19,24 @@ if TYPE_CHECKING:
     import numpy as np
 
 from immich_memories.api.models import Asset
+from immich_memories.processing.encoding_plan import (
+    EncodingPlan,
+    EncodingRequest,
+    HdrMode,
+    OutputCodec,
+    resolve_encoding_plan,
+)
+from immich_memories.processing.hardware import HWAccelCapabilities
+from immich_memories.processing.hardware_detection import detect_hardware_acceleration
 
 # Default Live Photo clip duration (1.5s before + 1.5s after shutter)
 DEFAULT_CLIP_DURATION = 3.0
+
+# A merged burst is an intermediate: the assembler re-encodes it under the run's
+# own plan, so this only has to survive one more generation without visible
+# loss. 18 is the project's default CRF and is near-transparent; going lower
+# would only grow a file that is deleted at the end of the run.
+BURST_CRF = 18
 
 
 def estimate_clip_duration(asset: Asset) -> float:
@@ -540,6 +555,7 @@ def build_merge_command(
     output: Path,
     *,
     audio_trim_points: list[tuple[float, float]] | None = None,
+    hardware_enabled: bool = True,
 ) -> list[str]:
     """Build an FFmpeg command that trims and merges Live Photo clips.
 
@@ -550,8 +566,9 @@ def build_merge_command(
     (iPhone MOV containers have ~50ms audio/video offset). A 30ms fade at each
     audio boundary prevents crackling from waveform discontinuities.
 
-    HDR clips (iPhone HLG) are encoded with libx265 10-bit to preserve
-    color metadata. SDR clips use libx264.
+    HDR clips (iPhone HLG) are encoded as H.265 10-bit to preserve color
+    metadata; SDR clips use H.264. Which encoder implements that, and at what
+    quality, comes from ``burst_encoding_plan`` rather than being hardcoded.
     """
     is_hdr = bool(clip_paths) and _detect_clip_hdr(clip_paths[0])
     has_audio = all(probe_clip_has_audio(p) for p in clip_paths)
@@ -567,7 +584,8 @@ def build_merge_command(
     )
     _build_concat_and_map(cmd, parts, v_labels, a_labels, n, has_audio)
 
-    _append_encoding_args(cmd, is_hdr, has_audio, output)
+    plan = burst_encoding_plan(is_hdr=is_hdr, hardware_enabled=hardware_enabled)
+    _append_encoding_args(cmd, plan, has_audio, output)
     return cmd
 
 
@@ -637,27 +655,53 @@ def _build_concat_and_map(
             cmd.extend(["-map", f"[{a_labels[0].strip('[]')}]"])
 
 
-def _append_encoding_args(cmd: list[str], is_hdr: bool, has_audio: bool, output: Path) -> None:
+def burst_encoding_plan(*, is_hdr: bool, hardware_enabled: bool = True) -> EncodingPlan:
+    """The encoding contract for a merged burst.
+
+    Bursts merge at download time, before the run has resolved its own
+    ``EncodingPlan``, which is why this path used to hardcode an encoder. It
+    does not need the run's plan: the merged file is an intermediate that the
+    assembler re-encodes, and adopting an SDR output plan here would tone-map an
+    HDR burst before anything had chosen to. What it needs is the run's machine,
+    and ``detect_hardware_acceleration`` is ``lru_cache``d process-wide, so
+    asking for it here costs a dict lookup after the first probe.
+
+    The codec follows the source rather than the output: HLG bursts stay H.265
+    10-bit so the transfer survives to the assembler.
+    """
+    capabilities = detect_hardware_acceleration() if hardware_enabled else HWAccelCapabilities()
+    request = EncodingRequest(
+        codec=OutputCodec.H265 if is_hdr else OutputCodec.H264,
+        hdr_mode=HdrMode.HDR if is_hdr else HdrMode.SDR,
+        hardware_enabled=hardware_enabled,
+        # An intermediate is not worth a slow preset; the CRF carries the quality.
+        preset="fast",
+        crf=BURST_CRF,
+        container="mp4",
+    )
+    return resolve_encoding_plan(request, capabilities, input_has_hdr=is_hdr)
+
+
+def _append_encoding_args(
+    cmd: list[str], plan: EncodingPlan, has_audio: bool, output: Path
+) -> None:
     """Append video/audio codec arguments to the FFmpeg command."""
-    if is_hdr:
+    cmd.extend(["-c:v", plan.encoder, *plan.encoder_args, "-pix_fmt", plan.pixel_format])
+
+    if plan.hdr:
         cmd.extend(
             [
-                "-c:v",
-                "libx265",
-                "-pix_fmt",
-                "yuv420p10le",
                 "-color_primaries",
                 "bt2020",
                 "-color_trc",
                 "arib-std-b67",
                 "-colorspace",
                 "bt2020nc",
-                "-tag:v",
-                "hvc1",
             ]
         )
-    else:
-        cmd.extend(["-c:v", "libx264"])
+    if plan.codec is OutputCodec.H265:
+        # hev1 is the FFmpeg default in MP4 and will not play on Apple devices.
+        cmd.extend(["-tag:v", "hvc1"])
 
     if has_audio:
         cmd.extend(["-c:a", "aac"])

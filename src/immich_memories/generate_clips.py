@@ -81,6 +81,7 @@ def _download_video_path(
             clip,
             output_dir,
             prefetched_burst_results=burst_results,
+            hardware_enabled=params.config.hardware.enabled,
         )
 
     prefetched_result = prefetched.get(clip.asset.id) if prefetched is not None else None
