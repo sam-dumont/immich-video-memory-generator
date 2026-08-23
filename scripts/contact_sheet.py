@@ -48,6 +48,7 @@ def _collect(rows: list[dict]):
             rows.append(
                 {
                     "id": clip.asset.id,
+                    "video_id": getattr(clip.asset, "live_photo_video_id", None),
                     "when": taken.strftime("%d %b %H:%M") if taken else "?",
                     "day": taken.strftime("%Y-%m-%d") if taken else "?",
                     "kind": "PHO" if "IMAGE" in str(getattr(clip.asset, "type", "")) else "VID",
@@ -77,7 +78,7 @@ def _mean_luma(image) -> int | str:
     return int(np.asarray(image.convert("L"), dtype="float32").mean())
 
 
-def _thumbnail(client, asset_id: str):
+def _thumbnail(client, asset_id: str, video_id: str | None = None):
     """Fetch a tile, trying the sizes Immich offers before giving up.
 
     Live Photo video components do not always answer on "preview", and a run
@@ -92,14 +93,36 @@ def _thumbnail(client, asset_id: str):
         except Exception as exc:  # noqa: BLE001, PERF203 - try the next size, then give up
             last = exc
             continue
-    frame = _frame_from_cache(asset_id)
+    frame = _frame_from_cache(*dict.fromkeys(i for i in (asset_id, video_id) if i))
     if frame is not None:
         return frame
     logger.warning("No thumbnail for %s: %s", asset_id, type(last).__name__)
     return None
 
 
-def _frame_from_cache(asset_id: str):
+def _cached_video(*asset_ids: str) -> Path | None:
+    """The cached download for the first of these ids that has one.
+
+    Reads the configured cache directory rather than assuming one under
+    $HOME, and applies the two rules VideoCache._find_cached applies: a
+    `.part` is a download still in flight, and a zero-length file is nothing.
+    A Live Photo's footage is cached under its video component id, so the
+    still's id alone never finds it.
+    """
+    from immich_memories.config import get_config
+
+    cache = get_config().cache.video_cache_path
+    for asset_id in asset_ids:
+        sub = cache / (asset_id[:2] if len(asset_id) >= 2 else "00")
+        if not sub.is_dir():
+            continue
+        for match in sorted(sub.glob(f"{asset_id}.*")):
+            if match.suffix != ".part" and match.is_file() and match.stat().st_size > 0:
+                return match
+    return None
+
+
+def _frame_from_cache(*asset_ids: str):
     """Grab a frame from the locally cached video, if we have one.
 
     Immich does not always hold a thumbnail — measured at 8% of assets on this
@@ -112,14 +135,13 @@ def _frame_from_cache(asset_id: str):
 
     from PIL import Image
 
-    cache = Path.home() / ".immich-memories" / "cache" / "video-cache"
-    matches = list(cache.glob(f"*/{asset_id}.*")) if cache.is_dir() else []
-    if not matches:
+    source = _cached_video(*asset_ids)
+    if source is None:
         return None
     with tempfile.NamedTemporaryFile(suffix=".jpg") as tmp:
         try:
             subprocess.run(
-                ["ffmpeg", "-y", "-v", "error", "-ss", "0.5", "-i", str(matches[0]),
+                ["ffmpeg", "-y", "-v", "error", "-ss", "0.5", "-i", str(source),
                  "-frames:v", "1", "-q:v", "4", tmp.name],
                 capture_output=True,
                 timeout=20,
@@ -173,7 +195,7 @@ def _draw(rows: list[dict], label: str, subtitle: str, out: Path) -> Path:
         for i, row in enumerate(rows):
             x = PAD + (i % COLUMNS) * (THUMB_W + PAD)
             y = HEADER_H + (i // COLUMNS) * (THUMB_H + LABEL_H + PAD)
-            image = _thumbnail(client, row["id"])
+            image = _thumbnail(client, row["id"], row["video_id"])
             row["lum"] = _mean_luma(image)
             if image is None:
                 # A blank tile is unreviewable, so say why rather than leave a
