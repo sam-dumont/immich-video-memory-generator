@@ -133,39 +133,6 @@ class TestFailuresCarryStderrTail:
         process.returncode = 1
         return process
 
-    def test_globe_video_failure_reports_stderr(self) -> None:
-        from unittest.mock import patch
-
-        import numpy as np
-
-        from immich_memories.titles.globe_renderer import GlobeCameraKeyframe
-        from immich_memories.titles.globe_video import create_globe_animation_video
-
-        keyframes = [
-            GlobeCameraKeyframe(lat=0.0, lon=0.0, distance=2.2, time=0.0),
-            GlobeCameraKeyframe(lat=0.5, lon=0.3, distance=2.2, time=1.0),
-        ]
-
-        with (
-            # WHY: replaces the FFmpeg subprocess
-            patch("immich_memories.titles.globe_video.subprocess.Popen") as popen,
-            # WHY: replaces the Taichi/numpy globe projection kernel
-            patch("immich_memories.titles.globe_video.project_globe_frame"),
-        ):
-            popen.return_value = self._failing_process()
-            with pytest.raises(RuntimeError, match="ffmpeg exploded"):
-                create_globe_animation_video(
-                    texture=np.full((18, 36, 3), 0.5, dtype=np.float32),
-                    keyframes=keyframes,
-                    output_path=Path("/tmp/globe_fail.mp4"),
-                    width=32,
-                    height=18,
-                    duration=0.2,
-                    fps=10.0,
-                    hold_start=0.0,
-                    hold_end=0.0,
-                )
-
     def test_video_encoding_failure_reports_stderr(self, tmp_path: Path) -> None:
         from unittest.mock import patch
 

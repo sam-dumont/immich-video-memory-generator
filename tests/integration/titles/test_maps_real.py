@@ -17,7 +17,6 @@ import pytest
 from PIL import Image
 
 from immich_memories.titles.map_renderer import (
-    render_equirectangular_map,
     render_location_card,
     render_trip_map_array,
     render_trip_map_frame,
@@ -79,22 +78,6 @@ class TestRenderLocationCard:
         arr = np.array(img)
         # WHY: no coordinates → dark gradient (30,30,35), very uniform
         assert arr.mean() < 50, "Fallback card should be dark"
-
-
-class TestRenderEquirectangularMap:
-    def test_correct_shape(self):
-        arr = render_equirectangular_map(_PARIS[0], _PARIS[1], _W, _H)
-        assert isinstance(arr, np.ndarray)
-        assert arr.shape == (_H, _W, 3)
-        assert arr.dtype == np.float32
-
-    def test_has_content(self):
-        arr = render_equirectangular_map(_PARIS[0], _PARIS[1], _W, _H)
-        # WHY: even the dark fallback returns 0.15-filled array which has std>0
-        # A real satellite image has much more variation
-        assert arr.std() > 0.0, "Equirectangular map is completely uniform"
-        assert arr.min() >= 0.0
-        assert arr.max() <= 1.0
 
 
 class TestSingleLocation:

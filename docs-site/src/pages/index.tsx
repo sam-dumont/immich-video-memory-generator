@@ -133,7 +133,7 @@ const showcaseItems: ShowcaseItem[] = [
   },
   {
     title: 'Cinematic title screens',
-    description: 'Animated gradients, particle systems, globe rendering, trip maps. Three rendering backends (Taichi GPU, PIL, FFmpeg) pick the best your hardware can do.',
+    description: 'Animated gradients, particle systems, satellite trip maps. Three rendering backends (Taichi GPU, PIL, FFmpeg) pick the best your hardware can do.',
     image: '/img/screenshots/step3-options.png',
     alt: 'Generation options with title and music settings',
   },
@@ -203,7 +203,7 @@ function ValuesSection() {
               </svg>
             </div>
             <strong>Cinematic title screens</strong>
-            <p>Animated globe fly-overs, satellite map zoom, particle systems, 5 visual styles. Not "clip 1, clip 2, clip 3": actual production polish.</p>
+            <p>Satellite map fly-overs, particle systems, 5 visual styles. Not "clip 1, clip 2, clip 3": actual production polish.</p>
           </div>
           <div className={styles.value}>
             <div className={styles.valueIcon}>

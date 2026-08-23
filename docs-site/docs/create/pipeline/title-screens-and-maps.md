@@ -7,7 +7,7 @@ title: Title Screens & Maps
 
 This is where the output stops looking like "FFmpeg concat" and starts looking like something you'd actually want to show people.
 
-Title screens are the structural connective tissue: animated intro cards, month dividers, trip maps, globe fly-overs, and ending sequences. They're what separates a clip dump from a memory video that feels produced. Same kind of polish as Relive, but running on your own hardware with your own data.
+Title screens are the structural connective tissue: animated intro cards, month dividers, satellite map fly-overs, and ending sequences. They're what separates a clip dump from a memory video that feels produced. Same kind of polish as Relive, but running on your own hardware with your own data.
 
 ## What gets generated
 
@@ -15,8 +15,7 @@ Depending on the memory type, title screens include some or all of:
 
 - **Intro card**: content-backed background (blurred + darkened frame from your footage), white title text with entrance animation, optional subtitle (person name, date range). 3.5 seconds.
 - **Month dividers**: for yearly memories, each month section gets a divider card. Keeps the viewer oriented in a 10-minute video.
-- **Trip map animation**: satellite fly-over from home to destination using Van Wijk zoom. Replaces the generic intro for trip memories.
-- **Globe rendering**: for long-distance trips, a rotating 3D globe with departure and arrival points. Built in Taichi, runs on GPU when available.
+- **Trip map animation**: satellite fly-over from home to destination using Van Wijk zoom. Replaces the generic intro for trip memories. The further apart the two points, the further the camera pulls out mid-flight.
 - **Location cards**: city name + map thumbnail between trip segments.
 - **Ending sequence**: fade-to-white with year or closing text.
 
@@ -26,7 +25,7 @@ The system picks the best renderer available on your hardware:
 
 | Backend | When it's used | What it does well |
 |---------|---------------|------------------|
-| **Taichi GPU** | Apple Silicon or CUDA GPU detected | Particle systems, animated gradients, globe rendering, SDF text. Full cinematic quality. |
+| **Taichi GPU** | Apple Silicon or CUDA GPU detected | Particle systems, animated gradients, SDF text. Full cinematic quality. |
 | **PIL** | No GPU, or `--no-animated-background` | Static gradients, clean text rendering. Still looks good, just no animation. |
 | **FFmpeg** | Fallback for minimal environments | Text overlay via drawtext filter. Basic but functional. |
 

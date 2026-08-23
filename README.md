@@ -151,7 +151,7 @@ immich-memories generate --year 2024 --person "John" --output ~/Videos/john_2024
 - **Videos + Photos** — Unified selection pool: videos, photos (Ken Burns / face-aware pan), and Live Photos
 - **7 Memory Types** — Year in Review, Season, Person Spotlight, Multi-Person, Monthly Highlights, On This Day, Trip
 - **Smart Clip Selection** — Scene detection, interest scoring, duplicate filtering, temporal coverage
-- **Cinematic Titles** — GPU-rendered title screens with globe animations, satellite maps, month dividers
+- **Cinematic Titles** — GPU-rendered title screens with satellite map fly-overs, month dividers
 - **Face-Aware Cropping** — Keeps faces centered when converting aspect ratios
 - **Hardware Acceleration** — NVIDIA NVENC, Apple VideoToolbox, Intel QSV, AMD VAAPI
 - **AI Music Generation** — ACE-Step or MusicGen with automatic mood detection and audio ducking

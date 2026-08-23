@@ -140,7 +140,7 @@ src/immich_memories/
 ├── api/          # Immich API client (ImmichClient + 5 composed services)
 ├── analysis/     # Video analysis, scoring, clip selection (SmartPipeline + services)
 ├── processing/   # Video assembly (VideoAssembler + 8 composed services)
-├── titles/       # Title screens, maps, globe animation (TitleScreenGenerator + services)
+├── titles/       # Title screens, map fly-overs (TitleScreenGenerator + services)
 ├── audio/        # Music generation, audio ducking, mood analysis
 ├── ui/           # NiceGUI 4-step wizard
 ├── cache/        # Analysis, video, and thumbnail caching (SQLite)

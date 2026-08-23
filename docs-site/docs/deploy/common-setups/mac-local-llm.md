@@ -85,7 +85,7 @@ export IMMICH_MEMORIES_CONTENT_ANALYSIS__ENABLED=true
 - **LLM content analysis**: Qwen2.5-VL analyzes video frames and scores clips based on content (birthday cakes, sunsets, kids playing). Adds a content score weighted at 35% in the overall clip ranking.
 - **VideoToolbox encoding**: hardware-accelerated H.264/H.265 encoding via Apple's VideoToolbox. 5-10x faster than CPU encoding.
 - **Vision framework face detection**: uses macOS native Vision framework for face detection. More accurate than the CPU fallback, no additional model downloads needed.
-- **Taichi GPU title renderer**: particle effects, animated globes, and gradient backgrounds rendered on Apple GPU.
+- **Taichi GPU title renderer**: particle effects and gradient backgrounds rendered on Apple GPU.
 - **All memory types and features**: everything works natively on Mac.
 
 ## What doesn't work locally

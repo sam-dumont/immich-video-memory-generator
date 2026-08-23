@@ -233,37 +233,6 @@ class TestVideoEncodingPlan:
         assert "arib-std-b67" not in encoder_args
 
 
-class TestGlobeVideoPlan:
-    """Globe commands preserve the configured codec contract."""
-
-    def test_hdr_true_includes_hlg_metadata(self):
-        from unittest.mock import patch
-
-        from immich_memories.titles.globe_video import _build_ffmpeg_command
-
-        with patch(
-            "immich_memories.processing.hdr_utilities._check_zscale_available",
-            return_value=True,
-        ):
-            cmd = _build_ffmpeg_command(
-                1920, 1080, 30.0, 5.0, Path("/tmp/g.mp4"), _hardware_h265_hdr_plan()
-            )
-        cmd_str = " ".join(cmd)
-        assert "arib-std-b67" in cmd_str
-        assert "bt2020" in cmd_str
-
-    def test_hdr_false_omits_hlg_metadata(self):
-        from immich_memories.titles.globe_video import _build_ffmpeg_command
-
-        cmd = _build_ffmpeg_command(
-            1920, 1080, 30.0, 5.0, Path("/tmp/g.mov"), _software_prores_plan()
-        )
-        cmd_str = " ".join(cmd)
-        assert "arib-std-b67" not in cmd_str
-        assert "bt2020" not in cmd_str
-        assert "-c:v prores_ks" in cmd_str
-
-
 class TestTitleScreenConfigPlan:
     """TitleScreenConfig derives HDR truth from its plan."""
 

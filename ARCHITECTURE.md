@@ -221,10 +221,7 @@ src/immich_memories/
 │   ├── renderer_ffmpeg.py      # FFmpeg-based renderer
 │   ├── taichi_kernels.py       # Taichi GPU kernels
 │   ├── taichi_video.py         # Taichi video creation
-│   ├── taichi_globe.py         # Taichi globe rendering
-│   ├── globe_renderer.py       # Globe renderer
-│   ├── globe_video.py          # Globe video creation
-│   ├── map_animation.py        # Map animation
+│   ├── map_animation.py        # Satellite map fly-over (van Wijk zoom)
 │   ├── map_renderer.py         # Map tile rendering (staticmap + PIL overlay)
 │   ├── backgrounds.py          # Background generation
 │   ├── backgrounds_animated.py # Animated gradient backgrounds

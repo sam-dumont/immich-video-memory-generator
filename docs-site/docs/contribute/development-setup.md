@@ -79,7 +79,7 @@ src/immich_memories/
   speech/       # VAD + transcription for cut placement
   photos/       # Photo-to-video animation
   processing/   # Video assembly (FFmpeg)
-  titles/       # Title screens, maps, globe animation
+  titles/       # Title screens, map fly-overs
   audio/        # Music generation, audio ducking
   ui/           # NiceGUI web interface
   cli/          # Click commands

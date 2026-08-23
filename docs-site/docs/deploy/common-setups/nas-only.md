@@ -90,7 +90,7 @@ If Immich runs on the same Docker network, use the container name (`immich-serve
 - **LLM content analysis**: needs a separate LLM server (mlx-vlm, Ollama, vLLM). Without it, scoring uses motion + faces + audio only: still good, just not as context-aware.
 - **AI music generation**: MusicGen and ACE-Step need GPU servers. Use custom music upload instead.
 - **GPU encoding**: NAS CPUs (Celeron, Atom, low-end Xeon) don't have usable GPU encoders. Encoding is CPU-only via libx264.
-- **Taichi GPU title renderer**: falls back to PIL. Title screens still look good, just without particle effects and animated globes.
+- **Taichi GPU title renderer**: falls back to PIL. Title screens still look good, just without particle effects and animated gradients.
 
 ## One switch: `preset: fast`
 
