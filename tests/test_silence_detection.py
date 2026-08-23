@@ -6,12 +6,15 @@ numpy audio arrays — no FFmpeg, no video files needed.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
 from immich_memories.analysis.silence_detection import (
     _analyze_audio_for_silence,
     _collect_silence_gaps,
+    detect_silence_gaps,
     find_nearest_silence,
 )
 
@@ -344,3 +347,29 @@ class TestFindNearestSilence:
 # ---------------------------------------------------------------------------
 # TestAdjustSegmentToSilence
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# TestDetectSilenceGapsDegradation
+# ---------------------------------------------------------------------------
+
+
+class TestDetectSilenceGapsDegradation:
+    """What `detect_silence_gaps` promises when it cannot read the audio.
+
+    Segment generation treats an empty gap list as "no silence-based boundary
+    adjustment" and keeps its original cuts, so returning nothing is the safe
+    degradation. These pin that contract through the public function with a
+    real unreadable file — no mocks, no fixture video.
+    """
+
+    def test_unreadable_file_yields_no_gaps(self, tmp_path: Path) -> None:
+        """A file FFmpeg cannot decode yields no gaps rather than raising."""
+        not_a_video = tmp_path / "not_a_video.mp4"
+        not_a_video.write_bytes(b"this is not a video container")
+
+        assert detect_silence_gaps(not_a_video) == []
+
+    def test_missing_file_yields_no_gaps(self, tmp_path: Path) -> None:
+        """A path that does not exist yields no gaps rather than raising."""
+        assert detect_silence_gaps(tmp_path / "absent.mp4") == []

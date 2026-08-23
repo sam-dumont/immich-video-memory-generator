@@ -114,9 +114,6 @@ Quote the package spec — zsh (the macOS default shell) treats `[...]` as a glo
 `no matches found` otherwise.
 
 ```bash
-# Face recognition
-pip install "immich-memories[face]"
-
 # macOS Apple Vision framework
 pip install "immich-memories[mac]"
 
