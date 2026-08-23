@@ -49,14 +49,14 @@ def test_returns_nothing_when_the_package_is_not_installed(tmp_path):
     assert bundled_track_for_mood("calm", library=tmp_path / "absent") is None
 
 
-def test_resolve_music_file_uses_the_bundle_when_no_backend_is_configured(library):
-    from immich_memories.generate_music import resolve_music_file
+def test_resolve_music_uses_the_bundle_when_no_backend_is_configured(library):
+    from immich_memories.generate_music import resolve_music
 
     config = Config()
     config.ace_step.enabled = False
     config.musicgen.enabled = False
 
-    chosen = resolve_music_file(
+    chosen = resolve_music(
         config=config,
         music_path=None,
         no_music=False,
@@ -66,13 +66,13 @@ def test_resolve_music_file_uses_the_bundle_when_no_backend_is_configured(librar
         bundled_library=library,
     )
 
-    assert chosen is not None
+    assert chosen.path is not None
 
 
 def test_no_music_still_means_no_music(library):
-    from immich_memories.generate_music import resolve_music_file
+    from immich_memories.generate_music import resolve_music
 
-    chosen = resolve_music_file(
+    chosen = resolve_music(
         config=Config(),
         music_path=None,
         no_music=True,
@@ -82,14 +82,14 @@ def test_no_music_still_means_no_music(library):
         bundled_library=library,
     )
 
-    assert chosen is None
+    assert chosen.path is None
 
 
 def test_a_missing_explicit_track_is_not_silently_replaced(library, tmp_path):
     """A typo in --music should fail loudly, not quietly play something else."""
-    from immich_memories.generate_music import resolve_music_file
+    from immich_memories.generate_music import resolve_music
 
-    chosen = resolve_music_file(
+    chosen = resolve_music(
         config=Config(),
         music_path=tmp_path / "typo.mp3",
         no_music=False,
@@ -99,12 +99,12 @@ def test_a_missing_explicit_track_is_not_silently_replaced(library, tmp_path):
         bundled_library=library,
     )
 
-    assert chosen is None
+    assert chosen.path is None
 
 
 def test_bundled_music_is_mastered_before_use(library, tmp_path):
     """Bundled and generated tracks get the tilt and loudness target; user files do not."""
-    from immich_memories.generate_music import resolve_music_file
+    from immich_memories.generate_music import resolve_music
 
     seen: list[Path] = []
 
@@ -121,7 +121,7 @@ def test_bundled_music_is_mastered_before_use(library, tmp_path):
         config = Config()
         config.ace_step.enabled = False
         config.musicgen.enabled = False
-        resolve_music_file(
+        resolve_music(
             config=config,
             music_path=None,
             no_music=False,
@@ -137,12 +137,12 @@ def test_bundled_music_is_mastered_before_use(library, tmp_path):
 
 
 def test_a_user_supplied_track_is_left_alone(library, tmp_path):
-    from immich_memories.generate_music import resolve_music_file
+    from immich_memories.generate_music import resolve_music
 
     theirs = tmp_path / "mine.mp3"
     theirs.write_bytes(b"")
 
-    chosen = resolve_music_file(
+    chosen = resolve_music(
         config=Config(),
         music_path=theirs,
         no_music=False,
@@ -152,4 +152,4 @@ def test_a_user_supplied_track_is_left_alone(library, tmp_path):
         bundled_library=library,
     )
 
-    assert chosen == theirs
+    assert chosen.path == theirs

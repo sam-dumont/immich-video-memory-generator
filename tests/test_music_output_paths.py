@@ -1477,7 +1477,7 @@ def test_music_resolution_failure_is_optional_and_sanitized(tmp_path: Path) -> N
     tracker = MagicMock()
 
     with patch(
-        "immich_memories.generate_music.resolve_music_file",
+        "immich_memories.generate_music.resolve_music",
         side_effect=RuntimeError("api_key=top-secret backend unavailable"),
     ):
         result = _run_music_phase(
@@ -1531,12 +1531,12 @@ def test_optional_music_logs_never_include_raw_backend_secret(
         )
 
     # A generator failure no longer ends the phase — it falls through to a
-    # bundled track (#422) — so the sanitized backend warning lands in the log
-    # rather than in the phase result. The property under test is that the raw
-    # secret reaches neither, whatever the phase ends on.
+    # bundled track (#422) — but the substitution is still reported (#515), so
+    # the sanitized warning has to reach both the log and the phase result.
     assert "Optional music failed: backend rejected ***" in caplog.text
     assert "top-secret" not in caplog.text
-    assert result.warning is None or "top-secret" not in result.warning
+    assert result.warning is not None
+    assert "top-secret" not in result.warning
 
 
 def test_music_phase_passes_exact_encoding_plan_to_publication(tmp_path: Path) -> None:

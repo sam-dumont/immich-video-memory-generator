@@ -43,6 +43,19 @@ class MusicPhaseResult:
     warning: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class MusicSelection:
+    """The track the run will use, and what it had to settle for to get there.
+
+    The warning travels with the path rather than only reaching the log,
+    because a bundled substitution is a success the user still needs told
+    about: otherwise a dead backend looks like working music forever.
+    """
+
+    path: Path | None
+    warning: str | None = None
+
+
 def optional_music_warning(exc: Exception, config: Config | None = None) -> str:
     """Build one user-safe optional-music warning with configured secrets removed."""
     safe_message = sanitize_error_message(str(exc))
@@ -115,7 +128,7 @@ def music_config_available(config: Config) -> bool:
     return bool((ace and ace.enabled) or (mg and mg.enabled))
 
 
-def resolve_music_file(
+def resolve_music(
     config: Config,
     music_path: Path | None,
     no_music: bool,
@@ -124,12 +137,14 @@ def resolve_music_file(
     memory_type: str | None,
     report_fn: Callable[[str, float, str], None] | None = None,
     bundled_library: Path | None = None,
-) -> Path | None:
-    """Determine the music file to use: provided path, generated, bundled, or None."""
+) -> MusicSelection:
+    """Determine the music to use: provided path, generated, bundled, or none."""
     if no_music:
-        return None
+        return MusicSelection(None)
     if music_path and music_path.exists():
-        return music_path
+        return MusicSelection(music_path)
+
+    warning: str | None = None
     if not music_path and music_config_available(config):
         if report_fn:
             report_fn("music", 0.85, "Generating AI music...")
@@ -141,16 +156,19 @@ def resolve_music_file(
             # A configured generator that fails used to be worse than no generator
             # at all: the exception unwound past the bundled branch below and the
             # whole music phase was abandoned, so the most-configured setup got
-            # the only silent video. Fall through to bundled and keep the warning.
-            logger.warning("%s; using a bundled track", optional_music_warning(exc, config))
+            # the only silent video. Fall through to bundled and carry the warning
+            # out with the track — a log line alone never reaches the run artifact,
+            # the UI or the nightly notification, so a dead backend stayed invisible.
+            warning = f"{optional_music_warning(exc, config)}; used a bundled track instead"
+            logger.warning(warning)
             generated = None
         if generated:
-            return _master(generated, run_output_dir)
+            return MusicSelection(_master(generated, run_output_dir))
 
     if music_path is not None:
         # An explicit track that is missing is a user error; substituting bundled
         # music would hide the typo.
-        return None
+        return MusicSelection(None)
 
     # WHY: with no generator configured this used to return silence, which is what
     # the Docker/NAS path gets by default.
@@ -161,7 +179,9 @@ def resolve_music_file(
         library=bundled_library,
         cadence_seconds=photo_cadence_seconds(assembly_clips),
     )
-    return _master(bundled, run_output_dir) if bundled else bundled
+    if not bundled:
+        return MusicSelection(None, warning)
+    return MusicSelection(_master(bundled, run_output_dir), warning)
 
 
 def _master(track: Path, run_output_dir: Path) -> Path:

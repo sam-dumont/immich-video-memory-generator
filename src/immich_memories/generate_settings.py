@@ -253,7 +253,7 @@ def _run_music_phase(
     from immich_memories.generate_music import (
         MusicPhaseResult,
         apply_music_file,
-        resolve_music_file,
+        resolve_music,
     )
 
     def _report_fn(phase: str, progress: float, msg: str) -> None:
@@ -262,11 +262,11 @@ def _run_music_phase(
 
     phase_started = _music_phase_requested(params)
     if phase_started:
-        # WHY: resolve_music_file performs the expensive model generation and
+        # WHY: resolve_music performs the expensive model generation and
         # optional stem separation, so the phase must include that work.
         run_tracker.start_phase("music", 1)
     try:
-        music_file = resolve_music_file(
+        selection = resolve_music(
             config=params.config,
             music_path=params.music_path,
             no_music=params.no_music,
@@ -275,10 +275,12 @@ def _run_music_phase(
             memory_type=params.memory_type,
             report_fn=_report_fn,
         )
-        if not music_file:
-            if phase_started:
+        if not selection.path:
+            if phase_started and selection.warning:
+                run_tracker.complete_phase(items_processed=0, errors=[{"error": selection.warning}])
+            elif phase_started:
                 run_tracker.complete_phase(items_processed=0)
-            return MusicPhaseResult(applied=False)
+            return MusicPhaseResult(applied=False, warning=selection.warning)
         _report_fn("music", 0.9, "Mixing music...")
         if not phase_started:
             # Defensive fallback for custom resolvers that produce a track
@@ -287,7 +289,7 @@ def _run_music_phase(
             phase_started = True
         apply_music_file(
             result_path,
-            music_file,
+            selection.path,
             params.music_volume,
             encoding_plan,
             mute_windows=mute_windows,
@@ -300,7 +302,7 @@ def _run_music_phase(
             phase_started=phase_started,
         )
     run_tracker.complete_phase(items_processed=1)
-    return MusicPhaseResult(applied=True)
+    return MusicPhaseResult(applied=True, warning=selection.warning)
 
 
 def _upload_to_immich(

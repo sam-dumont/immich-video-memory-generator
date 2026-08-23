@@ -237,10 +237,12 @@ GPU speeds up the write side of assembly, not the read side.
 
 ### 7. Music
 
-`resolve_music_file()` in `generate_music.py` walks a fixed chain: an explicit
+`resolve_music()` in `generate_music.py` walks a fixed chain: an explicit
 `--music` file wins; otherwise AI generation if a backend is enabled; otherwise
 a bundled track chosen by mood. A generation failure falls through to bundled
-rather than aborting the run.
+rather than aborting the run — and the run is told: the substitution comes back
+as a warning on the finished artifact, so a dead backend shows up in the UI and
+in the nightly notification instead of sounding like working music forever.
 
 ACE-Step has two modes, and which one you pick decides the cost class:
 

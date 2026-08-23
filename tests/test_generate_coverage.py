@@ -33,6 +33,7 @@ from immich_memories.generate import (
     check_disk_space,
     generate_memory,
 )
+from immich_memories.generate_music import MusicSelection
 from immich_memories.processing.assembly_config import AssemblyClip
 from tests.conftest import make_asset, make_clip
 
@@ -1553,9 +1554,10 @@ class TestRunMusicPhase:
         )
         mock_tracker = MagicMock()
 
-        # WHY: resolve_music_file checks filesystem for music files
+        # WHY: resolve_music checks filesystem for music files
         with patch(
-            "immich_memories.generate_music.resolve_music_file", return_value=None
+            "immich_memories.generate_music.resolve_music",
+            return_value=MusicSelection(None),
         ) as mock_resolve:
             _run_music_phase(
                 params,
@@ -1583,9 +1585,12 @@ class TestRunMusicPhase:
         mock_tracker = MagicMock()
         encoding_plan = _h264_output_plan()
 
-        # WHY: resolve_music_file and apply_music_file touch filesystem + FFmpeg
+        # WHY: resolve_music and apply_music_file touch filesystem + FFmpeg
         with (
-            patch("immich_memories.generate_music.resolve_music_file", return_value=music_file),
+            patch(
+                "immich_memories.generate_music.resolve_music",
+                return_value=MusicSelection(music_file),
+            ),
             patch("immich_memories.generate_music.apply_music_file") as mock_apply,
         ):
             _run_music_phase(
@@ -1617,14 +1622,14 @@ class TestRunMusicPhase:
         mock_tracker = MagicMock()
         mock_tracker.start_phase.side_effect = lambda *_args: events.append("phase-start")
 
-        def resolve_music(**_kwargs):
+        def record_resolve(**_kwargs):
             events.append("resolve")
-            return music_file
+            return MusicSelection(music_file)
 
         with (
             patch(
-                "immich_memories.generate_music.resolve_music_file",
-                side_effect=resolve_music,
+                "immich_memories.generate_music.resolve_music",
+                side_effect=record_resolve,
             ),
             patch("immich_memories.generate_music.apply_music_file"),
         ):
@@ -1651,9 +1656,10 @@ class TestRunMusicPhase:
         )
         mock_tracker = MagicMock()
 
-        # WHY: resolve_music_file accesses the filesystem
+        # WHY: resolve_music accesses the filesystem
         with patch(
-            "immich_memories.generate_music.resolve_music_file", return_value=None
+            "immich_memories.generate_music.resolve_music",
+            return_value=MusicSelection(None),
         ) as mock_resolve:
             _run_music_phase(
                 params,
@@ -1664,7 +1670,7 @@ class TestRunMusicPhase:
                 encoding_plan=_h264_output_plan(),
             )
 
-        # Verify resolve_music_file received a report_fn callback
+        # Verify resolve_music received a report_fn callback
         call_kwargs = mock_resolve.call_args
         assert (
             call_kwargs.kwargs.get("report_fn") is not None
@@ -2232,11 +2238,11 @@ class TestTryMergeBurst:
 # ===========================================================================
 
 
-class TestResolveMusicFile:
+class TestResolveMusic:
     def test_no_music_flag_returns_none(self, tmp_path):
-        from immich_memories.generate_music import resolve_music_file
+        from immich_memories.generate_music import resolve_music
 
-        result = resolve_music_file(
+        result = resolve_music(
             config=Config(),
             music_path=None,
             no_music=True,
@@ -2244,14 +2250,14 @@ class TestResolveMusicFile:
             run_output_dir=tmp_path,
             memory_type=None,
         )
-        assert result is None
+        assert result.path is None
 
     def test_explicit_music_path_returned(self, tmp_path):
-        from immich_memories.generate_music import resolve_music_file
+        from immich_memories.generate_music import resolve_music
 
         music = tmp_path / "song.mp3"
         music.write_bytes(b"audio")
-        result = resolve_music_file(
+        result = resolve_music(
             config=Config(),
             music_path=music,
             no_music=False,
@@ -2259,12 +2265,12 @@ class TestResolveMusicFile:
             run_output_dir=tmp_path,
             memory_type=None,
         )
-        assert result == music
+        assert result.path == music
 
     def test_explicit_path_nonexistent_returns_none(self, tmp_path):
-        from immich_memories.generate_music import resolve_music_file
+        from immich_memories.generate_music import resolve_music
 
-        result = resolve_music_file(
+        result = resolve_music(
             config=Config(),
             music_path=tmp_path / "nonexistent.mp3",
             no_music=False,
@@ -2272,10 +2278,10 @@ class TestResolveMusicFile:
             run_output_dir=tmp_path,
             memory_type=None,
         )
-        assert result is None
+        assert result.path is None
 
     def test_auto_generate_when_no_path_and_config_available(self, tmp_path):
-        from immich_memories.generate_music import resolve_music_file
+        from immich_memories.generate_music import resolve_music
 
         config = Config()
         calls = []
@@ -2292,7 +2298,7 @@ class TestResolveMusicFile:
             def report_fn(p, pct, m):
                 return calls.append((p, pct, m))
 
-            result = resolve_music_file(
+            result = resolve_music(
                 config=config,
                 music_path=None,
                 no_music=False,
@@ -2303,16 +2309,16 @@ class TestResolveMusicFile:
             )
 
         mock_gen.assert_called_once()
-        assert result == tmp_path / "generated.mp3"
+        assert result.path == tmp_path / "generated.mp3"
         # report_fn should have been called with music progress
         assert any(c[0] == "music" for c in calls)
 
     def test_no_path_no_config_and_no_bundle_returns_none(self, tmp_path):
-        from immich_memories.generate_music import resolve_music_file
+        from immich_memories.generate_music import resolve_music
 
         # WHY: music_config_available checks external service configs
         with patch("immich_memories.generate_music.music_config_available", return_value=False):
-            result = resolve_music_file(
+            result = resolve_music(
                 config=Config(),
                 music_path=None,
                 no_music=False,
@@ -2322,7 +2328,7 @@ class TestResolveMusicFile:
                 bundled_library=tmp_path / "no-bundle",
             )
         # Silent only when there is no bundled music to fall back to (#308).
-        assert result is None
+        assert result.path is None
 
 
 class TestClipMonthFromDate:
