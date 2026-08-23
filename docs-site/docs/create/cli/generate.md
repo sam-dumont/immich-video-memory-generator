@@ -44,13 +44,13 @@ immich-memories generate [OPTIONS]
 |------|-------|------|---------|-------------|
 | `--duration` | `-d` | int | — | Target duration in seconds |
 | `--short-form` | — | choice | — | `15`, `30`, `60`, or `90` — sets the duration and goes vertical |
-| `--orientation` | `-o` | choice | `landscape` | `landscape`, `portrait`, or `square` |
+| `--orientation` | — | choice | `landscape` | `landscape`, `portrait`, or `square` |
 | `--resolution` | `-r` | choice | config value; `auto` matches source clips | `auto`, `4k`, `1080p`, or `720p` |
 | `--scale-mode` | `-s` | choice | config/`blur` | `blur` (blurred background) or `fit` (black bars) |
 | `--transition` | `-t` | choice | `smart` | `smart`, `cut`, `crossfade`, or `none` |
 | `--quality` | `-q` | choice | config value | `high`, `medium`, or `low` |
 | `--format` | — | choice | config value | `mp4`, `h265`, or `prores` |
-| `--output` | `-O` | path | auto | Where to write — see [Output](#output); the file lands in a per-run folder beside it |
+| `--output` | `-o`, `-O` | path | auto | Where to write — see [Output](#output); the file lands in a per-run folder beside it |
 | `--title` | — | string | — | Override title screen text |
 | `--subtitle` | — | string | — | Override subtitle text |
 | `--add-date` | — | flag | — | Caption each clip with its capture date |

@@ -22,11 +22,11 @@ immich-memories titles test [OPTIONS]
 | `--person` | `-p` | string | — | Person name for subtitle |
 | `--month` | `-m` | int | — | Month number 1-12 (for month divider) |
 | `--type` | — | choice | `title` | `title`, `month`, or `ending` |
-| `--orientation` | `-o` | choice | `landscape` | `landscape`, `portrait`, `square` |
+| `--orientation` | — | choice | `landscape` | `landscape`, `portrait`, `square` |
 | `--resolution` | `-r` | choice | `1080p` | `720p`, `1080p`, `4k` |
 | `--locale` | `-l` | choice | `en` | `en` or `fr` |
 | `--style` | `-s` | choice | `random` | `modern_warm`, `elegant_minimal`, `vintage_charm`, `playful_bright`, `soft_romantic`, `random` |
-| `--output` | `-O` | path | `./title_screen_preview.mp4` | Output file |
+| `--output` | `-o`, `-O` | path | `./title_screen_preview.mp4` | Output file |
 | `--download-fonts` | — | flag | — | Download fonts before generating |
 | `--no-animated-background` | — | flag | — | Use static gradient instead of animation |
 

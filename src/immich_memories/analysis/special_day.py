@@ -42,6 +42,8 @@ if TYPE_CHECKING:
 
     from immich_memories.config_models_llm import LLMConfig
 
+from immich_memories.analysis.llm_failures import stop_if_this_is_our_bug
+
 logger = logging.getLogger(__name__)
 
 # A day has to stay alive this long, and hold this much, to be worth asking
@@ -554,6 +556,7 @@ def _look_at(
     try:
         raw = _ask(_LOOK_PROMPT, llm_config, timeout_seconds, [image for _, image in thumbnails])
     except Exception as exc:  # noqa: BLE001 - a look that fails is not a verdict
+        stop_if_this_is_our_bug(exc, "special-day look")
         logger.debug("Special-day look failed: %s", type(exc).__name__)
         return []
     # A null content is documented mlx-vlm behaviour, and the rest of this
@@ -616,6 +619,7 @@ def ask_if_special(
     try:
         raw = _ask(prompt, llm_config, timeout_seconds, images, thinking=reasons)
     except Exception as exc:  # noqa: BLE001 - an unreachable model is not a verdict
+        stop_if_this_is_our_bug(exc, "special-day question")
         logger.debug("Special-day question failed: %s", type(exc).__name__)
         return SpecialDay(special=False)
 
