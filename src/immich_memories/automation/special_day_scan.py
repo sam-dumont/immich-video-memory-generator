@@ -112,16 +112,22 @@ def scan_year(
     return found
 
 
-def _thumbnails_for(items: list, thumbnail_for: Any) -> list[bytes]:
+def _thumbnails_for(items: list, thumbnail_for: Any) -> list[tuple[Any, bytes]]:
+    """The day's sample, each asset paired with the picture drawn for it.
+
+    Paired rather than two parallel lists: a thumbnail that fails to download
+    has to take its line out of the prompt with it, or every line after it
+    describes the picture before it.
+    """
     if thumbnail_for is None:
         return []
-    thumbnails = []
+    tiles: list[tuple[Any, bytes]] = []
     for asset in sample_across_day(items, count=SAMPLE_SIZE):
         try:
-            thumbnails.append(thumbnail_for(asset.id))
+            tiles.append((asset, thumbnail_for(asset.id)))
         except Exception as exc:  # noqa: BLE001, PERF203 - one missing tile is not a failure
             logger.debug("No thumbnail for %s: %s", asset.id, type(exc).__name__)
-    return thumbnails
+    return tiles
 
 
 def anniversaries_due(

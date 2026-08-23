@@ -67,3 +67,55 @@ def test_without_a_homebase_the_scan_excludes_no_days(monkeypatch) -> None:
     found = scan_year(_a_full_day(), llm_config=None, home=None, ask=1)
 
     assert [d.day for d in found] == [date(2021, 4, 13)]
+
+
+def test_the_prompt_lines_describe_the_pictures_sent_with_them(monkeypatch) -> None:
+    """The prompt says "the pictures that go with these lines", so they must.
+
+    The lines were sampled again, at a different count, from the assets whose
+    thumbnails had already been drawn — so the model read one picture's time,
+    place and names against another's, and the grounding filter then judged a
+    title built on that.
+    """
+    from immich_memories.analysis import special_day
+    from immich_memories.analysis.special_day import ask_if_special, sample_across_day
+
+    day = [_asset(h, m) for h in range(9, 15) for m in (0, 30)]
+    tiles = [(a, f"jpeg-{a.id}".encode()) for a in sample_across_day(day, count=6)]
+
+    seen: dict = {}
+
+    # WHY: the vision call is the network boundary; the prompt it is handed
+    # is the whole point of the test.
+    def _capture(prompt, thumbnails, *_a, **_k):
+        seen["prompt"], seen["thumbnails"] = prompt, thumbnails
+        return '{"special": false}'
+
+    monkeypatch.setattr(special_day, "_ask_with_images", _capture)
+
+    ask_if_special(day, llm_config=SimpleNamespace(), thumbnails=tiles)
+
+    import re
+
+    times = re.findall(r"^  (\d\d:\d\d)", seen["prompt"], re.MULTILINE)
+    assert times == [a.file_created_at.strftime("%H:%M") for a, _ in tiles]
+    assert seen["thumbnails"] == [image for _, image in tiles]
+
+
+def test_a_picture_that_failed_to_download_takes_its_line_with_it() -> None:
+    """A short image list beside a full line list offsets everything after it."""
+    from immich_memories.analysis.special_day import sample_across_day
+    from immich_memories.automation.special_day_scan import SAMPLE_SIZE, _thumbnails_for
+
+    day = _a_full_day()
+    missing = sample_across_day(day, count=SAMPLE_SIZE)[2].id
+
+    def _fetch(asset_id: str) -> bytes:
+        if asset_id == missing:
+            raise OSError("no thumbnail for this one")
+        return f"jpeg-{asset_id}".encode()
+
+    tiles = _thumbnails_for(day, _fetch)
+
+    assert missing not in [asset.id for asset, _ in tiles]
+    assert len(tiles) == SAMPLE_SIZE - 1

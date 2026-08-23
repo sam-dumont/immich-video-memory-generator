@@ -32,7 +32,7 @@ import operator
 import re
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import Container, Iterable
@@ -517,21 +517,29 @@ def ask_if_special(
     llm_config: LLMConfig,
     *,
     timeout_seconds: int = 30,
-    thumbnails: list[bytes] | None = None,
+    thumbnails: list[tuple[Any, bytes]] | None = None,
 ) -> SpecialDay:
     """Ask the model whether a day looks like an occasion, and name it.
 
     With thumbnails the model sees the day; without them it reasons from times,
     places and recognised names alone. The difference is the difference between
     "Driving through a place" and knowing what was being driven.
+
+    Each thumbnail arrives paired with the asset it was drawn from, and the
+    lines are written from exactly those assets. The prompt tells the model
+    the lines and the pictures go together; sampling twice made that untrue,
+    and it read one picture's time, place and names against another's.
     """
     if not assets:
         return SpecialDay(special=False)
 
-    prompt = _PROMPT.format(lines=_describe(sample_across_day(assets)))
+    sampled = [asset for asset, _ in thumbnails] if thumbnails else sample_across_day(assets)
+    prompt = _PROMPT.format(lines=_describe(sampled))
     try:
         raw = (
-            _ask_with_images(prompt, thumbnails, llm_config, timeout_seconds)
+            _ask_with_images(
+                prompt, [image for _, image in thumbnails], llm_config, timeout_seconds
+            )
             if thumbnails
             else _ask_text_only(prompt, llm_config, timeout_seconds)
         )
