@@ -34,6 +34,9 @@ The four core orchestrators and their composed services:
   - internally composes `ConcatService` (ffmpeg_filter_graph.py)
 - `AudioMixerService` (audio_mixer_service.py): background music mixing
 - `TitleInserter` (title_inserter.py): title screen concatenation
+  - composes `TitleBackgroundRenderer` (title_background_renderer.py) for the pre-rendered
+    clip a title deblurs out of, and builds one `TitleDividerPlanner`
+    (title_divider_planner.py) per memory to place month/year/location cards
 
 **SmartPipeline** (analysis/smart_pipeline.py) composes 5 services:
 - `ClipAnalyzer` (clip_analyzer.py): download, analyze, and score clips
@@ -162,6 +165,8 @@ src/immich_memories/
 │   ├── output_contract.py      # probe/validate/atomically publish finished video artifacts
 │   ├── timeline_budget.py      # plan_timeline(): pure planning of content + title-screen timeline
 │   ├── title_inserter.py       # TitleInserter: title screen concatenation
+│   ├── title_background_renderer.py # TitleBackgroundRenderer: pre-renders the clip a title reveals into
+│   ├── title_divider_planner.py # TitleDividerPlanner: month/year/location divider cards
 │   ├── audio_mixer_service.py  # AudioMixerService: background music mixing
 │   ├── privacy_audio.py        # Privacy mode audio processing (lowpass filter)
 │   ├── frame_preview.py        # Frame extraction for previews

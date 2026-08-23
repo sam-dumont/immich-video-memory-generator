@@ -513,14 +513,10 @@ class TestTitleInserter:
 
     def test_parse_clip_date_iso(self, test_clip_720p):
         """parse_clip_date handles ISO date format."""
-        from immich_memories.processing.title_inserter import TitleInserter
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        ti = TitleInserter(settings, prober)
+        from immich_memories.processing.title_divider_planner import parse_clip_date
 
         clip = _make_clip(test_clip_720p, date="2024-06-15")
-        result = ti.parse_clip_date(clip)
+        result = parse_clip_date(clip)
         assert result is not None
         assert result.year == 2024
         assert result.month == 6
@@ -528,43 +524,31 @@ class TestTitleInserter:
 
     def test_parse_clip_date_datetime(self, test_clip_720p):
         """parse_clip_date handles datetime format."""
-        from immich_memories.processing.title_inserter import TitleInserter
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        ti = TitleInserter(settings, prober)
+        from immich_memories.processing.title_divider_planner import parse_clip_date
 
         clip = _make_clip(test_clip_720p, date="2024-06-15T14:30:00")
-        result = ti.parse_clip_date(clip)
+        result = parse_clip_date(clip)
         assert result is not None
         assert result.year == 2024
         assert result.month == 6
 
     def test_parse_clip_date_none(self, test_clip_720p):
         """parse_clip_date returns None for missing date."""
-        from immich_memories.processing.title_inserter import TitleInserter
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        ti = TitleInserter(settings, prober)
+        from immich_memories.processing.title_divider_planner import parse_clip_date
 
         clip = _make_clip(test_clip_720p, date=None)
-        assert ti.parse_clip_date(clip) is None
+        assert parse_clip_date(clip) is None
 
     def test_detect_month_changes(self, test_clip_720p, test_clip_720p_b):
         """detect_month_changes finds transitions between different months."""
-        from immich_memories.processing.title_inserter import TitleInserter
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        ti = TitleInserter(settings, prober)
+        from immich_memories.processing.title_divider_planner import detect_month_changes
 
         clips = [
             _make_clip(test_clip_720p, date="2024-01-15"),
             _make_clip(test_clip_720p, date="2024-01-20"),
             _make_clip(test_clip_720p_b, date="2024-03-10"),
         ]
-        changes = ti.detect_month_changes(clips)
+        changes = detect_month_changes(clips)
 
         # First clip starts Jan, then March = 2 month groups
         assert len(changes) == 2
@@ -573,17 +557,13 @@ class TestTitleInserter:
 
     def test_detect_year_changes(self, test_clip_720p, test_clip_720p_b):
         """detect_year_changes finds year transitions."""
-        from immich_memories.processing.title_inserter import TitleInserter
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        ti = TitleInserter(settings, prober)
+        from immich_memories.processing.title_divider_planner import detect_year_changes
 
         clips = [
             _make_clip(test_clip_720p, date="2023-12-25"),
             _make_clip(test_clip_720p_b, date="2024-01-05"),
         ]
-        changes = ti.detect_year_changes(clips)
+        changes = detect_year_changes(clips)
 
         assert len(changes) == 2
         assert changes[0] == (0, 2023)
@@ -592,11 +572,7 @@ class TestTitleInserter:
     def test_build_clips_with_dividers(self, test_clip_720p, test_clip_720p_b, tmp_path):
         """build_clips_with_dividers inserts month divider clips at boundaries."""
         from immich_memories.processing.assembly_config import TitleScreenSettings
-        from immich_memories.processing.title_inserter import TitleInserter
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        ti = TitleInserter(settings, prober)
+        from immich_memories.processing.title_divider_planner import TitleDividerPlanner
 
         # Use a real clip as a stand-in for a divider video
         divider_path = test_clip_720p_b
@@ -615,7 +591,9 @@ class TestTitleInserter:
             _make_clip(test_clip_720p_b, date="2024-03-10"),
         ]
 
-        result = ti.build_clips_with_dividers(clips, month_divider_paths, title_settings)
+        # WHY: no generator — the divider videos already exist in month_divider_paths
+        planner = TitleDividerPlanner(None, title_settings)
+        result = planner.build_clips_with_dividers(clips, month_divider_paths)
 
         # WHY: first month divider is skipped (intro title covers it).
         # 1 divider (Mar only) + 3 original clips = 4
@@ -1348,11 +1326,7 @@ class TestTitleInserterExtra:
     def test_build_clips_with_year_dividers(self, test_clip_720p, test_clip_720p_b):
         """build_clips_with_year_dividers inserts year divider clips."""
         from immich_memories.processing.assembly_config import TitleScreenSettings
-        from immich_memories.processing.title_inserter import TitleInserter
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        ti = TitleInserter(settings, prober)
+        from immich_memories.processing.title_divider_planner import TitleDividerPlanner
 
         year_divider_paths = {
             2023: test_clip_720p_b,
@@ -1365,7 +1339,9 @@ class TestTitleInserterExtra:
             _make_clip(test_clip_720p, date="2024-01-05"),
         ]
 
-        result = ti.build_clips_with_year_dividers(clips, year_divider_paths, title_settings)
+        # WHY: no generator — the divider videos already exist in year_divider_paths
+        planner = TitleDividerPlanner(None, title_settings)
+        result = planner.build_clips_with_year_dividers(clips, year_divider_paths)
 
         # 2 year dividers + 2 original clips = 4
         assert len(result) == 4
@@ -1375,11 +1351,7 @@ class TestTitleInserterExtra:
     def test_select_divider_strategy_none(self, test_clip_720p):
         """divider_mode='none' returns clips unchanged."""
         from immich_memories.processing.assembly_config import TitleScreenSettings
-        from immich_memories.processing.title_inserter import TitleInserter
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        ti = TitleInserter(settings, prober)
+        from immich_memories.processing.title_divider_planner import TitleDividerPlanner
 
         title_settings = TitleScreenSettings(
             divider_mode="none",
@@ -1389,7 +1361,8 @@ class TestTitleInserterExtra:
         clips = [_make_clip(test_clip_720p, date="2024-01-15")]
 
         # WHY: generator not needed because divider_mode="none" skips generation
-        result = ti.select_divider_strategy(clips, None, title_settings, None, is_trip=False)
+        planner = TitleDividerPlanner(None, title_settings)
+        result = planner.select_divider_strategy(clips, None, is_trip=False)
         assert len(result) == 1
 
     def test_assemble_with_titles_disabled(self, test_clip_720p, test_clip_720p_b, tmp_path):
@@ -1454,57 +1427,41 @@ class TestTitleInserterExtra:
 
     def test_parse_clip_date_bad_format(self, test_clip_720p):
         """Unparseable date returns None."""
-        from immich_memories.processing.title_inserter import TitleInserter
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        ti = TitleInserter(settings, prober)
+        from immich_memories.processing.title_divider_planner import parse_clip_date
 
         clip = _make_clip(test_clip_720p, date="not-a-date")
-        assert ti.parse_clip_date(clip) is None
+        assert parse_clip_date(clip) is None
 
     def test_detect_month_changes_no_dates(self, test_clip_720p):
         """Clips without dates produce no month changes."""
-        from immich_memories.processing.title_inserter import TitleInserter
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        ti = TitleInserter(settings, prober)
+        from immich_memories.processing.title_divider_planner import detect_month_changes
 
         clips = [_make_clip(test_clip_720p), _make_clip(test_clip_720p)]
-        changes = ti.detect_month_changes(clips)
+        changes = detect_month_changes(clips)
         assert len(changes) == 0
 
     def test_detect_year_changes_same_year(self, test_clip_720p, test_clip_720p_b):
         """Clips in same year produce single year entry."""
-        from immich_memories.processing.title_inserter import TitleInserter
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        ti = TitleInserter(settings, prober)
+        from immich_memories.processing.title_divider_planner import detect_year_changes
 
         clips = [
             _make_clip(test_clip_720p, date="2024-01-15"),
             _make_clip(test_clip_720p_b, date="2024-06-20"),
         ]
-        changes = ti.detect_year_changes(clips)
+        changes = detect_year_changes(clips)
         assert len(changes) == 1
         assert changes[0] == (0, 2024)
 
     def test_detect_year_changes_skips_no_date(self, test_clip_720p, test_clip_720p_b):
         """detect_year_changes skips clips without dates."""
-        from immich_memories.processing.title_inserter import TitleInserter
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        ti = TitleInserter(settings, prober)
+        from immich_memories.processing.title_divider_planner import detect_year_changes
 
         clips = [
             _make_clip(test_clip_720p, date="2024-01-15"),
             _make_clip(test_clip_720p),  # no date
             _make_clip(test_clip_720p_b, date="2024-06-20"),
         ]
-        changes = ti.detect_year_changes(clips)
+        changes = detect_year_changes(clips)
         # All in 2024, one skipped -> 1 year entry
         assert len(changes) == 1
 
@@ -1513,11 +1470,7 @@ class TestTitleInserterExtra:
         from dataclasses import dataclass
 
         from immich_memories.processing.assembly_config import TitleScreenSettings
-        from immich_memories.processing.title_inserter import TitleInserter
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        ti = TitleInserter(settings, prober)
+        from immich_memories.processing.title_divider_planner import TitleDividerPlanner
 
         @dataclass
         class FakeDivider:
@@ -1534,9 +1487,8 @@ class TestTitleInserterExtra:
         ]
         title_settings = TitleScreenSettings()
 
-        result = ti.generate_year_dividers(
-            clips, FakeGenerator(), title_settings, progress_callback=None
-        )
+        planner = TitleDividerPlanner(FakeGenerator(), title_settings)
+        result = planner.generate_year_dividers(clips, progress_callback=None)
         assert 2023 in result
         assert 2024 in result
 
@@ -1545,11 +1497,7 @@ class TestTitleInserterExtra:
         from dataclasses import dataclass
 
         from immich_memories.processing.assembly_config import TitleScreenSettings
-        from immich_memories.processing.title_inserter import TitleInserter
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        ti = TitleInserter(settings, prober)
+        from immich_memories.processing.title_divider_planner import TitleDividerPlanner
 
         @dataclass
         class FakeDivider:
@@ -1566,9 +1514,8 @@ class TestTitleInserterExtra:
         ]
         title_settings = TitleScreenSettings(show_month_dividers=True)
 
-        result = ti.generate_month_dividers(
-            clips, FakeGenerator(), title_settings, progress_callback=None
-        )
+        planner = TitleDividerPlanner(FakeGenerator(), title_settings)
+        result = planner.generate_month_dividers(clips, progress_callback=None)
         assert (2024, 1) in result
         assert (2024, 3) in result
 
@@ -1579,9 +1526,7 @@ class TestTitleInserterExtra:
         from dataclasses import dataclass
 
         from immich_memories.processing.assembly_config import TitleScreenSettings
-        from immich_memories.processing.title_inserter import TitleInserter
-
-        inserter = TitleInserter(_make_settings(), _make_prober(_make_settings()))
+        from immich_memories.processing.title_divider_planner import TitleDividerPlanner
 
         @dataclass
         class FakeDivider:
@@ -1602,25 +1547,21 @@ class TestTitleInserterExtra:
             max_dividers=2,
         )
 
-        paths = inserter.generate_month_dividers(
-            clips, FakeGenerator(), title_settings, progress_callback=None
-        )
+        planner = TitleDividerPlanner(FakeGenerator(), title_settings)
+        paths = planner.generate_month_dividers(clips, progress_callback=None)
 
         assert set(paths) == {(2026, 6), (2026, 7)}
 
     def test_generate_month_dividers_disabled(self, test_clip_720p):
         """generate_month_dividers returns empty when dividers disabled."""
         from immich_memories.processing.assembly_config import TitleScreenSettings
-        from immich_memories.processing.title_inserter import TitleInserter
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        ti = TitleInserter(settings, prober)
+        from immich_memories.processing.title_divider_planner import TitleDividerPlanner
 
         clips = [_make_clip(test_clip_720p, date="2024-01-15")]
         title_settings = TitleScreenSettings(show_month_dividers=False)
 
-        result = ti.generate_month_dividers(clips, None, title_settings, None)
+        # WHY: no generator — disabled dividers never reach one
+        result = TitleDividerPlanner(None, title_settings).generate_month_dividers(clips, None)
         assert result == {}
 
     def test_select_divider_strategy_year_mode(self, test_clip_720p, test_clip_720p_b):
@@ -1628,11 +1569,7 @@ class TestTitleInserterExtra:
         from dataclasses import dataclass
 
         from immich_memories.processing.assembly_config import TitleScreenSettings
-        from immich_memories.processing.title_inserter import TitleInserter
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        ti = TitleInserter(settings, prober)
+        from immich_memories.processing.title_divider_planner import TitleDividerPlanner
 
         @dataclass
         class FakeDivider:
@@ -1649,9 +1586,8 @@ class TestTitleInserterExtra:
             _make_clip(test_clip_720p_b, date="2024-01-05"),
         ]
 
-        result = ti.select_divider_strategy(
-            clips, FakeGenerator(), title_settings, None, is_trip=False
-        )
+        planner = TitleDividerPlanner(FakeGenerator(), title_settings)
+        result = planner.select_divider_strategy(clips, None, is_trip=False)
         # 2 year dividers + 2 clips = 4
         assert len(result) == 4
         assert result[0].is_title_screen
@@ -1661,11 +1597,7 @@ class TestTitleInserterExtra:
         from dataclasses import dataclass
 
         from immich_memories.processing.assembly_config import TitleScreenSettings
-        from immich_memories.processing.title_inserter import TitleInserter
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        ti = TitleInserter(settings, prober)
+        from immich_memories.processing.title_divider_planner import TitleDividerPlanner
 
         @dataclass
         class FakeDivider:
@@ -1685,9 +1617,8 @@ class TestTitleInserterExtra:
             _make_clip(test_clip_720p_b, date="2024-03-10"),
         ]
 
-        result = ti.select_divider_strategy(
-            clips, FakeGenerator(), title_settings, None, is_trip=False
-        )
+        planner = TitleDividerPlanner(FakeGenerator(), title_settings)
+        result = planner.select_divider_strategy(clips, None, is_trip=False)
         # 1 month divider (first skipped) + 2 clips = 3
         assert len(result) == 3
 

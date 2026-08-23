@@ -577,16 +577,14 @@ class TestAssemblyIntegration:
         assert settings.title_screens is not None
         assert settings.title_screens.year == 2024
 
-    def test_video_assembler_parse_clip_date(self):
+    def test_parse_clip_date_reads_assembly_clip_dates(self):
         """Test date parsing from AssemblyClip."""
         from datetime import date
 
         from immich_memories.processing.assembly_config import (
             AssemblyClip,
         )
-        from immich_memories.processing.video_assembler import VideoAssembler
-
-        assembler = VideoAssembler()
+        from immich_memories.processing.title_divider_planner import parse_clip_date
 
         # Test valid date
         clip = AssemblyClip(
@@ -594,7 +592,7 @@ class TestAssemblyIntegration:
             duration=5.0,
             date="2024-06-15",
         )
-        parsed = assembler.title_inserter.parse_clip_date(clip)
+        parsed = parse_clip_date(clip)
         assert parsed == date(2024, 6, 15)
 
         # Test None date
@@ -603,16 +601,16 @@ class TestAssemblyIntegration:
             duration=5.0,
             date=None,
         )
-        assert assembler.title_inserter.parse_clip_date(clip_no_date) is None
+        assert parse_clip_date(clip_no_date) is None
 
-    def test_video_assembler_detect_month_changes(self):
+    def test_detect_month_changes_finds_each_month_group(self):
         """Test month change detection."""
         from immich_memories.processing.assembly_config import (
             AssemblyClip,
         )
-        from immich_memories.processing.video_assembler import VideoAssembler
-
-        assembler = VideoAssembler()
+        from immich_memories.processing.title_divider_planner import (
+            detect_month_changes,
+        )
 
         clips = [
             AssemblyClip(path=Path("/tmp/1.mp4"), duration=5.0, date="2024-01-15"),
@@ -622,7 +620,7 @@ class TestAssemblyIntegration:
             AssemblyClip(path=Path("/tmp/5.mp4"), duration=5.0, date="2024-03-01"),
         ]
 
-        changes = assembler.title_inserter.detect_month_changes(clips)
+        changes = detect_month_changes(clips)
 
         # Should detect first month and subsequent month changes
         assert len(changes) == 3

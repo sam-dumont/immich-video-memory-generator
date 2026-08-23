@@ -290,7 +290,7 @@ class TestLocationDividerInsertion:
         """Clips with locations >30km apart get a divider between them."""
         from pathlib import Path
 
-        from immich_memories.processing.title_inserter import TitleInserter
+        from immich_memories.processing.title_divider_planner import TitleDividerPlanner
 
         clips = [
             self._make_clip("clip1.mp4", lat=41.39, lon=2.17, name="Barcelona"),
@@ -306,8 +306,8 @@ class TestLocationDividerInsertion:
         mock_settings = MagicMock()
         mock_settings.month_divider_duration = 2.0
 
-        inserter = TitleInserter(settings=MagicMock(), prober=MagicMock())
-        result = inserter.build_clips_with_location_dividers(clips, mock_gen, mock_settings, None)
+        planner = TitleDividerPlanner(mock_gen, mock_settings)
+        result = planner.build_clips_with_location_dividers(clips, None)
 
         # 3 content clips + 1 location divider = 4
         assert len(result) == 4
@@ -316,15 +316,15 @@ class TestLocationDividerInsertion:
 
     def test_no_divider_for_same_location(self):
         """Clips at the same location should not get dividers."""
-        from immich_memories.processing.title_inserter import TitleInserter
+        from immich_memories.processing.title_divider_planner import TitleDividerPlanner
 
         clips = [
             self._make_clip("clip1.mp4", lat=41.39, lon=2.17, name="Barcelona"),
             self._make_clip("clip2.mp4", lat=41.40, lon=2.18, name="Barcelona"),
         ]
 
-        inserter = TitleInserter(settings=MagicMock(), prober=MagicMock())
-        result = inserter.build_clips_with_location_dividers(clips, MagicMock(), MagicMock(), None)
+        planner = TitleDividerPlanner(MagicMock(), MagicMock())
+        result = planner.build_clips_with_location_dividers(clips, None)
 
         assert len(result) == 2  # No dividers
 
@@ -332,7 +332,7 @@ class TestLocationDividerInsertion:
         """Eligible location changes cannot exceed the title planner's cap."""
         from pathlib import Path
 
-        from immich_memories.processing.title_inserter import TitleInserter
+        from immich_memories.processing.title_divider_planner import TitleDividerPlanner
 
         clips = [
             self._make_clip("brussels.mp4", lat=50.85, lon=4.35, name="Brussels"),
@@ -347,9 +347,8 @@ class TestLocationDividerInsertion:
         title_settings.month_divider_duration = 2.0
         title_settings.max_dividers = 1
 
-        result = TitleInserter(MagicMock(), MagicMock()).build_clips_with_location_dividers(
-            clips, generator, title_settings, None
-        )
+        planner = TitleDividerPlanner(generator, title_settings)
+        result = planner.build_clips_with_location_dividers(clips, None)
 
         assert len([clip for clip in result if clip.is_title_screen]) == 1
         generator.generate_location_card_screen.assert_called_once()
@@ -358,7 +357,7 @@ class TestLocationDividerInsertion:
         """Clips without GPS should pass through without dividers."""
         from pathlib import Path
 
-        from immich_memories.processing.title_inserter import TitleInserter
+        from immich_memories.processing.title_divider_planner import TitleDividerPlanner
 
         clips = [
             self._make_clip("clip1.mp4", lat=41.39, lon=2.17, name="Barcelona"),
@@ -373,8 +372,8 @@ class TestLocationDividerInsertion:
         mock_settings = MagicMock()
         mock_settings.month_divider_duration = 2.0
 
-        inserter = TitleInserter(settings=MagicMock(), prober=MagicMock())
-        result = inserter.build_clips_with_location_dividers(clips, mock_gen, mock_settings, None)
+        planner = TitleDividerPlanner(mock_gen, mock_settings)
+        result = planner.build_clips_with_location_dividers(clips, None)
 
         # clip1, clip2 (no GPS), divider, clip3 = 4
         assert len(result) == 4

@@ -3,11 +3,8 @@
 from __future__ import annotations
 
 import logging
-import subprocess
-from collections import deque
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from dataclasses import replace
-from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -16,12 +13,10 @@ from immich_memories.processing.assembly_config import (
     AssemblySettings,
     TransitionType,
 )
-from immich_memories.processing.encoding_plan import HdrTransfer
 from immich_memories.processing.ffmpeg_prober import FFmpegProber
-from immich_memories.processing.ffmpeg_runner import write_frames_to_ffmpeg
-from immich_memories.processing.hdr_utilities import _get_colorspace_filter
 from immich_memories.processing.scaling_utilities import aggregate_mood_from_clips
-from immich_memories.titles.ffmpeg_pipe import StderrDrain
+from immich_memories.processing.title_background_renderer import TitleBackgroundRenderer
+from immich_memories.processing.title_divider_planner import TitleDividerPlanner
 
 logger = logging.getLogger(__name__)
 
@@ -38,113 +33,7 @@ class TitleInserter:
     def __init__(self, settings: AssemblySettings, prober: FFmpegProber) -> None:
         self.settings = settings
         self.prober = prober
-
-    @staticmethod
-    def _divider_limit(title_settings: Any) -> int | None:
-        """Return only a real timeline cap; MagicMock/standalone callers remain uncapped."""
-        value = getattr(title_settings, "max_dividers", None)
-        return max(0, value) if isinstance(value, int) else None
-
-    # ------------------------------------------------------------------
-    # Pre-render first clip for title background
-    # ------------------------------------------------------------------
-
-    def _pre_render_first_clip(
-        self,
-        clips: list[AssemblyClip],
-        output_dir: Path,
-        target_w: int,
-        target_h: int,
-        fps: int,
-        hdr_type: str | None,
-    ) -> Path | None:
-        """Pre-render the first clip through the SAME assembly pipeline.
-
-        Uses FrameDecoder (the streaming assembler's decoder) with identical
-        filters: rotation, scale_mode, HDR conversion, resolution. This
-        guarantees the title background matches the clip it reveals into —
-        no orientation guessing, no resolution guessing.
-        """
-        if not clips:
-            return None
-
-        from immich_memories.processing.assembly_engine import (
-            create_assembly_context,
-        )
-        from immich_memories.processing.clip_encoder import encoder_args_for_plan
-        from immich_memories.processing.streaming_assembler import _make_decoder
-
-        plan = self.settings.encoding_plan
-        output_path = output_dir / f"first_clip_processed.{plan.container}"
-        ctx = create_assembly_context(self.settings, self.prober, clips, target_w, target_h)
-
-        # WHY: _make_decoder applies the EXACT same filter chain as the
-        # streaming assembler: rotation, scale_mode (blur bg), HDR conversion,
-        # resolution, fps, SAR. The output is pixel-identical to what the
-        # assembler will produce for this clip.
-        decoder = _make_decoder(
-            clips[0],
-            0,
-            target_w,
-            target_h,
-            fps,
-            ctx,
-            privacy_mode=self.settings.privacy_mode,
-            scale_mode=self.settings.scale_mode or "blur",
-            hdr_type=hdr_type,
-        )
-
-        encoder_args = encoder_args_for_plan(plan)
-
-        pix_fmt = "yuv420p10le" if hdr_type else "rgb24"
-        # WHY: rawvideo pipe strips color metadata — must tag input explicitly
-        input_color_args: list[str] = []
-        if hdr_type:
-            input_color_args = [
-                "-color_range",
-                "tv",
-                "-color_primaries",
-                "bt2020",
-                "-color_trc",
-                ("smpte2084" if plan.target_transfer is HdrTransfer.PQ else "arib-std-b67"),
-                "-colorspace",
-                "bt2020nc",
-            ]
-        cmd = [
-            "ffmpeg", "-y",
-            "-f", "rawvideo", "-pix_fmt", pix_fmt,
-            "-s", f"{target_w}x{target_h}", "-r", str(fps),
-            *input_color_args,
-            "-i", "pipe:0",
-            "-vf", _get_colorspace_filter(hdr_type or "sdr").removeprefix(","),
-            *encoder_args,
-            "-an", "-movflags", "+faststart",
-            str(output_path),
-        ]  # fmt: skip
-
-        frame_count = 0
-
-        def _frames() -> Iterator[bytes]:
-            nonlocal frame_count
-            max_frames = fps * 1  # 1 second
-            for frame in decoder:
-                if frame_count >= max_frames:
-                    break
-                yield frame.data
-                frame_count += 1
-
-        try:
-            returncode, stderr = write_frames_to_ffmpeg(cmd, _frames(), wait_timeout=30)
-            if returncode == 0 and output_path.exists():
-                logger.info(
-                    f"Pre-rendered first clip ({frame_count} frames, "
-                    f"{target_w}x{target_h}): {output_path}"
-                )
-                return output_path
-            logger.warning(f"Pre-render encode failed: {stderr[-200:]}")
-        except (OSError, subprocess.SubprocessError, ValueError) as e:
-            logger.warning("Failed to pre-render first clip: %s", e, exc_info=True)
-        return None
+        self.background_renderer = TitleBackgroundRenderer(settings, prober)
 
     @staticmethod
     def _trim_first_clip(clips: list[AssemblyClip], trim_seconds: float) -> None:
@@ -243,7 +132,7 @@ class TitleInserter:
             progress_callback(0.1, "Generating ending screen...")
         ending_clip = None
         if use_content_bg:
-            ending_clip = self._pre_render_last_clip(
+            ending_clip = self.background_renderer.render_last_clip(
                 clips,
                 title_output_dir,
                 target_w,
@@ -289,127 +178,6 @@ class TitleInserter:
         )
         logger.info(f"Generated ending screen: {ending_screen.path}")
 
-    def _pre_render_last_clip(
-        self,
-        clips: list[AssemblyClip],
-        output_dir: Path,
-        target_w: int,
-        target_h: int,
-        fps: int,
-        hdr_type: str | None,
-    ) -> Path | None:
-        """Pre-render the last clip's final second for the ending screen."""
-        if not clips:
-            return None
-
-        from immich_memories.processing.assembly_engine import create_assembly_context
-        from immich_memories.processing.clip_encoder import encoder_args_for_plan
-        from immich_memories.processing.streaming_assembler import _make_decoder
-
-        clip = clips[-1]
-        plan = self.settings.encoding_plan
-        output_path = output_dir / f"last_clip_processed.{plan.container}"
-        ctx = create_assembly_context(self.settings, self.prober, clips, target_w, target_h)
-
-        decoder = _make_decoder(
-            clip,
-            len(clips) - 1,
-            target_w,
-            target_h,
-            fps,
-            ctx,
-            privacy_mode=self.settings.privacy_mode,
-            scale_mode=self.settings.scale_mode or "blur",
-            hdr_type=hdr_type,
-        )
-
-        encoder_args = encoder_args_for_plan(plan)
-
-        pix_fmt = "yuv420p10le" if hdr_type else "rgb24"
-        input_color_args: list[str] = []
-        if hdr_type:
-            input_color_args = [
-                "-color_range",
-                "tv",
-                "-color_primaries",
-                "bt2020",
-                "-color_trc",
-                ("smpte2084" if plan.target_transfer is HdrTransfer.PQ else "arib-std-b67"),
-                "-colorspace",
-                "bt2020nc",
-            ]
-        cmd = [
-            "ffmpeg", "-y",
-            "-f", "rawvideo", "-pix_fmt", pix_fmt,
-            "-s", f"{target_w}x{target_h}", "-r", str(fps),
-            *input_color_args,
-            "-i", "pipe:0",
-            "-vf", _get_colorspace_filter(hdr_type or "sdr").removeprefix(","),
-            *encoder_args,
-            "-an", "-movflags", "+faststart",
-            str(output_path),
-        ]  # fmt: skip
-
-        # WHY exactly this many and no more: only the last 0.5s is written,
-        # matching what SlowmoBackgroundReader reads — the ending starts where
-        # the clip ends, with no going back in time. Buffering two seconds to
-        # use half of one cost 4x the memory for nothing, and at 4K/60 a
-        # 120-frame rgb24 ring is about 3 GB inside the module whose whole
-        # design goal is flat memory.
-        source_frames = max(1, fps // 2)
-
-        try:
-            tail_frames: deque[bytes] = deque(maxlen=source_frames)
-            for frame in decoder:
-                tail_frames.append(bytes(frame.data))
-
-            proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-            # WHY drained: writing frames to stdin while stderr fills its pipe
-            # buffer deadlocks both sides — the failure titles/ffmpeg_pipe.py
-            # exists to document. Without it this stalls until the 30s wait
-            # expires and the ending is silently dropped.
-            drain = StderrDrain(proc).start()
-            try:
-                for frame_data in tail_frames:
-                    proc.stdin.write(frame_data)  # type: ignore[union-attr]
-                proc.stdin.close()  # type: ignore[union-attr]
-                proc.wait(timeout=30)
-            finally:
-                stderr_tail = drain.stop()
-
-            if proc.returncode == 0 and output_path.exists():
-                logger.info(f"Pre-rendered last clip for ending: {output_path}")
-                return output_path
-            logger.warning("Pre-render of last clip failed: %s", stderr_tail[-400:])
-        except (OSError, subprocess.SubprocessError, ValueError) as e:
-            logger.warning("Failed to pre-render last clip: %s", e, exc_info=True)
-        return None
-
-    # ------------------------------------------------------------------
-    # Date parsing
-    # ------------------------------------------------------------------
-
-    def parse_clip_date(self, clip: AssemblyClip) -> date | None:
-        """Parse the date from an AssemblyClip."""
-        if not clip.date:
-            return None
-        try:
-            for fmt in (
-                "%Y-%m-%d",
-                "%Y-%m-%dT%H:%M:%S",
-                "%Y-%m-%d %H:%M:%S",
-                "%B %d, %Y",
-                "%b %d, %Y",
-            ):
-                try:
-                    return datetime.strptime(clip.date, fmt).date()
-                except ValueError:
-                    continue
-            return datetime.strptime(clip.date[:10], "%Y-%m-%d").date()
-        except (ValueError, TypeError):
-            logger.debug(f"Could not parse date: {clip.date}")
-            return None
-
     # ------------------------------------------------------------------
     # Orientation / resolution detection
     # ------------------------------------------------------------------
@@ -442,293 +210,6 @@ class TitleInserter:
         elif max_height >= 1080:
             return "1080p"
         return "720p"
-
-    # ------------------------------------------------------------------
-    # Month / year change detection
-    # ------------------------------------------------------------------
-
-    def detect_month_changes(self, clips: list[AssemblyClip]) -> list[tuple[int, int, int]]:
-        """Detect month changes. Returns [(insert_index, month, year)]."""
-        month_changes: list[tuple[int, int, int]] = []
-        current_month: tuple[int, int] | None = None
-        month_clip_counts: dict[tuple[int, int], int] = {}
-        clips_with_dates = 0
-
-        for i, clip in enumerate(clips):
-            clip_date = self.parse_clip_date(clip)
-            if clip_date is None:
-                continue
-            clips_with_dates += 1
-            month_key = (clip_date.year, clip_date.month)
-            month_clip_counts[month_key] = month_clip_counts.get(month_key, 0) + 1
-            if current_month is None or month_key != current_month:
-                month_changes.append((i, clip_date.month, clip_date.year))
-                logger.debug(f"Month change at clip {i}: {current_month} -> {month_key}")
-            current_month = month_key
-
-        logger.info(f"Month detection: {len(month_changes)} changes in {clips_with_dates} clips")
-        return month_changes
-
-    def detect_year_changes(self, clips: list[AssemblyClip]) -> list[tuple[int, int]]:
-        """Detect year changes. Returns [(insert_index, year)]."""
-        year_changes: list[tuple[int, int]] = []
-        current_year: int | None = None
-
-        for i, clip in enumerate(clips):
-            clip_date = self.parse_clip_date(clip)
-            if clip_date is None:
-                continue
-            if current_year is None or clip_date.year != current_year:
-                year_changes.append((i, clip_date.year))
-                if current_year is not None:
-                    logger.info(
-                        f"Year change detected at clip {i}: {current_year} -> {clip_date.year}"
-                    )
-                current_year = clip_date.year
-
-        logger.info(f"Year detection: {len(year_changes)} year changes found")
-        return year_changes
-
-    # ------------------------------------------------------------------
-    # Divider generation
-    # ------------------------------------------------------------------
-
-    def generate_year_dividers(
-        self,
-        clips: list[AssemblyClip],
-        generator: Any,
-        title_settings: Any,
-        progress_callback: Callable[[float, str], None] | None,
-    ) -> dict[int, Path]:
-        """Generate year divider screens. Returns {year: path}."""
-        year_changes = self.detect_year_changes(clips)
-        year_divider_paths: dict[int, Path] = {}
-        if not year_changes:
-            return year_divider_paths
-
-        if progress_callback:
-            progress_callback(0.05, "Generating year dividers...")
-
-        limit = self._divider_limit(title_settings)
-        planned_changes = year_changes if limit is None else year_changes[1 : limit + 1]
-        for _, year in planned_changes:
-            if year not in year_divider_paths:
-                divider = generator.generate_year_divider(year)
-                year_divider_paths[year] = divider.path
-                logger.info(f"Generated year divider: {year}")
-        return year_divider_paths
-
-    def build_clips_with_year_dividers(
-        self,
-        clips: list[AssemblyClip],
-        year_divider_paths: dict[int, Path],
-        title_settings: Any,
-    ) -> list[AssemblyClip]:
-        """Interleave clips with year divider screens."""
-        result: list[AssemblyClip] = []
-        current_year: int | None = None
-        inserted = 0
-        limit = self._divider_limit(title_settings)
-        for clip in clips:
-            clip_date = self.parse_clip_date(clip)
-            if clip_date:
-                if (
-                    (limit is current_year is None)
-                    or (current_year is not None and clip_date.year != current_year)
-                ) and clip_date.year in year_divider_paths:
-                    if limit is not None and inserted >= limit:
-                        current_year = clip_date.year
-                        result.append(clip)
-                        continue
-                    result.append(
-                        AssemblyClip(
-                            path=year_divider_paths[clip_date.year],
-                            duration=title_settings.month_divider_duration,
-                            date=None,
-                            asset_id=f"year_divider_{clip_date.year}",
-                            is_title_screen=True,
-                        )
-                    )
-                    inserted += 1
-                current_year = clip_date.year
-            result.append(clip)
-        return result
-
-    def generate_month_dividers(
-        self,
-        clips: list[AssemblyClip],
-        generator: Any,
-        title_settings: Any,
-        progress_callback: Callable[[float, str], None] | None,
-    ) -> dict[tuple[int, int], Path]:
-        """Generate month divider screens. Returns {(year, month): path}."""
-        month_changes = self.detect_month_changes(clips)
-        month_divider_paths: dict[tuple[int, int], Path] = {}
-
-        if not (title_settings.show_month_dividers and month_changes):
-            return month_divider_paths
-
-        if progress_callback:
-            progress_callback(0.05, "Generating month dividers...")
-
-        limit = self._divider_limit(title_settings)
-        planned_changes = month_changes
-        if limit is not None:
-            planned_changes = month_changes[1 : limit + 1]
-
-        for _, month, year in planned_changes:
-            key = (year, month)
-            if key not in month_divider_paths:
-                is_birthday = (
-                    title_settings.birthday_month is not None
-                    and month == title_settings.birthday_month
-                )
-                divider = generator.generate_month_divider(
-                    month, year, is_birthday_month=is_birthday
-                )
-                month_divider_paths[key] = divider.path
-                logger.info(
-                    f"Generated month divider: {month}/{year}"
-                    + (" (birthday!)" if is_birthday else "")
-                )
-        return month_divider_paths
-
-    def build_clips_with_dividers(
-        self,
-        clips: list[AssemblyClip],
-        month_divider_paths: dict[tuple[int, int], Path],
-        title_settings: Any,
-    ) -> list[AssemblyClip]:
-        """Interleave clips with month divider screens."""
-        result: list[AssemblyClip] = []
-        current_month: tuple[int, int] | None = None
-        inserted = 0
-        limit = self._divider_limit(title_settings)
-
-        for clip in clips:
-            clip_date = self.parse_clip_date(clip)
-            if clip_date:
-                month_key = (clip_date.year, clip_date.month)
-                # WHY: skip the first month divider — the intro title already
-                # shows the month/year context. Only insert dividers when the
-                # month CHANGES (not for the very first clip).
-                if (
-                    title_settings.show_month_dividers
-                    and current_month is not None
-                    and month_key != current_month
-                    and month_key in month_divider_paths
-                    and (limit is None or inserted < limit)
-                ):
-                    result.append(
-                        AssemblyClip(
-                            path=month_divider_paths[month_key],
-                            duration=title_settings.month_divider_duration,
-                            date=None,
-                            asset_id=f"month_divider_{month_key[1]:02d}",
-                            is_title_screen=True,
-                        )
-                    )
-                    inserted += 1
-                current_month = month_key
-            result.append(clip)
-        return result
-
-    # ------------------------------------------------------------------
-    # Location dividers (trip memories)
-    # ------------------------------------------------------------------
-
-    def make_location_card_clip(
-        self,
-        name: str,
-        cache: dict[str, Path],
-        generator: Any,
-        title_settings: Any,
-    ) -> AssemblyClip:
-        """Return an AssemblyClip for a location card, using cache to avoid duplicates."""
-        if name not in cache:
-            card = generator.generate_location_card_screen(name)
-            cache[name] = card.path
-        return AssemblyClip(
-            path=cache[name],
-            duration=title_settings.month_divider_duration,
-            date=None,
-            asset_id=f"location_{name}",
-            is_title_screen=True,
-        )
-
-    def build_clips_with_location_dividers(
-        self,
-        clips: list[AssemblyClip],
-        generator: Any,
-        title_settings: Any,
-        progress_callback: Callable[[float, str], None] | None,
-    ) -> list[AssemblyClip]:
-        """Insert location cards between clips when location changes (>30km)."""
-        from immich_memories.analysis.trip_detection import haversine_km
-
-        if progress_callback:
-            progress_callback(0.05, "Generating location cards...")
-
-        result: list[AssemblyClip] = []
-        location_card_cache: dict[str, Path] = {}
-        prev_lat: float | None = None
-        prev_lon: float | None = None
-        threshold_km = 30.0
-        inserted = 0
-        limit = self._divider_limit(title_settings)
-
-        for clip in clips:
-            if clip.latitude is not None and clip.longitude is not None:
-                if prev_lat is not None and prev_lon is not None:
-                    dist = haversine_km(prev_lat, prev_lon, clip.latitude, clip.longitude)
-                    if (
-                        dist > threshold_km
-                        and clip.location_name
-                        and (limit is None or inserted < limit)
-                    ):
-                        card = self.make_location_card_clip(
-                            clip.location_name, location_card_cache, generator, title_settings
-                        )
-                        result.append(card)
-                        inserted += 1
-                        logger.info(f"Location card: {clip.location_name} (dist={dist:.0f}km)")
-                prev_lat = clip.latitude
-                prev_lon = clip.longitude
-            result.append(clip)
-        return result
-
-    # ------------------------------------------------------------------
-    # Divider strategy selection
-    # ------------------------------------------------------------------
-
-    def select_divider_strategy(
-        self,
-        clips: list[AssemblyClip],
-        generator: Any,
-        title_settings: Any,
-        progress_callback: Callable[[float, str], None] | None,
-        is_trip: bool,
-    ) -> list[AssemblyClip]:
-        """Select and apply the appropriate divider strategy for clips."""
-        if is_trip and getattr(title_settings, "show_location_cards", True):
-            return self.build_clips_with_location_dividers(
-                clips, generator, title_settings, progress_callback
-            )
-
-        divider_mode = getattr(title_settings, "divider_mode", "month")
-        if divider_mode == "year":
-            year_divider_paths = self.generate_year_dividers(
-                clips, generator, title_settings, progress_callback
-            )
-            return self.build_clips_with_year_dividers(clips, year_divider_paths, title_settings)
-
-        if divider_mode == "month" and title_settings.show_month_dividers:
-            month_divider_paths = self.generate_month_dividers(
-                clips, generator, title_settings, progress_callback
-            )
-            return self.build_clips_with_dividers(clips, month_divider_paths, title_settings)
-
-        return clips.copy()
 
     # ------------------------------------------------------------------
     # Main entry point
@@ -827,7 +308,7 @@ class TitleInserter:
             logger.info(f"Generated trip map intro: {title_screen.path}")
         else:
             if use_content_bg:
-                content_clip = self._pre_render_first_clip(
+                content_clip = self.background_renderer.render_first_clip(
                     clips,
                     title_output_dir,
                     target_w,
@@ -874,9 +355,8 @@ class TitleInserter:
             progress_callback(0.35, "Title screen ready")
 
         # 2-3. Clips with dividers
-        content_clips = self.select_divider_strategy(
-            clips, generator, title_settings, progress_callback, is_trip
-        )
+        divider_planner = TitleDividerPlanner(generator, title_settings)
+        content_clips = divider_planner.select_divider_strategy(clips, progress_callback, is_trip)
         final_clips.extend(content_clips)
 
         # 4. Ending screen
