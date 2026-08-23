@@ -33,6 +33,20 @@ def from_an_excluded_source(name: str | None, patterns: Sequence[str]) -> bool:
     return any(fnmatch.fnmatch(lowered, pattern.casefold()) for pattern in patterns)
 
 
+def is_a_still(asset: Any) -> bool:
+    """A photograph, and not a Live Photo.
+
+    A Live Photo carries a video component and is rendered from it, so every
+    rule about footage applies to it. Reading the asset type alone calls it a
+    still and exempts it from exactly those rules.
+    """
+    from immich_memories.api.models import AssetType
+
+    return getattr(asset, "type", None) == AssetType.IMAGE and not getattr(
+        asset, "live_photo_video_id", None
+    )
+
+
 def _a_still_with_no_camera(asset: Any) -> bool:
     """A photograph whose EXIF names no camera at all.
 
@@ -42,9 +56,7 @@ def _a_still_with_no_camera(asset: Any) -> bool:
     somewhere. Of 224 make-less videos, 25 were genuine phone clips — so this
     reads stills only, and video is left to the filename rule.
     """
-    from immich_memories.api.models import AssetType
-
-    if getattr(asset, "type", None) != AssetType.IMAGE:
+    if not is_a_still(asset):
         return False
     exif = getattr(asset, "exif_info", None)
     return not (exif and getattr(exif, "make", None))

@@ -97,3 +97,19 @@ def test_the_hold_reports_how_many_clips_it_actually_moved() -> None:
 
     assert held == 1
     assert gained == pytest.approx(1.0)
+
+
+def test_a_merged_live_photo_is_footage_and_answers_to_the_gap_rule() -> None:
+    """A Live Photo carries a video component and is rendered from it.
+
+    Treating it as a still exempted it from the gap check, so the hold pass
+    extended a merged burst by two seconds with nothing looking at where the
+    speech was — on exactly the clips the gap rule exists to protect.
+    """
+    member = _photo(duration=30.0, start=5.0, end=10.0)
+    member.clip.asset.live_photo_video_id = "the-video-component"
+
+    gained, _held = _hold_best_clips_longer([member], gap_seconds=4.0)
+
+    assert member.end_time == 10.0, "footage without measured pauses does not move"
+    assert gained == 0.0

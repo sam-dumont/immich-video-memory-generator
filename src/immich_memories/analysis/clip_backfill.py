@@ -269,9 +269,11 @@ def _safe_end_within(member: ClipWithSegment, limit: float) -> float | None:
     them — and an end that cannot be vouched for does not move at all.
     Finishing short is what this step already does when nothing can be added.
     """
-    from immich_memories.api.models import AssetType
+    from immich_memories.analysis.source_filter import is_a_still
 
-    if member.clip.asset.type == AssetType.IMAGE:
+    # A Live Photo is footage: it carries a video component and is rendered
+    # from it, so it answers to the gap rule like any other clip.
+    if is_a_still(member.clip.asset):
         return limit
     gaps = member.clip.safe_cut_gaps
     if gaps is None:

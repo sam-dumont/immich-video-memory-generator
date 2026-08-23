@@ -465,9 +465,10 @@ class SmartPipeline:
         video analyzer fails and replaces its score with zero, so a photo the
         scorer could not describe was not merely unseen, it was ranked last.
         """
-        from immich_memories.api.models import AssetType
+        from immich_memories.analysis.source_filter import is_a_still
 
-        if member.clip.asset.type == AssetType.IMAGE:
+        # A Live Photo is footage the video analyzer can and should look at.
+        if is_a_still(member.clip.asset):
             return False
         if not member.analyzed:
             return True
