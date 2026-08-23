@@ -149,6 +149,21 @@ def _from_the_camera_roll(photo_assets: list[Asset], config: Any) -> list[Asset]
     return kept
 
 
+def _no_photos_to_choose_between(video_candidates: list[BudgetCandidate]) -> PhotoSelectionResult:
+    """No photo competes for the budget, so every video keeps its place.
+
+    The caller filters its videos down to kept_video_ids, so an empty
+    selection is not "nothing was worth keeping" — it renders a memory with
+    no content at all. Nothing to select between means nothing to drop.
+    """
+    return PhotoSelectionResult(
+        scored_photos=[],
+        selection=UnifiedSelection(
+            kept_video_ids={candidate.asset_id for candidate in video_candidates}
+        ),
+    )
+
+
 def score_and_select_photos(
     photo_assets: list[Asset],
     video_candidates: list[BudgetCandidate],
@@ -171,7 +186,7 @@ def score_and_select_photos(
     """
     photo_assets = _from_the_camera_roll(photo_assets, config)
     if not photo_assets:
-        return PhotoSelectionResult(scored_photos=[], selection=UnifiedSelection())
+        return _no_photos_to_choose_between(video_candidates)
 
     # WHY every argument: score_photos degrades silently without them. No
     # app_config and the VLM never scores a photo; no thumbnail_cache and both
@@ -192,7 +207,7 @@ def score_and_select_photos(
     )
 
     if not scored:
-        return PhotoSelectionResult(scored_photos=scored, selection=UnifiedSelection())
+        return _no_photos_to_choose_between(video_candidates)
 
     photo_candidates = [
         BudgetCandidate(

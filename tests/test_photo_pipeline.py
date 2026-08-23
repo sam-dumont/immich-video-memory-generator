@@ -169,3 +169,36 @@ def test_a_score_cached_before_photos_could_describe_themselves_is_re_asked(tmp_
 
     assert enhanced == [(asset, 0.42)], "the stale row must not stand in for a look"
     assert payloads["shot"]["description"] == "a whiteboard"
+
+
+def test_a_pool_with_no_usable_photos_keeps_every_video(tmp_path) -> None:
+    """An empty selection is not a verdict that nothing was worth keeping.
+
+    The consumer filters videos to selection.kept_video_ids, so returning an
+    empty selection when there is simply nothing to choose between discards
+    every already-selected video and renders a memory with no content.
+    """
+    from immich_memories.analysis.unified_budget import BudgetCandidate
+
+    videos = [
+        BudgetCandidate(
+            asset_id=f"video-{i}",
+            duration=4.0,
+            score=0.5,
+            candidate_type="video",
+            date=None,
+            is_favorite=False,
+        )
+        for i in range(3)
+    ]
+
+    result = score_and_select_photos(
+        photo_assets=[_photo("forwarded", "IMG-20190105-WA0006.jpg")],
+        video_candidates=videos,
+        config=Config(cache={"directory": str(tmp_path / "cache")}),
+        target_duration=60.0,
+        work_dir=tmp_path,
+        download_fn=None,
+    )
+
+    assert result.selection.kept_video_ids == {"video-0", "video-1", "video-2"}
