@@ -667,3 +667,29 @@ class TestNothingIsJudgedBlind:
         member = ClipWithSegment(clip=still, start_time=0.0, end_time=4.0, score=0.6)
 
         assert not self._pipeline(tmp_path)._needs_a_real_look(member)
+
+    def test_a_clip_that_failed_analysis_is_not_queued_again(self, tmp_path: Path) -> None:
+        """The attempted set was local to one call, and the method is re-entered.
+
+        Each stabilize pass and the final review each start a fresh set, so a
+        clip whose analysis fails is downloaded and decoded again on every
+        entry, for the same failure — and it can never come back with a
+        description, so it is queued again for as long as it is selected.
+        """
+        from immich_memories.analysis.smart_pipeline import ClipWithSegment, PipelineResult
+
+        unseen = TestDensityBudgetCap()._make_clip("unseen")
+        member = ClipWithSegment(clip=unseen, start_time=0.0, end_time=4.0, score=0.6)
+        result = PipelineResult(
+            selected_clips=[unseen], clip_segments={"unseen": (0.0, 4.0)}, errors=[]
+        )
+
+        pipeline = self._pipeline(tmp_path)
+        # WHY: analysis downloads and decodes video; here it comes back blind.
+        pipeline.analyzer.phase_analyze = MagicMock(return_value=[member])
+        pipeline.refiner.phase_refine = MagicMock(return_value=result)
+
+        pipeline._verify_selection([member], result)
+        pipeline._verify_selection([member], result)
+
+        assert pipeline.analyzer.phase_analyze.call_count == 1

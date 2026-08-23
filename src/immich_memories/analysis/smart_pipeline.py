@@ -174,6 +174,8 @@ class SmartPipeline:
         app_config: Config,
     ):
         self.client = client
+        # Clips the verify pass has already looked at, across every entry.
+        self._verify_attempted: set[str] = set()
         self.analysis_cache = analysis_cache
         self.thumbnail_cache = thumbnail_cache
         self.config = config or PipelineConfig()
@@ -351,7 +353,12 @@ class SmartPipeline:
         so the loop always terminates.
         """
         by_id = {c.clip.asset.id: c for c in analyzed}
-        attempted: set[str] = set()
+        # On the pipeline, not the call: this method is re-entered once per
+        # stabilize pass and again for the final review, and a clip whose
+        # analysis fails can never come back with a description — so a
+        # call-local set had it downloaded and decoded again on every entry,
+        # for the same failure.
+        attempted: set[str] = self._verify_attempted
         for _ in range(max(1, self.config.max_refinement_passes)):
             unverified = [
                 by_id[c.asset.id]
