@@ -68,6 +68,27 @@ class TestSpeechDetectorConstruction:
         assert isinstance(service._speech_detector, FireRedSpeechDetector)
 
 
+class TestDetectRegionsCachedWithoutRuntime:
+    """A detector that cannot run must not cost an ffmpeg extraction per clip."""
+
+    def test_unavailable_runtime_skips_the_per_clip_audio_extraction(self, tmp_path: Path):
+        from immich_memories.speech.fireredvad import FireRedSpeechDetector
+
+        # WHY: stands in for FireRedVAD's runtime import, which succeeds here
+        # because the speech extra is installed -- this is the bare install.
+        with patch.object(FireRedSpeechDetector, "_load", return_value=False):
+            service = SpeechAnalysisService(
+                audio_content_config=AudioContentConfig(),
+                speech_config=SpeechConfig(enabled=True),
+            )
+
+        # WHY: the per-clip ffmpeg extraction; not being called is the assertion.
+        with patch("immich_memories.analysis.speech_analysis.extract_audio_16k") as extract:
+            assert service.detect_regions_cached(tmp_path / "clip.mov") == []
+
+        extract.assert_not_called()
+
+
 class TestApplyVadRanges:
     """`apply_vad_ranges` replaces PANNs-derived protected ranges with VAD ones."""
 

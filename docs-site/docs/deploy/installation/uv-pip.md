@@ -165,6 +165,17 @@ Set `advanced.transcription.model: base` for a ~148 MB download at a measured co
 Without the extra, no transcripts are produced and nothing else changes. Both `all` and `all-mac`
 include it.
 
+### Check what this install actually has
+
+```bash
+immich-memories preflight
+```
+
+Every optional feature gets a row saying what it costs when its extra is absent — speech
+boundaries, transcription, semantic audio labels, GPU title rendering. A missing runtime is a
+`WARNING`, never a silent no-op: the pipeline also logs one warning at startup when speech
+boundaries are enabled but the FireRedVAD runtime is not installed.
+
 ## Optional System Dependencies
 
 These are **not required** but improve specific features:

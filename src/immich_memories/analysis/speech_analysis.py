@@ -370,16 +370,20 @@ class SpeechAnalysisService:
 
         Both boundary placement and the transcription gate need them; running
         FireRedVAD twice over one cached array buys nothing.
+
+        The detector is checked before the extraction, not after: with no
+        detector there is nothing to feed, and asking ffmpeg for 16 kHz audio
+        first billed every clip for an answer that was always `[]`.
         """
+        if self._speech_detector is None:
+            return []
+
         cache_key = str(video_path)
         if cache_key not in self._vad_regions_cache:
             audio = self.extract_audio_cached(video_path)
-            if audio is None or self._speech_detector is None:
-                self._vad_regions_cache[cache_key] = []
-            else:
-                self._vad_regions_cache[cache_key] = self._speech_detector.detect(
-                    audio, VAD_SAMPLE_RATE
-                )
+            self._vad_regions_cache[cache_key] = (
+                [] if audio is None else self._speech_detector.detect(audio, VAD_SAMPLE_RATE)
+            )
         return self._vad_regions_cache[cache_key]
 
     def transcribe_segment(self, video_path: Path, start: float, end: float) -> Transcript | None:

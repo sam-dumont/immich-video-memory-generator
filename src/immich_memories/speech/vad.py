@@ -63,16 +63,31 @@ class SpeechDetector(Protocol):
 
 
 def select_detector(config: SpeechConfig) -> SpeechDetector | None:
-    """FireRedVAD, or `None` when speech-derived boundaries are disabled.
+    """FireRedVAD, or `None` when speech-derived boundaries cannot run.
 
     `None` leaves PANNs-derived protected ranges untouched (see
     `_apply_vad_ranges`).
+
+    The runtime is probed here rather than on the first `detect()` call. A
+    detector whose ONNX/fbank imports are missing answers `[]` to every clip,
+    so callers would pay a per-clip ffmpeg extraction to feed a detector that
+    cannot run -- and, on a bare install without the `speech` extra, learn
+    about it only from a debug line. Probing once at selection turns that into
+    one warning and no extraction.
     """
     if not config.enabled:
         return None
 
     from immich_memories.speech.fireredvad import FireRedSpeechDetector
 
-    return FireRedSpeechDetector(
+    detector = FireRedSpeechDetector(
         threshold=config.vad_threshold, min_silence_ms=config.min_silence_ms
     )
+    if not detector.available:
+        logger.warning(
+            "Speech boundaries are enabled but the VAD runtime is unavailable -- "
+            "cuts fall back to PANNs speech tags and may land mid-sentence. "
+            "Install with: pip install 'immich-memories[speech]'"
+        )
+        return None
+    return detector

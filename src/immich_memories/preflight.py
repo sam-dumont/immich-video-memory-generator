@@ -376,6 +376,77 @@ def check_audio_content(config: Config) -> CheckResult:
     )
 
 
+def _optional_runtime_check(
+    name: str, modules: tuple[str, ...], *, extra: str, ready: str, cost: str
+) -> CheckResult:
+    """OK when the extra's runtime imports, else a WARNING naming what is lost.
+
+    `cost` is the point: an install missing an extra otherwise learns nothing
+    until the feature silently does nothing, so the WARNING states the feature
+    that is gone rather than the package that is absent.
+    """
+    missing = [module for module in modules if importlib.util.find_spec(module) is None]
+    if not missing:
+        return CheckResult(name=name, status=CheckStatus.OK, message=ready)
+    return CheckResult(
+        name=name,
+        status=CheckStatus.WARNING,
+        message=cost,
+        details=f"Missing {', '.join(missing)}; install with pip install 'immich-memories[{extra}]'",
+    )
+
+
+def check_speech_boundaries(config: Config) -> CheckResult:
+    """Report whether speech-aware cut boundaries can actually run."""
+    if not config.speech.enabled:
+        return CheckResult(
+            name="Speech boundaries",
+            status=CheckStatus.SKIPPED,
+            message="Speech boundaries disabled",
+        )
+    return _optional_runtime_check(
+        "Speech boundaries",
+        ("onnxruntime", "kaldi_native_fbank"),
+        extra="speech",
+        ready="Speech-aware cut boundaries ready",
+        cost="Speech boundaries unavailable; cuts may land mid-sentence",
+    )
+
+
+def check_transcription(config: Config) -> CheckResult:
+    """Report whether speech transcription can actually run."""
+    if not config.transcription.enabled:
+        return CheckResult(
+            name="Transcription",
+            status=CheckStatus.SKIPPED,
+            message="Speech transcription disabled",
+        )
+    return _optional_runtime_check(
+        "Transcription",
+        ("pywhispercpp",),
+        extra="transcribe",
+        ready="Speech transcription ready",
+        cost="Speech transcription unavailable; clips are chosen without what was said",
+    )
+
+
+def check_title_rendering(config: Config) -> CheckResult:
+    """Report whether title screens get the GPU renderer or the PIL fallback."""
+    if not config.title_screens.enabled:
+        return CheckResult(
+            name="Title rendering",
+            status=CheckStatus.SKIPPED,
+            message="Title screens disabled",
+        )
+    return _optional_runtime_check(
+        "Title rendering",
+        ("taichi",),
+        extra="gpu",
+        ready="GPU-accelerated title rendering available",
+        cost="GPU-accelerated title rendering unavailable; titles use the PIL fallback",
+    )
+
+
 def run_preflight_checks(config: Config) -> list[CheckResult]:
     """Run all preflight checks.
 
@@ -389,6 +460,9 @@ def run_preflight_checks(config: Config) -> list[CheckResult]:
         check_immich(config),
         check_llm(config),
         check_audio_content(config),
+        check_speech_boundaries(config),
+        check_transcription(config),
+        check_title_rendering(config),
         check_notifications(config),
         check_hardware(),
     ]

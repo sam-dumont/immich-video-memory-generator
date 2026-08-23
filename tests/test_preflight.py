@@ -13,6 +13,10 @@ from immich_memories.preflight import (
     check_immich,
     check_llm,
     check_notifications,
+    check_speech_boundaries,
+    check_title_rendering,
+    check_transcription,
+    run_preflight_checks,
 )
 
 
@@ -171,3 +175,54 @@ def test_notification_preflight_is_optional_when_disabled() -> None:
 
     assert result.status is CheckStatus.SKIPPED
     assert result.message == "Notifications disabled"
+
+
+def test_speech_boundaries_preflight_names_the_feature_lost_without_the_extra() -> None:
+    """A bare install must see the cost, not just a missing package name."""
+    # WHY: replaces the installed-package probe with what a bare pip install sees.
+    with patch("immich_memories.preflight.importlib.util.find_spec", return_value=None):
+        result = check_speech_boundaries(Config())
+
+    assert result.status is CheckStatus.WARNING
+    assert result.message == "Speech boundaries unavailable; cuts may land mid-sentence"
+    assert "onnxruntime" in (result.details or "")
+    assert "immich-memories[speech]" in (result.details or "")
+
+
+def test_transcription_preflight_names_the_feature_lost_without_the_extra() -> None:
+    config = Config(transcription={"enabled": True, "languages": ["en"]})
+
+    # WHY: replaces the installed-package probe with what a no-transcribe install sees.
+    with patch("immich_memories.preflight.importlib.util.find_spec", return_value=None):
+        result = check_transcription(config)
+
+    assert result.status is CheckStatus.WARNING
+    assert result.message == (
+        "Speech transcription unavailable; clips are chosen without what was said"
+    )
+    assert "immich-memories[transcribe]" in (result.details or "")
+
+
+def test_title_rendering_preflight_reports_the_pil_fallback_without_taichi() -> None:
+    # WHY: replaces the installed-package probe with what a no-gpu install sees.
+    with patch("immich_memories.preflight.importlib.util.find_spec", return_value=None):
+        result = check_title_rendering(Config())
+
+    assert result.status is CheckStatus.WARNING
+    assert "PIL fallback" in result.message
+    assert "immich-memories[gpu]" in (result.details or "")
+
+
+def test_preflight_run_lists_every_absent_optional_feature() -> None:
+    """The degraded-install summary is the whole point: one line per lost feature."""
+    config = Config(
+        audio_content={"enabled": True},
+        transcription={"enabled": True, "languages": ["en"]},
+    )
+
+    # WHY: replaces the installed-package probe with what a bare pip install sees.
+    with patch("immich_memories.preflight.importlib.util.find_spec", return_value=None):
+        checks = run_preflight_checks(config)
+
+    degraded = {c.name for c in checks if c.status is CheckStatus.WARNING}
+    assert {"Audio content", "Speech boundaries", "Transcription", "Title rendering"} <= degraded

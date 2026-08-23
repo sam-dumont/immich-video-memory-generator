@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import logging
 import subprocess
 from pathlib import Path
 from unittest.mock import patch
@@ -20,6 +21,29 @@ from immich_memories.speech.vad import extract_audio_16k, select_detector
 class TestSelectDetector:
     def test_disabled_config_returns_none(self):
         assert select_detector(SpeechConfig(enabled=False)) is None
+
+    def test_missing_speech_runtime_returns_none_and_warns_once(self, caplog):
+        """A bare install must be told, once, that speech boundaries are off.
+
+        Returning the detector anyway is what made the degradation silent: it
+        answers `[]` to every clip, and only a debug line says why.
+        """
+        from immich_memories.speech.fireredvad import FireRedSpeechDetector
+
+        # Patching sys.modules instead works exactly once: the restore drops
+        # kaldi_native_fbank, and re-importing a pybind11 extension raises
+        # "type is already registered" for every later test in the session.
+        # WHY: stands in for FireRedVAD's runtime import inside _load.
+        with (
+            patch.object(FireRedSpeechDetector, "_load", return_value=False),
+            caplog.at_level(logging.WARNING),
+        ):
+            detector = select_detector(SpeechConfig(enabled=True))
+
+        assert detector is None
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 1
+        assert "immich-memories[speech]" in warnings[0].getMessage()
 
     def test_enabled_config_returns_a_configured_fireredvad_detector(self):
         from immich_memories.speech.fireredvad import FireRedSpeechDetector
