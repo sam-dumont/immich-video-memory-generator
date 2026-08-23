@@ -410,10 +410,20 @@ class SmartPipeline:
         stops when the budget runs out, and by then it has just re-selected.
         Refilling again would only admit more unseen clips, so this pass takes
         the cut it has and removes what does not belong.
+
+        It looks at them first. The review is told — correctly — never to drop
+        a clip for missing information, since a third of a real pool has no
+        analysis yet and treating silence as a verdict would gut the memory.
+        The cost of that rule is that an unanalysed clip is immune to the only
+        quality judgment in the pipeline, and a rendered year recap shipped
+        whiteboards and desks on exactly that immunity. Nothing is judged
+        blind, so the rule never has to protect anything that shipped.
         """
         if not self._app_config.content_analysis.enabled:
             return result, analyzed
         from immich_memories.analysis.selection_review import review_selection
+
+        result, analyzed = self._verify_selection(analyzed, result)
 
         by_id = {c.clip.asset.id: c for c in analyzed}
         selected = [by_id[c.asset.id] for c in result.selected_clips if c.asset.id in by_id]

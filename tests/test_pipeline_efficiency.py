@@ -583,3 +583,70 @@ class TestUnifiedPhotoBudget:
 
         assert params.target_duration_seconds == 300  # 5 min * 60
         assert params.timeline_plan is state.timeline_plan
+
+
+class TestNothingIsJudgedBlind:
+    """The review is told never to drop a clip for missing information.
+
+    That rule is right — a third of a real pool has no analysis yet, and
+    treating silence as a verdict would gut the memory. It also means an
+    unanalysed clip is immune to the only quality judgment in the pipeline,
+    so the answer is to leave nothing unanalysed rather than to loosen it.
+    """
+
+    def _pipeline(self, tmp_path: Path):
+        from immich_memories.analysis.smart_pipeline import PipelineConfig, SmartPipeline
+        from immich_memories.config_models import AnalysisConfig
+
+        analysis_cache = MagicMock()
+        analysis_cache.get_analysis.return_value = None
+        return SmartPipeline(
+            client=MagicMock(),
+            analysis_cache=analysis_cache,
+            thumbnail_cache=MagicMock(),
+            config=PipelineConfig(),
+            analysis_config=AnalysisConfig(),
+            app_config=Config(
+                cache={"directory": str(tmp_path / "cache")},
+                llm={"model": "qwen-3.6"},
+                content_analysis={"enabled": True},
+            ),
+        )
+
+    def test_the_last_review_sees_every_clip_it_is_asked_to_judge(self, tmp_path: Path) -> None:
+        """The refinement loop stops on its budget with its last refill unjudged.
+
+        Those clips arrived at the final review with a bare line — date,
+        place, score and nothing else — and survived on the very rule that
+        protects genuinely unanalysed material.
+        """
+        from immich_memories.analysis.smart_pipeline import ClipWithSegment, PipelineResult
+
+        unseen = TestDensityBudgetCap()._make_clip("unseen")
+        member = ClipWithSegment(clip=unseen, start_time=0.0, end_time=4.0, score=0.6)
+        result = PipelineResult(
+            selected_clips=[unseen], clip_segments={"unseen": (0.0, 4.0)}, errors=[]
+        )
+
+        pipeline = self._pipeline(tmp_path)
+        looked_at = TestDensityBudgetCap()._make_clip("unseen")
+        looked_at.llm_description = "a whiteboard covered in sticky notes"
+        # WHY: analysis downloads and decodes video; this stands in for the look.
+        pipeline.analyzer.phase_analyze = MagicMock(
+            return_value=[ClipWithSegment(clip=looked_at, start_time=0.0, end_time=4.0, score=0.6)]
+        )
+        pipeline.refiner.phase_refine = MagicMock(return_value=result)
+
+        judged: list = []
+
+        def _capture(selected, _llm_config, **_kwargs):
+            judged.extend(selected)
+            return []
+
+        # WHY: the review is an LLM call; what it is handed is the subject here.
+        with patch("immich_memories.analysis.selection_review.review_selection", _capture):
+            pipeline._final_review_drop([member], result)
+
+        assert [c.clip.llm_description for c in judged] == [
+            "a whiteboard covered in sticky notes"
+        ], "the review was handed a clip nobody had looked at"
