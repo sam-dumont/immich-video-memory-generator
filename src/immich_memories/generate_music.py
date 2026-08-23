@@ -24,6 +24,7 @@ from immich_memories.processing.output_contract import (
     probe_output,
     publish_validated_output,
 )
+from immich_memories.processing.scaling_utilities import aggregate_mood_from_clips
 from immich_memories.security import configured_secret_values, sanitize_error_message
 
 if TYPE_CHECKING:
@@ -174,8 +175,12 @@ def resolve_music(
     # the Docker/NAS path gets by default.
     from immich_memories.audio.bundled_music import bundled_track_for_mood
 
+    # The mood used to be read off a `clip.mood` field AssemblyClip has never
+    # had, so it was always None and the bundled mood folders never served their
+    # purpose. What the clips actually carry is llm_emotion, which the title
+    # stack already aggregates into mood families.
     bundled = bundled_track_for_mood(
-        _mood_for_clips(assembly_clips),
+        aggregate_mood_from_clips(assembly_clips),
         library=bundled_library,
         cadence_seconds=photo_cadence_seconds(assembly_clips),
     )
@@ -203,19 +208,6 @@ def photo_cadence_seconds(assembly_clips: list[AssemblyClip]) -> float | None:
     if len(durations) < 2:
         return None
     return durations[len(durations) // 2]
-
-
-def _mood_for_clips(assembly_clips: list[AssemblyClip]) -> str | None:
-    """Mood to pick bundled music by, aggregated from what the analyser saw.
-
-    This used to read ``clip.mood``, a field AssemblyClip has never had, so it
-    was always None and the bundled library's mood folders never served their
-    purpose. The clips carry ``llm_emotion``, which the title stack already
-    aggregates into mood families.
-    """
-    from immich_memories.processing.scaling_utilities import aggregate_mood_from_clips
-
-    return aggregate_mood_from_clips(assembly_clips)
 
 
 def auto_generate_music(

@@ -56,7 +56,8 @@ def bundled_track_for_mood(
     if root is None or not root.is_dir():
         return None
 
-    folder = root / _folder_for(mood)
+    family = (mood or "").lower()
+    folder = root / _MOOD_FOLDERS.get(family, family)
     candidates = _tracks_in(folder) if folder.is_dir() else []
     if not candidates:
         candidates = sorted(
@@ -68,12 +69,6 @@ def bundled_track_for_mood(
     chosen = _fitting_track(candidates, cadence_seconds) or random.choice(candidates)
     logger.info("Using bundled music: %s/%s", chosen.parent.name, chosen.name)
     return chosen
-
-
-def _folder_for(mood: str | None) -> str:
-    if not mood:
-        return ""
-    return _MOOD_FOLDERS.get(mood.lower(), mood.lower())
 
 
 def _tracks_in(folder: Path) -> list[Path]:

@@ -121,7 +121,7 @@ def track_for_cadence(candidates: list[Path], cadence_seconds: float) -> Path | 
     if not aligned:
         logger.debug("No bundled track lands on a %.1fs cadence", cadence_seconds)
         return None
-    chosen = random.choice(aligned)  # noqa: S311  # WHY: variety, not secrecy
+    chosen = random.choice(aligned)
     logger.info(
         "Bundled track %s fits a %.1fs cadence (%d of %d did)",
         chosen.name,
