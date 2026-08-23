@@ -189,7 +189,9 @@ class TestSlowmoColorDomain:
         # WHY a real BytesIO: extraction streams the pipe (#408); the mock
         # process must behave like one — data, then EOF.
         frame_proc = MagicMock()
-        frame_proc.stdout = io.BytesIO(frame * 2)
+        # WHY 5 frames: fewer is treated as a failed decode and falls back to the
+        # static background (#517); this test is about the command, not the count.
+        frame_proc.stdout = io.BytesIO(frame * 5)
         frame_proc.wait.return_value = 0
         # WHY: ffprobe/ffmpeg are the external boundary; the fake streams then EOFs (#408)
         with (

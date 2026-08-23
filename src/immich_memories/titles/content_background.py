@@ -22,6 +22,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# WHY (#517): Catmull-Rom only needs two frames, so `is_active` accepted two — but
+# two frames stretched across the 3.5s ease is a still image with a smear on it.
+# The default request is 0.5s of source, ~15 frames at 30fps; five is where the
+# ease still has distinct motion to interpolate. Below that the static background
+# is the better picture. No realistic clip falls short: five frames at 30fps is
+# 0.17s, and the window itself is already floored at 0.1s.
+_MIN_SOURCE_FRAMES = 5
+
 try:
     from PIL import Image, ImageFilter
 
@@ -223,11 +231,25 @@ class SlowmoBackgroundReader:
                 self._source_frames.append(
                     np.frombuffer(chunk, dtype=dtype).reshape((height, width, 3))
                 )
-            proc.wait(timeout=30)
+            returncode = proc.wait(timeout=30)
         except (OSError, subprocess.SubprocessError) as e:
             logger.debug(f"Failed to extract frames from {clip_path}: {e}")
             with contextlib.suppress(Exception):
                 proc.kill()
+            self._source_frames.clear()
+            return
+
+        # WHY (#517): frames are appended as they stream, so a decode that dies
+        # partway still leaves a handful behind. Keeping them let the 3.5s ease
+        # animate a ~0.1s sliver of source — a nearly frozen, smearing title
+        # background. A run that failed, or that never produced enough frames for
+        # the ease to read as motion, has nothing worth animating: drop the lot so
+        # the caller's static-frame fallback engages.
+        if returncode != 0 or len(self._source_frames) < _MIN_SOURCE_FRAMES:
+            logger.warning(
+                f"Slowmo decode of {clip_path.name} exited {returncode} with "
+                f"{len(self._source_frames)} frames; falling back to a static background"
+            )
             self._source_frames.clear()
             return
 

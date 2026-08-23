@@ -198,3 +198,60 @@ class TestSourceLoadingStreams:
         assert reader.is_active
         frame = reader.read_frame()
         assert frame is not None and frame.dtype == np.float32
+
+
+class TestFailedDecodeFallsBackToStatic:
+    """#517: the streaming rewrite dropped the ffmpeg returncode check. Frames
+    are appended as they arrive, so a decode that died mid-stream kept its
+    partial output and the 3.5s slow-mo ease stretched over a ~0.1s sliver —
+    a nearly frozen, smearing background instead of the static fallback."""
+
+    @staticmethod
+    def _reader(returncode: int, frame_count: int) -> object:
+        import io
+        from unittest.mock import MagicMock, patch
+
+        from immich_memories.titles.content_background import SlowmoBackgroundReader
+
+        mod = "immich_memories.titles.content_background"
+        duration_probe = MagicMock(stdout="2.0", returncode=0)
+        frame = np.full((2, 2, 3), 200, dtype=np.uint8).tobytes()
+        proc = MagicMock()
+        proc.stdout = io.BytesIO(frame * frame_count)
+        proc.wait.return_value = returncode
+
+        # The fake streams whole frames, then EOFs with a chosen exit status.
+        # WHY: ffprobe and ffmpeg are the boundary the keep-or-drop decision reads.
+        with (
+            patch(f"{mod}.shutil.which", return_value="ffmpeg"),
+            patch(f"{mod}.subprocess.run", side_effect=[duration_probe]),
+            patch(f"{mod}.subprocess.Popen", return_value=proc),
+        ):
+            return SlowmoBackgroundReader(
+                Path("/nonexistent/content.mp4"),
+                width=2,
+                height=2,
+                fps=2,
+                title_duration=1.0,
+            )
+
+    def test_nonzero_exit_drops_the_partial_frames(self):
+        reader = self._reader(returncode=1, frame_count=8)
+
+        assert not reader.is_active, (
+            "frames from a failed decode were kept — the ease will animate a sliver"
+        )
+        assert reader.read_frame() is None
+
+    def test_clean_exit_keeps_its_frames(self):
+        reader = self._reader(returncode=0, frame_count=8)
+
+        assert reader.is_active
+        assert reader.read_frame() is not None
+
+    def test_a_handful_of_frames_is_not_enough_to_animate(self):
+        """A clean exit that yielded almost nothing is the same sliver: the ease
+        would spread three frames over the full title duration."""
+        reader = self._reader(returncode=0, frame_count=3)
+
+        assert not reader.is_active
