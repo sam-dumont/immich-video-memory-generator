@@ -90,6 +90,34 @@ Unknown keys inside a section are silently ignored — a typo does not fail the 
 nothing. Unknown top-level keys and invalid values (`codec: av1`, `llm.provider: openai`) do fail
 with a validation error at startup.
 
+## Footage the camera roll did not shoot
+
+Doorbells, security cameras, screen recorders and messaging apps all upload into the same
+timeline as your phone. None of it was shot to be remembered, and some of it scores well —
+a doorbell is a perfectly stable camera pointed at a place people walk through.
+
+Source files matching these patterns never reach selection:
+
+```yaml
+advanced:
+  analysis:
+    exclude_filename_patterns:
+      - "RingVideo_*"
+      - "RPReplay_Final*"
+      - "Screen Recording *"
+      - "Screenshot*"
+      - "*-WA[0-9]*"
+```
+
+Case-insensitive globs against the original filename. Setting the key replaces the list
+rather than adding to it, so include the defaults you want to keep. An empty list turns the
+filter off.
+
+This runs before analysis, so an excluded file costs nothing to skip, and it works with no
+LLM configured at all. With one configured, the holistic review is a second line of defence:
+it drops footage nobody chose to shoot whatever the picture quality, which covers the
+cameras whose filenames give nothing away.
+
 ## Immich API compatibility
 
 Immich Memories supports **Immich v2 and v3**. `auto` is the default runtime policy: the app

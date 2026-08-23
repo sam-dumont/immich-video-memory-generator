@@ -39,6 +39,7 @@ const sidebars: SidebarsConfig = {
             'create/cli/titles',
             'create/cli/scheduler',
             'create/cli/runs',
+            'create/cli/discover-days',
           ],
         },
         {
