@@ -676,7 +676,7 @@ class TestNothingIsJudgedBlind:
         # WHY: the VLM is the network boundary; this stands in for its look.
         with patch(
             "immich_memories.photos.photo_pipeline.look_at_selected_photos",
-            return_value={"still": {"description": "a plant against a wall"}},
+            return_value={"still": (0.44, {"description": "a plant against a wall"})},
         ):
             pipeline.quality.verify([member], result)
 
@@ -730,7 +730,7 @@ class TestNothingIsJudgedBlind:
         # WHY: the VLM is the network boundary; this stands in for its look.
         with patch(
             "immich_memories.photos.photo_pipeline.look_at_selected_photos",
-            return_value={"unseen-still": {"description": "a beer tap on a bar"}},
+            return_value={"unseen-still": (0.31, {"description": "a beer tap on a bar"})},
         ):
             pipeline.quality.verify([member], result)
 

@@ -20,6 +20,7 @@ from typing import Any
 import cv2
 import numpy as np
 
+from immich_memories.analysis.source_filter import from_the_camera_roll
 from immich_memories.analysis.unified_budget import (
     BudgetCandidate,
     UnifiedSelection,
@@ -127,23 +128,23 @@ def look_at_selected_photos(
     config: Any,
     client: Any,
     provider_circuit: Any = None,
-) -> dict[str, dict]:
+) -> dict[str, tuple[float, dict]]:
     """A VLM look at the handful of photos that reached a cut without one.
 
-    The shortlist is a budget: thirty of nearly two thousand photos are looked
-    at, and selection then picks from all of them. So most stills in a
-    finished cut have no description, and the holistic review — told never to
-    drop a clip for missing information — cannot judge any of them.
-
-    Bounded to what actually shipped, which is a dozen or so calls rather than
-    the whole library, and cached like any other look so a rerun pays nothing.
+    The shortlist is a budget — thirty of nearly two thousand — and selection
+    picks from all of them, so most stills in a finished cut have no
+    description and the review cannot judge them. Bounded to what shipped and
+    cached, so a rerun pays nothing. Returns the blended score beside the
+    description: both come out of the same look, and handing back only the
+    words let a look change what the review reads but never what selection
+    ranked on.
     """
     if not assets:
         return {}
     work_dir = config.cache.cache_path / "photo-looks"
     work_dir.mkdir(parents=True, exist_ok=True)
     scored = [(asset, score_photo(asset, config.photos)) for asset in assets]
-    _enhanced, payloads = _enhance_with_llm(
+    enhanced, payloads = _enhance_with_llm(
         scored,
         config.photos,
         work_dir,
@@ -153,35 +154,12 @@ def look_at_selected_photos(
         thumbnail_fn=client.get_asset_thumbnail,
         provider_circuit=provider_circuit,
     )
-    return payloads
-
-
-def from_the_camera_roll(photo_assets: list[Asset], config: Any) -> list[Asset]:
-    """Drop the photos nothing says the library's own camera made.
-
-    Videos are filtered on the same rule before analysis; photos reached
-    selection without ever being asked, so a collage forwarded through a
-    messaging app walked into a year recap while a doorbell clip beside it was
-    turned away. Dropped here rather than later because there is no sense
-    paying a VLM to score something that cannot ship.
-    """
-    from immich_memories.analysis.source_filter import not_shot_here
-
-    analysis = getattr(config, "analysis", None)
-    patterns = getattr(analysis, "exclude_filename_patterns", ())
-    stills_need_a_camera = getattr(analysis, "exclude_stills_without_camera_exif", False)
-    if not patterns and not stills_need_a_camera:
-        return photo_assets
-    kept = [
-        asset
-        for asset in photo_assets
-        if not not_shot_here(asset, patterns=patterns, stills_need_a_camera=stills_need_a_camera)
-    ]
-    if len(kept) < len(photo_assets):
-        logger.info(
-            "Source filter: %d photo(s) from excluded sources", len(photo_assets) - len(kept)
-        )
-    return kept
+    looked = {asset.id: score for asset, score in enhanced}
+    return {
+        asset_id: (looked[asset_id], payload)
+        for asset_id, payload in payloads.items()
+        if asset_id in looked
+    }
 
 
 def _no_photos_to_choose_between(video_candidates: list[BudgetCandidate]) -> PhotoSelectionResult:
@@ -514,10 +492,9 @@ def _select_distributed(
     return selected
 
 
-# What a cached row can answer depends on the prompt as much as on the model,
-# so the cache key carries both. Rows written when a photo could only report
-# two numbers cannot describe themselves, and would have held that silence
-# forever; bumping this invalidates them once, and never again.
+# What a row can answer depends on the prompt as much as the model, so the key
+# carries both: rows written when a photo could only report two numbers cannot
+# describe themselves, and bumping this invalidates them once.
 _PHOTO_LOOK_VERSION = "look1"
 
 

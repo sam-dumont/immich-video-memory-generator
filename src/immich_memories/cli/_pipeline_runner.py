@@ -620,9 +620,9 @@ def _merge_photos_into_pool(
     import logging
 
     from immich_memories.analysis.smart_pipeline import ClipWithSegment
+    from immich_memories.analysis.source_filter import from_the_camera_roll
     from immich_memories.api.models import VideoClipInfo
     from immich_memories.photos.photo_pipeline import (
-        from_the_camera_roll,
         score_photos,
         video_count_for_photo_budget,
     )
