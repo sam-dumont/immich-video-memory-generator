@@ -17,7 +17,7 @@ from immich_memories.automation.special_day_scan import (
     anniversaries_due,
     scan_year,
 )
-from immich_memories.cli.special_days_cmd import _homebase
+from immich_memories.cli.special_days_cmd import _homebase, _year_of_assets
 from immich_memories.config_models import TripsConfig
 
 
@@ -147,3 +147,78 @@ def test_a_day_at_the_start_of_january_is_due_in_late_december() -> None:
     entry = _entry(date(2015, 1, 1))
 
     assert anniversaries_due([entry], date(2024, 12, 30)) == [(entry, 10)]
+
+
+class _Library:
+    """An Immich that pages, and can be made to refuse."""
+
+    def __init__(self, assets: list, page_size: int = 1000, *, refuse: bool = False) -> None:
+        self.assets = assets
+        self.page_size = page_size
+        self.refuse = refuse
+        self.calls = 0
+
+    def search_metadata(self, *, taken_after, taken_before, page=1, size=1000, **_kwargs):
+        self.calls += 1
+        if self.refuse:
+            msg = "401 Unauthorized"
+            raise RuntimeError(msg)
+        window = [a for a in self.assets if taken_after <= a.file_created_at.date() < taken_before]
+        start = (page - 1) * self.page_size
+        chunk = window[start : start + self.page_size]
+        more = len(window) > start + self.page_size
+        return SimpleNamespace(
+            all_assets=chunk, next_page=str(page + 1) if more else None, total=len(window)
+        )
+
+
+def _on(year: int, month: int, day: int, index: int = 0) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=f"a-{year}{month:02d}{day:02d}-{index:02d}",
+        file_created_at=datetime(year, month, day, 12, index % 60, tzinfo=UTC),
+        exif_info=SimpleNamespace(city="Someplace", country="Belgium"),
+        people=[],
+    )
+
+
+def test_a_month_is_read_past_its_first_page() -> None:
+    """The densest months are exactly the ones this is looking for.
+
+    A single unpaginated query truncated them at the page size, so the days
+    worth finding were the ones most likely to be cut off.
+    """
+    library = _Library([_on(2019, 6, 12, i) for i in range(5)], page_size=2)
+
+    found = _year_of_assets(library, 2019)
+
+    assert len(found) == 5
+
+
+def test_the_twenty_ninth_of_february_is_inside_the_year() -> None:
+    """February was hardcoded to 28 days and March began on the 1st.
+
+    A leap day fell in the gap between the two queries, which made an event
+    on one structurally impossible to discover.
+    """
+    library = _Library([_on(2020, 2, 29, i) for i in range(3)])
+
+    found = _year_of_assets(library, 2020)
+
+    assert [a.id for a in found] == ["a-20200229-00", "a-20200229-01", "a-20200229-02"]
+
+
+def test_no_day_of_the_month_falls_between_two_queries() -> None:
+    """Each month ended on its last day at midnight, so that day was lost."""
+    library = _Library([_on(2019, 1, 31), _on(2019, 4, 30), _on(2019, 12, 31)])
+
+    found = _year_of_assets(library, 2019)
+
+    assert len(found) == 3, "a month's last day belongs to that month"
+
+
+def test_a_library_that_refuses_every_query_is_not_an_empty_year() -> None:
+    """A bad key failed all twelve queries while the command printed success."""
+    library = _Library([], refuse=True)
+
+    with pytest.raises(RuntimeError, match="2019"):
+        _year_of_assets(library, 2019)

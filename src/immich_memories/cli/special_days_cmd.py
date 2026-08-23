@@ -148,17 +148,60 @@ def _scan_library(
     return found
 
 
+def _month_bounds(year: int, month: int) -> tuple[date, date]:
+    """A month as [first day, first day of the next), so no day is homeless.
+
+    Hardcoded month lengths put the leap day in the gap between February and
+    March, which made an event on one structurally undiscoverable. Naming the
+    last day does not fix it either: the bound is read at midnight, so the
+    last day of every month fell out of both queries — twelve days a year.
+    """
+    start = date(year, month, 1)
+    end = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+    return start, end
+
+
+def _month_of_assets(client: object, year: int, month: int) -> list:
+    """Every asset in one month, following the pages to the end.
+
+    The densest months are the ones this command is looking for, and they are
+    exactly the ones a single query truncates.
+    """
+    start, end = _month_bounds(year, month)
+    found: list = []
+    page = 1
+    while True:
+        res = client.search_metadata(  # type: ignore[attr-defined]
+            taken_after=start,
+            taken_before=end,
+            page=page,
+            size=1000,
+        )
+        found.extend(res.all_assets)
+        if not res.next_page:
+            return found
+        page += 1
+
+
 def _year_of_assets(client: object, year: int) -> list:
-    assets: list = []
+    """One year of assets, month by month, deduplicated.
+
+    A month that fails is skipped rather than ending the scan, but a year in
+    which every month failed is not an empty year — it is a broken
+    connection, and reporting it as success wrote an empty catalogue over a
+    good one.
+    """
+    by_id: dict[str, object] = {}
+    failures = 0
     for month in range(1, 13):
-        last = 28 if month == 2 else 30 if month in (4, 6, 9, 11) else 31
         try:
-            res = client.search_metadata(  # type: ignore[attr-defined]
-                taken_after=date(year, month, 1),
-                taken_before=date(year, month, last),
-                size=1000,
-            )
-            assets.extend(res.all_assets)
-        except Exception:  # noqa: BLE001, PERF203 - one bad month must not end the scan
-            continue
-    return assets
+            for asset in _month_of_assets(client, year, month):
+                by_id[asset.id] = asset
+        except Exception as exc:  # noqa: BLE001, PERF203 - one bad month is not the scan
+            failures += 1
+            console.print(f"[yellow]{year}-{month:02d}: {type(exc).__name__}[/yellow]")
+
+    if failures == 12:
+        msg = f"Every monthly query for {year} failed — is Immich reachable?"
+        raise RuntimeError(msg)
+    return list(by_id.values())
