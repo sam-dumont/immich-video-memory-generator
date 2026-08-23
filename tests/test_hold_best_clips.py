@@ -113,3 +113,29 @@ def test_a_merged_live_photo_is_footage_and_answers_to_the_gap_rule() -> None:
 
     assert member.end_time == 10.0, "footage without measured pauses does not move"
     assert gained == 0.0
+
+
+def test_the_pauses_that_placed_a_cut_survive_the_cache(tmp_path) -> None:
+    """A cached rerun must hold a clip exactly as the cold run did.
+
+    The gaps were recorded on the segment and never persisted, so a second
+    run restored the boundaries without the evidence behind them, refused to
+    extend anything, and shipped a shorter cut than the identical fresh run.
+    """
+    from immich_memories.analysis.analyzer_models import ScoredSegment
+    from immich_memories.analysis.cache_projection import apply_cached_segment
+    from immich_memories.cache.database import VideoAnalysisCache
+    from tests.conftest import make_asset
+
+    cache = VideoAnalysisCache(tmp_path / "cache.db")
+    asset = make_asset("held-cached")
+    segment = ScoredSegment(start_time=5.0, end_time=10.0)
+    segment.safe_cut_gaps = [(0.0, 5.5), (9.4, 11.6)]
+    cache.save_analysis(asset, segments=[segment])
+
+    restored = cache.get_analysis("held-cached")
+    assert restored is not None
+    clip = make_clip("held-cached", duration=30.0)
+    apply_cached_segment(clip, restored.segments[0])
+
+    assert clip.safe_cut_gaps == [(0.0, 5.5), (9.4, 11.6)]

@@ -110,6 +110,7 @@ class VideoAnalysisCache:
             17: migrate_segment_transcripts,
             18: self._migration_v18_llm_category,
             19: migrate_target_duration_seconds,
+            20: self._migration_v20_safe_cut_gaps,
         }
 
         for version in range(from_version + 1, SCHEMA_VERSION + 1):
@@ -334,6 +335,17 @@ class VideoAnalysisCache:
             )  # nosemgrep: sqlalchemy-execute-raw-query — col_name/col_type are hardcoded above
         logger.info("Added LLM and audio_categories columns to video_segments")
 
+    def _migration_v20_safe_cut_gaps(self, conn: sqlite3.Connection) -> None:
+        """Persist where a cut may land, beside the boundaries it justifies.
+
+        Without it a cached rerun restores start and end without the evidence
+        behind them, so the hold pass refuses to extend anything and ships a
+        shorter cut than the identical cold run. Existing rows stay NULL and
+        behave as they did until the asset is analysed again.
+        """
+        conn.execute("ALTER TABLE video_segments ADD COLUMN safe_cut_gaps TEXT")
+        logger.info("Added safe_cut_gaps column to video_segments")
+
     def _migration_v18_llm_category(self, conn: sqlite3.Connection) -> None:
         """Add the closed-set subject category to video_segments.
 
@@ -356,6 +368,7 @@ class VideoAnalysisCache:
                 llm_emotion TEXT,
                 llm_description TEXT,
                 llm_category TEXT,
+                safe_cut_gaps TEXT,
                 metadata_score REAL NOT NULL,
                 combined_score REAL NOT NULL,
                 analyzed_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -635,6 +648,7 @@ class VideoAnalysisCache:
             subjects = getattr(segment, "llm_subjects", None)
             activities = getattr(segment, "llm_activities", None)
             audio_cats = getattr(segment, "audio_categories", None)
+            gaps = getattr(segment, "safe_cut_gaps", None)
 
             conn.execute(
                 """
@@ -645,9 +659,9 @@ class VideoAnalysisCache:
                     llm_description, llm_category, llm_emotion, llm_setting,
                     llm_subjects, llm_activities,
                     llm_interestingness, llm_quality,
-                    audio_categories,
+                    audio_categories, safe_cut_gaps,
                     transcript, transcript_language, transcript_confidence
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     asset_id,
@@ -669,6 +683,7 @@ class VideoAnalysisCache:
                     getattr(segment, "llm_interestingness", None),
                     getattr(segment, "llm_quality", None),
                     json.dumps(sorted(audio_cats)) if audio_cats else None,
+                    json.dumps(gaps) if gaps else None,
                     getattr(segment, "transcript", None),
                     getattr(segment, "transcript_language", None),
                     getattr(segment, "transcript_confidence", None),
