@@ -436,6 +436,7 @@ class TestAutoRunOutput:
             drift=CheckoutDrift(upstream="origin/main", commits_behind=32),
         )
 
+        # WHY: AutoRunner is the whole generation pipeline — Immich, LLM, FFmpeg.
         with (
             patch("immich_memories.automation.runner.AutoRunner", return_value=auto_runner),
             # WHY: runtime_provenance shells out to git against the real checkout

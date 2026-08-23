@@ -303,6 +303,7 @@ def test_status_names_the_code_that_would_run_and_flags_it_when_stale(tmp_path: 
         commit="ea892ad",
         drift=CheckoutDrift(upstream="origin/main", commits_behind=32),
     )
+    # WHY: suggest reads the Immich library; get_scheduler_status shells out to launchctl.
     with (
         patch.object(AutoRunner, "suggest", return_value=[]),
         patch(

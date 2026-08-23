@@ -209,8 +209,7 @@ class TestTitleGenerationThinks:
         from immich_memories.titles.llm_titles import generate_title_with_llm
 
         config = LLMConfig(provider="openai-compatible", model="qwen", thinking=True)
-        # WHY: query_llm is the boundary to the LLM server; the behavior under
-        # test is that title generation requests reasoning mode.
+        # WHY: query_llm is the boundary to the LLM server; only the request is under test.
         with patch(
             "immich_memories.titles.llm_titles.query_llm",
             new_callable=AsyncMock,

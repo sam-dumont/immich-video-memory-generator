@@ -35,6 +35,7 @@ def _generate_with(args: list[str], config: Config):
     client.__exit__.return_value = False
     client.get_photos_for_date_range.return_value = []
     asset = MagicMock(duration_seconds=10.0)
+    # WHY: the CLI otherwise reads Immich and creates the real ~/.immich-memories config dir.
     with (
         # WHY: Immich is the external boundary — no live server in a unit test.
         patch("immich_memories.api.immich.SyncImmichClient", return_value=client),

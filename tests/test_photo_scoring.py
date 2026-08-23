@@ -166,6 +166,7 @@ class TestPhotoScoring:
             request=httpx.Request("POST", "http://localhost:9999/v1/chat/completions"),
         )
 
+        # WHY: the VLM server is the network boundary; this is its 404 for a removed model.
         with patch("httpx.AsyncClient.post", return_value=response) as request:
             first = score_photo_with_llm(
                 photo_a, 0.42, PhotoConfig(), config, provider_circuit=circuit

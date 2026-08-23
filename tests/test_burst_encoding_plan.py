@@ -32,6 +32,7 @@ def _merge_command(
     capabilities: HWAccelCapabilities | None = None,
 ) -> list[str]:
     caps = capabilities if capabilities is not None else HWAccelCapabilities()
+    # WHY: build_merge_command probes the file and the host encoder; a.mov never exists.
     with (
         # WHY: the audio ffprobe boundary.
         patch(
@@ -111,6 +112,7 @@ def test_the_download_path_carries_the_setting_into_the_merge() -> None:
     clips = [Path("a.mov"), Path("b.mov")]
     trims = [(0.0, 1.0), (0.0, 1.0)]
 
+    # WHY: _try_merge_burst validates, builds, and runs FFmpeg; a.mov and b.mov are names only.
     with (
         # WHY: the ffprobe validation of files that do not exist on disk.
         patch(

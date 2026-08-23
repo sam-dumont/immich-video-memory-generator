@@ -20,8 +20,7 @@ from immich_memories.ui.state import AppState
 
 def _apply(memory_type: MemoryType, **params) -> AppState:
     state = AppState(memory_preset_params=dict(params))
-    # WHY: the wizard reads its state through a per-session accessor; this is
-    # the seam that hands the function a state object instead of a live session.
+    # WHY: the wizard's per-session accessor, which needs a live NiceGUI session.
     with patch("immich_memories.ui.pages.step1_presets.get_app_state", return_value=state):
         _apply_preset_to_state(memory_type)
     return state
