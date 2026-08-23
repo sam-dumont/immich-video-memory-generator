@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 
 from immich_memories.processing.clip_caption import ClipCaption
-from immich_memories.processing.streaming_assembler import FrameDecoder
+from immich_memories.processing.streaming_frame_decoder import FrameDecoder
 
 pytestmark = pytest.mark.integration
 

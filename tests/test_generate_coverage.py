@@ -2260,6 +2260,7 @@ class TestResolveMusic:
             assembly_clips=[],
             run_output_dir=tmp_path,
             memory_type=None,
+            transition_overlap=0.0,
         )
         assert result.path is None
 
@@ -2275,6 +2276,7 @@ class TestResolveMusic:
             assembly_clips=[],
             run_output_dir=tmp_path,
             memory_type=None,
+            transition_overlap=0.0,
         )
         assert result.path == music
 
@@ -2288,6 +2290,7 @@ class TestResolveMusic:
             assembly_clips=[],
             run_output_dir=tmp_path,
             memory_type=None,
+            transition_overlap=0.0,
         )
         assert result.path is None
 
@@ -2317,6 +2320,7 @@ class TestResolveMusic:
                 run_output_dir=tmp_path,
                 memory_type="month",
                 report_fn=report_fn,
+                transition_overlap=0.0,
             )
 
         mock_gen.assert_called_once()
@@ -2337,6 +2341,7 @@ class TestResolveMusic:
                 run_output_dir=tmp_path,
                 memory_type=None,
                 bundled_library=tmp_path / "no-bundle",
+                transition_overlap=0.0,
             )
         # Silent only when there is no bundled music to fall back to (#308).
         assert result.path is None
@@ -2371,7 +2376,7 @@ class TestAutoGenerateMusic:
         config = Config()
         # WHY: music_config_available checks MusicGen/ACE-Step service configs
         with patch("immich_memories.generate_music.music_config_available", return_value=False):
-            result = auto_generate_music(config, [], tmp_path, None)
+            result = auto_generate_music(config, [], tmp_path, None, transition_overlap=0.0)
         assert result is None
 
     def test_generation_exception_reaches_optional_phase_boundary(self, tmp_path):
@@ -2387,7 +2392,7 @@ class TestAutoGenerateMusic:
             ),
             pytest.raises(RuntimeError, match="API down"),
         ):
-            auto_generate_music(config, [], tmp_path, "month")
+            auto_generate_music(config, [], tmp_path, "month", transition_overlap=0.0)
 
 
 class TestMusicConfigAvailable:

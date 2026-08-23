@@ -93,17 +93,17 @@ class TitleBackgroundRenderer:
         from immich_memories.processing.assembly_engine import (
             create_assembly_context,
         )
-        from immich_memories.processing.streaming_assembler import _make_decoder
+        from immich_memories.processing.streaming_frame_decoder import make_decoder
 
         plan = self.settings.encoding_plan
         output_path = output_dir / f"first_clip_processed.{plan.container}"
         ctx = create_assembly_context(self.settings, self.prober, clips, target_w, target_h)
 
-        # WHY: _make_decoder applies the EXACT same filter chain as the
+        # WHY: make_decoder applies the EXACT same filter chain as the
         # streaming assembler: rotation, scale_mode (blur bg), HDR conversion,
         # resolution, fps, SAR. The output is pixel-identical to what the
         # assembler will produce for this clip.
-        decoder = _make_decoder(
+        decoder = make_decoder(
             clips[0],
             0,
             target_w,
@@ -155,14 +155,14 @@ class TitleBackgroundRenderer:
             return None
 
         from immich_memories.processing.assembly_engine import create_assembly_context
-        from immich_memories.processing.streaming_assembler import _make_decoder
+        from immich_memories.processing.streaming_frame_decoder import make_decoder
 
         clip = clips[-1]
         plan = self.settings.encoding_plan
         output_path = output_dir / f"last_clip_processed.{plan.container}"
         ctx = create_assembly_context(self.settings, self.prober, clips, target_w, target_h)
 
-        decoder = _make_decoder(
+        decoder = make_decoder(
             clip,
             len(clips) - 1,
             target_w,

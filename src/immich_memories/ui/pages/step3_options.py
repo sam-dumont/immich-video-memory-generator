@@ -42,7 +42,7 @@ _RESOLUTION_LABELS = {"4k": "4K", "1080p": "1080p", "720p": "720p"}
 
 # WHY: the assembler fills an aspect mismatch two ways and no more — a blurred,
 # zoomed copy of the frame behind the sharp one, or black bars. Offering a third
-# choice here would just relabel the black bars (see streaming_assembler._build_vf).
+# choice here would just relabel the black bars (see FrameDecoder._build_vf).
 SCALE_MODE_OPTIONS = {
     "Blur background": "blur",
     "Letterbox (black bars)": "fit",
