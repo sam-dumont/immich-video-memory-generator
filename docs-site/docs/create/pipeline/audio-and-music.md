@@ -99,12 +99,23 @@ lasts a whole number of beats. Photos hold the screen for a fixed time, so their
 cuts arrive at a steady rate; picking a tempo whose beat divides that rate makes
 the cuts land with the pulse instead of against it.
 
+The rate is the interval between visible cuts, not the photo's length. A
+crossfade starts the next clip before the current one ends, so at the default
+4 s photo duration and 0.5 s crossfade the cuts arrive every 3.5 s. Aligning to
+4 s instead put the pulse 0.21 beats away from the cut on average across the ten
+mood/style combinations, and 0.375 beats away at worst — most of a beat every
+few photos. Against the real 3.5 s interval that drops to 0.03 average, 0.2
+worst. Only 120 bpm divides 3.5 s exactly (the requested tempo is a whole
+number), so most combinations now land near-aligned rather than exactly aligned;
+near-aligned against the true interval beats exactly-aligned against the wrong
+one. With `transition: cut` there is no overlap and the cadence is the full
+photo duration.
+
 The nudge stays inside the genre's own tempo range — drum and bass at 70 bpm is
 not a thing — and within 15% of the mood's own tempo, so a run of short photos
 cannot drag a serene track up to dance tempo. Where neither holds, the mood wins
-and nothing changes. At the default 4 s photo duration all ten mood/style
-combinations land on whole beats, the largest shift being 132 → 120 bpm. Videos are never re-timed: they carry speech and laughter the pipeline
-protects, so only photo cadence drives this.
+and nothing changes. Videos are never re-timed: they carry speech and laughter
+the pipeline protects, so only photo cadence drives this.
 
 Measured on the 28 bundled tracks, ACE-Step honours a requested tempo to within
 0.4% (median), so asking for an aligned tempo is worth doing — but that residual
