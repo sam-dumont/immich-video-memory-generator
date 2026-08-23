@@ -13,8 +13,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import numpy as np
-
 from immich_memories.analysis.analyzer_factory import (  # noqa: F401
     create_unified_analyzer_from_config,
 )
@@ -488,37 +486,24 @@ class UnifiedSegmentAnalyzer:
         return self.optimal_clip_duration
 
     def _compute_duration_score(self, clip_duration: float, source_duration: float) -> float:
-        """Compute duration preference score using a Gaussian curve.
+        """How well this clip length suits this source, on the shared curve.
 
-        The score peaks at the dynamic optimal duration and falls off
-        smoothly for shorter or longer clips.
-
-        Args:
-            clip_duration: Duration of the clip in seconds.
-            source_duration: Total source video duration in seconds.
-
-        Returns:
-            Score between 0.0 and 1.0, with 1.0 at optimal duration.
+        The rule lives in analysis.scoring and is called from there by the
+        other scoring path too. It was written out a second time here, and the
+        two agreed exactly — which is luck, not a guarantee: tuning one would
+        have left the other scoring the old way, and which rule a clip met
+        would have depended on the path it arrived by.
         """
-        # Clips below minimum duration get heavy penalty
-        if clip_duration < self.min_segment_duration:
-            return max(0.0, 0.3 * (clip_duration / self.min_segment_duration))
+        from immich_memories.analysis.scoring import compute_duration_score
 
-        # Get dynamic optimal for this source
-        dynamic_optimal = self._get_dynamic_optimal_duration(source_duration)
-
-        # Gaussian curve centered at dynamic optimal duration
-        # sigma scales with optimal to keep curve proportional
-        sigma = max(3.0, dynamic_optimal * 0.6)
-        diff = clip_duration - dynamic_optimal
-        score = float(np.exp(-(diff * diff) / (2 * sigma * sigma)))
-
-        # For very long clips (>15s), add extra penalty
-        if clip_duration > 15.0:
-            long_penalty = (clip_duration - 15.0) * 0.05
-            score = max(0.2, score - long_penalty)
-
-        return score
+        return compute_duration_score(
+            clip_duration,
+            source_duration,
+            self.optimal_clip_duration,
+            self.max_optimal_duration,
+            self.target_extraction_ratio,
+            self.min_segment_duration,
+        )
 
     def _score_visual(self, video_path: Path, start_time: float, end_time: float) -> _VisualScores:
         """Score a segment using visual analysis (faces, motion, stability).
