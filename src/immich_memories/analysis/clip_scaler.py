@@ -38,7 +38,13 @@ def group_by_moment(
     """Group clips into runs separated by more than the window.
 
     A cluster ends where the gap to the next shot exceeds the window, so a
-    held shutter stays one moment however it lands on the clock.
+    held shutter stays one moment however it lands on the clock — and where
+    the cluster has run twice its own window end to end, because chaining on
+    the gap alone has no span bound at all. That was survivable while a moment
+    was five minutes wide. At the ninety minutes a year memory uses it turns a
+    wedding photographed from morning to midnight into a single moment, and a
+    single moment keeps one clip. Two windows is the smallest bound that still
+    admits the held shutter this chaining exists for.
     """
     dated = sorted(
         (c for c in clips if c.clip.asset.file_created_at is not None),
@@ -52,7 +58,14 @@ def group_by_moment(
         # Inclusive: two shots exactly the window apart are the same moment.
         # A 2023 hike put 08:34 and 08:39 in a cut five minutes apart, which a
         # strict comparison called distinct by one second of arithmetic.
-        if groups and (when - groups[-1][-1].clip.asset.file_created_at).total_seconds() <= window:
+        near_the_last = (
+            groups and (when - groups[-1][-1].clip.asset.file_created_at).total_seconds() <= window
+        )
+        within_the_span = (
+            groups
+            and (when - groups[-1][0].clip.asset.file_created_at).total_seconds() <= window * 2
+        )
+        if near_the_last and within_the_span:
             groups[-1].append(clip)
         else:
             groups.append([clip])

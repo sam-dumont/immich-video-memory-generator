@@ -211,3 +211,23 @@ def test_a_starred_shot_is_not_squeezed_out_by_protected_coverage() -> None:
     )
 
     assert starred.clip.asset.id in {c.clip.asset.id for c in kept}
+
+
+def test_a_whole_day_photographed_steadily_is_not_one_moment() -> None:
+    """Chaining has no span bound: each shot only has to be near the last.
+
+    At a year's ninety-minute window that turns a wedding photographed from
+    morning to midnight into a single moment, and a single moment keeps one
+    clip. The justification for widening the window was pairs 62 and 71
+    minutes apart, not a fourteen-hour day.
+    """
+    day = [_at(hour, 0) for hour in range(9, 23)]
+
+    moments = group_by_moment(day, 90.0)
+
+    assert len(moments) > 1, "a day chained end to end into one moment"
+    assert all(
+        (m[-1].clip.asset.file_created_at - m[0].clip.asset.file_created_at).total_seconds()
+        <= 90 * 60 * 2
+        for m in moments
+    ), "no moment may run past twice its own window"
