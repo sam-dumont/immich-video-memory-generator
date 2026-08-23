@@ -17,15 +17,16 @@ from immich_memories.analysis.analyzer_factory import (  # noqa: F401
     create_unified_analyzer_from_config,
 )
 from immich_memories.analysis.analyzer_models import CutPoint, ScoredSegment  # noqa: F401
-from immich_memories.analysis.boundary_placement import (
-    cap_end_to_gap,
-    protected_gaps,
-    select_segment_boundaries,
-)
 from immich_memories.analysis.scenes import Scene, SceneDetector, get_video_info
 from immich_memories.analysis.scoring import SceneScorer
+from immich_memories.analysis.segment_extents import (
+    adjust_candidates_for_protected_audio,
+    dynamic_optimal_duration,
+    max_segment_for_source,
+    repair_best_segment,
+    safe_cut_gaps,
+)
 from immich_memories.analysis.segment_generation import (
-    adjust_candidates_for_audio,
     detect_audio_boundaries,
     detect_visual_boundaries,
     generate_candidate_segments,
@@ -184,99 +185,6 @@ class UnifiedSegmentAnalyzer:
         self._speech_analysis.reset_for_video()
         self.scorer.release_capture()
 
-    def _get_max_segment_for_source(
-        self, source_duration: float, has_good_scene: bool = False
-    ) -> float:
-        """Calculate maximum segment duration based on source video length.
-
-        Logic:
-        - If source <= max_segment_duration: allow full source (no trimming needed)
-        - If source > max_segment_duration: cap at max (with 15% grace if good scene)
-        - For very long videos (>60s): apply proportional limit (20% of source)
-
-        Args:
-            source_duration: Source video duration in seconds.
-            has_good_scene: If True, allow 15% grace over max_segment_duration.
-
-        Returns:
-            Maximum segment duration for this source.
-        """
-        # Grace multiplier for good scenes (15% extra allowed)
-        grace = 1.15 if has_good_scene else 1.0
-        max_with_grace = self.max_segment_duration * grace
-
-        # Short videos: allow using all of it (no trimming needed)
-        if source_duration <= self.max_segment_duration:
-            return source_duration
-
-        # Medium videos (up to 60s): use max_segment_duration (with grace if good scene)
-        if source_duration <= 60:
-            return min(max_with_grace, source_duration)
-
-        # Very long videos (>60s): apply proportional limit (20% of source)
-        # but never less than max_segment_duration
-        proportional = source_duration * 0.20
-        return max(self.max_segment_duration, min(proportional, max_with_grace))
-
-    def _safe_cut_gaps(
-        self,
-        audio_content_result: AudioAnalysisResult,
-        video_duration: float,
-    ) -> list[tuple[float, float]]:
-        """Spans this source may be cut in, buffered as every other pass does."""
-        return protected_gaps(
-            audio_content_result.protected_ranges,
-            video_duration,
-            self._speech_analysis.speech_config.min_silence_ms,
-        )
-
-    def _fix_best_segment_boundaries(
-        self,
-        best: ScoredSegment,
-        audio_content_result: AudioAnalysisResult,
-        video_duration: float,
-    ) -> None:
-        """Fix best segment boundaries that cut through protected audio ranges.
-
-        Modifies the segment in place. Derives its gaps from `protected_gaps`,
-        the same helper step 3b uses, so this pass cannot undo what that one
-        decided: walking the raw ranges one at a time let a boundary pushed out
-        of one range land inside the next when two overlap, and inverting the
-        unbuffered ranges let this pass cut inside step 3b's safety margin.
-
-        Args:
-            best: Best segment to fix.
-            audio_content_result: Audio analysis results.
-            video_duration: Total video duration.
-        """
-        gaps = self._safe_cut_gaps(audio_content_result, video_duration)
-        best.safe_cut_gaps = gaps
-        new_start, new_end, adjusted = select_segment_boundaries(
-            best.start_time, best.end_time, gaps, video_duration, self.min_segment_duration
-        )
-
-        if adjusted:
-            best.start_time = new_start
-            best.end_time = new_end
-            logger.info(f"  -> Adjusted best segment: {best.start_time:.1f}s-{best.end_time:.1f}s")
-
-        proportional_max = self._get_max_segment_for_source(video_duration)
-        final_duration = best.end_time - best.start_time
-        if final_duration > proportional_max:
-            # `start + proportional_max` is speech-blind and this is the segment
-            # that actually gets rendered -- snap the cap to a real gap, exactly
-            # as the candidate pass does.
-            best.end_time = cap_end_to_gap(
-                best.start_time,
-                best.start_time + proportional_max,
-                gaps,
-                self.min_segment_duration,
-            )
-            logger.info(
-                f"  -> Re-trimmed to proportional max: {best.start_time:.1f}s-{best.end_time:.1f}s "
-                f"(was {final_duration:.1f}s, max={proportional_max:.1f}s for {video_duration:.1f}s source)"
-            )
-
     def analyze(
         self,
         video_path: Path,
@@ -324,7 +232,12 @@ class UnifiedSegmentAnalyzer:
             )
             return []
 
-        dynamic_optimal = self._get_dynamic_optimal_duration(video_duration)
+        dynamic_optimal = dynamic_optimal_duration(
+            video_duration,
+            self.optimal_clip_duration,
+            self.max_optimal_duration,
+            self.target_extraction_ratio,
+        )
         logger.info(
             f"Duration scoring: source={video_duration:.1f}s → "
             f"optimal clip={dynamic_optimal:.1f}s "
@@ -363,7 +276,12 @@ class UnifiedSegmentAnalyzer:
 
         # Step 3: Generate candidates
         logger.info("Step 3: Generating candidate segments (must start/end on silence)")
-        dynamic_optimal = self._get_dynamic_optimal_duration(video_duration)
+        dynamic_optimal = dynamic_optimal_duration(
+            video_duration,
+            self.optimal_clip_duration,
+            self.max_optimal_duration,
+            self.target_extraction_ratio,
+        )
         candidates = generate_candidate_segments(
             cut_points,
             video_duration,
@@ -373,14 +291,21 @@ class UnifiedSegmentAnalyzer:
         )
         if not candidates:
             logger.warning("No valid segments found, using fallback (visual-only)")
-            proportional_max = self._get_max_segment_for_source(video_duration)
+            proportional_max = max_segment_for_source(video_duration, self.max_segment_duration)
             candidates = generate_fallback_segments(
                 video_duration, cut_points, self.min_segment_duration, proportional_max
             )
         logger.info(f"  -> Generated {len(candidates)} candidate segments")
 
         # Step 3b: Adjust for audio
-        candidates = self._step3b_adjust_for_audio(candidates, audio_content_result, video_duration)
+        candidates = adjust_candidates_for_protected_audio(
+            candidates,
+            audio_content_result,
+            video_duration,
+            self.min_segment_duration,
+            self.max_segment_duration,
+            self._speech_analysis.speech_config.min_silence_ms,
+        )
 
         # Step 4: Score
         logger.info(
@@ -424,66 +349,22 @@ class UnifiedSegmentAnalyzer:
                 f"Step 5: Best segment {best.start_time:.1f}s-{best.end_time:.1f}s "
                 f"(score={best.total_score:.2f}, cut_quality={best.cut_quality:.0%})"
             )
+            min_silence_ms = self._speech_analysis.speech_config.min_silence_ms
             if audio_content_result and audio_content_result.protected_ranges:
-                self._fix_best_segment_boundaries(best, audio_content_result, video_duration)
+                repair_best_segment(
+                    best,
+                    audio_content_result,
+                    video_duration,
+                    self.min_segment_duration,
+                    self.max_segment_duration,
+                    min_silence_ms,
+                )
             elif audio_content_result:
-                best.safe_cut_gaps = self._safe_cut_gaps(audio_content_result, video_duration)
+                best.safe_cut_gaps = safe_cut_gaps(
+                    audio_content_result, video_duration, min_silence_ms
+                )
 
         return scored_segments
-
-    def _step3b_adjust_for_audio(
-        self,
-        candidates: list,
-        audio_content_result: AudioAnalysisResult | None,
-        video_duration: float,
-    ) -> list:
-        """Run step 3b: adjust candidate boundaries to avoid protected audio ranges."""
-        if audio_content_result and audio_content_result.protected_ranges:
-            logger.info("Step 3b: Adjusting boundaries to avoid cutting mid-laugh/speech")
-            original_count = len(candidates)
-            proportional_max = self._get_max_segment_for_source(video_duration)
-            candidates = adjust_candidates_for_audio(
-                candidates,
-                audio_content_result,
-                video_duration,
-                self.min_segment_duration,
-                proportional_max,
-                min_silence_ms=self._speech_analysis.speech_config.min_silence_ms,
-            )
-            logger.info(
-                f"  -> Adjusted {original_count} candidates to {len(candidates)} candidates"
-            )
-            if candidates:
-                sample = candidates[0]
-                logger.info(f"     Example segment: {sample[0].time:.2f}s - {sample[1].time:.2f}s")
-        elif audio_content_result:
-            logger.info(
-                "Step 3b: SKIPPED - no protected ranges to avoid "
-                f"(detected {len(audio_content_result.events)} audio events, "
-                f"but none were speech/laughter above confidence threshold)"
-            )
-        else:
-            logger.debug("Step 3b: SKIPPED - audio content analysis not enabled/available")
-        return candidates
-
-    def _get_dynamic_optimal_duration(self, source_duration: float) -> float:
-        """Calculate the optimal clip duration based on source video length.
-
-        For short sources (< 20s): optimal stays at base (5s)
-        For longer sources: optimal scales up to max_optimal (10s)
-
-        Args:
-            source_duration: Total source video duration in seconds.
-
-        Returns:
-            Dynamic optimal clip duration in seconds.
-        """
-        if source_duration > 20.0:
-            return min(
-                self.max_optimal_duration,
-                max(self.optimal_clip_duration, source_duration * self.target_extraction_ratio),
-            )
-        return self.optimal_clip_duration
 
     def _compute_duration_score(self, clip_duration: float, source_duration: float) -> float:
         """How well this clip length suits this source, on the shared curve.
