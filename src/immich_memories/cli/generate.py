@@ -326,6 +326,15 @@ def register_generate_commands(main: click.Group) -> None:
     )
     @click.option("--dry-run", is_flag=True, help="Show what would be done without generating")
     @click.option(
+        "--no-render",
+        is_flag=True,
+        help=(
+            "Run the real selection — analysis, verify, judge, review — and stop "
+            "before encoding. Unlike --dry-run, which uses cached analysis only and "
+            "skips the verify pass, this picks the clips it would actually ship"
+        ),
+    )
+    @click.option(
         "--trace-selection",
         type=click.Path(dir_okay=False, path_type=Path),
         help="Write a stage-by-stage report of how the clips were chosen",
@@ -461,6 +470,7 @@ def register_generate_commands(main: click.Group) -> None:
         music: str | None,
         no_music: bool,
         dry_run: bool,
+        no_render: bool,
         trace_selection: Path | None,
         upload_to_immich: bool,
         album: str | None,
@@ -933,6 +943,7 @@ def register_generate_commands(main: click.Group) -> None:
                         memory_category=memory_category,
                         automation_attempt_id=automation_attempt_id,
                         dry_run=dry_run,
+                        no_render=no_render,
                     )
 
                 _print_generation_result(

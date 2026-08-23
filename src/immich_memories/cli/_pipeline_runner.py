@@ -158,7 +158,17 @@ def _configure_output_canvas(
     return canvas
 
 
-def _finish_dry_run(
+def _stops_before_rendering(*, dry_run: bool, no_render: bool) -> bool:
+    """Whether this run ends at the plan instead of producing a file.
+
+    Two callers, one boundary. --dry-run has always stopped here as a side
+    effect of being cheap; --no-render asks for the same stop directly, having
+    run the real analysis and the verify pass on the way.
+    """
+    return dry_run or no_render
+
+
+def _finish_without_rendering(
     *,
     pipeline_result: PipelineResult,
     timeline_plan: TimelinePlan,
@@ -177,7 +187,13 @@ def _finish_dry_run(
     progress,
     task,
 ) -> tuple[Path, bool, str | None]:
-    """Print the resolved plan and return without crossing the render boundary."""
+    """Print the resolved plan and return without crossing the render boundary.
+
+    Reached two ways, and the difference matters. --dry-run gets here having
+    used only cached analysis and skipped the verify pass, so its selection is
+    a cheap approximation. --no-render gets here having run the real thing;
+    only the encode is missing.
+    """
     from immich_memories.api.models import AssetType
     from immich_memories.cli._generation_preview import (
         GenerationPreview,
@@ -272,6 +288,7 @@ def run_pipeline_and_generate(
     memory_category: str | None = None,
     automation_attempt_id: str | None = None,
     dry_run: bool = False,
+    no_render: bool = False,
 ) -> tuple[Path, bool, str | None]:
     """Run smart pipeline analysis + video generation.
 
@@ -469,8 +486,8 @@ def run_pipeline_and_generate(
     album_name = album or config.upload.album_name
     person_name = person_names[0] if person_names else None
 
-    if dry_run:
-        return _finish_dry_run(
+    if _stops_before_rendering(dry_run=dry_run, no_render=no_render):
+        return _finish_without_rendering(
             pipeline_result=pipeline_result,
             timeline_plan=timeline_plan,
             assets=assets,

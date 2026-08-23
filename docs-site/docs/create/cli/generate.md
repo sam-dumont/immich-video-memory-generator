@@ -141,7 +141,8 @@ have not set explicitly; the flags below still win. Persistent form: `preset: fa
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--dry-run` | — | flag | — | Show what would be done, don't generate |
+| `--dry-run` | — | flag | — | Cheap preview: cached analysis only, verify pass skipped, no video |
+| `--no-render` | — | flag | — | The real selection — analysis, verify, judge, review — stopping before the encode |
 | `--privacy-mode` | — | flag | — | Blur all video and mute speech |
 | `--include-live-photos` | — | flag | — | Include Live Photo video clips (merged when burst-captured) |
 | `--keep-intermediates` | — | flag | — | Keep intermediate files for debugging |
@@ -388,8 +389,24 @@ of guessing. This answers it directly.
 :::warning Do not combine this with `--dry-run`
 `--dry-run` skips work, and some of the work it skips is selection. Photo scoring falls back to
 metadata only — the VLM scorer never runs — so a trace taken under `--dry-run` describes a
-different, cheaper pipeline than the one that makes your videos. Trace a real run.
+different, cheaper pipeline than the one that makes your videos. Trace a real run —
+`--no-render` gives you one without the encode. See below.
 :::
+
+### Two ways to skip the video
+
+They are not the same, and the difference decides which one you want.
+
+`--dry-run` is the cheap preview. It analyses nothing it has not already
+cached and skips the verify pass, so the clips it lists are an approximation
+of the real selection. Use it to check that your criteria match the assets you
+expect.
+
+`--no-render` runs the pipeline for real — full analysis, the verify pass, the
+judge and the review — and stops at the encode. The clips it lists are the
+clips it would have shipped. Use it when you care about the selection itself:
+tuning scoring, comparing settings, or measuring how long selection takes
+without paying several minutes to encode a file you are going to delete.
 
 Use `--dry-run` to see how many videos match your criteria without actually generating anything:
 

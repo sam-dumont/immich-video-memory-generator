@@ -281,6 +281,7 @@ immich-memories generate [OPTIONS]
 | `--music`, `-m` | text | - | Music: path to audio file, 'auto' to generate from config, or omit for default behavior |
 | `--no-music` | boolean | false | Disable all music (skip both provided files and AI generation) |
 | `--dry-run` | boolean | false | Show what would be done without generating |
+| `--no-render` | boolean | false | Run the real selection — analysis, verify, judge, review — and stop before encoding. Unlike --dry-run, which uses cached analysis only and skips the verify pass, this picks the clips it would actually ship |
 | `--trace-selection` | file | - | Write a stage-by-stage report of how the clips were chosen |
 | `--upload-to-immich` | boolean | false | Upload generated video back to Immich |
 | `--album` | text | - | Immich album name for uploaded video |
