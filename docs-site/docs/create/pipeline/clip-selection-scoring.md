@@ -152,22 +152,44 @@ Videos, live photos, and regular photos all compete in a single selection pool. 
 1. Fetch videos + live photo video components
 2. Fetch regular photos (IMAGE assets, excluding live photos)
 3. VIDEOS: SmartPipeline Phases 1-3
-   a. Apply hard exclusions only: unchecked media, true duplicates, unusably short clips, and an explicit HDR-only mismatch
+   a. Apply hard exclusions only: unchecked media, true duplicates, unusably short clips, media the library's own camera did not shoot, and an explicit HDR-only mismatch
    b. Density budget → choose a bounded shortlist for expensive scene/VLM analysis
    c. Give every other eligible video a cached or metadata-based fallback segment
-4. PHOTOS: Score every eligible photo from metadata, run VLM scoring on a distributed shortlist, then merge the enhanced scores back into the full photo pool
+4. PHOTOS: Drop what the camera did not shoot, score every eligible photo from metadata, run VLM scoring on a distributed shortlist, then merge the enhanced scores back into the full photo pool
 5. MERGE: Convert all eligible scored photos to clip candidates and combine them with videos and Live Photos
 6. UNIFIED Phase 4: Select from the combined pool
    a. Favorites first, then fill gaps by score
    b. Temporal coverage: ensure every month/week has ≥1 clip
    c. Scale to target duration (sole monthly representatives protected)
-   d. Temporal dedup (same-moment clips across ALL types)
+   d. Temporal dedup (same-moment clips across ALL types), with the window measured against the memory's span
    e. Prefer variety, then progressively relax preferences when the timeline is short
 ```
 
 The Step 2 checkboxes define the source pool. **Fast** means “deeply analyze fewer videos,” not
 “throw the rest away.” The completion summary reports eligible media, videos deeply analyzed, and
 clips finally planned as separate numbers.
+
+### What counts as one moment
+
+Two shots are the same moment when they are close enough together in a memory of
+this length. Five minutes is a moment inside a sixty-second month, where the cut has
+a slot for most of the days in it. Across a year it is a rounding error: two clips of
+one evening, an hour apart, are one evening to anybody watching, and a rendered year
+recap spent two of its thirty-nine slots on a single night at a venue.
+
+| memory spans | one moment is |
+|---|---|
+| up to a month | the configured window (5 minutes by default) |
+| up to a season | 30 minutes |
+| up to a year | 90 minutes |
+| longer | 3 hours |
+
+The configured `temporal_dedup_window_minutes` is a floor, never a ceiling — asking for
+a wider window widens every memory type. Zero turns deduplication off entirely.
+
+A moment keeps one clip unless moments are genuinely scarce: only when there are at
+most half as many as the cut needs clips does a moment contribute more than one, which
+is the case a five-minute trip memory hits and a month recap does not.
 
 ### Sparse Content Adaptations
 
@@ -176,7 +198,7 @@ When content is limited, the pipeline adapts automatically:
 - **Media-aware trip Auto duration**: The editorial curve is 30 seconds plus 10 seconds per active day, bounded to 60–300 seconds for dense trips. Usable video excerpts, at most four photos per day for capacity estimation, and a 30-second/day diversity ceiling can lower it. Sparse trips may resolve below 60 seconds.
 - **Auto LLM budget**: Auto runs LLM analysis for every eligible clip when at most 60 clips need fresh analysis. For larger libraries it uses a time-balanced shortlist. Compatible current-model cache hits do not consume this budget.
 - **Temporal coverage**: Every time period gets at least one clip. Sole monthly representatives are protected from removal during duration scaling, even if they score lower than favorites in other months.
-- **Progressive backfill**: The selector first uses strict preferences, then allows up to 70% photos, additional non-favorites, closer moments, and finally any eligible photo ratio. If the only remaining clip is slightly too long, it may accept up to two seconds of overrun for the renderer to trim.
+- **Progressive backfill**: The selector first uses strict preferences, then allows up to 70% photos, additional non-favorites, closer moments, and finally any eligible photo ratio. Conceding on closeness gives back the width a long memory added, never the rule itself — the concession is a clip from an evening already in the cut, never the same shot twice. If the only remaining clip is slightly too long, it may accept up to two seconds of overrun for the renderer to trim.
 - **Soft diversity limits**: Two photos per day, photo ratio, non-favorite ratio, and temporal spacing are preferred-first rules. They can be exceeded to fill the requested duration. Hard exclusions are never relaxed.
 
 ### Live Photo Rendering
