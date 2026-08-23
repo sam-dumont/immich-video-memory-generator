@@ -49,8 +49,12 @@ logger = logging.getLogger(__name__)
 MIN_ACTIVE_HOURS = 6
 MIN_PHOTOS = 20
 
-# Capitalised words a title may use without naming anything: sentence starts
-# and the calendar. Anything else has to come from the day itself.
+# Capitalised words a title may use without naming anything: sentence starts,
+# the calendar, and the few verbs an English title puts after "to" — "A Day to
+# Remember" was blanked for never having been to a place called Remember.
+# Anything else has to come from the day itself. The verb list will never be
+# complete, and does not need to be: what it misses is a blanked title, which
+# is visible, rather than an invented one, which is not.
 _EVERYDAY_CAPITALS = {
     "a",
     "an",
@@ -64,6 +68,12 @@ _EVERYDAY_CAPITALS = {
     "to",
     "from",
     "for",
+    "remember",
+    "forget",
+    "celebrate",
+    "cherish",
+    "treasure",
+    "behold",
     "monday",
     "tuesday",
     "wednesday",
@@ -297,19 +307,32 @@ def _is_a_real_title(text: str, people: set[str]) -> bool:
 # to keep real titles, then, and do not tighten it believing it can do more.
 _SAME_PLACE_RATIO = 0.70
 
-# "to" is deliberately absent: in a title it introduces a verb at least as
-# often as a destination, and "A Day to Remember" was blanked for having
-# never been to a place called Remember.
-_PLACE_PREPOSITIONS = ("in", "at", "near", "around", "from", "de", "outside")
+_PLACE_PREPOSITIONS = ("in", "at", "near", "around", "from", "to", "de", "outside")
 
 
 def _named_places(text: str) -> list[str]:
-    """Capitalised words used as somewhere, rather than as something."""
+    """Capitalised words used as somewhere, rather than as something.
+
+    "to" introduces a destination as readily as it introduces a verb, and in
+    a title both are capitalised: "A Day to Remember" was blanked for having
+    never been to a place called Remember. So a candidate made only of words
+    a title may use without naming anything is not a place claim — which is
+    what _EVERYDAY_CAPITALS has always been for — and "to" stays, because
+    dropping it left a located day with no guard on place claims at all.
+    """
     pattern = (
         r"\b(?:" + "|".join(_PLACE_PREPOSITIONS) + r")\s+"
         r"((?:[A-Z\u00c0-\u00dd][\w\u00c0-\u024f'-]+(?:[ -](?:de|la|le|sur|of|the))?\s*){1,3})"
     )
-    return [m.strip() for m in re.findall(pattern, text)]
+    found = [m.strip() for m in re.findall(pattern, text)]
+    return [
+        place
+        for place in found
+        if not all(
+            word.casefold() in _EVERYDAY_CAPITALS
+            for word in re.findall(r"[\w\u00c0-\u024f]+", place)
+        )
+    ]
 
 
 def _place_is_real(place: str, vocabulary: set[str]) -> bool:
@@ -354,18 +377,23 @@ def _only_if_grounded(text: str, vocabulary: set[str], *, located: bool, places:
                 logger.info("Dropping %r: the day was never in %r", text, place)
                 return ""
 
+    # A guessed name is CamelCase and the day never mentions it. Told twice in
+    # the prompt not to name an event it could not read, the model answered
+    # "Attending KubeCon" and then, the same day, "Attending GitLab
+    # All-Hands" — a hall full of lanyards, and an invented answer to which
+    # conference it was. Both of those days knew exactly where they were, so
+    # this runs before the located early-return or it never runs at all. An
+    # internal capital is what separates it from Audi, R8 or a place name.
+    for coined in re.findall(r"\b[A-Z][a-z]+[A-Z][\w]*", text):
+        if coined.casefold() not in vocabulary:
+            logger.info("Dropping %r: %r looks like a guessed name", text, coined)
+            return ""
+
     if not text or located:
         return text
 
-    # Every capitalised word the day cannot account for, which is what catches
-    # a guessed name: told twice in the prompt not to name an event it could
-    # not read, the model answered "Attending KubeCon" and, the same day,
-    # "Attending GitLab All-Hands" — a hall full of lanyards, and an invented
-    # answer to which conference. A separate CamelCase pass used to run ahead
-    # of this one and so applied to located days too, where it took "MacLaren
-    # Track Day" off a day whose coordinates were never in doubt. Naming what
-    # is in the frame is a reading of the pictures, not a guess at where they
-    # were, and this pass is the one entitled to be strict.
+    # On a day with no location at all, every capitalised word has to come
+    # from the day itself.
     for word in re.findall(r"\b[A-Z\u00c0-\u00dd][\w\u00c0-\u024f'-]{2,}", text):
         if word.casefold() not in vocabulary and word.casefold() not in _EVERYDAY_CAPITALS:
             logger.info(

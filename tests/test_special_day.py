@@ -369,16 +369,27 @@ class TestTheGroundingFilterKeepsWhatItPromised:
 
         assert self._answer(day, "A Day to Remember").title == "A Day to Remember"
 
-    def test_a_marque_survives_when_the_day_knows_where_it_was(self) -> None:
-        """A brand read off the pictures is not an invented location.
+    def test_a_guessed_conference_dies_at_a_place_the_day_does_know(self) -> None:
+        """Both recorded inventions happened at located venues.
 
-        The guessed-name check ran before the located-early-return, so a
-        title naming what was in the frame died on a day with full GPS —
-        the same reading the module docstring says it must not throw away.
+        "Attending KubeCon" and, the same day, "Attending GitLab All-Hands" —
+        a hall full of lanyards, and an invented answer to which conference.
+        Putting this check behind the located early-return meant nothing
+        blanked them at the only kind of day they happen on.
         """
         day = self._day(["Someplace", "Nearby"])
 
-        assert self._answer(day, "MacLaren Track Day").title == "MacLaren Track Day"
+        assert self._answer(day, "Attending GitLab All-Hands").title == ""
+
+    def test_a_destination_the_day_never_reached_is_still_checked(self) -> None:
+        """ "to" introduces a destination as readily as it introduces a verb.
+
+        Dropping it from the prepositions to save "A Day to Remember" stopped
+        the only guard a located day has from ever reading a place claim.
+        """
+        day = self._day(["Someplace", "Nearby"])
+
+        assert self._answer(day, "Road Trip to Faraway").title == ""
 
     def test_a_guessed_name_still_dies_on_a_day_with_no_location(self) -> None:
         """The failure the check exists for: a hall of lanyards, named."""
