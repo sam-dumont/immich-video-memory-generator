@@ -31,7 +31,10 @@ def main() -> int:
     parser.add_argument("--timeout", type=int, default=900)
     args = parser.parse_args()
 
-    with tempfile.TemporaryDirectory() as tmp:
+    # The container runs as UID 1000 and leaves files the runner user cannot
+    # delete; a cleanup failure after a PASSED smoke must not fail the release
+    # (#525 follow-up: the first run to ever reach teardown died exactly there).
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         root = Path(tmp)
         out_dir = root / "output"
         out_dir.mkdir()
