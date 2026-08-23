@@ -456,36 +456,47 @@ def event_window(assets: list) -> tuple[datetime, datetime] | None:
     return biggest["first"], biggest["last"]
 
 
-def _describe(assets: list) -> str:
+def _line_for(asset: Any, described: str | None) -> str:
+    """One asset's line: when it was taken, where, who was in it, what it shows."""
+    exif = getattr(asset, "exif_info", None)
+    where = ", ".join(p for p in (getattr(exif, "city", None), getattr(exif, "country", None)) if p)
+    people = [p.name for p in (getattr(asset, "people", None) or []) if getattr(p, "name", "")]
+    bits = [asset.file_created_at.strftime("%H:%M")]
+    if where:
+        bits.append(where)
+    # Coordinates as well as the place name: a model that knows the area
+    # can tell a racing circuit from the village it is named after, and
+    # a coordinate pair is a fact the pictures cannot contradict.
+    lat = getattr(exif, "latitude", None) if exif else None
+    lon = getattr(exif, "longitude", None) if exif else None
+    if lat and lon:
+        bits.append(f"{lat:.4f},{lon:.4f}")
+    if people:
+        bits.append(f"{len(people)} recognised: {', '.join(people[:3])}")
+    if described:
+        bits.append(str(described)[:160])
+    return "  " + "  ".join(bits)
+
+
+def _describe(assets: list, seen: list[str] | None = None) -> str:
+    """The day as text: one line per sampled picture, in the order they were taken.
+
+    `seen` is what a look reported, one line per asset in the same order. It
+    takes precedence over any description already on the asset, and it is
+    passed rather than written onto the assets because these are the caller's
+    objects, not ours.
+
+    WHAT is in the frame matters as much as when and where. Without it the
+    model can place a day and name who was there but not say what happened: a
+    track day came back as "Driving through a place" because nothing had
+    mentioned the cars.
+    """
     # The date itself, once, at the top. Given only clock times the model
     # filled the gap: a February day came back subtitled "July 2, 2024".
     lines = [assets[0].file_created_at.strftime("  date: %A %d %B %Y")] if assets else []
-    for asset in assets:
-        exif = getattr(asset, "exif_info", None)
-        where = ", ".join(
-            p for p in (getattr(exif, "city", None), getattr(exif, "country", None)) if p
-        )
-        people = [p.name for p in (getattr(asset, "people", None) or []) if getattr(p, "name", "")]
-        bits = [asset.file_created_at.strftime("%H:%M")]
-        if where:
-            bits.append(where)
-        # Coordinates as well as the place name: a model that knows the area
-        # can tell a racing circuit from the village it is named after, and
-        # a coordinate pair is a fact the pictures cannot contradict.
-        lat = getattr(exif, "latitude", None) if exif else None
-        lon = getattr(exif, "longitude", None) if exif else None
-        if lat and lon:
-            bits.append(f"{lat:.4f},{lon:.4f}")
-        if people:
-            bits.append(f"{len(people)} recognised: {', '.join(people[:3])}")
-        # WHAT is in the frame, when anything has looked. Without it the model
-        # can place a day and name who was there but not say what happened:
-        # a track day came back as "Driving through a place" because nothing
-        # had mentioned the cars.
-        described = getattr(asset, "llm_description", None)
-        if described:
-            bits.append(str(described)[:160])
-        lines.append("  " + "  ".join(bits))
+    for index, asset in enumerate(assets):
+        looked = seen[index] if seen and index < len(seen) else None
+        lines.append(_line_for(asset, looked or getattr(asset, "llm_description", None)))
     return "\n".join(lines)
 
 
@@ -494,6 +505,7 @@ def _ask(
     llm_config: LLMConfig,
     timeout_seconds: int,
     images: list[bytes],
+    thinking: bool = False,
 ) -> str:
     """One question to the configured provider, with the day's pictures if any.
 
@@ -510,8 +522,51 @@ def _ask(
             temperature=0.1,
             timeout_seconds=timeout_seconds,
             images=images,
+            thinking=thinking,
         )
     )
+
+
+_LOOK_PROMPT = "One line per picture, in order, numbered: what is in it."
+
+# Reasoning about a judgement call costs 5-10x the latency of a fast answer, and
+# the scan asks only a handful of days a year.
+_THINKING_TIMEOUT_SECONDS = 300
+
+
+def _numbered_lines(raw: str) -> list[str]:
+    """The model's lines in order, stripped of whatever numbering it chose."""
+    lines = [re.sub(r"^\W*\d+[.):]?\s*", "", line).strip() for line in raw.splitlines()]
+    return [line for line in lines if line]
+
+
+def _look_at(
+    thumbnails: list[tuple[Any, bytes]],
+    llm_config: LLMConfig,
+    timeout_seconds: int,
+) -> list[str]:
+    """Step one: fast eyes. What is in each picture, in the order they came.
+
+    Deliberately the smallest prompt in the file. Every rule added here made a
+    small model worse, and the judgement that follows is where the thinking is
+    meant to happen.
+    """
+    try:
+        raw = _ask(_LOOK_PROMPT, llm_config, timeout_seconds, [image for _, image in thumbnails])
+    except Exception as exc:  # noqa: BLE001 - a look that fails is not a verdict
+        logger.debug("Special-day look failed: %s", type(exc).__name__)
+        return []
+    # A null content is documented mlx-vlm behaviour, and the rest of this
+    # module guards it explicitly rather than coercing it away.
+    if not raw:
+        logger.debug("Special-day look came back empty")
+        return []
+    seen = _numbered_lines(raw)
+    # A day that comes back ordinary is diagnosed from here, so the lines the
+    # judgement actually read have to be recoverable after the fact.
+    for index, line in enumerate(seen, start=1):
+        logger.debug("Special-day look %d: %s", index, line)
+    return seen
 
 
 @dataclass(frozen=True)
@@ -546,9 +601,20 @@ def ask_if_special(
         return SpecialDay(special=False)
 
     sampled = [asset for asset, _ in thumbnails] if thumbnails else sample_across_day(assets)
-    prompt = _PROMPT.format(lines=_describe(sampled))
+    images = [image for _, image in thumbnails or []]
+    # Two calls, never one. query_llm refuses thinking alongside images because
+    # multi-image reasoning is a measured runaway, so the shape is enforced by
+    # the API rather than by remembering: a single call carrying both cannot be
+    # written by accident. Measured on 14 days, the one-call version reasoned
+    # into its own answer and truncated 6 of them past parsing.
+    reasons = bool(getattr(llm_config, "thinking", False)) and bool(images)
+    seen = _look_at(thumbnails or [], llm_config, timeout_seconds) if reasons else None
+    if reasons:
+        images = []
+        timeout_seconds = max(timeout_seconds, _THINKING_TIMEOUT_SECONDS)
+    prompt = _PROMPT.format(lines=_describe(sampled, seen))
     try:
-        raw = _ask(prompt, llm_config, timeout_seconds, [image for _, image in thumbnails or []])
+        raw = _ask(prompt, llm_config, timeout_seconds, images, thinking=reasons)
     except Exception as exc:  # noqa: BLE001 - an unreachable model is not a verdict
         logger.debug("Special-day question failed: %s", type(exc).__name__)
         return SpecialDay(special=False)

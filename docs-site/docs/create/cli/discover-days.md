@@ -42,6 +42,31 @@ occasion; the calendar disagrees.
 Two things are skipped outright: days inside a detected trip, because a trip memory
 already tells that story end to end, and holidays, which have their own memory type.
 
+## Fast eyes, then a considered answer
+
+With `llm.thinking: true` the question runs in two steps: one fast call that
+looks at the sampled thumbnails and writes a line per picture, then a
+text-only call that reasons over those lines together with the times, places
+and recognised names. Without `thinking`, it stays the single vision call it
+has always been, so nothing changes on a server that cannot reason.
+
+Splitting it is not a preference. Measured across 14 candidate days, one
+vision call answered "special" to all fourteen, and a single call that both
+looked and reasoned truncated 6 of them past the point of parsing, because the
+reasoning runs into the answer. Two calls was the only shape that told an
+occasion from an ordinary Tuesday — and the one it called ordinary turned out
+to be right.
+
+It also invents less. Where the fast answer named a specific event that had
+not happened, the two-step version gave the same day a title that described
+what was in the pictures instead.
+
+The cost is roughly 40 seconds and about 3,000 completion tokens for each day
+it asks about. The scan asks about a handful of days per year.
+
+Run with `--verbose` to see the per-picture lines the judgement read — that is
+the record to check first when a day you expected comes back ordinary.
+
 ## Running it
 
 ```bash
