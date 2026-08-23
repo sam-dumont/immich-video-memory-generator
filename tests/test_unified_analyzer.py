@@ -27,7 +27,7 @@ from immich_memories.analysis.unified_analyzer import (
     UnifiedSegmentAnalyzer,
 )
 from immich_memories.config_loader import Config
-from immich_memories.config_models import AnalysisConfig, AudioContentConfig
+from immich_memories.config_models_analysis import AnalysisConfig, AudioContentConfig
 
 
 class TestCutPoint:
@@ -700,7 +700,7 @@ class TestBestSegmentOverlapHandling:
 
 def _boundary_fixing_analyzer(**kwargs) -> UnifiedSegmentAnalyzer:
     """Analyzer wired for `_fix_best_segment_boundaries` and nothing else."""
-    from immich_memories.config_models import SpeechConfig
+    from immich_memories.config_models_analysis import SpeechConfig
 
     # WHY: SceneScorer opens the video with OpenCV; the boundary-fixing pass
     # never touches it, so a stand-in keeps the test off the filesystem.

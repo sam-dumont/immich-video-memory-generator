@@ -14,7 +14,7 @@ import pytest
 
 from immich_memories.api.models import AssetType
 from immich_memories.config_loader import Config
-from immich_memories.config_models import PhotoConfig
+from immich_memories.config_models_render import PhotoConfig
 from immich_memories.photos.animator import PhotoAnimator, detect_photo_hdr_type
 from immich_memories.photos.grouper import PhotoGrouper
 from immich_memories.photos.scoring import score_photo

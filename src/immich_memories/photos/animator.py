@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from PIL import Image as PILImage
 
-from immich_memories.config_models import PhotoConfig
+from immich_memories.config_models_render import PhotoConfig
 from immich_memories.photos.filter_expressions import (
     blur_bg_filter,
     face_zoom_filter,

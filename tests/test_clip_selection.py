@@ -321,7 +321,7 @@ class TestAnalyzeClipForHighlight:
 
         from immich_memories.analysis.analyzer_models import ScoredSegment
         from immich_memories.analysis.clip_selection import analyze_clip_for_highlight
-        from immich_memories.config_models import AnalysisConfig, ContentAnalysisConfig
+        from immich_memories.config_models_analysis import AnalysisConfig, ContentAnalysisConfig
 
         seg = ScoredSegment(
             start_time=1.0,
@@ -354,7 +354,7 @@ class TestAnalyzeClipForHighlight:
         from unittest.mock import patch
 
         from immich_memories.analysis.clip_selection import analyze_clip_for_highlight
-        from immich_memories.config_models import AnalysisConfig, ContentAnalysisConfig
+        from immich_memories.config_models_analysis import AnalysisConfig, ContentAnalysisConfig
 
         # WHY: mock at source module — import is inside function body
         with patch(

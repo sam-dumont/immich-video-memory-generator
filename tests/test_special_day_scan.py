@@ -26,7 +26,8 @@ from immich_memories.cli.special_days_cmd import (
     _year_of_assets,
     _years_in,
 )
-from immich_memories.config_models import AnalysisConfig, TripsConfig
+from immich_memories.config_models_analysis import AnalysisConfig
+from immich_memories.config_models_automation import TripsConfig
 
 
 def _asset(hour: int, minute: int = 0, day: int = 13) -> SimpleNamespace:

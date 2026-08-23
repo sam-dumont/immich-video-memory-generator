@@ -13,7 +13,8 @@ import numpy as np
 from immich_memories.security import private_temp_dir
 
 if TYPE_CHECKING:
-    from immich_memories.config_models import AnalysisConfig, HardwareAccelConfig
+    from immich_memories.config_models import HardwareAccelConfig
+    from immich_memories.config_models_analysis import AnalysisConfig
 
 logger = logging.getLogger(__name__)
 

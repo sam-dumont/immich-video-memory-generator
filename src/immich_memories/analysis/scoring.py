@@ -20,7 +20,7 @@ from immich_memories.analysis.scenes import Scene, get_video_info
 
 if TYPE_CHECKING:
     from immich_memories.analysis.content_analyzer import ContentAnalyzer
-    from immich_memories.config_models import AnalysisConfig, ContentAnalysisConfig
+    from immich_memories.config_models_analysis import AnalysisConfig, ContentAnalysisConfig
     from immich_memories.memory_types.presets import ScoringProfile
 
 logger = logging.getLogger(__name__)

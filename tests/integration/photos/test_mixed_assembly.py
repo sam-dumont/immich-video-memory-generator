@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from immich_memories.config_models import PhotoConfig
+from immich_memories.config_models_render import PhotoConfig
 from immich_memories.photos.animator import PhotoAnimator
 from immich_memories.photos.models import AnimationMode
 from immich_memories.processing.assembly_config import (

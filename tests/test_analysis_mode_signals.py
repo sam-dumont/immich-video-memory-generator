@@ -87,7 +87,7 @@ class TestActivitiesReachTheDatabase:
         segment, so the INSERT read None and every row was NULL again (#518)."""
         from immich_memories.analysis.analyzer_models import ScoredSegment
         from immich_memories.analysis.unified_analyzer import UnifiedSegmentAnalyzer
-        from immich_memories.config_models import AnalysisConfig, AudioContentConfig
+        from immich_memories.config_models_analysis import AnalysisConfig, AudioContentConfig
 
         # WHY: replaces the vision LLM, an external network service.
         content = MagicMock()

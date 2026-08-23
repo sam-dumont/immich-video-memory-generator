@@ -18,7 +18,7 @@ import inspect
 import pytest
 
 from immich_memories.analysis.unified_analyzer import UnifiedSegmentAnalyzer
-from immich_memories.config_models import AnalysisConfig
+from immich_memories.config_models_analysis import AnalysisConfig
 
 SHARED_PARAMETERS = [
     "min_segment_duration",

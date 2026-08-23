@@ -29,7 +29,7 @@ from immich_memories.analysis.unified_budget import (
 )
 from immich_memories.api.immich import ImmichAPIError
 from immich_memories.api.models import Asset
-from immich_memories.config_models import PhotoConfig
+from immich_memories.config_models_render import PhotoConfig
 from immich_memories.generate_privacy import clip_location_name
 from immich_memories.photos.animator import prepare_photo_source
 from immich_memories.photos.renderer import (

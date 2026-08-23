@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from immich_memories.config_models import PhotoConfig
+from immich_memories.config_models_render import PhotoConfig
 from immich_memories.photos.animator import PhotoAnimator
 from immich_memories.photos.models import AnimationMode
 from tests.integration.conftest import ffprobe_json, get_duration, has_stream, requires_ffmpeg

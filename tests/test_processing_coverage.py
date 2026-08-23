@@ -676,7 +676,7 @@ class TestEnhanceWithLlm:
 
     def test_cache_hit_skips_llm(self, tmp_path):
         from immich_memories.config_loader import Config
-        from immich_memories.config_models import PhotoConfig
+        from immich_memories.config_models_render import PhotoConfig
         from immich_memories.photos.scoring import _enhance_with_llm
 
         asset = _make_asset(id="cached-001")
@@ -705,7 +705,7 @@ class TestEnhanceWithLlm:
 
     def test_cache_miss_calls_llm(self, tmp_path):
         from immich_memories.config_loader import Config
-        from immich_memories.config_models import PhotoConfig
+        from immich_memories.config_models_render import PhotoConfig
         from immich_memories.photos.scoring import PhotoLook, _enhance_with_llm
 
         asset = _make_asset(id="uncached-001")
@@ -743,7 +743,7 @@ class TestLlmScorePhoto:
     """Lines 306-354: LLM photo scoring with thumbnail optimization."""
 
     def test_thumbnail_path_used_when_available(self, tmp_path):
-        from immich_memories.config_models import PhotoConfig
+        from immich_memories.config_models_render import PhotoConfig
         from immich_memories.photos.scoring import _llm_score_photo
 
         asset = _make_asset(id="thumb-001")
@@ -765,7 +765,7 @@ class TestLlmScorePhoto:
         assert result == 0.92
 
     def test_llm_error_is_not_reported_as_a_semantic_score(self, tmp_path):
-        from immich_memories.config_models import PhotoConfig
+        from immich_memories.config_models_render import PhotoConfig
         from immich_memories.photos.scoring import _llm_score_photo
 
         asset = _make_asset(id="err-001")
@@ -790,7 +790,7 @@ class TestLlmScorePhoto:
         assert result is None
 
     def test_falls_back_to_full_download(self, tmp_path):
-        from immich_memories.config_models import PhotoConfig
+        from immich_memories.config_models_render import PhotoConfig
         from immich_memories.photos.scoring import _llm_score_photo
 
         asset = _make_asset(id="no-thumb-001", originalFileName="IMG.HEIC")
@@ -822,7 +822,7 @@ class TestLlmScorePhoto:
         assert result == 0.88
 
     def test_download_failure_is_not_reported_as_a_semantic_score(self, tmp_path):
-        from immich_memories.config_models import PhotoConfig
+        from immich_memories.config_models_render import PhotoConfig
         from immich_memories.photos.scoring import _llm_score_photo
 
         asset = _make_asset(id="dl-fail-001")
@@ -841,7 +841,7 @@ class TestRenderSinglePhoto:
     """Lines 367-446: single photo render pipeline."""
 
     def test_returns_none_on_download_failure(self, tmp_path):
-        from immich_memories.config_models import PhotoConfig
+        from immich_memories.config_models_render import PhotoConfig
         from immich_memories.photos.photo_pipeline import _render_single_photo
 
         asset = _make_asset(id="render-fail-001")
@@ -871,7 +871,7 @@ class TestPhotoPlaceCaption:
         import numpy as np
 
         from immich_memories.api.models import ExifInfo
-        from immich_memories.config_models import PhotoConfig
+        from immich_memories.config_models_render import PhotoConfig
         from immich_memories.generate_privacy import clip_location_name
         from immich_memories.photos.photo_pipeline import _render_single_photo
 

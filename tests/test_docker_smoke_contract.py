@@ -16,7 +16,8 @@ from pathlib import Path
 from immich_memories.analysis.source_filter import not_shot_here
 from immich_memories.analysis.source_quality import is_usable_source
 from immich_memories.api.models import Asset, VideoClipInfo
-from immich_memories.config_models import AnalysisConfig, PhotoConfig
+from immich_memories.config_models_analysis import AnalysisConfig
+from immich_memories.config_models_render import PhotoConfig
 from tests.e2e.fake_immich import TIMELINE_ASSETS
 
 _SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "docker_smoke.py"

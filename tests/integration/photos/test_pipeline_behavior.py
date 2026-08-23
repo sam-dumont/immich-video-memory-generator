@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from immich_memories.config_models import PhotoConfig
+from immich_memories.config_models_render import PhotoConfig
 from immich_memories.photos.photo_pipeline import render_photo_clips
 from tests.conftest import make_asset
 from tests.integration.conftest import ffprobe_json, get_duration, has_stream, requires_ffmpeg

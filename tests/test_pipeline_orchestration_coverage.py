@@ -33,7 +33,7 @@ from immich_memories.analysis.smart_pipeline import (
 )
 from immich_memories.audio.audio_models import AudioAnalysisResult, AudioEvent
 from immich_memories.config_loader import Config
-from immich_memories.config_models import AnalysisConfig, AudioContentConfig
+from immich_memories.config_models_analysis import AnalysisConfig, AudioContentConfig
 from tests.conftest import make_clip
 
 # ---------------------------------------------------------------------------

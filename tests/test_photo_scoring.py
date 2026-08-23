@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from immich_memories.api.models import Person
-from immich_memories.config_models import PhotoConfig
+from immich_memories.config_models_render import PhotoConfig
 from immich_memories.photos.scoring import (
     PhotoLook,
     _photo_look_version,
@@ -545,7 +545,7 @@ class TestPhotoScoringTimeout:
 
         import httpx
 
-        from immich_memories.config_models import ContentAnalysisConfig
+        from immich_memories.config_models_analysis import ContentAnalysisConfig
         from immich_memories.config_models_llm import LLMConfig
         from immich_memories.photos.scoring import _query_photo_llm
 

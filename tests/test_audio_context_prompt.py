@@ -16,7 +16,7 @@ from immich_memories.analysis.llm_response_parser import (
     build_content_analysis_prompt,
 )
 from immich_memories.analysis.unified_analyzer import UnifiedSegmentAnalyzer
-from immich_memories.config_models import AnalysisConfig, AudioContentConfig
+from immich_memories.config_models_analysis import AnalysisConfig, AudioContentConfig
 
 # Hard-coded rather than compared against the constant: comparing against the
 # constant would pass even if both changed together, which is the regression this

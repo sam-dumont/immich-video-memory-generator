@@ -41,7 +41,7 @@ from immich_memories.analysis.speech_analysis import AudioAnalyzer, SpeechAnalys
 if TYPE_CHECKING:
     from immich_memories.analysis.content_analyzer import ContentAnalyzer
     from immich_memories.audio.audio_models import AudioAnalysisResult
-    from immich_memories.config_models import (
+    from immich_memories.config_models_analysis import (
         AnalysisConfig,
         AudioContentConfig,
         SpeechConfig,

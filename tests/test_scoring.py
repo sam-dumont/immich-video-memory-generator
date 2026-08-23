@@ -27,7 +27,7 @@ from immich_memories.analysis.scoring import (
     generate_segments,
     subdivide_scene,
 )
-from immich_memories.config_models import AnalysisConfig, ContentAnalysisConfig
+from immich_memories.config_models_analysis import AnalysisConfig, ContentAnalysisConfig
 
 # ---------------------------------------------------------------------------
 # TestComputeDurationScore — Gaussian curve

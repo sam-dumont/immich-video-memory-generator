@@ -343,9 +343,14 @@ src/immich_memories/
 │
 ├── config.py                   # YAML configuration management (re-exports)
 ├── config_loader.py            # Config loading logic
-├── config_models.py            # Config data models
+├── config_models.py            # Resources a run uses: Immich server, cache, hardware (+ expand_env_vars)
+├── config_models_analysis.py   # What the pipeline learns: analysis, content, audio events, speech, transcription
 ├── config_models_auth.py       # Authentication config model (basic, OIDC, header)
+├── config_models_automation.py # Running unattended: trips, automation, notifications, upload
+├── config_models_llm.py        # LLM provider settings (shared by analysis and titles)
+├── config_models_render.py     # What the video looks like: defaults, output, title screens, photos
 ├── config_models_server.py     # UI server bind settings + secure-by-default host rule
+├── config_models_soundtrack.py # Music under a memory: local library, MusicGen, ACE-Step
 ├── generate.py                 # End-to-end generation orchestrator
 ├── generate_clips.py           # Clip extraction, probing, cleanup
 ├── generate_downloads.py       # Parallel asset downloads
@@ -442,6 +447,11 @@ Config is organized in 3 tiers (see `config_loader.py`):
 
 At runtime, all sections are flat fields on `Config` (e.g. `config.analysis`).
 Both flat and nested YAML formats are accepted.
+
+The tiers are a YAML layout, not a code layout. The section models are grouped by
+domain across the `config_models*.py` modules (resources, analysis, render,
+soundtrack, automation, llm, auth, server), and `Config` in `config_loader.py`
+assembles them into one flat settings object.
 
 ## Conventions
 

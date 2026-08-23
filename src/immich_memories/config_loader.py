@@ -17,30 +17,30 @@ import yaml
 from pydantic import Field, PrivateAttr, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
-from immich_memories.config_models import (
-    ACEStepConfig,
+from immich_memories.config_models import CacheConfig, HardwareAccelConfig, ImmichConfig
+from immich_memories.config_models_analysis import (
     AnalysisConfig,
-    AudioConfig,
     AudioContentConfig,
-    AutomationConfig,
-    CacheConfig,
     ContentAnalysisConfig,
-    DefaultsConfig,
-    HardwareAccelConfig,
-    ImmichConfig,
-    MusicGenConfig,
-    NotificationConfig,
-    OutputConfig,
-    PhotoConfig,
     SpeechConfig,
-    TitleScreenConfig,
     TranscriptionConfig,
+)
+from immich_memories.config_models_auth import AuthConfig
+from immich_memories.config_models_automation import (
+    AutomationConfig,
+    NotificationConfig,
     TripsConfig,
     UploadConfig,
 )
-from immich_memories.config_models_auth import AuthConfig
 from immich_memories.config_models_llm import LLMConfig  # noqa: F401
+from immich_memories.config_models_render import (
+    DefaultsConfig,
+    OutputConfig,
+    PhotoConfig,
+    TitleScreenConfig,
+)
 from immich_memories.config_models_server import WILDCARD_HOST, ServerConfig
+from immich_memories.config_models_soundtrack import ACEStepConfig, AudioConfig, MusicGenConfig
 from immich_memories.config_presets import PresetName, apply_preset
 from immich_memories.scheduling.models import SchedulerConfig
 from immich_memories.security import CREDENTIAL_FIELD_NAMES, write_secret_file

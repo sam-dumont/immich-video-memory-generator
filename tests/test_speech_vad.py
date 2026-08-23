@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from immich_memories.config_models import SpeechConfig
+from immich_memories.config_models_analysis import SpeechConfig
 from immich_memories.speech.vad import extract_audio_16k, select_detector
 
 
