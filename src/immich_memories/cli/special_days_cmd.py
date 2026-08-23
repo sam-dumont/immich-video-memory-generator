@@ -93,6 +93,20 @@ def _register_due(main: click.Group) -> None:
         print_success(f"{len(entries)} days in the catalogue, checked against {when}")
 
 
+def _homebase(config: object) -> tuple[float, float] | None:
+    """Home coordinates, or None when this library has not set any.
+
+    Trip exclusion is the scan's first filter and it needs a real home. A
+    guessed one reads every day spent at the actual home as time away, and
+    the year is swallowed before a single day is considered — so no home
+    means no trip exclusion, not a stand-in for somebody else's.
+    """
+    trips = config.trips  # type: ignore[attr-defined]
+    if trips.homebase_latitude == trips.homebase_longitude == 0.0:
+        return None
+    return (trips.homebase_latitude, trips.homebase_longitude)
+
+
 def _scan_library(
     since: int, until: int, per_year: int, also_skip: tuple[str, ...], out: Path
 ) -> list[dict]:
@@ -102,10 +116,7 @@ def _scan_library(
     from immich_memories.config import get_config
 
     config = get_config()
-    home = (
-        getattr(config.analysis, "home_latitude", None) or 50.85,
-        getattr(config.analysis, "home_longitude", None) or 4.35,
-    )
+    home = _homebase(config)
     found: list[dict] = []
 
     with SyncImmichClient(base_url=config.immich.url, api_key=config.immich.api_key) as client:

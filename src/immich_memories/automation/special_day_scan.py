@@ -67,7 +67,7 @@ def scan_year(
     assets: list,
     *,
     llm_config: Any,
-    home: tuple[float, float],
+    home: tuple[float, float] | None,
     thumbnail_for: Any = None,
     ask: int = 6,
     extra_holidays: Iterable[str] = (),
@@ -77,7 +77,7 @@ def scan_year(
         return []
 
     year = assets[0].file_created_at.year
-    away = days_covered_by_trips(detect_trips(assets, home[0], home[1]))
+    away = days_covered_by_trips(detect_trips(assets, *home)) if home else set()
     holidays = holidays_in(year, extra_holidays)
 
     candidates = {
