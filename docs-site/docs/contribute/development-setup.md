@@ -21,7 +21,7 @@ cd immich-video-memory-generator
 make dev-test
 ```
 
-`make dev-test` installs the dev tools (pytest, ruff, mypy and the other CI gates) plus the `gpu` and `speech` extras — the same set the CI test jobs use. It is the fast path: no torch, no CUDA, no dlib compile. Run it before any other make target.
+`make dev-test` installs the dev tools (pytest, ruff, mypy and the other CI gates) plus the `gpu` and `speech` extras — the same set the CI test jobs use. It is the fast path: no torch, no CUDA. Run it before any other make target.
 
 Other install targets, when you need them:
 
@@ -30,7 +30,7 @@ Other install targets, when you need them:
 | `make dev-ci` | dev tools only | Lint/typecheck-only work |
 | `make dev-test` | dev + `gpu` + `speech` | Default for contributors (what CI tests with) |
 | `make dev-mac` | dev + `all-mac` (Apple Vision, Metal, ACE-Step MLX) | Apple Silicon, full feature set |
-| `make dev` | every extra, including `face` (compiles dlib, slow) | Only if you work on face recognition |
+| `make dev` | every extra (torch, ACE-Step, demucs — slow) | Only if you work across all optional backends |
 
 ## Verify everything works
 

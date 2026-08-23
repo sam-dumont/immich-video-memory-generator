@@ -59,6 +59,12 @@ injected service.
 - `EndingService` (ending_service.py): fade-to-white ending generation
 - `TripService` (trip_service.py): trip map and location card screens
 
+**`assemble_streaming()`** (processing/streaming_assembler.py) is the streaming render path,
+a three-stage pipe rather than a class: `make_decoder()` (streaming_frame_decoder.py) turns a
+clip into normalized raw frames, `FrameBlender` (streaming_frame_blender.py) writes those
+frames to a `FrameSink` and crossfades across clip boundaries, and `StreamingEncoder` (the
+sink it is constructed with) pipes them into FFmpeg.
+
 **TaichiTitleRenderer** (titles/renderer_taichi.py) owns the background and the per-frame
 GPU pipeline, and composes 2 services (both take Protocol-typed config/buffers):
 - `ParticleField` (taichi_particles.py): bokeh drift and fireworks physics, CPU numpy only
@@ -151,7 +157,9 @@ src/immich_memories/
 │   ├── assembly_engine.py      # AssemblyEngine (composes ConcatService)
 │   ├── ffmpeg_filter_graph.py  # ConcatService: batch merge/direct assembly
 │   ├── assembly_config.py      # Dataclasses: AssemblySettings, AssemblyClip, etc.
-│   ├── streaming_assembler.py  # StreamingAssembler: low-memory 4K assembly via frame blending
+│   ├── streaming_assembler.py  # StreamingEncoder + assemble_streaming(): low-memory 4K assembly
+│   ├── streaming_frame_decoder.py # FrameDecoder / make_decoder(): clip -> normalized raw frames
+│   ├── streaming_frame_blender.py # FrameBlender: frames -> sink, crossfades, progress/preview
 │   ├── streaming_audio.py      # Streaming audio processing helpers
 │   ├── ffmpeg_prober.py        # FFmpegProber: ffprobe-based duration/resolution
 │   ├── filter_builder.py       # FilterBuilder: FFmpeg filter graph construction

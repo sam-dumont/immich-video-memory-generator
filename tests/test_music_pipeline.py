@@ -406,7 +406,7 @@ class TestSeparationIsOptional:
             new_callable=AsyncMock,
             return_value=None,
         ) as generate:
-            auto_generate_music(config, [], tmp_path, None)
+            auto_generate_music(config, [], tmp_path, None, transition_overlap=0.0)
 
         assert generate.await_args.kwargs["separate_stems"] is False
 

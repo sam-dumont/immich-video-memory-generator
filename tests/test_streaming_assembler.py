@@ -126,7 +126,7 @@ def test_streaming_broken_pipe_retries_same_codec_in_software(tmp_path: Path) ->
             EarlyFailingHardwareEncoder,
         ),
         patch(
-            "immich_memories.processing.streaming_assembler._make_decoder",
+            "immich_memories.processing.streaming_assembler.make_decoder",
             side_effect=lambda *_args, **_kwargs: iter([frame]),
         ),
     ):
@@ -191,7 +191,7 @@ def test_streaming_callback_broken_pipe_does_not_retry_software(tmp_path: Path) 
     with (
         patch("immich_memories.processing.streaming_assembler.StreamingEncoder", WorkingEncoder),
         patch(
-            "immich_memories.processing.streaming_assembler._make_decoder",
+            "immich_memories.processing.streaming_assembler.make_decoder",
             side_effect=lambda *_args, **_kwargs: iter([frame]),
         ),
         pytest.raises(BrokenPipeError, match="preview consumer"),
@@ -227,7 +227,7 @@ class TestFrameDecoder:
         """FrameDecoder should yield numpy arrays of (height, width, 3)."""
         from pathlib import Path
 
-        from immich_memories.processing.streaming_assembler import FrameDecoder
+        from immich_memories.processing.streaming_frame_decoder import FrameDecoder
 
         tmp = Path(str(tmp_path))
 
@@ -317,7 +317,7 @@ class TestStreamingEncoder:
 class TestFrameBlender:
     def test_crossfade_blend_produces_interpolated_frames(self) -> None:
         """Blending two frames at alpha=0.5 should average pixel values."""
-        from immich_memories.processing.streaming_assembler import blend_crossfade
+        from immich_memories.processing.streaming_frame_blender import blend_crossfade
 
         frame_a = np.full((4, 4, 3), 100, dtype=np.uint8)
         frame_b = np.full((4, 4, 3), 200, dtype=np.uint8)
@@ -330,7 +330,7 @@ class TestFrameBlender:
 
     def test_crossfade_alpha_zero_is_frame_a(self) -> None:
         """Alpha=0 should return frame_a unchanged."""
-        from immich_memories.processing.streaming_assembler import blend_crossfade
+        from immich_memories.processing.streaming_frame_blender import blend_crossfade
 
         frame_a = np.full((4, 4, 3), 100, dtype=np.uint8)
         frame_b = np.full((4, 4, 3), 200, dtype=np.uint8)
@@ -341,7 +341,7 @@ class TestFrameBlender:
 
     def test_crossfade_alpha_one_is_frame_b(self) -> None:
         """Alpha=1 should return frame_b unchanged."""
-        from immich_memories.processing.streaming_assembler import blend_crossfade
+        from immich_memories.processing.streaming_frame_blender import blend_crossfade
 
         frame_a = np.full((4, 4, 3), 100, dtype=np.uint8)
         frame_b = np.full((4, 4, 3), 200, dtype=np.uint8)
@@ -383,7 +383,7 @@ def test_full_streaming_prores_threads_plan_and_uses_mov_work_video(tmp_path) ->
 
 def test_frame_decoder_applies_hdr_to_sdr_color_chain() -> None:
     """Streaming decode must consume conversion, output tags, and pixel format."""
-    from immich_memories.processing.streaming_assembler import FrameDecoder
+    from immich_memories.processing.streaming_frame_decoder import FrameDecoder
 
     decoder = FrameDecoder(
         Path("hlg.mp4"),
@@ -409,7 +409,7 @@ def test_frame_decoder_applies_hdr_to_sdr_color_chain() -> None:
 
 
 def _vf_for_scale_mode(mode: str) -> str:
-    from immich_memories.processing.streaming_assembler import FrameDecoder
+    from immich_memories.processing.streaming_frame_decoder import FrameDecoder
 
     return FrameDecoder(
         Path("clip.mp4"), width=1920, height=1080, fps=30, scale_mode=mode
@@ -442,7 +442,7 @@ def test_fit_scale_mode_renders_black_bars() -> None:
 def test_streaming_decoder_builds_plan_targeted_hlg_to_sdr_chain() -> None:
     from unittest.mock import MagicMock, patch
 
-    from immich_memories.processing.streaming_assembler import _make_decoder
+    from immich_memories.processing.streaming_frame_decoder import make_decoder
 
     clip = MagicMock(path=Path("hlg.mp4"), is_title_screen=False, rotation_override=None)
     ctx = MagicMock(
@@ -457,7 +457,7 @@ def test_streaming_decoder_builds_plan_targeted_hlg_to_sdr_chain() -> None:
         "immich_memories.processing.hdr_utilities._check_zscale_available",
         return_value=True,
     ):
-        decoder = _make_decoder(clip, 0, 320, 240, 30, ctx=ctx, hdr_type=None)
+        decoder = make_decoder(clip, 0, 320, 240, 30, ctx=ctx, hdr_type=None)
 
     vf = decoder._build_vf()
     assert "zscale=t=linear" in vf
@@ -479,7 +479,7 @@ def test_streaming_decoder_fails_when_required_hdr_conversion_is_unavailable(
     from unittest.mock import MagicMock, patch
 
     from immich_memories.processing.hdr_utilities import RequiredColorConversionUnavailable
-    from immich_memories.processing.streaming_assembler import _make_decoder
+    from immich_memories.processing.streaming_frame_decoder import make_decoder
 
     clip = MagicMock(path=Path("hdr.mp4"), is_title_screen=False, rotation_override=None)
     ctx = MagicMock(
@@ -500,7 +500,7 @@ def test_streaming_decoder_fails_when_required_hdr_conversion_is_unavailable(
         ),
         pytest.raises(RequiredColorConversionUnavailable),
     ):
-        _make_decoder(clip, 0, 320, 240, 30, ctx=ctx, hdr_type=target_transfer)
+        make_decoder(clip, 0, 320, 240, 30, ctx=ctx, hdr_type=target_transfer)
 
 
 @requires_ffmpeg
@@ -887,7 +887,7 @@ class TestFrameDecoderFilterChain:
         """PTS reset and timebase are critical for multi-clip concat."""
         from pathlib import Path
 
-        from immich_memories.processing.streaming_assembler import FrameDecoder
+        from immich_memories.processing.streaming_frame_decoder import FrameDecoder
 
         decoder = FrameDecoder(Path("/fake.mp4"), width=1920, height=1080, fps=30)
         vf = decoder._build_vf()
@@ -900,7 +900,7 @@ class TestFrameDecoderFilterChain:
         """90° rotation must apply transpose=1 before scale."""
         from pathlib import Path
 
-        from immich_memories.processing.streaming_assembler import FrameDecoder
+        from immich_memories.processing.streaming_frame_decoder import FrameDecoder
 
         decoder = FrameDecoder(Path("/fake.mp4"), width=1920, height=1080, fps=30, rotation=90)
         vf = decoder._build_vf()
@@ -912,7 +912,7 @@ class TestFrameDecoderFilterChain:
     def test_rotation_180_includes_hflip_vflip(self) -> None:
         from pathlib import Path
 
-        from immich_memories.processing.streaming_assembler import FrameDecoder
+        from immich_memories.processing.streaming_frame_decoder import FrameDecoder
 
         decoder = FrameDecoder(Path("/fake.mp4"), width=1920, height=1080, fps=30, rotation=180)
         vf = decoder._build_vf()
@@ -921,7 +921,7 @@ class TestFrameDecoderFilterChain:
     def test_rotation_270_includes_transpose_2(self) -> None:
         from pathlib import Path
 
-        from immich_memories.processing.streaming_assembler import FrameDecoder
+        from immich_memories.processing.streaming_frame_decoder import FrameDecoder
 
         decoder = FrameDecoder(Path("/fake.mp4"), width=1920, height=1080, fps=30, rotation=270)
         vf = decoder._build_vf()
@@ -931,7 +931,7 @@ class TestFrameDecoderFilterChain:
         """Privacy mode must apply heavy gaussian blur."""
         from pathlib import Path
 
-        from immich_memories.processing.streaming_assembler import FrameDecoder
+        from immich_memories.processing.streaming_frame_decoder import FrameDecoder
 
         decoder = FrameDecoder(
             Path("/fake.mp4"), width=1920, height=1080, fps=30, privacy_blur=True
@@ -945,7 +945,7 @@ class TestFrameDecoderFilterChain:
         """Per-source transfer normalization must happen before frame blending."""
         from pathlib import Path
 
-        from immich_memories.processing.streaming_assembler import FrameDecoder
+        from immich_memories.processing.streaming_frame_decoder import FrameDecoder
 
         decoder = FrameDecoder(
             Path("/fake.mp4"),
@@ -966,7 +966,7 @@ class TestFrameDecoderFilterChain:
         """rotation=0 should NOT add any transpose filter."""
         from pathlib import Path
 
-        from immich_memories.processing.streaming_assembler import FrameDecoder
+        from immich_memories.processing.streaming_frame_decoder import FrameDecoder
 
         decoder = FrameDecoder(Path("/fake.mp4"), width=1920, height=1080, fps=30, rotation=0)
         vf = decoder._build_vf()
@@ -1241,34 +1241,34 @@ class TestAudioFilterChain:
 
 
 class TestMakeDecoderIntegration:
-    """Verify _make_decoder wires clip metadata to FrameDecoder correctly."""
+    """Verify make_decoder wires clip metadata to FrameDecoder correctly."""
 
     def test_rotation_override_passed_through(self) -> None:
         from immich_memories.processing.assembly_config import AssemblyClip
-        from immich_memories.processing.streaming_assembler import _make_decoder
+        from immich_memories.processing.streaming_frame_decoder import make_decoder
 
         clip = AssemblyClip(path=Path("/clip.mp4"), duration=5.0, rotation_override=90)
-        decoder = _make_decoder(clip, 0, 1920, 1080, 30)
+        decoder = make_decoder(clip, 0, 1920, 1080, 30)
 
         assert decoder._rotation == 90
         assert "transpose=1" in decoder._build_vf()
 
     def test_privacy_mode_applied_to_non_title(self) -> None:
         from immich_memories.processing.assembly_config import AssemblyClip
-        from immich_memories.processing.streaming_assembler import _make_decoder
+        from immich_memories.processing.streaming_frame_decoder import make_decoder
 
         clip = AssemblyClip(path=Path("/clip.mp4"), duration=5.0)
-        decoder = _make_decoder(clip, 0, 1920, 1080, 30, privacy_mode=True)
+        decoder = make_decoder(clip, 0, 1920, 1080, 30, privacy_mode=True)
 
         assert decoder._privacy_blur is True
         assert "gblur=sigma=37" in decoder._build_vf()
 
     def test_privacy_mode_not_applied_to_title_screen(self) -> None:
         from immich_memories.processing.assembly_config import AssemblyClip
-        from immich_memories.processing.streaming_assembler import _make_decoder
+        from immich_memories.processing.streaming_frame_decoder import make_decoder
 
         clip = AssemblyClip(path=Path("/title.mp4"), duration=3.0, is_title_screen=True)
-        decoder = _make_decoder(clip, 0, 1920, 1080, 30, privacy_mode=True)
+        decoder = make_decoder(clip, 0, 1920, 1080, 30, privacy_mode=True)
 
         assert decoder._privacy_blur is False
         assert "gblur" not in decoder._build_vf()

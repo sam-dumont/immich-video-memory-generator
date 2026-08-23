@@ -32,18 +32,15 @@ dependencies = [
     "httpx>=0.27",
     "pydantic>=2.0",
     "pydantic-settings>=2.14.2",
-    "nicegui>=3.12.0",
-    "moviepy>=1.0.3",
-    "scenedetect>=0.6",  # OpenCV is already a direct dependency below
+    "nicegui>=3.16.0",  # 3.16 fixes GHSA-46f2 (unauth memory exhaustion) + GHSA-955g (XSS)
+    "scenedetect>=0.7,<0.8",  # OpenCV is already a direct dependency below; 0.7 = VFR-correct (iPhone)
     "opencv-python>=4.9,<5",  # OpenCV 5 dropped cv2.CascadeClassifier (face scoring, #339)
-    "videohash>=3.0",
     "pyyaml>=6.0",
     "click>=8.3.3",
     "rich>=13.0",
     "pillow>=12.3.0",
     "pillow-heif>=1.0",
     "numpy>=1.24",
-    "imagehash>=4.3",
     "watchdog>=3.0",
     "croniter>=1.3",
     "geopy>=2.4",
@@ -57,10 +54,6 @@ dependencies = [
 # can require it.
 music = [
     "immich-memories-music>=0.1.0",
-]
-face = [
-    "face-recognition>=1.3",
-    "dlib>=19.24",
 ]
 # Mac-specific dependencies for GPU-accelerated processing
 mac = [
@@ -89,7 +82,7 @@ audio-ml = [
 # nothing. `pip install transformers huggingface-hub` re-enables it; without
 # them SmartTurnDetector returns a neutral 0.5.
 speech = [
-    "onnxruntime>=1.17",
+    "onnxruntime>=1.28",
     "kaldi-native-fbank>=1.20",
 ]
 # Speech transcription (whisper.cpp via pywhispercpp)
@@ -122,7 +115,6 @@ gpu = [
 ]
 # All cross-platform optional features
 all = [
-    "immich-memories[face]",
     "immich-memories[music]",
     "immich-memories[audio]",
     "immich-memories[audio-ml]",
@@ -134,7 +126,6 @@ all = [
 ]
 # All features for macOS (includes Apple Vision framework)
 all-mac = [
-    "immich-memories[face]",
     "immich-memories[music]",
     "immich-memories[audio]",
     "immich-memories[audio-ml]",
@@ -353,11 +344,7 @@ warn_unused_ignores = false
 
 [[tool.mypy.overrides]]
 module = [
-    "moviepy.*",
     "scenedetect.*",
-    "videohash.*",
-    "face_recognition.*",
-    "imagehash.*",
     "mutagen.*",
     # macOS frameworks (PyObjC)
     "Vision.*",
@@ -539,11 +526,7 @@ DEP002 = [
     "opencv-python",                                    # imported as cv2
     "pyyaml",                                           # imported as yaml
     "pillow",                                           # imported as PIL
-    "imagehash",                                        # imported via videohash
-    "videohash",                                        # used via subprocess
     "watchdog",                                         # runtime scheduler
-    "face-recognition",                                 # imported as face_recognition
-    "dlib",                                             # face-recognition backend
     "pyobjc-core", "pyobjc-framework-Vision",           # macOS-only, runtime
     "pyobjc-framework-Quartz", "pyobjc-framework-Metal", # macOS GPU
     "torch",                                            # PANNs inference backend
@@ -616,7 +599,7 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
     "integration: requires FFmpeg (deselect with '-m not integration')",
-    "extras: needs the torch-family optional dependencies (face/audio-ml/demucs)",
+    "extras: needs the torch-family optional dependencies (audio-ml/demucs)",
     "e2e: Playwright E2E browser tests (deselect with '-m not e2e')",
     "slow: long-running tests (full generation pipeline, ~10min)",
     "perf: performance benchmarks (run with: make benchmark-perf)",

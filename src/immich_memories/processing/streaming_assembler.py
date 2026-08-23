@@ -9,12 +9,11 @@ import subprocess
 import threading
 from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
-from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
-import cv2
 import numpy as np
 
+from immich_memories.processing.clip_caption import ClipCaption, timeline_captions
 from immich_memories.processing.clip_encoder import encoder_args_for_plan
 from immich_memories.processing.encoding_plan import (
     EncodingPlan,
@@ -24,26 +23,17 @@ from immich_memories.processing.encoding_plan import (
     uses_hardware_encoder,
 )
 from immich_memories.processing.ffmpeg_runner import drain_stderr_tail
-from immich_memories.processing.hdr_utilities import (
-    _detect_color_primaries,
-    _detect_hdr_type,
-    _get_colorspace_filter,
-    _resolve_clip_hdr,
-)
+from immich_memories.processing.hdr_utilities import _get_colorspace_filter
 from immich_memories.processing.streaming_audio import (
     _probe_duration,
     extract_and_mix_audio,
     mux_video_audio,
 )
+from immich_memories.processing.streaming_frame_blender import FrameBlender
+from immich_memories.processing.streaming_frame_decoder import make_decoder
 
 if TYPE_CHECKING:
     from immich_memories.processing.probe_cache import ProbeCache
-
-from immich_memories.processing.clip_caption import (
-    ClipCaption,
-    caption_filters,
-    timeline_captions,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -60,229 +50,6 @@ def _default_streaming_plan() -> EncodingPlan:
         container="mp4",
         crf=18,
     )
-
-
-def blend_crossfade(
-    frame_a: np.ndarray,
-    frame_b: np.ndarray,
-    alpha: float,
-    out: np.ndarray,
-) -> None:
-    """In-place crossfade blend: alpha=0 → frame_a, alpha=1 → frame_b.
-
-    WHY cv2 rather than numpy: the three-pass numpy version measured 37.5 ms a
-    frame at 4K against 3.5 ms here, and its `casting="unsafe"` truncated every
-    element toward zero -- up to 1.6 levels of error where rounding costs 0.5.
-    addWeighted also writes straight into `out`, so the second scratch buffer
-    the numpy path needed (another 25 MB at 4K) is gone.
-    """
-    cv2.addWeighted(frame_a, 1.0 - alpha, frame_b, alpha, 0.0, dst=out)
-
-
-class FrameDecoder:
-    """Decode a video clip to raw frames via FFmpeg stdout pipe."""
-
-    def __init__(
-        self,
-        clip_path: Path,
-        width: int,
-        height: int,
-        fps: int,
-        pix_fmt: str = "rgb24",
-        rotation: int = 0,
-        privacy_blur: bool = False,
-        hdr_conversion: str = "",
-        colorspace_filter: str = "",
-        output_pix_fmt: str = "",
-        scale_mode: str = "black",
-        sdr_to_hdr_filter: str = "",
-        input_seek: float = 0.0,
-        audio_output: Path | None = None,
-        caption: ClipCaption | None = None,
-        caption_font: str | None = None,
-    ) -> None:
-        self._clip_path = clip_path
-        self._input_seek = input_seek
-        self._audio_output = audio_output
-        self._width = width
-        self._height = height
-        self._fps = fps
-        self._pix_fmt = pix_fmt
-        self._frame_size = width * height * 3  # Same for yuv420p10le and rgb24
-        self._rotation = rotation
-        self._privacy_blur = privacy_blur
-        self._hdr_conversion = hdr_conversion
-        self._colorspace_filter = colorspace_filter
-        self._output_pix_fmt = output_pix_fmt
-        self._scale_mode = scale_mode
-        # WHY: SDR clips in HDR output need zscale to convert sRGB→HLG/PQ.
-        # Without this, SDR full-range data piped as yuv420p10le gets
-        # interpreted as TV-range HLG = red/wrong tint.
-        self._sdr_to_hdr_filter = sdr_to_hdr_filter
-        self._caption = caption
-        self._caption_font = caption_font
-
-    def _build_vf(self) -> str:
-        """Build the -vf filter chain matching filter_builder.build_clip_video_filter."""
-        parts: list[str] = []
-
-        # Rotation (transpose/hflip) — must come before scale
-        if self._rotation == 90:
-            parts.append("transpose=1")
-        elif self._rotation == 180:
-            parts.append("hflip,vflip")
-        elif self._rotation == 270:
-            parts.append("transpose=2")
-
-        # WHY: frosted glass effect — gaussian blur + noise texture + smooth.
-        # Looks cinematic/artistic rather than surveillance-like pixelation.
-        # Scales with shorter dimension so portrait/landscape match.
-        if self._privacy_blur:
-            short_side = min(self._width, self._height)
-            sigma = int(short_side * 0.035)
-            parts.append(f"gblur=sigma={sigma},noise=alls=15:allf=t,gblur=sigma=10")
-
-        # PTS reset — critical for multi-clip concat
-        parts.append("setpts=PTS-STARTPTS")
-
-        # Scale + fill to target resolution
-        if self._scale_mode == "blur":
-            # WHY: Blur background fills the entire frame with a blurred, zoomed version
-            # of the source, then overlays the sharp scaled version centered on top.
-            # Uses split to avoid re-reading the source.
-            # When privacy blur is active, skip the extra sigma=30 on the background
-            # because the frame is already blurred — adding more makes it unrecognizable.
-            bg_blur = "" if self._privacy_blur else ",gblur=sigma=30"
-            parts.extend(
-                (
-                    "split[_bg][_fg]",
-                    f"[_bg]scale={self._width}:{self._height}:force_original_aspect_ratio=increase:flags=lanczos,"
-                    f"crop={self._width}:{self._height}{bg_blur}[_blurred]",
-                    f"[_fg]scale={self._width}:{self._height}:force_original_aspect_ratio=decrease:flags=lanczos[_sharp]",
-                    "[_blurred][_sharp]overlay=(W-w)/2:(H-h)/2",
-                )
-            )
-            self._use_filter_complex = True
-        else:
-            # "fit": scale down inside the frame and pad the rest black. There is
-            # no face-aware crop on the video path, so anything that is not
-            # "blur" lands here — which is why no such mode is offered.
-            parts.extend(
-                (
-                    f"scale={self._width}:{self._height}:force_original_aspect_ratio=decrease:flags=lanczos",
-                    f"pad={self._width}:{self._height}:(ow-iw)/2:(oh-ih)/2:black",
-                )
-            )
-            self._use_filter_complex = False
-
-        # FPS + timebase reset
-        parts.append(f"fps={self._fps},settb=1/{self._fps}")
-
-        # SDR→HDR conversion (only for SDR clips in HDR output)
-        if self._sdr_to_hdr_filter:
-            parts.append(self._sdr_to_hdr_filter)
-
-        # Apply the shared per-source transfer conversion and tag the decoded
-        # frames before they enter the metadata-free rawvideo pipe.
-        for color_filter in (
-            self._hdr_conversion,
-            self._colorspace_filter,
-            self._output_pix_fmt,
-        ):
-            if color_filter:
-                parts.append(color_filter.removeprefix(","))
-
-        # Drawn last so the text is never scaled, padded or blurred with the
-        # source, and lands in target-frame coordinates.
-        if self._caption:
-            parts.extend(
-                caption_filters(
-                    self._caption,
-                    self._width,
-                    self._height,
-                    is_hdr=self._pix_fmt != "rgb24",
-                    font_path=self._caption_font,
-                )
-            )
-
-        # Square pixels
-        parts.append("setsar=1")
-
-        return ",".join(parts)
-
-    def __iter__(self) -> Iterator[np.ndarray]:
-        """Yield decoded frames one at a time."""
-        vf = self._build_vf()
-        use_fc = getattr(self, "_use_filter_complex", False)
-
-        if use_fc:
-            # WHY: Blur background uses split which requires -filter_complex
-            filter_args = ["-filter_complex", f"[0:v]{vf}[out]", "-map", "[out]"]
-        else:
-            filter_args = ["-vf", vf]
-
-        seek_args = ["-ss", str(self._input_seek)] if self._input_seek > 0 else []
-
-        # WHY: Extract audio alongside video in the same FFmpeg pass.
-        # Audio timing matches the decoded video frames exactly, preventing
-        # the cumulative drift from independent video/audio assembly.
-        audio_args: list[str] = []
-        if self._audio_output:
-            audio_args = [
-                "-map",
-                "0:a?",
-                "-c:a",
-                "pcm_s16le",
-                "-ar",
-                "48000",
-                "-ac",
-                "2",
-                str(self._audio_output),
-            ]
-
-        cmd = [
-            "ffmpeg",
-            *seek_args,
-            "-i",
-            str(self._clip_path),
-            "-f",
-            "rawvideo",
-            "-pix_fmt",
-            self._pix_fmt,
-            *filter_args,
-            "-s",
-            f"{self._width}x{self._height}",
-            "-r",
-            str(self._fps),
-            "pipe:1",
-            *audio_args,
-        ]
-        logger.debug(f"FrameDecoder cmd: {' '.join(cmd)}")
-        proc = subprocess.Popen(  # noqa: S603, S607
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            bufsize=self._frame_size,
-        )
-        assert proc.stdout is not None  # noqa: S101
-
-        try:
-            while True:
-                raw = proc.stdout.read(self._frame_size)
-                if len(raw) < self._frame_size:
-                    break
-                frame: np.ndarray
-                if self._pix_fmt == "yuv420p10le":
-                    # WHY: Keep as flat uint16 — YUV planar can't reshape to (H,W,3).
-                    # Crossfade blends each sample independently which works for all planes.
-                    frame = np.frombuffer(raw, dtype=np.uint16).copy()
-                else:
-                    frame = np.frombuffer(raw, dtype=np.uint8).reshape(self._height, self._width, 3)
-                yield frame
-        finally:
-            proc.stdout.close()
-            proc.terminate()
-            proc.wait(timeout=5)
 
 
 class StreamingEncoderWriteError(RuntimeError):
@@ -427,200 +194,6 @@ class StreamingEncoder:
             )
 
 
-def _emit_body_frames(
-    active_iter: Iterator[np.ndarray],
-    count: int,
-    encoder: StreamingEncoder,
-    progress_callback: Callable[[int, int], None] | None = None,
-    frames_written: int = 0,
-    total_frames: int = 0,
-    report_interval: int = 1,
-    frame_preview_callback: Callable[[bytes], None] | None = None,
-    last_preview_time: float = 0.0,
-    is_hdr: bool = False,
-    preview_height: int = 0,
-    preview_width: int = 0,
-) -> tuple[int, float]:
-    """Write body frames to the encoder, optionally reporting progress.
-
-    Returns (frames_written, last_preview_time).
-    """
-    from immich_memories.processing.frame_preview import _maybe_emit_preview
-
-    for emitted in range(max(count, 0)):
-        frame = next(active_iter, None)
-        if frame is None:
-            if emitted < count:
-                logger.warning(
-                    f"Frame underrun: expected {count} frames, got {emitted} "
-                    f"(missing {count - emitted} frames = {(count - emitted) / max(total_frames, 1) * 100:.1f}%)"
-                )
-            break
-        encoder.write_frame(frame)
-        frames_written += 1
-        if progress_callback and frames_written % report_interval == 0:
-            progress_callback(frames_written, total_frames)
-        last_preview_time = _maybe_emit_preview(
-            frame,
-            last_preview_time,
-            frame_preview_callback,
-            is_hdr,
-            preview_height,
-            preview_width,
-        )
-    return frames_written, last_preview_time
-
-
-def _match_blend_bufs(ref: np.ndarray, blend_buf: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Create black frame and ensure blend buffers match actual frame shape.
-
-    WHY: HDR mode pre-allocates flat uint16 YUV buffers, but some clips
-    (title screens, FFmpeg filter fallback on Linux) may decode as 3D RGB.
-    """
-    black = np.zeros_like(ref)
-    # WHY: in YUV, all-zeros = GREEN (U=0, V=0 = green chroma).
-    # For flat uint16 arrays (yuv420p10le), set chroma planes to 512.
-    if ref.ndim == 1 and ref.dtype == np.uint16:
-        # Y plane occupies first 2/3 of the flat array, U+V the last 1/3
-        y_size = len(ref) * 2 // 3
-        black[y_size:] = 512
-    if blend_buf.shape != ref.shape or blend_buf.dtype != ref.dtype:
-        blend_buf = np.zeros_like(ref)
-    return black, blend_buf
-
-
-def _hold_or_fallback(
-    frame: np.ndarray | None,
-    last: np.ndarray | None,
-    black: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray | None]:
-    """Return frame (or held last frame) and update last-seen cache."""
-    if frame is not None:
-        return frame, frame
-    return (last if last is not None else black), last
-
-
-def _emit_crossfade(
-    active_iter: Iterator[np.ndarray],
-    next_iter: Iterator[np.ndarray],
-    fade_frames: int,
-    encoder: StreamingEncoder,
-    blend_buf: np.ndarray,
-    height: int,
-    width: int,
-    frame_preview_callback: Callable[[bytes], None] | None = None,
-    last_preview_time: float = 0.0,
-    is_hdr: bool = False,
-) -> float:
-    """Blend fade_frames from two iterators and write to encoder.
-
-    Returns updated last_preview_time.
-    """
-    from immich_memories.processing.frame_preview import _maybe_emit_preview
-
-    black: np.ndarray | None = None
-    last_a: np.ndarray | None = None
-    last_b: np.ndarray | None = None
-    for fade_idx in range(fade_frames):
-        frame_a = next(active_iter, None)
-        frame_b = next(next_iter, None)
-
-        if frame_a is None is frame_b:
-            break
-
-        if black is None:
-            ref = frame_a if frame_a is not None else frame_b
-            assert ref is not None  # noqa: S101
-            black, blend_buf = _match_blend_bufs(ref, blend_buf)
-
-        frame_a, last_a = _hold_or_fallback(frame_a, last_a, black)
-        frame_b, last_b = _hold_or_fallback(frame_b, last_b, black)
-
-        alpha = (fade_idx + 1) / fade_frames
-        blend_crossfade(frame_a, frame_b, alpha, out=blend_buf)
-        encoder.write_frame(blend_buf)
-        last_preview_time = _maybe_emit_preview(
-            blend_buf,
-            last_preview_time,
-            frame_preview_callback,
-            is_hdr,
-            height,
-            width,
-        )
-    return last_preview_time
-
-
-def _make_decoder(
-    clip: Any,
-    clip_idx: int,
-    width: int,
-    height: int,
-    fps: int,
-    ctx: Any | None = None,
-    privacy_mode: bool = False,
-    caption: ClipCaption | None = None,
-    caption_font: str | None = None,
-    scale_mode: str = "black",
-    hdr_type: str | None = None,
-    audio_work_dir: Path | None = None,
-) -> FrameDecoder:
-    """Create a FrameDecoder with per-clip normalization filters."""
-    rotation = 0
-    is_title = getattr(clip, "is_title_screen", False)
-
-    rotation_override = getattr(clip, "rotation_override", None)
-    if rotation_override is not None and rotation_override != 0:
-        rotation = rotation_override
-
-    if ctx is None and Path(clip.path).exists():
-        target_type = hdr_type or "sdr"
-        source_types: list[str | None] = [None] * (clip_idx + 1)
-        source_primaries: list[str | None] = [None] * (clip_idx + 1)
-        source_types[clip_idx] = _detect_hdr_type(clip.path)
-        source_primaries[clip_idx] = _detect_color_primaries(clip.path)
-        ctx = SimpleNamespace(
-            hdr_type=target_type,
-            pix_fmt="yuv420p10le" if hdr_type else "yuv420p",
-            clip_hdr_types=source_types,
-            clip_primaries=source_primaries,
-            colorspace_filter=_get_colorspace_filter(target_type),
-        )
-
-    # Title videos may be pre-encoded, but only an exact transfer match may
-    # bypass conversion. The shared resolver makes the same decision for all clips.
-    hdr_conversion, colorspace_filter, output_pix_fmt, sdr_to_hdr_filter, _ = _resolve_clip_hdr(
-        clip_idx, ctx, hdr_type
-    )
-    pix_fmt = "yuv420p10le" if hdr_type else "rgb24"
-    logger.info(
-        f"Decoder[{clip_idx}] pix={pix_fmt} title={is_title} hdr_type={hdr_type} "
-        f"sdr2hdr={bool(sdr_to_hdr_filter)} {clip.path.name}"
-    )
-
-    audio_output = None
-    if audio_work_dir:
-        audio_output = audio_work_dir / f"clip_{clip_idx}_audio.wav"
-
-    return FrameDecoder(
-        clip_path=clip.path,
-        width=width,
-        height=height,
-        fps=fps,
-        pix_fmt=pix_fmt,
-        rotation=rotation,
-        privacy_blur=privacy_mode and not is_title,
-        hdr_conversion=hdr_conversion,
-        colorspace_filter=colorspace_filter,
-        output_pix_fmt=output_pix_fmt,
-        scale_mode=scale_mode,
-        sdr_to_hdr_filter=sdr_to_hdr_filter,
-        input_seek=getattr(clip, "input_seek", 0.0),
-        audio_output=audio_output,
-        caption=caption if not is_title else None,
-        caption_font=caption_font,
-    )
-
-
 def _estimate_total_frames(
     clips: list, transitions: list[str], fps: int, fade_duration: float
 ) -> int:
@@ -629,14 +202,6 @@ def _estimate_total_frames(
     total = sum(int(c.duration * fps) for c in clips)
     fade_count = sum(1 for t in transitions if t == "fade")
     return max(1, total - fade_count * fade_frames)
-
-
-def _alloc_blend_bufs(width: int, height: int, hdr_type: str | None) -> np.ndarray:
-    """Allocate the blend destination. One buffer: cv2 writes straight into it."""
-    if hdr_type:
-        # WHY: yuv420p10le is flat uint16 — W*H*3 bytes = W*H*3/2 uint16 samples
-        return np.zeros(width * height * 3 // 2, dtype=np.uint16)
-    return np.zeros((height, width, 3), dtype=np.uint8)
 
 
 def assemble_streaming(
@@ -674,9 +239,17 @@ def assemble_streaming(
     plan = encoding_plan or _default_streaming_plan()
     hdr_type = plan.target_transfer.value if plan.hdr else None
     encoder = StreamingEncoder(output_path, width, height, fps, encoding_plan=plan)
-    blend_buf = _alloc_blend_bufs(width, height, hdr_type)
-    # WHY: Throttle callbacks to every ~0.5s worth of frames to avoid UI overhead
-    report_interval = max(1, fps // 2)
+    blender = FrameBlender(
+        sink=encoder,
+        width=width,
+        height=height,
+        is_hdr=hdr_type is not None,
+        total_frames=total_frames,
+        # WHY: Throttle callbacks to every ~0.5s worth of frames to avoid UI overhead
+        report_interval=max(1, fps // 2),
+        progress_callback=progress_callback,
+        frame_preview_callback=frame_preview_callback,
+    )
 
     def retry_in_software() -> list[Path] | None:
         if not _allow_runtime_fallback or not uses_hardware_encoder(plan):
@@ -721,11 +294,8 @@ def assemble_streaming(
         _encode_clip_sequence(
             clips,
             transitions,
-            encoder,
+            blender,
             fade_frames,
-            total_frames,
-            report_interval,
-            blend_buf,
             width,
             height,
             fps,
@@ -735,8 +305,6 @@ def assemble_streaming(
             caption_font,
             scale_mode,
             hdr_type,
-            progress_callback,
-            frame_preview_callback,
             audio_work_dir=audio_work_dir,
         )
     except StreamingEncoderWriteError:
@@ -779,11 +347,8 @@ def assemble_streaming(
 def _encode_clip_sequence(
     clips: list,
     transitions: list[str],
-    encoder: StreamingEncoder,
+    blender: FrameBlender,
     fade_frames: int,
-    total_frames: int,
-    report_interval: int,
-    blend_buf: np.ndarray,
     width: int,
     height: int,
     fps: int,
@@ -793,25 +358,20 @@ def _encode_clip_sequence(
     caption_font: str | None,
     scale_mode: str,
     hdr_type: str | None,
-    progress_callback: Callable[[int, int], None] | None,
-    frame_preview_callback: Callable[[bytes], None] | None = None,
     audio_work_dir: Path | None = None,
 ) -> int:
     """Encode all clips with transitions, tracking frame count for progress."""
     active_iter: Iterator[np.ndarray] | None = None
     skip_frames = 0
-    frames_written = 0
-    last_preview_time = 0.0
-    is_hdr = hdr_type is not None
 
     clip_captions: list[ClipCaption | None] = (
         list(captions) if captions is not None else [None] * len(clips)
     )
 
-    for clip_idx, clip in enumerate(clips):
-        if active_iter is None:
-            decoder = _make_decoder(
-                clip,
+    def decoder_for(clip_idx: int) -> Iterator[np.ndarray]:
+        return iter(
+            make_decoder(
+                clips[clip_idx],
                 clip_idx,
                 width,
                 height,
@@ -824,58 +384,21 @@ def _encode_clip_sequence(
                 hdr_type,
                 audio_work_dir=audio_work_dir,
             )
-            active_iter = iter(decoder)
+        )
+
+    for clip_idx, clip in enumerate(clips):
+        if active_iter is None:
+            active_iter = decoder_for(clip_idx)
 
         clip_frames = int(clip.duration * fps)
         has_fade_out = clip_idx < len(transitions) and transitions[clip_idx] == "fade"
         body_frames = clip_frames - skip_frames - (fade_frames if has_fade_out else 0)
 
-        frames_written, last_preview_time = _emit_body_frames(
-            active_iter,
-            body_frames,
-            encoder,
-            progress_callback,
-            frames_written,
-            total_frames,
-            report_interval,
-            frame_preview_callback,
-            last_preview_time,
-            is_hdr,
-            height,
-            width,
-        )
+        blender.emit_body(active_iter, body_frames)
 
         if has_fade_out and clip_idx + 1 < len(clips):
-            next_decoder = _make_decoder(
-                clips[clip_idx + 1],
-                clip_idx + 1,
-                width,
-                height,
-                fps,
-                ctx,
-                privacy_mode,
-                clip_captions[clip_idx + 1],
-                caption_font,
-                scale_mode,
-                hdr_type,
-                audio_work_dir=audio_work_dir,
-            )
-            next_iter = iter(next_decoder)
-            last_preview_time = _emit_crossfade(
-                active_iter,
-                next_iter,
-                fade_frames,
-                encoder,
-                blend_buf,
-                height,
-                width,
-                frame_preview_callback,
-                last_preview_time,
-                is_hdr,
-            )
-            frames_written += fade_frames
-            if progress_callback:
-                progress_callback(frames_written, total_frames)
+            next_iter = decoder_for(clip_idx + 1)
+            blender.emit_crossfade(active_iter, next_iter, fade_frames)
             active_iter = next_iter
             skip_frames = fade_frames
         else:
@@ -889,7 +412,7 @@ def _encode_clip_sequence(
     # (proc.terminate + wait), ensuring the FD is released.
     if active_iter is not None and hasattr(active_iter, "close"):
         active_iter.close()
-    return frames_written
+    return blender.frames_written
 
 
 def streaming_assemble_full(
