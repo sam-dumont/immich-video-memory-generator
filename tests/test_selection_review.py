@@ -134,3 +134,76 @@ class TestReviewThinksWhenTheServerCan:
             review_selection(_selection(), config)
 
         assert mock_post.call_args[1]["json"]["chat_template_kwargs"] == {"enable_thinking": True}
+
+
+class TestSilenceIsNotApproval:
+    """Five outcomes all returned [] and only one of them said anything.
+
+    A rendered year recap came back with 38 clips and no drop lines, which
+    reads as "the model looked and approved". It had returned an empty
+    string. The pass is fail-open by design so a broken model cannot gut a
+    memory, and that is exactly what makes the two indistinguishable.
+    """
+
+    def test_a_reviewed_and_approved_cut_says_so(self, caplog):
+        import logging
+
+        # WHY: the LLM is the external boundary; here it approves the set.
+        with (
+            patch(
+                "immich_memories.analysis.selection_review._ask",
+                return_value='{"drop": []}',
+            ),
+            caplog.at_level(logging.INFO, logger="immich_memories.analysis.selection_review"),
+        ):
+            drops = review_selection(_selection(), LLMConfig())
+
+        assert drops == []
+        assert any(
+            record.levelno == logging.INFO and "nothing to drop" in record.message
+            for record in caplog.records
+        ), f"an approved cut said nothing: {[r.message for r in caplog.records]}"
+
+    def test_a_review_that_could_not_run_warns(self, caplog):
+        """An unreachable or silent model is a degraded run, not a verdict."""
+        import logging
+
+        # WHY: the LLM is the external boundary; here it answers with nothing.
+        with (
+            patch("immich_memories.analysis.selection_review._ask", return_value=""),
+            caplog.at_level(logging.DEBUG, logger="immich_memories.analysis.selection_review"),
+        ):
+            drops = review_selection(_selection(), LLMConfig())
+
+        assert drops == []
+        assert any(record.levelno >= logging.WARNING for record in caplog.records), (
+            f"a review that never ran looked like approval: {[r.message for r in caplog.records]}"
+        )
+
+    def test_an_answer_that_will_not_parse_warns(self, caplog):
+        """Braces the model could not fill are a failure, not an approval."""
+        import logging
+
+        # WHY: the LLM is the external boundary; here its answer is malformed.
+        with (
+            patch(
+                "immich_memories.analysis.selection_review._ask",
+                return_value='here you go: {"drop": [oops}',
+            ),
+            caplog.at_level(logging.DEBUG, logger="immich_memories.analysis.selection_review"),
+        ):
+            drops = review_selection(_selection(), LLMConfig())
+
+        assert drops == []
+        assert any(record.levelno >= logging.WARNING for record in caplog.records)
+
+    def test_a_cut_too_small_to_judge_as_a_set_is_not_a_failure(self, caplog):
+        """Two clips are not a set, and saying so is not worth a warning."""
+        import logging
+
+        with caplog.at_level(logging.DEBUG, logger="immich_memories.analysis.selection_review"):
+            drops = review_selection(_selection()[:2], LLMConfig())
+
+        assert drops == []
+        assert not any(record.levelno >= logging.WARNING for record in caplog.records)
+        assert any("too few" in record.message for record in caplog.records)

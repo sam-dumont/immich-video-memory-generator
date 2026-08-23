@@ -139,25 +139,38 @@ def review_selection(
     *,
     timeout_seconds: int = 45,
 ) -> list[str]:
-    """Asset ids the LLM says to drop from the selection; [] on any doubt."""
+    """Asset ids the LLM says to drop from the selection; [] on any doubt.
+
+    Every outcome here says which one it was. The pass is fail-open by design
+    — a model that cannot answer must not be able to gut a memory — and that
+    made "the model read the set and approved it" identical to "the model
+    returned an empty string": both an empty list and both silent. A rendered
+    year recap came back with 38 clips and no drop lines, which reads as a
+    clean cut and was a broken call.
+    """
     if len(selected) < 3:
+        logger.debug("Selection review: %d clips is too few to judge as a set", len(selected))
         return []
     clips_block = "\n".join(_clip_line(i + 1, m) for i, m in enumerate(selected))
     prompt = _PROMPT.format(clips=clips_block)
     try:
         raw = _ask(prompt, llm_config, timeout_seconds)
     except Exception as e:  # WHY broad: the review is optional; never break selection
-        logger.debug("Selection review skipped: %s", e)
+        logger.warning("Selection review unavailable (%s): nothing dropped", type(e).__name__)
         return []
 
-    match = re.search(r"\{.*\}", raw, re.DOTALL)
+    match = re.search(r"\{.*\}", raw, re.DOTALL) if raw else None
     if not match:
+        logger.warning("Selection review returned no verdict (%d chars): nothing dropped", len(raw))
         return []
     try:
         payload = json.loads(match.group(0))
         entries = payload.get("drop", [])
         indices = [int(e["index"]) for e in entries if "index" in e]
-    except (json.JSONDecodeError, TypeError, ValueError, KeyError):
+    except (json.JSONDecodeError, TypeError, ValueError, KeyError) as e:
+        logger.warning(
+            "Selection review answer could not be read (%s): nothing dropped", type(e).__name__
+        )
         return []
 
     max_drops = max(1, int(len(selected) * _MAX_DROP_RATIO))
@@ -173,4 +186,6 @@ def review_selection(
             entry.get("index"),
             entry.get("reason", "no reason given"),
         )
+    if not drops:
+        logger.info("Selection review: read %d clips as a set, nothing to drop", len(selected))
     return drops
