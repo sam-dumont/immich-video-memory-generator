@@ -15,6 +15,7 @@ from pathlib import Path
 
 import cv2
 
+from immich_memories.analysis.subject_policy import SubjectCategory
 from immich_memories.security import private_temp_dir
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,11 @@ SETTING_VALUES = (
     "vehicle",
     "water",
 )
+
+# Derived from the enum the subject policy resolves the label against, so the
+# prompt and the policy cannot drift apart. UNKNOWN is the policy's own name for
+# "no label" and is never a value the model is asked to return.
+CATEGORY_VALUES = tuple(c.value for c in SubjectCategory if c is not SubjectCategory.UNKNOWN)
 
 _PROMPT_TAIL = """Return JSON with these fields:
 - description: What is happening in this scene?
@@ -113,6 +119,18 @@ def _setting_in_vocabulary(raw: str) -> str:
     """
     value = raw.strip().lower()[:MAX_STR]
     return value if value in SETTING_VALUES else ""
+
+
+def _category_in_vocabulary(raw: str) -> str:
+    """One of CATEGORY_VALUES, or "" for anything else.
+
+    Shared by both parse paths like the setting vocabulary, and for a sharper
+    reason: the subject policy reads an unlisted value as UNKNOWN but still
+    counts any non-empty category as "the model labelled this clip", so free
+    text here does not merely leak — it votes (#539).
+    """
+    value = raw.strip().lower()[:MAX_STR]
+    return value if value in CATEGORY_VALUES else ""
 
 
 @dataclass
@@ -414,7 +432,7 @@ class ContentAnalyzer:
         """
         description = str(data.get("description", ""))[:MAX_STR]
         subjects = [str(s)[:MAX_STR] for s in data.get("subjects", [])[:MAX_LIST]]
-        category = str(data.get("category", ""))[:MAX_STR]
+        category = _category_in_vocabulary(str(data.get("category", "")))
         activities = [
             str(a).strip().lower()[:MAX_STR] for a in data.get("activities", [])[:MAX_LIST]
         ]
@@ -536,7 +554,7 @@ class ContentAnalyzer:
         # but the two fields it adds are the two the policy cannot work without.
         category_match = re.search(r'"category"\s*:\s*"([^"]+)"', text)
         if category_match:
-            result.category = category_match.group(1)
+            result.category = _category_in_vocabulary(category_match.group(1))
 
         subjects_match = re.search(r'"subjects"\s*:\s*\[([^\]]*)\]', text)
         if subjects_match:
