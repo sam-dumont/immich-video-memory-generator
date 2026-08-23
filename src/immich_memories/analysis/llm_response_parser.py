@@ -99,8 +99,20 @@ def build_content_analysis_prompt(transcript: str | None = None) -> str:
 
 
 MAX_LIST = 10
+MAX_STR = 500
 
 CONTENT_ANALYSIS_PROMPT = build_content_analysis_prompt()
+
+
+def _setting_in_vocabulary(raw: str) -> str:
+    """One of SETTING_VALUES, or "" for anything else.
+
+    Shared by both parse paths on purpose: the malformed-JSON fallback is taken
+    exactly when the model is ignoring the schema, so it is the likeliest source
+    of the free text the closed vocabulary exists to keep out (#519).
+    """
+    value = raw.strip().lower()[:MAX_STR]
+    return value if value in SETTING_VALUES else ""
 
 
 @dataclass
@@ -400,17 +412,15 @@ class ContentAnalyzer:
         Returns:
             ContentAnalysis instance.
         """
-        MAX_STR = 500
         description = str(data.get("description", ""))[:MAX_STR]
         subjects = [str(s)[:MAX_STR] for s in data.get("subjects", [])[:MAX_LIST]]
         category = str(data.get("category", ""))[:MAX_STR]
-        # An unlisted value is dropped rather than stored: a model that ignores
-        # the enum must not quietly reintroduce free text (#483).
         activities = [
             str(a).strip().lower()[:MAX_STR] for a in data.get("activities", [])[:MAX_LIST]
         ]
-        raw_setting = str(data.get("setting", "")).strip().lower()
-        setting = raw_setting if raw_setting in SETTING_VALUES else ""
+        # An unlisted value is dropped rather than stored: a model that ignores
+        # the enum must not quietly reintroduce free text (#483).
+        setting = _setting_in_vocabulary(str(data.get("setting", "")))
         emotion = emotion[:MAX_STR]
 
         raw_interest = float(data.get("interestingness", 0.5))
@@ -517,7 +527,7 @@ class ContentAnalyzer:
 
         setting_match = re.search(r'"setting"\s*:\s*"([^"]+)"', text)
         if setting_match:
-            result.setting = setting_match.group(1)
+            result.setting = _setting_in_vocabulary(setting_match.group(1))
 
         # WHY: the subject policy decides on the category alone, so a response that
         # reaches this path without one silently drops out of the filter. Sampled

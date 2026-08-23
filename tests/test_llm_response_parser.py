@@ -437,10 +437,18 @@ class TestExtractPartialData:
         result = analyzer._extract_partial_data(text)
         assert result.quality == pytest.approx(0.65)
 
-    def test_extracts_setting(self, analyzer: ContentAnalyzer):
-        text = '"description": "x", "setting": "indoor office"'
+    def test_extracts_a_listed_setting(self, analyzer: ContentAnalyzer):
+        text = '"description": "x", "setting": "Indoor_Home "'
         result = analyzer._extract_partial_data(text)
-        assert result.setting == "indoor office"
+        assert result.setting == "indoor_home"
+
+    def test_an_unlisted_setting_is_dropped_here_too(self, analyzer: ContentAnalyzer):
+        """This path runs exactly when the model is misbehaving, so it is the
+        likeliest source of the free text the closed vocabulary exists to keep
+        out — and an unchecked value persists into the analysis cache (#519)."""
+        text = '"description": "x", "setting": "restaurant patio"'
+        result = analyzer._extract_partial_data(text)
+        assert result.setting == ""
 
     def test_nothing_found_returns_low_confidence(self, analyzer: ContentAnalyzer):
         text = "totally unparseable garbage with no json patterns"
