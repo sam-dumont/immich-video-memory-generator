@@ -63,7 +63,8 @@ def _register_discover(main: click.Group) -> None:
         """
         found = _scan_library(since, until, per_year, also_skip, out, rescan=rescan)
         _write_catalogue(out, found, rescan=rescan)
-        print_success(f"{len(found)} special days in {out}")
+        days = sum(1 for entry in found if entry.get("day"))
+        print_success(f"{days} special days in {out}")
 
 
 def _register_due(main: click.Group) -> None:
@@ -96,7 +97,8 @@ def _register_due(main: click.Group) -> None:
                 photos=raw.get("photos", 0),
                 window=None,
             )
-            for raw in json.loads(catalogue.read_text())
+            for raw in _load_catalogue(catalogue)
+            if raw.get("day")
         ]
 
         for entry, years in anniversaries_due(entries, when):
@@ -126,13 +128,15 @@ def _load_catalogue(path: Path) -> list[dict]:
 
 
 def _years_in(catalogue: list[dict]) -> set[int]:
-    """Years the catalogue already speaks for, so a resumed scan skips them."""
-    years: set[int] = set()
-    for entry in catalogue:
-        day = str(entry.get("day", ""))[:4]
-        if day.isdigit():
-            years.add(int(day))
-    return years
+    """Years the scan finished, so a resumed run does not repeat them.
+
+    Recorded, not inferred from what was found. Reading finds as the record
+    got it wrong in both directions: a year whose queries partly failed left
+    one entry behind and was frozen half-scanned forever, and a year that was
+    scanned cleanly and simply held nothing left no entry at all and was
+    re-scanned in full on every resume.
+    """
+    return {int(entry["scanned"]) for entry in catalogue if isinstance(entry.get("scanned"), int)}
 
 
 def _write_catalogue(path: Path, found: list[dict], *, rescan: bool) -> None:
@@ -191,10 +195,11 @@ def _scan_library(
     with SyncImmichClient(base_url=config.immich.url, api_key=config.immich.api_key) as client:
         for year in range(since, until + 1):
             if year in already:
-                console.print(f"[dim]{year}: already in the catalogue[/dim]")
+                console.print(f"[dim]{year}: already scanned[/dim]")
                 continue
             assets = _year_of_assets(client, year)
             if not assets:
+                found.append({"scanned": year})
                 continue
             console.print(f"[dim]{year}: {len(assets)} assets[/dim]")
             for day in scan_year(
@@ -220,6 +225,12 @@ def _scan_library(
                 # Written as we go: a scan this long is worth keeping in
                 # pieces, and `found` already carries the earlier catalogue.
                 out.write_text(json.dumps(found, indent=1))
+
+            # Only here, with every month of the year read and asked about.
+            # A year interrupted or partly refused says nothing, and gets
+            # scanned again rather than standing as half an answer.
+            found.append({"scanned": year})
+            out.write_text(json.dumps(found, indent=1))
     return found
 
 

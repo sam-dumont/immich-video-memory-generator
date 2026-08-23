@@ -267,13 +267,6 @@ def test_a_catalogue_nobody_can_read_is_not_a_catalogue(tmp_path) -> None:
     assert _load_catalogue(catalogue) == []
 
 
-def test_the_years_already_in_the_catalogue_are_not_scanned_again(tmp_path) -> None:
-    """A multi-hour scan that died at year twelve should not start over."""
-    catalogue = [{"day": "2014-12-31"}, {"day": "2015-06-01"}, {"day": "2015-07-04"}]
-
-    assert _years_in(catalogue) == {2014, 2015}
-
-
 def test_media_the_camera_never_shot_is_gone_before_the_day_is_counted(monkeypatch) -> None:
     """A day must not clear the bar on pictures somebody else took.
 
@@ -330,3 +323,21 @@ def test_december_does_not_reach_into_the_next_year() -> None:
     found = _year_of_assets(library, 2019)
 
     assert [a.id for a in found] == ["a-20191231-00"]
+
+
+def test_a_year_is_done_only_when_it_was_scanned_through(tmp_path) -> None:
+    """Finds are not the record of what was scanned.
+
+    A year whose queries partly failed, or that was interrupted mid-scan,
+    left one entry behind and was frozen half-scanned forever. A year that
+    was scanned cleanly and simply held nothing left no entry, and was
+    re-scanned in full on every resume — the two mistakes cancel out to
+    "resume does the wrong thing either way".
+    """
+    catalogue = [
+        {"day": "2014-12-31", "title": "A day"},
+        {"scanned": 2015},
+        {"scanned": 2016},
+    ]
+
+    assert _years_in(catalogue) == {2015, 2016}
