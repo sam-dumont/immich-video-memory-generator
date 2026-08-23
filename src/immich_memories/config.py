@@ -22,13 +22,13 @@ from immich_memories.config_models import (  # noqa: F401
     DefaultsConfig,
     HardwareAccelConfig,
     ImmichConfig,
-    LLMConfig,
     MusicGenConfig,
     OutputConfig,
     PhotoConfig,
     TitleScreenConfig,
     expand_env_vars,
 )
+from immich_memories.config_models_llm import LLMConfig  # noqa: F401
 from immich_memories.config_models_server import ServerConfig
 
 __all__ = [

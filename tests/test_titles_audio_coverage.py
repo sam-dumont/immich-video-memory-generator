@@ -1343,7 +1343,7 @@ class TestGetMoodAnalyzerFromConfig:
     @pytest.mark.asyncio
     async def test_delegates_to_get_mood_analyzer(self):
         from immich_memories.audio.mood_analyzer_backends import get_mood_analyzer_from_config
-        from immich_memories.config_models import LLMConfig
+        from immich_memories.config_models_llm import LLMConfig
 
         config = LLMConfig(
             provider="openai-compatible",

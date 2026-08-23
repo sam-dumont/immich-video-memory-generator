@@ -500,7 +500,8 @@ class TestPhotoScoringTimeout:
 
         import httpx
 
-        from immich_memories.config_models import ContentAnalysisConfig, LLMConfig
+        from immich_memories.config_models import ContentAnalysisConfig
+        from immich_memories.config_models_llm import LLMConfig
         from immich_memories.photos.scoring import _query_photo_llm
 
         photo = tmp_path / "photo.jpg"

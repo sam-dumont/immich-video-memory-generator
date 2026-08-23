@@ -10,7 +10,7 @@ import logging
 
 import httpx
 
-from immich_memories.config_models import LLMConfig
+from immich_memories.config_models_llm import LLMConfig
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +48,46 @@ def _apply_adaptations(payload: dict, adaptations: set[str]) -> None:
         payload["max_completion_tokens"] = payload.pop("max_tokens")
     if "default_temperature" in adaptations:
         payload.pop("temperature", None)
+
+
+# The Anthropic dialect asks for an explicit reasoning budget; it must sit
+# below max_tokens, which thinking floors to THINKING_MIN_MAX_TOKENS.
+ANTHROPIC_THINKING_BUDGET_TOKENS = 2048
+
+# Named providers = the generic adapter plus the provider's URL and reasoning
+# dialect, applied only where the user left the field at its default.
+_PROVIDER_PRESETS: dict[str, dict] = {
+    "openai": {
+        "base_url": "https://api.openai.com/v1",
+        "thinking_params": {"reasoning_effort": "medium"},
+    },
+    "zai": {
+        "base_url": "https://api.z.ai/api/paas/v4",
+        "thinking_params": {"thinking": {"type": "enabled"}},
+    },
+}
+
+
+def _resolved(config: LLMConfig) -> LLMConfig:
+    preset = _PROVIDER_PRESETS.get(config.provider)
+    if preset is None:
+        return config
+    fields = type(config).model_fields
+    updates: dict = {"provider": "openai-compatible"}
+    for name, value in preset.items():
+        default = fields[name].get_default(call_default_factory=True)
+        if getattr(config, name) == default:
+            updates[name] = value
+    return config.model_copy(update=updates)
+
+
+def _shape_for_provider(payload: dict, config: LLMConfig) -> None:
+    """Apply the configured provider dialect before any auto-negotiation."""
+    if config.max_tokens_param != "max_tokens" and "max_tokens" in payload:
+        payload[config.max_tokens_param] = payload.pop("max_tokens")
+    for name in config.drop_params:
+        payload.pop(name, None)
+    payload.update(config.extra_params)
 
 
 async def _post_adapted(
@@ -91,9 +131,14 @@ async def query_llm(
     never on the Ollama path. Reserve it for judgement calls: measured cost is
     5-10x latency and 10-20x completion tokens.
     """
+    llm_config = _resolved(llm_config)
     if llm_config.provider == "ollama":
         return await _query_ollama(prompt, llm_config, temperature, timeout_seconds)
     think = thinking and llm_config.thinking
+    if llm_config.provider == "anthropic":
+        return await _query_anthropic(
+            prompt, llm_config, temperature, max_tokens, timeout_seconds, think
+        )
     return await _query_openai(prompt, llm_config, temperature, max_tokens, timeout_seconds, think)
 
 
@@ -114,6 +159,43 @@ async def _query_ollama(
         resp = await client.post(f"{base_url}/api/generate", json=payload)
         resp.raise_for_status()
         return resp.json()["response"]
+
+
+async def _query_anthropic(
+    prompt: str,
+    config: LLMConfig,
+    temperature: float,
+    max_tokens: int,
+    timeout: int,
+    thinking: bool = False,
+) -> str:
+    """Native /v1/messages dialect: Claude, or z.ai's Anthropic endpoint."""
+    base_url = config.base_url.rstrip("/")
+    headers = {"anthropic-version": "2023-06-01"}
+    if config.api_key:
+        headers["x-api-key"] = config.api_key
+    payload: dict = {
+        "model": config.model,
+        "max_tokens": max_tokens,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": temperature,
+    }
+    if thinking:
+        # The dialect wants an explicit budget, and the default temperature.
+        payload["max_tokens"] = max(max_tokens, THINKING_MIN_MAX_TOKENS)
+        payload["thinking"] = {"type": "enabled", "budget_tokens": ANTHROPIC_THINKING_BUDGET_TOKENS}
+        payload.pop("temperature")
+        timeout = max(timeout, THINKING_MIN_TIMEOUT_SECONDS)
+    async with httpx.AsyncClient(timeout=timeout, headers=headers) as client:
+        resp = await client.post(f"{base_url}/v1/messages", json=payload)
+        resp.raise_for_status()
+        body = resp.json()
+        if thinking and body.get("stop_reason") == "max_tokens":
+            logger.warning("Thinking hit the token budget; retrying without thinking")
+            return await _query_anthropic(
+                prompt, config, temperature, max_tokens, timeout, thinking=False
+            )
+        return "".join(b.get("text", "") for b in body["content"] if b.get("type") == "text")
 
 
 async def _query_openai(
@@ -138,6 +220,7 @@ async def _query_openai(
         payload.update(config.thinking_params)
         payload["max_tokens"] = max(max_tokens, THINKING_MIN_MAX_TOKENS)
         timeout = max(timeout, THINKING_MIN_TIMEOUT_SECONDS)
+    _shape_for_provider(payload, config)
     adaptations = _PARAM_ADAPTATIONS.setdefault((base_url, config.model), set())
     _apply_adaptations(payload, adaptations)
     # Retry up to 3x — some models (Qwen/mlx-vlm) return null content

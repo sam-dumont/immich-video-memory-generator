@@ -21,7 +21,7 @@ from immich_memories.analysis.trip_detection import (  # noqa: E402
     detect_overnight_stops,
     detect_trips,
 )
-from immich_memories.config_models import LLMConfig  # noqa: E402
+from immich_memories.config_models_llm import LLMConfig  # noqa: E402
 from immich_memories.titles.llm_titles import (  # noqa: E402
     build_title_prompt,
     parse_title_response,

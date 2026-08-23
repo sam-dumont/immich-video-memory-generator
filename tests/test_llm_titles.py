@@ -123,7 +123,7 @@ class TestGenerateTitleWithLlm:
     async def test_returns_title_suggestion_on_success(self):
         from unittest.mock import AsyncMock, patch
 
-        from immich_memories.config_models import LLMConfig
+        from immich_memories.config_models_llm import LLMConfig
         from immich_memories.titles.llm_titles import TitleSuggestion, generate_title_with_llm
 
         config = LLMConfig(
@@ -160,7 +160,7 @@ class TestGenerateTitleWithLlm:
 
         import httpx
 
-        from immich_memories.config_models import LLMConfig
+        from immich_memories.config_models_llm import LLMConfig
         from immich_memories.titles.llm_titles import generate_title_with_llm
 
         config = LLMConfig(
@@ -205,7 +205,7 @@ class TestTitleGenerationThinks:
         the query layer then honors it only when llm.thinking says the server can."""
         from unittest.mock import AsyncMock, patch
 
-        from immich_memories.config_models import LLMConfig
+        from immich_memories.config_models_llm import LLMConfig
         from immich_memories.titles.llm_titles import generate_title_with_llm
 
         config = LLMConfig(provider="openai-compatible", model="qwen", thinking=True)

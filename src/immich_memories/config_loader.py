@@ -28,7 +28,6 @@ from immich_memories.config_models import (
     DefaultsConfig,
     HardwareAccelConfig,
     ImmichConfig,
-    LLMConfig,
     MusicGenConfig,
     NotificationConfig,
     OutputConfig,
@@ -40,6 +39,7 @@ from immich_memories.config_models import (
     UploadConfig,
 )
 from immich_memories.config_models_auth import AuthConfig
+from immich_memories.config_models_llm import LLMConfig  # noqa: F401
 from immich_memories.config_models_server import ServerConfig
 from immich_memories.config_presets import PresetName, apply_preset
 from immich_memories.scheduling.models import SchedulerConfig

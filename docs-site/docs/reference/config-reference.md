@@ -245,7 +245,7 @@ Used by content analysis and title generation. Any OpenAI-compatible endpoint wo
 
 ```yaml
 llm:
-  provider: "openai-compatible"   # openai-compatible or ollama
+  provider: "openai-compatible"   # openai-compatible | openai | zai | anthropic | ollama
   base_url: "http://localhost:8080/v1"
   model: ""                        # e.g. mlx-community/Qwen2.5-VL-7B-Instruct-8bit
   api_key: ""                      # optional, only for cloud APIs
@@ -255,6 +255,15 @@ llm:
   #   chat_template_kwargs:        # (default: the Qwen dialect, vLLM/mlx)
   #     enable_thinking: true
 ```
+
+Two adapters cover every provider: `openai-compatible` speaks
+`/chat/completions` (vLLM, mlx, Ollama's `/v1`, aggregators, OpenAI itself),
+and `anthropic` speaks the native `/v1/messages` API (Claude, or z.ai's
+Anthropic-compatible endpoint) with its own reasoning dialect handled
+natively. `openai` and `zai` are named presets: the generic adapter with the
+provider's URL and reasoning dialect pre-filled — set `provider: openai`,
+`model: gpt-5.6-terra` and an API key, and thinking works with nothing else
+to configure. Explicit `base_url`/`thinking_params` always win over a preset.
 
 `thinking: true` runs the model in reasoning mode for the judgement calls
 only — the holistic selection review and title generation. Each such call
@@ -278,6 +287,15 @@ answer per server and model — validated against the live OpenAI API. One
 provider note: z.ai's OpenAI-compatible endpoint accepts image content only
 on its dedicated vision models, so point `llm.model` at one of those if you
 use it for content analysis.
+
+A provider's dialect can also be declared up front instead of negotiated:
+
+```yaml
+llm:
+  max_tokens_param: max_completion_tokens  # token-limit field name
+  drop_params: [temperature]               # fields this server rejects
+  extra_params: {}                         # fields merged into every call
+```
 
 A separate `title_llm` section can point the web UI's title step at a different model than the one
 used for content analysis:

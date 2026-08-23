@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from immich_memories.analysis.selection_review import review_selection
 from immich_memories.analysis.smart_pipeline import ClipWithSegment
-from immich_memories.config_models import LLMConfig
+from immich_memories.config_models_llm import LLMConfig
 from tests.conftest import make_clip
 
 

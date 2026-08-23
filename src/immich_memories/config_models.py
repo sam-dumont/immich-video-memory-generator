@@ -10,7 +10,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_serializer, field_validator, model_validator
 
@@ -409,60 +409,6 @@ class CacheConfig(BaseModel):
     def video_cache_path(self) -> Path:
         """Get the video cache directory path."""
         return self.cache_path / "video-cache"
-
-
-class LLMConfig(BaseModel):
-    """Shared LLM provider settings.
-
-    Two providers: "ollama" (native Ollama API) or "openai-compatible"
-    (any server speaking /v1/chat/completions — OpenAI, Groq, mlx-vlm, vLLM, etc.).
-    """
-
-    provider: Literal["ollama", "openai-compatible"] = Field(
-        default="openai-compatible",
-        description="LLM provider: 'ollama' or 'openai-compatible'",
-    )
-    base_url: str = Field(
-        default="http://localhost:8080/v1",
-        description="API base URL",
-    )
-    model: str = Field(
-        default="",
-        description="Model name",
-    )
-    api_key: str = Field(
-        default="",
-        description="API key (optional, only needed for cloud APIs)",
-    )
-    timeout_seconds: int = Field(
-        default=300,
-        ge=10,
-        le=3600,
-        description="HTTP timeout for LLM requests in seconds (increase for slow local models)",
-    )
-    thinking: bool = Field(
-        default=False,
-        description=(
-            "Server supports a reasoning switch. When on, load-bearing calls "
-            "(selection review, titles) run the model in reasoning mode; bulk "
-            "analysis stays fast."
-        ),
-    )
-    thinking_params: dict[str, Any] = Field(
-        default_factory=lambda: {"chat_template_kwargs": {"enable_thinking": True}},
-        description=(
-            "Request fields merged into a thinking call. Default is the Qwen "
-            "dialect (vLLM/mlx); OpenAI wants {'reasoning_effort': 'medium'}."
-        ),
-    )
-
-    @field_validator("api_key", mode="before")
-    @classmethod
-    def expand_env(cls, v: str) -> str:
-        """Expand environment variables in config values."""
-        if isinstance(v, str):
-            return expand_env_vars(v)
-        return v
 
 
 class TripsConfig(BaseModel):

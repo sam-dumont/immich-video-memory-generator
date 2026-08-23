@@ -14,7 +14,7 @@ from immich_memories.audio.mood_analyzer import (
     MoodAnalyzer,
     VideoMood,
 )
-from immich_memories.config_models import LLMConfig
+from immich_memories.config_models_llm import LLMConfig
 
 logger = logging.getLogger(__name__)
 

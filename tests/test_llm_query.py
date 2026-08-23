@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from immich_memories.config_models import LLMConfig
+from immich_memories.config_models_llm import LLMConfig
 
 
 class TestQueryLlmOllama:
@@ -269,3 +269,42 @@ class TestServerParameterDialects:
             pytest.raises(httpx.HTTPStatusError),
         ):
             await query_llm("Judge this cut", _thinking_config(thinking=False))
+
+
+class TestConfigurableRequestShape:
+    """A provider's dialect can be declared up front instead of negotiated."""
+
+    @pytest.mark.asyncio
+    async def test_token_param_name_is_configurable(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = _thinking_config(thinking=False, max_tokens_param="max_completion_tokens")
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", return_value=_openai_response()) as mock_post:
+            await query_llm("Judge this cut", config, max_tokens=700)
+
+        payload = mock_post.call_args[1]["json"]
+        assert payload["max_completion_tokens"] == 700
+        assert "max_tokens" not in payload
+
+    @pytest.mark.asyncio
+    async def test_drop_params_removes_fields_the_server_rejects(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = _thinking_config(thinking=False, drop_params=["temperature"])
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", return_value=_openai_response()) as mock_post:
+            await query_llm("Judge this cut", config)
+
+        assert "temperature" not in mock_post.call_args[1]["json"]
+
+    @pytest.mark.asyncio
+    async def test_extra_params_are_merged_into_every_request(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = _thinking_config(thinking=False, extra_params={"do_sample": False})
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", return_value=_openai_response()) as mock_post:
+            await query_llm("Judge this cut", config)
+
+        assert mock_post.call_args[1]["json"]["do_sample"] is False
