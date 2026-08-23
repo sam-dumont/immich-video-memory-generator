@@ -672,7 +672,7 @@ def _merge_photos_into_pool(
     # photograph the way it reads a video. Without it every still arrived as a
     # bare line and survived on the rule that protects unanalysed material.
     from immich_memories.analysis.cache_projection import apply_semantic_payload
-    from immich_memories.photos.photo_pipeline import semantic_payloads_for
+    from immich_memories.photos.scoring import semantic_payloads_for
 
     payloads = semantic_payloads_for(
         config.cache.database_path, [asset.id for asset, _ in scored], config.llm.model

@@ -677,7 +677,7 @@ class TestEnhanceWithLlm:
     def test_cache_hit_skips_llm(self, tmp_path):
         from immich_memories.config_loader import Config
         from immich_memories.config_models import PhotoConfig
-        from immich_memories.photos.photo_pipeline import _enhance_with_llm
+        from immich_memories.photos.scoring import _enhance_with_llm
 
         asset = _make_asset(id="cached-001")
         scored = [(asset, 0.5)]
@@ -689,7 +689,7 @@ class TestEnhanceWithLlm:
 
         # WHY: _get_score_cache imports from cache module — mock to avoid DB
         with patch(
-            "immich_memories.photos.photo_pipeline._get_score_cache",
+            "immich_memories.photos.scoring._get_score_cache",
             return_value=mock_cache,
         ):
             result, _payloads = _enhance_with_llm(
@@ -706,8 +706,7 @@ class TestEnhanceWithLlm:
     def test_cache_miss_calls_llm(self, tmp_path):
         from immich_memories.config_loader import Config
         from immich_memories.config_models import PhotoConfig
-        from immich_memories.photos.photo_pipeline import _enhance_with_llm
-        from immich_memories.photos.scoring import PhotoLook
+        from immich_memories.photos.scoring import PhotoLook, _enhance_with_llm
 
         asset = _make_asset(id="uncached-001")
         scored = [(asset, 0.5)]
@@ -719,11 +718,11 @@ class TestEnhanceWithLlm:
 
         with (
             patch(
-                "immich_memories.photos.photo_pipeline._get_score_cache",
+                "immich_memories.photos.scoring._get_score_cache",
                 return_value=mock_cache,
             ),
             patch(
-                "immich_memories.photos.photo_pipeline._llm_score_photo",
+                "immich_memories.photos.scoring._llm_score_photo",
                 return_value=PhotoLook(score=0.85, payload={"description": "a photograph"}),
             ),
         ):
@@ -745,7 +744,7 @@ class TestLlmScorePhoto:
 
     def test_thumbnail_path_used_when_available(self, tmp_path):
         from immich_memories.config_models import PhotoConfig
-        from immich_memories.photos.photo_pipeline import _llm_score_photo
+        from immich_memories.photos.scoring import _llm_score_photo
 
         asset = _make_asset(id="thumb-001")
         config = PhotoConfig()
@@ -767,7 +766,7 @@ class TestLlmScorePhoto:
 
     def test_llm_error_is_not_reported_as_a_semantic_score(self, tmp_path):
         from immich_memories.config_models import PhotoConfig
-        from immich_memories.photos.photo_pipeline import _llm_score_photo
+        from immich_memories.photos.scoring import _llm_score_photo
 
         asset = _make_asset(id="err-001")
         config = PhotoConfig()
@@ -792,7 +791,7 @@ class TestLlmScorePhoto:
 
     def test_falls_back_to_full_download(self, tmp_path):
         from immich_memories.config_models import PhotoConfig
-        from immich_memories.photos.photo_pipeline import _llm_score_photo
+        from immich_memories.photos.scoring import _llm_score_photo
 
         asset = _make_asset(id="no-thumb-001", originalFileName="IMG.HEIC")
         config = PhotoConfig()
@@ -824,7 +823,7 @@ class TestLlmScorePhoto:
 
     def test_download_failure_is_not_reported_as_a_semantic_score(self, tmp_path):
         from immich_memories.config_models import PhotoConfig
-        from immich_memories.photos.photo_pipeline import _llm_score_photo
+        from immich_memories.photos.scoring import _llm_score_photo
 
         asset = _make_asset(id="dl-fail-001")
         config = PhotoConfig()
