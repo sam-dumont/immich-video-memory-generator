@@ -56,7 +56,7 @@ immich-memories auto install [OPTIONS]
 | `--cooldown` | integer | 24 | Cooldown hours between runs |
 | `--uninstall` | boolean | false | Remove installed scheduler |
 | `--show` | boolean | false | Show config without installing |
-| `--force` | boolean | false | Schedule the resolved binary even when it lives in a linked git worktree |
+| `--force` | boolean | false | Schedule this install even when its checkout is a worktree or behind its upstream |
 
 ### `auto run`
 

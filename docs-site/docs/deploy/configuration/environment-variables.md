@@ -143,6 +143,15 @@ Not config fields, but read by the app:
 
 There is no environment variable for the log *level*.
 
+:::caution Scheduled jobs do not inherit your shell
+A launchd or cron job starts from a login-less environment, so nothing you `export` interactively
+reaches it. `auto install` copies `PATH`, `ACESTEP_CHECKPOINTS_DIR`, `ACESTEP_MLX_VAE_CHUNK`,
+`IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32`, and `PYTORCH_MPS_HIGH_WATERMARK_RATIO` from the shell you
+install from into the plist or unit — and nothing else, since `IMMICH_MEMORIES_*` also holds
+credentials. Change one of them and re-run `auto install`. See
+[`auto install`](../../create/cli/auto.md#what-environment-the-scheduled-job-sees).
+:::
+
 ## Precedence
 
 Highest wins:

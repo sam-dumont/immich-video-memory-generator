@@ -14,6 +14,8 @@ from immich_memories.automation.models import AutoOutcome, AutoRunResult
 from immich_memories.cli._helpers import console, print_error, print_info, print_success
 from immich_memories.config_loader import Config
 
+logger = logging.getLogger(__name__)
+
 
 def _print_candidates_table(candidates: list) -> None:
     table = Table(title="Memory Candidates")
@@ -59,10 +61,11 @@ def _candidates_to_json(candidates: list) -> str:
     return json_mod.dumps(rows, indent=2)
 
 
-def _auto_result_to_json(result: AutoRunResult) -> str:
+def _auto_result_to_json(result: AutoRunResult, runtime: dict[str, Any]) -> str:
     """Serialize the stable machine-facing automation result contract."""
     return json_mod.dumps(
         {
+            "runtime": runtime,
             "outcome": result.outcome.value,
             "action": result.action.value if result.action is not None else None,
             "reason": result.reason,
@@ -84,6 +87,21 @@ def _auto_result_to_json(result: AutoRunResult) -> str:
             ],
         }
     )
+
+
+def _print_auto_run_result(result: AutoRunResult) -> None:
+    """Render one auto run for a human; failures are reported by the caller on stderr."""
+    if result.outcome is AutoOutcome.COMPLETED:
+        print_success(f"{result.outcome.value}: {result.reason} ({result.output_path})")
+    elif result.outcome is not AutoOutcome.FAILED:
+        print_info(f"{result.outcome.value}: {result.reason}")
+
+    if result.candidate is not None:
+        print_info(f"Candidate: {result.candidate.category.value} ({result.candidate.memory_key})")
+    if result.recent_categories:
+        print_info(f"Recent auto categories: {', '.join(result.recent_categories)}")
+    for rejection in result.rejections:
+        print_info(f"Rejected {rejection.category} ({rejection.memory_key}): {rejection.rule}")
 
 
 def _print_pending_delivery_status(payload: dict[str, Any]) -> None:
@@ -196,13 +214,20 @@ def run_cmd(
     quiet: bool,
 ) -> None:
     """Generate the top-scoring memory candidate."""
+    from immich_memories.automation import runtime_provenance as provenance_module
     from immich_memories.automation.runner import AutoRunner
 
     config: Config = ctx.obj["config"]
+    provenance = provenance_module.runtime_provenance()
     previous_logging_disable = logging.root.manager.disable
     if quiet:
         logging.disable(logging.CRITICAL)
     try:
+        logger.info("auto run starting — %s", provenance.describe())
+        if provenance.is_stale:
+            # WHY: --quiet turns logging off entirely, and a scheduled job is exactly
+            # where nobody is watching. Staleness must reach the error log by itself.
+            click.echo(f"warning: scheduled code is stale — {provenance.describe()}", err=True)
         result = AutoRunner(config, config_path=ctx.obj["config_path"]).run_one(
             force=force, cooldown_hours=cooldown, upload=upload, dry_run=dry_run
         )
@@ -211,21 +236,9 @@ def run_cmd(
             logging.disable(previous_logging_disable)
 
     if quiet:
-        click.echo(_auto_result_to_json(result))
-    elif result.outcome is AutoOutcome.COMPLETED:
-        print_success(f"{result.outcome.value}: {result.reason} ({result.output_path})")
-    elif result.outcome is not AutoOutcome.FAILED:
-        print_info(f"{result.outcome.value}: {result.reason}")
-
-    if not quiet:
-        if result.candidate is not None:
-            print_info(
-                f"Candidate: {result.candidate.category.value} ({result.candidate.memory_key})"
-            )
-        if result.recent_categories:
-            print_info(f"Recent auto categories: {', '.join(result.recent_categories)}")
-        for rejection in result.rejections:
-            print_info(f"Rejected {rejection.category} ({rejection.memory_key}): {rejection.rule}")
+        click.echo(_auto_result_to_json(result, provenance.to_dict()))
+    else:
+        _print_auto_run_result(result)
 
     if result.outcome is AutoOutcome.FAILED:
         click.echo(f"{result.outcome.value}: {result.reason}: {result.error}", err=True)
@@ -255,10 +268,12 @@ def history(ctx: click.Context, limit: int) -> None:
 @click.pass_context
 def status(ctx: click.Context, as_json: bool) -> None:
     """Show durable automation and external scheduler state."""
+    from immich_memories.automation import runtime_provenance as provenance_module
     from immich_memories.automation.runner import AutoRunner
     from immich_memories.automation.system_scheduler import get_scheduler_status
 
     config: Config = ctx.obj["config"]
+    provenance = provenance_module.runtime_provenance()
     previous_logging_disable = logging.root.manager.disable
     if as_json:
         logging.disable(logging.CRITICAL)
@@ -279,6 +294,7 @@ def status(ctx: click.Context, as_json: bool) -> None:
             "state": scheduler_state,
             "paths": [str(path) for path in scheduler.paths],
         }
+        payload["runtime"] = provenance.to_dict()
     finally:
         if as_json:
             logging.disable(previous_logging_disable)
@@ -298,6 +314,10 @@ def status(ctx: click.Context, as_json: bool) -> None:
         else "not installed"
     )
     print_info(f"Scheduler: {scheduler.platform}, {scheduler_installation}, {scheduler_state}")
+    if provenance.is_stale:
+        print_error(f"Running code: {provenance.describe()}")
+    else:
+        print_info(f"Running code: {provenance.describe()}")
     print_info(
         "Last attempt: "
         + (
@@ -335,7 +355,7 @@ def status(ctx: click.Context, as_json: bool) -> None:
 @click.option(
     "--force",
     is_flag=True,
-    help="Schedule the resolved binary even when it lives in a linked git worktree",
+    help="Schedule this install even when its checkout is a worktree or behind its upstream",
 )
 @click.pass_context
 def install(
@@ -349,7 +369,7 @@ def install(
 ) -> None:
     """Install system-level scheduler (launchd/systemd/cron)."""
     from immich_memories.automation.system_scheduler import (
-        WorktreePinnedBinaryError,
+        StaleScheduledCodeError,
         install_scheduler,
         show_scheduler_config,
         uninstall_scheduler,
@@ -377,7 +397,7 @@ def install(
     except FileNotFoundError:
         print_info("immich-memories binary not found in PATH")
         return
-    except WorktreePinnedBinaryError as exc:
+    except StaleScheduledCodeError as exc:
         print_error(str(exc))
         ctx.exit(1)
 
