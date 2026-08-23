@@ -17,11 +17,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from immich_memories.processing.assembly_config import AssemblyClip
-from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
+from immich_memories.processing.encoding_plan import EncodingPlan
 from immich_memories.processing.output_contract import (
     InvalidOutputArtifact,
     OutputProbe,
-    probe_output,
     publish_validated_output,
 )
 from immich_memories.processing.scaling_utilities import aggregate_mood_from_clips
@@ -64,62 +63,6 @@ def optional_music_warning(exc: Exception, config: Config | None = None) -> str:
         for secret in configured_secret_values(config):
             safe_message = safe_message.replace(secret, "***")
     return f"Optional music failed: {safe_message}"
-
-
-def derive_music_validation_plan(video_path: Path) -> EncodingPlan:
-    """Derive a validation-only contract from a freshly probed published base.
-
-    This contract describes artifact identity; it is never used to choose an
-    encoder or to reinterpret UI/config output preferences.
-    """
-    probe = probe_output(video_path)
-    codecs = {
-        "h264": (OutputCodec.H264, "libx264"),
-        "hevc": (OutputCodec.H265, "libx265"),
-        "prores": (OutputCodec.PRORES, "prores_ks"),
-    }
-    transfers = {
-        "bt709": HdrTransfer.NONE,
-        "arib-std-b67": HdrTransfer.HLG,
-        "smpte2084": HdrTransfer.PQ,
-    }
-    supported_pixel_formats = {"yuv420p", "yuv420p10le", "yuv422p10le"}
-    try:
-        codec, encoder = codecs[probe.codec]
-    except KeyError as exc:
-        raise InvalidOutputArtifact(
-            f"unsupported published codec for music validation: {probe.codec}"
-        ) from exc
-    if probe.container not in {"mp4", "mov"}:
-        raise InvalidOutputArtifact(
-            f"unsupported published container for music validation: {probe.container}"
-        )
-    if probe.pixel_format not in supported_pixel_formats:
-        raise InvalidOutputArtifact(
-            f"unsupported published pixel format for music validation: {probe.pixel_format}"
-        )
-    try:
-        target_transfer = transfers[probe.color_transfer or ""]
-    except KeyError as exc:
-        raise InvalidOutputArtifact(
-            "unsupported published color transfer for music validation: "
-            f"{probe.color_transfer or 'missing'}"
-        ) from exc
-    expected_primaries = "bt2020" if target_transfer is not HdrTransfer.NONE else "bt709"
-    if probe.color_primaries != expected_primaries:
-        raise InvalidOutputArtifact(
-            "published color primaries conflict with transfer for music validation: "
-            f"{probe.color_primaries or 'missing'}"
-        )
-    return EncodingPlan(
-        codec=codec,
-        encoder=encoder,
-        encoder_args=(),
-        target_transfer=target_transfer,
-        tone_map_to_sdr=False,
-        pixel_format=probe.pixel_format,
-        container=probe.container,
-    )
 
 
 def music_config_available(config: Config) -> bool:
@@ -318,6 +261,9 @@ def auto_generate_music(
 
         if result and result.versions:
             result.selected_version = 0
+            # The wizard used to do this in its own music path; without it a
+            # multi-version generation leaves every rejected take on disk.
+            result.cleanup_unselected()
             selected = result.selected
             if selected and selected.full_mix and selected.full_mix.exists():
                 logger.info(f"Auto-generated music: {selected.full_mix}")

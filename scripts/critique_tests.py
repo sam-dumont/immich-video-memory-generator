@@ -23,7 +23,7 @@ EXIT_FAILURE = 1
 # enforceable; they may fall and must not rise. Raising one accepts new
 # untested mocking rather than fixing it, so do it in a commit that says so.
 MAX_MOCK_ONLY_TESTS = 41
-MAX_PATCHES_WITHOUT_WHY = 913
+MAX_PATCHES_WITHOUT_WHY = 906
 EXIT_SUCCESS = 0
 
 

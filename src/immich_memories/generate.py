@@ -198,6 +198,10 @@ class PreparedGeneration:
     assembly_clips: tuple[AssemblyClip, ...]
     clips_analyzed: int
     clips_selected: int
+    # The assembly engine is the only place the final sequence and its
+    # transitions coexist, so a caller finishing the run later cannot work these
+    # out for itself -- they have to travel with the artifact (#466, #479).
+    music_mute_windows: list[tuple[float, float]] | None = None
 
 
 class GenerationError(Exception):
@@ -786,6 +790,7 @@ def _generate_memory_inner(
                 assembly_clips=tuple(assembly_clips),
                 clips_analyzed=len(params.clips),
                 clips_selected=len(assembly_clips),
+                music_mute_windows=settings.music_mute_windows,
             )
 
         # Phase 3: Music
