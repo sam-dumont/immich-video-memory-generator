@@ -530,27 +530,19 @@ class TestExtractFloatField:
 
 
 class TestSessionStats:
-    """Session-level token tracking."""
+    """Session-level counting of how much was looked at."""
 
     def test_reset_session_stats(self):
-        ContentAnalyzer.total_prompt_tokens = 100
-        ContentAnalyzer.total_completion_tokens = 50
         ContentAnalyzer.total_images_analyzed = 3
         ContentAnalyzer.reset_session_stats()
-        assert ContentAnalyzer.total_prompt_tokens == 0
-        assert ContentAnalyzer.total_completion_tokens == 0
         assert ContentAnalyzer.total_images_analyzed == 0
 
     def test_log_analysis_result_accumulates(self):
         ContentAnalyzer.reset_session_stats()
         analyzer = ContentAnalyzer()
         ca = ContentAnalysis(description="test")
-        analyzer._log_analysis_result(ca, prompt_tokens=100, completion_tokens=50)
-        assert ContentAnalyzer.total_prompt_tokens == 100
-        assert ContentAnalyzer.total_completion_tokens == 50
+        analyzer._log_analysis_result(ca)
         assert ContentAnalyzer.total_images_analyzed == 1
 
-        analyzer._log_analysis_result(ca, prompt_tokens=200, completion_tokens=80, num_images=2)
-        assert ContentAnalyzer.total_prompt_tokens == 300
-        assert ContentAnalyzer.total_completion_tokens == 130
+        analyzer._log_analysis_result(ca, num_images=2)
         assert ContentAnalyzer.total_images_analyzed == 3

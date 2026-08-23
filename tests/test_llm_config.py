@@ -154,7 +154,7 @@ class TestOpenAICompatibleProvider:
             assert not analyzer.available
 
     def test_analyze_segment_still_posts_through_heartbeat_wrapper(self, tmp_path):
-        """The heartbeat context manager wrapping the POST must not change the result."""
+        """The heartbeat context manager wrapping the request must not change the result."""
         from immich_memories.analysis._content_providers import OpenAICompatibleContentAnalyzer
 
         analyzer = OpenAICompatibleContentAnalyzer(
@@ -168,20 +168,18 @@ class TestOpenAICompatibleProvider:
         analyzer.extract_frames = MagicMock(return_value=[fake_frame])
 
         mock_response = MagicMock()
+        mock_response.status_code = 200
         mock_response.raise_for_status = MagicMock()
         mock_response.json.return_value = {
             "choices": [{"message": {"content": '{"description": "a scene"}'}}],
-            "usage": {"prompt_tokens": 10, "completion_tokens": 5},
         }
-        analyzer._client = MagicMock()
-        analyzer._client.is_closed = False
-        # WHY: httpx.Client.post makes a real network call — mock it to avoid hitting a server
-        analyzer._client.post.return_value = mock_response
 
-        result = analyzer.analyze_segment(tmp_path / "does-not-need-to-exist.mp4")
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", return_value=mock_response) as post:
+            result = analyzer.analyze_segment(tmp_path / "does-not-need-to-exist.mp4")
 
         assert result.description == "a scene"
-        analyzer._client.post.assert_called_once()
+        post.assert_called_once()
 
     def test_disabled_provider_skips_future_requests(self, tmp_path):
         """Once a permanent 4xx occurs, later segments do not hit the provider."""

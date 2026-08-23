@@ -156,9 +156,11 @@ class ContentAnalysis:
 class ContentAnalyzer:
     """Base class for content analysis."""
 
-    # Class-level counters for session token tracking
-    total_prompt_tokens: int = 0
-    total_completion_tokens: int = 0
+    # Session counter for how much of a library was actually looked at.
+    # Token counts used to sit beside it, read out of each provider's own
+    # response. The request now goes through query_llm, which hands back the
+    # answer and not the usage block, so there is nothing left to count -- and
+    # a summary that always said "0 tokens" would be worse than none.
     total_images_analyzed: int = 0
 
     def __init__(self, circuit=None) -> None:
@@ -181,32 +183,17 @@ class ContentAnalyzer:
 
     @classmethod
     def reset_session_stats(cls) -> None:
-        """Reset session-level token counters."""
-        cls.total_prompt_tokens = 0
-        cls.total_completion_tokens = 0
+        """Reset session-level counters."""
         cls.total_images_analyzed = 0
 
     @classmethod
     def log_session_summary(cls) -> None:
-        """Log cumulative token usage for cost estimation."""
+        """Log how many frames the vision model was shown this run."""
         if cls.total_images_analyzed > 0:
-            logger.info(
-                f"LLM Session Summary: {cls.total_images_analyzed} images analyzed | "
-                f"Tokens: {cls.total_prompt_tokens} input + "
-                f"{cls.total_completion_tokens} output = "
-                f"{cls.total_prompt_tokens + cls.total_completion_tokens} total"
-            )
+            logger.info(f"LLM Session Summary: {cls.total_images_analyzed} images analyzed")
 
-    def _log_analysis_result(
-        self,
-        result: ContentAnalysis,
-        prompt_tokens: int = 0,
-        completion_tokens: int = 0,
-        num_images: int = 1,
-    ) -> None:
-        """Log analysis result with token tracking."""
-        ContentAnalyzer.total_prompt_tokens += prompt_tokens
-        ContentAnalyzer.total_completion_tokens += completion_tokens
+    def _log_analysis_result(self, result: ContentAnalysis, num_images: int = 1) -> None:
+        """Log analysis result and count the frames it cost."""
         ContentAnalyzer.total_images_analyzed += num_images
 
         desc = (
@@ -216,9 +203,7 @@ class ContentAnalyzer:
         logger.info(
             f"LLM Analysis: {desc} | "
             f"emotion={result.emotion}, interest={result.interestingness:.2f}, "
-            f"quality={result.quality:.2f} | "
-            f"tokens: {prompt_tokens}+{completion_tokens}="
-            f"{prompt_tokens + completion_tokens}"
+            f"quality={result.quality:.2f}"
         )
 
     def extract_frames(

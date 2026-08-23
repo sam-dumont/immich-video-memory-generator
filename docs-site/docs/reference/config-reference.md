@@ -317,6 +317,13 @@ llm:
   extra_params: {}                         # fields merged into every call
 ```
 
+`max_tokens_param` and `drop_params` describe the OpenAI dialect and are read
+only there. `extra_params` applies on the Ollama provider too, where anything
+you put under `options` (`num_ctx`, `num_predict`) is merged into Ollama's own
+options block rather than replacing it — content analysis already asks for a
+4096-token window that way, since Ollama's 2048 default does not hold the
+prompt plus several frames.
+
 A separate `title_llm` section can point the web UI's title step at a different model than the one
 used for content analysis:
 
