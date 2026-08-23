@@ -82,7 +82,9 @@ def _ask(prompt: str, llm_config: LLMConfig, timeout_seconds: int) -> str:
     from immich_memories.analysis.llm_query import query_llm
 
     return asyncio.run(
-        query_llm(prompt, llm_config, temperature=0.2, timeout_seconds=timeout_seconds)
+        query_llm(
+            prompt, llm_config, temperature=0.2, timeout_seconds=timeout_seconds, thinking=True
+        )
     )
 
 

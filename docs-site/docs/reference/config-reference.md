@@ -250,7 +250,19 @@ llm:
   model: ""                        # e.g. mlx-community/Qwen2.5-VL-7B-Instruct-8bit
   api_key: ""                      # optional, only for cloud APIs
   timeout_seconds: 300             # increase for slow local models (10-3600)
+  thinking: false                  # server accepts Qwen-style enable_thinking
 ```
+
+`thinking: true` tells the pipeline the server honours
+`chat_template_kwargs: {"enable_thinking": true}` (Qwen reasoning models on
+vLLM/mlx servers). Only the judgement calls use it — the holistic selection
+review and title generation — and each such call costs roughly 5-10× the
+latency and 10-20× the completion tokens of a fast call, which matters on a
+paid API. Bulk work (per-clip content analysis, photo scoring) always runs in
+fast mode: reasoning over multiple images is unreliable on current models, and
+the volume would make it unaffordable anyway. Leave this off unless you know
+the server supports the switch — some OpenAI-compatible servers reject unknown
+request fields.
 
 A separate `title_llm` section can point the web UI's title step at a different model than the one
 used for content analysis:

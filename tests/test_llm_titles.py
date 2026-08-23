@@ -196,3 +196,34 @@ class TestGenerateTitleWithLlm:
             llm_config=None,
         )
         assert result is None
+
+
+class TestTitleGenerationThinks:
+    @pytest.mark.asyncio
+    async def test_title_query_opts_into_thinking(self):
+        """A title is a judgement call — the query asks the model to reason;
+        the query layer then honors it only when llm.thinking says the server can."""
+        from unittest.mock import AsyncMock, patch
+
+        from immich_memories.config_models import LLMConfig
+        from immich_memories.titles.llm_titles import generate_title_with_llm
+
+        config = LLMConfig(provider="openai-compatible", model="qwen", thinking=True)
+        # WHY: query_llm is the boundary to the LLM server; the behavior under
+        # test is that title generation requests reasoning mode.
+        with patch(
+            "immich_memories.titles.llm_titles.query_llm",
+            new_callable=AsyncMock,
+            return_value='{"title": "A Long Saturday", "subtitle": ""}',
+        ) as mock_query:
+            await generate_title_with_llm(
+                memory_type="monthly_highlights",
+                locale="en",
+                start_date="2019-07-01",
+                end_date="2019-07-31",
+                duration_days=31,
+                daily_locations=[],
+                llm_config=config,
+            )
+
+        assert mock_query.call_args.kwargs.get("thinking") is True

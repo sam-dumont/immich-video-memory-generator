@@ -208,6 +208,7 @@ async def generate_title_with_llm(
             temperature=temperature,
             max_tokens=8000,
             timeout_seconds=300,
+            thinking=True,
         )
         return parse_title_response(raw)
     except (httpx.HTTPError, RuntimeError, ValueError, OSError) as e:

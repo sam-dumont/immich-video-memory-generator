@@ -440,6 +440,14 @@ class LLMConfig(BaseModel):
         le=3600,
         description="HTTP timeout for LLM requests in seconds (increase for slow local models)",
     )
+    thinking: bool = Field(
+        default=False,
+        description=(
+            "Server accepts Qwen-style chat_template_kwargs enable_thinking. "
+            "When on, load-bearing calls (selection review, titles) run the "
+            "model in reasoning mode; bulk analysis stays fast."
+        ),
+    )
 
     @field_validator("api_key", mode="before")
     @classmethod

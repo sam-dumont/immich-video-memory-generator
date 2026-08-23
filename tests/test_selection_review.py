@@ -109,3 +109,28 @@ class TestTheClipLineCarriesRealFields:
             review_selection(_selection(), LLMConfig())
 
         assert "Clip 1:" in ask.call_args[0][0]
+
+
+class TestReviewThinksWhenTheServerCan:
+    """The holistic review is a judgement call — it reasons when allowed to."""
+
+    def test_review_request_carries_the_thinking_switch(self):
+        from unittest.mock import AsyncMock, MagicMock
+
+        # WHY: the LLM server is the external boundary; the assertion is on
+        # the request the review sends it, through the real query layer.
+        response = AsyncMock()
+        response.status_code = 200
+        response.json = MagicMock(
+            return_value={
+                "choices": [{"message": {"content": '{"drop": []}'}, "finish_reason": "stop"}]
+            }
+        )
+        response.raise_for_status = lambda: None
+
+        config = LLMConfig(provider="openai-compatible", model="qwen", thinking=True)
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", return_value=response) as mock_post:
+            review_selection(_selection(), config)
+
+        assert mock_post.call_args[1]["json"]["chat_template_kwargs"] == {"enable_thinking": True}
