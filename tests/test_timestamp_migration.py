@@ -14,8 +14,9 @@ from unittest.mock import patch
 import pytest
 
 from immich_memories.automation.models import AutoOutcome
-from immich_memories.automation.runner import AutoRunner, _cooldown_status
+from immich_memories.automation.runner import AutoRunner
 from immich_memories.automation.state_store import AutomationStateStore
+from immich_memories.automation.status import cooldown_status
 from immich_memories.cache import database as cache_database
 from immich_memories.cache.database import VideoAnalysisCache
 from immich_memories.config_loader import Config
@@ -246,7 +247,7 @@ def test_v11_canonical_utc_keeps_completion_order_and_cooldown_chronological(
     assert runs[0].memory_category == "monthly_review"
     assert runs[0].completed_at == datetime(2026, 8, 10, 8, 0, tzinfo=UTC)
     assert runs[1].completed_at == datetime(2026, 8, 10, 7, 30, tzinfo=UTC)
-    assert _cooldown_status(
+    assert cooldown_status(
         runs[0],
         24,
         now=datetime(2026, 8, 11, 7, 0, tzinfo=UTC),
@@ -343,7 +344,7 @@ def test_brussels_daily_auto_run_is_not_inside_24_hour_cooldown(
     runner = AutoRunner(config)
 
     with (
-        patch("immich_memories.automation.runner.datetime", wraps=datetime) as clock,
+        patch("immich_memories.automation.status.datetime", wraps=datetime) as clock,
         patch.object(runner, "suggest", return_value=[]),
     ):
         clock.now.return_value = datetime(2026, 8, 11, 7, 0, tzinfo=UTC)

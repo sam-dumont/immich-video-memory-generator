@@ -18,6 +18,8 @@ from immich_memories.analysis import selection_trace as trace
 from immich_memories.analysis.source_filter import is_a_still
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from immich_memories.analysis.clip_analyzer import ClipAnalyzer
     from immich_memories.analysis.clip_refiner import ClipRefiner
     from immich_memories.analysis.progress import ProgressTracker
@@ -65,6 +67,18 @@ class SelectionQuality:
         self._app_config = app_config
         # Clips the verify pass has already looked at, across every entry.
         self._verify_attempted: set[str] = set()
+
+    @property
+    def _verdicts(self) -> Path:
+        """Where a judgement about an identical selection is kept.
+
+        Its own file beside the analysis cache rather than a table inside it:
+        that database carries a SCHEMA_VERSION users' stored analysis keys off,
+        and this is derived data that may be deleted at any time.
+        """
+        from immich_memories.cache.judgment_cache import verdicts_beside
+
+        return verdicts_beside(self._app_config.cache.cache_path)
 
     def stabilize(
         self,
@@ -231,7 +245,7 @@ class SelectionQuality:
 
         by_id = {c.clip.asset.id: c for c in analyzed}
         selected = [by_id[c.asset.id] for c in result.selected_clips if c.asset.id in by_id]
-        drops = set(review_selection(selected, self._app_config.llm))
+        drops = set(review_selection(selected, self._app_config.llm, cache_path=self._verdicts))
         if not drops:
             return result, analyzed
 
@@ -414,7 +428,7 @@ class SelectionQuality:
 
         by_id = {c.clip.asset.id: c for c in analyzed}
         selected = [by_id[c.asset.id] for c in result.selected_clips if c.asset.id in by_id]
-        drops = review_selection(selected, self._app_config.llm)
+        drops = review_selection(selected, self._app_config.llm, cache_path=self._verdicts)
         if not drops:
             trace.record("llm review", selected, selected)
             return result, analyzed, False

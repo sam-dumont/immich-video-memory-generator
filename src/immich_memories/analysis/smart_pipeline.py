@@ -115,6 +115,23 @@ class PipelineConfig:
     # Analysis depth: auto budgets misses, fast favors speed, thorough analyzes all.
     analysis_depth: str = "auto"
 
+    @classmethod
+    def from_app_config(cls, config: Config, **overrides: object) -> PipelineConfig:
+        """Build a pipeline config, taking its dials from user configuration.
+
+        Every field here is one a user sets in YAML and the pipeline enforces.
+        They live on this classmethod rather than at the call sites because
+        there are two of those — CLI and UI — and photos.max_ratio spent its
+        life documented as a dial while neither site plumbed it, so the
+        enforced cap was the dataclass default whatever the YAML said.
+        Anything the caller decides instead arrives as an override.
+        """
+        return cls(
+            photo_max_ratio=config.photos.max_ratio,
+            max_refinement_passes=config.analysis.max_refinement_passes,
+            **overrides,
+        )
+
     @property
     def duration_target(self) -> float:
         """Return explicit seconds when final planning supplied them."""

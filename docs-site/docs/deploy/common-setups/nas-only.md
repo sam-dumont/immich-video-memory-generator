@@ -97,9 +97,31 @@ If Immich runs on the same Docker network, use the container name (`immich-serve
 Add `IMMICH_MEMORIES_PRESET=fast` to the compose `environment:` (or `preset: fast` at the top of
 `config.yaml`) and the CPU-only profile is on: 1080p H.264 with the fast encoder preset and
 medium quality, static title backgrounds instead of animated ones, no per-clip speech analysis,
-photos capped at a quarter of the cut, and analysis depth `auto` running as `fast` (favorites
-first). Every value you set explicitly still wins, and the web UI's Step 3 shows a banner when
-the preset is active. `immich-memories --preset fast generate …` does the same for one CLI run.
+photos capped at a quarter of the cut, three refinement passes instead of ten, and analysis depth
+`auto` running as `fast` (favorites first). Every value you set explicitly still wins, and the web
+UI's Step 3 shows a banner when the preset is active. `immich-memories --preset fast generate …`
+does the same for one CLI run.
+
+### `max_refinement_passes` is a bill, not just a clock
+
+Selection verifies, judges and reviews in a loop, up to `analysis.max_refinement_passes` times
+(default 10). Three loops share that budget, and each round that changes the cut sends the
+descriptions back to the model. On a NAS that is time. If `llm.base_url` points at a hosted API
+rather than a box you own, it is money, and it is the largest single multiplier on what a run
+costs you.
+
+`preset: fast` sets it to 3. Set it yourself to override that either way:
+
+```yaml
+advanced:
+  analysis:
+    max_refinement_passes: 3     # or 1 to stop after the first pass
+```
+
+or per run: `immich-memories generate --refinement-passes 3 …`
+
+Lower is cheaper and faster. The cost of lowering it is that a clip admitted by the last refill
+may ship with less scrutiny than the ones before it.
 
 ```yaml
     environment:
