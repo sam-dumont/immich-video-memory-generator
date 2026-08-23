@@ -34,6 +34,8 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
+from immich_memories.analysis.trip_detection import haversine_km
+
 if TYPE_CHECKING:
     from collections.abc import Container, Iterable
     from datetime import date, datetime
@@ -234,18 +236,13 @@ def _place_vocabulary(assets: list) -> set[str]:
 
 
 def _grounding_vocabulary(assets: list) -> set[str]:
-    """Every proper noun the model was actually given."""
-    words: set[str] = set()
+    """Every proper noun the model was given: the places, and who was there."""
+    words = _place_vocabulary(assets).copy()
     for asset in assets:
-        exif = getattr(asset, "exif_info", None)
-        for attr in ("city", "state", "country"):
-            value = getattr(exif, attr, None) if exif else None
-            if value:
-                words.update(re.findall(r"[\w\u00c0-\u024f]+", str(value)))
         for person in getattr(asset, "people", None) or []:
             if getattr(person, "name", ""):
-                words.update(re.findall(r"[\w\u00c0-\u024f]+", person.name))
-    return {w.casefold() for w in words}
+                words.update(w.casefold() for w in re.findall(r"[\w\u00c0-\u024f]+", person.name))
+    return words
 
 
 def _knows_where_it_was(assets: list) -> bool:
@@ -386,14 +383,6 @@ _DOMINANT_SHARE = 0.6
 _WINDOW_SHARE_OF_DAY = 0.5
 
 
-def _km_apart(a: tuple[float, float], b: tuple[float, float]) -> float:
-    from math import asin, cos, radians, sin, sqrt
-
-    lat1, lon1, lat2, lon2 = radians(a[0]), radians(a[1]), radians(b[0]), radians(b[1])
-    h = sin((lat2 - lat1) / 2) ** 2 + cos(lat1) * cos(lat2) * sin((lon2 - lon1) / 2) ** 2
-    return 6371.0 * 2 * asin(sqrt(h))
-
-
 def event_window(assets: list) -> tuple[datetime, datetime] | None:
     """The part of a day the event actually occupies, or None for all of it.
 
@@ -420,7 +409,7 @@ def event_window(assets: list) -> tuple[datetime, datetime] | None:
     clusters: list[dict] = []
     for when, lat, lon in located:
         for cluster in clusters:
-            if _km_apart((lat, lon), cluster["at"]) < _SAME_PLACE_KM:
+            if haversine_km(lat, lon, *cluster["at"]) < _SAME_PLACE_KM:
                 cluster["n"] += 1
                 cluster["last"] = when
                 break

@@ -12,7 +12,6 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from immich_memories.analysis.special_day import (  # noqa: F401
-    MIN_ACTIVE_HOURS,
     ask_if_special,
     candidate_days,
     sample_across_day,
@@ -100,9 +99,16 @@ def test_a_model_that_answers_with_nothing_is_not_a_verdict() -> None:
     assert verdict.title == ""
 
 
-def test_the_threshold_sits_below_every_labelled_occasion() -> None:
-    """Measured: birth 18h, wedding 12h, nephew 10h, track day 7h; worst negative 5h."""
-    assert MIN_ACTIVE_HOURS <= 6
+def test_the_bar_sits_between_the_weakest_occasion_and_the_busiest_ordinary_day() -> None:
+    """Measured on labelled days: the weakest occasion ran seven active hours,
+    and the busiest day that was not one ran five. Both of these clear the
+    photograph count comfortably, so what is being tested is the hours rule.
+    """
+    seven_hours = [_asset(h, m) for h in range(9, 16) for m in (0, 20, 40)]
+    five_hours = [_asset(h, m, day=6) for h in range(9, 14) for m in (0, 15, 30, 45)]
+
+    assert candidate_days(seven_hours), "an occasion this short still counts"
+    assert not candidate_days(five_hours), "a long ordinary day is still ordinary"
 
 
 class TestTitlesStayGrounded:
