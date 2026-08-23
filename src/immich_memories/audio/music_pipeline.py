@@ -2,7 +2,8 @@
 
 Orchestrates music generation and optional stem separation:
 1. ACE-Step — generation in direct-library or API mode
-2. MusicGen — generation when ACE-Step is disabled, or remote Demucs stems
+2. MusicGen — generation behind ACE-Step in the fallback chain, and remote
+   Demucs stems
 
 Stem separation is decoupled from generation via the StemSeparator protocol:
 - DemucsLocalBackend: in-process, no server needed (Apple Silicon / CUDA / CPU)
@@ -35,9 +36,9 @@ logger = logging.getLogger(__name__)
 class MusicPipeline:
     """Music generation pipeline with ordered-backend fallback support.
 
-    Tries every configured generator in order. The application factory currently
-    configures ACE-Step alone when enabled, or MusicGen alone otherwise. Stem
-    separation remains decoupled via local Demucs or the MusicGen API.
+    Tries every configured generator in order, so a backend that is enabled but
+    failing costs the run its first choice rather than its music. Stem
+    separation is decoupled via local Demucs or the MusicGen API.
     """
 
     def __init__(
@@ -214,7 +215,7 @@ class MusicPipeline:
             return None
 
 
-def create_pipeline(app_config) -> MusicPipeline:
+def create_pipeline(app_config, *, separate_stems: bool = True) -> MusicPipeline:
     """Create a MusicPipeline from the application config.
 
     Reads musicgen and ace_step sections from the app config to build
@@ -223,6 +224,11 @@ def create_pipeline(app_config) -> MusicPipeline:
     Stem separation priority:
     1. MusicGen API (if enabled) — established, supports 2-stem and 4-stem
     2. Local Demucs (if demucs package installed) — zero-config fallback
+
+    ``separate_stems=False`` skips the separator entirely. Demucs is minutes of
+    CPU per version, and only the UI's 4-stem ducking consumes the result; the
+    CLI mix path masters the full mix instead, so it was paying for stems it
+    then dropped (#499).
     """
     from immich_memories.audio.generators.factory import create_generator
 
@@ -235,19 +241,25 @@ def create_pipeline(app_config) -> MusicPipeline:
         generators.append(create_generator("ace_step", app_config.ace_step))
         logger.info(f"Pipeline: ACE-Step enabled (mode={app_config.ace_step.mode})")
 
-    # MusicGen: stem separator always, generation fallback only if ACE-Step is off
+    # MusicGen: stem separator always, and generation behind ACE-Step in the chain.
+    # It used to be added as a generator only when ACE-Step was off, which left
+    # `generators` one element long in every configuration and made the fallback
+    # chain unreachable (#499).
     if getattr(app_config, "musicgen", None) and app_config.musicgen.enabled:
         musicgen = create_generator("musicgen", app_config.musicgen)
-        # MusicGenBackend satisfies StemSeparator (has separate_stems method)
-        stem_separator = musicgen  # type: ignore[assignment]
-        if ace_step_enabled:
-            logger.info("Pipeline: MusicGen enabled (Demucs stems only)")
-        else:
-            generators.append(musicgen)
-            logger.info("Pipeline: MusicGen enabled (generation + Demucs stems)")
+        if separate_stems:
+            # MusicGenBackend satisfies StemSeparator (has separate_stems method)
+            stem_separator = musicgen  # type: ignore[assignment]
+        generators.append(musicgen)
+        role = "fallback generation" if ace_step_enabled else "generation"
+        logger.info(
+            "Pipeline: MusicGen enabled (%s%s)",
+            role,
+            " + Demucs stems" if separate_stems else "",
+        )
 
     # Auto-detect local Demucs when no MusicGen configured
-    if stem_separator is None:
+    if separate_stems and stem_separator is None:
         stem_separator = _try_local_demucs()
 
     if not generators:

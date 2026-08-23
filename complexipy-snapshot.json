@@ -2651,101 +2651,101 @@
       {
         "name": "_stream_render_to_mp4",
         "complexity": 16,
-        "line_start": 815,
-        "line_end": 914,
+        "line_start": 634,
+        "line_end": 733,
         "line_complexities": [
           {
-            "line": 836,
+            "line": 655,
             "complexity": 0
           },
           {
-            "line": 837,
+            "line": 656,
             "complexity": 1
           },
           {
-            "line": 839,
+            "line": 658,
             "complexity": 1
           },
           {
-            "line": 840,
+            "line": 659,
             "complexity": 0
           },
           {
-            "line": 841,
+            "line": 660,
             "complexity": 2
           },
           {
-            "line": 842,
+            "line": 661,
             "complexity": 0
           },
           {
-            "line": 849,
+            "line": 668,
             "complexity": 1
           },
           {
-            "line": 853,
+            "line": 672,
             "complexity": 0
           },
           {
-            "line": 854,
+            "line": 673,
             "complexity": 0
           },
           {
-            "line": 855,
+            "line": 674,
             "complexity": 1
           },
           {
-            "line": 856,
+            "line": 675,
             "complexity": 0
           },
           {
-            "line": 857,
+            "line": 676,
             "complexity": 2
           },
           {
-            "line": 858,
+            "line": 677,
             "complexity": 0
           },
           {
-            "line": 865,
+            "line": 684,
             "complexity": 1
           },
           {
-            "line": 869,
+            "line": 688,
             "complexity": 0
           },
           {
-            "line": 872,
+            "line": 691,
             "complexity": 0
           },
           {
-            "line": 873,
+            "line": 692,
             "complexity": 2
           },
           {
-            "line": 874,
+            "line": 693,
             "complexity": 3
           },
           {
-            "line": 876,
+            "line": 695,
             "complexity": 1
           },
           {
-            "line": 879,
+            "line": 698,
             "complexity": 0
           },
           {
-            "line": 913,
+            "line": 732,
             "complexity": 1
           },
           {
-            "line": 914,
+            "line": 733,
             "complexity": 0
           }
         ]
       }
     ],
-    "complexity": 103
+    "complexity": 70
   },
   {
     "path": "src/immich_memories/processing/clip_encoder.py",
