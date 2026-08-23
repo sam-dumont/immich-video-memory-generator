@@ -14,11 +14,16 @@ import logging
 import platform
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 _GIB = 1024**3
 _MEMORY_PROBE_TIMEOUT_SECONDS = 5
+_MEMINFO_PATH = Path("/proc/meminfo")
+_RECLAIMABLE_VM_STAT_LABELS = frozenset(
+    {"Pages free", "Pages inactive", "Pages speculative", "Pages purgeable"}
+)
 
 # Checkpoint sizes published in docs/create/pipeline/audio-and-music.md, "Model Cache &
 # Disk Usage". The test is deliberately the *weights*, not the ~53 GB peak the same page
@@ -71,13 +76,43 @@ def required_memory_bytes(dit_model: str, lm_model: str | None) -> int:
     )
 
 
-def _macos_available_bytes() -> int | None:
-    """Free plus reclaimable pages from vm_stat.
+def parse_vm_stat(output: str) -> int | None:
+    """Free plus reclaimable bytes from `vm_stat` output, or None if it says nothing.
 
     Counts inactive, speculative, and purgeable alongside free: macOS hands all of those
     back under pressure, and leaving them out would under-report available memory badly
-    enough to refuse renders that fit.
+    enough to refuse renders that fit. Labels are matched whole, so the `Pages purged`
+    lifetime counter is not mistaken for `Pages purgeable`.
+
+    Kept separate from the `vm_stat` call so the format is parsed under test on every
+    platform, not only on the one that can run the command.
     """
+    header, _, rest = output.partition("\n")
+    page_size = 4096
+    if "page size of" in header:
+        page_size = int(header.split("page size of")[1].split()[0])
+
+    pages = 0
+    for line in rest.splitlines():
+        label, _, value = line.partition(":")
+        if label.strip() in _RECLAIMABLE_VM_STAT_LABELS:
+            pages += int(value.strip().rstrip("."))
+    return pages * page_size if pages else None
+
+
+def parse_meminfo(contents: str) -> int | None:
+    """MemAvailable in bytes from `/proc/meminfo` contents, or None when it is absent.
+
+    Absent means unknown rather than zero: kernels before 3.14 have no MemAvailable, and
+    deriving one from MemFree overstates what a large allocation can actually get.
+    """
+    for line in contents.splitlines():
+        if line.startswith("MemAvailable"):
+            return int(line.split()[1]) * 1024
+    return None
+
+
+def _macos_available_bytes() -> int | None:
     result = subprocess.run(
         ["vm_stat"],
         capture_output=True,
@@ -85,37 +120,20 @@ def _macos_available_bytes() -> int | None:
         check=False,
         timeout=_MEMORY_PROBE_TIMEOUT_SECONDS,
     )
-    if result.returncode != 0:
-        return None
-
-    page_size = 4096
-    header, _, rest = result.stdout.partition("\n")
-    if "page size of" in header:
-        page_size = int(header.split("page size of")[1].split()[0])
-
-    reclaimable = ("Pages free", "Pages inactive", "Pages speculative", "Pages purgeable")
-    pages = 0
-    for line in rest.splitlines():
-        label, _, value = line.partition(":")
-        if label.strip() in reclaimable:
-            pages += int(value.strip().rstrip("."))
-    return pages * page_size if pages else None
+    return parse_vm_stat(result.stdout) if result.returncode == 0 else None
 
 
 def _linux_available_bytes() -> int | None:
-    with open("/proc/meminfo") as meminfo:
-        for line in meminfo:
-            if line.startswith("MemAvailable"):
-                return int(line.split()[1]) * 1024
-    return None
+    return parse_meminfo(_MEMINFO_PATH.read_text())
 
 
 def available_memory_bytes() -> int | None:
     """Memory this host could still hand out, or None when it cannot be read."""
     try:
-        if platform.system() == "Darwin":
+        system = platform.system()
+        if system == "Darwin":
             return _macos_available_bytes()
-        if platform.system() == "Linux":
+        if system == "Linux":
             return _linux_available_bytes()
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         logger.debug("Could not read available memory: %s", exc)
