@@ -199,6 +199,32 @@ If Torch or PANNs is unavailable, generation does not fail. It uses the energy-o
 which can find loud and quiet structure but cannot reliably distinguish laughter from speech,
 music, babies, or background noise. `immich-memories preflight` reports which backend is active.
 
+## Speech boundaries
+
+Cuts should land in the gaps between utterances, not through the middle of a word. That is what
+the voice activity detector is for, and it is on by default.
+
+**Why voice activity rather than the event labels.** PANNs merges contiguous same-class frames
+into a single span, so a noisy clip becomes one protected range covering everything. Boundary
+adjustment then has nowhere to move and the clip ships at full duration — protection so broad it
+protects nothing. Voice activity keeps the pauses *between* utterances, which is exactly the
+material a cut needs.
+
+**It does not need `audio_content`.** Voice activity needs only the audio track and the bundled
+FireRedVAD weights, so cut placement works on a default install. Enabling `audio_content` adds
+event *scoring* on top. The two degrade independently — you can have good cut placement with no
+semantic labels, or labels with the detector off.
+
+**What still needs PANNs.** Laughter, singing, cheering and applause protection comes from the
+event labels, not the voice detector, which does not fire on them. If you want a laugh protected
+from a cut, `audio_content` has to be on.
+
+Requires the `speech` extra (`uv sync --extra speech`, included in `all` and `all-mac`). Nothing
+is downloaded at runtime — the weights ship inside the package.
+
+Settings live under `speech:` in the
+[configuration reference](../../reference/config-reference.md#speech-boundaries).
+
 ## Audio Ducking
 
 When background music plays over your clips, it should get quieter when someone's talking or when there's an interesting sound in the original audio. The music automatically dips to let the original audio through, then comes back up.

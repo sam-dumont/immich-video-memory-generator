@@ -40,6 +40,7 @@ const sidebars: SidebarsConfig = {
             'create/cli/scheduler',
             'create/cli/runs',
             'create/cli/discover-days',
+            'create/cli/discovery-and-utility',
           ],
         },
         {

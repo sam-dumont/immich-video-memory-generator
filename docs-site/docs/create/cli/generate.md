@@ -146,6 +146,7 @@ have not set explicitly; the flags below still win. Persistent form: `preset: fa
 | `--include-live-photos` | — | flag | — | Include Live Photo video clips (merged when burst-captured) |
 | `--keep-intermediates` | — | flag | — | Keep intermediate files for debugging |
 | `--quiet` | — | flag | — | Suppress interactive progress, emit log lines only |
+| `--trace-selection` | — | path | — | Write a stage-by-stage report of how the clips were chosen |
 
 ### Upload
 
@@ -357,6 +358,38 @@ trips:
 ```
 
 ## Dry run
+
+### Why did selection drop that clip?
+
+`--trace-selection` writes a funnel: every stage of selection, what it received, what it let
+through, and how many **favourites** survived each step.
+
+```bash
+immich-memories generate --year 2024 --trace-selection ~/selection.txt
+```
+
+It writes **two** files — the readable funnel at the path you gave, and the same data as JSON at
+the same path with a `.json` suffix, for scripting.
+
+The report looks like this, and the marker is the point:
+
+```
+stage                  kept  lost     favorites
+favorites first          38     0      38 -> 38
+temporal dedup           21    17      38 -> 21
+scale to duration         9    12      21 ->  0  <-- all favorites lost here
+```
+
+Selection passes a pool through a dozen filters, caps, scalers and LLM judgements. Reading the log
+and inferring which one ate your clips is slow and wrong often enough to matter — a real February
+started with 38 favourites and shipped none, and finding the stage responsible took several rounds
+of guessing. This answers it directly.
+
+:::warning Do not combine this with `--dry-run`
+`--dry-run` skips work, and some of the work it skips is selection. Photo scoring falls back to
+metadata only — the VLM scorer never runs — so a trace taken under `--dry-run` describes a
+different, cheaper pipeline than the one that makes your videos. Trace a real run.
+:::
 
 Use `--dry-run` to see how many videos match your criteria without actually generating anything:
 
