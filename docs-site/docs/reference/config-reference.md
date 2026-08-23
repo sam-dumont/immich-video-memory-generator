@@ -530,7 +530,9 @@ cache:
 
 The video cache defaults to 10 GB. If you're tight on disk, lower `video_cache_max_size_gb` or disable it entirely with `video_cache_enabled: false`.
 
-Thumbnails and clip previews are derived from your library and are cheap to rebuild, so they get their own smaller budgets. Each is evicted least-recently-used once it exceeds its limit — a file you keep opening keeps earning its place.
+Thumbnails and clip previews are derived from your library and are cheap to rebuild, so they get their own smaller budgets. Each is evicted least-recently-used once it exceeds its limit — a file you keep opening keeps earning its place, because reading a thumbnail counts as using it.
+
+If a single run needs more thumbnails than `thumbnail_cache_max_size_mb` allows, the cache starts evicting thumbnails that same run is still using and re-fetching them. That is not silent: you get a `WARNING` naming how many files went and telling you to raise the budget. A large yearly memory over a big library can want several GB of thumbnails, so if you see that warning during long runs, raise the limit rather than ignoring it.
 
 ## Server (UI)
 

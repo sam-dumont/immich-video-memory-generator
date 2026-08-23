@@ -8,6 +8,7 @@ enforced.
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
@@ -72,6 +73,19 @@ def test_only_matching_files_are_considered(tmp_path: Path):
     evict_to_budget(tmp_path, max_bytes=1000, pattern="*.jpg")
 
     assert manifest.exists()
+
+
+def test_a_caller_that_does_not_track_a_run_gets_no_self_eviction_warning(tmp_path: Path, caplog):
+    """The preview directories evict on their own schedule with no run to
+    speak of, so the warning is opt-in rather than "anything recent".
+    """
+    for name in ("a.bin", "b.bin"):
+        (tmp_path / name).write_bytes(b"x" * 4000)  # written now, so mtime is now
+
+    with caplog.at_level(logging.WARNING):
+        evict_to_budget(tmp_path, max_bytes=4000)
+
+    assert [r for r in caplog.records if r.levelno == logging.WARNING] == []
 
 
 def test_nested_files_count_toward_the_budget(tmp_path: Path):

@@ -116,7 +116,17 @@ cache:
 Thumbnails (`thumbnails/`) and clip previews (`preview-cache/`, `previews/`) are
 derived from your library rather than downloaded from it, so they are cheap to
 rebuild and get smaller budgets than the video cache. Each is evicted
-least-recently-used once it goes over its limit.
+least-recently-used once it goes over its limit — for thumbnails, reading one
+counts as using it, so a thumbnail the current run keeps coming back to is not
+the one thrown away.
+
+If a run's working set does not fit the thumbnail budget at all, the cache ends
+up deleting thumbnails that run is still using and fetching them again. You will
+see a `WARNING` per eviction pass saying how many files this run is still using
+went, which is your cue to raise `thumbnail_cache_max_size_mb` — a yearly memory
+over a large library can want several GB. Left alone it degrades selection
+quietly: duplicate clustering and burst dedup skip assets whose thumbnail
+vanished, and those photos score neutral instead of on their merits.
 
 Before these limits existed neither directory had a cap or an expiry, so both
 grew for as long as the app ran — on one real library, 5.2 GB of previews and
