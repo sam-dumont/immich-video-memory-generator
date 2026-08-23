@@ -8,6 +8,7 @@ clip beside it was turned away.
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from immich_memories.analysis.source_filter import from_an_excluded_source
 from immich_memories.config import Config
@@ -87,3 +88,41 @@ def test_the_camera_rule_can_be_turned_off() -> None:
     received.type = AssetType.IMAGE
 
     assert not not_shot_here(received, patterns=(), stills_need_a_camera=False)
+
+
+def test_the_description_survives_scoring_and_the_score_stays_a_number(tmp_path, monkeypatch):
+    """What the model said has to reach the clip, and the score must stay a score.
+
+    The review reads a clip's description. A photo never had one, so it was
+    handed a bare line and protected by the rule that says never to drop a
+    clip for missing information.
+    """
+    from immich_memories.photos import photo_pipeline
+    from immich_memories.photos.scoring import PhotoLook
+
+    asset = _photo("shot", "IMG_1375.HEIC")
+    asset.exif_info = SimpleNamespace(make="Apple", model="iPhone 15 Pro")
+
+    # WHY: the VLM is the network boundary; this stands in for its answer.
+    monkeypatch.setattr(
+        photo_pipeline,
+        "_llm_score_photo",
+        lambda *_a, **_k: PhotoLook(
+            score=0.42,
+            payload={"description": "a whiteboard covered in sticky notes", "category": "object"},
+        ),
+    )
+
+    enhanced, payloads = photo_pipeline._enhance_with_llm(
+        [(asset, 0.3)],
+        config=SimpleNamespace(score_penalty=0.0),
+        work_dir=tmp_path,
+        download_fn=None,
+        app_config=SimpleNamespace(
+            content_analysis=SimpleNamespace(enabled=True),
+            llm=SimpleNamespace(model="qwen-3.6"),
+        ),
+    )
+
+    assert enhanced == [(asset, 0.42)], "the score must still be a number"
+    assert payloads["shot"]["description"] == "a whiteboard covered in sticky notes"

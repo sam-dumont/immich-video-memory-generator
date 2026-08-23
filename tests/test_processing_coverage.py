@@ -692,7 +692,7 @@ class TestEnhanceWithLlm:
             "immich_memories.photos.photo_pipeline._get_score_cache",
             return_value=mock_cache,
         ):
-            result = _enhance_with_llm(
+            result, _payloads = _enhance_with_llm(
                 scored,
                 config,
                 tmp_path,
@@ -707,6 +707,7 @@ class TestEnhanceWithLlm:
         from immich_memories.config_loader import Config
         from immich_memories.config_models import PhotoConfig
         from immich_memories.photos.photo_pipeline import _enhance_with_llm
+        from immich_memories.photos.scoring import PhotoLook
 
         asset = _make_asset(id="uncached-001")
         scored = [(asset, 0.5)]
@@ -723,10 +724,10 @@ class TestEnhanceWithLlm:
             ),
             patch(
                 "immich_memories.photos.photo_pipeline._llm_score_photo",
-                return_value=0.85,
+                return_value=PhotoLook(score=0.85, payload={"description": "a photograph"}),
             ),
         ):
-            result = _enhance_with_llm(
+            result, _payloads = _enhance_with_llm(
                 scored,
                 config,
                 tmp_path,

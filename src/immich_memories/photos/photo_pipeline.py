@@ -36,7 +36,7 @@ from immich_memories.photos.renderer import (
     face_aware_pan,
     render_ken_burns_streaming,
 )
-from immich_memories.photos.scoring import score_photo
+from immich_memories.photos.scoring import PhotoLook, score_photo
 from immich_memories.processing.assembly_config import AssemblyClip
 from immich_memories.processing.ffmpeg_runner import write_frames_to_ffmpeg
 
@@ -103,7 +103,7 @@ def score_photos(
     )
 
     # Phase 2: LLM scoring on shortlist (uses thumbnails, not full downloads)
-    enhanced = _enhance_with_llm(
+    enhanced, _payloads = _enhance_with_llm(
         shortlist,
         config,
         work_dir,
@@ -464,6 +464,48 @@ def _select_distributed(
     return selected
 
 
+def semantic_payloads_for(
+    db_path: Path | None,
+    asset_ids: list[str],
+    model_version: str | None,
+) -> dict[str, dict]:
+    """What the VLM said about these photos, keyed by asset id.
+
+    Read from the score cache rather than threaded back through scoring: the
+    row is written as each photo is scored, so this answers for the ones just
+    looked at and for the ones a previous run paid for. Callers hand the
+    result to cache_projection.apply_semantic_payload.
+    """
+    if not db_path or not asset_ids:
+        return {}
+    cache = _get_score_cache(db_path)
+    if cache is None:
+        return {}
+    rows = _cached_scores(cache, asset_ids, model_version)
+    return {asset_id: _payload_from_cache(row) for asset_id, row in rows.items()}
+
+
+def _as_float(value: object) -> float | None:
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _as_text(value: object) -> str | None:
+    return value if isinstance(value, str) and value else None
+
+
+def _payload_from_cache(row: dict) -> dict:
+    """What a cached row can tell the review, in the shape a clip expects."""
+    return {
+        "description": row.get("llm_description"),
+        "category": None,
+        "emotion": row.get("llm_emotion"),
+        "subjects": None,
+        "setting": None,
+        "interestingness": row.get("llm_interest"),
+        "quality": row.get("llm_quality"),
+    }
+
+
 def _enhance_with_llm(
     scored: list[tuple[Asset, float]],
     config: PhotoConfig,
@@ -473,11 +515,16 @@ def _enhance_with_llm(
     app_config: Any = None,
     thumbnail_fn: Any = None,
     provider_circuit: Any = None,
-) -> list[tuple[Asset, float]]:
-    """Check cache first, then LLM-score uncached photos."""
+) -> tuple[list[tuple[Asset, float]], dict[str, dict]]:
+    """Check cache first, then LLM-score uncached photos.
+
+    Returns the scores and, beside them, what the model said about each photo
+    — keyed by asset id, in the shape apply_semantic_payload expects. A photo
+    that cannot describe itself is one the holistic review cannot judge.
+    """
 
     if app_config is None or not app_config.content_analysis.enabled or not app_config.llm.model:
-        return scored
+        return scored, {}
 
     cache = _get_score_cache(db_path) if db_path else None
     asset_ids = [a.id for a, _ in scored]
@@ -486,15 +533,18 @@ def _enhance_with_llm(
 
     cache_hits = 0
     enhanced: list[tuple[Asset, float]] = []
+    payloads: dict[str, dict] = {}
     for asset, meta_score in scored:
-        # Cache hit — use stored score
+        # Cache hit — use stored score, and the words stored with it
         if asset.id in cached:
-            enhanced.append((asset, cached[asset.id]["combined_score"]))
+            row = cached[asset.id]
+            enhanced.append((asset, row["combined_score"]))
+            payloads[asset.id] = _payload_from_cache(row)
             cache_hits += 1
             continue
 
         # Cache miss — download + LLM
-        llm_score = _llm_score_photo(
+        look = _llm_score_photo(
             asset,
             meta_score,
             config,
@@ -504,23 +554,29 @@ def _enhance_with_llm(
             thumbnail_fn=thumbnail_fn,
             provider_circuit=provider_circuit,
         )
-        effective_score = llm_score if llm_score is not None else meta_score
+        effective_score = look.score if look is not None else meta_score
         enhanced.append((asset, effective_score))
+        if look is not None:
+            payloads[asset.id] = look.payload
 
         # Only successful semantic results belong to the configured model.
-        if cache and llm_score is not None and model_version:
+        if cache and look is not None and model_version:
             cache.save_asset_score(
                 asset_id=asset.id,
                 asset_type="photo",
                 metadata_score=meta_score,
                 combined_score=effective_score,
+                llm_interest=_as_float(look.payload.get("interestingness")),
+                llm_quality=_as_float(look.payload.get("quality")),
+                llm_emotion=_as_text(look.payload.get("emotion")),
+                llm_description=_as_text(look.payload.get("description")),
                 model_version=model_version,
             )
 
     if cache_hits:
         logger.info(f"Photo score cache: {cache_hits} hits, {len(scored) - cache_hits} misses")
 
-    return enhanced
+    return enhanced, payloads
 
 
 def _llm_score_photo(
@@ -532,8 +588,8 @@ def _llm_score_photo(
     app_config: Any,
     thumbnail_fn: Any = None,
     provider_circuit: Any = None,
-) -> float | None:
-    """Score a photo with VLM using a lightweight thumbnail.
+) -> PhotoLook | None:
+    """Look at a photo with the VLM, using a lightweight thumbnail.
 
     Uses Immich thumbnail API (~100 KB) instead of downloading the full
     HEIC (5-15 MB). Falls back to full download if no thumbnail_fn.

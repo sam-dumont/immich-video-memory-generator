@@ -459,7 +459,16 @@ class SmartPipeline:
         review is handed a bare line. It is then told — correctly — never to
         drop a clip for missing information, and two near-identical hotel
         mirror selfies from consecutive days both survive as a result.
+
+        A photograph is never queued. Its real look is the VLM photo scorer,
+        which has already run and now says what it saw; sending a still to the
+        video analyzer fails and replaces its score with zero, so a photo the
+        scorer could not describe was not merely unseen, it was ranked last.
         """
+        from immich_memories.api.models import AssetType
+
+        if member.clip.asset.type == AssetType.IMAGE:
+            return False
         if not member.analyzed:
             return True
         if not self._app_config.content_analysis.enabled:

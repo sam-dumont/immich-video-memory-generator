@@ -15,6 +15,7 @@ import json
 import logging
 import math
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 from immich_memories.api.models import Asset
@@ -61,33 +62,49 @@ def score_photo_with_llm(
     config: PhotoConfig,
     app_config: Config,
     provider_circuit=None,
-) -> float | None:
-    """Enhance photo score with LLM visual analysis.
+) -> PhotoLook | None:
+    """Enhance a photo's score with what the VLM sees, and keep what it says.
 
-    Sends the photo to the configured VLM (same as video content analysis)
-    and gets an interest + quality rating. Blends with metadata score.
+    Sends the photo to the configured VLM (the same one video content analysis
+    uses) and blends its interest and quality into the metadata score. The
+    words come back too: a photograph that cannot describe itself is a
+    photograph the holistic review cannot judge.
     """
     if app_config is None or not app_config.content_analysis.enabled:
         return None
 
-    llm_score = _query_photo_llm(photo_path, app_config, provider_circuit=provider_circuit)
-    if llm_score is None:
+    look = _query_photo_llm(photo_path, app_config, provider_circuit=provider_circuit)
+    if look is None:
         return None
 
     # Blend: replace the LLM placeholder weight with actual LLM score
     # metadata_score was computed with _W_LLM * 0.5 as placeholder
     penalty = 1.0 - config.score_penalty
     # Remove placeholder, add actual LLM score
-    adjusted = (metadata_score / penalty) - _W_LLM * 0.5 + _W_LLM * llm_score
-    return min(1.0, max(0.0, adjusted)) * penalty
+    adjusted = (metadata_score / penalty) - _W_LLM * 0.5 + _W_LLM * look.score
+    blended = min(1.0, max(0.0, adjusted)) * penalty
+    return PhotoLook(score=blended, payload=look.payload)
 
 
-_PHOTO_ANALYSIS_PROMPT = """Analyze this photo for a memory video compilation. Rate on two scales (0.0-1.0):
+# The same fields the video path asks the same model for. A photo used to be
+# asked only for two numbers, which were averaged into one — so the holistic
+# review, which reads a clip's description, was handed a bare line for every
+# photograph and told never to drop a clip for missing information.
+_PHOTO_ANALYSIS_PROMPT = """Look at this photo for a memory video, and say what is in it.
 
-1. **interest**: How interesting/memorable is this photo? (action, emotion, rare moment > static/mundane)
-2. **quality**: Technical quality (composition, focus, lighting, not blurry/dark)
+- description: What is happening here?
+- category: What is it mainly of? Exactly one of: people, animal, landscape, object, screen.
+  Use "screen" for a phone, watch, computer or TV display, a screenshot, or a document
+  or a form -- even when a person is holding the device.
+- subjects: What is in frame? (short lowercase nouns, e.g. ["child", "dog", "beach"])
+- emotion: The mood, in one word.
+- interest: How memorable is this moment, 0.0-1.0? Action, emotion and a rare moment
+  outrank the static and the everyday.
+- quality: Technical quality, 0.0-1.0 -- composition, focus, lighting, not blurry or dark.
 
-Respond as JSON: {"interest": 0.X, "quality": 0.X, "emotion": "word"}"""
+Respond as JSON only:
+{"description": "...", "category": "people", "subjects": ["..."], "emotion": "...",
+ "interest": 0.X, "quality": 0.X}"""
 
 
 def _photo_score_value(value: object) -> float | None:
@@ -100,8 +117,35 @@ def _photo_score_value(value: object) -> float | None:
     return score
 
 
-def _parse_photo_score(text: str) -> float | None:
-    """Extract complete interest and quality scores from a VLM response."""
+@dataclass(frozen=True)
+class PhotoLook:
+    """One look at a photograph: the score, and what the model saw in it.
+
+    payload carries the fields cache_projection.apply_semantic_payload puts on
+    a clip, so a photo reaches the holistic review saying the same kinds of
+    things a video does.
+    """
+
+    score: float
+    payload: dict[str, object]
+
+
+def _text_field(value: object) -> str | None:
+    """One short string from the model, or nothing if it did not answer."""
+    if not isinstance(value, str):
+        return None
+    cleaned = value.strip()
+    return cleaned[:400] or None
+
+
+def _parse_photo_look(text: str) -> PhotoLook | None:
+    """Extract the scores a photo must have, and whatever else it came with.
+
+    interest and quality stay required — they are what selection ranks on, and
+    a response without them is not an answer. Everything else is optional: a
+    small model that returns the two numbers alone still scores exactly as it
+    used to, it just tells the review nothing.
+    """
     match = re.search(r"\{[^}]+\}", text)
     if not match:
         logger.debug("LLM photo analysis: no JSON in response: %s", text[:100])
@@ -117,11 +161,26 @@ def _parse_photo_score(text: str) -> float | None:
     if interest is None or quality is None:
         logger.debug("LLM photo analysis: score fields were invalid")
         return None
-    return (interest + quality) / 2
+
+    subjects = data.get("subjects")
+    return PhotoLook(
+        score=(interest + quality) / 2,
+        payload={
+            "description": _text_field(data.get("description")),
+            "category": _text_field(data.get("category")),
+            "emotion": _text_field(data.get("emotion")),
+            "subjects": [s for s in subjects if isinstance(s, str)]
+            if isinstance(subjects, list)
+            else None,
+            "setting": None,
+            "interestingness": interest,
+            "quality": quality,
+        },
+    )
 
 
-def _query_photo_llm(photo_path: Path, config: object, provider_circuit=None) -> float | None:
-    """Send photo to VLM and get a 0-1 score."""
+def _query_photo_llm(photo_path: Path, config: object, provider_circuit=None) -> PhotoLook | None:
+    """Send the photo to the VLM and keep everything it says about it."""
     if provider_circuit is not None and not provider_circuit.available:
         return None
 
@@ -171,7 +230,7 @@ def _query_photo_llm(photo_path: Path, config: object, provider_circuit=None) ->
             return None
         resp.raise_for_status()
         text = resp.json()["choices"][0]["message"]["content"]
-        return _parse_photo_score(text)
+        return _parse_photo_look(text)
 
     except httpx.HTTPError as e:
         if provider_circuit is not None:

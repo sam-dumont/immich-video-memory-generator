@@ -650,3 +650,20 @@ class TestNothingIsJudgedBlind:
         assert [c.clip.llm_description for c in judged] == [
             "a whiteboard covered in sticky notes"
         ], "the review was handed a clip nobody had looked at"
+
+    def test_a_photo_is_never_sent_to_the_video_analyzer(self, tmp_path: Path) -> None:
+        """A photograph's real look is the photo scorer, which has already run.
+
+        The verify pass queues anything the review cannot see, and running the
+        video analyzer over a still fails and replaces its score with zero —
+        so a photo the VLM could not score was not merely unseen, it was
+        ranked last.
+        """
+        from immich_memories.analysis.smart_pipeline import ClipWithSegment
+        from immich_memories.api.models import AssetType
+
+        still = TestDensityBudgetCap()._make_clip("still")
+        still.asset.type = AssetType.IMAGE
+        member = ClipWithSegment(clip=still, start_time=0.0, end_time=4.0, score=0.6)
+
+        assert not self._pipeline(tmp_path)._needs_a_real_look(member)

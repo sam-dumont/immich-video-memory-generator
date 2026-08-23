@@ -625,7 +625,7 @@ class TestScorePhotos:
 
         with patch(
             "immich_memories.photos.photo_pipeline._enhance_with_llm",
-            side_effect=lambda shortlist, *_args, **_kwargs: shortlist,
+            side_effect=lambda shortlist, *_args, **_kwargs: (shortlist, {}),
         ) as enhance:
             result = score_photos(
                 assets=assets,

@@ -9,7 +9,7 @@ import pytest
 
 from immich_memories.api.models import Person
 from immich_memories.config_models import PhotoConfig
-from immich_memories.photos.scoring import score_photo, score_photo_with_llm
+from immich_memories.photos.scoring import PhotoLook, score_photo, score_photo_with_llm
 from tests.conftest import make_asset
 
 
@@ -84,17 +84,49 @@ class TestPhotoScoring:
         score = score_photo(_photo(), config)
         assert score == 0.0
 
-    def test_parse_photo_score_averages_complete_numeric_fields(self) -> None:
-        from immich_memories.photos.scoring import _parse_photo_score
+    def test_parse_photo_look_averages_complete_numeric_fields(self) -> None:
+        from immich_memories.photos.scoring import _parse_photo_look
 
-        result = _parse_photo_score('{"interest": 0.8, "quality": 0.6, "emotion": "joy"}')
+        look = _parse_photo_look('{"interest": 0.8, "quality": 0.6, "emotion": "joy"}')
 
-        assert result == pytest.approx(0.7)
+        assert look.score == pytest.approx(0.7)
 
-    def test_parse_photo_score_rejects_missing_required_field(self) -> None:
-        from immich_memories.photos.scoring import _parse_photo_score
+    def test_parse_photo_look_rejects_missing_required_field(self) -> None:
+        from immich_memories.photos.scoring import _parse_photo_look
 
-        assert _parse_photo_score('{"message": "analysis unavailable"}') is None
+        assert _parse_photo_look('{"message": "analysis unavailable"}') is None
+
+    def test_the_look_keeps_what_the_model_saw(self) -> None:
+        """The model was asked only for two numbers and its answer averaged.
+
+        The holistic review reads a clip's description, and a photo never had
+        one — so it was handed a bare line, told never to drop a clip for
+        missing information, and every photograph in the library was immune to
+        the only content judgment in the pipeline.
+        """
+        from immich_memories.photos.scoring import _parse_photo_look
+
+        look = _parse_photo_look(
+            '{"description": "A whiteboard covered in sticky notes", '
+            '"category": "object", "subjects": ["whiteboard", "notes"], '
+            '"emotion": "focused", "interest": 0.3, "quality": 0.7}'
+        )
+
+        assert look.score == pytest.approx(0.5)
+        assert look.payload["description"] == "A whiteboard covered in sticky notes"
+        assert look.payload["category"] == "object"
+        assert look.payload["subjects"] == ["whiteboard", "notes"]
+        assert look.payload["emotion"] == "focused"
+        assert look.payload["interestingness"] == pytest.approx(0.3)
+
+    def test_a_model_that_answers_with_the_numbers_alone_still_scores(self) -> None:
+        """Small models drop fields. Losing the words must not lose the score."""
+        from immich_memories.photos.scoring import _parse_photo_look
+
+        look = _parse_photo_look('{"interest": 0.8, "quality": 0.6}')
+
+        assert look.score == pytest.approx(0.7)
+        assert look.payload["description"] is None
 
     @pytest.mark.parametrize(
         "value",
@@ -179,7 +211,7 @@ class TestCacheFirstScoring:
                 "immich_memories.photos.photo_pipeline._llm_score_photo",
             ) as mock_llm,
         ):
-            result = _enhance_with_llm(
+            result, _payloads = _enhance_with_llm(
                 scored,
                 PhotoConfig(),
                 Path("/tmp"),
@@ -209,9 +241,9 @@ class TestCacheFirstScoring:
 
         with patch(
             "immich_memories.photos.photo_pipeline._llm_score_photo",
-            return_value=0.77,
+            return_value=PhotoLook(score=0.77, payload={"description": "a photograph"}),
         ):
-            result = _enhance_with_llm(
+            result, _payloads = _enhance_with_llm(
                 [(_photo("photo-1"), 0.5)],
                 PhotoConfig(),
                 tmp_path,
@@ -243,7 +275,7 @@ class TestCacheFirstScoring:
             "immich_memories.photos.photo_pipeline._llm_score_photo",
             return_value=None,
         ):
-            result = _enhance_with_llm(
+            result, _payloads = _enhance_with_llm(
                 [(_photo("photo-1"), 0.5)],
                 PhotoConfig(),
                 tmp_path,
@@ -278,7 +310,7 @@ class TestCacheFirstScoring:
         )
 
         with patch("httpx.post", return_value=response):
-            result = _enhance_with_llm(
+            result, _payloads = _enhance_with_llm(
                 [(_photo("photo-1"), 0.5)],
                 PhotoConfig(),
                 tmp_path,
@@ -300,7 +332,7 @@ class TestCacheFirstScoring:
         thumbnail_fn = MagicMock(return_value=b"jpeg")
         download_fn = MagicMock()
 
-        result = _enhance_with_llm(
+        result, _payloads = _enhance_with_llm(
             [(_photo("photo-1"), 0.5)],
             PhotoConfig(),
             tmp_path,
@@ -331,10 +363,10 @@ class TestCacheFirstScoring:
             # WHY: external LLM API
             patch(
                 "immich_memories.photos.photo_pipeline._llm_score_photo",
-                return_value=0.75,
+                return_value=PhotoLook(score=0.75, payload={"description": "a photograph"}),
             ) as mock_llm,
         ):
-            result = _enhance_with_llm(
+            result, _payloads = _enhance_with_llm(
                 scored,
                 PhotoConfig(),
                 Path("/tmp"),
@@ -345,11 +377,17 @@ class TestCacheFirstScoring:
 
         assert result[0][1] == 0.75
         mock_llm.assert_called_once()
+        # The words go into the cache beside the score, so a later run can hand
+        # the review a photograph that describes itself without paying again.
         mock_cache.save_asset_score.assert_called_once_with(
             asset_id="uncached-1",
             asset_type="photo",
             metadata_score=0.5,
             combined_score=0.75,
+            llm_interest=None,
+            llm_quality=None,
+            llm_emotion=None,
+            llm_description="a photograph",
             model_version="qwen-test",
         )
 
@@ -378,10 +416,10 @@ class TestCacheFirstScoring:
             # WHY: external LLM API — only called for the miss
             patch(
                 "immich_memories.photos.photo_pipeline._llm_score_photo",
-                return_value=0.55,
+                return_value=PhotoLook(score=0.55, payload={"description": "a photograph"}),
             ) as mock_llm,
         ):
-            result = _enhance_with_llm(
+            result, _payloads = _enhance_with_llm(
                 scored,
                 PhotoConfig(),
                 Path("/tmp"),
@@ -414,10 +452,10 @@ class TestCacheFirstScoring:
             # WHY: external LLM API
             patch(
                 "immich_memories.photos.photo_pipeline._llm_score_photo",
-                return_value=0.7,
+                return_value=PhotoLook(score=0.7, payload={"description": "a photograph"}),
             ) as mock_llm,
         ):
-            result = _enhance_with_llm(
+            result, _payloads = _enhance_with_llm(
                 scored,
                 PhotoConfig(),
                 Path("/tmp"),
