@@ -37,7 +37,9 @@ from immich_memories.analysis.clip_distribution import (
     _partition_photos_per_day,
     _period_key,
     enforce_photo_cap,
+    moment_window_for,
     photos_per_day_for,
+    span_days_of,
 )
 
 logger = logging.getLogger(__name__)
@@ -466,6 +468,7 @@ class ClipRefiner:
         max_duration: float,
         *,
         photo_cap_bypassed: bool,
+        temporal_window: float,
     ) -> list[ClipWithSegment]:
         """Fill post-filter duration holes from unused, constraint-safe candidates."""
 
@@ -480,7 +483,6 @@ class ClipRefiner:
         )
         logged_relaxation_tiers: set[str] = set()
 
-        temporal_window = self.config.temporal_dedup_window_minutes
         occupied_moments = _occupied_moments(
             selected,
             temporal_window,
@@ -589,6 +591,11 @@ class ClipRefiner:
                 if c.clip.asset.file_created_at
             }
         )
+        # A moment is relative to the story: five minutes inside a month, an
+        # evening inside a year.
+        moment_window = moment_window_for(
+            span_days_of(all_analyzed), self.config.temporal_dedup_window_minutes
+        )
         analyzed, _photo_overflow = _partition_photos_per_day(
             all_analyzed,
             photos_per_day_for(self.config.target_clips, active_days),
@@ -619,17 +626,17 @@ class ClipRefiner:
         )
         trace.record(f"fit to {target_duration:.0f}s", before_scale, selected)
 
-        if self.config.temporal_dedup_window_minutes > 0:
+        if moment_window > 0:
             before_dedup = selected
             # How many clips one moment may keep depends on how many the cut
             # needs: thinning to one left a long memory too short to fill, and
             # backfill then restored the same clips by relaxing constraints.
             from immich_memories.analysis.clip_scaler import group_by_moment
 
-            moments = len(group_by_moment(selected, self.config.temporal_dedup_window_minutes))
+            moments = len(group_by_moment(selected, moment_window))
             selected = self.scaler.deduplicate_temporal_clusters(
                 selected,
-                time_window_minutes=self.config.temporal_dedup_window_minutes,
+                time_window_minutes=moment_window,
                 keep_per_moment=_clips_per_moment(self.config.target_clips, moments),
                 protected_ids=coverage_ids,
             )
@@ -685,6 +692,7 @@ class ClipRefiner:
             all_analyzed,
             target_duration + max_overrun,
             photo_cap_bypassed=photo_cap_bypassed,
+            temporal_window=moment_window,
         )
         trace.record("duration backfill", before_backfill, selected)
 

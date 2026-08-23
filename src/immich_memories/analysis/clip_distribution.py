@@ -50,6 +50,32 @@ _DEFAULT_PHOTO_DAY_CAPS = PhotoDayCaps(
 )
 
 
+# How far apart two shots have to be to be different moments, by how much
+# timeline the memory covers. Five minutes is a moment inside a sixty-second
+# month, where the cut has a slot for most of the days in it. Across a year it
+# is a rounding error: a real year recap spent two of its thirty-nine slots on
+# one evening at a venue, 71 minutes apart, and two more on one arcade, 62
+# minutes apart. The breakpoints are the ones _period_key already uses, so the
+# module has one vocabulary for "how long is this memory".
+_MOMENT_WINDOW_BY_SPAN = ((31, 0.0), (92, 30.0), (366, 90.0))
+_MULTI_YEAR_MOMENT_WINDOW = 180.0
+
+
+def moment_window_for(span_days: int, configured_minutes: float) -> float:
+    """The same-moment window this memory should use, in minutes.
+
+    The configured value is a floor, never a ceiling: a month uses exactly
+    what it was given, and a longer memory widens from there. Zero still
+    means no deduplication at all.
+    """
+    if configured_minutes <= 0:
+        return configured_minutes
+    for limit, minutes in _MOMENT_WINDOW_BY_SPAN:
+        if span_days <= limit:
+            return max(configured_minutes, minutes)
+    return max(configured_minutes, _MULTI_YEAR_MOMENT_WINDOW)
+
+
 def _people_share(clips: list[ClipWithSegment]) -> float:
     """Share of a period's material that Immich recognised a person in.
 
@@ -96,6 +122,12 @@ def _event_periods(by_period: dict[str, list[ClipWithSegment]]) -> set[str]:
     return set(peopled[:_MAX_EVENT_PERIODS])
 
 
+def span_days_of(clips: list[ClipWithSegment]) -> int:
+    """How much timeline this memory covers, first shot to last."""
+    dates = [c.clip.asset.file_created_at for c in clips if c.clip.asset.file_created_at]
+    return (max(dates) - min(dates)).days if dates else 0
+
+
 def _event_periods_of(clips: list[ClipWithSegment]) -> set[str]:
     """Event periods measured on the raw pool.
 
@@ -106,7 +138,7 @@ def _event_periods_of(clips: list[ClipWithSegment]) -> set[str]:
     dates = [c.clip.asset.file_created_at for c in clips]
     if not dates:
         return set()
-    span_days = (max(dates) - min(dates)).days
+    span_days = span_days_of(clips)
     by_period: dict[str, list[ClipWithSegment]] = defaultdict(list)
     for c in clips:
         by_period[_period_key(c.clip.asset.file_created_at, span_days)].append(c)

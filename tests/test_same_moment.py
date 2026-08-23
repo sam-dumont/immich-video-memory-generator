@@ -156,3 +156,35 @@ def test_protection_covers_the_event_clips_and_not_what_sits_beside_them() -> No
     )
 
     assert [c.clip.asset.id for c in kept] == [covering.clip.asset.id]
+
+
+class TestAMomentIsRelativeToTheStoryBeingTold:
+    """Five minutes is a moment in a month and a rounding error in a year.
+
+    Measured on a real year recap: two of its thirty-nine slots went to one
+    evening at a venue (71 minutes apart) and two more to one arcade (62
+    minutes apart). To anybody watching, each of those is one evening.
+    """
+
+    def test_a_month_keeps_the_window_it_was_configured_with(self) -> None:
+        from immich_memories.analysis.clip_distribution import moment_window_for
+
+        assert moment_window_for(span_days=31, configured_minutes=5.0) == 5.0
+
+    def test_a_year_widens_the_window_past_an_evening_apart(self) -> None:
+        from immich_memories.analysis.clip_distribution import moment_window_for
+
+        window = moment_window_for(span_days=365, configured_minutes=5.0)
+
+        assert window > 71.0, "the pairs a real year recap doubled up on"
+
+    def test_a_configured_window_is_a_floor_and_never_narrowed(self) -> None:
+        """Somebody who asked for a wide window meant it."""
+        from immich_memories.analysis.clip_distribution import moment_window_for
+
+        assert moment_window_for(span_days=365, configured_minutes=240.0) == 240.0
+
+    def test_zero_still_turns_deduplication_off(self) -> None:
+        from immich_memories.analysis.clip_distribution import moment_window_for
+
+        assert moment_window_for(span_days=365, configured_minutes=0.0) == 0.0
