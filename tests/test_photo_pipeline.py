@@ -256,3 +256,19 @@ def test_the_pool_the_cli_and_ui_build_drops_what_the_camera_did_not_shoot(tmp_p
     )
 
     assert [c.clip.asset.id for c in pool] == ["shot"]
+
+
+def test_the_messaging_glob_does_not_match_a_place_called_wa() -> None:
+    """WA is a state abbreviation as well as a messaging app's marker.
+
+    '*-WA[0-9]*' matched 'Olympia-WA2019.jpg' — a photograph of Washington,
+    dropped for its filename.
+    """
+    from immich_memories.analysis.source_filter import from_an_excluded_source
+
+    patterns = AnalysisConfig().exclude_filename_patterns
+
+    assert from_an_excluded_source("IMG-20190105-WA0006.jpg", patterns)
+    assert from_an_excluded_source("VID-20190701-WA0000.mp4", patterns)
+    assert not from_an_excluded_source("Olympia-WA2019.jpg", patterns)
+    assert not from_an_excluded_source("Seattle-WA98101.jpg", patterns)

@@ -131,27 +131,26 @@ class AnalysisConfig(BaseModel):
         "Smart albums reach tens of thousands; Immich returns newest first, so a "
         "larger album is truncated to its most recent assets.",
     )
+    # The messaging-app globs carry their prefix and four-digit counter on
+    # purpose: "*-wa[0-9]*" alone also matches a photograph of Olympia-WA2019.
     exclude_filename_patterns: list[str] = Field(
         default_factory=lambda: [
-            "RingVideo_*",  # doorbell; reuses one filename across every export
-            "RPReplay_Final*",  # iOS screen recording
-            "Screen Recording *",  # macOS and Android screen recording
+            "RingVideo_*",
+            "RPReplay_Final*",
+            "Screen Recording *",
             "Screenshot*",
-            "*-WA[0-9]*",  # arrived through a messaging app, was not shot here
+            "img-*-wa[0-9][0-9][0-9][0-9]*",
+            "vid-*-wa[0-9][0-9][0-9][0-9]*",
         ],
-        description="Case-insensitive glob patterns for source files a memory "
-        "must never use. The holistic review already drops footage nobody "
-        "chose to shoot, but it needs a model and it runs after analysis has "
-        "paid for the clip; a name that settles it outright settles it for "
-        "free, and keeps working with no LLM configured at all.",
+        description="Case-insensitive globs for source files a memory must "
+        "never use. Settles for free, before analysis pays for the clip, what "
+        "the holistic review would need a model to decide.",
     )
     exclude_stills_without_camera_exif: bool = Field(
         default=True,
-        description="Drop photographs whose EXIF names no camera. Measured on a "
-        "real library: of 1541 make-less stills, 1498 arrived through a "
-        "messaging app and 34 were downloads, against 9 camera originals that "
-        "had lost their make. Turn off for a library of exported or edited "
-        "originals. Videos are exempt — a phone clip loses its make too often.",
+        description="Drop photographs whose EXIF names no camera — on a real "
+        "library 1532 of 1541 such stills were received or downloaded. Turn "
+        "off for a library of exported originals. Videos are exempt.",
     )
     scene_threshold: float = Field(default=27.0, ge=1.0, le=100.0)
     min_scene_duration: float = Field(default=1.0, ge=0.5, le=10.0)

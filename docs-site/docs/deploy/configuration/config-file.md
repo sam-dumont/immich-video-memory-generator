@@ -106,7 +106,8 @@ advanced:
       - "RPReplay_Final*"
       - "Screen Recording *"
       - "Screenshot*"
-      - "*-WA[0-9]*"
+      - "img-*-wa[0-9][0-9][0-9][0-9]*"
+      - "vid-*-wa[0-9][0-9][0-9][0-9]*"
 ```
 
 Case-insensitive globs against the original filename. Setting the key replaces the list
