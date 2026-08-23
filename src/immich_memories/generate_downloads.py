@@ -29,10 +29,14 @@ def download_clip(
     output_dir: Path,
     *,
     prefetched_burst_results: Mapping[str, DownloadResult] | None = None,
+    hardware_enabled: bool = True,
 ) -> Path | None:
     """Download a single clip, handling live photo bursts.
 
     If clip.local_path is already set and the file exists, skip downloading.
+
+    ``hardware_enabled`` reaches only the burst merge, which is the one place
+    this module encodes video (#504).
     """
     # Use pre-downloaded clip if available (e.g., from analysis cache)
     if clip.local_path and Path(clip.local_path).exists():
@@ -48,6 +52,7 @@ def download_clip(
             clip,
             output_dir,
             prefetched_burst_results=prefetched_burst_results,
+            hardware_enabled=hardware_enabled,
         )
 
     if video_cache is None:
@@ -62,6 +67,7 @@ def _download_and_merge_burst(
     output_dir: Path,
     *,
     prefetched_burst_results: Mapping[str, DownloadResult] | None = None,
+    hardware_enabled: bool = True,
 ) -> Path | None:
     """Download live photo burst videos and merge into one file."""
     burst_ids = clip.live_burst_video_ids or []
@@ -92,6 +98,7 @@ def _download_and_merge_burst(
         trim_points,
         merged_path,
         shutter_timestamps=clip.live_burst_shutter_timestamps,
+        hardware_enabled=hardware_enabled,
     )
     return merged or _download_fallback(client, video_cache, clip.asset, output_dir)
 
@@ -229,6 +236,8 @@ def _try_merge_burst(
     trim_points: list,
     merged_path: Path,
     shutter_timestamps: list[float] | None = None,
+    *,
+    hardware_enabled: bool = True,
 ) -> Path | None:
     """Try to merge burst clips with spectrogram-aligned audio/video.
 
@@ -284,7 +293,13 @@ def _try_merge_burst(
             logger.warning(f"Spectrogram alignment failed, using timestamp trims: {e}")
             audio_trims = None
 
-    cmd = build_merge_command(valid_paths, valid_trims, merged_path, audio_trim_points=audio_trims)
+    cmd = build_merge_command(
+        valid_paths,
+        valid_trims,
+        merged_path,
+        audio_trim_points=audio_trims,
+        hardware_enabled=hardware_enabled,
+    )
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)  # noqa: S603
         if result.returncode == 0 and merged_path.exists():

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import os
+import time
 from pathlib import Path
 
 from immich_memories.cache.disk_budget import evict_to_budget
@@ -23,6 +25,10 @@ class ThumbnailCache:
         self.cache_dir = cache_dir
         self.max_size_mb = max_size_mb
         self._puts_since_check = 0
+        # A thumbnail written or read since the cache was opened belongs to the
+        # run holding it; evicting one means the budget cannot hold the working
+        # set, which the run should hear about instead of quietly re-fetching.
+        self._run_started_at = time.time()
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     def _path(self, asset_id: str, size: str) -> Path:
@@ -31,9 +37,16 @@ class ThumbnailCache:
 
     def get(self, asset_id: str, size: str) -> bytes | None:
         path = self._path(asset_id, size)
-        if path.exists():
-            return path.read_bytes()
-        return None
+        try:
+            data = path.read_bytes()
+        except OSError:
+            return None
+        # Eviction is oldest-mtime-first. Without this a thumbnail the run keeps
+        # reading still looks as old as the moment it was written, so a working
+        # set larger than the budget evicts its own live entries (#512).
+        with contextlib.suppress(OSError):
+            os.utime(path)
+        return data
 
     def has(self, asset_id: str, size: str) -> bool:
         return self._path(asset_id, size).exists()
@@ -63,6 +76,7 @@ class ThumbnailCache:
             self.cache_dir,
             max_bytes=int(self.max_size_mb * 1_000_000),
             pattern="*.jpg",
+            run_started_at=self._run_started_at,
         )
 
     def clear(self) -> int:

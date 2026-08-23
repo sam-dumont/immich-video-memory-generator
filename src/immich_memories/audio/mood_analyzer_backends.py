@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import base64
 import contextlib
 import logging
 from pathlib import Path
 
 import httpx
 
+from immich_memories.analysis.llm_query import build_llm_timeout, query_llm
 from immich_memories.audio.mood_analyzer import (
     MOOD_ANALYSIS_PROMPT,
     MoodAnalyzer,
@@ -17,6 +17,27 @@ from immich_memories.audio.mood_analyzer import (
 from immich_memories.config_models_llm import LLMConfig
 
 logger = logging.getLogger(__name__)
+
+# The prompt asks for a short JSON object, and more keyframes than this stop
+# telling the model anything new about how a video feels.
+_MAX_MOOD_FRAMES = 4
+_MOOD_ANSWER_TOKENS = 500
+
+
+async def _ask_for_mood(frame_paths: list[Path], config: LLMConfig) -> str:
+    """Send the keyframes to the configured model and return what it says.
+
+    Never asks for thinking: mood is a cheap read of a handful of stills, and
+    reasoning over several images at once is a measured runaway.
+    """
+    return await query_llm(
+        MOOD_ANALYSIS_PROMPT,
+        config,
+        temperature=0.3,
+        max_tokens=_MOOD_ANSWER_TOKENS,
+        timeout_seconds=config.timeout_seconds,
+        images=[path.read_bytes() for path in frame_paths[:_MAX_MOOD_FRAMES]],
+    )
 
 
 class OllamaMoodAnalyzer(MoodAnalyzer):
@@ -36,12 +57,15 @@ class OllamaMoodAnalyzer(MoodAnalyzer):
         self.model = model
         self.base_url = base_url.rstrip("/")
         self._client: httpx.AsyncClient | None = None
+        self._llm_config = LLMConfig(provider="ollama", base_url=self.base_url, model=model)
 
     @property
     def client(self) -> httpx.AsyncClient:
-        """Get or create HTTP client."""
+        """Get or create the HTTP client used by the availability probe."""
         if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(timeout=120.0)
+            self._client = httpx.AsyncClient(
+                timeout=build_llm_timeout(float(self._llm_config.timeout_seconds))
+            )
         return self._client
 
     async def close(self):
@@ -87,34 +111,7 @@ class OllamaMoodAnalyzer(MoodAnalyzer):
         frame_paths: list[Path],
     ) -> VideoMood:
         """Analyze frames using Ollama vision model."""
-        # Encode images to base64
-        images = []
-        for path in frame_paths[:4]:  # Limit to 4 images
-            with path.open("rb") as f:
-                images.append(base64.b64encode(f.read()).decode("utf-8"))
-
-        payload = {
-            "model": self.model,
-            "prompt": MOOD_ANALYSIS_PROMPT,
-            "images": images,
-            "stream": False,
-            "options": {
-                "temperature": 0.3,
-            },
-        }
-
-        try:
-            response = await self.client.post(
-                f"{self.base_url}/api/generate",
-                json=payload,
-            )
-            response.raise_for_status()
-            data = response.json()
-            return self._parse_mood_response(data.get("response", ""))
-
-        except httpx.HTTPError as e:
-            logger.error(f"Ollama API error: {e}")
-            raise
+        return self._parse_mood_response(await _ask_for_mood(frame_paths, self._llm_config))
 
 
 class OpenAICompatibleMoodAnalyzer(MoodAnalyzer):
@@ -136,26 +133,12 @@ class OpenAICompatibleMoodAnalyzer(MoodAnalyzer):
         self.api_key = api_key
         self.model = model
         self.base_url = base_url.rstrip("/")
-        self._client: httpx.AsyncClient | None = None
-
-    @property
-    def client(self) -> httpx.AsyncClient:
-        """Get or create HTTP client."""
-        if self._client is None or self._client.is_closed:
-            headers: dict[str, str] = {"Content-Type": "application/json"}
-            if self.api_key:
-                headers["Authorization"] = f"Bearer {self.api_key}"
-            self._client = httpx.AsyncClient(
-                timeout=120.0,
-                headers=headers,
-            )
-        return self._client
-
-    async def close(self):
-        """Close the HTTP client."""
-        if self._client:
-            await self._client.aclose()
-            self._client = None
+        self._llm_config = LLMConfig(
+            provider="openai-compatible",
+            base_url=self.base_url,
+            model=model,
+            api_key=api_key,
+        )
 
     async def analyze_video(
         self,
@@ -186,44 +169,7 @@ class OpenAICompatibleMoodAnalyzer(MoodAnalyzer):
         frame_paths: list[Path],
     ) -> VideoMood:
         """Analyze frames using OpenAI Vision."""
-        # Build content with images
-        # Vision message parts: a text part, then one image_url part per frame,
-        # so the values are not all strings.
-        content: list[dict[str, object]] = [{"type": "text", "text": MOOD_ANALYSIS_PROMPT}]
-
-        for path in frame_paths[:4]:  # Limit to 4 images
-            with path.open("rb") as f:
-                image_data = base64.b64encode(f.read()).decode("utf-8")
-                content.append(
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{image_data}",
-                            "detail": "low",
-                        },
-                    }
-                )
-
-        payload = {
-            "model": self.model,
-            "messages": [{"role": "user", "content": content}],
-            "max_tokens": 500,
-            "temperature": 0.3,
-        }
-
-        try:
-            response = await self.client.post(
-                f"{self.base_url}/chat/completions",
-                json=payload,
-            )
-            response.raise_for_status()
-            data = response.json()
-            message = data["choices"][0]["message"]["content"]
-            return self._parse_mood_response(message)
-
-        except httpx.HTTPError as e:
-            logger.error(f"OpenAI API error: {e}")
-            raise
+        return self._parse_mood_response(await _ask_for_mood(frame_paths, self._llm_config))
 
 
 async def get_mood_analyzer(

@@ -70,6 +70,13 @@ make refurb
 # Dependency hygiene (deptry: hallucinated/unused/transitive deps)
 make dep-check
 
+# Regenerate the CLI reference from the Click tree, and fail on drift
+make docs-cli
+make docs-cli-check
+
+# Config reference key parity with the pydantic schema
+make docs-config-check
+
 
 # Architectural boundary enforcement (import-linter)
 make arch-check
@@ -111,6 +118,8 @@ make critique
 - **Security (cross-file)**: Semgrep must pass with no ERROR findings (`make semgrep`)
 - **Modernization**: refurb must pass (`make refurb`)
 - **Dependency hygiene**: deptry must pass (`make dep-check`)
+- **CLI reference drift**: the generated page must match the Click tree (`make docs-cli-check`)
+- **Config reference drift**: the config reference must list exactly the schema's keys (`make docs-config-check`)
 - **Tests**: all tests must pass (`make test`)
 - **Commit messages**: must follow [Conventional Commits](https://www.conventionalcommits.org/) (`make commitlint`)
   - Format: `type(scope): description` — e.g., `fix(api): handle timeout errors`

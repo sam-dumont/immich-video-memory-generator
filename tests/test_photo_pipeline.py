@@ -98,7 +98,7 @@ def test_the_description_survives_scoring_and_the_score_stays_a_number(tmp_path,
     handed a bare line and protected by the rule that says never to drop a
     clip for missing information.
     """
-    from immich_memories.photos import photo_pipeline
+    from immich_memories.photos import photo_pipeline, scoring
     from immich_memories.photos.scoring import PhotoLook
 
     asset = _photo("shot", "IMG_1375.HEIC")
@@ -106,7 +106,7 @@ def test_the_description_survives_scoring_and_the_score_stays_a_number(tmp_path,
 
     # WHY: the VLM is the network boundary; this stands in for its answer.
     monkeypatch.setattr(
-        photo_pipeline,
+        scoring,
         "_llm_score_photo",
         lambda *_a, **_k: PhotoLook(
             score=0.42,
@@ -136,7 +136,7 @@ def test_a_score_cached_before_photos_could_describe_themselves_is_re_asked(tmp_
     answer is now a property of the prompt as well, so the key carries both —
     which invalidates the scores-only rows exactly once, and never again.
     """
-    from immich_memories.photos import photo_pipeline
+    from immich_memories.photos import photo_pipeline, scoring
     from immich_memories.photos.scoring import PhotoLook
 
     asset = _photo("shot", "IMG_1375.HEIC")
@@ -149,9 +149,9 @@ def test_a_score_cached_before_photos_could_describe_themselves_is_re_asked(tmp_
         ),
         save_asset_score=lambda **_kw: None,
     )
-    monkeypatch.setattr(photo_pipeline, "_get_score_cache", lambda _db: cache)
+    monkeypatch.setattr(scoring, "_get_score_cache", lambda _db: cache)
     monkeypatch.setattr(
-        photo_pipeline,
+        scoring,
         "_llm_score_photo",
         lambda *_a, **_k: PhotoLook(score=0.42, payload={"description": "a whiteboard"}),
     )

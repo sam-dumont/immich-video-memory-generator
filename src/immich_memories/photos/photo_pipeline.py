@@ -20,6 +20,7 @@ from typing import Any
 import cv2
 import numpy as np
 
+from immich_memories.analysis.source_filter import from_the_camera_roll
 from immich_memories.analysis.unified_budget import (
     BudgetCandidate,
     UnifiedSelection,
@@ -36,11 +37,15 @@ from immich_memories.photos.renderer import (
     face_aware_pan,
     render_ken_burns_streaming,
 )
-from immich_memories.photos.scoring import PhotoLook, score_photo
+from immich_memories.photos.scoring import _enhance_with_llm, score_photo
 from immich_memories.processing.assembly_config import AssemblyClip
 from immich_memories.processing.ffmpeg_runner import write_frames_to_ffmpeg
 
 logger = logging.getLogger(__name__)
+# How many previews the tie-break may fetch when nothing cached them. The
+# photos in contention are what it is for, and a library's worth of previews
+# is the cost the LLM shortlist exists to avoid.
+_QUALITY_FETCH_BUDGET = 120
 
 
 @dataclass
@@ -88,7 +93,9 @@ def score_photos(
 
     # The metadata score alone ties hundreds of photos onto a handful of
     # values; what the pixels say breaks those ties (#489).
-    metadata_scored = _apply_frame_quality(metadata_scored, config, thumbnail_cache)
+    metadata_scored = _apply_frame_quality(
+        metadata_scored, config, thumbnail_cache, thumbnail_fn=thumbnail_fn
+    )
 
     # Cap only the expensive semantic-scoring shortlist.
     shortlist_size = llm_shortlist_size(video_clip_count, len(metadata_scored), config.max_ratio)
@@ -127,23 +134,23 @@ def look_at_selected_photos(
     config: Any,
     client: Any,
     provider_circuit: Any = None,
-) -> dict[str, dict]:
+) -> dict[str, tuple[float, dict]]:
     """A VLM look at the handful of photos that reached a cut without one.
 
-    The shortlist is a budget: thirty of nearly two thousand photos are looked
-    at, and selection then picks from all of them. So most stills in a
-    finished cut have no description, and the holistic review — told never to
-    drop a clip for missing information — cannot judge any of them.
-
-    Bounded to what actually shipped, which is a dozen or so calls rather than
-    the whole library, and cached like any other look so a rerun pays nothing.
+    The shortlist is a budget — thirty of nearly two thousand — and selection
+    picks from all of them, so most stills in a finished cut have no
+    description and the review cannot judge them. Bounded to what shipped and
+    cached, so a rerun pays nothing. Returns the blended score beside the
+    description: both come out of the same look, and handing back only the
+    words let a look change what the review reads but never what selection
+    ranked on.
     """
     if not assets:
         return {}
     work_dir = config.cache.cache_path / "photo-looks"
     work_dir.mkdir(parents=True, exist_ok=True)
     scored = [(asset, score_photo(asset, config.photos)) for asset in assets]
-    _enhanced, payloads = _enhance_with_llm(
+    enhanced, payloads = _enhance_with_llm(
         scored,
         config.photos,
         work_dir,
@@ -153,35 +160,12 @@ def look_at_selected_photos(
         thumbnail_fn=client.get_asset_thumbnail,
         provider_circuit=provider_circuit,
     )
-    return payloads
-
-
-def from_the_camera_roll(photo_assets: list[Asset], config: Any) -> list[Asset]:
-    """Drop the photos nothing says the library's own camera made.
-
-    Videos are filtered on the same rule before analysis; photos reached
-    selection without ever being asked, so a collage forwarded through a
-    messaging app walked into a year recap while a doorbell clip beside it was
-    turned away. Dropped here rather than later because there is no sense
-    paying a VLM to score something that cannot ship.
-    """
-    from immich_memories.analysis.source_filter import not_shot_here
-
-    analysis = getattr(config, "analysis", None)
-    patterns = getattr(analysis, "exclude_filename_patterns", ())
-    stills_need_a_camera = getattr(analysis, "exclude_stills_without_camera_exif", False)
-    if not patterns and not stills_need_a_camera:
-        return photo_assets
-    kept = [
-        asset
-        for asset in photo_assets
-        if not not_shot_here(asset, patterns=patterns, stills_need_a_camera=stills_need_a_camera)
-    ]
-    if len(kept) < len(photo_assets):
-        logger.info(
-            "Source filter: %d photo(s) from excluded sources", len(photo_assets) - len(kept)
-        )
-    return kept
+    looked = {asset.id: score for asset, score in enhanced}
+    return {
+        asset_id: (looked[asset_id], payload)
+        for asset_id, payload in payloads.items()
+        if asset_id in looked
+    }
 
 
 def _no_photos_to_choose_between(video_candidates: list[BudgetCandidate]) -> PhotoSelectionResult:
@@ -350,10 +334,55 @@ _CONTRAST_SHARE = 0.2
 _EXPOSURE_SHARE = 0.2
 
 
+def _frames_for_quality(
+    scored: list[tuple[Asset, float]],
+    thumbnail_cache: Any,
+    thumbnail_fn: Any,
+    budget: int,
+) -> list[bytes | None]:
+    """The thumbnail behind each photo, fetching where nothing cached one.
+
+    Reading the cache alone was enough on the UI path and empty on the CLI
+    one, where the only writers are the video prefetcher and burst dedup — so
+    nearly every photo arrived unmeasured and kept the flat share, while the
+    log claimed quality decided a third of the score.
+
+    Fetching is bounded and spread across the timeline, the same way the LLM
+    shortlist is drawn: what the tie-break is for is the photos in contention,
+    and a library's worth of previews is the cost the shortlist exists to
+    avoid.
+    """
+    frames: list[bytes | None] = [
+        thumbnail_cache.get(asset.id, "preview") if thumbnail_cache else None
+        for asset, _score in scored
+    ]
+    if thumbnail_fn is None:
+        return frames
+
+    missing = [index for index, data in enumerate(frames) if not data]
+    if len(missing) > budget:
+        chosen = _select_distributed([scored[index] for index in missing], budget)
+        wanted = {asset.id for asset, _score in chosen}
+        missing = [index for index in missing if scored[index][0].id in wanted]
+
+    fetched = 0
+    for index in missing:
+        try:
+            frames[index] = thumbnail_fn(scored[index][0].id, size="preview")
+            fetched += 1
+        except (ImmichAPIError, OSError, RuntimeError, ValueError) as exc:  # noqa: PERF203
+            logger.debug("No preview for %s: %s", scored[index][0].id, type(exc).__name__)
+    if fetched:
+        logger.info("Frame quality: fetched %d preview(s) to break the score ties", fetched)
+    return frames
+
+
 def _apply_frame_quality(
     scored: list[tuple[Asset, float]],
     config: PhotoConfig,
     thumbnail_cache: Any,
+    thumbnail_fn: Any = None,
+    budget: int = _QUALITY_FETCH_BUDGET,
 ) -> list[tuple[Asset, float]]:
     """Re-weight scores so a share of each is decided by the image itself.
 
@@ -361,15 +390,13 @@ def _apply_frame_quality(
     "best N" means "first N of the largest group". Measured on four months:
     227-648 photos collapsing onto 5-8 distinct scores, all inside 0.24-0.48.
     """
-    if thumbnail_cache is None or len(scored) < 2:
+    if (thumbnail_cache is thumbnail_fn is None) or len(scored) < 2:
         return scored
 
     from immich_memories.photos.frame_quality import measure, rank
 
-    measured = []
-    for asset, _score in scored:
-        data = thumbnail_cache.get(asset.id, "preview")
-        measured.append(measure(data) if data else None)
+    frames = _frames_for_quality(scored, thumbnail_cache, thumbnail_fn, budget)
+    measured = [measure(data) if data else None for data in frames]
 
     usable = [(i, m) for i, m in enumerate(measured) if m is not None]
     if len(usable) < 2:
@@ -512,237 +539,6 @@ def _select_distributed(
             seen.add(best[0].id)
 
     return selected
-
-
-# What a cached row can answer depends on the prompt as much as on the model,
-# so the cache key carries both. Rows written when a photo could only report
-# two numbers cannot describe themselves, and would have held that silence
-# forever; bumping this invalidates them once, and never again.
-_PHOTO_LOOK_VERSION = "look1"
-
-
-def _photo_look_version(model: str) -> str:
-    """The cache key for a photo look: which model, answering which prompt."""
-    return f"{model}#{_PHOTO_LOOK_VERSION}"
-
-
-def semantic_payloads_for(
-    db_path: Path | None,
-    asset_ids: list[str],
-    model_version: str | None,
-) -> dict[str, dict]:
-    """What the VLM said about these photos, keyed by asset id.
-
-    Read from the score cache rather than threaded back through scoring: the
-    row is written as each photo is scored, so this answers for the ones just
-    looked at and for the ones a previous run paid for. Callers hand the
-    result to cache_projection.apply_semantic_payload.
-    """
-    if not db_path or not asset_ids:
-        return {}
-    cache = _get_score_cache(db_path)
-    if cache is None:
-        return {}
-    rows = _cached_scores(cache, asset_ids, _photo_look_version(model_version or ""))
-    return {asset_id: _payload_from_cache(row) for asset_id, row in rows.items()}
-
-
-def _as_float(value: object) -> float | None:
-    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
-
-
-def _as_text(value: object) -> str | None:
-    return value if isinstance(value, str) and value else None
-
-
-def _payload_from_cache(row: dict) -> dict:
-    """What a cached row can tell the review, in the shape a clip expects."""
-    return {
-        "description": row.get("llm_description"),
-        "category": None,
-        "emotion": row.get("llm_emotion"),
-        "subjects": None,
-        "setting": None,
-        "interestingness": row.get("llm_interest"),
-        "quality": row.get("llm_quality"),
-    }
-
-
-def _enhance_with_llm(
-    scored: list[tuple[Asset, float]],
-    config: PhotoConfig,
-    work_dir: Path,
-    download_fn: Any,
-    db_path: Path | None = None,
-    app_config: Any = None,
-    thumbnail_fn: Any = None,
-    provider_circuit: Any = None,
-) -> tuple[list[tuple[Asset, float]], dict[str, dict]]:
-    """Check cache first, then LLM-score uncached photos.
-
-    Returns the scores and, beside them, what the model said about each photo
-    — keyed by asset id, in the shape apply_semantic_payload expects. A photo
-    that cannot describe itself is one the holistic review cannot judge.
-    """
-
-    if app_config is None or not app_config.content_analysis.enabled or not app_config.llm.model:
-        return scored, {}
-
-    cache = _get_score_cache(db_path) if db_path else None
-    asset_ids = [a.id for a, _ in scored]
-    model_version = _photo_look_version(app_config.llm.model)
-    cached = _cached_scores(cache, asset_ids, model_version)
-
-    cache_hits = 0
-    enhanced: list[tuple[Asset, float]] = []
-    payloads: dict[str, dict] = {}
-    for asset, meta_score in scored:
-        # Cache hit — use stored score, and the words stored with it
-        if asset.id in cached:
-            row = cached[asset.id]
-            enhanced.append((asset, row["combined_score"]))
-            payloads[asset.id] = _payload_from_cache(row)
-            cache_hits += 1
-            continue
-
-        # Cache miss — download + LLM
-        look = _llm_score_photo(
-            asset,
-            meta_score,
-            config,
-            work_dir,
-            download_fn,
-            app_config,
-            thumbnail_fn=thumbnail_fn,
-            provider_circuit=provider_circuit,
-        )
-        effective_score = look.score if look is not None else meta_score
-        enhanced.append((asset, effective_score))
-        if look is not None:
-            payloads[asset.id] = look.payload
-
-        # Only successful semantic results belong to the configured model.
-        if cache and look is not None and model_version:
-            cache.save_asset_score(
-                asset_id=asset.id,
-                asset_type="photo",
-                metadata_score=meta_score,
-                combined_score=effective_score,
-                llm_interest=_as_float(look.payload.get("interestingness")),
-                llm_quality=_as_float(look.payload.get("quality")),
-                llm_emotion=_as_text(look.payload.get("emotion")),
-                llm_description=_as_text(look.payload.get("description")),
-                model_version=model_version,
-            )
-
-    if cache_hits:
-        logger.info(f"Photo score cache: {cache_hits} hits, {len(scored) - cache_hits} misses")
-
-    return enhanced, payloads
-
-
-def _llm_score_photo(
-    asset: Asset,
-    meta_score: float,
-    config: PhotoConfig,
-    work_dir: Path,
-    download_fn: Any,
-    app_config: Any,
-    thumbnail_fn: Any = None,
-    provider_circuit: Any = None,
-) -> PhotoLook | None:
-    """Look at a photo with the VLM, using a lightweight thumbnail.
-
-    Uses Immich thumbnail API (~100 KB) instead of downloading the full
-    HEIC (5-15 MB). Falls back to full download if no thumbnail_fn.
-    """
-    from immich_memories.photos.scoring import score_photo_with_llm
-
-    if provider_circuit is not None and not provider_circuit.available:
-        return None
-
-    thumb_path = work_dir / f"{asset.id}_thumb.jpg"
-
-    # WHY: Thumbnails are ~100 KB vs 5-15 MB for full HEICs. The VLM
-    # doesn't need HDR gain maps or 4K resolution to score a photo.
-    if thumbnail_fn and not thumb_path.exists():
-        try:
-            thumb_bytes = thumbnail_fn(asset.id, size="preview")
-            thumb_path.write_bytes(thumb_bytes)
-        except (ImmichAPIError, OSError, RuntimeError, ValueError):
-            thumbnail_fn = None  # Fall back to full download
-
-    if thumb_path.exists():
-        try:
-            return score_photo_with_llm(
-                thumb_path,
-                meta_score,
-                config,
-                app_config,
-                provider_circuit=provider_circuit,
-            )
-        except (OSError, RuntimeError, ValueError):
-            return None
-
-    # Fallback: download full file (old behavior)
-    ext = Path(asset.original_file_name).suffix if asset.original_file_name else ".jpg"
-    raw_path = work_dir / f"{asset.id}{ext}"
-    if not raw_path.exists():
-        try:
-            download_fn(asset.id, raw_path)
-        except (ImmichAPIError, OSError, RuntimeError, ValueError):
-            return None
-
-    try:
-        from immich_memories.photos.animator import prepare_photo_source
-
-        prepared = prepare_photo_source(raw_path, work_dir)
-        return score_photo_with_llm(
-            prepared.path,
-            meta_score,
-            config,
-            app_config,
-            provider_circuit=provider_circuit,
-        )
-    except (OSError, RuntimeError, ValueError):
-        return None
-
-
-def _cached_scores(cache, asset_ids: list[str], model_version: str | None) -> dict:
-    """Previously computed scores, or nothing if the cache cannot answer.
-
-    The cache opens lazily, so an unwritable database survives construction
-    and raises on the first read instead — which took photo scoring down with
-    it. Losing the cache costs LLM calls, not the run.
-    """
-    import sqlite3
-
-    if not cache or not model_version:
-        return {}
-    try:
-        return cache.get_asset_scores_batch(asset_ids, model_version=model_version)
-    except (OSError, sqlite3.Error) as exc:
-        logger.debug("Photo score cache unreadable (%s): rescoring", exc)
-        return {}
-
-
-def _get_score_cache(db_path: Path):
-    """Get the asset score cache, or None when it cannot be opened.
-
-    sqlite raises OperationalError rather than OSError for an unwritable or
-    missing directory, so that case escaped the guard and took photo scoring
-    down with it. A cache that cannot be opened costs repeated LLM calls, not
-    a failed run.
-    """
-    import sqlite3
-
-    try:
-        from immich_memories.cache.asset_score_cache import AssetScoreCache
-
-        return AssetScoreCache(db_path=db_path)
-    except (ImportError, OSError, sqlite3.Error) as exc:
-        logger.debug("Photo score cache unavailable (%s): scores will not persist", exc)
-        return None
 
 
 def _render_single_photo(

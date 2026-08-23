@@ -143,11 +143,17 @@ musicgen:
 ### Local/API Fallback and Stem Separation
 
 ACE-Step `lib` mode automatically falls back to the configured ACE-Step REST API when the local
-package is not installed. It does not switch to MusicGen after an ACE generation failure.
+package is not installed.
 
-When both providers are enabled, ACE-Step generates the track and MusicGen supplies remote Demucs
-stem separation. With MusicGen disabled, an installed local Demucs handles stems instead. When
-ACE-Step is disabled, MusicGen handles both generation and stems.
+Generators are tried in order. With both enabled, ACE-Step goes first and MusicGen is the fallback:
+an ACE-Step failure costs the run its first choice, not its music. Only when every enabled generator
+fails does the run drop to a bundled track. With ACE-Step disabled, MusicGen handles generation on
+its own.
+
+MusicGen also supplies remote Demucs stem separation when it is enabled; with it disabled, an
+installed local Demucs handles stems instead. Stems are separated only for the web UI, whose mixer
+ducks the four stems independently. The CLI masters the full mix and ducks that, so it asks for no
+separation rather than paying for a Demucs run it would discard.
 
 ### Custom Music
 

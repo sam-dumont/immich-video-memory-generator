@@ -125,7 +125,7 @@ class SelectionQuality:
                 [f"{len(unverified)} clip(s) analyzed for real before judging"],
             )
             attempted.update(u.clip.asset.id for u in unverified)
-            unverified = self._look_at_stills_among(unverified)
+            unverified, result = self._settle_the_stills(unverified, by_id, result)
             if not unverified:
                 continue
             try:
@@ -173,37 +173,35 @@ class SelectionQuality:
             by_id[v.clip.asset.id] = v
         return {v.clip.asset.id for v in kept}
 
-    def _look_at_stills_among(self, unverified: list[ClipWithSegment]) -> list[ClipWithSegment]:
-        """Look at the stills here and now, and hand back the footage.
+    def _settle_the_stills(
+        self,
+        unverified: list[ClipWithSegment],
+        by_id: dict[str, ClipWithSegment],
+        result: PipelineResult,
+    ) -> tuple[list[ClipWithSegment], PipelineResult]:
+        """Look at the stills, let their days reconsider, hand back the footage.
 
-        A still's real look is the photo scorer: the video analyzer fails on a
-        photograph and writes back a zero, so a photo it could not read was
-        not merely unseen but ranked last.
+        The look moves their scores as well as their descriptions, so a day
+        may now prefer a frame it could not judge before — and re-selection
+        has to hear that, or the look changed only the caption.
         """
+        from immich_memories.analysis import photo_look
+
         stills = [u for u in unverified if is_a_still(u.clip.asset)]
-        self._look_at_stills(stills)
-        return [u for u in unverified if not is_a_still(u.clip.asset)]
-
-    def _look_at_stills(self, stills: list[ClipWithSegment]) -> None:
-        """Give the review eyes on the photographs that reached the cut."""
-        if not stills:
-            return
-        from immich_memories.analysis.cache_projection import apply_semantic_payload
-        from immich_memories.photos import photo_pipeline
-
-        logger.info("Verify pass: looking at %d selected photo(s)", len(stills))
-        try:
-            payloads = photo_pipeline.look_at_selected_photos(
-                [s.clip.asset for s in stills],
-                config=self._app_config,
-                client=self.client,
-                provider_circuit=self.provider_circuit,
+        deps = {
+            "config": self._app_config,
+            "client": self.client,
+            "provider_circuit": self.provider_circuit,
+        }
+        photo_look.look_at_stills(stills, **deps)
+        if stills:
+            photo_look.repick_days(
+                selected=[by_id[c.asset.id] for c in result.selected_clips if c.asset.id in by_id],
+                pool=list(by_id.values()),
+                **deps,
             )
-        except (OSError, RuntimeError, ValueError) as exc:
-            logger.debug("Photo look failed: %s", type(exc).__name__)
-            return
-        for member in stills:
-            apply_semantic_payload(member.clip, payloads.get(member.clip.asset.id))
+            result = self.refiner.phase_refine(list(by_id.values()), self.tracker)
+        return [u for u in unverified if not is_a_still(u.clip.asset)], result
 
     def final_review_drop(
         self,

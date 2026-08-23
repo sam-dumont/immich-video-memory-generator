@@ -29,6 +29,7 @@ from .animations import (
 )
 from .backgrounds import create_background_for_style
 from .backgrounds_animated import create_animated_background
+from .colors import ceil_white_for_hdr
 from .fonts import get_font_path as get_cached_font_path
 from .styles import TitleStyle
 
@@ -62,6 +63,8 @@ class RenderSettings:
     duration: float = 3.5
     animation_duration: float = 0.5
     animated_background: bool = True  # Enable animated backgrounds by default
+    # Frames stay 8-bit either way; this only ceilings text to graphics white (#506)
+    hdr: bool = False
 
 
 class TitleRenderer:
@@ -550,6 +553,12 @@ class TitleRenderer:
         else:
             text_color = "#FFFFFF"
             blend_mode = "screen"
+
+        # WHY (#506): in an HDR run this text is graphics drawn over picture, and
+        # full white sits above the picture's own diffuse white. The dark-on-light
+        # choices above are already well under the ceiling and come back untouched.
+        if self.settings.hdr:
+            text_color = ceil_white_for_hdr(text_color)
 
         self._cached_text_settings = (text_color, blend_mode)
         return self._cached_text_settings

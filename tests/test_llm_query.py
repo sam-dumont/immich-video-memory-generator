@@ -32,6 +32,30 @@ class TestQueryLlmOllama:
         assert call_payload["model"] == "llama3"
         assert "images" not in call_payload
 
+    @pytest.mark.asyncio
+    async def test_extra_params_reach_ollama_without_losing_its_options(self):
+        """Ollama keeps num_ctx and friends under `options`, beside temperature."""
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(
+            provider="ollama",
+            base_url="http://localhost:11434",
+            model="llava",
+            extra_params={"format": "json", "options": {"num_ctx": 8192}},
+        )
+        mock_response = AsyncMock()
+        mock_response.status_code = 200
+        mock_response.json = MagicMock(return_value={"response": "{}"})
+        mock_response.raise_for_status = lambda: None
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", return_value=mock_response) as mock_post:
+            await query_llm("Generate a title", config)
+
+        call_payload = mock_post.call_args[1]["json"]
+        assert call_payload["format"] == "json"
+        assert call_payload["options"] == {"temperature": 0.3, "num_ctx": 8192}
+
 
 class TestQueryLlmOpenAI:
     """OpenAI-compatible provider: text-only query."""

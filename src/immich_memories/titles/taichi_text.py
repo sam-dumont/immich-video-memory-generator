@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+from immich_memories.titles.colors import ceil_white_for_hdr
 from immich_memories.titles.safe_zones import safe_text_width
 
 if TYPE_CHECKING:
@@ -120,6 +121,9 @@ class TextConfig(Protocol):
     def text_color(self) -> str: ...
 
     @property
+    def hdr(self) -> bool: ...
+
+    @property
     def title_size_ratio(self) -> float: ...
 
     @property
@@ -178,7 +182,14 @@ class TitleTextRenderer:
         """Resolve the text color and, when SDF is requested, load the atlas."""
         self.config = config
         self.gpu = buffers
-        self.text_rgb = _hex_to_rgb(config.text_color)
+        # WHY (#506): text is the one thing here drawn at graphics white. In an
+        # HDR run full white sits above the diffuse white of the picture behind
+        # it and the title glows; the ceiling applies to the parsed colour so
+        # every text path downstream — SDF, kernel, and the PIL layers — gets it.
+        text_color = config.text_color
+        if config.hdr:
+            text_color = ceil_white_for_hdr(text_color)
+        self.text_rgb = _hex_to_rgb(text_color)
 
         self._title_layer: np.ndarray | None = None
         self._subtitle_layer: np.ndarray | None = None

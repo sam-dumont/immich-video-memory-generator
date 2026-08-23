@@ -9,8 +9,12 @@ import pytest
 
 from immich_memories.api.models import Person
 from immich_memories.config_models import PhotoConfig
-from immich_memories.photos.photo_pipeline import _photo_look_version
-from immich_memories.photos.scoring import PhotoLook, score_photo, score_photo_with_llm
+from immich_memories.photos.scoring import (
+    PhotoLook,
+    _photo_look_version,
+    score_photo,
+    score_photo_with_llm,
+)
 from tests.conftest import make_asset
 
 
@@ -194,7 +198,7 @@ class TestCacheFirstScoring:
 
     def test_cache_hit_returns_cached_score_no_llm(self):
         """When score is cached, return it without calling LLM."""
-        from immich_memories.photos.photo_pipeline import _enhance_with_llm
+        from immich_memories.photos.scoring import _enhance_with_llm
 
         scored = [(_photo("cached-1"), 0.4)]
 
@@ -205,11 +209,11 @@ class TestCacheFirstScoring:
 
         with (
             patch(
-                "immich_memories.photos.photo_pipeline._get_score_cache",
+                "immich_memories.photos.scoring._get_score_cache",
                 return_value=mock_cache,
             ),
             patch(
-                "immich_memories.photos.photo_pipeline._llm_score_photo",
+                "immich_memories.photos.scoring._llm_score_photo",
             ) as mock_llm,
         ):
             result, _payloads = _enhance_with_llm(
@@ -229,7 +233,7 @@ class TestCacheFirstScoring:
         from immich_memories.cache.asset_score_cache import AssetScoreCache
         from immich_memories.cache.database import VideoAnalysisCache
         from immich_memories.config_loader import Config
-        from immich_memories.photos.photo_pipeline import _enhance_with_llm
+        from immich_memories.photos.scoring import _enhance_with_llm
 
         db_path = tmp_path / "scores.db"
         VideoAnalysisCache(db_path)
@@ -241,7 +245,7 @@ class TestCacheFirstScoring:
         )
 
         with patch(
-            "immich_memories.photos.photo_pipeline._llm_score_photo",
+            "immich_memories.photos.scoring._llm_score_photo",
             return_value=PhotoLook(score=0.77, payload={"description": "a photograph"}),
         ):
             result, _payloads = _enhance_with_llm(
@@ -263,7 +267,7 @@ class TestCacheFirstScoring:
         from immich_memories.cache.asset_score_cache import AssetScoreCache
         from immich_memories.cache.database import VideoAnalysisCache
         from immich_memories.config_loader import Config
-        from immich_memories.photos.photo_pipeline import _enhance_with_llm
+        from immich_memories.photos.scoring import _enhance_with_llm
 
         db_path = tmp_path / "scores.db"
         VideoAnalysisCache(db_path)
@@ -273,7 +277,7 @@ class TestCacheFirstScoring:
         )
 
         with patch(
-            "immich_memories.photos.photo_pipeline._llm_score_photo",
+            "immich_memories.photos.scoring._llm_score_photo",
             return_value=None,
         ):
             result, _payloads = _enhance_with_llm(
@@ -296,7 +300,7 @@ class TestCacheFirstScoring:
         from immich_memories.cache.asset_score_cache import AssetScoreCache
         from immich_memories.cache.database import VideoAnalysisCache
         from immich_memories.config_loader import Config
-        from immich_memories.photos.photo_pipeline import _enhance_with_llm
+        from immich_memories.photos.scoring import _enhance_with_llm
 
         db_path = tmp_path / "scores.db"
         VideoAnalysisCache(db_path)
@@ -328,7 +332,7 @@ class TestCacheFirstScoring:
         self, tmp_path: Path
     ) -> None:
         from immich_memories.config_loader import Config
-        from immich_memories.photos.photo_pipeline import _enhance_with_llm
+        from immich_memories.photos.scoring import _enhance_with_llm
 
         thumbnail_fn = MagicMock(return_value=b"jpeg")
         download_fn = MagicMock()
@@ -348,7 +352,7 @@ class TestCacheFirstScoring:
 
     def test_cache_miss_calls_llm_and_saves(self):
         """When score is NOT cached, run LLM and save result to cache."""
-        from immich_memories.photos.photo_pipeline import _enhance_with_llm
+        from immich_memories.photos.scoring import _enhance_with_llm
 
         scored = [(_photo("uncached-1"), 0.5)]
 
@@ -358,12 +362,12 @@ class TestCacheFirstScoring:
 
         with (
             patch(
-                "immich_memories.photos.photo_pipeline._get_score_cache",
+                "immich_memories.photos.scoring._get_score_cache",
                 return_value=mock_cache,
             ),
             # WHY: external LLM API
             patch(
-                "immich_memories.photos.photo_pipeline._llm_score_photo",
+                "immich_memories.photos.scoring._llm_score_photo",
                 return_value=PhotoLook(score=0.75, payload={"description": "a photograph"}),
             ) as mock_llm,
         ):
@@ -396,7 +400,7 @@ class TestCacheFirstScoring:
 
     def test_mix_of_cached_and_uncached(self):
         """Batch with some hits and some misses handles both correctly."""
-        from immich_memories.photos.photo_pipeline import _enhance_with_llm
+        from immich_memories.photos.scoring import _enhance_with_llm
 
         scored = [
             (_photo("hit-1"), 0.3),
@@ -413,12 +417,12 @@ class TestCacheFirstScoring:
 
         with (
             patch(
-                "immich_memories.photos.photo_pipeline._get_score_cache",
+                "immich_memories.photos.scoring._get_score_cache",
                 return_value=mock_cache,
             ),
             # WHY: external LLM API — only called for the miss
             patch(
-                "immich_memories.photos.photo_pipeline._llm_score_photo",
+                "immich_memories.photos.scoring._llm_score_photo",
                 return_value=PhotoLook(score=0.55, payload={"description": "a photograph"}),
             ) as mock_llm,
         ):
@@ -442,19 +446,19 @@ class TestCacheFirstScoring:
 
     def test_no_cache_available_still_runs_llm(self):
         """When _get_score_cache returns None, LLM runs for all assets."""
-        from immich_memories.photos.photo_pipeline import _enhance_with_llm
+        from immich_memories.photos.scoring import _enhance_with_llm
 
         scored = [(_photo("no-cache-1"), 0.5)]
 
         with (
             # WHY: database unavailable
             patch(
-                "immich_memories.photos.photo_pipeline._get_score_cache",
+                "immich_memories.photos.scoring._get_score_cache",
                 return_value=None,
             ),
             # WHY: external LLM API
             patch(
-                "immich_memories.photos.photo_pipeline._llm_score_photo",
+                "immich_memories.photos.scoring._llm_score_photo",
                 return_value=PhotoLook(score=0.7, payload={"description": "a photograph"}),
             ) as mock_llm,
         ):
@@ -474,7 +478,7 @@ class TestCacheFirstScoring:
         self, tmp_path: Path
     ) -> None:
         """A failed request must not look like a model-authored score to the cache."""
-        from immich_memories.photos.photo_pipeline import _llm_score_photo
+        from immich_memories.photos.scoring import _llm_score_photo
 
         asset = _photo("fail-1", exif_make="Apple")
         meta_score = 0.42
@@ -490,7 +494,7 @@ class TestCacheFirstScoring:
 
     def test_llm_prepare_failure_is_not_a_semantic_score(self, tmp_path: Path):
         """A decode failure remains distinguishable so callers avoid caching it."""
-        from immich_memories.photos.photo_pipeline import _llm_score_photo
+        from immich_memories.photos.scoring import _llm_score_photo
 
         asset = _photo("fail-2")
         asset.original_file_name = "photo.jpg"
@@ -516,7 +520,7 @@ class TestCacheFirstScoring:
 
     def test_get_score_cache_returns_none_on_import_error(self):
         """_get_score_cache returns None when dependencies are unavailable."""
-        from immich_memories.photos.photo_pipeline import _get_score_cache
+        from immich_memories.photos.scoring import _get_score_cache
 
         with patch(
             "immich_memories.cache.asset_score_cache.AssetScoreCache",

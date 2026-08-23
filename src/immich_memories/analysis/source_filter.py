@@ -15,10 +15,13 @@ the second line, for the cameras whose filenames give nothing away.
 from __future__ import annotations
 
 import fnmatch
+import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+logger = logging.getLogger(__name__)
 
 
 def from_an_excluded_source(name: str | None, patterns: Sequence[str]) -> bool:
@@ -85,3 +88,29 @@ def not_shot_here(
     if from_an_excluded_source(getattr(asset, "original_file_name", None), patterns):
         return True
     return stills_need_a_camera and _a_still_with_no_camera(asset)
+
+
+def from_the_camera_roll(photo_assets: list[Any], config: Any) -> list[Any]:
+    """Drop the photos nothing says the library's own camera made.
+
+    Videos are filtered on the same rule before analysis; photos reached
+    selection without ever being asked, so a collage forwarded through a
+    messaging app walked into a year recap while a doorbell clip beside it was
+    turned away. Dropped here rather than later because there is no sense
+    paying a VLM to score something that cannot ship.
+    """
+    analysis = getattr(config, "analysis", None)
+    patterns = getattr(analysis, "exclude_filename_patterns", ())
+    stills_need_a_camera = getattr(analysis, "exclude_stills_without_camera_exif", False)
+    if not patterns and not stills_need_a_camera:
+        return photo_assets
+    kept = [
+        asset
+        for asset in photo_assets
+        if not not_shot_here(asset, patterns=patterns, stills_need_a_camera=stills_need_a_camera)
+    ]
+    if len(kept) < len(photo_assets):
+        logger.info(
+            "Source filter: %d photo(s) from excluded sources", len(photo_assets) - len(kept)
+        )
+    return kept

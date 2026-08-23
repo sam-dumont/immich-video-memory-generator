@@ -385,6 +385,50 @@ class TestStemSeparatorProtocol:
         assert result.versions[0].stems is None
 
 
+class TestSeparationIsOptional:
+    """Demucs is minutes of CPU. Only ask for it where the stems get used (#499)."""
+
+    def test_the_cli_path_does_not_order_stems_it_cannot_use(self, tmp_path):
+        """`auto_generate_music` returns the full mix and the mix path masters it;
+        the stems it used to separate were dropped on the floor."""
+        from unittest.mock import AsyncMock
+
+        from immich_memories.config_loader import Config
+        from immich_memories.generate_music import auto_generate_music
+
+        config = Config()
+        config.ace_step.enabled = True
+
+        # WHY: replaces the ACE-Step/MusicGen generation call, which needs a GPU
+        # or a running server.
+        with patch(
+            "immich_memories.audio.music_generator.generate_music_for_video",
+            new_callable=AsyncMock,
+            return_value=None,
+        ) as generate:
+            auto_generate_music(config, [], tmp_path, None)
+
+        assert generate.await_args.kwargs["separate_stems"] is False
+
+    def test_a_caller_that_cannot_use_stems_gets_no_separator(self):
+        from immich_memories.audio.music_pipeline import create_pipeline
+
+        config = MagicMock()
+        config.ace_step.enabled = True
+        config.ace_step.mode = "api"
+        config.musicgen.enabled = True
+        config.musicgen.base_url = "http://gpu-server:8000"
+        config.musicgen.api_key = ""
+        config.musicgen.timeout_seconds = 3600
+        config.musicgen.num_versions = 1
+
+        pipeline = create_pipeline(config, separate_stems=False)
+
+        assert pipeline._stem_separator is None
+        # Turning stems off must not cost the generator behind ACE-Step.
+        assert len(pipeline._generators) == 2
+
+
 class TestCreatePipelineAutoDemucs:
     """Test that create_pipeline auto-detects local Demucs."""
 
@@ -427,7 +471,7 @@ class TestCreatePipelineAPIMode:
     """Test pipeline wiring for Linux/GPU deployments (external API servers)."""
 
     def test_musicgen_api_as_stem_separator(self):
-        """When musicgen enabled + ace_step enabled, MusicGen is stem separator only."""
+        """When musicgen enabled + ace_step enabled, MusicGen supplies the stems."""
         from immich_memories.audio.generators.musicgen_backend import MusicGenBackend
         from immich_memories.audio.music_pipeline import create_pipeline
 
@@ -446,9 +490,31 @@ class TestCreatePipelineAPIMode:
         ):
             pipeline = create_pipeline(config)
 
-        # MusicGen should be stem separator (not a generator — ACE-Step handles that)
         assert isinstance(pipeline._stem_separator, MusicGenBackend)
-        assert len(pipeline._generators) == 1  # Only ACE-Step
+        # ACE-Step leads; MusicGen sits behind it in the chain (see the fallback
+        # test below) as well as supplying stems.
+        assert len(pipeline._generators) == 2
+
+    def test_musicgen_is_also_the_generation_fallback_behind_ace_step(self):
+        """The chain existed but was never wired: with both enabled the factory
+        built a one-element list, so a failing ACE-Step fell straight through to
+        a bundled track instead of to the configured generator (#499)."""
+        from immich_memories.audio.generators.ace_step_backend import ACEStepBackend
+        from immich_memories.audio.generators.musicgen_backend import MusicGenBackend
+        from immich_memories.audio.music_pipeline import create_pipeline
+
+        config = MagicMock()
+        config.ace_step.enabled = True
+        config.ace_step.mode = "api"
+        config.musicgen.enabled = True
+        config.musicgen.base_url = "http://gpu-server:8000"
+        config.musicgen.api_key = ""
+        config.musicgen.timeout_seconds = 3600
+        config.musicgen.num_versions = 1
+
+        pipeline = create_pipeline(config)
+
+        assert [type(g) for g in pipeline._generators] == [ACEStepBackend, MusicGenBackend]
 
     def test_musicgen_api_preferred_over_local_demucs(self):
         """When musicgen is enabled, it takes priority for stems even if demucs is installed."""

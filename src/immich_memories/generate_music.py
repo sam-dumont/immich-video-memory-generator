@@ -268,6 +268,9 @@ def auto_generate_music(
                 app_config=config,
                 memory_type=memory_type,
                 photo_cadence_seconds=photo_cadence_seconds(assembly_clips),
+                # This path masters the full mix and ducks that. It has no way to
+                # use stems, so it used to run Demucs and drop the result (#499).
+                separate_stems=False,
             )
         )
 
