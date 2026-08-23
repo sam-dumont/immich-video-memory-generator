@@ -464,6 +464,18 @@ def _select_distributed(
     return selected
 
 
+# What a cached row can answer depends on the prompt as much as on the model,
+# so the cache key carries both. Rows written when a photo could only report
+# two numbers cannot describe themselves, and would have held that silence
+# forever; bumping this invalidates them once, and never again.
+_PHOTO_LOOK_VERSION = "look1"
+
+
+def _photo_look_version(model: str) -> str:
+    """The cache key for a photo look: which model, answering which prompt."""
+    return f"{model}#{_PHOTO_LOOK_VERSION}"
+
+
 def semantic_payloads_for(
     db_path: Path | None,
     asset_ids: list[str],
@@ -481,7 +493,7 @@ def semantic_payloads_for(
     cache = _get_score_cache(db_path)
     if cache is None:
         return {}
-    rows = _cached_scores(cache, asset_ids, model_version)
+    rows = _cached_scores(cache, asset_ids, _photo_look_version(model_version or ""))
     return {asset_id: _payload_from_cache(row) for asset_id, row in rows.items()}
 
 
@@ -528,7 +540,7 @@ def _enhance_with_llm(
 
     cache = _get_score_cache(db_path) if db_path else None
     asset_ids = [a.id for a, _ in scored]
-    model_version = app_config.llm.model
+    model_version = _photo_look_version(app_config.llm.model)
     cached = _cached_scores(cache, asset_ids, model_version)
 
     cache_hits = 0

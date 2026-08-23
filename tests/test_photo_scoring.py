@@ -9,6 +9,7 @@ import pytest
 
 from immich_memories.api.models import Person
 from immich_memories.config_models import PhotoConfig
+from immich_memories.photos.photo_pipeline import _photo_look_version
 from immich_memories.photos.scoring import PhotoLook, score_photo, score_photo_with_llm
 from tests.conftest import make_asset
 
@@ -256,7 +257,7 @@ class TestCacheFirstScoring:
         assert result[0][1] == 0.77
         assert refreshed is not None
         assert refreshed["combined_score"] == 0.77
-        assert refreshed["model_version"] == "qwen-3.6"
+        assert refreshed["model_version"] == _photo_look_version("qwen-3.6")
 
     def test_failed_semantic_score_falls_back_without_claiming_model(self, tmp_path: Path) -> None:
         from immich_memories.cache.asset_score_cache import AssetScoreCache
@@ -388,7 +389,9 @@ class TestCacheFirstScoring:
             llm_quality=None,
             llm_emotion=None,
             llm_description="a photograph",
-            model_version="qwen-test",
+            # The key names the model and the prompt it answered, so rows from
+            # before a photo could describe itself are invalidated once.
+            model_version=_photo_look_version("qwen-test"),
         )
 
     def test_mix_of_cached_and_uncached(self):

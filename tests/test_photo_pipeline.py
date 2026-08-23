@@ -126,3 +126,46 @@ def test_the_description_survives_scoring_and_the_score_stays_a_number(tmp_path,
 
     assert enhanced == [(asset, 0.42)], "the score must still be a number"
     assert payloads["shot"]["description"] == "a whiteboard covered in sticky notes"
+
+
+def test_a_score_cached_before_photos_could_describe_themselves_is_re_asked(tmp_path, monkeypatch):
+    """Old rows hold a score and nothing else, and would hold it forever.
+
+    The cache is keyed by the model that produced the row. What the row can
+    answer is now a property of the prompt as well, so the key carries both —
+    which invalidates the scores-only rows exactly once, and never again.
+    """
+    from immich_memories.photos import photo_pipeline
+    from immich_memories.photos.scoring import PhotoLook
+
+    asset = _photo("shot", "IMG_1375.HEIC")
+    asset.exif_info = SimpleNamespace(make="Apple", model="iPhone 15 Pro")
+
+    stale = {"shot": {"combined_score": 0.9, "llm_description": None, "llm_emotion": None}}
+    cache = SimpleNamespace(
+        get_asset_scores_batch=lambda _ids, model_version=None: (
+            stale if model_version == "qwen-3.6" else {}
+        ),
+        save_asset_score=lambda **_kw: None,
+    )
+    monkeypatch.setattr(photo_pipeline, "_get_score_cache", lambda _db: cache)
+    monkeypatch.setattr(
+        photo_pipeline,
+        "_llm_score_photo",
+        lambda *_a, **_k: PhotoLook(score=0.42, payload={"description": "a whiteboard"}),
+    )
+
+    enhanced, payloads = photo_pipeline._enhance_with_llm(
+        [(asset, 0.3)],
+        config=SimpleNamespace(score_penalty=0.0),
+        work_dir=tmp_path,
+        download_fn=None,
+        db_path=tmp_path / "scores.db",
+        app_config=SimpleNamespace(
+            content_analysis=SimpleNamespace(enabled=True),
+            llm=SimpleNamespace(model="qwen-3.6"),
+        ),
+    )
+
+    assert enhanced == [(asset, 0.42)], "the stale row must not stand in for a look"
+    assert payloads["shot"]["description"] == "a whiteboard"
