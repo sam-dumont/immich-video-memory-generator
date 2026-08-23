@@ -2,7 +2,7 @@
 # Uses uv for fast Python package management
 export PYTHONUNBUFFERED=1
 
-.PHONY: help install dev dev-ci dev-test run preflight docs-cli-check test test-extras test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-audio-mixing test-integration-titles test-fast benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci integration-coverage-for-diff ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots diagrams capability-matrix
+.PHONY: help install dev dev-ci dev-test run preflight docs-cli-check docs-config-check test test-extras test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-audio-mixing test-integration-titles test-fast benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci integration-coverage-for-diff ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots diagrams capability-matrix
 
 # Default target
 help:
@@ -580,7 +580,7 @@ launch-check-ci: ensure-dev e2e
 	@echo "Hermetic launch check passed!"
 
 # Full CI-equivalent pipeline (locally)
-ci: ensure-dev lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint semgrep refurb dep-check arch-check duplication critique docs-cli-check test
+ci: ensure-dev lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint semgrep refurb dep-check arch-check duplication critique docs-cli-check docs-config-check test
 	@echo "Full CI pipeline passed!"
 
 # Self-critique for AI code smells
@@ -750,6 +750,10 @@ docs-cli-check:
 		exit 1; \
 	fi; \
 	echo "CLI reference is up to date"
+
+# Fail when the hand-written config reference and the pydantic schema disagree on keys
+docs-config-check:
+	uv run python scripts/check_config_docs.py
 
 docs-install:
 	cd docs-site && npm ci
