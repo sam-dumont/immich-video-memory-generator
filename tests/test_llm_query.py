@@ -308,3 +308,54 @@ class TestConfigurableRequestShape:
             await query_llm("Judge this cut", config)
 
         assert mock_post.call_args[1]["json"]["do_sample"] is False
+
+
+class TestTimeoutShape:
+    """A stuck server must fail while connecting, not hold the read budget.
+
+    The scalar form gave connecting the whole generation budget — the
+    documented stall-class bug (a one-hour read budget applied to connect)."""
+
+    @pytest.mark.asyncio
+    async def test_openai_client_gets_a_per_phase_timeout(self):
+        import httpx
+
+        from immich_memories.analysis.llm_query import CONNECT_TIMEOUT_SECONDS, query_llm
+
+        # WHY: httpx is the transport boundary; asserting the timeout shape handed to it.
+        with patch("httpx.AsyncClient", autospec=True) as mock_client:
+            mock_client.return_value.__aenter__.return_value.post = AsyncMock(
+                return_value=_openai_response()
+            )
+            await query_llm(
+                "Judge this cut", _thinking_config(thinking=False), timeout_seconds=3600
+            )
+
+        timeout = mock_client.call_args[1]["timeout"]
+        assert isinstance(timeout, httpx.Timeout)
+        assert timeout.connect == CONNECT_TIMEOUT_SECONDS
+        assert timeout.read == 3600
+
+    @pytest.mark.asyncio
+    async def test_anthropic_client_gets_a_per_phase_timeout(self):
+        import httpx
+
+        from immich_memories.analysis.llm_query import CONNECT_TIMEOUT_SECONDS, query_llm
+
+        config = LLMConfig(provider="anthropic", model="m", api_key="k")
+        anthropic_ok = AsyncMock()
+        anthropic_ok.status_code = 200
+        anthropic_ok.json = MagicMock(
+            return_value={"content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn"}
+        )
+        anthropic_ok.raise_for_status = lambda: None
+        # WHY: httpx is the transport boundary; asserting the timeout shape handed to it.
+        with patch("httpx.AsyncClient", autospec=True) as mock_client:
+            mock_client.return_value.__aenter__.return_value.post = AsyncMock(
+                return_value=anthropic_ok
+            )
+            await query_llm("Judge this cut", config, timeout_seconds=3600)
+
+        timeout = mock_client.call_args[1]["timeout"]
+        assert isinstance(timeout, httpx.Timeout)
+        assert timeout.connect == CONNECT_TIMEOUT_SECONDS

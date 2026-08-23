@@ -155,7 +155,7 @@ async def _query_ollama(
         "stream": False,
         "options": {"temperature": temperature},
     }
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with httpx.AsyncClient(timeout=build_llm_timeout(timeout)) as client:
         resp = await client.post(f"{base_url}/api/generate", json=payload)
         resp.raise_for_status()
         return resp.json()["response"]
@@ -186,7 +186,7 @@ async def _query_anthropic(
         payload["thinking"] = {"type": "enabled", "budget_tokens": ANTHROPIC_THINKING_BUDGET_TOKENS}
         payload.pop("temperature")
         timeout = max(timeout, THINKING_MIN_TIMEOUT_SECONDS)
-    async with httpx.AsyncClient(timeout=timeout, headers=headers) as client:
+    async with httpx.AsyncClient(timeout=build_llm_timeout(timeout), headers=headers) as client:
         resp = await client.post(f"{base_url}/v1/messages", json=payload)
         resp.raise_for_status()
         body = resp.json()
@@ -224,7 +224,7 @@ async def _query_openai(
     adaptations = _PARAM_ADAPTATIONS.setdefault((base_url, config.model), set())
     _apply_adaptations(payload, adaptations)
     # Retry up to 3x — some models (Qwen/mlx-vlm) return null content
-    async with httpx.AsyncClient(timeout=timeout, headers=headers) as client:
+    async with httpx.AsyncClient(timeout=build_llm_timeout(timeout), headers=headers) as client:
         for attempt in range(3):
             resp = await _post_adapted(client, f"{base_url}/chat/completions", payload, adaptations)
             resp.raise_for_status()
