@@ -388,15 +388,7 @@ class SmartPipeline:
             finally:
                 with contextlib.suppress(Exception):
                     self.analyzer.close()
-            # WHY only what we asked for: analysis can hand back more than it
-            # was given (a Live Photo expands into its components), and any
-            # extra id lands straight back in the pool — resurrecting a clip
-            # the judge or the review had just dropped.
-            requested = {u.clip.asset.id for u in unverified}
-            verified = [v for v in verified if v.clip.asset.id in requested]
-            verified_ids = {v.clip.asset.id for v in verified}
-            for v in verified:
-                by_id[v.clip.asset.id] = v
+            verified_ids = self._absorb_verified(by_id, verified, unverified)
             for u in unverified:
                 if u.clip.asset.id not in verified_ids:
                     by_id[u.clip.asset.id] = ClipWithSegment(
@@ -408,6 +400,36 @@ class SmartPipeline:
                     )
             result = self.refiner.phase_refine(list(by_id.values()), self.tracker)
         return result, list(by_id.values())
+
+    def _absorb_verified(
+        self,
+        by_id: dict[str, ClipWithSegment],
+        verified: list[ClipWithSegment],
+        unverified: list[ClipWithSegment],
+    ) -> set[str]:
+        """Take back what the look actually established, and nothing else.
+
+        Only what we asked for: analysis can hand back more than it was given
+        (a Live Photo expands into its components), and any extra id lands
+        straight back in the pool — resurrecting a clip the judge or the
+        review had just dropped.
+
+        And only what it managed to look at. The analyzer returns a
+        placeholder scored 0.0 when a download blips or a decode dies, and
+        writing that over a real score sends the clip under the judge's floor,
+        which drops it from the pool for good — losing a clip to a transient
+        error. A failed look is not a verdict of zero.
+        """
+        requested = {u.clip.asset.id for u in unverified}
+        kept = [v for v in verified if v.clip.asset.id in requested]
+        for v in kept:
+            if not v.analyzed and v.clip.asset.id in by_id:
+                logger.debug(
+                    "Verify pass: keeping the score for %s, the look failed", v.clip.asset.id
+                )
+                continue
+            by_id[v.clip.asset.id] = v
+        return {v.clip.asset.id for v in kept}
 
     def _look_at_stills_among(self, unverified: list[ClipWithSegment]) -> list[ClipWithSegment]:
         """Look at the stills here and now, and hand back the footage.

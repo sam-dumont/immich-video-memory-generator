@@ -153,6 +153,11 @@ class ClipAnalyzer:
                         start_time=0.0,
                         end_time=min(duration, self.config.avg_clip_duration),
                         score=0.0,
+                        # Not a verdict of zero: nothing looked at this clip.
+                        # The verify pass reads this to know it must keep the
+                        # score it already had rather than write the
+                        # placeholder over it.
+                        analyzed=False,
                     )
                 )
 
