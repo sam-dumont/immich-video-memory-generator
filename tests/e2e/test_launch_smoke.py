@@ -189,8 +189,15 @@ def _drive_to_step4(page: Page, launch_app_url: str) -> None:
     expect(include_photos).to_have_attribute("aria-checked", "true")
     page.get_by_role("button", name="Next: Review Clips").click()
 
-    expect(page.get_by_text("2 Videos, 2 Photos Found", exact=True)).to_be_visible(timeout=60_000)
-    for filename in ("video-1.mp4", "video-2.mp4", "photo-1.jpg", "photo-2.jpg"):
+    expect(page.get_by_text("3 Videos, 3 Photos Found", exact=True)).to_be_visible(timeout=60_000)
+    for filename in (
+        "video-1.mp4",
+        "video-2.mp4",
+        "video-3.mp4",
+        "photo-1.jpg",
+        "photo-2.jpg",
+        "photo-3.jpg",
+    ):
         expect(page.get_by_text(filename, exact=True).first).to_be_visible()
 
     page.get_by_role("button", name="Generate Memories", exact=True).click()

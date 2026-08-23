@@ -16,19 +16,49 @@ from urllib.parse import parse_qs, urlsplit
 
 _MONTH_BUCKET = "2024-06-01T00:00:00.000Z"
 
+# WHY these three facts together (#525): selection drops a clip whose short
+# side is under 1080 unless EXIF names a camera, drops a still that names no
+# camera at all, and collapses assets whose thumbnails hash alike. A fixture
+# that is small, EXIF-less and identical fails all three, and the release smoke
+# test spent every run since #491 reporting "Pipeline selected no clips".
+_CAMERA_EXIF = {"make": "FakeCam", "model": "Hermetic One"}
+_VIDEO_SIZE = (1920, 1080)
+_PHOTO_SIZE = (2016, 1512)
+_VIDEO_DURATION = 4.0
 
-def _asset_payload(
-    asset_id: str,
-    asset_type: str,
-    filename: str,
-    *,
-    is_favorite: bool = False,
-) -> dict[str, Any]:
-    created_at = f"2024-06-{1 + int(asset_id[-1]):02d}T12:00:00.000Z"
+
+@dataclass(frozen=True, slots=True)
+class _Moment:
+    """One synthetic capture: its own scene, its own day of the month."""
+
+    asset_id: str
+    lavfi: str
+    taken_at: str
+    is_favorite: bool = False
+
+
+# Scenes chosen by measurement: every pair of these sources is at least 20 bits
+# apart under the average hash the pipeline dedups with, against a duplicate
+# threshold of 8 and a moment-suppression threshold of 10.
+_VIDEO_MOMENTS = (
+    _Moment("video-1", "testsrc2", "2024-06-08T10:15:00.000Z", is_favorite=True),
+    _Moment("video-2", "mandelbrot", "2024-06-14T16:20:00.000Z"),
+    _Moment("video-3", "testsrc", "2024-06-21T18:40:00.000Z"),
+)
+_PHOTO_MOMENTS = (
+    _Moment("photo-1", "smptehdbars", "2024-06-09T11:30:00.000Z"),
+    _Moment("photo-2", "rgbtestsrc", "2024-06-15T09:05:00.000Z", is_favorite=True),
+    _Moment("photo-3", "colorspectrum", "2024-06-22T14:10:00.000Z"),
+)
+
+
+def _asset_payload(moment: _Moment, asset_type: str) -> dict[str, Any]:
     is_video = asset_type == "VIDEO"
+    filename = f"{moment.asset_id}.{'mp4' if is_video else 'jpg'}"
+    width, height = _VIDEO_SIZE if is_video else _PHOTO_SIZE
     return {
-        "id": asset_id,
-        "deviceAssetId": f"fake-device-{asset_id}",
+        "id": moment.asset_id,
+        "deviceAssetId": f"fake-device-{moment.asset_id}",
         "ownerId": "fake-user",
         "deviceId": "fake-device",
         "type": asset_type,
@@ -36,39 +66,41 @@ def _asset_payload(
         "originalFileName": filename,
         "originalMimeType": "video/mp4" if is_video else "image/jpeg",
         "thumbhash": None,
-        "fileCreatedAt": created_at,
-        "fileModifiedAt": created_at,
-        "localDateTime": created_at,
-        "updatedAt": created_at,
-        "isFavorite": is_favorite,
+        "fileCreatedAt": moment.taken_at,
+        "fileModifiedAt": moment.taken_at,
+        "localDateTime": moment.taken_at,
+        "updatedAt": moment.taken_at,
+        "isFavorite": moment.is_favorite,
         "isArchived": False,
         "isTrashed": False,
-        "duration": 2000 if is_video else None,
-        "width": 640 if is_video else 320,
-        "height": 360 if is_video else 240,
+        "duration": int(_VIDEO_DURATION * 1000) if is_video else None,
+        "width": width,
+        "height": height,
         "exifInfo": {
-            "dateTimeOriginal": created_at,
-            "fileSizeInByte": 100_000 if is_video else 2_000,
+            **_CAMERA_EXIF,
+            "dateTimeOriginal": moment.taken_at,
+            "fileSizeInByte": 400_000 if is_video else 20_000,
         },
         "people": [],
         "faces": [],
-        "checksum": f"fake-checksum-{asset_id}",
+        "checksum": f"fake-checksum-{moment.asset_id}",
         "livePhotoVideoId": None,
         "smartInfo": {"objects": ["test-pattern"]},
     }
 
 
-_ASSETS = (
-    _asset_payload("video-1", "VIDEO", "video-1.mp4", is_favorite=True),
-    _asset_payload("video-2", "VIDEO", "video-2.mp4"),
-    _asset_payload("photo-1", "IMAGE", "photo-1.jpg"),
-    _asset_payload("photo-2", "IMAGE", "photo-2.jpg"),
+TIMELINE_ASSETS = tuple(_asset_payload(moment, "VIDEO") for moment in _VIDEO_MOMENTS) + tuple(
+    _asset_payload(moment, "IMAGE") for moment in _PHOTO_MOMENTS
 )
 
 
 def _assets_for_query(query: dict[str, list[str]]) -> list[dict[str, Any]]:
     requested_type = query.get("type", [None])[0]
-    return [asset for asset in _ASSETS if requested_type is None or asset["type"] == requested_type]
+    return [
+        asset
+        for asset in TIMELINE_ASSETS
+        if requested_type is None or asset["type"] == requested_type
+    ]
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,17 +142,27 @@ class FakeImmichServer:
     def start(cls, root: Path, *, upload_commit_delay: float = 0.0) -> Self:
         """Start the service on an operating-system-selected localhost port."""
         root.mkdir(parents=True, exist_ok=True)
-        source_video = _generate_video(root)
-        photo_paths = _generate_photos(root)
-        media = {"video-1": source_video, "video-2": source_video} | photo_paths
+        media_dir = root / "media"
+        media_dir.mkdir()
+        video_paths = _generate_videos(media_dir)
+        photo_paths = _generate_photos(media_dir)
+        media = video_paths | photo_paths
+        thumbnail_paths = _generate_thumbnails(media_dir, media)
         uploads: list[RecordedUpload] = []
         httpd = ThreadingHTTPServer(
             ("127.0.0.1", 0),
-            _handler_type(media, uploads, upload_commit_delay),
+            _handler_type(media, thumbnail_paths, uploads, upload_commit_delay),
         )
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
-        return cls(root, httpd, thread, source_video, photo_paths, uploads)
+        return cls(
+            root,
+            httpd,
+            thread,
+            video_paths[_VIDEO_MOMENTS[0].asset_id],
+            photo_paths,
+            uploads,
+        )
 
     def close(self) -> None:
         """Stop the service and release its listening socket."""
@@ -129,29 +171,37 @@ class FakeImmichServer:
         self._thread.join(timeout=5)
 
 
-def _generate_video(root: Path) -> Path:
-    media_dir = root / "media"
-    media_dir.mkdir()
-    video_path = media_dir / "source.mp4"
+def _ffmpeg(*args: str) -> None:
     subprocess.run(  # noqa: S603
-        [
-            "ffmpeg",
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-y",
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", *args],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _generate_videos(media_dir: Path) -> dict[str, Path]:
+    width, height = _VIDEO_SIZE
+    videos: dict[str, Path] = {}
+    for index, moment in enumerate(_VIDEO_MOMENTS):
+        video_path = media_dir / f"{moment.asset_id}.mp4"
+        _ffmpeg(
             "-f",
             "lavfi",
+            # WHY -t below rather than a duration= option: mandelbrot has none.
             "-i",
-            "testsrc2=size=640x360:rate=30:duration=2.0",
+            f"{moment.lavfi}=size={width}x{height}:rate=30",
             "-f",
             "lavfi",
+            # A tone per clip: silence detection reads the audio track too.
             "-i",
-            "sine=frequency=440:sample_rate=48000:duration=2.0",
+            f"sine=frequency={440 + index * 110}:sample_rate=48000:duration={_VIDEO_DURATION}",
             "-map",
             "0:v:0",
             "-map",
             "1:a:0",
+            "-t",
+            str(_VIDEO_DURATION),
             "-c:v",
             "libx264",
             "-preset",
@@ -172,48 +222,66 @@ def _generate_video(root: Path) -> Path:
             "-movflags",
             "+faststart",
             str(video_path),
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return video_path
-
-
-def _generate_photos(root: Path) -> dict[str, Path]:
-    media_dir = root / "media"
-    photos: dict[str, Path] = {}
-    for asset_id, color in (("photo-1", "red"), ("photo-2", "blue")):
-        photo_path = media_dir / f"{asset_id}.jpg"
-        subprocess.run(  # noqa: S603
-            [
-                "ffmpeg",
-                "-hide_banner",
-                "-loglevel",
-                "error",
-                "-y",
-                "-f",
-                "lavfi",
-                "-i",
-                f"color=c={color}:size=320x240",
-                "-frames:v",
-                "1",
-                "-q:v",
-                "2",
-                "-update",
-                "1",
-                str(photo_path),
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
         )
-        photos[asset_id] = photo_path
+        videos[moment.asset_id] = video_path
+    return videos
+
+
+def _generate_photos(media_dir: Path) -> dict[str, Path]:
+    width, height = _PHOTO_SIZE
+    photos: dict[str, Path] = {}
+    for moment in _PHOTO_MOMENTS:
+        photo_path = media_dir / f"{moment.asset_id}.jpg"
+        _ffmpeg(
+            "-f",
+            "lavfi",
+            "-i",
+            f"{moment.lavfi}=size={width}x{height}",
+            "-frames:v",
+            "1",
+            "-q:v",
+            "2",
+            "-update",
+            "1",
+            str(photo_path),
+        )
+        photos[moment.asset_id] = photo_path
     return photos
+
+
+def _generate_thumbnails(media_dir: Path, media: dict[str, Path]) -> dict[str, Path]:
+    """Render each asset its own preview, the way Immich serves one per asset.
+
+    One shared thumbnail made every asset a perceptual duplicate of every
+    other, and Phase 1 clustering collapsed the whole pool into one clip.
+    """
+    thumbnail_dir = media_dir / "thumbnails"
+    thumbnail_dir.mkdir()
+    thumbnails: dict[str, Path] = {}
+    for asset_id, source in media.items():
+        thumbnail_path = thumbnail_dir / f"{asset_id}.jpg"
+        seek = ["-ss", str(_VIDEO_DURATION / 2)] if source.suffix == ".mp4" else []
+        _ffmpeg(
+            *seek,
+            "-i",
+            str(source),
+            "-frames:v",
+            "1",
+            "-vf",
+            "scale=1440:-2",
+            "-q:v",
+            "3",
+            "-update",
+            "1",
+            str(thumbnail_path),
+        )
+        thumbnails[asset_id] = thumbnail_path
+    return thumbnails
 
 
 def _handler_type(
     media: dict[str, Path],
+    thumbnails: dict[str, Path],
     uploads: list[RecordedUpload],
     upload_commit_delay: float,
 ) -> type[BaseHTTPRequestHandler]:
@@ -276,8 +344,8 @@ def _handler_type(
                 content_type = "video/mp4" if media[parts[0]].suffix == ".mp4" else "image/jpeg"
                 self._send_file(media[parts[0]], content_type)
                 return
-            if len(parts) == 2 and parts[0] in media and parts[1] == "thumbnail":
-                self._send_file(media["photo-1"], "image/jpeg")
+            if len(parts) == 2 and parts[0] in thumbnails and parts[1] == "thumbnail":
+                self._send_file(thumbnails[parts[0]], "image/jpeg")
                 return
             if (
                 len(parts) == 3
@@ -299,7 +367,7 @@ def _handler_type(
                 requested_type = payload.get("type")
                 items = [
                     asset
-                    for asset in _ASSETS
+                    for asset in TIMELINE_ASSETS
                     if requested_type is None or asset["type"] == requested_type
                 ]
                 self._send_json(

@@ -5,21 +5,27 @@ from __future__ import annotations
 import json
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
+from itertools import combinations
 from pathlib import Path
 
 import httpx
 import pytest
 
 from immich_memories.analysis.density_budget import AssetEntry
+from immich_memories.analysis.duplicate_hashing import compute_thumbnail_hash, hamming_distance
 from immich_memories.analysis.smart_pipeline import PipelineConfig, SmartPipeline
 from immich_memories.api.compatibility import ResolvedApiVersion
 from immich_memories.api.immich import ImmichAuthError, SyncImmichClient
-from immich_memories.api.models import AssetType
+from immich_memories.api.models import AssetType, VideoClipInfo
+from immich_memories.config_models import AnalysisConfig
 from immich_memories.timeperiod import calendar_year
 from immich_memories.ui.pages.step2_loading import MIN_CLIP_DURATION, _build_clips
 from tests.e2e.fake_immich import FakeImmichServer
 
 pytestmark = pytest.mark.e2e
+
+_VIDEO_IDS = ["video-1", "video-2", "video-3"]
+_PHOTO_IDS = ["photo-1", "photo-2", "photo-3"]
 
 
 def _probe_video(path: Path) -> dict:
@@ -132,7 +138,7 @@ def test_wrong_api_key_is_rejected(fake_immich_server) -> None:
         client.get_current_user()
 
 
-def test_monthly_timeline_contains_two_videos_and_two_photos(fake_immich_server) -> None:
+def test_monthly_timeline_contains_every_synthetic_moment(fake_immich_server) -> None:
     """Timeline discovery exposes the fake's complete deterministic inventory."""
     with SyncImmichClient(
         fake_immich_server.base_url,
@@ -143,16 +149,10 @@ def test_monthly_timeline_contains_two_videos_and_two_photos(fake_immich_server)
         assets = client.get_bucket_assets("2024-06-01T00:00:00.000Z", size="MONTH")
 
     assert [(bucket.time_bucket, bucket.count) for bucket in buckets] == [
-        ("2024-06-01T00:00:00.000Z", 4)
+        ("2024-06-01T00:00:00.000Z", 6)
     ]
-    assert [asset.id for asset in assets if asset.type is AssetType.VIDEO] == [
-        "video-1",
-        "video-2",
-    ]
-    assert [asset.id for asset in assets if asset.type is AssetType.IMAGE] == [
-        "photo-1",
-        "photo-2",
-    ]
+    assert [asset.id for asset in assets if asset.type is AssetType.VIDEO] == _VIDEO_IDS
+    assert [asset.id for asset in assets if asset.type is AssetType.IMAGE] == _PHOTO_IDS
 
 
 def test_monthly_timeline_honors_requested_asset_type_and_count(fake_immich_server) -> None:
@@ -175,10 +175,10 @@ def test_monthly_timeline_honors_requested_asset_type_and_count(fake_immich_serv
             asset_type=AssetType.IMAGE,
         )
 
-    assert [bucket.count for bucket in video_buckets] == [2]
-    assert [bucket.count for bucket in photo_buckets] == [2]
-    assert [asset.id for asset in videos] == ["video-1", "video-2"]
-    assert [asset.id for asset in photos] == ["photo-1", "photo-2"]
+    assert [bucket.count for bucket in video_buckets] == [3]
+    assert [bucket.count for bucket in photo_buckets] == [3]
+    assert [asset.id for asset in videos] == _VIDEO_IDS
+    assert [asset.id for asset in photos] == _PHOTO_IDS
 
 
 def test_metadata_search_filters_the_video_and_photo_inventories(fake_immich_server) -> None:
@@ -191,10 +191,10 @@ def test_metadata_search_filters_the_video_and_photo_inventories(fake_immich_ser
         videos = client.search_metadata(asset_type=AssetType.VIDEO).all_assets
         photos = client.search_metadata(asset_type=AssetType.IMAGE).all_assets
 
-    assert [asset.id for asset in videos] == ["video-1", "video-2"]
-    assert [asset.duration_seconds for asset in videos] == [2.0, 2.0]
-    assert [asset.id for asset in photos] == ["photo-1", "photo-2"]
-    assert [asset.duration_seconds for asset in photos] == [None, None]
+    assert [asset.id for asset in videos] == _VIDEO_IDS
+    assert [asset.duration_seconds for asset in videos] == [4.0, 4.0, 4.0]
+    assert [asset.id for asset in photos] == _PHOTO_IDS
+    assert [asset.duration_seconds for asset in photos] == [None, None, None]
 
 
 def test_search_uses_v3_millisecond_duration_on_the_wire(fake_immich_server) -> None:
@@ -207,7 +207,7 @@ def test_search_uses_v3_millisecond_duration_on_the_wire(fake_immich_server) -> 
 
     response.raise_for_status()
     durations = [asset["duration"] for asset in response.json()["assets"]["items"]]
-    assert durations == [2000, 2000]
+    assert durations == [4000, 4000, 4000]
     assert all(type(duration) is int for duration in durations)
 
 
@@ -223,12 +223,16 @@ def test_real_step2_duration_filter_keeps_selectable_fake_clips(fake_immich_serv
     clips, skipped = _build_clips(assets)
 
     assert skipped == 0
-    assert [clip.asset.id for clip in clips] == ["video-1", "video-2"]
+    assert [clip.asset.id for clip in clips] == _VIDEO_IDS
     assert all(clip.duration_seconds >= MIN_CLIP_DURATION for clip in clips)
 
 
-def test_default_2160p_budget_gate_keeps_a_fake_favorite(fake_immich_server) -> None:
-    """A favorite fake video survives the real default low-resolution gate."""
+def test_default_2160p_budget_gate_keeps_every_fake_video(fake_immich_server) -> None:
+    """No fake video may depend on a star to reach analysis (#525).
+
+    The gate reads camera EXIF and resolution off the asset, so the fixture
+    only survives it by carrying both — which is exactly what it stopped doing.
+    """
     with SyncImmichClient(
         fake_immich_server.base_url,
         fake_immich_server.api_key,
@@ -246,7 +250,7 @@ def test_default_2160p_budget_gate_keeps_a_fake_favorite(fake_immich_server) -> 
             score=0.0,
             width=asset.width,
             height=asset.height,
-            is_camera_original=True,
+            is_camera_original=VideoClipInfo(asset=asset).is_camera_original,
         )
         for asset in assets
     ]
@@ -256,7 +260,8 @@ def test_default_2160p_budget_gate_keeps_a_fake_favorite(fake_immich_server) -> 
     survivors = pipeline._apply_budget_quality_gate(entries)
 
     assert pipeline.config.output_resolution == 2160
-    assert [(entry.asset_id, entry.is_favorite) for entry in survivors] == [("video-1", True)]
+    assert [entry.asset_id for entry in survivors] == _VIDEO_IDS
+    assert [entry.asset_id for entry in survivors if entry.is_favorite] == ["video-1"]
 
 
 def test_original_and_playback_downloads_are_valid_h264_sdr_media(
@@ -282,18 +287,18 @@ def test_original_and_playback_downloads_are_valid_h264_sdr_media(
         assert streams["video"] == {
             "codec_name": "h264",
             "codec_type": "video",
-            "width": 640,
-            "height": 360,
+            "width": 1920,
+            "height": 1080,
             "pix_fmt": "yuv420p",
             "color_transfer": "bt709",
         }
         assert streams["audio"]["codec_name"] == "aac"
-        assert float(probe["format"]["duration"]) == pytest.approx(2.0, abs=0.1)
+        assert float(probe["format"]["duration"]) == pytest.approx(4.0, abs=0.1)
 
 
 def test_photo_originals_are_generated_jpegs(fake_immich_server, tmp_path: Path) -> None:
-    """Both fake photo assets download as real, locally generated JPEG files."""
-    assert set(fake_immich_server.photo_paths) == {"photo-1", "photo-2"}
+    """Every fake photo downloads as a real JPEG above the source-quality floor."""
+    assert set(fake_immich_server.photo_paths) == set(_PHOTO_IDS)
     assert all(
         path.is_relative_to(fake_immich_server.root)
         for path in fake_immich_server.photo_paths.values()
@@ -305,34 +310,34 @@ def test_photo_originals_are_generated_jpegs(fake_immich_server, tmp_path: Path)
         api_version="v3",
     ) as client:
         downloaded = [
-            client.download_asset(asset_id, tmp_path / f"{asset_id}.jpg")
-            for asset_id in ("photo-1", "photo-2")
+            client.download_asset(asset_id, tmp_path / f"{asset_id}.jpg") for asset_id in _PHOTO_IDS
         ]
 
     for path in downloaded:
         assert _probe_image(path)["streams"] == [
-            {"codec_name": "mjpeg", "codec_type": "video", "width": 320, "height": 240}
+            {"codec_name": "mjpeg", "codec_type": "video", "width": 2016, "height": 1512}
         ]
 
 
-def test_real_client_downloads_generated_step2_thumbnail(
-    fake_immich_server,
-    tmp_path: Path,
-) -> None:
-    """Step 2 thumbnail traffic receives real generated JPEG bytes."""
+def test_every_asset_thumbnail_shows_its_own_scene(fake_immich_server) -> None:
+    """One preview served for every asset made Phase 1 collapse the pool (#525)."""
     with SyncImmichClient(
         fake_immich_server.base_url,
         fake_immich_server.api_key,
         api_version="v3",
     ) as client:
-        thumbnail = client.get_asset_thumbnail("video-1", size="preview")
+        hashes = {
+            asset_id: compute_thumbnail_hash(client.get_asset_thumbnail(asset_id, size="preview"))
+            for asset_id in _VIDEO_IDS + _PHOTO_IDS
+        }
 
-    thumbnail_path = tmp_path / "video-1-thumbnail.jpg"
-    thumbnail_path.write_bytes(thumbnail)
-    assert thumbnail == fake_immich_server.photo_paths["photo-1"].read_bytes()
-    assert _probe_image(thumbnail_path)["streams"] == [
-        {"codec_name": "mjpeg", "codec_type": "video", "width": 320, "height": 240}
-    ]
+    threshold = AnalysisConfig().duplicate_hash_threshold
+    distances = {
+        (left, right): hamming_distance(hashes[left], hashes[right])
+        for left, right in combinations(sorted(hashes), 2)
+    }
+    assert all(hashes.values())
+    assert min(distances.values()) > threshold, f"near-duplicate previews: {distances}"
 
 
 def test_real_auto_client_uploads_and_fake_records_v3_multipart(fake_immich_server) -> None:
@@ -348,8 +353,8 @@ def test_real_auto_client_uploads_and_fake_records_v3_multipart(fake_immich_serv
     assert len(fake_immich_server.uploads) == 1
     upload = fake_immich_server.uploads[0]
     assert set(upload.fields) == {"filename", "fileCreatedAt", "fileModifiedAt"}
-    assert upload.fields["filename"] == "source.mp4"
-    assert upload.filename == "source.mp4"
+    assert upload.fields["filename"] == "video-1.mp4"
+    assert upload.filename == "video-1.mp4"
     assert upload.content_type == "video/mp4"
     assert upload.data == fake_immich_server.source_video.read_bytes()
 
