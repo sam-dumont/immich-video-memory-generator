@@ -91,6 +91,17 @@ analysis:
   max_optimal_duration: 10.0     # Max optimal duration for long sources (5-30s)
   target_extraction_ratio: 0.15  # Target ratio of clip to source (0.15 = use 15%; 0.05-0.5)
 
+  # Media the camera roll did not shoot (see Configuration → Footage the
+  # camera roll did not shoot). Setting the list replaces it; [] turns it off.
+  exclude_filename_patterns:     # case-insensitive globs on the source filename
+    - "RingVideo_*"
+    - "RPReplay_Final*"
+    - "Screen Recording *"
+    - "Screenshot*"
+    - "img-*-wa[0-9][0-9][0-9][0-9]*"
+    - "vid-*-wa[0-9][0-9][0-9][0-9]*"
+  exclude_stills_without_camera_exif: true   # a photo naming no camera was received, not shot
+
   # Duplicate detection
   duplicate_hash_threshold: 8    # Perceptual hash threshold (0-64)
   min_source_short_side: 1080    # Drop smaller clips unless they carry camera EXIF
