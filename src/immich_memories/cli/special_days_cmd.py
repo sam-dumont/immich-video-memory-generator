@@ -203,6 +203,7 @@ def _scan_library(
                 thumbnail_for=lambda asset_id: client.get_asset_thumbnail(asset_id, "thumbnail"),
                 ask=per_year,
                 extra_holidays=also_skip,
+                analysis_config=config.analysis,
             ):
                 found.append(
                     {

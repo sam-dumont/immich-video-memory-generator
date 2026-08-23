@@ -24,7 +24,7 @@ from immich_memories.analysis.clip_refiner import ClipRefiner
 from immich_memories.analysis.clip_scaler import ClipScaler
 from immich_memories.analysis.preview_builder import PreviewBuilder
 from immich_memories.analysis.progress import PipelinePhase, ProgressTracker
-from immich_memories.analysis.source_filter import from_an_excluded_source
+from immich_memories.analysis.source_filter import not_shot_here
 from immich_memories.analysis.thumbnail_prefetch import ThumbnailPrefetcher
 from immich_memories.config_presets import resolve_analysis_depth
 
@@ -718,12 +718,17 @@ class SmartPipeline:
             )
 
         patterns = self._analysis_config.exclude_filename_patterns
-        if patterns:
+        stills_need_a_camera = self._analysis_config.exclude_stills_without_camera_exif
+        if patterns or stills_need_a_camera:
             before = len(eligible)
             eligible = [
                 clip
                 for clip in eligible
-                if not from_an_excluded_source(clip.asset.original_file_name, patterns)
+                if not not_shot_here(
+                    clip.asset,
+                    patterns=patterns,
+                    stills_need_a_camera=stills_need_a_camera,
+                )
             ]
             if len(eligible) < before:
                 logger.info(

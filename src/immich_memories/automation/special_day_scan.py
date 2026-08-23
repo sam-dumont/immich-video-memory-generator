@@ -63,6 +63,28 @@ def holidays_in(year: int, extra: Iterable[str] = ()) -> set[date]:
     return covered
 
 
+def _shot_here(assets: list, analysis_config: Any) -> list:
+    """Whatever of this year the library's own camera actually made."""
+    from immich_memories.analysis.source_filter import not_shot_here
+
+    if analysis_config is None:
+        return assets
+    patterns = getattr(analysis_config, "exclude_filename_patterns", ())
+    stills_need_a_camera = getattr(analysis_config, "exclude_stills_without_camera_exif", False)
+    kept = [
+        asset
+        for asset in assets
+        if not not_shot_here(asset, patterns=patterns, stills_need_a_camera=stills_need_a_camera)
+    ]
+    if len(kept) < len(assets):
+        logger.info(
+            "Source filter: %d of %d assets were not shot here",
+            len(assets) - len(kept),
+            len(assets),
+        )
+    return kept
+
+
 def scan_year(
     assets: list,
     *,
@@ -71,8 +93,21 @@ def scan_year(
     thumbnail_for: Any = None,
     ask: int = 6,
     extra_holidays: Iterable[str] = (),
+    analysis_config: Any = None,
 ) -> list[DiscoveredDay]:
-    """Find the days in one year's assets that stand out, and name them."""
+    """Find the days in one year's assets that stand out, and name them.
+
+    Anything generation would throw away is removed first, so the scan judges
+    the same library a memory could actually be cut from. Measured on a real
+    day the scan called special: 37 of its 223 assets were received or
+    downloaded rather than shot, and they counted toward the day's volume and
+    its active hours and could be sampled into the prompt — so the model
+    narrated pictures nobody in the library had taken.
+    """
+    if not assets:
+        return []
+
+    assets = _shot_here(assets, analysis_config)
     if not assets:
         return []
 

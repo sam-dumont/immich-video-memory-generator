@@ -122,22 +122,25 @@ def score_photos(
 
 
 def _from_the_camera_roll(photo_assets: list[Asset], config: Any) -> list[Asset]:
-    """Drop the photos a name says nobody shot to keep.
+    """Drop the photos nothing says the library's own camera made.
 
-    Videos are filtered on the same patterns before analysis; photos reached
+    Videos are filtered on the same rule before analysis; photos reached
     selection without ever being asked, so a collage forwarded through a
     messaging app walked into a year recap while a doorbell clip beside it was
-    turned away.
+    turned away. Dropped here rather than later because there is no sense
+    paying a VLM to score something that cannot ship.
     """
-    from immich_memories.analysis.source_filter import from_an_excluded_source
+    from immich_memories.analysis.source_filter import not_shot_here
 
-    patterns = getattr(getattr(config, "analysis", None), "exclude_filename_patterns", ())
-    if not patterns:
+    analysis = getattr(config, "analysis", None)
+    patterns = getattr(analysis, "exclude_filename_patterns", ())
+    stills_need_a_camera = getattr(analysis, "exclude_stills_without_camera_exif", False)
+    if not patterns and not stills_need_a_camera:
         return photo_assets
     kept = [
         asset
         for asset in photo_assets
-        if not from_an_excluded_source(asset.original_file_name, patterns)
+        if not not_shot_here(asset, patterns=patterns, stills_need_a_camera=stills_need_a_camera)
     ]
     if len(kept) < len(photo_assets):
         logger.info(

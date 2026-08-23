@@ -52,3 +52,38 @@ def test_the_default_patterns_catch_what_the_camera_roll_did_not_shoot() -> None
     assert from_an_excluded_source("RingVideo_6763648097558121116.mp4", patterns)
     assert from_an_excluded_source("IMG-20190105-WA0006.jpg", patterns)
     assert from_an_excluded_source("rpreplay_final1560343200.mp4", patterns)
+
+
+def test_a_still_with_no_camera_in_its_exif_was_not_shot_here() -> None:
+    """Measured across four months of a real library, 5260 assets.
+
+    Stills with no EXIF make: 1498 .jpg named for a messaging app, 34 .png
+    downloads, and 9 camera originals that had lost their make. Videos are a
+    different story and are left alone — 25 of 224 make-less videos there are
+    genuine phone clips, and the filename rule already catches the rest.
+    """
+    from immich_memories.analysis.source_filter import not_shot_here
+    from immich_memories.api.models import AssetType
+
+    received = make_asset("received", original_file_name="IMG_2841.jpg", exif_make=None)
+    received.type = AssetType.IMAGE
+    shot = make_asset("shot", original_file_name="IMG_1375.HEIC", exif_make="Apple")
+    shot.type = AssetType.IMAGE
+    clip = make_asset("clip", original_file_name="IMG_1365.MOV", exif_make=None)
+
+    assert not_shot_here(received, patterns=(), stills_need_a_camera=True)
+    assert not not_shot_here(shot, patterns=(), stills_need_a_camera=True)
+    assert not not_shot_here(clip, patterns=(), stills_need_a_camera=True), (
+        "a phone clip loses its make often enough that this rule cannot judge video"
+    )
+
+
+def test_the_camera_rule_can_be_turned_off() -> None:
+    """A library of exported or edited originals would lose them to this."""
+    from immich_memories.analysis.source_filter import not_shot_here
+    from immich_memories.api.models import AssetType
+
+    received = make_asset("received", original_file_name="IMG_2841.jpg", exif_make=None)
+    received.type = AssetType.IMAGE
+
+    assert not not_shot_here(received, patterns=(), stills_need_a_camera=False)

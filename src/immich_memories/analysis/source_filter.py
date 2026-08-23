@@ -15,7 +15,7 @@ the second line, for the cameras whose filenames give nothing away.
 from __future__ import annotations
 
 import fnmatch
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -31,3 +31,39 @@ def from_an_excluded_source(name: str | None, patterns: Sequence[str]) -> bool:
         return False
     lowered = name.casefold()
     return any(fnmatch.fnmatch(lowered, pattern.casefold()) for pattern in patterns)
+
+
+def _a_still_with_no_camera(asset: Any) -> bool:
+    """A photograph whose EXIF names no camera at all.
+
+    Measured across four months of a real library, 5260 assets. Of the 1541
+    stills with no EXIF make, 1498 were .jpg named for a messaging app, 34
+    were .png downloads, and 9 were camera originals that had lost their make
+    somewhere. Of 224 make-less videos, 25 were genuine phone clips — so this
+    reads stills only, and video is left to the filename rule.
+    """
+    from immich_memories.api.models import AssetType
+
+    if getattr(asset, "type", None) != AssetType.IMAGE:
+        return False
+    exif = getattr(asset, "exif_info", None)
+    return not (exif and getattr(exif, "make", None))
+
+
+def not_shot_here(
+    asset: Any,
+    *,
+    patterns: Sequence[str],
+    stills_need_a_camera: bool,
+) -> bool:
+    """True when nothing about this asset says the library's own camera made it.
+
+    Cheap and metadata-only on purpose. Anything that will be thrown away
+    later should be gone before it is judged — before it counts toward a day's
+    volume, before it is sampled into a prompt, and before analysis pays for
+    it. Detection and generation import this from here so they cannot end up
+    disagreeing about what the library contains.
+    """
+    if from_an_excluded_source(getattr(asset, "original_file_name", None), patterns):
+        return True
+    return stills_need_a_camera and _a_still_with_no_camera(asset)

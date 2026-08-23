@@ -13,6 +13,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from immich_memories.api.models import AssetType
 from immich_memories.automation.special_day_scan import (
     DiscoveredDay,
     anniversaries_due,
@@ -25,7 +26,7 @@ from immich_memories.cli.special_days_cmd import (
     _year_of_assets,
     _years_in,
 )
-from immich_memories.config_models import TripsConfig
+from immich_memories.config_models import AnalysisConfig, TripsConfig
 
 
 def _asset(hour: int, minute: int = 0, day: int = 13) -> SimpleNamespace:
@@ -268,3 +269,47 @@ def test_the_years_already_in_the_catalogue_are_not_scanned_again(tmp_path) -> N
     catalogue = [{"day": "2014-12-31"}, {"day": "2015-06-01"}, {"day": "2015-07-04"}]
 
     assert _years_in(catalogue) == {2014, 2015}
+
+
+def test_media_the_camera_never_shot_is_gone_before_the_day_is_counted(monkeypatch) -> None:
+    """A day must not clear the bar on pictures somebody else took.
+
+    Measured on a real day the scan called special: 37 of its 223 assets were
+    received or downloaded rather than shot. They pushed the day's volume and
+    its active hours toward the thresholds, and they could be sampled into the
+    prompt — so the model narrated pictures the owner never took.
+    """
+    # WHY: ask_if_special is the LLM call; a day that reaches it is a day the
+    # filter failed to remove, which is the whole subject here.
+    monkeypatch.setattr(
+        "immich_memories.automation.special_day_scan.ask_if_special",
+        lambda *_a, **_k: SimpleNamespace(special=True, title="A day", subtitle="", what="out"),
+    )
+
+    shot = []
+    for hour in range(9, 12):
+        for minute in (0, 20, 40):
+            asset = _asset(hour, minute)
+            asset.exif_info = SimpleNamespace(city="Someplace", country="Belgium", make="Apple")
+            asset.type = AssetType.IMAGE
+            shot.append(asset)
+    received = []
+    for hour in range(12, 21):
+        for minute in (0, 20, 40):
+            asset = _asset(hour, minute)
+            asset.exif_info = SimpleNamespace(city="Someplace", country="Belgium", make=None)
+            asset.type = AssetType.IMAGE
+            received.append(asset)
+
+    # Together they clear both bars; the nine the camera shot do not, so the
+    # day only becomes a candidate at all by counting the other twenty-seven.
+    assert (
+        scan_year(
+            shot + received,
+            llm_config=None,
+            home=None,
+            ask=1,
+            analysis_config=AnalysisConfig(),
+        )
+        == []
+    )
