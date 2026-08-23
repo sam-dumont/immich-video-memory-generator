@@ -18,9 +18,13 @@ from immich_memories.analysis.smart_pipeline import ClipWithSegment
 from tests.conftest import make_clip
 
 
-def _at(hour: int, minute: int, score: float = 0.5) -> ClipWithSegment:
+def _at(
+    hour: int, minute: int, score: float = 0.5, *, is_favorite: bool = False
+) -> ClipWithSegment:
     when = datetime(2019, 12, 25, hour, minute, tzinfo=UTC)
-    clip = make_clip(f"c-{hour}{minute}", duration=5.0, file_created_at=when)
+    clip = make_clip(
+        f"c-{hour}{minute}", duration=5.0, file_created_at=when, is_favorite=is_favorite
+    )
     return ClipWithSegment(clip=clip, start_time=0.0, end_time=2.4, score=score)
 
 
@@ -70,3 +74,28 @@ def test_exactly_one_window_apart_is_still_one_moment() -> None:
     )
 
     assert len(kept) == 1
+
+
+def test_a_starred_shot_survives_a_cluster_when_the_cut_keeps_two_per_moment() -> None:
+    """Keeping one per moment protects favourites; keeping several must too.
+
+    A long memory asks for more than one clip per moment, and ranking the
+    cluster on score alone puts a starred shot behind any two ordinary ones
+    that happen to score better — dropping exactly what the viewer marked.
+    """
+    starred = _at(15, 50, score=0.5, is_favorite=True)
+    good = _at(15, 52, score=0.9)
+    fine = _at(15, 54, score=0.8)
+
+    kept = ClipScaler().deduplicate_temporal_clusters(
+        [starred, good, fine], time_window_minutes=5.0, keep_per_moment=2
+    )
+
+    assert len(kept) == 2
+    assert [c.clip.asset.is_favorite for c in kept].count(True) == 1, (
+        "the starred shot is kept, not outranked by score"
+    )
+    assert {c.clip.asset.id for c in kept} == {
+        starred.clip.asset.id,
+        good.clip.asset.id,
+    }, "the free slot goes to the best of the rest"

@@ -268,38 +268,38 @@ class ClipScaler:
         )
         return result
 
-    def _pick_best_from_cluster(
+    def _keep_best_from_cluster(
         self,
         time_key: str,
         cluster_clips: list[ClipWithSegment],
-    ) -> tuple[ClipWithSegment, int]:
-        """Return (best_clip, num_removed) for a temporal cluster of 2+ clips."""
-        favorites = [c for c in cluster_clips if c.clip.asset.is_favorite]
-        non_favorites = [c for c in cluster_clips if not c.clip.asset.is_favorite]
+        keep: int,
+    ) -> tuple[list[ClipWithSegment], int]:
+        """Return (kept_clips, num_removed) for a temporal cluster of 2+ clips.
 
-        if favorites:
-            favorites.sort(key=lambda c: c.score, reverse=True)
-            best = favorites[0]
-            removed = len(favorites) - 1 + len(non_favorites)
-            if removed > 0:
-                logger.debug(
-                    f"Temporal cluster {time_key}: keeping favorite "
-                    f"{best.clip.asset.original_file_name} "
-                    f"(score={best.score:.2f}), removing {len(favorites) - 1} fav "
-                    f"+ {len(non_favorites)} non-fav"
-                )
-            return best, removed
+        A favourite outranks any score: what the viewer starred survives the
+        cluster whatever the scorer made of it. Ranking on score alone is how
+        a starred shot gets dropped behind two ordinary ones.
+        """
+        ranked = sorted(
+            cluster_clips,
+            key=lambda c: (c.clip.asset.is_favorite, c.score),
+            reverse=True,
+        )
+        kept, dropped = ranked[:keep], ranked[keep:]
 
-        non_favorites.sort(key=lambda c: c.score, reverse=True)
-        best = non_favorites[0]
-        removed = len(non_favorites) - 1
-        if removed > 0:
-            logger.debug(
-                f"Temporal cluster {time_key}: keeping non-favorite "
-                f"{best.clip.asset.original_file_name} "
-                f"(score={best.score:.2f}), removing {removed} duplicates"
+        if dropped:
+            kept_desc = ", ".join(
+                f"{c.clip.asset.original_file_name or c.clip.asset.id[:8]} "
+                f"(score={c.score:.2f}, fav={c.clip.asset.is_favorite})"
+                for c in kept
             )
-        return best, removed
+            dropped_favorites = sum(1 for c in dropped if c.clip.asset.is_favorite)
+            logger.debug(
+                f"Temporal cluster {time_key}: keeping {kept_desc}; "
+                f"removing {len(dropped)} ({dropped_favorites} fav)"
+            )
+
+        return kept, len(dropped)
 
     def deduplicate_temporal_clusters(
         self,
@@ -332,16 +332,10 @@ class ClipScaler:
                 continue
 
             when = cluster_clips[0].clip.asset.file_created_at
-            if keep == 1:
-                best, removed = self._pick_best_from_cluster(str(when), cluster_clips)
-                result.append(best)
-            else:
-                ranked = sorted(cluster_clips, key=lambda c: c.score, reverse=True)
-                result.extend(ranked[:keep])
-                removed = len(cluster_clips) - keep
-            if removed > 0:
-                removed_count += removed
-                clusters_with_duplicates += 1
+            kept, removed = self._keep_best_from_cluster(str(when), cluster_clips, keep)
+            result.extend(kept)
+            removed_count += removed
+            clusters_with_duplicates += 1
 
         if removed_count > 0:
             logger.info(
