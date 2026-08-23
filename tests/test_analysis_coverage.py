@@ -2217,6 +2217,7 @@ class TestClipAnalyzerRunUnifiedAnalysis:
         mock_segment.llm_interestingness = 0.9
         mock_segment.llm_quality = 0.8
         mock_segment.cut_quality = 0.95
+        mock_segment.safe_cut_gaps = [(0.0, 4.0), (9.5, 12.0)]
 
         # WHY: UnifiedSegmentAnalyzer reads video + audio — mock
         with (
@@ -2244,6 +2245,9 @@ class TestClipAnalyzerRunUnifiedAnalysis:
         assert llm is not None
         assert llm["description"] == "People laughing at a party"
         assert clip.audio_categories == ["laughter"]
+        # The pauses that placed the segment travel with the clip: the pass
+        # that may hold it longer has no other way to know where they were.
+        assert clip.safe_cut_gaps == [(0.0, 4.0), (9.5, 12.0)]
 
     def test_no_segments_returns_zeros(self):
         analyzer = self._make_analyzer()

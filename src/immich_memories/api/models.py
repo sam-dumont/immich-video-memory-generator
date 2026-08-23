@@ -394,6 +394,12 @@ class VideoClipInfo(BaseModel):
     # Audio categories detected (populated during pipeline analysis)
     audio_categories: list[str] | None = None  # e.g. ["laughter", "speech", "engine"]
 
+    # Where a cut may land in this source: the spans between protected audio,
+    # from the analysis that chose the segment's boundaries. None means this
+    # run never measured it — the analysis cache restores boundaries without
+    # the evidence behind them.
+    safe_cut_gaps: list[tuple[float, float]] | None = None
+
     # LLM Content Analysis results (populated during pipeline analysis)
     llm_description: str | None = None  # Brief description of what's happening
     llm_category: str | None = None  # people | animal | landscape | object

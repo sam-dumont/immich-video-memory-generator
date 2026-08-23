@@ -435,6 +435,7 @@ class ClipAnalyzer:
 
             if best_segment.audio_categories:
                 clip.audio_categories = sorted(best_segment.audio_categories)
+            clip.safe_cut_gaps = best_segment.safe_cut_gaps
 
             llm_analysis = None
             if best_segment.llm_description or best_segment.llm_emotion:

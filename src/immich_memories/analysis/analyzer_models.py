@@ -62,6 +62,11 @@ class ScoredSegment:
     has_music: bool = False
     audio_categories: set[str] | None = None  # e.g. {"laughter", "engine", "crowd"}
 
+    # Where a cut may land in the source this segment came from — the spans
+    # between its protected audio. Carried on the segment because no later
+    # pass re-derives them: the analysis cache restores start/end without it.
+    safe_cut_gaps: list[tuple[float, float]] | None = None
+
     # Face position data for framing (list of normalized (x, y) tuples)
     face_positions: list[tuple[float, float]] | None = None
 

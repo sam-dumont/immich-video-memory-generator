@@ -45,17 +45,6 @@ logger = logging.getLogger(__name__)
 # No single moment may supply more than this share of a cut.
 _MAX_SHARE_FROM_ONE_MOMENT = 0.25
 
-# An event is defined by CONTRAST with the rest of the period, not by an
-# absolute share: in a flat month every day clears any fixed threshold and the
-# tie-break decides who wins, which is arbitrary. Measured on April 2021, the
-# two events held 133 and 99 assets against a median day of 5 (#488).
-# At most this many periods get the event treatment, so a month recap keeps
-# room for the ordinary days that make it a month.
-
-
-# What a memory may do when the material cannot fill its runtime well, rather
-# than padding with whatever is left.
-
 
 def _clips_per_moment(target_clips: int, moments: int) -> int:
     """How many clips one moment may contribute.
@@ -535,12 +524,12 @@ class ClipRefiner:
         # missing seconds than two extra seconds of the best one.
         gap = max_duration - total_duration
         if gap > 0.5:
-            gained = _hold_best_clips_longer(selected, gap)
+            gained, held = _hold_best_clips_longer(selected, gap)
             total_duration += gained
             if gained > 0.05:
                 logger.info(
                     "Held %d strong clip(s) %.1fs longer rather than padding the cut",
-                    sum(1 for _ in selected),
+                    held,
                     gained,
                 )
 

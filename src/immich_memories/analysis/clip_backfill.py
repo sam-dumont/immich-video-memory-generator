@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from immich_memories.analysis.boundary_placement import extend_end_to_gap
+
 if TYPE_CHECKING:
     from immich_memories.analysis.smart_pipeline import ClipWithSegment, PipelineConfig
 
@@ -247,14 +249,34 @@ def _initial_backfill_photo_limit(
 
 
 _MAX_EXTRA_PER_CLIP = 2.0  # seconds a strong clip may be held longer
-_SHORTEST_ACCEPTABLE_SHARE = 0.7  # a cut may finish this short of its target
+_MIN_USEFUL_EXTRA = 0.05  # below this the hold is not worth a re-cut
+
+
+def _safe_end_within(member: ClipWithSegment, limit: float) -> float | None:
+    """Furthest this clip's end may be held out to, or None to leave it alone.
+
+    The end was put inside a pause by the speech-aware snap, and nothing
+    between here and FFmpeg checks it again, so an end that moves has to land
+    in another pause. `safe_cut_gaps` is None when this run never measured the
+    audio — the analysis cache restores boundaries without the evidence behind
+    them — and an end that cannot be vouched for does not move at all.
+    Finishing short is what this step already does when nothing can be added.
+    """
+    from immich_memories.api.models import AssetType
+
+    if member.clip.asset.type == AssetType.IMAGE:
+        return limit
+    gaps = member.clip.safe_cut_gaps
+    if gaps is None:
+        return None
+    return extend_end_to_gap(member.end_time, limit, gaps)
 
 
 def _hold_best_clips_longer(
     selected: list[ClipWithSegment],
     gap_seconds: float,
-) -> float:
-    """Hold the strongest clips a little longer to cover a gap. Returns time gained.
+) -> tuple[float, int]:
+    """Hold the strongest clips longer to cover a gap. Returns (gained, clips held).
 
     Better than the alternative it replaces. When the pool has nothing good
     left, backfill used to relax its constraints until something fit, and a
@@ -263,20 +285,22 @@ def _hold_best_clips_longer(
     something worth watching.
     """
     if gap_seconds <= 0 or not selected:
-        return 0.0
+        return 0.0, 0
 
     gained = 0.0
+    held = 0
     for member in sorted(selected, key=lambda c: c.score, reverse=True):
         if gained >= gap_seconds:
             break
-        extra = min(_MAX_EXTRA_PER_CLIP, gap_seconds - gained)
-        source_left = member.clip.duration_seconds - member.end_time
-        extra = min(extra, max(0.0, source_left))
-        if extra <= 0.05:
+        budget = min(_MAX_EXTRA_PER_CLIP, gap_seconds - gained)
+        limit = min(member.end_time + budget, member.clip.duration_seconds)
+        new_end = _safe_end_within(member, limit)
+        if new_end is None or new_end - member.end_time <= _MIN_USEFUL_EXTRA:
             continue
-        member.end_time += extra
-        gained += extra
-    return gained
+        gained += new_end - member.end_time
+        member.end_time = new_end
+        held += 1
+    return gained, held
 
 
 def _occupied_moments(
