@@ -329,6 +329,34 @@ dropped and both torch's and MLX's caches are released, so the process falls bac
 generations instead of holding ~27 GB of parked GPU memory; the next batch reloads the models
 (~25 s).
 
+#### The render declines rather than getting killed
+
+Before loading any weights, `lib` mode compares free memory against what the configured profile
+needs resident and refuses with a named shortfall if it does not fit. Without that check, macOS
+settles it with jetsam: the process takes SIGKILL mid-render, and on a machine that is also
+serving a local LLM that can take the whole session down with it.
+
+| Profile | Weights that must stay resident |
+|---------|----------------------------------|
+| XL (4B) + 4B planner | ~29 GB |
+| XL (4B), `use_lm: false` | ~21 GB |
+| 2B + 1.7B planner | ~11 GB |
+| 2B, `use_lm: false` | ~7 GB |
+
+These are the checkpoint sizes from [Model Cache & Disk Usage](#model-cache--disk-usage) — a
+floor, not the ~53 GB peak a full XL/4B render reaches. Most of that peak is cache the OS
+reclaims under pressure; the weights are not, so below the floor the render is not slow, it is
+dead. A machine with 40 GB free still renders XL/4B exactly as before.
+
+A refusal is not a failed video. The music pipeline treats it like any other backend failure: it
+tries MusicGen next, then a bundled track, and the memory is reported in the run's warning. The
+fixes are to free memory, drop to a smaller `model_variant`, or set `use_lm: false`.
+
+:::note Scheduled runs
+A nightly job hits this far more often than hand-testing does, because whatever else the machine
+runs all day is at its largest at 03:00. `auto status` reports the last attempt's warning.
+:::
+
 For a hosted generator, leave ACE-Step out of the app environment and use `mode: "api"` with the
 server URL. For a desktop that normally runs locally but has a server available as backup, keep
 `mode: "lib"` and set `api_url`; the app uses the API only when the local package is unavailable.

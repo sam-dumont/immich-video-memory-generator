@@ -341,6 +341,55 @@ class TestACEStepBackendV15Library:
             "dtype": None,
         }
 
+    def test_v15_library_declines_a_profile_this_host_cannot_hold(self, tmp_path):
+        """Jetsam must not be the thing that decides; the music chain can absorb a raise."""
+        captured = {}
+        modules, _ = self._fake_v15_modules(tmp_path, captured)
+        backend = ACEStepBackend(
+            ACEStepConfig(
+                mode="lib", model_variant="acestep-v15-xl-turbo", lm_model_size="4B", use_lm=True
+            )
+        )
+
+        with (
+            patch.dict(sys.modules, modules),
+            patch.dict(os.environ, {"ACESTEP_CHECKPOINTS_DIR": str(tmp_path / "checkpoints")}),
+            patch("platform.system", return_value="Darwin"),
+            # WHY: available_memory_bytes reads this host's real vm_stat
+            patch(
+                "immich_memories.audio.generators.memory_budget.available_memory_bytes",
+                return_value=4 * 1024**3,
+            ),
+            pytest.raises(RuntimeError, match="needs at least 29 GB"),
+        ):
+            backend._init_pipeline()
+
+        assert "dit_init" not in captured, "the guard must fire before any weights load"
+
+    def test_v15_library_loads_normally_when_memory_is_plentiful(self, tmp_path):
+        """The guard is a floor, not a new step: a host with room behaves as before."""
+        captured = {}
+        modules, _ = self._fake_v15_modules(tmp_path, captured)
+        backend = ACEStepBackend(
+            ACEStepConfig(
+                mode="lib", model_variant="acestep-v15-xl-turbo", lm_model_size="4B", use_lm=True
+            )
+        )
+
+        with (
+            patch.dict(sys.modules, modules),
+            patch.dict(os.environ, {"ACESTEP_CHECKPOINTS_DIR": str(tmp_path / "checkpoints")}),
+            patch("platform.system", return_value="Darwin"),
+            # WHY: available_memory_bytes reads this host's real vm_stat
+            patch(
+                "immich_memories.audio.generators.memory_budget.available_memory_bytes",
+                return_value=200 * 1024**3,
+            ),
+        ):
+            backend._init_pipeline()
+
+        assert captured["dit_init"]["config_path"] == "acestep-v15-xl-turbo"
+
     @staticmethod
     def _fake_mlx_modules(captured: dict) -> dict:
         # WHY: replaces the real MLX runtime — the test asserts allocator policy

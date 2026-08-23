@@ -33,6 +33,7 @@ from immich_memories.audio.generators.base import (
     GenerationResult,
     MusicGenerator,
 )
+from immich_memories.audio.generators.memory_budget import memory_shortfall
 
 logger = logging.getLogger(__name__)
 
@@ -509,6 +510,14 @@ class ACEStepBackend(MusicGenerator):
                 device,
                 lm_backend if lm_model else "disabled",
             )
+
+            shortfall = memory_shortfall(dit_model, lm_model)
+            if shortfall is not None:
+                raise RuntimeError(
+                    f"{shortfall}. Loading it anyway is what gets the process SIGKILLed by "
+                    "the OS mid-render. Free memory, use a smaller model_variant, or set "
+                    "use_lm: false."
+                )
 
             dit_handler = _initialize_dit_handler(
                 AceStepHandler,
