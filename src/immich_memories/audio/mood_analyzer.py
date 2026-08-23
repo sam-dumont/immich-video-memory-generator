@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import subprocess
-import tempfile
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -13,6 +11,9 @@ from pathlib import Path
 from immich_memories.security import validate_video_path
 
 logger = logging.getLogger(__name__)
+
+# A vision model needs more detail than a colour histogram.
+_MOOD_FRAME_WIDTH = 512
 
 # Valid values for LLM output validation (whitelist approach)
 VALID_MOODS = frozenset(
@@ -151,78 +152,22 @@ class MoodAnalyzer(ABC):
         num_frames: int = 5,
         output_dir: Path | None = None,
     ) -> list[Path]:
-        """Extract keyframes from a video using FFmpeg.
+        """Evenly spaced frames from a video, for the mood model to look at.
 
-        Args:
-            video_path: Path to the video
-            num_frames: Number of frames to extract
-            output_dir: Directory for output frames
+        Delegates to processing.frame_sampling, which is also what the title
+        colour sampler uses. Both were the same loop — probe the duration,
+        space the timestamps, one ffmpeg per frame — written twice and cached
+        neither time, so every run re-decoded the same video.
 
-        Returns:
-            List of paths to extracted frames
+        512px because a vision model needs more than a colour histogram does;
+        that width is the only thing this caller decides.
         """
-        # Validate video path before any subprocess calls
+        from immich_memories.processing.frame_sampling import sample_frames
+
         validated_video = validate_video_path(video_path, must_exist=True)
-
-        if output_dir is None:
-            output_dir = Path(tempfile.mkdtemp(prefix="keyframes_"))
-        else:
-            output_dir.mkdir(parents=True, exist_ok=True)
-
-        # Get video duration
-        probe_cmd = [
-            "ffprobe",
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            str(validated_video),
-        ]
-
-        try:
-            result = subprocess.run(probe_cmd, capture_output=True, text=True, check=True)
-            duration = float(result.stdout.strip())
-        except (subprocess.CalledProcessError, ValueError):
-            logger.warning("Could not determine video duration, using 60s")
-            duration = 60.0
-
-        # Calculate frame times (evenly distributed)
-        frame_times = [duration * i / (num_frames + 1) for i in range(1, num_frames + 1)]
-
-        frames = []
-        for i, time in enumerate(frame_times):
-            output_path = output_dir / f"frame_{i:03d}.jpg"
-
-            cmd = [
-                "ffmpeg",
-                "-y",
-                "-ss",
-                str(time),
-                "-i",
-                str(validated_video),
-                "-vframes",
-                "1",
-                "-q:v",
-                "2",
-                "-vf",
-                "scale=512:-1",  # Resize for faster analysis
-                str(output_path),
-            ]
-
-            try:
-                subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    check=True,
-                )
-                if output_path.exists():
-                    frames.append(output_path)
-            except subprocess.CalledProcessError as e:
-                logger.warning(f"Failed to extract frame at {time}s: {e}")
-
-        return frames
+        return sample_frames(
+            validated_video, count=num_frames, width=_MOOD_FRAME_WIDTH, cache_dir=output_dir
+        )
 
     @staticmethod
     def _extract_json_from_text(text: str) -> str:

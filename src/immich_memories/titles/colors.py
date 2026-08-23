@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import colorsys
 import subprocess
-import tempfile
 from collections import Counter
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -150,6 +149,10 @@ HDR_GRAPHICS_WHITE = 0xBF
 
 # Above this, a colour is carrying real hue — an accent that happens to be bright,
 # not a white. Off-whites in the palettes sit well under it (#E0F2FE is 0.12).
+# A colour histogram does not need more; a 4K frame costs about 32MB
+# against roughly 0.3MB at this width.
+_PALETTE_FRAME_WIDTH = 320
+
 _NEUTRAL_SATURATION = 0.15
 
 
@@ -306,93 +309,30 @@ def extract_dominant_color(
 def extract_keyframes_from_video(
     video_path: Path,
     count: int = 5,
+    cache_dir: Path | None = None,
 ) -> list[Image.Image]:
-    """Extract keyframes from a video file.
+    """Keyframes from a video, as PIL images, for picking a palette.
 
-    Args:
-        video_path: Path to video file.
-        count: Number of frames to extract.
+    Delegates to processing.frame_sampling, which the mood analyser also uses.
+    Both were the same loop written separately, and neither kept its frames.
 
-    Returns:
-        List of PIL Images.
+    320px because a colour histogram does not need more, and a 4K frame costs
+    about 32MB against 0.3MB at this width.
     """
     if not HAS_PIL:
         raise ImportError("PIL/Pillow is required for keyframe extraction")
 
-    try:
-        import shutil
-        import subprocess
-    except ImportError:
-        return []
-
-    # Check if ffmpeg is available
-    if not shutil.which("ffmpeg"):
-        return []
+    from immich_memories.processing.frame_sampling import sample_frames
 
     frames = []
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmpdir_path = Path(tmpdir)
-
+    for path in sample_frames(
+        Path(video_path), count=count, width=_PALETTE_FRAME_WIDTH, cache_dir=cache_dir
+    ):
         try:
-            # Get video duration first
-            probe_cmd = [
-                "ffprobe",
-                "-v",
-                "error",
-                "-show_entries",
-                "format=duration",
-                "-of",
-                "default=noprint_wrappers=1:nokey=1",
-                str(video_path),
-            ]
-            result = subprocess.run(
-                probe_cmd,
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            duration = float(result.stdout.strip() or "10")
-        except (OSError, subprocess.SubprocessError, ValueError):
-            duration = 10.0
-
-        # Calculate timestamps for even distribution
-        interval = duration / (count + 1)
-
-        for i in range(1, count + 1):
-            timestamp = i * interval
-            frame_path = tmpdir_path / f"frame_{i:03d}.jpg"
-
-            try:
-                # Downsample to 320px width for color extraction
-                # This reduces memory from ~32MB/frame to ~0.3MB/frame for 4K source
-                extract_cmd = [
-                    "ffmpeg",
-                    "-ss",
-                    str(timestamp),
-                    "-i",
-                    str(video_path),
-                    "-vf",
-                    "scale=320:-1",  # Downsample - color analysis doesn't need full res
-                    "-frames:v",
-                    "1",
-                    "-y",
-                    str(frame_path),
-                ]
-                subprocess.run(
-                    extract_cmd,
-                    capture_output=True,
-                    timeout=10,
-                )
-
-                if frame_path.exists():
-                    img = Image.open(frame_path)
-                    frames.append(img.copy())
-                    img.close()
-
-            except (OSError, subprocess.SubprocessError):
-                continue
-
+            with Image.open(path) as img:
+                frames.append(img.copy())
+        except (OSError, ValueError):
+            continue
     return frames
 
 
