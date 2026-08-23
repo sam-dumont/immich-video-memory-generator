@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
+from geopy.exc import GeopyError
 from geopy.geocoders import Nominatim
 
 from immich_memories.api.models import Asset
@@ -100,7 +101,7 @@ def _group_by_temporal_gaps(away: list[Asset], max_gap_days: int) -> list[list[A
     return groups
 
 
-def _build_trip_from_group(group: list[Asset]) -> DetectedTrip:
+def _build_trip_from_group(group: list[Asset], *, name_locations: bool = True) -> DetectedTrip:
     lats = [a.exif_info.latitude for a in group if a.exif_info and a.exif_info.latitude]
     lons = [a.exif_info.longitude for a in group if a.exif_info and a.exif_info.longitude]
     c_lat = sum(lats) / len(lats) if lats else 0.0
@@ -108,7 +109,11 @@ def _build_trip_from_group(group: list[Asset]) -> DetectedTrip:
     return DetectedTrip(
         start_date=group[0].file_created_at.date(),
         end_date=group[-1].file_created_at.date(),
-        location_name=_derive_location_name(group, centroid_lat=c_lat, centroid_lon=c_lon),
+        location_name=(
+            _derive_location_name(group, centroid_lat=c_lat, centroid_lon=c_lon)
+            if name_locations
+            else ""
+        ),
         asset_count=len(group),
         centroid_lat=c_lat,
         centroid_lon=c_lon,
@@ -123,8 +128,16 @@ def detect_trips(
     min_distance_km: float = 50,
     min_duration_days: int = 2,
     max_gap_days: int = 2,
+    *,
+    name_locations: bool = True,
 ) -> list[DetectedTrip]:
-    """Detect trips: filter GPS assets far from home, group by temporal gaps, filter by duration."""
+    """Detect trips: filter GPS assets far from home, group by temporal gaps, filter by duration.
+
+    name_locations=False skips the reverse geocoding. A caller that only wants
+    the dates — the special-day scan, which uses trips solely to know which
+    days to skip — otherwise makes a live request per trip across every year
+    it walks, and throws every answer away.
+    """
     away = _filter_away_assets(assets, home_lat, home_lon, min_distance_km)
     if not away:
         return []
@@ -135,7 +148,7 @@ def detect_trips(
     for group in groups:
         span_days = (group[-1].file_created_at.date() - group[0].file_created_at.date()).days
         if span_days >= min_duration_days:
-            trips.append(_build_trip_from_group(group))
+            trips.append(_build_trip_from_group(group, name_locations=name_locations))
     return trips
 
 
@@ -358,9 +371,11 @@ def reverse_geocode(lat: float, lon: float, spread_km: float | None = None) -> s
                 return country
             return f"{region}, {country}"
         return None
-    except (OSError, ValueError) as e:
-        # WHY: geopy Nominatim can raise GeocoderServiceError (OSError subclass)
-        # or various parsing errors from network/response issues
+    except (GeopyError, OSError, ValueError) as e:
+        # GeopyError as well as OSError: only GeocoderTimedOut and
+        # GeocoderUnavailable inherit from OSError. GeocoderServiceError
+        # itself does not, and neither does the 403 raised when the service
+        # declines — which used to travel out of a twenty-year scan.
         logger.debug("Reverse geocoding failed for (%s, %s): %s", lat, lon, e)
     return None
 

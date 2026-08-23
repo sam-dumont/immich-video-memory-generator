@@ -1500,3 +1500,48 @@ class TestDistributeClipBudget:
         from immich_memories.analysis.trip_detection import distribute_clip_budget
 
         assert not distribute_clip_budget(5, [])
+
+
+class TestGeocodingIsNotAlwaysWanted:
+    """A caller that only needs the dates should not pay for names.
+
+    A twenty-year scan reverse-geocodes every trip it finds purely as a side
+    effect — the name is discarded — and one refusal from the service used to
+    end the whole scan.
+    """
+
+    def test_a_caller_can_ask_for_dates_without_names(self, monkeypatch):
+        from immich_memories.analysis.trip_detection import detect_trips
+
+        monkeypatch.setattr(
+            "immich_memories.analysis.trip_detection.reverse_geocode",
+            lambda *_a, **_k: pytest.fail("geocoded a trip nobody asked to name"),
+        )
+        assets = [
+            _make_asset(41.3851, 2.1734, "2024-06-12T10:00:00", city="Barcelona", country="Spain"),
+            _make_asset(41.3851, 2.1734, "2024-06-13T14:00:00", city="Barcelona", country="Spain"),
+            _make_asset(41.3851, 2.1734, "2024-06-14T09:00:00", city="Barcelona", country="Spain"),
+        ]
+
+        trips = detect_trips(assets, 50.8468, 4.3525, name_locations=False)
+
+        assert len(trips) == 1
+        assert trips[0].start_date.isoformat() == "2024-06-12"
+        assert trips[0].end_date.isoformat() == "2024-06-14"
+
+    def test_a_refusal_from_the_geocoder_is_not_a_crash(self, monkeypatch):
+        """geopy's own base error is not an OSError, so it went straight up."""
+        from geopy.exc import GeocoderInsufficientPrivileges
+
+        from immich_memories.analysis.trip_detection import reverse_geocode
+
+        class _Refusing:
+            def __init__(self, *_a, **_k) -> None: ...
+
+            def reverse(self, *_a, **_k):
+                raise GeocoderInsufficientPrivileges(403)
+
+        # WHY: Nominatim is the network boundary; here it refuses the request.
+        monkeypatch.setattr("immich_memories.analysis.trip_detection.Nominatim", _Refusing)
+
+        assert reverse_geocode(41.3851, 2.1734) is None

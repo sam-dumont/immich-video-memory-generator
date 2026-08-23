@@ -77,7 +77,11 @@ def scan_year(
         return []
 
     year = assets[0].file_created_at.year
-    away = days_covered_by_trips(detect_trips(assets, *home)) if home else set()
+    # Dates only: the trip's name is never read here, and asking for one
+    # is a live request per trip for every year of the scan.
+    away = (
+        days_covered_by_trips(detect_trips(assets, *home, name_locations=False)) if home else set()
+    )
     holidays = holidays_in(year, extra_holidays)
 
     candidates = {
