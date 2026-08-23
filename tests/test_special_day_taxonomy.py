@@ -76,8 +76,8 @@ def test_the_bug_is_logged_before_it_is_raised(caplog) -> None:
     somewhere later must not be able to erase the diagnosis."""
     import logging
 
+    # WHY: the ask path is the boundary; here our own call into it is wrong.
     with (
-        # WHY: the ask path is the boundary; here our own call into it is wrong.
         patch("immich_memories.analysis.special_day._ask", side_effect=TypeError("boom")),
         caplog.at_level(logging.ERROR, logger="immich_memories.analysis.special_day"),
         pytest.raises(TypeError),
