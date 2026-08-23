@@ -243,6 +243,11 @@ Mother's and Father's Day land on the correct date in each year, including years
 nobody has thought about yet. The window is the holiday ±2 days by default, so
 Christmas Eve and Boxing Day belong to Christmas.
 
+Without `--duration` this runs 60 seconds. The usual duration scaling reads the
+span between the first and last date, which for five Christmases is five years —
+a length meant for one continuous stretch, not a handful of days repeated. The
+number of years does not change the target; pass `--duration` for a longer cut.
+
 ### Then and now
 
 Two whole years, far apart, in one video:
@@ -253,6 +258,9 @@ immich-memories generate --memory-type then_and_now --year 2025 --years-back 10
 
 That covers 2015 and 2025. Whole years rather than narrow windows, because the
 contrast is the point and a two-day window a decade ago is usually empty.
+
+Without `--duration` this runs 45 seconds — two years side by side, not the ten
+that separate them.
 
 ### Trip closest to a date
 

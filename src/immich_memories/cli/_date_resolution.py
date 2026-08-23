@@ -201,6 +201,21 @@ def duration_from_date_range(date_range: DateRange) -> float:
     return float(max(30, min(600, duration)))
 
 
+# WHY these two by name: they span whole years, and duration_from_date_range's
+# curve was fitted on 1-12 months -- it turns negative past ~40 months, so five
+# Christmases clamped to the same 30s floor as an empty weekend (#511). Their
+# presets already state the length they want, so the CLI reads that instead.
+_PRESET_DURATION_TYPES = ("holiday", "then_and_now")
+
+
+def _preset_duration(memory_type: str) -> float | None:
+    """The registered preset's own intended length for a memory type."""
+    from immich_memories.memory_types.factory import create_preset
+    from immich_memories.memory_types.registry import MemoryType
+
+    return create_preset(MemoryType(memory_type)).default_duration_seconds
+
+
 def default_duration_for_type(
     memory_type: str | None, date_range: DateRange | None
 ) -> float | None:
@@ -208,14 +223,17 @@ def default_duration_for_type(
 
     Date-range based types scale with span (1 month = 60s, 1 year = 600s).
     Trip dates provide an editorial estimate; discovered media later applies
-    the capacity cap. Other fixed types: on_this_day (45s), person without
-    range (120s).
+    the capacity cap. Types that span several years take the length their
+    preset asks for, since the span curve does not reach that far. Other fixed
+    types: on_this_day (45s), person without range (120s).
     """
     if not memory_type:
         return None
 
     if memory_type == "on_this_day":
         return 45.0
+    if memory_type in _PRESET_DURATION_TYPES:
+        return _preset_duration(memory_type)
     if memory_type == "trip" and date_range is not None:
         from immich_memories.planning.auto_duration import trip_editorial_duration_seconds
 

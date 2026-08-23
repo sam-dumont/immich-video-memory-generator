@@ -6,7 +6,7 @@ from datetime import date, datetime
 
 import pytest
 
-from immich_memories.cli._date_resolution import resolve_date_range
+from immich_memories.cli._date_resolution import default_duration_for_type, resolve_date_range
 from immich_memories.cli._trip_display import _closest_trip_to_date, select_trips
 from immich_memories.timeperiod import DateRange
 
@@ -444,3 +444,56 @@ class TestTripSelection:
         """--near-date with no trips returns empty."""
         result = select_trips([], near_date="2024-07-05")
         assert result == []
+
+
+class TestMultiYearDefaultDuration:
+    """Durations for spans no month-based curve was ever fitted for (#511)."""
+
+    @staticmethod
+    def _display_span(ranges: list[DateRange]) -> DateRange:
+        """Collapse preset ranges the way the CLI does before sizing the video."""
+        return DateRange(start=ranges[-1].start, end=ranges[0].end)
+
+    def test_holiday_default_duration_is_the_preset_length_not_the_floor(self):
+        ranges = resolve_date_range(
+            year=None,
+            start=None,
+            end=None,
+            period=None,
+            birthday=None,
+            memory_type="holiday",
+            holiday="christmas",
+        )
+        assert isinstance(ranges, list)
+        span = self._display_span(ranges)
+
+        assert default_duration_for_type("holiday", span) == 60.0
+
+    def test_then_and_now_default_duration_is_the_preset_length_not_the_floor(self):
+        ranges = resolve_date_range(
+            year=2026,
+            start=None,
+            end=None,
+            period=None,
+            birthday=None,
+            memory_type="then_and_now",
+        )
+        assert isinstance(ranges, list)
+        span = self._display_span(ranges)
+
+        assert default_duration_for_type("then_and_now", span) == 45.0
+
+    def test_a_single_month_still_scales_off_its_span(self):
+        """The span curve keeps the range it was fitted for: one month ~= 60s."""
+        span = resolve_date_range(
+            year=2026,
+            start=None,
+            end=None,
+            period=None,
+            birthday=None,
+            memory_type="monthly_highlights",
+            month=7,
+        )
+        assert isinstance(span, DateRange)
+
+        assert default_duration_for_type("monthly_highlights", span) == pytest.approx(62.3, abs=0.1)
