@@ -303,6 +303,7 @@ async def test_ui_music_warning_is_durable_and_final_validation_runs_after_music
         *,
         encoding_plan,
         mute_windows=None,
+        source=None,
     ) -> MusicPhaseResult:
         assert run_tracker is tracker
         assert encoding_plan is plan

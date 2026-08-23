@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from immich_memories.config_models import normalize_scale_mode
+from immich_memories.generate_music import MusicSource
 from immich_memories.generate_privacy import (
     extract_trip_pins,
     generate_trip_title_text,
@@ -257,6 +258,7 @@ def _run_music_phase(
     *,
     encoding_plan: EncodingPlan,
     mute_windows: list[tuple[float, float]] | None = None,
+    source: MusicSource = MusicSource.AUTO,
 ) -> MusicPhaseResult:
     """Resolve and apply music to the assembled video."""
     from immich_memories.generate_music import (
@@ -287,6 +289,7 @@ def _run_music_phase(
             transition_overlap=transition_overlap_seconds(
                 params.transition, params.transition_duration
             ),
+            source=source,
         )
         if not selection.path:
             if phase_started and selection.warning:

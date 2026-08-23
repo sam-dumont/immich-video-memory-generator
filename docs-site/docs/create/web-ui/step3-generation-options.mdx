@@ -36,10 +36,11 @@ A collapsed expansion under the two selects:
 
 ## Music
 
-The **Background music** select has up to three entries:
+The **Background music** select has up to four entries:
 
 - **None**: original clip audio only.
 - **Upload file**: a **Select music file** picker (`.mp3`, `.m4a`, `.wav`) and a **Music volume** slider.
+- **Bundled**: a royalty-free track from the installed music package, chosen to match the memory's mood and the photo cut cadence. Only listed when that package is present — offering it otherwise would resolve to silence, which is what **None** is for. Picking it skips AI generation even when a generator is configured.
 - **AI Generated**: only listed when `ace_step.enabled` or `musicgen.enabled` is set in your config, and then it is the default. Shows the volume slider and a **Generate Music** button so you can hear the track before rendering; **Regenerate Music** tries again. See [Audio & Music](../pipeline/audio-and-music.md).
 
 ## Summary

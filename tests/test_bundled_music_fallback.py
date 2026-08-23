@@ -246,3 +246,70 @@ def test_a_user_supplied_track_is_left_alone(library, tmp_path):
     )
 
     assert chosen.path == theirs
+
+
+def test_asking_for_bundled_skips_a_configured_generator(library, monkeypatch):
+    """ "Bundled" has to mean bundled, not "bundled if generation fails".
+
+    With a generator configured, `resolve_music` tries it first and only reaches
+    the bundle when it is unavailable or errors. A UI option offering "Bundled"
+    on top of that precedence would hand the user AI music instead — the option
+    would lie. An explicit source says which one was asked for.
+    """
+    from immich_memories.generate_music import MusicSource, resolve_music
+
+    config = Config()
+    config.musicgen.enabled = True
+
+    generated = []
+
+    def never(*_args, **_kwargs):
+        generated.append(True)
+        raise AssertionError("the generator must not run when bundled was asked for")
+
+    # WHY: generation would hit a model server; asking for bundled must not reach it.
+    monkeypatch.setattr("immich_memories.generate_music.auto_generate_music", never)
+
+    chosen = resolve_music(
+        config=config,
+        music_path=None,
+        no_music=False,
+        assembly_clips=[],
+        run_output_dir=library,
+        memory_type=None,
+        bundled_library=library,
+        transition_overlap=0.0,
+        source=MusicSource.BUNDLED,
+    )
+
+    assert chosen.path is not None
+    assert generated == []
+
+
+def test_the_default_source_keeps_todays_precedence(library, monkeypatch):
+    """Omitting the source must behave exactly as before — the CLI depends on it."""
+    from immich_memories.generate_music import resolve_music
+
+    config = Config()
+    config.musicgen.enabled = True
+
+    asked = []
+
+    # WHY: stands in for the model server; records that generation was preferred.
+    monkeypatch.setattr(
+        "immich_memories.generate_music.auto_generate_music",
+        lambda *_a, **_k: asked.append(True) or None,
+    )
+
+    resolve_music(
+        config=config,
+        music_path=None,
+        no_music=False,
+        assembly_clips=[],
+        run_output_dir=library,
+        memory_type=None,
+        bundled_library=library,
+        transition_overlap=0.0,
+    )
+
+    assert asked == [True]

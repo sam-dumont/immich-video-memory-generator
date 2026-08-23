@@ -166,3 +166,53 @@ def test_the_wizard_hands_its_music_choice_to_the_pipeline(tmp_path: Path) -> No
     assert path.read_bytes() == b"an-mp3"
     assert _uploaded_music_path({"music_source": "None"}, tmp_path) is None
     assert _uploaded_music_path({"music_source": "AI Generated"}, tmp_path) is None
+
+
+@pytest.mark.asyncio
+async def test_choosing_bundled_asks_the_shared_phase_for_bundled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Otherwise a configured generator wins and the option quietly lies."""
+    from immich_memories.generate_music import MusicSource
+    from immich_memories.ui.pages import _step4_generate as step4
+
+    output_path = tmp_path / "memory.mp4"
+    output_path.write_bytes(b"assembled")
+    db_path = tmp_path / "runs.db"
+    config = Config(cache={"database": str(db_path)})
+
+    prepared = PreparedGeneration(
+        path=output_path,
+        encoding_plan=_plan(),
+        assembly_clips=(),
+        clips_analyzed=1,
+        clips_selected=1,
+    )
+    params = GenerationParams(
+        clips=[make_clip("clip-1")], output_path=output_path, config=config, upload_enabled=False
+    )
+    tracker = RunTracker("ui-music-bundled", db_path=db_path, capture_system=False)
+    tracker.start_run(source="manual")
+    state = AppState(config=config, generation_options={"music_source": "Bundled"})
+
+    asked: dict = {}
+
+    def spy(*_args, **kwargs):
+        asked.update(kwargs)
+        from immich_memories.generate_music import MusicPhaseResult
+
+        return MusicPhaseResult(applied=False)
+
+    async def io_bound(callback, *args, **kwargs):
+        return callback(*args, **kwargs)
+
+    # WHY: the shared phase is the boundary; only which source it is handed matters here.
+    monkeypatch.setattr("immich_memories.generate_settings._run_music_phase", spy)
+    monkeypatch.setattr(step4, "validate_output", lambda _path, _encoding_plan: _probe())
+    monkeypatch.setattr(step4.run, "io_bound", io_bound)
+
+    await step4.finalize_ui_generation(
+        state, params, prepared, tracker, progress_bar=object(), status_label=object()
+    )
+
+    assert asked.get("source") is MusicSource.BUNDLED

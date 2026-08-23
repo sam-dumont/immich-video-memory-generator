@@ -148,6 +148,10 @@ def _write_failure_ui(
 
 
 # Maps UI labels from step3_options → GenerationParams values
+# Music sources that produce audio. "None" is the fourth option and means silence.
+_SOURCES_WITH_AUDIO = frozenset({"AI Generated", "Upload file", "Bundled"})
+
+
 _TRANSITION_MAP = {
     "Smart (mix of fades & cuts)": "smart",
     "Crossfade": "crossfade",
@@ -255,7 +259,7 @@ def _build_generation_params(state, selected_clips, output_path):
         # lifecycle; "None" stays silent because resolve_music checks no_music
         # before anything else.
         music_path=_uploaded_music_path(gen_options, output_path.parent),
-        no_music=gen_options.get("music_source", "None") not in {"AI Generated", "Upload file"},
+        no_music=gen_options.get("music_source", "None") not in _SOURCES_WITH_AUDIO,
         music_volume=gen_options.get("music_volume", 0.5),
         upload_enabled=state.upload_enabled,
         upload_album=state.upload_album_name,
@@ -448,14 +452,11 @@ async def finalize_ui_generation(
         run_tracker,
         OperationalPhase.MUSIC,
         current=0,
-        total=1 if music_source in {"AI Generated", "Upload file"} else 0,
-        message=(
-            "Applying music"
-            if music_source in {"AI Generated", "Upload file"}
-            else "Music disabled"
-        ),
+        total=1 if music_source in _SOURCES_WITH_AUDIO else 0,
+        message=("Applying music" if music_source in _SOURCES_WITH_AUDIO else "Music disabled"),
     )
-    if music_source in {"AI Generated", "Upload file"}:
+    if music_source in _SOURCES_WITH_AUDIO:
+        from immich_memories.generate_music import MusicSource
         from immich_memories.generate_settings import _run_music_phase
 
         music_result = await io_bound_result(
@@ -467,6 +468,7 @@ async def finalize_ui_generation(
             run_tracker,
             encoding_plan=prepared.encoding_plan,
             mute_windows=prepared.music_mute_windows,
+            source=(MusicSource.BUNDLED if music_source == "Bundled" else MusicSource.AUTO),
         )
         emit_operational_phase(
             params,

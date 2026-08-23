@@ -343,7 +343,13 @@ def render_step3() -> None:
     # ========================================================================
     im_section_header("Music", icon="music_note")
 
+    from immich_memories.audio.bundled_music import bundled_library
+
     music_sources = ["None", "Upload file"]
+    # Offered only when the music package is installed; picking it otherwise
+    # would resolve to silence, which is what "None" is for.
+    if bundled_library() is not None:
+        music_sources.append("Bundled")
     if musicgen_available:
         music_sources.append("AI Generated")
 

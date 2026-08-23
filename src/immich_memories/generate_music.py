@@ -13,6 +13,7 @@ import subprocess
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -65,6 +66,20 @@ def optional_music_warning(exc: Exception, config: Config | None = None) -> str:
     return f"Optional music failed: {safe_message}"
 
 
+class MusicSource(StrEnum):
+    """Which source a run asked for, when it has an opinion.
+
+    ``AUTO`` is the historical precedence and the default: an explicit track,
+    else generation when a backend is configured, else the bundle. Bundled was
+    only ever reachable as a *fallback*, so a caller that genuinely wants a
+    bundled track -- someone picking it in the wizard -- had no way to say so
+    and would silently receive AI music instead.
+    """
+
+    AUTO = "auto"
+    BUNDLED = "bundled"
+
+
 def music_config_available(config: Config) -> bool:
     """Check if any AI music generation backend is configured and enabled."""
     ace = getattr(config, "ace_step", None)
@@ -83,6 +98,7 @@ def resolve_music(
     bundled_library: Path | None = None,
     *,
     transition_overlap: float,
+    source: MusicSource = MusicSource.AUTO,
 ) -> MusicSelection:
     """Determine the music to use: provided path, generated, bundled, or none.
 
@@ -97,7 +113,7 @@ def resolve_music(
         return MusicSelection(music_path)
 
     warning: str | None = None
-    if not music_path and music_config_available(config):
+    if not music_path and source is MusicSource.AUTO and music_config_available(config):
         if report_fn:
             report_fn("music", 0.85, "Generating AI music...")
         try:
