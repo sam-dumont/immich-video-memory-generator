@@ -198,21 +198,21 @@ class TestMultilineTextWrapping:
 
     def test_comma_split_preferred(self):
         """Titles with commas should split at the comma first."""
-        from immich_memories.titles.renderer_taichi import split_title_lines
+        from immich_memories.titles.taichi_text import split_title_lines
 
         lines = split_title_lines("TWO WEEKS IN SPAIN, SUMMER 2025", max_chars=25)
         assert lines == ["TWO WEEKS IN SPAIN,", "SUMMER 2025"]
 
     def test_word_wrap_fallback(self):
         """Titles without commas word-wrap normally."""
-        from immich_memories.titles.renderer_taichi import split_title_lines
+        from immich_memories.titles.taichi_text import split_title_lines
 
         lines = split_title_lines("TWO WEEKS IN SPAIN", max_chars=12)
         assert lines == ["TWO WEEKS IN", "SPAIN"]
 
     def test_short_title_single_line(self):
         """Short titles stay on one line."""
-        from immich_memories.titles.renderer_taichi import split_title_lines
+        from immich_memories.titles.taichi_text import split_title_lines
 
         lines = split_title_lines("A WEEK IN PARIS", max_chars=30)
         assert lines == ["A WEEK IN PARIS"]
