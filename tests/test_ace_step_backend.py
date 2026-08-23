@@ -366,11 +366,11 @@ class TestACEStepBackendV15Library:
             )
         )
 
+        # WHY: replaces the ACE-Step package, the host OS, and the host-memory probe
         with (
             patch.dict(sys.modules, modules),
             patch.dict(os.environ, {"ACESTEP_CHECKPOINTS_DIR": str(tmp_path / "checkpoints")}),
             patch("platform.system", return_value="Darwin"),
-            # WHY: available_memory_bytes reads this host's real vm_stat
             patch(
                 "immich_memories.audio.generators.memory_budget.available_memory_bytes",
                 return_value=4 * 1024**3,
@@ -391,11 +391,11 @@ class TestACEStepBackendV15Library:
             )
         )
 
+        # WHY: replaces the ACE-Step package, the host OS, and the host-memory probe
         with (
             patch.dict(sys.modules, modules),
             patch.dict(os.environ, {"ACESTEP_CHECKPOINTS_DIR": str(tmp_path / "checkpoints")}),
             patch("platform.system", return_value="Darwin"),
-            # WHY: available_memory_bytes reads this host's real vm_stat
             patch(
                 "immich_memories.audio.generators.memory_budget.available_memory_bytes",
                 return_value=200 * 1024**3,
