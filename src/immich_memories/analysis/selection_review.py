@@ -64,6 +64,10 @@ Judge the SET as a whole: feel, coherence, variety. Drop a clip when it is
   portrait against a blank wall, facing the camera, no expression and no
   surroundings, is an identity photo taken for a form. Nothing happened when
   it was taken, and several of them in one set is a giveaway.
+  Nobody held the camera for some of these: a doorbell, a security camera or
+  a dashcam records whatever passes it, and a person arriving at a front door
+  is an event the house noticed rather than a moment anyone chose to keep.
+  Drop these however good the picture is, and whoever is in them.
 
 A memory of a trip or an occasion is not only the people in it. If every
 clip is a person facing the camera, say so by dropping the weakest of them:

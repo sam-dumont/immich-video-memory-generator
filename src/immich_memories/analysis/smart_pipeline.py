@@ -10,9 +10,10 @@ Orchestrates the 4-phase pipeline:
 from __future__ import annotations
 
 import contextlib
+import fnmatch
 import logging
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -143,6 +144,19 @@ class ClipWithSegment:
     # WHY: the verify pass (#468) must tell real analysis from a metadata
     # guess — a fallback score is a placeholder, not a rank.
     analyzed: bool = True
+
+
+def _from_an_excluded_source(name: str | None, patterns: Sequence[str]) -> bool:
+    """True when a source file matches one of the excluded patterns.
+
+    Matching is on the filename because that is the only thing these exports
+    carry: a doorbell clip has no make or model to tell it from a phone, and
+    Ring reuses a single filename across every clip it uploads.
+    """
+    if not name:
+        return False
+    lowered = name.casefold()
+    return any(fnmatch.fnmatch(lowered, pattern.casefold()) for pattern in patterns)
 
 
 class SmartPipeline:
@@ -705,6 +719,20 @@ class SmartPipeline:
                 f"Duration filter: removed {too_short_count} clips shorter than "
                 f"{min_duration:.1f}s minimum"
             )
+
+        patterns = self._analysis_config.exclude_filename_patterns
+        if patterns:
+            before = len(eligible)
+            eligible = [
+                clip
+                for clip in eligible
+                if not _from_an_excluded_source(clip.asset.original_file_name, patterns)
+            ]
+            if len(eligible) < before:
+                logger.info(
+                    "Source filter: removed %d clip(s) from excluded sources",
+                    before - len(eligible),
+                )
 
         if self.config.hdr_only:
             before = len(eligible)

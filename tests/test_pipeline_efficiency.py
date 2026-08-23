@@ -283,6 +283,65 @@ class TestAnalysisEligibility:
         assert pipeline.last_deep_analysis_count == 1
         pipeline.analyzer.plan_cached_or_metadata.assert_called_once_with(clips[1:])
 
+    def test_doorbell_footage_never_reaches_selection(self, tmp_path: Path):
+        """A real year recap shipped two clips of somebody's front door.
+
+        A doorbell writes into the same timeline as the phone, carries no
+        make or model, and reuses one filename across every export — so
+        nothing downstream can tell it from footage somebody chose to shoot.
+        """
+        from immich_memories.config_models import AnalysisConfig
+
+        pipeline = self._pipeline(tmp_path)
+        pipeline._analysis_config = AnalysisConfig(exclude_filename_patterns=["RingVideo_*"])
+        doorbell = TestDensityBudgetCap()._make_clip("doorbell")
+        doorbell.asset.original_file_name = "RingVideo_6763648097558121116.mp4"
+        shot = TestDensityBudgetCap()._make_clip("shot")
+        shot.asset.original_file_name = "IMG_0809.MP4"
+
+        result = pipeline._hard_eligible_clips([doorbell, shot])
+
+        assert [clip.asset.id for clip in result] == ["shot"]
+
+    def test_the_default_list_covers_what_the_camera_roll_did_not_shoot(self, tmp_path: Path):
+        """Doorbells, screen recordings and forwarded video share the timeline.
+
+        None of them was shot as a memory, and the filename is the only thing
+        that says so before analysis has looked at anything — which is also
+        what keeps them out of the analysis budget.
+        """
+        from immich_memories.config_models import AnalysisConfig
+
+        pipeline = self._pipeline(tmp_path)
+        pipeline._analysis_config = AnalysisConfig()
+        names = [
+            "RingVideo_6763648097558121116.mp4",
+            "RPReplay_Final1560343200.mp4",
+            "VID-20190612-WA0003.mp4",
+            "Screen Recording 2019-06-12 at 10.00.00.mov",
+            "IMG_0809.MP4",
+        ]
+        clips = []
+        for index, name in enumerate(names):
+            clip = TestDensityBudgetCap()._make_clip(f"clip-{index}")
+            clip.asset.original_file_name = name
+            clips.append(clip)
+
+        result = pipeline._hard_eligible_clips(clips)
+
+        assert [clip.asset.original_file_name for clip in result] == ["IMG_0809.MP4"]
+
+    def test_the_source_filter_does_not_care_about_case(self, tmp_path: Path):
+        """Exports differ in casing between platforms; the rule should not."""
+        from immich_memories.config_models import AnalysisConfig
+
+        pipeline = self._pipeline(tmp_path)
+        pipeline._analysis_config = AnalysisConfig(exclude_filename_patterns=["ringvideo_*"])
+        doorbell = TestDensityBudgetCap()._make_clip("doorbell")
+        doorbell.asset.original_file_name = "RingVideo_1.MP4"
+
+        assert pipeline._hard_eligible_clips([doorbell]) == []
+
     def test_hdr_only_is_a_hard_eligibility_rule_even_for_favorites(self, tmp_path: Path):
         pipeline = self._pipeline(tmp_path, hdr_only=True)
         hdr = TestDensityBudgetCap()._make_clip("hdr")

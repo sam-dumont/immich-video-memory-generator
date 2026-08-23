@@ -131,6 +131,20 @@ class AnalysisConfig(BaseModel):
         "Smart albums reach tens of thousands; Immich returns newest first, so a "
         "larger album is truncated to its most recent assets.",
     )
+    exclude_filename_patterns: list[str] = Field(
+        default_factory=lambda: [
+            "RingVideo_*",  # doorbell; reuses one filename across every export
+            "RPReplay_Final*",  # iOS screen recording
+            "Screen Recording *",  # macOS and Android screen recording
+            "Screenshot*",
+            "*-WA[0-9]*",  # arrived through a messaging app, was not shot here
+        ],
+        description="Case-insensitive glob patterns for source files a memory "
+        "must never use. The holistic review already drops footage nobody "
+        "chose to shoot, but it needs a model and it runs after analysis has "
+        "paid for the clip; a name that settles it outright settles it for "
+        "free, and keeps working with no LLM configured at all.",
+    )
     scene_threshold: float = Field(default=27.0, ge=1.0, le=100.0)
     min_scene_duration: float = Field(default=1.0, ge=0.5, le=10.0)
     duplicate_hash_threshold: int = Field(default=8, ge=0, le=64)
