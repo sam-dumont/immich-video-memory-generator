@@ -99,7 +99,7 @@ def test_the_prompt_lines_describe_the_pictures_sent_with_them(monkeypatch) -> N
 
     # WHY: the vision call is the network boundary; the prompt it is handed
     # is the whole point of the test.
-    def _capture(prompt, _llm_config, _timeout, images):
+    def _capture(prompt, _llm_config, _timeout, images, thinking=False):
         seen["prompt"], seen["thumbnails"] = prompt, images
         return '{"special": false}'
 

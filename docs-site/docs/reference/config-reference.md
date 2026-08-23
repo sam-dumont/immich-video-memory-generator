@@ -303,7 +303,8 @@ provider's URL and reasoning dialect pre-filled — set `provider: openai`,
 to configure. Explicit `base_url`/`thinking_params` always win over a preset.
 
 `thinking: true` runs the model in reasoning mode for the judgement calls
-only — the holistic selection review and title generation. Each such call
+only — the holistic selection review, title generation, and the special-day
+question in `discover-days`. Each such call
 costs roughly 5-10× the latency and 10-20× the completion tokens of a fast
 call, which matters on a paid API. Bulk work (per-clip content analysis,
 photo scoring) always runs in fast mode: reasoning over multiple images is
