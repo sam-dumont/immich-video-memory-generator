@@ -146,6 +146,12 @@ class ClipWithSegment:
     analyzed: bool = True
 
 
+# Below this share of the judge's floor a clip is not weak but unusable — a
+# pocket, the ground, somebody's feet — and no amount of being the only thing
+# from its day makes it worth shipping.
+_UNUSABLE_SHARE_OF_FLOOR = 1.0 / 3.0
+
+
 class SmartPipeline:
     """Smart pipeline for one-click memory generation.
 
@@ -557,22 +563,71 @@ class SmartPipeline:
             return floor
         return floor * (1.0 - self._app_config.photos.score_penalty)
 
+    def _spare_last_voices(
+        self,
+        offenders: set[str],
+        selected: list[ClipWithSegment],
+    ) -> set[str]:
+        """Offenders to actually drop, keeping any that is a period's last voice.
+
+        The judge removes offenders from the pool for good, so read as "this
+        clip is bad" its verdict costs a month whose only clip scored low. Read
+        as "we can do better than this clip" it costs nothing, because when
+        there is nothing better the clip stays.
+
+        Unusable is different from weak, and the distinction is what makes this
+        safe: a shot of the ground or a pocket is not worth a month, and stays
+        dropped however alone it is. Only a clip that would pass on any other
+        day is worth keeping for lack of an alternative.
+
+        A correction, not an exemption. Exempting has to guess in advance which
+        clips carry a period, and both ways of guessing that switch the gate
+        off under ordinary conditions — coverage ids are every clip on a pool
+        with no favorites, and a distributed selection makes almost every clip
+        the only one of its day.
+        """
+        from immich_memories.analysis.clip_distribution import _period_key, span_days_of
+
+        unusable = self.config.judge_floor_score * _UNUSABLE_SHARE_OF_FLOOR
+        span = span_days_of(selected)
+
+        def period_of(member: ClipWithSegment) -> str | None:
+            when = member.clip.asset.file_created_at
+            return _period_key(when, span) if when else None
+
+        surviving = {period_of(m) for m in selected if m.clip.asset.id not in offenders}
+        spared = {
+            m.clip.asset.id
+            for m in selected
+            if m.clip.asset.id in offenders
+            and m.score >= unusable
+            and period_of(m) not in surviving
+        }
+        if spared:
+            logger.info(
+                "Judge: keeping %d weak clip(s) — nothing else covers their period",
+                len(spared),
+            )
+        return offenders - spared
+
     def _judge_offenders(self, selected: list[ClipWithSegment]) -> set[str]:
         """Members failing the gate. Favorites are exempt from both rules —
         the user explicitly chose them, and "Starting with ALL favorites" is
         the selection's oldest contract.
 
-        Coverage is deliberately NOT exempt here, though every later drop site
-        spares it. Both readings of "spare what covers a period" switch the
-        judge off under ordinary conditions: on a pool with no favorites the
-        coverage ids are every clip picked from the densest periods, and a
-        selection distributed across time — which is the goal — makes almost
-        every clip the only one of its day. A gate that never fires is worse
-        than the gate being blunt, and the blunt part was the scale (#508).
+        What carries a period is handled after this rather than here — see
+        _spare_last_voices. Exempting up front needs a guess about which clips
+        carry a period, and every way of guessing switches the gate off.
         """
         spared = {s.clip.asset.id for s in selected if getattr(s.clip.asset, "is_favorite", False)}
         judgeable = [s for s in selected if s.clip.asset.id not in spared]
-        offenders = {s.clip.asset.id for s in judgeable if s.score < self._floor_for(s)}
+        # Sparing applies to the floor rule only. The ending rule below is
+        # about where a clip sits, not whether it is worth keeping — a clip
+        # dropped for being a weak last note is fine anywhere else, and
+        # keeping it for lack of an alternative would defeat the rule.
+        offenders = self._spare_last_voices(
+            {s.clip.asset.id for s in judgeable if s.score < self._floor_for(s)}, selected
+        )
         scores = [s.score for s in selected]
         mean_score = sum(scores) / len(scores)
         ending = max(

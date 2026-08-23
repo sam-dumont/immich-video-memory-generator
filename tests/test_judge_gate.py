@@ -94,3 +94,39 @@ def test_a_selection_spread_across_time_is_still_judged(tmp_path: Path) -> None:
     offenders = _pipeline(tmp_path)._judge_offenders([junk, *spread])
 
     assert "junk" in offenders
+
+
+def _in(month: int, day: int, member: ClipWithSegment) -> ClipWithSegment:
+    member.clip.asset.file_created_at = datetime(2019, month, day, 12, tzinfo=UTC)
+    return member
+
+
+def test_an_offender_is_dropped_when_its_period_has_something_better(tmp_path: Path) -> None:
+    """The gate is not "this clip is bad", it is "we can do better than this"."""
+    weak = _in(3, 2, _member("weak", 0.24, photo=False))
+    better = _in(3, 9, _member("same-month-better", 0.7, photo=False))
+    elsewhere = [_in(6 + i, 4, _member(f"v-{i}", 0.6, photo=False)) for i in range(2)]
+
+    dropped = _pipeline(tmp_path)._spare_last_voices({"weak"}, [weak, better, *elsewhere])
+
+    assert dropped == {"weak"}
+
+
+def test_a_weak_clip_that_is_its_period_is_kept(tmp_path: Path) -> None:
+    """Dropping it loses the month, and the judge purges for good."""
+    only_march = _in(3, 2, _member("the-only-march", 0.24, photo=False))
+    elsewhere = [_in(6 + i, 4, _member(f"v-{i}", 0.6, photo=False)) for i in range(2)]
+
+    dropped = _pipeline(tmp_path)._spare_last_voices({"the-only-march"}, [only_march, *elsewhere])
+
+    assert dropped == set()
+
+
+def test_an_unusable_clip_is_never_worth_a_period(tmp_path: Path) -> None:
+    """A pocket, the ground, somebody's feet. Being alone does not redeem it."""
+    ground = _in(3, 2, _member("the-ground", 0.05, photo=False))
+    elsewhere = [_in(6 + i, 4, _member(f"v-{i}", 0.6, photo=False)) for i in range(2)]
+
+    dropped = _pipeline(tmp_path)._spare_last_voices({"the-ground"}, [ground, *elsewhere])
+
+    assert dropped == {"the-ground"}
