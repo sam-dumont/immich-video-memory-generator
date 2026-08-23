@@ -93,3 +93,63 @@ def test_a_look_that_succeeded_does_replace_the_score(tmp_path: Path) -> None:
     _result_out, analyzed = pipeline._verify_selection([member], _result(clip))
 
     assert [m.score for m in analyzed] == [0.05]
+
+
+class TestAModelSwitchCanRegenerateSemantics:
+    """After changing llm.model every cached clip is objective-fresh and
+    semantics-stale, and the cache hit was returned before anything could
+    regenerate them. _needs_a_real_look then re-flagged the clip every round
+    and the verify pass "analyzed" it as a cache-hit no-op, forever.
+
+    The holistic review is left judging bare lines it is instructed never to
+    drop for missing information — the whole class of defect that having
+    descriptions is supposed to prevent, library-wide, until ANALYSIS_VERSION
+    happens to bump.
+    """
+
+    def _analyzer(self, tmp_path: Path, *, content_analysis: bool):
+        from immich_memories.analysis.clip_analyzer import ClipAnalyzer
+
+        return ClipAnalyzer(
+            config=PipelineConfig(),
+            client=MagicMock(),
+            analysis_cache=MagicMock(),
+            preview_builder=MagicMock(),
+            app_config=Config(
+                cache={"directory": str(tmp_path / "cache")},
+                llm={"model": "the-new-model"},
+                content_analysis={"enabled": content_analysis},
+            ),
+        )
+
+    def test_a_hit_with_no_semantics_is_not_a_complete_answer(self, tmp_path: Path) -> None:
+        """Objective scores survived the model switch; the semantics did not."""
+        analyzer = self._analyzer(tmp_path, content_analysis=True)
+
+        assert not analyzer._cache_hit_is_complete((1.0, 5.0, 0.7, None, None))
+        assert analyzer._cache_hit_is_complete((1.0, 5.0, 0.7, None, {"description": "a cake"}))
+
+    def test_a_hit_with_semantics_still_short_circuits(self, tmp_path: Path) -> None:
+        """A warm cache must stay warm — this is what makes reruns cheap."""
+        analyzer = self._analyzer(tmp_path, content_analysis=True)
+        analyzer._check_analysis_cache = MagicMock(
+            return_value=(1.0, 5.0, 0.7, None, {"description": "a birthday cake"})
+        )
+        analyzer._download_analysis_video = MagicMock(side_effect=AssertionError("re-downloaded"))
+
+        start, _end, _score, _preview, payload = analyzer._analyze_clip_with_preview(
+            make_clip("warm", duration=10.0)
+        )
+
+        assert start == 1.0
+        assert payload == {"description": "a birthday cake"}
+
+    def test_with_content_analysis_off_a_hit_is_complete(self, tmp_path: Path) -> None:
+        """Nothing is missing if nothing was going to be generated."""
+        analyzer = self._analyzer(tmp_path, content_analysis=False)
+        analyzer._check_analysis_cache = MagicMock(return_value=(1.0, 5.0, 0.7, None, None))
+        analyzer._download_analysis_video = MagicMock(side_effect=AssertionError("re-downloaded"))
+
+        start, *_rest = analyzer._analyze_clip_with_preview(make_clip("no-llm", duration=10.0))
+
+        assert start == 1.0
