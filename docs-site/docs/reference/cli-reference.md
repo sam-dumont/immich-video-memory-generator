@@ -270,14 +270,14 @@ immich-memories generate [OPTIONS]
 | `--hemisphere` | choice: `north` \| `south` | north | Hemisphere for season calculation |
 | `--duration`, `-d` | integer | - | Target duration in seconds (default: from memory type preset) |
 | `--short-form` | choice: `15` \| `30` \| `60` \| `90` | - | Short-form preset: sets the duration and makes the video vertical |
-| `--orientation`, `-o` | choice: `landscape` \| `portrait` \| `square` | landscape | Output orientation |
+| `--orientation` | choice: `landscape` \| `portrait` \| `square` | landscape | Output orientation |
 | `--scale-mode`, `-s` | choice: `fit` \| `blur` | - | How to fill an aspect mismatch: blurred background or black bars (default: from config, else blur) |
 | `--transition`, `-t` | choice: `smart` \| `cut` \| `crossfade` \| `none` | smart | Transition style (default: smart — mix of fades & cuts) |
 | `--resolution`, `-r` | choice: `auto` \| `4k` \| `1080p` \| `720p` | - | Output resolution (default: config value, 'auto' to match source clips) |
 | `--music-volume` | float | 0.5 | Music volume 0.0-1.0 (default: 0.5) |
 | `--format` | choice: `mp4` \| `h265` \| `prores` | - | Output format override (default: config value) |
 | `--quality`, `-q` | choice: `high` \| `medium` \| `low` | - | Output quality (default: from config, typically high) |
-| `--output`, `-O` | path | - | Output file path |
+| `--output`, `-o`, `-O` | path | - | Output file path |
 | `--music`, `-m` | text | - | Music: path to audio file, 'auto' to generate from config, or omit for default behavior |
 | `--no-music` | boolean | false | Disable all music (skip both provided files and AI generation) |
 | `--dry-run` | boolean | false | Show what would be done without generating |
@@ -605,11 +605,11 @@ immich-memories titles test [OPTIONS]
 | `--birthday-age` | integer | - | Age for birthday title (e.g., 1 for '1st Year') |
 | `--person`, `-p` | text | - | Person name for subtitle |
 | `--month`, `-m` | integer | - | Month for month divider (1-12) |
-| `--orientation`, `-o` | choice: `landscape` \| `portrait` \| `square` | landscape | Output orientation |
+| `--orientation` | choice: `landscape` \| `portrait` \| `square` | landscape | Output orientation |
 | `--resolution`, `-r` | choice: `720p` \| `1080p` \| `4k` | 1080p | Output resolution |
 | `--locale`, `-l` | choice: `en` \| `fr` | en | Language |
 | `--style`, `-s` | choice: `modern_warm` \| `elegant_minimal` \| `vintage_charm` \| `playful_bright` \| `soft_romantic` \| `random` | random | Visual style |
-| `--output`, `-O` | path | - | Output file path |
+| `--output`, `-o`, `-O` | path | - | Output file path |
 | `--type` | choice: `title` \| `month` \| `ending` | title | Screen type |
 | `--download-fonts` | boolean | false | Download fonts before generating |
 | `--no-animated-background` | boolean | false | Disable animated backgrounds (static gradient) |

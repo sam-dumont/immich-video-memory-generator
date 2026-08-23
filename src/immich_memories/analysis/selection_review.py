@@ -22,6 +22,8 @@ if TYPE_CHECKING:
     from immich_memories.analysis.smart_pipeline import ClipWithSegment
     from immich_memories.config_models_llm import LLMConfig
 
+from immich_memories.analysis.llm_failures import stop_if_this_is_our_bug
+
 logger = logging.getLogger(__name__)
 
 # An overeager model must not gut the video: at most this share of the
@@ -156,6 +158,7 @@ def review_selection(
     try:
         raw = _ask(prompt, llm_config, timeout_seconds)
     except Exception as e:  # WHY broad: the review is optional; never break selection
+        stop_if_this_is_our_bug(e, "selection review")
         logger.warning("Selection review unavailable (%s): nothing dropped", type(e).__name__)
         return []
 

@@ -17,6 +17,7 @@ from immich_memories.cli._date_resolution import (
     infer_memory_type,
     resolve_date_range,
 )
+from immich_memories.cli._flags import output_path
 from immich_memories.cli._generate_display import (
     _build_params_table,
     _print_generation_result,
@@ -249,7 +250,6 @@ def register_generate_commands(main: click.Group) -> None:
     )
     @click.option(
         "--orientation",
-        "-o",
         type=click.Choice(["landscape", "portrait", "square"]),
         default="landscape",
         help="Output orientation",
@@ -296,7 +296,14 @@ def register_generate_commands(main: click.Group) -> None:
         default=None,
         help="Output quality (default: from config, typically high)",
     )
-    @click.option("--output", "-O", type=click.Path(), help="Output file path")
+    @click.option(
+        "--output",
+        "-o",
+        "-O",
+        type=click.Path(),
+        callback=output_path,
+        help="Output file path",
+    )
     @click.option(
         "--music",
         "-m",

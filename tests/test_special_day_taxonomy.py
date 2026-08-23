@@ -85,3 +85,62 @@ def test_the_bug_is_logged_before_it_is_raised(caplog) -> None:
         ask_if_special([_asset()], llm_config=SimpleNamespace())
 
     assert any(record.levelno >= logging.ERROR for record in caplog.records)
+
+
+def test_the_selection_review_also_stops_on_our_own_bug() -> None:
+    """The same fail-open catch, the same swallowed mistake, the same fix.
+
+    Found live: changing _ask's signature made every review return "nothing to
+    drop" instead of raising. A cut that nothing was dropped from reads as a
+    cut nothing was wrong with.
+    """
+    from immich_memories.analysis.selection_review import review_selection
+
+    members = [_asset() for _ in range(4)]
+    selection = [
+        SimpleNamespace(
+            clip=SimpleNamespace(
+                asset=SimpleNamespace(id=f"a{i}", is_favorite=False, **vars(m)),
+                llm_description="something",
+            ),
+            start_time=0.0,
+            end_time=4.0,
+            score=0.5,
+            analyzed=True,
+        )
+        for i, m in enumerate(members)
+    ]
+
+    # WHY: the ask path is the boundary; here our own call into it is wrong.
+    with (
+        patch(
+            "immich_memories.analysis.selection_review._ask",
+            side_effect=TypeError("unexpected keyword argument"),
+        ),
+        pytest.raises(TypeError, match="unexpected keyword"),
+    ):
+        review_selection(selection, SimpleNamespace(model="m", thinking=True))
+
+
+def test_the_selection_review_still_survives_an_unreachable_model() -> None:
+    """And the fail-open it exists for is untouched."""
+    from immich_memories.analysis.selection_review import review_selection
+
+    members = [_asset() for _ in range(4)]
+    selection = [
+        SimpleNamespace(
+            clip=SimpleNamespace(
+                asset=SimpleNamespace(id=f"a{i}", is_favorite=False, **vars(m)),
+                llm_description="something",
+            ),
+            start_time=0.0,
+            end_time=4.0,
+            score=0.5,
+            analyzed=True,
+        )
+        for i, m in enumerate(members)
+    ]
+
+    # WHY: the LLM server is the external boundary; here it is unreachable.
+    with patch("immich_memories.analysis.selection_review._ask", side_effect=OSError("no route")):
+        assert review_selection(selection, SimpleNamespace(model="m", thinking=True)) == []

@@ -9,6 +9,7 @@ from pathlib import Path
 import click
 from rich.table import Table
 
+from immich_memories.cli._flags import output_path
 from immich_memories.cli._helpers import console, print_error, print_info, print_success
 
 
@@ -128,7 +129,6 @@ def register_titles_commands(main: click.Group) -> None:
     @click.option("--month", "-m", type=int, help="Month for month divider (1-12)")
     @click.option(
         "--orientation",
-        "-o",
         type=click.Choice(["landscape", "portrait", "square"]),
         default="landscape",
         help="Output orientation",
@@ -157,7 +157,14 @@ def register_titles_commands(main: click.Group) -> None:
         default="random",
         help="Visual style",
     )
-    @click.option("--output", "-O", type=click.Path(), help="Output file path")
+    @click.option(
+        "--output",
+        "-o",
+        "-O",
+        type=click.Path(),
+        callback=output_path,
+        help="Output file path",
+    )
     @click.option(
         "--type",
         "screen_type",
