@@ -91,11 +91,11 @@ def test_the_prompt_lines_describe_the_pictures_sent_with_them(monkeypatch) -> N
 
     # WHY: the vision call is the network boundary; the prompt it is handed
     # is the whole point of the test.
-    def _capture(prompt, thumbnails, *_a, **_k):
-        seen["prompt"], seen["thumbnails"] = prompt, thumbnails
+    def _capture(prompt, _llm_config, _timeout, images):
+        seen["prompt"], seen["thumbnails"] = prompt, images
         return '{"special": false}'
 
-    monkeypatch.setattr(special_day, "_ask_with_images", _capture)
+    monkeypatch.setattr(special_day, "_ask", _capture)
 
     ask_if_special(day, llm_config=SimpleNamespace(), thumbnails=tiles)
 

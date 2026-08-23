@@ -460,51 +460,29 @@ def _describe(assets: list) -> str:
     return "\n".join(lines)
 
 
-def _ask_text_only(prompt: str, llm_config: LLMConfig, timeout_seconds: int) -> str:
+def _ask(
+    prompt: str,
+    llm_config: LLMConfig,
+    timeout_seconds: int,
+    images: list[bytes],
+) -> str:
+    """One question to the configured provider, with the day's pictures if any.
+
+    Routing belongs to llm_query and nowhere else: the vision call used to
+    POST OpenAI-style whatever the provider was, so every Ollama server it
+    met answered 404 and the day came back ordinary.
+    """
     from immich_memories.analysis.llm_query import query_llm
 
     return asyncio.run(
-        query_llm(prompt, llm_config, temperature=0.1, timeout_seconds=timeout_seconds)
+        query_llm(
+            prompt,
+            llm_config,
+            temperature=0.1,
+            timeout_seconds=timeout_seconds,
+            images=images,
+        )
     )
-
-
-def _ask_with_images(
-    prompt: str,
-    thumbnails: list[bytes],
-    llm_config: LLMConfig,
-    timeout_seconds: int,
-) -> str:
-    """One call carrying the day's sample as images."""
-    import base64
-
-    import httpx
-
-    from immich_memories.analysis.llm_query import build_llm_timeout
-
-    content: list[dict] = [{"type": "text", "text": prompt}]
-    content += [
-        {
-            "type": "image_url",
-            "image_url": {
-                "url": "data:image/jpeg;base64," + base64.b64encode(data).decode("utf-8"),
-                "detail": "low",
-            },
-        }
-        for data in thumbnails
-    ]
-    headers = {"Authorization": f"Bearer {llm_config.api_key}"} if llm_config.api_key else {}
-    resp = httpx.post(
-        f"{llm_config.base_url}/chat/completions",
-        json={
-            "model": llm_config.model,
-            "messages": [{"role": "user", "content": content}],
-            "max_tokens": 300,
-        },
-        headers=headers,
-        timeout=build_llm_timeout(float(timeout_seconds)),
-    )
-    resp.raise_for_status()
-    return resp.json()["choices"][0]["message"]["content"]
 
 
 @dataclass(frozen=True)
@@ -541,13 +519,7 @@ def ask_if_special(
     sampled = [asset for asset, _ in thumbnails] if thumbnails else sample_across_day(assets)
     prompt = _PROMPT.format(lines=_describe(sampled))
     try:
-        raw = (
-            _ask_with_images(
-                prompt, [image for _, image in thumbnails], llm_config, timeout_seconds
-            )
-            if thumbnails
-            else _ask_text_only(prompt, llm_config, timeout_seconds)
-        )
+        raw = _ask(prompt, llm_config, timeout_seconds, [image for _, image in thumbnails or []])
     except Exception as exc:  # noqa: BLE001 - an unreachable model is not a verdict
         logger.debug("Special-day question failed: %s", type(exc).__name__)
         return SpecialDay(special=False)

@@ -93,7 +93,7 @@ def test_a_model_that_answers_with_nothing_is_not_a_verdict() -> None:
     TypeError that travelled all the way out of a multi-hour scan.
     """
     # WHY: the LLM is the external boundary; here it answered with nothing.
-    with patch("immich_memories.analysis.special_day._ask_text_only", return_value=None):
+    with patch("immich_memories.analysis.special_day._ask", return_value=None):
         verdict = ask_if_special([_asset(10)], llm_config=SimpleNamespace())
 
     assert verdict.special is False
@@ -133,7 +133,7 @@ class TestTitlesStayGrounded:
 
     def _answer(self, day: list, payload: str) -> object:
         # WHY: the model is the boundary; this pins what we do with its answer.
-        with patch("immich_memories.analysis.special_day._ask_text_only", return_value=payload):
+        with patch("immich_memories.analysis.special_day._ask", return_value=payload):
             return ask_if_special(day, llm_config=SimpleNamespace())
 
     def test_a_place_nobody_mentioned_is_dropped(self) -> None:
@@ -232,7 +232,7 @@ class TestATitleHasToBeATitle:
     def _answer(self, day: list, title: str) -> object:
         # WHY: the model is the boundary; this pins what we accept from it.
         with patch(
-            "immich_memories.analysis.special_day._ask_text_only",
+            "immich_memories.analysis.special_day._ask",
             return_value=f'{{"special": true, "title": "{title}", "what": "something"}}',
         ):
             return ask_if_special(day, llm_config=SimpleNamespace())
@@ -285,7 +285,7 @@ class TestAPlaceHasToBeSomewhereTheDayWas:
     def _answer(self, day: list, title: str) -> object:
         # WHY: the model is the boundary; this pins what we accept back.
         with patch(
-            "immich_memories.analysis.special_day._ask_text_only",
+            "immich_memories.analysis.special_day._ask",
             return_value=f'{{"special": true, "title": "{title}", "subtitle": ""}}',
         ):
             return ask_if_special(day, llm_config=SimpleNamespace())
