@@ -6,7 +6,7 @@ used across the assembly pipeline.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from enum import StrEnum
 from pathlib import Path
@@ -96,6 +96,8 @@ class TitleScreenSettings:
     # Trip map settings (used when memory_type == "trip")
     memory_type: str | None = None  # "trip" enables map intro + location cards
     trip_locations: list[tuple[float, float]] | None = None  # (lat, lon) pairs for map pins
+    # Pin labels, index-aligned with trip_locations; "" where unknown
+    trip_location_names: list[str] = field(default_factory=list)
     trip_title_text: str | None = None  # e.g. "TWO WEEKS IN SPAIN, SUMMER 2025"
     show_location_cards: bool = True  # Insert location cards between clips
     home_lat: float | None = None  # Homebase latitude — fly-over departure point

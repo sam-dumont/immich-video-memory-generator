@@ -303,6 +303,7 @@ class TitleInserter:
                 title_text=title_settings.trip_title_text,
                 home_lat=getattr(title_settings, "home_lat", None),
                 home_lon=getattr(title_settings, "home_lon", None),
+                location_names=getattr(title_settings, "trip_location_names", None) or None,
             )
             use_content_bg = False  # trip maps don't use content-backed
             logger.info(f"Generated trip map intro: {title_screen.path}")

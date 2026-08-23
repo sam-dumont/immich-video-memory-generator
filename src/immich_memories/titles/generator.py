@@ -474,6 +474,8 @@ class TitleScreenGenerator:
     def generate_location_card_screen(
         self,
         location_name: str,
+        lat: float | None = None,
+        lon: float | None = None,
     ) -> GeneratedScreen:
         """Generate a location interstitial card with mood-based styling.
 
@@ -484,7 +486,7 @@ class TitleScreenGenerator:
         from .map_renderer import render_location_card
 
         width, height = self.config.output_resolution
-        card_img = render_location_card(location_name, width, height)
+        card_img = render_location_card(location_name, width, height, lat=lat, lon=lon)
         bg_array = np.array(card_img, dtype=np.float32) / 255.0
 
         divider_style = TitleStyle(

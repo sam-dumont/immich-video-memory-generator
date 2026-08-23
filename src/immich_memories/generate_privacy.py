@@ -96,17 +96,27 @@ def clip_location_name(exif) -> str | None:
     return country or city
 
 
-def extract_trip_locations(assembly_clips: list[AssemblyClip]) -> list[tuple[float, float]]:
-    """Extract unique GPS locations from assembly clips for map pins."""
+def extract_trip_pins(
+    assembly_clips: list[AssemblyClip],
+) -> tuple[list[tuple[float, float]], list[str]]:
+    """Unique GPS locations for map pins, and the name to label each one with.
+
+    Both lists are built in one pass so they stay index-aligned: the renderer
+    draws labels by position, so a name list de-duplicated by a different rule
+    would caption every pin after the first repeat with the wrong place. A pin
+    whose clip carried no place name holds its slot with an empty string.
+    """
     seen: set[tuple[float, float]] = set()
     locations: list[tuple[float, float]] = []
+    names: list[str] = []
     for clip in assembly_clips:
         if clip.latitude is not None and clip.longitude is not None:
             key = (round(clip.latitude, 2), round(clip.longitude, 2))
             if key not in seen:
                 seen.add(key)
                 locations.append((clip.latitude, clip.longitude))
-    return locations
+                names.append(clip.location_name or "")
+    return locations, names
 
 
 def generate_trip_title_text(preset_params: dict) -> str | None:

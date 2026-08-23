@@ -28,7 +28,9 @@ class DividerCardGenerator(Protocol):
 
     def generate_year_divider(self, year: int) -> GeneratedScreen: ...
 
-    def generate_location_card_screen(self, location_name: str) -> GeneratedScreen: ...
+    def generate_location_card_screen(
+        self, location_name: str, lat: float | None = ..., lon: float | None = ...
+    ) -> GeneratedScreen: ...
 
 
 def _divider_limit(title_settings: Any) -> int | None:
@@ -251,10 +253,17 @@ class TitleDividerPlanner:
         self,
         name: str,
         cache: dict[str, Path],
+        lat: float | None = None,
+        lon: float | None = None,
     ) -> AssemblyClip:
-        """Return an AssemblyClip for a location card, using cache to avoid duplicates."""
+        """Return an AssemblyClip for a location card, using cache to avoid duplicates.
+
+        Coordinates turn the card's background from a flat grey panel into a
+        satellite map of the place it names. Cached by name, so a place seen
+        twice keeps the first card rather than re-rendering the same map.
+        """
         if name not in cache:
-            card = self._generator.generate_location_card_screen(name)
+            card = self._generator.generate_location_card_screen(name, lat=lat, lon=lon)
             cache[name] = card.path
         return AssemblyClip(
             path=cache[name],
@@ -292,7 +301,12 @@ class TitleDividerPlanner:
                         and clip.location_name
                         and (limit is None or inserted < limit)
                     ):
-                        card = self.make_location_card_clip(clip.location_name, location_card_cache)
+                        card = self.make_location_card_clip(
+                            clip.location_name,
+                            location_card_cache,
+                            lat=clip.latitude,
+                            lon=clip.longitude,
+                        )
                         result.append(card)
                         inserted += 1
                         logger.info(f"Location card: {clip.location_name} (dist={dist:.0f}km)")

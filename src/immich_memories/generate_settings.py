@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from immich_memories.config_models import normalize_scale_mode
 from immich_memories.generate_privacy import (
-    extract_trip_locations,
+    extract_trip_pins,
     generate_trip_title_text,
 )
 from immich_memories.processing.assembly_config import (
@@ -149,9 +149,10 @@ def _build_title_settings(
 
     # Trip-specific title settings
     trip_locations = None
+    trip_location_names: list[str] = []
     trip_title_text = None
     if params.memory_type == "trip":
-        trip_locations = extract_trip_locations(assembly_clips)
+        trip_locations, trip_location_names = extract_trip_pins(assembly_clips)
         trip_title_text = generate_trip_title_text(params.memory_preset_params)
 
     settings = TitleScreenSettings(
@@ -172,6 +173,7 @@ def _build_title_settings(
         show_decorative_lines=config.title_screens.show_decorative_lines,
         memory_type=params.memory_type,
         trip_locations=trip_locations,
+        trip_location_names=trip_location_names,
         trip_title_text=trip_title_text,
         home_lat=params.memory_preset_params.get("home_lat"),
         home_lon=params.memory_preset_params.get("home_lon"),
@@ -189,6 +191,12 @@ def _build_title_settings(
     if params.title:
         settings.title_override = params.title
         settings.subtitle_override = params.subtitle
+        if settings.trip_title_text:
+            # The trip map intro reads trip_title_text, not title_override, so
+            # a curated title was being computed and then ignored on the one
+            # screen every viewer sees. Only replaces an existing template —
+            # whether a map appears at all is a separate decision.
+            settings.trip_title_text = params.title
 
     return settings
 

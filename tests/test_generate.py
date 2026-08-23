@@ -664,7 +664,7 @@ class TestTotalClipDuration:
 class TestTripLocations:
     def test_extract_trip_locations_deduplicates(self):
         """Clips with GPS data produce unique location list."""
-        from immich_memories.generate_privacy import extract_trip_locations
+        from immich_memories.generate_privacy import extract_trip_pins
         from immich_memories.processing.assembly_config import AssemblyClip
 
         clips = [
@@ -678,8 +678,9 @@ class TestTripLocations:
                 path=Path("/fake/c.mp4"), duration=3.0, latitude=51.5074, longitude=-0.1278
             ),
         ]
-        locations = extract_trip_locations(clips)
+        locations, names = extract_trip_pins(clips)
         assert len(locations) == 2
+        assert len(names) == len(locations)
 
     def testgenerate_trip_title_text(self):
         from immich_memories.generate_privacy import generate_trip_title_text
