@@ -49,11 +49,14 @@ async def query_llm(
     max_tokens: int = 500,
     timeout_seconds: int = 30,
     images: Sequence[bytes] = (),
+    image_detail: str = "low",
 ) -> str:
     """Send a prompt, optionally with JPEG images, and return the response."""
     if llm_config.provider == "ollama":
         return await _query_ollama(prompt, llm_config, temperature, timeout_seconds, images)
-    return await _query_openai(prompt, llm_config, temperature, max_tokens, timeout_seconds, images)
+    return await _query_openai(
+        prompt, llm_config, temperature, max_tokens, timeout_seconds, images, image_detail
+    )
 
 
 async def _query_ollama(
@@ -73,13 +76,15 @@ async def _query_ollama(
     # Ollama takes bare base64 in its own field, not a data: URI in a message.
     if images:
         payload["images"] = [base64.b64encode(image).decode("utf-8") for image in images]
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with httpx.AsyncClient(timeout=build_llm_timeout(float(timeout))) as client:
         resp = await client.post(f"{base_url}/api/generate", json=payload)
         resp.raise_for_status()
         return resp.json()["response"]
 
 
-def _openai_content(prompt: str, images: Sequence[bytes]) -> str | list[dict]:
+def _openai_content(
+    prompt: str, images: Sequence[bytes], image_detail: str = "low"
+) -> str | list[dict]:
     """The message body: a bare string without pictures, parts with them."""
     if not images:
         return prompt
@@ -90,9 +95,10 @@ def _openai_content(prompt: str, images: Sequence[bytes]) -> str | list[dict]:
                 "type": "image_url",
                 "image_url": {
                     "url": "data:image/jpeg;base64," + base64.b64encode(image).decode("utf-8"),
-                    # Low detail: these are thumbnails, and the question is what
-                    # the day was, not what is written on a sign in it.
-                    "detail": "low",
+                    # Thumbnails, and the question is what a day or a photo was,
+                    # not what is written on a sign in it. Callers with a
+                    # configured preference pass their own.
+                    "detail": image_detail,
                 },
             }
             for image in images
@@ -107,6 +113,7 @@ async def _query_openai(
     max_tokens: int,
     timeout: int,
     images: Sequence[bytes] = (),
+    image_detail: str = "low",
 ) -> str:
     base_url = config.base_url.rstrip("/")
     headers: dict[str, str] = {}
@@ -114,12 +121,16 @@ async def _query_openai(
         headers["Authorization"] = f"Bearer {config.api_key}"
     payload = {
         "model": config.model,
-        "messages": [{"role": "user", "content": _openai_content(prompt, images)}],
+        "messages": [{"role": "user", "content": _openai_content(prompt, images, image_detail)}],
         "max_tokens": max_tokens,
         "temperature": temperature,
     }
     # Retry up to 3x — some models (Qwen/mlx-vlm) return null content
-    async with httpx.AsyncClient(timeout=timeout, headers=headers) as client:
+    # Per-phase, not a scalar: a stuck server should fail while connecting
+    # rather than hold the whole generation budget on one read.
+    async with httpx.AsyncClient(
+        timeout=build_llm_timeout(float(timeout)), headers=headers
+    ) as client:
         for attempt in range(3):
             resp = await client.post(f"{base_url}/chat/completions", json=payload)
             resp.raise_for_status()

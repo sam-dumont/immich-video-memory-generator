@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -162,7 +162,7 @@ class TestPhotoScoring:
             request=httpx.Request("POST", "http://localhost:9999/v1/chat/completions"),
         )
 
-        with patch("httpx.post", return_value=response) as request:
+        with patch("httpx.AsyncClient.post", return_value=response) as request:
             first = score_photo_with_llm(
                 photo_a, 0.42, PhotoConfig(), config, provider_circuit=circuit
             )
@@ -551,13 +551,19 @@ class TestPhotoScoringTimeout:
             content_analysis=ContentAnalysisConfig(),
         )
         captured: dict = {}
+        real_client = httpx.AsyncClient
 
-        def _fake_post(url, **kwargs):
+        def _capture_client(*args, **kwargs):
             captured["timeout"] = kwargs.get("timeout")
-            raise httpx.ConnectError("no server")
+            return real_client(*args, **kwargs)
 
-        # WHY: replaces the HTTP call to the configured LLM provider
-        with patch("httpx.post", side_effect=_fake_post):
+        # The client is built inside the shared query path now, so the
+        # per-phase budget is read off its construction, not off one request.
+        # WHY: replaces the HTTP call to the configured LLM provider.
+        with (
+            patch("httpx.AsyncClient", side_effect=_capture_client),
+            patch("httpx.AsyncClient.post", side_effect=httpx.ConnectError("no server")),
+        ):
             _query_photo_llm(photo, config)
 
         timeout = captured["timeout"]
@@ -565,3 +571,57 @@ class TestPhotoScoringTimeout:
         assert timeout.read == 3600
         assert timeout.connect is not None
         assert timeout.connect < 60
+
+
+class TestPhotosAskTheSameWayEverythingElseDoes:
+    """One way in. The photo path was a second HTTP client with its own rules.
+
+    It posted OpenAI-style whatever provider was configured, skipped the
+    rstrip the shared client does, capped itself at 256 tokens, and — unlike
+    every other caller — gave up the first time a model answered with nothing.
+    """
+
+    def _config(self, provider: str, base_url: str):
+        from immich_memories.config import Config
+
+        return Config(
+            llm={"provider": provider, "base_url": base_url, "model": "qwen-vl"},
+            content_analysis={"enabled": True},
+        )
+
+    def test_an_ollama_photo_goes_to_the_ollama_endpoint(self, tmp_path: Path) -> None:
+        from immich_memories.photos.scoring import _query_photo_llm
+
+        photo = tmp_path / "p.jpg"
+        photo.write_bytes(b"\xff\xd8jpeg")
+        response = AsyncMock()
+        response.status_code = 200
+        response.json = MagicMock(return_value={"response": '{"interest": 0.4, "quality": 0.6}'})
+        response.raise_for_status = lambda: None
+
+        # WHY: the model server is the network boundary; the request is the subject.
+        with patch("httpx.AsyncClient.post", return_value=response) as post:
+            look = _query_photo_llm(photo, self._config("ollama", "http://localhost:11434/"))
+
+        assert look is not None
+        assert post.call_args[0][0] == "http://localhost:11434/api/generate"
+
+    def test_a_trailing_slash_does_not_double_for_a_photo(self, tmp_path: Path) -> None:
+        from immich_memories.photos.scoring import _query_photo_llm
+
+        photo = tmp_path / "p.jpg"
+        photo.write_bytes(b"\xff\xd8jpeg")
+        response = AsyncMock()
+        response.status_code = 200
+        response.json = MagicMock(
+            return_value={
+                "choices": [{"message": {"content": '{"interest": 0.4, "quality": 0.6}'}}]
+            }
+        )
+        response.raise_for_status = lambda: None
+
+        # WHY: the model server is the network boundary; the URL is the subject.
+        with patch("httpx.AsyncClient.post", return_value=response) as post:
+            _query_photo_llm(photo, self._config("openai-compatible", "http://host:8080/v1/"))
+
+        assert post.call_args[0][0] == "http://host:8080/v1/chat/completions"

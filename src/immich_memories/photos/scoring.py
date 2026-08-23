@@ -10,7 +10,7 @@ videos always win in a tie.
 
 from __future__ import annotations
 
-import base64
+import asyncio
 import json
 import logging
 import math
@@ -90,6 +90,11 @@ def score_photo_with_llm(
 # asked only for two numbers, which were averaged into one — so the holistic
 # review, which reads a clip's description, was handed a bare line for every
 # photograph and told never to drop a clip for missing information.
+# Room for a description and five short fields. The old cap of 256 was set
+# when the answer was two numbers, and a model that opens with a sentence
+# before its JSON runs out of tokens mid-answer.
+_PHOTO_ANSWER_TOKENS = 500
+
 _PHOTO_ANALYSIS_PROMPT = """Look at this photo for a memory video, and say what is in it.
 
 - description: What is happening here?
@@ -180,58 +185,44 @@ def _parse_photo_look(text: str) -> PhotoLook | None:
 
 
 def _query_photo_llm(photo_path: Path, config: object, provider_circuit=None) -> PhotoLook | None:
-    """Send the photo to the VLM and keep everything it says about it."""
+    """Ask the configured model about a photo, through the one client.
+
+    This used to be a second HTTP client with its own rules: it POSTed
+    OpenAI-style whatever provider was configured, so every Ollama server
+    answered 404; it skipped the rstrip the shared client does; and it gave up
+    the first time a model replied with nothing, where every other caller
+    retries. query_llm owns provider routing, the URL and that retry, and this
+    keeps only what is genuinely its own — the image detail the content
+    analysis config asks for, and the circuit that turns photo analysis off
+    for a run when the provider is unwell.
+    """
     if provider_circuit is not None and not provider_circuit.available:
         return None
 
     try:
         import httpx
 
-        from immich_memories.analysis.llm_query import build_llm_timeout
-        from immich_memories.analysis.provider_health import classify_openai_response
+        from immich_memories.analysis.llm_query import query_llm
 
         llm_config = config.llm  # type: ignore[attr-defined]
         ca_config = config.content_analysis  # type: ignore[attr-defined]
 
-        with photo_path.open("rb") as f:
-            b64 = base64.b64encode(f.read()).decode("utf-8")
-
-        content: list[dict] = [
-            {"type": "text", "text": _PHOTO_ANALYSIS_PROMPT},
-            {
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/jpeg;base64,{b64}",
-                    "detail": ca_config.openai_image_detail,
-                },
-            },
-        ]
-
-        payload = {
-            "model": llm_config.model,
-            "messages": [{"role": "user", "content": content}],
-            "max_tokens": 256,
-        }
-
-        headers = {}
-        if llm_config.api_key:
-            headers["Authorization"] = f"Bearer {llm_config.api_key}"
-
-        resp = httpx.post(
-            f"{llm_config.base_url}/chat/completions",
-            json=payload,
-            headers=headers,
-            timeout=build_llm_timeout(float(llm_config.timeout_seconds)),
+        text = asyncio.run(
+            query_llm(
+                _PHOTO_ANALYSIS_PROMPT,
+                llm_config,
+                temperature=0.1,
+                max_tokens=_PHOTO_ANSWER_TOKENS,
+                timeout_seconds=llm_config.timeout_seconds,
+                images=[photo_path.read_bytes()],
+                image_detail=ca_config.openai_image_detail,
+            )
         )
-        health = classify_openai_response(resp.status_code, resp.json(), llm_config.model)
-        if not health.available:
-            if provider_circuit is not None and provider_circuit.set_health(health):
-                logger.warning("Photo content analysis disabled for this run: %s", health.message)
-            return None
-        resp.raise_for_status()
-        text = resp.json()["choices"][0]["message"]["content"]
         return _parse_photo_look(text)
 
+    except httpx.HTTPStatusError as e:
+        _note_provider_health(e.response, config, provider_circuit)
+        return None
     except httpx.HTTPError as e:
         if provider_circuit is not None:
             provider_circuit.disable("content-analysis provider is unreachable")
@@ -240,3 +231,25 @@ def _query_photo_llm(photo_path: Path, config: object, provider_circuit=None) ->
     except (RuntimeError, ValueError, OSError, KeyError, IndexError, TypeError) as e:
         logger.debug(f"LLM photo analysis returned an invalid response: {e}")
         return None
+
+
+def _note_provider_health(response: object, config: object, provider_circuit) -> None:
+    """Read a rejected response for what it says about the provider."""
+    from immich_memories.analysis.provider_health import classify_openai_response
+
+    llm_config = config.llm  # type: ignore[attr-defined]
+    try:
+        body = response.json()  # type: ignore[attr-defined]
+    except ValueError:
+        body = ""
+    health = classify_openai_response(
+        response.status_code,  # type: ignore[attr-defined]
+        body,
+        llm_config.model,
+    )
+    if (
+        not health.available
+        and provider_circuit is not None
+        and provider_circuit.set_health(health)
+    ):
+        logger.warning("Photo content analysis disabled for this run: %s", health.message)
