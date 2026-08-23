@@ -399,8 +399,7 @@ class TestSeparationIsOptional:
         config = Config()
         config.ace_step.enabled = True
 
-        # WHY: replaces the ACE-Step/MusicGen generation call, which needs a GPU
-        # or a running server.
+        # WHY: replaces the ACE-Step/MusicGen call, which needs a GPU or a running server.
         with patch(
             "immich_memories.audio.music_generator.generate_music_for_video",
             new_callable=AsyncMock,

@@ -59,6 +59,7 @@ def test_the_cli_hands_the_pipeline_the_configured_cap(tmp_path) -> None:
     clip.asset.id = "asset-1"
     clip.width, clip.height = 1920, 1080
 
+    # WHY: run_pipeline_and_generate otherwise talks to Immich and runs a full analysis.
     with (
         # WHY: Immich is the external boundary — this stands in for the library read.
         patch("immich_memories.generate.assets_to_clips", return_value=[clip]),

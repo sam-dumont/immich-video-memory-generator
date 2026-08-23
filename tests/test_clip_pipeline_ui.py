@@ -188,6 +188,7 @@ def test_blocking_pipeline_hands_the_photo_merge_its_thumbnail_cache() -> None:
     )
     progress_state = {"cancelled": False, "done": False, "error": None}
 
+    # WHY: get_config would read the developer's own config.yaml off disk.
     with (
         # WHY: Immich is the external boundary — the wizard's library read.
         patch("immich_memories.ui.pages.clip_pipeline.SyncImmichClient") as client_cls,

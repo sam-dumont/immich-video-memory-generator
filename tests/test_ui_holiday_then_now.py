@@ -34,6 +34,7 @@ def _render(key: str, **params) -> AppState:
     from immich_memories.ui.pages import step1_presets
 
     state = AppState(memory_preset_params=dict(params))
+    # WHY: the wizard reads its state through a per-session accessor.
     with (
         patch.object(step1_presets, "get_app_state", return_value=state),
         # WHY: NiceGUI widgets need a live client slot; the dispatch under test
