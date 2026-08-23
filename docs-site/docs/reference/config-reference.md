@@ -256,6 +256,14 @@ llm:
   #     enable_thinking: true
 ```
 
+**The goal of this product is a fully local process** — your photos analyzed
+on your own hardware, nothing leaving your network. A local server (mlx,
+vLLM, Ollama) is the intended setup. The cloud providers below exist for one
+reason: so that people without the means — or the desire — to run a local
+model can still use the product. Using one sends each analyzed clip's frames
+or thumbnails and the derived descriptions to that provider; see the
+"data leaving your network" page before choosing this route.
+
 Two adapters cover every provider: `openai-compatible` speaks
 `/chat/completions` (vLLM, mlx, Ollama's `/v1`, aggregators, OpenAI itself),
 and `anthropic` speaks the native `/v1/messages` API (Claude, or z.ai's
