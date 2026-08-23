@@ -288,9 +288,22 @@ def _is_a_real_title(text: str, people: set[str]) -> bool:
 
 # How close a written place has to be to one the day recorded. EXIF is in the
 # local language and the model writes English: a local spelling and its English form are the
-# same place and must pass; two different towns are not and must not.
-_SAME_PLACE_RATIO = 0.75
-_PLACE_PREPOSITIONS = ("in", "at", "near", "around", "from", "to", "de", "outside")
+# same place and must pass.
+#
+# A ratio cannot also separate two different towns, and measuring says so: two
+# neighbouring towns twelve kilometres apart score 0.750 while a city and its
+# other-language name score 0.706, and two more pairs — one the same city in
+# two languages, one two unrelated cities — both score 0.600. There is no
+# cutoff that gets all four right. What the check is actually for is the
+# invention, and an invented famous place bears no resemblance to anything the
+# day recorded at all, so it fails at any cutoff in this range. Set low enough
+# to keep real titles, then, and do not tighten it believing it can do more.
+_SAME_PLACE_RATIO = 0.70
+
+# "to" is deliberately absent: in a title it introduces a verb at least as
+# often as a destination, and "A Day to Remember" was blanked for having
+# never been to a place called Remember.
+_PLACE_PREPOSITIONS = ("in", "at", "near", "around", "from", "de", "outside")
 
 
 def _named_places(text: str) -> list[str]:
@@ -330,17 +343,6 @@ def _only_if_grounded(text: str, vocabulary: set[str], *, located: bool, places:
     V10 Track Day at a place" — a correct reading of the pictures — because
     no EXIF field happens to contain the word Audi.
     """
-    # A guessed brand is CamelCase and the day never mentions it. Told twice
-    # in the prompt not to name an event it could not read, the model answered
-    # "Attending KubeCon in a place" and then, on the same day, "Attending
-    # GitLab All-Hands" — recognising a hall full of lanyards and inventing
-    # which conference it was. This catches that shape without touching Audi,
-    # R8 or a place, none of which carry an internal capital.
-    for coined in re.findall(r"\b[A-Z][a-z]+[A-Z][\w]*", text):
-        if coined.casefold() not in vocabulary:
-            logger.info("Dropping %r: %r looks like a guessed name", text, coined)
-            return ""
-
     # A place the day never recorded. Asked about a track day at a place — with
     # three villages all in its EXIF — the model
     # answered "the famous circuit", Belgium's famous circuit rather
@@ -357,6 +359,16 @@ def _only_if_grounded(text: str, vocabulary: set[str], *, located: bool, places:
 
     if not text or located:
         return text
+
+    # Every capitalised word the day cannot account for, which is what catches
+    # a guessed name: told twice in the prompt not to name an event it could
+    # not read, the model answered "Attending KubeCon" and, the same day,
+    # "Attending GitLab All-Hands" — a hall full of lanyards, and an invented
+    # answer to which conference. A separate CamelCase pass used to run ahead
+    # of this one and so applied to located days too, where it took "MacLaren
+    # Track Day" off a day whose coordinates were never in doubt. Naming what
+    # is in the frame is a reading of the pictures, not a guess at where they
+    # were, and this pass is the one entitled to be strict.
     for word in re.findall(r"\b[A-Z\u00c0-\u00dd][\w\u00c0-\u024f'-]{2,}", text):
         if word.casefold() not in vocabulary and word.casefold() not in _EVERYDAY_CAPITALS:
             logger.info(

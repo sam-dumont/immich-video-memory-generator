@@ -180,14 +180,22 @@ class TestTitlesStayGrounded:
 
         assert result.title == "Audi R8 V10 Track Day at Nearby"
 
-    def test_a_guessed_brand_name_is_dropped_even_with_gps(self) -> None:
+    def test_a_guessed_brand_name_is_dropped_when_the_day_is_unplaced(self) -> None:
         """Told twice not to name an event it could not read, it still guessed.
 
-        The same a place day came back as "Attending KubeCon in a place"
-        and then "Attending GitLab All-Hands". It had recognised a hall full
-        of lanyards and invented which conference it was.
+        The same day came back as "Attending KubeCon" and then "Attending
+        GitLab All-Hands": it had recognised a hall full of lanyards and
+        invented which conference it was.
+
+        This used to be enforced on located days too, by a separate pass that
+        looked for an internal capital. That pass turned on an accident of
+        spelling rather than on anything about the claim — it kept "Audi
+        Track Day" and dropped "MacLaren Track Day", which no reader could be
+        expected to explain — and a title naming what is in the frame is a
+        reading of the pictures, not a guess at where they were. On a day
+        that knows where it was, the model is now allowed to say what it saw.
         """
-        day = self._day_with(city="Township", names=[], gps=True)
+        day = self._day_with(city=None, names=[], gps=False)
 
         result = self._answer(
             day, '{"special": true, "title": "Attending GitLab All-Hands", "subtitle": ""}'
@@ -312,6 +320,76 @@ class TestAPlaceHasToBeSomewhereTheDayWas:
         assert self._answer(day, "A Sunday morning run in Ghantville").title == (
             "A Sunday morning run in Ghantville"
         )
+
+
+class TestTheGroundingFilterKeepsWhatItPromised:
+    """The filter has to drop inventions without taking real titles with it.
+
+    A title card is the wrong place for a plausible invention — and just as
+    wrong a place for a blank where a good title was.
+    """
+
+    def _day(self, cities: list[str], *, gps: bool = True) -> list[SimpleNamespace]:
+        return [
+            SimpleNamespace(
+                file_created_at=datetime(2021, 4, 4, hour, tzinfo=UTC),
+                exif_info=SimpleNamespace(
+                    city=cities[hour % len(cities)],
+                    state=None,
+                    country=cities[hour % len(cities)] and "Belgium",
+                    latitude=50.31 if gps else None,
+                    longitude=4.66 if gps else None,
+                ),
+                people=[],
+            )
+            for hour in range(8, 16)
+        ]
+
+    def _answer(self, day: list, title: str) -> object:
+        # WHY: the model is the boundary; this pins what we accept back.
+        with patch(
+            "immich_memories.analysis.special_day._ask",
+            return_value=f'{{"special": true, "title": "{title}", "subtitle": ""}}',
+        ):
+            return ask_if_special(day, llm_config=SimpleNamespace())
+
+    def test_an_infinitive_is_not_a_place_the_day_never_visited(self) -> None:
+        """ "A Day to Remember" read "Remember" as somewhere it had not been.
+
+        Anything capitalised after a preposition counted as a place name, and
+        in a title "to" introduces a verb at least as often as a destination.
+        """
+        day = self._day(["Someplace", "Nearby"])
+
+        assert self._answer(day, "A Day to Remember").title == "A Day to Remember"
+
+    def test_a_marque_survives_when_the_day_knows_where_it_was(self) -> None:
+        """A brand read off the pictures is not an invented location.
+
+        The guessed-name check ran before the located-early-return, so a
+        title naming what was in the frame died on a day with full GPS —
+        the same reading the module docstring says it must not throw away.
+        """
+        day = self._day(["Someplace", "Nearby"])
+
+        assert self._answer(day, "MacLaren Track Day").title == "MacLaren Track Day"
+
+    def test_a_guessed_name_still_dies_on_a_day_with_no_location(self) -> None:
+        """The failure the check exists for: a hall of lanyards, named."""
+        day = self._day([None], gps=False)
+
+        assert self._answer(day, "Attending KubeCon").title == ""
+
+    def test_the_english_name_of_a_local_city_is_the_same_place(self) -> None:
+        """EXIF carries the local spelling and the model writes the English one.
+
+        Measured: brussels/bruxelles are 0.706 similar and the cutoff was
+        0.75, so the filter rejected exactly the pair its own comment
+        promises to pass.
+        """
+        day = self._day(["Bruxelles"])
+
+        assert self._answer(day, "A long lunch in Brussels").title == ("A long lunch in Brussels")
 
 
 class TestADayEndsWhenThePhotographsDo:
