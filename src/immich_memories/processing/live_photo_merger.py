@@ -685,23 +685,15 @@ def burst_encoding_plan(*, is_hdr: bool, hardware_enabled: bool = True) -> Encod
 def _append_encoding_args(
     cmd: list[str], plan: EncodingPlan, has_audio: bool, output: Path
 ) -> None:
-    """Append video/audio codec arguments to the FFmpeg command."""
-    cmd.extend(["-c:v", plan.encoder, *plan.encoder_args, "-pix_fmt", plan.pixel_format])
+    """Append video/audio codec arguments to the FFmpeg command.
 
-    if plan.hdr:
-        cmd.extend(
-            [
-                "-color_primaries",
-                "bt2020",
-                "-color_trc",
-                "arib-std-b67",
-                "-colorspace",
-                "bt2020nc",
-            ]
-        )
-    if plan.codec is OutputCodec.H265:
-        # hev1 is the FFmpeg default in MP4 and will not play on Apple devices.
-        cmd.extend(["-tag:v", "hvc1"])
+    Shares ``encoder_args_for_plan`` with the assembler rather than restating
+    the codec/pixel-format/colour-tag rules, which is how the two drifted apart
+    in the first place.
+    """
+    from immich_memories.processing.clip_encoder import encoder_args_for_plan
+
+    cmd.extend(encoder_args_for_plan(plan))
 
     if has_audio:
         cmd.extend(["-c:a", "aac"])
