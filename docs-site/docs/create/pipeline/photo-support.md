@@ -31,7 +31,7 @@ When a portrait photo is displayed in a landscape frame (or vice versa), the mis
 ### Face-Aware Pan
 When Immich has detected faces in a photo, the Ken Burns camera automatically pans toward the largest face. The face position comes from Immich's ML face detection bounding boxes.
 
-Every photo goes through the same renderer: a Ken Burns zoom of 5–12 % (seeded from the asset ID so re-runs are stable) that pans toward the face target, over a blurred background when the aspect ratios don't match. Collage and split-screen renderers exist in the code base but are not wired into the pipeline yet.
+Every photo goes through the same renderer: a Ken Burns zoom of 5–12 % (seeded from the asset ID so re-runs are stable) that pans toward the face target, over a blurred background when the aspect ratios don't match. A split-screen renderer sits in the code base unwired, waiting on the split-mode feature; the collage and slide-in renderers that never got wired up were deleted.
 
 ## HEIC/HEIF Support
 
@@ -71,7 +71,7 @@ photos:
   score_penalty: 0.2      # Photos score 80% of equivalent videos
 ```
 
-Older configs may still contain `collage_duration`, `animation_mode`, `enable_collage`, `series_gap_seconds` or `zoom_factor`; those keys were removed in 0.41 and are ignored (the zoom amount is randomized per photo, and collages are not wired in).
+Older configs may still contain `collage_duration`, `animation_mode`, `enable_collage`, `series_gap_seconds` or `zoom_factor`; those keys were removed in 0.41 and are ignored (the zoom amount is randomized per photo, and collages no longer exist).
 
 ## One photo per burst
 

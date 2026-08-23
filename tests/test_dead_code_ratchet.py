@@ -25,7 +25,10 @@ WHITELIST = Path(__file__).resolve().parent.parent / "vulture-whitelist.py"
 # them in a dict. Telling vulture about the decorator (`make dead-code`) removes
 # the whole class of false positive, so the entries went rather than growing by
 # two when HOLIDAY and THEN_AND_NOW landed.
-MAX_WHITELISTED_SYMBOLS = 318
+# 306, down from 318: #502 retired the photo animation stack nobody could reach
+# (PhotoAnimator, the FFmpeg filter expressions, the grouper, AnimationMode).
+# Nine entries went with the code they were excusing.
+MAX_WHITELISTED_SYMBOLS = 306
 
 
 def test_the_dead_code_whitelist_never_grows() -> None:

@@ -87,13 +87,10 @@ src/immich_memories/
 │
 ├── photos/                     # Photo-to-video animation (converts stills to .mp4 clips)
 │   ├── __init__.py             # Public API re-exports
-│   ├── models.py               # AnimationMode enum, PhotoClipInfo, PhotoGroup
-│   ├── renderer.py             # Frame-by-frame renderer: Ken Burns, slide-in, collage, face_aware_pan
-│   ├── animator.py             # PhotoAnimator: FFmpeg command builder, HEIC decode, HDR detection
+│   ├── renderer.py             # Frame-by-frame renderer: Ken Burns, face_aware_pan, render_split (parked)
+│   ├── animator.py             # Photo source prep: HEIC decode, downscale cap, HDR detection
 │   ├── photo_pipeline.py       # PhotoPipeline: end-to-end photo processing orchestrator
 │   ├── ultrahdr.py             # Ultra HDR JPEG (Android/Pixel): MPF parser, gain map, ISO 21496-1
-│   ├── filter_expressions.py   # FFmpeg filter strings for single-photo animations (blur_bg, ken_burns, etc.)
-│   ├── grouper.py              # PhotoGrouper: temporal clustering, series detection
 │   └── scoring.py              # Photo scoring: favorites, faces, camera, penalty
 │
 ├── memory_types/               # Memory type presets & factory

@@ -1,13 +1,12 @@
 """Integration tests for the photo pipeline with real Immich and FFmpeg.
 
-Connects to a real Immich server, fetches IMAGE assets, runs grouping,
-scoring, animation (with HDR detection), and verifies the output clips.
+Connects to a real Immich server, fetches IMAGE assets, and runs scoring,
+HDR detection, and face-data checks against them.
 """
 
 from __future__ import annotations
 
 import logging
-import subprocess
 from datetime import date
 
 import pytest
@@ -15,11 +14,10 @@ import pytest
 from immich_memories.api.models import AssetType
 from immich_memories.config_loader import Config
 from immich_memories.config_models import PhotoConfig
-from immich_memories.photos.animator import PhotoAnimator, detect_photo_hdr_type
-from immich_memories.photos.grouper import PhotoGrouper
+from immich_memories.photos.animator import detect_photo_hdr_type
 from immich_memories.photos.scoring import score_photo
 from immich_memories.timeperiod import DateRange
-from tests.integration.conftest import ffprobe_json, get_duration, has_stream, requires_ffmpeg
+from tests.integration.conftest import requires_ffmpeg
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +49,6 @@ def immich_photos():
     from immich_memories.api.sync_client import SyncImmichClient
 
     config = Config.from_yaml(Config.get_default_path())
-    config.defaults.target_duration_seconds = 60  # Cap at 60s for test speed
     client = SyncImmichClient(base_url=config.immich.url, api_key=config.immich.api_key)
 
     # Narrow range — one month is enough to verify the pipeline works
@@ -104,27 +101,8 @@ class TestImmichPhotoFetch:
         assert len(has_exif) >= 1
 
 
-class TestImmichPhotoGrouping:
-    """Tests that verify photo grouping works on real Immich data."""
-
-    def test_grouper_produces_groups(self, immich_photos):
-        """PhotoGrouper clusters real photos into groups."""
-        photos, _config, _client = immich_photos
-
-        config = PhotoConfig(series_gap_seconds=60.0)
-        grouper = PhotoGrouper(config)
-        groups = grouper.group(photos)
-
-        assert len(groups) >= 1
-        logger.info(
-            f"Grouped {len(photos)} photos into {len(groups)} groups, "
-            f"{sum(1 for g in groups if g.is_series)} series"
-        )
-
-        # All asset IDs should be accounted for
-        all_ids = {aid for g in groups for aid in g.asset_ids}
-        original_ids = {p.id for p in photos}
-        assert all_ids == original_ids
+class TestImmichPhotoScoring:
+    """Tests that verify photo scoring works on real Immich data."""
 
     def test_scoring_produces_valid_scores(self, immich_photos):
         """score_photo returns valid scores for real photos."""
@@ -139,167 +117,26 @@ class TestImmichPhotoGrouping:
             assert len(set(scores)) >= 2, "All photos scored identically — scoring may be broken"
 
 
-class TestImmichPhotoAnimation:
-    """Tests that verify real Immich photos can be animated to video clips."""
-
-    def test_download_and_animate_ken_burns(self, immich_photos, tmp_path):
-        """Download a real photo from Immich, animate with Ken Burns, verify output."""
-        photos, config, client = immich_photos
-
-        # Pick first photo
-        photo = photos[0]
-        source_path = tmp_path / f"{photo.id}.jpg"
-        client.download_asset(photo.id, source_path)
-        assert source_path.exists()
-        assert source_path.stat().st_size > 100
-
-        # Probe the source to get dimensions
-        probe = ffprobe_json(source_path)
-        streams = [s for s in probe.get("streams", []) if s.get("codec_type") == "video"]
-        if not streams:
-            pytest.skip("Downloaded asset has no video stream (may be HEIF without decoder)")
-        src_w = int(streams[0]["width"])
-        src_h = int(streams[0]["height"])
-
-        # Detect HDR type
-        hdr_type = detect_photo_hdr_type(source_path)
-        logger.info(f"Photo {photo.id}: {src_w}x{src_h}, HDR={hdr_type}")
-
-        # Animate
-        output_path = tmp_path / "ken_burns.mp4"
-        photo_config = PhotoConfig(duration=3.0)
-        animator = PhotoAnimator(photo_config, target_w=1920, target_h=1080)
-        cmd = animator.build_ffmpeg_command(
-            source_path=source_path,
-            output_path=output_path,
-            width=src_w,
-            height=src_h,
-            mode="auto",
-            asset_id=photo.id,
-            hdr_type=hdr_type,
-        )
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-        assert result.returncode == 0, f"FFmpeg failed: {result.stderr[:500]}"
-
-        # Verify output
-        assert output_path.exists()
-        out_probe = ffprobe_json(output_path)
-        assert has_stream(out_probe, "video")
-        assert has_stream(out_probe, "audio")
-
-        duration = get_duration(out_probe)
-        assert 2.0 < duration < 4.5
-
-        out_streams = [s for s in out_probe.get("streams", []) if s.get("codec_type") == "video"]
-        out_w = int(out_streams[0]["width"])
-        out_h = int(out_streams[0]["height"])
-        assert out_w == 1920
-        assert out_h == 1080
-
-        logger.info(f"Animated photo → {out_w}x{out_h}, duration={duration:.1f}s")
-
-    def test_animate_portrait_photo(self, immich_photos, tmp_path):
-        """Find a portrait photo and animate with auto mode (should use blur_bg)."""
-        photos, _config, client = immich_photos
-
-        # Find a portrait photo
-        portrait = None
-        for photo in photos:
-            if photo.exif_info and photo.exif_info.latitude:
-                # Try to find one with location data for variety
-                pass
-            source = tmp_path / f"probe_{photo.id}.jpg"
-            client.download_asset(photo.id, source)
-            probe = ffprobe_json(source)
-            streams = [s for s in probe.get("streams", []) if s.get("codec_type") == "video"]
-            if not streams:
-                continue
-            w = int(streams[0]["width"])
-            h = int(streams[0]["height"])
-            if h > w:
-                portrait = (photo, source, w, h)
-                break
-
-        if portrait is None:
-            pytest.skip("No portrait photos found in Immich")
-
-        photo_asset, source_path, src_w, src_h = portrait
-        logger.info(f"Portrait photo: {photo_asset.id} ({src_w}x{src_h})")
-
-        output = tmp_path / "portrait_auto.mp4"
-        photo_config = PhotoConfig(duration=3.0)
-        animator = PhotoAnimator(photo_config, target_w=1920, target_h=1080)
-        cmd = animator.build_ffmpeg_command(
-            source_path=source_path,
-            output_path=output,
-            width=src_w,
-            height=src_h,
-            mode="auto",
-            asset_id=photo_asset.id,
-        )
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-        assert result.returncode == 0, f"FFmpeg failed: {result.stderr[:500]}"
-
-        out_probe = ffprobe_json(output)
-        assert has_stream(out_probe, "video")
-
-        # Auto on portrait → blur_bg → landscape output
-        out_streams = [s for s in out_probe.get("streams", []) if s.get("codec_type") == "video"]
-        assert int(out_streams[0]["width"]) == 1920
-        assert int(out_streams[0]["height"]) == 1080
+class TestImmichPhotoHdrDetection:
+    """Tests that verify HDR detection against real Immich photos."""
 
     def test_hdr_photo_detection(self, immich_photos, tmp_path):
         """Check if any photos are HDR and log the results."""
         photos, _config, client = immich_photos
 
-        hdr_count = 0
-        checked = 0
+        detected = []
         for photo in photos[:20]:
             source = tmp_path / f"hdr_check_{photo.id}.jpg"
             client.download_asset(photo.id, source)
-            hdr = detect_photo_hdr_type(source)
-            if hdr:
-                hdr_count += 1
-                logger.info(f"HDR photo found: {photo.id} type={hdr}")
-            checked += 1
+            detected.append(detect_photo_hdr_type(source))
 
-        logger.info(f"HDR detection: {hdr_count}/{checked} photos are HDR")
-        # This test always passes — it's observational.
-        # If HDR photos exist, verify they can be animated:
-        if hdr_count > 0:
-            # Find the first HDR photo and animate it
-            for photo in photos[:20]:
-                source = tmp_path / f"hdr_check_{photo.id}.jpg"
-                hdr = detect_photo_hdr_type(source)
-                if hdr:
-                    probe = ffprobe_json(source)
-                    streams = [
-                        s for s in probe.get("streams", []) if s.get("codec_type") == "video"
-                    ]
-                    if not streams:
-                        continue
-                    w, h = int(streams[0]["width"]), int(streams[0]["height"])
-                    output = tmp_path / "hdr_animated.mp4"
-                    animator = PhotoAnimator(
-                        PhotoConfig(duration=3.0), target_w=1920, target_h=1080
-                    )
-                    cmd = animator.build_ffmpeg_command(
-                        source_path=source,
-                        output_path=output,
-                        width=w,
-                        height=h,
-                        mode="auto",
-                        asset_id=photo.id,
-                        hdr_type=hdr,
-                    )
-                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-                    assert result.returncode == 0, f"HDR animation failed: {result.stderr[:500]}"
-                    assert output.exists()
+        hdr_count = sum(1 for h in detected if h)
+        logger.info(f"HDR detection: {hdr_count}/{len(detected)} photos are HDR")
 
-                    out_probe = ffprobe_json(output)
-                    assert has_stream(out_probe, "video")
-                    logger.info(f"HDR photo animated successfully: {hdr} → HEVC")
-                    break
+        # A library with no HDR photos is a valid library, so the assertion is
+        # on the vocabulary rather than the count.
+        assert detected
+        assert all(h in (None, "hlg", "pq") for h in detected)
 
 
 class TestImmichPhotoWithPeople:

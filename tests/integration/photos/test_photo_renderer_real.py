@@ -1,7 +1,7 @@
 """Integration tests for photo animation renderer.
 
-Tests render_ken_burns (list + streaming), render_slide_in, render_collage,
-render_split, and face_aware_pan with real numpy image data. No mocks.
+Tests render_ken_burns_streaming, render_split, and face_aware_pan with real
+numpy image data. No mocks.
 
 Run: make test-integration-photos
 """
@@ -17,10 +17,7 @@ import pytest
 from immich_memories.photos.renderer import (
     KenBurnsParams,
     face_aware_pan,
-    render_collage,
-    render_ken_burns,
     render_ken_burns_streaming,
-    render_slide_in,
     render_split,
 )
 
@@ -75,29 +72,22 @@ class TestKenBurns:
     def test_frame_count_matches_duration(self, landscape_img):
         """Frame count should equal fps * duration."""
         params = KenBurnsParams(fps=30, duration=2.0)
-        frames = render_ken_burns(landscape_img, VP_W, VP_H, params)
+        frames = list(render_ken_burns_streaming(landscape_img, VP_W, VP_H, params))
         assert len(frames) == 60
 
     def test_frame_dimensions_match_viewport(self, landscape_img):
         """Every frame should match the requested viewport size."""
         params = KenBurnsParams(fps=30, duration=1.0)
-        frames = render_ken_burns(landscape_img, VP_W, VP_H, params)
+        frames = list(render_ken_burns_streaming(landscape_img, VP_W, VP_H, params))
         for f in frames:
             assert f.shape == (VP_H, VP_W, 3)
 
     def test_zoom_produces_different_first_and_last(self, landscape_img):
         """Zoom animation should make first and last frames visually different."""
         params = KenBurnsParams(zoom_start=1.0, zoom_end=1.15, fps=30, duration=2.0)
-        frames = render_ken_burns(landscape_img, VP_W, VP_H, params)
+        frames = list(render_ken_burns_streaming(landscape_img, VP_W, VP_H, params))
         diff = np.abs(frames[0].astype(float) - frames[-1].astype(float)).mean()
         assert diff > 0.001, "Zoom should produce visibly different start/end frames"
-
-    def test_streaming_yields_same_count(self, landscape_img):
-        """Streaming version should yield the same number of frames as list version."""
-        params = KenBurnsParams(fps=30, duration=1.5)
-        list_frames = render_ken_burns(landscape_img, VP_W, VP_H, params)
-        stream_count = sum(1 for _ in render_ken_burns_streaming(landscape_img, VP_W, VP_H, params))
-        assert stream_count == len(list_frames)
 
     def test_streaming_frame_shape(self, landscape_img):
         """Each streamed frame should have correct dimensions."""
@@ -109,93 +99,9 @@ class TestKenBurns:
     def test_portrait_in_landscape_viewport(self, portrait_img):
         """Portrait photo in landscape viewport should still produce correct shape."""
         params = KenBurnsParams(fps=30, duration=1.0)
-        frames = render_ken_burns(portrait_img, VP_W, VP_H, params)
+        frames = list(render_ken_burns_streaming(portrait_img, VP_W, VP_H, params))
         assert len(frames) == 30
         assert frames[0].shape == (VP_H, VP_W, 3)
-
-
-# ---- Slide-in ----
-
-
-class TestSlideIn:
-    def test_right_direction_frame_count(self, portrait_img):
-        """Slide-in should produce correct number of frames."""
-        frames = render_slide_in(portrait_img, VP_W, VP_H, direction="right", fps=30, duration=2.0)
-        assert len(frames) == 60
-
-    def test_all_directions_produce_frames(self, landscape_img):
-        """All 4 slide directions should produce the correct frame count."""
-        for direction in ("left", "right", "top", "bottom"):
-            frames = render_slide_in(
-                landscape_img,
-                VP_W,
-                VP_H,
-                direction=direction,
-                fps=30,
-                duration=1.0,
-            )
-            assert len(frames) == 30, f"Direction '{direction}' produced {len(frames)} frames"
-            assert frames[0].shape == (VP_H, VP_W, 3)
-
-    def test_slide_in_animates(self, portrait_img):
-        """First and last frames should differ due to slide animation."""
-        frames = render_slide_in(portrait_img, VP_W, VP_H, direction="right", fps=30, duration=2.0)
-        diff = np.abs(frames[0].astype(float) - frames[-1].astype(float)).mean()
-        assert diff > 0.01, "Slide-in should produce different first and last frames"
-
-
-# ---- Collage ----
-
-
-class TestCollage:
-    def test_two_photo_collage(self, small_photos):
-        """2-photo horizontal collage should produce correct frame count and shape."""
-        frames = render_collage(
-            small_photos[:2],
-            VP_W,
-            VP_H,
-            orientation="horizontal",
-            fps=30,
-            duration=1.0,
-            slide_in=False,
-        )
-        assert len(frames) == 30
-        assert frames[0].shape == (VP_H, VP_W, 3)
-
-    def test_three_photo_collage(self, small_photos):
-        """3-photo collage should work."""
-        frames = render_collage(
-            small_photos[:3],
-            VP_W,
-            VP_H,
-            fps=30,
-            duration=1.0,
-            slide_in=False,
-        )
-        assert len(frames) == 30
-
-    def test_four_photo_collage(self, small_photos):
-        """4-photo collage should work."""
-        frames = render_collage(
-            small_photos[:4],
-            VP_W,
-            VP_H,
-            fps=30,
-            duration=1.0,
-            slide_in=False,
-        )
-        assert len(frames) == 30
-
-    def test_rejects_single_photo(self, small_photos):
-        """Collage requires 2-4 photos."""
-        with pytest.raises(ValueError, match="2-4"):
-            render_collage(small_photos[:1], VP_W, VP_H)
-
-    def test_rejects_five_photos(self, small_photos):
-        """Collage requires 2-4 photos."""
-        five = small_photos + [small_photos[0]]
-        with pytest.raises(ValueError, match="2-4"):
-            render_collage(five, VP_W, VP_H)
 
 
 # ---- Split ----
