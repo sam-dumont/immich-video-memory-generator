@@ -9,7 +9,7 @@ from click.testing import CliRunner
 from pydantic import ValidationError
 
 from immich_memories.cli._config_errors import format_validation_error, format_yaml_error
-from immich_memories.config_models import DefaultsConfig
+from immich_memories.config_models_render import DefaultsConfig
 
 
 class TestFormatValidationError:

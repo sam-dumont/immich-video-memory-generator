@@ -277,6 +277,7 @@ def run_pipeline_and_generate(
     privacy_mode: bool = False,
     title_override: str | None = None,
     subtitle_override: str | None = None,
+    llm_title: bool = False,
     memory_type: str | None,
     person_names: list[str],
     date_range: DateRange,
@@ -513,6 +514,19 @@ def run_pipeline_and_generate(
     def generation_phase(event) -> None:
         progress.update(task, description=event.message)
 
+    from immich_memories.cli._llm_title import resolve_cli_title
+
+    resolved_title, resolved_subtitle = resolve_cli_title(
+        enabled=llm_title,
+        title_override=title_override,
+        subtitle_override=subtitle_override,
+        clips=selected_clips,
+        config=config,
+        memory_type=memory_type,
+        date_range=date_range,
+        person_name=person_name,
+    )
+
     # WHY: Photos are now in selected_clips as IMAGE-type assets.
     # generate.py's _extract_clips will detect IMAGE type and render them.
     # Setting include_photos=False prevents the old _add_photos_if_enabled path.
@@ -532,8 +546,8 @@ def run_pipeline_and_generate(
         add_place_overlay=add_place_overlay,
         debug_preserve_intermediates=debug_preserve_intermediates,
         privacy_mode=privacy_mode,
-        title=title_override,
-        subtitle=subtitle_override,
+        title=resolved_title,
+        subtitle=resolved_subtitle,
         music_path=Path(music) if music and music != "auto" else None,
         music_volume=music_volume,
         no_music=no_music,

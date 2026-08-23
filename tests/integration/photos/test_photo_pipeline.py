@@ -13,7 +13,7 @@ import pytest
 
 from immich_memories.api.models import AssetType
 from immich_memories.config_loader import Config
-from immich_memories.config_models import PhotoConfig
+from immich_memories.config_models_render import PhotoConfig
 from immich_memories.photos.animator import detect_photo_hdr_type
 from immich_memories.photos.scoring import score_photo
 from immich_memories.timeperiod import DateRange

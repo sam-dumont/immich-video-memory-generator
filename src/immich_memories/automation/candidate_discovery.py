@@ -13,7 +13,7 @@ from immich_memories.automation.state_store import FailureStreak
 from immich_memories.automation.trip_input_cache import load_or_fetch_trip_assets
 from immich_memories.automation.variety import VarietyDecision, apply_variety_rules
 from immich_memories.config_loader import Config
-from immich_memories.config_models import AutomationConfig
+from immich_memories.config_models_automation import AutomationConfig
 from immich_memories.timeperiod import DateRange, birthday_year
 from immich_memories.tracking.models import RunMetadata
 

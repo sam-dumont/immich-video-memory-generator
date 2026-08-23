@@ -290,6 +290,7 @@ immich-memories generate [OPTIONS]
 | `--keep-intermediates` | boolean | false | Keep intermediate files for debugging |
 | `--privacy-mode` | boolean | false | Blur faces and mute speech |
 | `--title` | text | - | Override video title text |
+| `--llm-title` | boolean | false | Ask the LLM for the title instead of using a template (--title still wins) |
 | `--subtitle` | text | - | Override video subtitle text |
 | `--include-live-photos` | boolean | - | Include Live Photo video clips (3s iPhone clips, merged when burst-captured) |
 | `--include-photos` | boolean | - | Include photos as animated Ken Burns clips (blur background, face-aware pan) |

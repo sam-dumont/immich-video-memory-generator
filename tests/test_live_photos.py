@@ -625,19 +625,19 @@ class TestLivePhotoConfig:
     """Slice 5: Config options for live photos."""
 
     def test_default_config_has_live_photos_enabled(self):
-        from immich_memories.config_models import AnalysisConfig
+        from immich_memories.config_models_analysis import AnalysisConfig
 
         config = AnalysisConfig()
         assert config.include_live_photos
 
     def test_default_merge_window(self):
-        from immich_memories.config_models import AnalysisConfig
+        from immich_memories.config_models_analysis import AnalysisConfig
 
         config = AnalysisConfig()
         assert config.live_photo_merge_window_seconds == 10.0
 
     def test_custom_values(self):
-        from immich_memories.config_models import AnalysisConfig
+        from immich_memories.config_models_analysis import AnalysisConfig
 
         config = AnalysisConfig(
             include_live_photos=True,

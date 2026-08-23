@@ -9,7 +9,8 @@ import pytest
 
 from immich_memories.analysis.analyzer_models import ScoredSegment
 from immich_memories.analysis.preview_builder import PreviewBuilder
-from immich_memories.config_models import AnalysisConfig, CacheConfig, ContentAnalysisConfig
+from immich_memories.config_models import CacheConfig
+from immich_memories.config_models_analysis import AnalysisConfig, ContentAnalysisConfig
 
 
 def _make_builder(

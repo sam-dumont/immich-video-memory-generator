@@ -54,7 +54,7 @@ class TestTripsConfig:
     """Config model for trip detection parameters."""
 
     def test_defaults(self):
-        from immich_memories.config_models import TripsConfig
+        from immich_memories.config_models_automation import TripsConfig
 
         config = TripsConfig()
         assert config.homebase_latitude == 0.0
@@ -65,14 +65,14 @@ class TestTripsConfig:
 
     def test_null_island_validation(self):
         """Should raise when homebase is still at Null Island (0,0)."""
-        from immich_memories.config_models import TripsConfig
+        from immich_memories.config_models_automation import TripsConfig
 
         config = TripsConfig()
         with pytest.raises(ValueError, match="home coordinates"):
             config.validate_homebase()
 
     def test_valid_homebase_passes(self):
-        from immich_memories.config_models import TripsConfig
+        from immich_memories.config_models_automation import TripsConfig
 
         config = TripsConfig(homebase_latitude=50.8468, homebase_longitude=4.3525)
         config.validate_homebase()  # should not raise

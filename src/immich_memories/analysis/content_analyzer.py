@@ -15,7 +15,7 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from immich_memories.config_models import ContentAnalysisConfig
+    from immich_memories.config_models_analysis import ContentAnalysisConfig
     from immich_memories.config_models_llm import LLMConfig
 
 from immich_memories.analysis._content_providers import (  # noqa: F401

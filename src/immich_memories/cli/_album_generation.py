@@ -50,6 +50,7 @@ def handle_album_generation(
     keep_intermediates: bool,
     privacy_mode: bool,
     title_override: str | None,
+    llm_title: bool = False,
     subtitle_override: str | None,
     upload_to_immich: bool,
     album: str | None,
@@ -134,6 +135,7 @@ def handle_album_generation(
         privacy_mode=privacy_mode,
         # The album's own name is the best title we have; an explicit --title still wins.
         title_override=title_override or resolved.name,
+        llm_title=llm_title,
         subtitle_override=subtitle_override,
         memory_type=MemoryType.ALBUM,
         person_names=person_names,

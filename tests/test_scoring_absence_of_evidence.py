@@ -14,7 +14,7 @@ from pathlib import Path
 from immich_memories.analysis.analyzer_models import CutPoint
 from immich_memories.analysis.scoring import SceneScorer
 from immich_memories.analysis.unified_analyzer import UnifiedSegmentAnalyzer
-from immich_memories.config_models import (
+from immich_memories.config_models_analysis import (
     AnalysisConfig,
     AudioContentConfig,
     ContentAnalysisConfig,

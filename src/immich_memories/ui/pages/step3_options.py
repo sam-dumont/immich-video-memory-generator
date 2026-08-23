@@ -6,7 +6,7 @@ import logging
 
 from nicegui import ui
 
-from immich_memories.config_models import DefaultsConfig, normalize_scale_mode
+from immich_memories.config_models_render import DefaultsConfig, normalize_scale_mode
 from immich_memories.ui.components import (
     im_button,
     im_card,

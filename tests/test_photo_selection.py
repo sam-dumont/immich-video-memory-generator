@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from immich_memories.analysis.unified_budget import BudgetCandidate
 from immich_memories.api.models import Asset
-from immich_memories.config_models import PhotoConfig
+from immich_memories.config_models_render import PhotoConfig
 from immich_memories.photos.photo_pipeline import (
     PhotoSelectionResult,
     score_and_select_photos,

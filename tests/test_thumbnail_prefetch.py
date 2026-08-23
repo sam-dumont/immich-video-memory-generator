@@ -21,7 +21,7 @@ from immich_memories.analysis.smart_pipeline import PipelineConfig, SmartPipelin
 from immich_memories.api.immich import SyncImmichClient
 from immich_memories.cache.thumbnail_cache import ThumbnailCache
 from immich_memories.config_loader import Config
-from immich_memories.config_models import AnalysisConfig
+from immich_memories.config_models_analysis import AnalysisConfig
 from tests.conftest import make_clip
 
 

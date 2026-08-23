@@ -13,7 +13,7 @@ from types import SimpleNamespace
 from immich_memories.analysis.source_filter import from_an_excluded_source
 from immich_memories.api.models import AssetType
 from immich_memories.config import Config
-from immich_memories.config_models import AnalysisConfig
+from immich_memories.config_models_analysis import AnalysisConfig
 from immich_memories.photos.photo_pipeline import score_and_select_photos
 from tests.conftest import make_asset
 

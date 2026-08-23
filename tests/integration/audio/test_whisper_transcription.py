@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from immich_memories.config_models import TranscriptionConfig
+from immich_memories.config_models_analysis import TranscriptionConfig
 from immich_memories.speech.transcription import select_transcriber
 from immich_memories.speech.vad import extract_audio_16k
 

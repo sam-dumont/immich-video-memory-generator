@@ -12,7 +12,7 @@ from immich_memories.analysis.speech_analysis import (
     protected_ranges_from_speech,
 )
 from immich_memories.audio.audio_models import AudioAnalysisResult, AudioEvent
-from immich_memories.config_models import AudioContentConfig, SpeechConfig
+from immich_memories.config_models_analysis import AudioContentConfig, SpeechConfig
 from immich_memories.speech.models import SpeechRegion
 
 

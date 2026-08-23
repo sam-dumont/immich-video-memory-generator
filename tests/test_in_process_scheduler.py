@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from immich_memories.config_models import AutomationConfig
+from immich_memories.config_models_automation import AutomationConfig
 
 
 class TestDailyAtConfig:

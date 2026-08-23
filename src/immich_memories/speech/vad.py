@@ -7,7 +7,7 @@ from typing import Protocol
 
 import numpy as np
 
-from immich_memories.config_models import SpeechConfig
+from immich_memories.config_models_analysis import SpeechConfig
 from immich_memories.speech.models import SpeechRegion
 
 logger = logging.getLogger(__name__)

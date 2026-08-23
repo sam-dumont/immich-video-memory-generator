@@ -372,6 +372,12 @@ def register_generate_commands(main: click.Group) -> None:
         help="Override video title text",
     )
     @click.option(
+        "--llm-title",
+        is_flag=True,
+        default=False,
+        help="Ask the LLM for the title instead of using a template (--title still wins)",
+    )
+    @click.option(
         "--subtitle",
         "subtitle_override",
         type=str,
@@ -488,6 +494,7 @@ def register_generate_commands(main: click.Group) -> None:
         privacy_mode: bool,
         title_override: str | None,
         subtitle_override: str | None,
+        llm_title: bool,
         include_live_photos: bool | None,
         include_photos: bool | None,
         photo_duration: float | None,
@@ -772,6 +779,7 @@ def register_generate_commands(main: click.Group) -> None:
                             privacy_mode=privacy_mode,
                             title_override=title_override,
                             subtitle_override=subtitle_override,
+                            llm_title=llm_title,
                             upload_to_immich=upload_to_immich,
                             album=album,
                             duration=duration,
@@ -814,6 +822,7 @@ def register_generate_commands(main: click.Group) -> None:
                             privacy_mode=privacy_mode,
                             title_override=title_override,
                             subtitle_override=subtitle_override,
+                            llm_title=llm_title,
                             upload_to_immich=upload_to_immich,
                             album=album,
                             duration=duration,
@@ -940,6 +949,7 @@ def register_generate_commands(main: click.Group) -> None:
                         privacy_mode=privacy_mode,
                         title_override=title_override,
                         subtitle_override=subtitle_override,
+                        llm_title=llm_title,
                         memory_type=memory_type,
                         person_names=person_names,
                         date_range=date_range,

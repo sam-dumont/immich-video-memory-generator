@@ -12,7 +12,7 @@ from immich_memories.analysis.unified_budget import (
     select_within_budget,
 )
 from immich_memories.api.models import Asset
-from immich_memories.config_models import PhotoConfig
+from immich_memories.config_models_render import PhotoConfig
 from immich_memories.photos.photo_pipeline import score_photos
 from immich_memories.processing.assembly_config import TitleScreenSettings
 

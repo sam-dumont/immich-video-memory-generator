@@ -16,14 +16,14 @@ from typing import TYPE_CHECKING, Protocol
 import numpy as np
 
 from immich_memories.audio.audio_models import SPEECH_EVENT_CLASS
-from immich_memories.config_models import SpeechConfig, TranscriptionConfig
+from immich_memories.config_models_analysis import SpeechConfig, TranscriptionConfig
 from immich_memories.speech.models import SpeechRegion
 from immich_memories.speech.transcription import select_transcriber
 from immich_memories.speech.vad import VAD_SAMPLE_RATE, extract_audio_16k, select_detector
 
 if TYPE_CHECKING:
     from immich_memories.audio.audio_models import AudioAnalysisResult, AudioEvent
-    from immich_memories.config_models import AudioContentConfig
+    from immich_memories.config_models_analysis import AudioContentConfig
     from immich_memories.speech.transcription import Transcriber, Transcript
 
 logger = logging.getLogger(__name__)

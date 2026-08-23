@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     from immich_memories.cache.thumbnail_cache import ThumbnailCache
     from immich_memories.cache.video_cache import VideoDownloadCache
     from immich_memories.config_loader import Config
-    from immich_memories.config_models import AnalysisConfig
+    from immich_memories.config_models_analysis import AnalysisConfig
 
 logger = logging.getLogger(__name__)
 

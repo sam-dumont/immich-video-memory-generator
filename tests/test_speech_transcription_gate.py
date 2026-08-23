@@ -13,7 +13,11 @@ from immich_memories.analysis.speech_analysis import (
     transcription_window,
     voiced_seconds,
 )
-from immich_memories.config_models import AudioContentConfig, SpeechConfig, TranscriptionConfig
+from immich_memories.config_models_analysis import (
+    AudioContentConfig,
+    SpeechConfig,
+    TranscriptionConfig,
+)
 from immich_memories.speech.models import SpeechRegion
 from immich_memories.speech.transcription import Transcript
 

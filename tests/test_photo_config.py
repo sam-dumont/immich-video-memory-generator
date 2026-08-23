@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from immich_memories.config_models import PhotoConfig
+from immich_memories.config_models_render import PhotoConfig
 
 
 class TestPhotoConfig:

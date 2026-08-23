@@ -22,7 +22,7 @@ from typing import Any
 from immich_memories.api.immich import ImmichAPIError
 from immich_memories.api.models import Asset
 from immich_memories.config import Config
-from immich_memories.config_models import PhotoConfig
+from immich_memories.config_models_render import PhotoConfig
 
 logger = logging.getLogger(__name__)
 

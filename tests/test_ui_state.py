@@ -260,7 +260,7 @@ class TestScaleModeOptions:
         """No option the config rejects, and no configurable mode the wizard cannot show."""
         from typing import get_args
 
-        from immich_memories.config_models import DefaultsConfig
+        from immich_memories.config_models_render import DefaultsConfig
         from immich_memories.ui.pages.step3_options import SCALE_MODE_OPTIONS
 
         configurable = set(get_args(DefaultsConfig.model_fields["scale_mode"].annotation))
