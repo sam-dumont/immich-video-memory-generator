@@ -11,15 +11,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
+from immich_memories.automation.candidate_discovery import ImmichDiscoveryError
 from immich_memories.automation.candidates import CandidateCategory, MemoryCandidate
 from immich_memories.automation.models import AutoOutcome
-from immich_memories.automation.runner import (
-    AutoRunner,
-    ImmichDiscoveryError,
-    SuggestOutcome,
-    SuggestStatus,
-)
+from immich_memories.automation.runner import AutoRunner
 from immich_memories.automation.state_store import AutomationStateStore
+from immich_memories.automation.status import SuggestOutcome, SuggestStatus
 from immich_memories.automation.system_scheduler import SchedulerStatus
 from immich_memories.automation.variety import RejectedCandidate, VarietyDecision
 from immich_memories.cli import main
@@ -525,7 +522,7 @@ def test_status_does_not_hide_detector_programming_failures(tmp_path: Path) -> N
         ),
         patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
         patch(
-            "immich_memories.automation.runner._run_all_detectors",
+            "immich_memories.automation.candidate_discovery._run_all_detectors",
             side_effect=RuntimeError("detector invariant failed"),
         ),
         pytest.raises(RuntimeError, match="detector invariant failed"),

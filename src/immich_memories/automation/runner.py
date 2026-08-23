@@ -1,4 +1,4 @@
-"""AutoRunner — detect, score, and generate memory candidates."""
+"""AutoRunner — decide, execute, and record one automation attempt."""
 
 from __future__ import annotations
 
@@ -6,15 +6,15 @@ import logging
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
-from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from immich_memories.automation.candidate_scorer import score_and_rank
+from immich_memories.automation.candidate_discovery import (
+    CandidateDiscovery,
+    ImmichDiscoveryError,
+)
 from immich_memories.automation.candidates import MemoryCandidate
 from immich_memories.automation.delivery_retry import PendingDeliveryRetry, abandon_if_exhausted
-from immich_memories.automation.failure_backoff import drop_backed_off
 from immich_memories.automation.models import (
     AutoAction,
     AutomationAttempt,
@@ -23,20 +23,22 @@ from immich_memories.automation.models import (
     AutoRunResult,
     ProcessResult,
 )
-from immich_memories.automation.notification_state import (
-    NotificationHealth,
-    NotificationStateStore,
-)
+from immich_memories.automation.notification_state import NotificationStateStore
 from immich_memories.automation.notifications import (
     send_configured_notification as _send_notification,
 )
 from immich_memories.automation.state_store import AutomationStateStore
-from immich_memories.automation.trip_input_cache import load_or_fetch_trip_assets
-from immich_memories.automation.variety import VarietyDecision, apply_variety_rules
+from immich_memories.automation.status import (
+    AutomationStatus,
+    SuggestOutcome,
+    SuggestStatus,
+    cooldown_status,
+    is_within_cooldown,
+    resolve_cooldown_hours,
+)
+from immich_memories.automation.variety import VarietyDecision
 from immich_memories.config_loader import Config
-from immich_memories.config_models import AutomationConfig
 from immich_memories.security import configured_secret_values, sanitize_error_message
-from immich_memories.timeperiod import DateRange, birthday_year
 from immich_memories.tracking.models import RunMetadata
 from immich_memories.tracking.run_database import RunDatabase
 
@@ -45,15 +47,6 @@ logger = logging.getLogger(__name__)
 _GENERATION_TIMEOUT_SECONDS = 7200
 _GENERATION_TIMEOUT_REASON = "generation timed out after 2 hours"
 _OUTPUT_TAIL_LENGTH = 2000
-# A fixed-time scheduler (cron, launchd, in-process timer) fires at the same wall-clock
-# time every day; the child process records its start a few seconds later. Without slack,
-# "24h since the last run" is never quite true at the next day's fire and every other day
-# gets skipped (#330). 30 min still rejects any realistic double fire.
-_COOLDOWN_SCHEDULE_TOLERANCE = timedelta(minutes=30)
-
-
-class ImmichDiscoveryError(RuntimeError):
-    """A live Immich library snapshot could not be collected."""
 
 
 class AutomationAlreadyRunningError(RuntimeError):
@@ -89,169 +82,11 @@ class AutomationLease:
             self._fd = None
 
 
-class SuggestOutcome(StrEnum):
-    """Status of the most recent candidate discovery call."""
-
-    READY = "ready"
-    PREFLIGHT_FAILED = "preflight_failed"
-    DISCOVERY_FAILED = "discovery_failed"
-
-
-@dataclass(frozen=True)
-class SuggestStatus:
-    """Typed result for the most recent live candidate-discovery snapshot."""
-
-    outcome: SuggestOutcome = SuggestOutcome.READY
-    error: str | None = None
-
-
 @dataclass(frozen=True)
 class _BoundedProcessDetails:
     """Sanitized subprocess output with independent per-stream tail bounds."""
 
     text: str
-
-
-@dataclass(frozen=True)
-class CooldownStatus:
-    """Current cooldown derived from the latest completed automation run."""
-
-    hours: int
-    active: bool
-    until: datetime | None
-
-
-@dataclass(frozen=True)
-class AutomationStatus:
-    """Read-only durable automation facts used by CLI and UI status surfaces."""
-
-    last_attempt: AutomationAttempt | None
-    last_completed_auto_run: RunMetadata | None
-    cooldown: CooldownStatus
-    recent_categories: tuple[str, ...]
-    rejection_reasons: tuple[str, ...]
-    suggestion: SuggestStatus
-    pending_delivery_count: int
-    oldest_pending_delivery: RunMetadata | None
-    notification_health: NotificationHealth | None
-    notification_cooldown_hours: int
-
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize the stable machine-facing automation status contract."""
-        attempt = self.last_attempt
-        run = self.last_completed_auto_run
-        pending = self.oldest_pending_delivery
-        return {
-            "last_attempt": (
-                {
-                    "id": attempt.id,
-                    "started_at": attempt.started_at.isoformat(),
-                    "finished_at": (
-                        attempt.finished_at.isoformat() if attempt.finished_at else None
-                    ),
-                    "outcome": attempt.outcome.value,
-                    "reason": attempt.reason,
-                    "candidate_category": attempt.candidate_category,
-                    "memory_type": attempt.memory_type,
-                    "memory_key": attempt.memory_key,
-                    "run_id": attempt.run_id,
-                    "error": attempt.error,
-                    "last_phase": attempt.last_phase.value if attempt.last_phase else None,
-                }
-                if attempt
-                else None
-            ),
-            "last_completed_auto_run": (
-                {
-                    "run_id": run.run_id,
-                    "created_at": run.created_at.isoformat(),
-                    "completed_at": run.completed_at.isoformat() if run.completed_at else None,
-                    "memory_type": run.memory_type,
-                    "memory_key": run.memory_key,
-                    "category": run.memory_category,
-                    "output_path": run.output_path,
-                    "last_phase": run.last_phase.value if run.last_phase else None,
-                }
-                if run
-                else None
-            ),
-            "cooldown": {
-                "hours": self.cooldown.hours,
-                "active": self.cooldown.active,
-                "until": self.cooldown.until.isoformat() if self.cooldown.until else None,
-            },
-            "recent_categories": list(self.recent_categories),
-            "rejection_reasons": list(self.rejection_reasons),
-            "suggestion": {
-                "outcome": self.suggestion.outcome.value,
-                "error": self.suggestion.error,
-            },
-            "pending_delivery_count": self.pending_delivery_count,
-            "oldest_pending_delivery": (
-                {
-                    "run_id": pending.run_id,
-                    "completed_at": (
-                        pending.completed_at.isoformat() if pending.completed_at else None
-                    ),
-                    "output_path": pending.output_path,
-                    "delivery_attempts": pending.delivery_attempts,
-                    "delivery_error": pending.delivery_error,
-                    "delivery_album": pending.delivery_album,
-                }
-                if pending
-                else None
-            ),
-            "notification_health": (
-                self.notification_health.to_dict(cooldown_hours=self.notification_cooldown_hours)
-                if self.notification_health is not None
-                else None
-            ),
-        }
-
-
-def _time_buckets_to_month_counts(
-    buckets: list,
-) -> dict[str, int]:
-    """Convert Immich TimeBucket list to {YYYY-MM: count} dict."""
-    result: dict[str, int] = {}
-    for bucket in buckets:
-        try:
-            dt = datetime.fromisoformat(bucket.time_bucket)
-            key = f"{dt.year}-{dt.month:02d}"
-            result[key] = bucket.count
-        except (ValueError, AttributeError):
-            continue
-    return result
-
-
-def _trailing_year_range(today: date) -> DateRange:
-    """Return one inclusive calendar-year lookback ending on ``today``."""
-    try:
-        start_day = today.replace(year=today.year - 1)
-    except ValueError:
-        # February 29 has no same-day counterpart in a non-leap year.
-        start_day = today.replace(year=today.year - 1, day=28)
-
-    return DateRange(
-        start=datetime.combine(start_day, datetime.min.time()),
-        end=datetime.combine(today, datetime.max.time()),
-    )
-
-
-def _build_last_runs_by_type(db: RunDatabase) -> dict[str, date]:
-    """Query DB for the most recent completed run date per memory type."""
-    result: dict[str, date] = {}
-    for mem_type in (
-        "monthly_highlights",
-        "year_in_review",
-        "person_spotlight",
-        "trip",
-        "multi_person",
-    ):
-        run = db.get_last_run_of_type(mem_type, source="auto")
-        if run and run.created_at:
-            result[mem_type] = (run.completed_at or run.created_at).date()
-    return result
 
 
 def _build_generate_command(
@@ -271,51 +106,6 @@ def _build_generate_command(
         config_path=config_path,
         album_name=album_name,
     ).to_argv()
-
-
-def _cooldown_status(
-    last_run: RunMetadata | None,
-    cooldown_hours: int,
-    now: datetime | None = None,
-) -> CooldownStatus:
-    """Cooldown counts from the last run's *start* so a daily timer means once a day."""
-    if last_run is None:
-        return CooldownStatus(hours=cooldown_hours, active=False, until=None)
-    started_at = last_run.created_at
-    if started_at.tzinfo is None:
-        started_at = started_at.replace(tzinfo=UTC)
-    current = now or datetime.now(tz=UTC)
-    if current.tzinfo is None:
-        current = current.replace(tzinfo=UTC)
-    until = started_at + timedelta(hours=cooldown_hours) - _COOLDOWN_SCHEDULE_TOLERANCE
-    return CooldownStatus(hours=cooldown_hours, active=current < until, until=until)
-
-
-def _resolve_cooldown_hours(requested: int | None, configured: int) -> int:
-    """Keep explicit CLI cooldown provenance, including a zero override."""
-    return configured if requested is None else requested
-
-
-def _is_within_cooldown(db: RunDatabase, cooldown_hours: int) -> bool:
-    """Check if the most recent completed auto run is within the cooldown window."""
-    runs = db.list_runs(
-        limit=1,
-        status="completed",
-        source="auto",
-        order_by_completion=True,
-    )
-    status = _cooldown_status(runs[0] if runs else None, cooldown_hours)
-    if status.active:
-        assert status.until is not None
-        hours_since = cooldown_hours - (
-            (status.until - datetime.now(tz=UTC)).total_seconds() / 3600
-        )
-        logger.info(
-            "Cooldown active: %.1fh since last run (need %dh)",
-            hours_since,
-            cooldown_hours,
-        )
-    return status.active
 
 
 def _coerce_process_output(value: Any) -> str:
@@ -351,125 +141,6 @@ def _execute_generate(cmd: list[str]) -> ProcessResult:
     )
 
 
-def _compute_upcoming_birthday_ids(people: list, today: date, lookahead_days: int = 7) -> set[str]:
-    """Return person IDs whose birthday falls within the next N days."""
-    ids: set[str] = set()
-    for person in people:
-        if not getattr(person, "birth_date", None):
-            continue
-        bday = person.birth_date
-        next_bday = birthday_year(bday, today.year).start.date()
-        if next_bday < today:
-            next_bday = birthday_year(bday, today.year + 1).start.date()
-        days_until = (next_bday - today).days
-        if 0 <= days_until <= lookahead_days:
-            ids.add(person.id)
-    return ids
-
-
-def _run_all_detectors(
-    auto_cfg: AutomationConfig,
-    assets_by_month: dict[str, int],
-    people: list,
-    generated_keys: set[str],
-    config: Config,
-    today: date,
-    person_asset_counts: dict[str, int],
-    gps_assets: list | None,
-) -> list[MemoryCandidate]:
-    """Run all enabled detectors and collect candidates."""
-    from immich_memories.automation.calendar_detectors import (
-        BirthdayDetector,
-        MonthlyDetector,
-        OnThisDayDetector,
-        PersonSpotlightDetector,
-        YearlyDetector,
-    )
-    from immich_memories.automation.event_detectors import (
-        ActivityBurstDetector,
-        MultiPersonDetector,
-        TripDetector,
-    )
-
-    all_candidates: list[MemoryCandidate] = []
-
-    if auto_cfg.detect_monthly:
-        all_candidates.extend(
-            MonthlyDetector().detect(assets_by_month, people, generated_keys, config, today)
-        )
-    if auto_cfg.detect_yearly:
-        all_candidates.extend(
-            YearlyDetector().detect(assets_by_month, people, generated_keys, config, today)
-        )
-    if auto_cfg.detect_person_spotlight:
-        # WHY: suppress spotlights for people whose birthday is within 7 days
-        # so BirthdayDetector fires at the right time instead
-        upcoming_birthday_ids = _compute_upcoming_birthday_ids(people, today)
-        all_candidates.extend(
-            PersonSpotlightDetector().detect(
-                assets_by_month,
-                people,
-                generated_keys,
-                config,
-                today,
-                person_asset_counts=person_asset_counts,
-                upcoming_birthday_ids=upcoming_birthday_ids,
-            )
-        )
-        all_candidates.extend(
-            MultiPersonDetector().detect(
-                assets_by_month,
-                people,
-                generated_keys,
-                config,
-                today,
-                person_asset_counts=person_asset_counts,
-            )
-        )
-    if auto_cfg.detect_activity_burst:
-        all_candidates.extend(
-            ActivityBurstDetector().detect(
-                assets_by_month,
-                people,
-                generated_keys,
-                config,
-                today,
-                burst_threshold=auto_cfg.burst_threshold,
-            )
-        )
-
-    all_candidates.extend(
-        OnThisDayDetector().detect(assets_by_month, people, generated_keys, config, today)
-    )
-
-    # Birthday detector — always on, high priority near birthdays
-    if people:
-        all_candidates.extend(
-            BirthdayDetector().detect(
-                assets_by_month,
-                people,
-                generated_keys,
-                config,
-                today,
-                person_asset_counts=person_asset_counts,
-            )
-        )
-
-    if auto_cfg.detect_trips and gps_assets is not None:
-        all_candidates.extend(
-            TripDetector().detect(
-                assets_by_month,
-                people,
-                generated_keys,
-                config,
-                today,
-                assets=gps_assets,
-            )
-        )
-
-    return all_candidates
-
-
 class AutoRunner:
     """Orchestrates candidate detection and one-shot generation."""
 
@@ -488,6 +159,7 @@ class AutoRunner:
         self.last_variety_decision = VarietyDecision(eligible=[], rejected=[])
         self.last_recent_categories: tuple[str, ...] = ()
         self.last_suggest_status = SuggestStatus()
+        self._discovery = CandidateDiscovery(config, self.db, self.state)
         self._prepared_immich_preflight: Any | None = None
         self._prepared_pending_delivery: RunMetadata | None = None
 
@@ -518,19 +190,14 @@ class AutoRunner:
         effective_cooldown = (
             cooldown_hours if cooldown_hours is not None else self.config.automation.cooldown_hours
         )
-        recent_runs = self.db.list_runs(
-            limit=6,
-            status="completed",
-            source="auto",
-            order_by_completion=True,
-        )
+        recent_runs = self._recent_auto_runs()
         rejection_reasons = tuple(
             dict.fromkeys(item.rule for item in self.last_variety_decision.rejected)
         )
         return AutomationStatus(
             last_attempt=self.state.get_last_attempt(),
             last_completed_auto_run=recent_runs[0] if recent_runs else None,
-            cooldown=_cooldown_status(
+            cooldown=cooldown_status(
                 recent_runs[0] if recent_runs else None,
                 effective_cooldown,
             ),
@@ -543,6 +210,15 @@ class AutoRunner:
             oldest_pending_delivery=self.db.get_oldest_pending_delivery(source="auto"),
             notification_health=self.notification_state.get(),
             notification_cooldown_hours=self.config.notifications.cooldown_hours,
+        )
+
+    def _recent_auto_runs(self) -> list[RunMetadata]:
+        """The completed auto history that both status and variety rules read."""
+        return self.db.list_runs(
+            limit=6,
+            status="completed",
+            source="auto",
+            order_by_completion=True,
         )
 
     def _process_details(self, stdout: Any, stderr: Any) -> _BoundedProcessDetails:
@@ -737,8 +413,6 @@ class AutoRunner:
 
     def suggest(self, limit: int = 10) -> list[MemoryCandidate]:
         """Detect, score, and rank memory candidates from the Immich library."""
-        from immich_memories.api.immich import SyncImmichClient
-
         self.last_variety_decision = VarietyDecision(eligible=[], rejected=[])
         self.last_backoff_skips: dict[str, str] = {}
         self.last_recent_categories = ()
@@ -750,82 +424,14 @@ class AutoRunner:
         if self._preflight_error(immich_result) is not None:
             return []
 
-        auto_cfg = self.config.automation
-        generated_keys = self.db.get_generated_memory_keys()
-        last_runs = _build_last_runs_by_type(self.db)
-        recent_auto_runs = self.db.list_runs(
-            limit=6,
-            status="completed",
-            source="auto",
-            order_by_completion=True,
-        )
+        recent_auto_runs = self._recent_auto_runs()
         self.last_recent_categories = tuple(
             run.memory_category for run in recent_auto_runs if run.memory_category is not None
         )
-        today = date.today()
-
-        try:
-            with SyncImmichClient(
-                base_url=self.config.immich.url,
-                api_key=self.config.immich.api_key,
-                api_version=self.config.immich.api_version,
-            ) as client:
-                buckets = client.get_time_buckets()
-                people = client.get_all_people() if auto_cfg.detect_person_spotlight else []
-
-                # Fetch per-person asset counts (top 10 named people only)
-                person_asset_counts: dict[str, int] = {}
-                if auto_cfg.detect_person_spotlight and people:
-                    named = [p for p in people if p.name and p.thumbnail_path][:10]
-                    for p in named:
-                        person_asset_counts[p.id] = client.get_person_asset_count(p.id)
-
-                # Fetch GPS assets for trip detection (past year only)
-                gps_assets = None
-                if auto_cfg.detect_trips:
-                    trips_cfg = self.config.trips
-                    if not (trips_cfg.homebase_latitude == trips_cfg.homebase_longitude == 0.0):
-                        dr = _trailing_year_range(today)
-                        gps_assets = load_or_fetch_trip_assets(
-                            client,
-                            cache_root=self.config.cache.cache_path,
-                            server_url=self.config.immich.url,
-                            buckets=buckets,
-                            requested_range=dr,
-                            now=datetime.now(tz=UTC),
-                        )
-        except Exception as exc:
-            raise ImmichDiscoveryError(str(exc)) from exc
-
-        assets_by_month = _time_buckets_to_month_counts(buckets)
-
-        all_candidates = _run_all_detectors(
-            auto_cfg,
-            assets_by_month,
-            people,
-            generated_keys,
-            self.config,
-            today,
-            person_asset_counts,
-            gps_assets,
-        )
-
-        all_candidates, self.last_backoff_skips = drop_backed_off(
-            all_candidates, self.state.consecutive_failures_by_key(), datetime.now(tz=UTC)
-        )
-
-        self.last_variety_decision = apply_variety_rules(
-            all_candidates,
-            recent_auto_runs,
-            today,
-        )
-        ranked = score_and_rank(
-            self.last_variety_decision.eligible,
-            generated_keys,
-            today,
-            last_runs,
-        )
-        return ranked[:limit]
+        discovered = self._discovery.discover(limit=limit, recent_auto_runs=recent_auto_runs)
+        self.last_variety_decision = discovered.variety_decision
+        self.last_backoff_skips = discovered.backoff_skips
+        return discovered.candidates
 
     def run_one(
         self,
@@ -875,11 +481,11 @@ class AutoRunner:
             if retry_result is not None:
                 return retry_result
 
-            effective_cooldown = _resolve_cooldown_hours(
+            effective_cooldown = resolve_cooldown_hours(
                 cooldown_hours,
                 self.config.automation.cooldown_hours,
             )
-            if not force and _is_within_cooldown(self.db, effective_cooldown):
+            if not force and is_within_cooldown(self.db, effective_cooldown):
                 return self._finish(attempt, AutoOutcome.SKIPPED, "cooldown active")
 
             candidate, candidate_result = self._suggest_one_for_attempt(attempt)

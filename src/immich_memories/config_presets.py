@@ -2,7 +2,7 @@
 
 `preset: fast` is the CPU-only / NAS profile: no per-clip speech analysis, static title
 backgrounds, the fast software encoder preset, medium quality at 1080p, fewer photos, and
-`analysis_depth: auto` resolving to `fast` (favorites first). Anything the user has set
+`analysis_depth: auto` resolving to `fast` (favorites first), and three refinement passes rather than ten. Anything the user has set
 explicitly (config file key, env var, CLI flag) wins over the preset, like `clip_style`.
 """
 
@@ -22,6 +22,7 @@ PRESETS: dict[str, dict[str, dict[str, Any]]] = {
         "speech": {"enabled": False},
         "title_screens": {"animated_background": False},
         "photos": {"max_ratio": 0.25},
+        "analysis": {"max_refinement_passes": 3},
     },
 }
 

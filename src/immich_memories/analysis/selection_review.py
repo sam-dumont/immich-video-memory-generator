@@ -19,6 +19,8 @@ import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from immich_memories.analysis.smart_pipeline import ClipWithSegment
     from immich_memories.config_models_llm import LLMConfig
 
@@ -82,12 +84,19 @@ Most good selections need no changes. Answer with STRICT JSON only, no prose:
 Use an empty list when the set is good."""
 
 
-def _ask(prompt: str, llm_config: LLMConfig, timeout_seconds: int) -> str:
+def _ask(
+    prompt: str, llm_config: LLMConfig, timeout_seconds: int, cache_path: Path | None = None
+) -> str:
     from immich_memories.analysis.llm_query import query_llm
 
     return asyncio.run(
         query_llm(
-            prompt, llm_config, temperature=0.2, timeout_seconds=timeout_seconds, thinking=True
+            prompt,
+            llm_config,
+            temperature=0.2,
+            timeout_seconds=timeout_seconds,
+            thinking=True,
+            cache_path=cache_path,
         )
     )
 
@@ -138,6 +147,7 @@ def review_selection(
     llm_config: LLMConfig,
     *,
     timeout_seconds: int = 45,
+    cache_path: Path | None = None,
 ) -> list[str]:
     """Asset ids the LLM says to drop from the selection; [] on any doubt.
 
@@ -154,7 +164,7 @@ def review_selection(
     clips_block = "\n".join(_clip_line(i + 1, m) for i, m in enumerate(selected))
     prompt = _PROMPT.format(clips=clips_block)
     try:
-        raw = _ask(prompt, llm_config, timeout_seconds)
+        raw = _ask(prompt, llm_config, timeout_seconds, cache_path)
     except Exception as e:  # WHY broad: the review is optional; never break selection
         logger.warning("Selection review unavailable (%s): nothing dropped", type(e).__name__)
         return []

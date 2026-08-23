@@ -32,7 +32,7 @@ from immich_memories.processing.encoding_plan import resolve_output_selection
 from immich_memories.timeperiod import DateRange, parse_date
 
 if TYPE_CHECKING:
-    pass
+    from immich_memories.config_loader import Config
 
 
 def _resolve_generation_scope(
@@ -146,6 +146,19 @@ def resolve_short_form(
         duration=duration if duration is not None else int(short_form),
         orientation=orientation if orientation_was_given else "portrait",
     )
+
+
+def _apply_scalar_overrides(
+    config: Config,
+    *,
+    photo_duration: float | None,
+    refinement_passes: int | None,
+) -> None:
+    """Let a flag outrank the config file for the dials that have both."""
+    if photo_duration is not None:
+        config.photos.duration = photo_duration
+    if refinement_passes is not None:
+        config.analysis.max_refinement_passes = refinement_passes
 
 
 def resolve_inclusion(flag: bool | None, *, config_enabled: bool) -> bool:
@@ -368,6 +381,16 @@ def register_generate_commands(main: click.Group) -> None:
         help="Duration per photo clip in seconds (default: 4.0)",
     )
     @click.option(
+        "--refinement-passes",
+        type=click.IntRange(1, 20),
+        default=None,
+        help=(
+            "How many times selection may verify, judge and review before settling "
+            "(default: 10). The biggest dial on warm-run time, and on the bill when "
+            "llm.base_url points at a paid API"
+        ),
+    )
+    @click.option(
         "--analysis-depth",
         type=click.Choice(["auto", "fast", "thorough"]),
         default=None,
@@ -451,6 +474,7 @@ def register_generate_commands(main: click.Group) -> None:
         include_live_photos: bool | None,
         include_photos: bool | None,
         photo_duration: float | None,
+        refinement_passes: int | None,
         analysis_depth: str | None,
         trip_index: int | None,
         all_trips: bool,
@@ -621,8 +645,9 @@ def register_generate_commands(main: click.Group) -> None:
             include_live_photos, config_enabled=config.analysis.include_live_photos
         )
         use_photos = resolve_inclusion(include_photos, config_enabled=config.photos.enabled)
-        if photo_duration is not None:
-            config.photos.duration = photo_duration
+        _apply_scalar_overrides(
+            config, photo_duration=photo_duration, refinement_passes=refinement_passes
+        )
 
         # Analysis depth: CLI override → stored for PipelineConfig
         effective_analysis_depth = analysis_depth or "auto"

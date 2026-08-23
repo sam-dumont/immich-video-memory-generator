@@ -114,6 +114,7 @@ analysis:
   max_album_assets: 10000        # Most assets read from one album, per media type (min 1)
 
   # Performance
+  max_refinement_passes: 10      # Verify/judge/review rounds before selection settles (1-20)
   download_workers: 3            # Parallel download clients for video and thumbnail prefetching (1-8)
   enable_downscaling: true       # Downscale for analysis (~3-5x faster)
   analysis_resolution: 480       # Target height for analysis (240-1080)

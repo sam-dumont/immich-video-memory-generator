@@ -321,17 +321,19 @@ src/immich_memories/
 │   ├── __init__.py             # Public API re-exports
 │   ├── candidates.py           # Memory candidate detection
 │   ├── candidate_scorer.py     # Candidate scoring & ranking
+│   ├── candidate_discovery.py  # CandidateDiscovery: one library snapshot -> ranked candidates
 │   ├── event_detectors.py      # Event-based detectors (activity bursts)
 │   ├── calendar_detectors.py   # Calendar-based detectors (monthly, yearly)
 │   ├── variety.py              # Cadence and rotation rules for candidates
 │   ├── models.py               # Typed values returned/persisted by automation
 │   ├── generation_request.py   # Typed boundary from candidates to the `generate` CLI
 │   ├── state_store.py          # SQLite persistence for automation attempts
+│   ├── status.py               # Cooldown gate + read-only AutomationStatus contract
 │   ├── delivery_retry.py       # Durable state for one pending delivery retry
 │   ├── notification_state.py   # Durable, sanitized notification delivery health
 │   ├── trip_input_cache.py     # Durable, identity-checked inputs for auto trip discovery
 │   ├── notifications.py        # Apprise notification integration
-│   ├── runner.py               # Auto-run orchestrator
+│   ├── runner.py               # Auto-run orchestrator (lease, subprocess, attempt record)
 │   ├── in_process_scheduler.py # Daily timer inside the UI/Docker process
 │   └── system_scheduler.py     # OS scheduler integration (launchd/systemd/cron)
 │
