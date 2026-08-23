@@ -393,10 +393,14 @@ def _build_pipeline_config(
 ) -> Any:
     """Build PipelineConfig from app state."""
     from immich_memories.analysis.smart_pipeline import PipelineConfig
+    from immich_memories.config_loader import Config
 
     config_dict = state.pipeline_config
     overnight_bases = _detect_overnight_bases(state, clips)
-    return PipelineConfig(
+    # Defaults stand in only before the wizard has loaded a config; the dials
+    # this reads are the user's, not the caller's.
+    return PipelineConfig.from_app_config(
+        state.config or Config(),
         target_clips=config_dict.get("target_clips", 120),
         avg_clip_duration=config_dict.get("avg_clip_duration", 5.0),
         target_duration_seconds=config_dict.get("target_duration_seconds"),

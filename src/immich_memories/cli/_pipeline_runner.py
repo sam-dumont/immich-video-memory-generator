@@ -323,7 +323,8 @@ def run_pipeline_and_generate(
     phases.emit(OperationalPhase.DISCOVERY, len(clips), len(clips), "Discovery complete")
     phases.emit(OperationalPhase.DOWNLOAD, 0, len(clips), "Preparing source downloads")
 
-    pipeline_config = PipelineConfig(
+    pipeline_config = PipelineConfig.from_app_config(
+        config,
         hdr_only=False,
         prioritize_favorites=True,
         analysis_depth=analysis_depth,
