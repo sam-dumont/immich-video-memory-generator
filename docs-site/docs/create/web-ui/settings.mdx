@@ -1,0 +1,63 @@
+---
+sidebar_label: "Settings"
+---
+
+# Settings
+
+Two pages sit outside the four-step wizard, reachable from the sidebar at any time: **Config** (`/settings/config`) and **Cache** (`/settings/cache`).
+
+## Config — what is actually running
+
+`/settings/config` is a **read-only viewer**. It shows the merged, live configuration: what `~/.immich-memories/config.yaml` holds, after environment overrides and after any active preset has filled in the knobs you did not set. It is the answer to "the docs say the default is X, but is X what this install is using?"
+
+Each config section is a collapsible panel with its key count. `immich`, `analysis`, `output` and `defaults` are open on arrival; the rest start collapsed.
+
+If a preset is active, the page names it and says it is filling the values you have not set.
+
+### Secrets are masked
+
+Any key named `api_key`, `api_keys`, `client_secret`, `password`, `secret`, `token` or `urls` renders as `***` — a full mask, not a partial one. An earlier version showed the first and last few characters of every secret, `auth.password` included, which is a preview of a password rather than a redaction.
+
+This matters if you screenshot the page for a bug report: the masking is server-side, so what you see is all there is to leak.
+
+### The two actions
+
+- **Reload from Disk** re-reads `config.yaml` and refreshes the page. Use it after editing the file by hand — the running process holds the config in memory and will not otherwise notice.
+- The **config file path** is printed beside the button, so you know which file you are editing.
+
+:::note There is no Save button on this page
+Saving is on **Step 1**, not here. This page only reads.
+:::
+
+## Saving config from Step 1, and what it costs you
+
+Step 1's connection panel has a **Save Config** button. It writes the Immich URL and API key you entered — but it saves the **whole configuration**, not just those two fields.
+
+That has a consequence worth understanding before you press it: **every value becomes explicitly set.** A preset works by filling in what you have not chosen, so once everything is written to the file, there is nothing left for the preset to own. `preset: fast` will still be named, but the values it would have supplied are now yours and will not move again.
+
+If you want the preset back in charge of something, delete those keys from `config.yaml` by hand.
+
+Two exceptions to "everything is written":
+
+- **`server.host`** is omitted unless you set it deliberately. Writing the wildcard default would make the next load read it as a deliberate LAN bind and silently retire the localhost default.
+- **Credentials supplied through environment variables** stay in the environment; they are not baked into the file.
+
+## Cache — what is on disk, and getting rid of it
+
+`/settings/cache` lists four caches with their current size, each with its own **Clear** button, plus a clear-everything action.
+
+| Cache | Holds | Cost of clearing |
+|-------|-------|------------------|
+| **Analysis** | per-video analysis results, in SQLite | the expensive one — a cleared analysis cache means the next run re-analyses from scratch, LLM calls included |
+| **Video** | downloaded source videos | re-download from Immich; bounded by the cache size limit and evicted automatically |
+| **Thumbnail** | preview images used for scoring, contact sheets and the clip review grid | re-fetched from Immich on demand |
+| **Preview** | the `.mp4` previews the wizard plays back | regenerated when you next preview |
+
+Clearing is safe in the sense that nothing generated is lost — every cache is rebuildable from Immich plus compute. The only question is how much time and, if you point `llm.base_url` at a hosted API, how much money you spend rebuilding it.
+
+Clear the **analysis** cache when you have changed something that would alter how clips are scored and you want the change to actually take effect. Clear the **video** or **thumbnail** caches when you want the disk back.
+
+## See also
+
+- [Configuration reference](../../reference/config-reference.md) — every key, with defaults
+- [Step 1 — Configuration](./step1-configuration.mdx) — where Save Config lives

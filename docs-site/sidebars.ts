@@ -27,6 +27,7 @@ const sidebars: SidebarsConfig = {
             'create/web-ui/step2-clip-review',
             'create/web-ui/step3-generation-options',
             'create/web-ui/step4-preview-export',
+            'create/web-ui/settings',
           ],
         },
         {
