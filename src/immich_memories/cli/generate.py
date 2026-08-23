@@ -965,6 +965,7 @@ def register_generate_commands(main: click.Group) -> None:
 
                 _print_generation_result(
                     dry_run=dry_run,
+                    no_render=no_render,
                     result_path=result_path,
                     should_upload=should_upload,
                     album_name=album_name,

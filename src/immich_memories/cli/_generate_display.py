@@ -116,10 +116,19 @@ def _print_generation_result(
     result_path: Path,
     should_upload: bool,
     album_name: str | None,
+    no_render: bool = False,
 ) -> None:
-    """Report a plan without claiming an artifact or upload exists."""
+    """Report a plan without claiming an artifact or upload exists.
+
+    Both flags stop at the render boundary and both return a path anyway — the
+    one the run would have written. Saying "Video saved to" for it sends people
+    looking for a file that does not exist.
+    """
     if dry_run:
         print_success("Dry-run planning complete; no video was created")
+        return
+    if no_render:
+        print_success("Selection complete; no video was created (--no-render)")
         return
     print_success(f"Video saved to: {result_path}")
     if should_upload:
