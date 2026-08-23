@@ -10,6 +10,7 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from immich_memories.cache.judgment_cache import verdicts_beside
 from immich_memories.memory_types.registry import MemoryType
 from immich_memories.titles.llm_titles import generate_title_with_llm
 
@@ -277,6 +278,7 @@ async def generate_title_after_pipeline(state: AppState) -> None:
             start_date=str(start_date),
             end_date=str(end_date),
             duration_days=(end_date - start_date).days,
+            cache_path=verdicts_beside(config.cache.cache_path),
             daily_locations=trip.daily_locations,
             country=trip.country,
             person_names=person_names,
