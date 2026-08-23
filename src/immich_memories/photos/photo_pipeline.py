@@ -121,6 +121,41 @@ def score_photos(
     ]
 
 
+def look_at_selected_photos(
+    assets: list[Asset],
+    *,
+    config: Any,
+    client: Any,
+    provider_circuit: Any = None,
+) -> dict[str, dict]:
+    """A VLM look at the handful of photos that reached a cut without one.
+
+    The shortlist is a budget: thirty of nearly two thousand photos are looked
+    at, and selection then picks from all of them. So most stills in a
+    finished cut have no description, and the holistic review — told never to
+    drop a clip for missing information — cannot judge any of them.
+
+    Bounded to what actually shipped, which is a dozen or so calls rather than
+    the whole library, and cached like any other look so a rerun pays nothing.
+    """
+    if not assets:
+        return {}
+    work_dir = config.cache.cache_path / "photo-looks"
+    work_dir.mkdir(parents=True, exist_ok=True)
+    scored = [(asset, score_photo(asset, config.photos)) for asset in assets]
+    _enhanced, payloads = _enhance_with_llm(
+        scored,
+        config.photos,
+        work_dir,
+        client.download_asset,
+        db_path=config.cache.database_path,
+        app_config=config,
+        thumbnail_fn=client.get_asset_thumbnail,
+        provider_circuit=provider_circuit,
+    )
+    return payloads
+
+
 def from_the_camera_roll(photo_assets: list[Asset], config: Any) -> list[Asset]:
     """Drop the photos nothing says the library's own camera made.
 

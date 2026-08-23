@@ -652,21 +652,35 @@ class TestNothingIsJudgedBlind:
         ], "the review was handed a clip nobody had looked at"
 
     def test_a_photo_is_never_sent_to_the_video_analyzer(self, tmp_path: Path) -> None:
-        """A photograph's real look is the photo scorer, which has already run.
+        """A photograph's real look is the photo scorer.
 
-        The verify pass queues anything the review cannot see, and running the
-        video analyzer over a still fails and replaces its score with zero —
-        so a photo the VLM could not score was not merely unseen, it was
-        ranked last.
+        Running the video analyzer over a still fails and writes back a zero,
+        so a photo it could not read was not merely unseen — it was ranked
+        last. The still still gets looked at; it just gets looked at by
+        something that can see it.
         """
-        from immich_memories.analysis.smart_pipeline import ClipWithSegment
+        from immich_memories.analysis.smart_pipeline import ClipWithSegment, PipelineResult
         from immich_memories.api.models import AssetType
 
         still = TestDensityBudgetCap()._make_clip("still")
         still.asset.type = AssetType.IMAGE
         member = ClipWithSegment(clip=still, start_time=0.0, end_time=4.0, score=0.6)
+        result = PipelineResult(
+            selected_clips=[still], clip_segments={"still": (0.0, 4.0)}, errors=[]
+        )
 
-        assert not self._pipeline(tmp_path)._needs_a_real_look(member)
+        pipeline = self._pipeline(tmp_path)
+        pipeline.analyzer.phase_analyze = MagicMock(
+            side_effect=AssertionError("a still reached the video analyzer")
+        )
+        # WHY: the VLM is the network boundary; this stands in for its look.
+        with patch(
+            "immich_memories.photos.photo_pipeline.look_at_selected_photos",
+            return_value={"still": {"description": "a plant against a wall"}},
+        ):
+            pipeline._verify_selection([member], result)
+
+        assert still.llm_description == "a plant against a wall"
 
     def test_a_clip_that_failed_analysis_is_not_queued_again(self, tmp_path: Path) -> None:
         """The attempted set was local to one call, and the method is re-entered.
@@ -693,3 +707,31 @@ class TestNothingIsJudgedBlind:
         pipeline._verify_selection([member], result)
 
         assert pipeline.analyzer.phase_analyze.call_count == 1
+
+    def test_a_selected_photo_nobody_looked_at_is_looked_at(self, tmp_path: Path) -> None:
+        """Thirty of nearly two thousand photos reach the VLM shortlist.
+
+        Selection picks from all of them, so most stills in a finished cut
+        arrive at the review with no description — and the review is told
+        never to drop a clip for missing information. A beer tap, a plant on a
+        wall and an empty floor shipped in a year recap on exactly that.
+        """
+        from immich_memories.analysis.smart_pipeline import ClipWithSegment, PipelineResult
+        from immich_memories.api.models import AssetType
+
+        still = TestDensityBudgetCap()._make_clip("unseen-still")
+        still.asset.type = AssetType.IMAGE
+        member = ClipWithSegment(clip=still, start_time=0.0, end_time=4.0, score=0.4)
+        result = PipelineResult(
+            selected_clips=[still], clip_segments={"unseen-still": (0.0, 4.0)}, errors=[]
+        )
+
+        pipeline = self._pipeline(tmp_path)
+        # WHY: the VLM is the network boundary; this stands in for its look.
+        with patch(
+            "immich_memories.photos.photo_pipeline.look_at_selected_photos",
+            return_value={"unseen-still": {"description": "a beer tap on a bar"}},
+        ):
+            pipeline._verify_selection([member], result)
+
+        assert still.llm_description == "a beer tap on a bar"

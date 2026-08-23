@@ -24,7 +24,7 @@ from immich_memories.analysis.clip_refiner import ClipRefiner
 from immich_memories.analysis.clip_scaler import ClipScaler
 from immich_memories.analysis.preview_builder import PreviewBuilder
 from immich_memories.analysis.progress import PipelinePhase, ProgressTracker
-from immich_memories.analysis.source_filter import not_shot_here
+from immich_memories.analysis.source_filter import is_a_still, not_shot_here
 from immich_memories.analysis.thumbnail_prefetch import ThumbnailPrefetcher
 from immich_memories.config_presets import resolve_analysis_depth
 
@@ -380,6 +380,9 @@ class SmartPipeline:
                 [f"{len(unverified)} clip(s) analyzed for real before judging"],
             )
             attempted.update(u.clip.asset.id for u in unverified)
+            unverified = self._look_at_stills_among(unverified)
+            if not unverified:
+                continue
             try:
                 verified = self.analyzer.phase_analyze([u.clip for u in unverified], self.tracker)
             finally:
@@ -405,6 +408,38 @@ class SmartPipeline:
                     )
             result = self.refiner.phase_refine(list(by_id.values()), self.tracker)
         return result, list(by_id.values())
+
+    def _look_at_stills_among(self, unverified: list[ClipWithSegment]) -> list[ClipWithSegment]:
+        """Look at the stills here and now, and hand back the footage.
+
+        A still's real look is the photo scorer: the video analyzer fails on a
+        photograph and writes back a zero, so a photo it could not read was
+        not merely unseen but ranked last.
+        """
+        stills = [u for u in unverified if is_a_still(u.clip.asset)]
+        self._look_at_stills(stills)
+        return [u for u in unverified if not is_a_still(u.clip.asset)]
+
+    def _look_at_stills(self, stills: list[ClipWithSegment]) -> None:
+        """Give the review eyes on the photographs that reached the cut."""
+        if not stills:
+            return
+        from immich_memories.analysis.cache_projection import apply_semantic_payload
+        from immich_memories.photos import photo_pipeline
+
+        logger.info("Verify pass: looking at %d selected photo(s)", len(stills))
+        try:
+            payloads = photo_pipeline.look_at_selected_photos(
+                [s.clip.asset for s in stills],
+                config=self._app_config,
+                client=self.client,
+                provider_circuit=self.provider_circuit,
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            logger.debug("Photo look failed: %s", type(exc).__name__)
+            return
+        for member in stills:
+            apply_semantic_payload(member.clip, payloads.get(member.clip.asset.id))
 
     def _final_review_drop(
         self,
@@ -472,11 +507,6 @@ class SmartPipeline:
         video analyzer fails and replaces its score with zero, so a photo the
         scorer could not describe was not merely unseen, it was ranked last.
         """
-        from immich_memories.analysis.source_filter import is_a_still
-
-        # A Live Photo is footage the video analyzer can and should look at.
-        if is_a_still(member.clip.asset):
-            return False
         if not member.analyzed:
             return True
         if not self._app_config.content_analysis.enabled:
