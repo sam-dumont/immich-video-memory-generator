@@ -90,6 +90,55 @@ Unknown keys inside a section are silently ignored — a typo does not fail the 
 nothing. Unknown top-level keys and invalid values (`codec: av1`, `llm.provider: openai`) do fail
 with a validation error at startup.
 
+## Footage the camera roll did not shoot
+
+Doorbells, security cameras, screen recorders and messaging apps all upload into the same
+timeline as your phone. None of it was shot to be remembered, and some of it scores well —
+a doorbell is a perfectly stable camera pointed at a place people walk through.
+
+Source files matching these patterns never reach selection:
+
+```yaml
+advanced:
+  analysis:
+    exclude_filename_patterns:
+      - "RingVideo_*"
+      - "RPReplay_Final*"
+      - "Screen Recording *"
+      - "Screenshot*"
+      - "img-*-wa[0-9][0-9][0-9][0-9]*"
+      - "vid-*-wa[0-9][0-9][0-9][0-9]*"
+```
+
+Case-insensitive globs against the original filename. Setting the key replaces the list
+rather than adding to it, so include the defaults you want to keep. An empty list turns the
+filter off.
+
+A name does not always give it away. On iOS a photo saved from a messaging app keeps an
+`IMG_` name and loses only its EXIF camera. So a still whose EXIF names no camera at all is
+also dropped:
+
+```yaml
+advanced:
+  analysis:
+    exclude_stills_without_camera_exif: true   # the default
+```
+
+Measured across four months of a real library: of 1541 stills with no EXIF make, 1498
+arrived through a messaging app and 34 were downloads, against 9 camera originals that had
+lost their make somewhere. Turn it off if your library is mostly exported or edited
+originals, which lose their make the same way. Videos are exempt either way — 25 of 224
+make-less videos in that library were genuine phone clips, so the rule cannot judge them.
+
+Both rules run before anything is analysed, which is also what keeps this material out of
+the analysis budget, and `discover-days` applies the same rules before it counts a day's
+photographs — a day should not clear the bar on pictures nobody in the library took.
+
+This runs before analysis, so an excluded file costs nothing to skip, and it works with no
+LLM configured at all. With one configured, the holistic review is a second line of defence:
+it drops footage nobody chose to shoot whatever the picture quality, which covers the
+cameras whose filenames give nothing away.
+
 ## Immich API compatibility
 
 Immich Memories supports **Immich v2 and v3**. `auto` is the default runtime policy: the app

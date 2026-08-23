@@ -10,9 +10,10 @@ entirely (#488).
 from __future__ import annotations
 
 import logging
+import math
 from collections import defaultdict
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 if TYPE_CHECKING:
     from immich_memories.analysis.smart_pipeline import ClipWithSegment
@@ -21,11 +22,58 @@ logger = logging.getLogger(__name__)
 
 
 _MAX_PHOTOS_PER_DAY = 2
+_MAX_SHARE_FROM_ONE_DAY = 0.25
 _EVENT_DENSITY_MULTIPLE = 3.0
 _EVENT_CAP_MULTIPLE = 3
 _EVENT_CLIPS_PER_PERIOD = 3
 _MAX_EVENT_PERIODS = 2
 _MIN_EVENT_PEOPLE_SHARE = 0.10
+
+
+class PhotoDayCaps(NamedTuple):
+    """What a single day may contribute to a cut, in photos.
+
+    The two numbers are one rule and travel together: a dense day may hold
+    more than an ordinary one, but no day passes the ceiling. Handing the
+    preference downstream on its own is how the event multiple came to triple
+    the very ceiling it sits next to — forty clips over four days meant a
+    ten-photo preference and a thirty-photo event day, three quarters of the
+    cut from one day.
+    """
+
+    preferred: int
+    ceiling: int
+
+
+_DEFAULT_PHOTO_DAY_CAPS = PhotoDayCaps(
+    _MAX_PHOTOS_PER_DAY, _MAX_PHOTOS_PER_DAY * _EVENT_CAP_MULTIPLE
+)
+
+
+# How far apart two shots have to be to be different moments, by how much
+# timeline the memory covers. Five minutes is a moment inside a sixty-second
+# month, where the cut has a slot for most of the days in it. Across a year it
+# is a rounding error: a real year recap spent two of its thirty-nine slots on
+# one evening at a venue, 71 minutes apart, and two more on one arcade, 62
+# minutes apart. The breakpoints are the ones _period_key already uses, so the
+# module has one vocabulary for "how long is this memory".
+_MOMENT_WINDOW_BY_SPAN = ((31, 0.0), (92, 30.0), (366, 90.0))
+_MULTI_YEAR_MOMENT_WINDOW = 180.0
+
+
+def moment_window_for(span_days: int, configured_minutes: float) -> float:
+    """The same-moment window this memory should use, in minutes.
+
+    The configured value is a floor, never a ceiling: a month uses exactly
+    what it was given, and a longer memory widens from there. Zero still
+    means no deduplication at all.
+    """
+    if configured_minutes <= 0:
+        return configured_minutes
+    for limit, minutes in _MOMENT_WINDOW_BY_SPAN:
+        if span_days <= limit:
+            return max(configured_minutes, minutes)
+    return max(configured_minutes, _MULTI_YEAR_MOMENT_WINDOW)
 
 
 def _people_share(clips: list[ClipWithSegment]) -> float:
@@ -74,6 +122,27 @@ def _event_periods(by_period: dict[str, list[ClipWithSegment]]) -> set[str]:
     return set(peopled[:_MAX_EVENT_PERIODS])
 
 
+# How much of the pool the span is measured across. First-to-last is what one
+# wrong timestamp decides on its own, and this library documents Shared Album
+# assets arriving stamped 1970 — a single one turned a December into a
+# fifty-year memory, which means quarterly period buckets and a three-hour
+# moment window over one afternoon.
+_SPAN_MARGIN_SHARE = 0.02
+# Below this there is nothing to spare: dropping an end off a handful of
+# clips throws away a real edge of the memory rather than a wrong one.
+_SPAN_MIN_CLIPS_TO_TRIM = 10
+
+
+def span_days_of(clips: list[ClipWithSegment]) -> int:
+    """How much timeline this memory covers, ignoring its outermost dates."""
+    dates = sorted(c.clip.asset.file_created_at for c in clips if c.clip.asset.file_created_at)
+    if len(dates) < _SPAN_MIN_CLIPS_TO_TRIM:
+        return (dates[-1] - dates[0]).days if dates else 0
+    margin = max(1, int(len(dates) * _SPAN_MARGIN_SHARE))
+    inner = dates[margin : len(dates) - margin] or dates
+    return (inner[-1] - inner[0]).days
+
+
 def _event_periods_of(clips: list[ClipWithSegment]) -> set[str]:
     """Event periods measured on the raw pool.
 
@@ -84,7 +153,7 @@ def _event_periods_of(clips: list[ClipWithSegment]) -> set[str]:
     dates = [c.clip.asset.file_created_at for c in clips]
     if not dates:
         return set()
-    span_days = (max(dates) - min(dates)).days
+    span_days = span_days_of(clips)
     by_period: dict[str, list[ClipWithSegment]] = defaultdict(list)
     for c in clips:
         by_period[_period_key(c.clip.asset.file_created_at, span_days)].append(c)
@@ -118,23 +187,45 @@ def _fill_gap_periods(
 
 def _photo_caps_per_day(
     by_day: dict[str, list[ClipWithSegment]],
-    base_cap: int,
+    caps: PhotoDayCaps,
 ) -> dict[str, int]:
     """Raise the per-day photo cap for days holding far more than the norm.
 
     A flat cap erases the signal selection depends on: on a real November the
     busiest day — 129 Live Photos inside one hour — reached the selector
     holding two clips, indistinguishable from a day with two idle snapshots,
-    and the recap skipped the event entirely (#488).
+    and the recap skipped the event entirely (#488). The ceiling is the outer
+    bound on that bonus, not its input.
     """
     events = _event_periods(by_day)
-    event_cap = base_cap * _EVENT_CAP_MULTIPLE
-    return {day: event_cap if day in events else base_cap for day in by_day}
+    event_cap = min(caps.preferred * _EVENT_CAP_MULTIPLE, caps.ceiling)
+    return {day: event_cap if day in events else caps.preferred for day in by_day}
+
+
+def photos_per_day_for(target_clips: int, active_days: int) -> PhotoDayCaps:
+    """How many photos a day may contribute before it counts as flooding.
+
+    "Flooding" is relative to how many slots the memory has. Two a day suits a
+    60-second month; for a four-day trip needing forty clips it left selection
+    with eight photos to work with, so it filled a fifth of the runtime and
+    duration backfill supplied the other four fifths — by relaxed constraints,
+    where selection would have chosen. Measured on a 967-asset trip: 55
+    candidates reached selection, 49 of the 55 final clips came from backfill.
+    """
+    if target_clips <= 0 or active_days <= 0:
+        return _DEFAULT_PHOTO_DAY_CAPS
+    # Twice the per-day share, so selection chooses rather than merely accepts,
+    # but never more than a quarter of the whole cut from one day — six photos
+    # of one race day in a seven-clip recap was the failure that put this cap
+    # here in the first place.
+    headroom = math.ceil(target_clips / active_days) * 2
+    ceiling = max(_MAX_PHOTOS_PER_DAY, int(target_clips * _MAX_SHARE_FROM_ONE_DAY))
+    return PhotoDayCaps(preferred=min(headroom, ceiling), ceiling=ceiling)
 
 
 def _partition_photos_per_day(
     clips: list[ClipWithSegment],
-    max_per_day: int = _MAX_PHOTOS_PER_DAY,
+    caps: PhotoDayCaps = _DEFAULT_PHOTO_DAY_CAPS,
 ) -> tuple[list[ClipWithSegment], list[ClipWithSegment]]:
     """Partition same-day photos into preferred and duration-fallback pools.
 
@@ -155,19 +246,20 @@ def _partition_photos_per_day(
         day_key = p.clip.asset.file_created_at.strftime("%Y-%m-%d")
         by_day[day_key].append(p)
 
-    caps = _photo_caps_per_day(by_day, max_per_day)
+    day_caps = _photo_caps_per_day(by_day, caps)
     kept_photos: list[ClipWithSegment] = []
     overflow_photos: list[ClipWithSegment] = []
     for day_key in sorted(by_day):
         day_photos = sorted(by_day[day_key], key=lambda c: c.score, reverse=True)
-        cap = caps[day_key]
+        cap = day_caps[day_key]
         kept_photos.extend(day_photos[:cap])
         overflow_photos.extend(day_photos[cap:])
 
     if overflow_photos:
         logger.info(
             f"Same-day photo preference: reserved {len(overflow_photos)} overflow photos "
-            f"for duration backfill (preferred max {max_per_day}/day)"
+            f"for duration backfill (preferred max {caps.preferred}/day, "
+            f"ceiling {caps.ceiling})"
         )
 
     return videos + kept_photos, overflow_photos

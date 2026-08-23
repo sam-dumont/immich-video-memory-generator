@@ -41,6 +41,10 @@ class CachedSegment:
     llm_interestingness: float | None = None
     llm_quality: float | None = None
 
+    # Where a cut may land in this source — the evidence behind start_time
+    # and end_time, without which a cached rerun cannot move either.
+    safe_cut_gaps: list[tuple[float, float]] | None = None
+
     # Audio content categories (from PANNs analysis)
     audio_categories: list[str] | None = None
 

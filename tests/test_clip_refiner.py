@@ -78,7 +78,7 @@ def test_strict_budget_outweighs_protection_preference() -> None:
 
 class TestBackfillPolicyHelpers:
     def test_backfill_policy_rejects_an_occupied_temporal_bucket(self) -> None:
-        from immich_memories.analysis.clip_refiner import (
+        from immich_memories.analysis.clip_backfill import (
             _BackfillContext,
             _is_backfill_candidate_admissible,
         )
@@ -103,7 +103,7 @@ class TestBackfillPolicyHelpers:
         )
 
     def test_backfill_policy_rejects_a_photo_above_the_active_cap(self) -> None:
-        from immich_memories.analysis.clip_refiner import (
+        from immich_memories.analysis.clip_backfill import (
             _BackfillContext,
             _is_backfill_candidate_admissible,
         )
@@ -131,7 +131,7 @@ class TestBackfillPolicyHelpers:
         )
 
     def test_backfill_choice_keeps_favorite_priority_over_temporal_distance(self) -> None:
-        from immich_memories.analysis.clip_refiner import _choose_backfill_candidate
+        from immich_memories.analysis.clip_backfill import _choose_backfill_candidate
 
         base = datetime(2026, 7, 1, tzinfo=UTC)
         favorite = _make_clip(
@@ -151,7 +151,7 @@ class TestBackfillPolicyHelpers:
         assert chosen is favorite
 
     def test_backfill_relaxes_favorite_ratio_before_leaving_a_duration_hole(self) -> None:
-        from immich_memories.analysis.clip_refiner import (
+        from immich_memories.analysis.clip_backfill import (
             _BackfillContext,
             _resolve_backfill_candidates,
         )
@@ -185,20 +185,27 @@ class TestBackfillPolicyHelpers:
         assert resolved.tier == "favorite_ratio"
 
     def test_backfill_relaxes_temporal_spacing_after_favorite_ratio(self) -> None:
-        from immich_memories.analysis.clip_refiner import (
+        """The concession gives back the width a long memory added, not the rule.
+
+        A memory spanning a year calls ninety minutes one moment; the base
+        window it was configured with is ten. Conceding means falling back to
+        that ten, so a clip half an hour from what is already in the cut
+        becomes admissible and one from the same minute never does.
+        """
+        from immich_memories.analysis.clip_backfill import (
             _BackfillContext,
             _resolve_backfill_candidates,
         )
         from immich_memories.analysis.smart_pipeline import PipelineConfig
 
-        candidate = _make_clip("nearby-leftover", datetime(2026, 7, 2, 12, 2, tzinfo=UTC))
+        candidate = _make_clip("nearby-leftover", datetime(2026, 7, 2, 12, 30, tzinfo=UTC))
         context = _BackfillContext(
             config=PipelineConfig(temporal_dedup_window_minutes=10.0),
             selected_count=1,
             photo_count=0,
             non_favorite_count=0,
-            temporal_window=10.0,
-            occupied_moments=[candidate.clip.asset.file_created_at],
+            temporal_window=90.0,
+            occupied_moments=[datetime(2026, 7, 2, 12, 2, tzinfo=UTC)],
         )
 
         resolved = _resolve_backfill_candidates(
@@ -212,7 +219,7 @@ class TestBackfillPolicyHelpers:
         assert resolved.tier == "temporal_spacing"
 
     def test_backfill_can_remove_photo_ratio_as_last_content_constraint(self) -> None:
-        from immich_memories.analysis.clip_refiner import (
+        from immich_memories.analysis.clip_backfill import (
             _BackfillContext,
             _resolve_backfill_candidates,
         )
@@ -245,7 +252,7 @@ class TestBackfillPolicyHelpers:
         assert resolved.tier == "photo_ratio_unlimited"
 
     def test_backfill_uses_two_second_overrun_only_after_content_relaxations(self) -> None:
-        from immich_memories.analysis.clip_refiner import (
+        from immich_memories.analysis.clip_backfill import (
             _BackfillContext,
             _resolve_backfill_candidates,
         )
@@ -669,3 +676,32 @@ class TestTemporalCoverage:
         months = {c.clip.asset.file_created_at.month for c in selected}
         # Despite Apr dominating by score, Jan, Jul, Oct should be represented
         assert len(months) >= 3, f"Only {len(months)} months: {sorted(months)}"
+
+
+class TestTheRatioTrimHonoursCoverage:
+    """The last drop site that did not.
+
+    The scaler, the photo cap and the moment dedup all treat a coverage clip
+    as untouchable; the non-favorite ratio trim sorted by score and truncated,
+    so the one clip standing for a whole period could be cut for scoring low —
+    which is the reason it was added.
+    """
+
+    def test_a_coverage_clip_survives_the_non_favorite_trim(self) -> None:
+        from immich_memories.analysis.clip_refiner import _trim_non_favorites
+
+        covering = _make_clip("covers-a-month", datetime(2026, 3, 2, 12, tzinfo=UTC))
+        covering.score = 0.1
+        others = []
+        for index in range(6):
+            clip = _make_clip(f"ordinary-{index}", datetime(2026, 7, 2, 12, tzinfo=UTC))
+            clip.score = 0.9
+            others.append(clip)
+
+        kept = _trim_non_favorites(
+            [covering, *others],
+            max_non_favorites=3,
+            coverage_ids={"covers-a-month"},
+        )
+
+        assert "covers-a-month" in {c.clip.asset.id for c in kept}

@@ -1065,7 +1065,10 @@ class TestPhaseRefine:
 
         photo_count = sum(1 for clip in result.selected_clips if clip.asset.type.value == "IMAGE")
         selected_duration = sum(end - start for start, end in result.clip_segments.values())
-        assert selected_duration == pytest.approx(59.0)
+        # 60, not 59: once nothing admissible is left, the strongest clips are
+        # held a little longer to close the last second rather than the cut
+        # simply stopping short of its target.
+        assert selected_duration == pytest.approx(60.0)
         assert photo_count / len(result.selected_clips) <= 0.70
 
     def test_backfill_accepts_one_small_overrun_instead_of_leaving_a_hole(self):
@@ -2214,6 +2217,7 @@ class TestClipAnalyzerRunUnifiedAnalysis:
         mock_segment.llm_interestingness = 0.9
         mock_segment.llm_quality = 0.8
         mock_segment.cut_quality = 0.95
+        mock_segment.safe_cut_gaps = [(0.0, 4.0), (9.5, 12.0)]
 
         # WHY: UnifiedSegmentAnalyzer reads video + audio — mock
         with (
@@ -2241,6 +2245,9 @@ class TestClipAnalyzerRunUnifiedAnalysis:
         assert llm is not None
         assert llm["description"] == "People laughing at a party"
         assert clip.audio_categories == ["laughter"]
+        # The pauses that placed the segment travel with the clip: the pass
+        # that may hold it longer has no other way to know where they were.
+        assert clip.safe_cut_gaps == [(0.0, 4.0), (9.5, 12.0)]
 
     def test_no_segments_returns_zeros(self):
         analyzer = self._make_analyzer()

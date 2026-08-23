@@ -273,6 +273,25 @@ def select_segment_boundaries(
     return new_start, new_end, (new_start, new_end) != (start, end)
 
 
+def extend_end_to_gap(
+    end: float,
+    limit: float,
+    gaps: list[tuple[float, float]],
+) -> float | None:
+    """Furthest silence a segment's end may be held out to, or None for nowhere safe.
+
+    Holding a clip longer to cover a duration shortfall is a second placement
+    of an edge already placed once, so it answers to the same rule: the end sits
+    in a pause on purpose, and it may only move into another one. Candidates are
+    the reachable parts of the gaps, so every midpoint is real silence; the
+    latest wins, because seconds are the whole point of the move.
+    """
+    if limit <= end:
+        return None
+    later = [c.snapped_time for c in _candidates_within(gaps, end, limit) if c.snapped_time > end]
+    return max(later) if later else None
+
+
 def cap_end_to_gap(
     new_start: float,
     cap_time: float,

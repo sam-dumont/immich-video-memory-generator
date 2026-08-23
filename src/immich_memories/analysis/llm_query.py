@@ -1,16 +1,26 @@
-"""Generic text-only LLM query utility.
+"""Generic LLM query utility.
 
-Sends a text prompt to the configured LLM provider (Ollama or OpenAI-compatible)
-and returns the raw response string. Caller handles JSON parsing and validation.
+Sends a prompt — with pictures alongside it, where the caller has them — to
+the configured LLM provider (Ollama or OpenAI-compatible) and returns the raw
+response string. Caller handles JSON parsing and validation.
+
+Provider routing lives here and nowhere else. A second vision call that
+POSTed OpenAI-style regardless of the configured provider 404ed on every
+Ollama server it met, and the caller read the failure as "not special".
 """
 
 from __future__ import annotations
 
+import base64
 import logging
+from typing import TYPE_CHECKING
 
 import httpx
 
 from immich_memories.config_models_llm import LLMConfig
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -123,23 +133,28 @@ async def query_llm(
     max_tokens: int = 500,
     timeout_seconds: int = 30,
     thinking: bool = False,
+    images: Sequence[bytes] = (),
+    image_detail: str = "low",
 ) -> str:
-    """Send a text-only prompt to the configured LLM and return the response.
+    """Send a prompt, optionally with JPEG images, and return the response.
 
     thinking=True asks a reasoning model to reason before answering — only
-    honored when the config says the server supports it (llm.thinking), and
-    never on the Ollama path. Reserve it for judgement calls: measured cost is
-    5-10x latency and 10-20x completion tokens.
+    honored when the config says the server supports it (llm.thinking), never
+    on the Ollama path, and never alongside images: multi-image reasoning is a
+    measured runaway, and bulk vision is the fast tier by design. Reserve it
+    for judgement calls: measured cost is 5-10x latency and 10-20x tokens.
     """
     llm_config = _resolved(llm_config)
     if llm_config.provider == "ollama":
-        return await _query_ollama(prompt, llm_config, temperature, timeout_seconds)
-    think = thinking and llm_config.thinking
+        return await _query_ollama(prompt, llm_config, temperature, timeout_seconds, images)
+    think = thinking and llm_config.thinking and not images
     if llm_config.provider == "anthropic":
         return await _query_anthropic(
-            prompt, llm_config, temperature, max_tokens, timeout_seconds, think
+            prompt, llm_config, temperature, max_tokens, timeout_seconds, think, images
         )
-    return await _query_openai(prompt, llm_config, temperature, max_tokens, timeout_seconds, think)
+    return await _query_openai(
+        prompt, llm_config, temperature, max_tokens, timeout_seconds, think, images, image_detail
+    )
 
 
 async def _query_ollama(
@@ -147,18 +162,42 @@ async def _query_ollama(
     config: LLMConfig,
     temperature: float,
     timeout: int,
+    images: Sequence[bytes] = (),
 ) -> str:
     base_url = config.base_url.rstrip("/")
-    payload = {
+    payload: dict = {
         "model": config.model,
         "prompt": prompt,
         "stream": False,
         "options": {"temperature": temperature},
     }
-    async with httpx.AsyncClient(timeout=build_llm_timeout(timeout)) as client:
+    # Ollama takes bare base64 in its own field, not a data: URI in a message.
+    if images:
+        payload["images"] = [base64.b64encode(image).decode("utf-8") for image in images]
+    async with httpx.AsyncClient(timeout=build_llm_timeout(float(timeout))) as client:
         resp = await client.post(f"{base_url}/api/generate", json=payload)
         resp.raise_for_status()
         return resp.json()["response"]
+
+
+def _anthropic_content(prompt: str, images: Sequence[bytes]) -> str | list[dict]:
+    """The message body: a bare string without pictures, blocks with them."""
+    if not images:
+        return prompt
+    return [
+        *(
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/jpeg",
+                    "data": base64.b64encode(image).decode("utf-8"),
+                },
+            }
+            for image in images
+        ),
+        {"type": "text", "text": prompt},
+    ]
 
 
 async def _query_anthropic(
@@ -168,6 +207,7 @@ async def _query_anthropic(
     max_tokens: int,
     timeout: int,
     thinking: bool = False,
+    images: Sequence[bytes] = (),
 ) -> str:
     """Native /v1/messages dialect: Claude, or z.ai's Anthropic endpoint."""
     base_url = config.base_url.rstrip("/")
@@ -177,7 +217,7 @@ async def _query_anthropic(
     payload: dict = {
         "model": config.model,
         "max_tokens": max_tokens,
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": [{"role": "user", "content": _anthropic_content(prompt, images)}],
         "temperature": temperature,
     }
     if thinking:
@@ -186,16 +226,42 @@ async def _query_anthropic(
         payload["thinking"] = {"type": "enabled", "budget_tokens": ANTHROPIC_THINKING_BUDGET_TOKENS}
         payload.pop("temperature")
         timeout = max(timeout, THINKING_MIN_TIMEOUT_SECONDS)
-    async with httpx.AsyncClient(timeout=build_llm_timeout(timeout), headers=headers) as client:
+    async with httpx.AsyncClient(
+        timeout=build_llm_timeout(float(timeout)), headers=headers
+    ) as client:
         resp = await client.post(f"{base_url}/v1/messages", json=payload)
         resp.raise_for_status()
         body = resp.json()
         if thinking and body.get("stop_reason") == "max_tokens":
             logger.warning("Thinking hit the token budget; retrying without thinking")
             return await _query_anthropic(
-                prompt, config, temperature, max_tokens, timeout, thinking=False
+                prompt, config, temperature, max_tokens, timeout, thinking=False, images=images
             )
         return "".join(b.get("text", "") for b in body["content"] if b.get("type") == "text")
+
+
+def _openai_content(
+    prompt: str, images: Sequence[bytes], image_detail: str = "low"
+) -> str | list[dict]:
+    """The message body: a bare string without pictures, parts with them."""
+    if not images:
+        return prompt
+    return [
+        {"type": "text", "text": prompt},
+        *(
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": "data:image/jpeg;base64," + base64.b64encode(image).decode("utf-8"),
+                    # Thumbnails, and the question is what a day or a photo was,
+                    # not what is written on a sign in it. Callers with a
+                    # configured preference pass their own.
+                    "detail": image_detail,
+                },
+            }
+            for image in images
+        ),
+    ]
 
 
 async def _query_openai(
@@ -205,6 +271,8 @@ async def _query_openai(
     max_tokens: int,
     timeout: int,
     thinking: bool = False,
+    images: Sequence[bytes] = (),
+    image_detail: str = "low",
 ) -> str:
     base_url = config.base_url.rstrip("/")
     headers: dict[str, str] = {}
@@ -212,7 +280,7 @@ async def _query_openai(
         headers["Authorization"] = f"Bearer {config.api_key}"
     payload = {
         "model": config.model,
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": [{"role": "user", "content": _openai_content(prompt, images, image_detail)}],
         "max_tokens": max_tokens,
         "temperature": temperature,
     }
@@ -224,7 +292,11 @@ async def _query_openai(
     adaptations = _PARAM_ADAPTATIONS.setdefault((base_url, config.model), set())
     _apply_adaptations(payload, adaptations)
     # Retry up to 3x — some models (Qwen/mlx-vlm) return null content
-    async with httpx.AsyncClient(timeout=build_llm_timeout(timeout), headers=headers) as client:
+    # Per-phase, not a scalar: a stuck server should fail while connecting
+    # rather than hold the whole generation budget on one read.
+    async with httpx.AsyncClient(
+        timeout=build_llm_timeout(float(timeout)), headers=headers
+    ) as client:
         for attempt in range(3):
             resp = await _post_adapted(client, f"{base_url}/chat/completions", payload, adaptations)
             resp.raise_for_status()
@@ -234,7 +306,14 @@ async def _query_openai(
                 # content channel — unparseable. A fast answer beats no answer.
                 logger.warning("Thinking hit the token budget; retrying without thinking")
                 return await _query_openai(
-                    prompt, config, temperature, max_tokens, timeout, thinking=False
+                    prompt,
+                    config,
+                    temperature,
+                    max_tokens,
+                    timeout,
+                    thinking=False,
+                    images=images,
+                    image_detail=image_detail,
                 )
             content = choice["message"]["content"]
             if content is not None:

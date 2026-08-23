@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from immich_memories.analysis.clip_refiner import (
+from datetime import timedelta
+
+from immich_memories.analysis.clip_backfill import (
     _BackfillContext,
     _resolve_backfill_candidates,
 )
@@ -75,7 +77,7 @@ def test_a_repeated_moment_is_conceded_after_extra_photos() -> None:
     """
     from datetime import UTC, datetime
 
-    from immich_memories.analysis.clip_refiner import (
+    from immich_memories.analysis.clip_backfill import (
         _BackfillContext,
         _resolve_backfill_candidates,
     )
@@ -112,3 +114,32 @@ def test_a_repeated_moment_is_conceded_after_extra_photos() -> None:
 
     assert resolved.tier != "temporal_spacing", "a repeat is the last thing to concede"
     assert any(c.clip.asset.id == "p-elsewhere" for c in resolved.items)
+
+
+def test_conceding_a_repeated_moment_still_never_reaches_the_same_minute() -> None:
+    """The concession is "an evening already in the cut", not "this shot twice".
+
+    A year recap measures a moment in tens of minutes, so once that window is
+    wide the strict pass runs out of candidates sooner and the ladder concedes
+    temporal spacing — which used to drop the rule entirely. A rendered year
+    recap then shipped two clips stamped the same minute. Whatever else is
+    given up, the shot already on screen is not admitted again.
+    """
+    from datetime import UTC, datetime
+
+    when = datetime(2019, 10, 31, 22, 3, tzinfo=UTC)
+    twin = _clip("twin", is_photo=False, favorite=False)
+    twin.clip.asset.file_created_at = when + timedelta(seconds=40)
+
+    resolved = _resolve_backfill_candidates(
+        [twin],
+        context=_context(
+            temporal_window=90.0,
+            occupied_moments=[when],
+            non_favorite_count=0,
+        ),
+        active_photo_limit=None,
+        remaining_budget=30.0,
+    )
+
+    assert resolved.items == [], "the same minute is never a concession worth making"

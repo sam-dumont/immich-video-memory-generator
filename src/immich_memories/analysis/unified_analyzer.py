@@ -220,6 +220,18 @@ class UnifiedSegmentAnalyzer:
         proportional = source_duration * 0.20
         return max(self.max_segment_duration, min(proportional, max_with_grace))
 
+    def _safe_cut_gaps(
+        self,
+        audio_content_result: AudioAnalysisResult,
+        video_duration: float,
+    ) -> list[tuple[float, float]]:
+        """Spans this source may be cut in, buffered as every other pass does."""
+        return protected_gaps(
+            audio_content_result.protected_ranges,
+            video_duration,
+            self._speech_analysis.speech_config.min_silence_ms,
+        )
+
     def _fix_best_segment_boundaries(
         self,
         best: ScoredSegment,
@@ -239,11 +251,8 @@ class UnifiedSegmentAnalyzer:
             audio_content_result: Audio analysis results.
             video_duration: Total video duration.
         """
-        gaps = protected_gaps(
-            audio_content_result.protected_ranges,
-            video_duration,
-            self._speech_analysis.speech_config.min_silence_ms,
-        )
+        gaps = self._safe_cut_gaps(audio_content_result, video_duration)
+        best.safe_cut_gaps = gaps
         new_start, new_end, adjusted = select_segment_boundaries(
             best.start_time, best.end_time, gaps, video_duration, self.min_segment_duration
         )
@@ -419,6 +428,8 @@ class UnifiedSegmentAnalyzer:
             )
             if audio_content_result and audio_content_result.protected_ranges:
                 self._fix_best_segment_boundaries(best, audio_content_result, video_duration)
+            elif audio_content_result:
+                best.safe_cut_gaps = self._safe_cut_gaps(audio_content_result, video_duration)
 
         return scored_segments
 

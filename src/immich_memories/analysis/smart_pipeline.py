@@ -24,6 +24,7 @@ from immich_memories.analysis.clip_refiner import ClipRefiner
 from immich_memories.analysis.clip_scaler import ClipScaler
 from immich_memories.analysis.preview_builder import PreviewBuilder
 from immich_memories.analysis.progress import PipelinePhase, ProgressTracker
+from immich_memories.analysis.source_filter import is_a_still, not_shot_here
 from immich_memories.analysis.thumbnail_prefetch import ThumbnailPrefetcher
 from immich_memories.config_presets import resolve_analysis_depth
 
@@ -173,6 +174,8 @@ class SmartPipeline:
         app_config: Config,
     ):
         self.client = client
+        # Clips the verify pass has already looked at, across every entry.
+        self._verify_attempted: set[str] = set()
         self.analysis_cache = analysis_cache
         self.thumbnail_cache = thumbnail_cache
         self.config = config or PipelineConfig()
@@ -350,7 +353,12 @@ class SmartPipeline:
         so the loop always terminates.
         """
         by_id = {c.clip.asset.id: c for c in analyzed}
-        attempted: set[str] = set()
+        # On the pipeline, not the call: this method is re-entered once per
+        # stabilize pass and again for the final review, and a clip whose
+        # analysis fails can never come back with a description — so a
+        # call-local set had it downloaded and decoded again on every entry,
+        # for the same failure.
+        attempted: set[str] = self._verify_attempted
         for _ in range(max(1, self.config.max_refinement_passes)):
             unverified = [
                 by_id[c.asset.id]
@@ -372,6 +380,9 @@ class SmartPipeline:
                 [f"{len(unverified)} clip(s) analyzed for real before judging"],
             )
             attempted.update(u.clip.asset.id for u in unverified)
+            unverified = self._look_at_stills_among(unverified)
+            if not unverified:
+                continue
             try:
                 verified = self.analyzer.phase_analyze([u.clip for u in unverified], self.tracker)
             finally:
@@ -398,6 +409,38 @@ class SmartPipeline:
             result = self.refiner.phase_refine(list(by_id.values()), self.tracker)
         return result, list(by_id.values())
 
+    def _look_at_stills_among(self, unverified: list[ClipWithSegment]) -> list[ClipWithSegment]:
+        """Look at the stills here and now, and hand back the footage.
+
+        A still's real look is the photo scorer: the video analyzer fails on a
+        photograph and writes back a zero, so a photo it could not read was
+        not merely unseen but ranked last.
+        """
+        stills = [u for u in unverified if is_a_still(u.clip.asset)]
+        self._look_at_stills(stills)
+        return [u for u in unverified if not is_a_still(u.clip.asset)]
+
+    def _look_at_stills(self, stills: list[ClipWithSegment]) -> None:
+        """Give the review eyes on the photographs that reached the cut."""
+        if not stills:
+            return
+        from immich_memories.analysis.cache_projection import apply_semantic_payload
+        from immich_memories.photos import photo_pipeline
+
+        logger.info("Verify pass: looking at %d selected photo(s)", len(stills))
+        try:
+            payloads = photo_pipeline.look_at_selected_photos(
+                [s.clip.asset for s in stills],
+                config=self._app_config,
+                client=self.client,
+                provider_circuit=self.provider_circuit,
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            logger.debug("Photo look failed: %s", type(exc).__name__)
+            return
+        for member in stills:
+            apply_semantic_payload(member.clip, payloads.get(member.clip.asset.id))
+
     def _final_review_drop(
         self,
         analyzed: list[ClipWithSegment],
@@ -409,10 +452,20 @@ class SmartPipeline:
         stops when the budget runs out, and by then it has just re-selected.
         Refilling again would only admit more unseen clips, so this pass takes
         the cut it has and removes what does not belong.
+
+        It looks at them first. The review is told — correctly — never to drop
+        a clip for missing information, since a third of a real pool has no
+        analysis yet and treating silence as a verdict would gut the memory.
+        The cost of that rule is that an unanalysed clip is immune to the only
+        quality judgment in the pipeline, and a rendered year recap shipped
+        whiteboards and desks on exactly that immunity. Nothing is judged
+        blind, so the rule never has to protect anything that shipped.
         """
         if not self._app_config.content_analysis.enabled:
             return result, analyzed
         from immich_memories.analysis.selection_review import review_selection
+
+        result, analyzed = self._verify_selection(analyzed, result)
 
         by_id = {c.clip.asset.id: c for c in analyzed}
         selected = [by_id[c.asset.id] for c in result.selected_clips if c.asset.id in by_id]
@@ -448,6 +501,11 @@ class SmartPipeline:
         review is handed a bare line. It is then told — correctly — never to
         drop a clip for missing information, and two near-identical hotel
         mirror selfies from consecutive days both survive as a result.
+
+        A photograph is never queued. Its real look is the VLM photo scorer,
+        which has already run and now says what it saw; sending a still to the
+        video analyzer fails and replaces its score with zero, so a photo the
+        scorer could not describe was not merely unseen, it was ranked last.
         """
         if not member.analyzed:
             return True
@@ -705,6 +763,25 @@ class SmartPipeline:
                 f"Duration filter: removed {too_short_count} clips shorter than "
                 f"{min_duration:.1f}s minimum"
             )
+
+        patterns = self._analysis_config.exclude_filename_patterns
+        stills_need_a_camera = self._analysis_config.exclude_stills_without_camera_exif
+        if patterns or stills_need_a_camera:
+            before = len(eligible)
+            eligible = [
+                clip
+                for clip in eligible
+                if not not_shot_here(
+                    clip.asset,
+                    patterns=patterns,
+                    stills_need_a_camera=stills_need_a_camera,
+                )
+            ]
+            if len(eligible) < before:
+                logger.info(
+                    "Source filter: removed %d clip(s) from excluded sources",
+                    before - len(eligible),
+                )
 
         if self.config.hdr_only:
             before = len(eligible)

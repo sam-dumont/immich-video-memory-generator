@@ -74,6 +74,7 @@ def row_to_segment(row: sqlite3.Row) -> CachedSegment:
     subjects_raw = optional_str("llm_subjects")
     activities_raw = optional_str("llm_activities")
     audio_categories_raw = optional_str("audio_categories")
+    gaps_raw = optional_str("safe_cut_gaps")
 
     return CachedSegment(
         segment_index=row["segment_index"],
@@ -98,6 +99,7 @@ def row_to_segment(row: sqlite3.Row) -> CachedSegment:
         llm_interestingness=optional_float("llm_interestingness"),
         llm_quality=optional_float("llm_quality"),
         audio_categories=(json.loads(audio_categories_raw) if audio_categories_raw else None),
+        safe_cut_gaps=([tuple(gap) for gap in json.loads(gaps_raw)] if gaps_raw else None),
         transcript=optional_str("transcript"),
         transcript_language=optional_str("transcript_language"),
         transcript_confidence=optional_float("transcript_confidence"),

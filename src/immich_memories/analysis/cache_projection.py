@@ -79,4 +79,5 @@ def apply_cached_segment(clip: VideoClipInfo, segment: CachedSegment) -> dict[st
     apply_semantic_payload(clip, payload)
     if segment.audio_categories:
         clip.audio_categories = list(segment.audio_categories)
+    clip.safe_cut_gaps = segment.safe_cut_gaps
     return payload

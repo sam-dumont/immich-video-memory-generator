@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from immich_memories.api.models import Person
 from immich_memories.config_models import PhotoConfig
-from immich_memories.photos.scoring import score_photo, score_photo_with_llm
+from immich_memories.photos.photo_pipeline import _photo_look_version
+from immich_memories.photos.scoring import PhotoLook, score_photo, score_photo_with_llm
 from tests.conftest import make_asset
 
 
@@ -84,17 +85,49 @@ class TestPhotoScoring:
         score = score_photo(_photo(), config)
         assert score == 0.0
 
-    def test_parse_photo_score_averages_complete_numeric_fields(self) -> None:
-        from immich_memories.photos.scoring import _parse_photo_score
+    def test_parse_photo_look_averages_complete_numeric_fields(self) -> None:
+        from immich_memories.photos.scoring import _parse_photo_look
 
-        result = _parse_photo_score('{"interest": 0.8, "quality": 0.6, "emotion": "joy"}')
+        look = _parse_photo_look('{"interest": 0.8, "quality": 0.6, "emotion": "joy"}')
 
-        assert result == pytest.approx(0.7)
+        assert look.score == pytest.approx(0.7)
 
-    def test_parse_photo_score_rejects_missing_required_field(self) -> None:
-        from immich_memories.photos.scoring import _parse_photo_score
+    def test_parse_photo_look_rejects_missing_required_field(self) -> None:
+        from immich_memories.photos.scoring import _parse_photo_look
 
-        assert _parse_photo_score('{"message": "analysis unavailable"}') is None
+        assert _parse_photo_look('{"message": "analysis unavailable"}') is None
+
+    def test_the_look_keeps_what_the_model_saw(self) -> None:
+        """The model was asked only for two numbers and its answer averaged.
+
+        The holistic review reads a clip's description, and a photo never had
+        one — so it was handed a bare line, told never to drop a clip for
+        missing information, and every photograph in the library was immune to
+        the only content judgment in the pipeline.
+        """
+        from immich_memories.photos.scoring import _parse_photo_look
+
+        look = _parse_photo_look(
+            '{"description": "A whiteboard covered in sticky notes", '
+            '"category": "object", "subjects": ["whiteboard", "notes"], '
+            '"emotion": "focused", "interest": 0.3, "quality": 0.7}'
+        )
+
+        assert look.score == pytest.approx(0.5)
+        assert look.payload["description"] == "A whiteboard covered in sticky notes"
+        assert look.payload["category"] == "object"
+        assert look.payload["subjects"] == ["whiteboard", "notes"]
+        assert look.payload["emotion"] == "focused"
+        assert look.payload["interestingness"] == pytest.approx(0.3)
+
+    def test_a_model_that_answers_with_the_numbers_alone_still_scores(self) -> None:
+        """Small models drop fields. Losing the words must not lose the score."""
+        from immich_memories.photos.scoring import _parse_photo_look
+
+        look = _parse_photo_look('{"interest": 0.8, "quality": 0.6}')
+
+        assert look.score == pytest.approx(0.7)
+        assert look.payload["description"] is None
 
     @pytest.mark.parametrize(
         "value",
@@ -129,7 +162,7 @@ class TestPhotoScoring:
             request=httpx.Request("POST", "http://localhost:9999/v1/chat/completions"),
         )
 
-        with patch("httpx.post", return_value=response) as request:
+        with patch("httpx.AsyncClient.post", return_value=response) as request:
             first = score_photo_with_llm(
                 photo_a, 0.42, PhotoConfig(), config, provider_circuit=circuit
             )
@@ -179,7 +212,7 @@ class TestCacheFirstScoring:
                 "immich_memories.photos.photo_pipeline._llm_score_photo",
             ) as mock_llm,
         ):
-            result = _enhance_with_llm(
+            result, _payloads = _enhance_with_llm(
                 scored,
                 PhotoConfig(),
                 Path("/tmp"),
@@ -209,9 +242,9 @@ class TestCacheFirstScoring:
 
         with patch(
             "immich_memories.photos.photo_pipeline._llm_score_photo",
-            return_value=0.77,
+            return_value=PhotoLook(score=0.77, payload={"description": "a photograph"}),
         ):
-            result = _enhance_with_llm(
+            result, _payloads = _enhance_with_llm(
                 [(_photo("photo-1"), 0.5)],
                 PhotoConfig(),
                 tmp_path,
@@ -224,7 +257,7 @@ class TestCacheFirstScoring:
         assert result[0][1] == 0.77
         assert refreshed is not None
         assert refreshed["combined_score"] == 0.77
-        assert refreshed["model_version"] == "qwen-3.6"
+        assert refreshed["model_version"] == _photo_look_version("qwen-3.6")
 
     def test_failed_semantic_score_falls_back_without_claiming_model(self, tmp_path: Path) -> None:
         from immich_memories.cache.asset_score_cache import AssetScoreCache
@@ -243,7 +276,7 @@ class TestCacheFirstScoring:
             "immich_memories.photos.photo_pipeline._llm_score_photo",
             return_value=None,
         ):
-            result = _enhance_with_llm(
+            result, _payloads = _enhance_with_llm(
                 [(_photo("photo-1"), 0.5)],
                 PhotoConfig(),
                 tmp_path,
@@ -278,7 +311,7 @@ class TestCacheFirstScoring:
         )
 
         with patch("httpx.post", return_value=response):
-            result = _enhance_with_llm(
+            result, _payloads = _enhance_with_llm(
                 [(_photo("photo-1"), 0.5)],
                 PhotoConfig(),
                 tmp_path,
@@ -300,7 +333,7 @@ class TestCacheFirstScoring:
         thumbnail_fn = MagicMock(return_value=b"jpeg")
         download_fn = MagicMock()
 
-        result = _enhance_with_llm(
+        result, _payloads = _enhance_with_llm(
             [(_photo("photo-1"), 0.5)],
             PhotoConfig(),
             tmp_path,
@@ -331,10 +364,10 @@ class TestCacheFirstScoring:
             # WHY: external LLM API
             patch(
                 "immich_memories.photos.photo_pipeline._llm_score_photo",
-                return_value=0.75,
+                return_value=PhotoLook(score=0.75, payload={"description": "a photograph"}),
             ) as mock_llm,
         ):
-            result = _enhance_with_llm(
+            result, _payloads = _enhance_with_llm(
                 scored,
                 PhotoConfig(),
                 Path("/tmp"),
@@ -345,12 +378,20 @@ class TestCacheFirstScoring:
 
         assert result[0][1] == 0.75
         mock_llm.assert_called_once()
+        # The words go into the cache beside the score, so a later run can hand
+        # the review a photograph that describes itself without paying again.
         mock_cache.save_asset_score.assert_called_once_with(
             asset_id="uncached-1",
             asset_type="photo",
             metadata_score=0.5,
             combined_score=0.75,
-            model_version="qwen-test",
+            llm_interest=None,
+            llm_quality=None,
+            llm_emotion=None,
+            llm_description="a photograph",
+            # The key names the model and the prompt it answered, so rows from
+            # before a photo could describe itself are invalidated once.
+            model_version=_photo_look_version("qwen-test"),
         )
 
     def test_mix_of_cached_and_uncached(self):
@@ -378,10 +419,10 @@ class TestCacheFirstScoring:
             # WHY: external LLM API — only called for the miss
             patch(
                 "immich_memories.photos.photo_pipeline._llm_score_photo",
-                return_value=0.55,
+                return_value=PhotoLook(score=0.55, payload={"description": "a photograph"}),
             ) as mock_llm,
         ):
-            result = _enhance_with_llm(
+            result, _payloads = _enhance_with_llm(
                 scored,
                 PhotoConfig(),
                 Path("/tmp"),
@@ -414,10 +455,10 @@ class TestCacheFirstScoring:
             # WHY: external LLM API
             patch(
                 "immich_memories.photos.photo_pipeline._llm_score_photo",
-                return_value=0.7,
+                return_value=PhotoLook(score=0.7, payload={"description": "a photograph"}),
             ) as mock_llm,
         ):
-            result = _enhance_with_llm(
+            result, _payloads = _enhance_with_llm(
                 scored,
                 PhotoConfig(),
                 Path("/tmp"),
@@ -511,13 +552,19 @@ class TestPhotoScoringTimeout:
             content_analysis=ContentAnalysisConfig(),
         )
         captured: dict = {}
+        real_client = httpx.AsyncClient
 
-        def _fake_post(url, **kwargs):
+        def _capture_client(*args, **kwargs):
             captured["timeout"] = kwargs.get("timeout")
-            raise httpx.ConnectError("no server")
+            return real_client(*args, **kwargs)
 
-        # WHY: replaces the HTTP call to the configured LLM provider
-        with patch("httpx.post", side_effect=_fake_post):
+        # The client is built inside the shared query path now, so the
+        # per-phase budget is read off its construction, not off one request.
+        # WHY: replaces the HTTP call to the configured LLM provider.
+        with (
+            patch("httpx.AsyncClient", side_effect=_capture_client),
+            patch("httpx.AsyncClient.post", side_effect=httpx.ConnectError("no server")),
+        ):
             _query_photo_llm(photo, config)
 
         timeout = captured["timeout"]
@@ -525,3 +572,57 @@ class TestPhotoScoringTimeout:
         assert timeout.read == 3600
         assert timeout.connect is not None
         assert timeout.connect < 60
+
+
+class TestPhotosAskTheSameWayEverythingElseDoes:
+    """One way in. The photo path was a second HTTP client with its own rules.
+
+    It posted OpenAI-style whatever provider was configured, skipped the
+    rstrip the shared client does, capped itself at 256 tokens, and — unlike
+    every other caller — gave up the first time a model answered with nothing.
+    """
+
+    def _config(self, provider: str, base_url: str):
+        from immich_memories.config import Config
+
+        return Config(
+            llm={"provider": provider, "base_url": base_url, "model": "qwen-vl"},
+            content_analysis={"enabled": True},
+        )
+
+    def test_an_ollama_photo_goes_to_the_ollama_endpoint(self, tmp_path: Path) -> None:
+        from immich_memories.photos.scoring import _query_photo_llm
+
+        photo = tmp_path / "p.jpg"
+        photo.write_bytes(b"\xff\xd8jpeg")
+        response = AsyncMock()
+        response.status_code = 200
+        response.json = MagicMock(return_value={"response": '{"interest": 0.4, "quality": 0.6}'})
+        response.raise_for_status = lambda: None
+
+        # WHY: the model server is the network boundary; the request is the subject.
+        with patch("httpx.AsyncClient.post", return_value=response) as post:
+            look = _query_photo_llm(photo, self._config("ollama", "http://localhost:11434/"))
+
+        assert look is not None
+        assert post.call_args[0][0] == "http://localhost:11434/api/generate"
+
+    def test_a_trailing_slash_does_not_double_for_a_photo(self, tmp_path: Path) -> None:
+        from immich_memories.photos.scoring import _query_photo_llm
+
+        photo = tmp_path / "p.jpg"
+        photo.write_bytes(b"\xff\xd8jpeg")
+        response = AsyncMock()
+        response.status_code = 200
+        response.json = MagicMock(
+            return_value={
+                "choices": [{"message": {"content": '{"interest": 0.4, "quality": 0.6}'}}]
+            }
+        )
+        response.raise_for_status = lambda: None
+
+        # WHY: the model server is the network boundary; the URL is the subject.
+        with patch("httpx.AsyncClient.post", return_value=response) as post:
+            _query_photo_llm(photo, self._config("openai-compatible", "http://host:8080/v1/"))
+
+        assert post.call_args[0][0] == "http://host:8080/v1/chat/completions"

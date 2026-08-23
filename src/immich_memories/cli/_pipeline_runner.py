@@ -622,12 +622,20 @@ def _merge_photos_into_pool(
     from immich_memories.analysis.smart_pipeline import ClipWithSegment
     from immich_memories.api.models import VideoClipInfo
     from immich_memories.photos.photo_pipeline import (
+        from_the_camera_roll,
         score_photos,
         video_count_for_photo_budget,
     )
     from immich_memories.photos.scoring import score_photo
 
     _logger = logging.getLogger(__name__)
+
+    # Before anything is fetched or scored: this is the pool both the CLI and
+    # the UI actually build, and the rule used to live only on the path
+    # neither of them takes.
+    photo_assets = from_the_camera_roll(photo_assets, config)
+    if not photo_assets:
+        return analyzed_videos
 
     photo_assets = _drop_photos_already_shown_as_motion(
         photo_assets,
@@ -660,6 +668,16 @@ def _merge_photos_into_pool(
             thumbnail_cache=thumbnail_cache,
         )
 
+    # What the VLM said about each photo, so the holistic review can read a
+    # photograph the way it reads a video. Without it every still arrived as a
+    # bare line and survived on the rule that protects unanalysed material.
+    from immich_memories.analysis.cache_projection import apply_semantic_payload
+    from immich_memories.photos.photo_pipeline import semantic_payloads_for
+
+    payloads = semantic_payloads_for(
+        config.cache.database_path, [asset.id for asset, _ in scored], config.llm.model
+    )
+
     photo_candidates = []
     for asset, photo_score in scored:
         clip = VideoClipInfo(
@@ -668,6 +686,7 @@ def _merge_photos_into_pool(
             width=asset.width,
             height=asset.height,
         )
+        apply_semantic_payload(clip, payloads.get(asset.id))
         photo_candidates.append(
             ClipWithSegment(
                 clip=clip,

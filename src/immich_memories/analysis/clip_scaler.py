@@ -38,7 +38,13 @@ def group_by_moment(
     """Group clips into runs separated by more than the window.
 
     A cluster ends where the gap to the next shot exceeds the window, so a
-    held shutter stays one moment however it lands on the clock.
+    held shutter stays one moment however it lands on the clock — and where
+    the cluster has run twice its own window end to end, because chaining on
+    the gap alone has no span bound at all. That was survivable while a moment
+    was five minutes wide. At the ninety minutes a year memory uses it turns a
+    wedding photographed from morning to midnight into a single moment, and a
+    single moment keeps one clip. Two windows is the smallest bound that still
+    admits the held shutter this chaining exists for.
     """
     dated = sorted(
         (c for c in clips if c.clip.asset.file_created_at is not None),
@@ -52,7 +58,14 @@ def group_by_moment(
         # Inclusive: two shots exactly the window apart are the same moment.
         # A 2023 hike put 08:34 and 08:39 in a cut five minutes apart, which a
         # strict comparison called distinct by one second of arithmetic.
-        if groups and (when - groups[-1][-1].clip.asset.file_created_at).total_seconds() <= window:
+        near_the_last = (
+            groups and (when - groups[-1][-1].clip.asset.file_created_at).total_seconds() <= window
+        )
+        within_the_span = (
+            groups
+            and (when - groups[-1][0].clip.asset.file_created_at).total_seconds() <= window * 2
+        )
+        if near_the_last and within_the_span:
             groups[-1].append(clip)
         else:
             groups.append([clip])
@@ -268,47 +281,74 @@ class ClipScaler:
         )
         return result
 
-    def _pick_best_from_cluster(
+    def _keep_best_from_cluster(
         self,
         time_key: str,
         cluster_clips: list[ClipWithSegment],
-    ) -> tuple[ClipWithSegment, int]:
-        """Return (best_clip, num_removed) for a temporal cluster of 2+ clips."""
-        favorites = [c for c in cluster_clips if c.clip.asset.is_favorite]
-        non_favorites = [c for c in cluster_clips if not c.clip.asset.is_favorite]
+        keep: int,
+        protected_ids: set[str],
+    ) -> tuple[list[ClipWithSegment], int]:
+        """Return (kept_clips, num_removed) for a temporal cluster of 2+ clips.
 
-        if favorites:
-            favorites.sort(key=lambda c: c.score, reverse=True)
-            best = favorites[0]
-            removed = len(favorites) - 1 + len(non_favorites)
-            if removed > 0:
-                logger.debug(
-                    f"Temporal cluster {time_key}: keeping favorite "
-                    f"{best.clip.asset.original_file_name} "
-                    f"(score={best.score:.2f}), removing {len(favorites) - 1} fav "
-                    f"+ {len(non_favorites)} non-fav"
-                )
-            return best, removed
+        A favourite outranks any score: what the viewer starred survives the
+        cluster whatever the scorer made of it. Ranking on score alone is how
+        a starred shot gets dropped behind two ordinary ones.
 
-        non_favorites.sort(key=lambda c: c.score, reverse=True)
-        best = non_favorites[0]
-        removed = len(non_favorites) - 1
-        if removed > 0:
-            logger.debug(
-                f"Temporal cluster {time_key}: keeping non-favorite "
-                f"{best.clip.asset.original_file_name} "
-                f"(score={best.score:.2f}), removing {removed} duplicates"
+        Protected clips are exempt from the per-moment cap rather than merely
+        ranked above it. A dense day is given three clips so it reads as a day
+        rather than a glimpse; the duration scaler and the photo cap both
+        honour that, and thinning it back to one here undoes it (#490, #510).
+        A favourite is exempt on the same terms: ranking it first is no use
+        once protection has taken every slot.
+        """
+        protected = [c for c in cluster_clips if c.clip.asset.id in protected_ids]
+        ranked = sorted(
+            (c for c in cluster_clips if c.clip.asset.id not in protected_ids),
+            key=lambda c: (c.clip.asset.is_favorite, c.score),
+            reverse=True,
+        )
+        # A star is exempt from the cap for the same reason coverage is. With
+        # the slots already filled by protected clips, room reaches zero and
+        # the ranking that puts favourites first has nothing left to put them
+        # in — and backfill can never re-admit a clip from a moment already in
+        # the cut, so the star is simply gone.
+        starred = [c for c in ranked if c.clip.asset.is_favorite]
+        rest = [c for c in ranked if not c.clip.asset.is_favorite]
+        room = max(0, keep - len(protected) - len(starred))
+        kept, dropped = protected + starred + rest[:room], rest[room:]
+
+        if dropped:
+            kept_desc = ", ".join(
+                f"{c.clip.asset.original_file_name or c.clip.asset.id[:8]} "
+                f"(score={c.score:.2f}, fav={c.clip.asset.is_favorite})"
+                for c in kept
             )
-        return best, removed
+            dropped_favorites = sum(1 for c in dropped if c.clip.asset.is_favorite)
+            logger.debug(
+                f"Temporal cluster {time_key}: keeping {kept_desc}; "
+                f"removing {len(dropped)} ({dropped_favorites} fav)"
+            )
+
+        return kept, len(dropped)
 
     def deduplicate_temporal_clusters(
         self,
         clips: list[ClipWithSegment],
         time_window_minutes: float = 10.0,
+        keep_per_moment: int = 1,
+        protected_ids: set[str] | None = None,
     ) -> list[ClipWithSegment]:
-        """Remove near-duplicate clips from the same time period.
+        """Thin near-duplicate clips from the same moment.
 
-        Keeps only the best-scored clip per time window bucket.
+        One per moment suits a sixty-second month. On a five-minute trip it is
+        wrong: several distinct shots minutes apart are what a travel day looks
+        like, and cutting to one left selection too short to fill the runtime,
+        so duration backfill put the very clips this had just rejected back in.
+        Measured on a 967-asset trip: 39 clips in, 16 out, then backfill
+        rebuilt the cut to 55.
+
+        keep_per_moment lets the caller say how many a long memory can afford,
+        and protected_ids names the clips no per-moment cap may drop.
         """
         if not clips:
             return clips
@@ -317,17 +357,18 @@ class ClipScaler:
         removed_count = 0
         clusters_with_duplicates = 0
 
+        keep = max(1, keep_per_moment)
+        protected = protected_ids or set()
         for cluster_clips in group_by_moment(clips, time_window_minutes):
-            if len(cluster_clips) == 1:
-                result.append(cluster_clips[0])
+            if len(cluster_clips) <= keep:
+                result.extend(cluster_clips)
                 continue
 
             when = cluster_clips[0].clip.asset.file_created_at
-            best, removed = self._pick_best_from_cluster(str(when), cluster_clips)
-            result.append(best)
-            if removed > 0:
-                removed_count += removed
-                clusters_with_duplicates += 1
+            kept, removed = self._keep_best_from_cluster(str(when), cluster_clips, keep, protected)
+            result.extend(kept)
+            removed_count += removed
+            clusters_with_duplicates += 1
 
         if removed_count > 0:
             logger.info(

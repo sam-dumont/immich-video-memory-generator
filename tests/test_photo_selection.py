@@ -23,6 +23,10 @@ def _make_asset(asset_id: str, favorite: bool = False) -> Asset:
         fileModifiedAt=now,
         updatedAt=now,
         isFavorite=favorite,
+        # A camera original names its camera. Selection drops stills that do
+        # not, because on a real library those are what arrived through a
+        # messaging app rather than what anybody shot.
+        exifInfo={"make": "Apple", "model": "iPhone 15 Pro"},
     )
 
 

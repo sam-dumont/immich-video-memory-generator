@@ -283,6 +283,65 @@ class TestAnalysisEligibility:
         assert pipeline.last_deep_analysis_count == 1
         pipeline.analyzer.plan_cached_or_metadata.assert_called_once_with(clips[1:])
 
+    def test_doorbell_footage_never_reaches_selection(self, tmp_path: Path):
+        """A real year recap shipped two clips of somebody's front door.
+
+        A doorbell writes into the same timeline as the phone, carries no
+        make or model, and reuses one filename across every export — so
+        nothing downstream can tell it from footage somebody chose to shoot.
+        """
+        from immich_memories.config_models import AnalysisConfig
+
+        pipeline = self._pipeline(tmp_path)
+        pipeline._analysis_config = AnalysisConfig(exclude_filename_patterns=["RingVideo_*"])
+        doorbell = TestDensityBudgetCap()._make_clip("doorbell")
+        doorbell.asset.original_file_name = "RingVideo_6763648097558121116.mp4"
+        shot = TestDensityBudgetCap()._make_clip("shot")
+        shot.asset.original_file_name = "IMG_0809.MP4"
+
+        result = pipeline._hard_eligible_clips([doorbell, shot])
+
+        assert [clip.asset.id for clip in result] == ["shot"]
+
+    def test_the_default_list_covers_what_the_camera_roll_did_not_shoot(self, tmp_path: Path):
+        """Doorbells, screen recordings and forwarded video share the timeline.
+
+        None of them was shot as a memory, and the filename is the only thing
+        that says so before analysis has looked at anything — which is also
+        what keeps them out of the analysis budget.
+        """
+        from immich_memories.config_models import AnalysisConfig
+
+        pipeline = self._pipeline(tmp_path)
+        pipeline._analysis_config = AnalysisConfig()
+        names = [
+            "RingVideo_6763648097558121116.mp4",
+            "RPReplay_Final1560343200.mp4",
+            "VID-20190612-WA0003.mp4",
+            "Screen Recording 2019-06-12 at 10.00.00.mov",
+            "IMG_0809.MP4",
+        ]
+        clips = []
+        for index, name in enumerate(names):
+            clip = TestDensityBudgetCap()._make_clip(f"clip-{index}")
+            clip.asset.original_file_name = name
+            clips.append(clip)
+
+        result = pipeline._hard_eligible_clips(clips)
+
+        assert [clip.asset.original_file_name for clip in result] == ["IMG_0809.MP4"]
+
+    def test_the_source_filter_does_not_care_about_case(self, tmp_path: Path):
+        """Exports differ in casing between platforms; the rule should not."""
+        from immich_memories.config_models import AnalysisConfig
+
+        pipeline = self._pipeline(tmp_path)
+        pipeline._analysis_config = AnalysisConfig(exclude_filename_patterns=["ringvideo_*"])
+        doorbell = TestDensityBudgetCap()._make_clip("doorbell")
+        doorbell.asset.original_file_name = "RingVideo_1.MP4"
+
+        assert pipeline._hard_eligible_clips([doorbell]) == []
+
     def test_hdr_only_is_a_hard_eligibility_rule_even_for_favorites(self, tmp_path: Path):
         pipeline = self._pipeline(tmp_path, hdr_only=True)
         hdr = TestDensityBudgetCap()._make_clip("hdr")
@@ -524,3 +583,155 @@ class TestUnifiedPhotoBudget:
 
         assert params.target_duration_seconds == 300  # 5 min * 60
         assert params.timeline_plan is state.timeline_plan
+
+
+class TestNothingIsJudgedBlind:
+    """The review is told never to drop a clip for missing information.
+
+    That rule is right — a third of a real pool has no analysis yet, and
+    treating silence as a verdict would gut the memory. It also means an
+    unanalysed clip is immune to the only quality judgment in the pipeline,
+    so the answer is to leave nothing unanalysed rather than to loosen it.
+    """
+
+    def _pipeline(self, tmp_path: Path):
+        from immich_memories.analysis.smart_pipeline import PipelineConfig, SmartPipeline
+        from immich_memories.config_models import AnalysisConfig
+
+        analysis_cache = MagicMock()
+        analysis_cache.get_analysis.return_value = None
+        return SmartPipeline(
+            client=MagicMock(),
+            analysis_cache=analysis_cache,
+            thumbnail_cache=MagicMock(),
+            config=PipelineConfig(),
+            analysis_config=AnalysisConfig(),
+            app_config=Config(
+                cache={"directory": str(tmp_path / "cache")},
+                llm={"model": "qwen-3.6"},
+                content_analysis={"enabled": True},
+            ),
+        )
+
+    def test_the_last_review_sees_every_clip_it_is_asked_to_judge(self, tmp_path: Path) -> None:
+        """The refinement loop stops on its budget with its last refill unjudged.
+
+        Those clips arrived at the final review with a bare line — date,
+        place, score and nothing else — and survived on the very rule that
+        protects genuinely unanalysed material.
+        """
+        from immich_memories.analysis.smart_pipeline import ClipWithSegment, PipelineResult
+
+        unseen = TestDensityBudgetCap()._make_clip("unseen")
+        member = ClipWithSegment(clip=unseen, start_time=0.0, end_time=4.0, score=0.6)
+        result = PipelineResult(
+            selected_clips=[unseen], clip_segments={"unseen": (0.0, 4.0)}, errors=[]
+        )
+
+        pipeline = self._pipeline(tmp_path)
+        looked_at = TestDensityBudgetCap()._make_clip("unseen")
+        looked_at.llm_description = "a whiteboard covered in sticky notes"
+        # WHY: analysis downloads and decodes video; this stands in for the look.
+        pipeline.analyzer.phase_analyze = MagicMock(
+            return_value=[ClipWithSegment(clip=looked_at, start_time=0.0, end_time=4.0, score=0.6)]
+        )
+        pipeline.refiner.phase_refine = MagicMock(return_value=result)
+
+        judged: list = []
+
+        def _capture(selected, _llm_config, **_kwargs):
+            judged.extend(selected)
+            return []
+
+        # WHY: the review is an LLM call; what it is handed is the subject here.
+        with patch("immich_memories.analysis.selection_review.review_selection", _capture):
+            pipeline._final_review_drop([member], result)
+
+        assert [c.clip.llm_description for c in judged] == [
+            "a whiteboard covered in sticky notes"
+        ], "the review was handed a clip nobody had looked at"
+
+    def test_a_photo_is_never_sent_to_the_video_analyzer(self, tmp_path: Path) -> None:
+        """A photograph's real look is the photo scorer.
+
+        Running the video analyzer over a still fails and writes back a zero,
+        so a photo it could not read was not merely unseen — it was ranked
+        last. The still still gets looked at; it just gets looked at by
+        something that can see it.
+        """
+        from immich_memories.analysis.smart_pipeline import ClipWithSegment, PipelineResult
+        from immich_memories.api.models import AssetType
+
+        still = TestDensityBudgetCap()._make_clip("still")
+        still.asset.type = AssetType.IMAGE
+        member = ClipWithSegment(clip=still, start_time=0.0, end_time=4.0, score=0.6)
+        result = PipelineResult(
+            selected_clips=[still], clip_segments={"still": (0.0, 4.0)}, errors=[]
+        )
+
+        pipeline = self._pipeline(tmp_path)
+        pipeline.analyzer.phase_analyze = MagicMock(
+            side_effect=AssertionError("a still reached the video analyzer")
+        )
+        # WHY: the VLM is the network boundary; this stands in for its look.
+        with patch(
+            "immich_memories.photos.photo_pipeline.look_at_selected_photos",
+            return_value={"still": {"description": "a plant against a wall"}},
+        ):
+            pipeline._verify_selection([member], result)
+
+        assert still.llm_description == "a plant against a wall"
+
+    def test_a_clip_that_failed_analysis_is_not_queued_again(self, tmp_path: Path) -> None:
+        """The attempted set was local to one call, and the method is re-entered.
+
+        Each stabilize pass and the final review each start a fresh set, so a
+        clip whose analysis fails is downloaded and decoded again on every
+        entry, for the same failure — and it can never come back with a
+        description, so it is queued again for as long as it is selected.
+        """
+        from immich_memories.analysis.smart_pipeline import ClipWithSegment, PipelineResult
+
+        unseen = TestDensityBudgetCap()._make_clip("unseen")
+        member = ClipWithSegment(clip=unseen, start_time=0.0, end_time=4.0, score=0.6)
+        result = PipelineResult(
+            selected_clips=[unseen], clip_segments={"unseen": (0.0, 4.0)}, errors=[]
+        )
+
+        pipeline = self._pipeline(tmp_path)
+        # WHY: analysis downloads and decodes video; here it comes back blind.
+        pipeline.analyzer.phase_analyze = MagicMock(return_value=[member])
+        pipeline.refiner.phase_refine = MagicMock(return_value=result)
+
+        pipeline._verify_selection([member], result)
+        pipeline._verify_selection([member], result)
+
+        assert pipeline.analyzer.phase_analyze.call_count == 1
+
+    def test_a_selected_photo_nobody_looked_at_is_looked_at(self, tmp_path: Path) -> None:
+        """Thirty of nearly two thousand photos reach the VLM shortlist.
+
+        Selection picks from all of them, so most stills in a finished cut
+        arrive at the review with no description — and the review is told
+        never to drop a clip for missing information. A beer tap, a plant on a
+        wall and an empty floor shipped in a year recap on exactly that.
+        """
+        from immich_memories.analysis.smart_pipeline import ClipWithSegment, PipelineResult
+        from immich_memories.api.models import AssetType
+
+        still = TestDensityBudgetCap()._make_clip("unseen-still")
+        still.asset.type = AssetType.IMAGE
+        member = ClipWithSegment(clip=still, start_time=0.0, end_time=4.0, score=0.4)
+        result = PipelineResult(
+            selected_clips=[still], clip_segments={"unseen-still": (0.0, 4.0)}, errors=[]
+        )
+
+        pipeline = self._pipeline(tmp_path)
+        # WHY: the VLM is the network boundary; this stands in for its look.
+        with patch(
+            "immich_memories.photos.photo_pipeline.look_at_selected_photos",
+            return_value={"unseen-still": {"description": "a beer tap on a bar"}},
+        ):
+            pipeline._verify_selection([member], result)
+
+        assert still.llm_description == "a beer tap on a bar"

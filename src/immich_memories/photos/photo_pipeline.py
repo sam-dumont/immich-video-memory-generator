@@ -36,7 +36,7 @@ from immich_memories.photos.renderer import (
     face_aware_pan,
     render_ken_burns_streaming,
 )
-from immich_memories.photos.scoring import score_photo
+from immich_memories.photos.scoring import PhotoLook, score_photo
 from immich_memories.processing.assembly_config import AssemblyClip
 from immich_memories.processing.ffmpeg_runner import write_frames_to_ffmpeg
 
@@ -103,7 +103,7 @@ def score_photos(
     )
 
     # Phase 2: LLM scoring on shortlist (uses thumbnails, not full downloads)
-    enhanced = _enhance_with_llm(
+    enhanced, _payloads = _enhance_with_llm(
         shortlist,
         config,
         work_dir,
@@ -119,6 +119,84 @@ def score_photos(
         (asset, enhanced_scores.get(asset.id, metadata_score))
         for asset, metadata_score in metadata_scored
     ]
+
+
+def look_at_selected_photos(
+    assets: list[Asset],
+    *,
+    config: Any,
+    client: Any,
+    provider_circuit: Any = None,
+) -> dict[str, dict]:
+    """A VLM look at the handful of photos that reached a cut without one.
+
+    The shortlist is a budget: thirty of nearly two thousand photos are looked
+    at, and selection then picks from all of them. So most stills in a
+    finished cut have no description, and the holistic review — told never to
+    drop a clip for missing information — cannot judge any of them.
+
+    Bounded to what actually shipped, which is a dozen or so calls rather than
+    the whole library, and cached like any other look so a rerun pays nothing.
+    """
+    if not assets:
+        return {}
+    work_dir = config.cache.cache_path / "photo-looks"
+    work_dir.mkdir(parents=True, exist_ok=True)
+    scored = [(asset, score_photo(asset, config.photos)) for asset in assets]
+    _enhanced, payloads = _enhance_with_llm(
+        scored,
+        config.photos,
+        work_dir,
+        client.download_asset,
+        db_path=config.cache.database_path,
+        app_config=config,
+        thumbnail_fn=client.get_asset_thumbnail,
+        provider_circuit=provider_circuit,
+    )
+    return payloads
+
+
+def from_the_camera_roll(photo_assets: list[Asset], config: Any) -> list[Asset]:
+    """Drop the photos nothing says the library's own camera made.
+
+    Videos are filtered on the same rule before analysis; photos reached
+    selection without ever being asked, so a collage forwarded through a
+    messaging app walked into a year recap while a doorbell clip beside it was
+    turned away. Dropped here rather than later because there is no sense
+    paying a VLM to score something that cannot ship.
+    """
+    from immich_memories.analysis.source_filter import not_shot_here
+
+    analysis = getattr(config, "analysis", None)
+    patterns = getattr(analysis, "exclude_filename_patterns", ())
+    stills_need_a_camera = getattr(analysis, "exclude_stills_without_camera_exif", False)
+    if not patterns and not stills_need_a_camera:
+        return photo_assets
+    kept = [
+        asset
+        for asset in photo_assets
+        if not not_shot_here(asset, patterns=patterns, stills_need_a_camera=stills_need_a_camera)
+    ]
+    if len(kept) < len(photo_assets):
+        logger.info(
+            "Source filter: %d photo(s) from excluded sources", len(photo_assets) - len(kept)
+        )
+    return kept
+
+
+def _no_photos_to_choose_between(video_candidates: list[BudgetCandidate]) -> PhotoSelectionResult:
+    """No photo competes for the budget, so every video keeps its place.
+
+    The caller filters its videos down to kept_video_ids, so an empty
+    selection is not "nothing was worth keeping" — it renders a memory with
+    no content at all. Nothing to select between means nothing to drop.
+    """
+    return PhotoSelectionResult(
+        scored_photos=[],
+        selection=UnifiedSelection(
+            kept_video_ids={candidate.asset_id for candidate in video_candidates}
+        ),
+    )
 
 
 def score_and_select_photos(
@@ -141,8 +219,9 @@ def score_and_select_photos(
     Extracted from generate.py:_apply_unified_budget() so it can be
     called from both UI (Step 2) and CLI (generation time).
     """
+    photo_assets = from_the_camera_roll(photo_assets, config)
     if not photo_assets:
-        return PhotoSelectionResult(scored_photos=[], selection=UnifiedSelection())
+        return _no_photos_to_choose_between(video_candidates)
 
     # WHY every argument: score_photos degrades silently without them. No
     # app_config and the VLM never scores a photo; no thumbnail_cache and both
@@ -163,7 +242,7 @@ def score_and_select_photos(
     )
 
     if not scored:
-        return PhotoSelectionResult(scored_photos=scored, selection=UnifiedSelection())
+        return _no_photos_to_choose_between(video_candidates)
 
     photo_candidates = [
         BudgetCandidate(
@@ -435,6 +514,60 @@ def _select_distributed(
     return selected
 
 
+# What a cached row can answer depends on the prompt as much as on the model,
+# so the cache key carries both. Rows written when a photo could only report
+# two numbers cannot describe themselves, and would have held that silence
+# forever; bumping this invalidates them once, and never again.
+_PHOTO_LOOK_VERSION = "look1"
+
+
+def _photo_look_version(model: str) -> str:
+    """The cache key for a photo look: which model, answering which prompt."""
+    return f"{model}#{_PHOTO_LOOK_VERSION}"
+
+
+def semantic_payloads_for(
+    db_path: Path | None,
+    asset_ids: list[str],
+    model_version: str | None,
+) -> dict[str, dict]:
+    """What the VLM said about these photos, keyed by asset id.
+
+    Read from the score cache rather than threaded back through scoring: the
+    row is written as each photo is scored, so this answers for the ones just
+    looked at and for the ones a previous run paid for. Callers hand the
+    result to cache_projection.apply_semantic_payload.
+    """
+    if not db_path or not asset_ids:
+        return {}
+    cache = _get_score_cache(db_path)
+    if cache is None:
+        return {}
+    rows = _cached_scores(cache, asset_ids, _photo_look_version(model_version or ""))
+    return {asset_id: _payload_from_cache(row) for asset_id, row in rows.items()}
+
+
+def _as_float(value: object) -> float | None:
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _as_text(value: object) -> str | None:
+    return value if isinstance(value, str) and value else None
+
+
+def _payload_from_cache(row: dict) -> dict:
+    """What a cached row can tell the review, in the shape a clip expects."""
+    return {
+        "description": row.get("llm_description"),
+        "category": None,
+        "emotion": row.get("llm_emotion"),
+        "subjects": None,
+        "setting": None,
+        "interestingness": row.get("llm_interest"),
+        "quality": row.get("llm_quality"),
+    }
+
+
 def _enhance_with_llm(
     scored: list[tuple[Asset, float]],
     config: PhotoConfig,
@@ -444,28 +577,36 @@ def _enhance_with_llm(
     app_config: Any = None,
     thumbnail_fn: Any = None,
     provider_circuit: Any = None,
-) -> list[tuple[Asset, float]]:
-    """Check cache first, then LLM-score uncached photos."""
+) -> tuple[list[tuple[Asset, float]], dict[str, dict]]:
+    """Check cache first, then LLM-score uncached photos.
+
+    Returns the scores and, beside them, what the model said about each photo
+    — keyed by asset id, in the shape apply_semantic_payload expects. A photo
+    that cannot describe itself is one the holistic review cannot judge.
+    """
 
     if app_config is None or not app_config.content_analysis.enabled or not app_config.llm.model:
-        return scored
+        return scored, {}
 
     cache = _get_score_cache(db_path) if db_path else None
     asset_ids = [a.id for a, _ in scored]
-    model_version = app_config.llm.model
+    model_version = _photo_look_version(app_config.llm.model)
     cached = _cached_scores(cache, asset_ids, model_version)
 
     cache_hits = 0
     enhanced: list[tuple[Asset, float]] = []
+    payloads: dict[str, dict] = {}
     for asset, meta_score in scored:
-        # Cache hit — use stored score
+        # Cache hit — use stored score, and the words stored with it
         if asset.id in cached:
-            enhanced.append((asset, cached[asset.id]["combined_score"]))
+            row = cached[asset.id]
+            enhanced.append((asset, row["combined_score"]))
+            payloads[asset.id] = _payload_from_cache(row)
             cache_hits += 1
             continue
 
         # Cache miss — download + LLM
-        llm_score = _llm_score_photo(
+        look = _llm_score_photo(
             asset,
             meta_score,
             config,
@@ -475,23 +616,29 @@ def _enhance_with_llm(
             thumbnail_fn=thumbnail_fn,
             provider_circuit=provider_circuit,
         )
-        effective_score = llm_score if llm_score is not None else meta_score
+        effective_score = look.score if look is not None else meta_score
         enhanced.append((asset, effective_score))
+        if look is not None:
+            payloads[asset.id] = look.payload
 
         # Only successful semantic results belong to the configured model.
-        if cache and llm_score is not None and model_version:
+        if cache and look is not None and model_version:
             cache.save_asset_score(
                 asset_id=asset.id,
                 asset_type="photo",
                 metadata_score=meta_score,
                 combined_score=effective_score,
+                llm_interest=_as_float(look.payload.get("interestingness")),
+                llm_quality=_as_float(look.payload.get("quality")),
+                llm_emotion=_as_text(look.payload.get("emotion")),
+                llm_description=_as_text(look.payload.get("description")),
                 model_version=model_version,
             )
 
     if cache_hits:
         logger.info(f"Photo score cache: {cache_hits} hits, {len(scored) - cache_hits} misses")
 
-    return enhanced
+    return enhanced, payloads
 
 
 def _llm_score_photo(
@@ -503,8 +650,8 @@ def _llm_score_photo(
     app_config: Any,
     thumbnail_fn: Any = None,
     provider_circuit: Any = None,
-) -> float | None:
-    """Score a photo with VLM using a lightweight thumbnail.
+) -> PhotoLook | None:
+    """Look at a photo with the VLM, using a lightweight thumbnail.
 
     Uses Immich thumbnail API (~100 KB) instead of downloading the full
     HEIC (5-15 MB). Falls back to full download if no thumbnail_fn.

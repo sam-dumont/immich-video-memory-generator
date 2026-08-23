@@ -738,6 +738,27 @@ class TestBestSegmentUsesTheSameSafetyBufferAsCandidates:
             assert not lo - buffer < best.end_time < hi + buffer
 
 
+class TestTheEndCarriesTheEvidenceThatPlacedIt:
+    def test_the_pauses_used_to_place_the_end_are_recorded_on_the_segment(self):
+        """A later pass may want to hold this clip longer, and must not guess.
+
+        Nothing between here and FFmpeg re-derives the gaps, so the pass that
+        snaps the end is the only one that can say where the pauses were.
+        """
+        from immich_memories.audio.audio_models import AudioAnalysisResult
+
+        analyzer = _boundary_fixing_analyzer(min_segment_duration=2.0, max_segment_duration=40.0)
+        best = ScoredSegment(start_time=7.0, end_time=32.0)
+
+        analyzer._fix_best_segment_boundaries(
+            best, AudioAnalysisResult(events=[], protected_ranges=[(2.0, 6.0), (6.1, 30.0)]), 40.0
+        )
+
+        assert best.safe_cut_gaps, "the end was placed against gaps it did not hand on"
+        for gap_start, gap_end in best.safe_cut_gaps:
+            assert not (gap_start < 20.0 < gap_end), "a gap covering protected speech"
+
+
 class TestBestSegmentProportionalMax:
     def test_proportional_max_cap_lands_on_a_gap_not_mid_utterance(self):
         """The cap on the shipping path was raw arithmetic: start + proportional_max.
