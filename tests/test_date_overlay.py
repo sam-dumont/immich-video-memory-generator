@@ -11,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from immich_memories.processing.clip_caption import ClipCaption
-from immich_memories.processing.streaming_assembler import FrameDecoder
+from immich_memories.processing.streaming_frame_decoder import FrameDecoder
 
 
 def _decoder(**kwargs) -> FrameDecoder:
@@ -68,34 +68,34 @@ class TestWhatGetsCaptioned:
     """The date comes off the clip; the option decides whether it is drawn."""
 
     def test_the_clips_date_is_captioned_when_the_option_is_on(self):
-        from immich_memories.processing.streaming_assembler import _make_decoder
+        from immich_memories.processing.streaming_frame_decoder import make_decoder
 
-        decoder = _make_decoder(
+        decoder = make_decoder(
             _fake_clip(date="2026-01-05"), 0, 1920, 1080, 30, caption=ClipCaption(date="5 Jan 2026")
         )
 
         assert "5 JAN 2026" in decoder._build_vf()
 
     def test_nothing_is_drawn_when_the_option_is_off(self):
-        from immich_memories.processing.streaming_assembler import _make_decoder
+        from immich_memories.processing.streaming_frame_decoder import make_decoder
 
-        decoder = _make_decoder(_fake_clip(date="2026-01-05"), 0, 1920, 1080, 30)
+        decoder = make_decoder(_fake_clip(date="2026-01-05"), 0, 1920, 1080, 30)
 
         assert "drawtext" not in decoder._build_vf()
 
     def test_a_title_card_gets_no_date(self):
         """The title card is not a moment; stamping it with a date reads as a bug."""
-        from immich_memories.processing.streaming_assembler import _make_decoder
+        from immich_memories.processing.streaming_frame_decoder import make_decoder
 
         clip = _fake_clip(date="2026-01-05", is_title_screen=True)
-        decoder = _make_decoder(clip, 0, 1920, 1080, 30, caption=ClipCaption(date="5 Jan 2026"))
+        decoder = make_decoder(clip, 0, 1920, 1080, 30, caption=ClipCaption(date="5 Jan 2026"))
 
         assert "drawtext" not in decoder._build_vf()
 
     def test_a_clip_with_no_date_is_left_alone(self):
-        from immich_memories.processing.streaming_assembler import _make_decoder
+        from immich_memories.processing.streaming_frame_decoder import make_decoder
 
-        decoder = _make_decoder(_fake_clip(date=None), 0, 1920, 1080, 30, caption=ClipCaption())
+        decoder = make_decoder(_fake_clip(date=None), 0, 1920, 1080, 30, caption=ClipCaption())
 
         assert "drawtext" not in decoder._build_vf()
 
