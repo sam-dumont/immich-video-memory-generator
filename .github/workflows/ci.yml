@@ -386,8 +386,11 @@ jobs:
             INSTALL_EXTRAS=all
             VCS_REF=${{ github.sha }}
             SOURCE_URL=https://github.com/${{ github.repository }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # WHY scoped: both platform jobs wrote the same default cache scope
+          # and clobbered each other — measured ZERO cached layers on every PR
+          # build, a full image rebuild each time.
+          cache-from: type=gha,scope=docker-${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=docker-${{ matrix.platform }}
 
   docs:
     name: Docs Build
