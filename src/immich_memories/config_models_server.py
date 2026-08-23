@@ -4,11 +4,16 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+# Bind-everything address: the field default, and -- until #507 -- the value every
+# saved config carried whether or not anyone chose it. The loader ignores it when it
+# comes from a config file, since it cannot be told apart from that automatic write.
+WILDCARD_HOST = "0.0.0.0"  # noqa: S104
+
 
 class ServerConfig(BaseModel):
     """UI server settings (host, port)."""
 
-    host: str = Field(default="0.0.0.0", description="Listen address (IPv4, IPv6, or hostname)")  # noqa: S104
+    host: str = Field(default=WILDCARD_HOST, description="Listen address (IPv4, IPv6, or hostname)")
     port: int = Field(default=8080, ge=1, le=65535, description="Listen port")
     enable_demo_mode: bool = Field(
         default=False, description="Show demo/privacy toggle in sidebar (for screenshots/E2E)"

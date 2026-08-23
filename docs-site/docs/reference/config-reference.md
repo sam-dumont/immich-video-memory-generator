@@ -49,7 +49,8 @@ Env: `IMMICH_MEMORIES_PRESET=fast`. One-off on the CLI: `immich-memories --prese
 its resolution to the preset's and says so.
 
 Caveat: the settings page's "save" writes every value to `config.yaml`, after which they all count
-as "set by you" — remove the keys you want the preset to own again.
+as "set by you" — remove the keys you want the preset to own again. (`server.host` is the single
+exception; see [Server (UI)](#server-ui).)
 
 ## Immich connection
 
@@ -546,6 +547,14 @@ server:
 ```
 
 These can also be set via CLI flags: `immich-memories ui --host 127.0.0.1 --port 9090`.
+
+`host` is the one value "save" leaves out of `config.yaml` when you never set it. Writing the
+`0.0.0.0` default would make the next load treat it as your decision and quietly retire the
+localhost bind — which is exactly what older versions did, so a `server.host: 0.0.0.0` already
+sitting in your file is ignored with a warning and disappears the next time the file is saved.
+Any other address is yours and is kept; so are `--host` and `IMMICH_MEMORIES_SERVER__HOST`, which
+nothing but a human ever wrote. To keep a LAN bind with authentication off, use
+`allow_unauthenticated_lan: true`.
 
 ## Upload to Immich
 

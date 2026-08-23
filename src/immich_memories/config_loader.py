@@ -40,7 +40,7 @@ from immich_memories.config_models import (
 )
 from immich_memories.config_models_auth import AuthConfig
 from immich_memories.config_models_llm import LLMConfig  # noqa: F401
-from immich_memories.config_models_server import ServerConfig
+from immich_memories.config_models_server import WILDCARD_HOST, ServerConfig
 from immich_memories.config_presets import PresetName, apply_preset
 from immich_memories.scheduling.models import SchedulerConfig
 from immich_memories.security import CREDENTIAL_FIELD_NAMES, write_secret_file
@@ -72,6 +72,29 @@ _REMOVED_TOP_LEVEL_SECTIONS = {
 }
 
 
+def _drop_app_written_wildcard_host(data: dict, path: Path) -> None:
+    """Ignore a `server.host: 0.0.0.0` that the app itself wrote (#507).
+
+    Versions before this one dumped the wildcard default into every saved config, so
+    a file carrying that exact value says nothing about what the operator wanted --
+    and reading it as a decision is what disabled the localhost default. A --host
+    flag, an env var, and any other address in the file are untouched; the file
+    heals itself the next time it is saved.
+    """
+    server = data.get("server")
+    if not isinstance(server, dict) or server.get("host") != WILDCARD_HOST:
+        return
+    del server["host"]
+    logging.getLogger(__name__).warning(
+        "Ignoring 'server.host: %s' in %s — older versions wrote that line "
+        "automatically, so it does not count as a choice. With authentication "
+        "disabled the UI binds 127.0.0.1 unless you pass --host or set "
+        "server.allow_unauthenticated_lan: true.",
+        WILDCARD_HOST,
+        path,
+    )
+
+
 def _load_yaml_data(path: Path) -> dict:
     """Load and flatten YAML config data (advanced: → top-level)."""
     if not path.exists():
@@ -83,6 +106,7 @@ def _load_yaml_data(path: Path) -> dict:
         for key, value in advanced.items():
             if key not in data:
                 data[key] = value
+    _drop_app_written_wildcard_host(data, path)
     for key, reason in _REMOVED_TOP_LEVEL_SECTIONS.items():
         if key in data:
             data.pop(key)
@@ -262,9 +286,17 @@ class Config(BaseSettings):
         return (init_settings, env_settings, yaml_source, dotenv_settings, file_secret_settings)
 
     def save_yaml(self, path: Path) -> None:
-        """Save configuration to a YAML file (tiered format)."""
+        """Save configuration to a YAML file (tiered format).
+
+        Every value is written, so what you see in the file is what runs -- with
+        one exception. `server.host` is left out unless the operator set it:
+        writing the wildcard default would make the next load read it as a
+        deliberate LAN bind and silently retire the localhost default (#507).
+        """
         path.parent.mkdir(parents=True, exist_ok=True)
         data = self.model_dump()
+        if "host" not in self.server.model_fields_set:
+            data["server"].pop("host", None)
         _keep_env_secrets_out(data, self._credential_templates)
 
         # Group tier 2 sections under advanced:
