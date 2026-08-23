@@ -19,11 +19,11 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+from immich_memories.analysis.face_scoring import compute_face_score
 from immich_memories.analysis.scenes import Scene
 from immich_memories.analysis.scoring import (
     MomentScore,
     compute_duration_score,
-    compute_face_score,
     compute_motion_metrics,
     generate_segments,
     subdivide_scene,
@@ -1375,27 +1375,31 @@ class TestCheckVisionAvailable:
     """check_vision_available() early returns and branch conditions."""
 
     def test_non_darwin_returns_false(self):
-        import immich_memories.analysis.scoring as scoring_mod
+        import immich_memories.analysis.face_scoring as face_mod
 
         # WHY: platform.system is OS detection — mock to test non-Mac path
-        original = scoring_mod._use_vision
-        scoring_mod._use_vision = None  # reset cached value
+        original = face_mod._use_vision
+        face_mod._use_vision = None  # reset cached value
         try:
-            with patch("immich_memories.analysis.scoring.platform.system", return_value="Linux"):
-                result = scoring_mod.check_vision_available()
+            with patch(
+                "immich_memories.analysis.face_scoring.platform.system", return_value="Linux"
+            ):
+                result = face_mod.check_vision_available()
             assert result is False
         finally:
-            scoring_mod._use_vision = original
+            face_mod._use_vision = original
 
     def test_darwin_vision_available(self):
-        import immich_memories.analysis.scoring as scoring_mod
+        import immich_memories.analysis.face_scoring as face_mod
 
-        original = scoring_mod._use_vision
-        scoring_mod._use_vision = None
+        original = face_mod._use_vision
+        face_mod._use_vision = None
         try:
             # WHY: apple_vision module only exists on macOS — mock the import
             with (
-                patch("immich_memories.analysis.scoring.platform.system", return_value="Darwin"),
+                patch(
+                    "immich_memories.analysis.face_scoring.platform.system", return_value="Darwin"
+                ),
                 patch(
                     "immich_memories.analysis.scoring.is_vision_available",
                     create=True,
@@ -1410,26 +1414,28 @@ class TestCheckVisionAvailable:
                     },
                 ),
             ):
-                result = scoring_mod.check_vision_available()
+                result = face_mod.check_vision_available()
             assert result is True
         finally:
-            scoring_mod._use_vision = original
+            face_mod._use_vision = original
 
     def test_darwin_import_error_returns_false(self):
-        import immich_memories.analysis.scoring as scoring_mod
+        import immich_memories.analysis.face_scoring as face_mod
 
-        original = scoring_mod._use_vision
-        scoring_mod._use_vision = None
+        original = face_mod._use_vision
+        face_mod._use_vision = None
         try:
             # WHY: platform.system is OS detection — mock to simulate macOS
-            with patch("immich_memories.analysis.scoring.platform.system", return_value="Darwin"):
+            with patch(
+                "immich_memories.analysis.face_scoring.platform.system", return_value="Darwin"
+            ):
                 # Force ImportError on apple_vision
                 import sys
 
                 saved = sys.modules.get("immich_memories.analysis.apple_vision")
                 sys.modules["immich_memories.analysis.apple_vision"] = None  # type: ignore[assignment]
                 try:
-                    result = scoring_mod.check_vision_available()
+                    result = face_mod.check_vision_available()
                 finally:
                     if saved is None:
                         sys.modules.pop("immich_memories.analysis.apple_vision", None)
@@ -1437,14 +1443,14 @@ class TestCheckVisionAvailable:
                         sys.modules["immich_memories.analysis.apple_vision"] = saved
             assert result is False
         finally:
-            scoring_mod._use_vision = original
+            face_mod._use_vision = original
 
 
 class TestInitVisionDetector:
     """init_vision_detector() success and failure paths."""
 
     def test_success_returns_detector(self):
-        from immich_memories.analysis.scoring import init_vision_detector
+        from immich_memories.analysis.face_scoring import init_vision_detector
 
         mock_detector = MagicMock()
         # WHY: VisionFaceDetector requires macOS ObjC — mock the module import
@@ -1460,7 +1466,7 @@ class TestInitVisionDetector:
         assert result is mock_detector
 
     def test_exception_returns_none(self):
-        from immich_memories.analysis.scoring import init_vision_detector
+        from immich_memories.analysis.face_scoring import init_vision_detector
 
         # WHY: VisionFaceDetector may fail on non-Mac — mock to simulate failure
         with patch.dict(
@@ -1479,10 +1485,10 @@ class TestInitOpencvCascade:
     """init_opencv_cascade() failure path returns None."""
 
     def test_exception_returns_none(self):
-        from immich_memories.analysis.scoring import init_opencv_cascade
+        from immich_memories.analysis.face_scoring import init_opencv_cascade
 
         # WHY: cv2.data.haarcascades may not exist on headless systems
-        with patch("immich_memories.analysis.scoring.cv2") as mock_cv2:
+        with patch("immich_memories.analysis.face_scoring.cv2") as mock_cv2:
             mock_cv2.data = MagicMock()
             mock_cv2.data.haarcascades = "/nonexistent/"
             mock_cv2.CascadeClassifier.side_effect = RuntimeError("no cascade")
@@ -1491,10 +1497,10 @@ class TestInitOpencvCascade:
 
     def test_opencv_without_cascade_api_degrades_to_no_face_detection(self):
         """OpenCV 5 dropped cv2.CascadeClassifier; that must not fail the whole run (#339)."""
-        from immich_memories.analysis.scoring import init_opencv_cascade
+        from immich_memories.analysis.face_scoring import init_opencv_cascade
 
         # WHY: emulate an OpenCV build without the Haar cascade API (spec drops the attribute)
-        with patch("immich_memories.analysis.scoring.cv2", spec=["data"]) as mock_cv2:
+        with patch("immich_memories.analysis.face_scoring.cv2", spec=["data"]) as mock_cv2:
             mock_cv2.data = MagicMock(haarcascades="/opt/cv2/data/")
             result = init_opencv_cascade()
         assert result is None
@@ -1512,7 +1518,7 @@ class TestComputeFaceScoreOpencvWithDetections:
             [[50, 50, 40, 40], [100, 100, 30, 30]]
         )
 
-        from immich_memories.analysis.scoring import _compute_face_score_opencv
+        from immich_memories.analysis.face_scoring import _compute_face_score_opencv
 
         score, positions = _compute_face_score_opencv(frame, 200, 200, mock_cascade)
         # 2 faces: coverage = (40*40 + 30*30) / (200*200) = (1600+900)/40000 = 0.0625

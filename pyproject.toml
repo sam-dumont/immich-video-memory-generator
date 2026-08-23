@@ -413,6 +413,7 @@ ignore_errors = true
 module = [
     "immich_memories.analysis.scenes",
     "immich_memories.analysis.scoring",
+    "immich_memories.analysis.face_scoring",
     "immich_memories.analysis.apple_vision",
     "immich_memories.processing.transforms",
     "immich_memories.processing.transforms_smart_crop",

@@ -144,7 +144,8 @@ src/immich_memories/
 │   ├── duplicate_hashing.py    # Perceptual hashing for duplicates
 │   ├── thumbnail_clustering.py # Thumbnail-based clustering
 │   ├── thumbnail_prefetch.py   # ThumbnailPrefetcher: fills the thumbnail cache before phase 1 (CLI/auto path)
-│   ├── scoring.py              # Quality scoring (face, motion, duration, segments)
+│   ├── scoring.py              # Quality scoring (motion, duration, segments) + SceneScorer
+│   ├── face_scoring.py         # Face detection scoring: Apple Vision / OpenCV backends
 │   ├── scenes.py               # Scene detection
 │   ├── silence_detection.py    # Audio silence detection
 │   ├── apple_vision.py         # macOS Vision framework integration

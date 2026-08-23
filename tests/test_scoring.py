@@ -17,12 +17,12 @@ try:
 except ImportError:
     pytest.skip("cv2/numpy not available", allow_module_level=True)
 
+from immich_memories.analysis.face_scoring import compute_face_score
 from immich_memories.analysis.scenes import Scene
 from immich_memories.analysis.scoring import (
     MomentScore,
     SceneScorer,
     compute_duration_score,
-    compute_face_score,
     compute_motion_metrics,
     generate_segments,
     subdivide_scene,
