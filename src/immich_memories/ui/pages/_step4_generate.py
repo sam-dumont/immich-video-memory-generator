@@ -25,7 +25,7 @@ from immich_memories.ui.nicegui_compat import io_bound_result, run_ui_observer
 from immich_memories.ui.pages.step3_options import SCALE_MODE_OPTIONS, resolve_scale_mode_label
 
 if TYPE_CHECKING:
-    from immich_memories.processing.encoding_plan import EncodingPlan
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -251,9 +251,12 @@ def _build_generation_params(state, selected_clips, output_path):
         target_duration_seconds=state.target_duration_seconds,
         timeline_plan=state.timeline_plan,
         selected_photo_ids=None,
-        # Music and upload are finalized separately by the UI on the same run lifecycle.
-        music_path=None,
-        no_music=True,
+        # Music runs in the shared phase after assembly, on the same run
+        # lifecycle; "None" stays silent because resolve_music checks no_music
+        # before anything else.
+        music_path=_uploaded_music_path(gen_options, output_path.parent),
+        no_music=gen_options.get("music_source", "None") not in {"AI Generated", "Upload file"},
+        music_volume=gen_options.get("music_volume", 0.5),
         upload_enabled=state.upload_enabled,
         upload_album=state.upload_album_name,
     )
@@ -407,6 +410,24 @@ async def run_generation(
         )
 
 
+def _uploaded_music_path(gen_options: dict, run_output_dir: Path) -> Path | None:
+    """Materialise an uploaded track so the shared music phase can resolve it.
+
+    The wizard holds the upload as bytes; `resolve_music` takes a path and
+    checks it exists. Written beside the run rather than into a temp file so it
+    is cleaned up with everything else the run produced.
+    """
+    if gen_options.get("music_source") != "Upload file":
+        return None
+    data = gen_options.get("music_file")
+    if not data:
+        return None
+    run_output_dir.mkdir(parents=True, exist_ok=True)
+    path = run_output_dir / "uploaded_music.mp3"
+    path.write_bytes(data)
+    return path
+
+
 async def finalize_ui_generation(
     state,
     params,
@@ -435,16 +456,17 @@ async def finalize_ui_generation(
         ),
     )
     if music_source in {"AI Generated", "Upload file"}:
-        music_result = await _apply_music(
-            state,
-            params.config,
+        from immich_memories.generate_settings import _run_music_phase
+
+        music_result = await io_bound_result(
+            _run_music_phase,
+            params,
+            list(prepared.assembly_clips),
             prepared.path,
-            list(params.clips),
             prepared.path.parent,
             run_tracker,
-            progress_bar,
-            status_label,
             encoding_plan=prepared.encoding_plan,
+            mute_windows=prepared.music_mute_windows,
         )
         emit_operational_phase(
             params,
@@ -518,94 +540,6 @@ async def finalize_ui_generation(
     )
     completed = run_tracker.db.get_run(run_tracker.run_id) or completed
     return completed
-
-
-async def _apply_music(
-    state,
-    config,
-    result_path,
-    selected_clips,
-    run_output_dir,
-    run_tracker,
-    progress_bar,
-    status_label,
-    *,
-    encoding_plan: EncodingPlan,
-):
-    """Apply selected UI music after its published artifact contract is derived."""
-    gen_options = state.generation_options
-    music_source = gen_options.get("music_source", "None")
-
-    if music_source == "AI Generated":
-        from immich_memories.ui.pages._step4_music import apply_ai_music
-
-        return await apply_ai_music(
-            result_path,
-            selected_clips,
-            state.clip_segments,
-            gen_options,
-            config,
-            run_output_dir,
-            run_tracker,
-            progress_bar,
-            status_label,
-            encoding_plan=encoding_plan,
-            memory_type=state.memory_type,
-        )
-    elif music_source == "Upload file" and gen_options.get("music_file"):
-        from immich_memories.ui.pages._step4_music import apply_uploaded_music
-
-        return await apply_uploaded_music(
-            result_path,
-            gen_options,
-            run_tracker,
-            progress_bar,
-            status_label,
-            encoding_plan=encoding_plan,
-            config=config,
-        )
-    from immich_memories.generate_music import MusicPhaseResult
-
-    return MusicPhaseResult(applied=False)
-
-
-async def _run_ui_music_phase(
-    state,
-    config,
-    result_path: Path,
-    selected_clips: list,
-    run_output_dir: Path,
-    progress_bar,
-    status_label,
-):
-    """Apply legacy UI music requests without creating detached tracking state."""
-    from immich_memories.generate_music import (
-        MusicPhaseResult,
-        derive_music_validation_plan,
-        optional_music_warning,
-    )
-
-    music_source = state.generation_options.get("music_source", "None")
-    if music_source not in {"AI Generated", "Upload file"}:
-        return MusicPhaseResult(applied=False)
-    try:
-        encoding_plan = await io_bound_result(derive_music_validation_plan, result_path)
-        return await _apply_music(
-            state,
-            config,
-            result_path,
-            selected_clips,
-            run_output_dir,
-            None,
-            progress_bar,
-            status_label,
-            encoding_plan=encoding_plan,
-        )
-    except Exception as exc:  # WHY: an optional UI plan cannot invalidate the base artifact
-        warning = optional_music_warning(exc, config)
-        logger.warning(warning)
-        ui.notify(f"{warning}. Video saved without music.", type="warning")
-        return MusicPhaseResult(applied=False, warning=warning)
 
 
 def _format_file_size(path: Path) -> str:

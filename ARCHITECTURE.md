@@ -133,6 +133,7 @@ src/immich_memories/
 │   ├── segment_transcription.py # Transcribe the top candidate segments (whisper via speech/transcription.py)
 │   ├── unified_budget.py       # Unified photo+video budget selection (merge-then-fit)
 │   ├── segment_generation.py   # Boundary detection, candidate segment generation
+│   ├── segment_extents.py      # How long a clip may run and where it may be cut (duration caps, step 3b, best-segment repair)
 │   ├── boundary_placement.py   # Where a cut may land: protected-range gaps, edge selection
 │   ├── content_analyzer.py     # LLM-based content analysis
 │   ├── llm_response_parser.py  # Content analysis response parsing

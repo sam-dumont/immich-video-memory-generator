@@ -17,6 +17,12 @@ from immich_memories.analysis.boundary_placement import (
     merge_buffered_ranges,
     speech_buffer_seconds,
 )
+from immich_memories.analysis.segment_extents import (
+    adjust_candidates_for_protected_audio,
+    dynamic_optimal_duration,
+    max_segment_for_source,
+    repair_best_segment,
+)
 from immich_memories.analysis.segment_generation import (
     classify_segment_events,
     collect_mixed_boundary_candidates,
@@ -89,6 +95,10 @@ def _make_analyzer(**overrides):
     }
     defaults.update(overrides)
     return UnifiedSegmentAnalyzer(**defaults)
+
+
+# SpeechConfig's default silence floor, which is what _make_analyzer runs with.
+_MIN_SILENCE_MS = 200
 
 
 # ===========================================================================
@@ -236,13 +246,11 @@ class TestUnifiedAnalyzerProportionalMaxSegment:
     """Lines 177-178: proportional limit for very long videos (>60s)."""
 
     def test_very_long_video_capped_proportionally(self):
-        analyzer = _make_analyzer(max_segment_duration=15.0)
-        result = analyzer._get_max_segment_for_source(120.0, has_good_scene=False)
+        result = max_segment_for_source(120.0, 15.0, has_good_scene=False)
         assert result == max(15.0, min(120.0 * 0.20, 15.0))
 
     def test_grace_for_good_scene_medium_video(self):
-        analyzer = _make_analyzer(max_segment_duration=15.0)
-        result = analyzer._get_max_segment_for_source(40.0, has_good_scene=True)
+        result = max_segment_for_source(40.0, 15.0, has_good_scene=True)
         assert result == min(15.0 * 1.15, 40.0)
 
 
@@ -250,24 +258,36 @@ class TestFixBestSegmentBoundaries:
     """Lines 294, 302, 307, 316-317: boundary adjustment + re-trim."""
 
     def test_boundaries_adjusted_and_retrimmed(self):
-        analyzer = _make_analyzer(max_segment_duration=5.0)
         best = ScoredSegment(start_time=3.0, end_time=8.0)
         audio_result = AudioAnalysisResult(protected_ranges=[(2.5, 3.5), (7.5, 8.5)])
-        analyzer._fix_best_segment_boundaries(best, audio_result, video_duration=30.0)
+        repair_best_segment(
+            best,
+            audio_result,
+            30.0,
+            min_segment_duration=2.0,
+            max_segment_duration=5.0,
+            min_silence_ms=_MIN_SILENCE_MS,
+        )
         assert best.start_time < 2.5 or best.start_time >= 3.5
         assert best.end_time > 8.5 or best.end_time <= 7.5
 
     def test_retrim_to_proportional_max(self):
         """Lines 316-317: segment exceeding proportional max gets re-trimmed."""
-        analyzer = _make_analyzer(max_segment_duration=5.0)
         # After boundary adjustment, segment expands beyond proportional max.
         # Protected range forces end_time to be nudged outward.
         best = ScoredSegment(start_time=0.0, end_time=25.0)
         # source=100s => proportional_max = max(5, min(100*0.20, 5*1.0)) = max(5,5) = 5
         # After adjust, 25.0 > 5.0 => re-trim
         audio_result = AudioAnalysisResult(protected_ranges=[(24.5, 25.5)])
-        analyzer._fix_best_segment_boundaries(best, audio_result, video_duration=100.0)
-        proportional_max = analyzer._get_max_segment_for_source(100.0)
+        repair_best_segment(
+            best,
+            audio_result,
+            100.0,
+            min_segment_duration=2.0,
+            max_segment_duration=5.0,
+            min_silence_ms=_MIN_SILENCE_MS,
+        )
+        proportional_max = max_segment_for_source(100.0, 5.0)
         assert best.end_time - best.start_time <= proportional_max + 0.01
 
 
@@ -290,7 +310,6 @@ class TestStep3bAdjustForAudio:
 
     def test_audio_events_but_no_protected_ranges_skips(self):
         """Lines 469: audio result with events but empty protected_ranges."""
-        analyzer = _make_analyzer()
         audio_result = AudioAnalysisResult(
             events=[AudioEvent("Speech", 0.0, 5.0, 0.3)],
             protected_ranges=[],
@@ -298,15 +317,18 @@ class TestStep3bAdjustForAudio:
         candidates = [
             (CutPoint(0.0, True, True), CutPoint(5.0, True, True)),
         ]
-        result = analyzer._step3b_adjust_for_audio(candidates, audio_result, 10.0)
+        result = adjust_candidates_for_protected_audio(
+            candidates, audio_result, 10.0, 2.0, 15.0, _MIN_SILENCE_MS
+        )
         assert result == candidates
 
     def test_no_audio_result_skips(self):
-        analyzer = _make_analyzer()
         candidates = [
             (CutPoint(0.0, True, True), CutPoint(5.0, True, True)),
         ]
-        result = analyzer._step3b_adjust_for_audio(candidates, None, 10.0)
+        result = adjust_candidates_for_protected_audio(
+            candidates, None, 10.0, 2.0, 15.0, _MIN_SILENCE_MS
+        )
         assert result == candidates
 
 
@@ -314,14 +336,10 @@ class TestDynamicOptimalDuration:
     """Lines 527: source > 20s scales optimal up."""
 
     def test_short_source_uses_base_optimal(self):
-        analyzer = _make_analyzer(optimal_clip_duration=5.0)
-        assert analyzer._get_dynamic_optimal_duration(15.0) == 5.0
+        assert dynamic_optimal_duration(15.0, 5.0, 10.0, 0.15) == 5.0
 
     def test_long_source_scales_optimal(self):
-        analyzer = _make_analyzer(
-            optimal_clip_duration=5.0, max_optimal_duration=10.0, target_extraction_ratio=0.15
-        )
-        result = analyzer._get_dynamic_optimal_duration(80.0)
+        result = dynamic_optimal_duration(80.0, 5.0, 10.0, 0.15)
         assert result == min(10.0, max(5.0, 80.0 * 0.15))
 
 

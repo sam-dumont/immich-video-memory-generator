@@ -187,10 +187,10 @@ async def test_ui_music_failure_retains_music_as_last_phase(
     tracker.start_run(source="manual")
     state = AppState(config=config, generation_options={"music_source": "AI Generated"})
 
-    async def fail_music(*_args, **_kwargs):
+    def fail_music(*_args, **_kwargs):
         raise RuntimeError("music backend failed")
 
-    monkeypatch.setattr(step4_generate, "_apply_music", fail_music)
+    monkeypatch.setattr("immich_memories.generate_settings._run_music_phase", fail_music)
     with pytest.raises(RuntimeError, match="music backend failed"):
         await step4_generate.finalize_ui_generation(
             state,
@@ -294,17 +294,15 @@ async def test_ui_music_warning_is_durable_and_final_validation_runs_after_music
     warning = "Optional music failed: backend unavailable"
     events: list[str] = []
 
-    async def apply_music(
-        _state,
-        _config,
-        result_path,
+    def apply_music(
+        _params,
         _assembly_clips,
+        result_path,
         _run_output_dir,
         run_tracker,
-        _progress_bar,
-        _status_label,
         *,
         encoding_plan,
+        mute_windows=None,
     ) -> MusicPhaseResult:
         assert run_tracker is tracker
         assert encoding_plan is plan
@@ -323,7 +321,7 @@ async def test_ui_music_warning_is_durable_and_final_validation_runs_after_music
     async def io_bound(callback, *args, **kwargs):
         return callback(*args, **kwargs)
 
-    monkeypatch.setattr(step4_generate, "_apply_music", apply_music)
+    monkeypatch.setattr("immich_memories.generate_settings._run_music_phase", apply_music)
     monkeypatch.setattr(step4_generate, "validate_output", validate)
     monkeypatch.setattr(step4_generate.run, "io_bound", io_bound)
     caplog.set_level("WARNING")

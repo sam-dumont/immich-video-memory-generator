@@ -14,6 +14,10 @@ except ImportError:
     pytest.skip("cv2 not available", allow_module_level=True)
 
 from immich_memories.analysis.scoring import MomentScore
+from immich_memories.analysis.segment_extents import (
+    max_segment_for_source,
+    repair_best_segment,
+)
 from immich_memories.analysis.segment_generation import (
     find_nearest_cut_point,
     generate_candidate_segments,
@@ -421,7 +425,7 @@ class TestUnifiedSegmentAnalyzer:
             video_duration=30.0,
             cut_points=cut_points,
             min_segment_duration=analyzer.min_segment_duration,
-            proportional_max=analyzer._get_max_segment_for_source(30.0),
+            proportional_max=max_segment_for_source(30.0, analyzer.max_segment_duration),
         )
 
         assert len(result) >= 1
@@ -698,19 +702,9 @@ class TestBestSegmentOverlapHandling:
         assert not any(lo < end < hi for lo, hi in ranges)
 
 
-def _boundary_fixing_analyzer(**kwargs) -> UnifiedSegmentAnalyzer:
-    """Analyzer wired for `_fix_best_segment_boundaries` and nothing else."""
-    from immich_memories.config_models import SpeechConfig
-
-    # WHY: SceneScorer opens the video with OpenCV; the boundary-fixing pass
-    # never touches it, so a stand-in keeps the test off the filesystem.
-    return UnifiedSegmentAnalyzer(
-        scorer=MagicMock(),
-        audio_content_config=AudioContentConfig(),
-        analysis_config=AnalysisConfig(),
-        speech_config=SpeechConfig(min_silence_ms=200),
-        **kwargs,
-    )
+# The VAD only splits on 200 ms of silence, so that is the floor the
+# boundary-repair cases below are measured against.
+_VAD_MIN_SILENCE_MS = 200
 
 
 class TestBestSegmentUsesTheSameSafetyBufferAsCandidates:
@@ -724,15 +718,19 @@ class TestBestSegmentUsesTheSameSafetyBufferAsCandidates:
         from immich_memories.audio.audio_models import AudioAnalysisResult
 
         ranges = [(2.0, 6.0), (6.1, 30.0)]
-        # max_segment_duration=40 keeps the proportional-max cap out of the way.
-        analyzer = _boundary_fixing_analyzer(min_segment_duration=2.0, max_segment_duration=40.0)
         best = ScoredSegment(start_time=7.0, end_time=32.0)
 
-        analyzer._fix_best_segment_boundaries(
-            best, AudioAnalysisResult(events=[], protected_ranges=ranges), 40.0
+        repair_best_segment(
+            best,
+            AudioAnalysisResult(events=[], protected_ranges=ranges),
+            40.0,
+            min_segment_duration=2.0,
+            # 40 keeps the proportional-max cap out of the way.
+            max_segment_duration=40.0,
+            min_silence_ms=_VAD_MIN_SILENCE_MS,
         )
 
-        buffer = speech_buffer_seconds(200)
+        buffer = speech_buffer_seconds(_VAD_MIN_SILENCE_MS)
         for lo, hi in ranges:
             assert not lo - buffer < best.start_time < hi + buffer
             assert not lo - buffer < best.end_time < hi + buffer
@@ -747,11 +745,15 @@ class TestTheEndCarriesTheEvidenceThatPlacedIt:
         """
         from immich_memories.audio.audio_models import AudioAnalysisResult
 
-        analyzer = _boundary_fixing_analyzer(min_segment_duration=2.0, max_segment_duration=40.0)
         best = ScoredSegment(start_time=7.0, end_time=32.0)
 
-        analyzer._fix_best_segment_boundaries(
-            best, AudioAnalysisResult(events=[], protected_ranges=[(2.0, 6.0), (6.1, 30.0)]), 40.0
+        repair_best_segment(
+            best,
+            AudioAnalysisResult(events=[], protected_ranges=[(2.0, 6.0), (6.1, 30.0)]),
+            40.0,
+            min_segment_duration=2.0,
+            max_segment_duration=40.0,
+            min_silence_ms=_VAD_MIN_SILENCE_MS,
         )
 
         assert best.safe_cut_gaps, "the end was placed against gaps it did not hand on"
@@ -774,11 +776,15 @@ class TestBestSegmentProportionalMax:
 
         # Buffered by 80 ms these merge to (4.0, 7.5), (8.5, 29.5), (30.5, 40.0).
         ranges = [(4.08, 7.42), (8.58, 29.42), (30.58, 40.0)]
-        analyzer = _boundary_fixing_analyzer(min_segment_duration=2.0, max_segment_duration=15.0)
         best = ScoredSegment(start_time=2.0, end_time=20.0)
 
-        analyzer._fix_best_segment_boundaries(
-            best, AudioAnalysisResult(events=[], protected_ranges=ranges), 40.0
+        repair_best_segment(
+            best,
+            AudioAnalysisResult(events=[], protected_ranges=ranges),
+            40.0,
+            min_segment_duration=2.0,
+            max_segment_duration=15.0,
+            min_silence_ms=_VAD_MIN_SILENCE_MS,
         )
 
         assert best.end_time == 8.0
