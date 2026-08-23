@@ -65,11 +65,18 @@ def _is_backfill_candidate_admissible(
     if candidate_duration <= 0 or candidate_duration > remaining_budget + 1e-6:
         return False
 
-    if enforce_temporal_spacing and is_same_moment(
-        candidate.clip.asset.file_created_at,
-        context.occupied_moments,
-        context.temporal_window,
-    ):
+    # Conceding temporal spacing relaxes the window back to the configured
+    # base, never to nothing. A long memory measures a moment in tens of
+    # minutes, so a wide window empties the strict pass sooner and the ladder
+    # reaches this concession more often — and dropping the rule outright put
+    # two clips stamped the same minute in a rendered year recap. The
+    # concession is "an evening already in the cut", not "this shot twice".
+    spacing = (
+        context.temporal_window
+        if enforce_temporal_spacing
+        else context.config.temporal_dedup_window_minutes
+    )
+    if is_same_moment(candidate.clip.asset.file_created_at, context.occupied_moments, spacing):
         return False
 
     new_total = context.selected_count + 1

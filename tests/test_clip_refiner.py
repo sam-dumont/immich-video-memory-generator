@@ -185,20 +185,27 @@ class TestBackfillPolicyHelpers:
         assert resolved.tier == "favorite_ratio"
 
     def test_backfill_relaxes_temporal_spacing_after_favorite_ratio(self) -> None:
+        """The concession gives back the width a long memory added, not the rule.
+
+        A memory spanning a year calls ninety minutes one moment; the base
+        window it was configured with is ten. Conceding means falling back to
+        that ten, so a clip half an hour from what is already in the cut
+        becomes admissible and one from the same minute never does.
+        """
         from immich_memories.analysis.clip_backfill import (
             _BackfillContext,
             _resolve_backfill_candidates,
         )
         from immich_memories.analysis.smart_pipeline import PipelineConfig
 
-        candidate = _make_clip("nearby-leftover", datetime(2026, 7, 2, 12, 2, tzinfo=UTC))
+        candidate = _make_clip("nearby-leftover", datetime(2026, 7, 2, 12, 30, tzinfo=UTC))
         context = _BackfillContext(
             config=PipelineConfig(temporal_dedup_window_minutes=10.0),
             selected_count=1,
             photo_count=0,
             non_favorite_count=0,
-            temporal_window=10.0,
-            occupied_moments=[candidate.clip.asset.file_created_at],
+            temporal_window=90.0,
+            occupied_moments=[datetime(2026, 7, 2, 12, 2, tzinfo=UTC)],
         )
 
         resolved = _resolve_backfill_candidates(
