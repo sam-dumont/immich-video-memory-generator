@@ -325,6 +325,7 @@ def _run_pipeline_blocking(
                     config=app_config,
                     client=client,
                     work_dir=Path(app_config.cache.cache_path) / "photo_scoring",
+                    thumbnail_cache=tc,
                 )
 
             result = pipeline.run_selection(all_candidates)

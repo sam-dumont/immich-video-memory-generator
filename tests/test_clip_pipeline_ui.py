@@ -160,3 +160,48 @@ def test_blocking_pipeline_cannot_reintroduce_unchecked_photos() -> None:
     assert state.pipeline_result["stats"]["eligible_count"] == 1
     assert state.pipeline_result["stats"]["deeply_analyzed_count"] == 0
     assert state.pipeline_result["stats"]["planned_count"] == 0
+
+
+def test_blocking_pipeline_hands_the_photo_merge_its_thumbnail_cache() -> None:
+    """Burst de-duplication is switched on by the thumbnail cache, not by config.
+
+    `_drop_burst_duplicates` returns the pool untouched when the cache is None
+    — unlike its siblings, it has no `thumbnail_fn` fallback — so a merge call
+    that omits the cache silently ships every frame of a held shutter. On a real
+    June pool that was 21% of the photos (`photos/photo_pipeline.py`).
+    """
+    photo = _photo("burst-frame")
+    state = AppState(
+        config=Config(),
+        immich_url="http://immich.test",
+        immich_api_key="test-key",
+        include_photos=True,
+        photo_assets=[photo],
+        thumbnail_cache=MagicMock(),
+        analysis_cache=MagicMock(),
+    )
+    pipeline = MagicMock()
+    pipeline.last_deep_analysis_count = 0
+    pipeline.run_analysis.return_value = []
+    pipeline.run_selection.return_value = MagicMock(
+        selected_clips=[], clip_segments={}, errors=[], stats={}
+    )
+    progress_state = {"cancelled": False, "done": False, "error": None}
+
+    with (
+        # WHY: Immich is the external boundary — the wizard's library read.
+        patch("immich_memories.ui.pages.clip_pipeline.SyncImmichClient") as client_cls,
+        # WHY: the pipeline is not under test here; only what the merge is handed.
+        patch("immich_memories.analysis.smart_pipeline.SmartPipeline", return_value=pipeline),
+        patch("immich_memories.config.get_config", return_value=state.config),
+        # WHY: the seam under inspection — captures the arguments, runs nothing.
+        patch(
+            "immich_memories.cli._pipeline_runner._merge_photos_into_pool",
+            return_value=[],
+        ) as merge_photos,
+    ):
+        client_cls.return_value.__enter__.return_value = MagicMock()
+        _run_pipeline_blocking(state, PipelineConfig(), [], [photo], progress_state)
+
+    assert progress_state["error"] is None
+    assert merge_photos.call_args.kwargs.get("thumbnail_cache") is state.thumbnail_cache
