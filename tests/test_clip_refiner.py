@@ -676,3 +676,32 @@ class TestTemporalCoverage:
         months = {c.clip.asset.file_created_at.month for c in selected}
         # Despite Apr dominating by score, Jan, Jul, Oct should be represented
         assert len(months) >= 3, f"Only {len(months)} months: {sorted(months)}"
+
+
+class TestTheRatioTrimHonoursCoverage:
+    """The last drop site that did not.
+
+    The scaler, the photo cap and the moment dedup all treat a coverage clip
+    as untouchable; the non-favorite ratio trim sorted by score and truncated,
+    so the one clip standing for a whole period could be cut for scoring low —
+    which is the reason it was added.
+    """
+
+    def test_a_coverage_clip_survives_the_non_favorite_trim(self) -> None:
+        from immich_memories.analysis.clip_refiner import _trim_non_favorites
+
+        covering = _make_clip("covers-a-month", datetime(2026, 3, 2, 12, tzinfo=UTC))
+        covering.score = 0.1
+        others = []
+        for index in range(6):
+            clip = _make_clip(f"ordinary-{index}", datetime(2026, 7, 2, 12, tzinfo=UTC))
+            clip.score = 0.9
+            others.append(clip)
+
+        kept = _trim_non_favorites(
+            [covering, *others],
+            max_non_favorites=3,
+            coverage_ids={"covers-a-month"},
+        )
+
+        assert "covers-a-month" in {c.clip.asset.id for c in kept}

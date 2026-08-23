@@ -6,95 +6,95 @@
       {
         "name": "ClipRefiner::_fill_empty_weeks",
         "complexity": 20,
-        "line_start": 235,
-        "line_end": 278,
+        "line_start": 258,
+        "line_end": 301,
         "line_complexities": [
           {
-            "line": 245,
-            "complexity": 0
-          },
-          {
-            "line": 246,
-            "complexity": 1
-          },
-          {
-            "line": 247,
-            "complexity": 0
-          },
-          {
-            "line": 250,
-            "complexity": 0
-          },
-          {
-            "line": 251,
-            "complexity": 1
-          },
-          {
-            "line": 252,
-            "complexity": 0
-          },
-          {
-            "line": 255,
-            "complexity": 0
-          },
-          {
-            "line": 256,
-            "complexity": 0
-          },
-          {
-            "line": 258,
-            "complexity": 0
-          },
-          {
-            "line": 259,
-            "complexity": 0
-          },
-          {
-            "line": 260,
-            "complexity": 1
-          },
-          {
-            "line": 261,
-            "complexity": 0
-          },
-          {
-            "line": 262,
-            "complexity": 2
-          },
-          {
-            "line": 264,
-            "complexity": 0
-          },
-          {
-            "line": 266,
-            "complexity": 0
-          },
-          {
-            "line": 267,
-            "complexity": 1
-          },
-          {
             "line": 268,
-            "complexity": 2
+            "complexity": 0
           },
           {
             "line": 269,
-            "complexity": 0
+            "complexity": 1
           },
           {
             "line": 270,
-            "complexity": 3
-          },
-          {
-            "line": 272,
-            "complexity": 4
+            "complexity": 0
           },
           {
             "line": 273,
-            "complexity": 5
+            "complexity": 0
+          },
+          {
+            "line": 274,
+            "complexity": 1
+          },
+          {
+            "line": 275,
+            "complexity": 0
           },
           {
             "line": 278,
+            "complexity": 0
+          },
+          {
+            "line": 279,
+            "complexity": 0
+          },
+          {
+            "line": 281,
+            "complexity": 0
+          },
+          {
+            "line": 282,
+            "complexity": 0
+          },
+          {
+            "line": 283,
+            "complexity": 1
+          },
+          {
+            "line": 284,
+            "complexity": 0
+          },
+          {
+            "line": 285,
+            "complexity": 2
+          },
+          {
+            "line": 287,
+            "complexity": 0
+          },
+          {
+            "line": 289,
+            "complexity": 0
+          },
+          {
+            "line": 290,
+            "complexity": 1
+          },
+          {
+            "line": 291,
+            "complexity": 2
+          },
+          {
+            "line": 292,
+            "complexity": 0
+          },
+          {
+            "line": 293,
+            "complexity": 3
+          },
+          {
+            "line": 295,
+            "complexity": 4
+          },
+          {
+            "line": 296,
+            "complexity": 5
+          },
+          {
+            "line": 301,
             "complexity": 0
           }
         ]

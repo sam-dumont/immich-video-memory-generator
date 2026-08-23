@@ -73,6 +73,29 @@ def _clips_per_moment(target_clips: int, moments: int) -> int:
     return max(1, min(share, int(target_clips * _MAX_SHARE_FROM_ONE_MOMENT)))
 
 
+def _trim_non_favorites(
+    non_favorites: list[ClipWithSegment],
+    max_non_favorites: int,
+    coverage_ids: set[str],
+) -> list[ClipWithSegment]:
+    """Cut the ratio down to size without cutting what covers a period.
+
+    The scaler, the photo cap and the moment dedup all treat a coverage clip
+    as untouchable. This was the last drop site that did not: it sorted by
+    score and truncated, so the one clip standing for a whole month could be
+    cut for scoring low — which is exactly why it was added in the first
+    place, since the month had nothing better.
+    """
+    covering = [c for c in non_favorites if c.clip.asset.id in coverage_ids]
+    rest = sorted(
+        (c for c in non_favorites if c.clip.asset.id not in coverage_ids),
+        key=lambda c: c.score,
+        reverse=True,
+    )
+    room = max(0, max_non_favorites - len(covering))
+    return covering + rest[:room]
+
+
 class ClipRefiner:
     """Selects, distributes, and refines the final clip selection."""
 
@@ -651,8 +674,7 @@ class ClipRefiner:
             max_non_favorites = max(max_non_favorites, min_non_favorites)
 
             if len(non_favorites) > max_non_favorites:
-                non_favorites.sort(key=lambda c: c.score, reverse=True)
-                non_favorites = non_favorites[:max_non_favorites]
+                non_favorites = _trim_non_favorites(non_favorites, max_non_favorites, coverage_ids)
 
                 logger.info(
                     f"Final selection: limiting non-favorites to {len(non_favorites)} "
