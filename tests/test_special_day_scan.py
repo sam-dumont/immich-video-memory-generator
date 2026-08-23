@@ -12,7 +12,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from immich_memories.automation.special_day_scan import scan_year
+from immich_memories.automation.special_day_scan import (
+    DiscoveredDay,
+    anniversaries_due,
+    scan_year,
+)
 from immich_memories.cli.special_days_cmd import _homebase
 from immich_memories.config_models import TripsConfig
 
@@ -119,3 +123,27 @@ def test_a_picture_that_failed_to_download_takes_its_line_with_it() -> None:
 
     assert missing not in [asset.id for asset, _ in tiles]
     assert len(tiles) == SAMPLE_SIZE - 1
+
+
+def _entry(day: date) -> DiscoveredDay:
+    return DiscoveredDay(
+        day=day, title="A day", subtitle="", what="something", photos=40, window=None
+    )
+
+
+def test_a_day_at_the_end_of_december_is_due_in_early_january() -> None:
+    """Only the check's own year was tried, so the candidate sat 364 days away.
+
+    The count was wrong in the same move: eleven years, for the tenth
+    anniversary — and roundness is the whole appeal of arriving unannounced.
+    """
+    entry = _entry(date(2014, 12, 31))
+
+    assert anniversaries_due([entry], date(2025, 1, 2)) == [(entry, 10)]
+
+
+def test_a_day_at_the_start_of_january_is_due_in_late_december() -> None:
+    """The same gap, crossed the other way."""
+    entry = _entry(date(2015, 1, 1))
+
+    assert anniversaries_due([entry], date(2024, 12, 30)) == [(entry, 10)]

@@ -130,6 +130,14 @@ def _thumbnails_for(items: list, thumbnail_for: Any) -> list[tuple[Any, bytes]]:
     return tiles
 
 
+def _same_day_in(day: date, year: int) -> date:
+    """The same calendar day in another year; 29 February falls back to the 28th."""
+    try:
+        return day.replace(year=year)
+    except ValueError:
+        return day.replace(year=year, day=28)
+
+
 def anniversaries_due(
     catalogue: Iterable[DiscoveredDay],
     on: date,
@@ -140,18 +148,23 @@ def anniversaries_due(
 
     Ten years reads louder than nine, which is the whole appeal of arriving
     unannounced.
+
+    The candidate is looked for in the years either side of the check as well
+    as its own. A day at the end of December has its anniversary a few days
+    before a check in early January, and trying only the check's own year put
+    that candidate 364 days away — while counting the years to the calendar
+    year rather than to the anniversary itself, which read eleven years for a
+    tenth.
     """
     due: list[tuple[DiscoveredDay, int]] = []
     for entry in catalogue:
-        years = on.year - entry.day.year
-        if years < 1:
-            continue
-        try:
-            this_year = entry.day.replace(year=on.year)
-        except ValueError:  # 29 February
-            this_year = entry.day.replace(year=on.year, day=28)
-        if abs((this_year - on).days) <= window_days:
-            due.append((entry, years))
+        for year in (on.year - 1, on.year, on.year + 1):
+            years = year - entry.day.year
+            if years < 1:
+                continue
+            if abs((_same_day_in(entry.day, year) - on).days) <= window_days:
+                due.append((entry, years))
+                break
     return sorted(
         due, key=lambda pair: (0 if pair[1] % 10 == 0 else 1 if pair[1] % 5 == 0 else 2, -pair[1])
     )
