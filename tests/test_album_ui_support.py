@@ -119,7 +119,7 @@ class TestAlbumModeState:
         state.memory_type = "album"
         state.album_id = "a-1"
         state.album_name = "Trip 2025"
-        state.date_range = None
+        state.date_ranges = []
 
         assert state.memory_type == "album"
         assert state.album_id == "a-1"
@@ -173,7 +173,7 @@ class TestScopeReadiness:
 
     def test_a_date_range_is_a_complete_scope(self):
         state = AppState()
-        state.date_range = object()
+        state.date_ranges = [object()]
 
         assert state.scope_is_selected
 

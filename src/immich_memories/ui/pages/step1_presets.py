@@ -347,7 +347,7 @@ def _render_album_picker() -> None:
         state.album_id = album_id
         state.album_name = albums.get(album_id)
         # Album mode discovers its own span from the assets, so nothing to set here.
-        state.date_range = None
+        state.date_ranges = []
         state.duration_mode = "auto"
 
     async def _load_albums() -> None:
@@ -535,7 +535,7 @@ def _render_trip_params() -> None:
         for k in ("trip_index", "trip_start", "trip_end", "location_name"):
             state.memory_preset_params.pop(k, None)
         state.detected_trips = []
-        state.date_range = None
+        state.date_ranges = []
         await _detect_trips_for_year(e.value)
 
     ui.select(
@@ -560,14 +560,13 @@ def _apply_preset_to_state(memory_type: MemoryType) -> None:
     if params.get("year") == 0:
         from datetime import date
 
-        state.date_range = custom_range(date(2000, 1, 1), date.today())
+        state.date_ranges = [custom_range(date(2000, 1, 1), date.today())]
         state.target_duration = 10
         return
 
     try:
         preset = create_preset(memory_type, **params)
-        if preset.date_ranges:
-            state.date_range = preset.date_ranges[0]
+        state.date_ranges = preset.date_ranges.copy()
         if preset.default_duration_seconds:
             state.target_duration = preset.default_duration_seconds / 60
             state.duration_mode = "auto"
@@ -576,6 +575,6 @@ def _apply_preset_to_state(memory_type: MemoryType) -> None:
             days = preset.date_ranges[0].days
             state.target_duration = max(1, min(10, round(days / 45)))
     except (ValueError, TypeError) as exc:
-        # Preset not fully configured yet (e.g. no person selected) — clear stale date range
-        state.date_range = None
+        # Preset not fully configured yet (e.g. no person selected) — clear stale ranges
+        state.date_ranges = []
         logger.debug("Preset not ready yet: %s", exc)

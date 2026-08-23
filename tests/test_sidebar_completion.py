@@ -26,7 +26,7 @@ class TestIsStepComplete:
     def test_step1_complete_when_config_and_date_range_set(self) -> None:
         state = AppState()
         state.config = object()  # type: ignore[assignment]
-        state.date_range = object()  # type: ignore[assignment]
+        state.date_ranges = [object()]  # type: ignore[assignment]
         assert _is_step_complete(state, 1) is True
 
     def test_step2_incomplete_when_no_clips_selected(self) -> None:

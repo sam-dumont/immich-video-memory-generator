@@ -116,9 +116,9 @@ class TestTitleFallbackIntegration:
         from immich_memories.ui.pages.pipeline_title import generate_title_after_pipeline
 
         state = AppState()
-        state.date_range = _make_date_range(
-            datetime(2024, 1, 1, tzinfo=UTC), datetime(2024, 12, 31, tzinfo=UTC)
-        )
+        state.date_ranges = [
+            _make_date_range(datetime(2024, 1, 1, tzinfo=UTC), datetime(2024, 12, 31, tzinfo=UTC))
+        ]
         state.memory_type = "year_in_review"
         state.config = _make_config(llm_model="")  # No LLM
 
@@ -134,9 +134,9 @@ class TestTitleFallbackIntegration:
         from immich_memories.ui.pages.pipeline_title import generate_title_after_pipeline
 
         state = AppState()
-        state.date_range = _make_date_range(
-            datetime(2024, 1, 1, tzinfo=UTC), datetime(2024, 12, 31, tzinfo=UTC)
-        )
+        state.date_ranges = [
+            _make_date_range(datetime(2024, 1, 1, tzinfo=UTC), datetime(2024, 12, 31, tzinfo=UTC))
+        ]
         state.memory_type = "year_in_review"
         state.analysis_cache = None
         state.config = _make_config(llm_model="omlx")
@@ -159,9 +159,9 @@ class TestTitleFallbackIntegration:
         from immich_memories.ui.pages.pipeline_title import generate_title_after_pipeline
 
         state = AppState()
-        state.date_range = _make_date_range(
-            datetime(2024, 1, 1, tzinfo=UTC), datetime(2024, 12, 31, tzinfo=UTC)
-        )
+        state.date_ranges = [
+            _make_date_range(datetime(2024, 1, 1, tzinfo=UTC), datetime(2024, 12, 31, tzinfo=UTC))
+        ]
         state.memory_type = "year_in_review"
         state.analysis_cache = None
         state.config = _make_config(llm_model="omlx")
@@ -186,9 +186,9 @@ class TestTitleFallbackIntegration:
         from immich_memories.ui.pages.pipeline_title import generate_title_after_pipeline
 
         state = AppState()
-        state.date_range = _make_date_range(
-            datetime(2024, 1, 1, tzinfo=UTC), datetime(2024, 12, 31, tzinfo=UTC)
-        )
+        state.date_ranges = [
+            _make_date_range(datetime(2024, 1, 1, tzinfo=UTC), datetime(2024, 12, 31, tzinfo=UTC))
+        ]
         state.memory_type = "year_in_review"
         state.analysis_cache = None
         state.config = _make_config(llm_model="omlx")
@@ -265,7 +265,7 @@ class TestGenerateTitleAfterPipeline:
         from immich_memories.ui.pages.pipeline_title import generate_title_after_pipeline
 
         state = AppState()
-        state.date_range = _make_date_range()
+        state.date_ranges = [_make_date_range()]
         state.config = _make_config(llm_model="")
 
         with patch(
@@ -283,7 +283,7 @@ class TestGenerateTitleAfterPipeline:
         from immich_memories.ui.pages.pipeline_title import generate_title_after_pipeline
 
         state = AppState()
-        state.date_range = None
+        state.date_ranges = []
         state.config = _make_config(llm_model="omlx")
 
         with patch(
@@ -300,7 +300,7 @@ class TestGenerateTitleAfterPipeline:
         from immich_memories.ui.pages.pipeline_title import generate_title_after_pipeline
 
         state = AppState()
-        state.date_range = _make_date_range()
+        state.date_ranges = [_make_date_range()]
         state.memory_type = "year"
         state.analysis_cache = None
         state.config = _make_config(llm_model="omlx")
@@ -330,7 +330,7 @@ class TestGenerateTitleAfterPipeline:
         from immich_memories.ui.pages.pipeline_title import generate_title_after_pipeline
 
         state = AppState()
-        state.date_range = _make_date_range()
+        state.date_ranges = [_make_date_range()]
         state.memory_type = "year"
         state.analysis_cache = None
         state.config = _make_config(llm_model="omlx")
@@ -353,7 +353,7 @@ class TestGenerateTitleAfterPipeline:
         from immich_memories.ui.pages.pipeline_title import generate_title_after_pipeline
 
         state = AppState()
-        state.date_range = _make_date_range()
+        state.date_ranges = [_make_date_range()]
         state.memory_type = "person"
         state.analysis_cache = None
         state.config = _make_config(llm_model="omlx")
@@ -381,7 +381,7 @@ class TestGenerateTitleAfterPipeline:
         from immich_memories.ui.pages.pipeline_title import generate_title_after_pipeline
 
         state = AppState()
-        state.date_range = _make_date_range()
+        state.date_ranges = [_make_date_range()]
         state.memory_type = "trip"
         state.clips = []
         state.analysis_cache = None
