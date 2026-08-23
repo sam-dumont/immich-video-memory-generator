@@ -86,6 +86,20 @@ def test_an_unreachable_model_is_not_a_verdict() -> None:
     assert verdict.title == ""
 
 
+def test_a_model_that_answers_with_nothing_is_not_a_verdict() -> None:
+    """A null content is documented mlx-vlm behaviour — llm_query retries it.
+
+    The JSON search sat outside the guard, so a None answer raised a
+    TypeError that travelled all the way out of a multi-hour scan.
+    """
+    # WHY: the LLM is the external boundary; here it answered with nothing.
+    with patch("immich_memories.analysis.special_day._ask_text_only", return_value=None):
+        verdict = ask_if_special([_asset(10)], llm_config=SimpleNamespace())
+
+    assert verdict.special is False
+    assert verdict.title == ""
+
+
 def test_the_threshold_sits_below_every_labelled_occasion() -> None:
     """Measured: birth 18h, wedding 12h, nephew 10h, track day 7h; worst negative 5h."""
     assert MIN_ACTIVE_HOURS <= 6

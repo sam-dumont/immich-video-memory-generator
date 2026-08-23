@@ -552,6 +552,13 @@ def ask_if_special(
         logger.debug("Special-day question failed: %s", type(exc).__name__)
         return SpecialDay(special=False)
 
+    # A null content is documented mlx-vlm behaviour, which is why llm_query
+    # retries. Silence is not a verdict either, and reading it as one ended a
+    # multi-hour scan on a TypeError.
+    if not raw:
+        logger.debug("Special-day question came back empty")
+        return SpecialDay(special=False)
+
     match = re.search(r"\{.*\}", raw, re.DOTALL)
     if not match:
         return SpecialDay(special=False)
