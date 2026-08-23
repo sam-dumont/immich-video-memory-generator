@@ -13,6 +13,7 @@ import pytest
 
 from immich_memories.automation.system_scheduler import (
     SchedulerInstallResult,
+    WorktreePinnedBinaryError,
     detect_platform,
     generate_crontab_entry,
     generate_launchd_plist,
@@ -22,6 +23,14 @@ from immich_memories.automation.system_scheduler import (
     show_scheduler_config,
     uninstall_scheduler,
 )
+
+
+def _checkout_binary(checkout: Path) -> str:
+    """Create the venv console script a `pip install -e .` leaves inside a checkout."""
+    binary = checkout / ".venv" / "bin" / "immich-memories"
+    binary.parent.mkdir(parents=True)
+    binary.write_text("#!/bin/sh\n")
+    return str(binary)
 
 
 class TestDetectPlatform:
@@ -256,6 +265,61 @@ class TestInstallScheduler:
         # WHY: _resolve_binary checks PATH
         with pytest.raises(FileNotFoundError):
             install_scheduler()
+
+
+class TestEphemeralBinaryRefusal:
+    # WHY: detect_platform reads the host OS
+    @patch("immich_memories.automation.system_scheduler.detect_platform", return_value="crontab")
+    def test_binary_inside_linked_worktree_is_refused(self, _plat: object, tmp_path: Path) -> None:
+        worktree = tmp_path / "agent-branch"
+        worktree.mkdir()
+        (worktree / ".git").write_text(
+            f"gitdir: {tmp_path}/canonical/.git/worktrees/agent-branch\n"
+        )
+        binary = _checkout_binary(worktree)
+
+        # WHY: shutil.which reads the real PATH
+        with (
+            patch("immich_memories.automation.system_scheduler.shutil.which", return_value=binary),
+            pytest.raises(WorktreePinnedBinaryError) as excinfo,
+        ):
+            install_scheduler()
+
+        message = str(excinfo.value)
+        assert str(worktree) in message
+        assert "--force" in message
+
+    # WHY: detect_platform reads the host OS
+    @patch("immich_memories.automation.system_scheduler.detect_platform", return_value="crontab")
+    def test_binary_inside_plain_clone_is_installed(self, _plat: object, tmp_path: Path) -> None:
+        """Self-hosters deploy by cloning — only the ephemeral worktree case is rejected."""
+        clone = tmp_path / "immich-video-memory-generator"
+        (clone / ".git").mkdir(parents=True)
+        binary = _checkout_binary(clone)
+
+        # WHY: shutil.which reads the real PATH
+        with patch("immich_memories.automation.system_scheduler.shutil.which", return_value=binary):
+            result = install_scheduler()
+
+        assert binary in result.activate_command
+
+    # WHY: detect_platform reads the host OS
+    @patch("immich_memories.automation.system_scheduler.detect_platform", return_value="crontab")
+    def test_force_schedules_the_worktree_binary_anyway(
+        self, _plat: object, tmp_path: Path
+    ) -> None:
+        worktree = tmp_path / "agent-branch"
+        worktree.mkdir()
+        (worktree / ".git").write_text(
+            f"gitdir: {tmp_path}/canonical/.git/worktrees/agent-branch\n"
+        )
+        binary = _checkout_binary(worktree)
+
+        # WHY: shutil.which reads the real PATH
+        with patch("immich_memories.automation.system_scheduler.shutil.which", return_value=binary):
+            result = install_scheduler(force=True)
+
+        assert binary in result.activate_command
 
 
 class TestUninstallScheduler:

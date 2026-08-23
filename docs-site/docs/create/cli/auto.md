@@ -219,6 +219,7 @@ once a day itself. See [automated generation](../recipes/automated-generation.md
 | `--cooldown` | int | `24` | Cooldown hours between runs |
 | `--uninstall` | flag | `false` | Remove installed scheduler |
 | `--show` | flag | `false` | Print config without installing |
+| `--force` | flag | `false` | Install even from a linked git worktree |
 
 | Platform | What gets created | How to activate |
 |----------|-------------------|-----------------|
@@ -227,6 +228,19 @@ once a day itself. See [automated generation](../recipes/automated-generation.md
 | **Other** | Prints a crontab entry | `crontab -e` |
 
 On macOS the plist uses `StartCalendarInterval`; launchd runs a missed job the next time the Mac wakes rather than waking it from sleep. If the Mac is asleep at the scheduled time, expect the run once it wakes.
+
+### Which binary gets scheduled
+
+The installer writes the absolute path of the `immich-memories` on your `PATH` into the plist,
+unit, or crontab line. The OS never re-resolves it, so whichever environment you install from is
+the one the nightly job runs forever.
+
+That is fine for a system install, a venv, or a plain clone. It is a trap inside a **linked git
+worktree** (`git worktree add`): a worktree stays frozen on the commit it was left at, or gets
+pruned, and the scheduled job keeps quietly running that stale code. `auto install` detects this
+(a linked worktree's root holds a `.git` *file* rather than a directory) and refuses, naming the
+worktree. Re-run it from your canonical checkout. `--force` schedules the worktree path anyway if
+you really mean it.
 
 ### Installing with a custom config
 

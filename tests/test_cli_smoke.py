@@ -14,6 +14,10 @@ from click.testing import CliRunner, Result
 import immich_memories
 from immich_memories.automation.candidates import CandidateCategory, MemoryCandidate
 from immich_memories.automation.models import AutoAction, AutoOutcome, AutoRejection, AutoRunResult
+from immich_memories.automation.system_scheduler import (
+    SchedulerInstallResult,
+    WorktreePinnedBinaryError,
+)
 from immich_memories.cli import main
 from immich_memories.config_loader import Config
 
@@ -360,6 +364,30 @@ class TestAutoRunOutput:
 
         assert result.exit_code == 0, result.output
         show.assert_called_once_with(9, 0, 24, config_path=config_path.resolve())
+
+    def test_worktree_pinned_install_fails_loudly_and_points_at_force(self) -> None:
+        """A scheduler pinned to scratch space is a silent stale-code bug, so refuse it."""
+        # WHY: install_scheduler touches launchd/systemd/crontab on the host
+        with patch(
+            "immich_memories.automation.system_scheduler.install_scheduler",
+            side_effect=WorktreePinnedBinaryError("/wt/.venv/bin/immich-memories", Path("/wt")),
+        ):
+            result = _invoke(["auto", "install"])
+
+        assert result.exit_code == 1
+        assert "/wt" in result.output
+        assert "--force" in result.output
+
+    def test_force_passes_the_override_through_to_the_installer(self) -> None:
+        # WHY: install_scheduler touches launchd/systemd/crontab on the host
+        with patch(
+            "immich_memories.automation.system_scheduler.install_scheduler",
+            return_value=SchedulerInstallResult(platform="crontab"),
+        ) as install:
+            result = _invoke(["auto", "install", "--force"])
+
+        assert result.exit_code == 0, result.output
+        assert install.call_args.kwargs["force"] is True
 
     def test_quiet_completed_emits_exactly_one_json_object(self, tmp_path: Path) -> None:
         output = tmp_path / "memory.mp4"

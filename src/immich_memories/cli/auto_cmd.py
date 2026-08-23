@@ -11,7 +11,7 @@ import click
 from rich.table import Table
 
 from immich_memories.automation.models import AutoOutcome, AutoRunResult
-from immich_memories.cli._helpers import console, print_info, print_success
+from immich_memories.cli._helpers import console, print_error, print_info, print_success
 from immich_memories.config_loader import Config
 
 
@@ -331,6 +331,11 @@ def status(ctx: click.Context, as_json: bool) -> None:
 @click.option("--cooldown", default=24, help="Cooldown hours between runs")
 @click.option("--uninstall", is_flag=True, help="Remove installed scheduler")
 @click.option("--show", is_flag=True, help="Show config without installing")
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Schedule the resolved binary even when it lives in a linked git worktree",
+)
 @click.pass_context
 def install(
     ctx: click.Context,
@@ -339,9 +344,11 @@ def install(
     cooldown: int,
     uninstall: bool,
     show: bool,
+    force: bool,
 ) -> None:
     """Install system-level scheduler (launchd/systemd/cron)."""
     from immich_memories.automation.system_scheduler import (
+        WorktreePinnedBinaryError,
         install_scheduler,
         show_scheduler_config,
         uninstall_scheduler,
@@ -365,10 +372,13 @@ def install(
         return
 
     try:
-        result = install_scheduler(hour, minute, cooldown, config_path=config_path)
+        result = install_scheduler(hour, minute, cooldown, config_path=config_path, force=force)
     except FileNotFoundError:
         print_info("immich-memories binary not found in PATH")
         return
+    except WorktreePinnedBinaryError as exc:
+        print_error(str(exc))
+        ctx.exit(1)
 
     print_success(f"Installed {result.platform} scheduler")
     for path in result.files_written:

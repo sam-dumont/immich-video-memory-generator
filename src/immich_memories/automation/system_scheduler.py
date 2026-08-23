@@ -38,6 +38,19 @@ _SYSTEMD_SERVICE = "immich-memories-auto.service"
 _SYSTEMD_TIMER = "immich-memories-auto.timer"
 
 
+class WorktreePinnedBinaryError(RuntimeError):
+    """The binary that would be persisted into the scheduler lives in a linked git worktree."""
+
+    def __init__(self, binary: str, worktree: Path) -> None:
+        super().__init__(
+            f"Refusing to schedule {binary}: it lives in the linked git worktree {worktree}. "
+            "A worktree is scratch space — it stays frozen on the commit it was left at, or "
+            "gets pruned — so the scheduled job would silently keep running stale code. "
+            "Install from your canonical checkout (or a system/user install) instead, "
+            "or pass --force to schedule this exact path anyway."
+        )
+
+
 def detect_platform() -> str:
     """Return 'launchd' on macOS, 'systemd' if systemctl exists, else 'crontab'."""
     if sys.platform == "darwin":
@@ -53,6 +66,25 @@ def _resolve_binary() -> str:
         msg = "immich-memories binary not found in PATH"
         raise FileNotFoundError(msg)
     return binary
+
+
+def _linked_worktree_root(binary: str) -> Path | None:
+    """Return the linked-worktree checkout holding this path, if it sits in one.
+
+    A linked worktree's root holds a `.git` *file* pointing at `.../worktrees/<name>`, where a
+    plain clone holds a `.git` directory and a submodule's `.git` file points at `.../modules/`.
+    """
+    for directory in Path(binary).parents:
+        marker = directory / ".git"
+        if not marker.is_file():
+            continue
+        try:
+            gitdir = marker.read_text(errors="replace").partition("gitdir:")[2].strip()
+        except OSError:
+            continue
+        if gitdir and "worktrees" in Path(gitdir).parts:
+            return directory
+    return None
 
 
 def _default_log_dir() -> Path:
@@ -261,10 +293,18 @@ def install_scheduler(
     schedule_minute: int = 0,
     cooldown_hours: int = 24,
     config_path: Path | None = None,
+    force: bool = False,
 ) -> SchedulerInstallResult:
-    """Detect platform, generate scheduler files, write them, and return result."""
+    """Detect platform, generate scheduler files, write them, and return result.
+
+    Raises WorktreePinnedBinaryError when the resolved binary sits inside a linked git worktree,
+    unless `force` is set — the OS never re-resolves the absolute path persisted here.
+    """
     platform = detect_platform()
     binary = _resolve_binary()
+    worktree = None if force else _linked_worktree_root(binary)
+    if worktree is not None:
+        raise WorktreePinnedBinaryError(binary, worktree)
 
     if platform == "launchd":
         return _install_launchd(
