@@ -206,12 +206,16 @@ def photo_cadence_seconds(assembly_clips: list[AssemblyClip]) -> float | None:
 
 
 def _mood_for_clips(assembly_clips: list[AssemblyClip]) -> str | None:
-    """Mood to pick bundled music by, taken from the clips when they carry one."""
-    for clip in assembly_clips:
-        mood = getattr(clip, "mood", None)
-        if mood:
-            return str(mood)
-    return None
+    """Mood to pick bundled music by, aggregated from what the analyser saw.
+
+    This used to read ``clip.mood``, a field AssemblyClip has never had, so it
+    was always None and the bundled library's mood folders never served their
+    purpose. The clips carry ``llm_emotion``, which the title stack already
+    aggregates into mood families.
+    """
+    from immich_memories.processing.scaling_utilities import aggregate_mood_from_clips
+
+    return aggregate_mood_from_clips(assembly_clips)
 
 
 def auto_generate_music(

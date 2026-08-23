@@ -27,8 +27,11 @@ The Docker image and the `all` extra already include it.
 
 Tracks cover five moods (calm, energetic, happy, nostalgic, tender) in acoustic
 and electronic styles, roughly 30 seconds each, and are repeated with a crossfade
-to fill longer videos. Selection follows the memory's detected mood, and a mood
-with no bundled folder falls back to another track rather than to silence.
+to fill longer videos. Selection follows the memory's detected mood: the per-clip
+emotions the vision LLM reported are aggregated into a dominant mood, and near
+neighbours share a folder — playful draws from happy, peaceful from calm,
+romantic from tender. A mood that maps to no folder at all, and a memory with no
+emotions at all, draw from the whole library rather than falling to silence.
 
 They were generated locally with ACE-Step 1.5 — nothing sampled from or derived
 from third-party recordings, so there is no attribution requirement. The models,

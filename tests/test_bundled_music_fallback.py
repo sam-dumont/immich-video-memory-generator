@@ -136,6 +136,93 @@ def test_bundled_music_is_mastered_before_use(library, tmp_path):
     assert seen, "bundled music should be mastered"
 
 
+def _emotional_clips(emotion, tmp_path):
+    from immich_memories.processing.assembly_config import AssemblyClip
+
+    return [
+        AssemblyClip(path=tmp_path / f"clip{i}.mp4", duration=3.0, llm_emotion=emotion)
+        for i in range(3)
+    ]
+
+
+def _bundled_choice(clips, library, tmp_path, monkeypatch):
+    from immich_memories.generate_music import resolve_music
+
+    # WHY: replaces the FFmpeg mastering pass so the pick keeps its folder.
+    monkeypatch.setattr(
+        "immich_memories.audio.mastering.master_music_track", lambda source, _dest: source
+    )
+    config = Config()
+    config.ace_step.enabled = False
+    config.musicgen.enabled = False
+    return resolve_music(
+        config=config,
+        music_path=None,
+        no_music=False,
+        assembly_clips=clips,
+        run_output_dir=tmp_path,
+        memory_type=None,
+        bundled_library=library,
+    ).path
+
+
+def test_the_analysers_emotion_reaches_the_bundled_mood_folder(library, tmp_path, monkeypatch):
+    """The five mood folders were inert: AssemblyClip carries llm_emotion, not mood.
+
+    Asserted over repeats because a mood-blind pick would land in the right
+    folder by chance often enough to pass a single draw.
+    """
+    clips = _emotional_clips("joyful", tmp_path)
+
+    folders = {
+        _bundled_choice(clips, library, tmp_path, monkeypatch).parent.name for _ in range(30)
+    }
+
+    assert folders == {"happy"}, "joyful belongs to the happy family"
+
+
+def test_clips_with_no_emotion_still_draw_from_the_whole_library(library, tmp_path, monkeypatch):
+    clips = _emotional_clips(None, tmp_path)
+
+    folders = {
+        _bundled_choice(clips, library, tmp_path, monkeypatch).parent.name for _ in range(30)
+    }
+
+    assert folders == {"calm", "happy"}
+
+
+@pytest.mark.parametrize(
+    ("emotion", "folder"),
+    [
+        # The vocabulary the analysis prompt asks the vision LLM for.
+        ("happy", "happy"),
+        ("calm", "calm"),
+        ("excited", "energetic"),
+        ("playful", "happy"),
+        ("joyful", "happy"),
+        ("peaceful", "calm"),
+        # Families with no folder of their own borrow the closest that has one.
+        ("romantic", "tender"),
+        ("wistful", "nostalgic"),
+    ],
+)
+def test_every_emotion_the_prompt_asks_for_reaches_a_shipped_folder(tmp_path, emotion, folder):
+    """A vocabulary drift here is what left all five folders unreachable."""
+    from immich_memories.processing.scaling_utilities import aggregate_mood_from_clips
+
+    shipped = tmp_path / "shipped"
+    for name in ("calm", "energetic", "happy", "nostalgic", "tender"):
+        (shipped / name).mkdir(parents=True)
+        (shipped / name / f"{name}.opus").write_bytes(b"")
+    mood = aggregate_mood_from_clips(_emotional_clips(emotion, tmp_path))
+
+    # Repeated because a mood with no folder falls to the flat pool, which would
+    # land on the right one by chance once in five.
+    folders = {bundled_track_for_mood(mood, library=shipped).parent.name for _ in range(20)}
+
+    assert folders == {folder}
+
+
 def test_a_user_supplied_track_is_left_alone(library, tmp_path):
     from immich_memories.generate_music import resolve_music
 
