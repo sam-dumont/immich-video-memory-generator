@@ -160,6 +160,21 @@ class TestACEStepBackend:
 
 
 class TestACEStepBackendV15Library:
+    @pytest.fixture(autouse=True)
+    def _plentiful_memory(self):
+        """Keep handler-wiring tests independent of whatever the runner has free.
+
+        `_init_pipeline` refuses a profile the host cannot hold, and a CI runner holds
+        very little — without this the memory guard, not the wiring, decides these tests.
+        The two tests that are about the guard patch this again with their own figure.
+        """
+        # WHY: available_memory_bytes reads the runner's real vm_stat / procfs
+        with patch(
+            "immich_memories.audio.generators.memory_budget.available_memory_bytes",
+            return_value=512 * 1024**3,
+        ):
+            yield
+
     @staticmethod
     def _fake_v15_modules(tmp_path: Path, captured: dict):
         package_root = tmp_path / "ace-step-1.5"
