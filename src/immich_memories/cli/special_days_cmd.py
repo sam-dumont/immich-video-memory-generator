@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import calendar
 import json
 from datetime import date
 from pathlib import Path
@@ -223,16 +224,19 @@ def _scan_library(
 
 
 def _month_bounds(year: int, month: int) -> tuple[date, date]:
-    """A month as [first day, first day of the next), so no day is homeless.
+    """A month as [first day, last day], both ends included.
 
-    Hardcoded month lengths put the leap day in the gap between February and
-    March, which made an event on one structurally undiscoverable. Naming the
-    last day does not fix it either: the bound is read at midnight, so the
-    last day of every month fell out of both queries — twelve days a year.
+    The search API serializes a bare date upper bound as the END of that day,
+    so this is a closed window and no day falls between two months. Naming the
+    first of the next month instead swallows it whole: December returned New
+    Year's Day, which was then catalogued under the following year and made
+    resume skip scanning that year at all.
+
+    calendar rather than hardcoded lengths, because February at 28 put the
+    leap day in the gap between the February and March queries and made an
+    event on one structurally undiscoverable.
     """
-    start = date(year, month, 1)
-    end = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
-    return start, end
+    return date(year, month, 1), date(year, month, calendar.monthrange(year, month)[1])
 
 
 def _month_of_assets(client: object, year: int, month: int) -> list:

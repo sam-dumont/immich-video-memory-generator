@@ -171,7 +171,10 @@ class _Library:
         if self.refuse:
             msg = "401 Unauthorized"
             raise RuntimeError(msg)
-        window = [a for a in self.assets if taken_after <= a.file_created_at.date() < taken_before]
+        # The search API serializes a bare date upper bound as the END of that
+        # day, so the window is closed at both ends. A double that compares it
+        # exclusively encodes a contract the server does not honour.
+        window = [a for a in self.assets if taken_after <= a.file_created_at.date() <= taken_before]
         start = (page - 1) * self.page_size
         chunk = window[start : start + self.page_size]
         more = len(window) > start + self.page_size
@@ -313,3 +316,17 @@ def test_media_the_camera_never_shot_is_gone_before_the_day_is_counted(monkeypat
         )
         == []
     )
+
+
+def test_december_does_not_reach_into_the_next_year() -> None:
+    """A bare date upper bound is read as the end of that day.
+
+    Naming the first of the next month therefore swallows it whole: a New
+    Year's Day event came back in the December query, was catalogued under the
+    following year, and resume then skipped scanning that year at all.
+    """
+    library = _Library([_on(2019, 12, 31), _on(2020, 1, 1)])
+
+    found = _year_of_assets(library, 2019)
+
+    assert [a.id for a in found] == ["a-20191231-00"]
