@@ -48,6 +48,23 @@ def test_a_long_but_thin_day_is_not_a_candidate() -> None:
     assert not candidate_days(day)
 
 
+def test_two_bursts_on_one_date_both_belong_to_that_day() -> None:
+    """A morning of preparation, a long quiet afternoon, then the evening.
+
+    Runs are separated by a five-hour gap and were then keyed by their start
+    date, so the second one replaced the first in the dictionary. Half the
+    day's photographs disappeared, and what was left could no longer clear
+    the bar the whole day clears easily.
+    """
+    morning = [_asset(h, m) for h in range(7, 11) for m in (0, 20, 40)]
+    evening = [_asset(h, m) for h in range(17, 21) for m in (0, 20, 40)]
+
+    days = candidate_days(morning + evening)
+
+    assert date(2021, 4, 4) in days, "the day was lost between its two halves"
+    assert len(days[date(2021, 4, 4)]) == len(morning) + len(evening)
+
+
 def test_the_sample_spreads_over_the_day_not_the_busiest_minute() -> None:
     """A sample drawn from one burst would describe the burst, not the day."""
     day = [_asset(9, m) for m in range(40)] + [_asset(h) for h in (12, 15, 18, 21)]

@@ -158,6 +158,11 @@ def _runs_of_activity(assets: Iterable) -> dict[date, list]:
     A wedding that goes past midnight, New Year, a birth that starts with
     contractions at ten in the evening — all of them are one occasion, and the
     calendar disagrees. Sleep is the honest boundary.
+
+    Two runs can still begin on the same date — a morning of preparation, a
+    long quiet afternoon, then the evening — and both belong to that date.
+    Assigning rather than accumulating dropped the earlier one entirely, so a
+    day could fall under a bar its two halves clear together.
     """
     dated = sorted(
         (a for a in assets if getattr(a, "file_created_at", None) is not None),
@@ -171,11 +176,11 @@ def _runs_of_activity(assets: Iterable) -> dict[date, list]:
             and (asset.file_created_at - current[-1].file_created_at).total_seconds()
             > _NIGHT_GAP_HOURS * 3600
         ):
-            runs[current[0].file_created_at.date()] = current
+            runs.setdefault(current[0].file_created_at.date(), []).extend(current)
             current = []
         current.append(asset)
     if current:
-        runs[current[0].file_created_at.date()] = current
+        runs.setdefault(current[0].file_created_at.date(), []).extend(current)
     return runs
 
 
