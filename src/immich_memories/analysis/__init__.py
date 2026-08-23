@@ -3,17 +3,13 @@
 import importlib as _importlib
 
 __all__ = [
-    # Duplicates
-    "DuplicateGroup",
+    # Duplicates — thumbnail clustering is the one that runs
     "ThumbnailCluster",
-    "find_duplicate_groups",
     "compute_video_hash",
     "compute_thumbnail_hash",
     "cluster_thumbnails",
     "deduplicate_by_thumbnails",
     # Pipeline
-    "ClusterManager",
-    "DuplicateCluster",
     # Smart Pipeline
     "SmartPipeline",
     "PipelineConfig",
@@ -49,15 +45,11 @@ _SUBMODULE_MAP = {
     "create_face_detector": "immich_memories.analysis.apple_vision",
     "detect_faces_vision": "immich_memories.analysis.apple_vision",
     "is_vision_available": "immich_memories.analysis.apple_vision",
-    "DuplicateGroup": "immich_memories.analysis.duplicates",
-    "ThumbnailCluster": "immich_memories.analysis.duplicates",
-    "cluster_thumbnails": "immich_memories.analysis.duplicates",
-    "compute_thumbnail_hash": "immich_memories.analysis.duplicates",
-    "compute_video_hash": "immich_memories.analysis.duplicates",
-    "deduplicate_by_thumbnails": "immich_memories.analysis.duplicates",
-    "find_duplicate_groups": "immich_memories.analysis.duplicates",
-    "ClusterManager": "immich_memories.analysis.pipeline",
-    "DuplicateCluster": "immich_memories.analysis.pipeline",
+    "ThumbnailCluster": "immich_memories.analysis.thumbnail_clustering",
+    "cluster_thumbnails": "immich_memories.analysis.thumbnail_clustering",
+    "compute_thumbnail_hash": "immich_memories.analysis.thumbnail_clustering",
+    "compute_video_hash": "immich_memories.analysis.duplicate_hashing",
+    "deduplicate_by_thumbnails": "immich_memories.analysis.thumbnail_clustering",
     "PipelinePhase": "immich_memories.analysis.progress",
     "PipelineProgress": "immich_memories.analysis.progress",
     "ProgressTracker": "immich_memories.analysis.progress",

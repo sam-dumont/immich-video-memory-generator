@@ -526,11 +526,6 @@ class VideoAnalysisCache:
 
             return uncached
 
-    def get_all_hashes(self) -> dict[str, str]:
-        with self._get_connection() as conn:
-            rows = conn.execute("SELECT asset_id, full_hash FROM hash_index").fetchall()
-            return {row["asset_id"]: row["full_hash"] for row in rows}
-
     def get_stats(self) -> dict:
         with self._get_connection() as conn:
             total = conn.execute("SELECT COUNT(*) FROM video_analysis").fetchone()[0]

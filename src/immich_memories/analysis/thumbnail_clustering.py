@@ -113,6 +113,43 @@ def _build_similarity_pairs(
     return similar_pairs
 
 
+def _union_find_groups(items: list[str], pairs: list[tuple[str, str]]) -> list[list[str]]:
+    """Group items using union-find based on pairs.
+
+    Args:
+        items: List of item IDs.
+        pairs: List of (id1, id2) pairs that should be grouped together.
+
+    Returns:
+        List of groups, where each group is a list of IDs.
+    """
+    parent: dict[str, str] = {item: item for item in items}
+
+    def find(x: str) -> str:
+        if parent[x] != x:
+            parent[x] = find(parent[x])
+        return parent[x]
+
+    def union(x: str, y: str) -> None:
+        px, py = find(x), find(y)
+        if px != py:
+            parent[px] = py
+
+    # Union paired items
+    for id1, id2 in pairs:
+        union(id1, id2)
+
+    # Group by root
+    groups: dict[str, list[str]] = {}
+    for item in items:
+        root = find(item)
+        if root not in groups:
+            groups[root] = []
+        groups[root].append(item)
+
+    return list(groups.values())
+
+
 def _groups_to_clusters(
     groups: list[list[str]],
     clips: list[VideoClipInfo],
@@ -211,8 +248,6 @@ def cluster_thumbnails(
     Returns:
         List of thumbnail clusters.
     """
-    from .duplicates import _union_find_groups
-
     if threshold is None:
         threshold = duplicate_hash_threshold
 

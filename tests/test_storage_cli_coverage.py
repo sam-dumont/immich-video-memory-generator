@@ -264,27 +264,6 @@ class TestNeedsReanalysisVersioning:
         assert cache.needs_reanalysis(asset, max_age_days=365)
 
 
-class TestGetAllHashes:
-    """get_all_hashes behavior."""
-
-    @pytest.fixture
-    def cache(self, tmp_path):
-        return VideoAnalysisCache(tmp_path / "test.db")
-
-    def test_returns_all_stored_hashes(self, cache):
-        """All perceptual hashes stored via save_analysis are returned."""
-        a1 = _make_asset("a1")
-        a2 = _make_asset("a2")
-        cache.save_analysis(asset=a1, perceptual_hash="aaaa1111bbbb2222")
-        cache.save_analysis(asset=a2, perceptual_hash="cccc3333dddd4444")
-        hashes = cache.get_all_hashes()
-        assert hashes == {"a1": "aaaa1111bbbb2222", "a2": "cccc3333dddd4444"}
-
-    def test_empty_when_no_hashes(self, cache):
-        """Returns empty dict when no hashes have been stored."""
-        assert cache.get_all_hashes() == {}
-
-
 class TestFindSimilarExclusion:
     """find_similar_videos exclude_asset_id behavior."""
 
