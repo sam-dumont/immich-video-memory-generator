@@ -13,7 +13,7 @@ import logging
 import math
 from collections import defaultdict
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 if TYPE_CHECKING:
     from immich_memories.analysis.smart_pipeline import ClipWithSegment
@@ -28,6 +28,26 @@ _EVENT_CAP_MULTIPLE = 3
 _EVENT_CLIPS_PER_PERIOD = 3
 _MAX_EVENT_PERIODS = 2
 _MIN_EVENT_PEOPLE_SHARE = 0.10
+
+
+class PhotoDayCaps(NamedTuple):
+    """What a single day may contribute to a cut, in photos.
+
+    The two numbers are one rule and travel together: a dense day may hold
+    more than an ordinary one, but no day passes the ceiling. Handing the
+    preference downstream on its own is how the event multiple came to triple
+    the very ceiling it sits next to — forty clips over four days meant a
+    ten-photo preference and a thirty-photo event day, three quarters of the
+    cut from one day.
+    """
+
+    preferred: int
+    ceiling: int
+
+
+_DEFAULT_PHOTO_DAY_CAPS = PhotoDayCaps(
+    _MAX_PHOTOS_PER_DAY, _MAX_PHOTOS_PER_DAY * _EVENT_CAP_MULTIPLE
+)
 
 
 def _people_share(clips: list[ClipWithSegment]) -> float:
@@ -120,21 +140,22 @@ def _fill_gap_periods(
 
 def _photo_caps_per_day(
     by_day: dict[str, list[ClipWithSegment]],
-    base_cap: int,
+    caps: PhotoDayCaps,
 ) -> dict[str, int]:
     """Raise the per-day photo cap for days holding far more than the norm.
 
     A flat cap erases the signal selection depends on: on a real November the
     busiest day — 129 Live Photos inside one hour — reached the selector
     holding two clips, indistinguishable from a day with two idle snapshots,
-    and the recap skipped the event entirely (#488).
+    and the recap skipped the event entirely (#488). The ceiling is the outer
+    bound on that bonus, not its input.
     """
     events = _event_periods(by_day)
-    event_cap = base_cap * _EVENT_CAP_MULTIPLE
-    return {day: event_cap if day in events else base_cap for day in by_day}
+    event_cap = min(caps.preferred * _EVENT_CAP_MULTIPLE, caps.ceiling)
+    return {day: event_cap if day in events else caps.preferred for day in by_day}
 
 
-def photos_per_day_for(target_clips: int, active_days: int) -> int:
+def photos_per_day_for(target_clips: int, active_days: int) -> PhotoDayCaps:
     """How many photos a day may contribute before it counts as flooding.
 
     "Flooding" is relative to how many slots the memory has. Two a day suits a
@@ -145,19 +166,19 @@ def photos_per_day_for(target_clips: int, active_days: int) -> int:
     candidates reached selection, 49 of the 55 final clips came from backfill.
     """
     if target_clips <= 0 or active_days <= 0:
-        return _MAX_PHOTOS_PER_DAY
+        return _DEFAULT_PHOTO_DAY_CAPS
     # Twice the per-day share, so selection chooses rather than merely accepts,
     # but never more than a quarter of the whole cut from one day — six photos
     # of one race day in a seven-clip recap was the failure that put this cap
     # here in the first place.
     headroom = math.ceil(target_clips / active_days) * 2
-    one_day_ceiling = int(target_clips * _MAX_SHARE_FROM_ONE_DAY)
-    return max(_MAX_PHOTOS_PER_DAY, min(headroom, one_day_ceiling))
+    ceiling = max(_MAX_PHOTOS_PER_DAY, int(target_clips * _MAX_SHARE_FROM_ONE_DAY))
+    return PhotoDayCaps(preferred=min(headroom, ceiling), ceiling=ceiling)
 
 
 def _partition_photos_per_day(
     clips: list[ClipWithSegment],
-    max_per_day: int = _MAX_PHOTOS_PER_DAY,
+    caps: PhotoDayCaps = _DEFAULT_PHOTO_DAY_CAPS,
 ) -> tuple[list[ClipWithSegment], list[ClipWithSegment]]:
     """Partition same-day photos into preferred and duration-fallback pools.
 
@@ -178,19 +199,20 @@ def _partition_photos_per_day(
         day_key = p.clip.asset.file_created_at.strftime("%Y-%m-%d")
         by_day[day_key].append(p)
 
-    caps = _photo_caps_per_day(by_day, max_per_day)
+    day_caps = _photo_caps_per_day(by_day, caps)
     kept_photos: list[ClipWithSegment] = []
     overflow_photos: list[ClipWithSegment] = []
     for day_key in sorted(by_day):
         day_photos = sorted(by_day[day_key], key=lambda c: c.score, reverse=True)
-        cap = caps[day_key]
+        cap = day_caps[day_key]
         kept_photos.extend(day_photos[:cap])
         overflow_photos.extend(day_photos[cap:])
 
     if overflow_photos:
         logger.info(
             f"Same-day photo preference: reserved {len(overflow_photos)} overflow photos "
-            f"for duration backfill (preferred max {max_per_day}/day)"
+            f"for duration backfill (preferred max {caps.preferred}/day, "
+            f"ceiling {caps.ceiling})"
         )
 
     return videos + kept_photos, overflow_photos

@@ -16,6 +16,7 @@ from immich_memories.analysis.clip_distribution import (
     _event_periods_of,
     _partition_photos_per_day,
     enforce_photo_cap,
+    photos_per_day_for,
 )
 from immich_memories.analysis.clip_refiner import (
     ClipRefiner,
@@ -148,6 +149,24 @@ def test_event_day_keeps_more_photos_than_an_ordinary_day() -> None:
     on_ordinary_day = [c for c in kept if c.clip.asset.file_created_at.day == 27]
     assert len(on_event_day) > len(on_ordinary_day)
     assert overflow, "the rest stays available for duration backfill"
+
+
+def test_an_event_day_never_takes_more_than_a_quarter_of_the_cut() -> None:
+    """The event multiple must not outrun the ceiling standing next to it.
+
+    Forty clips over four days puts the per-day preference at ten — already a
+    quarter of the cut. Tripling that for the event day handed one day thirty
+    of the forty slots, defeating the over-representation rule the ceiling
+    exists to state.
+    """
+    pool = [_photo(1, i, 0.30) for i in range(60)]
+    for day in (2, 3, 4):
+        pool += [_photo(day, i, 0.40) for i in range(4)]
+
+    kept, _overflow = _partition_photos_per_day(pool, photos_per_day_for(40, 4))
+
+    on_event_day = [c for c in kept if c.clip.asset.file_created_at.day == 1]
+    assert len(on_event_day) == 10, "the event day fills the ceiling and stops there"
 
 
 def test_flat_month_gives_every_day_the_same_cap() -> None:
