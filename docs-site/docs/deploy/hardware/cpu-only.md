@@ -60,10 +60,26 @@ On a modern CPU (4+ cores), expect roughly:
 
 - **Encoding**: 0.2-0.5x realtime for 1080p H.264 (a 3-minute video takes 6-15 minutes)
 - **Analysis**: Similar speed (most analysis is CPU-bound regardless of GPU)
-- **Title rendering**: Near-instant with PIL (no GPU kernel compilation)
+- **Title rendering**: the dominant cost — see below
 - **Transitions**: Negligible difference for typical clip counts
 
-The biggest slowdown without a GPU is video encoding. If encoding speed matters, consider a machine with hardware encoding support.
+### Title rendering is the bottleneck, not encoding
+
+This page used to say title rendering was near-instant on CPU. It is the opposite, and the
+number is worth knowing before you size a box.
+
+Measured 2026-08-23 in the container with `--cpus=2`, generating 18 seconds of output:
+**title rendering took ~263 s of a ~339 s assembly**, and assembly was ~94% of the whole run.
+Titles are seconds of video, but every frame of them is composed pixel by pixel on the CPU,
+while the clips around them are a decode-and-encode the CPU is comparatively good at.
+
+The practical consequences:
+
+- A **shorter or simpler title** is the cheapest large win available on a CPU-only box.
+- Rendering cost scales with title **duration and resolution**, not with how many clips the
+  memory has — a 12-clip memory and a 40-clip memory pay nearly the same title bill.
+- Hardware encoding helps the encode, which is the smaller half. Buy a GPU for the titles
+  before you buy one for the encoder.
 
 ## Preflight check
 

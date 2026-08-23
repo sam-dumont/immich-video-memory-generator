@@ -163,7 +163,46 @@ Videos, live photos, and regular photos all compete in a single selection pool. 
    c. Scale to target duration (sole monthly representatives protected)
    d. Temporal dedup (same-moment clips across ALL types), with the window measured against the memory's span
    e. Prefer variety, then progressively relax preferences when the timeline is short
+7. STABILISE: verify → judge → review, looping until the cut stops changing
 ```
+
+### Phase 5: the cut has to survive being looked at
+
+Selecting is not the last word. A clip can reach the final cut without anything having actually
+looked at it, and a cut that scores well can still be repetitive. Three stages run after
+selection, and every drop re-runs selection — which admits new clips that nothing has judged
+yet, which is why they loop.
+
+**Verify** catches clips nobody looked at. Two ways that happens: the clip carries a metadata
+guess instead of a real score, or it has a real visual score but no content analysis, so the
+review would be handed a bare line and — correctly — told never to drop a clip for missing
+information. Either way the clip is analysed for real and selection re-runs. Cold, that is a
+download and a full analysis; warm, it is a cache hit. Photographs are never queued here: their
+real look is the photo scorer, which has already run.
+
+**Judge** is mechanical and cheap — thresholds, no model. A non-favourite scoring below
+`judge_floor_score` (0.30) never ships. Separately, the chronologically last clip cannot be both
+the weakest in the cut and below `judge_boundary_ratio` (0.6) of the mean, because a video should
+not end on its worst shot. Favourites are exempt from both rules: the user chose them, and
+"start with all favourites" is the selection's oldest contract.
+
+**Review** is one LLM call over the whole cut — every clip's description, emotion, setting,
+subjects, audio categories, date and place, in timeline order. It is asked which clips are
+redundant, which subject is crowding out the rest, which clip clashes, and which is not a memory
+at all. It can drop at most 20% of the selection in one pass, never a favourite, and any failure
+or unparseable answer drops nothing. It is **optional by construction** — with no LLM configured
+it returns no drops and the selection is unchanged.
+
+`analysis.max_refinement_passes` (default 10) bounds each of these loops. It is the single
+largest multiplier on what a warm run costs, because each review pass is an uncached LLM call —
+the per-clip analysis is cached, but the review reads the current selection, which changes every
+round, so there is nothing to key a cache on. Lower it with
+`advanced.analysis.max_refinement_passes` or `--refinement-passes`; `preset: fast` uses 3.
+
+If the review is still dropping clips when the budget runs out, one final review runs that drops
+without refilling — a cut four seconds short beats a cut that ends on a photo of a shelf.
+
+See [Pipeline overview](./pipeline-overview.md) for how this sits in the run as a whole.
 
 The Step 2 checkboxes define the source pool. **Fast** means “deeply analyze fewer videos,” not
 “throw the rest away.” The completion summary reports eligible media, videos deeply analyzed, and

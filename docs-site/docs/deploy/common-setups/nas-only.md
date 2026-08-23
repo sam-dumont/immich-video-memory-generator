@@ -85,9 +85,33 @@ If Immich runs on the same Docker network, use the container name (`immich-serve
 - **Scheduling**: `immich-memories auto install` cannot install a cron job inside the container. Run it from the NAS host's scheduler instead: `docker exec immich-memories immich-memories auto run --quiet --cooldown 24` (daily is plenty)
 - **Photo support**: Ken Burns animations, face-aware pan, blur backgrounds
 
+### What still curates without an LLM
+
+Worth being precise about, because "no LLM" reads like "no curation" and that is not what
+happens. Only the final review is gated on a model — the rest of the loop is arithmetic over
+data Immich and the analyzer already produced:
+
+- **The verify pass.** A clip can reach the cut carrying a metadata *guess* for a score rather
+  than a real one. Verify finds those, analyses them properly, and re-runs selection. This runs
+  regardless of whether an LLM is configured.
+- **The mechanical judge.** A non-favourite scoring below the floor never ships, and the memory
+  cannot end on a clip that is both its weakest and well under the average — a video should not
+  end on its worst shot. Pure thresholds, no model.
+- **Event-vs-catalogue detection.** A dense day is only promoted as an event if Immich
+  recognised people in enough of it. This is what stops 130 photos of an empty apartment (a
+  property viewing) from beating the month's real days. It reads Immich's existing face
+  recognition, so it costs nothing extra.
+- **Favourites first.** Every favourite in range is taken before anything competes on score,
+  and favourites are exempt from the judge's floor.
+- **Adaptive coverage.** Every month or week in range is guaranteed at least one clip, and a
+  sole representative of a period is protected when the cut is scaled down to fit.
+
+What you actually give up is redundancy detection across the finished cut — two near-identical
+moments can both survive, because nothing read their descriptions side by side.
+
 ## What doesn't work
 
-- **LLM content analysis**: needs a separate LLM server (mlx-vlm, Ollama, vLLM). Without it, scoring uses motion + faces + audio only: still good, just not as context-aware.
+- **LLM content analysis**: needs a separate LLM server (mlx-vlm, Ollama, vLLM). Without it the pipeline loses the holistic review — the one pass that reads every clip's description together and spots the same birthday candles twice. Everything else in the curation loop still runs; see below.
 - **AI music generation**: MusicGen and ACE-Step need GPU servers. Use custom music upload instead.
 - **GPU encoding**: NAS CPUs (Celeron, Atom, low-end Xeon) don't have usable GPU encoders. Encoding is CPU-only via libx264.
 - **Taichi GPU title renderer**: falls back to PIL. Title screens still look good, just without particle effects and animated gradients.
