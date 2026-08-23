@@ -323,7 +323,7 @@ class VideoAnalysisCache:
             ("llm_description", "TEXT"),
             ("llm_emotion", "TEXT"),
             ("llm_setting", "TEXT"),
-            ("llm_activities", "TEXT"),  # JSON array; no longer written, never read
+            ("llm_activities", "TEXT"),  # JSON array
             ("llm_subjects", "TEXT"),  # JSON array
             ("llm_interestingness", "REAL"),
             ("llm_quality", "REAL"),

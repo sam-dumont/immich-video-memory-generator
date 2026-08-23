@@ -63,6 +63,7 @@ def _make_cached_segment(
     llm_emotion: str | None = None,
     llm_setting: str | None = None,
     llm_subjects: list[str] | None = None,
+    llm_activities: list[str] | None = None,
     llm_interestingness: float | None = None,
     llm_quality: float | None = None,
     audio_categories: list[str] | None = None,
@@ -77,6 +78,7 @@ def _make_cached_segment(
     seg.llm_emotion = llm_emotion
     seg.llm_setting = llm_setting
     seg.llm_subjects = llm_subjects
+    seg.llm_activities = llm_activities
     seg.llm_interestingness = llm_interestingness
     seg.llm_quality = llm_quality
     seg.audio_categories = audio_categories
@@ -689,6 +691,42 @@ class TestRunAnalysisWithFallback:
 
 
 class TestReusableAnalysisServices:
+    def test_a_fresh_analysis_hands_the_activities_to_the_clip(self, tmp_path) -> None:
+        """The cached path and the fresh path build the same payload by hand,
+        and only the cached one listed activities — so a clip analysed this run
+        knew nothing the same clip knew on the next run (#518)."""
+        from immich_memories.analysis.analyzer_models import ScoredSegment
+        from immich_memories.analysis.cache_projection import apply_semantic_payload
+        from immich_memories.cache.database import VideoAnalysisCache
+
+        cache = VideoAnalysisCache(tmp_path / "cache.db")
+        analyzer = ClipAnalyzer(
+            PipelineConfig(),
+            MagicMock(),
+            cache,
+            MagicMock(),
+            app_config=Config(),
+        )
+        # WHY: replaces the unified analyzer, which shells out to FFmpeg and
+        # calls the vision LLM over the network.
+        unified = MagicMock()
+        unified.analyze.return_value = [
+            ScoredSegment(
+                start_time=1.0,
+                end_time=5.0,
+                total_score=0.8,
+                llm_description="a rider on a climb",
+                llm_activities=["cycling"],
+            )
+        ]
+        analyzer._cached_unified_analyzer = unified
+        clip = make_clip("fresh-activities", duration=10.0)
+
+        *_, payload = analyzer._run_unified_analysis(clip, MagicMock(), MagicMock(), 10.0)
+        apply_semantic_payload(clip, payload)
+
+        assert clip.llm_activities == ["cycling"]
+
     def test_successful_semantic_analysis_records_the_exact_model(self, tmp_path) -> None:
         from immich_memories.analysis.analyzer_models import ScoredSegment
         from immich_memories.cache.database import VideoAnalysisCache

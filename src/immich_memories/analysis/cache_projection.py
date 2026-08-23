@@ -51,6 +51,7 @@ def semantic_payload_from_segment(segment: CachedSegment) -> dict[str, object] |
         "emotion": segment.llm_emotion,
         "setting": segment.llm_setting,
         "subjects": segment.llm_subjects,
+        "activities": segment.llm_activities,
         "interestingness": segment.llm_interestingness,
         "quality": segment.llm_quality,
     }
@@ -69,6 +70,7 @@ def apply_semantic_payload(
     clip.llm_emotion = cast(str | None, payload.get("emotion"))
     clip.llm_setting = cast(str | None, payload.get("setting"))
     clip.llm_subjects = cast(list[str] | None, payload.get("subjects"))
+    clip.llm_activities = cast(list[str] | None, payload.get("activities"))
     clip.llm_interestingness = cast(float | None, payload.get("interestingness"))
     clip.llm_quality = cast(float | None, payload.get("quality"))
 

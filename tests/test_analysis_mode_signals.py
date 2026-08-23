@@ -7,6 +7,9 @@ schema goes in before the periods people care about.
 
 from __future__ import annotations
 
+from pathlib import Path
+from unittest.mock import MagicMock
+
 import pytest
 
 from immich_memories.analysis.llm_response_parser import (
@@ -79,6 +82,32 @@ class TestActivitiesReachTheDatabase:
     """The column existed with 0 of 10378 rows populated: the field was
     absent from the prompt AND from the segment INSERT."""
 
+    def test_the_analyzer_puts_the_parsed_activities_on_the_segment(self):
+        """#485 pays prompt tokens for the answer; nothing copied it onto the
+        segment, so the INSERT read None and every row was NULL again (#518)."""
+        from immich_memories.analysis.analyzer_models import ScoredSegment
+        from immich_memories.analysis.unified_analyzer import UnifiedSegmentAnalyzer
+        from immich_memories.config_models import AnalysisConfig, AudioContentConfig
+
+        # WHY: replaces the vision LLM, an external network service.
+        content = MagicMock()
+        content.analyze_segment.return_value = ContentAnalysis(
+            description="a rider on a climb",
+            activities=["cycling"],
+            confidence=0.9,
+        )
+        analyzer = UnifiedSegmentAnalyzer(
+            scorer=MagicMock(content_min_confidence=0.5),
+            content_analyzer=content,
+            audio_content_config=AudioContentConfig(),
+            analysis_config=AnalysisConfig(),
+        )
+        segment = ScoredSegment(start_time=0.0, end_time=3.0)
+
+        analyzer._score_content(Path("/fake.mov"), 0.0, 3.0, segment=segment)  # noqa: SLF001
+
+        assert segment.llm_activities == ["cycling"]
+
     def test_a_segment_activities_survive_the_round_trip(self, tmp_path, mock_asset):
         from immich_memories.analysis.analyzer_models import ScoredSegment
         from immich_memories.cache.database import VideoAnalysisCache
@@ -93,6 +122,28 @@ class TestActivitiesReachTheDatabase:
 
         assert loaded is not None
         assert loaded.segments[0].llm_activities == ["cycling"]
+
+    def test_activities_come_back_out_of_the_cache_onto_the_clip(self, tmp_path):
+        """The projection is what hands cached semantics to review and selection.
+        It copied every other semantic field and skipped this one, so a cached
+        rerun saw nothing even once the column was populated (#518)."""
+        from immich_memories.analysis.analyzer_models import ScoredSegment
+        from immich_memories.analysis.cache_projection import apply_cached_segment
+        from immich_memories.cache.database import VideoAnalysisCache
+        from tests.conftest import make_asset, make_clip
+
+        cache = VideoAnalysisCache(tmp_path / "cache.db")
+        segment = ScoredSegment(start_time=0.0, end_time=5.0)
+        segment.llm_description = "a rider on a climb"
+        segment.llm_activities = ["cycling"]
+        cache.save_analysis(make_asset("act-projected"), segments=[segment])
+
+        restored = cache.get_analysis("act-projected")
+        assert restored is not None
+        clip = make_clip("act-projected")
+        apply_cached_segment(clip, restored.segments[0])
+
+        assert clip.llm_activities == ["cycling"]
 
 
 @pytest.fixture

@@ -445,6 +445,7 @@ class ClipAnalyzer:
                     "emotion": best_segment.llm_emotion,
                     "setting": best_segment.llm_setting,
                     "subjects": best_segment.llm_subjects,
+                    "activities": best_segment.llm_activities,
                     "interestingness": best_segment.llm_interestingness,
                     "quality": best_segment.llm_quality,
                 }

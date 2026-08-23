@@ -614,6 +614,7 @@ class UnifiedSegmentAnalyzer:
                 segment.llm_emotion = analysis.emotion
                 segment.llm_setting = analysis.setting
                 segment.llm_subjects = analysis.subjects
+                segment.llm_activities = analysis.activities
                 segment.llm_interestingness = analysis.interestingness
                 segment.llm_quality = analysis.quality
 
