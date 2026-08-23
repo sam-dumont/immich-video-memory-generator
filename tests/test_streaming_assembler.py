@@ -418,7 +418,7 @@ def _vf_for_scale_mode(mode: str) -> str:
 
 def test_the_configurable_scale_modes_render_differently() -> None:
     """Two accepted modes that build the same chain would mean one is a phantom."""
-    from immich_memories.config_models import DefaultsConfig
+    from immich_memories.config_models_render import DefaultsConfig
 
     modes = [mode for mode in ("blur", "fit") if DefaultsConfig(scale_mode=mode).scale_mode == mode]
     chains = {_vf_for_scale_mode(mode) for mode in modes}

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import io
 
-from immich_memories.config_models import PhotoConfig
+from immich_memories.config_models_render import PhotoConfig
 from immich_memories.photos.photo_pipeline import _apply_frame_quality
 from tests.conftest import make_asset
 

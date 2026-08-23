@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 if TYPE_CHECKING:
     import numpy as np
 
-    from immich_memories.config_models import TranscriptionConfig
+    from immich_memories.config_models_analysis import TranscriptionConfig
 
 logger = logging.getLogger(__name__)
 

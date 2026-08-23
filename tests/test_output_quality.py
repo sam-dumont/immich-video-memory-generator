@@ -21,7 +21,7 @@ class TestQualityToCrf:
         assert quality_to_crf("low") >= 24
 
     def test_default_is_high(self):
-        from immich_memories.config_models import OutputConfig
+        from immich_memories.config_models_render import OutputConfig
 
         config = OutputConfig()
         assert config.quality == "high"

@@ -21,7 +21,8 @@ if TYPE_CHECKING:
     from immich_memories.api.models import VideoClipInfo
     from immich_memories.cache.database import VideoAnalysisCache
     from immich_memories.cache.video_cache import CacheBatch, VideoDownloadCache
-    from immich_memories.config_models import AnalysisConfig, CacheConfig, ContentAnalysisConfig
+    from immich_memories.config_models import CacheConfig
+    from immich_memories.config_models_analysis import AnalysisConfig, ContentAnalysisConfig
 
 logger = logging.getLogger(__name__)
 
@@ -167,7 +168,7 @@ class PreviewBuilder:
         """Run legacy analysis using a bound or standalone reusable analyzer."""
         from immich_memories.analysis.scoring import SceneScorer
         from immich_memories.analysis.unified_analyzer import UnifiedSegmentAnalyzer
-        from immich_memories.config_models import AudioContentConfig
+        from immich_memories.config_models_analysis import AudioContentConfig
 
         a_config = self._analysis_config
         min_segment = a_config.min_segment_duration

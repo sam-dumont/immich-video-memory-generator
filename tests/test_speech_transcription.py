@@ -9,7 +9,7 @@ from unittest.mock import patch
 import numpy as np
 
 from immich_memories.config_loader import Config
-from immich_memories.config_models import TranscriptionConfig
+from immich_memories.config_models_analysis import TranscriptionConfig
 from immich_memories.speech.transcription import (
     Transcript,
     WhisperCppTranscriber,

@@ -17,7 +17,7 @@ from immich_memories.analysis.smart_pipeline import PipelineConfig, SmartPipelin
 from immich_memories.api.compatibility import ResolvedApiVersion
 from immich_memories.api.immich import ImmichAuthError, SyncImmichClient
 from immich_memories.api.models import AssetType, VideoClipInfo
-from immich_memories.config_models import AnalysisConfig
+from immich_memories.config_models_analysis import AnalysisConfig
 from immich_memories.timeperiod import calendar_year
 from immich_memories.ui.pages.step2_loading import MIN_CLIP_DURATION, _build_clips
 from tests.e2e.fake_immich import FakeImmichServer

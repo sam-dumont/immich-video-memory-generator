@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from immich_memories.api.models import VideoClipInfo
-    from immich_memories.config_models import AnalysisConfig, ContentAnalysisConfig
+    from immich_memories.config_models_analysis import AnalysisConfig, ContentAnalysisConfig
 
 logger = logging.getLogger(__name__)
 
@@ -209,7 +209,7 @@ def analyze_clip_for_highlight(
     """
     from immich_memories.analysis.scoring import SceneScorer
     from immich_memories.analysis.unified_analyzer import UnifiedSegmentAnalyzer
-    from immich_memories.config_models import AudioContentConfig
+    from immich_memories.config_models_analysis import AudioContentConfig
 
     scorer = SceneScorer(
         content_analysis_config=content_analysis_config,

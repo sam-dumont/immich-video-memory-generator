@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from immich_memories.config_models import normalize_scale_mode
+from immich_memories.config_models_render import normalize_scale_mode
 from immich_memories.generate_privacy import (
     extract_trip_pins,
     generate_trip_title_text,

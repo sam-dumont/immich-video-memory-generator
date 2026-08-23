@@ -15,7 +15,7 @@ from unittest.mock import patch
 import numpy as np
 
 from immich_memories.analysis.speech_analysis import SpeechAnalysisService
-from immich_memories.config_models import AudioContentConfig, SpeechConfig
+from immich_memories.config_models_analysis import AudioContentConfig, SpeechConfig
 from immich_memories.speech.models import SpeechRegion
 
 

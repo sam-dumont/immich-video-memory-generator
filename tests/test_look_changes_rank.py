@@ -24,7 +24,7 @@ from immich_memories.analysis.smart_pipeline import (
 )
 from immich_memories.api.models import AssetType
 from immich_memories.config import Config
-from immich_memories.config_models import AnalysisConfig
+from immich_memories.config_models_analysis import AnalysisConfig
 from tests.conftest import make_clip
 
 

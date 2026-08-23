@@ -290,7 +290,7 @@ class TestAnalysisEligibility:
         make or model, and reuses one filename across every export — so
         nothing downstream can tell it from footage somebody chose to shoot.
         """
-        from immich_memories.config_models import AnalysisConfig
+        from immich_memories.config_models_analysis import AnalysisConfig
 
         pipeline = self._pipeline(tmp_path)
         pipeline._analysis_config = AnalysisConfig(exclude_filename_patterns=["RingVideo_*"])
@@ -310,7 +310,7 @@ class TestAnalysisEligibility:
         that says so before analysis has looked at anything — which is also
         what keeps them out of the analysis budget.
         """
-        from immich_memories.config_models import AnalysisConfig
+        from immich_memories.config_models_analysis import AnalysisConfig
 
         pipeline = self._pipeline(tmp_path)
         pipeline._analysis_config = AnalysisConfig()
@@ -333,7 +333,7 @@ class TestAnalysisEligibility:
 
     def test_the_source_filter_does_not_care_about_case(self, tmp_path: Path):
         """Exports differ in casing between platforms; the rule should not."""
-        from immich_memories.config_models import AnalysisConfig
+        from immich_memories.config_models_analysis import AnalysisConfig
 
         pipeline = self._pipeline(tmp_path)
         pipeline._analysis_config = AnalysisConfig(exclude_filename_patterns=["ringvideo_*"])
@@ -596,7 +596,7 @@ class TestNothingIsJudgedBlind:
 
     def _pipeline(self, tmp_path: Path):
         from immich_memories.analysis.smart_pipeline import PipelineConfig, SmartPipeline
-        from immich_memories.config_models import AnalysisConfig
+        from immich_memories.config_models_analysis import AnalysisConfig
 
         analysis_cache = MagicMock()
         analysis_cache.get_analysis.return_value = None

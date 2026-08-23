@@ -13,7 +13,7 @@ from datetime import date
 import pytest
 
 from immich_memories.config_loader import Config
-from immich_memories.config_models import PhotoConfig
+from immich_memories.config_models_render import PhotoConfig
 from immich_memories.photos.photo_pipeline import render_photo_clips, score_photos
 from immich_memories.timeperiod import DateRange
 from tests.integration.conftest import ffprobe_json, get_duration, has_stream, requires_ffmpeg

@@ -160,7 +160,7 @@ class TestAnalyzeClipForHighlightEndToEnd:
     def test_empty_video_returns_fallback(self, tmp_path):
         """Non-existent video should return fallback values."""
         from immich_memories.analysis.clip_selection import analyze_clip_for_highlight
-        from immich_memories.config_models import AnalysisConfig, ContentAnalysisConfig
+        from immich_memories.config_models_analysis import AnalysisConfig, ContentAnalysisConfig
 
         start, end, score = analyze_clip_for_highlight(
             tmp_path / "nonexistent.mp4",

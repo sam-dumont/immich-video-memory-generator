@@ -166,7 +166,7 @@ def test_live_photo_stills_are_filtered_out_of_the_photo_pool() -> None:
     normally keeps such stills out of the photo pool, but if one gets through it
     must not be animated on top of the motion clip already showing it."""
     from immich_memories.api.models import VideoClipInfo
-    from immich_memories.config_models import PhotoConfig
+    from immich_memories.config_models_render import PhotoConfig
     from immich_memories.photos.moment_suppression import filter_photos_covered_by_motion
 
     still = _asset("live-still")

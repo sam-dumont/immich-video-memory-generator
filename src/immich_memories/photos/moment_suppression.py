@@ -17,7 +17,7 @@ from typing import Any
 from immich_memories.analysis.duplicate_hashing import compute_thumbnail_hash, hamming_distance
 from immich_memories.api.immich import ImmichAPIError
 from immich_memories.api.models import Asset, VideoClipInfo
-from immich_memories.config_models import PhotoConfig
+from immich_memories.config_models_render import PhotoConfig
 
 logger = logging.getLogger(__name__)
 

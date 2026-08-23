@@ -359,7 +359,7 @@ def _analyze(video_path: Path, *, temp_dir: Path) -> None:
     """Run hermetic visual and audio analysis without LLM or network clients."""
     from immich_memories.analysis.scenes import SceneDetector
     from immich_memories.analysis.segment_generation import detect_audio_boundaries
-    from immich_memories.config_models import AnalysisConfig
+    from immich_memories.config_models_analysis import AnalysisConfig
 
     config = AnalysisConfig()
     SceneDetector(analysis_config=config).detect(video_path, extract_keyframes=False)
@@ -377,7 +377,7 @@ def _analyze(video_path: Path, *, temp_dir: Path) -> None:
 
 
 def _analysis_config() -> dict[str, object]:
-    from immich_memories.config_models import AnalysisConfig
+    from immich_memories.config_models_analysis import AnalysisConfig
 
     config = AnalysisConfig()
     return {
