@@ -30,3 +30,25 @@ def test_category_survives_the_regex_fallback() -> None:
 def test_a_missing_category_stays_empty() -> None:
     result = _partial('{"description": "Kids on a beach", "emotion": "happy"')
     assert result.category == ""
+
+
+def test_an_off_vocabulary_category_is_dropped() -> None:
+    """The fallback is taken exactly when the model is ignoring the schema, so it
+    is the likeliest source of the free text the closed vocabulary keeps out (#539)."""
+    result = _partial('{"description": "x", "category": "a child holding a watch"')
+    assert result.category == ""
+
+
+def test_a_listed_category_survives_odd_casing() -> None:
+    """Dropping unlisted values only works if listed ones still get through: the
+    model returns "Screen" and "people " often enough to matter."""
+    assert _partial('{"description": "x", "category": "Screen "').category == "screen"
+
+
+def test_free_text_category_is_dropped_on_the_json_path_too() -> None:
+    """Well-formed JSON carrying an unlisted category was the wider door: it was
+    truncated to 500 chars and stored, where the subject policy read it as a label."""
+    build = ContentAnalyzer._build_content_analysis
+    assert build({"category": "a wide shot of a lawnmower"}, "").category == ""
+    assert build({"category": "l" * 600}, "").category == ""
+    assert build({"category": "landscape"}, "").category == "landscape"

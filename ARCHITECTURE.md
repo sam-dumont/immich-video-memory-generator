@@ -300,7 +300,8 @@ src/immich_memories/
 │
 ├── cache/                      # Analysis caching system
 │   ├── __init__.py             # Re-exports public API
-│   ├── database.py             # VideoAnalysisCache class (SQLite)
+│   ├── database.py             # VideoAnalysisCache class (SQLite reads/writes)
+│   ├── schema_migrator.py      # SchemaMigrator: schema ladder v1..vN, DDL
 │   ├── database_models.py      # CachedSegment, CachedVideoAnalysis, SimilarVideo
 │   ├── database_rows.py        # SQLite row <-> model conversion
 │   ├── versions.py             # SCHEMA_VERSION / ANALYSIS_VERSION (independent)

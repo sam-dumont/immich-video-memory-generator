@@ -110,6 +110,9 @@ analysis:
   max_animal_ratio: 0.10         # Share of the video that may be animal clips
   max_object_ratio: 0.05         # Share that may be object clips (must also score well)
 
+  # Album source
+  max_album_assets: 10000        # Most assets read from one album, per media type (min 1)
+
   # Performance
   download_workers: 3            # Parallel download clients for video and thumbnail prefetching (1-8)
   enable_downscaling: true       # Downscale for analysis (~3-5x faster)
@@ -129,6 +132,11 @@ analysis:
 Presets: `fast-cuts` = 3–6 s clips, 30% extraction; `balanced` = 5–10 s, 40%; `long-cuts` =
 8–15 s, 50%. With no preset the defaults above apply (5–10 s, 15%). Any Live Photo cluster of two
 or more within the merge window is treated as a burst — the count is not configurable.
+
+`max_album_assets` applies per media type, so the default reads up to 10,000 videos and 10,000
+photos from one album. Smart albums reach tens of thousands; Immich returns newest first, so a
+bigger album is truncated to its most recent assets and you get a warning naming it. Narrow the
+album, raise the cap, or use a date range instead.
 
 ## Generation defaults
 
@@ -191,10 +199,16 @@ photos:
   moment_gap_seconds: 120        # Window for "same moment as a video" (0-3600)
   moment_hash_threshold: 10      # Hash bits allowed between photo and that video (0-64)
   score_penalty: 0.2             # Photos score 80% of equivalent videos (0-1)
+  burst_window_seconds: 300      # Near-identical photos this close apart are one burst (0-3600)
+  burst_hash_threshold: 8        # Hash bits two photos may differ by and still be one burst (0-64)
 ```
 
 The animation per photo (Ken Burns, face pan, blurred background) is picked automatically from the
 photo's content; it is not configurable.
+
+Burst de-duplication keeps only the best-scored frame of a run of near-identical photos, so the
+fifteen shots of the same jump do not become fifteen clips. `burst_window_seconds: 0` turns it off.
+It is separate from `moment_gap_seconds`, which is about a photo and a *video* of the same moment.
 
 ## Hardware acceleration
 
@@ -316,6 +330,13 @@ llm:
   drop_params: [temperature]               # fields this server rejects
   extra_params: {}                         # fields merged into every call
 ```
+
+`max_tokens_param` and `drop_params` describe the OpenAI dialect and are read
+only there. `extra_params` applies on the Ollama provider too, where anything
+you put under `options` (`num_ctx`, `num_predict`) is merged into Ollama's own
+options block rather than replacing it — content analysis already asks for a
+4096-token window that way, since Ollama's 2048 default does not hold the
+prompt plus several frames.
 
 A separate `title_llm` section can point the web UI's title step at a different model than the one
 used for content analysis:
@@ -492,14 +513,17 @@ title_screens:
   ending_duration: 7.0           # seconds (2-15)
   locale: "auto"                 # en, fr, or auto-detect
   style_mode: "auto"             # auto (mood-based) or random
+  animated_background: true      # Gradient shift and colour pulse behind the text
+  show_decorative_lines: false   # Line accents around the title text
   show_month_dividers: true      # When the video spans several months (all-or-none)
   month_divider_threshold: 2     # Min clips in a month to show its divider (1-10)
   use_first_name_only: true      # "Alice" instead of "Alice Smith" in titles
 ```
 
-Look-and-feel (animated backgrounds, decorative lines, colour palette, custom fonts) is not
-configurable from the config file today. The `immich-memories titles` command exposes some of these
-as flags for previewing.
+Those two switches are all the look-and-feel the config file exposes; the colour palette and
+custom fonts are not configurable today. `animated_background: false` keeps the gradient still
+— no rotation, colour pulse or vignette pulse — which is what `preset: fast` selects. The
+`immich-memories titles` command exposes more of the look as flags for previewing.
 
 ## Trip detection
 

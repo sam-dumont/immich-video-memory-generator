@@ -70,6 +70,9 @@ jobs:
       - name: CLI reference drift
         if: '!cancelled()'
         run: make docs-cli-check
+      - name: Config reference drift
+        if: '!cancelled()'
+        run: make docs-config-check
       - name: Type Check (mypy)
         if: '!cancelled()'
         run: make typecheck

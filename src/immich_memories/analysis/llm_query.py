@@ -174,6 +174,13 @@ async def _query_ollama(
     # Ollama takes bare base64 in its own field, not a data: URI in a message.
     if images:
         payload["images"] = [base64.b64encode(image).decode("utf-8") for image in images]
+    # Ollama keeps its per-request knobs (num_ctx, num_predict) under `options`,
+    # so extras aimed at that key merge into it instead of replacing temperature.
+    for name, value in config.extra_params.items():
+        if name == "options":
+            payload["options"].update(value)
+        else:
+            payload[name] = value
     async with httpx.AsyncClient(timeout=build_llm_timeout(float(timeout))) as client:
         resp = await client.post(f"{base_url}/api/generate", json=payload)
         resp.raise_for_status()

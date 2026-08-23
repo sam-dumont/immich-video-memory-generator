@@ -15,6 +15,7 @@ import pytest
 
 from immich_memories.cache import database as cache_database
 from immich_memories.cache.database import VideoAnalysisCache
+from immich_memories.cache.schema_migrator import SchemaMigrator
 from immich_memories.tracking.models import PhaseStats, RunMetadata
 from immich_memories.tracking.run_database import RunDatabase
 from immich_memories.tracking.run_tracker import RunTracker
@@ -172,7 +173,7 @@ def test_concurrent_connections_upgrade_v9_database_once(
     RunDatabase(db_path)
     monkeypatch.setattr(cache_database, "SCHEMA_VERSION", current_version)
 
-    original = cache_database.VideoAnalysisCache._migration_v10_automation_state
+    original = SchemaMigrator._migration_v10_automation_state
     first_entered = threading.Event()
     second_entered = threading.Event()
     release_first = threading.Event()
@@ -180,9 +181,7 @@ def test_concurrent_connections_upgrade_v9_database_once(
     errors: list[BaseException] = []
     calls = 0
 
-    def controlled_migration(
-        self: cache_database.VideoAnalysisCache, conn: sqlite3.Connection
-    ) -> None:
+    def controlled_migration(self: SchemaMigrator, conn: sqlite3.Connection) -> None:
         nonlocal calls
         with call_lock:
             calls += 1
@@ -196,7 +195,7 @@ def test_concurrent_connections_upgrade_v9_database_once(
         original(self, conn)
 
     monkeypatch.setattr(
-        cache_database.VideoAnalysisCache,
+        SchemaMigrator,
         "_migration_v10_automation_state",
         controlled_migration,
     )

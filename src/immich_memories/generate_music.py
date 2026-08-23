@@ -310,6 +310,9 @@ def auto_generate_music(
                 photo_cadence_seconds=photo_cadence_seconds(
                     assembly_clips, transition_overlap=transition_overlap
                 ),
+                # This path masters the full mix and ducks that. It has no way to
+                # use stems, so it used to run Demucs and drop the result (#499).
+                separate_stems=False,
             )
         )
 

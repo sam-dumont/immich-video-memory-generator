@@ -91,37 +91,46 @@ def _fake_frames(tmp_path):
     return [frame]
 
 
+def _ollama_answer():
+    response = MagicMock()
+    response.status_code = 200
+    response.json.return_value = {"response": '{"description": "x"}'}
+    response.raise_for_status = lambda: None
+    return response
+
+
+def _openai_answer():
+    response = MagicMock()
+    response.status_code = 200
+    response.json.return_value = {
+        "choices": [{"message": {"content": '{"description": "x"}'}}],
+    }
+    response.raise_for_status = lambda: None
+    return response
+
+
 def test_ollama_puts_the_transcript_in_the_request(tmp_path):
     analyzer = OllamaContentAnalyzer(model="moondream", base_url="http://x")
 
     # WHY: replaces frame extraction, which shells out to FFmpeg.
-    # WHY: replaces the HTTP call to the Ollama server.
+    # WHY: the LLM server is the external boundary this request reaches.
     with (
         patch.object(analyzer, "extract_frames", return_value=_fake_frames(tmp_path)),
-        patch.object(analyzer, "_ollama_request_with_retry", return_value=MagicMock()) as req,
+        patch("httpx.AsyncClient.post", return_value=_ollama_answer()) as post,
     ):
         analyzer.analyze_segment(tmp_path / "v.mov", 0.0, 3.0, transcript="Tu fais quoi ?")
 
-    assert "Tu fais quoi ?" in req.call_args[0][0]["prompt"]
+    assert "Tu fais quoi ?" in post.call_args.kwargs["json"]["prompt"]
 
 
 def test_openai_compatible_puts_the_transcript_in_the_request(tmp_path):
-    """This provider posts directly rather than through a retry helper, so the
-    HTTP client is the boundary to replace."""
     analyzer = OpenAICompatibleContentAnalyzer(model="qwen", base_url="http://x", api_key="")
 
-    response = MagicMock()
-    response.json.return_value = {
-        "choices": [{"message": {"content": '{"description": "x"}'}}],
-        "usage": {},
-    }
-
     # WHY: replaces frame extraction, which shells out to FFmpeg.
-    # WHY: replaces the httpx POST, the network boundary. `client` itself is a
-    # read-only property, so the method is what gets replaced.
+    # WHY: the LLM server is the external boundary this request reaches.
     with (
         patch.object(analyzer, "extract_frames", return_value=_fake_frames(tmp_path)),
-        patch.object(analyzer.client, "post", return_value=response) as post,
+        patch("httpx.AsyncClient.post", return_value=_openai_answer()) as post,
     ):
         analyzer.analyze_segment(tmp_path / "v.mov", 0.0, 3.0, transcript="Tu fais quoi ?")
 
@@ -166,11 +175,12 @@ def test_no_transcript_sends_the_unchanged_prompt(tmp_path):
     """Transcription off must produce a byte-identical request."""
     analyzer = OllamaContentAnalyzer(model="moondream", base_url="http://x")
 
-    # WHY: replaces frame extraction (FFmpeg) and the HTTP call.
+    # WHY: replaces frame extraction (FFmpeg).
+    # WHY: the LLM server is the external boundary this request reaches.
     with (
         patch.object(analyzer, "extract_frames", return_value=_fake_frames(tmp_path)),
-        patch.object(analyzer, "_ollama_request_with_retry", return_value=MagicMock()) as req,
+        patch("httpx.AsyncClient.post", return_value=_ollama_answer()) as post,
     ):
         analyzer.analyze_segment(tmp_path / "v.mov", 0.0, 3.0)
 
-    assert req.call_args[0][0]["prompt"] == TODAYS_PROMPT
+    assert post.call_args.kwargs["json"]["prompt"] == TODAYS_PROMPT
