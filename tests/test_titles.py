@@ -486,6 +486,23 @@ class TestGraphicsWhiteCeiling:
         assert ceil_white_for_hdr("#2D2D2D").upper() == "#2D2D2D"
         assert ceil_white_for_hdr("#374151").upper() == "#374151"
 
+    def test_the_ceiling_reaches_the_service_that_parses_the_text_colour(self):
+        """The helper alone proves nothing: the service that turns the config
+        colour into text_rgb must apply it, or an HDR run glows anyway."""
+        from typing import Any, cast
+
+        from immich_memories.titles.renderer_taichi import TaichiTitleConfig
+        from immich_memories.titles.taichi_text import TitleTextRenderer
+
+        # WHY None buffers: the constructor only stores them; no GPU work
+        # happens until a frame is rendered, which this test never does.
+        buffers = cast(Any, None)
+        hdr = TitleTextRenderer(TaichiTitleConfig(hdr=True), buffers)
+        sdr = TitleTextRenderer(TaichiTitleConfig(hdr=False), buffers)
+
+        assert max(hdr.text_rgb) <= 0xBF / 255 + 1e-6
+        assert max(sdr.text_rgb) == 1.0
+
 
 class TestBackgrounds:
     """Tests for background generation."""

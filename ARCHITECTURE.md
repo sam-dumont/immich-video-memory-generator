@@ -59,6 +59,11 @@ injected service.
 - `EndingService` (ending_service.py): fade-to-white ending generation
 - `TripService` (trip_service.py): trip map and location card screens
 
+**TaichiTitleRenderer** (titles/renderer_taichi.py) owns the background and the per-frame
+GPU pipeline, and composes 2 services (both take Protocol-typed config/buffers):
+- `ParticleField` (taichi_particles.py): bokeh drift and fireworks physics, CPU numpy only
+- `TitleTextRenderer` (taichi_text.py): SDF and PIL text compositing onto the frame buffer
+
 **`generate_memory()`** (generate.py) is the top-level orchestrator above the four; it runs
 the `OperationalPhase` lifecycle end to end (there is no `GenerationPipeline` class) with
 these helper modules:
@@ -219,7 +224,9 @@ src/immich_memories/
 │   ├── text_builder.py         # Text layout & positioning
 │   ├── content_background.py   # Content-aware background generation
 │   ├── renderer_pil.py         # PIL-based renderer
-│   ├── renderer_taichi.py      # Taichi GPU renderer
+│   ├── renderer_taichi.py      # TaichiTitleRenderer: background + frame pipeline
+│   ├── taichi_particles.py     # ParticleField: bokeh drift / fireworks physics
+│   ├── taichi_text.py          # TitleTextRenderer: SDF + PIL text compositing
 │   ├── renderer_ffmpeg.py      # FFmpeg-based renderer
 │   ├── taichi_kernels.py       # Taichi GPU kernels
 │   ├── taichi_video.py         # Taichi video creation

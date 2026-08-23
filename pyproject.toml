@@ -464,6 +464,7 @@ disable_error_code = ["valid-type", "misc", "call-arg"]
 [[tool.mypy.overrides]]
 module = [
     "immich_memories.titles.renderer_taichi",
+    "immich_memories.titles.taichi_text",
     "immich_memories.titles.sdf_font",
     "immich_memories.titles.taichi_kernels",
     "immich_memories.titles.sdf_font_rendering",
