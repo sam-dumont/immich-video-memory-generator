@@ -99,3 +99,60 @@ def test_a_starred_shot_survives_a_cluster_when_the_cut_keeps_two_per_moment() -
         starred.clip.asset.id,
         good.clip.asset.id,
     }, "the free slot goes to the best of the rest"
+
+
+def test_a_month_with_nearly_enough_moments_keeps_one_clip_from_each() -> None:
+    """Measured on a real December recap: eight clips, and two of them were
+    the same group photographed two minutes apart.
+
+    `ceil(target / moments)` rises above one as soon as moments is below
+    target, and selection is already thinned to about the target count by the
+    time dedup runs — so "a long memory may keep more than one" was every
+    memory, and the same-moment rule stopped applying to any of them.
+    """
+    from immich_memories.analysis.clip_refiner import _clips_per_moment
+
+    assert _clips_per_moment(target_clips=14, moments=9) == 1
+
+
+def test_a_cut_with_far_fewer_moments_than_clips_still_doubles_up() -> None:
+    """The case the rule exists for: 967 assets, 16 moments, a 55-clip cut.
+
+    Thinned to one each it could not fill the runtime, and backfill put the
+    rejected duplicates back by relaxing its constraints.
+    """
+    from immich_memories.analysis.clip_refiner import _clips_per_moment
+
+    assert _clips_per_moment(target_clips=55, moments=16) == 4
+
+
+def test_the_clips_that_make_an_event_read_as_a_day_survive_dedup() -> None:
+    """A dense day is given three clips so it reads as a day, not a glimpse.
+
+    The duration scaler and the photo cap both honour those ids. The moment
+    dedup did not, so a day whose three clips fell inside one window came
+    straight back down to the single glimpse (#490, #510).
+    """
+    event = [_at(15, 50, score=0.3), _at(15, 52, score=0.5), _at(15, 54, score=0.4)]
+
+    kept = ClipScaler().deduplicate_temporal_clusters(
+        event,
+        time_window_minutes=5.0,
+        protected_ids={c.clip.asset.id for c in event},
+    )
+
+    assert len(kept) == 3
+
+
+def test_protection_covers_the_event_clips_and_not_what_sits_beside_them() -> None:
+    """Whatever else lands in that window is still a duplicate."""
+    covering = _at(15, 50, score=0.3)
+    passer_by = _at(15, 52, score=0.9)
+
+    kept = ClipScaler().deduplicate_temporal_clusters(
+        [covering, passer_by],
+        time_window_minutes=5.0,
+        protected_ids={covering.clip.asset.id},
+    )
+
+    assert [c.clip.asset.id for c in kept] == [covering.clip.asset.id]

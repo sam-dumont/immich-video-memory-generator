@@ -273,19 +273,27 @@ class ClipScaler:
         time_key: str,
         cluster_clips: list[ClipWithSegment],
         keep: int,
+        protected_ids: set[str],
     ) -> tuple[list[ClipWithSegment], int]:
         """Return (kept_clips, num_removed) for a temporal cluster of 2+ clips.
 
         A favourite outranks any score: what the viewer starred survives the
         cluster whatever the scorer made of it. Ranking on score alone is how
         a starred shot gets dropped behind two ordinary ones.
+
+        Protected clips are exempt from the per-moment cap rather than merely
+        ranked above it. A dense day is given three clips so it reads as a day
+        rather than a glimpse; the duration scaler and the photo cap both
+        honour that, and thinning it back to one here undoes it (#490, #510).
         """
+        protected = [c for c in cluster_clips if c.clip.asset.id in protected_ids]
         ranked = sorted(
-            cluster_clips,
+            (c for c in cluster_clips if c.clip.asset.id not in protected_ids),
             key=lambda c: (c.clip.asset.is_favorite, c.score),
             reverse=True,
         )
-        kept, dropped = ranked[:keep], ranked[keep:]
+        room = max(0, keep - len(protected))
+        kept, dropped = protected + ranked[:room], ranked[room:]
 
         if dropped:
             kept_desc = ", ".join(
@@ -306,6 +314,7 @@ class ClipScaler:
         clips: list[ClipWithSegment],
         time_window_minutes: float = 10.0,
         keep_per_moment: int = 1,
+        protected_ids: set[str] | None = None,
     ) -> list[ClipWithSegment]:
         """Thin near-duplicate clips from the same moment.
 
@@ -316,7 +325,8 @@ class ClipScaler:
         Measured on a 967-asset trip: 39 clips in, 16 out, then backfill
         rebuilt the cut to 55.
 
-        keep_per_moment lets the caller say how many a long memory can afford.
+        keep_per_moment lets the caller say how many a long memory can afford,
+        and protected_ids names the clips no per-moment cap may drop.
         """
         if not clips:
             return clips
@@ -326,13 +336,14 @@ class ClipScaler:
         clusters_with_duplicates = 0
 
         keep = max(1, keep_per_moment)
+        protected = protected_ids or set()
         for cluster_clips in group_by_moment(clips, time_window_minutes):
             if len(cluster_clips) <= keep:
                 result.extend(cluster_clips)
                 continue
 
             when = cluster_clips[0].clip.asset.file_created_at
-            kept, removed = self._keep_best_from_cluster(str(when), cluster_clips, keep)
+            kept, removed = self._keep_best_from_cluster(str(when), cluster_clips, keep, protected)
             result.extend(kept)
             removed_count += removed
             clusters_with_duplicates += 1

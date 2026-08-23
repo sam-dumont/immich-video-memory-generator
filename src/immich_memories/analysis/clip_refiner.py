@@ -54,8 +54,18 @@ def _clips_per_moment(target_clips: int, moments: int) -> int:
     relaxing constraints — so the rule scales with what the cut needs. Never
     more than a quarter of it from a single moment, which is what keeps a
     deduplicated slot from being refilled by its own duplicate.
+
+    Scarce moments, not merely fewer of them. Selection is already thinned to
+    about the target count by the time dedup runs, so `moments < target_clips`
+    holds for nearly every memory, and ceil() alone therefore handed every
+    memory two per moment: a real December shipped an eight-clip month with
+    the same group photographed twice, two minutes apart. A moment doubles up
+    only when there are at most half as many as the cut needs clips — the
+    967-asset trip had 16 against a target of 55.
     """
     if target_clips <= 0 or moments <= 0:
+        return 1
+    if moments * 2 > target_clips:
         return 1
     share = math.ceil(target_clips / moments)
     return max(1, min(share, int(target_clips * _MAX_SHARE_FROM_ONE_MOMENT)))
@@ -621,6 +631,7 @@ class ClipRefiner:
                 selected,
                 time_window_minutes=self.config.temporal_dedup_window_minutes,
                 keep_per_moment=_clips_per_moment(self.config.target_clips, moments),
+                protected_ids=coverage_ids,
             )
             trace.record("same-moment dedup", before_dedup, selected)
 
