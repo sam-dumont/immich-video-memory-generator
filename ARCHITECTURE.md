@@ -35,11 +35,12 @@ The four core orchestrators and their composed services:
 - `AudioMixerService` (audio_mixer_service.py): background music mixing
 - `TitleInserter` (title_inserter.py): title screen concatenation
 
-**SmartPipeline** (analysis/smart_pipeline.py) composes 4 services:
+**SmartPipeline** (analysis/smart_pipeline.py) composes 5 services:
 - `ClipAnalyzer` (clip_analyzer.py): download, analyze, and score clips
 - `PreviewBuilder` (preview_builder.py): extract preview segments
 - `ClipRefiner` (clip_refiner.py): select and distribute final clips
 - `ClipScaler` (clip_scaler.py): scale to target duration, deduplicate
+- `SelectionQuality` (selection_quality.py): verify, judge and review the finished cut
 
 It also owns a `ProviderCircuit` (provider_health.py, LLM provider circuit breaker) and an
 optional `VideoDownloadCache`. The density-proportional asset budget is a plain function,
@@ -103,13 +104,14 @@ src/immich_memories/
 │   └── factory.py              # Registry + 7 built-in preset factories (incl. trip)
 │
 ├── analysis/                   # Video analysis & clip selection
-│   ├── smart_pipeline.py       # SmartPipeline (composes 4 services)
+│   ├── smart_pipeline.py       # SmartPipeline (composes 5 services)
 │   ├── pipeline.py             # ClusterManager / DuplicateCluster: duplicate cluster bookkeeping
 │   ├── provider_health.py      # ProviderCircuit: bounded, credential-safe LLM provider health
 │   ├── cache_projection.py     # Project compatible cached analysis back onto in-memory clips
 │   ├── clip_analyzer.py        # ClipAnalyzer: download + analyze + score
 │   ├── clip_refiner.py         # ClipRefiner: final selection + distribution
 │   ├── clip_scaler.py          # ClipScaler: duration scaling + dedup
+│   ├── selection_quality.py    # SelectionQuality: verify + judge + review
 │   ├── clip_selection.py       # Standalone clip selection functions
 │   ├── density_budget.py       # compute_density_budget(): density-proportional asset budget
 │   ├── preview_builder.py      # PreviewBuilder: preview segment extraction

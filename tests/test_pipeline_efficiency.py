@@ -645,7 +645,7 @@ class TestNothingIsJudgedBlind:
 
         # WHY: the review is an LLM call; what it is handed is the subject here.
         with patch("immich_memories.analysis.selection_review.review_selection", _capture):
-            pipeline._final_review_drop([member], result)
+            pipeline.quality.final_review_drop([member], result)
 
         assert [c.clip.llm_description for c in judged] == [
             "a whiteboard covered in sticky notes"
@@ -678,7 +678,7 @@ class TestNothingIsJudgedBlind:
             "immich_memories.photos.photo_pipeline.look_at_selected_photos",
             return_value={"still": {"description": "a plant against a wall"}},
         ):
-            pipeline._verify_selection([member], result)
+            pipeline.quality.verify([member], result)
 
         assert still.llm_description == "a plant against a wall"
 
@@ -703,8 +703,8 @@ class TestNothingIsJudgedBlind:
         pipeline.analyzer.phase_analyze = MagicMock(return_value=[member])
         pipeline.refiner.phase_refine = MagicMock(return_value=result)
 
-        pipeline._verify_selection([member], result)
-        pipeline._verify_selection([member], result)
+        pipeline.quality.verify([member], result)
+        pipeline.quality.verify([member], result)
 
         assert pipeline.analyzer.phase_analyze.call_count == 1
 
@@ -732,6 +732,6 @@ class TestNothingIsJudgedBlind:
             "immich_memories.photos.photo_pipeline.look_at_selected_photos",
             return_value={"unseen-still": {"description": "a beer tap on a bar"}},
         ):
-            pipeline._verify_selection([member], result)
+            pipeline.quality.verify([member], result)
 
         assert still.llm_description == "a beer tap on a bar"

@@ -49,7 +49,7 @@ def test_a_landscape_nobody_has_looked_at_yet_is_not_an_offender(tmp_path: Path)
     quiet_landscape = _member("landscape", 0.280, photo=True)
     others = [_member(f"v-{i}", 0.6, photo=False, hour=13 + i) for i in range(3)]
 
-    offenders = _pipeline(tmp_path)._judge_offenders([quiet_landscape, *others])
+    offenders = _pipeline(tmp_path).quality.judge_offenders([quiet_landscape, *others])
 
     assert "landscape" not in offenders
 
@@ -59,7 +59,7 @@ def test_a_photo_the_model_called_dull_is_still_an_offender(tmp_path: Path) -> N
     dull = _member("dull", 0.232, photo=True)
     others = [_member(f"v-{i}", 0.6, photo=False, hour=13 + i) for i in range(3)]
 
-    offenders = _pipeline(tmp_path)._judge_offenders([dull, *others])
+    offenders = _pipeline(tmp_path).quality.judge_offenders([dull, *others])
 
     assert "dull" in offenders
 
@@ -69,7 +69,7 @@ def test_a_weak_video_is_still_judged_on_the_video_scale(tmp_path: Path) -> None
     weak = _member("weak-video", 0.28, photo=False)
     others = [_member(f"v-{i}", 0.6, photo=False, hour=13 + i) for i in range(3)]
 
-    offenders = _pipeline(tmp_path)._judge_offenders([weak, *others])
+    offenders = _pipeline(tmp_path).quality.judge_offenders([weak, *others])
 
     assert "weak-video" in offenders
 
@@ -91,7 +91,7 @@ def test_a_selection_spread_across_time_is_still_judged(tmp_path: Path) -> None:
         member.clip.asset.file_created_at = datetime(2019, 6 + index, 4, 12, tzinfo=UTC)
         spread.append(member)
 
-    offenders = _pipeline(tmp_path)._judge_offenders([junk, *spread])
+    offenders = _pipeline(tmp_path).quality.judge_offenders([junk, *spread])
 
     assert "junk" in offenders
 
@@ -107,7 +107,7 @@ def test_an_offender_is_dropped_when_its_period_has_something_better(tmp_path: P
     better = _in(3, 9, _member("same-month-better", 0.7, photo=False))
     elsewhere = [_in(6 + i, 4, _member(f"v-{i}", 0.6, photo=False)) for i in range(2)]
 
-    dropped = _pipeline(tmp_path)._spare_last_voices({"weak"}, [weak, better, *elsewhere])
+    dropped = _pipeline(tmp_path).quality.spare_last_voices({"weak"}, [weak, better, *elsewhere])
 
     assert dropped == {"weak"}
 
@@ -117,7 +117,9 @@ def test_a_weak_clip_that_is_its_period_is_kept(tmp_path: Path) -> None:
     only_march = _in(3, 2, _member("the-only-march", 0.24, photo=False))
     elsewhere = [_in(6 + i, 4, _member(f"v-{i}", 0.6, photo=False)) for i in range(2)]
 
-    dropped = _pipeline(tmp_path)._spare_last_voices({"the-only-march"}, [only_march, *elsewhere])
+    dropped = _pipeline(tmp_path).quality.spare_last_voices(
+        {"the-only-march"}, [only_march, *elsewhere]
+    )
 
     assert dropped == set()
 
@@ -127,6 +129,6 @@ def test_an_unusable_clip_is_never_worth_a_period(tmp_path: Path) -> None:
     ground = _in(3, 2, _member("the-ground", 0.05, photo=False))
     elsewhere = [_in(6 + i, 4, _member(f"v-{i}", 0.6, photo=False)) for i in range(2)]
 
-    dropped = _pipeline(tmp_path)._spare_last_voices({"the-ground"}, [ground, *elsewhere])
+    dropped = _pipeline(tmp_path).quality.spare_last_voices({"the-ground"}, [ground, *elsewhere])
 
     assert dropped == {"the-ground"}

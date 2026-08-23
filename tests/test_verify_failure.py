@@ -68,7 +68,7 @@ def test_a_failed_look_leaves_the_score_it_could_not_improve(tmp_path: Path) -> 
     pipeline.analyzer.phase_analyze = MagicMock(return_value=[failed])
     pipeline.refiner.phase_refine = MagicMock(side_effect=lambda a, _t: _result(a[0].clip))
 
-    _result_out, analyzed = pipeline._verify_selection([member], _result(clip))
+    _result_out, analyzed = pipeline.quality.verify([member], _result(clip))
 
     assert [m.score for m in analyzed] == [0.72], "a failed look overwrote a real score"
 
@@ -90,7 +90,7 @@ def test_a_look_that_succeeded_does_replace_the_score(tmp_path: Path) -> None:
     pipeline.analyzer.phase_analyze = MagicMock(return_value=[looked])
     pipeline.refiner.phase_refine = MagicMock(side_effect=lambda a, _t: _result(a[0].clip))
 
-    _result_out, analyzed = pipeline._verify_selection([member], _result(clip))
+    _result_out, analyzed = pipeline.quality.verify([member], _result(clip))
 
     assert [m.score for m in analyzed] == [0.05]
 
