@@ -231,3 +231,19 @@ def test_a_whole_day_photographed_steadily_is_not_one_moment() -> None:
         <= 90 * 60 * 2
         for m in moments
     ), "no moment may run past twice its own window"
+
+
+def test_one_mis_dated_asset_does_not_make_a_month_a_decade() -> None:
+    """This library documents Shared Album assets that arrive stamped 1970.
+
+    Span was first-to-last, so a single such asset in a December turned the
+    month into a fifty-year memory: quarterly period buckets, and a
+    three-hour window that reads the whole afternoon as one moment.
+    """
+    from immich_memories.analysis.clip_distribution import span_days_of
+
+    december = [_at(15, minute) for minute in range(0, 60, 5)]
+    december.append(_at(9, 0))
+    december[-1].clip.asset.file_created_at = datetime(1970, 1, 1, tzinfo=UTC)
+
+    assert span_days_of(december) <= 31

@@ -122,10 +122,25 @@ def _event_periods(by_period: dict[str, list[ClipWithSegment]]) -> set[str]:
     return set(peopled[:_MAX_EVENT_PERIODS])
 
 
+# How much of the pool the span is measured across. First-to-last is what one
+# wrong timestamp decides on its own, and this library documents Shared Album
+# assets arriving stamped 1970 — a single one turned a December into a
+# fifty-year memory, which means quarterly period buckets and a three-hour
+# moment window over one afternoon.
+_SPAN_MARGIN_SHARE = 0.02
+# Below this there is nothing to spare: dropping an end off a handful of
+# clips throws away a real edge of the memory rather than a wrong one.
+_SPAN_MIN_CLIPS_TO_TRIM = 10
+
+
 def span_days_of(clips: list[ClipWithSegment]) -> int:
-    """How much timeline this memory covers, first shot to last."""
-    dates = [c.clip.asset.file_created_at for c in clips if c.clip.asset.file_created_at]
-    return (max(dates) - min(dates)).days if dates else 0
+    """How much timeline this memory covers, ignoring its outermost dates."""
+    dates = sorted(c.clip.asset.file_created_at for c in clips if c.clip.asset.file_created_at)
+    if len(dates) < _SPAN_MIN_CLIPS_TO_TRIM:
+        return (dates[-1] - dates[0]).days if dates else 0
+    margin = max(1, int(len(dates) * _SPAN_MARGIN_SHARE))
+    inner = dates[margin : len(dates) - margin] or dates
+    return (inner[-1] - inner[0]).days
 
 
 def _event_periods_of(clips: list[ClipWithSegment]) -> set[str]:
