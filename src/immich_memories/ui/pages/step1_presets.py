@@ -24,6 +24,8 @@ _PRESET_CARDS: list[tuple[str, str, str, str]] = [
     (MemoryType.MULTI_PERSON, "group", "Multi-Person", "Together moments"),
     (MemoryType.MONTHLY_HIGHLIGHTS, "event_note", "Monthly Highlights", "One month, distilled"),
     (MemoryType.ON_THIS_DAY, "history", "On This Day", "This day through the years"),
+    (MemoryType.HOLIDAY, "celebration", "Holiday", "The same holiday, across the years"),
+    (MemoryType.THEN_AND_NOW, "compare_arrows", "Then and Now", "An early year beside this one"),
     (MemoryType.TRIP, "flight_takeoff", "Trip", "Auto-detect trips from GPS data"),
     (MemoryType.ALBUM, "photo_album", "Album", "Everything from one Immich album"),
     ("custom", "tune", "Custom", "Full control over date range"),
@@ -125,10 +127,110 @@ def _render_params(key: str) -> None:
                 "color: var(--im-text-secondary)"
             ).classes("text-sm italic")
             _apply_preset_to_state(memory_type)
+        elif memory_type == MemoryType.HOLIDAY:
+            _render_holiday_params()
+        elif memory_type == MemoryType.THEN_AND_NOW:
+            _render_then_and_now_params()
         elif memory_type == MemoryType.TRIP:
             _render_trip_params()
         elif memory_type == MemoryType.ALBUM:
             _render_album_picker()
+
+
+def _render_holiday_params() -> None:
+    """Holiday + year + how many years back to span."""
+    from immich_memories.memory_types.factory import holiday_choices
+
+    state = get_app_state()
+    choices = holiday_choices()
+
+    with ui.row().classes("gap-4 items-end flex-wrap"):
+        current_holiday = state.memory_preset_params.get("holiday", "christmas")
+
+        def on_holiday(e):
+            state.memory_preset_params["holiday"] = e.value
+            _apply_preset_to_state(MemoryType.HOLIDAY)
+
+        ui.select(
+            options=choices, label="Holiday", value=current_holiday, on_change=on_holiday
+        ).classes("w-48")
+
+        year_options = state.years or list(range(2024, 2019, -1))
+        current_year = state.memory_preset_params.get(
+            "year", year_options[0] if year_options else 2024
+        )
+
+        def on_year(e):
+            state.memory_preset_params["year"] = e.value
+            _apply_preset_to_state(MemoryType.HOLIDAY)
+
+        ui.select(
+            options=year_options, label="Most recent year", value=current_year, on_change=on_year
+        ).classes("w-40")
+
+        current_back = state.memory_preset_params.get("years_back", 5)
+
+        def on_years_back(e):
+            state.memory_preset_params["years_back"] = int(e.value)
+            _apply_preset_to_state(MemoryType.HOLIDAY)
+
+        ui.select(
+            options=list(range(2, 11)),
+            label="Years to span",
+            value=current_back,
+            on_change=on_years_back,
+        ).classes("w-40")
+
+    ui.label("One window around the holiday in each year, most recent first.").style(
+        "color: var(--im-text-secondary)"
+    ).classes("text-sm italic mt-2")
+
+    state.memory_preset_params.setdefault("holiday", current_holiday)
+    state.memory_preset_params.setdefault("year", current_year)
+    state.memory_preset_params.setdefault("years_back", current_back)
+    _apply_preset_to_state(MemoryType.HOLIDAY)
+
+
+def _render_then_and_now_params() -> None:
+    """The recent year, and how far back the other one sits."""
+    state = get_app_state()
+
+    with ui.row().classes("gap-4 items-end flex-wrap"):
+        year_options = state.years or list(range(2024, 2019, -1))
+        current_year = state.memory_preset_params.get(
+            "year", year_options[0] if year_options else 2024
+        )
+
+        def on_year(e):
+            state.memory_preset_params["year"] = e.value
+            _apply_preset_to_state(MemoryType.THEN_AND_NOW)
+
+        ui.select(options=year_options, label="Now", value=current_year, on_change=on_year).classes(
+            "w-40"
+        )
+
+        current_back = state.memory_preset_params.get("years_back", 10)
+
+        def on_years_back(e):
+            state.memory_preset_params["years_back"] = int(e.value)
+            _apply_preset_to_state(MemoryType.THEN_AND_NOW)
+
+        # The contrast is the point, so there is no zero here: a then-and-now
+        # with no distance between its two years is just a now.
+        ui.select(
+            options=list(range(1, 21)),
+            label="Years back",
+            value=current_back,
+            on_change=on_years_back,
+        ).classes("w-40")
+
+    ui.label("Two years, far apart on purpose — the gap is the story.").style(
+        "color: var(--im-text-secondary)"
+    ).classes("text-sm italic mt-2")
+
+    state.memory_preset_params.setdefault("year", current_year)
+    state.memory_preset_params.setdefault("years_back", current_back)
+    _apply_preset_to_state(MemoryType.THEN_AND_NOW)
 
 
 def _year_options_with_all() -> list:

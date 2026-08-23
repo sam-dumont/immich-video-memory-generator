@@ -59,6 +59,7 @@ def generate_template_title(
     end_date: str,
     person_names: list[str] | None = None,
     album_name: str | None = None,
+    preset_params: dict | None = None,
 ) -> tuple[str, str | None]:
     """Generate a template-based title from memory type and date range.
 
@@ -96,6 +97,18 @@ def generate_template_title(
 
     if memory_type == "on_this_day":
         return f"On This Day \u2014 {_MONTH_NAMES[start.month]} {start.day}", None
+
+    if memory_type == "holiday":
+        # The span of five Christmases is five years; naming it by either end
+        # describes none of them. The occasion is the title.
+        from immich_memories.memory_types.factory import holiday_label
+
+        holiday = (preset_params or {}).get("holiday", "christmas")
+        return holiday_label(holiday, end.year), "Through the Years"
+
+    if memory_type == "then_and_now":
+        # Both ends, in the order the memory plays them.
+        return f"{start.year} & {end.year}", "Then and Now"
 
     # Fallback for unknown types
     span_months = (end.year - start.year) * 12 + (end.month - start.month)
@@ -252,6 +265,7 @@ async def generate_title_after_pipeline(state: AppState) -> None:
         end_date=str(end_date),
         person_names=person_names,
         album_name=state.album_name,
+        preset_params=state.memory_preset_params,
     )
     state.title_suggestion_title = template_title
     state.title_suggestion_subtitle = template_subtitle

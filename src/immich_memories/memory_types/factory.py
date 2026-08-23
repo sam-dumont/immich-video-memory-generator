@@ -10,6 +10,7 @@ from collections.abc import Callable
 from datetime import date, datetime
 
 from immich_memories.memory_types.date_builders import (
+    KNOWN_HOLIDAYS,
     build_holiday,
     build_month,
     build_on_this_day,
@@ -327,13 +328,22 @@ _HOLIDAY_LABELS = {
 }
 
 
-def _holiday_label(holiday: str, year: int) -> str:
+def holiday_label(holiday: str, year: int) -> str:
     """A printable name, falling back to the date for a household's own occasion."""
     key = holiday.strip().lower().replace("-", "_").replace(" ", "_")
     if key in _HOLIDAY_LABELS:
         return _HOLIDAY_LABELS[key]
     resolved = resolve_holiday(holiday, year)
     return resolved.strftime("%-d %B")
+
+
+def holiday_choices() -> dict[str, str]:
+    """Every holiday the pipeline resolves, with a printable name.
+
+    Keyed off KNOWN_HOLIDAYS so adding one there reaches the picker without a
+    second list to keep in step.
+    """
+    return {key: holiday_label(key, date.today().year) for key in KNOWN_HOLIDAYS}
 
 
 @register_preset(
@@ -351,7 +361,7 @@ def _holiday(
 ) -> MemoryPreset:
     """A holiday is the date a library reliably has every year, so it spans them."""
     year = year or date.today().year
-    label = _holiday_label(holiday, year)
+    label = holiday_label(holiday, year)
     person_filter = PersonFilter()
     if person_names:
         person_filter = PersonFilter(mode="single", person_names=person_names[:1])
