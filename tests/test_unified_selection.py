@@ -403,6 +403,9 @@ class TestMergePhotosIntoPool:
             updatedAt=datetime(2024, 6, 15, tzinfo=UTC),
             width=4032,
             height=3024,
+            # A camera original names its camera. Selection drops stills that
+            # do not, because those are what arrived through a messaging app.
+            exifInfo={"make": "Apple", "model": "iPhone 15 Pro"},
         )
 
         result = _merge_photos_into_pool(

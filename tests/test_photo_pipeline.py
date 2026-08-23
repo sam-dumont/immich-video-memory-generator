@@ -224,3 +224,35 @@ def test_a_starred_photo_passes_whatever_its_filename_says() -> None:
     patterns = AnalysisConfig().exclude_filename_patterns
     assert not not_shot_here(forwarded, patterns=patterns, stills_need_a_camera=True)
     assert not not_shot_here(doorbell, patterns=patterns, stills_need_a_camera=True)
+
+
+def test_the_pool_the_cli_and_ui_build_drops_what_the_camera_did_not_shoot(tmp_path) -> None:
+    """The filter lived on the legacy path only.
+
+    _merge_photos_into_pool is what both surfaces actually run, and it calls
+    score_photos directly — so a forwarded still was fetched, VLM-scored and
+    shipped on the two paths anybody uses.
+    """
+    from datetime import UTC, datetime
+
+    from immich_memories.cli._pipeline_runner import _merge_photos_into_pool
+
+    when = datetime(2019, 6, 12, 12, tzinfo=UTC)
+    forwarded = make_asset(
+        "forwarded", original_file_name="IMG-20190105-WA0006.jpg", file_created_at=when
+    )
+    forwarded.type = AssetType.IMAGE
+    shot = make_asset("shot", original_file_name="IMG_1375.HEIC", file_created_at=when)
+    shot.type = AssetType.IMAGE
+
+    pool = _merge_photos_into_pool(
+        [],
+        photo_assets=[forwarded, shot],
+        include_photos=True,
+        config=Config(cache={"directory": str(tmp_path / "cache")}),
+        client=None,
+        work_dir=tmp_path,
+        dry_run=True,
+    )
+
+    assert [c.clip.asset.id for c in pool] == ["shot"]

@@ -121,7 +121,7 @@ def score_photos(
     ]
 
 
-def _from_the_camera_roll(photo_assets: list[Asset], config: Any) -> list[Asset]:
+def from_the_camera_roll(photo_assets: list[Asset], config: Any) -> list[Asset]:
     """Drop the photos nothing says the library's own camera made.
 
     Videos are filtered on the same rule before analysis; photos reached
@@ -184,7 +184,7 @@ def score_and_select_photos(
     Extracted from generate.py:_apply_unified_budget() so it can be
     called from both UI (Step 2) and CLI (generation time).
     """
-    photo_assets = _from_the_camera_roll(photo_assets, config)
+    photo_assets = from_the_camera_roll(photo_assets, config)
     if not photo_assets:
         return _no_photos_to_choose_between(video_candidates)
 

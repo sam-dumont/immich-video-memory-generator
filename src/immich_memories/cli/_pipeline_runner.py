@@ -622,12 +622,20 @@ def _merge_photos_into_pool(
     from immich_memories.analysis.smart_pipeline import ClipWithSegment
     from immich_memories.api.models import VideoClipInfo
     from immich_memories.photos.photo_pipeline import (
+        from_the_camera_roll,
         score_photos,
         video_count_for_photo_budget,
     )
     from immich_memories.photos.scoring import score_photo
 
     _logger = logging.getLogger(__name__)
+
+    # Before anything is fetched or scored: this is the pool both the CLI and
+    # the UI actually build, and the rule used to live only on the path
+    # neither of them takes.
+    photo_assets = from_the_camera_roll(photo_assets, config)
+    if not photo_assets:
+        return analyzed_videos
 
     photo_assets = _drop_photos_already_shown_as_motion(
         photo_assets,
