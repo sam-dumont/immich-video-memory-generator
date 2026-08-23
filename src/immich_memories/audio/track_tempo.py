@@ -2,8 +2,8 @@
 
 #312's first half asks a generator for a tempo whose beat divides the photo
 cadence. A bundled track cannot be asked — its tempo is already fixed — so the
-choice runs the other way: measure what ships, then pick the track that lands on
-the cadence.
+choice runs the other way: measure what ships, then pick from the tracks that
+land on the cadence.
 
 Detection is numpy over an ffmpeg decode on purpose. librosa would be one line,
 but it is not a dependency of this project (it arrives transitively with the
@@ -18,6 +18,7 @@ strongest. That is the beat period.
 from __future__ import annotations
 
 import logging
+import random
 import subprocess
 from pathlib import Path
 
@@ -31,7 +32,14 @@ _FRAME = 512
 _MIN_BPM = 60
 _MAX_BPM = 180
 # How near a whole number of beats a cadence must fall to count as aligned.
-_BEAT_TOLERANCE = 0.12
+# Set by what the detector can actually resolve, not by taste. Autocorrelation
+# quantizes the beat period to whole 23 ms frames, so a click track built at a
+# known tempo reads back a few BPM out — 120 measures 117.5, 110 measures 107.7 —
+# and a track that truly lands on a 4 s cadence still measures up to ~0.18 beats
+# off. A tighter gate would reject tracks that do fit and would only be measuring
+# the detector's own noise. A real miss (100 BPM against 4 s) measures 0.37, so
+# the two are still separated. Narrow this only alongside a finer onset hop.
+_BEAT_TOLERANCE = 0.2
 
 
 def _decode_mono(path: Path) -> np.ndarray | None:
@@ -89,25 +97,36 @@ def _beat_misfit(bpm: float, cadence_seconds: float) -> float:
 
 
 def track_for_cadence(candidates: list[Path], cadence_seconds: float) -> Path | None:
-    """The candidate whose beat divides the cadence most exactly.
+    """One of the candidates whose beat lands on the cadence, chosen at random.
 
-    A track that cannot be read costs itself its turn, not the run. With nothing
-    measurable, the caller's own fallback applies.
+    Returning the single least-misfitting track would hand the same memory the
+    same song forever, however badly the winner actually fit — so the tolerance
+    decides who qualifies and chance decides between them.
+
+    A track that cannot be read costs itself its turn, not the run. None means
+    nothing was near enough, and the caller's own fallback applies.
     """
     if not candidates or cadence_seconds <= 0:
         return None
 
-    best: tuple[float, Path] | None = None
+    aligned = []
     for track in candidates:
         bpm = detect_bpm(track)
         if bpm is None:
             logger.debug("No tempo read from %s; skipping it for cadence matching", track.name)
             continue
-        misfit = _beat_misfit(bpm, cadence_seconds)
-        if best is None or misfit < best[0]:
-            best = (misfit, track)
+        if _beat_misfit(bpm, cadence_seconds) <= _BEAT_TOLERANCE:
+            aligned.append(track)
 
-    if best is None:
+    if not aligned:
+        logger.debug("No bundled track lands on a %.1fs cadence", cadence_seconds)
         return None
-    logger.info("Bundled track %s fits a %.1fs cadence", best[1].name, cadence_seconds)
-    return best[1]
+    chosen = random.choice(aligned)  # noqa: S311  # WHY: variety, not secrecy
+    logger.info(
+        "Bundled track %s fits a %.1fs cadence (%d of %d did)",
+        chosen.name,
+        cadence_seconds,
+        len(aligned),
+        len(candidates),
+    )
+    return chosen

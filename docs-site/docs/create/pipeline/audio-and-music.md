@@ -108,9 +108,17 @@ Measured on the 28 bundled tracks, ACE-Step honours a requested tempo to within
 is also why cuts are aligned in *rate*, not yet locked to the beat.
 
 A bundled track cannot be asked for a tempo; its own is already fixed. So the
-choice runs the other way — the tracks are measured and the one whose beat
-divides the photo cadence is picked, instead of one at random. With no photos
-there is no rhythm to sync to, and the pick stays random so repeats differ.
+choice runs the other way — the tracks are measured, the ones whose beat lands
+within 0.2 beats of the photo cadence become the candidates, and one of those is
+picked at random. Alignment narrows the field; it does not name a winner, or the
+same memory would get the same song every time it was regenerated. When nothing
+lands close enough the pick falls back to any track. With no photos there is no
+rhythm to sync to, and the pick stays random too.
+
+That 0.2 is the detector's floor, not a preference: the onset envelope quantizes
+the beat period to 23 ms frames, so a track built at 120 bpm measures 117.5, and
+a track that really does land on a 4 s cadence can still measure 0.18 beats out.
+A tighter window would throw away tracks that fit and measure only the noise.
 
 Tempo is measured with an onset envelope and autocorrelation over an FFmpeg
 decode, using numpy alone. librosa would be a line, but it is not a dependency
