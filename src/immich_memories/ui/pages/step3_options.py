@@ -213,6 +213,7 @@ def render_step3() -> None:
             "resolution": default_resolution_label(config),
             "format": configured_format,
             "add_date": False,
+            "add_place": False,
             "music_source": "AI Generated" if musicgen_available else "None",
             "music_file": None,
             "music_volume": 0.7,
@@ -314,6 +315,15 @@ def render_step3() -> None:
                     options["add_date"] = e.value
 
                 date_checkbox.on_value_change(on_date_change)
+
+                place_checkbox = ui.checkbox(
+                    "Caption clips with their place", value=options.get("add_place", False)
+                )
+
+                def on_place_change(e):
+                    options["add_place"] = e.value
+
+                place_checkbox.on_value_change(on_place_change)
 
                 debug_checkbox = ui.checkbox(
                     "Keep intermediate files",

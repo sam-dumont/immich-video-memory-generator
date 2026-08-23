@@ -25,7 +25,7 @@ A collapsed expansion under the two selects:
 - **Orientation**: **Auto (detect from clips)** (default), Landscape (16:9), Portrait (9:16), Square (1:1). When the source and target aspect ratios differ, the whole frame is kept and the leftover space is filled — clips are never cropped, see [face-aware framing](../pipeline/face-aware-cropping.md).
 - **Scaling Mode**: **Blur background** (default), Letterbox (black bars). Starts on whatever `defaults.scale_mode` says, so the wizard and `--scale-mode` produce the same video.
 - **Transition Style**: **Smart (mix of fades & cuts)** (default), Crossfade, Cut, None. Smart picks per cut point: crossfade for slow scenes, hard cut for fast action.
-- **Add date overlay** and **Keep intermediate files** checkboxes.
+- **Add date overlay**, **Caption clips with their place**, and **Keep intermediate files** checkboxes. The place caption is the wizard's equivalent of the CLI's `--add-place`, and needs GPS on the clips to show anything.
 - When photos are enabled: "Photos enabled (N found)" and a **Photo duration (seconds)** field (1–10).
 
 <ThemedScreenshot name="step3-advanced" alt="Advanced generation options" />

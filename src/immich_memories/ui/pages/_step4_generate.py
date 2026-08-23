@@ -236,6 +236,7 @@ def _build_generation_params(state, selected_clips, output_path):
         ],
         output_format=_FORMAT_MAP.get(gen_options.get("format_override")),
         add_date_overlay=gen_options.get("add_date", False),
+        add_place_overlay=gen_options.get("add_place", False),
         debug_preserve_intermediates=gen_options.get("keep_intermediates", False),
         privacy_mode=state.demo_mode,
         person_name=person.name if person else None,
