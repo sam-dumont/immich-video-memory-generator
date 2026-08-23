@@ -22,8 +22,8 @@ Two selects are always visible:
 
 A collapsed expansion under the two selects:
 
-- **Orientation**: **Auto (detect from clips)** (default), Landscape (16:9), Portrait (9:16), Square (1:1). When the source and target aspect ratios differ, [face-aware cropping](../pipeline/face-aware-cropping.md) keeps faces in frame.
-- **Scaling Mode**: Smart Crop (keep faces), Fill (crop), Fit (letterbox), Blur (blurred background). The UI defaults to Smart Crop; the CLI and config default to `blur`.
+- **Orientation**: **Auto (detect from clips)** (default), Landscape (16:9), Portrait (9:16), Square (1:1). When the source and target aspect ratios differ, the whole frame is kept and the leftover space is filled — clips are never cropped, see [face-aware framing](../pipeline/face-aware-cropping.md).
+- **Scaling Mode**: **Blur background** (default), Letterbox (black bars). Starts on whatever `defaults.scale_mode` says, so the wizard and `--scale-mode` produce the same video.
 - **Transition Style**: **Smart (mix of fades & cuts)** (default), Crossfade, Cut, None. Smart picks per cut point: crossfade for slow scenes, hard cut for fast action.
 - **Add date overlay** and **Keep intermediate files** checkboxes.
 - When photos are enabled: "Photos enabled (N found)" and a **Photo duration (seconds)** field (1–10).

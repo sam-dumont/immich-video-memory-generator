@@ -1149,7 +1149,7 @@ class TestGenerateBuildParamsTable:
             person_names=["Alice"],
             duration=600.0,
             orientation="landscape",
-            scale_mode="smart_crop",
+            scale_mode="blur",
             transition="smart",
             resolution="auto",
             output_format="mp4",

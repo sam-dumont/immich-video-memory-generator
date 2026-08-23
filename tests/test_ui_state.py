@@ -234,19 +234,49 @@ class TestAppStateSingleton:
         assert s1 is not s2
 
 
-class TestScaleModeMap:
-    """Test the scale mode map includes blur."""
+class TestScaleModeOptions:
+    """The wizard must offer the same scale modes, and the same default, as the CLI."""
 
-    def test_blur_mode_mapped(self):
-        from immich_memories.ui.pages._step4_generate import _SCALE_MODE_MAP
+    def test_default_label_is_the_configured_mode(self):
+        from immich_memories.ui.pages.step3_options import (
+            SCALE_MODE_OPTIONS,
+            resolve_scale_mode_label,
+        )
 
-        assert "Blur (blurred background)" in _SCALE_MODE_MAP
-        assert _SCALE_MODE_MAP["Blur (blurred background)"] == "blur"
+        assert SCALE_MODE_OPTIONS[resolve_scale_mode_label(None)] == Config().defaults.scale_mode
 
-    def test_all_four_modes_present(self):
-        from immich_memories.ui.pages._step4_generate import _SCALE_MODE_MAP
+    def test_default_label_follows_a_configured_override(self):
+        from immich_memories.ui.pages.step3_options import (
+            SCALE_MODE_OPTIONS,
+            resolve_scale_mode_label,
+        )
 
-        assert len(_SCALE_MODE_MAP) == 4
+        config = Config()
+        config.defaults.scale_mode = "fit"
+
+        assert SCALE_MODE_OPTIONS[resolve_scale_mode_label(config)] == "fit"
+
+    def test_offered_labels_cover_exactly_the_configurable_modes(self):
+        """No option the config rejects, and no configurable mode the wizard cannot show."""
+        from typing import get_args
+
+        from immich_memories.config_models import DefaultsConfig
+        from immich_memories.ui.pages.step3_options import SCALE_MODE_OPTIONS
+
+        configurable = set(get_args(DefaultsConfig.model_fields["scale_mode"].annotation))
+
+        assert set(SCALE_MODE_OPTIONS.values()) == configurable
+
+    def test_retired_stored_label_falls_back_to_the_configured_mode(self):
+        """A wizard state saved when 'Smart Crop (keep faces)' existed must still render."""
+        from immich_memories.ui.pages.step3_options import (
+            SCALE_MODE_OPTIONS,
+            resolve_scale_mode_label,
+        )
+
+        label = resolve_scale_mode_label(None, "Smart Crop (keep faces)")
+
+        assert SCALE_MODE_OPTIONS[label] == Config().defaults.scale_mode
 
 
 def test_ui_output_options_include_h265() -> None:

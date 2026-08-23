@@ -1,24 +1,21 @@
 ---
 sidebar_position: 2
-title: Face-Aware Cropping
+title: Face-Aware Framing
 ---
 
-# Face-Aware Cropping
+# Face-Aware Framing
 
-When your source videos are landscape (16:9) but the output is portrait (9:16), or any other aspect ratio conversion, you lose a lot of the frame. Dumb center-cropping will cut people's heads off. Face-aware cropping detects faces first, then positions the crop window to keep them in frame.
+Faces steer two things: which clips get picked, and where a photo's Ken Burns move ends up. They do **not** crop your video clips — see [What happens to video clips](#what-happens-to-video-clips) below.
 
-## How it works
+## Photos pan toward the face
 
-1. Detect faces in the frame
-2. Calculate the bounding box that contains all detected faces
-3. Position the crop window to center that bounding box
-4. Clamp to frame boundaries (faces near the edge stay visible, the crop just shifts as far as it can)
+Immich already knows where the faces are in a photo. The photo animator reads those boxes, picks the largest face, and makes it the end point of the Ken Burns pan. So the move drifts toward the person instead of drifting off into a wall.
 
-If no faces are detected, it falls back to center crop: which is fine for landscapes, food shots, etc.
+With no faces on the asset, the pan ends at the centre — fine for landscapes, food shots, and the dog.
 
-## Detection backends
+## Faces feed clip scoring
 
-The pipeline picks the face detection backend automatically based on your hardware:
+Clip scoring counts faces per frame: a segment with people in it outscores an equally sharp segment of scenery. The pipeline picks the detection backend automatically:
 
 | Platform | Backend | Speed |
 |----------|---------|-------|
@@ -29,8 +26,11 @@ There is no CUDA face-detection path; on Linux, GPUs are used for encoding, scal
 
 On a Mac with an M-series chip, the Vision Framework runs face detection on the Neural Engine, which is purpose-built for this kind of work. It's not just faster: it's more accurate too, especially with small or partially occluded faces.
 
-## When it matters
+## What happens to video clips
 
-Face-aware cropping kicks in during the assembly phase, whenever the source and target aspect ratios differ. If you're outputting at the same aspect ratio as your source, no cropping happens and this is a no-op.
+Nothing gets cropped. When a landscape clip lands in a portrait video, the whole frame is kept and the leftover space is filled, using [`scale_mode`](../../reference/config-reference.md#generation-defaults):
 
-The most common case: you shot everything in landscape on your phone, but want a vertical video for sharing. Without face-aware cropping, you'd lose whoever was standing on the left or right side of frame.
+- `blur` (default) — a blurred, zoomed copy of the frame sits behind the sharp one
+- `fit` — black bars
+
+Face-aware cropping of video is **not implemented**. Cropping a moving subject needs per-frame tracking and a smoothed crop path, not a single face position, so the frame is kept whole instead of guessing. The face-centre helpers in `processing/scaling_utilities.py` are parked there for whoever builds it.

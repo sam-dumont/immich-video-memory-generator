@@ -46,7 +46,7 @@ immich-memories generate [OPTIONS]
 | `--short-form` | — | choice | — | `15`, `30`, `60`, or `90` — sets the duration and goes vertical |
 | `--orientation` | `-o` | choice | `landscape` | `landscape`, `portrait`, or `square` |
 | `--resolution` | `-r` | choice | config value; `auto` matches source clips | `auto`, `4k`, `1080p`, or `720p` |
-| `--scale-mode` | `-s` | choice | config/`blur` | `fit`, `fill`, `smart_crop`, or `blur` |
+| `--scale-mode` | `-s` | choice | config/`blur` | `blur` (blurred background) or `fit` (black bars) |
 | `--transition` | `-t` | choice | `smart` | `smart`, `cut`, `crossfade`, or `none` |
 | `--quality` | `-q` | choice | config value | `high`, `medium`, or `low` |
 | `--format` | — | choice | config value | `mp4`, `h265`, or `prores` |

@@ -270,7 +270,7 @@ immich-memories generate [OPTIONS]
 | `--duration`, `-d` | integer | - | Target duration in seconds (default: from memory type preset) |
 | `--short-form` | choice: `15` \| `30` \| `60` \| `90` | - | Short-form preset: sets the duration and makes the video vertical |
 | `--orientation`, `-o` | choice: `landscape` \| `portrait` \| `square` | landscape | Output orientation |
-| `--scale-mode`, `-s` | choice: `fit` \| `fill` \| `smart_crop` \| `blur` | - | Scale mode (default: from config or smart_crop) |
+| `--scale-mode`, `-s` | choice: `fit` \| `blur` | - | How to fill an aspect mismatch: blurred background or black bars (default: from config, else blur) |
 | `--transition`, `-t` | choice: `smart` \| `cut` \| `crossfade` \| `none` | smart | Transition style (default: smart — mix of fades & cuts) |
 | `--resolution`, `-r` | choice: `auto` \| `4k` \| `1080p` \| `720p` | - | Output resolution (default: config value, 'auto' to match source clips) |
 | `--music-volume` | float | 0.5 | Music volume 0.0-1.0 (default: 0.5) |

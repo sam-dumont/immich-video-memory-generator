@@ -31,7 +31,7 @@ output:
   hdr_mode: auto                  # Preserve HLG/PQ when present; otherwise output SDR
 
 defaults:
-  scale_mode: "blur"             # fit, fill, smart_crop, blur
+  scale_mode: "blur"             # blur background, or fit for black bars
   transition: "smart"            # cut, crossfade, smart, none
 
 # ── AI analysis (any OpenAI-compatible vision model) ──────

@@ -133,7 +133,7 @@ or more within the merge window is treated as a burst — the count is not confi
 
 ```yaml
 defaults:
-  scale_mode: "blur"             # fit, fill, smart_crop, blur (used when --scale-mode is not given)
+  scale_mode: "blur"             # blur | fit (black bars) — used when --scale-mode is not given
   transition: "smart"            # cut, crossfade, smart, none (used when --transition is left on smart)
   transition_duration: 0.5       # 0-2 seconds
 ```

@@ -257,9 +257,10 @@ def register_generate_commands(main: click.Group) -> None:
     @click.option(
         "--scale-mode",
         "-s",
-        type=click.Choice(["fit", "fill", "smart_crop", "blur"]),
+        type=click.Choice(["fit", "blur"]),
         default=None,
-        help="Scale mode (default: from config or smart_crop)",
+        help="How to fill an aspect mismatch: blurred background or black bars "
+        "(default: from config, else blur)",
     )
     @click.option(
         "--transition",

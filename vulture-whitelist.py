@@ -155,6 +155,7 @@ _.serialize_api_version  # unused method (src/immich_memories/config_models.py:3
 _.expand_env  # unused method (src/immich_memories/config_models.py:43)
 clip_style  # unused variable (src/immich_memories/config_models.py:100)
 use_scene_detection  # unused variable (src/immich_memories/config_models.py:107)
+_.map_legacy_scale_mode  # unused method (src/immich_memories/config_models.py:117)
 _.apply_clip_style  # unused method (src/immich_memories/config_models.py:147)
 _.validate_duration_constraints  # unused method (src/immich_memories/config_models.py:178)
 _.serialize_hdr_mode  # unused method (src/immich_memories/config_models.py:299)

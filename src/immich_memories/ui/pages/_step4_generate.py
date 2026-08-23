@@ -22,6 +22,7 @@ from immich_memories.ui.components import (
     im_separator,
 )
 from immich_memories.ui.nicegui_compat import io_bound_result, run_ui_observer
+from immich_memories.ui.pages.step3_options import SCALE_MODE_OPTIONS, resolve_scale_mode_label
 
 if TYPE_CHECKING:
     from immich_memories.processing.encoding_plan import EncodingPlan
@@ -161,13 +162,6 @@ _RESOLUTION_MAP = {
     "Auto (match clips)": "auto",
 }
 
-_SCALE_MODE_MAP = {
-    "Smart Crop (keep faces)": "smart_crop",
-    "Fill (crop)": "fill",
-    "Fit (letterbox)": "fit",
-    "Blur (blurred background)": "blur",
-}
-
 _FORMAT_MAP = {
     "MP4 (H.264)": "mp4",
     "MP4 (H.265)": "h265",
@@ -233,9 +227,9 @@ def _build_generation_params(state, selected_clips, output_path):
             gen_options.get("transition", "Smart (mix of fades & cuts)"), "crossfade"
         ),
         output_resolution=_RESOLUTION_MAP.get(gen_options.get("resolution", "Auto (match clips)")),
-        scale_mode=_SCALE_MODE_MAP.get(
-            gen_options.get("scale_mode", "Smart Crop (keep faces)"), "smart_crop"
-        ),
+        scale_mode=SCALE_MODE_OPTIONS[
+            resolve_scale_mode_label(state.config, gen_options.get("scale_mode"))
+        ],
         output_format=_FORMAT_MAP.get(gen_options.get("format_override")),
         add_date_overlay=gen_options.get("add_date", False),
         debug_preserve_intermediates=gen_options.get("keep_intermediates", False),

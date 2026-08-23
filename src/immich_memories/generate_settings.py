@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from immich_memories.config_models import normalize_scale_mode
 from immich_memories.generate_privacy import (
     extract_trip_locations,
     generate_trip_title_text,
@@ -68,7 +69,7 @@ def _build_assembly_settings(
     title_screen_settings = _build_title_settings(params, config, assembly_clips)
 
     # Scale mode: CLI/param > config > default
-    effective_scale_mode = params.scale_mode or config.defaults.scale_mode
+    effective_scale_mode = normalize_scale_mode(params.scale_mode or config.defaults.scale_mode)
 
     # A CLI format override selects both a compatible codec and container.
     # With no override, the explicit output config remains authoritative.

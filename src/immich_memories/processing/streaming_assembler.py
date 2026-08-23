@@ -164,6 +164,9 @@ class FrameDecoder:
             )
             self._use_filter_complex = True
         else:
+            # "fit": scale down inside the frame and pad the rest black. There is
+            # no face-aware crop on the video path, so anything that is not
+            # "blur" lands here — which is why no such mode is offered.
             parts.extend(
                 (
                     f"scale={self._width}:{self._height}:force_original_aspect_ratio=decrease:flags=lanczos",

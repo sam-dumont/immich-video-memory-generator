@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pytest
@@ -122,6 +123,27 @@ class TestDefaultsConfig:
 
         config = DefaultsConfig(transition_duration=2.0)
         assert config.transition_duration == 2.0
+
+    def test_legacy_smart_crop_loads_as_blur(self, caplog):
+        """An existing config saying smart_crop keeps loading, and says what it became."""
+        with caplog.at_level(logging.WARNING):
+            config = DefaultsConfig(scale_mode="smart_crop")
+
+        assert config.scale_mode == "blur"
+        assert "smart_crop" in caplog.text
+
+    def test_legacy_fill_loads_as_fit(self, caplog):
+        """fill never cropped to fill the frame — it letterboxed, which is fit."""
+        with caplog.at_level(logging.WARNING):
+            config = DefaultsConfig(scale_mode="fill")
+
+        assert config.scale_mode == "fit"
+        assert "fill" in caplog.text
+
+    def test_unknown_scale_mode_is_rejected(self):
+        """A typo still fails loudly rather than silently letterboxing."""
+        with pytest.raises(ValidationError):
+            DefaultsConfig(scale_mode="smart_zoom")
 
 
 class TestAnalysisConfig:

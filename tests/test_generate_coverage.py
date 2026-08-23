@@ -905,19 +905,30 @@ class TestBuildAssemblySettingsExtraBranches:
             clips=[],
             output_path=Path("/out/o.mp4"),
             config=Config(),
+            scale_mode="fit",
+        )
+        settings = _build_assembly_settings(params, [])
+        assert settings.scale_mode == "fit"
+
+    def test_legacy_scale_mode_from_params_is_mapped(self):
+        """A caller still passing smart_crop gets blur, not a silent letterbox."""
+        params = GenerationParams(
+            clips=[],
+            output_path=Path("/out/o.mp4"),
+            config=Config(),
             scale_mode="smart_crop",
         )
         settings = _build_assembly_settings(params, [])
-        assert settings.scale_mode == "smart_crop"
+        assert settings.scale_mode == "blur"
 
     def test_scale_mode_from_config_when_param_none(self):
         config = Config()
-        config.defaults.scale_mode = "fill"
+        config.defaults.scale_mode = "fit"
         params = GenerationParams(
             clips=[], output_path=Path("/out/o.mp4"), config=config, scale_mode=None
         )
         settings = _build_assembly_settings(params, [])
-        assert settings.scale_mode == "fill"
+        assert settings.scale_mode == "fit"
 
     def test_4k_resolution(self):
         params = GenerationParams(

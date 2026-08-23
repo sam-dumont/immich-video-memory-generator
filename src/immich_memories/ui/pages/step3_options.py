@@ -6,6 +6,7 @@ import logging
 
 from nicegui import ui
 
+from immich_memories.config_models import DefaultsConfig, normalize_scale_mode
 from immich_memories.ui.components import (
     im_button,
     im_card,
@@ -39,12 +40,35 @@ def configured_output_format_label(config) -> str:
 
 _RESOLUTION_LABELS = {"4k": "4K", "1080p": "1080p", "720p": "720p"}
 
+# WHY: the assembler fills an aspect mismatch two ways and no more — a blurred,
+# zoomed copy of the frame behind the sharp one, or black bars. Offering a third
+# choice here would just relabel the black bars (see streaming_assembler._build_vf).
+SCALE_MODE_OPTIONS = {
+    "Blur background": "blur",
+    "Letterbox (black bars)": "fit",
+}
+_SCALE_MODE_LABELS = {mode: label for label, mode in SCALE_MODE_OPTIONS.items()}
+_DEFAULT_SCALE_MODE_LABEL = _SCALE_MODE_LABELS[DefaultsConfig().scale_mode]
+
 
 def default_resolution_label(config) -> str:
     """Match clips unless a preset pins the resolution (fast → 1080p on a NAS, not 4K)."""
     if config is None or config.preset is None:
         return "Auto (match clips)"
     return _RESOLUTION_LABELS.get(config.output.resolution, "Auto (match clips)")
+
+
+def resolve_scale_mode_label(config, stored: str | None = None) -> str:
+    """Pick the label to show, starting the wizard wherever the CLI would start.
+
+    A `stored` label saved before the retired modes were dropped is discarded
+    rather than shown as a mode that no longer exists, and so is a configured
+    mode this wizard has no widget for.
+    """
+    if stored is not None and stored in SCALE_MODE_OPTIONS:
+        return stored
+    configured = normalize_scale_mode(config.defaults.scale_mode) if config is not None else ""
+    return _SCALE_MODE_LABELS.get(configured, _DEFAULT_SCALE_MODE_LABEL)
 
 
 def _render_preset_banner(config) -> None:
@@ -184,7 +208,7 @@ def render_step3() -> None:
     if not state.generation_options:
         state.generation_options = {
             "orientation": "Auto (detect from clips)",
-            "scale_mode": "Smart Crop (keep faces)",
+            "scale_mode": resolve_scale_mode_label(config),
             "transition": "Smart (mix of fades & cuts)",
             "resolution": default_resolution_label(config),
             "format": configured_format,
@@ -255,14 +279,9 @@ def render_step3() -> None:
                 orientation_select.on_value_change(on_orientation_change)
 
                 scale_select = ui.select(
-                    options=[
-                        "Smart Crop (keep faces)",
-                        "Fill (crop)",
-                        "Fit (letterbox)",
-                        "Blur (blurred background)",
-                    ],
+                    options=list(SCALE_MODE_OPTIONS),
                     label="Scaling Mode",
-                    value=options.get("scale_mode", "Smart Crop (keep faces)"),
+                    value=resolve_scale_mode_label(config, options.get("scale_mode")),
                 ).classes("w-full")
 
                 def on_scale_change(e):

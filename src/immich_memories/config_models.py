@@ -82,12 +82,43 @@ class ImmichConfig(BaseModel):
         return v
 
 
+# The assembler fills an aspect mismatch two ways and no more: a blurred, zoomed
+# copy of the frame behind the sharp one, or black bars. `smart_crop` and `fill`
+# both silently rendered as black bars because no crop path exists for video.
+# `fill` keeps that rendering under its real name; `smart_crop` moves to blur,
+# which is what someone asking to keep faces in frame was actually after.
+_LEGACY_SCALE_MODES = {"smart_crop": "blur", "fill": "fit"}
+
+
+def normalize_scale_mode(value: str) -> str:
+    """Map a retired scale mode onto an implemented one, saying so."""
+    replacement = _LEGACY_SCALE_MODES.get(value)
+    if replacement is None:
+        return value
+    logger.warning(
+        "scale_mode '%s' no longer exists — no crop path was ever implemented for "
+        "video, so it rendered as black bars. Using '%s'.",
+        value,
+        replacement,
+    )
+    return replacement
+
+
 class DefaultsConfig(BaseModel):
     """Default settings for video generation."""
 
-    scale_mode: Literal["fit", "fill", "smart_crop", "blur"] = "blur"
+    scale_mode: Literal["fit", "blur"] = Field(
+        default="blur",
+        description="How to fill an aspect mismatch: 'blur' background or 'fit' (black bars)",
+    )
     transition: Literal["cut", "crossfade", "smart", "none"] = "smart"
     transition_duration: float = Field(default=0.5, ge=0, le=2.0)
+
+    @field_validator("scale_mode", mode="before")
+    @classmethod
+    def map_legacy_scale_mode(cls, v: str) -> str:
+        """Keep configs written against the retired modes loading."""
+        return normalize_scale_mode(v) if isinstance(v, str) else v
 
 
 _CLIP_STYLE_PRESETS: dict[str, dict[str, float]] = {

@@ -408,6 +408,37 @@ def test_frame_decoder_applies_hdr_to_sdr_color_chain() -> None:
     assert vf.endswith("setsar=1")
 
 
+def _vf_for_scale_mode(mode: str) -> str:
+    from immich_memories.processing.streaming_assembler import FrameDecoder
+
+    return FrameDecoder(
+        Path("clip.mp4"), width=1920, height=1080, fps=30, scale_mode=mode
+    )._build_vf()
+
+
+def test_the_configurable_scale_modes_render_differently() -> None:
+    """Two accepted modes that build the same chain would mean one is a phantom."""
+    from immich_memories.config_models import DefaultsConfig
+
+    modes = [mode for mode in ("blur", "fit") if DefaultsConfig(scale_mode=mode).scale_mode == mode]
+    chains = {_vf_for_scale_mode(mode) for mode in modes}
+
+    assert len(chains) == len(modes) == 2
+
+
+def test_blur_scale_mode_renders_a_blurred_background() -> None:
+    vf = _vf_for_scale_mode("blur")
+
+    assert "gblur=sigma=30" in vf
+    assert "overlay=(W-w)/2:(H-h)/2" in vf
+
+
+def test_fit_scale_mode_renders_black_bars() -> None:
+    vf = _vf_for_scale_mode("fit")
+
+    assert "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black" in vf
+
+
 def test_streaming_decoder_builds_plan_targeted_hlg_to_sdr_chain() -> None:
     from unittest.mock import MagicMock, patch
 
