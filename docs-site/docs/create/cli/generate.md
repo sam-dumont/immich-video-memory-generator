@@ -52,6 +52,7 @@ immich-memories generate [OPTIONS]
 | `--format` | — | choice | config value | `mp4`, `h265`, or `prores` |
 | `--output` | `-o`, `-O` | path | auto | Where to write — see [Output](#output); the file lands in a per-run folder beside it |
 | `--title` | — | string | — | Override title screen text |
+| `--llm-title` | — | flag | off | Ask the LLM for the title instead of using a template |
 | `--subtitle` | — | string | — | Override subtitle text |
 | `--add-date` | — | flag | — | Caption each clip with its capture date |
 | `--add-place` | — | flag | — | Caption each clip with where it was taken |
@@ -359,6 +360,31 @@ trips:
 ```
 
 ## Dry run
+
+### Letting the LLM name the memory
+
+By default the CLI titles a memory from a template — "Year in Review 2025",
+"March 2025", "On This Day — July 4". `--llm-title` asks the configured model
+instead, using the same prompt the web UI uses: the dates, the people, and what
+the analyzer said about each selected clip.
+
+```bash
+immich-memories generate --year 2025 --llm-title
+```
+
+Three things worth knowing:
+
+- **It is off by default, deliberately.** The wizard turns LLM titles on whenever
+  a model is configured; the CLI does not, because a default that starts
+  inventing titles makes runs before and after it incomparable. If you are
+  comparing outputs across a sweep, leave it off or set it for every run.
+- **`--title` still wins.** An explicit title is you typing the answer; nothing
+  overrules it, and the flag is ignored when both are given.
+- **It fails soft.** No model configured, a failed call, or an empty answer all
+  fall back to the template. The video is never lost over a title.
+
+It uses `title_llm` if you have configured one, otherwise `llm` — the same
+resolution the rest of the pipeline uses.
 
 ### Why did selection drop that clip?
 
