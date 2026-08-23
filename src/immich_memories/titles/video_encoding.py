@@ -186,6 +186,7 @@ def create_title_video(
         fps=fps,
         duration=duration,
         animated_background=animated_background,
+        hdr=bool(encoding_plan and encoding_plan.hdr),
     )
     renderer = TitleRenderer(style, settings, background_image=background_image)
 

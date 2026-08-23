@@ -20,6 +20,7 @@ from immich_memories.titles.backgrounds import (
 )
 from immich_memories.titles.colors import (
     brighten_color,
+    ceil_white_for_hdr,
     ensure_minimum_brightness,
     hex_to_rgb,
     rgb_to_hex,
@@ -454,6 +455,36 @@ class TestColors:
         brightened = ensure_minimum_brightness(dark_color, min_brightness=100)
         # Should be brighter than original
         assert sum(brightened) >= sum(dark_color)
+
+
+class TestGraphicsWhiteCeiling:
+    """#506: graphics drawn at full white sit above the diffuse white of the HDR
+    picture behind them, so title text glows on an HDR display. The measured
+    ceiling is HLG graphics white — the same 0xBF the per-clip captions use."""
+
+    def test_full_white_lands_on_graphics_white(self):
+        assert ceil_white_for_hdr("#FFFFFF").upper() == "#BFBFBF"
+
+    def test_near_white_is_brought_down_too(self):
+        """The palettes are full of off-whites; they glare just as much."""
+        assert hex_to_rgb(ceil_white_for_hdr("#F5F5F4")) <= (0xBF, 0xBF, 0xBF)
+        assert hex_to_rgb(ceil_white_for_hdr("#FAFAF9")) <= (0xBF, 0xBF, 0xBF)
+
+    def test_a_tinted_near_white_keeps_its_tint(self):
+        """#F0F9FF is a white with a breath of blue in it — still a white."""
+        r, g, b = hex_to_rgb(ceil_white_for_hdr("#F0F9FF"))
+
+        assert max(r, g, b) == 0xBF
+        assert r < g < b, "the blue cast was flattened out"
+
+    def test_a_saturated_colour_is_left_alone(self):
+        """A ceiling on whites, not a global dimmer: accents keep their punch."""
+        assert ceil_white_for_hdr("#E94560").upper() == "#E94560"
+        assert ceil_white_for_hdr("#FF0000").upper() == "#FF0000"
+
+    def test_anything_already_below_the_ceiling_is_untouched(self):
+        assert ceil_white_for_hdr("#2D2D2D").upper() == "#2D2D2D"
+        assert ceil_white_for_hdr("#374151").upper() == "#374151"
 
 
 class TestBackgrounds:

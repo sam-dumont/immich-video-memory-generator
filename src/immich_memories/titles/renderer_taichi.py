@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+from immich_memories.titles.colors import ceil_white_for_hdr
 from immich_memories.titles.safe_zones import safe_text_width
 
 if TYPE_CHECKING:
@@ -246,7 +247,15 @@ class TaichiTitleRenderer:
 
         self.color1 = _hex_to_rgb(self.config.bg_color1)
         self.color2 = _hex_to_rgb(self.config.bg_color2)
-        self.text_rgb = _hex_to_rgb(self.config.text_color)
+        # WHY (#506): text is the one thing here drawn at graphics white. In an
+        # HDR run full white sits above the diffuse white of the picture behind
+        # it and the title glows; the ceiling applies to the parsed colour so
+        # every text path downstream — SDF, kernel, and the PIL layers — gets it.
+        # The background colours are picture, not graphics, and are left alone.
+        text_color = self.config.text_color
+        if self.config.hdr:
+            text_color = ceil_white_for_hdr(text_color)
+        self.text_rgb = _hex_to_rgb(text_color)
 
         if self.config.enable_bokeh:
             self._init_bokeh_particles()
