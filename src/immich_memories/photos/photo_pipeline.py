@@ -121,6 +121,31 @@ def score_photos(
     ]
 
 
+def _from_the_camera_roll(photo_assets: list[Asset], config: Any) -> list[Asset]:
+    """Drop the photos a name says nobody shot to keep.
+
+    Videos are filtered on the same patterns before analysis; photos reached
+    selection without ever being asked, so a collage forwarded through a
+    messaging app walked into a year recap while a doorbell clip beside it was
+    turned away.
+    """
+    from immich_memories.analysis.source_filter import from_an_excluded_source
+
+    patterns = getattr(getattr(config, "analysis", None), "exclude_filename_patterns", ())
+    if not patterns:
+        return photo_assets
+    kept = [
+        asset
+        for asset in photo_assets
+        if not from_an_excluded_source(asset.original_file_name, patterns)
+    ]
+    if len(kept) < len(photo_assets):
+        logger.info(
+            "Source filter: %d photo(s) from excluded sources", len(photo_assets) - len(kept)
+        )
+    return kept
+
+
 def score_and_select_photos(
     photo_assets: list[Asset],
     video_candidates: list[BudgetCandidate],
@@ -141,6 +166,7 @@ def score_and_select_photos(
     Extracted from generate.py:_apply_unified_budget() so it can be
     called from both UI (Step 2) and CLI (generation time).
     """
+    photo_assets = _from_the_camera_roll(photo_assets, config)
     if not photo_assets:
         return PhotoSelectionResult(scored_photos=[], selection=UnifiedSelection())
 

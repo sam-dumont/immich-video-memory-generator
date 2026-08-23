@@ -2651,83 +2651,35 @@
       {
         "name": "_stream_render_to_mp4",
         "complexity": 16,
-        "line_start": 691,
-        "line_end": 790,
+        "line_start": 717,
+        "line_end": 816,
         "line_complexities": [
           {
-            "line": 712,
+            "line": 738,
             "complexity": 0
           },
           {
-            "line": 713,
+            "line": 739,
             "complexity": 1
-          },
-          {
-            "line": 715,
-            "complexity": 1
-          },
-          {
-            "line": 716,
-            "complexity": 0
-          },
-          {
-            "line": 717,
-            "complexity": 2
-          },
-          {
-            "line": 718,
-            "complexity": 0
-          },
-          {
-            "line": 725,
-            "complexity": 1
-          },
-          {
-            "line": 729,
-            "complexity": 0
-          },
-          {
-            "line": 730,
-            "complexity": 0
-          },
-          {
-            "line": 731,
-            "complexity": 1
-          },
-          {
-            "line": 732,
-            "complexity": 0
-          },
-          {
-            "line": 733,
-            "complexity": 2
-          },
-          {
-            "line": 734,
-            "complexity": 0
           },
           {
             "line": 741,
             "complexity": 1
           },
           {
-            "line": 745,
+            "line": 742,
             "complexity": 0
           },
           {
-            "line": 748,
-            "complexity": 0
-          },
-          {
-            "line": 749,
+            "line": 743,
             "complexity": 2
           },
           {
-            "line": 750,
-            "complexity": 3
+            "line": 744,
+            "complexity": 0
           },
           {
-            "line": 752,
+            "line": 751,
             "complexity": 1
           },
           {
@@ -2735,17 +2687,65 @@
             "complexity": 0
           },
           {
-            "line": 789,
+            "line": 756,
+            "complexity": 0
+          },
+          {
+            "line": 757,
             "complexity": 1
           },
           {
-            "line": 790,
+            "line": 758,
+            "complexity": 0
+          },
+          {
+            "line": 759,
+            "complexity": 2
+          },
+          {
+            "line": 760,
+            "complexity": 0
+          },
+          {
+            "line": 767,
+            "complexity": 1
+          },
+          {
+            "line": 771,
+            "complexity": 0
+          },
+          {
+            "line": 774,
+            "complexity": 0
+          },
+          {
+            "line": 775,
+            "complexity": 2
+          },
+          {
+            "line": 776,
+            "complexity": 3
+          },
+          {
+            "line": 778,
+            "complexity": 1
+          },
+          {
+            "line": 781,
+            "complexity": 0
+          },
+          {
+            "line": 815,
+            "complexity": 1
+          },
+          {
+            "line": 816,
             "complexity": 0
           }
         ]
       }
     ],
-    "complexity": 92
+    "complexity": 94
   },
   {
     "path": "src/immich_memories/processing/clip_encoder.py",

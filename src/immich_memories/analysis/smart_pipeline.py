@@ -10,10 +10,9 @@ Orchestrates the 4-phase pipeline:
 from __future__ import annotations
 
 import contextlib
-import fnmatch
 import logging
 import os
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -25,6 +24,7 @@ from immich_memories.analysis.clip_refiner import ClipRefiner
 from immich_memories.analysis.clip_scaler import ClipScaler
 from immich_memories.analysis.preview_builder import PreviewBuilder
 from immich_memories.analysis.progress import PipelinePhase, ProgressTracker
+from immich_memories.analysis.source_filter import from_an_excluded_source
 from immich_memories.analysis.thumbnail_prefetch import ThumbnailPrefetcher
 from immich_memories.config_presets import resolve_analysis_depth
 
@@ -144,19 +144,6 @@ class ClipWithSegment:
     # WHY: the verify pass (#468) must tell real analysis from a metadata
     # guess — a fallback score is a placeholder, not a rank.
     analyzed: bool = True
-
-
-def _from_an_excluded_source(name: str | None, patterns: Sequence[str]) -> bool:
-    """True when a source file matches one of the excluded patterns.
-
-    Matching is on the filename because that is the only thing these exports
-    carry: a doorbell clip has no make or model to tell it from a phone, and
-    Ring reuses a single filename across every clip it uploads.
-    """
-    if not name:
-        return False
-    lowered = name.casefold()
-    return any(fnmatch.fnmatch(lowered, pattern.casefold()) for pattern in patterns)
 
 
 class SmartPipeline:
@@ -726,7 +713,7 @@ class SmartPipeline:
             eligible = [
                 clip
                 for clip in eligible
-                if not _from_an_excluded_source(clip.asset.original_file_name, patterns)
+                if not from_an_excluded_source(clip.asset.original_file_name, patterns)
             ]
             if len(eligible) < before:
                 logger.info(
