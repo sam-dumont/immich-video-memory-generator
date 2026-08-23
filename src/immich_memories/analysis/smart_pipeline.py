@@ -540,12 +540,39 @@ class SmartPipeline:
         result = self.refiner.phase_refine(analyzed, self.tracker)
         return result, analyzed, True
 
+    def _floor_for(self, member: ClipWithSegment) -> float:
+        """The gate this clip answers to, on the scale its score was built on.
+
+        photos.score_penalty says outright that a photo scores a fixed share
+        of a video, so a floor calibrated on footage is that much too high for
+        a still. A no-people, non-favorite photo tops out at 0.15 base + 0.05
+        camera + half the LLM weight — 0.28 after the penalty, against a floor
+        of 0.30. Landscapes, pets and scenery could not clear it at all, and
+        were dropped as a class along with any day only they represented.
+        """
+        from immich_memories.analysis.source_filter import is_a_still
+
+        floor = self.config.judge_floor_score
+        if not is_a_still(member.clip.asset):
+            return floor
+        return floor * (1.0 - self._app_config.photos.score_penalty)
+
     def _judge_offenders(self, selected: list[ClipWithSegment]) -> set[str]:
         """Members failing the gate. Favorites are exempt from both rules —
         the user explicitly chose them, and "Starting with ALL favorites" is
-        the selection's oldest contract."""
-        judgeable = [s for s in selected if not getattr(s.clip.asset, "is_favorite", False)]
-        offenders = {s.clip.asset.id for s in judgeable if s.score < self.config.judge_floor_score}
+        the selection's oldest contract.
+
+        Coverage is deliberately NOT exempt here, though every later drop site
+        spares it. Both readings of "spare what covers a period" switch the
+        judge off under ordinary conditions: on a pool with no favorites the
+        coverage ids are every clip picked from the densest periods, and a
+        selection distributed across time — which is the goal — makes almost
+        every clip the only one of its day. A gate that never fires is worse
+        than the gate being blunt, and the blunt part was the scale (#508).
+        """
+        spared = {s.clip.asset.id for s in selected if getattr(s.clip.asset, "is_favorite", False)}
+        judgeable = [s for s in selected if s.clip.asset.id not in spared]
+        offenders = {s.clip.asset.id for s in judgeable if s.score < self._floor_for(s)}
         scores = [s.score for s in selected]
         mean_score = sum(scores) / len(scores)
         ending = max(
@@ -554,7 +581,7 @@ class SmartPipeline:
         )
         if (
             len(selected) > 2
-            and not getattr(ending.clip.asset, "is_favorite", False)
+            and ending.clip.asset.id not in spared
             and ending.score == min(scores)
             and ending.score < mean_score * self.config.judge_boundary_ratio
         ):
