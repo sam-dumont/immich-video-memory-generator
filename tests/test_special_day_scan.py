@@ -7,6 +7,7 @@ as a success.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, date, datetime
 from types import SimpleNamespace
 
@@ -17,7 +18,13 @@ from immich_memories.automation.special_day_scan import (
     anniversaries_due,
     scan_year,
 )
-from immich_memories.cli.special_days_cmd import _homebase, _year_of_assets
+from immich_memories.cli.special_days_cmd import (
+    _homebase,
+    _load_catalogue,
+    _write_catalogue,
+    _year_of_assets,
+    _years_in,
+)
 from immich_memories.config_models import TripsConfig
 
 
@@ -222,3 +229,42 @@ def test_a_library_that_refuses_every_query_is_not_an_empty_year() -> None:
 
     with pytest.raises(RuntimeError, match="2019"):
         _year_of_assets(library, 2019)
+
+
+def test_a_scan_that_found_nothing_leaves_a_good_catalogue_alone(tmp_path) -> None:
+    """The write was unconditional and `found` started empty.
+
+    Immich unreachable plus twelve swallowed errors put [] over twenty years
+    of scanning, and reported success doing it.
+    """
+    catalogue = tmp_path / "special-days.json"
+    catalogue.write_text(json.dumps([{"day": "2014-12-31", "title": "A day"}]))
+
+    _write_catalogue(catalogue, [], rescan=False)
+
+    assert json.loads(catalogue.read_text()) == [{"day": "2014-12-31", "title": "A day"}]
+
+
+def test_an_explicit_rescan_may_empty_the_catalogue(tmp_path) -> None:
+    """Refusing to write is a guard against accidents, not a lock."""
+    catalogue = tmp_path / "special-days.json"
+    catalogue.write_text(json.dumps([{"day": "2014-12-31", "title": "A day"}]))
+
+    _write_catalogue(catalogue, [], rescan=True)
+
+    assert json.loads(catalogue.read_text()) == []
+
+
+def test_a_catalogue_nobody_can_read_is_not_a_catalogue(tmp_path) -> None:
+    """Half a file from an interrupted write must not stop the next run."""
+    catalogue = tmp_path / "special-days.json"
+    catalogue.write_text('[{"day": "2014-12-31"')
+
+    assert _load_catalogue(catalogue) == []
+
+
+def test_the_years_already_in_the_catalogue_are_not_scanned_again(tmp_path) -> None:
+    """A multi-hour scan that died at year twelve should not start over."""
+    catalogue = [{"day": "2014-12-31"}, {"day": "2015-06-01"}, {"day": "2015-07-04"}]
+
+    assert _years_in(catalogue) == {2014, 2015}

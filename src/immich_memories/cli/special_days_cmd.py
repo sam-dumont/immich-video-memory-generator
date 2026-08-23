@@ -34,8 +34,18 @@ def _register_discover(main: click.Group) -> None:
         default=Path("special-days.json"),
         help="Where to write the catalogue",
     )
+    @click.option(
+        "--rescan",
+        is_flag=True,
+        help="Start over, ignoring and replacing the existing catalogue",
+    )
     def discover_days(
-        since: int, until: int, per_year: int, also_skip: tuple[str, ...], out: Path
+        since: int,
+        until: int,
+        per_year: int,
+        also_skip: tuple[str, ...],
+        out: Path,
+        rescan: bool,
     ) -> None:
         """Find days something happened on, and remember them for later.
 
@@ -45,10 +55,14 @@ def _register_discover(main: click.Group) -> None:
 
         Days inside a trip are skipped, since a trip memory already tells that
         story, and so are holidays, which have their own.
+
+        Resumes by default: years already in the catalogue are not scanned
+        again, which matters for a command that runs for hours. --rescan
+        starts over.
         """
-        found = _scan_library(since, until, per_year, also_skip, out)
-        out.write_text(json.dumps(found, indent=1))
-        print_success(f"{len(found)} special days written to {out}")
+        found = _scan_library(since, until, per_year, also_skip, out, rescan=rescan)
+        _write_catalogue(out, found, rescan=rescan)
+        print_success(f"{len(found)} special days in {out}")
 
 
 def _register_due(main: click.Group) -> None:
@@ -93,6 +107,49 @@ def _register_due(main: click.Group) -> None:
         print_success(f"{len(entries)} days in the catalogue, checked against {when}")
 
 
+def _load_catalogue(path: Path) -> list[dict]:
+    """What an earlier run already found, or nothing readable.
+
+    A scan runs for hours across twenty years. Starting from scratch every
+    time is the difference between a command you can interrupt and one you
+    have to babysit.
+    """
+    if not path.exists():
+        return []
+    try:
+        loaded = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        console.print(f"[yellow]{path} is not readable as a catalogue; starting fresh[/yellow]")
+        return []
+    return loaded if isinstance(loaded, list) else []
+
+
+def _years_in(catalogue: list[dict]) -> set[int]:
+    """Years the catalogue already speaks for, so a resumed scan skips them."""
+    years: set[int] = set()
+    for entry in catalogue:
+        day = str(entry.get("day", ""))[:4]
+        if day.isdigit():
+            years.add(int(day))
+    return years
+
+
+def _write_catalogue(path: Path, found: list[dict], *, rescan: bool) -> None:
+    """Write the catalogue, refusing to put nothing over something.
+
+    `found` starts empty, and with the monthly errors that used to be
+    swallowed an unreachable Immich wrote [] over twenty years of scanning
+    and called it a success.
+    """
+    if not found and not rescan and _load_catalogue(path):
+        console.print(
+            f"[yellow]Found nothing; leaving {path} as it was. "
+            f"Pass --rescan to replace it.[/yellow]"
+        )
+        return
+    path.write_text(json.dumps(found, indent=1))
+
+
 def _homebase(config: object) -> tuple[float, float] | None:
     """Home coordinates, or None when this library has not set any.
 
@@ -108,19 +165,33 @@ def _homebase(config: object) -> tuple[float, float] | None:
 
 
 def _scan_library(
-    since: int, until: int, per_year: int, also_skip: tuple[str, ...], out: Path
+    since: int,
+    until: int,
+    per_year: int,
+    also_skip: tuple[str, ...],
+    out: Path,
+    *,
+    rescan: bool = False,
 ) -> list[dict]:
-    """Walk the years, asking about the days that stand out in each."""
+    """Walk the years, asking about the days that stand out in each.
+
+    Carries the existing catalogue forward so an interrupted scan resumes
+    where it stopped rather than starting the twenty years again.
+    """
     from immich_memories.api.sync_client import SyncImmichClient
     from immich_memories.automation.special_day_scan import scan_year
     from immich_memories.config import get_config
 
     config = get_config()
     home = _homebase(config)
-    found: list[dict] = []
+    found: list[dict] = [] if rescan else _load_catalogue(out)
+    already = set() if rescan else _years_in(found)
 
     with SyncImmichClient(base_url=config.immich.url, api_key=config.immich.api_key) as client:
         for year in range(since, until + 1):
+            if year in already:
+                console.print(f"[dim]{year}: already in the catalogue[/dim]")
+                continue
             assets = _year_of_assets(client, year)
             if not assets:
                 continue
@@ -144,6 +215,8 @@ def _scan_library(
                     }
                 )
                 console.print(f"  [green]{day.day}[/green]  {day.title or day.what}")
+                # Written as we go: a scan this long is worth keeping in
+                # pieces, and `found` already carries the earlier catalogue.
                 out.write_text(json.dumps(found, indent=1))
     return found
 
