@@ -126,7 +126,11 @@ class PipelineConfig:
         enforced cap was the dataclass default whatever the YAML said.
         Anything the caller decides instead arrives as an override.
         """
-        return cls(photo_max_ratio=config.photos.max_ratio, **overrides)
+        return cls(
+            photo_max_ratio=config.photos.max_ratio,
+            max_refinement_passes=config.analysis.max_refinement_passes,
+            **overrides,
+        )
 
     @property
     def duration_target(self) -> float:
