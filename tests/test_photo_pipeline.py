@@ -11,6 +11,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from immich_memories.analysis.source_filter import from_an_excluded_source
+from immich_memories.api.models import AssetType
 from immich_memories.config import Config
 from immich_memories.config_models import AnalysisConfig
 from immich_memories.photos.photo_pipeline import score_and_select_photos
@@ -202,3 +203,24 @@ def test_a_pool_with_no_usable_photos_keeps_every_video(tmp_path) -> None:
     )
 
     assert result.selection.kept_video_ids == {"video-0", "video-1", "video-2"}
+
+
+def test_a_starred_photo_passes_whatever_its_filename_says() -> None:
+    """Every other hard gate in the pipeline subordinates itself to a star.
+
+    A photo somebody was sent and then went and starred is a photo they chose
+    to keep. Dropping it before the favorites guarantee can see it contradicts
+    the rule the rest of selection is built on.
+    """
+    from immich_memories.analysis.source_filter import not_shot_here
+
+    forwarded = make_asset("forwarded", original_file_name="IMG-20190105-WA0006.jpg")
+    forwarded.type = AssetType.IMAGE
+    forwarded.is_favorite = True
+
+    doorbell = make_asset("doorbell", original_file_name="RingVideo_1.mp4")
+    doorbell.is_favorite = True
+
+    patterns = AnalysisConfig().exclude_filename_patterns
+    assert not not_shot_here(forwarded, patterns=patterns, stills_need_a_camera=True)
+    assert not not_shot_here(doorbell, patterns=patterns, stills_need_a_camera=True)

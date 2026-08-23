@@ -63,7 +63,13 @@ def not_shot_here(
     volume, before it is sampled into a prompt, and before analysis pays for
     it. Detection and generation import this from here so they cannot end up
     disagreeing about what the library contains.
+
+    A star settles it, as it settles every other hard gate in selection. Where
+    this asset came from is a guess about whether anybody wanted it; a
+    favourite is the answer, given directly.
     """
+    if getattr(asset, "is_favorite", False):
+        return False
     if from_an_excluded_source(getattr(asset, "original_file_name", None), patterns):
         return True
     return stills_need_a_camera and _a_still_with_no_camera(asset)
