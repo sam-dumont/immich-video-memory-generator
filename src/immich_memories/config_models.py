@@ -10,7 +10,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_serializer, field_validator, model_validator
 
@@ -443,9 +443,16 @@ class LLMConfig(BaseModel):
     thinking: bool = Field(
         default=False,
         description=(
-            "Server accepts Qwen-style chat_template_kwargs enable_thinking. "
-            "When on, load-bearing calls (selection review, titles) run the "
-            "model in reasoning mode; bulk analysis stays fast."
+            "Server supports a reasoning switch. When on, load-bearing calls "
+            "(selection review, titles) run the model in reasoning mode; bulk "
+            "analysis stays fast."
+        ),
+    )
+    thinking_params: dict[str, Any] = Field(
+        default_factory=lambda: {"chat_template_kwargs": {"enable_thinking": True}},
+        description=(
+            "Request fields merged into a thinking call. Default is the Qwen "
+            "dialect (vLLM/mlx); OpenAI wants {'reasoning_effort': 'medium'}."
         ),
     )
 

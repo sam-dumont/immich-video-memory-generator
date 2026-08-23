@@ -163,3 +163,18 @@ class TestThinkingMode:
         assert result == '{"drop": "B"}'
         retry_payload = mock_post.call_args_list[1][1]["json"]
         assert "chat_template_kwargs" not in retry_payload
+
+    @pytest.mark.asyncio
+    async def test_thinking_params_are_configurable_per_server(self):
+        """Not every OpenAI-compatible server speaks Qwen's dialect — the
+        payload addition is whatever the config says (e.g. reasoning_effort)."""
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = _thinking_config(thinking_params={"reasoning_effort": "medium"})
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", return_value=_openai_response()) as mock_post:
+            await query_llm("Judge this cut", config, thinking=True)
+
+        payload = mock_post.call_args[1]["json"]
+        assert payload["reasoning_effort"] == "medium"
+        assert "chat_template_kwargs" not in payload

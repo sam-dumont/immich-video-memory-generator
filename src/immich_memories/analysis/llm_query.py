@@ -98,7 +98,7 @@ async def _query_openai(
         "temperature": temperature,
     }
     if thinking:
-        payload["chat_template_kwargs"] = {"enable_thinking": True}
+        payload.update(config.thinking_params)
         payload["max_tokens"] = max(max_tokens, THINKING_MIN_MAX_TOKENS)
         timeout = max(timeout, THINKING_MIN_TIMEOUT_SECONDS)
     # Retry up to 3x — some models (Qwen/mlx-vlm) return null content
