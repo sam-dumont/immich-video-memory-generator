@@ -178,3 +178,94 @@ class TestThinkingMode:
         payload = mock_post.call_args[1]["json"]
         assert payload["reasoning_effort"] == "medium"
         assert "chat_template_kwargs" not in payload
+
+
+def _openai_400(message):
+    # WHY: the LLM server is the external boundary; this fakes its 400 contract.
+    import httpx
+
+    response = AsyncMock()
+    response.status_code = 400
+    response.json = MagicMock(return_value={"error": {"message": message}})
+    request = httpx.Request("POST", "http://localhost/v1/chat/completions")
+    http_response = httpx.Response(400, request=request, json={"error": {"message": message}})
+    response.raise_for_status = MagicMock(
+        side_effect=httpx.HTTPStatusError(message, request=request, response=http_response)
+    )
+    return response
+
+
+class TestServerParameterDialects:
+    """Measured on real OpenAI: gpt-5 models reject max_tokens (want
+    max_completion_tokens) and any non-default temperature. The 400 bodies
+    name the offending parameter, so the call adapts and remembers."""
+
+    def setup_method(self):
+        from immich_memories.analysis import llm_query
+
+        llm_query._PARAM_ADAPTATIONS.clear()
+
+    @pytest.mark.asyncio
+    async def test_max_tokens_rejection_adapts_and_retries(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        rejected = _openai_400(
+            "Unsupported parameter: 'max_tokens' is not supported with this model. "
+            "Use 'max_completion_tokens' instead."
+        )
+        ok = _openai_response(content='{"drop": "B"}')
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", side_effect=[rejected, ok]) as mock_post:
+            result = await query_llm("Judge this cut", _thinking_config(thinking=False))
+
+        assert result == '{"drop": "B"}'
+        retry = mock_post.call_args_list[1][1]["json"]
+        assert "max_tokens" not in retry
+        assert retry["max_completion_tokens"] == 500
+
+    @pytest.mark.asyncio
+    async def test_temperature_rejection_drops_it_and_retries(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        rejected = _openai_400(
+            "Unsupported value: 'temperature' does not support 0.3 with this model. "
+            "Only the default (1) value is supported."
+        )
+        ok = _openai_response(content='{"drop": "B"}')
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", side_effect=[rejected, ok]) as mock_post:
+            result = await query_llm("Judge this cut", _thinking_config(thinking=False))
+
+        assert result == '{"drop": "B"}'
+        assert "temperature" not in mock_post.call_args_list[1][1]["json"]
+
+    @pytest.mark.asyncio
+    async def test_adaptation_is_remembered_for_the_next_call(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = _thinking_config(thinking=False)
+        rejected = _openai_400(
+            "'max_tokens' is not supported... Use 'max_completion_tokens' instead."
+        )
+        ok1, ok2 = _openai_response(), _openai_response()
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", side_effect=[rejected, ok1, ok2]) as mock_post:
+            await query_llm("first", config)
+            await query_llm("second", config)
+
+        assert mock_post.call_count == 3
+        second_call = mock_post.call_args_list[2][1]["json"]
+        assert "max_completion_tokens" in second_call and "max_tokens" not in second_call
+
+    @pytest.mark.asyncio
+    async def test_an_unrelated_400_still_raises(self):
+        import httpx
+
+        from immich_memories.analysis.llm_query import query_llm
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with (
+            patch("httpx.AsyncClient.post", return_value=_openai_400("Invalid API key provided")),
+            pytest.raises(httpx.HTTPStatusError),
+        ):
+            await query_llm("Judge this cut", _thinking_config(thinking=False))

@@ -271,6 +271,14 @@ the OpenAI API use `{"reasoning_effort": "medium"}`. Leave `thinking` off
 unless you know the server supports your chosen switch — some
 OpenAI-compatible servers reject unknown request fields.
 
+Parameter dialects are otherwise handled automatically: OpenAI's reasoning
+models (gpt-5 family) reject `max_tokens` and non-default temperatures, and
+the query layer reads those 400s, adapts the request, and remembers the
+answer per server and model — validated against the live OpenAI API. One
+provider note: z.ai's OpenAI-compatible endpoint accepts image content only
+on its dedicated vision models, so point `llm.model` at one of those if you
+use it for content analysis.
+
 A separate `title_llm` section can point the web UI's title step at a different model than the one
 used for content analysis:
 

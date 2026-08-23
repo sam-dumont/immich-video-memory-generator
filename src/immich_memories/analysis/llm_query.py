@@ -28,6 +28,43 @@ POOL_TIMEOUT_SECONDS = 10.0
 THINKING_MIN_MAX_TOKENS = 4000
 THINKING_MIN_TIMEOUT_SECONDS = 180
 
+# Measured on real OpenAI: gpt-5-family models reject `max_tokens` (they want
+# `max_completion_tokens`) and any temperature but the default. The 400 body
+# names the offending parameter, so the call adapts once and remembers per
+# (server, model) for the rest of the process.
+_PARAM_ADAPTATIONS: dict[tuple[str, str], set[str]] = {}
+
+
+def _adaptation_for(message: str) -> str | None:
+    if "max_tokens" in message and "max_completion_tokens" in message:
+        return "max_completion_tokens"
+    if "temperature" in message and ("not support" in message or "Unsupported" in message):
+        return "default_temperature"
+    return None
+
+
+def _apply_adaptations(payload: dict, adaptations: set[str]) -> None:
+    if "max_completion_tokens" in adaptations and "max_tokens" in payload:
+        payload["max_completion_tokens"] = payload.pop("max_tokens")
+    if "default_temperature" in adaptations:
+        payload.pop("temperature", None)
+
+
+async def _post_adapted(
+    client: httpx.AsyncClient, url: str, payload: dict, adaptations: set[str]
+) -> httpx.Response:
+    """POST, negotiating parameter dialects on explicit 400s (one per rule)."""
+    while True:
+        resp = await client.post(url, json=payload)
+        if resp.status_code != 400:
+            return resp
+        adaptation = _adaptation_for(resp.json().get("error", {}).get("message", ""))
+        if adaptation is None or adaptation in adaptations:
+            return resp
+        adaptations.add(adaptation)
+        _apply_adaptations(payload, adaptations)
+        logger.info("LLM server dialect: adapting request (%s)", adaptation)
+
 
 def build_llm_timeout(read_timeout: float) -> httpx.Timeout:
     """Per-phase timeout: long read budget, short connect/write/pool."""
@@ -101,10 +138,12 @@ async def _query_openai(
         payload.update(config.thinking_params)
         payload["max_tokens"] = max(max_tokens, THINKING_MIN_MAX_TOKENS)
         timeout = max(timeout, THINKING_MIN_TIMEOUT_SECONDS)
+    adaptations = _PARAM_ADAPTATIONS.setdefault((base_url, config.model), set())
+    _apply_adaptations(payload, adaptations)
     # Retry up to 3x — some models (Qwen/mlx-vlm) return null content
     async with httpx.AsyncClient(timeout=timeout, headers=headers) as client:
         for attempt in range(3):
-            resp = await client.post(f"{base_url}/chat/completions", json=payload)
+            resp = await _post_adapted(client, f"{base_url}/chat/completions", payload, adaptations)
             resp.raise_for_status()
             choice = resp.json()["choices"][0]
             if thinking and choice.get("finish_reason") == "length":
