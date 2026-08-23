@@ -285,6 +285,8 @@ class ClipScaler:
         ranked above it. A dense day is given three clips so it reads as a day
         rather than a glimpse; the duration scaler and the photo cap both
         honour that, and thinning it back to one here undoes it (#490, #510).
+        A favourite is exempt on the same terms: ranking it first is no use
+        once protection has taken every slot.
         """
         protected = [c for c in cluster_clips if c.clip.asset.id in protected_ids]
         ranked = sorted(
@@ -292,8 +294,15 @@ class ClipScaler:
             key=lambda c: (c.clip.asset.is_favorite, c.score),
             reverse=True,
         )
-        room = max(0, keep - len(protected))
-        kept, dropped = protected + ranked[:room], ranked[room:]
+        # A star is exempt from the cap for the same reason coverage is. With
+        # the slots already filled by protected clips, room reaches zero and
+        # the ranking that puts favourites first has nothing left to put them
+        # in — and backfill can never re-admit a clip from a moment already in
+        # the cut, so the star is simply gone.
+        starred = [c for c in ranked if c.clip.asset.is_favorite]
+        rest = [c for c in ranked if not c.clip.asset.is_favorite]
+        room = max(0, keep - len(protected) - len(starred))
+        kept, dropped = protected + starred + rest[:room], rest[room:]
 
         if dropped:
             kept_desc = ", ".join(

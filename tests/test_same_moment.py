@@ -188,3 +188,26 @@ class TestAMomentIsRelativeToTheStoryBeingTold:
         from immich_memories.analysis.clip_distribution import moment_window_for
 
         assert moment_window_for(span_days=365, configured_minutes=0.0) == 0.0
+
+
+def test_a_starred_shot_is_not_squeezed_out_by_protected_coverage() -> None:
+    """Protection takes slots; it must not take the star's.
+
+    With the cap filled by clips coverage deliberately kept, room reaches zero
+    and the ranked list is emptied — dropping the favourite the ranking exists
+    to put first, and backfill can never re-admit a clip from a moment already
+    in the cut.
+    """
+    covering = _at(15, 50, score=0.3)
+    also_covering = _at(15, 52, score=0.4)
+    starred = _at(15, 54, score=0.2)
+    starred.clip.asset.is_favorite = True
+
+    kept = ClipScaler().deduplicate_temporal_clusters(
+        [covering, also_covering, starred],
+        time_window_minutes=5.0,
+        keep_per_moment=2,
+        protected_ids={covering.clip.asset.id, also_covering.clip.asset.id},
+    )
+
+    assert starred.clip.asset.id in {c.clip.asset.id for c in kept}
