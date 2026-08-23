@@ -138,8 +138,16 @@ def resolve_music(
     memory_type: str | None,
     report_fn: Callable[[str, float, str], None] | None = None,
     bundled_library: Path | None = None,
+    *,
+    transition_overlap: float,
 ) -> MusicSelection:
-    """Determine the music to use: provided path, generated, bundled, or none."""
+    """Determine the music to use: provided path, generated, bundled, or none.
+
+    ``transition_overlap`` is the run's effective crossfade, which both the
+    generated and the bundled branch need to read the photo cut cadence off the
+    clips (#514). It comes from the run rather than ``config.defaults`` because
+    ``--transition`` overrides the configured default.
+    """
     if no_music:
         return MusicSelection(None)
     if music_path and music_path.exists():
@@ -151,7 +159,12 @@ def resolve_music(
             report_fn("music", 0.85, "Generating AI music...")
         try:
             generated = auto_generate_music(
-                config, assembly_clips, run_output_dir, memory_type, report_fn
+                config,
+                assembly_clips,
+                run_output_dir,
+                memory_type,
+                report_fn,
+                transition_overlap=transition_overlap,
             )
         except Exception as exc:  # WHY: optional music must not invalidate the base artifact
             # A configured generator that fails used to be worse than no generator
@@ -182,7 +195,9 @@ def resolve_music(
     bundled = bundled_track_for_mood(
         aggregate_mood_from_clips(assembly_clips),
         library=bundled_library,
-        cadence_seconds=photo_cadence_seconds(assembly_clips),
+        cadence_seconds=photo_cadence_seconds(
+            assembly_clips, transition_overlap=transition_overlap
+        ),
     )
     if not bundled:
         return MusicSelection(None, warning)
@@ -197,17 +212,40 @@ def _master(track: Path, run_output_dir: Path) -> Path:
     return master_music_track(track, run_output_dir / f"mastered_{track.stem}.wav")
 
 
-def photo_cadence_seconds(assembly_clips: list[AssemblyClip]) -> float | None:
+def transition_overlap_seconds(transition: str, transition_duration: float) -> float:
+    """How much a transition shortens the interval between two visible cuts.
+
+    Only a crossfade overlaps: "smart" resolves to a fade at every boundary the
+    assembler builds (``assembly_engine.get_transition_types``), so it costs the
+    same as "crossfade". A hard cut leaves the clips end to end.
+    """
+    return 0.0 if transition in ("cut", "none") else transition_duration
+
+
+def photo_cadence_seconds(
+    assembly_clips: list[AssemblyClip], *, transition_overlap: float
+) -> float | None:
     """How often a photo cut lands, or None when there is no rhythm to sync to.
 
     Read off the clips rather than ``config.photos.duration`` because the final
     budget trim rescales every clip: by the time music is chosen, a photo the
     config called 4 s may be 3.7 s on screen.
+
+    ``transition_overlap`` is not optional on purpose. The cut lands before the
+    clip ends: a crossfade starts the next clip at ``duration - fade``, which is
+    the clock ``_estimate_total_frames`` and ``music_mute_windows`` already keep.
+    Aligning tempo to the raw duration instead drifted 0.75 beats per photo at
+    90 bpm with the default 0.5 s fade (#514), so a caller that has not thought
+    about the overlap should not be able to ask for a cadence at all.
     """
     durations = sorted(clip.duration for clip in assembly_clips if clip.is_photo)
     if len(durations) < 2:
         return None
-    return durations[len(durations) // 2]
+    cadence = durations[len(durations) // 2] - transition_overlap
+    # A fade wider than the photos themselves leaves no interval to sync to.
+    # The assembler downgrades those boundaries to cuts, and the tempo search
+    # divides by the cadence, so a zero or negative one is "no rhythm", not 0.
+    return cadence if cadence > 0 else None
 
 
 def auto_generate_music(
@@ -216,6 +254,8 @@ def auto_generate_music(
     run_output_dir: Path,
     memory_type: str | None,
     report_fn: Callable[[str, float, str], None] | None = None,
+    *,
+    transition_overlap: float,
 ) -> Path | None:
     """Auto-generate music using configured AI backends.
 
@@ -267,7 +307,9 @@ def auto_generate_music(
                 progress_callback=music_progress,
                 app_config=config,
                 memory_type=memory_type,
-                photo_cadence_seconds=photo_cadence_seconds(assembly_clips),
+                photo_cadence_seconds=photo_cadence_seconds(
+                    assembly_clips, transition_overlap=transition_overlap
+                ),
             )
         )
 

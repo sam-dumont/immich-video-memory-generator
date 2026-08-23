@@ -806,7 +806,11 @@ class TestAutoMusicGeneration:
             )
 
             result = auto_generate_music(
-                params.config, assembly_clips, tmp_path / "run_output", params.memory_type
+                params.config,
+                assembly_clips,
+                tmp_path / "run_output",
+                params.memory_type,
+                transition_overlap=0.0,
             )
             assert result is not None
             assert result == fake_music_path
@@ -827,7 +831,11 @@ class TestAutoMusicGeneration:
             config=config,
         )
         result = auto_generate_music(
-            params.config, assembly_clips, tmp_path / "run_output", params.memory_type
+            params.config,
+            assembly_clips,
+            tmp_path / "run_output",
+            params.memory_type,
+            transition_overlap=0.0,
         )
         assert result is None
 
@@ -858,7 +866,11 @@ class TestAutoMusicGeneration:
             pytest.raises(RuntimeError, match="API unreachable"),
         ):
             auto_generate_music(
-                params.config, assembly_clips, tmp_path / "run_output", params.memory_type
+                params.config,
+                assembly_clips,
+                tmp_path / "run_output",
+                params.memory_type,
+                transition_overlap=0.0,
             )
 
 

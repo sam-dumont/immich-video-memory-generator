@@ -64,6 +64,7 @@ def test_resolve_music_uses_the_bundle_when_no_backend_is_configured(library):
         run_output_dir=library,
         memory_type=None,
         bundled_library=library,
+        transition_overlap=0.0,
     )
 
     assert chosen.path is not None
@@ -80,6 +81,7 @@ def test_no_music_still_means_no_music(library):
         run_output_dir=library,
         memory_type=None,
         bundled_library=library,
+        transition_overlap=0.0,
     )
 
     assert chosen.path is None
@@ -97,6 +99,7 @@ def test_a_missing_explicit_track_is_not_silently_replaced(library, tmp_path):
         run_output_dir=library,
         memory_type=None,
         bundled_library=library,
+        transition_overlap=0.0,
     )
 
     assert chosen.path is None
@@ -129,6 +132,7 @@ def test_bundled_music_is_mastered_before_use(library, tmp_path):
             run_output_dir=tmp_path,
             memory_type=None,
             bundled_library=library,
+            transition_overlap=0.0,
         )
     finally:
         mastering.master_music_track = original
@@ -163,6 +167,7 @@ def _bundled_choice(clips, library, tmp_path, monkeypatch):
         run_output_dir=tmp_path,
         memory_type=None,
         bundled_library=library,
+        transition_overlap=0.0,
     ).path
 
 
@@ -237,6 +242,7 @@ def test_a_user_supplied_track_is_left_alone(library, tmp_path):
         run_output_dir=tmp_path,
         memory_type=None,
         bundled_library=library,
+        transition_overlap=0.0,
     )
 
     assert chosen.path == theirs

@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from immich_memories.audio.beat_grid import beat_aligned_bpm
-from immich_memories.generate_music import photo_cadence_seconds
+from immich_memories.generate_music import photo_cadence_seconds, transition_overlap_seconds
 from immich_memories.processing.assembly_config import AssemblyClip
 
 
@@ -48,13 +48,39 @@ class TestPhotoCadence:
         """The final budget trim scales every clip, so config.photos.duration lies."""
         clips = [_clip(3.7, is_photo=True), _clip(3.7, is_photo=True), _clip(9.1, is_photo=False)]
 
-        assert photo_cadence_seconds(clips) == 3.7
+        assert photo_cadence_seconds(clips, transition_overlap=0.0) == 3.7
 
     def test_a_single_photo_has_no_cadence(self):
         """One photo is not a rhythm; syncing tempo to it would be arbitrary."""
         clips = [_clip(4.0, is_photo=True), _clip(9.1, is_photo=False)]
 
-        assert photo_cadence_seconds(clips) is None
+        assert photo_cadence_seconds(clips, transition_overlap=0.0) is None
+
+    def test_a_crossfade_makes_the_cut_land_before_the_clip_ends(self):
+        """The assembler starts the next clip at duration - fade, so 4.0s photos
+        under the default 0.5s crossfade are visibly cut every 3.5s (#514)."""
+        clips = [_clip(4.0, is_photo=True), _clip(4.0, is_photo=True)]
+
+        assert photo_cadence_seconds(clips, transition_overlap=0.5) == 3.5
+
+    def test_a_fade_wider_than_the_photos_is_not_a_rhythm(self):
+        """The tempo search divides by the cadence, so a non-positive one has to
+        read as "nothing to sync to" rather than as an interval of zero."""
+        clips = [_clip(0.4, is_photo=True), _clip(0.4, is_photo=True)]
+
+        assert photo_cadence_seconds(clips, transition_overlap=0.5) is None
+
+
+class TestTransitionOverlap:
+    def test_a_hard_cut_leaves_the_clips_end_to_end(self):
+        assert transition_overlap_seconds("cut", 0.5) == 0.0
+        assert transition_overlap_seconds("none", 0.5) == 0.0
+
+    def test_smart_costs_the_same_as_crossfade(self):
+        """ "smart" is not a middle ground: get_transition_types resolves it to a
+        fade at every boundary, so it overlaps exactly like an explicit crossfade."""
+        assert transition_overlap_seconds("smart", 0.5) == 0.5
+        assert transition_overlap_seconds("crossfade", 0.5) == 0.5
 
 
 class TestCaptionTempoFollowsTheCadence:

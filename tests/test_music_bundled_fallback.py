@@ -68,6 +68,7 @@ def test_a_failing_generator_falls_back_to_the_bundled_track(
         run_output_dir=tmp_path,
         memory_type=None,
         bundled_library=_library(tmp_path),
+        transition_overlap=0.0,
     )
 
     assert result.path is not None, "a failed generator must not produce silence"
@@ -93,6 +94,7 @@ def test_the_bundled_substitution_is_reported_not_swallowed(
         run_output_dir=tmp_path,
         memory_type=None,
         bundled_library=_library(tmp_path),
+        transition_overlap=0.0,
     )
 
     assert result.warning is not None
@@ -146,6 +148,7 @@ def test_an_explicit_missing_track_is_still_a_user_error(
         run_output_dir=tmp_path,
         memory_type=None,
         bundled_library=_library(tmp_path),
+        transition_overlap=0.0,
     )
 
     assert result.path is None
@@ -160,6 +163,7 @@ def test_no_music_still_means_no_music(tmp_path: Path, generator_enabled: Config
         run_output_dir=tmp_path,
         memory_type=None,
         bundled_library=_library(tmp_path),
+        transition_overlap=0.0,
     )
 
     assert result.path is None

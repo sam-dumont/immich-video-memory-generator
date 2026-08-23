@@ -255,6 +255,7 @@ def _run_music_phase(
         MusicPhaseResult,
         apply_music_file,
         resolve_music,
+        transition_overlap_seconds,
     )
 
     def _report_fn(phase: str, progress: float, msg: str) -> None:
@@ -275,6 +276,9 @@ def _run_music_phase(
             run_output_dir=run_output_dir,
             memory_type=params.memory_type,
             report_fn=_report_fn,
+            transition_overlap=transition_overlap_seconds(
+                params.transition, params.transition_duration
+            ),
         )
         if not selection.path:
             if phase_started and selection.warning:
