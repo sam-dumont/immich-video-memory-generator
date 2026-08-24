@@ -50,6 +50,7 @@ class RunTracker:
         self._current_phase: str | None = None
         self._phase_start: datetime | None = None
         self._phase_start_time: float | None = None
+        self._phase_llm_mark: object | None = None
         self._phase_items_total: int = 0
 
     def _require_started(self) -> RunMetadata:
@@ -139,6 +140,7 @@ class RunTracker:
         self._phase_start = datetime.now(tz=UTC)
         self._phase_start_time = time.time()
         self._phase_items_total = total_items
+        self._phase_llm_mark = _llm_mark()
 
         logger.debug(f"Started phase: {phase_name} (total items: {total_items})")
 
@@ -173,7 +175,7 @@ class RunTracker:
             items_processed=items_processed,
             items_total=self._phase_items_total,
             errors=errors or [],
-            extra_metrics=extra_metrics or {},
+            extra_metrics={**_llm_spend_since(self._phase_llm_mark), **(extra_metrics or {})},
         )
 
         try:
@@ -191,6 +193,7 @@ class RunTracker:
         self._phase_start = None
         self._phase_start_time = None
         self._phase_items_total = 0
+        self._phase_llm_mark = None
 
     def update_phase_progress(self, items_processed: int) -> None:
         """Update progress within current phase.
@@ -265,6 +268,8 @@ class RunTracker:
             clips_selected=clips_selected,
             errors_count=errors_count,
         )
+
+        self.db.record_llm_metrics(self.run_id, _llm_run_total() or {})
 
         # Reload to get full data with phases
         run = self.db.get_run(self.run_id)
@@ -377,6 +382,9 @@ class RunTracker:
             completed_at=now,
             errors_count=errors_count,
         )
+        # A run that burned four minutes on the model and then fell over is
+        # exactly the one worth being able to see afterwards.
+        self.db.record_llm_metrics(self.run_id, _llm_run_total() or {})
 
         logger.error(f"Run {self.run_id} failed: {error}")
 
@@ -470,3 +478,40 @@ def format_duration(seconds: float) -> str:
         hours = int(seconds // 3600)
         minutes = int((seconds % 3600) // 60)
         return f"{hours}h {minutes:02d}m"
+
+
+def _llm_mark():
+    """What the run had spent on the model when this phase began."""
+    from immich_memories.analysis import llm_metrics
+
+    counters = llm_metrics.active()
+    return counters.snapshot() if counters else None
+
+
+def _llm_spend_since(mark) -> dict:
+    """This phase's own share of the model budget, or nothing when unmeasured.
+
+    Imported inside the call rather than at module scope: `analysis` is the
+    heavier package and tracking is used by callers that never touch it.
+    """
+    from immich_memories.analysis import llm_metrics
+
+    counters = llm_metrics.active()
+    if counters is None or mark is None:
+        return {}
+    return counters.since(mark).as_metrics()
+
+
+def _llm_run_total() -> dict | None:
+    """Everything the run spent on the model, whether or not a phase held it.
+
+    Recorded on the failure paths too: a run that burned four minutes on the
+    model and then fell over is exactly the one worth being able to see.
+
+    `None` when nothing was collecting, so an unmeasured run is left alone
+    rather than stamped with an empty record.
+    """
+    from immich_memories.analysis import llm_metrics
+
+    counters = llm_metrics.active()
+    return counters.as_metrics() if counters is not None else None

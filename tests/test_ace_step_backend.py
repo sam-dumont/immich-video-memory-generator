@@ -147,7 +147,7 @@ class TestACEStepBackend:
         backend = ACEStepBackend(ACEStepConfig(mode="lib"))
         # WHY: Mock import check because ace-step isn't installed in test env
         with patch(
-            "immich_memories.audio.generators.ace_step_backend._is_ace_step_importable",
+            "immich_memories.audio.generators.ace_step_backend.is_ace_step_importable",
             return_value=False,
         ):
             mode = backend._get_effective_mode()
@@ -255,7 +255,7 @@ class TestACEStepBackendV15Library:
         }, package_root
 
     def test_v15_helper_raises_when_dit_initialization_fails(self, tmp_path):
-        from immich_memories.audio.generators.ace_step_backend import (
+        from immich_memories.audio.generators.ace_step_runtime import (
             _initialize_dit_handler,
         )
 
@@ -273,7 +273,7 @@ class TestACEStepBackendV15Library:
             )
 
     def test_v15_helper_raises_when_lm_download_fails(self, tmp_path):
-        from immich_memories.audio.generators.ace_step_backend import (
+        from immich_memories.audio.generators.ace_step_runtime import (
             _initialize_lm_handler,
         )
 
@@ -291,7 +291,7 @@ class TestACEStepBackendV15Library:
             )
 
     def test_v15_helper_skips_lm_handler_when_planner_is_disabled(self, tmp_path):
-        from immich_memories.audio.generators.ace_step_backend import (
+        from immich_memories.audio.generators.ace_step_runtime import (
             _initialize_lm_handler,
         )
 
@@ -593,7 +593,7 @@ class TestACEStepBackendV15Library:
         assert params["step"] == 3  # non-array leaves untouched
 
     def test_invalid_vae_chunk_override_defers_to_ace_step(self, tmp_path):
-        from immich_memories.audio.generators.ace_step_backend import _bound_mlx_memory
+        from immich_memories.audio.generators.ace_step_runtime import _bound_mlx_memory
 
         # WHY: replaces MLX, absent off Apple Silicon, and the process environment.
         with (
@@ -603,7 +603,7 @@ class TestACEStepBackendV15Library:
             assert _bound_mlx_memory() is None
 
     def test_explicit_vae_chunk_override_is_honoured(self, tmp_path):
-        from immich_memories.audio.generators.ace_step_backend import _bound_mlx_memory
+        from immich_memories.audio.generators.ace_step_runtime import _bound_mlx_memory
 
         # WHY: replaces MLX, absent off Apple Silicon, and the process environment.
         with (
@@ -629,7 +629,7 @@ class TestACEStepBackendV15Library:
     ):
         captured = {}
         modules, _ = self._fake_v15_modules(tmp_path, captured)
-        # WHY: _init_pipeline calls _bound_mlx_memory, which imports mlx.core. With
+        # WHY: building the runtime calls _bound_mlx_memory, which imports mlx.core. With
         # ACE-Step actually installed that pulls in the real Metal runtime and aborts
         # the pytest process; the sibling tests in this class fake it for the same
         # reason. This test asserts generation wiring, not GPU behaviour.
@@ -681,7 +681,7 @@ class TestMlxDecoderPrecision:
         return SimpleNamespace(mlx_decoder=decoder), mx
 
     def test_mlx_decoder_is_cast_to_bf16(self):
-        from immich_memories.audio.generators.ace_step_backend import _cast_mlx_decoder_to_bf16
+        from immich_memories.audio.generators.ace_step_runtime import _cast_mlx_decoder_to_bf16
 
         handler, mx = self._handler_with_fp32_decoder()
         with patch.dict(os.environ, {}, clear=False):
@@ -691,7 +691,7 @@ class TestMlxDecoderPrecision:
         assert handler.mlx_decoder.bias.dtype == mx.bfloat16
 
     def test_fp32_escape_hatch_keeps_decoder_untouched(self):
-        from immich_memories.audio.generators.ace_step_backend import _cast_mlx_decoder_to_bf16
+        from immich_memories.audio.generators.ace_step_runtime import _cast_mlx_decoder_to_bf16
 
         handler, mx = self._handler_with_fp32_decoder()
         with patch.dict(os.environ, {"IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32": "1"}):
@@ -699,7 +699,7 @@ class TestMlxDecoderPrecision:
         assert handler.mlx_decoder.weight.dtype == mx.float32
 
     def test_handler_without_mlx_decoder_is_a_no_op(self):
-        from immich_memories.audio.generators.ace_step_backend import _cast_mlx_decoder_to_bf16
+        from immich_memories.audio.generators.ace_step_runtime import _cast_mlx_decoder_to_bf16
 
         _cast_mlx_decoder_to_bf16(SimpleNamespace(mlx_decoder=None))
         _cast_mlx_decoder_to_bf16(SimpleNamespace())
@@ -770,7 +770,7 @@ class TestACEStepDiagnosticMessages:
         # and we don't want real network calls
         with (
             patch(
-                "immich_memories.audio.generators.ace_step_backend._is_ace_step_importable",
+                "immich_memories.audio.generators.ace_step_backend.is_ace_step_importable",
                 return_value=False,
             ),
             patch("httpx.AsyncClient", return_value=mock_client),
@@ -793,7 +793,7 @@ class TestACEStepDiagnosticMessages:
 
         with (
             patch(
-                "immich_memories.audio.generators.ace_step_backend._is_ace_step_importable",
+                "immich_memories.audio.generators.ace_step_backend.is_ace_step_importable",
                 return_value=False,
             ),
             patch("httpx.AsyncClient", return_value=mock_client),
@@ -1043,9 +1043,9 @@ class TestACEStepHealthCheck:
         backend = ACEStepBackend(ACEStepConfig(mode="lib"))
         backend._effective_mode = "lib"
 
-        # WHY: Mock _is_ace_step_importable because ace-step isn't installed
+        # WHY: Mock is_ace_step_importable because ace-step isn't installed
         with patch(
-            "immich_memories.audio.generators.ace_step_backend._is_ace_step_importable",
+            "immich_memories.audio.generators.ace_step_backend.is_ace_step_importable",
             return_value=False,
         ):
             info = asyncio.run(backend.health_check())

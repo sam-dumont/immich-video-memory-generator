@@ -1,0 +1,1 @@
+{"drop": [{"index": 13, "reason": "Redundant: static scout scarf moment similar to clips 7 and 8"}]}

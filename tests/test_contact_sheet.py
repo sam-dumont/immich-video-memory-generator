@@ -7,6 +7,7 @@ standalone footage the pipeline picked on merit.
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,6 +15,33 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 import contact_sheet  # noqa: E402
+
+
+def _clip(path: Path, seconds: float) -> Path:
+    """A real decodable clip, so ffmpeg does real work on a real duration."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            f"testsrc=size=160x120:rate=30:duration={seconds}",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-pix_fmt",
+            "yuv420p",
+            str(path),
+        ],  # fmt: skip
+        check=True,
+        capture_output=True,
+    )
+    return path
 
 
 def _cached(root: Path, asset_id: str, name: str) -> Path:
@@ -55,3 +83,51 @@ def test_a_live_photos_footage_is_found_under_its_video_component(tmp_path, monk
     _cache_at(monkeypatch, tmp_path)
 
     assert contact_sheet._cached_video("00stillid", "99videoid") == wanted
+
+
+def test_a_clip_shorter_than_the_seek_still_renders_a_frame(tmp_path, monkeypatch) -> None:
+    """The extractor seeked half a second in, so shorter footage decoded to nothing.
+
+    A trimmed Live Photo burst is routinely under half a second. ffmpeg exits
+    non-zero with no output file, which the tile-level except swallowed, and the
+    clip came back blank on a sheet whose whole job is to show it.
+    """
+    _clip(tmp_path / "video-cache" / "aa" / "aashort.mp4", seconds=0.3)
+    _cache_at(monkeypatch, tmp_path)
+
+    assert contact_sheet._frame_from_cache("aashort") is not None
+
+
+class _ServerWithoutThumbnails:
+    """WHY: Immich is the external boundary — this is a server that holds no
+    thumbnail for the asset, the 8% of a real library the fallback exists for."""
+
+    def get_asset_thumbnail(self, asset_id: str, size: str) -> bytes:
+        raise LookupError(f"no {size} for {asset_id}")
+
+
+def test_a_clip_with_no_frame_anywhere_says_so(tmp_path, monkeypatch) -> None:
+    """Nothing on the server and nothing cached is its own failure."""
+    _cache_at(monkeypatch, tmp_path)
+
+    image, reason = contact_sheet._thumbnail(_ServerWithoutThumbnails(), "aamissing")
+
+    assert image is None
+    assert reason == "no thumbnail"
+
+
+def test_a_cached_clip_that_will_not_decode_is_named_apart(tmp_path, monkeypatch) -> None:
+    """A tile can be blank two ways, and the reviewer has to be told which.
+
+    Footage the server never thumbnailed is expected; footage sitting in the
+    cache that ffmpeg cannot read is a broken download worth chasing.
+    """
+    broken = tmp_path / "video-cache" / "aa" / "aabroken.mp4"
+    broken.parent.mkdir(parents=True, exist_ok=True)
+    broken.write_bytes(b"not a video at all")
+    _cache_at(monkeypatch, tmp_path)
+
+    image, reason = contact_sheet._thumbnail(_ServerWithoutThumbnails(), "aabroken")
+
+    assert image is None
+    assert reason == "would not decode"

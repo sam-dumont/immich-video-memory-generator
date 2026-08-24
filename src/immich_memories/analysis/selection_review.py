@@ -15,7 +15,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -31,6 +30,9 @@ logger = logging.getLogger(__name__)
 # An overeager model must not gut the video: at most this share of the
 # selection can be dropped in one review, never below one allowed drop.
 _MAX_DROP_RATIO = 0.2
+
+# Enough room that the model answers rather than narrating; see _ask.
+_REVIEW_MAX_TOKENS = 8000
 
 _PROMPT = """You are reviewing the final cut of a personal memory video.
 Below is every clip in timeline order, with everything we can see and hear.
@@ -96,6 +98,15 @@ def _ask(
             prompt,
             llm_config,
             temperature=0.2,
+            # Measured on real review prompts against a local Qwen3.6-35B. The
+            # 500-token default never produced a verdict at all: the model
+            # narrates its reasoning into the content channel on a prompt this
+            # long, and 500 tokens ran out mid-thought. 2000 was still not
+            # enough. At 4000 a verdict appeared after ~15k characters of
+            # narration; at 8000 the whole answer was 496 characters, because
+            # a model with headroom answers instead of thinking aloud. A
+            # bigger ceiling here is not a bigger bill.
+            max_tokens=_REVIEW_MAX_TOKENS,
             timeout_seconds=timeout_seconds,
             thinking=True,
             cache_path=cache_path,
@@ -144,6 +155,54 @@ def _clip_line(index: int, member: ClipWithSegment) -> str:
     return " ".join(parts)
 
 
+def _verdict_in(raw: str | None) -> list | None:
+    r"""The drop list the model actually produced, or None if it produced none.
+
+    Not re.search(r"\{.*\}") over the whole answer. The prompt shows the model
+    the shape it wants, and a model reasoning aloud quotes that shape back —
+    so a first-brace-to-last-brace grab returns
+    {"drop": [{"index": <number>, "reason": "<short reason>"}]}, json.loads
+    chokes on the placeholder, and the review reports nothing to drop.
+
+    Every brace-balanced candidate is tried instead, last first: the verdict
+    comes after the reasoning, and a template echo never parses. Validating
+    against the shape is what separates the answer from the question.
+    """
+    if not raw:
+        return None
+    for candidate in reversed(_balanced_objects(raw)):
+        try:
+            payload = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict) and isinstance(payload.get("drop"), list):
+            return payload["drop"]
+    return None
+
+
+def _balanced_objects(text: str) -> list[str]:
+    """Every {...} in the text whose braces balance, outermost only."""
+    spans, depth, start = [], 0, None
+    for i, ch in enumerate(text):
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}" and depth:
+            depth -= 1
+            if depth == 0 and start is not None:
+                spans.append(text[start : i + 1])
+    return spans
+
+
+# Grep-able marker for the one thing this pass cannot say for itself. "0 drops"
+# has meant both "the model approved this cut" and "the model never answered"
+# for as long as the review has existed, and a reader cannot tell them apart.
+# A counter belongs in the metrics layer once #654 lands; until then this at
+# least makes the difference findable in a log.
+UNREADABLE_VERDICT_MARKER = "selection_review_unreadable"
+
+
 def review_selection(
     selected: list[ClipWithSegment],
     llm_config: LLMConfig,
@@ -172,17 +231,23 @@ def review_selection(
         logger.warning("Selection review unavailable (%s): nothing dropped", type(e).__name__)
         return []
 
-    match = re.search(r"\{.*\}", raw, re.DOTALL) if raw else None
-    if not match:
-        logger.warning("Selection review returned no verdict (%d chars): nothing dropped", len(raw))
+    entries = _verdict_in(raw)
+    if entries is None:
+        logger.warning(
+            "Selection review: could not read a verdict from %d chars — nothing dropped. "
+            "This is not an approved cut; the answer was unreadable. [%s]",
+            # a null content is documented mlx-vlm behaviour, not an empty answer
+            len(raw) if raw else 0,
+            UNREADABLE_VERDICT_MARKER,
+        )
         return []
     try:
-        payload = json.loads(match.group(0))
-        entries = payload.get("drop", [])
         indices = [int(e["index"]) for e in entries if "index" in e]
-    except (json.JSONDecodeError, TypeError, ValueError, KeyError) as e:
+    except (TypeError, ValueError) as e:
         logger.warning(
-            "Selection review answer could not be read (%s): nothing dropped", type(e).__name__
+            "Selection review answer could not be read (%s) [%s]: nothing dropped",
+            type(e).__name__,
+            UNREADABLE_VERDICT_MARKER,
         )
         return []
 

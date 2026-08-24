@@ -32,11 +32,11 @@ immich-memories generate [OPTIONS]
 | `--holiday` | — | text | — | Holiday name or `MM-DD` (with `--memory-type holiday`) |
 | `--from-album` | — | string | — | Generate from an Immich album (name or ID) instead of a date range. See [Album Memories](../memory-types/album-memories). Cannot be combined with any time-period or person flag |
 | `--person` | `-p` | string | — | Person name from Immich face recognition (repeatable: `--person "Alice" --person "Bob"`) |
-| `--birthday` | `-b` | flag/string | — | Use birthday-based year. Bare flag auto-detects from Immich; or pass `MM/DD` to override |
+| `--birthday` | `-b` | flag/string | — | Use birthday-based year. Bare flag auto-detects from Immich; or pass `MM-DD` to override |
 | `--season` | — | choice | — | `spring`, `summer`, `fall`, `autumn`, `winter` (use with `--memory-type season`) |
 | `--month` | — | int | — | Month 1-12 (with `--year`, generates that month; selects trip by month) |
 | `--hemisphere` | — | choice | `north` | `north` or `south` (for season date calculation) |
-| `--years-back` | — | int | all | Years to look back for `on_this_day`, `holiday` or `then_and_now` |
+| `--years-back` | — | int | per type | Years to look back. Omitted: all years for `on_this_day` (30-year max), 5 for `holiday`, 10 for `then_and_now` |
 
 ### Output
 
@@ -183,7 +183,7 @@ Auto-detects the birthday from Immich when `--birthday` is used as a flag:
 immich-memories generate --year 2024 --birthday --person "Emma" --duration 900
 ```
 
-Or specify manually: `--birthday 07/21`.
+Or specify manually: `--birthday 07-21`. Slashes work too and read day-first, like every other date flag — `--birthday 07/02` is 7 February. `MM-DD` is the form that cannot be misread.
 
 ### Person spotlight for a single month
 
@@ -293,23 +293,28 @@ immich-memories generate --year 2024 --include-photos --photo-duration 5.0
 | Period from start | `--start 2024-01-01 --period 6m` | 6 months from the start date |
 | Override preset | `--memory-type season --season summer --start 2024-07-01 --end 2024-07-31` | Custom dates with preset scoring |
 
-Date formats: `YYYY-MM-DD`, `DD/MM/YYYY`, or `MM/DD` (for `--birthday` manual override).
+Date formats: `YYYY-MM-DD` or `DD/MM/YYYY`. `--birthday` also takes the year-less `MM-DD` and `DD/MM` short forms.
 
 Period format: number + unit (`d` days, `w` weeks, `m` months, `y` years). Examples: `90d`, `2w`, `6m`, `1y`.
 
 ## Output
 
 `--output` names the file you want, not the path you get. Every run writes into
-its own folder so a rerun of the same recipe replaces itself instead of piling
-up, so:
+its own timestamped folder, so a rerun never overwrites an earlier result and a
+failed run's intermediates stay contained:
 
 ```bash
 immich-memories generate --year 2025 --output ~/Videos/summer.mp4
 ```
 
-writes `~/Videos/summer_<hash>_<timestamp>_<id>/summer_<hash>.mp4`. The folder
-is named after the file you asked for, and sits where you pointed. Album runs
-name the file after the album rather than after `--output`.
+writes `~/Videos/summer_20260105_143052_a7b3/summer.mp4`. The folder is the name
+you asked for plus the run id (timestamp, then four characters so two runs in the
+same second stay apart); the file keeps the name you gave it. The folder sits
+where you pointed. Album runs name the file after the album rather than after
+`--output`.
+
+Nothing prunes those folders, so reruns accumulate. `immich-memories runs delete`
+removes a run's output along with its record.
 
 If you don't pass `--output`, the file lands in your configured output directory (default `~/Videos/Memories/`), inside a per-run folder, with an auto-generated name of the form `{person}_{memory-type}_{date}.mp4` — for example `all_memories_2024.mp4`, `alice_year_in_review_2024.mp4` or `alice_memories_20240207-20250206.mp4`. (The web UI names its files differently, e.g. `alice_2024_memories.mp4`.)
 
@@ -385,6 +390,39 @@ Three things worth knowing:
 
 It uses `title_llm` if you have configured one, otherwise `llm` — the same
 resolution the rest of the pipeline uses.
+
+### What a run reports about itself
+
+Every generation ends with a short block:
+
+```
+Memory generated in 6m 27s
+
+  measured this run
+    analysis + selection     3m 49s   28 of 312 deeply analyzed, 14 planned
+    generation               2m 38s
+
+  LLM   11 calls · 4 answered from the judgment cache · 47.2k prompt / 3.1k completion · 2m 18s
+        1 thinking call truncated at the token budget and retried without it
+```
+
+**"Measured this run" means what it says.** Those two timings are wall-clock
+taken around the calls as they happen. They are *not* in the run database:
+`runs show` reports the phases the run tracker records — clip extraction,
+assembly and music — which do not include analysis or selection. Both surfaces
+report the same **model** totals, because those are stored per run; only the
+phase breakdown differs, and each says which it is showing.
+
+The cache mentioned is the **judgment cache** — repeated questions to the same
+model about the same memory — not the video, photo or analysis caches.
+
+**The truncation line only appears when it happened**, and it is the reason the
+block exists: a thinking call that overruns its token budget is retried without
+thinking, silently and correctly, and the retry costs both the wasted call and
+a worse answer. Before this line existed that cost was invisible unless someone
+read the server log.
+
+A run with no LLM configured prints no model line at all.
 
 ### Why did selection drop that clip?
 

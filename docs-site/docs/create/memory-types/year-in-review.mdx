@@ -38,7 +38,7 @@ Select the **Year in Review** card in Step 1, pick the year from the dropdown.
 
 ## What makes it special
 
-- **Monthly title dividers**: a divider screen (e.g., "January", "February") is inserted wherever the month changes between clips, so the video is split into sections. Dividers only appear when the video spans more than one month.
+- **Monthly title dividers**: a divider screen (e.g., "January", "February") is inserted wherever the month changes between clips, so the video is split into sections. Dividers only appear when the range spans four or more months: `get_divider_mode()` returns "none" for anything shorter, so a February-to-March video has no dividers at all.
 - **Density-based clip budget**: months with 50 videos get more clips than months with 5. The algorithm distributes clips proportionally to content density.
 - **Full year coverage**: the date range is exactly January 1 through December 31. Birthday-based years are supported too: `--birthday` auto-detects from Immich, or `--birthday 02/07` for manual override. You can also narrow to a single month with `--month` or override the date range entirely with `--start/--end`.
 

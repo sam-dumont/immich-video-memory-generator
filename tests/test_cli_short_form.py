@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from immich_memories.cli.generate import SHORT_FORM_SECONDS, resolve_short_form
+from immich_memories.cli.generate_resolution import SHORT_FORM_SECONDS, resolve_short_form
 
 
 def test_the_preset_sets_the_duration() -> None:

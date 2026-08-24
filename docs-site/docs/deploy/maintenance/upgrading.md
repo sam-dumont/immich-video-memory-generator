@@ -35,8 +35,10 @@ Read the [GitHub release notes](https://github.com/sam-dumont/immich-video-memor
 
 ## Upgrading Immich from v2 to v3
 
-Immich Memories supports Immich v2 and v3. Keep the default automatic runtime policy during the
-server upgrade:
+Immich Memories supports Immich v2 and v3 — see
+[Immich API compatibility](../configuration/config-file.md#immich-api-compatibility) for what that
+covers and what is actually tested. Keep the default automatic runtime policy during the server
+upgrade:
 
 ```yaml
 immich:
@@ -67,7 +69,7 @@ a video, create an album, or upload anything. A successful result includes the r
 
 ## Config compatibility
 
-There is no automatic config migration. If a release renames or removes a config field, you'll see a validation error on startup. The fix is always documented in the release notes: update your `config.yaml` to use the new field name.
+There is no automatic config migration, and a removed field will not tell you it is gone: unknown keys **inside** a known section are silently ignored, so a renamed field simply stops doing anything. (Unknown *top-level* keys and invalid values do fail at startup.) Renames are documented in the release notes — check them when a setting seems to have stopped taking effect.
 
 In practice, most config fields have been stable since v0.1. Breaking config changes are rare and always called out in the release notes.
 
@@ -88,7 +90,7 @@ tags: [GitHub releases](https://github.com/sam-dumont/immich-video-memory-genera
 then pull and recreate:
 
 ```yaml
-image: ghcr.io/sam-dumont/immich-video-memory-generator:0.40.1   # image tags have no `v` prefix
+image: ghcr.io/sam-dumont/immich-video-memory-generator:0.59.2   # image tags have no `v` prefix
 ```
 
 ```bash
@@ -98,9 +100,9 @@ docker compose up -d
 
 **uv/pip:**
 ```bash
-uv tool install immich-memories==0.40.1
+uv tool install immich-memories==0.59.2
 # or
-pip install immich-memories==0.40.1
+pip install immich-memories==0.59.2
 ```
 
 Your analysis cache and config are preserved across version changes. The only thing that might need attention is config field names if the version you're rolling back to used different names.

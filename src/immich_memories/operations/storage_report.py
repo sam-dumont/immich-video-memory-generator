@@ -47,7 +47,7 @@ class ReadOnlyRunStore:
         except sqlite3.Error:
             return []
 
-        from immich_memories.tracking.run_database import row_to_run
+        from immich_memories.tracking.run_database_rows import row_to_run
 
         return [row_to_run(row) for row in rows]
 

@@ -211,21 +211,12 @@ class SyncImmichClient:
         date_range: DateRange,
         progress_callback: Callable[[int, int], None] | None = None,
         person_id: str | None = None,
+        person_ids: list[str] | None = None,
     ) -> list[Asset]:
         return self._run(
             self._async_client.get_photos_for_date_range(
-                date_range, progress_callback, person_id=person_id
+                date_range, progress_callback, person_id=person_id, person_ids=person_ids
             )
-        )
-
-    def get_videos_for_any_person(
-        self,
-        person_ids: list[str],
-        date_range: DateRange,
-        progress_callback: Callable[[int, int], None] | None = None,
-    ) -> list[Asset]:
-        return self._run(
-            self._async_client.get_videos_for_any_person(person_ids, date_range, progress_callback)
         )
 
     def get_assets_for_person_and_date_range(

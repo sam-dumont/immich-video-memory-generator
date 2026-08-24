@@ -13,10 +13,12 @@ from __future__ import annotations
 
 import base64
 import logging
+import time
 from typing import TYPE_CHECKING
 
 import httpx
 
+from immich_memories.analysis import llm_metrics
 from immich_memories.config_models_llm import LLMConfig
 
 if TYPE_CHECKING:
@@ -162,17 +164,24 @@ async def query_llm(
     remembered = _remembered(cache_path, llm_config, prompt, thinking) if not images else None
     if remembered is not None:
         logger.debug("Reusing the answer to an identical question")
+        llm_metrics.record_cache_hit()
         return remembered
-    answer = await _dispatch(
-        prompt,
-        llm_config,
-        temperature,
-        max_tokens,
-        timeout_seconds,
-        thinking,
-        images,
-        image_detail,
-    )
+    started = time.monotonic()
+    try:
+        answer = await _dispatch(
+            prompt,
+            llm_config,
+            temperature,
+            max_tokens,
+            timeout_seconds,
+            thinking,
+            images,
+            image_detail,
+        )
+    finally:
+        # In `finally` so a failed call still shows the time it burned; a run
+        # that spent four minutes on a dead server should not read as free.
+        llm_metrics.record_wall(time.monotonic() - started)
     if not images:
         _remember(cache_path, llm_config, prompt, thinking, answer)
     return answer
@@ -259,7 +268,12 @@ async def _query_ollama(
     async with httpx.AsyncClient(timeout=build_llm_timeout(float(timeout))) as client:
         resp = await client.post(f"{base_url}/api/generate", json=payload)
         resp.raise_for_status()
-        return resp.json()["response"]
+        body = resp.json()
+        llm_metrics.record_reply(
+            prompt_tokens=body.get("prompt_eval_count", 0) or 0,
+            completion_tokens=body.get("eval_count", 0) or 0,
+        )
+        return body["response"]
 
 
 def _anthropic_content(prompt: str, images: Sequence[bytes]) -> str | list[dict]:
@@ -314,7 +328,13 @@ async def _query_anthropic(
         resp = await client.post(f"{base_url}/v1/messages", json=payload)
         resp.raise_for_status()
         body = resp.json()
+        usage = body.get("usage") or {}
+        llm_metrics.record_reply(
+            prompt_tokens=usage.get("input_tokens", 0) or 0,
+            completion_tokens=usage.get("output_tokens", 0) or 0,
+        )
         if thinking and body.get("stop_reason") == "max_tokens":
+            llm_metrics.record_truncation()
             logger.warning("Thinking hit the token budget; retrying without thinking")
             return await _query_anthropic(
                 prompt, config, temperature, max_tokens, timeout, thinking=False, images=images
@@ -382,8 +402,15 @@ async def _query_openai(
         for attempt in range(3):
             resp = await _post_adapted(client, f"{base_url}/chat/completions", payload, adaptations)
             resp.raise_for_status()
-            choice = resp.json()["choices"][0]
+            body = resp.json()
+            choice = body["choices"][0]
+            usage = body.get("usage") or {}
+            llm_metrics.record_reply(
+                prompt_tokens=usage.get("prompt_tokens", 0) or 0,
+                completion_tokens=usage.get("completion_tokens", 0) or 0,
+            )
             if thinking and choice.get("finish_reason") == "length":
+                llm_metrics.record_truncation()
                 # Truncation mid-think leaves the unfinished reasoning in the
                 # content channel — unparseable. A fast answer beats no answer.
                 logger.warning("Thinking hit the token budget; retrying without thinking")

@@ -121,18 +121,22 @@ place name is often the edge of somewhere better known.
 Then say whether something happened worth remembering years later, or whether
 it was an ordinary day.
 
-Where you cannot tell, stay vague. "A track day" is right and "a day at Spa"
-is wrong, and vague costs nothing.
+Every specific — a place, a distance, a count — comes from the lines above:
+write what they show, as concretely as they show it.
 
 Give it a title and a line under it, the way a photographer would caption a
 set they were proud of. Not the date and not the place — those are already on
 the card. Say something about the day.
 
+If one clear event fills part of the day, give the clock times it ran between,
+and leave the window null when the day was all one thing.
+
 Answer with STRICT JSON only, no prose:
 {{"special": true|false,
   "title": "<a few words, or empty>",
   "subtitle": "<one line, or empty>",
-  "what": "<a few words, or empty>"}}"""
+  "what": "<a few words, or empty>",
+  "window": ["HH:MM", "HH:MM"] or null}}"""
 
 
 def candidate_days(
@@ -351,45 +355,62 @@ def _place_is_real(place: str, vocabulary: set[str]) -> bool:
     return False
 
 
-def _only_if_grounded(text: str, vocabulary: set[str], *, located: bool, places: set[str]) -> str:
-    """Drop a line that names a place the day cannot support.
+# Distances and the races named after one. Both are claims a title makes as
+# flatly as it names a place, and both read as true whether or not the day
+# recorded anything of the kind.
+_QUANTITY = re.compile(
+    r"\b\d+\s?(?:k|km|mi|miles?)\b|\b(?:marathon|triathlon|ironman|ultra)\b",
+    re.IGNORECASE,
+)
+
+
+def _same_quantity(written: str) -> str:
+    """ "20 km" and "20km" are one claim, written twice."""
+    return re.sub(r"\s+", "", written).casefold()
+
+
+def _unsupported_quantity(text: str, evidence: str) -> str | None:
+    """A distance or a race the lines the model was given never mention.
+
+    Asked about a morning of running whose evidence says only that there were
+    runners in numbered bibs, the model answered with a specific distance. The
+    place guard had nothing to say about it — it only ever read places — and a
+    number is a claim of exactly the same kind.
+    """
+    supported = {_same_quantity(q) for q in _QUANTITY.findall(evidence)}
+    return next((q for q in _QUANTITY.findall(text) if _same_quantity(q) not in supported), None)
+
+
+def _only_if_grounded(
+    text: str, vocabulary: set[str], *, located: bool, places: set[str], evidence: str
+) -> str:
+    """Drop a line whose specifics the day cannot support.
 
     Asked about a night out with no city and no GPS anywhere in it, the model
     answered with three names and a town. The names were real
     and a place was invented, in spite of the prompt forbidding it. A title card
     is the wrong place for a plausible invention.
 
-    The check only applies when the day carries no location at all. Given
-    coordinates, naming the circuit they sit on is inference from data, and an
-    earlier version that policed every capitalised word threw away "Audi R8
-    V10 Track Day at a place" — a correct reading of the pictures — because
-    no EXIF field happens to contain the word Audi.
+    The capitalised-word check only applies when the day carries no location at
+    all. Given coordinates, naming the circuit they sit on is inference from
+    data, and an earlier version that policed every capitalised word threw away
+    "Audi R8 V10 Track Day at a place" — a correct reading of the pictures —
+    because no EXIF field happens to contain the word Audi.
     """
-    # A place the day never recorded. Asked about a track day at a place — with
-    # three villages all in its EXIF — the model
-    # answered "the famous circuit", Belgium's famous circuit rather
-    # than the one the coordinates sit on. Recognising the kind of place and
-    # naming the well-known instance of it is the failure that keeps recurring.
-    # Only when the day recorded place names at all. With coordinates and no
-    # city, naming the circuit they sit on is inference this cannot check, and
-    # rejecting it would throw away the model's best work.
-    if places:
-        for place in _named_places(text):
-            if not _place_is_real(place, places):
-                logger.info("Dropping %r: the day was never in %r", text, place)
-                return ""
+    # A number nothing on the day mentions. This one runs on every day,
+    # located or not: a distance is not inference from coordinates the way a
+    # circuit's name is, and the prompt asking for it costs nothing to ignore.
+    if unsupported := _unsupported_quantity(text, evidence):
+        logger.info("Dropping %r: nothing on this day mentions %r", text, unsupported)
+        return ""
 
-    # A guessed name is CamelCase and the day never mentions it. Told twice in
-    # the prompt not to name an event it could not read, the model answered
-    # "Attending KubeCon" and then, the same day, "Attending GitLab
-    # All-Hands" — a hall full of lanyards, and an invented answer to which
-    # conference it was. Both of those days knew exactly where they were, so
-    # this runs before the located early-return or it never runs at all. An
-    # internal capital is what separates it from Audi, R8 or a place name.
-    for coined in re.findall(r"\b[A-Z][a-z]+[A-Z][\w]*", text):
-        if coined.casefold() not in vocabulary:
-            logger.info("Dropping %r: %r looks like a guessed name", text, coined)
-            return ""
+    if place := _place_it_was_never_in(text, places):
+        logger.info("Dropping %r: the day was never in %r", text, place)
+        return ""
+
+    if coined := _guessed_name(text, vocabulary):
+        logger.info("Dropping %r: %r looks like a guessed name", text, coined)
+        return ""
 
     if not text or located:
         return text
@@ -405,12 +426,50 @@ def _only_if_grounded(text: str, vocabulary: set[str], *, located: bool, places:
     return text
 
 
+def _place_it_was_never_in(text: str, places: set[str]) -> str | None:
+    """A place the day never recorded.
+
+    Asked about a track day at a place — with three villages all in its EXIF —
+    the model answered "the famous circuit", Belgium's famous circuit rather
+    than the one the coordinates sit on. Recognising the kind of place and
+    naming the well-known instance of it is the failure that keeps recurring.
+
+    Only when the day recorded place names at all: with coordinates and no
+    city, naming the circuit they sit on is inference this cannot check, and
+    rejecting it would throw away the model's best work.
+    """
+    if not places:
+        return None
+    return next((p for p in _named_places(text) if not _place_is_real(p, places)), None)
+
+
+def _guessed_name(text: str, vocabulary: set[str]) -> str | None:
+    """A CamelCase name nothing on the day mentions.
+
+    Told twice in the prompt not to name an event it could not read, the model
+    answered "Attending KubeCon" and then, the same day, "Attending GitLab
+    All-Hands" — a hall full of lanyards, and an invented answer to which
+    conference it was. Both of those days knew exactly where they were, so this
+    runs before the located early-return or it never runs at all. An internal
+    capital is what separates it from Audi, R8 or a place name.
+    """
+    coined = re.findall(r"\b[A-Z][a-z]+[A-Z][\w]*", text)
+    return next((c for c in coined if c.casefold() not in vocabulary), None)
+
+
 # Two places count as one if they are closer than this.
 _SAME_PLACE_KM = 2.0
-# A dominant place must hold this much of the day to define its window...
+# A dominant place must hold this much of the day to define its window.
 _DOMINANT_SHARE = 0.6
-# ...and occupy less than this much of it, or the day simply happened there.
-_WINDOW_SHARE_OF_DAY = 0.5
+# A window has to be long enough to hold a memory. Without a floor, a dense
+# burst in one place produced a 69-second window on a 12.6-hour day, and
+# everything that day was about sat outside it.
+_MIN_WINDOW = timedelta(minutes=30)
+# And trimming has to actually remove something — this much clock time, and
+# this much of the day. A ratio on its own read a race photographed from
+# arrival to podium as "the day simply happened there" and returned nothing.
+_MIN_TRIM = timedelta(minutes=45)
+_MIN_TRIM_SHARE = 0.15
 
 
 def event_window(assets: list) -> tuple[datetime, datetime] | None:
@@ -422,8 +481,10 @@ def event_window(assets: list) -> tuple[datetime, datetime] | None:
     wedding also put 83% in one place, but across all fifteen hours it ran, so
     there is nothing to trim.
 
-    What separates them is not whether a place dominates — all of them do — but
-    how much of the day it takes up.
+    What separates them is whether trimming to the dominant place would remove
+    a meaningful part of the day. Asking instead how much of the day the place
+    takes up punished the days photographed best: a race covered from arrival
+    to podium filled two thirds of its day and was given no window at all.
     """
     located = [
         (a.file_created_at, a.exif_info.latitude, a.exif_info.longitude)
@@ -450,12 +511,56 @@ def event_window(assets: list) -> tuple[datetime, datetime] | None:
     if biggest["n"] / len(located) < _DOMINANT_SHARE:
         return None
 
-    day_span = (located[-1][0] - located[0][0]).total_seconds()
-    window_span = (biggest["last"] - biggest["first"]).total_seconds()
-    if day_span <= 0 or window_span / day_span >= _WINDOW_SHARE_OF_DAY:
+    day_span = located[-1][0] - located[0][0]
+    window_span = biggest["last"] - biggest["first"]
+    trimmed = day_span - window_span
+    if window_span < _MIN_WINDOW:
+        return None
+    if trimmed < _MIN_TRIM or trimmed < _MIN_TRIM_SHARE * day_span:
         return None
 
     return biggest["first"], biggest["last"]
+
+
+# How far outside its own pictures a written clock time may fall. The model
+# reads the times off the evidence lines and rounds them — "20:00" for a last
+# picture at 19:44 — and refusing that would throw away a good window.
+_CLOCK_SLACK = timedelta(hours=1)
+
+
+def _at_clock(written: Any, first: datetime, last: datetime) -> datetime | None:
+    """A written HH:MM placed on the day's own timeline.
+
+    Placed rather than parsed: a run of activity can cross midnight, so an
+    02:00 end belongs to the following calendar date.
+    """
+    match = re.fullmatch(r"\s*(\d{1,2}):(\d{2})\s*", str(written))
+    if not match or int(match[1]) > 23 or int(match[2]) > 59:
+        return None
+    moment = first.replace(hour=int(match[1]), minute=int(match[2]), second=0, microsecond=0)
+    if moment < first - _CLOCK_SLACK:
+        moment += timedelta(days=1)
+    return moment if first - _CLOCK_SLACK <= moment <= last + _CLOCK_SLACK else None
+
+
+def _window_the_model_gave(answer: dict, assets: list) -> tuple[datetime, datetime] | None:
+    """The clock times the model put on the day's one clear event.
+
+    Worth asking for because geometry cannot answer it. A race day's
+    coordinates are identical from the moment the car is parked to the moment
+    it leaves, so the cluster starts at arrival; the per-picture lines carry
+    timestamps and say what is in the frame, so the model can tell arrival
+    from the start of the thing that happened.
+    """
+    written = answer.get("window")
+    if not isinstance(written, list) or len(written) != 2:
+        return None
+    times = [a.file_created_at for a in assets]
+    first, last = min(times), max(times)
+    start, end = _at_clock(written[0], first, last), _at_clock(written[1], first, last)
+    if start is None or end is None or end - start < _MIN_WINDOW:
+        return None
+    return start, end
 
 
 def _line_for(asset: Any, described: str | None) -> str:
@@ -580,6 +685,7 @@ class SpecialDay:
     title: str = ""
     subtitle: str = ""
     what: str = ""
+    window: tuple[datetime, datetime] | None = None
 
 
 def ask_if_special(
@@ -615,7 +721,8 @@ def ask_if_special(
     if reasons:
         images = []
         timeout_seconds = max(timeout_seconds, _THINKING_TIMEOUT_SECONDS)
-    prompt = _PROMPT.format(lines=_describe(sampled, seen))
+    lines = _describe(sampled, seen)
+    prompt = _PROMPT.format(lines=lines)
     try:
         raw = _ask(prompt, llm_config, timeout_seconds, images, thinking=reasons)
     except Exception as exc:  # noqa: BLE001 - an unreachable model is not a verdict
@@ -653,12 +760,15 @@ def ask_if_special(
             grounded,
             located=located,
             places=places,
+            evidence=lines,
         ),
         subtitle=_only_if_grounded(
             str(answer.get("subtitle", ""))[:90].strip(),
             grounded,
             located=located,
             places=places,
+            evidence=lines,
         ),
         what=str(answer.get("what", ""))[:80].strip(),
+        window=_window_the_model_gave(answer, assets),
     )

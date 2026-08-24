@@ -9,7 +9,10 @@ import re
 from collections.abc import Mapping, Sequence
 from datetime import date
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from immich_memories.timeperiod import DateRange
 
 # 8 hex characters: short enough to read in a filename, and with a few hundred
 # renders per library the odds of two recipes colliding are negligible.
@@ -32,6 +35,26 @@ def normalize_output_path(path: Path, container: Literal["mp4", "mov"]) -> Path:
     if path.suffix.lower() == expected_suffix:
         return path
     return path.with_suffix(expected_suffix)
+
+
+def build_memory_output_path(
+    *,
+    output_dir: Path,
+    person_names: list[str] | tuple[str, ...],
+    memory_type: str | None,
+    date_range: DateRange,
+    container: str,
+) -> Path:
+    """The CLI's default file name for a memory: who is in it, what it covers."""
+    person_slug = (
+        "_".join(n.lower().replace(" ", "_") for n in person_names) if person_names else "all"
+    )
+    type_slug = memory_type or "memories"
+    if date_range.is_calendar_year:
+        date_slug = str(date_range.start.year)
+    else:
+        date_slug = f"{date_range.start.strftime('%Y%m%d')}-{date_range.end.strftime('%Y%m%d')}"
+    return output_dir / f"{person_slug}_{type_slug}_{date_slug}.{container}"
 
 
 def build_output_filename(

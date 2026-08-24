@@ -10,7 +10,7 @@ import ipaddress
 import logging
 import secrets
 import threading
-from collections.abc import MutableMapping
+from collections.abc import Mapping, MutableMapping
 from datetime import UTC, datetime
 
 import nicegui
@@ -105,6 +105,52 @@ def verify_credentials(username: str, password: str, auth_config: AuthConfig) ->
     username_ok = secrets.compare_digest(username, auth_config.username)
     password_ok = secrets.compare_digest(password, auth_config.password)
     return username_ok and password_ok
+
+
+# The HTTP trigger API. Not a bypass path: a caller without a valid token still
+# has to be a logged-in session, which is what the auth middleware decides.
+_TRIGGER_PREFIX = "/api/trigger"
+
+
+def is_trigger_path(path: str) -> bool:
+    """Whether a path belongs to the HTTP trigger API."""
+    return path == _TRIGGER_PREFIX or path.startswith(f"{_TRIGGER_PREFIX}/")
+
+
+def presented_trigger_token(headers: Mapping[str, str]) -> str:
+    """The trigger token a caller offered, from either header the API accepts.
+
+    `x-api-key` is what Immich's own API takes, so a workflow calling us looks
+    like a workflow calling Immich; `Authorization: Bearer` is what everything
+    else reaches for. Anything else counts as no offer at all.
+    """
+    if api_key := headers.get("x-api-key", ""):
+        return api_key
+    scheme, _, value = headers.get("authorization", "").partition(" ")
+    return value.strip() if scheme.lower() == "bearer" else ""
+
+
+def trigger_token_matches(presented: str, configured: str) -> bool:
+    """Constant-time comparison that refuses an unset token.
+
+    Without the emptiness guard an operator who never set `server.trigger_token`
+    would be authorizing every caller who also sends nothing.
+    """
+    if not configured or not presented:
+        return False
+    return secrets.compare_digest(presented, configured)
+
+
+def trigger_token_authorizes(path: str, headers: Mapping[str, str], configured_token: str) -> bool:
+    """Whether a trigger token lets this request skip the session check.
+
+    The middleware asks this before anything reads `app.storage.user`: a headless
+    caller sends no session cookie, so touching NiceGUI's user store for one would
+    both fail and mint a session file per request.
+    """
+    if not is_trigger_path(path):
+        return False
+    return trigger_token_matches(presented_trigger_token(headers), configured_token)
 
 
 def _parse_proxy_networks(

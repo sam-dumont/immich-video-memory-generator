@@ -49,7 +49,7 @@ kubectl apply -k overlays/gpu
 ```
 
 `kubectl kustomize base` shows what will be applied. `base/kustomization.yaml` pins the image
-tag (`images: newTag`); published tags carry no `v` prefix (`0.41.0`, `latest`) — bump it when you
+tag (`images: newTag`); published tags carry no `v` prefix (`0.59.2`, `latest`) — bump it when you
 upgrade.
 
 ## Access the UI

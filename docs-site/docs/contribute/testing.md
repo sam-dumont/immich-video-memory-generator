@@ -4,7 +4,7 @@ title: Testing Guide
 
 # Testing Guide
 
-Immich Memories has about 5,000 tests: 4,400+ fast unit tests that run everywhere, and 600+ integration and E2E tests that need real services (FFmpeg, Immich, a browser).
+Immich Memories has 5,600+ tests: 5,000+ fast unit tests that run everywhere, and 600+ integration and E2E tests that need real services (FFmpeg, Immich, a browser).
 
 ## Testing Tiers
 
@@ -29,10 +29,10 @@ Cover the real pipeline: download from Immich, FFmpeg assembly, video output val
 
 ```bash
 make test-integration            # Every suite except cli (~15 min)
-make test-integration-assembly   # One suite: assembly, audio, auth, cli, live-photos, photos, pipeline, processing, titles
+make test-integration-assembly   # One suite: assembly, audio, audio-mixing, auth, cli, live-photos, photos, pipeline, processing, titles
 ```
 
-Each suite is a folder under `tests/integration/` with its own `make test-integration-<suite>` target and rough runtime (see the table in `CLAUDE.md`). `cli` re-runs the full pipeline (~15 min) and is not part of `make test-integration`.
+Each suite is a folder under `tests/integration/`, and most have their own `make test-integration-<suite>` target with a rough runtime (see the table in `CLAUDE.md`). `automation` has no dedicated target yet; it runs as part of `make test-integration`. `cli` is the other exception: it re-runs the full pipeline (~15 min) and is not part of `make test-integration`.
 
 **What's tested:**
 - Real FFmpeg assembly (single clip, crossfade, smart transitions)
@@ -118,7 +118,9 @@ tests/
     ├── immich_fixtures.py   # requires_immich, short-clip fixtures
     ├── assembly/            # make test-integration-assembly   (FFmpeg only)
     ├── audio/               # make test-integration-audio      (demucs/acestep packages)
+    ├── audio_mixing/        # make test-integration-audio-mixing (FFmpeg only, loop seams)
     ├── auth/                # make test-integration-auth       (no external deps)
+    ├── automation/          # auto suggest/run (no dedicated target yet)
     ├── cli/                 # make test-integration-cli        (full pipeline, slow)
     ├── live_photos/         # make test-integration-live-photos (FFmpeg + Immich)
     ├── photos/              # make test-integration-photos     (FFmpeg only)

@@ -91,6 +91,30 @@ class TestGenerateTitleScreen:
         assert call_kwargs.kwargs["width"] == 720
         assert call_kwargs.kwargs["height"] == 1280
 
+    def test_then_and_now_is_titled_by_its_two_ends(
+        self, tmp_output, mock_rendering, mock_ending, mock_trip
+    ):
+        """The card named the decade the memory type deliberately skips.
+
+        With only dates to go on the generator inferred a plain date range and
+        rendered "January 2016 to December 2026" — the years in between being
+        exactly what a then-and-now leaves out. The type has to reach it.
+        """
+        from datetime import date
+
+        gen = _make_generator(
+            tmp_output,
+            mock_rendering,
+            mock_ending,
+            mock_trip,
+            memory_type="then_and_now",
+        )
+        gen.generate_title_screen(start_date=date(2016, 1, 1), end_date=date(2026, 12, 31))
+
+        call_kwargs = mock_rendering.create_title_video.call_args.kwargs
+        assert call_kwargs["title"] == "2016 & 2026"
+        assert call_kwargs["subtitle"] == "Then and Now"
+
     def test_passes_correct_duration(self, tmp_output, mock_rendering, mock_ending, mock_trip):
         gen = _make_generator(
             tmp_output,

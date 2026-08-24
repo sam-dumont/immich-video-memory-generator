@@ -21,13 +21,13 @@ The problem isn't storage (Immich handles that) or finding clips (search works).
 
 Tools that do parts of this exist. Cloud photo services generate annual recaps automatically, which is the right idea, but the music is pre-canned and the clip selection is a black box. Some phone platforms have beat-synced transitions and face awareness, but the output stays locked in their ecosystem. Activity trackers make beautiful GPS flyovers for bike rides and hikes, but they only work for tracked activities (not "my kid's year").
 
-Each tool does one piece well. None of them combine smart clip selection, custom music, trip maps, title screens, and video assembly in a single pipeline. And none of them run on your own server or let you control what goes in and what doesn't.
+Each tool does one piece well. None of them combine clip selection, custom music, trip maps, title screens, and video assembly in a single pipeline. And none of them run on your own server or let you control what goes in and what doesn't.
 
 If you're running Immich, you already made the decision to own your data. This tool gives you something to do with it.
 
 ## What I built instead
 
-A tool that does the boring part for me. It connects to Immich (read-only), looks at a time period I pick, and figures out which clips are worth keeping. It scores them on motion, faces, audio content, and optionally runs an LLM to understand what's actually happening in the scene. Then it assembles everything into a video with title screens, transitions, and music.
+A tool that does the boring part for me. It connects to Immich (read-only by default; `--upload-to-immich` is the one thing that writes back), looks at a time period I pick, and figures out which clips are worth keeping. It scores them on motion, faces, audio content, and optionally runs an LLM to understand what's actually happening in the scene. Then it assembles everything into a video with title screens, transitions, and music.
 
 The key: I still get to review what it picked and remove anything I don't want. But I'm reviewing 30 pre-selected clips instead of scrolling through 400.
 
@@ -35,7 +35,7 @@ The key: I still get to review what it picked and remove anything I don't want. 
 
 Every feature traces back to "remove a manual step from making a memory video":
 
-- **Smart clip scoring**: so I don't have to watch 400 clips to find the 25 good ones
+- **Clip scoring**: so I don't have to watch 400 clips to find the 25 good ones
 - **Face detection + recognition**: so clips with my kid in frame score higher than clips of the parking lot
 - **Scene detection**: so the tool picks the interesting 8-second segment, not the full 45-second recording
 - **Duplicate detection**: so I don't get three versions of the same moment from burst recordings

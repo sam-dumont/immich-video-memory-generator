@@ -147,6 +147,9 @@ locally, CI will pass too. Use conventional commit message format (see above).
 ### Splitting Large Files
 
 - Do not add new files over 800 lines — split proactively
+- A PR that pushes an existing file past 800 lines OWES the split: in that PR
+  or an immediately-queued follow-up. Surfing toward the 1000 hard cap is not
+  an option — moving helpers elsewhere to stay at 99x is the smell, not the fix
 - Split along **cohesion boundaries**, not arbitrary line counts
 - Extract a service class with a Protocol contract for its dependencies
 - The new module should be independently testable and importable

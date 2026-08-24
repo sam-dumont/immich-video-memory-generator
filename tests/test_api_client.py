@@ -661,12 +661,11 @@ class TestAvailableYears:
         assert not years
 
 
-class TestGetVideosForAnyPerson:
-    """Tests for OR-query across multiple person IDs."""
+class TestGetVideosForAllPersons:
+    """Naming several people asks for the videos holding all of them."""
 
     @pytest.mark.asyncio
-    async def test_single_person_returns_same_as_regular_query(self, _mock_config):
-        """Single person_id delegates to get_videos_for_person_and_date_range."""
+    async def test_single_person_returns_that_person_s_videos(self, _mock_config):
         from datetime import UTC, datetime
 
         from immich_memories.timeperiod import DateRange
@@ -677,17 +676,14 @@ class TestGetVideosForAnyPerson:
         a2 = make_asset("a2", file_created_at=datetime(2024, 6, 1, tzinfo=UTC))
         date_range = DateRange(start=datetime(2024, 1, 1), end=datetime(2024, 12, 31, 23, 59, 59))
 
-        # WHY: mock at service level — get_videos_for_any_person delegates to search service
+        # WHY: mock at service level — the client delegates to the search service
         client.search.get_videos_for_person_and_date_range = AsyncMock(return_value=[a1, a2])
 
-        result = await client.get_videos_for_any_person(["person-1"], date_range)
-        assert len(result) == 2
-        assert result[0].id == "a1"
-        assert result[1].id == "a2"
+        result = await client.get_videos_for_all_persons(["person-1"], date_range)
+        assert [a.id for a in result] == ["a1", "a2"]
 
     @pytest.mark.asyncio
-    async def test_two_people_deduplicates_shared_videos(self, _mock_config):
-        """Videos appearing for both people are deduplicated in the union."""
+    async def test_two_people_keep_only_their_shared_videos(self, _mock_config):
         from datetime import UTC, datetime
 
         from immich_memories.timeperiod import DateRange
@@ -704,26 +700,23 @@ class TestGetVideosForAnyPerson:
                 return [only_a, shared]
             return [shared, only_b]
 
-        # WHY: mock at service level — delegates to search service
+        # WHY: mock at service level — the client delegates to the search service
         client.search.get_videos_for_person_and_date_range = AsyncMock(side_effect=mock_query)
 
-        result = await client.get_videos_for_any_person(["person-a", "person-b"], date_range)
-        assert len(result) == 3
-        ids = [a.id for a in result]
-        assert ids == ["only-a", "shared", "only-b"]
+        result = await client.get_videos_for_all_persons(["person-a", "person-b"], date_range)
+        assert [a.id for a in result] == ["shared"]
 
     @pytest.mark.asyncio
     async def test_empty_person_list_returns_empty(self, _mock_config):
-        """Empty person_ids list returns empty result without any queries."""
         from datetime import datetime
 
         from immich_memories.timeperiod import DateRange
 
         client = ImmichClient(_TEST_URL, _TEST_KEY)
         date_range = DateRange(start=datetime(2024, 1, 1), end=datetime(2024, 12, 31, 23, 59, 59))
-        # WHY: mock at service level — delegates to search service
+        # WHY: mock at service level — the client delegates to the search service
         client.search.get_videos_for_person_and_date_range = AsyncMock()
 
-        result = await client.get_videos_for_any_person([], date_range)
+        result = await client.get_videos_for_all_persons([], date_range)
         assert not result
         client.search.get_videos_for_person_and_date_range.assert_not_called()

@@ -7,9 +7,9 @@ title: Network & Privacy
 
 Immich Memories runs locally and talks to your Immich server over your LAN. There is no
 telemetry, no update check and no analytics. Some features do make outbound requests, though.
-This page lists every one of them, what is sent, and how to turn it off. It is generated from a
-sweep of the source code and is kept in sync with releases; if you find an outbound call that is
-not listed here, [open an issue](https://github.com/sam-dumont/immich-video-memory-generator/issues).
+This page lists every one of them, what is sent, and how to turn it off. It is written from a sweep
+of the source code and maintained by hand — no gate checks it, so if you find an outbound call that
+is not listed here, [open an issue](https://github.com/sam-dumont/immich-video-memory-generator/issues).
 
 ## Summary table
 
@@ -24,8 +24,6 @@ not listed here, [open an issue](https://github.com/sam-dumont/immich-video-memo
 | Hugging Face / torch hub / Zenodo | first use of ACE-Step, Demucs, whisper.cpp, PANNs, smart-turn | nothing personal (model weights are downloaded once) | features are opt-in | pre-download models; air-gapped installs should disable those features |
 | Your Apprise / ntfy targets | notifications | memory type, status, duration, output path, error tail; a JPEG frame if `attach_thumbnail: true` | **yes** | `notifications.enabled: false` (default) |
 | Your OIDC provider | login | standard OIDC flow (client id, PKCE, tokens) | **yes** | basic auth or trusted-header auth |
-
-Everything below `LLM vision API` is optional and off unless you configure it.
 
 ## Details
 
@@ -52,9 +50,11 @@ today; the OSM/OpenTopo styles in the renderer are not reachable from the config
 
 ### Fonts (jsdelivr / Fontsource)
 
-**When:** a map or GPU-rendered title needs a font family that is neither bundled in the wheel
-(Montserrat is) nor already present under `~/.immich-memories/fonts/`. Then a `latin-<weight>`
-TTF is fetched from `cdn.jsdelivr.net/fontsource/fonts/<family>@latest`.
+**When:** a map or GPU-rendered title needs a font family that is neither bundled in the wheel nor
+already present under `~/.immich-memories/fonts/`. Five families ship in the wheel — Josefin Sans,
+Montserrat, Outfit, Quicksand and Raleway — which covers every built-in theme, so this only fires
+if you configure a family of your own. Then a `latin-<weight>` TTF is fetched from
+`cdn.jsdelivr.net/fontsource/fonts/<family>@latest`.
 
 **What's sent:** nothing about your library. Note the file is unpinned (`@latest`).
 

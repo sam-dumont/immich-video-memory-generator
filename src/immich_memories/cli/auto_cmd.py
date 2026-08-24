@@ -1,4 +1,4 @@
-"""Smart automation CLI commands -- suggest, run, install, and history."""
+"""Automation CLI commands -- suggest, run, install, and history."""
 
 from __future__ import annotations
 
@@ -159,7 +159,7 @@ def _print_history_table(runs: list) -> None:
 
 @click.group()
 def auto() -> None:
-    """Smart automation -- detect and generate memory candidates."""
+    """Automation -- detect and generate memory candidates."""
 
 
 @auto.command()
@@ -331,6 +331,7 @@ def status(ctx: click.Context, as_json: bool) -> None:
         "Last completed auto run: "
         + (f"{last_run['run_id']} ({last_run['category'] or '-'})" if last_run else "none")
     )
+    _print_last_run_model_spend(config, last_run)
     print_info(
         f"Cooldown: {'active' if cooldown_status['active'] else 'ready'} "
         f"({cooldown_status['hours']}h)"
@@ -438,3 +439,21 @@ def test_notification(ctx: click.Context) -> None:
 def register_auto_commands(cli_group: click.Group) -> None:
     """Register the auto command group on the main CLI group."""
     cli_group.add_command(auto)
+
+
+def _print_last_run_model_spend(config: Config, last_run: dict | None) -> None:
+    """What the last automatic run spent on the model, if anything.
+
+    The same line `runs show` prints, from the same stored totals -- an
+    unattended run is exactly the one nobody watched, so its bill has to be
+    visible without going looking for it.
+    """
+    if not last_run or not last_run.get("run_id"):
+        return
+    from immich_memories.cli._run_summary import render_llm_totals
+    from immich_memories.tracking import RunDatabase
+
+    run = RunDatabase(config.cache.database_path).get_run(last_run["run_id"])
+    line = render_llm_totals(getattr(run, "llm_metrics", None) or {}) if run else ""
+    if line:
+        print_info(line.replace("\n", " — ").strip())

@@ -7,7 +7,7 @@ namespace          = "immich-memories"
 environment        = "production"
 
 # Image (published tags carry no `v` prefix)
-image_tag = "0.41.0"
+image_tag = "0.59.2"
 
 # Immich
 immich_url     = "https://photos.example.com"

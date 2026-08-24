@@ -281,12 +281,15 @@ In your config YAML, set `trusted_proxies` to Traefik's container IP (prefer a s
 
 ## Session
 
-- Sessions last 24 hours by default (`session_ttl_hours`). Range: 1--720 hours.
+- Sessions last 24 hours by default (`session_ttl_hours`). Range: 1-720 hours.
 - The same value expires session state on disk: abandoned session files are
   swept at startup and every 15 minutes thereafter, so an exposed instance
   doesn't accumulate one file per drive-by request.
 - Logout via the sidebar button or by navigating to `/logout`.
 - OIDC logout redirects to the IdP's `end_session_endpoint` when available (the IdP terminates the SSO session too). Falls back to a local-only logout if the IdP doesn't advertise that endpoint.
+- A session is for browsers. Scripts and workflows authenticate to
+  [the trigger endpoint](../../create/recipes/trigger-endpoint.md) with `server.trigger_token`
+  instead — no cookie, no login page.
 
 :::warning Behind a reverse proxy: bind locally, name the proxy, mark the cookie Secure
 

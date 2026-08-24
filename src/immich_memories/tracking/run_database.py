@@ -1,4 +1,8 @@
-"""Database operations for run history."""
+"""Database operations for run history.
+
+Row-to-model conversion lives in run_database_rows.py; the lifecycle
+transition errors in run_lifecycle_errors.py.
+"""
 
 from __future__ import annotations
 
@@ -7,144 +11,24 @@ import logging
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
-from typing import Any, NoReturn
 
 from immich_memories.operations.phases import OperationalPhase, PhaseEvent
 from immich_memories.tracking.models import (
     DeliveryStatus,
     PhaseStats,
     RunMetadata,
-    SystemInfo,
     normalize_memory_people,
+)
+from immich_memories.tracking.run_database_rows import row_to_phase_stats, row_to_run
+from immich_memories.tracking.run_lifecycle_errors import (
+    DuplicateRunError,
+    raise_invalid_artifact_transition,
+    raise_invalid_delivery_transition,
 )
 
 logger = logging.getLogger(__name__)
-
-
-class InvalidRunLifecycleError(RuntimeError):
-    """Raised when a run's lifecycle state forbids a requested transition."""
-
-
-class DuplicateRunError(RuntimeError):
-    """Raised when a new tracker tries to claim an existing run identity."""
-
-
-def _raise_invalid_delivery_transition(
-    conn: sqlite3.Connection,
-    run_id: str,
-) -> NoReturn:
-    row = conn.execute(
-        "SELECT status, delivery_status FROM pipeline_runs WHERE run_id = ?", (run_id,)
-    ).fetchone()
-    if row is None:
-        raise KeyError(f"Unknown pipeline run: {run_id}")
-    if row["status"] == "completed":
-        raise InvalidRunLifecycleError(
-            f"Delivery transition requires requested delivery; run '{run_id}' is "
-            f"'{row['delivery_status']}'"
-        )
-    raise InvalidRunLifecycleError(
-        f"Delivery transition requires a completed run; run '{run_id}' is '{row['status']}'"
-    )
-
-
-def _raise_invalid_artifact_transition(
-    conn: sqlite3.Connection,
-    run_id: str,
-) -> NoReturn:
-    row = conn.execute("SELECT status FROM pipeline_runs WHERE run_id = ?", (run_id,)).fetchone()
-    if row is None:
-        raise KeyError(f"Unknown pipeline run: {run_id}")
-    raise InvalidRunLifecycleError(
-        f"Artifact completion requires a running run; run '{run_id}' is '{row['status']}'"
-    )
-
-
-def _row_value(row: sqlite3.Row, column: str, default: Any = None) -> Any:
-    """Read a column that may be absent on legacy compatibility rows."""
-    try:
-        return row[column]
-    except IndexError:
-        return default
-
-
-def row_to_run(row: sqlite3.Row) -> RunMetadata:
-    """Convert database row to RunMetadata."""
-    system_info = None
-    if row["system_info"]:
-        system_info = SystemInfo.from_json(row["system_info"])
-
-    return RunMetadata(
-        run_id=row["run_id"],
-        created_at=datetime.fromisoformat(row["created_at"]),
-        completed_at=(datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None),
-        status=row["status"],
-        memory_type=_row_value(row, "memory_type"),
-        memory_key=_row_value(row, "memory_key"),
-        memory_category=_row_value(row, "memory_category"),
-        memory_people=(
-            tuple(json.loads(_row_value(row, "memory_people_json")))
-            if _row_value(row, "memory_people_json")
-            else ()
-        ),
-        source=_row_value(row, "source", "manual"),
-        automation_attempt_id=_row_value(row, "automation_attempt_id"),
-        last_phase=(
-            OperationalPhase(_row_value(row, "last_phase"))
-            if _row_value(row, "last_phase")
-            else None
-        ),
-        person_name=row["person_name"],
-        person_id=row["person_id"],
-        date_range_start=(
-            date.fromisoformat(row["date_range_start"]) if row["date_range_start"] else None
-        ),
-        date_range_end=(
-            date.fromisoformat(row["date_range_end"]) if row["date_range_end"] else None
-        ),
-        # WHY the keys() check: a reader can hold a connection while another
-        # process is mid-migration (the concurrent-upgrade tests pin that
-        # window), and sqlite3.Row raises on a column that does not exist yet.
-        target_duration_seconds=(
-            row["target_duration_seconds"]
-            if "target_duration_seconds" in row.keys()  # noqa: SIM118 — sqlite3.Row `in` checks values, not keys
-            and row["target_duration_seconds"] is not None
-            else (row["target_duration_minutes"] or 10) * 60
-        ),
-        output_path=row["output_path"],
-        output_size_bytes=row["output_size_bytes"] or 0,
-        output_duration_seconds=row["output_duration_seconds"] or 0.0,
-        delivery_status=DeliveryStatus(
-            _row_value(row, "delivery_status") or DeliveryStatus.NOT_REQUESTED
-        ),
-        delivery_attempts=_row_value(row, "delivery_attempts", 0) or 0,
-        delivery_error=_row_value(row, "delivery_error"),
-        immich_asset_id=_row_value(row, "immich_asset_id"),
-        delivery_album=_row_value(row, "delivery_album"),
-        warnings=(
-            json.loads(_row_value(row, "warnings_json")) if _row_value(row, "warnings_json") else []
-        ),
-        clips_analyzed=row["clips_analyzed"] or 0,
-        clips_selected=row["clips_selected"] or 0,
-        errors_count=row["errors_count"] or 0,
-        system_info=system_info,
-    )
-
-
-def row_to_phase_stats(row: sqlite3.Row) -> PhaseStats:
-    """Convert database row to PhaseStats."""
-    return PhaseStats(
-        phase_name=row["phase_name"],
-        started_at=datetime.fromisoformat(row["started_at"]),
-        completed_at=(datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None),
-        duration_seconds=row["duration_seconds"] or 0.0,
-        items_processed=row["items_processed"] or 0,
-        items_total=row["items_total"] or 0,
-        errors=json.loads(row["errors"]) if row["errors"] else [],
-        extra_metrics=json.loads(row["extra_metrics"]) if row["extra_metrics"] else {},
-    )
 
 
 def _compute_avg_run_seconds(conn: sqlite3.Connection, completed_runs: int) -> float:
@@ -417,7 +301,7 @@ class RunDatabase:
                 (DeliveryStatus.ABANDONED.value, error, run_id),
             )
             if cursor.rowcount != 1:
-                _raise_invalid_delivery_transition(conn, run_id)
+                raise_invalid_delivery_transition(conn, run_id)
             conn.commit()
         saved = self.get_run(run_id)
         if saved is None:  # pragma: no cover - the UPDATE just matched this row
@@ -445,7 +329,7 @@ class RunDatabase:
                 (DeliveryStatus.PENDING.value, int(attempted), error, run_id),
             )
             if cursor.rowcount != 1:
-                _raise_invalid_delivery_transition(conn, run_id)
+                raise_invalid_delivery_transition(conn, run_id)
             conn.commit()
 
         updated = self.get_run(run_id)
@@ -467,6 +351,7 @@ class RunDatabase:
         clips_analyzed: int,
         clips_selected: int,
         errors_count: int,
+        llm_metrics: dict | None = None,
     ) -> RunMetadata:
         """Atomically commit artifact facts and its initial delivery lifecycle."""
         delivery_status = (
@@ -489,7 +374,8 @@ class RunDatabase:
                     delivery_error = NULL,
                     immich_asset_id = NULL,
                     delivery_album = ?,
-                    warnings_json = ?
+                    warnings_json = ?,
+                    llm_metrics = ?
                 WHERE run_id = ? AND status = 'running'
                 """,
                 (
@@ -503,11 +389,12 @@ class RunDatabase:
                     delivery_status.value,
                     delivery_album,
                     json.dumps(warnings),
+                    json.dumps(llm_metrics) if llm_metrics else None,
                     run_id,
                 ),
             )
             if cursor.rowcount != 1:
-                _raise_invalid_artifact_transition(conn, run_id)
+                raise_invalid_artifact_transition(conn, run_id)
             conn.commit()
 
         completed = self.get_run(run_id)
@@ -540,7 +427,7 @@ class RunDatabase:
                 ),
             )
             if cursor.rowcount != 1:
-                _raise_invalid_delivery_transition(conn, run_id)
+                raise_invalid_delivery_transition(conn, run_id)
             conn.commit()
 
         updated = self.get_run(run_id)
@@ -611,6 +498,23 @@ class RunDatabase:
     # =========================================================================
     # Query Methods (from RunQueriesMixin)
     # =========================================================================
+
+    def record_llm_metrics(self, run_id: str, metrics: dict) -> None:
+        """Store what the run spent on the model.
+
+        Its own method rather than another optional field on
+        `update_run_status`: that function is a chain of "if this was passed,
+        update it" branches sitting at the cognitive-complexity ceiling, and
+        this is one unconditional write.
+        """
+        if not metrics:
+            return
+        with self._get_connection() as conn:
+            conn.execute(
+                "UPDATE pipeline_runs SET llm_metrics = ? WHERE run_id = ?",
+                (json.dumps(metrics), run_id),
+            )
+            conn.commit()
 
     def get_phase_stats(self, run_id: str) -> list[PhaseStats]:
         """Get all phase stats for a run."""
