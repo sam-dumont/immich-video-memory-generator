@@ -98,10 +98,32 @@ def _print_run_details_table(run, format_duration) -> None:
     console.print(table)
 
 
-def _print_run_phases_table(run, format_duration) -> None:
-    """Print the phase timings table for a run."""
+def _print_run_llm_totals(run) -> None:
+    """What the run spent on the model, if it used one.
+
+    Run-level rather than per-phase because the phases above are only the ones
+    RunTracker records -- clip_extraction, assembly and music. Analysis and
+    selection are not tracked phases and spend most of the model budget, so a
+    per-phase total would understate the bill.
+    """
+    from immich_memories.cli._run_summary import render_llm_totals
+
+    line = render_llm_totals(getattr(run, "llm_metrics", None) or {})
+    if not line:
+        return
     console.print()
-    console.print("[bold]Phase Timings[/bold]")
+    console.print("[bold]Model[/bold]")
+    console.print(line)
+
+
+def _print_run_phases_table(run, format_duration) -> None:
+    """Print the phase timings table for a run.
+
+    These are the phases the run database holds, which is not every phase of a
+    generation -- analysis and selection run before the run row exists.
+    """
+    console.print()
+    console.print("[bold]Phase Timings (recorded phases only)[/bold]")
     console.print()
 
     phase_table = Table()
@@ -275,6 +297,7 @@ def register_runs_commands(main: click.Group) -> None:
 
         if run.phases:
             _print_run_phases_table(run, format_duration)
+        _print_run_llm_totals(run)
 
         if run.system_info:
             _print_run_system_info(run.system_info)

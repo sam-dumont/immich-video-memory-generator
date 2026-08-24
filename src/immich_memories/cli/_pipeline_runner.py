@@ -14,7 +14,9 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from immich_memories.cli._helpers import print_error, print_success
+from immich_memories.analysis import llm_metrics
+from immich_memories.cli._helpers import console, print_error, print_success
+from immich_memories.cli._run_summary import render_run_summary
 from immich_memories.timeperiod import DateRange
 
 logger = logging.getLogger(__name__)
@@ -251,6 +253,7 @@ class _AttemptPhaseReporter:
         self._progress.update(self._task, description=event.message)
 
 
+@llm_metrics.collects
 def run_pipeline_and_generate(
     *,
     assets: list,
@@ -587,6 +590,18 @@ def run_pipeline_and_generate(
         _analysis_time / _total_time * 100 if _total_time > 0 else 0,
         _gen_time,
         _gen_time / _total_time * 100 if _total_time > 0 else 0,
+    )
+
+    console.print(
+        render_run_summary(
+            total_seconds=_total_time,
+            analysis_seconds=_analysis_time,
+            generation_seconds=_gen_time,
+            eligible=len(all_candidates),
+            deeply_analyzed=pipeline.last_deep_analysis_count,
+            planned=len(selected_clips),
+            counters=llm_metrics.active(),
+        )
     )
 
     _send_notification(config, memory_type, "completed", _total_time, str(result_path))

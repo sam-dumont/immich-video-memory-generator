@@ -386,6 +386,39 @@ Three things worth knowing:
 It uses `title_llm` if you have configured one, otherwise `llm` — the same
 resolution the rest of the pipeline uses.
 
+### What a run reports about itself
+
+Every generation ends with a short block:
+
+```
+Memory generated in 6m 27s
+
+  measured this run
+    analysis + selection     3m 49s   28 of 312 deeply analyzed, 14 planned
+    generation               2m 38s
+
+  LLM   11 calls · 4 answered from the judgment cache · 47.2k prompt / 3.1k completion · 2m 18s
+        1 thinking call truncated at the token budget and retried without it
+```
+
+**"Measured this run" means what it says.** Those two timings are wall-clock
+taken around the calls as they happen. They are *not* in the run database:
+`runs show` reports the phases the run tracker records — clip extraction,
+assembly and music — which do not include analysis or selection. Both surfaces
+report the same **model** totals, because those are stored per run; only the
+phase breakdown differs, and each says which it is showing.
+
+The cache mentioned is the **judgment cache** — repeated questions to the same
+model about the same memory — not the video, photo or analysis caches.
+
+**The truncation line only appears when it happened**, and it is the reason the
+block exists: a thinking call that overruns its token budget is retried without
+thinking, silently and correctly, and the retry costs both the wasted call and
+a worse answer. Before this line existed that cost was invisible unless someone
+read the server log.
+
+A run with no LLM configured prints no model line at all.
+
 ### Why did selection drop that clip?
 
 `--trace-selection` writes a funnel: every stage of selection, what it received, what it let
