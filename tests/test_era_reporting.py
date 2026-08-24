@@ -34,6 +34,15 @@ class _Immich:
     def get_videos_for_date_range(self, date_range: DateRange) -> list:
         return self._by_range.get(date_range, [])
 
+    def get_videos_for_person_and_date_range(self, person_id: str, date_range: DateRange) -> list:
+        """Immich filters server-side, so a window can come back empty for one
+        person while holding plenty for everyone else."""
+        return [
+            a
+            for a in self._by_range.get(date_range, [])
+            if any(p.id == person_id for p in getattr(a, "people", None) or [])
+        ]
+
 
 class _Progress:
     """WHY: the Rich live display needs a terminal; the fetch only calls these two."""
@@ -102,3 +111,70 @@ def test_a_single_window_memory_says_nothing_extra(caplog) -> None:
         )
 
     assert "2026:" not in caplog.text
+
+
+def _person(person_id: str, name: str) -> SimpleNamespace:
+    return SimpleNamespace(id=person_id, name=name)
+
+
+def _asset_with(asset_id: str, when: datetime, people: list) -> SimpleNamespace:
+    return SimpleNamespace(id=asset_id, file_created_at=when, people=people)
+
+
+ALEX = _person("p-alex", "Alex")
+
+
+def _fetch_for_person(by_range, caplog, person_ids):
+    with caplog.at_level(logging.INFO):
+        fetch_videos_and_live_photos(
+            client=_Immich(by_range),
+            config=SimpleNamespace(),
+            progress=_Progress(),
+            date_ranges=[NOW, THEN],
+            person_ids=person_ids,
+            use_live_photos=False,
+        )
+    return caplog.text
+
+
+def test_a_person_missing_from_an_era_is_called_out_by_name(caplog) -> None:
+    """A then-and-now anchored on someone absent from "then" is just a now.
+
+    Neither window is empty, so the per-window counts look healthy. Only the
+    person's own spread shows the memory cannot do what its title claims.
+    """
+    by_range = {
+        NOW: [_asset_with("a", datetime(2026, 3, 1), [ALEX])],
+        THEN: [_asset_with("b", datetime(2016, 5, 1), [_person("p-sam", "Sam")])],
+    }
+
+    output = _fetch_for_person(by_range, caplog, ["p-alex"])
+
+    assert "Alex" in output
+    assert "2016" in output
+
+
+def test_a_person_present_on_both_sides_is_not_warned_about(caplog) -> None:
+    by_range = {
+        NOW: [_asset_with("a", datetime(2026, 3, 1), [ALEX])],
+        THEN: [_asset_with("b", datetime(2016, 5, 1), [ALEX])],
+    }
+
+    output = _fetch_for_person(by_range, caplog, ["p-alex"])
+
+    assert "does not appear" not in output
+
+
+def test_a_single_window_memory_never_checks_a_persons_spread(caplog) -> None:
+    """Only a multi-window memory can be lopsided across windows."""
+    with caplog.at_level(logging.INFO):
+        fetch_videos_and_live_photos(
+            client=_Immich({NOW: [_asset_with("a", datetime(2026, 3, 1), [ALEX])]}),
+            config=SimpleNamespace(),
+            progress=_Progress(),
+            date_ranges=[NOW],
+            person_ids=["p-alex"],
+            use_live_photos=False,
+        )
+
+    assert "Alex" not in caplog.text
