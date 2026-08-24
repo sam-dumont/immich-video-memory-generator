@@ -163,9 +163,26 @@ simply have none of it, and still read.
 Anniversaries either side of New Year are found: a day at the end of December is due in
 early January.
 
-Once a catalogue exists, the wizard's **Surprise me** card offers what is in it — due
-anniversaries first, then every other day it holds. See
-[Step 1: Configuration](../web-ui/step1-configuration.mdx#surprise-me).
+## What happens to a day once it is found
+
+The catalogue is not the point; it is what the point is made of. A day sitting in it
+becomes a video three ways:
+
+- **Automation proposes it on its anniversary.** `auto run` reads the catalogue like any
+  other detector and puts a due day in the queue, scored by how round the anniversary is,
+  one per run at most. It passes a date and nothing else — the title stays in the file.
+  See [auto](./auto.md#the-anniversary-that-would-otherwise-score-lowest).
+- **The wizard's Surprise me card offers all of them.** Due anniversaries first, then
+  every other day the catalogue holds, because you asked for it rather than being
+  interrupted. See
+  [Step 1: Configuration](../web-ui/step1-configuration.mdx#surprise-me).
+- **You name one yourself**:
+  `immich-memories generate --memory-type special_day --day 2016-06-12`.
+
+All three scope the memory to the day's window when it recorded one, take the runtime
+from how long the day stayed awake, and read the title out of the catalogue rather than
+off the command line. A day the model could not name is refused rather than rendered
+under a generic date. See [Special Days](../memory-types/special-days.mdx).
 
 ## What you need
 
