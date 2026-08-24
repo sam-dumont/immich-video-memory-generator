@@ -280,6 +280,8 @@ src/immich_memories/
 ├── cli/                        # Command-line interface (Click)
 │   ├── __init__.py             # Main CLI group + `ui` command
 │   ├── generate.py             # `generate`
+│   ├── generate_options.py     # `generate`'s flags, grouped; group order is the --help order
+│   ├── generate_resolution.py  # What those flags mean against the config, presets and conflicts
 │   ├── _analyze_export.py      # `analyze`, `export-project`
 │   ├── config_cmd.py           # `config`, `people`, `years`, `preflight`
 │   ├── scheduler_cmd.py        # `scheduler list/status/start`

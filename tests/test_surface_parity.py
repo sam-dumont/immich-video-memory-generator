@@ -101,7 +101,7 @@ SPECS: dict[MemoryType, MemorySpec] = {
 # from what the album holds. Registering a preset for it must fail this file.
 ALBUM_HAS_NO_PRESET = MemoryType.ALBUM
 
-# --memory-type's choices, copied from cli/generate.py so a type added to the
+# --memory-type's choices, copied from cli/generate_options.py so a type added to the
 # registry and not to the flag is caught here rather than by a user.
 CLI_MEMORY_TYPE_CHOICES = frozenset(
     {

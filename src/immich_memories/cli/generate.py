@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import os
 import sys
-from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import click
 
@@ -18,7 +15,6 @@ from immich_memories.cli._date_resolution import (
     infer_memory_type,
     resolve_date_range,
 )
-from immich_memories.cli._flags import output_path
 from immich_memories.cli._generate_display import (
     _build_params_table,
     _print_generation_result,
@@ -30,433 +26,37 @@ from immich_memories.cli._pipeline_runner import (
     run_pipeline_and_generate,
 )
 from immich_memories.cli._trip_generation import handle_trip_generation, resolve_music_arg
+from immich_memories.cli.generate_options import (
+    automation_options,
+    output_options,
+    per_memory_type_options,
+    run_options,
+    scope_options,
+    selection_options,
+)
+from immich_memories.cli.generate_resolution import (
+    _apply_scalar_overrides,
+    _arm_selection_trace,
+    _reject_album_scope_conflicts,
+    _resolve_generation_scope,
+    resolve_inclusion,
+    resolve_short_form,
+)
 from immich_memories.filename_builder import build_memory_output_path, normalize_output_path
 from immich_memories.processing.encoding_plan import resolve_output_selection
 from immich_memories.timeperiod import DateRange, parse_date
-
-if TYPE_CHECKING:
-    from immich_memories.config_loader import Config
-
-
-def _resolve_generation_scope(
-    *,
-    from_album: str | None,
-    year: int | None,
-    start: str | None,
-    end: str | None,
-    period: str | None,
-    birthday: str | None,
-    memory_type: str | None,
-    season: str | None,
-    month: int | None,
-    hemisphere: str,
-    years_back: int | None,
-    on_this_day_target: date | None,
-    holiday: str | None = None,
-) -> tuple[DateRange, list[DateRange]]:
-    """Resolve what a memory covers: date range(s), or an album that defines its own.
-
-    Returns the display range plus the ranges to search. Album mode returns no ranges
-    at all — its span comes from the album's assets, which need a connection to read —
-    so the returned range is a stand-in that album mode replaces and never displays.
-    """
-    if from_album:
-        now = datetime.now()
-        return DateRange(start=now, end=now), []
-
-    # WHY: birthday="auto" means detect from Immich later — don't pass to parser
-    initial_birthday = None if birthday == "auto" else birthday
-    date_result = resolve_date_range(
-        year,
-        start,
-        end,
-        period,
-        initial_birthday,
-        memory_type=memory_type,
-        season=season,
-        month=month,
-        hemisphere=hemisphere,
-        years_back=years_back,
-        on_this_day_target=on_this_day_target,
-        holiday=holiday,
-    )
-
-    # Normalize to single DateRange for display (multi-range for on_this_day)
-    if not isinstance(date_result, list):
-        return date_result, [date_result]
-    if not date_result:
-        print_error("No date ranges generated for On This Day")
-        sys.exit(1)
-    return DateRange(start=date_result[-1].start, end=date_result[0].end), date_result
-
-
-def _reject_album_scope_conflicts(
-    *,
-    year: int | None,
-    start: str | None,
-    end: str | None,
-    period: str | None,
-    birthday: str | None,
-    season: str | None,
-    month: int | None,
-    memory_type: str | None,
-    person_names: list[str] | tuple[str, ...],
-) -> None:
-    """Album mode replaces date-range discovery, so date scoping is meaningless."""
-    conflicts = {
-        "--year": year,
-        "--start": start,
-        "--end": end,
-        "--period": period,
-        "--birthday": birthday,
-        "--season": season,
-        "--month": month,
-        "--memory-type": memory_type,
-        "--person": person_names,
-    }
-    used = sorted(flag for flag, value in conflicts.items() if value)
-    if used:
-        raise click.UsageError(f"--from-album selects its own assets; drop {', '.join(used)}")
-
-
-SHORT_FORM_SECONDS = ("15", "30", "60", "90")
-
-
-@dataclass(frozen=True, slots=True)
-class ShortForm:
-    """What a short-form preset resolves to."""
-
-    duration: float | None
-    orientation: str
-
-
-def resolve_short_form(
-    short_form: str | None,
-    *,
-    duration: float | None,
-    orientation: str,
-    orientation_was_given: bool = False,
-) -> ShortForm:
-    """Apply a short-form preset without overruling anything asked for explicitly.
-
-    The preset is vertical because that is the shape Reels, Shorts and TikTok
-    take, but square short-form is real, so an orientation the user actually
-    typed wins. Same for a duration: the preset fills a gap, it does not argue.
-    """
-    if short_form is None:
-        return ShortForm(duration=duration, orientation=orientation)
-    return ShortForm(
-        duration=duration if duration is not None else int(short_form),
-        orientation=orientation if orientation_was_given else "portrait",
-    )
-
-
-def _apply_scalar_overrides(
-    config: Config,
-    *,
-    photo_duration: float | None,
-    refinement_passes: int | None,
-) -> None:
-    """Let a flag outrank the config file for the dials that have both."""
-    if photo_duration is not None:
-        config.photos.duration = photo_duration
-    if refinement_passes is not None:
-        config.analysis.max_refinement_passes = refinement_passes
-
-
-def resolve_inclusion(flag: bool | None, *, config_enabled: bool) -> bool:
-    """Resolve a content-inclusion choice from an optional CLI flag and config.
-
-    `flag or config_enabled` made the flag one-way: with the feature enabled in
-    config there was no way to ask for a run without it. None means "not
-    specified", so the config decides; an explicit True or False wins.
-    """
-    if flag is None:
-        return config_enabled
-    return flag
-
-
-def _arm_selection_trace(path: Path | None) -> None:
-    """Tell run_selection where to write its stage-by-stage report."""
-    if path:
-        os.environ["IMMICH_MEMORIES_SELECTION_TRACE"] = str(path)
 
 
 def register_generate_commands(main: click.Group) -> None:
     """Register the generate command on the main CLI group."""
 
     @main.command()
-    @click.option(
-        "--year", "-y", type=int, help="Year to generate video for (calendar year by default)"
-    )
-    @click.option("--start", type=str, help="Start date (YYYY-MM-DD or DD/MM/YYYY)")
-    @click.option("--end", type=str, help="End date (use with --start)")
-    @click.option("--period", type=str, help="Period from start date (e.g., 6m, 1y, 2w)")
-    @click.option(
-        "--birthday",
-        "-b",
-        is_flag=False,
-        flag_value="auto",
-        default=None,
-        help="Use birthday-based year (auto-detects from Immich, or specify MM-DD, e.g. 03-15)",
-    )
-    @click.option(
-        "--from-album",
-        "from_album",
-        type=str,
-        default=None,
-        help="Generate from an Immich album (name or ID) instead of a date range",
-    )
-    @click.option("--person", "-p", type=str, multiple=True, help="Person name (repeatable)")
-    @click.option(
-        "--memory-type",
-        type=click.Choice(
-            [
-                "year_in_review",
-                "season",
-                "person_spotlight",
-                "multi_person",
-                "monthly_highlights",
-                "on_this_day",
-                "trip",
-                "holiday",
-                "then_and_now",
-            ]
-        ),
-        default=None,
-        help="Memory type preset",
-    )
-    @click.option(
-        "--holiday",
-        type=str,
-        default=None,
-        help="Holiday name or MM-DD (use with --memory-type holiday)",
-    )
-    @click.option(
-        "--season",
-        type=click.Choice(["spring", "summer", "fall", "autumn", "winter"]),
-        default=None,
-        help="Season (use with --memory-type season)",
-    )
-    @click.option(
-        "--month",
-        type=int,
-        default=None,
-        help="Month 1-12 (with --year, generates that month; selects trip by month)",
-    )
-    @click.option(
-        "--hemisphere",
-        type=click.Choice(["north", "south"]),
-        default="north",
-        help="Hemisphere for season calculation",
-    )
-    @click.option(
-        "--duration",
-        "-d",
-        type=int,
-        default=None,
-        help="Target duration in seconds (default: from memory type preset)",
-    )
-    @click.option(
-        "--short-form",
-        type=click.Choice(SHORT_FORM_SECONDS),
-        default=None,
-        help="Short-form preset: sets the duration and makes the video vertical",
-    )
-    @click.option(
-        "--orientation",
-        type=click.Choice(["landscape", "portrait", "square"]),
-        default="landscape",
-        help="Output orientation",
-    )
-    @click.option(
-        "--scale-mode",
-        "-s",
-        type=click.Choice(["fit", "blur"]),
-        default=None,
-        help="How to fill an aspect mismatch: blurred background or black bars "
-        "(default: from config, else blur)",
-    )
-    @click.option(
-        "--transition",
-        "-t",
-        type=click.Choice(["smart", "cut", "crossfade", "none"]),
-        default="smart",
-        help="Transition style (default: smart — mix of fades & cuts)",
-    )
-    @click.option(
-        "--resolution",
-        "-r",
-        type=click.Choice(["auto", "4k", "1080p", "720p"]),
-        default=None,
-        help="Output resolution (default: config value, 'auto' to match source clips)",
-    )
-    @click.option(
-        "--music-volume",
-        type=float,
-        default=0.5,
-        help="Music volume 0.0-1.0 (default: 0.5)",
-    )
-    @click.option(
-        "--format",
-        "output_format",
-        type=click.Choice(["mp4", "h265", "prores"]),
-        default=None,
-        help="Output format override (default: config value)",
-    )
-    @click.option(
-        "--quality",
-        "-q",
-        type=click.Choice(["high", "medium", "low"]),
-        default=None,
-        help="Output quality (default: from config, typically high)",
-    )
-    @click.option(
-        "--output",
-        "-o",
-        "-O",
-        type=click.Path(),
-        callback=output_path,
-        help="Output file path",
-    )
-    @click.option(
-        "--music",
-        "-m",
-        type=str,
-        default=None,
-        help="Music: path to audio file, 'auto' to generate from config, or omit for default behavior",
-    )
-    @click.option(
-        "--no-music",
-        "no_music",
-        is_flag=True,
-        default=False,
-        help="Disable all music (skip both provided files and AI generation)",
-    )
-    @click.option("--dry-run", is_flag=True, help="Show what would be done without generating")
-    @click.option(
-        "--no-render",
-        is_flag=True,
-        help=(
-            "Run the real selection — analysis, verify, judge, review — and stop "
-            "before encoding. Unlike --dry-run, which uses cached analysis only and "
-            "skips the verify pass, this picks the clips it would actually ship"
-        ),
-    )
-    @click.option(
-        "--trace-selection",
-        type=click.Path(dir_okay=False, path_type=Path),
-        help="Write a stage-by-stage report of how the clips were chosen",
-    )
-    @click.option(
-        "--upload-to-immich",
-        is_flag=True,
-        default=False,
-        help="Upload generated video back to Immich",
-    )
-    @click.option("--album", type=str, default=None, help="Immich album name for uploaded video")
-    @click.option("--add-date", is_flag=True, default=False, help="Caption each clip with its date")
-    @click.option(
-        "--add-place", is_flag=True, default=False, help="Caption each clip with its place"
-    )
-    @click.option(
-        "--keep-intermediates",
-        is_flag=True,
-        default=False,
-        help="Keep intermediate files for debugging",
-    )
-    @click.option("--privacy-mode", is_flag=True, default=False, help="Blur faces and mute speech")
-    @click.option(
-        "--title",
-        "title_override",
-        type=str,
-        default=None,
-        help="Override video title text",
-    )
-    @click.option(
-        "--llm-title",
-        is_flag=True,
-        default=False,
-        help="Ask the LLM for the title instead of using a template (--title still wins)",
-    )
-    @click.option(
-        "--subtitle",
-        "subtitle_override",
-        type=str,
-        default=None,
-        help="Override video subtitle text",
-    )
-    @click.option(
-        "--include-live-photos/--no-live-photos",
-        "include_live_photos",
-        default=None,
-        help="Include Live Photo video clips (3s iPhone clips, merged when burst-captured)",
-    )
-    @click.option(
-        "--include-photos/--no-photos",
-        "include_photos",
-        default=None,
-        help="Include photos as animated Ken Burns clips (blur background, face-aware pan)",
-    )
-    @click.option(
-        "--photo-duration",
-        type=float,
-        default=None,
-        help="Duration per photo clip in seconds (default: 4.0)",
-    )
-    @click.option(
-        "--refinement-passes",
-        type=click.IntRange(1, 20),
-        default=None,
-        help=(
-            "How many times selection may verify, judge and review before settling "
-            "(default: 10). The biggest dial on warm-run time, and on the bill when "
-            "llm.base_url points at a paid API"
-        ),
-    )
-    @click.option(
-        "--analysis-depth",
-        type=click.Choice(["auto", "fast", "thorough"]),
-        default=None,
-        help=(
-            "Analysis depth: auto (full analysis for manageable pools), "
-            "fast (favorites first), or thorough (every eligible clip)"
-        ),
-    )
-    @click.option(
-        "--trip-index",
-        type=int,
-        default=None,
-        help="Select a specific trip by index (use with --memory-type trip)",
-    )
-    @click.option(
-        "--all-trips",
-        is_flag=True,
-        default=False,
-        help="Generate a video for every detected trip (use with --memory-type trip)",
-    )
-    @click.option(
-        "--years-back",
-        type=int,
-        default=None,
-        help="Years to look back for on_this_day, holiday or then_and_now",
-    )
-    @click.option(
-        "--near-date",
-        type=str,
-        default=None,
-        help="Select trip closest to this date (YYYY-MM-DD, use with --memory-type trip)",
-    )
-    @click.option(
-        "--source",
-        type=click.Choice(["manual", "scheduled", "auto"]),
-        default="manual",
-        hidden=True,
-    )
-    @click.option("--memory-key", type=str, default=None, hidden=True)
-    @click.option("--memory-category", type=str, default=None, hidden=True)
-    @click.option("--automation-attempt-id", type=str, default=None, hidden=True)
-    @click.option("--automation-target-date", type=str, default=None, hidden=True)
+    @scope_options
+    @output_options
+    @run_options
+    @selection_options
+    @per_memory_type_options
+    @automation_options
     @click.option("--quiet", is_flag=True, help="Suppress interactive progress, emit log lines")
     @click.pass_context
     def generate(
