@@ -203,6 +203,22 @@ class AppState:
             return self.album_id is not None
         return self.date_range is not None
 
+    def choose_memory_type(self, memory_type: str) -> None:
+        """Switch to a memory type, dropping what the previous card collected.
+
+        The person is the one input that used to survive: only two cards show a
+        person widget, so an Alice left behind by a Person Spotlight went on
+        narrowing a Year in Review with nothing on screen saying so -- the
+        wizard's own version of a filter the surface cannot explain.
+        """
+        self.memory_type = memory_type
+        self.memory_preset_params = {}
+        self.selected_person = None
+        if memory_type != "album":
+            # A left-over album would otherwise satisfy the step 1 scope check.
+            self.album_id = None
+            self.album_name = None
+
     def reset_clips(self) -> None:
         """Reset clip-related state when changing configuration."""
         self.clips = []

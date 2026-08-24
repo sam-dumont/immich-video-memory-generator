@@ -617,3 +617,42 @@ class TestPersonScope:
 
     def test_a_memory_about_nobody_names_nobody(self) -> None:
         assert AppState().person_ids == []
+
+
+class TestChoosingAMemoryType:
+    """Switching cards drops what the previous card collected."""
+
+    def test_the_person_does_not_follow_you_to_the_next_card(self) -> None:
+        """Alice picked for a Person Spotlight must not narrow a Year in Review.
+
+        Only two cards show a person widget, so a person left behind by the
+        previous one filters the new memory with nothing on screen saying so.
+        """
+        from immich_memories.api.models import Person
+
+        state = AppState()
+        state.selected_person = Person(id="person-alice", name="Alice")
+        state.memory_preset_params = {"person_id": "person-alice", "year": 2024}
+
+        state.choose_memory_type("year_in_review")
+
+        assert state.person_ids == []
+        assert state.memory_preset_params == {}
+
+    def test_switching_away_from_an_album_drops_it(self) -> None:
+        """A left-over album would otherwise satisfy the step 1 scope check."""
+        state = AppState()
+        state.choose_memory_type("album")
+        state.album_id, state.album_name = "album-1", "Holiday snaps"
+
+        state.choose_memory_type("season")
+
+        assert state.album_id is None
+
+    def test_choosing_the_album_card_keeps_the_album_selectable(self) -> None:
+        state = AppState()
+        state.album_id, state.album_name = "album-1", "Holiday snaps"
+
+        state.choose_memory_type("album")
+
+        assert state.album_id == "album-1"
