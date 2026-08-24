@@ -36,18 +36,13 @@ exposing it. The UI is single-user, single-replica; keep this service at one ins
 The compose volume at `/home/immich/.immich-memories` must stay writable. It holds config, cache,
 automation history, and pending-delivery state.
 
-:::caution Where the videos go
-The compose file mounts `./output` at `/app/output`, but the app's default output directory is
-`~/Videos/Memories` — inside the container that is `/home/immich/Videos/Memories`, which is not on
-any volume and disappears with the container. Until the image sets it for you, add this to the
-service's `environment:` block (or use `--output` on every CLI run):
+:::caution Who owns ./output
+The image writes to `/app/output` (the Dockerfile sets `IMMICH_MEMORIES_OUTPUT__DIRECTORY`) and the
+compose file mounts `./output` there, so videos land on your host without extra configuration. That
+is an environment variable, so it beats `output.directory` in `config.yaml` — to write somewhere
+else, override the variable in the service's `environment:` block, not in the YAML.
 
-```yaml
-    environment:
-      IMMICH_MEMORIES_OUTPUT__DIRECTORY: /app/output
-```
-
-The container runs as the unprivileged `immich` user, **UID/GID 1000** — the first user on most
+What you do have to get right is ownership. The container runs as the unprivileged `immich` user, **UID/GID 1000** — the first user on most
 Linux hosts, so a `./output` folder you create yourself is writable without any `chown`. If Docker
 creates the folder for you it is owned by root; then either `mkdir -p output` before the first
 `up`, or `sudo chown 1000:1000 output`. On a host where your user is not 1000, set
@@ -82,7 +77,6 @@ docker run -d \
   -p 8080:8080 \
   -e IMMICH_URL=https://photos.example.com \
   -e IMMICH_API_KEY=your-api-key-here \
-  -e IMMICH_MEMORIES_OUTPUT__DIRECTORY=/app/output \
   -v immich-memories-config:/home/immich/.immich-memories \
   -v ./output:/app/output \
   ghcr.io/sam-dumont/immich-video-memory-generator:latest
@@ -114,7 +108,6 @@ services:
     environment:
       - IMMICH_URL=http://immich-server:2283
       - IMMICH_API_KEY=${IMMICH_API_KEY}
-      - IMMICH_MEMORIES_OUTPUT__DIRECTORY=/app/output
     volumes:
       - immich-memories-config:/home/immich/.immich-memories
       - ./output:/app/output   # pre-create and chown to the container UID, see above
@@ -138,7 +131,7 @@ Inside Immich's own compose stack, `immich-server` listens on **2283** (every Im
 | `IMMICH_URL` | Yes | Your Immich server URL |
 | `IMMICH_API_KEY` | Yes | Immich API key |
 | `IMMICH_MEMORIES_PRESET` | No | `fast` = CPU-only/NAS profile (1080p h264, fast encoder, static titles, no speech pass, favorites-first analysis). Explicit settings win. See the [NAS guide](../common-setups/nas-only.md#one-switch-preset-fast). |
-| `IMMICH_MEMORIES_OUTPUT__DIRECTORY` | Recommended | Set to `/app/output` so videos land in the mounted output directory (default is `~/Videos/Memories` inside the container). |
+| `IMMICH_MEMORIES_OUTPUT__DIRECTORY` | No | Already `/app/output` in the image. Set it only to write somewhere else — and note it beats `output.directory` in `config.yaml`. |
 | `IMMICH_MEMORIES_STORAGE_SECRET` | No | Session secret for the web UI. Auto-generated into the config volume if not set, so sessions already survive a restart. Set it explicitly to share one secret across hosts. It does not make multiple replicas supported. |
 | `IMMICH_MEMORIES_LLM__BASE_URL` | No | LLM endpoint (any OpenAI-compatible API). On its own it does nothing for scoring — see the next row. |
 | `IMMICH_MEMORIES_LLM__MODEL` | No | LLM model name (e.g., `qwen2.5-vl`) |

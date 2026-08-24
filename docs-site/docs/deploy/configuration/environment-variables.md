@@ -80,6 +80,10 @@ export IMMICH_MEMORIES_OUTPUT__CODEC="h265"
 export IMMICH_MEMORIES_OUTPUT__CRF="20"
 ```
 
+`DIRECTORY` defaults to `~/Videos/Memories`. The Docker image overrides it to `/app/output` in the
+Dockerfile, so you only set it in a container to write somewhere else — and because it is an
+environment variable it beats `output.directory` in `config.yaml`.
+
 ### Music generation
 
 ```bash
@@ -91,16 +95,6 @@ export IMMICH_MEMORIES_ACE_STEP__ENABLED="true"
 export IMMICH_MEMORIES_ACE_STEP__MODE="api"
 export IMMICH_MEMORIES_ACE_STEP__API_URL="http://gpu-server:8000"
 ```
-
-### Output directory (Docker)
-
-```bash
-export IMMICH_MEMORIES_OUTPUT__DIRECTORY="/app/output"
-```
-
-The default is `~/Videos/Memories`, which inside the container is `/home/immich/Videos/Memories` —
-outside every volume. Set this so videos land in the `./output` mount (see
-[Docker](../installation/docker.md)).
 
 ## Shorthand overrides
 
