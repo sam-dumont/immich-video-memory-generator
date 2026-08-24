@@ -26,8 +26,8 @@ from datetime import date, datetime
 import pytest
 
 from immich_memories.api.models import Person
+from immich_memories.cli._asset_fetch import fetch_photos, fetch_videos_and_live_photos
 from immich_memories.cli._date_resolution import default_duration_for_type, resolve_date_range
-from immich_memories.cli._pipeline_runner import fetch_photos, fetch_videos_and_live_photos
 from immich_memories.memory_types.factory import create_preset
 from immich_memories.memory_types.registry import MemoryType
 from immich_memories.timeperiod import DateRange
@@ -341,7 +341,7 @@ class SilentProgress:
 def cli_fetch_calls(
     windows: list[DateRange], people: tuple[Person, ...], *, include_photos: bool
 ) -> list:
-    """What ``cli/_pipeline_runner`` asks Immich for, given windows and people."""
+    """What ``cli/_asset_fetch`` asks Immich for, given windows and people."""
     client = RecordingClient()
     person_ids = [person.id for person in people]
     fetch_videos_and_live_photos(

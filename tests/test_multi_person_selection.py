@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from immich_memories.cli._pipeline_runner import fetch_photos, fetch_videos_and_live_photos
+from immich_memories.cli._asset_fetch import fetch_photos, fetch_videos_and_live_photos
 from immich_memories.config_loader import Config
 from immich_memories.timeperiod import DateRange
 

@@ -316,7 +316,7 @@ def _run_pipeline_blocking(
             if state.include_photos and photos:
                 from pathlib import Path
 
-                from immich_memories.cli._pipeline_runner import _merge_photos_into_pool
+                from immich_memories.cli._candidate_pool import _merge_photos_into_pool
 
                 all_candidates = _merge_photos_into_pool(
                     analyzed,

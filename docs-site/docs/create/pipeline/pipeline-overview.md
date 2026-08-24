@@ -112,7 +112,7 @@ flowchart TB
 
 ### 1. Discovery
 
-`fetch_videos_and_live_photos()` in `cli/_pipeline_runner.py` runs one Immich
+`fetch_videos_and_live_photos()` in `cli/_asset_fetch.py` runs one Immich
 search per date range, then dedups by asset id. Live Photos are fetched
 separately and their video components are removed from the plain video list so
 the same footage is not considered twice.

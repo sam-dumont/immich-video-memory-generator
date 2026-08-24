@@ -235,7 +235,7 @@ def test_the_pool_the_cli_and_ui_build_drops_what_the_camera_did_not_shoot(tmp_p
     """
     from datetime import UTC, datetime
 
-    from immich_memories.cli._pipeline_runner import _merge_photos_into_pool
+    from immich_memories.cli._candidate_pool import _merge_photos_into_pool
 
     when = datetime(2019, 6, 12, 12, tzinfo=UTC)
     forwarded = make_asset(

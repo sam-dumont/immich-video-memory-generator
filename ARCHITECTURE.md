@@ -298,7 +298,9 @@ src/immich_memories/
 │   ├── _generation_preview.py  # Plain-text summary for read-only generation planning (--dry-run)
 │   ├── _config_errors.py       # Config error formatting
 │   ├── _flags.py               # Shared validation for flags more than one command takes
-│   ├── _pipeline_runner.py     # Fetch assets + run SmartPipeline + generate
+│   ├── _pipeline_runner.py     # Run SmartPipeline over the fetched assets + generate
+│   ├── _asset_fetch.py         # What a memory asks Immich for: videos, Live Photos, stills
+│   ├── _candidate_pool.py      # Videos + photos merged into one pool, then filtered
 │   ├── _album_generation.py    # Album mode: an Immich album is the candidate pool
 │   ├── _llm_title.py           # Opt-in LLM title on the CLI path (the wizard's default differs)
 │   ├── _trip_generation.py     # Trip detection, selection, per-trip generation

@@ -77,7 +77,7 @@ def test_twelve_day_auto_trip_deeply_analyzes_the_manageable_pool(tmp_path: Path
     from immich_memories.analysis.smart_pipeline import ClipWithSegment, SmartPipeline
     from immich_memories.api.models import Asset, AssetType, VideoClipInfo
     from immich_memories.cache.thumbnail_cache import ThumbnailCache
-    from immich_memories.cli._pipeline_runner import _merge_photos_into_pool
+    from immich_memories.cli._candidate_pool import _merge_photos_into_pool
     from immich_memories.config_loader import Config
     from immich_memories.ui.pages.clip_pipeline import (
         _build_pipeline_config,

@@ -142,7 +142,7 @@ def test_blocking_pipeline_cannot_reintroduce_unchecked_photos() -> None:
         patch("immich_memories.analysis.smart_pipeline.SmartPipeline", return_value=pipeline),
         patch("immich_memories.config.get_config", return_value=state.config),
         patch(
-            "immich_memories.cli._pipeline_runner._merge_photos_into_pool",
+            "immich_memories.cli._candidate_pool._merge_photos_into_pool",
             return_value=[],
         ) as merge_photos,
     ):
@@ -198,7 +198,7 @@ def test_blocking_pipeline_hands_the_photo_merge_its_thumbnail_cache() -> None:
         patch("immich_memories.config.get_config", return_value=state.config),
         # WHY: the seam under inspection — captures the arguments, runs nothing.
         patch(
-            "immich_memories.cli._pipeline_runner._merge_photos_into_pool",
+            "immich_memories.cli._candidate_pool._merge_photos_into_pool",
             return_value=[],
         ) as merge_photos,
     ):
