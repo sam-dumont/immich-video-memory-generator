@@ -210,6 +210,7 @@ def _scan_library(
                 ask=per_year,
                 extra_holidays=also_skip,
                 analysis_config=config.analysis,
+                trips_config=config.trips,
             ):
                 found.append(
                     {

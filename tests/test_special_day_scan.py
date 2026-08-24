@@ -43,6 +43,126 @@ def _a_full_day() -> list[SimpleNamespace]:
     return [_asset(h, m) for h in range(9, 17) for m in (0, 20, 40)]
 
 
+# Synthetic coordinates: a home, and somewhere about 67 km due north of it.
+_HOME = (50.0, 4.0)
+_AWAY = (50.6, 4.0)
+
+
+def _christmas_day(where: tuple[float, float]) -> list[SimpleNamespace]:
+    """A full day of pictures on a fixed holiday, all taken in one place."""
+    return [
+        SimpleNamespace(
+            id=f"a-1225-{hour:02d}-{minute:02d}",
+            file_created_at=datetime(2021, 12, 25, hour, minute, tzinfo=UTC),
+            exif_info=SimpleNamespace(
+                city="Someplace",
+                state=None,
+                country="Belgium",
+                latitude=where[0],
+                longitude=where[1],
+            ),
+            people=[],
+        )
+        for hour in range(9, 17)
+        for minute in (0, 20, 40)
+    ]
+
+
+def _home_config() -> TripsConfig:
+    return TripsConfig(homebase_latitude=_HOME[0], homebase_longitude=_HOME[1])
+
+
+class TestAHolidayIsOnlySkippedWhenTheDayLooksLikeOne:
+    """The date alone was enough to drop a day, and dates collide.
+
+    A track-day excursion fell on a holiday: 133 photographs, seven active
+    hours, 67 km from home. It would have ranked third in its year and never
+    reached the ranking at all, because the calendar said the holiday memory
+    already had that date covered.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _a_model_that_says_yes(self, monkeypatch) -> None:
+        # WHY: ask_if_special is the LLM call; which days reach it is the subject.
+        monkeypatch.setattr(
+            "immich_memories.automation.special_day_scan.ask_if_special",
+            lambda *_a, **_k: SimpleNamespace(special=True, title="A day", subtitle="", what="out"),
+        )
+
+    def test_a_holiday_spent_away_from_home_still_reaches_the_model(self) -> None:
+        found = scan_year(
+            _christmas_day(_AWAY),
+            llm_config=None,
+            home=_HOME,
+            ask=1,
+            trips_config=_home_config(),
+        )
+
+        assert [d.day for d in found] == [date(2021, 12, 25)]
+
+    def test_a_holiday_kept_at_home_is_still_skipped(self) -> None:
+        """The holiday memory does cover this one, which is why the skip exists."""
+        found = scan_year(
+            _christmas_day(_HOME),
+            llm_config=None,
+            home=_HOME,
+            ask=1,
+            trips_config=_home_config(),
+        )
+
+        assert found == []
+
+    def test_a_holiday_that_recorded_no_location_is_skipped(self) -> None:
+        """Nothing contradicts the holiday, so the date stands as it always did."""
+        unplaced = _christmas_day(_HOME)
+        for asset in unplaced:
+            asset.exif_info.latitude = None
+            asset.exif_info.longitude = None
+
+        found = scan_year(unplaced, llm_config=None, home=_HOME, ask=1, trips_config=_home_config())
+
+        assert found == []
+
+
+def test_trip_detection_runs_with_the_thresholds_this_library_configured(monkeypatch) -> None:
+    """The scan called detect_trips on its defaults while every other caller
+    passed the configured ones, so a library that had tuned what counts as a
+    trip got a different answer from this command than from the rest.
+    """
+    seen: dict = {}
+
+    # WHY: detect_trips reverse-geocodes and clusters; what it was asked for is
+    # the whole subject of this test.
+    def _record(assets, home_lat, home_lon, **kwargs):
+        seen.update(kwargs)
+        return []
+
+    monkeypatch.setattr("immich_memories.automation.special_day_scan.detect_trips", _record)
+    # WHY: ask_if_special is the LLM call, and no day needs to reach it here.
+    monkeypatch.setattr(
+        "immich_memories.automation.special_day_scan.ask_if_special",
+        lambda *_a, **_k: SimpleNamespace(special=False, title="", subtitle="", what=""),
+    )
+
+    scan_year(
+        _a_full_day(),
+        llm_config=None,
+        home=_HOME,
+        ask=1,
+        trips_config=TripsConfig(
+            homebase_latitude=_HOME[0],
+            homebase_longitude=_HOME[1],
+            min_distance_km=120,
+            min_duration_days=4,
+            max_gap_days=1,
+        ),
+    )
+
+    assert seen["min_distance_km"] == 120
+    assert seen["min_duration_days"] == 4
+    assert seen["max_gap_days"] == 1
+
+
 def test_the_configured_homebase_is_the_one_the_scan_uses() -> None:
     """The scan read two fields that do not exist, so home was a constant.
 

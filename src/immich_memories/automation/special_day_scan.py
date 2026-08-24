@@ -24,7 +24,8 @@ from immich_memories.analysis.special_day import (
     event_window,
     sample_across_day,
 )
-from immich_memories.analysis.trip_detection import detect_trips
+from immich_memories.analysis.trip_detection import detect_trips, haversine_km
+from immich_memories.config_models_automation import TripsConfig
 from immich_memories.memory_types.date_builders import KNOWN_HOLIDAYS, resolve_holiday
 
 if TYPE_CHECKING:
@@ -85,6 +86,50 @@ def _shot_here(assets: list, analysis_config: Any) -> list:
     return kept
 
 
+def _kept_away_from_home(items: list, home: tuple[float, float], min_km: float) -> bool:
+    """Did the day's located pictures happen somewhere other than home?
+
+    The holiday memory covers the holiday as it is actually kept — at home,
+    with the people who keep it. A day that merely falls on the same date and
+    was spent 67 km away at a race circuit is not that holiday, and dropping
+    it on the date alone lost a day that would have ranked third in its year.
+
+    No coordinates at all is not evidence against the holiday, so those days
+    stay skipped exactly as before.
+    """
+    away = at_home = 0
+    for asset in items:
+        exif = getattr(asset, "exif_info", None)
+        lat = getattr(exif, "latitude", None) if exif else None
+        lon = getattr(exif, "longitude", None) if exif else None
+        if lat is None or lon is None:
+            continue
+        if haversine_km(lat, lon, *home) >= min_km:
+            away += 1
+        else:
+            at_home += 1
+    return away > at_home
+
+
+def _drop_the_holidays_it_actually_was(
+    candidates: dict[date, list],
+    holidays: set[date],
+    home: tuple[float, float] | None,
+    min_km: float,
+) -> dict[date, list]:
+    """Keep the days whose evidence disagrees with the holiday they fall on."""
+    kept: dict[date, list] = {}
+    for day, items in candidates.items():
+        if day not in holidays:
+            kept[day] = items
+        elif home and _kept_away_from_home(items, home, min_km):
+            logger.info("%s falls on a holiday but was spent away from home; keeping it", day)
+            kept[day] = items
+        else:
+            logger.info("Skipping %s: a holiday, and the day never left home", day)
+    return kept
+
+
 def scan_year(
     assets: list,
     *,
@@ -94,6 +139,7 @@ def scan_year(
     ask: int = 6,
     extra_holidays: Iterable[str] = (),
     analysis_config: Any = None,
+    trips_config: TripsConfig | None = None,
 ) -> list[DiscoveredDay]:
     """Find the days in one year's assets that stand out, and name them.
 
@@ -111,25 +157,34 @@ def scan_year(
     if not assets:
         return []
 
+    trips = trips_config or TripsConfig()
     year = assets[0].file_created_at.year
     # Dates only: the trip's name is never read here, and asking for one
     # is a live request per trip for every year of the scan.
     away = (
-        days_covered_by_trips(detect_trips(assets, *home, name_locations=False)) if home else set()
+        days_covered_by_trips(
+            detect_trips(
+                assets,
+                *home,
+                min_distance_km=trips.min_distance_km,
+                min_duration_days=trips.min_duration_days,
+                max_gap_days=trips.max_gap_days,
+                name_locations=False,
+            )
+        )
+        if home
+        else set()
     )
     holidays = holidays_in(year, extra_holidays)
 
-    candidates = {
-        day: items
-        for day, items in candidate_days(assets, away_days=away).items()
-        if day not in holidays
-    }
+    off_trip = candidate_days(assets, away_days=away)
+    candidates = _drop_the_holidays_it_actually_was(off_trip, holidays, home, trips.min_distance_km)
     logger.info(
-        "%d: %d candidate days after skipping %d on trips and %d holidays",
+        "%d: %d candidate days, %d dates covered by trips, %d dropped as the holiday they fell on",
         year,
         len(candidates),
         len(away),
-        len(holidays),
+        len(off_trip) - len(candidates),
     )
 
     found: list[DiscoveredDay] = []

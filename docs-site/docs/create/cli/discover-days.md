@@ -39,8 +39,18 @@ A day also ends when the photographs stop for five hours, not at midnight. A wed
 runs past one, or a birth that starts with contractions at ten in the evening, is one
 occasion; the calendar disagrees.
 
-Two things are skipped outright: days inside a detected trip, because a trip memory
-already tells that story end to end, and holidays, which have their own memory type.
+Two things are skipped: days inside a detected trip, because a trip memory already tells
+that story end to end, and holidays, which have their own memory type.
+
+A holiday is only skipped when the day's pictures agree that it was one — that is, when
+they were taken around home, where the holiday is actually kept. A day that merely lands
+on the same date and was spent 67 km away at a race circuit is not that holiday, and it
+goes to the model like any other candidate. A day that recorded no coordinates at all is
+skipped on the date alone, as it always was.
+
+Both filters read the thresholds under `trips:` — your homebase, how far from it counts as
+away, and how trips are grouped — so this command and the rest of the app agree on what
+"away" means.
 
 ## Fast eyes, then a considered answer
 
