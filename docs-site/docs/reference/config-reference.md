@@ -40,7 +40,8 @@ preset: null                       # null | fast
 `fast` sets, unless you set them yourself: `output.resolution: 1080p`, `output.codec: h264`,
 `output.quality: medium`, `hardware.encoder_preset: fast`, `speech.enabled: false` (no per-clip
 voice-activity pass), `title_screens.animated_background: false` (static title backgrounds),
-`photos.max_ratio: 0.25`; and an analysis depth of `auto` runs as `fast` (favorites first).
+`photos.max_ratio: 0.25`, `analysis.max_refinement_passes: 3` (three refinement rounds rather
+than ten); and an analysis depth of `auto` runs as `fast` (favorites first).
 The heavy optional features (LLM scoring, music generation, audio-content tagging, transcription)
 are already off by default and stay wherever you put them.
 
@@ -514,8 +515,9 @@ title_screens:
   use_first_name_only: true      # "Alice" instead of "Alice Smith" in titles
 ```
 
-Those two switches are all the look-and-feel the config file exposes; the colour palette and
-custom fonts are not configurable today. `animated_background: false` keeps the gradient still
+`animated_background` and `show_decorative_lines` are all the look-and-feel the config file
+exposes; the colour palette and custom fonts are not configurable today.
+`animated_background: false` keeps the gradient still
 — no rotation, colour pulse or vignette pulse — which is what `preset: fast` selects. The
 `immich-memories titles` command exposes more of the look as flags for previewing.
 
