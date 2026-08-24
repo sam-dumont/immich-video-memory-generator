@@ -106,13 +106,16 @@ is the one piece you can point somewhere else, and it speaks any OpenAI-compatib
 path exists for people who don't have the hardware or the patience to run a local model, not
 because the tool needs a cloud.
 
+Developed and tested against Qwen3.6-27B and Qwen3.6-35B-A3B (vision is built into the Qwen3.x
+models — no `-VL` variant to find).
+
 ```yaml
 # In ~/.immich-memories/config.yaml
 advanced:
   llm:
     provider: "openai-compatible"
-    base_url: "http://your-llm-server:8080/v1"
-    model: "qwen2.5-vl"
+    base_url: "http://your-llm-server:8000/v1"
+    model: "mlx-community/Qwen3.6-27B-8bit"
 ```
 
 ## What it does

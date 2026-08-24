@@ -78,8 +78,9 @@ module "immich_memories" {
   immich_api_key = var.immich_api_key
 
   # Optional: LLM clip content analysis (any OpenAI-compatible API)
+  # Tested against Qwen3.6-27B and Qwen3.6-35B-A3B; `llm_model` is the tag the server serves
   llm_base_url = "http://ollama.ollama.svc.cluster.local:11434/v1"
-  llm_model    = "qwen2.5-vl"
+  llm_model    = "qwen3.6:27b"
 
   # Optional: anything else, e.g. the in-pod daily automation
   env = {

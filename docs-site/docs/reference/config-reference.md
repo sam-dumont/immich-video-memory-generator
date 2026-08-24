@@ -276,7 +276,7 @@ Used by content analysis and title generation. Any OpenAI-compatible endpoint wo
 llm:
   provider: "openai-compatible"   # openai-compatible | openai | zai | anthropic | ollama
   base_url: "http://localhost:8080/v1"
-  model: ""                        # e.g. mlx-community/Qwen2.5-VL-7B-Instruct-8bit
+  model: ""                        # e.g. mlx-community/Qwen3.6-27B-8bit
   api_key: ""                      # optional, only for cloud APIs
   timeout_seconds: 300             # increase for slow local models (10-3600)
   thinking: false                  # server has a reasoning switch

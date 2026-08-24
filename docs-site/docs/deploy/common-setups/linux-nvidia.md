@@ -112,7 +112,7 @@ IMMICH_API_KEY=your-api-key-here
 
 ## What doesn't work
 
-- **LLM content analysis on consumer GPUs**: vision-language models like Qwen2.5-VL-7B need ~14 GB VRAM at full precision. The 8-bit quant fits on an RTX 3060 12 GB, but an RTX 3060 8 GB or lower won't cut it. Use Ollama or a separate LLM server if VRAM is tight.
+- **LLM content analysis on consumer GPUs**: the tested models are Qwen3.6-27B and Qwen3.6-35B-A3B, which Ollama ships as 17 GB and 24 GB downloads. Neither stays resident on a 12 GB card — Ollama will offload the rest to system RAM and run, slowly. A 24 GB card (3090, 4090) holds the 27B comfortably. Below that, point `llm.base_url` at a box that can, or leave content analysis off: everything except the holistic review still runs.
 
 ## Performance expectations
 
@@ -133,11 +133,15 @@ roughly a third of the time.
 
 ## Adding LLM analysis
 
+Developed and tested against **Qwen3.6-27B** and **Qwen3.6-35B-A3B**. Vision is built into the
+Qwen3.x models, so there is no `-VL` variant to look for. Any OpenAI-compatible endpoint that
+accepts images works; those two are what the pipeline was exercised against.
+
 Run Ollama with GPU support alongside Immich Memories:
 
 ```bash
 docker run -d --gpus all -p 11434:11434 --name ollama ollama/ollama
-docker exec ollama ollama pull qwen2.5-vl
+docker exec ollama ollama pull qwen3.6:27b     # 17 GB; :35b is the 35B-A3B, 24 GB
 ```
 
 Then add to your Immich Memories config:
@@ -147,10 +151,13 @@ advanced:
   llm:
     provider: ollama
     base_url: http://ollama:11434
-    model: qwen2.5-vl
+    model: qwen3.6:27b
   content_analysis:
     enabled: true
 ```
+
+`model` has to be the tag you pulled, exactly. Smaller Qwen3.x sizes exist and will run — they are
+not the tested pair, so treat them as your own experiment.
 
 ## Adding AI music
 

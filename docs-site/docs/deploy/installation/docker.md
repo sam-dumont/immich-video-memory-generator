@@ -141,7 +141,7 @@ Inside Immich's own compose stack, `immich-server` listens on **2283** (every Im
 | `IMMICH_MEMORIES_OUTPUT__DIRECTORY` | Recommended | Set to `/app/output` so videos land in the mounted output directory (default is `~/Videos/Memories` inside the container). |
 | `IMMICH_MEMORIES_STORAGE_SECRET` | No | Session secret for the web UI. Auto-generated into the config volume if not set, so sessions already survive a restart. Set it explicitly to share one secret across hosts. It does not make multiple replicas supported. |
 | `IMMICH_MEMORIES_LLM__BASE_URL` | No | LLM endpoint (any OpenAI-compatible API). On its own it does nothing for scoring — see the next row. |
-| `IMMICH_MEMORIES_LLM__MODEL` | No | LLM model name (e.g., `qwen2.5-vl`) |
+| `IMMICH_MEMORIES_LLM__MODEL` | No | Model name as the server reports it. Tested against Qwen3.6-27B and Qwen3.6-35B-A3B (e.g. `qwen3.6:27b` on Ollama). |
 | `IMMICH_MEMORIES_CONTENT_ANALYSIS__ENABLED` | No | `true` to actually use the LLM for clip scoring. Off by default. |
 | `IMMICH_MEMORIES_AUTH_USERNAME` | No | Basic auth username. Set with `IMMICH_MEMORIES_AUTH_PASSWORD` to enable auth. |
 | `IMMICH_MEMORIES_AUTH_PASSWORD` | No | Basic auth password. Set with `IMMICH_MEMORIES_AUTH_USERNAME` to enable auth. |
