@@ -36,6 +36,11 @@ class _BackfillContext:
     non_favorite_count: int
     temporal_window: float
     occupied_moments: list[datetime]
+    # Clips an earlier stage refused. Backfill may not spend freed seconds on
+    # them however far its ladder relaxes: dedup cutting a set to 12 and
+    # backfill rebuilding it to 14 out of the same near-duplicates is the loop
+    # this closes. Measured on a 967-asset trip: 39 in, 16 out, back to 55.
+    refused_ids: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -63,6 +68,12 @@ def _is_backfill_candidate_admissible(
 
     candidate_duration = candidate.end_time - candidate.start_time
     if candidate_duration <= 0 or candidate_duration > remaining_budget + 1e-6:
+        return False
+
+    # Refused is refused. This sits above every relaxation below it, because
+    # the whole point of the ladder is to find something else — and the
+    # highest-scoring leftover is usually the near-duplicate just dropped.
+    if candidate.clip.asset.id in context.refused_ids:
         return False
 
     # Conceding temporal spacing relaxes the window back to the configured
@@ -332,6 +343,7 @@ def _build_backfill_context(
     config: PipelineConfig,
     temporal_window: float,
     occupied_moments: list[datetime],
+    refused_ids: frozenset[str] = frozenset(),
 ) -> _BackfillContext:
     """Summarize the changing selection state for candidate evaluation."""
     from immich_memories.api.models import AssetType
@@ -343,6 +355,7 @@ def _build_backfill_context(
         non_favorite_count=sum(1 for item in selected if not item.clip.asset.is_favorite),
         temporal_window=temporal_window,
         occupied_moments=occupied_moments,
+        refused_ids=refused_ids,
     )
 
 

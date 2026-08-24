@@ -102,6 +102,9 @@ class ClipRefiner:
     def __init__(self, config: PipelineConfig, scaler: ClipScaler):
         self.config = config
         self.scaler = scaler
+        # What dedup has refused this run. Backfill may not spend freed seconds
+        # on it, however far its relaxation ladder goes.
+        self._refused_by_dedup: set[str] = set()
 
     def _select_without_favorites(
         self,
@@ -484,6 +487,19 @@ class ClipRefiner:
         )
         return selected
 
+    def _remember_refusals(
+        self, before: list[ClipWithSegment], after: list[ClipWithSegment]
+    ) -> None:
+        """Note what a stage removed, so backfill cannot spend seconds on it.
+
+        Dedup cutting a set to 12 and backfill rebuilding it to 14 out of the
+        same near-duplicates is the loop this closes.
+        """
+        kept = {item.clip.asset.id for item in after}
+        self._refused_by_dedup |= {
+            item.clip.asset.id for item in before if item.clip.asset.id not in kept
+        }
+
     def _backfill_to_duration(
         self,
         selected: list[ClipWithSegment],
@@ -493,7 +509,13 @@ class ClipRefiner:
         photo_cap_bypassed: bool,
         temporal_window: float,
     ) -> list[ClipWithSegment]:
-        """Fill post-filter duration holes from unused, constraint-safe candidates."""
+        """Fill post-filter duration holes from unused, constraint-safe candidates.
+
+        Never from clips an earlier stage refused. Freed seconds go to the
+        next-ranked candidate, and when nothing admissible is left the memory
+        simply runs shorter — a cut four seconds under target beats one padded
+        with the near-duplicate dedup had just removed.
+        """
 
         selected_ids = {item.clip.asset.id for item in selected}
         available = [item for item in candidates if item.clip.asset.id not in selected_ids]
@@ -521,6 +543,7 @@ class ClipRefiner:
                 config=self.config,
                 temporal_window=temporal_window,
                 occupied_moments=occupied_moments,
+                refused_ids=frozenset(self._refused_by_dedup),
             )
             resolved = _resolve_backfill_candidates(
                 available,
@@ -664,6 +687,14 @@ class ClipRefiner:
                 protected_ids=coverage_ids,
             )
             trace.record("same-moment dedup", before_dedup, selected)
+            self._remember_refusals(before_dedup, selected)
+
+            # The clock is a proxy for "the same thing" and it fails both ways.
+            # This asks what the clips show, from descriptions already cached.
+            before_content = selected
+            selected = self.scaler.deduplicate_by_content(selected, protected_ids=coverage_ids)
+            trace.record("same-thing dedup", before_content, selected)
+            self._remember_refusals(before_content, selected)
 
         if self.config.max_non_favorite_ratio < 1.0 and self.config.prioritize_favorites:
             favorites = [c for c in selected if c.clip.asset.is_favorite]

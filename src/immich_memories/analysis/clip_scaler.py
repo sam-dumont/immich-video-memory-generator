@@ -13,6 +13,49 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# Jaccard over description tokens, at the knee of the measured curve. On
+# 1,124,250 real pairs from the cache: 0.60 collapses 33, 0.55 collapses 74,
+# 0.50 collapses 135 — the count triples per step below this, which is where
+# genuinely different shots start merging. Above it, real duplicates survive:
+# the same child in the same hallway scored 0.70 differing only on a t-shirt.
+_SAME_THING_THRESHOLD = 0.60
+
+# Short words carry setting, not subject. "in the kitchen" should not make a
+# birthday and the washing-up look alike.
+_MEANINGFUL_WORD = 4
+
+
+def _describing_words(clip: object) -> frozenset[str]:
+    """What a clip is said to show, as comparable tokens."""
+    import re
+
+    described = getattr(clip, "llm_description", None)
+    subjects = getattr(clip, "llm_subjects", None) or []
+    text = " ".join([str(described or ""), *(str(s) for s in subjects)])
+    return frozenset(re.findall(rf"[a-z]{{{_MEANINGFUL_WORD},}}", text.lower()))
+
+
+def describes_the_same_thing(first: object, second: object) -> bool:
+    """Whether two clips are photographs of one thing rather than two.
+
+    The temporal rule asks whether two clips were taken close together, which
+    is a proxy that fails in both directions: two bath photos five minutes
+    apart are one moment, and two shots five minutes apart at a boat show are
+    two. This asks what the clips are OF, using descriptions already cached
+    from analysis — no model call.
+
+    A clip nothing has described is never merged. Only about a fifth of cached
+    segments carry descriptions, and treating "unknown" as "similar" would
+    quietly collapse the unanalysed majority into each other.
+    """
+    left = _describing_words(getattr(first, "clip", first))
+    right = _describing_words(getattr(second, "clip", second))
+    if not left or not right:
+        return False
+    overlap = len(left & right) / len(left | right)
+    return overlap >= _SAME_THING_THRESHOLD
+
+
 def is_same_moment(
     when: datetime | None,
     others: list[datetime],
@@ -330,6 +373,41 @@ class ClipScaler:
             )
 
         return kept, len(dropped)
+
+    def deduplicate_by_content(
+        self,
+        clips: list[ClipWithSegment],
+        protected_ids: set[str] | None = None,
+    ) -> list[ClipWithSegment]:
+        """Thin clips that describe the same thing, whatever the clock says.
+
+        The temporal pass asks whether two clips were taken close together.
+        That proxy fails both ways: two bath photos five minutes apart are one
+        moment, and two shots five minutes apart at a boat show are two. This
+        asks what they are OF, from descriptions analysis already cached.
+
+        Highest score survives, so a duplicate pair keeps its better half.
+        Undescribed clips are never merged — about four fifths of cached
+        segments have no description, and treating unknown as similar would
+        collapse them into each other.
+        """
+        if len(clips) < 2:
+            return clips
+        protected = protected_ids or set()
+        kept: list[ClipWithSegment] = []
+        # Sequential by necessity: each candidate is compared against what has
+        # already survived, so the list being built is also the thing being
+        # read. Highest score first, so a duplicate pair keeps its better half.
+        for candidate in sorted(clips, key=lambda c: -c.score):
+            if candidate.clip.asset.id in protected:
+                kept.append(candidate)
+                continue
+            if any(describes_the_same_thing(candidate, other) for other in kept):
+                continue
+            kept.append(candidate)
+        # back into timeline order; selection downstream assumes it
+        order = {id(c): i for i, c in enumerate(clips)}
+        return sorted(kept, key=lambda c: order[id(c)])
 
     def deduplicate_temporal_clusters(
         self,
