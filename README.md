@@ -42,10 +42,12 @@ docker compose up -d
 # 4. Open http://localhost:8080
 ```
 
-> **Do not expose the default UI as-is.** Authentication is disabled by default, and the
-> container listens on `0.0.0.0`. Anyone who can reach port 8080 can use it. Enable
+> **The compose file publishes port 8080 on localhost only.** Authentication is disabled by
+> default, and the app holds an Immich API key to your whole library — anyone who can reach the
+> port can use it. To get to the UI from another machine, enable
 > [authentication](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/configuration/authentication)
-> before publishing the port. The UI is single-user, single-replica; run one instance.
+> first, then change the mapping to `"8080:8080"`. The UI is single-user, single-replica; run one
+> instance.
 
 ### Resource Requirements
 
