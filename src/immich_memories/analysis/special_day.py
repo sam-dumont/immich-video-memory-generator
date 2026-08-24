@@ -43,6 +43,12 @@ if TYPE_CHECKING:
     from immich_memories.config_models_llm import LLMConfig
 
 from immich_memories.analysis.llm_failures import stop_if_this_is_our_bug
+from immich_memories.analysis.special_day_title import (
+    honest_title,
+    line_the_day_can_keep,
+    retitle_prompt,
+    title_the_day_can_keep,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,64 +56,6 @@ logger = logging.getLogger(__name__)
 # about. Both sit below every labelled positive and above every negative.
 MIN_ACTIVE_HOURS = 6
 MIN_PHOTOS = 20
-
-# Capitalised words a title may use without naming anything: sentence starts,
-# the calendar, and the few verbs an English title puts after "to" — "A Day to
-# Remember" was blanked for never having been to a place called Remember.
-# Anything else has to come from the day itself. The verb list will never be
-# complete, and does not need to be: what it misses is a blanked title, which
-# is visible, rather than an invented one, which is not.
-_EVERYDAY_CAPITALS = {
-    "a",
-    "an",
-    "the",
-    "and",
-    "with",
-    "at",
-    "in",
-    "on",
-    "of",
-    "to",
-    "from",
-    "for",
-    "remember",
-    "forget",
-    "celebrate",
-    "cherish",
-    "treasure",
-    "behold",
-    "monday",
-    "tuesday",
-    "wednesday",
-    "thursday",
-    "friday",
-    "saturday",
-    "sunday",
-    "january",
-    "february",
-    "march",
-    "april",
-    "may",
-    "june",
-    "july",
-    "august",
-    "september",
-    "october",
-    "november",
-    "december",
-    "morning",
-    "afternoon",
-    "evening",
-    "night",
-    "day",
-    "birthday",
-    "wedding",
-    "christmas",
-    "easter",
-    "new",
-    "year",
-    "eve",
-}
 
 _PROMPT = """One day from someone's photo library, sampled across the day, with the
 pictures that go with these lines.
@@ -255,228 +203,6 @@ def sample_across_day(assets: list, count: int = 8) -> list:
             if not bucket:
                 hours.remove(hour)
     return sorted(picked, key=lambda a: a.file_created_at)
-
-
-def _titled(text: str, people: set[str]) -> str:
-    return text if _is_a_real_title(text, people) else ""
-
-
-def _place_vocabulary(assets: list) -> set[str]:
-    """Every place name the day recorded, or empty if it recorded none."""
-    words: set[str] = set()
-    for asset in assets:
-        exif = getattr(asset, "exif_info", None)
-        for attr in ("city", "state", "country"):
-            value = getattr(exif, attr, None) if exif else None
-            if value:
-                words.update(re.findall(r"[\w\u00c0-\u024f]+", str(value)))
-    return {w.casefold() for w in words}
-
-
-def _grounding_vocabulary(assets: list) -> set[str]:
-    """Every proper noun the model was given: the places, and who was there."""
-    words = _place_vocabulary(assets).copy()
-    for asset in assets:
-        for person in getattr(asset, "people", None) or []:
-            if getattr(person, "name", ""):
-                words.update(w.casefold() for w in re.findall(r"[\w\u00c0-\u024f]+", person.name))
-    return words
-
-
-def _knows_where_it_was(assets: list) -> bool:
-    """Did anything tell us where this day happened?"""
-    for asset in assets:
-        exif = getattr(asset, "exif_info", None)
-        if not exif:
-            continue
-        if getattr(exif, "city", None) or getattr(exif, "country", None):
-            return True
-        if getattr(exif, "latitude", None) and getattr(exif, "longitude", None):
-            return True
-    return False
-
-
-def _is_a_real_title(text: str, people: set[str]) -> bool:
-    """Reject the two things the model falls back on when it is unsure.
-
-    Asked to prefer the plain true thing, it starts answering with the one
-    fact it is certain of: "Monday 13 August 2007", or simply a
-    person's name. Both are already on the card. Seven of twenty-three titles in a
-    library sweep came back like that.
-    """
-    if not text:
-        return False
-    stripped = re.sub(
-        r"[\d,]|\b(mon|tues|wednes|thurs|fri|satur|sun)day\b", "", text, flags=re.IGNORECASE
-    )
-    stripped = re.sub(
-        r"\b(january|february|march|april|may|june|july|august|september|october"
-        r"|november|december|at|in|on|the|of)\b",
-        "",
-        stripped,
-        flags=re.IGNORECASE,
-    )
-    if not stripped.strip():
-        return False
-    return text.casefold() not in people
-
-
-# How close a written place has to be to one the day recorded. EXIF is in the
-# local language and the model writes English: a local spelling and its English form are the
-# same place and must pass.
-#
-# A ratio cannot also separate two different towns, and measuring says so: two
-# neighbouring towns twelve kilometres apart score 0.750 while a city and its
-# other-language name score 0.706, and two more pairs — one the same city in
-# two languages, one two unrelated cities — both score 0.600. There is no
-# cutoff that gets all four right. What the check is actually for is the
-# invention, and an invented famous place bears no resemblance to anything the
-# day recorded at all, so it fails at any cutoff in this range. Set low enough
-# to keep real titles, then, and do not tighten it believing it can do more.
-_SAME_PLACE_RATIO = 0.70
-
-_PLACE_PREPOSITIONS = ("in", "at", "near", "around", "from", "to", "de", "outside")
-
-
-def _named_places(text: str) -> list[str]:
-    """Capitalised words used as somewhere, rather than as something.
-
-    "to" introduces a destination as readily as it introduces a verb, and in
-    a title both are capitalised: "A Day to Remember" was blanked for having
-    never been to a place called Remember. So a candidate made only of words
-    a title may use without naming anything is not a place claim — which is
-    what _EVERYDAY_CAPITALS has always been for — and "to" stays, because
-    dropping it left a located day with no guard on place claims at all.
-    """
-    pattern = (
-        r"\b(?:" + "|".join(_PLACE_PREPOSITIONS) + r")\s+"
-        r"((?:[A-Z\u00c0-\u00dd][\w\u00c0-\u024f'-]+(?:[ -](?:de|la|le|sur|of|the))?\s*){1,3})"
-    )
-    found = [m.strip() for m in re.findall(pattern, text)]
-    return [
-        place
-        for place in found
-        if not all(
-            word.casefold() in _EVERYDAY_CAPITALS
-            for word in re.findall(r"[\w\u00c0-\u024f]+", place)
-        )
-    ]
-
-
-def _place_is_real(place: str, vocabulary: set[str]) -> bool:
-    """Did the day actually happen anywhere by this name?"""
-    import difflib
-
-    for word in re.findall(r"[\w\u00c0-\u024f]+", place):
-        if len(word) < 4:
-            continue
-        if difflib.get_close_matches(
-            word.casefold(), list(vocabulary), n=1, cutoff=_SAME_PLACE_RATIO
-        ):
-            return True
-    return False
-
-
-# Distances and the races named after one. Both are claims a title makes as
-# flatly as it names a place, and both read as true whether or not the day
-# recorded anything of the kind.
-_QUANTITY = re.compile(
-    r"\b\d+\s?(?:k|km|mi|miles?)\b|\b(?:marathon|triathlon|ironman|ultra)\b",
-    re.IGNORECASE,
-)
-
-
-def _same_quantity(written: str) -> str:
-    """ "20 km" and "20km" are one claim, written twice."""
-    return re.sub(r"\s+", "", written).casefold()
-
-
-def _unsupported_quantity(text: str, evidence: str) -> str | None:
-    """A distance or a race the lines the model was given never mention.
-
-    Asked about a morning of running whose evidence says only that there were
-    runners in numbered bibs, the model answered with a specific distance. The
-    place guard had nothing to say about it — it only ever read places — and a
-    number is a claim of exactly the same kind.
-    """
-    supported = {_same_quantity(q) for q in _QUANTITY.findall(evidence)}
-    return next((q for q in _QUANTITY.findall(text) if _same_quantity(q) not in supported), None)
-
-
-def _only_if_grounded(
-    text: str, vocabulary: set[str], *, located: bool, places: set[str], evidence: str
-) -> str:
-    """Drop a line whose specifics the day cannot support.
-
-    Asked about a night out with no city and no GPS anywhere in it, the model
-    answered with three names and a town. The names were real
-    and a place was invented, in spite of the prompt forbidding it. A title card
-    is the wrong place for a plausible invention.
-
-    The capitalised-word check only applies when the day carries no location at
-    all. Given coordinates, naming the circuit they sit on is inference from
-    data, and an earlier version that policed every capitalised word threw away
-    "Audi R8 V10 Track Day at a place" — a correct reading of the pictures —
-    because no EXIF field happens to contain the word Audi.
-    """
-    # A number nothing on the day mentions. This one runs on every day,
-    # located or not: a distance is not inference from coordinates the way a
-    # circuit's name is, and the prompt asking for it costs nothing to ignore.
-    if unsupported := _unsupported_quantity(text, evidence):
-        logger.info("Dropping %r: nothing on this day mentions %r", text, unsupported)
-        return ""
-
-    if place := _place_it_was_never_in(text, places):
-        logger.info("Dropping %r: the day was never in %r", text, place)
-        return ""
-
-    if coined := _guessed_name(text, vocabulary):
-        logger.info("Dropping %r: %r looks like a guessed name", text, coined)
-        return ""
-
-    if not text or located:
-        return text
-
-    # On a day with no location at all, every capitalised word has to come
-    # from the day itself.
-    for word in re.findall(r"\b[A-Z\u00c0-\u00dd][\w\u00c0-\u024f'-]{2,}", text):
-        if word.casefold() not in vocabulary and word.casefold() not in _EVERYDAY_CAPITALS:
-            logger.info(
-                "Dropping title %r: the day has no location and nothing mentions %r", text, word
-            )
-            return ""
-    return text
-
-
-def _place_it_was_never_in(text: str, places: set[str]) -> str | None:
-    """A place the day never recorded.
-
-    Asked about a track day at a place — with three villages all in its EXIF —
-    the model answered "the famous circuit", Belgium's famous circuit rather
-    than the one the coordinates sit on. Recognising the kind of place and
-    naming the well-known instance of it is the failure that keeps recurring.
-
-    Only when the day recorded place names at all: with coordinates and no
-    city, naming the circuit they sit on is inference this cannot check, and
-    rejecting it would throw away the model's best work.
-    """
-    if not places:
-        return None
-    return next((p for p in _named_places(text) if not _place_is_real(p, places)), None)
-
-
-def _guessed_name(text: str, vocabulary: set[str]) -> str | None:
-    """A CamelCase name nothing on the day mentions.
-
-    Told twice in the prompt not to name an event it could not read, the model
-    answered "Attending KubeCon" and then, the same day, "Attending GitLab
-    All-Hands" — a hall full of lanyards, and an invented answer to which
-    conference it was. Both of those days knew exactly where they were, so this
-    runs before the located early-return or it never runs at all. An internal
-    capital is what separates it from Audi, R8 or a place name.
-    """
-    coined = re.findall(r"\b[A-Z][a-z]+[A-Z][\w]*", text)
-    return next((c for c in coined if c.casefold() not in vocabulary), None)
 
 
 # Two places count as one if they are closer than this.
@@ -699,6 +425,58 @@ def _look_at(
     return seen
 
 
+def _asked_again(
+    rejected: str,
+    assets: list,
+    lines: str,
+    llm_config: LLMConfig,
+    timeout_seconds: int,
+    images: list[bytes],
+    thinking: bool,
+) -> str:
+    """One more attempt at a title, once the guard has taken the first one away.
+
+    Once, never twice: a model that has now been told what the evidence shows
+    and answered with an invention anyway is not going to be talked round on a
+    third try, and every attempt is a live call on a scan that makes a handful
+    per year. Same call shape as the judgement it follows, so it inherits the
+    same routing, cache and thinking budget.
+    """
+    try:
+        raw = _ask(
+            retitle_prompt(lines, rejected=rejected, assets=assets),
+            llm_config,
+            timeout_seconds,
+            images,
+            thinking=thinking,
+        )
+    except Exception as exc:  # noqa: BLE001 - a second ask that fails is not a verdict
+        stop_if_this_is_our_bug(exc, "special-day retitle")
+        logger.debug("Special-day retitle failed: %s", type(exc).__name__)
+        return ""
+    # A null content is documented mlx-vlm behaviour, guarded here exactly as
+    # the judgement above guards it rather than coerced away.
+    if not raw:
+        logger.debug("Special-day retitle came back empty")
+        return ""
+    answer = _json_in(raw)
+    if answer is None:
+        return ""
+    return title_the_day_can_keep(str(answer.get("title", ""))[:60].strip(), assets, evidence=lines)
+
+
+def _json_in(raw: str) -> dict | None:
+    """The one JSON object in an answer, or nothing if there is none to read."""
+    match = re.search(r"\{.*\}", raw, re.DOTALL)
+    if not match:
+        return None
+    try:
+        parsed = json.loads(match.group(0))
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
 @dataclass(frozen=True)
 class SpecialDay:
     """What the model made of a day."""
@@ -759,38 +537,24 @@ def ask_if_special(
         logger.debug("Special-day question came back empty")
         return SpecialDay(special=False)
 
-    match = re.search(r"\{.*\}", raw, re.DOTALL)
-    if not match:
+    answer = _json_in(raw)
+    if answer is None:
         return SpecialDay(special=False)
-    try:
-        answer = json.loads(match.group(0))
-    except json.JSONDecodeError:
-        return SpecialDay(special=False)
-    grounded = _grounding_vocabulary(assets)
-    located = _knows_where_it_was(assets)
-    places = _place_vocabulary(assets)
-    named = {
-        p.name.casefold()
-        for a in assets
-        for p in (getattr(a, "people", None) or [])
-        if getattr(p, "name", "")
-    }
+    special = bool(answer.get("special"))
+    written = str(answer.get("title", ""))[:60].strip()
+    what = str(answer.get("what", ""))[:80].strip()
+    title = title_the_day_can_keep(written, assets, evidence=lines)
+    # Only for a day that is going to be kept. An ordinary day is discarded
+    # whatever it is called, and a second live call to name it better is spent
+    # on nothing.
+    if special and written and not title:
+        title = _asked_again(written, assets, lines, llm_config, timeout_seconds, images, reasons)
     return SpecialDay(
-        special=bool(answer.get("special")),
-        title=_only_if_grounded(
-            _titled(str(answer.get("title", ""))[:60].strip(), named),
-            grounded,
-            located=located,
-            places=places,
-            evidence=lines,
+        special=special,
+        title=title or honest_title(assets, what=what, evidence=lines),
+        subtitle=line_the_day_can_keep(
+            str(answer.get("subtitle", ""))[:90].strip(), assets, evidence=lines
         ),
-        subtitle=_only_if_grounded(
-            str(answer.get("subtitle", ""))[:90].strip(),
-            grounded,
-            located=located,
-            places=places,
-            evidence=lines,
-        ),
-        what=str(answer.get("what", ""))[:80].strip(),
+        what=what,
         window=_window_the_model_gave(answer, assets),
     )

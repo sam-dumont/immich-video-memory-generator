@@ -252,12 +252,14 @@ class TestATitleHasToBeATitle:
             return ask_if_special(day, llm_config=SimpleNamespace())
 
     def test_a_date_is_not_a_title(self) -> None:
-        assert self._answer(self._day([]), "Monday 13 August 2007").title == ""
+        """Asked again and answered with the date again, so the day is left
+        with the plainest thing its own pictures recorded."""
+        assert self._answer(self._day([]), "Monday 13 August 2007").title == "A day in Anytown"
 
     def test_a_persons_name_is_not_a_title(self) -> None:
         day = self._day(["Third Person"])
 
-        assert self._answer(day, "Third Person").title == ""
+        assert self._answer(day, "Third Person").title == "A day in Anytown"
 
     def test_saying_what_happened_is(self) -> None:
         day = self._day(["Third Person"])
@@ -268,7 +270,7 @@ class TestATitleHasToBeATitle:
         """A day with a useless title is still a day something happened on."""
         verdict = self._answer(self._day([]), "Monday 13 August 2007")
 
-        assert verdict.title == ""
+        assert verdict.title == "A day in Anytown"
         assert verdict.special is True
 
 

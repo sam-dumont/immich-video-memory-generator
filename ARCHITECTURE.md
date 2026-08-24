@@ -136,6 +136,7 @@ src/immich_memories/
 │   ├── progress.py             # Progress tracking helpers
 │   ├── trip_detection.py       # GPS-based trip detection (clustering, geocoding)
 │   ├── special_day.py          # Which days had something happen: active hours, not photo volume
+│   ├── special_day_title.py    # What a day may be called: the grounding guard, the re-ask, the fallback
 │   ├── album_source.py         # Album mode: the album is the candidate pool, nothing is searched for
 │   ├── source_filter.py        # Drop doorbell / dashcam / screen-recorder uploads by filename
 │   ├── source_quality.py       # Drop messaging re-encodes: sub-1080p with no camera EXIF
