@@ -76,7 +76,7 @@ Click **Generate Video** in Step 4. The status line walks through the run: downl
 
 <ThemedScreenshot name="step4-generating" alt="Generation in progress" />
 
-Encoding a 30-clip 1080p video takes a couple of minutes on Apple Silicon or a GPU and around 15 minutes on a 4-core NAS CPU; 4K roughly doubles the time on a GPU and is not recommended on a NAS.
+Most of the wait is analysis, not encoding. Measured on 4 CPU cores with no GPU and a cold cache, a 14-clip monthly memory took 10 to 16 minutes end to end and most of that was scoring clips: [the table](../deploy/common-setups/nas-only.md#performance-expectations). On Apple Silicon or a GPU the same run is a couple of minutes; 4K roughly doubles the assembly on a GPU and is not recommended on a NAS. Of the assembly that is left, the title screens cost more than the encoder does: at 2 cores, titles were ~263 s of a ~339 s assembly ([CPU-Only Mode](../deploy/hardware/cpu-only.md#title-rendering-is-the-bottleneck-not-encoding)).
 
 ## Step 7: Watch
 
@@ -86,7 +86,7 @@ When it's done, the built-in player shows your result and "Saved to:" gives the 
 
 The pipeline ran four phases: **fetch** (downloaded videos from Immich via its API, read-only), **analyze** (scored each clip on motion, faces, audio, and optionally LLM content understanding), **select** (picked the best segments and distributed them across the time period), **assemble** (encoded everything with FFmpeg using the streaming assembler, which keeps memory under 550 MB even at 4K).
 
-The analysis results are cached in a local SQLite database. Next time you generate a video for the same time period, analysis is instant because the scores are already stored.
+The analysis results are cached in a local SQLite database. Next time you generate a video for the same time period, most of the analysis is skipped because the scores are already stored: a warm re-run of the same month lands around 3 minutes against 10 cold. Not instant, but a different order of wait.
 
 ## Next steps
 

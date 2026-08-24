@@ -166,17 +166,13 @@ linux/arm64 image):
 | `preset: fast` | 10 min 08 s | 7.4 min | 2.7 min | 30 MB |
 | default | 15 min 42 s | 10.1 min | 5.6 min | 87 MB |
 
-Analysis (downloading, downscaling, scoring every candidate clip) is where the time goes, and it
-is cached: a second run of the same month skips most of it. A Celeron-class NAS core is a good
-deal slower than an M5 core, so budget 2–3× these numbers there. Estimates for that class of CPU
-(Intel Celeron J4125, 4 cores, 2.0 GHz):
+Analysis (downloading, downscaling, scoring every candidate clip) is where the time goes, not
+encoding, and it is cached: a second run of the same month reuses the scores and takes roughly a
+third as long. A Celeron-class NAS core is a good deal slower than an M5 core, so budget 2–3× these
+numbers there.
 
-| Clips | Resolution | Time |
-|-------|-----------|------|
-| 15 | 1080p | ~8 min |
-| 30 | 1080p | ~15 min |
-| 30 | 720p | ~10 min |
-| 50 | 1080p | ~25 min |
+If the render column is what you want to shrink, start with the title screens rather than the
+encoder: see [title rendering is the bottleneck](../hardware/cpu-only.md#title-rendering-is-the-bottleneck-not-encoding).
 
 Memory usage peaks at about 2-3 GB during encoding. The 4 GB limit in the compose file gives enough headroom. If you're encoding 4K (not recommended on NAS hardware), bump it to 8 GB.
 

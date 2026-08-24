@@ -63,10 +63,12 @@ The container's resource usage depends on what phase it's in:
 | Phase | RAM | CPU | When |
 |-------|-----|-----|------|
 | Idle (UI running, waiting) | ~100 MB | minimal | Most of the time |
-| Analysis (downloading + scoring clips) | 2-4 GB | 2+ cores | First run or new videos |
-| Encoding (FFmpeg assembly) | 4-8 GB | 4+ cores | Final video generation |
+| Analysis (downloading + scoring clips) | 2-4 GB | 2+ cores | First run or new videos, and where most of the wall time goes |
+| Assembly (title screens + FFmpeg encode) | 4-8 GB | 4+ cores | Final video generation |
 
 The quickstart compose file sets `memory: 4G` and `cpus: 4`. That's fine for 1080p. For 4K output, bump to 8 GB.
+
+Inside assembly, the title screens cost more than the encode does on a CPU-only box: measured at `--cpus=2`, title rendering was ~263 s of a ~339 s assembly. See [CPU-Only Mode](../hardware/cpu-only.md#title-rendering-is-the-bottleneck-not-encoding) before you size a box around the encoder.
 
 Temporary files during encoding can use 2x the size of your source clips. A 10-minute memory from 50 clips might need 5-10 GB of temp space.
 
