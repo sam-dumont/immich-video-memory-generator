@@ -36,7 +36,7 @@ def _register_discover(main: click.Group) -> None:
     @click.option(
         "--out",
         type=click.Path(dir_okay=False, path_type=Path),
-        default=Path("special-days.json"),
+        default=Path.home() / ".immich-memories" / "special-days.json",
         help="Where to write the catalogue",
     )
     @click.option(
@@ -82,7 +82,7 @@ def _register_due(main: click.Group) -> None:
     @click.option(
         "--catalogue",
         type=click.Path(exists=True, dir_okay=False, path_type=Path),
-        default=Path("special-days.json"),
+        default=Path.home() / ".immich-memories" / "special-days.json",
     )
     def days_due(on: object, catalogue: Path) -> None:
         """Show which discovered days have an anniversary about now."""

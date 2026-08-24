@@ -609,3 +609,24 @@ def test_a_year_is_done_only_when_it_was_scanned_through(tmp_path) -> None:
     ]
 
     assert _years_in(catalogue) == {2015, 2016}
+
+
+def test_the_catalogue_never_defaults_into_the_working_directory():
+    """Real event titles are private data; a CWD default plants them wherever
+    the command happens to run — including an untracked file in a checkout."""
+    from pathlib import Path
+
+    import click
+
+    from immich_memories.cli.special_days_cmd import register_special_day_commands
+
+    main = click.Group()
+    register_special_day_commands(main)
+    for command_name in main.commands:
+        out_params = [
+            p for p in main.commands[command_name].params if p.name in ("out", "catalogue")
+        ]
+        for param in out_params:
+            default = Path(param.default)
+            assert default.is_absolute(), f"{command_name} --{param.name} defaults to CWD"
+            assert Path.home() in default.parents
