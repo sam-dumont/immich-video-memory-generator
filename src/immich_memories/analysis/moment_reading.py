@@ -14,6 +14,8 @@ real day, 215 photographs read in 14 calls and 22 seconds, against roughly
 from __future__ import annotations
 
 import json
+import math
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, TypeVar
@@ -23,17 +25,27 @@ if TYPE_CHECKING:
 
     from immich_memories.config_models_llm import LLMConfig
 
-# How many photographs go on one sheet. Sixteen tiles at 400px is a 1600x1600
-# image the model reads reliably; denser sheets lose the detail the reading
-# depends on.
-SHEET_TILES = 16
+# A moment goes on ONE sheet. Split across several, each sheet answers about
+# its own third of an event and the first answer wins by accident: measured on
+# a 37-photograph episode, sheet one said "cyclists and cars at a race track"
+# while later sheets named the circuit and the car.
+#
+# Past this many photographs a single sheet is postage stamps, so a very large
+# moment is split rather than shrunk to nothing.
+MAX_SHEET_TILES = 120
 
-# Tile size and sheet width. 400px across four columns is a 1600px sheet: big
-# enough that a car's model or a race number survives the downscale, small
-# enough that a full sheet stays a few hundred KB of base64.
-_TILE = 400
-_COLUMNS = 4
-_LABEL_BOX = (36, 24)
+# How wide a sheet may be before the encoder downscales it and tiles lose the
+# detail the reading depends on.
+MAX_SHEET_PX = 2100
+
+# Sheets are laid out WIDE, never tall. The same 37 photographs at 1920x2240
+# read worse than at 2080x1300 with SMALLER tiles — the tall sheet described
+# less and its shortlist collapsed to "keep all 37". A tall image is
+# downscaled harder before the model ever sees it, so shape matters more than
+# how big each tile is.
+_TARGET_ASPECT = 1.6
+_MAX_TILE = 400
+_MIN_TILE = 120
 _SHEET_BACKGROUND = (18, 18, 18)
 
 T = TypeVar("T")
@@ -48,7 +60,17 @@ class SheetReading:
     keep: tuple[int, ...]
 
 
-def sheets_of(items: list[T], per_sheet: int = SHEET_TILES) -> list[list[tuple[int, T]]]:
+def sheet_layout(count: int) -> tuple[int, int]:
+    """Columns and tile size for one wide sheet of `count` photographs."""
+    columns = max(1, round(math.sqrt(count * _TARGET_ASPECT)))
+    tile = min(_MAX_TILE, MAX_SHEET_PX // columns)
+    rows = -(-count // columns)
+    if rows * tile > MAX_SHEET_PX * 1.2:
+        tile = int(MAX_SHEET_PX * 1.2) // rows
+    return columns, max(_MIN_TILE, tile)
+
+
+def sheets_of(items: list[T], per_sheet: int = MAX_SHEET_TILES) -> list[list[tuple[int, T]]]:
     """Cut a moment into sheets, numbering tiles across the whole moment.
 
     The model answers in tile numbers, so numbering has to run across the
@@ -135,21 +157,24 @@ def tile_sheet(frames: list[tuple[int, Image | None]]) -> Image | None:
 
     if not frames:
         return None
-    rows = (len(frames) + _COLUMNS - 1) // _COLUMNS
-    sheet = Image.new("RGB", (_COLUMNS * _TILE, rows * _TILE), _SHEET_BACKGROUND)
+    columns, tile = sheet_layout(len(frames))
+    rows = -(-len(frames) // columns)
+    sheet = Image.new("RGB", (columns * tile, rows * tile), _SHEET_BACKGROUND)
     draw = ImageDraw.Draw(sheet)
+    label = max(16, tile // 11)
     for position, (number, frame) in enumerate(frames):
-        left = (position % _COLUMNS) * _TILE
-        top = (position // _COLUMNS) * _TILE
+        left = (position % columns) * tile
+        top = (position // columns) * tile
         if frame is not None:
             thumbnail = frame.copy()
-            thumbnail.thumbnail((_TILE - 8, _TILE - 8))
-            sheet.paste(thumbnail, (left + 4, top + 4))
+            thumbnail.thumbnail((tile - 6, tile - 6))
+            sheet.paste(thumbnail, (left + 3, top + 3))
+        text = str(number)
         draw.rectangle(
-            [left + 4, top + 4, left + 4 + _LABEL_BOX[0], top + 4 + _LABEL_BOX[1]],
+            [left + 3, top + 3, left + 3 + label * (0.6 * len(text) + 0.8), top + 3 + label],
             fill=(0, 0, 0),
         )
-        draw.text((left + 10, top + 9), str(number), fill=(255, 255, 255))
+        draw.text((left + 7, top + 5), text, fill=(255, 255, 255))
     return sheet
 
 
@@ -218,7 +243,9 @@ SHEET_PROMPT = """These numbered photographs were taken close together in time.
    photographs show.
 
    Read what is there, including words: a number on a bib, branding on a
-   banner, the model of a car. WHO is in each photograph is given below, and
+   banner. Do NOT name the place — where this was is given below if it is
+   known, and if it is not, say nothing about where it was.
+   WHO is in each photograph is given below, and
    that list is the only source of names — never read a name off a wristband
    or document, and never invent one. Where no name is given, say "a baby",
    "a child", "two adults". Do not state a sex, an age or a relationship the
@@ -281,7 +308,7 @@ def _read_one_sheet(
     sheet.save(buffer, "JPEG", quality=_SHEET_QUALITY)
     answer = asyncio.run(
         query_llm(
-            SHEET_PROMPT + who_was_there(numbered),
+            prompt_for([asset for _n, asset in numbered]),
             llm_config,
             temperature=_SHEET_TEMPERATURE,
             max_tokens=SHEET_ANSWER_TOKENS,
@@ -330,3 +357,34 @@ def read_moment(
         subjects=tuple(subjects),
         keep=tuple(kept[:keep_cap] if keep_cap else kept),
     )
+
+
+def place_of(assets: list[Any]) -> str | None:
+    """Where these photographs were taken, according to their coordinates.
+
+    Never according to what the model reads off a sign. The same episode came
+    back named as two different racing circuits on two runs, 900km apart, and
+    only one was where the photographs were taken. Reading a name off signage
+    is worth having; trusting it is not, so the place is supplied and the
+    prompt forbids guessing one.
+
+    A city claimed by a single asset among several is a stray — a photograph
+    taken on the way, or a coordinate that drifted — so it takes agreement.
+    """
+    cities = Counter(
+        asset.exif_info.city
+        for asset in assets
+        if getattr(asset, "exif_info", None) and getattr(asset.exif_info, "city", None)
+    )
+    if not cities:
+        return None
+    city, seen = cities.most_common(1)[0]
+    return city if seen > 1 or len(cities) == 1 else None
+
+
+def prompt_for(assets: list[Any]) -> str:
+    """The sheet prompt, told where this was and who was in it."""
+    where = place_of(assets)
+    located = f"\n\nThese were taken in {where}." if where else ""
+    numbered = list(enumerate(assets, start=1))
+    return SHEET_PROMPT + located + who_was_there(numbered)
