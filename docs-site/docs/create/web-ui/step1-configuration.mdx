@@ -19,7 +19,7 @@ The rest of the page (Memory Type, Options, Next) only appears after a successfu
 
 ## Memory Type
 
-Pick one of the 11 cards: **Year in Review**, **Season**, **Person Spotlight**, **Multi-Person**, **Monthly Highlights**, **On This Day**, **Holiday**, **Then and Now**, **Trip**, **Album**, or **Custom**.
+Pick one of the 12 cards: **Year in Review**, **Season**, **Person Spotlight**, **Multi-Person**, **Monthly Highlights**, **On This Day**, **Holiday**, **Then and Now**, **Trip**, **Album**, **Surprise me**, or **Custom**.
 
 <ThemedScreenshot name="step1-preset-cards" alt="Memory type preset cards" />
 
@@ -37,6 +37,7 @@ Each preset sets the date range and a default target duration, then shows the pa
 | Then and Now | Now (year), Years back (1–20) | 45 s |
 | Trip | Year, then "Select a trip" from the trips detected in your GPS data | auto: 30 s + 10 s per active day, bounded 60–300 s |
 | Album | "Select an album" from your Immich albums | auto: 4 s per item in the album, bounded 30 s–10 min |
+| Surprise me | "Pick a day" from the days [`discover-days`](../cli/discover-days.md) found | auto: 30 s + 6 s per active hour, bounded 60–180 s |
 | Custom | date range tabs and person filter (below) | ~1 min per month of range |
 
 ### Memory types that span several years
@@ -56,6 +57,32 @@ that holiday rather than the five years between them.
   title names both ("2016 & 2026").
 
 The presets also drive the output filename and title screen. A Multi-Person preset with Alice and Bob for March 2025 produces `alice_bob_march_2025_memories.mp4` with "Alice & Bob" as the title subtitle.
+
+### Surprise me
+
+The other eleven cards ask you what the memory is about. This one asks the
+library. `immich-memories discover-days` walks the years a month at a time and
+asks the local model which days stand out on their own — a day that ran long,
+shot a lot, and was not a holiday or part of a trip — and writes what it found
+to `~/.immich-memories/special-days.json`. The card offers those days and
+nothing else.
+
+The list is ordered anniversaries first, labelled *"10 years ago — A long
+evening out"*, then every other catalogued day by how round its anniversary is
+and how recent it is. This is deliberately not what
+[automation](../cli/auto.md) does: a scheduled run only proposes a day on its
+anniversary, because it arrives unannounced and the round number is what earns
+the interruption. You clicked the card, so you get the whole catalogue.
+
+Choosing a day scopes the memory to **the hours it happened in** rather than to
+midnight-to-midnight, when the scan recorded a window for it, and the day's own
+title and subtitle carry through to the title screen in Step 3 — the catalogue
+named it from that day's photos, so the title LLM is not asked for a second
+opinion. A special day is one occasion, so it gets a single opening card and no
+month dividers.
+
+If there is no catalogue yet, the card says which file it looked for and which
+command builds one, and Step 1 stays incomplete. It will not offer a random day.
 
 <ThemedScreenshot name="step1-preset-selected" alt="Year in Review preset selected" />
 

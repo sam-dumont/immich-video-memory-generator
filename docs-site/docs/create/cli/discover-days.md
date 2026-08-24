@@ -163,6 +163,10 @@ simply have none of it, and still read.
 Anniversaries either side of New Year are found: a day at the end of December is due in
 early January.
 
+Once a catalogue exists, the wizard's **Surprise me** card offers what is in it — due
+anniversaries first, then every other day it holds. See
+[Step 1: Configuration](../web-ui/step1-configuration.mdx#surprise-me).
+
 ## What you need
 
 An LLM configured under `llm:` — see [Configuration](/docs/deploy/configuration/config-file).

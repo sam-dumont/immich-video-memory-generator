@@ -101,11 +101,11 @@ SPECS: dict[MemoryType, MemorySpec] = {
 # from what the album holds. Registering a preset for it must fail this file.
 ALBUM_HAS_NO_PRESET = MemoryType.ALBUM
 
-# A special day has a preset but nothing to reach it with yet. Its scope comes
-# from a catalogue entry -- the day, its window, its title -- and no flag or
-# card carries one, so there is no spec either surface could be handed. It
-# joins SPECS when `generate --day` and the Surprise me card land, and this
-# exception has to be deleted in the same PR.
+# A special day now has one surface: the wizard's Surprise me card reads the
+# catalogue and hands the preset a day, a window and a title. The CLI has no
+# `--day` yet, and a MemorySpec is a request phrased for *both* surfaces, so
+# there is still nothing to compare. This exception goes when `generate --day`
+# lands, in the PR that adds it.
 SPECIAL_DAY_HAS_NO_SURFACE_YET = MemoryType.SPECIAL_DAY
 
 # --memory-type's choices, copied from cli/generate_options.py so a type added to the

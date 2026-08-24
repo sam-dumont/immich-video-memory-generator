@@ -16,15 +16,14 @@ from unittest.mock import patch
 import pytest
 
 from immich_memories.api.models import AssetType
+from immich_memories.automation.catalogue import entries_from, load_catalogue
 from immich_memories.automation.special_day_scan import (
     DiscoveredDay,
     anniversaries_due,
     scan_year,
 )
 from immich_memories.cli.special_days_cmd import (
-    _entries_in,
     _homebase,
-    _load_catalogue,
     _write_catalogue,
     _year_of_assets,
     _years_in,
@@ -373,7 +372,7 @@ def test_the_night_a_run_ended_survives_the_trip_through_the_catalogue(tmp_path)
         )
     )
 
-    entry = _entries_in(catalogue)[0]
+    entry = entries_from(catalogue)[0]
 
     assert (entry.run_start, entry.run_end) == (
         datetime(2015, 6, 12, 21, 0, tzinfo=UTC),
@@ -393,7 +392,7 @@ def test_a_catalogue_written_before_the_hours_existed_still_loads(tmp_path) -> N
         json.dumps([{"day": "2015-06-12", "title": "A long evening out", "photos": 133}])
     )
 
-    entry = _entries_in(catalogue)[0]
+    entry = entries_from(catalogue)[0]
 
     assert (entry.active_hours, entry.run_start, entry.run_end) == (0, None, None)
     printed = _days_due(catalogue, "2025-06-12")
@@ -532,7 +531,7 @@ def test_a_catalogue_nobody_can_read_is_not_a_catalogue(tmp_path) -> None:
     catalogue = tmp_path / "special-days.json"
     catalogue.write_text('[{"day": "2014-12-31"')
 
-    assert _load_catalogue(catalogue) == []
+    assert load_catalogue(catalogue) == []
 
 
 def test_media_the_camera_never_shot_is_gone_before_the_day_is_counted(monkeypatch) -> None:

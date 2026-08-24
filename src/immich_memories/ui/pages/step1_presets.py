@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import calendar as cal
 import logging
+from datetime import date
+from typing import TYPE_CHECKING
 
 from nicegui import ui
 
@@ -12,6 +14,11 @@ from immich_memories.memory_types.registry import MemoryType
 from immich_memories.ui.components import im_card
 from immich_memories.ui.nicegui_compat import io_bound_result
 from immich_memories.ui.state import get_app_state
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from immich_memories.automation.special_day_scan import DiscoveredDay
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +35,12 @@ _PRESET_CARDS: list[tuple[str, str, str, str]] = [
     (MemoryType.THEN_AND_NOW, "compare_arrows", "Then and Now", "An early year beside this one"),
     (MemoryType.TRIP, "flight_takeoff", "Trip", "Auto-detect trips from GPS data"),
     (MemoryType.ALBUM, "photo_album", "Album", "Everything from one Immich album"),
+    (
+        MemoryType.SPECIAL_DAY,
+        "auto_awesome",
+        "Surprise me",
+        "A day your library says something happened on",
+    ),
     ("custom", "tune", "Custom", "Full control over date range"),
 ]
 
@@ -135,6 +148,8 @@ def _render_params(key: str) -> None:
             _render_trip_params()
         elif memory_type == MemoryType.ALBUM:
             _render_album_picker()
+        elif memory_type == MemoryType.SPECIAL_DAY:
+            _render_special_day_params()
 
 
 def _render_holiday_params() -> None:
@@ -651,6 +666,110 @@ def _render_trip_params() -> None:
         ui.timer(0.1, lambda: _detect_trips_for_year(current_year), once=True)
 
 
+def _day_name(entry: DiscoveredDay) -> str:
+    """What the catalogue calls this day, if it managed to call it anything."""
+    return (entry.title or entry.what).strip()
+
+
+def _anniversary_rank(years: int) -> int:
+    """How round an anniversary is, ranked the way `anniversaries_due` sorts."""
+    if years < 1:
+        return 3
+    return 0 if years % 10 == 0 else 1 if years % 5 == 0 else 2
+
+
+def _special_day_options(
+    entries: list[DiscoveredDay], today: date
+) -> list[tuple[DiscoveredDay, str]]:
+    """The catalogue as picker rows: anniversaries due first, then the rest.
+
+    This is where the wizard honestly diverges from automation. A scheduled
+    run only proposes a day on its anniversary, because it arrives unannounced
+    and the round number is what earns the interruption. Somebody who just
+    clicked Surprise me wants a memory now, so every other catalogued day is
+    offered below the due ones -- same days, same evidence, different trigger.
+
+    A day the model could not name is left out: there is nothing truthful to
+    put on its title card, so offering it would be offering a dead end.
+    """
+    from immich_memories.automation.special_day_scan import anniversaries_due
+
+    rows = [
+        (entry, f"{years} years ago — {_day_name(entry)}")
+        for entry, years in anniversaries_due(entries, today)
+        if _day_name(entry)
+    ]
+    due = {entry.day for entry, _ in rows}
+    rest = sorted(
+        (entry for entry in entries if entry.day not in due and _day_name(entry)),
+        key=lambda entry: (_anniversary_rank(today.year - entry.day.year), -entry.day.toordinal()),
+    )
+    return rows + [(entry, f"{entry.day} — {_day_name(entry)}") for entry in rest]
+
+
+def _empty_catalogue_message(path: Path) -> str:
+    """What to say when no day has been found yet."""
+    return (
+        f"No catalogue at {path}. Run  immich-memories discover-days  to build one: it "
+        "walks the library a year at a time and asks the local model which days stood "
+        "out. Surprise me offers those days and nothing else."
+    )
+
+
+def _choose_special_day(entry: DiscoveredDay) -> None:
+    """Scope the wizard to one catalogued day, under the name it was found by."""
+    state = get_app_state()
+    state.memory_preset_params = {
+        "day": entry.day,
+        "window": entry.window,
+        "title": _day_name(entry),
+        "subtitle": entry.subtitle,
+        "photos": entry.photos,
+        "active_hours": entry.active_hours,
+    }
+    _apply_preset_to_state(MemoryType.SPECIAL_DAY)
+    # Step 3 opens on the day's own name instead of asking the title LLM to
+    # invent one for an occasion it never saw.
+    state.title_suggestion_title = _day_name(entry)
+    state.title_suggestion_subtitle = entry.subtitle or None
+
+
+def _render_special_day_params() -> None:
+    """The days the catalogue found, read on mount."""
+    state = get_app_state()
+    container = ui.column().classes("w-full mt-2")
+
+    def _offer_the_catalogue() -> None:
+        from immich_memories.automation.catalogue import default_catalogue_path, entries_from
+
+        path = default_catalogue_path()
+        rows = _special_day_options(entries_from(path), date.today())
+        container.clear()
+        with container:
+            if not rows:
+                # Refuse over fake: with no catalogue there is no day to offer,
+                # and a random one would be the tool inventing an occasion.
+                ui.label(_empty_catalogue_message(path)).style(
+                    "color: var(--im-text-secondary)"
+                ).classes("text-sm italic")
+                return
+
+            ui.label(
+                "Anniversaries first, then the rest. A scheduled run only proposes a day "
+                "on its anniversary; here you can pick any day the catalogue holds."
+            ).style("color: var(--im-text-secondary)").classes("text-sm mb-1")
+            chosen = state.memory_preset_params.get("day")
+            ui.select(
+                options={i: label for i, (_, label) in enumerate(rows)},
+                label="Pick a day",
+                value=next((i for i, (e, _) in enumerate(rows) if e.day == chosen), None),
+                on_change=lambda e: _choose_special_day(rows[e.value][0]),
+            ).classes("w-full")
+
+    # A local file rather than an Immich query, so a frame is the whole wait.
+    ui.timer(0.1, _offer_the_catalogue, once=True)
+
+
 def _apply_preset_to_state(memory_type: MemoryType) -> None:
     """Create a preset and write its date_range + duration into app state."""
     from immich_memories.timeperiod import custom_range
@@ -660,8 +779,6 @@ def _apply_preset_to_state(memory_type: MemoryType) -> None:
 
     # "All Time" → wide date range covering all years
     if params.get("year") == 0:
-        from datetime import date
-
         state.date_ranges = [custom_range(date(2000, 1, 1), date.today())]
         state.target_duration = 10
         return
