@@ -96,7 +96,7 @@ src/immich_memories/
 │   ├── person_service.py       # PersonService: person/face operations
 │   ├── album_service.py        # AlbumService: album operations
 │   ├── sync_client.py          # Sync wrapper for async client
-│   ├── compatibility.py        # Immich API-version compatibility policy (v1/v2 resolution)
+│   ├── compatibility.py        # Immich API-version compatibility policy (v2/v3 resolution)
 │   └── models.py               # API data models (Asset, Person, etc.)
 │
 ├── photos/                     # Photo-to-video animation (converts stills to .mp4 clips)
@@ -105,43 +105,55 @@ src/immich_memories/
 │   ├── animator.py             # Photo source prep: HEIC decode, downscale cap, HDR detection
 │   ├── photo_pipeline.py       # PhotoPipeline: end-to-end photo processing orchestrator
 │   ├── ultrahdr.py             # Ultra HDR JPEG (Android/Pixel): MPF parser, gain map, ISO 21496-1
-│   └── scoring.py              # Photo scoring: favorites, faces, camera, penalty
+│   ├── scoring.py              # Photo scoring: favorites, faces, camera, penalty
+│   ├── frame_quality.py        # Sharpness / brightness from the thumbnail, to break metadata-score ties
+│   ├── burst_dedup.py          # One photo per burst: near-duplicates shot within minutes of each other
+│   └── moment_suppression.py   # Drop stills a video from the same moment already shows
 │
 ├── memory_types/               # Memory type presets & factory
 │   ├── __init__.py             # Public API re-exports
 │   ├── registry.py             # MemoryType enum
 │   ├── presets.py              # ScoringProfile, PersonFilter, MemoryPreset
 │   ├── date_builders.py        # build_season(), build_month(), build_on_this_day()
-│   └── factory.py              # Registry + 7 built-in preset factories (incl. trip)
+│   └── factory.py              # Registry + 9 preset factories; Album is handled by cli/_album_generation.py
 │
 ├── analysis/                   # Video analysis & clip selection
 │   ├── smart_pipeline.py       # SmartPipeline (composes 5 services)
-│   ├── pipeline.py             # ClusterManager / DuplicateCluster: duplicate cluster bookkeeping
 │   ├── provider_health.py      # ProviderCircuit: bounded, credential-safe LLM provider health
 │   ├── cache_projection.py     # Project compatible cached analysis back onto in-memory clips
 │   ├── clip_analyzer.py        # ClipAnalyzer: download + analyze + score
 │   ├── clip_refiner.py         # ClipRefiner: final selection + distribution
 │   ├── clip_scaler.py          # ClipScaler: duration scaling + dedup
 │   ├── selection_quality.py    # SelectionQuality: verify + judge + review
+│   ├── selection_review.py     # LLM holistic pass over the finished cut: redundant / clashing clips
+│   ├── selection_trace.py      # Per-stage funnel record: what each filter received and let through
 │   ├── clip_selection.py       # Standalone clip selection functions
+│   ├── clip_distribution.py    # Which periods make the cut (per-period caps, applied after ranking)
+│   ├── clip_backfill.py        # Fill a short cut to its runtime, cheapest concession first
 │   ├── density_budget.py       # compute_density_budget(): density-proportional asset budget
 │   ├── preview_builder.py      # PreviewBuilder: preview segment extraction
 │   ├── progress.py             # Progress tracking helpers
 │   ├── trip_detection.py       # GPS-based trip detection (clustering, geocoding)
+│   ├── special_day.py          # Which days had something happen: active hours, not photo volume
+│   ├── album_source.py         # Album mode: the album is the candidate pool, nothing is searched for
+│   ├── source_filter.py        # Drop doorbell / dashcam / screen-recorder uploads by filename
+│   ├── source_quality.py       # Drop messaging re-encodes: sub-1080p with no camera EXIF
+│   ├── subject_policy.py       # What a clip is of (people / scenery / animal / object) and how much fits
 │   ├── unified_analyzer.py     # UnifiedSegmentAnalyzer (composes SpeechAnalysisService)
 │   ├── speech_analysis.py      # SpeechAnalysisService: PANNs audio-content + VAD speech boundaries
 │   ├── segment_transcription.py # Transcribe the top candidate segments (whisper via speech/transcription.py)
 │   ├── unified_budget.py       # Unified photo+video budget selection (merge-then-fit)
+│   ├── photo_look.py           # VLM pass over the stills that shipped but were never shortlisted
 │   ├── segment_generation.py   # Boundary detection, candidate segment generation
 │   ├── segment_extents.py      # How long a clip may run and where it may be cut (duration caps, step 3b, best-segment repair)
 │   ├── boundary_placement.py   # Where a cut may land: protected-range gaps, edge selection
 │   ├── content_analyzer.py     # LLM-based content analysis
 │   ├── llm_response_parser.py  # Content analysis response parsing
 │   ├── _content_providers.py   # Ollama / OpenAI-compatible ContentAnalyzer implementations
+│   ├── llm_failures.py         # Separate "the model could not answer" from a bug in the calling code
 │   ├── request_heartbeat.py    # RequestHeartbeat: periodic log line for long-outstanding HTTP calls
 │   ├── analyzer_factory.py     # Analyzer factory
 │   ├── analyzer_models.py      # Analyzer data models
-│   ├── duplicates.py           # Duplicate/near-duplicate detection
 │   ├── duplicate_hashing.py    # Perceptual hashing for duplicates
 │   ├── thumbnail_clustering.py # Thumbnail-based clustering
 │   ├── thumbnail_prefetch.py   # ThumbnailPrefetcher: fills the thumbnail cache before phase 1 (CLI/auto path)
@@ -181,6 +193,8 @@ src/immich_memories/
 │   ├── title_divider_planner.py # TitleDividerPlanner: month/year/location divider cards
 │   ├── audio_mixer_service.py  # AudioMixerService: background music mixing
 │   ├── privacy_audio.py        # Privacy mode audio processing (lowpass filter)
+│   ├── clip_caption.py         # The per-clip date/place caption: text and geometry, no decoding
+│   ├── frame_sampling.py       # One cached still-frame sampler for mood, title colours and previews
 │   ├── frame_preview.py        # Frame extraction for previews
 │   ├── downscaler.py           # Resolution downscaling
 │   ├── hdr_utilities.py        # HDR detection & conversion filters
@@ -206,9 +220,14 @@ src/immich_memories/
 │   ├── music_generator_models.py # Music generation data models
 │   ├── music_sources.py        # Music source providers (local library)
 │   ├── music_pipeline.py       # Multi-provider pipeline (ACE-Step -> MusicGen fallback)
+│   ├── bundled_music.py        # The 28 bundled royalty-free tracks (`music` extra), used with no backend
+│   ├── track_tempo.py          # Measure a bundled track's tempo (numpy onset autocorrelation, no librosa)
+│   ├── beat_grid.py            # Ask the generator for a tempo whose beat divides the photo cut cadence
+│   ├── mastering.py            # Loudness + high-shelf pass so a generated track sits under video
 │   └── generators/             # Music generation backends
 │       ├── base.py             # MusicGenerator ABC + StemSeparator Protocol
 │       ├── factory.py          # Generator factory
+│       ├── memory_budget.py    # Will this ACE-Step profile fit in RAM? (checked before jetsam decides)
 │       ├── musicgen_backend.py # MusicGen API (generation + remote Demucs stems)
 │       ├── ace_step_backend.py # ACE-Step lib/API (generation)
 │       ├── ace_step_captions.py # Dense caption templates
@@ -242,6 +261,8 @@ src/immich_memories/
 │   ├── renderer_ffmpeg.py      # FFmpeg-based renderer
 │   ├── taichi_kernels.py       # Taichi GPU kernels
 │   ├── taichi_video.py         # Taichi video creation
+│   ├── ffmpeg_pipe.py          # Feed raw frames to FFmpeg without deadlocking on an unread stderr
+│   ├── safe_zones.py           # Keep vertical titles clear of the Reels/Shorts/TikTok button rail
 │   ├── map_animation.py        # Satellite map fly-over (van Wijk zoom)
 │   ├── map_renderer.py         # Map tile rendering (staticmap + PIL overlay)
 │   ├── backgrounds.py          # Background generation
@@ -262,6 +283,7 @@ src/immich_memories/
 │   ├── config_cmd.py           # `config`, `people`, `years`, `preflight`
 │   ├── scheduler_cmd.py        # `scheduler list/status/start`
 │   ├── auto_cmd.py             # `auto suggest/run/history/status/install/test-notification`
+│   ├── special_days_cmd.py     # `special-days` scan/list: the days worth a memory of their own
 │   ├── cache_cmd.py            # `cache stats/export/import/backup`
 │   ├── titles.py               # `titles test`, `titles fonts`
 │   ├── runs.py                 # `runs list/show/stats/storage/delete`
@@ -270,7 +292,10 @@ src/immich_memories/
 │   ├── _helpers.py             # Shared console/print utilities
 │   ├── _generation_preview.py  # Plain-text summary for read-only generation planning (--dry-run)
 │   ├── _config_errors.py       # Config error formatting
+│   ├── _flags.py               # Shared validation for flags more than one command takes
 │   ├── _pipeline_runner.py     # Fetch assets + run SmartPipeline + generate
+│   ├── _album_generation.py    # Album mode: an Immich album is the candidate pool
+│   ├── _llm_title.py           # Opt-in LLM title on the CLI path (the wizard's default differs)
 │   ├── _trip_generation.py     # Trip detection, selection, per-trip generation
 │   ├── _trip_display.py        # Trip table formatting & selection logic
 │   ├── _date_resolution.py     # Date range resolution for memory types
@@ -284,6 +309,7 @@ src/immich_memories/
 │   ├── auth_oidc.py            # OIDC client (authlib starlette integration, singleton)
 │   ├── reverse_proxy.py        # Secure cookie + trusted X-Forwarded-* kwargs for ui.run
 │   ├── state.py                # Shared UI state
+│   ├── session_storage.py      # Expire the storage-user-*.json files NiceGUI writes but never cleans
 │   ├── theme.py                # UI theme
 │   ├── components.py           # Shared UI components
 │   ├── nicegui_compat.py       # Compatibility helpers for NiceGUI background work
@@ -325,9 +351,11 @@ src/immich_memories/
 │   ├── database_rows.py        # SQLite row <-> model conversion
 │   ├── versions.py             # SCHEMA_VERSION / ANALYSIS_VERSION (independent)
 │   ├── migration_sql.py        # Transactional migration helpers
-│   ├── migration_v11.py … v17.py # One module per schema migration
+│   ├── migration_v11.py … v19.py # One module per schema migration (no v18)
 │   ├── asset_score_cache.py    # Asset score persistence (photo/video scores)
+│   ├── judgment_cache.py       # Reasoning-mode LLM verdicts, keyed by the exact prompt asked
 │   ├── thumbnail_cache.py      # File-based thumbnail storage
+│   ├── disk_budget.py          # LRU-by-mtime eviction that holds a cache directory to a size cap
 │   └── video_cache.py          # Downloaded video file cache
 │
 ├── scheduling/                 # Scheduled memory generation
@@ -343,7 +371,9 @@ src/immich_memories/
 │   ├── candidate_discovery.py  # CandidateDiscovery: one library snapshot -> ranked candidates
 │   ├── event_detectors.py      # Event-based detectors (activity bursts)
 │   ├── calendar_detectors.py   # Calendar-based detectors (monthly, yearly)
+│   ├── special_day_scan.py     # Scheduled scan for days worth resurfacing (skips holidays and trips)
 │   ├── variety.py              # Cadence and rotation rules for candidates
+│   ├── failure_backoff.py      # Keep a candidate that keeps failing out of the nightly slot
 │   ├── models.py               # Typed values returned/persisted by automation
 │   ├── generation_request.py   # Typed boundary from candidates to the `generate` CLI
 │   ├── state_store.py          # SQLite persistence for automation attempts
@@ -354,6 +384,7 @@ src/immich_memories/
 │   ├── notifications.py        # Apprise notification integration
 │   ├── runner.py               # Auto-run orchestrator (lease, subprocess, attempt record)
 │   ├── in_process_scheduler.py # Daily timer inside the UI/Docker process
+│   ├── runtime_provenance.py   # Which code a scheduled job actually ran: version, commit, checkout age
 │   └── system_scheduler.py     # OS scheduler integration (launchd/systemd/cron)
 │
 ├── operations/                 # Public lifecycle contract + read-only ops reports
@@ -365,6 +396,7 @@ src/immich_memories/
 │
 ├── config.py                   # YAML configuration management (re-exports)
 ├── config_loader.py            # Config loading logic
+├── config_presets.py           # Named presets (`preset: fast`) that fill several knobs at once
 ├── config_models.py            # Resources a run uses: Immich server, cache, hardware (+ expand_env_vars)
 ├── config_models_analysis.py   # What the pipeline learns: analysis, content, audio events, speech, transcription
 ├── config_models_auth.py       # Authentication config model (basic, OIDC, header)
@@ -379,6 +411,7 @@ src/immich_memories/
 ├── generate_music.py           # Music resolution, AI generation, audio mixing
 ├── generate_photos.py          # Photo rendering, budget allocation, clip merging
 ├── generate_privacy.py         # GPS anonymization, fake names/cities, trip titles
+├── generate_progress.py        # Adapters from pipeline progress to caller-supplied callbacks
 ├── generate_settings.py        # Assembly/title settings, assembler creation, music, upload
 ├── generate_timeline.py        # Final-duration validation + content budget guards
 ├── filename_builder.py         # Output filename generation

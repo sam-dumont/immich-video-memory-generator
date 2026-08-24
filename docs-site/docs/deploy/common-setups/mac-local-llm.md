@@ -86,11 +86,27 @@ export IMMICH_MEMORIES_CONTENT_ANALYSIS__ENABLED=true
 - **VideoToolbox encoding**: hardware-accelerated H.264/H.265 encoding via Apple's VideoToolbox. 5-10x faster than CPU encoding.
 - **Vision framework face detection**: uses macOS native Vision framework for face detection. More accurate than the CPU fallback, no additional model downloads needed.
 - **Taichi GPU title renderer**: particle effects and gradient backgrounds rendered on Apple GPU.
+- **AI music generation**: ACE-Step runs in-process on Apple Silicon via MLX, no server involved. A 60 s track takes ~17 s with `use_lm: false`, or ~45 s with thinking mode on. What it costs is memory, not time: see below.
 - **All memory types and features**: everything works natively on Mac.
+
+## Local music generation
+
+ACE-Step's weights have to stay resident for the model to run at all, so memory is the thing that decides whether a profile works on your machine:
+
+| Profile | Weights that must stay resident |
+|---------|----------------------------------|
+| XL (4B) + 4B planner | ~29 GB |
+| XL (4B), `use_lm: false` | ~21 GB |
+| 2B + 1.7B planner | ~11 GB |
+| 2B, `use_lm: false` | ~7 GB |
+
+A 16 GB Mac runs the 2B profiles. XL wants 20 GB of unified memory free, and that is free memory, not installed. If the profile does not fit, `lib` mode says so before loading anything and the run falls back to a bundled track rather than being killed mid-render.
+
+The config, the pinned install commands and the full memory notes are in [Fully Local Setup](../../create/pipeline/audio-and-music.md#fully-local-setup-no-servers).
 
 ## What doesn't work locally
 
-- **AI music generation**: MusicGen needs a GPU server (NVIDIA or a hosted API). ACE-Step can run locally on Mac but requires ~8 GB RAM and takes 5-10 minutes per track. If you have a remote MusicGen/ACE-Step server, configure it in the `musicgen` or `ace_step` config sections.
+- **MusicGen**: this backend only talks to an API server, so it needs an NVIDIA host or a hosted endpoint. You do not need it if ACE-Step is running: set `musicgen.enabled: false` and local Demucs handles the stem separation that ducking uses.
 
 ## Performance expectations
 
@@ -106,6 +122,8 @@ On an M2 Pro (12-core, 32 GB):
 LLM analysis is the slowest phase. The 7B model analyzes 2 frames per clip at ~3 seconds per frame. After the first run, analysis results are cached: subsequent runs for the same clips skip analysis entirely.
 
 Memory usage: ~2 GB for Immich Memories, ~5 GB for mlx-vlm with the 8-bit model. Keep at least 16 GB total RAM.
+
+Those two are what makes local music generation tighter here than on a machine doing nothing else: mlx-vlm holding 5 GB is exactly the situation where an XL profile stops fitting. Stopping the LLM server before a music-heavy run buys back that 5 GB.
 
 ## Tips
 

@@ -15,12 +15,60 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+
+# Photo scoring reports its own cache, once per pass, and a run has more than
+# one: the shortlist pass and the look at whatever reached the cut uncached.
+_PHOTO_CACHE = re.compile(r"Photo score cache: (\d+) hits, (\d+) misses")
+
+
+def cache_activity(output: str) -> dict[str, int]:
+    """What the caches did on a run, read back out of its log.
+
+    The sweep only ever sees a subprocess's text, so this is the whole record
+    of whether a month's minutes went on cache reads or on real work. Counting
+    clips alone made a photo-era month — where the clip caches genuinely have
+    nothing to do — indistinguishable from a month that did nothing at all.
+    """
+    photo = [(int(hits), int(misses)) for hits, misses in _PHOTO_CACHE.findall(output)]
+    return {
+        "cached_clips": output.count("Using cached analysis"),
+        "analyzed_clips": output.count("Step 1a:"),
+        "cached_photos": sum(hits for hits, _ in photo),
+        "scored_photos": sum(misses for _, misses in photo),
+    }
+
+
+def was_cold(timing: dict) -> bool:
+    """Did this run pay for its analysis, or read it back?
+
+    Counts both media: a photo-era month analyses no clips either way, so on
+    clips alone every one of them scored as warm. Reads the photo keys
+    defensively — timings.json accumulates across sweeps and rows written
+    before those keys existed come back on the next run.
+    """
+    fresh = timing["analyzed_clips"] + timing.get("scored_photos", 0)
+    reused = timing["cached_clips"] + timing.get("cached_photos", 0)
+    return fresh > reused
+
+
+def summarise(elapsed: float, counts: dict[str, int]) -> str:
+    """Where a run's time went, per medium.
+
+    Both media are named even when one is at zero: an unlabelled pair of
+    zeroes is what made a fully cached photo month look like a dead run.
+    """
+    return (
+        f"{elapsed:.0f}s, "
+        f"video: {counts['cached_clips']} cached / {counts['analyzed_clips']} analyzed, "
+        f"photos: {counts['cached_photos']} cached / {counts['scored_photos']} scored"
+    )
 
 
 def main() -> int:
@@ -74,18 +122,13 @@ def main() -> int:
 
         # Where the time went. A month whose clips are already in the analysis
         # cache finishes in seconds; the same month cold pays for every frame.
-        cached = output.count("Using cached analysis")
-        analyzed = output.count("Step 1a:")
-        print(
-            f"    {status}  ({elapsed:.0f}s, {cached} cached / {analyzed} analyzed)",
-            flush=True,
-        )
+        counts = cache_activity(output)
+        print(f"    {status}  ({summarise(elapsed, counts)})", flush=True)
         timings.append(
             {
                 "label": label,
                 "seconds": round(elapsed, 1),
-                "cached_clips": cached,
-                "analyzed_clips": analyzed,
+                **counts,
                 "rendered": (args.out / f"{label}.png").exists(),
                 "note": entry.get("note", ""),
             }
@@ -98,8 +141,8 @@ def main() -> int:
     lines = ["# Contact sheet sweep", ""]
     measured = [t for t in timings if t["seconds"]]
     if measured:
-        cold = [t for t in measured if t["analyzed_clips"] > t["cached_clips"]]
-        warm = [t for t in measured if t["analyzed_clips"] <= t["cached_clips"]]
+        cold = [t for t in measured if was_cold(t)]
+        warm = [t for t in measured if not was_cold(t)]
         lines += ["## Timing", ""]
         for name, group in (("cold (mostly unanalyzed)", cold), ("warm (mostly cached)", warm)):
             if group:

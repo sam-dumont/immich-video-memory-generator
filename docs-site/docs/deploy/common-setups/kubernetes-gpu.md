@@ -185,7 +185,13 @@ Same as the [Linux + NVIDIA](./linux-nvidia.md) setup: NVENC encoding, CUDA scen
 
 ## Performance
 
-Same as bare-metal Linux + NVIDIA. Kubernetes overhead is negligible for this workload. The bottleneck is GPU encoding speed and Immich API download throughput, not container orchestration.
+Same as bare-metal Linux + NVIDIA. Kubernetes overhead is negligible for this workload.
+
+Do not size the cluster around the encoder. Once NVENC is doing the encode, the encode is not what
+you wait for: the run is dominated by analysis and selection, meaning downloading every candidate
+clip from Immich, scoring it, and the LLM passes if you enabled them. In the one run measured end
+to end ([NAS-Only](./nas-only.md#performance-expectations)) analysis was 7.4 minutes of 10.1, and a
+GPU only shrinks the other 2.7. Immich API throughput and LLM latency are the numbers to watch.
 
 ## Further reading
 
