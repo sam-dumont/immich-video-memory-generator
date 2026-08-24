@@ -4,7 +4,7 @@ title: Testing Guide
 
 # Testing Guide
 
-Immich Memories has about 5,000 tests: 4,400+ fast unit tests that run everywhere, and 600+ integration and E2E tests that need real services (FFmpeg, Immich, a browser).
+Immich Memories has 5,600+ tests: 5,000+ fast unit tests that run everywhere, and 600+ integration and E2E tests that need real services (FFmpeg, Immich, a browser).
 
 ## Testing Tiers
 

@@ -31,7 +31,7 @@ Yes. The CLI works without a display. Use `immich-memories generate` with flags 
 
 **Is it safe for production?**
 
-The codebase is AI-written (on purpose, as an experiment) with 5,000+ tests (4,400+ unit, 600+ integration/E2E) and strict quality gates. The output (music, clip selection, mood analysis) is AI-generated too, so results vary. Review what it produces before showing it at grandma's birthday party.
+The codebase is AI-written (on purpose, as an experiment) with 5,600+ tests (5,000+ unit, 600+ integration/E2E) and strict quality gates. The output (music, clip selection, mood analysis) is AI-generated too, so results vary. Review what it produces before showing it at grandma's birthday party.
 
 **Can I generate for multiple people at once?**
 
