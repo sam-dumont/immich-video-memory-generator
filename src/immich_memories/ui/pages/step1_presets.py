@@ -667,8 +667,12 @@ def _render_trip_params() -> None:
 
 
 def _day_name(entry: DiscoveredDay) -> str:
-    """What the catalogue calls this day, if it managed to call it anything."""
-    return (entry.title or entry.what).strip()
+    """What the catalogue calls this day, if it managed to call it anything.
+
+    Falls back to `what` exactly the way the preset factory does, so the picker
+    offers precisely the days the factory will accept and no others.
+    """
+    return entry.title.strip() or entry.what.strip()
 
 
 def _anniversary_rank(years: int) -> int:

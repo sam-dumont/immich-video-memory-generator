@@ -84,7 +84,7 @@ def _occasion_title(
         # The catalogue named this day from the day's own photos, months before
         # anybody asked for a video of it.
         entry = preset_params or {}
-        name = (entry.get("title") or entry.get("what") or "").strip()
+        name = (entry.get("title") or "").strip() or (entry.get("what") or "").strip()
         if name:
             return name, (entry.get("subtitle") or "").strip() or None
 

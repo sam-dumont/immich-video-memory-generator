@@ -255,3 +255,23 @@ def test_a_day_the_model_could_not_name_is_not_offered() -> None:
     )
 
     assert [entry.day for entry, _ in rows] == [date(2019, 2, 2)]
+
+
+def test_a_blank_title_falls_back_to_what_the_day_was() -> None:
+    """The picker and the preset have to agree on which days are nameable.
+
+    `create_preset` falls back from an empty title to `what`; a picker that
+    did not would hide a day the factory would happily have built.
+    """
+    blank_titled = DiscoveredDay(
+        day=date(2019, 2, 2),
+        title="   ",
+        subtitle="",
+        what="A very long walk",
+        photos=44,
+        window=None,
+    )
+
+    rows = step1_presets._special_day_options([blank_titled], date(2026, 6, 12))
+
+    assert [label for _, label in rows] == ["2019-02-02 — A very long walk"]
