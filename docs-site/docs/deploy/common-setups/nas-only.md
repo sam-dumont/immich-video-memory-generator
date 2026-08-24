@@ -37,7 +37,7 @@ services:
     image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
     container_name: immich-memories
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"        # loopback only — see "Reaching the UI" below
     volumes:
       - immich-memories-config:/home/immich/.immich-memories
       - ./output:/app/output          # create it first and chown to the container UID, see below
@@ -55,7 +55,17 @@ volumes:
   immich-memories-config:
 ```
 
-One thing to get right before the first run:
+### Reaching the UI
+
+The mapping above is loopback-only, so on a headless NAS nothing reaches the UI until you do one
+of two things. The cheap one is an SSH tunnel — `ssh -L 8080:localhost:8080 your-nas`, then open
+`http://localhost:8080` on your desktop. Nothing is published and there is nothing to secure.
+
+To publish it on the LAN instead, do both halves: turn on
+[authentication](../configuration/authentication) first — the app holds an Immich API key to your
+whole photo library — then change the mapping to `"8080:8080"`.
+
+One more thing to get right before the first run:
 
 - **Ownership of `./output`**: the image already writes to `/app/output`, so the mount above is
   where the videos land. The container runs as UID/GID 1000. Create the folder yourself

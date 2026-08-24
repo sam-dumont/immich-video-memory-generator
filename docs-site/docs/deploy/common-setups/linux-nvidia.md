@@ -62,7 +62,7 @@ services:
     image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
     container_name: immich-memories
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"        # loopback only — see below to reach it remotely
     volumes:
       - immich-memories-config:/home/immich/.immich-memories
       - ./output:/app/output          # mkdir + chown to the container UID first, see below
@@ -84,6 +84,11 @@ services:
 volumes:
   immich-memories-config:
 ```
+
+The port is published on loopback only. A GPU box is usually headless, so either tunnel
+(`ssh -L 8080:localhost:8080 your-server`) or publish it properly: enable
+[authentication](../configuration/authentication) first — the app holds an Immich API key to your
+whole photo library — then change the mapping to `"8080:8080"`.
 
 One thing the compose file cannot do for you:
 

@@ -30,9 +30,11 @@ on:
         required: false
         type: string
 
+# The commit status and the dispatch below are both posted with
+# CI_MIRROR_TOKEN, not GITHUB_TOKEN — they have to reach the private mirror,
+# which GITHUB_TOKEN cannot see. So GITHUB_TOKEN needs nothing but the checkout.
 permissions:
   contents: read
-  statuses: write
 
 jobs:
   mirror:
