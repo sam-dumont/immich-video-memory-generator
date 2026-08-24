@@ -1,4 +1,4 @@
-"""Smart automation CLI commands -- suggest, run, install, and history."""
+"""Automation CLI commands -- suggest, run, install, and history."""
 
 from __future__ import annotations
 
@@ -159,7 +159,7 @@ def _print_history_table(runs: list) -> None:
 
 @click.group()
 def auto() -> None:
-    """Smart automation -- detect and generate memory candidates."""
+    """Automation -- detect and generate memory candidates."""
 
 
 @auto.command()

@@ -20,7 +20,7 @@ resources:
   #   cp ingress.yaml.example ingress.yaml
   # - ingress.yaml
 
-# Published image tags carry no `v` prefix (0.41.0, latest). Bump on upgrade.
+# Published image tags carry no `v` prefix (0.59.2, latest). Bump on upgrade.
 images:
   - name: ghcr.io/sam-dumont/immich-video-memory-generator
-    newTag: "0.41.0"
+    newTag: "0.59.2"

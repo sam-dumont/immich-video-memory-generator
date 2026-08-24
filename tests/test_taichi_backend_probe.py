@@ -21,6 +21,9 @@ class _FakeQueue:
             raise queue.Empty
         return self.items.pop(0)
 
+    def put(self, item: object) -> None:
+        self.items.append(item)
+
     def close(self) -> None:
         self.closed = True
 
@@ -89,8 +92,108 @@ def _install_context(
     return context
 
 
+class _FakeTaichi:
+    """Stand-in for the `taichi` module inside the probe child.
+
+    The worker only ever touches four things on it: an arch attribute, init(),
+    the @kernel decorator, and the ndarray type annotation.
+    """
+
+    def __init__(self, *, effect, init_error: Exception | None = None) -> None:
+        self.metal = object()
+        self.cuda = object()
+        self.vulkan = object()
+        self.cpu = object()
+        self.i32 = "i32"
+        self.types = SimpleNamespace(ndarray=lambda **kwargs: object())  # noqa: ARG005
+        self._effect = effect
+        self._init_error = init_error
+        self.init_calls: list[dict[str, object]] = []
+
+    def init(self, **kwargs: object) -> None:
+        if self._init_error is not None:
+            raise self._init_error
+        self.init_calls.append(kwargs)
+
+    def kernel(self, _fn):
+        return self._effect
+
+
+def _run_worker(monkeypatch: pytest.MonkeyPatch, fake_ti: _FakeTaichi) -> object:
+    from immich_memories.titles import taichi_backend_probe
+
+    # WHY: the worker's whole job is driving the Taichi runtime — the one
+    # external boundary here. A real ti.init() would claim the GPU in-process,
+    # which is exactly what running the probe in a child process avoids.
+    monkeypatch.setattr(taichi_backend_probe, "ti", fake_ti)
+    result_queue = _FakeQueue()
+    taichi_backend_probe._taichi_probe_worker("metal", result_queue)
+    assert len(result_queue.items) == 1
+    return result_queue.items[0]
+
+
+def test_worker_reports_success_when_the_kernel_runs(monkeypatch: pytest.MonkeyPatch) -> None:
+    from immich_memories.titles.taichi_backend_probe import TaichiProbeOutcome
+
+    def increments(values) -> None:
+        values[0] += 1
+
+    fake_ti = _FakeTaichi(effect=increments)
+
+    result = _run_worker(monkeypatch, fake_ti)
+
+    assert result.outcome is TaichiProbeOutcome.SUCCESS
+    assert fake_ti.init_calls == [{"arch": fake_ti.metal, "offline_cache": True}]
+
+
+def test_worker_rejects_a_backend_that_dispatches_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A backend that accepts the launch but leaves memory untouched is a failure.
+
+    This is the case the probe exists for: init() succeeding proves nothing,
+    only the written-back value does.
+    """
+    from immich_memories.titles.taichi_backend_probe import TaichiProbeOutcome
+
+    result = _run_worker(monkeypatch, _FakeTaichi(effect=lambda _values: None))
+
+    assert result.outcome is TaichiProbeOutcome.DISPATCH_FAILED
+    assert result.detail == "unexpected_kernel_result"
+
+
+def test_worker_names_the_exception_a_failing_backend_raised(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from immich_memories.titles.taichi_backend_probe import TaichiProbeOutcome
+
+    fake_ti = _FakeTaichi(effect=lambda _values: None, init_error=RuntimeError("no device"))
+
+    result = _run_worker(monkeypatch, fake_ti)
+
+    assert result.outcome is TaichiProbeOutcome.DISPATCH_FAILED
+    assert result.detail == "RuntimeError"
+
+
+def test_non_apple_hosts_try_cuda_then_vulkan_then_cpu(monkeypatch: pytest.MonkeyPatch) -> None:
+    from immich_memories.titles import taichi_backend_probe
+
+    fake_ti = _FakeTaichi(effect=lambda _values: None)
+    # WHY: the arch objects are Taichi runtime singletons; identity is what
+    # init_taichi passes through to ti.init().
+    monkeypatch.setattr(taichi_backend_probe, "ti", fake_ti)
+
+    candidates = taichi_backend_probe._candidate_backends(force_cpu=False, operating_system="Linux")
+
+    assert candidates == [
+        (fake_ti.cuda, "CUDA", "cuda"),
+        (fake_ti.vulkan, "Vulkan", "vulkan"),
+        (fake_ti.cpu, "CPU", None),
+    ]
+
+
 def test_probe_returns_success_and_closes_resources(monkeypatch: pytest.MonkeyPatch) -> None:
-    from immich_memories.titles.taichi_kernels import (
+    from immich_memories.titles.taichi_backend_probe import (
         TaichiProbeOutcome,
         TaichiProbeResult,
         _probe_taichi_backend,
@@ -118,7 +221,7 @@ def test_probe_returns_success_and_closes_resources(monkeypatch: pytest.MonkeyPa
 
 
 def test_probe_preserves_dispatch_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    from immich_memories.titles.taichi_kernels import (
+    from immich_memories.titles.taichi_backend_probe import (
         TaichiProbeOutcome,
         TaichiProbeResult,
         _probe_taichi_backend,
@@ -137,7 +240,7 @@ def test_probe_preserves_dispatch_failure(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_probe_reports_child_crash_without_a_result(monkeypatch: pytest.MonkeyPatch) -> None:
-    from immich_memories.titles.taichi_kernels import (
+    from immich_memories.titles.taichi_backend_probe import (
         TaichiProbeOutcome,
         _probe_taichi_backend,
     )
@@ -155,8 +258,24 @@ def test_probe_reports_child_crash_without_a_result(monkeypatch: pytest.MonkeyPa
     assert result_queue.joined
 
 
+def test_probe_distrusts_a_result_it_did_not_recognise(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Anything but a TaichiProbeResult means the child was not ours to trust."""
+    from immich_memories.titles.taichi_backend_probe import (
+        TaichiProbeOutcome,
+        _probe_taichi_backend,
+    )
+
+    result_queue = _FakeQueue("something else entirely")
+    _install_context(monkeypatch, result_queue, _FakeProcess())
+
+    result = _probe_taichi_backend("metal")
+
+    assert result.outcome is TaichiProbeOutcome.CHILD_CRASHED
+    assert result.detail == "invalid_result"
+
+
 def test_probe_terminates_then_kills_a_hung_child(monkeypatch: pytest.MonkeyPatch) -> None:
-    from immich_memories.titles.taichi_kernels import (
+    from immich_memories.titles.taichi_backend_probe import (
         TaichiProbeOutcome,
         _probe_taichi_backend,
     )
@@ -177,31 +296,38 @@ def test_probe_terminates_then_kills_a_hung_child(monkeypatch: pytest.MonkeyPatc
 
 
 def _prepare_parent_init(monkeypatch: pytest.MonkeyPatch):
-    from immich_memories.titles import taichi_kernels
+    """Stub both namespaces init_taichi() spans: the kernels module and the probe.
+
+    `init_taichi` resolves TAICHI_AVAILABLE and the module-level init flags in
+    `taichi_kernels`, but `_candidate_backends` and `_backend_dispatches` read
+    `ti` and `_probe_taichi_backend` from `taichi_backend_probe`. Patching one
+    module for both would leave the real Taichi arch objects in play.
+    """
+    from immich_memories.titles import taichi_backend_probe, taichi_kernels
 
     fake_ti = SimpleNamespace(metal=object(), cpu=object())
     monkeypatch.setattr(taichi_kernels, "TAICHI_AVAILABLE", True)
-    monkeypatch.setattr(taichi_kernels, "ti", fake_ti)
+    monkeypatch.setattr(taichi_backend_probe, "ti", fake_ti)
     monkeypatch.setattr(taichi_kernels, "_taichi_initialized", False)
     monkeypatch.setattr(taichi_kernels, "_taichi_backend", None)
     monkeypatch.setattr(taichi_kernels, "SDF_AVAILABLE", False)
     monkeypatch.setattr(platform, "system", lambda: "Darwin")
     monkeypatch.delenv("IMMICH_FORCE_CPU", raising=False)
-    return taichi_kernels, fake_ti
+    return taichi_kernels, taichi_backend_probe, fake_ti
 
 
 def test_successful_gpu_probe_initializes_parent_once(monkeypatch: pytest.MonkeyPatch) -> None:
-    from immich_memories.titles.taichi_kernels import (
+    from immich_memories.titles.taichi_backend_probe import (
         TaichiProbeOutcome,
         TaichiProbeResult,
     )
 
-    taichi_kernels, fake_ti = _prepare_parent_init(monkeypatch)
+    taichi_kernels, probe_module, fake_ti = _prepare_parent_init(monkeypatch)
     probes: list[str] = []
     parent_inits: list[dict[str, object]] = []
     compile_calls: list[bool] = []
     monkeypatch.setattr(
-        taichi_kernels,
+        probe_module,
         "_probe_taichi_backend",
         lambda backend: probes.append(backend) or TaichiProbeResult(TaichiProbeOutcome.SUCCESS),
     )
@@ -229,15 +355,15 @@ def test_successful_gpu_probe_initializes_parent_once(monkeypatch: pytest.Monkey
 def test_failed_gpu_probe_skips_parent_gpu_init(
     monkeypatch: pytest.MonkeyPatch, outcome: str
 ) -> None:
-    from immich_memories.titles.taichi_kernels import (
+    from immich_memories.titles.taichi_backend_probe import (
         TaichiProbeOutcome,
         TaichiProbeResult,
     )
 
-    taichi_kernels, fake_ti = _prepare_parent_init(monkeypatch)
+    taichi_kernels, probe_module, fake_ti = _prepare_parent_init(monkeypatch)
     parent_inits: list[dict[str, object]] = []
     monkeypatch.setattr(
-        taichi_kernels,
+        probe_module,
         "_probe_taichi_backend",
         lambda _backend: TaichiProbeResult(TaichiProbeOutcome(outcome)),
     )
@@ -251,11 +377,11 @@ def test_failed_gpu_probe_skips_parent_gpu_init(
 
 
 def test_forced_cpu_never_spawns_a_probe(monkeypatch: pytest.MonkeyPatch) -> None:
-    taichi_kernels, fake_ti = _prepare_parent_init(monkeypatch)
+    taichi_kernels, probe_module, fake_ti = _prepare_parent_init(monkeypatch)
     parent_inits: list[dict[str, object]] = []
     monkeypatch.setenv("IMMICH_FORCE_CPU", "true")
     monkeypatch.setattr(
-        taichi_kernels,
+        probe_module,
         "_probe_taichi_backend",
         lambda _backend: pytest.fail("CPU fallback must not spawn a child"),
     )

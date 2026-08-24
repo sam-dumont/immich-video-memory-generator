@@ -11,9 +11,9 @@ import pytest
 from immich_memories.audio.generators.ace_step_backend import (
     ACEStepBackend,
     ACEStepConfig,
-    _is_ace_step_importable,
     _mood_to_ace_prompt,
 )
+from immich_memories.audio.generators.ace_step_runtime import is_ace_step_importable
 from immich_memories.audio.generators.base import (
     GenerationRequest,
     GenerationResult,
@@ -855,7 +855,7 @@ class TestACEStepBackend:
         backend = ACEStepBackend(ACEStepConfig(mode="lib"))
         with (
             patch(
-                "immich_memories.audio.generators.ace_step_backend._is_ace_step_importable",
+                "immich_memories.audio.generators.ace_step_backend.is_ace_step_importable",
                 return_value=False,
             ),
             patch.object(backend, "_check_api", return_value=False),
@@ -866,7 +866,7 @@ class TestACEStepBackend:
         """Should return True when lib is importable."""
         backend = ACEStepBackend(ACEStepConfig(mode="lib"))
         with patch(
-            "immich_memories.audio.generators.ace_step_backend._is_ace_step_importable",
+            "immich_memories.audio.generators.ace_step_backend.is_ace_step_importable",
             return_value=True,
         ):
             assert await backend.is_available()
@@ -875,7 +875,7 @@ class TestACEStepBackend:
         backend = ACEStepBackend(ACEStepConfig(mode="api", api_url="http://test:7860"))
         with (
             patch(
-                "immich_memories.audio.generators.ace_step_backend._is_ace_step_importable",
+                "immich_memories.audio.generators.ace_step_backend.is_ace_step_importable",
                 return_value=False,
             ),
             patch.object(backend, "_check_api", return_value=True),
@@ -886,7 +886,7 @@ class TestACEStepBackend:
 
     def test_is_ace_step_importable_returns_bool(self):
         """Should return a bool (True if installed, False otherwise)."""
-        assert isinstance(_is_ace_step_importable(), bool)
+        assert isinstance(is_ace_step_importable(), bool)
 
     async def test_exit_releases_pipeline(self):
         backend = ACEStepBackend()

@@ -18,7 +18,7 @@ function HeroSection() {
             </Heading>
             <p className={styles.heroSubtitle}>
               Point it at your Immich server. Pick a year, a person, or a trip.
-              Get a polished video with smart cuts, animated maps, AI music,
+              Get a polished video with scene-aware cuts, animated maps, AI music,
               and title screens. Self-hosted. No subscription.
             </p>
             <div className={styles.heroCtas}>
@@ -120,8 +120,8 @@ type ShowcaseItem = {
 
 const showcaseItems: ShowcaseItem[] = [
   {
-    title: '7 memory types',
-    description: 'Year in Review, Season, Person Spotlight, Multi-Person, Monthly Highlights, On This Day, Trip. Pick a preset and it handles the rest.',
+    title: '10 memory types',
+    description: 'Year in Review, Season, Person Spotlight, Multi-Person, Monthly Highlights, On This Day, Holiday, Then and Now, Trip, Album. Pick a preset and it handles the rest, or take the eleventh card, Custom, and set the date range yourself.',
     image: '/img/screenshots/step1-preset-cards.png',
     alt: 'Memory type preset selection cards',
   },
@@ -185,7 +185,7 @@ function ValuesSection() {
               </svg>
             </div>
             <strong>Your data stays home</strong>
-            <p>No telemetry, no account. Runs on your hardware; the only outbound calls are the ones you configure (LLM, music server) plus map tiles for trip maps. The Immich API key never leaves your network.</p>
+            <p>No telemetry, no account. Runs on your hardware; the only outbound calls are the ones you configure (LLM, music server, notifications) plus map tiles and geocoding for trip maps. The Immich API key never leaves your network.</p>
           </div>
           <div className={styles.value}>
             <div className={styles.valueIcon}>
@@ -194,7 +194,7 @@ function ValuesSection() {
               </svg>
             </div>
             <strong>Read-only by default</strong>
-            <p>Your Immich library is never modified. Upload-back is opt-in. No risk of data loss, ever.</p>
+            <p>Your Immich library is never modified. Upload-back is opt-in.</p>
           </div>
           <div className={styles.value}>
             <div className={styles.valueIcon}>
@@ -211,7 +211,7 @@ function ValuesSection() {
                 <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
               </svg>
             </div>
-            <strong>One smart decision a day</strong>
+            <strong>One decision a day</strong>
             <p>Schedule <code>immich-memories auto run</code> daily. It picks one eligible memory or retries one pending delivery, with variety rules that stop repeat spam.</p>
           </div>
         </div>
@@ -247,7 +247,7 @@ export default function Home(): ReactNode {
   return (
     <Layout
       title="Home"
-      description="Turn your Immich photo library into polished video memories. Smart clips, animated maps, AI music, title screens. Self-hosted, no cloud required.">
+      description="Turn your Immich photo library into polished video memories. Scene-aware clips, animated maps, AI music, title screens. Self-hosted, no cloud required.">
       <HeroSection />
       <QuickstartSection />
       <ShowcaseSection />

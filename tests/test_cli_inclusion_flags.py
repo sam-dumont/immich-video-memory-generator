@@ -7,7 +7,7 @@ video-only memory from the command line.
 
 from __future__ import annotations
 
-from immich_memories.cli.generate import resolve_inclusion
+from immich_memories.cli.generate_resolution import resolve_inclusion
 
 
 class TestResolveInclusion:

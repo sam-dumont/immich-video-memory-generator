@@ -1,7 +1,7 @@
 # immich-memories-music
 
 Bundled royalty-free background music for
-[immich-memories](https://github.com/sdumont/immich-video-memory-generator).
+[immich-memories](https://github.com/sam-dumont/immich-video-memory-generator).
 
 Installed with the `music` extra:
 

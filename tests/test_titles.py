@@ -237,6 +237,35 @@ class TestTextBuilder:
         )
         assert sel_type == SelectionType.DATE_RANGE
 
+    def test_then_and_now_is_not_inferable_from_its_dates(self):
+        """Two years ten apart look exactly like any other eleven-year range.
+
+        Only the memory type distinguishes them, which is why it has to be
+        threaded through rather than guessed at.
+        """
+        sel_type = infer_selection_type(
+            start_date=date(2016, 1, 1),
+            end_date=date(2026, 12, 31),
+            memory_type="then_and_now",
+        )
+        assert sel_type == SelectionType.THEN_AND_NOW
+
+    def test_generate_title_then_and_now_en(self):
+        """Its span is a decade it deliberately skips, so it is titled by its ends.
+
+        The generic date-range fallback rendered "January 2016 to December 2026"
+        — the one description a then-and-now must not carry, since the years
+        between them are exactly what it leaves out.
+        """
+        title_info = generate_title(
+            SelectionType.THEN_AND_NOW,
+            start_date=date(2016, 1, 1),
+            end_date=date(2026, 12, 31),
+            locale="en",
+        )
+        assert title_info.main_title == "2016 & 2026"
+        assert title_info.subtitle == "Then and Now"
+
     def test_generate_title_calendar_year_en(self):
         """Test title generation for calendar year in English."""
         title_info = generate_title(
