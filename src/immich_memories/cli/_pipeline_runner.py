@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 from immich_memories.analysis import llm_metrics
 from immich_memories.cli._helpers import console, print_error, print_success
+from immich_memories.cli._run_inputs import ResolvedRunInputs
 from immich_memories.cli._run_summary import render_run_summary
 from immich_memories.timeperiod import DateRange
 
@@ -305,11 +306,22 @@ def run_pipeline_and_generate(
     from immich_memories.operations.phases import OperationalPhase
     from immich_memories.tracking.models import normalize_memory_people
 
+    resolved = ResolvedRunInputs.from_arguments(
+        include_photos=include_photos,
+        photo_assets=photo_assets,
+        dry_run=dry_run,
+        automation_attempt_id=automation_attempt_id,
+        upload_to_immich=upload_to_immich,
+        config=config,
+        person_names=person_names,
+        music=music,
+        memory_preset_params=memory_preset_params,
+    )
+
     clips = assets_to_clips(assets)
     if live_photo_clips:
         clips.extend(live_photo_clips)
-    has_photos = include_photos and photo_assets
-    if not clips and not has_photos:
+    if not clips and not resolved.has_photos:
         print_error("No usable content (no video clips or photos)")
         sys.exit(1)
 
@@ -317,7 +329,7 @@ def run_pipeline_and_generate(
         duration,
         memory_type=memory_type,
         clips=clips,
-        photos=photo_assets if include_photos else None,
+        photos=resolved.photo_assets,
         config=config,
     )
 
@@ -337,7 +349,7 @@ def run_pipeline_and_generate(
     _pipeline_start = _time.monotonic()
     phases = _AttemptPhaseReporter(
         config,
-        None if dry_run else automation_attempt_id,
+        resolved.attempt_id,
         progress,
         task,
     )
@@ -353,7 +365,7 @@ def run_pipeline_and_generate(
     output_canvas = _configure_output_canvas(
         pipeline_config,
         clips=clips,
-        photo_assets=photo_assets if include_photos else None,
+        photo_assets=resolved.photo_assets,
         config=config,
         output_resolution=output_resolution,
         output_orientation=output_orientation,
@@ -486,9 +498,9 @@ def run_pipeline_and_generate(
 
     print_success(f"Selected {len(selected_clips)} clips for final video")
 
-    should_upload = upload_to_immich or config.upload.enabled
+    should_upload = resolved.should_upload
     album_name = album or config.upload.album_name
-    person_name = person_names[0] if person_names else None
+    person_name = resolved.person_name
 
     if _stops_before_rendering(dry_run=dry_run, no_render=no_render):
         return _finish_without_rendering(
@@ -551,7 +563,7 @@ def run_pipeline_and_generate(
         privacy_mode=privacy_mode,
         title=resolved_title,
         subtitle=resolved_subtitle,
-        music_path=Path(music) if music and music != "auto" else None,
+        music_path=resolved.music_path,
         music_volume=music_volume,
         no_music=no_music,
         upload_enabled=should_upload,
@@ -573,7 +585,7 @@ def run_pipeline_and_generate(
         progress_callback=gen_progress,
         phase_callback=generation_phase,
         completed_operational_phase=OperationalPhase.SELECTION,
-        memory_preset_params=memory_preset_params or {},
+        memory_preset_params=resolved.preset_params,
     )
 
     result_path = generate_memory(gen_params)

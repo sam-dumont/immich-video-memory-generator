@@ -1,10 +1,8 @@
 # Documentation
 
-Welcome to the Immich Memories documentation.
-
 ## For Users
 
-- **[User Guide](USER_GUIDE.md)** - Step-by-step guide to creating video compilations
+- **[User Guide](USER_GUIDE.md)** - Where to find the wizard walkthrough, CLI reference and troubleshooting
 - **[Main README](../README.md)** - Installation, quick start, and configuration
 
 ## For Developers

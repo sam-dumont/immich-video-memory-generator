@@ -147,3 +147,6 @@ test-results/
 # Local contact-sheet sweep specs (they name real people)
 sweep-spec*.json
 !scripts/sweep-spec.example.json
+
+# discover-days catalogue: real event titles, never repo data
+special-days*.json

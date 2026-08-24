@@ -185,7 +185,7 @@ immich-memories days-due [OPTIONS]
 | Flag | Type | Default | Description |
 | --- | --- | --- | --- |
 | `--on` | datetime | - | The date to look around (default today) |
-| `--catalogue` | file | special-days.json |  |
+| `--catalogue` | file | ~/.immich-memories/special-days.json |  |
 
 ## `discover-days`
 
@@ -212,7 +212,7 @@ immich-memories discover-days [OPTIONS]
 | `--until` | integer | 2026 | Last year to scan |
 | `--per-year` | integer | 6 | Busiest candidates to ask about |
 | `--also-skip` | text | - | A holiday name or MM-DD this library keeps that the defaults miss |
-| `--out` | file | special-days.json | Where to write the catalogue |
+| `--out` | file | ~/.immich-memories/special-days.json | Where to write the catalogue |
 | `--rescan` | boolean | false | Start over, ignoring and replacing the existing catalogue |
 
 ## `export-project`
