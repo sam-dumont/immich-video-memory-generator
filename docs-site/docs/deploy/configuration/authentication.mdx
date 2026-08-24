@@ -280,7 +280,7 @@ In your config YAML, set `trusted_proxies` to Traefik's container IP (prefer a s
 
 ## Session
 
-- Sessions last 24 hours by default (`session_ttl_hours`). Range: 1--720 hours.
+- Sessions last 24 hours by default (`session_ttl_hours`). Range: 1-720 hours.
 - The same value expires session state on disk: abandoned session files are
   swept at startup and every 15 minutes thereafter, so an exposed instance
   doesn't accumulate one file per drive-by request.

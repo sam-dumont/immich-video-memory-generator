@@ -8,7 +8,7 @@ For Linux servers with NVIDIA GPUs. Docker with nvidia-container-toolkit for NVE
 
 ## Who this is for
 
-You have a Linux server (Ubuntu, Debian, Fedora) with an NVIDIA GPU (GTX 1060 or newer). You want hardware-accelerated encoding and optionally want to run MusicGen or ACE-Step for AI-generated background music.
+You have a Linux server (Ubuntu, Debian, Fedora) with an NVIDIA GPU (GTX 1050 or newer — Pascal is where NVENC starts). You want hardware-accelerated encoding and optionally want to run MusicGen or ACE-Step for AI-generated background music.
 
 ## Architecture
 

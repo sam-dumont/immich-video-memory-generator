@@ -24,7 +24,7 @@ The pipeline is designed around GPU acceleration and ML-powered features for the
 - Scene detection (PySceneDetect)
 - LLM-powered content analysis
 - Audio ducking and music mixing
-- Smart clip ordering
+- Clip ordering
 - All CLI and UI functionality
 
 ## Configuration

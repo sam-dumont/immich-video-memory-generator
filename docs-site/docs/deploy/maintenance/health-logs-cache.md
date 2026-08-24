@@ -4,8 +4,6 @@ sidebar_label: "Health, Logs & Cache"
 
 # Health, Logs & Cache
 
-Three operational aspects you'll want to understand for any deployment beyond "run it once and forget."
-
 ## Health endpoints
 
 Use `GET /health/live` for liveness and `GET /health/ready` for readiness. Liveness always returns
@@ -17,7 +15,8 @@ are usable, or `status: degraded` with HTTP `503` when configuration is missing 
 be reached. `GET /health` always returns HTTP `200` for compatibility; it rewrites a ready payload
 to `ok` and leaves a degraded payload as `degraded`. Do not use `/health` as a readiness probe.
 
-`/health/ready` returns JSON with the current system status:
+`/health/ready` returns JSON with the current system status (abridged — the real payload also
+carries automation, pending-delivery, scheduler and Immich blocks):
 
 ```json
 {
