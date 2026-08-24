@@ -125,16 +125,20 @@ Backing off monthly_highlights:2026-06 — failed 3x, retrying after 3d
 
 ### Detectors
 
-| Detector | What it finds | Score range |
-|----------|---------------|-------------|
-| **MonthlyDetector** | Latest completed month, if not already generated | 0.5-0.8 |
-| **YearlyDetector** | Past years with content (only after Jan 15) | 0.5-0.7 |
-| **PersonSpotlightDetector** | Top 5 people by asset count | 0.1-0.6 |
-| **BirthdayDetector** | People whose birthday was 2-60 days ago | 0.75 |
-| **TripDetector** | GPS-detected trips from the past year | 0.1-0.5 |
-| **ActivityBurstDetector** | Months with >2x the rolling average (last 12 months) | 0.4-0.7 |
-| **OnThisDayDetector** | Dates with content across 5+ years | 0.2-0.35 |
-| **MultiPersonDetector** | Pairs who appear together frequently | 0.3-0.55 |
+Each detector has a base score and scales it by how strong the case is. The ranges
+below are derived from those formulas, so the ceiling is what a perfect case gets and
+the floor is what the detector's own admission rules allow through.
+
+| Detector | What it finds | Score | Scaled by |
+|----------|---------------|-------|-----------|
+| **YearlyDetector** | Past years with content (only after Jan 15) | 0.24-0.72 | recency, 10% per year, floored at 0.3 |
+| **BirthdayDetector** | People whose birthday was 2-60 days ago | 0.75 | nothing — fixed |
+| **MonthlyDetector** | Latest completed month, if not already generated | 0.21-0.7 | recency, 10% per month back, floored at 0.3 |
+| **ActivityBurstDetector** | Months with >2x the rolling average (last 12 months) | 0.7 | nothing — a month that clears the threshold gets the full score |
+| **TripDetector** | GPS-detected trips from the past year | up to 0.75 | trip length up to 14 days × asset count up to 200 |
+| **PersonSpotlightDetector** | Top 5 people by asset count | 0.12-0.6 | that person's share of the top person's asset count, floored at 0.2 |
+| **MultiPersonDetector** | Pairs who appear together frequently | 0.06-0.55 | estimated shared assets up to 500 (50 minimum to qualify) |
+| **OnThisDayDetector** | Dates with content across 5+ years | 0.18-0.35 | how many years the date has content in, up to 10 |
 
 ### Scoring adjustments
 

@@ -36,7 +36,7 @@ immich-memories generate [OPTIONS]
 | `--season` | — | choice | — | `spring`, `summer`, `fall`, `autumn`, `winter` (use with `--memory-type season`) |
 | `--month` | — | int | — | Month 1-12 (with `--year`, generates that month; selects trip by month) |
 | `--hemisphere` | — | choice | `north` | `north` or `south` (for season date calculation) |
-| `--years-back` | — | int | all | Years to look back for `on_this_day`, `holiday` or `then_and_now` |
+| `--years-back` | — | int | per type | Years to look back. Omitted: all years for `on_this_day` (30-year max), 5 for `holiday`, 10 for `then_and_now` |
 
 ### Output
 
@@ -300,16 +300,21 @@ Period format: number + unit (`d` days, `w` weeks, `m` months, `y` years). Examp
 ## Output
 
 `--output` names the file you want, not the path you get. Every run writes into
-its own folder so a rerun of the same recipe replaces itself instead of piling
-up, so:
+its own timestamped folder, so a rerun never overwrites an earlier result and a
+failed run's intermediates stay contained:
 
 ```bash
 immich-memories generate --year 2025 --output ~/Videos/summer.mp4
 ```
 
-writes `~/Videos/summer_<hash>_<timestamp>_<id>/summer_<hash>.mp4`. The folder
-is named after the file you asked for, and sits where you pointed. Album runs
-name the file after the album rather than after `--output`.
+writes `~/Videos/summer_20260105_143052_a7b3/summer.mp4`. The folder is the name
+you asked for plus the run id (timestamp, then four characters so two runs in the
+same second stay apart); the file keeps the name you gave it. The folder sits
+where you pointed. Album runs name the file after the album rather than after
+`--output`.
+
+Nothing prunes those folders, so reruns accumulate. `immich-memories runs delete`
+removes a run's output along with its record.
 
 If you don't pass `--output`, the file lands in your configured output directory (default `~/Videos/Memories/`), inside a per-run folder, with an auto-generated name of the form `{person}_{memory-type}_{date}.mp4` — for example `all_memories_2024.mp4`, `alice_year_in_review_2024.mp4` or `alice_memories_20240207-20250206.mp4`. (The web UI names its files differently, e.g. `alice_2024_memories.mp4`.)
 
