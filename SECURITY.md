@@ -57,6 +57,32 @@ We will acknowledge receipt within 48 hours and provide a detailed response with
 - Cache directory: `~/.immich-memories/cache/`
 - Clear cache periodically if disk space is a concern
 
+## Verifying a release
+
+Releases carry SLSA build provenance, signed through Sigstore by the GitHub
+Actions workflow that produced them — nothing is built on a laptop. A release
+that carries it has a `.sigstore.json` asset alongside the wheel.
+
+Wheels and sdists carry the attestation as a release asset:
+
+```bash
+VERSION=0.59.2  # whichever release you are checking
+gh release download "v$VERSION" --repo sam-dumont/immich-video-memory-generator
+gh attestation verify "immich_memories-$VERSION-py3-none-any.whl" \
+  --repo sam-dumont/immich-video-memory-generator \
+  --bundle "immich_memories-$VERSION.sigstore.json"
+```
+
+Docker images carry it in the registry, so no download is needed:
+
+```bash
+gh attestation verify oci://ghcr.io/sam-dumont/immich-video-memory-generator:latest \
+  --repo sam-dumont/immich-video-memory-generator
+```
+
+The `.intoto.jsonl` asset is the same statement as a bare in-toto envelope, for
+tools that expect the SLSA layout rather than a Sigstore bundle.
+
 ## Dependencies
 
 We regularly update dependencies to patch known vulnerabilities. Run:
