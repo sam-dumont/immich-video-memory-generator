@@ -118,20 +118,18 @@ IMMICH_API_KEY=your-api-key-here
 
 ## Performance expectations
 
-On an RTX 3060 12 GB (Linux, Docker):
+No GPU run of this pipeline has been measured end to end, so there is no table here. The one
+measured run is CPU-only ([NAS-only](./nas-only.md#performance-expectations)): 10 minutes for a
+14-clip monthly, of which analysis was 7.4.
 
-| Clips | Resolution | Time |
-|-------|-----------|------|
-| 15 | 1080p | ~3 min |
-| 30 | 1080p | ~5 min |
-| 30 | 4K | ~9 min |
-| 50 | 1080p | ~8 min |
+That shape is what to plan around. Render was 2.7 of those ten minutes and the encode is only part
+of it — the titles are the rest, and a CUDA Taichi backend is what shortens those. The other 7.4
+minutes are analysis and selection: downloading each candidate clip from Immich, scoring it, and
+the LLM passes if you turned them on. Those are bounded by your Immich server and your LLM, not by
+the card. Analysis is cached, so a second run of the same period is much cheaper than the first.
 
-NVENC encoding is roughly 3x faster than CPU libx264 at equivalent quality, and that is the smaller
-half of the run. With the encode accelerated, what is left is analysis and selection: downloading
-each candidate clip from Immich, scoring it, and the LLM passes if you turned them on. The times
-above are first runs. A second run of the same period reuses the cached scores and finishes in
-roughly a third of the time.
+If you measure a run on your own box, [an issue](https://github.com/sam-dumont/immich-video-memory-generator/issues)
+with the numbers is welcome.
 
 ## Adding LLM analysis
 

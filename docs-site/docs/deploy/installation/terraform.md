@@ -9,11 +9,11 @@ Deploy Immich Memories to Kubernetes using Terraform. The module lives in `deplo
 uses the `hashicorp/kubernetes` provider. CPU only by default; NVIDIA GPU scheduling is a variable.
 
 :::note Less travelled than Docker Compose
-Docker Compose is the primary self-hosting path. The module and both examples pass
-`terraform validate` and their contracts are pinned in the test suite (writable state volume,
-`/health/live` + `/health/ready` probes, `gpu_enabled = false` by default), but they are not
-applied to a live cluster on every release. Read the plan before you apply it, and open an issue
-if something does not boot.
+Docker Compose is the primary self-hosting path. What the test suite pins is the module's
+contract: writable state volume, `/health/live` + `/health/ready` probes, `gpu_enabled = false` by
+default, and that the examples only set variables the module declares. Nothing runs
+`terraform validate`, and nothing applies the module to a live cluster. Read the plan before you
+apply it, and open an issue if something does not boot.
 :::
 
 :::caution Before enabling Ingress
@@ -28,7 +28,8 @@ single-user, single-replica; do not scale the deployment beyond one pod.
 Namespace (optional), Secret, two `ReadWriteOnce` PVCs, Deployment, Service, Ingress (optional).
 
 The image runs as user `immich`, UID/GID 1000, `HOME=/home/immich` (`run_as_user` / `fs_group`
-1000, all capabilities dropped, `RuntimeDefault` seccomp):
+1000, all capabilities dropped, `RuntimeDefault` seccomp, `read_only_root_filesystem = true`).
+These three mounts are the only writable paths:
 
 | Mount | Backed by | Holds |
 |-------|-----------|-------|
@@ -113,11 +114,11 @@ module "immich_memories" {
 | `namespace` | Kubernetes namespace | `string` | `"immich-memories"` |
 | `create_namespace` | Create the namespace | `bool` | `true` |
 | `image_repository` | Container image | `string` | `"ghcr.io/sam-dumont/immich-video-memory-generator"` |
-| `image_tag` | Image tag (no `v` prefix: `0.59.2`, `latest`) | `string` | `"latest"` |
+| `image_tag` | Image tag — no `v` prefix, so release `vX.Y.Z` is tag `X.Y.Z` | `string` | `"latest"` |
 | `replicas` | Replica count — keep at 1, the UI is single-replica | `number` | `1` |
 | `resources` | Requests/limits object (`requests.memory/cpu`, `limits.memory/cpu`) | `object` | `2Gi/1000m` – `8Gi/4000m` |
 | `tmp_size` | `/tmp` emptyDir for FFmpeg intermediates (8Gi for 4K) | `string` | `"4Gi"` |
-| `env` | Extra `IMMICH_MEMORIES_<SECTION>__<KEY>` env vars | `map(string)` | `{}` |
+| `env` | Extra env vars, typically `IMMICH_MEMORIES_<SECTION>__<KEY>` (plain names like `TZ` work too) | `map(string)` | `{}` |
 | `secret_env` | Extra env vars stored in the Secret (auth password, storage secret) | `map(string)` | `{}` |
 | `labels` | Extra labels on every resource | `map(string)` | `{}` |
 

@@ -109,7 +109,7 @@ so check it covers whatever you load before you count on it.
 ## What works
 
 - **LLM content analysis**: the model reads video frames and scores clips on what is in them (birthday cakes, sunsets, kids playing). Adds a content score weighted at 35% in the overall clip ranking.
-- **VideoToolbox encoding**: hardware-accelerated H.264/H.265 encoding via Apple's VideoToolbox. 5-10x faster than CPU encoding.
+- **VideoToolbox encoding**: H.264/H.265 encoding on the chip's media engine instead of the CPU cores.
 - **Vision framework face detection**: uses macOS native Vision framework for face detection. More accurate than the CPU fallback, no additional model downloads needed.
 - **Taichi GPU title renderer**: particle effects and gradient backgrounds rendered on Apple GPU.
 - **AI music generation**: ACE-Step runs in-process on Apple Silicon via MLX, no server involved. A 60 s track takes ~17 s with `use_lm: false`, or ~45 s with thinking mode on. What it costs is memory, not time: see below.
