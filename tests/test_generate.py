@@ -530,7 +530,7 @@ def test_generation_validation_failure_preserves_old_final_and_stops_downstream_
         ),
         patch.object(generate_module, "_create_assembler", return_value=WrongCodecAssembler()),
         patch.object(generate_module, "_run_music_phase", music_phase),
-        patch.object(generate_module, "_upload_to_immich", upload),
+        patch("immich_memories.generate_delivery._upload_to_immich", upload),
         patch.object(generate_module, "_cleanup_temp_clips"),
     ):
         generate_memory(params)

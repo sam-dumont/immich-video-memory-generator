@@ -83,6 +83,7 @@ these helper modules:
 - `generate_privacy.py`: GPS anonymization, fake names/cities, trip titles
 - `generate_settings.py`: assembly/title settings, assembler creation
 - `generate_timeline.py`: final-duration validation and content budget guards
+- `generate_delivery.py`: Immich upload of a finished artifact + delivered/pending/failed run state
 
 ## Package Structure
 
@@ -407,12 +408,13 @@ src/immich_memories/
 ├── config_models_soundtrack.py # Music under a memory: local library, MusicGen, ACE-Step
 ├── generate.py                 # End-to-end generation orchestrator
 ├── generate_clips.py           # Clip extraction, probing, cleanup
+├── generate_delivery.py        # Immich upload + delivered/pending/failed run state
 ├── generate_downloads.py       # Parallel asset downloads
 ├── generate_music.py           # Music resolution, AI generation, audio mixing
 ├── generate_photos.py          # Photo rendering, budget allocation, clip merging
 ├── generate_privacy.py         # GPS anonymization, fake names/cities, trip titles
 ├── generate_progress.py        # Adapters from pipeline progress to caller-supplied callbacks
-├── generate_settings.py        # Assembly/title settings, assembler creation, music, upload
+├── generate_settings.py        # Assembly/title settings, assembler creation, music, upload call
 ├── generate_timeline.py        # Final-duration validation + content budget guards
 ├── filename_builder.py         # Output filename generation
 ├── timeperiod.py               # Date range utilities
