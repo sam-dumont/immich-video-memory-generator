@@ -921,7 +921,7 @@
         "name": "register_generate_commands",
         "complexity": 177,
         "line_start": 183,
-        "line_end": 990,
+        "line_end": 991,
         "line_complexities": [
           {
             "line": 535,
@@ -1304,23 +1304,23 @@
             "complexity": 0
           },
           {
-            "line": 973,
+            "line": 974,
             "complexity": 1
           },
           {
-            "line": 976,
-            "complexity": 1
-          },
-          {
-            "line": 979,
+            "line": 977,
             "complexity": 1
           },
           {
             "line": 980,
-            "complexity": 0
+            "complexity": 1
           },
           {
             "line": 981,
+            "complexity": 0
+          },
+          {
+            "line": 982,
             "complexity": 1
           }
         ]

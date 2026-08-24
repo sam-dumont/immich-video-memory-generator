@@ -631,3 +631,40 @@ class TestPhotosAskTheSameWayEverythingElseDoes:
             _query_photo_llm(photo, self._config("openai-compatible", "http://host:8080/v1/"))
 
         assert post.call_args[0][0] == "http://host:8080/v1/chat/completions"
+
+
+def test_a_cold_photo_pass_reports_the_photos_it_had_to_score(tmp_path: Path, caplog) -> None:
+    """The count was gated on a hit, so an all-miss pass reported nothing at all.
+
+    A sweep reading the log back cannot otherwise tell a month whose photo
+    cache served everything from one that scored every photo from scratch.
+    """
+    import logging
+
+    from immich_memories.analysis.provider_health import ProviderCircuit
+    from immich_memories.config import Config
+    from immich_memories.photos.photo_pipeline import score_photos
+
+    # An open circuit is how the pipeline itself declines to call the model,
+    # so scoring runs end to end here without reaching the network.
+    circuit = ProviderCircuit()
+    circuit.disable("model unavailable")
+    config = Config(
+        cache={"database": str(tmp_path / "cache.db"), "directory": str(tmp_path)},
+        content_analysis={"enabled": True},
+        llm={"model": "some-vlm"},
+    )
+
+    with caplog.at_level(logging.INFO):
+        score_photos(
+            [_photo("cold-1"), _photo("cold-2")],
+            config.photos,
+            video_clip_count=0,
+            work_dir=tmp_path,
+            download_fn=None,
+            db_path=config.cache.database_path,
+            app_config=config,
+            provider_circuit=circuit,
+        )
+
+    assert "Photo score cache: 0 hits, 2 misses" in caplog.text
