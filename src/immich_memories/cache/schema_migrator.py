@@ -20,6 +20,7 @@ from immich_memories.cache.migration_v15 import migrate_notification_health
 from immich_memories.cache.migration_v16 import migrate_video_analysis_model_version
 from immich_memories.cache.migration_v17 import migrate_segment_transcripts
 from immich_memories.cache.migration_v19 import migrate_target_duration_seconds
+from immich_memories.cache.migration_v21 import migrate_run_llm_metrics
 
 if TYPE_CHECKING:
     from contextlib import AbstractContextManager
@@ -94,6 +95,7 @@ class SchemaMigrator:
             18: self._migration_v18_llm_category,
             19: migrate_target_duration_seconds,
             20: self._migration_v20_safe_cut_gaps,
+            21: migrate_run_llm_metrics,
         }
 
         for version in range(from_version + 1, target_version + 1):

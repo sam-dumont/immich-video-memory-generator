@@ -126,6 +126,9 @@ def row_to_run(row: sqlite3.Row) -> RunMetadata:
         warnings=(
             json.loads(_row_value(row, "warnings_json")) if _row_value(row, "warnings_json") else []
         ),
+        llm_metrics=(
+            json.loads(_row_value(row, "llm_metrics")) if _row_value(row, "llm_metrics") else {}
+        ),
         clips_analyzed=row["clips_analyzed"] or 0,
         clips_selected=row["clips_selected"] or 0,
         errors_count=row["errors_count"] or 0,
@@ -467,6 +470,7 @@ class RunDatabase:
         clips_analyzed: int,
         clips_selected: int,
         errors_count: int,
+        llm_metrics: dict | None = None,
     ) -> RunMetadata:
         """Atomically commit artifact facts and its initial delivery lifecycle."""
         delivery_status = (
@@ -489,7 +493,8 @@ class RunDatabase:
                     delivery_error = NULL,
                     immich_asset_id = NULL,
                     delivery_album = ?,
-                    warnings_json = ?
+                    warnings_json = ?,
+                    llm_metrics = ?
                 WHERE run_id = ? AND status = 'running'
                 """,
                 (
@@ -503,6 +508,7 @@ class RunDatabase:
                     delivery_status.value,
                     delivery_album,
                     json.dumps(warnings),
+                    json.dumps(llm_metrics) if llm_metrics else None,
                     run_id,
                 ),
             )
@@ -611,6 +617,23 @@ class RunDatabase:
     # =========================================================================
     # Query Methods (from RunQueriesMixin)
     # =========================================================================
+
+    def record_llm_metrics(self, run_id: str, metrics: dict) -> None:
+        """Store what the run spent on the model.
+
+        Its own method rather than another optional field on
+        `update_run_status`: that function is a chain of "if this was passed,
+        update it" branches sitting at the cognitive-complexity ceiling, and
+        this is one unconditional write.
+        """
+        if not metrics:
+            return
+        with self._get_connection() as conn:
+            conn.execute(
+                "UPDATE pipeline_runs SET llm_metrics = ? WHERE run_id = ?",
+                (json.dumps(metrics), run_id),
+            )
+            conn.commit()
 
     def get_phase_stats(self, run_id: str) -> list[PhaseStats]:
         """Get all phase stats for a run."""
