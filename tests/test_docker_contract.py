@@ -336,6 +336,19 @@ def test_image_default_output_directory_is_the_compose_output_mount() -> None:
     )
 
 
+def test_quickstart_compose_publishes_the_ui_on_loopback_only() -> None:
+    """The shipped compose file must not put the UI on the LAN by default.
+
+    The container holds an Immich API key for the whole photo library and ships with
+    authentication off, so reaching it from another machine has to be a deliberate
+    edit paired with enabling auth — not what happens to anyone who runs `up -d`.
+    """
+    compose = yaml.safe_load((REPO_ROOT / "docker-compose.yml").read_text())
+    published = [str(p) for p in compose["services"]["immich-memories"]["ports"]]
+
+    assert published == ["127.0.0.1:8080:8080"], published
+
+
 def test_image_runs_as_uid_1000() -> None:
     """Bind mounts (./output, ./config) and the K8s manifests assume the common host UID.
 
