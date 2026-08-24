@@ -12,7 +12,9 @@
  * to verify all faces are properly blurred.
  */
 
-import sharp from 'sharp';
+// sharp 0.35 stopped exporting its types under the default export's namespace,
+// so OverlayOptions has to be imported by name.
+import sharp, {type OverlayOptions} from 'sharp';
 import fs from 'fs';
 import path from 'path';
 
@@ -43,7 +45,7 @@ async function blurRegion(
   const imgHeight = metadata.height!;
 
   // For each face region, extract it, blur it, and composite back
-  const composites: sharp.OverlayOptions[] = [];
+  const composites: OverlayOptions[] = [];
 
   for (const region of regions) {
     // Clamp region to image bounds

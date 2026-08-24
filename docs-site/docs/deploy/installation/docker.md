@@ -25,13 +25,20 @@ curl -O https://raw.githubusercontent.com/sam-dumont/immich-video-memory-generat
 docker compose up -d
 ```
 
-UI is at [http://localhost:8080](http://localhost:8080).
+UI is at [http://localhost:8080](http://localhost:8080). The compose file publishes the port as
+`127.0.0.1:8080:8080`, so nothing else on your network reaches it out of the box.
 
 :::caution Do not publish the default UI
-Authentication is disabled by default, and the container listens on `0.0.0.0`. Anyone who can
-reach port 8080 can use the app. Enable [authentication](../configuration/authentication) before
-exposing it. The UI is single-user, single-replica; keep this service at one instance.
+Authentication is disabled by default. Inside the container the app listens on `0.0.0.0` — the
+compose port mapping is the only thing keeping it off your network, and the app holds an Immich
+API key to your whole photo library. The UI is single-user, single-replica; keep this service at
+one instance.
 :::
+
+To reach the UI from another machine, make both changes together: enable
+[authentication](../configuration/authentication), then swap the mapping to `- "8080:8080"` and
+run `docker compose up -d` again. On a headless box you can skip the exposure entirely and
+tunnel instead: `ssh -L 8080:localhost:8080 your-server`.
 
 The compose volume at `/home/immich/.immich-memories` must stay writable. It holds config, cache,
 automation history, and pending-delivery state.
@@ -79,7 +86,7 @@ If you don't use compose:
 ```bash
 docker run -d \
   --name immich-memories \
-  -p 8080:8080 \
+  -p 127.0.0.1:8080:8080 \
   -e IMMICH_URL=https://photos.example.com \
   -e IMMICH_API_KEY=your-api-key-here \
   -e IMMICH_MEMORIES_OUTPUT__DIRECTORY=/app/output \
@@ -110,7 +117,7 @@ services:
   immich-memories:
     image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"   # drop the `127.0.0.1:` only after enabling auth
     environment:
       - IMMICH_URL=http://immich-server:2283
       - IMMICH_API_KEY=${IMMICH_API_KEY}

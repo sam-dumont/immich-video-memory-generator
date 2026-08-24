@@ -7,7 +7,7 @@ title: Title Screens & Maps
 
 This is where the output stops looking like "FFmpeg concat" and starts looking like something you'd actually want to show people.
 
-Title screens are the structural connective tissue: animated intro cards, month dividers, satellite map fly-overs, and ending sequences. They're what separates a clip dump from a memory video that feels produced. Same kind of polish as Relive, but running on your own hardware with your own data.
+Title screens are the structural connective tissue: animated intro cards, month dividers, satellite map fly-overs, and ending sequences. Same kind of polish as Relive, but running on your own hardware with your own data.
 
 ## What gets generated
 
@@ -99,7 +99,7 @@ The static map renderer supports three styles, used for pin-and-label map frames
 | `osm` | OpenStreetMap | Clean street map, good for city-level |
 | `topo` | OpenTopoMap | Topographic, useful for hiking trips |
 
-Configure with `map_style: osm` under `title_screens` if you want a different style for location cards.
+`osm` and `topo` are internal options today. `map_style` is a parameter on the renderer functions in `titles/map_renderer.py`, not a `title_screens` key, so a generate run always gets satellite.
 
 ## Trip Classification
 
