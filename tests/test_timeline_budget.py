@@ -392,3 +392,40 @@ def test_year_dividers_keep_the_existing_capped_budget() -> None:
     assert plan.eligible_dividers == 2
     assert plan.max_dividers == 2
     assert plan.title_budget == 6.0
+
+
+def _then_and_now_titles() -> TitleScreenSettings:
+    titles = _titles()
+    titles.divider_mode = "year"
+    titles.memory_type = "then_and_now"
+    return titles
+
+
+def test_a_then_and_now_budgets_a_card_for_each_era() -> None:
+    """Both eras are the subject, so both get named.
+
+    The year divider budget is len(years) - 1, because on a memory that runs
+    continuously through its years the title card already names the one it
+    opens on. A then-and-now's title names its two ends as a pair, not the year
+    the first block belongs to, so the older era went unlabeled.
+    """
+    from immich_memories.processing.timeline_budget import plan_timeline
+
+    clips = [_clip("old", "2016-05-05"), _clip("new", "2026-05-05")]
+
+    plan = plan_timeline(clips, _then_and_now_titles(), 45.0, "then_and_now")
+
+    assert plan.eligible_dividers == 2
+
+
+def test_a_continuous_multi_year_memory_still_skips_its_opening_year() -> None:
+    """The rule this exception is carved out of, kept honest."""
+    from immich_memories.processing.timeline_budget import plan_timeline
+
+    titles = _titles()
+    titles.divider_mode = "year"
+    clips = [_clip("a", "2024-05-05"), _clip("b", "2025-05-05"), _clip("c", "2026-05-05")]
+
+    plan = plan_timeline(clips, titles, 120.0, "year_in_review")
+
+    assert plan.eligible_dividers == 2
