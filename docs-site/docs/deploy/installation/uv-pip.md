@@ -9,7 +9,7 @@ Requires **Python 3.11 or newer** and FFmpeg on your `PATH`.
 
 ## uv (Recommended)
 
-[uv](https://docs.astral.sh/uv/) is 10-100x faster than pip.
+[uv](https://docs.astral.sh/uv/) resolves and installs faster than pip, and `uvx` runs the CLI without installing anything.
 
 ### One-Liner (No Install Required)
 

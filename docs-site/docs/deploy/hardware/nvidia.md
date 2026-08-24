@@ -5,7 +5,7 @@ title: NVIDIA
 
 # NVIDIA
 
-NVIDIA GPUs with NVENC provide hardware-accelerated video encoding that's 5-10x faster than software encoding. If you have a GTX 1050 or newer, you've got NVENC. The encode is not the phase that dominates a run, though — see [Encoding quality](#encoding-quality) for what the card actually buys you.
+NVIDIA GPUs with NVENC move video encoding off the CPU and onto dedicated silicon. If you have a GTX 1050 or newer, you've got NVENC. The encode is not the phase that dominates a run, though — see [Encoding quality](#encoding-quality) for what the card actually buys you.
 
 ## What you get
 

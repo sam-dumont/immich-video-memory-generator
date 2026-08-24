@@ -89,7 +89,7 @@ If Immich runs on the same Docker network, use the container name (`immich-serve
 - **Title screens**: PIL-based renderer (works everywhere, no GPU needed)
 - **Custom music**: upload your own MP3/WAV in Step 3
 - **All memory types**: year in review, monthly, person spotlight, trips (if GPS data exists)
-- **Scheduling**: `immich-memories auto install` cannot install a cron job inside the container. Run it from the NAS host's scheduler instead: `docker exec immich-memories immich-memories auto run --quiet --cooldown 24` (daily is plenty)
+- **Scheduling**: set `IMMICH_MEMORIES_AUTOMATION__ENABLED=true` and `IMMICH_MEMORIES_AUTOMATION__DAILY_AT=09:00` (plus `TZ`) in the compose `environment:` — the UI process runs the daily decision itself, so there is no cron to install. `immich-memories auto install` is for host installs and cannot write a cron job inside the container; if you would rather drive it from the NAS host's scheduler, use `docker exec immich-memories immich-memories auto run --quiet --cooldown 24` and leave the built-in timer off. See [Daily automation](../installation/docker.md#daily-automation)
 - **Photo support**: Ken Burns animations, face-aware pan, blur backgrounds
 
 ### What still curates without an LLM

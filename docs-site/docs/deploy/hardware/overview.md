@@ -5,11 +5,11 @@ title: Hardware Acceleration Overview
 
 # Hardware Acceleration Overview
 
-The pipeline is designed around GPU acceleration for the best quality and speed: animated title screens, fast encoding, and (on Apple Silicon) GPU-accelerated face detection. However, **every feature has a CPU fallback**, so it works on any machine. See [CPU-Only Mode](./cpu-only.md) for details on running without a GPU.
+A GPU buys three things here: animated title screens, faster encoding, and (on Apple Silicon) face detection on the Neural Engine. **Every feature has a CPU fallback**, so it works on any machine. See [CPU-Only Mode](./cpu-only.md) for details on running without a GPU.
 
-Encoding video in software (libx264) works everywhere but it's slow. If you have a GPU or dedicated media engine, hardware acceleration can speed up encoding by 5-10x. The pipeline auto-detects your hardware and picks the best available backend; NVENC, Quick Sync and VAAPI are only selected after a one-frame test encode succeeds, so an FFmpeg build that merely lists them (Debian's does, including inside the Docker image) doesn't send a GPU-less box down the hardware path.
+Encoding video in software (libx264) works everywhere but it's slow. A hardware encoder is faster; how much faster depends on your card, codec and preset, and this project has not measured it. The pipeline auto-detects your hardware and picks the best available backend; NVENC, Quick Sync and VAAPI are only selected after a one-frame test encode succeeds, so an FFmpeg build that merely lists them (Debian's does, including inside the Docker image) doesn't send a GPU-less box down the hardware path.
 
-That 5-10x applies to a phase that is not where a run spends its time. Analysis and title rendering are — measured at `--cpus=2`, title rendering was ~263 s of a ~339 s assembly ([CPU-Only Mode](./cpu-only.md#title-rendering-is-the-bottleneck-not-encoding)), and in a measured end-to-end run analysis was 7.4 of 10.1 minutes ([NAS-Only](../common-setups/nas-only.md#performance-expectations)). Hardware acceleration shortens the last phase; a GPU earns its keep first on titles.
+The encode is not where a run spends its time, though. Analysis and title rendering are — measured at `--cpus=2`, title rendering was ~263 s of a ~339 s assembly ([CPU-Only Mode](./cpu-only.md#title-rendering-is-the-bottleneck-not-encoding)), and in a measured end-to-end run analysis was 7.4 of 10.1 minutes ([NAS-Only](../common-setups/nas-only.md#performance-expectations)). Hardware acceleration shortens the last phase; a GPU earns its keep first on titles.
 
 ## Supported backends
 
