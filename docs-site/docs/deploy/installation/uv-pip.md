@@ -41,8 +41,8 @@ Install optional features depending on your setup:
 # macOS: Apple Vision framework for face detection + GPU rendering
 uv sync --extra mac
 
-# Face recognition (any platform)
-uv sync --extra face
+# Bundled royalty-free music tracks
+uv sync --extra music
 
 # Local music library metadata (mutagen) for `immich-memories music search`
 uv sync --extra audio
@@ -72,8 +72,10 @@ uv sync --extra all
 uv sync --extra all-mac
 ```
 
-AI music generation (ACE-Step, MusicGen) is not a pip extra — it talks to a server or an
-in-process ACE-Step install; see [Audio and music](../../create/pipeline/audio-and-music.md).
+The `music` extra is the bundled royalty-free track library (in both `all` and `all-mac`). AI music
+generation (ACE-Step, MusicGen) is a different thing and is not a pip extra — it talks to a server
+or an in-process ACE-Step install; see
+[Audio and music](../../create/pipeline/audio-and-music.md).
 
 ### Install uv
 
@@ -116,6 +118,9 @@ Quote the package spec — zsh (the macOS default shell) treats `[...]` as a glo
 ```bash
 # macOS Apple Vision framework
 pip install "immich-memories[mac]"
+
+# Bundled royalty-free music tracks
+pip install "immich-memories[music]"
 
 # Local music library metadata (mutagen)
 pip install "immich-memories[audio]"
