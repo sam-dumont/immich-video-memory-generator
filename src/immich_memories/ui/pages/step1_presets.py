@@ -92,12 +92,7 @@ def render_preset_selector(on_custom_selected=None) -> None:
                 on_custom_selected(params_container)
 
     def select_preset(key: str) -> None:
-        state.memory_type = key
-        state.memory_preset_params = {}
-        if key != MemoryType.ALBUM:
-            # A left-over album would otherwise satisfy the step 1 scope check.
-            state.album_id = None
-            state.album_name = None
+        state.choose_memory_type(key)
         params_container.clear()
         _fill_params(key)
         _build_preset_grid(grid_container, state, select_preset)

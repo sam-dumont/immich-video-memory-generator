@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from immich_memories.api.person_scope import stills_person_args, videos_in_window
 from immich_memories.cli._helpers import print_info, print_success, print_warning
 from immich_memories.timeperiod import DateRange
 
@@ -95,14 +96,11 @@ def fetch_photos(
     Several people means the photos holding all of them, the same rule videos
     and Live Photos already follow.
     """
+    person_id, group_ids = stills_person_args(person_ids)
     photos: list = []
     seen: set[str] = set()
     for dr in date_ranges:
-        batch = client.get_photos_for_date_range(
-            dr,
-            person_id=person_ids[0] if len(person_ids) == 1 else None,
-            person_ids=person_ids if len(person_ids) > 1 else None,
-        )
+        batch = client.get_photos_for_date_range(dr, person_id=person_id, person_ids=group_ids)
         for photo in batch:
             if photo.id not in seen:
                 seen.add(photo.id)
@@ -127,15 +125,7 @@ def fetch_videos_and_live_photos(
 
     all_assets = []
     for dr in date_ranges:
-        if len(person_ids) > 1:
-            # Naming several people asks for the moments that hold all of them,
-            # not the union of their solo reels. Live photos already intersect.
-            batch = client.get_videos_for_all_persons(person_ids, dr)
-        elif len(person_ids) == 1:
-            batch = client.get_videos_for_person_and_date_range(person_ids[0], dr)
-        else:
-            batch = client.get_videos_for_date_range(dr)
-        all_assets.extend(batch)
+        all_assets.extend(videos_in_window(client, person_ids, dr))
 
     # Deduplicate across date ranges
     seen: dict[str, object] = {}
@@ -154,14 +144,15 @@ def fetch_videos_and_live_photos(
         from immich_memories.analysis.live_photo_pipeline import fetch_live_photo_clips
 
         lp_task = progress.add_task("Fetching live photos...", total=None)
+        lp_person_id, lp_group_ids = stills_person_args(person_ids)
         all_lp_clips: list = []
         all_lp_video_ids: set[str] = set()
         for dr in date_ranges:
             lp_clips, lp_vid_ids = fetch_live_photo_clips(
                 client,
                 dr,
-                person_id=person_ids[0] if len(person_ids) == 1 else None,
-                person_ids=person_ids if len(person_ids) > 1 else None,
+                person_id=lp_person_id,
+                person_ids=lp_group_ids,
                 config=config,
             )
             all_lp_clips.extend(lp_clips)

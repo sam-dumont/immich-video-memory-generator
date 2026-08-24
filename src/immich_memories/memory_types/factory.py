@@ -362,6 +362,11 @@ def _holiday(
     **kwargs,  # noqa: ARG001
 ) -> MemoryPreset:
     """A holiday is the date a library reliably has every year, so it spans them."""
+    # WHY today= only when the year was defaulted: asking for Christmas in
+    # August would otherwise spend one of the requested years on a window that
+    # has not happened. A year the caller named is a choice and is left alone.
+    # Both surfaces default the year here, so both get the guard from here.
+    today = None if year else date.today()
     year = year or date.today().year
     label = holiday_label(holiday, year)
     person_filter = PersonFilter()
@@ -372,7 +377,7 @@ def _holiday(
         memory_type=MemoryType.HOLIDAY,
         name=f"{label} Through the Years",
         description=f"{label} across {years_back} years",
-        date_ranges=build_holiday(holiday, year, years_back, window_days),
+        date_ranges=build_holiday(holiday, year, years_back, window_days, today=today),
         person_filter=person_filter,
         scoring=ScoringProfile(face_weight=0.3, content_weight=0.3),
         title_template="{holiday}",

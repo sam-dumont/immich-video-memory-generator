@@ -178,6 +178,21 @@ class AppState:
         )
 
     @property
+    def person_ids(self) -> list[str]:
+        """The people this memory is narrowed to, as the one list a fetch reads.
+
+        The wizard writes a single pick into ``selected_person`` and a group
+        pick into ``memory_preset_params['person_ids']`` -- two fields, because
+        two different cards collect them. Every read of "who is this memory
+        about" goes through here so the fetch sees the same list the CLI builds
+        from ``--person``: a group of one is a filter, not an absence of one.
+        """
+        group = self.memory_preset_params.get("person_ids") or []
+        if group:
+            return list(group)
+        return [self.selected_person.id] if self.selected_person else []
+
+    @property
     def scope_is_selected(self) -> bool:
         """Whether step 1 has enough to go find media with.
 
@@ -187,6 +202,22 @@ class AppState:
         if self.memory_type == "album":
             return self.album_id is not None
         return self.date_range is not None
+
+    def choose_memory_type(self, memory_type: str) -> None:
+        """Switch to a memory type, dropping what the previous card collected.
+
+        The person is the one input that used to survive: only two cards show a
+        person widget, so an Alice left behind by a Person Spotlight went on
+        narrowing a Year in Review with nothing on screen saying so -- the
+        wizard's own version of a filter the surface cannot explain.
+        """
+        self.memory_type = memory_type
+        self.memory_preset_params = {}
+        self.selected_person = None
+        if memory_type != "album":
+            # A left-over album would otherwise satisfy the step 1 scope check.
+            self.album_id = None
+            self.album_name = None
 
     def reset_clips(self) -> None:
         """Reset clip-related state when changing configuration."""

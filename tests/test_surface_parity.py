@@ -12,10 +12,13 @@ exception.
 
 Differences the project decided on live in ``DOCUMENTED_DURATION_SPLIT`` and
 are asserted *exactly*, so an intentional split still fails the day either side
-moves. Differences nobody decided on are recorded as strict ``xfail`` with the
-description they need in a tracker. Repairing them is not this file's job --
-each changes what a memory contains and wants its own PR and contact sheets.
-The point is to make the next divergence loud, not to quietly fix this one.
+moves. Differences nobody decided on are recorded as strict ``xfail`` carrying
+the reason, so repairing one forces its record to be deleted in the same commit
+-- a fix cannot land while the file still claims the surfaces disagree.
+
+One xfail is left on purpose. It is not drift: the wizard has no way to express
+the request at all, and closing it means deciding which surface is right. An
+xfail that needs a decision says so in its first line.
 """
 
 from __future__ import annotations
@@ -70,8 +73,6 @@ class MemorySpec:
             "holiday": self.holiday,
             "years_back": self.years_back,
             "target_date": self.on_this_day_target,
-            "trip_start": self.trip_start,
-            "trip_end": self.trip_end,
             "location_name": self.location_name,
             **self.as_cli_preset_params(),
         }
@@ -80,17 +81,22 @@ class MemorySpec:
     def as_cli_preset_params(self) -> dict:
         """What ``generate`` forwards to the preset factory, beside the flags.
 
-        Only a special day has inputs the CLI cannot spell as date flags: the
-        window and the title come out of the catalogue that ``--day`` names, so
-        they travel as preset parameters on both surfaces alike.
+        Two memory types have inputs the CLI cannot spell as date flags, and
+        both are discovered rather than typed: a special day's window and title
+        come out of the catalogue that ``--day`` names, and a trip's dates come
+        out of GPS detection. ``--start``/``--end`` mean something else on a
+        trip -- they pick which detected trip to render -- so the trip's own
+        span travels as preset parameters on both surfaces alike.
         """
-        catalogued = {
+        discovered = {
             "day": self.day,
             "window": self.window,
             "title": self.title,
             "active_hours": self.active_hours,
+            "trip_start": self.trip_start,
+            "trip_end": self.trip_end,
         }
-        return {key: value for key, value in catalogued.items() if value is not None}
+        return {key: value for key, value in discovered.items() if value is not None}
 
 
 # The people a spec can name, as the wizard would have picked them.
@@ -170,20 +176,35 @@ DOCUMENTED_DURATION_SPLIT: dict[MemoryType, DocumentedDifference] = {
     ),
 }
 
-# Divergences nobody decided on. Strict xfail, so the day one is repaired the
-# entry has to be deleted -- a fix cannot land while the record still claims
-# the surfaces disagree.
-TRIP_WINDOW_DIVERGENCE = (
-    "The CLI resolves --memory-type trip to the whole calendar year: "
-    "_resolve_memory_type_dates falls through to calendar_year() because no flag "
-    "carries the trip's dates. The window it really fetches is built a third time, "
-    "inline at cli/_trip_generation.py, from the detected trip -- and that copy ends "
-    "the last day at 23:59:59.999999 where date_builders.build_trip ends it at "
-    "23:59:59. The wizard calls build_trip through the preset. One rule, three "
-    "implementations, which is #658's disease on a second memory type. Duration "
-    "follows the window, so the CLI plans 300s off a 366-day span where the wizard "
-    "shows the trip's own editorial length."
-)
+
+# ── Differences this file deliberately does not assert ────────────────────────
+#
+# The three below came out of #680's first run as findings rather than failures:
+# nothing here compares them, so each is written down with the reason it is not
+# drift. A finding that turns out to be drift becomes an xfail above, not a
+# longer comment.
+#
+# "All Time" has no CLI counterpart. The wizard's year pickers offer it and
+# _apply_preset_to_state answers it directly, without create_preset, because no
+# preset covers "every year you own" -- there is no window to build from a year
+# that was never chosen. On the CLI the same memory is --start/--end, which is
+# the manual path, not a memory type. Nothing to reconcile: the surfaces differ
+# because one has an affordance the other spells out.
+#
+# Each memory type computes its length its own way -- the span curve, the trip
+# and special-day editorial curves, a flat preset constant. That is three
+# formulas but not a surface divergence: what this file owns is that both
+# surfaces get the *same* answer per type, which TestTargetDurationParity
+# asserts, and DOCUMENTED_DURATION_SPLIT pins where the project chose otherwise.
+# Whether one curve should serve every type is a selection question, not a
+# parity one.
+#
+# A trip is not narrowed to a person on either surface. handle_trip_generation
+# fetches the trip's window with no person ids, and the wizard's Trip card
+# renders no person widget, so both take the window whole. --person still
+# reaches trip *detection* on the CLI, which is what scopes the GPS scan. This
+# is consistent, but it is the same open question as
+# PERSON_FILTER_ON_NON_PERSON_TYPE_DIVERGENCE below and moves with its answer.
 
 
 def _bounds(date_range: DateRange) -> tuple[datetime, datetime]:
@@ -247,18 +268,14 @@ def ui_duration(memory_type: MemoryType, spec: MemorySpec) -> float | None:
     return create_preset(memory_type, **spec.as_preset_params()).default_duration_seconds
 
 
-def _parametrized_types(divergent: dict[MemoryType, str]):
-    """Every type in SPECS, with the ones known to disagree marked xfail."""
-    return [
-        pytest.param(
-            memory_type,
-            marks=pytest.mark.xfail(reason=divergent[memory_type], strict=True)
-            if memory_type in divergent
-            else (),
-            id=str(memory_type),
-        )
-        for memory_type in SPECS
-    ]
+def _every_type_with_a_spec():
+    """Every type in SPECS, each as its own case.
+
+    No window or duration divergence is outstanding. A new one is recorded the
+    way the fetch scenarios record theirs -- a strict xfail carrying the reason
+    -- so that repairing it forces the record to be deleted.
+    """
+    return [pytest.param(memory_type, id=str(memory_type)) for memory_type in SPECS]
 
 
 class TestRegistryCoverage:
@@ -285,20 +302,33 @@ class TestRegistryCoverage:
 class TestDateWindowParity:
     """Same spec, same windows to search."""
 
-    @pytest.mark.parametrize(
-        "memory_type", _parametrized_types({MemoryType.TRIP: TRIP_WINDOW_DIVERGENCE})
-    )
+    @pytest.mark.parametrize("memory_type", _every_type_with_a_spec())
     def test_windows_match(self, memory_type: MemoryType) -> None:
         spec = SPECS[memory_type]
         assert cli_windows(memory_type, spec) == ui_windows(memory_type, spec)
+
+    def test_a_holiday_with_no_year_given_skips_the_one_that_has_not_happened(self) -> None:
+        """Both surfaces default the year, so both must apply the same guard.
+
+        Asking for Christmas in August with no year spends one of the requested
+        years on a window no photo can fall in. The CLI refused to; the preset
+        the wizard calls had no way to know the year had been defaulted rather
+        than chosen, so it did not. SPECS pins an explicit year for every type,
+        which is the case where the two agreed all along.
+
+        Vacuous between Christmas and New Year, when there is no unhappened
+        Christmas left to skip. build_holiday's own guard is pinned against a
+        fixed ``today`` in tests/test_holiday_memory.py.
+        """
+        spec = MemorySpec(holiday="christmas", years_back=5)
+
+        assert cli_windows(MemoryType.HOLIDAY, spec) == ui_windows(MemoryType.HOLIDAY, spec)
 
 
 class TestTargetDurationParity:
     """Same spec, same default length -- or the split #630 wrote down."""
 
-    @pytest.mark.parametrize(
-        "memory_type", _parametrized_types({MemoryType.TRIP: TRIP_WINDOW_DIVERGENCE})
-    )
+    @pytest.mark.parametrize("memory_type", _every_type_with_a_spec())
     def test_duration_matches_or_matches_the_record(self, memory_type: MemoryType) -> None:
         spec = SPECS[memory_type]
         cli, ui = cli_duration(memory_type, spec), ui_duration(memory_type, spec)
@@ -397,8 +427,10 @@ def _wizard_state(
 
     step1_presets writes a single pick into ``state.selected_person`` and a
     multi-person pick into ``memory_preset_params["person_ids"]`` -- two
-    different fields, and only the Person Spotlight and Multi-Person cards
-    render a person widget at all.
+    different fields, because two different cards collect them, and only the
+    Person Spotlight and Multi-Person cards render a person widget at all. The
+    fields stay two; ``AppState.person_ids`` is what reads them as one, which is
+    the thing the fetch comparison below is really checking.
     """
     state = AppState()
     state.date_ranges = windows
@@ -443,32 +475,28 @@ class FetchScenario:
     divergence: str | None = None
 
 
-MULTI_PERSON_OF_ONE_DIVERGENCE = (
-    "A Multi-Person memory naming one person is unfiltered in the wizard and "
-    "filtered on the CLI. step2_loading._fetch_assets only reads "
-    "memory_preset_params['person_ids'] when it holds two or more, and the "
-    "Multi-Person card never sets state.selected_person, so the single id falls "
-    "through to the whole-window query. The CLI's fetch_videos_and_live_photos "
-    "branches on len(person_ids) == 1 and filters. Same request, one video of "
-    "Alice and one of everybody."
-)
-
 PERSON_FILTER_ON_NON_PERSON_TYPE_DIVERGENCE = (
-    "--person narrows any memory type on the CLI and no type but two in the "
-    "wizard. fetch_videos_and_live_photos takes whatever person_ids generate.py "
+    "NEEDS A PRODUCT DECISION -- do not repair this by guessing. --person "
+    "narrows any memory type on the CLI and no type but two in the wizard. "
+    "fetch_videos_and_live_photos takes whatever person_ids generate.py "
     "resolved, so `--memory-type year_in_review --person Alice --person Bob` "
     "fetches only what holds both; the wizard renders a person widget for Person "
-    "Spotlight and Multi-Person alone, and create_preset's PersonFilter -- which "
-    "does carry the names for every type -- is discarded by "
-    "_apply_preset_to_state. This is the stills-filter and union-vs-intersection "
-    "family: the filter exists on one surface only."
+    "Spotlight and Multi-Person alone, so no other card can name anybody. The "
+    "question is which surface is right: is a person filter on every memory type "
+    "a feature the wizard is missing, or is it a two-card feature the CLI "
+    "over-offers? Answering it also settles what several names mean on a type "
+    "that is not about people -- the CLI intersects them, while create_preset's "
+    "PersonFilter keeps person_names[:1] and drops the rest, so the two would "
+    "still disagree after the widget shipped. Until then the wizard cannot even "
+    "express the request, which is why this stays a strict xfail rather than "
+    "becoming a documented exception."
 )
 
 FETCH_SCENARIOS = (
     FetchScenario(MemoryType.YEAR_IN_REVIEW, ()),
     FetchScenario(MemoryType.PERSON_SPOTLIGHT, (ALICE,)),
     FetchScenario(MemoryType.MULTI_PERSON, (ALICE, BOB)),
-    FetchScenario(MemoryType.MULTI_PERSON, (ALICE,), MULTI_PERSON_OF_ONE_DIVERGENCE),
+    FetchScenario(MemoryType.MULTI_PERSON, (ALICE,)),
     FetchScenario(
         MemoryType.YEAR_IN_REVIEW, (ALICE, BOB), PERSON_FILTER_ON_NON_PERSON_TYPE_DIVERGENCE
     ),
