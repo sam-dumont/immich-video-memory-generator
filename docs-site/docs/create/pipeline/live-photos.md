@@ -101,8 +101,10 @@ For devices without audio (like Google Pixel Motion Photos), spectrogram alignme
 analysis:
   include_live_photos: true                # ON by default
   live_photo_merge_window_seconds: 10.0    # Max gap between photos to form a burst
-  live_photo_min_burst_count: 3            # Min photos needed for burst merging
 ```
+
+Two Live Photos inside that window are already a burst — pairs are common for quick
+reactions, and there is no minimum-count key to raise.
 
 In the UI wizard, there's a toggle in the Options section on Step 1. Via CLI:
 
