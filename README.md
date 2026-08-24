@@ -82,15 +82,24 @@ immich-memories ui                  # web wizard on http://localhost:8080
 immich-memories generate --year 2024 --person "John" --output ~/Videos/john_2024.mp4
 ```
 
-### Immich versions
+### Supported Immich Versions
 
-Works with Immich v2 and v3, detected at runtime, so you never pick a version per run.
+Immich Memories supports **Immich v2 and v3**, detected at runtime:
+
+```yaml
+immich:
+  api_version: auto  # auto | v2 | v3
+```
+
+Leave this on `auto`. The app detects the server major version and uses the matching API contract;
+you do not choose a version for each run. The explicit `v2` and `v3` values are manual
+troubleshooting overrides—escape hatches for proxies or unusual deployments that hide or rewrite
+the version endpoint. They force that contract, so don't use them as upgrade flags.
+
 `immich-memories config test` reports the detected contract and checks your credentials without
-generating or uploading anything. The `api_version: v2 | v3` override in
-[config.yaml](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/configuration/config-file)
-is a troubleshooting escape hatch for proxies that hide the version endpoint, not an upgrade flag.
+generating or uploading anything.
 
-### Optional: an LLM for clip analysis
+### Optional: LLM for smart clip analysis
 
 Everything runs on your own hardware by default: analysis, encoding, titles, music. The LLM below
 is the one piece you can point somewhere else, and it speaks any OpenAI-compatible endpoint. That
