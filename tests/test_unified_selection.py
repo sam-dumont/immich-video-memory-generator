@@ -251,7 +251,7 @@ class TestUnifiedPool:
 
 
 class TestPipelineRunnerUnifiedFlow:
-    """_pipeline_runner merges photos into the selection pool."""
+    """_candidate_pool merges photos into the selection pool."""
 
     def test_photos_converted_to_clip_with_segment(self):
         """score_photos results should be convertible to ClipWithSegment."""
@@ -291,10 +291,10 @@ class TestPipelineRunnerUnifiedFlow:
 
 
 class TestMergePhotosIntoPool:
-    """Tests for _merge_photos_into_pool helper in _pipeline_runner."""
+    """Tests for _merge_photos_into_pool helper in _candidate_pool."""
 
     def test_returns_unchanged_when_photos_disabled(self):
-        from immich_memories.cli._pipeline_runner import _merge_photos_into_pool
+        from immich_memories.cli._candidate_pool import _merge_photos_into_pool
 
         mock_client = MagicMock()
         analyzed = [MagicMock(), MagicMock()]
@@ -311,7 +311,7 @@ class TestMergePhotosIntoPool:
         assert result is analyzed
 
     def test_returns_unchanged_when_no_photo_assets(self):
-        from immich_memories.cli._pipeline_runner import _merge_photos_into_pool
+        from immich_memories.cli._candidate_pool import _merge_photos_into_pool
 
         mock_client = MagicMock()
         analyzed = [MagicMock(), MagicMock()]
@@ -330,7 +330,7 @@ class TestMergePhotosIntoPool:
     def test_merges_scored_photos_with_videos(self, tmp_path):
         from unittest.mock import patch
 
-        from immich_memories.cli._pipeline_runner import _merge_photos_into_pool
+        from immich_memories.cli._candidate_pool import _merge_photos_into_pool
 
         mock_client = MagicMock()
         mock_client.download_asset = MagicMock()
@@ -383,7 +383,7 @@ class TestMergePhotosIntoPool:
     def test_open_provider_circuit_skips_photo_llm_requests(self, tmp_path):
         """A video-side provider failure also suppresses photo-side requests."""
         from immich_memories.analysis.provider_health import ProviderCircuit
-        from immich_memories.cli._pipeline_runner import _merge_photos_into_pool
+        from immich_memories.cli._candidate_pool import _merge_photos_into_pool
 
         circuit = ProviderCircuit()
         circuit.disable("configured model unavailable")

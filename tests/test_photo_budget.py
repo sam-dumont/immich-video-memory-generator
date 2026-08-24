@@ -8,7 +8,7 @@ they are derived from.
 
 from __future__ import annotations
 
-from immich_memories.photos.photo_pipeline import _compute_max_photos, llm_shortlist_size
+from immich_memories.photos.photo_pipeline import _compute_max_photos
 
 
 class TestComputeMaxPhotos:
@@ -23,19 +23,6 @@ class TestComputeMaxPhotos:
 
     def test_no_videos_still_bounded(self):
         assert _compute_max_photos(0, 0.5) <= 10
-
-
-class TestLlmShortlistSize:
-    def test_shortlist_is_bounded_absolutely(self):
-        """A huge library must not translate into a huge number of LLM calls."""
-        assert llm_shortlist_size(video_count=400, available=5128, max_ratio=0.5) <= 200
-
-    def test_shortlist_gives_headroom_over_what_is_selectable(self):
-        size = llm_shortlist_size(video_count=20, available=5128, max_ratio=0.5)
-        assert size > _compute_max_photos(20, 0.5)
-
-    def test_never_exceeds_what_is_available(self):
-        assert llm_shortlist_size(video_count=400, available=12, max_ratio=0.5) == 12
 
 
 class TestLivePhotosDoNotInflateThePhotoBudget:

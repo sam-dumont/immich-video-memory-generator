@@ -5,14 +5,14 @@ title: CPU-Only Mode
 
 # CPU-Only Mode
 
-The pipeline is designed around GPU acceleration and ML-powered features for the best results, but **every feature has a CPU fallback**. You can generate memory videos on a headless server, a cheap VPS, or any machine without a GPU.
+**Every feature has a CPU fallback.** You can generate memory videos on a headless server, a cheap VPS, or any machine without a GPU. What you give up is animated titles and the hardware encoder, not any step of the pipeline.
 
 ## What changes without a GPU
 
 | Feature | With GPU | Without GPU | Impact |
 |---------|----------|-------------|--------|
 | Title screens | Animated GPU-rendered (Taichi: bokeh particles, gradient animation, SDF text) | Static PIL-rendered (gradient background, text overlay) | Simpler visuals, same text — and the dominant cost of a run (see below) |
-| Video encoding | NVENC / VideoToolbox / VAAPI / QSV | libx264 / libx265 (software) | 3-10x slower encoding, the smaller half |
+| Video encoding | NVENC / VideoToolbox / VAAPI / QSV | libx264 / libx265 (software) | Slower encoding — the smaller half of a run |
 | Face detection (macOS) | Apple Vision (Neural Engine) | OpenCV Haar cascades (CPU) | Slightly less accurate |
 | SDF text rendering | Taichi GPU kernels + FreeType atlas | PIL text drawing | No SDF glow/shadow effects |
 | Video scaling | GPU-accelerated (scale_cuda, scale_vaapi) | FFmpeg swscale (CPU) | Slower for resolution changes |
@@ -56,12 +56,13 @@ image) the `gpu` extra skips Taichi altogether — titles are always PIL-rendere
 
 ## Performance expectations
 
-On a modern CPU (4+ cores), expect roughly:
+The one end-to-end measurement is in the [NAS-only guide](../common-setups/nas-only.md#performance-expectations):
+a 14-clip monthly, 62 s of 1080p out, cold cache, 4 cores and no GPU took 10 min with
+`preset: fast` and 15.7 min on the default profile. Analysis was 7.4 of those 10 minutes.
 
-- **Encoding**: 0.2-0.5x realtime for 1080p H.264 (a 3-minute video takes 6-15 minutes)
-- **Analysis**: Similar speed (most analysis is CPU-bound regardless of GPU)
-- **Title rendering**: the dominant cost — see below
-- **Transitions**: Negligible difference for typical clip counts
+Two things follow. Analysis is CPU-bound whether or not you have a GPU, and it is cached — a
+second run over the same period is much cheaper. Title rendering is the part a GPU would
+actually take off your hands.
 
 ### Title rendering is the bottleneck, not encoding
 

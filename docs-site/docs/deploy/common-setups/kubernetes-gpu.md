@@ -76,7 +76,10 @@ kubectl apply -k overlays/gpu
 ```
 
 `kubectl kustomize overlays/gpu` shows the rendered result. `base/kustomization.yaml` pins the
-image tag (no `v` prefix: `0.59.2`); bump it when you upgrade.
+image tag (no `v` prefix: release `vX.Y.Z` is tag `X.Y.Z`). The checked-in pin trails the current
+release — check it against the
+[releases page](https://github.com/sam-dumont/immich-video-memory-generator/releases) and bump it
+when you upgrade.
 
 ## Access the UI
 

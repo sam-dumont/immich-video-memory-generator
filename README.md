@@ -10,7 +10,12 @@
 
 **Cuts your [Immich](https://immich.app/) library into edited memory videos: title screens, music, and only the good five seconds of each clip.**
 
-It connects to your self-hosted Immich server, scores every video and photo, and assembles the keepers into a real edit: a year in review, a trip with its map, one person across the years.
+It connects to your self-hosted Immich server and runs a real editor over your library: a vision
+model looks at the material and describes what is happening, selection and review judge those
+descriptions, and the keepers become a real edit — a year in review, a trip with its map, one
+person across the years. Always chronological, favourites treated as law, and when it can't name
+a day honestly it refuses rather than faking it. How it decides is documented in
+[The Curator](https://sam-dumont.github.io/immich-video-memory-generator/docs/create/pipeline/the-curator).
 
 > **Full documentation**: [sam-dumont.github.io/immich-video-memory-generator](https://sam-dumont.github.io/immich-video-memory-generator/)
 
@@ -125,9 +130,10 @@ advanced:
 - Scores every clip on faces (35% of the weight), motion, camera stability and audio, then keeps
   the best ~5 seconds of a 45-second recording instead of all 45. LLM scene understanding is an
   optional fifth signal.
-- 10 memory types: year in review, monthly, person spotlight, multi-person, season, on this day,
-  holiday, then-and-now, trip (GPS-detected, with an animated satellite map fly-over) and album.
-  The wizard shows 11 cards: those ten plus Custom.
+- 11 memory types: year in review, monthly, person spotlight, multi-person, season, on this day,
+  holiday, then-and-now, trip (GPS-detected, with an animated satellite map fly-over), album, and
+  special day — a day the library itself flagged, found by `discover-days` rather than asked for.
+  The wizard shows 12 cards: those eleven plus Custom.
 - Photos share one selection pool with videos: Ken Burns, face-aware pan, blurred fill behind
   anything that doesn't fill the frame. Live Photos are scored like any other clip.
 - Title screens with satellite map fly-overs, month dividers and particles, GPU-rendered through

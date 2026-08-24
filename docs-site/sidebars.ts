@@ -53,6 +53,7 @@ const sidebars: SidebarsConfig = {
             'create/memory-types/holiday-then-and-now',
             'create/memory-types/trip-memories',
             'create/memory-types/album-memories',
+            'create/memory-types/special-days',
           ],
         },
         {
@@ -61,6 +62,7 @@ const sidebars: SidebarsConfig = {
           items: [
             'create/recipes/birthday-compilations',
             'create/recipes/automated-generation',
+            'create/recipes/trigger-endpoint',
             'create/recipes/tips-and-best-practices',
           ],
         },

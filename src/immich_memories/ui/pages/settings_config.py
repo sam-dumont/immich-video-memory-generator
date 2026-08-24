@@ -22,6 +22,7 @@ _SENSITIVE_KEYS = {
     "password",
     "secret",
     "token",
+    "trigger_token",
     "urls",
 }
 

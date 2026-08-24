@@ -112,7 +112,7 @@ immich-memories discover-days
 ```
 
 It walks year by year, prints what it finds, and writes a catalogue to
-`special-days.json`.
+`~/.immich-memories/special-days.json`.
 
 ```
 2019: 3854 assets
@@ -127,7 +127,7 @@ It walks year by year, prints what it finds, and writes a catalogue to
 | `--until` | this year | last year to scan |
 | `--per-year` | 6 | how many of the busiest candidate days to ask the model about |
 | `--also-skip` | – | a holiday name or `MM-DD` your library keeps that the defaults miss |
-| `--out` | `special-days.json` | where to write the catalogue |
+| `--out` | `~/.immich-memories/special-days.json` | where to write the catalogue |
 | `--rescan` | off | start over, ignoring and replacing the existing catalogue |
 
 The scan takes hours across twenty years, so it resumes by default: years already in the
@@ -148,15 +148,41 @@ first — ten years reads louder than nine, which is the whole appeal of arrivin
 unannounced.
 
 ```
-10 years ago  2015-06-12  A long evening out  18:40-23:55
+10 years ago  2015-06-12  A long evening out  18:40-23:55  9h
 ```
 
-The hours on the right are the day's window, when it found one. Catalogues written before
-windows existed simply have none, and still read.
+The clock times are the day's window, when it found one. The `9h` is how many hours of
+the clock the day put pictures in — the number the scan measured to decide the day was
+worth asking about at all, now kept in the catalogue with the times the day's run started
+and ended. A run is grouped by the date it began and ends when the pictures stop for five
+hours, so a night that ran to three in the morning ends on the following date, and its
+extent says so where the date alone cannot. Catalogues written before any of this existed
+simply have none of it, and still read.
 
 `--on YYYY-MM-DD` checks a different date, and `--catalogue PATH` reads a different file.
 Anniversaries either side of New Year are found: a day at the end of December is due in
 early January.
+
+## What happens to a day once it is found
+
+The catalogue is not the point; it is what the point is made of. A day sitting in it
+becomes a video three ways:
+
+- **Automation proposes it on its anniversary.** `auto run` reads the catalogue like any
+  other detector and puts a due day in the queue, scored by how round the anniversary is,
+  one per run at most. It passes a date and nothing else — the title stays in the file.
+  See [auto](./auto.md#the-anniversary-that-would-otherwise-score-lowest).
+- **The wizard's Surprise me card offers all of them.** Due anniversaries first, then
+  every other day the catalogue holds, because you asked for it rather than being
+  interrupted. See
+  [Step 1: Configuration](../web-ui/step1-configuration.mdx#surprise-me).
+- **You name one yourself**:
+  `immich-memories generate --memory-type special_day --day 2016-06-12`.
+
+All three scope the memory to the day's window when it recorded one, take the runtime
+from how long the day stayed awake, and read the title out of the catalogue rather than
+off the command line. A day the model could not name is refused rather than rendered
+under a generic date. See [Special Days](../memory-types/special-days.mdx).
 
 ## What you need
 
@@ -169,3 +195,16 @@ Titles are checked against what the day actually recorded before they are kept. 
 naming a place the day was never in is dropped rather than shown, and so is one claiming a
 distance or a race — "the 10K" — that nothing the model was shown mentions. A title card is
 the wrong place for a plausible invention, and a number reads exactly as true as a real one.
+
+A dropped title is asked for once more, with the claim it just made quoted back and the
+rule stated as what a title *may* say rather than as another prohibition. That is usually
+enough — the model can generally write a grounded title on the second try — and it costs
+one extra call on the handful of days a year where it happens. Never a third.
+
+If the second attempt is no better, the day falls back to the plainest true thing left:
+`A day in <place>` where its pictures recorded one, or what the model said the day was
+where that reads as a title ("Children's camp activities") rather than as a description of
+it. A day where neither is available is left out of the catalogue rather than written down
+with an empty title — because every reader of the file falls back to the description when
+the title is empty, which is how "Six images captured between 07:32 and 16:06, tracing a
+route from weathered apar" ended up on a card in place of a name.

@@ -31,13 +31,19 @@ def _print_candidates_table(candidates: list) -> None:
         label = c.memory_type
         if c.person_names:
             label += f"\n({', '.join(c.person_names)})"
+        reason = c.reason
+        source = c.extra_params.get("source")
+        if source:
+            # A proposal that came from something other than the calendar has
+            # to say so, or its arrival reads as a coincidence.
+            reason += f"\nvia {source}"
         table.add_row(
             str(i),
             label,
             c.category.value,
             f"{c.date_range_start} to {c.date_range_end}",
             f"{c.score:.3f}",
-            c.reason,
+            reason,
             str(c.asset_count),
         )
 
@@ -55,6 +61,9 @@ def _candidates_to_json(candidates: list) -> str:
             "asset_count": c.asset_count,
             "person_names": c.person_names,
             "memory_key": c.memory_key,
+            # Always present, so a consumer never has to tell "the calendar
+            # proposed this" from "field missing".
+            "source": c.extra_params.get("source"),
         }
         for c in candidates
     ]

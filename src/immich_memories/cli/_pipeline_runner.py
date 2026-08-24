@@ -1,7 +1,8 @@
 """Pipeline orchestration for the generate command.
 
-Bridges CLI to SmartPipeline + generate_memory: fetches assets from
-Immich, runs analysis, and generates the final video.
+Bridges CLI to SmartPipeline + generate_memory: runs analysis over the assets
+the CLI fetched, selects from the candidate pool, and generates the final
+video.
 """
 
 from __future__ import annotations
@@ -15,7 +16,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from immich_memories.analysis import llm_metrics
+from immich_memories.cli._candidate_pool import (
+    _apply_subject_policy,
+    _drop_reencoded_sources,
+    _merge_photos_into_pool,
+)
 from immich_memories.cli._helpers import console, print_error, print_success
+from immich_memories.cli._pool_coverage import report_pool_coverage
+from immich_memories.cli._run_inputs import ResolvedRunInputs
 from immich_memories.cli._run_summary import render_run_summary
 from immich_memories.timeperiod import DateRange
 
@@ -305,11 +313,22 @@ def run_pipeline_and_generate(
     from immich_memories.operations.phases import OperationalPhase
     from immich_memories.tracking.models import normalize_memory_people
 
+    resolved = ResolvedRunInputs.from_arguments(
+        include_photos=include_photos,
+        photo_assets=photo_assets,
+        dry_run=dry_run,
+        automation_attempt_id=automation_attempt_id,
+        upload_to_immich=upload_to_immich,
+        config=config,
+        person_names=person_names,
+        music=music,
+        memory_preset_params=memory_preset_params,
+    )
+
     clips = assets_to_clips(assets)
     if live_photo_clips:
         clips.extend(live_photo_clips)
-    has_photos = include_photos and photo_assets
-    if not clips and not has_photos:
+    if not clips and not resolved.has_photos:
         print_error("No usable content (no video clips or photos)")
         sys.exit(1)
 
@@ -317,7 +336,7 @@ def run_pipeline_and_generate(
         duration,
         memory_type=memory_type,
         clips=clips,
-        photos=photo_assets if include_photos else None,
+        photos=resolved.photo_assets,
         config=config,
     )
 
@@ -337,7 +356,7 @@ def run_pipeline_and_generate(
     _pipeline_start = _time.monotonic()
     phases = _AttemptPhaseReporter(
         config,
-        None if dry_run else automation_attempt_id,
+        resolved.attempt_id,
         progress,
         task,
     )
@@ -353,7 +372,7 @@ def run_pipeline_and_generate(
     output_canvas = _configure_output_canvas(
         pipeline_config,
         clips=clips,
-        photo_assets=photo_assets if include_photos else None,
+        photo_assets=resolved.photo_assets,
         config=config,
         output_resolution=output_resolution,
         output_orientation=output_orientation,
@@ -485,10 +504,11 @@ def run_pipeline_and_generate(
     )
 
     print_success(f"Selected {len(selected_clips)} clips for final video")
+    report_pool_coverage(pipeline_result.coverage)
 
-    should_upload = upload_to_immich or config.upload.enabled
+    should_upload = resolved.should_upload
     album_name = album or config.upload.album_name
-    person_name = person_names[0] if person_names else None
+    person_name = resolved.person_name
 
     if _stops_before_rendering(dry_run=dry_run, no_render=no_render):
         return _finish_without_rendering(
@@ -551,7 +571,7 @@ def run_pipeline_and_generate(
         privacy_mode=privacy_mode,
         title=resolved_title,
         subtitle=resolved_subtitle,
-        music_path=Path(music) if music and music != "auto" else None,
+        music_path=resolved.music_path,
         music_volume=music_volume,
         no_music=no_music,
         upload_enabled=should_upload,
@@ -573,7 +593,7 @@ def run_pipeline_and_generate(
         progress_callback=gen_progress,
         phase_callback=generation_phase,
         completed_operational_phase=OperationalPhase.SELECTION,
-        memory_preset_params=memory_preset_params or {},
+        memory_preset_params=resolved.preset_params,
     )
 
     result_path = generate_memory(gen_params)
@@ -643,145 +663,6 @@ def _send_notification(
         logging.getLogger(__name__).debug("Notification failed", exc_info=True)
 
 
-def _merge_photos_into_pool(
-    analyzed_videos: list,
-    *,
-    live_photo_clips: list | None = None,
-    photo_assets: list | None,
-    include_photos: bool,
-    config: Config,
-    client: SyncImmichClient,
-    work_dir: Path,
-    provider_circuit=None,
-    dry_run: bool = False,
-    thumbnail_cache=None,
-) -> list:
-    """Score photos and merge them as ClipWithSegment into the video pool.
-
-    Returns the combined list of video + photo candidates for unified selection.
-    When photos are disabled or absent, returns the video list unchanged.
-    """
-    if not include_photos or not photo_assets:
-        return analyzed_videos
-
-    import logging
-
-    from immich_memories.analysis.smart_pipeline import ClipWithSegment
-    from immich_memories.analysis.source_filter import from_the_camera_roll
-    from immich_memories.api.models import VideoClipInfo
-    from immich_memories.photos.photo_pipeline import (
-        score_photos,
-        video_count_for_photo_budget,
-    )
-    from immich_memories.photos.scoring import score_photo
-
-    _logger = logging.getLogger(__name__)
-
-    # Before anything is fetched or scored: this is the pool both the CLI and
-    # the UI actually build, and the rule used to live only on the path
-    # neither of them takes.
-    photo_assets = from_the_camera_roll(photo_assets, config)
-    if not photo_assets:
-        return analyzed_videos
-
-    photo_assets = _drop_photos_already_shown_as_motion(
-        photo_assets,
-        analyzed_videos,
-        config=config,
-        client=client,
-        thumbnail_cache=thumbnail_cache,
-    )
-    if not photo_assets:
-        return analyzed_videos
-
-    photo_duration = config.photos.duration
-    if dry_run:
-        scored = [(asset, score_photo(asset, config.photos)) for asset in photo_assets]
-    else:
-        photo_dir = work_dir / "photos"
-        photo_dir.mkdir(parents=True, exist_ok=True)
-        scored = score_photos(
-            assets=photo_assets,
-            config=config.photos,
-            video_clip_count=video_count_for_photo_budget(
-                len(analyzed_videos), len(live_photo_clips or [])
-            ),
-            work_dir=photo_dir,
-            download_fn=client.download_asset,
-            db_path=config.cache.database_path,
-            app_config=config,
-            thumbnail_fn=client.get_asset_thumbnail,
-            provider_circuit=provider_circuit,
-            thumbnail_cache=thumbnail_cache,
-        )
-
-    # What the VLM said about each photo, so the holistic review can read a
-    # photograph the way it reads a video. Without it every still arrived as a
-    # bare line and survived on the rule that protects unanalysed material.
-    from immich_memories.analysis.cache_projection import apply_semantic_payload
-    from immich_memories.photos.scoring import semantic_payloads_for
-
-    payloads = semantic_payloads_for(
-        config.cache.database_path, [asset.id for asset, _ in scored], config.llm.model
-    )
-
-    photo_candidates = []
-    for asset, photo_score in scored:
-        clip = VideoClipInfo(
-            asset=asset,
-            duration_seconds=photo_duration,
-            width=asset.width,
-            height=asset.height,
-        )
-        apply_semantic_payload(clip, payloads.get(asset.id))
-        photo_candidates.append(
-            ClipWithSegment(
-                clip=clip,
-                start_time=0.0,
-                end_time=photo_duration,
-                score=photo_score,
-            )
-        )
-
-    _logger.info(
-        f"Unified pool: {len(analyzed_videos)} video + {len(photo_candidates)} photo candidates"
-    )
-
-    return analyzed_videos + photo_candidates
-
-
-def _drop_reencoded_sources(candidates: list, *, config: Config) -> list:
-    """Drop messaging re-encodes: small, and with no camera EXIF to vouch for them."""
-    from immich_memories.analysis.source_quality import is_usable_source
-
-    floor = config.analysis.min_source_short_side
-    if floor <= 0:
-        return candidates
-
-    kept = [
-        c
-        for c in candidates
-        if is_usable_source(
-            width=c.clip.width or c.clip.asset.width or 0,
-            height=c.clip.height or c.clip.asset.height or 0,
-            has_camera_exif=_has_camera_exif(c.clip.asset),
-            min_short_side=floor,
-        )
-    ]
-    if len(kept) < len(candidates):
-        logger.info(
-            "Source quality: dropped %d clips under %dp with no camera EXIF",
-            len(candidates) - len(kept),
-            floor,
-        )
-    return kept
-
-
-def _has_camera_exif(asset) -> bool:
-    exif = getattr(asset, "exif_info", None)
-    return bool(exif and (exif.make or exif.model))
-
-
 def _name_after_recipe(
     output_path: Path,
     *,
@@ -812,144 +693,3 @@ def _name_after_recipe(
         clips=clips,
     )
     return apply_recipe_hash(output_path, digest)
-
-
-def _apply_subject_policy(
-    candidates: list,
-    *,
-    config: Config,
-    content_budget_seconds: float,
-    photo_assets: list | None = None,
-) -> list:
-    """Prefer clips of people, and ration animals and objects by share of runtime."""
-    if not config.analysis.subject_policy_enabled:
-        return candidates
-
-    from immich_memories.analysis.subject_policy import filter_candidates_by_subject
-
-    return filter_candidates_by_subject(
-        candidates,
-        animal_ratio=config.analysis.max_animal_ratio,
-        object_ratio=config.analysis.max_object_ratio,
-        content_budget_seconds=content_budget_seconds,
-        photo_asset_ids={a.id for a in photo_assets or []},
-    )
-
-
-def _drop_photos_already_shown_as_motion(
-    photo_assets: list,
-    analyzed_videos: list,
-    *,
-    config: Config,
-    client: SyncImmichClient,
-    thumbnail_cache=None,
-) -> list:
-    """Remove photos a selected clip from the same moment already shows.
-
-    Runs before scoring so the removed photos never reach the LLM.
-    """
-    from immich_memories.photos.moment_suppression import filter_photos_covered_by_motion
-
-    motion_clips = [c.clip for c in analyzed_videos if getattr(c, "clip", None) is not None]
-    if not motion_clips:
-        return photo_assets
-
-    return filter_photos_covered_by_motion(
-        photo_assets,
-        motion_clips,
-        config=config.photos,
-        thumbnail_cache=thumbnail_cache,
-        thumbnail_fn=client.get_asset_thumbnail,
-    )
-
-
-def fetch_photos(
-    *,
-    client: SyncImmichClient,
-    date_ranges: list[DateRange],
-    person_ids: list[str],
-) -> list:
-    """Fetch still photos for the memory's windows, honouring the person filter.
-
-    Several people means the photos holding all of them, the same rule videos
-    and Live Photos already follow.
-    """
-    photos: list = []
-    seen: set[str] = set()
-    for dr in date_ranges:
-        batch = client.get_photos_for_date_range(
-            dr,
-            person_id=person_ids[0] if len(person_ids) == 1 else None,
-            person_ids=person_ids if len(person_ids) > 1 else None,
-        )
-        for photo in batch:
-            if photo.id not in seen:
-                seen.add(photo.id)
-                photos.append(photo)
-    return photos
-
-
-def fetch_videos_and_live_photos(
-    *,
-    client: SyncImmichClient,
-    config: Config,
-    progress: ProgressDisplay,
-    date_ranges: list[DateRange],
-    person_ids: list[str],
-    use_live_photos: bool,
-) -> tuple[list, list]:
-    """Fetch video assets and optionally live photo clips.
-
-    Returns (assets, live_photo_clips).
-    """
-    task = progress.add_task("Fetching videos...", total=None)
-
-    all_assets = []
-    for dr in date_ranges:
-        if len(person_ids) > 1:
-            # Naming several people asks for the moments that hold all of them,
-            # not the union of their solo reels. Live photos already intersect.
-            batch = client.get_videos_for_all_persons(person_ids, dr)
-        elif len(person_ids) == 1:
-            batch = client.get_videos_for_person_and_date_range(person_ids[0], dr)
-        else:
-            batch = client.get_videos_for_date_range(dr)
-        all_assets.extend(batch)
-
-    # Deduplicate across date ranges
-    seen: dict[str, object] = {}
-    assets = []
-    for a in all_assets:
-        if a.id not in seen:
-            seen[a.id] = True
-            assets.append(a)
-
-    progress.update(task, completed=True)
-    print_success(f"Found {len(assets)} videos")
-
-    live_photo_clips: list = []
-    if use_live_photos:
-        from immich_memories.analysis.live_photo_pipeline import fetch_live_photo_clips
-
-        lp_task = progress.add_task("Fetching live photos...", total=None)
-        all_lp_clips: list = []
-        all_lp_video_ids: set[str] = set()
-        for dr in date_ranges:
-            lp_clips, lp_vid_ids = fetch_live_photo_clips(
-                client,
-                dr,
-                person_id=person_ids[0] if len(person_ids) == 1 else None,
-                person_ids=person_ids if len(person_ids) > 1 else None,
-                config=config,
-            )
-            all_lp_clips.extend(lp_clips)
-            all_lp_video_ids.update(lp_vid_ids)
-
-        if all_lp_video_ids:
-            assets = [a for a in assets if a.id not in all_lp_video_ids]
-        live_photo_clips = all_lp_clips
-        progress.update(lp_task, completed=True)
-        if live_photo_clips:
-            print_success(f"Found {len(live_photo_clips)} live photo clips")
-
-    return assets, live_photo_clips

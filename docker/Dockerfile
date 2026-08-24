@@ -21,6 +21,7 @@ COPY pyproject.toml README.md uv.lock ./
 COPY src/ ./src/
 COPY packages/ ./packages/
 COPY docker/validate_install_extras.py ./docker/validate_install_extras.py
+COPY docker/uv-requirements.txt ./docker/uv-requirements.txt
 
 # hatch-vcs needs git history to detect version, which isn't available in Docker.
 # The caller must provide the release identity explicitly.
@@ -34,7 +35,7 @@ ENV SETUPTOOLS_SCM_PRETEND_VERSION=${APP_VERSION}
 # tested — that is how OpenCV 5 landed in a release (#339/#340). The lock is
 # exported as a pip constraints file: the image resolves to exactly the
 # versions the suite ran against.
-RUN pip install --no-cache-dir "uv==0.8.17" && \
+RUN pip install --no-cache-dir --require-hashes -r docker/uv-requirements.txt && \
     uv export --frozen --all-extras --no-emit-project \
         --no-emit-package immich-memories-music --no-hashes \
         --format requirements-txt -o /constraints.txt

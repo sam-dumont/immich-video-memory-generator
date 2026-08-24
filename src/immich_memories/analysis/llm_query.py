@@ -49,6 +49,8 @@ _PARAM_ADAPTATIONS: dict[tuple[str, str], set[str]] = {}
 
 
 def _adaptation_for(message: str) -> str | None:
+    if "chat_template_kwargs" in message:
+        return "no_chat_template_kwargs"
     if "max_tokens" in message and "max_completion_tokens" in message:
         return "max_completion_tokens"
     if "temperature" in message and ("not support" in message or "Unsupported" in message):
@@ -57,6 +59,8 @@ def _adaptation_for(message: str) -> str | None:
 
 
 def _apply_adaptations(payload: dict, adaptations: set[str]) -> None:
+    if "no_chat_template_kwargs" in adaptations:
+        payload.pop("chat_template_kwargs", None)
     if "max_completion_tokens" in adaptations and "max_tokens" in payload:
         payload["max_completion_tokens"] = payload.pop("max_tokens")
     if "default_temperature" in adaptations:
@@ -73,10 +77,12 @@ _PROVIDER_PRESETS: dict[str, dict] = {
     "openai": {
         "base_url": "https://api.openai.com/v1",
         "thinking_params": {"reasoning_effort": "medium"},
+        "no_thinking_params": {},
     },
     "zai": {
         "base_url": "https://api.z.ai/api/paas/v4",
         "thinking_params": {"thinking": {"type": "enabled"}},
+        "no_thinking_params": {},
     },
 }
 
@@ -390,6 +396,13 @@ async def _query_openai(
         payload.update(config.thinking_params)
         payload["max_tokens"] = max(max_tokens, THINKING_MIN_MAX_TOKENS)
         timeout = max(timeout, THINKING_MIN_TIMEOUT_SECONDS)
+    elif config.no_thinking_params:
+        # Not asking to think is not the same as asking not to. On a server
+        # whose template reasons by default, every bulk call reasoned anyway
+        # at the caller's small budget and came back truncated mid-thought.
+        # Gated on the switch itself, never on llm.thinking: a user who turns
+        # reasoning off still has a server that reasons unless it is told.
+        payload.update(config.no_thinking_params)
     _shape_for_provider(payload, config)
     adaptations = _PARAM_ADAPTATIONS.setdefault((base_url, config.model), set())
     _apply_adaptations(payload, adaptations)

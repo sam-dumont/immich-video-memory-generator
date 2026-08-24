@@ -121,12 +121,16 @@ def resolve_date_range(
     years_back: int | None = None,
     on_this_day_target: date | None = None,
     holiday: str | None = None,
+    preset_params: dict | None = None,
 ) -> DateRange | list[DateRange]:
     """Resolve date range from command line options.
 
     When --memory-type is set, delegates to preset date builders.
     --start/--end can override the preset's default date range.
     Otherwise falls through to manual date range options.
+
+    ``preset_params`` carries what a memory type cannot spell as date flags: a
+    special day's window comes out of the catalogue, not off the command line.
     """
     if memory_type:
         default_range = _resolve_memory_type_dates(
@@ -138,6 +142,7 @@ def resolve_date_range(
             years_back,
             on_this_day_target,
             holiday,
+            preset_params,
         )
         manual_range = _resolve_manual_dates(start, end, period)
         if manual_range:
@@ -180,9 +185,14 @@ def _resolve_memory_type_dates(
     years_back: int | None = None,
     on_this_day_target: date | None = None,
     holiday: str | None = None,
+    preset_params: dict | None = None,
 ) -> DateRange | list[DateRange]:
     """Resolve date ranges from memory type preset."""
     from immich_memories.memory_types.date_builders import build_month, build_season
+
+    discovered = _discovered_scope(memory_type, preset_params or {})
+    if discovered is not None:
+        return discovered
 
     if memory_type == "season":
         if not season:
@@ -213,6 +223,59 @@ def _resolve_memory_type_dates(
     return calendar_year(year)
 
 
+def _holiday_ranges(holiday: str, year: int | None, years_back: int | None) -> list[DateRange]:
+    """One window per year around a holiday, as the registered preset builds them."""
+    from immich_memories.memory_types.factory import create_preset
+    from immich_memories.memory_types.registry import MemoryType
+
+    preset = create_preset(
+        MemoryType.HOLIDAY, holiday=holiday, year=year, years_back=years_back or 5
+    )
+    return preset.date_ranges
+
+
+def _discovered_scope(memory_type: str, preset_params: dict) -> DateRange | None:
+    """The window a memory type discovers rather than reads off the date flags.
+
+    Two types find their own scope: the catalogue records a special day's, and
+    GPS detection finds a trip's. None means the date flags still decide.
+    """
+    if memory_type == "special_day":
+        return _special_day_scope(preset_params)
+    if memory_type == "trip":
+        return _trip_scope(preset_params)
+    return None
+
+
+def _trip_scope(preset_params: dict) -> DateRange | None:
+    """The detected trip's own span, or None while no trip has been picked yet.
+
+    ``--year`` scopes trip *detection*, not the memory: the window a trip memory
+    actually covers is the trip, and it only exists once detection has run and
+    one has been selected. Until then the year is the honest answer, which is
+    what the caller falls through to.
+    """
+    from immich_memories.memory_types.date_builders import build_trip
+
+    start, end = preset_params.get("trip_start"), preset_params.get("trip_end")
+    if start is None or end is None:
+        return None
+    return build_trip(start, end)
+
+
+def _special_day_scope(preset_params: dict) -> DateRange:
+    """The window the catalogue recorded for one day, or the calendar day."""
+    from immich_memories.memory_types.date_builders import build_special_day
+
+    day = preset_params.get("day")
+    if day is None:
+        raise click.UsageError(
+            "--day is required with --memory-type special_day. Run "
+            "`immich-memories days-due` to see which days the catalogue holds."
+        )
+    return build_special_day(day, preset_params.get("window"))
+
+
 def duration_from_date_range(date_range: DateRange) -> float:
     """Scale duration by date range: 1 month = 60s, 1 year = 600s.
 
@@ -224,31 +287,40 @@ def duration_from_date_range(date_range: DateRange) -> float:
     return float(max(30, min(600, duration)))
 
 
-# WHY these two by name: they span whole years, and duration_from_date_range's
-# curve was fitted on 1-12 months -- it turns negative past ~40 months, so five
-# Christmases clamped to the same 30s floor as an empty weekend (#511). Their
-# presets already state the length they want, so the CLI reads that instead.
-_PRESET_DURATION_TYPES = ("holiday", "then_and_now")
+# WHY these by name: duration_from_date_range's curve was fitted on 1-12
+# months and is wrong at both ends. Past ~40 months it turns negative, so five
+# Christmases clamped to the same 30s floor as an empty weekend (#511); at a
+# one-day span it evaluates negative too, so a special day would render as 30
+# seconds however much happened on it. Their presets already state the length
+# they want, so the CLI reads that instead.
+_PRESET_DURATION_TYPES = ("holiday", "then_and_now", "special_day")
 
 
-def _preset_duration(memory_type: str) -> float | None:
+def _preset_duration(memory_type: str, preset_params: dict | None = None) -> float | None:
     """The registered preset's own intended length for a memory type."""
     from immich_memories.memory_types.factory import create_preset
     from immich_memories.memory_types.registry import MemoryType
 
-    return create_preset(MemoryType(memory_type)).default_duration_seconds
+    preset = create_preset(MemoryType(memory_type), **(preset_params or {}))
+    return preset.default_duration_seconds
 
 
 def default_duration_for_type(
-    memory_type: str | None, date_range: DateRange | None
+    memory_type: str | None,
+    date_range: DateRange | None,
+    preset_params: dict | None = None,
 ) -> float | None:
     """Get default duration in seconds for a memory type.
 
     Date-range based types scale with span (1 month = 60s, 1 year = 600s).
     Trip dates provide an editorial estimate; discovered media later applies
-    the capacity cap. Types that span several years take the length their
-    preset asks for, since the span curve does not reach that far. Other fixed
-    types: on_this_day (45s), person without range (120s).
+    the capacity cap. Types the span curve cannot reach -- several years at one
+    end, a single day at the other -- take the length their preset asks for.
+    Other fixed types: on_this_day (45s), person without range (120s).
+
+    ``preset_params`` is forwarded to the preset factory for the types whose
+    length depends on more than the dates: a special day needs the day it
+    happened on and how long it stayed awake.
     """
     if not memory_type:
         return None
@@ -256,7 +328,7 @@ def default_duration_for_type(
     if memory_type == "on_this_day":
         return 45.0
     if memory_type in _PRESET_DURATION_TYPES:
-        return _preset_duration(memory_type)
+        return _preset_duration(memory_type, preset_params)
     if memory_type == "trip" and date_range is not None:
         from immich_memories.planning.auto_duration import trip_editorial_duration_seconds
 
@@ -287,7 +359,6 @@ def _multi_year_ranges(
     cognitive complexity past the gate.
     """
     from immich_memories.memory_types.date_builders import (
-        build_holiday,
         build_on_this_day,
         build_then_and_now,
     )
@@ -298,15 +369,10 @@ def _multi_year_ranges(
     if memory_type == "holiday":
         if not holiday:
             raise click.UsageError("--holiday is required with --memory-type holiday")
-        # WHY today= only when the year was defaulted: asking for Christmas in
-        # August would otherwise spend one of the requested years on a window
-        # that has not happened. An explicit --year is a choice.
-        return build_holiday(
-            holiday,
-            year or date.today().year,
-            years_back=years_back or 5,
-            today=None if year else date.today(),
-        )
+        # Through the preset, not build_holiday: the rule that a defaulted year
+        # must skip a holiday that has not happened yet belongs to whoever
+        # defaults the year, and the wizard defaults it there too.
+        return _holiday_ranges(holiday, year, years_back)
 
     if memory_type == "then_and_now":
         # WHY the `or 10`: --years-back defaults to None here, and 0 is read as

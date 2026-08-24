@@ -5,7 +5,7 @@ title: Clip Selection & Scoring
 
 # Clip Selection & Scoring
 
-The whole point of a memory video is picking the *good* parts. Nobody wants to watch 30 seconds of your pocket recording a sidewalk. The pipeline scores every segment across multiple factors, then picks the winners.
+The whole point of a memory video is picking the *good* parts. Nobody wants to watch 30 seconds of your pocket recording a sidewalk. This page documents the arithmetic — budgets, weights, caps. The judgment those numbers serve — what the model looks at, how the cut is reviewed, and the rules it obeys — is in [The Curator](the-curator).
 
 ## The Density Budget
 
@@ -262,6 +262,28 @@ CLI: `--analysis-depth auto|fast|thorough`
 Cache reuse is model-aware. Results from the exact configured model are loaded automatically and
 shown in review; they skip another LLM request. Results with no model identity or from a different
 model are stale and are analyzed again.
+
+### How much of the pool was actually looked at
+
+Not every candidate gets analyzed. The ones that don't are scored from metadata — duration,
+resolution, whether you starred it — and metadata produces a lot of identical scores. On a real
+April 2021 recap, 25 of 149 candidates had been visually analyzed and 55% of the pool carried the
+same fallback score. When scores tie, the ranking is list order wearing a number.
+
+So the pipeline now says so. When fewer than 60% of the candidates were visually analyzed, you get
+one line — in the review step and in `generate` output:
+
+> 25 of 149 candidates (17%) were visually analyzed; the rest were picked on metadata. Review
+> recommended.
+
+Above 60% it says nothing, because a warning on every run is a warning nobody reads on the run that
+needed it. The count is always in `--trace-selection` output, thin or not.
+
+Treat it as a signal about where your attention is worth spending, not an error. A low number
+usually means an uncurated period with no favorites to seed from and a pool the analysis budget
+never reached. The clips are fine; the *ranking* between them is close to arbitrary, so the review
+step is doing more work than usual. Run `--analysis-depth thorough` if you'd rather the machine
+decide, or just spend the extra minute in review.
 
 ## Performance: 480p Downscaling
 

@@ -9,11 +9,12 @@ Kustomize manifests live in `deploy/kubernetes/`. The base boots on any cluster 
 GPU scheduling is an overlay.
 
 :::note Less travelled than Docker Compose
-Docker Compose is the primary self-hosting path. These manifests are rendered with
-`kubectl kustomize` in the test suite (base and GPU overlay) and their contracts are pinned —
-Secret applied, writable state volume, `/health/live` + `/health/ready` probes, no GPU
-requirement in the base — but they are not applied to a live cluster on every release. Read the
-rendered output before you apply it, and open an issue if something does not boot.
+Docker Compose is the primary self-hosting path. What the test suite pins on every run is the
+manifests' contract: Secret applied, writable state volume, `/health/live` + `/health/ready`
+probes, no GPU requirement in the base. A separate test renders base and GPU overlay with
+`kubectl kustomize`, but it skips wherever `kubectl` is not installed — which includes CI — and
+nothing is applied to a live cluster. Read the rendered output before you apply it, and open an
+issue if something does not boot.
 :::
 
 ```
@@ -48,9 +49,11 @@ kubectl apply -k base
 kubectl apply -k overlays/gpu
 ```
 
-`kubectl kustomize base` shows what will be applied. `base/kustomization.yaml` pins the image
-tag (`images: newTag`); published tags carry no `v` prefix (`0.59.2`, `latest`) — bump it when you
-upgrade.
+`kubectl kustomize base` shows what will be applied. `base/kustomization.yaml` pins the image tag
+(`images: newTag`). Published tags carry no `v` prefix — release `vX.Y.Z` is image tag `X.Y.Z` —
+plus `latest`. The checked-in pin trails the current release, so check it against the
+[releases page](https://github.com/sam-dumont/immich-video-memory-generator/releases) before you
+apply, and bump it when you upgrade.
 
 ## Access the UI
 
@@ -72,7 +75,8 @@ Once auth is on (basic-auth keys in the Secret, or [OIDC](../configuration/authe
 ## How the pod is wired
 
 The image runs as user `immich`, UID/GID 1000, `HOME=/home/immich` — the manifests set
-`runAsUser`/`fsGroup` 1000, drop all capabilities and use the `RuntimeDefault` seccomp profile.
+`runAsUser`/`fsGroup` 1000, drop all capabilities, use the `RuntimeDefault` seccomp profile and
+mount the root filesystem read-only. The three mounts below are the only writable paths.
 
 | Mount | Backed by | Holds |
 |-------|-----------|-------|

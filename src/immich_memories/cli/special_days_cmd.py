@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import calendar
 import json
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 
 import click
 
+from immich_memories.automation.catalogue import (
+    default_catalogue_path,
+    entries_from,
+    load_catalogue,
+)
 from immich_memories.cli._helpers import console, print_success
 
 
@@ -32,7 +37,7 @@ def _register_discover(main: click.Group) -> None:
     @click.option(
         "--out",
         type=click.Path(dir_okay=False, path_type=Path),
-        default=Path("special-days.json"),
+        default=default_catalogue_path(),
         help="Where to write the catalogue",
     )
     @click.option(
@@ -78,70 +83,26 @@ def _register_due(main: click.Group) -> None:
     @click.option(
         "--catalogue",
         type=click.Path(exists=True, dir_okay=False, path_type=Path),
-        default=Path("special-days.json"),
+        default=default_catalogue_path(),
     )
     def days_due(on: object, catalogue: Path) -> None:
         """Show which discovered days have an anniversary about now."""
-        from immich_memories.automation.special_day_scan import (
-            DiscoveredDay,
-            anniversaries_due,
-        )
+        from immich_memories.automation.special_day_scan import anniversaries_due
 
         when = on.date() if on is not None else date.today()  # type: ignore[attr-defined]
-        entries = [
-            DiscoveredDay(
-                day=date.fromisoformat(raw["day"]),
-                title=raw.get("title", ""),
-                subtitle=raw.get("subtitle", ""),
-                what=raw.get("what", ""),
-                photos=raw.get("photos", 0),
-                window=_window_in(raw.get("window")),
-            )
-            for raw in _load_catalogue(catalogue)
-            if raw.get("day")
-        ]
+        entries = entries_from(catalogue)
 
         for entry, years in anniversaries_due(entries, when):
             line = f"[bold]{years} years ago[/bold]  {entry.day}  {entry.title or entry.what}"
             if entry.window:
                 start, end = entry.window
                 line += f"  [dim]{start:%H:%M}-{end:%H:%M}[/dim]"
+            if entry.active_hours:
+                line += f"  [dim]{entry.active_hours}h[/dim]"
             console.print(line)
             if entry.subtitle:
                 console.print(f"                {entry.subtitle}")
         print_success(f"{len(entries)} days in the catalogue, checked against {when}")
-
-
-def _window_in(raw: object) -> tuple[datetime, datetime] | None:
-    """The hours a catalogue entry recorded for its event, if it recorded any.
-
-    Entries written before the scan looked for one have no window, and a scan
-    of twenty years is not something to ask anybody to run again.
-    """
-    if not isinstance(raw, list) or len(raw) != 2:
-        return None
-    try:
-        return (datetime.fromisoformat(raw[0]), datetime.fromisoformat(raw[1]))
-    except (TypeError, ValueError):
-        console.print(f"[yellow]Ignoring an unreadable window in the catalogue: {raw!r}[/yellow]")
-        return None
-
-
-def _load_catalogue(path: Path) -> list[dict]:
-    """What an earlier run already found, or nothing readable.
-
-    A scan runs for hours across twenty years. Starting from scratch every
-    time is the difference between a command you can interrupt and one you
-    have to babysit.
-    """
-    if not path.exists():
-        return []
-    try:
-        loaded = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError):
-        console.print(f"[yellow]{path} is not readable as a catalogue; starting fresh[/yellow]")
-        return []
-    return loaded if isinstance(loaded, list) else []
 
 
 def _years_in(catalogue: list[dict]) -> set[int]:
@@ -163,7 +124,7 @@ def _write_catalogue(path: Path, found: list[dict], *, rescan: bool) -> None:
     swallowed an unreachable Immich wrote [] over twenty years of scanning
     and called it a success.
     """
-    if not found and not rescan and _load_catalogue(path):
+    if not found and not rescan and load_catalogue(path):
         console.print(
             f"[yellow]Found nothing; leaving {path} as it was. "
             f"Pass --rescan to replace it.[/yellow]"
@@ -206,7 +167,7 @@ def _scan_library(
 
     config = get_config()
     home = _homebase(config)
-    found: list[dict] = [] if rescan else _load_catalogue(out)
+    found: list[dict] = [] if rescan else load_catalogue(out)
     already = set() if rescan else _years_in(found)
 
     with SyncImmichClient(base_url=config.immich.url, api_key=config.immich.api_key) as client:
@@ -237,6 +198,9 @@ def _scan_library(
                         "what": day.what,
                         "photos": day.photos,
                         "window": [w.isoformat() for w in day.window] if day.window else None,
+                        "active_hours": day.active_hours,
+                        "run_start": day.run_start.isoformat() if day.run_start else None,
+                        "run_end": day.run_end.isoformat() if day.run_end else None,
                     }
                 )
                 console.print(f"  [green]{day.day}[/green]  {day.title or day.what}")

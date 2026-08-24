@@ -15,6 +15,8 @@ from immich_memories.memory_types.registry import MemoryType
 from immich_memories.titles.llm_titles import generate_title_with_llm
 
 if TYPE_CHECKING:
+    from datetime import date
+
     from immich_memories.ui.state import AppState
 
 logger = logging.getLogger(__name__)
@@ -51,6 +53,42 @@ def _detect_season(start_month: int) -> str:
         if start_month in months:
             return name
     return "Memories"
+
+
+def _occasion_title(
+    memory_type: str | None,
+    start: date,
+    end: date,
+    preset_params: dict | None,
+) -> tuple[str, str | None] | None:
+    """Titles that name an occasion rather than the span it happens to cover.
+
+    The span of five Christmases is five years and the span of a special day is
+    a few hours; naming either by its ends describes none of what happened.
+    Returns None for the types whose span *is* the answer.
+    """
+    if memory_type == "on_this_day":
+        return f"On This Day — {_MONTH_NAMES[start.month]} {start.day}", None
+
+    if memory_type == "holiday":
+        from immich_memories.memory_types.factory import holiday_label
+
+        holiday = (preset_params or {}).get("holiday", "christmas")
+        return holiday_label(holiday, end.year), "Through the Years"
+
+    if memory_type == "then_and_now":
+        # Both ends, in the order the memory plays them.
+        return f"{start.year} & {end.year}", "Then and Now"
+
+    if memory_type == "special_day":
+        # The catalogue named this day from the day's own photos, months before
+        # anybody asked for a video of it.
+        entry = preset_params or {}
+        name = (entry.get("title") or "").strip() or (entry.get("what") or "").strip()
+        if name:
+            return name, (entry.get("subtitle") or "").strip() or None
+
+    return None
 
 
 def generate_template_title(
@@ -95,20 +133,9 @@ def generate_template_title(
     if memory_type == "trip":
         return f"{_MONTH_NAMES[start.month]} {year} Trip", f"{start_date} \u2013 {end_date}"
 
-    if memory_type == "on_this_day":
-        return f"On This Day \u2014 {_MONTH_NAMES[start.month]} {start.day}", None
-
-    if memory_type == "holiday":
-        # The span of five Christmases is five years; naming it by either end
-        # describes none of them. The occasion is the title.
-        from immich_memories.memory_types.factory import holiday_label
-
-        holiday = (preset_params or {}).get("holiday", "christmas")
-        return holiday_label(holiday, end.year), "Through the Years"
-
-    if memory_type == "then_and_now":
-        # Both ends, in the order the memory plays them.
-        return f"{start.year} & {end.year}", "Then and Now"
+    occasion = _occasion_title(memory_type, start, end, preset_params)
+    if occasion is not None:
+        return occasion
 
     # Fallback for unknown types
     span_months = (end.year - start.year) * 12 + (end.month - start.month)
@@ -274,6 +301,12 @@ async def generate_title_after_pipeline(state: AppState) -> None:
         # Matches the CLI, where the album name is a title_override: a name the
         # user typed themselves outranks anything the LLM would invent. Step 3
         # still lets them edit it.
+        return
+
+    if state.memory_type == MemoryType.SPECIAL_DAY and template_title:
+        # Same rule, different author: the catalogue named this day months ago
+        # from the day's own photos. The title LLM sees a handful of clip
+        # descriptions, and asking it would rename the occasion.
         return
 
     # Step 2: Try LLM (overwrites template on success)

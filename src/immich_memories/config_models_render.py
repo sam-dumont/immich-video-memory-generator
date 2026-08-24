@@ -168,6 +168,15 @@ class PhotoConfig(BaseModel):
     """Photo-to-video animation settings."""
 
     enabled: bool = Field(default=True, description="Include photos in memory videos")
+    read_moments: bool = Field(
+        default=False,
+        description=(
+            "Read each moment from a contact sheet of its photos before "
+            "shortlisting, so the shortlist is what the model saw happening "
+            "rather than what metadata guessed. Off by default while the "
+            "behaviour is measured against whole sweeps."
+        ),
+    )
     max_ratio: float = Field(
         default=0.50,
         ge=0.0,

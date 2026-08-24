@@ -288,6 +288,11 @@ def _build_when_part(
     if memory_type == "monthly_highlights":
         return _when_monthly(preset_params)
 
+    # A special day is one day, and the range slug below rounds it up to its
+    # month -- which is the name that month's highlights already write to.
+    if memory_type == "special_day" and date_start:
+        return date_start.isoformat()
+
     # On This Day: month + day (no year, it spans years)
     if memory_type == "on_this_day" and date_start:
         month_name = calendar.month_name[date_start.month].lower()

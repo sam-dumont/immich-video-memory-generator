@@ -19,6 +19,11 @@ class CandidateCategory(StrEnum):
     MULTI_PERSON = "multi_person"
     ON_THIS_DAY = "on_this_day"
     TRIP = "trip"
+    # Named for the family rather than for the catalogue: what makes this kind
+    # of proposal different is that the library volunteered it, not that it is
+    # a day. A recurring subject aggregated out of the analysis corpus is the
+    # same thing at another granularity and reads as this member's sibling.
+    EMERGENT_DAY = "emergent_day"
 
 
 @dataclass
@@ -42,11 +47,22 @@ def make_memory_key(
     date_range_start: date,
     date_range_end: date,
     person_names: list[str] | None = None,
+    discriminator: str | None = None,
 ) -> str:
     """Build a deterministic dedup fingerprint for a memory.
 
-    Format: {type}:{start}:{end}:{sorted,lowered,persons}
+    Format: {type}:{start}:{end}:{sorted,lowered,persons}[:{discriminator}]
     Same inputs always produce the same key, regardless of person order or case.
+
+    The discriminator is for a memory that is allowed to come back: the same
+    day proposed on its tenth anniversary and again on its fifteenth is two
+    memories, and without it the second could never fire. Keys already written
+    carry no discriminator and no trailing colon, so every one of them still
+    matches the run that wrote it.
     """
     persons = ",".join(sorted(n.lower() for n in (person_names or [])))
-    return f"{memory_type}:{date_range_start.isoformat()}:{date_range_end.isoformat()}:{persons}"
+    suffix = f":{discriminator}" if discriminator else ""
+    return (
+        f"{memory_type}:{date_range_start.isoformat()}:"
+        f"{date_range_end.isoformat()}:{persons}{suffix}"
+    )

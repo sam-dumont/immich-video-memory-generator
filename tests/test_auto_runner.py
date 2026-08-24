@@ -23,6 +23,7 @@ from immich_memories.automation.candidate_scorer import score_and_rank
 from immich_memories.automation.candidates import CandidateCategory, MemoryCandidate
 from immich_memories.automation.models import AutoOutcome, ProcessResult
 from immich_memories.automation.runner import (
+    AutomationAlreadyRunningError,
     AutoRunner,
     _build_generate_command,
     _execute_generate,
@@ -30,6 +31,20 @@ from immich_memories.automation.runner import (
 from immich_memories.cli.auto_cmd import _candidates_to_json, _print_candidates_table
 from immich_memories.config_loader import Config
 from immich_memories.tracking.models import RunMetadata
+
+
+@pytest.fixture(autouse=True)
+def _no_machine_catalogue(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Point discovery at an absent catalogue instead of this machine's real one.
+
+    discover() reads the special-days catalogue from the user's home; on a
+    developer machine that file holds real discovered days, and these tests
+    would count candidates that CI never sees.
+    """
+    monkeypatch.setattr(
+        "immich_memories.automation.candidate_discovery.default_catalogue_path",
+        lambda: tmp_path / "no-catalogue.json",
+    )
 
 
 @pytest.fixture
@@ -1783,3 +1798,47 @@ class TestFailedCandidateBackoff:
         target, after = self._suggest_with_failures(config, failures=1)
 
         assert target in {c.memory_key for c in after}
+
+
+class TestStartedAutoRun:
+    """The seam the HTTP trigger needs: an id now, the generation afterwards."""
+
+    def test_started_attempt_is_durable_before_the_run_executes(self, config: Config) -> None:
+        runner = AutoRunner(config)
+
+        started = runner.start_one(reason="http trigger")
+        try:
+            stored = runner.state.get_attempt(started.attempt.id)
+        finally:
+            started.execute(force=True, dry_run=True)
+
+        assert stored is not None
+        assert stored.outcome is AutoOutcome.RUNNING
+        assert stored.reason == "http trigger"
+
+    def test_a_held_lease_refuses_a_second_start(self, config: Config) -> None:
+        """One automation decision at a time, whoever asked for it."""
+        started = AutoRunner(config).start_one(reason="http trigger")
+        try:
+            with pytest.raises(AutomationAlreadyRunningError):
+                AutoRunner(config).start_one(reason="daily wake")
+        finally:
+            started.execute(force=True, dry_run=True)
+
+    def test_executing_releases_the_lease_for_the_next_caller(self, config: Config) -> None:
+        AutoRunner(config).start_one(reason="http trigger").execute(force=True, dry_run=True)
+
+        AutoRunner(config).start_one(reason="daily wake").execute(force=True, dry_run=True)
+
+    def test_run_one_still_skips_rather_than_raising_when_the_lease_is_held(
+        self, config: Config
+    ) -> None:
+        """The CLI and the daily timer keep their old, non-raising contract."""
+        started = AutoRunner(config).start_one(reason="http trigger")
+        try:
+            result = AutoRunner(config).run_one()
+        finally:
+            started.execute(force=True, dry_run=True)
+
+        assert result.outcome is AutoOutcome.SKIPPED
+        assert result.reason == "automation already running"

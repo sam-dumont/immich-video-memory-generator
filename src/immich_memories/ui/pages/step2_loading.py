@@ -14,6 +14,7 @@ from immich_memories.analysis.cache_projection import (
 from immich_memories.analysis.live_photo_pipeline import fetch_live_photo_clips
 from immich_memories.api.immich import SyncImmichClient
 from immich_memories.api.models import VideoClipInfo
+from immich_memories.api.person_scope import stills_person_args, videos_in_window
 from immich_memories.operations.phases import OperationalPhase, PhaseEvent
 from immich_memories.processing.clip_probing import probe_video_url
 from immich_memories.security import sanitize_error_message
@@ -98,19 +99,10 @@ def _fetch_assets(state) -> list:
         api_key=state.immich_api_key,
         api_version=state.immich_api_version,
     ) as client:
-        multi_ids = state.memory_preset_params.get("person_ids", [])
+        person_ids = state.person_ids
         assets: list = []
         for date_range in state.date_ranges:
-            if len(multi_ids) >= 2:
-                assets.extend(client.get_videos_for_all_persons(multi_ids, date_range))
-            elif state.selected_person:
-                assets.extend(
-                    client.get_videos_for_person_and_date_range(
-                        state.selected_person.id, date_range
-                    )
-                )
-            else:
-                assets.extend(client.get_videos_for_date_range(date_range))
+            assets.extend(videos_in_window(client, person_ids, date_range))
         return _dedup_by_id(assets)
 
 
@@ -148,8 +140,7 @@ def _build_clips(assets: list) -> tuple[list[VideoClipInfo], int]:
 
 def _fetch_photos(state) -> list:
     """Fetch photo assets (blocking), one query per window."""
-    person_id = state.selected_person.id if state.selected_person else None
-    multi_ids = state.memory_preset_params.get("person_ids", [])
+    person_id, group_ids = stills_person_args(state.person_ids)
     with SyncImmichClient(
         base_url=state.immich_url,
         api_key=state.immich_api_key,
@@ -159,9 +150,7 @@ def _fetch_photos(state) -> list:
         for date_range in state.date_ranges:
             photos.extend(
                 client.get_photos_for_date_range(
-                    date_range,
-                    person_id=person_id,
-                    person_ids=multi_ids if len(multi_ids) >= 2 else None,
+                    date_range, person_id=person_id, person_ids=group_ids
                 )
             )
         return _dedup_by_id(photos)
@@ -169,8 +158,7 @@ def _fetch_photos(state) -> list:
 
 def _fetch_live_photos(state) -> tuple[list[VideoClipInfo], set[str]]:
     """Fetch live photo clips (blocking), one query per window."""
-    lp_person_id = state.selected_person.id if state.selected_person else None
-    multi_ids = state.memory_preset_params.get("person_ids", [])
+    lp_person_id, lp_group_ids = stills_person_args(state.person_ids)
 
     with SyncImmichClient(
         base_url=state.immich_url,
@@ -184,7 +172,7 @@ def _fetch_live_photos(state) -> tuple[list[VideoClipInfo], set[str]]:
                 lp_client,
                 date_range,
                 person_id=lp_person_id,
-                person_ids=multi_ids if len(multi_ids) >= 2 else None,
+                person_ids=lp_group_ids,
                 config=state.config,
             )
             clips.extend(window_clips)

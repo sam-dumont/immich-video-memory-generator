@@ -19,6 +19,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from immich_memories.analysis.selection_coverage import AnalysisCoverage
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
@@ -42,6 +44,10 @@ class Trace:
     """Everything a run decided, in order."""
 
     stages: list[Stage] = field(default_factory=list)
+    # Not a stage: it describes the pool every stage worked on, not a step
+    # the pool passed through. Re-set by each re-selection, so the value that
+    # survives is the one the verify passes left behind (#489).
+    coverage: AnalysisCoverage | None = None
 
     def record(
         self,
@@ -70,7 +76,11 @@ class Trace:
         if not self.stages:
             return "No selection stages were recorded.\n"
         width = max(len(s.name) for s in self.stages)
-        lines = [f"{'stage'.ljust(width)}  {'kept':>5} {'lost':>5}  {'favorites':>12}", ""]
+        lines = [
+            *self._coverage_lines(),
+            f"{'stage'.ljust(width)}  {'kept':>5} {'lost':>5}  {'favorites':>12}",
+            "",
+        ]
         for stage in self.stages:
             favorites = f"{stage.favorites_in} -> {stage.favorites_out}"
             marker = (
@@ -85,8 +95,23 @@ class Trace:
             lines.extend(f"{' ' * width}    - {reason}" for reason in stage.reasons)
         return "\n".join(lines) + "\n"
 
+    def _coverage_lines(self) -> list[str]:
+        """The pool's coverage, above the funnel — it frames everything below."""
+        if self.coverage is None:
+            return []
+        return [
+            f"pool coverage: {self.coverage.analyzed} of {self.coverage.total} "
+            f"candidates ({self.coverage.percent}%) were visually analyzed",
+            "",
+        ]
+
     def as_dict(self) -> dict:
         return {
+            "coverage": (
+                None
+                if self.coverage is None
+                else {"analyzed": self.coverage.analyzed, "total": self.coverage.total}
+            ),
             "stages": [
                 {
                     "name": s.name,
@@ -97,7 +122,7 @@ class Trace:
                     "reasons": s.reasons,
                 }
                 for s in self.stages
-            ]
+            ],
         }
 
 
@@ -128,6 +153,13 @@ def record(
     trace = _active.get()
     if trace is not None:
         trace.record(name, before, after, reasons)
+
+
+def record_coverage(coverage: AnalysisCoverage) -> None:
+    """Note how much of the pool a real look scored, when tracing is on."""
+    trace = _active.get()
+    if trace is not None:
+        trace.coverage = coverage
 
 
 class tracing:  # noqa: N801 - reads as a context manager at the call site

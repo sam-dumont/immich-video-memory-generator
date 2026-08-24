@@ -56,6 +56,10 @@ def _get_options_table(cmd: click.Command) -> str:
             default = "-"
         if isinstance(default, bool):
             default = str(default).lower()
+        if isinstance(default, Path) and default.is_relative_to(Path.home()):
+            # Home-anchored defaults must render machine-independently, or the
+            # drift gate can never agree between a laptop and the CI runner.
+            default = Path("~") / default.relative_to(Path.home())
         help_text = inspect.cleandoc(param.help or "").replace("\n", " ").replace("|", "\\|")
         lines.append(f"| {names} | {param_type} | {default} | {help_text} |")
 

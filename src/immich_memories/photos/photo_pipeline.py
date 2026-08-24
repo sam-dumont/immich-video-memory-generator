@@ -14,6 +14,7 @@ import random
 import subprocess
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -97,14 +98,20 @@ def score_photos(
         metadata_scored, config, thumbnail_cache, thumbnail_fn=thumbnail_fn
     )
 
-    # Cap only the expensive semantic-scoring shortlist.
-    shortlist_size = llm_shortlist_size(video_clip_count, len(metadata_scored), config.max_ratio)
-    shortlist = metadata_scored
-    if len(shortlist) > shortlist_size:
-        shortlist = _select_distributed(shortlist, shortlist_size)
+    # One look per moment, not a few per shippable slot. Sizing the shortlist
+    # from ship-count meant the model only ever saw what metadata had already
+    # picked, so content could confirm that ranking and never overturn it.
+    read = _read_the_moments(metadata_scored, config, app_config, thumbnail_fn, thumbnail_cache)
+    moments = (
+        read if read is not None else one_photo_per_moment(metadata_scored, _MOMENT_WINDOW_MINUTES)
+    )
+    shortlist = moments
+    if len(shortlist) > LLM_SHORTLIST_CEILING:
+        shortlist = _select_distributed(shortlist, LLM_SHORTLIST_CEILING)
     logger.info(
-        "Photo scoring: %d available -> %d shortlisted for LLM (max %d selectable)",
+        "Photo scoring: %d available -> %d moments -> %d shortlisted for LLM (max %d selectable)",
         len(metadata_scored),
+        len(moments),
         len(shortlist),
         _compute_max_photos(video_clip_count, config.max_ratio),
     )
@@ -322,7 +329,12 @@ def render_photo_clips(
 # determines how long a run takes. A real library produced a 1194-photo
 # shortlist to place a few dozen photos, which ran for hours.
 LLM_SHORTLIST_CEILING = 200
-_LLM_SHORTLIST_HEADROOM = 3
+
+# Undated photos sort first rather than dropping out of the grouping.
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+
+# What counts as one moment when sampling photos for a content look.
+_MOMENT_WINDOW_MINUTES = 10.0
 
 
 # How much of a photo's score the pixels are allowed to decide. The metadata
@@ -499,14 +511,52 @@ def video_count_for_photo_budget(total_clips: int, live_photo_clips: int) -> int
     return max(0, total_clips - live_photo_clips)
 
 
-def llm_shortlist_size(video_count: int, available: int, max_ratio: float) -> int:
-    """How many photos are worth an LLM call.
+def one_photo_per_moment(scored: list[tuple], window_minutes: float) -> list[tuple]:
+    """One representative per moment, so every moment gets exactly one look.
 
-    Headroom over what can actually be selected, then an absolute ceiling: on a
-    large library the relative bound alone still authorises thousands of calls.
+    The shortlist used to be sized from how many photos the memory could ship,
+    which meant the model only ever saw what metadata had already chosen.
+    Measured on one month: 295 available, 3 shortlisted. Content could only
+    agree with the metadata ranking; a better photo ranked fourth was never
+    looked at, so it could not win.
+
+    Sampling by moment means nothing is skipped at the start. Note this bounds
+    the looking, not the selecting: score_photos still returns every photo, so
+    two members of one moment can still both be selected downstream.
+
+    A favourite represents its moment -- the user already said this one
+    mattered. Otherwise the best metadata score stands in until content can say
+    better.
     """
-    selectable = _compute_max_photos(video_count, max_ratio)
-    return min(available, selectable * _LLM_SHORTLIST_HEADROOM, LLM_SHORTLIST_CEILING)
+    return [
+        max(g, key=lambda item: (bool(item[0].is_favorite), item[1]))
+        for g in moments_of(scored, window_minutes)
+    ]
+
+
+def moments_of(scored: list[tuple], window_minutes: float) -> list[list[tuple]]:
+    """The photographs grouped into moments, in time order.
+
+    Named separately from picking a representative because reading a moment
+    from contact sheets needs every member of it, not the one photograph that
+    stands in for it. Two callers, one definition of what a moment is.
+    """
+    if not scored:
+        return []
+    ordered = sorted(scored, key=lambda item: item[0].file_created_at or _EPOCH)
+    groups: list[list[tuple]] = []
+    for item in ordered:
+        when = item[0].file_created_at
+        opened = groups[-1][0][0].file_created_at if groups else None
+        if (
+            opened is not None
+            and when is not None
+            and (when - opened).total_seconds() <= window_minutes * 60
+        ):
+            groups[-1].append(item)
+            continue
+        groups.append([item])
+    return groups
 
 
 def _select_distributed(
@@ -791,3 +841,75 @@ def _get_photo_encoder_args() -> list[str]:
 def _get_sdr_encoder_args() -> list[str]:
     """SDR encoder args for when zscale is unavailable."""
     return ["-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p"]
+
+
+def _frames_for_reading(
+    moment: list[tuple], thumbnail_cache: Any, thumbnail_fn: Any
+) -> dict[str, Any]:
+    """The thumbnails a moment's sheet is tiled from, skipping what will not open."""
+    import io
+
+    from PIL import Image
+
+    frames: dict[str, Any] = {}
+    for asset, _score in moment:
+        data = thumbnail_cache.get(asset.id, "preview") if thumbnail_cache else None
+        if data is None and thumbnail_fn is not None:
+            try:
+                data = thumbnail_fn(asset.id, size="preview")
+            except (ImmichAPIError, OSError, RuntimeError, ValueError):
+                # A Live Photo's video component has no thumbnail of its own
+                # and answers 404. Measured on one day: 34 of 42 "videos" were
+                # components. One missing tile must not lose the sheet.
+                data = None
+        if not data:
+            continue
+        try:
+            frames[asset.id] = Image.open(io.BytesIO(data)).convert("RGB")
+        except (OSError, ValueError):
+            continue
+    return frames
+
+
+def _read_the_moments(
+    metadata_scored: list[tuple],
+    config: PhotoConfig,
+    app_config: Any,
+    thumbnail_fn: Any,
+    thumbnail_cache: Any,
+) -> list[tuple] | None:
+    """What each moment's contact sheet chose, or None to fall back to sampling.
+
+    Returns None rather than an empty list when it cannot read: no thumbnails
+    and no model means no reading, and an empty shortlist would silently ship
+    a memory chosen on metadata alone while claiming to have looked.
+    """
+    if not getattr(config, "read_moments", False) or app_config is None:
+        return None
+    if thumbnail_cache is thumbnail_fn is None:
+        return None
+
+    from immich_memories.analysis.moment_grouping import moments_to_read
+    from immich_memories.analysis.moment_reading import read_moment
+
+    by_id = {asset.id: (asset, score) for asset, score in metadata_scored}
+    kept: list[tuple] = []
+    # Sheets are asked about EPISODES, not ten-minute moments: a moment is
+    # often one photograph, and a sheet of one photograph says nothing.
+    for episode in moments_to_read([asset for asset, _score in metadata_scored], app_config):
+        frames = _frames_for_reading(
+            [by_id[a.id] for a in episode if a.id in by_id], thumbnail_cache, thumbnail_fn
+        )
+        if not frames:
+            continue
+        reading = read_moment(episode, frames, app_config.llm)
+        kept.extend(by_id[a.id] for a in reading.keep if a.id in by_id)
+    if not kept:
+        logger.info("Moment reading returned nothing; sampling one photo per moment instead")
+        return None
+    logger.info(
+        "Moment reading: %d photos -> %d kept by what the sheets showed",
+        len(metadata_scored),
+        len(kept),
+    )
+    return kept
