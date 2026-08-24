@@ -307,6 +307,7 @@ src/immich_memories/
 │   ├── app.py                  # App setup & routing
 │   ├── auth.py                 # Auth middleware, credential verification, session helpers
 │   ├── auth_oidc.py            # OIDC client (authlib starlette integration, singleton)
+│   ├── trigger_api.py          # POST /api/trigger — runs what `auto run` decides, 202 + status URL
 │   ├── reverse_proxy.py        # Secure cookie + trusted X-Forwarded-* kwargs for ui.run
 │   ├── state.py                # Shared UI state
 │   ├── session_storage.py      # Expire the storage-user-*.json files NiceGUI writes but never cleans

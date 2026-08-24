@@ -60,6 +60,10 @@ appears on schedule, uploads if `upload_to_immich` is on, and notifies if notifi
 - The timer never runs when `enabled` is `false` (the default) — `auto install` stays the route
   for bare-metal installs.
 
+To fire the same decision on demand instead of on a clock — from an Immich workflow, a cron on
+another machine, a phone shortcut — see
+[Trigger from Immich or Anything Else](./trigger-endpoint.md).
+
 ## Scheduler daemon (advanced/legacy)
 
 :::tip Use the `auto` system instead

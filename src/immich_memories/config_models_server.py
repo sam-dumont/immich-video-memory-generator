@@ -22,6 +22,13 @@ class ServerConfig(BaseModel):
         default=False,
         description="Mark the session cookie Secure (only when every visitor arrives over HTTPS)",
     )
+    trigger_token: str = Field(
+        default="",
+        description=(
+            "Shared secret a headless caller sends to POST /api/trigger. Unset, and "
+            "with authentication off, the trigger API is not served at all."
+        ),
+    )
     allow_unauthenticated_lan: bool = Field(
         default=False,
         description=(

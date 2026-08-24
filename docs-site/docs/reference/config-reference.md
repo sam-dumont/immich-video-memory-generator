@@ -563,12 +563,20 @@ server:
   port: 8080                     # Listen port (1-65535)
   enable_demo_mode: false        # Show the demo/privacy (blur) toggle in the sidebar
   secure_cookies: false          # Mark the session cookie Secure (turn on behind an HTTPS reverse proxy)
+  trigger_token: ""              # Shared secret for POST /api/trigger. Empty, and with auth
+                                 # off, the trigger API is not served at all
   allow_unauthenticated_lan: false  # Listen beyond localhost with auth disabled —
                                  # anyone reaching the port can use the UI and the
                                  # Immich library behind it
 ```
 
 These can also be set via CLI flags: `immich-memories ui --host 127.0.0.1 --port 9090`.
+
+`trigger_token` turns on the HTTP trigger — one POST that runs whatever `auto run` would have
+decided, so an Immich workflow (or a cron, or a phone shortcut) can start a memory. See
+[Trigger from Immich or anything else](../create/recipes/trigger-endpoint.md). Keep it out of
+`config.yaml` with `IMMICH_MEMORIES_SERVER__TRIGGER_TOKEN` or a `${VAR}` reference; either way it
+is redacted from logs, `/health`, and the config viewer like every other secret.
 
 `host` is the one value "save" leaves out of `config.yaml` when you never set it. Writing the
 `0.0.0.0` default would make the next load treat it as your decision and quietly retire the

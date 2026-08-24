@@ -207,6 +207,14 @@ class AutomationStateStore:
         assert row is not None
         return _row_to_attempt(row)
 
+    def get_attempt(self, attempt_id: str) -> AutomationAttempt | None:
+        """Return one attempt by id, or None when nothing was ever started under it."""
+        with self._get_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM automation_attempts WHERE id = ?", (attempt_id,)
+            ).fetchone()
+        return _row_to_attempt(row) if row else None
+
     def get_last_attempt(self) -> AutomationAttempt | None:
         """Return the most recently started automation attempt."""
         with self._get_connection() as conn:
