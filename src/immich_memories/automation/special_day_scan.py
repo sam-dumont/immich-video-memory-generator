@@ -199,7 +199,14 @@ def scan_year(
     for day, items in sorted(candidates.items(), key=lambda kv: -len(kv[1]))[:ask]:
         thumbnails = _thumbnails_for(items, thumbnail_for)
         verdict = ask_if_special(items, llm_config, thumbnails=thumbnails)
-        if not verdict.special or not (verdict.title or verdict.what):
+        # A title, not just something written about the day. Every reader of
+        # this file falls back to `what` when the title is empty, so an entry
+        # with no title is how the day's own description — "Six images captured
+        # between 07:32 and 16:06, tracing a route from weathered apar" — ended
+        # up on a card. The ask already offers the day's place or its `what`
+        # where either can carry a title; nothing left after that means nothing
+        # truthful to call the day.
+        if not verdict.special or not verdict.title:
             continue
         started, ended = run_extent(items) or (None, None)
         found.append(

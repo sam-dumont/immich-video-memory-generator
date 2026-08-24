@@ -195,3 +195,16 @@ Titles are checked against what the day actually recorded before they are kept. 
 naming a place the day was never in is dropped rather than shown, and so is one claiming a
 distance or a race — "the 10K" — that nothing the model was shown mentions. A title card is
 the wrong place for a plausible invention, and a number reads exactly as true as a real one.
+
+A dropped title is asked for once more, with the claim it just made quoted back and the
+rule stated as what a title *may* say rather than as another prohibition. That is usually
+enough — the model can generally write a grounded title on the second try — and it costs
+one extra call on the handful of days a year where it happens. Never a third.
+
+If the second attempt is no better, the day falls back to the plainest true thing left:
+`A day in <place>` where its pictures recorded one, or what the model said the day was
+where that reads as a title ("Children's camp activities") rather than as a description of
+it. A day where neither is available is left out of the catalogue rather than written down
+with an empty title — because every reader of the file falls back to the description when
+the title is empty, which is how "Six images captured between 07:32 and 16:06, tracing a
+route from weathered apar" ended up on a card in place of a name.
