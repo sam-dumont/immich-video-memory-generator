@@ -125,7 +125,11 @@ On an RTX 3060 12 GB (Linux, Docker):
 | 30 | 4K | ~9 min |
 | 50 | 1080p | ~8 min |
 
-NVENC encoding is roughly 3x faster than CPU libx264 at equivalent quality. The bottleneck shifts from encoding to downloading clips from Immich once you have GPU acceleration.
+NVENC encoding is roughly 3x faster than CPU libx264 at equivalent quality, and that is the smaller
+half of the run. With the encode accelerated, what is left is analysis and selection: downloading
+each candidate clip from Immich, scoring it, and the LLM passes if you turned them on. The times
+above are first runs. A second run of the same period reuses the cached scores and finishes in
+roughly a third of the time.
 
 ## Adding LLM analysis
 

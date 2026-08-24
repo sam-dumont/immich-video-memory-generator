@@ -21,11 +21,11 @@ The AI writes code. I make sure it's good. Every line goes through:
 - Security scanning: Bandit, Semgrep, Gitleaks
 - Dependency vulnerability auditing (pip-audit)
 - Dockerfile linting (Hadolint)
-- Docstring coverage enforcement
+- CLI and config reference drift checks (the docs cannot describe a flag that no longer exists)
 - Architecture layer enforcement
 - Conventional commit enforcement
 - OpenSSF Scorecard monitoring
-- 17 CI quality gates (tiered: cheap gates first, tests and Docker after)
+- 20 gates on every PR: 15 static checks in the quality job, 5 security scans in the security job. They are tiered, so the cheap ones fail first and the tests, Docker builds and launch check only run after
 - Pre-commit hooks running all of the above locally
 
 If a human wrote this code, nobody would bat an eye at the quality. The AI part is the interesting experiment, not a caveat.
@@ -61,4 +61,4 @@ Open a GitHub Discussion.
 
 ---
 
-*Last updated: March 2026*
+*Last updated: 2026-08-24*

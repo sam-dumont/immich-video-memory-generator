@@ -52,7 +52,7 @@ The result is a video that looks like I spent a weekend in Premiere Pro, except 
 ## Limitations
 
 - **No mobile app.** Web UI and CLI. Works in mobile browsers but there's no native app.
-- **Not instant.** A 30-clip 1080p video is a couple of minutes on Apple Silicon or a GPU and around 15 minutes on a 4-core NAS CPU, plus analysis on the first run. Batch process. See the [resource table](https://github.com/sam-dumont/immich-video-memory-generator#resource-requirements).
+- **Not instant, and the wait is analysis rather than encoding.** The one run measured end to end, 14 clips on 4 CPU cores with no GPU, took 10 to 16 minutes, most of it scoring candidate clips. Minutes on Apple Silicon or a GPU. A second run of the same month reuses the cached scores and takes about a third as long. Batch process. See the [measured table](../deploy/common-setups/nas-only.md#performance-expectations).
 - **Not a video editor.** Select/deselect clips and adjust segments, but no timeline.
 - **Requires Immich.** Companion tool, not a standalone photo manager.
 
