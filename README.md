@@ -130,9 +130,10 @@ advanced:
 - Scores every clip on faces (35% of the weight), motion, camera stability and audio, then keeps
   the best ~5 seconds of a 45-second recording instead of all 45. LLM scene understanding is an
   optional fifth signal.
-- 10 memory types: year in review, monthly, person spotlight, multi-person, season, on this day,
-  holiday, then-and-now, trip (GPS-detected, with an animated satellite map fly-over) and album.
-  The wizard shows 11 cards: those ten plus Custom.
+- 11 memory types: year in review, monthly, person spotlight, multi-person, season, on this day,
+  holiday, then-and-now, trip (GPS-detected, with an animated satellite map fly-over), album, and
+  special day — a day the library itself flagged, found by `discover-days` rather than asked for.
+  The wizard shows 12 cards: those eleven plus Custom.
 - Photos share one selection pool with videos: Ken Burns, face-aware pan, blurred fill behind
   anything that doesn't fill the frame. Live Photos are scored like any other clip.
 - Title screens with satellite map fly-overs, month dividers and particles, GPU-rendered through

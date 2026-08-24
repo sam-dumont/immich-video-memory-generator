@@ -1,0 +1,126 @@
+---
+sidebar_label: "Special Days"
+---
+
+# Special Days
+
+The other ten memory types cover something you named: a year, a month, a person, a
+trip, an album. A special day is the one you did not name. It is a day out of your own
+library that a scan flagged as an occasion, wrote down, and offers back years later when
+its anniversary comes round. In the web UI the card is called **Surprise me**; on the
+CLI the type is `special_day`.
+
+Nothing searches for it. There is no query, no "find me the wedding".
+[`discover-days`](../cli/discover-days.md) walks the library a month at a time, keeps the
+days that stayed alive for hours rather than the days that merely shot a lot, and asks
+the local model whether anything actually happened. That is
+[The Curator](../pipeline/the-curator.md)'s *emergent, not queried* rule at the
+granularity of a single day, and it is why the scan finds the day that mattered with 30
+photos and skips the one with 413 pictures of a street performer.
+
+## The life of a day
+
+**It gets found.** `immich-memories discover-days` writes what it finds to
+`~/.immich-memories/special-days.json`: the date, a title derived from that day's own
+pictures, how many hours the day put pictures in, and — when the day *contained* an event
+rather than being one — the hours that event ran.
+
+**It waits.** Nothing happens next. `immich-memories days-due` prints the entries whose
+anniversary falls within three days of today, roundest first.
+
+**It comes back**, one of three ways:
+
+| Route | Which days it offers | When |
+|---|---|---|
+| `auto run` | anniversaries within 3 days | unasked, at whatever hour you scheduled |
+| **Surprise me** card in Step 1 | the whole catalogue, anniversaries first | when you click it |
+| `generate --memory-type special_day --day` | any day the catalogue holds | when you ask for it |
+
+Automation is the strict one, because it interrupts you.
+[`SpecialDayDetector`](../cli/auto.md#the-anniversary-that-would-otherwise-score-lowest)
+proposes a day only on its anniversary, and scores it by how round that anniversary is.
+For a 200-photo day never generated before, that lands at **0.893** for a decade,
+**0.759** for a half-decade and **0.536** for anything else: a decade goes ahead of every
+other detector, and a seventh anniversary competes with the monthly review rather than
+pre-empting it. At most one special day per run — the per-type cap is 1, because a queue
+of surprises is not a surprise.
+
+The wizard is the loose one. You clicked the card, so it lists everything in the
+catalogue, due or not. See
+[Step 1: Configuration](../web-ui/step1-configuration.mdx#surprise-me).
+
+## What it covers and how long it runs
+
+Scope is the window the catalogue recorded, when it recorded one. `discover-days` writes
+a window only when trimming to it removes a real slice of the day, so a track day starts
+at the circuit rather than at the cat on the balcony that morning. A day with no window
+covers the whole calendar day, midnight to midnight. The window shrinks, it never pads:
+if there is not enough usable footage inside it the memory gets shorter rather than
+widening back out to the rest of the day.
+
+Length comes from the same evidence the scan already measured: **30 seconds plus 6
+seconds per active hour, held between 60 and 180 seconds**. Anything under five active
+hours takes the 60-second floor; 25 hours or more takes the 180-second ceiling. Pass
+`--duration`, or turn off **Auto duration** in Step 2, to set it yourself.
+
+One occasion means one opening card. Special days get no month dividers.
+
+## What it refuses
+
+There is no generic "Memories from 12 June 2016" card. A day the model could not name is
+a day that should not be rendered, so four cases error instead:
+
+- `--memory-type special_day` with no `--day`
+- `--day` with any other memory type
+- a `--day` the catalogue has never heard of — the error names the file it read
+- a catalogued entry with neither a title nor a description of what the day was
+
+The web UI refuses the same way: with no catalogue, the **Surprise me** card prints the
+path it looked for and the command that builds one, and Step 1 stays incomplete. It does
+not fall back to a random day.
+
+## A day can come back
+
+Automation keys its proposal by the anniversary as well as the date —
+`special_day:2016-06-12:2016-06-12:10y` — so a day that got its memory at ten years can
+get another at fifteen. It is a different cut: five more years of library have been
+analysed since, and the round number is the reason it is worth interrupting you again.
+
+## What never travels
+
+Catalogue titles name real people and places. Two rules keep them out of anything durable.
+
+**Titles are never on the command line.** Automation passes `--day 2016-06-12` and
+nothing else; `generate` re-reads the catalogue itself for the name. argv is logged in
+full by the automation runner and is readable in `ps` and in launchd's logs. `--title`
+and `--subtitle` still override the catalogue when *you* type them.
+
+**No names in run history.** A special-day candidate carries an empty person list, so no
+recognised name reaches the run database — and a wedding memory does not spend the person
+rotation, so a spotlight of someone who was there is still free to run the next night.
+
+What automation does say out loud is evidence rather than the title:
+
+```
+10 years ago today · 289 photos over 18 hours
+via special-days catalogue
+```
+
+That string is what reaches `auto suggest`, its `--json` output, the attempt row, and
+your notification payloads.
+
+## Getting started
+
+```bash
+# Build the catalogue once (hours across twenty years; it resumes)
+immich-memories discover-days
+
+# See what is due
+immich-memories days-due
+
+# Render one
+immich-memories generate --memory-type special_day --day 2016-06-12
+```
+
+It needs an LLM configured under `llm:`, and a vision model is worth having — see
+[`discover-days`](../cli/discover-days.md#what-you-need).

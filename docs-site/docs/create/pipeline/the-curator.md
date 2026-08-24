@@ -82,7 +82,9 @@ the honest one.
 **Emergent, not queried.** Nothing searches your library for "beach" or "dog".
 The [special days catalogue](../cli/discover-days) is built by looking at what
 your days actually contain and asking whether anything happened — which is how
-it finds the day that mattered with 30 photos, not just the day with 300.
+it finds the day that mattered with 30 photos, not just the day with 300. A day
+it found comes back years later as a
+[Special Day memory](../memory-types/special-days.mdx) nobody asked for.
 
 ## The craft you don't see
 
