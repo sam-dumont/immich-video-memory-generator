@@ -238,7 +238,7 @@ def _thumbnails_for(items: list, thumbnail_for: Any) -> list[tuple[Any, bytes]]:
     return tiles
 
 
-def _same_day_in(day: date, year: int) -> date:
+def same_day_in(day: date, year: int) -> date:
     """The same calendar day in another year; 29 February falls back to the 28th."""
     try:
         return day.replace(year=year)
@@ -270,7 +270,7 @@ def anniversaries_due(
             years = year - entry.day.year
             if years < 1:
                 continue
-            if abs((_same_day_in(entry.day, year) - on).days) <= window_days:
+            if abs((same_day_in(entry.day, year) - on).days) <= window_days:
                 due.append((entry, years))
                 break
     return sorted(

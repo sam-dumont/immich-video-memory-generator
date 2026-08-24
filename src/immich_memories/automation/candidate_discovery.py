@@ -8,6 +8,7 @@ from typing import Any, Protocol
 
 from immich_memories.automation.candidate_scorer import score_and_rank
 from immich_memories.automation.candidates import MemoryCandidate
+from immich_memories.automation.catalogue import default_catalogue_path, entries_from
 from immich_memories.automation.failure_backoff import drop_backed_off
 from immich_memories.automation.state_store import FailureStreak
 from immich_memories.automation.trip_input_cache import load_or_fetch_trip_assets
@@ -97,6 +98,7 @@ def _build_last_runs_by_type(db: MemoryHistoryReader) -> dict[str, date]:
         "person_spotlight",
         "trip",
         "multi_person",
+        "special_day",
     ):
         run = db.get_last_run_of_type(mem_type, source="auto")
         if run and run.created_at:
@@ -129,6 +131,7 @@ def _run_all_detectors(
     today: date,
     person_asset_counts: dict[str, int],
     gps_assets: list | None,
+    catalogue: list | None,
 ) -> list[MemoryCandidate]:
     """Run all enabled detectors and collect candidates."""
     from immich_memories.automation.calendar_detectors import (
@@ -143,6 +146,7 @@ def _run_all_detectors(
         MultiPersonDetector,
         TripDetector,
     )
+    from immich_memories.automation.special_day_detector import SpecialDayDetector
 
     all_candidates: list[MemoryCandidate] = []
 
@@ -220,6 +224,17 @@ def _run_all_detectors(
             )
         )
 
+    all_candidates.extend(
+        SpecialDayDetector().detect(
+            assets_by_month,
+            people,
+            generated_keys,
+            config,
+            today,
+            catalogue=catalogue,
+        )
+    )
+
     return all_candidates
 
 
@@ -259,6 +274,9 @@ class CandidateDiscovery:
             today,
             snapshot.person_asset_counts,
             snapshot.gps_assets,
+            # Read here rather than in _LibrarySnapshot: that exists to bundle
+            # the live Immich reads into one session, and this is a local file.
+            entries_from(default_catalogue_path()),
         )
 
         all_candidates, backoff_skips = drop_backed_off(

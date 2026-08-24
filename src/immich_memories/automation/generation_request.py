@@ -47,6 +47,8 @@ class GenerationRequest:
                 memory_type = "on_this_day"
             case CandidateCategory.TRIP:
                 memory_type = "trip"
+            case CandidateCategory.EMERGENT_DAY:
+                memory_type = "special_day"
             case _:
                 raise ValueError(f"Unsupported automation category: {candidate.category!r}")
 
@@ -97,6 +99,11 @@ class GenerationRequest:
                         self.end.isoformat(),
                     ]
                 )
+            case CandidateCategory.EMERGENT_DAY:
+                # A date, and nothing else. The child re-reads the catalogue for
+                # the day's name: this argv is logged in full and is readable in
+                # `ps`, and the catalogue's titles name real people and places.
+                argv.extend(["--day", self.start.isoformat()])
             case _:
                 raise ValueError(f"Unsupported automation category: {self.category!r}")
 

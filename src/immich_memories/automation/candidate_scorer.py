@@ -12,6 +12,7 @@ _MAX_PER_TYPE = 3
 _TYPE_CAPS = {
     "on_this_day": 1,  # At most 1 per run — can't verify day-level content quality
     "multi_person": 2,  # At most 2 pair suggestions per run
+    "special_day": 1,  # One surprise per run — a queue of them is not a surprise
 }
 
 
@@ -43,8 +44,14 @@ def _adjust_score(
     if candidate.memory_key not in generated_keys:
         score *= 1.2
 
-    # Recency: linear decay from date_range_end, floor 0.5
-    days_ago = (today - candidate.date_range_end).days
+    # Recency: linear decay from when the memory is timely, floor 0.5.
+    # For nearly every detector that is the end of what it covers. An
+    # anniversary is the exception: the content is ten years old and the
+    # arrival is today, and reading the content's age would penalise hardest
+    # exactly the memory most worth arriving. A detector that knows better
+    # says so in extra_params rather than lying about its date range.
+    timely_on = candidate.extra_params.get("recency_date") or candidate.date_range_end
+    days_ago = (today - timely_on).days
     score *= max(0.5, 1.0 - days_ago / 365.0)
 
     # Content richness: log-scaled, 30% weight
