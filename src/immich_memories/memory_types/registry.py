@@ -18,3 +18,6 @@ class MemoryType(StrEnum):
     HOLIDAY = "holiday"
     TRIP = "trip"
     THEN_AND_NOW = "then_and_now"
+    # Discovered, not typed: its scope comes from a catalogue entry the library
+    # produced, not from flags a user chose.
+    SPECIAL_DAY = "special_day"

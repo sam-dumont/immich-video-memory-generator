@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from immich_memories.analysis.selection_coverage import AnalysisCoverage
 from immich_memories.automation.state_store import AutomationStateStore
 from immich_memories.cache import database as cache_database
 from immich_memories.cache.database import VideoAnalysisCache
@@ -198,7 +199,13 @@ def test_analysis_continues_when_attempt_phase_write_fails(tmp_path: Path) -> No
     clip.asset.id = "asset-1"
     clip.width = 1920
     clip.height = 1080
-    result = MagicMock(selected_clips=[clip], clip_segments={})
+    # WHY: the runner reports pool coverage after selection, so the mocked
+    # result has to carry a real one rather than a bare mock to do sums on.
+    result = MagicMock(
+        selected_clips=[clip],
+        clip_segments={},
+        coverage=AnalysisCoverage(analyzed=1, total=1),
+    )
     output = tmp_path / "memory.mp4"
 
     with (

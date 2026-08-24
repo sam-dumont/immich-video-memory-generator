@@ -8,6 +8,7 @@ from pathlib import Path
 
 import click
 
+from immich_memories.cli._asset_fetch import fetch_photos, fetch_videos_and_live_photos
 from immich_memories.cli._date_resolution import (
     BIRTHDAY_FLAG_FORMAT,
     default_duration_for_type,
@@ -20,11 +21,7 @@ from immich_memories.cli._generate_display import (
     _print_generation_result,
 )
 from immich_memories.cli._helpers import console, print_error, print_info, print_success
-from immich_memories.cli._pipeline_runner import (
-    fetch_photos,
-    fetch_videos_and_live_photos,
-    run_pipeline_and_generate,
-)
+from immich_memories.cli._pipeline_runner import run_pipeline_and_generate
 from immich_memories.cli._trip_generation import handle_trip_generation, resolve_music_arg
 from immich_memories.cli.generate_options import (
     automation_options,

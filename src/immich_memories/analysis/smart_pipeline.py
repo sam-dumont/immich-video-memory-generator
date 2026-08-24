@@ -23,6 +23,7 @@ from immich_memories.analysis.clip_refiner import ClipRefiner
 from immich_memories.analysis.clip_scaler import ClipScaler
 from immich_memories.analysis.preview_builder import PreviewBuilder
 from immich_memories.analysis.progress import PipelinePhase, ProgressTracker
+from immich_memories.analysis.selection_coverage import AnalysisCoverage
 from immich_memories.analysis.selection_quality import SelectionQuality
 from immich_memories.analysis.source_filter import not_shot_here
 from immich_memories.analysis.thumbnail_prefetch import ThumbnailPrefetcher
@@ -149,6 +150,8 @@ class PipelineResult:
     clip_segments: dict[str, tuple[float, float]]  # asset_id -> (start, end)
     errors: list[dict]  # List of {clip_id, error}
     stats: dict = field(default_factory=dict)
+    # How much of the pool this selection was drawn from had a real look (#489).
+    coverage: AnalysisCoverage = field(default_factory=lambda: AnalysisCoverage(0, 0))
 
 
 @dataclass

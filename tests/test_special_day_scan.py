@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, date, datetime
+from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
@@ -20,6 +22,7 @@ from immich_memories.automation.special_day_scan import (
     scan_year,
 )
 from immich_memories.cli.special_days_cmd import (
+    _entries_in,
     _homebase,
     _load_catalogue,
     _write_catalogue,
@@ -258,6 +261,144 @@ def test_a_picture_that_failed_to_download_takes_its_line_with_it() -> None:
 
     assert missing not in [asset.id for asset, _ in tiles]
     assert len(tiles) == SAMPLE_SIZE - 1
+
+
+def test_the_catalogue_records_how_long_the_day_stayed_awake(monkeypatch) -> None:
+    """Active hours is the signal that separates an occasion from a busy hour.
+
+    The scan measured it to decide whether to ask about the day at all, then
+    threw the number away, so nothing downstream could size a memory by how
+    long the day actually ran.
+    """
+    # WHY: ask_if_special is the LLM call; the day's own hours are the subject.
+    monkeypatch.setattr(
+        "immich_memories.automation.special_day_scan.ask_if_special",
+        lambda *_a, **_k: SimpleNamespace(
+            special=True, title="A long evening out", subtitle="", what="out", window=None
+        ),
+    )
+
+    evening = [_asset(h, m) for h in range(17, 23) for m in (0, 15, 30, 45)]
+
+    found = scan_year(evening, llm_config=None, home=None, ask=1)
+
+    assert [d.active_hours for d in found] == [6]
+
+
+def test_a_run_that_crossed_midnight_is_measured_as_the_one_night_it_was(monkeypatch) -> None:
+    """The catalogue keys a day by the date its run began, and runs run late.
+
+    A night that starts at nine and ends at three belongs to the evening it
+    started, and the calendar disagrees twice over: the first date holds
+    three of its six hours, and a memory scoped to that date ends at
+    midnight, halfway through the thing that happened.
+    """
+    # WHY: ask_if_special is the LLM call; where the night's hours fall is the subject.
+    monkeypatch.setattr(
+        "immich_memories.automation.special_day_scan.ask_if_special",
+        lambda *_a, **_k: SimpleNamespace(
+            special=True, title="A long evening out", subtitle="", what="out", window=None
+        ),
+    )
+    evening = [_asset(h, m, day=13) for h in (21, 22, 23) for m in (0, 15, 30, 45)]
+    small_hours = [_asset(h, m, day=14) for h in (0, 1, 2) for m in (0, 15, 30, 45)]
+
+    found = scan_year(evening + small_hours, llm_config=None, home=None, ask=1)
+
+    assert [(d.day, d.active_hours) for d in found] == [(date(2021, 4, 13), 6)]
+    assert found[0].run_start == datetime(2021, 4, 13, 21, 0, tzinfo=UTC)
+    assert found[0].run_end == datetime(2021, 4, 14, 2, 45, tzinfo=UTC)
+
+
+def _days_due(catalogue: Path, on: str) -> str:
+    from click.testing import CliRunner
+
+    from immich_memories.cli import main
+    from immich_memories.config_loader import Config
+
+    # WHY: the CLI group loads the user's real config directory on startup.
+    with (
+        patch("immich_memories.cli.init_config_dir"),
+        patch("immich_memories.cli.get_config", return_value=Config()),
+    ):
+        result = CliRunner().invoke(
+            main,
+            ["days-due", "--on", on, "--catalogue", str(catalogue)],
+            catch_exceptions=False,
+        )
+    return result.output
+
+
+def test_the_hours_survive_the_trip_through_the_catalogue(tmp_path) -> None:
+    """A number the scan measured and only the scan can see is not a catalogue."""
+    catalogue = tmp_path / "special-days.json"
+    catalogue.write_text(
+        json.dumps(
+            [
+                {
+                    "day": "2015-06-12",
+                    "title": "A long evening out",
+                    "subtitle": "",
+                    "what": "out",
+                    "photos": 133,
+                    "window": None,
+                    "active_hours": 6,
+                }
+            ]
+        )
+    )
+
+    assert "6h" in _days_due(catalogue, "2025-06-12")
+
+
+def test_the_night_a_run_ended_survives_the_trip_through_the_catalogue(tmp_path) -> None:
+    """The extent is the only record that a night ran past its own date.
+
+    Written and never read back is the same as never having measured it, and
+    what will scope a memory to this night is the pair, timezone included.
+    """
+    catalogue = tmp_path / "special-days.json"
+    catalogue.write_text(
+        json.dumps(
+            [
+                {
+                    "day": "2015-06-12",
+                    "title": "A long evening out",
+                    "photos": 133,
+                    "active_hours": 6,
+                    "run_start": "2015-06-12T21:00:00+00:00",
+                    "run_end": "2015-06-13T02:45:00+00:00",
+                }
+            ]
+        )
+    )
+
+    entry = _entries_in(catalogue)[0]
+
+    assert (entry.run_start, entry.run_end) == (
+        datetime(2015, 6, 12, 21, 0, tzinfo=UTC),
+        datetime(2015, 6, 13, 2, 45, tzinfo=UTC),
+    )
+
+
+def test_a_catalogue_written_before_the_hours_existed_still_loads(tmp_path) -> None:
+    """A scan of twenty years is not something to ask anybody to run again.
+
+    Entries from before these fields simply have none of them, and days-due
+    has to go on printing those days rather than reporting an empty
+    catalogue.
+    """
+    catalogue = tmp_path / "special-days.json"
+    catalogue.write_text(
+        json.dumps([{"day": "2015-06-12", "title": "A long evening out", "photos": 133}])
+    )
+
+    entry = _entries_in(catalogue)[0]
+
+    assert (entry.active_hours, entry.run_start, entry.run_end) == (0, None, None)
+    printed = _days_due(catalogue, "2025-06-12")
+    assert "A long evening out" in printed
+    assert "0h" not in printed, "a day nobody measured must not claim it lasted no time"
 
 
 def _entry(day: date) -> DiscoveredDay:

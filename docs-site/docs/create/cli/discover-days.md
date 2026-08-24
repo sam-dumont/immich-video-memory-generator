@@ -148,11 +148,16 @@ first — ten years reads louder than nine, which is the whole appeal of arrivin
 unannounced.
 
 ```
-10 years ago  2015-06-12  A long evening out  18:40-23:55
+10 years ago  2015-06-12  A long evening out  18:40-23:55  9h
 ```
 
-The hours on the right are the day's window, when it found one. Catalogues written before
-windows existed simply have none, and still read.
+The clock times are the day's window, when it found one. The `9h` is how many hours of
+the clock the day put pictures in — the number the scan measured to decide the day was
+worth asking about at all, now kept in the catalogue with the times the day's run started
+and ended. A run is grouped by the date it began and ends when the pictures stop for five
+hours, so a night that ran to three in the morning ends on the following date, and its
+extent says so where the date alone cannot. Catalogues written before any of this existed
+simply have none of it, and still read.
 
 `--on YYYY-MM-DD` checks a different date, and `--catalogue PATH` reads a different file.
 Anniversaries either side of New Year are found: a day at the end of December is due in

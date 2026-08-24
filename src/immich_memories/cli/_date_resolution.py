@@ -224,31 +224,40 @@ def duration_from_date_range(date_range: DateRange) -> float:
     return float(max(30, min(600, duration)))
 
 
-# WHY these two by name: they span whole years, and duration_from_date_range's
-# curve was fitted on 1-12 months -- it turns negative past ~40 months, so five
-# Christmases clamped to the same 30s floor as an empty weekend (#511). Their
-# presets already state the length they want, so the CLI reads that instead.
-_PRESET_DURATION_TYPES = ("holiday", "then_and_now")
+# WHY these by name: duration_from_date_range's curve was fitted on 1-12
+# months and is wrong at both ends. Past ~40 months it turns negative, so five
+# Christmases clamped to the same 30s floor as an empty weekend (#511); at a
+# one-day span it evaluates negative too, so a special day would render as 30
+# seconds however much happened on it. Their presets already state the length
+# they want, so the CLI reads that instead.
+_PRESET_DURATION_TYPES = ("holiday", "then_and_now", "special_day")
 
 
-def _preset_duration(memory_type: str) -> float | None:
+def _preset_duration(memory_type: str, preset_params: dict | None = None) -> float | None:
     """The registered preset's own intended length for a memory type."""
     from immich_memories.memory_types.factory import create_preset
     from immich_memories.memory_types.registry import MemoryType
 
-    return create_preset(MemoryType(memory_type)).default_duration_seconds
+    preset = create_preset(MemoryType(memory_type), **(preset_params or {}))
+    return preset.default_duration_seconds
 
 
 def default_duration_for_type(
-    memory_type: str | None, date_range: DateRange | None
+    memory_type: str | None,
+    date_range: DateRange | None,
+    preset_params: dict | None = None,
 ) -> float | None:
     """Get default duration in seconds for a memory type.
 
     Date-range based types scale with span (1 month = 60s, 1 year = 600s).
     Trip dates provide an editorial estimate; discovered media later applies
-    the capacity cap. Types that span several years take the length their
-    preset asks for, since the span curve does not reach that far. Other fixed
-    types: on_this_day (45s), person without range (120s).
+    the capacity cap. Types the span curve cannot reach -- several years at one
+    end, a single day at the other -- take the length their preset asks for.
+    Other fixed types: on_this_day (45s), person without range (120s).
+
+    ``preset_params`` is forwarded to the preset factory for the types whose
+    length depends on more than the dates: a special day needs the day it
+    happened on and how long it stayed awake.
     """
     if not memory_type:
         return None
@@ -256,7 +265,7 @@ def default_duration_for_type(
     if memory_type == "on_this_day":
         return 45.0
     if memory_type in _PRESET_DURATION_TYPES:
-        return _preset_duration(memory_type)
+        return _preset_duration(memory_type, preset_params)
     if memory_type == "trip" and date_range is not None:
         from immich_memories.planning.auto_duration import trip_editorial_duration_seconds
 

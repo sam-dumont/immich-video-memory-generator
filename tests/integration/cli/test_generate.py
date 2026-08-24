@@ -869,7 +869,7 @@ class TestCLIGenerate:
 
 
 class TestPipelineRunner:
-    """Tests for _pipeline_runner functions with mocked assembly.
+    """Tests for the fetch and runner functions with mocked assembly.
 
     WHY mock assembly: These functions run SmartPipeline + generate_memory.
     Assembly is FFmpeg-heavy; we mock it to test the pipeline wiring.
@@ -877,7 +877,7 @@ class TestPipelineRunner:
 
     def test_fetch_videos_returns_assets(self, tmp_path):
         """fetch_videos_and_live_photos returns deduped assets."""
-        from immich_memories.cli._pipeline_runner import fetch_videos_and_live_photos
+        from immich_memories.cli._asset_fetch import fetch_videos_and_live_photos
         from immich_memories.timeperiod import DateRange
 
         mock_client = MagicMock()
@@ -907,7 +907,7 @@ class TestPipelineRunner:
 
     def test_fetch_videos_person_filter(self, tmp_path):
         """fetch with single person_id calls person-specific API."""
-        from immich_memories.cli._pipeline_runner import fetch_videos_and_live_photos
+        from immich_memories.cli._asset_fetch import fetch_videos_and_live_photos
         from immich_memories.timeperiod import DateRange
 
         mock_client = MagicMock()
@@ -931,7 +931,7 @@ class TestPipelineRunner:
 
     def test_fetch_videos_multi_person(self, tmp_path):
         """fetch with multiple person_ids asks for the videos holding all of them."""
-        from immich_memories.cli._pipeline_runner import fetch_videos_and_live_photos
+        from immich_memories.cli._asset_fetch import fetch_videos_and_live_photos
         from immich_memories.timeperiod import DateRange
 
         mock_client = MagicMock()

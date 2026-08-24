@@ -211,6 +211,35 @@ def build_trip(start: date, end: date) -> DateRange:
     )
 
 
+def build_special_day(
+    day: date,
+    window: tuple[datetime, datetime] | None,
+) -> DateRange:
+    """The scope of one day the library says something happened on.
+
+    A recorded window *is* the scope, not a hint at it. The catalogue only
+    records one when trimming to it removes a meaningful slice of the day, which
+    is what says "the memory starts at the circuit, not at the cat on the
+    balcony that morning" — so anything softer than using it as the bounds
+    throws that judgement away. Its instants are passed through untouched,
+    offset included, because they reach Immich's takenAfter/takenBefore as
+    written and a window can legitimately end after midnight.
+
+    **Shrink, don't pad.** If the window yields too few usable clips the memory
+    gets shorter. It must never widen back to the whole day: that silently
+    undoes the trim, and it is padding by another name.
+
+    One range, never two. A day is one occasion, and the fetch list has no
+    priority ordering to express "this window first, then the rest".
+    """
+    if window is not None:
+        return DateRange(start=window[0], end=window[1])
+    return DateRange(
+        start=datetime(day.year, day.month, day.day, 0, 0, 0),
+        end=datetime(day.year, day.month, day.day, 23, 59, 59),
+    )
+
+
 # Fixed-date holidays. Deliberately short: this is a starting set, and any date
 # the list misses can be given as MM-DD.
 _FIXED_HOLIDAYS = {

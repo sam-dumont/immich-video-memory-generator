@@ -596,6 +596,7 @@ class ClipRefiner:
         """Phase 4: Refine final selection."""
         from immich_memories.analysis import selection_trace as trace
         from immich_memories.analysis.progress import PipelinePhase
+        from immich_memories.analysis.selection_coverage import coverage_of
         from immich_memories.analysis.smart_pipeline import PipelineResult
 
         tracker.start_phase(PipelinePhase.REFINING, 1)
@@ -734,6 +735,9 @@ class ClipRefiner:
 
         logger.info(f"Phase 4: Final selection of {len(selected_clips)} clips")
 
+        coverage = coverage_of(all_analyzed)
+        trace.record_coverage(coverage)
+
         return PipelineResult(
             selected_clips=selected_clips,
             clip_segments=clip_segments,
@@ -744,4 +748,5 @@ class ClipRefiner:
                 "error_count": len(errors),
                 "elapsed_seconds": tracker.progress.elapsed_seconds,
             },
+            coverage=coverage,
         )
