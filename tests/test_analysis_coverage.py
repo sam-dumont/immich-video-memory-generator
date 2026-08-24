@@ -1693,17 +1693,12 @@ class TestRunContentAnalysis:
                 analysis_config=AnalysisConfig(),
             )
 
-    def test_no_analyzer_returns_zero(self):
-        scorer = self._make_scorer(content_analyzer=None, content_weight=0.3)
+    def test_no_analyzer_means_unknown_not_zero(self):
+        """None is "nothing read this", 0.0 is "read it, it shows nothing"."""
+        scorer = self._make_scorer(content_analyzer=None)
         scene = Scene(start_time=0, end_time=5.0, start_frame=0, end_frame=150)
-        result = scorer._run_content_analysis(Path("/fake.mp4"), scene)
-        assert result == 0.0
 
-    def test_zero_weight_returns_zero(self):
-        scorer = self._make_scorer(content_analyzer=MagicMock(), content_weight=0.0)
-        scene = Scene(start_time=0, end_time=5.0, start_frame=0, end_frame=150)
-        result = scorer._run_content_analysis(Path("/fake.mp4"), scene)
-        assert result == 0.0
+        assert scorer._run_content_analysis(Path("/fake.mp4"), scene) is None
 
     def test_high_confidence_returns_content_score(self):
         # WHY: ContentAnalyzer calls LLM API — mock for unit test
@@ -1718,7 +1713,7 @@ class TestRunContentAnalysis:
         result = scorer._run_content_analysis(Path("/fake.mp4"), scene)
         assert result == 0.75
 
-    def test_low_confidence_returns_default(self):
+    def test_low_confidence_means_unknown(self):
         # WHY: ContentAnalyzer calls LLM API — mock for unit test
         mock_analyzer = MagicMock()
         mock_analysis = MagicMock()
@@ -1728,9 +1723,9 @@ class TestRunContentAnalysis:
         scorer = self._make_scorer(content_analyzer=mock_analyzer, content_weight=0.3)
         scene = Scene(start_time=0, end_time=5.0, start_frame=0, end_frame=150)
         result = scorer._run_content_analysis(Path("/fake.mp4"), scene)
-        assert result == 0.5
+        assert result is None
 
-    def test_exception_returns_default(self):
+    def test_exception_means_unknown(self):
         # WHY: ContentAnalyzer calls LLM API — mock to simulate failure
         mock_analyzer = MagicMock()
         mock_analyzer.analyze_segment.side_effect = RuntimeError("LLM timeout")
@@ -1738,7 +1733,7 @@ class TestRunContentAnalysis:
         scorer = self._make_scorer(content_analyzer=mock_analyzer, content_weight=0.3)
         scene = Scene(start_time=0, end_time=5.0, start_frame=0, end_frame=150)
         result = scorer._run_content_analysis(Path("/fake.mp4"), scene)
-        assert result == 0.5
+        assert result is None
 
 
 class TestFindBestSegment:
