@@ -9,7 +9,7 @@ Scans your Immich library, detects what's worth turning into a memory video, and
 
 ## How selection works
 
-The system runs 8 detectors against your library, applies hard rotation rules, then scores the candidates that remain. The top eligible candidate gets generated.
+The system runs 9 detectors against your library, applies hard rotation rules, then scores the candidates that remain. The top eligible candidate gets generated.
 
 A suggestion list can look like this:
 
@@ -139,6 +139,25 @@ the floor is what the detector's own admission rules allow through.
 | **PersonSpotlightDetector** | Top 5 people by asset count | 0.12-0.6 | that person's share of the top person's asset count, floored at 0.2 |
 | **MultiPersonDetector** | Pairs who appear together frequently | 0.06-0.55 | estimated shared assets up to 500 (50 minimum to qualify) |
 | **OnThisDayDetector** | Dates with content across 5+ years | 0.18-0.35 | how many years the date has content in, up to 10 |
+| **SpecialDayDetector** | Catalogued days whose anniversary is within 3 days | 0.48-0.8 | roundness of the anniversary (decade / half-decade / other) |
+
+### The anniversary that would otherwise score lowest
+
+`SpecialDayDetector` reads the catalogue `discover-days` writes and proposes a day when its anniversary comes round. Base score 0.8, multiplied by how round the anniversary is: 1.0 for a decade, 0.85 for a half-decade, 0.6 for anything else.
+
+The scoring adjustments then land it where the ladder wants it. For a 200-photo day, never generated, with no same-type cooldown: never-generated ×1.2, recency ×1.0 (the anniversary is within 3 days by construction), richness ×(0.7 + 0.3 × log(200)/log(1000)) = ×0.930.
+
+| Anniversary | Roundness | Raw | Final |
+|---|---|---|---|
+| 10, 20, 30 years | 1.00 | 0.80 | **0.893** (`0.80 × 1.2 × 1.0 × 0.930`) |
+| 5, 15, 25 years | 0.85 | 0.68 | **0.759** (`0.68 × 1.2 × 1.0 × 0.930`) |
+| anything else | 0.60 | 0.48 | **0.536** (`0.48 × 1.2 × 1.0 × 0.930`) |
+
+Against the rest of the ladder — monthly 0.776, birthday 0.700, yearly 0.672, multi-person 0.514, trip 0.449, on-this-day 0.349 — a decade goes first, a half-decade sits between monthly and birthday, and a seventh anniversary competes rather than pre-empts.
+
+Recency is the reason this detector needs a rule of its own. The scorer decays a candidate from the end of what it covers, so a ten-year-old day would take the 0.5 floor: the memory most worth arriving would be punished hardest by a rule meant to prefer fresh content. `OnThisDayDetector` avoids that by reporting today as its date range and putting the real years in its reason, which makes `auto suggest` print a period the memory does not cover. A special day instead reports its real date and tells the scorer separately when it is timely, so what you see in the table is what gets generated.
+
+One per run, and the title never travels: automation passes `--day 2016-06-12` and the generate command re-reads the catalogue for the name, because argv is logged in full and readable in `ps`.
 
 ### Scoring adjustments
 
@@ -149,7 +168,7 @@ After detectors assign raw scores, the scorer applies:
 - **Recency**: recent content scores higher (linear decay over 365 days, floor 0.5x)
 - **Content richness**: more assets = higher score (log scale)
 - **Same-type cooldown**: 0.3x for 7 days, 0.7x for 30 days after generating the same type
-- **Per-type caps**: max 3 per type, except on_this_day (1) and multi_person (2)
+- **Per-type caps**: max 3 per type, except on_this_day (1), special_day (1), and multi_person (2)
 - **Dedup by memory key**: if two detectors propose the same memory, the higher-scoring one wins
 
 ## auto run
