@@ -57,7 +57,7 @@ immich:
 
 `auto` detects the server major version at runtime and selects the right API contract. You do not
 need to choose a version for each run. Explicit `v2` and `v3` are manual troubleshooting
-overrides—escape hatches for unusual proxies or deployments where version detection is wrong;
+overrides: escape hatches for unusual proxies or deployments where version detection is wrong;
 each one forces that contract.
 
 The app normalizes v2 duration strings and v3 millisecond durations to seconds, selects the

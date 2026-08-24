@@ -5,7 +5,7 @@ title: NVIDIA
 
 # NVIDIA
 
-NVIDIA GPUs with NVENC provide hardware-accelerated video encoding that's 5-10x faster than software encoding. If you have a GTX 1050 or newer, you've got NVENC.
+NVIDIA GPUs with NVENC provide hardware-accelerated video encoding that's 5-10x faster than software encoding. If you have a GTX 1050 or newer, you've got NVENC. The encode is not the phase that dominates a run, though — see [Encoding quality](#encoding-quality) for what the card actually buys you.
 
 ## What you get
 
@@ -13,6 +13,7 @@ NVIDIA GPUs with NVENC provide hardware-accelerated video encoding that's 5-10x 
 - **NVDEC decoding**: hardware-accelerated decode, keeps the full pipeline on GPU.
 - **CUDA scaling**: `scale_cuda` resizes frames on the GPU instead of pulling them back to CPU.
 - **CUDA scene analysis**: when OpenCV has CUDA support and `hardware.gpu_analysis` is on, frame differencing for scene detection runs on the GPU. Face detection stays on the CPU (OpenCV Haar cascades) — there is no CUDA face path.
+- **Taichi title rendering**: with the `gpu` extra installed, Taichi picks the CUDA backend (Vulkan second) for animated title screens. This is the phase that costs the most on a CPU-only box.
 
 ## Requirements
 
@@ -66,4 +67,6 @@ See [Linux + NVIDIA](../common-setups/linux-nvidia.md) for a full compose file.
 
 ## Encoding quality
 
-NVENC quality is slightly below software libx264 at the same bitrate, but for memory videos the difference is invisible. The speed gain (5-10x) is worth it. If you're encoding a 2-minute compilation, NVENC finishes in seconds instead of minutes.
+NVENC quality is slightly below software libx264 at the same bitrate, but for memory videos the difference is invisible, so take the speed.
+
+Just don't buy the card for the encode. Encoding is the smaller half of a CPU-only run: title rendering was ~263 s of a ~339 s assembly at `--cpus=2`, and analysis was 7.4 of 10.1 minutes end to end. The bigger wins from this GPU are Taichi title rendering and CUDA scene analysis. See [CPU-Only Mode](./cpu-only.md#title-rendering-is-the-bottleneck-not-encoding) for the measured split.

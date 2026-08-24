@@ -11,7 +11,7 @@ on:
     types: [closed]
 
 permissions:
-  actions: write
+  contents: read
 
 concurrency:
   group: cancel-on-close-${{ github.event.pull_request.number }}
@@ -22,6 +22,10 @@ jobs:
     name: Cancel this branch's leftover runs
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      # Cancelling a run is a write on the Actions API, and it is the only
+      # write this workflow makes.
+      actions: write
     steps:
       - name: Cancel queued and running workflows for the closed branch
         env:

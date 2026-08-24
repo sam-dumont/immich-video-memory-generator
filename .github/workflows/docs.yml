@@ -23,14 +23,16 @@ concurrency:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 jobs:
   build:
     name: Build Docs
     runs-on: ubuntu-latest
     if: github.repository == 'sam-dumont/immich-video-memory-generator'
+    # Building only reads the tree; the Pages artifact upload runs on the
+    # Actions runtime token, not GITHUB_TOKEN.
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
       - name: Create LFS cache key
@@ -94,6 +96,12 @@ jobs:
     name: Deploy to GitHub Pages
     needs: build
     runs-on: ubuntu-latest
+    # The deploy-pages contract: pages to publish, id-token to prove which
+    # workflow is publishing.
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

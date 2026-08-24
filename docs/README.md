@@ -22,7 +22,7 @@ Welcome to the Immich Memories documentation.
 
 | Topic | Document |
 |-------|----------|
-| Installation | [README - Quick Install](../README.md#quick-install) |
+| Installation | [README - Without Docker](../README.md#without-docker) |
 | Configuration | [Docs site - Config file](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/configuration/config-file) |
 | CLI Commands | [Docs site - CLI reference](https://sam-dumont.github.io/immich-video-memory-generator/docs/reference/cli-reference) |
 | Hardware Acceleration | [Docs site - Hardware overview](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/hardware/overview) |
