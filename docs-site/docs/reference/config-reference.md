@@ -21,8 +21,10 @@ advanced:
 ```
 
 When reading, both placements work; if a section appears in both places the top-level one wins.
-Everything else (`immich`, `defaults`, `output`, `audio`, `title_screens`, `cache`, `upload`,
-`trips`, `photos`, `scheduler`) is Tier 1 and stays at the top level.
+Everything else stays at the top level: `immich`, `defaults`, `output`, `audio`, `title_screens`,
+`cache`, `upload`, `trips`, `photos`, `preset`, and the two the loader calls internal rather than
+Tier 1, `scheduler` and `title_llm`. The rule is mechanical — anything outside the Tier 2 set is
+left where it is.
 Unknown keys *inside* a section are silently ignored; unknown top-level keys and invalid values
 fail validation at startup.
 :::
@@ -154,12 +156,13 @@ defaults:
 Target duration and orientation are chosen per run — the UI slider / `--duration` (seconds) and
 `--orientation` — with the memory type preset supplying the default duration; there is no config
 default for either. The target duration describes the finished video, not just the selected source
-clips. The planner budgets opening/title/ending cards and subtracts the expected overlap from fades
-before it sets the content budget. Month dividers use an all-or-none policy, and trip location cards
-are counted only after the final media selection. If filtering leaves usable time on the table, the
-optimizer backfills eligible leftovers and can relax the preferred photo ratio; hard eligibility and
-deduplication rules remain enforced. Frame and transition boundaries can leave the encoded result
-less than one transition away from the requested duration.
+clips. The planner budgets opening/title/ending cards, then adds back the time the fades overlap
+away — so the content budget ends up larger than the timeline left over, not smaller. Month
+dividers use an all-or-none policy, and trip location cards are counted only after the final media
+selection. If filtering leaves usable time on the table, the optimizer backfills eligible leftovers
+and can relax the preferred photo ratio; hard eligibility and deduplication rules remain enforced.
+Treat the target as a target: frame and transition boundaries mean the encoded file lands near the
+requested duration, not exactly on it.
 
 ## Output
 
@@ -212,7 +215,8 @@ The animation per photo (Ken Burns, face pan, blurred background) is picked auto
 photo's content; it is not configurable.
 
 Burst de-duplication keeps only the best-scored frame of a run of near-identical photos, so the
-fifteen shots of the same jump do not become fifteen clips. `burst_window_seconds: 0` turns it off.
+fifteen shots of the same jump do not become fifteen clips. `burst_window_seconds: 0` all but turns
+it off: photos sharing an identical timestamp still group.
 It is separate from `moment_gap_seconds`, which is about a photo and a *video* of the same moment.
 
 ## Hardware acceleration
@@ -235,12 +239,13 @@ Image quality still comes from the CRF translation described above.
 
 ## Audio and music
 
-Background music is generated when `ace_step.enabled` or `musicgen.enabled` is on. With both on,
-ACE-Step generates and the MusicGen server is used only for stem separation (ducking); with neither,
-stems come from a local Demucs install if present. Per run you can still override that:
-`--music PATH` uses your own file, `--no-music` skips music, and the UI offers None / Upload file /
-AI Generated in Step 3. Music volume is a per-run setting too (`--music-volume` or the UI slider);
-ducking under speech and the 2 s / 3 s fades are fixed.
+Background music needs `ace_step.enabled` or `musicgen.enabled`. With neither, the pipeline refuses
+to build rather than running silent. With both on, ACE-Step generates, and MusicGen is both the
+fallback generator and the stem separator used for ducking. With MusicGen off, stems come from a
+local Demucs install if there is one. Per run you can still override that: `--music PATH` uses your
+own file, `--no-music` skips music, and Step 3 in the UI offers None / Upload file / AI Generated,
+plus Bundled when the `music` extra is installed. Music volume is a per-run setting too
+(`--music-volume` or the UI slider); ducking under speech and the 2 s / 3 s fades are fixed.
 
 ```yaml
 musicgen:
@@ -309,12 +314,12 @@ to configure. Explicit `base_url`/`thinking_params` always win over a preset.
 
 `thinking: true` runs the model in reasoning mode for the judgement calls
 only — the holistic selection review, title generation, and the special-day
-question in `discover-days`. Each such call
-costs roughly 5-10× the latency and 10-20× the completion tokens of a fast
-call, which matters on a paid API. Bulk work (per-clip content analysis,
-photo scoring) always runs in fast mode: reasoning over multiple images is
-unreliable on current models, and the volume would make it unaffordable
-anyway.
+question in `discover-days`. Measured on the live endpoint, a thinking call
+ran 30-134 s where the same model answered in 4-7 s without it, and it needs
+a 4000-token ceiling to finish reasoning — which matters on a paid API. Bulk
+work (per-clip content analysis, photo scoring) always runs in fast mode:
+reasoning over multiple images is unreliable on current models, and the volume
+would make it unaffordable anyway.
 
 `thinking_params` is merged verbatim into a thinking request, so the switch
 matches your server's dialect: the default is Qwen's
@@ -347,8 +352,8 @@ A provider's dialect can also be declared up front instead of negotiated:
 
 ```yaml
 llm:
-  max_tokens_param: max_completion_tokens  # token-limit field name
-  drop_params: [temperature]               # fields this server rejects
+  max_tokens_param: max_completion_tokens  # example; the default is max_tokens
+  drop_params: [temperature]               # example; the default is []
   extra_params: {}                         # fields merged into every call
 ```
 
@@ -359,14 +364,14 @@ options block rather than replacing it — content analysis already asks for a
 4096-token window that way, since Ollama's 2048 default does not hold the
 prompt plus several frames.
 
-A separate `title_llm` section can point the web UI's title step at a different model than the one
-used for content analysis:
+A separate `title_llm` section can point title generation at a different model than the one used for
+content analysis. It applies to the CLI and the web UI alike:
 
 ```yaml
 title_llm:
   provider: "openai-compatible"
-  base_url: "http://localhost:11434/v1"
-  model: "llama3.2"
+  base_url: "http://localhost:8080/v1"
+  model: "llama3.2"              # example; the default is empty, which means "use llm"
   api_key: ""
   timeout_seconds: 300
 ```
@@ -374,7 +379,7 @@ title_llm:
 The switch is all-or-nothing on `title_llm.model`: when it is set the whole `title_llm` block is
 used, and any field you leave out takes the *built-in* default (`provider: openai-compatible`,
 `base_url: http://localhost:8080/v1`, empty `api_key`) — it is not inherited from `llm`. When
-`title_llm.model` is empty, `llm` is used. CLI title generation always uses `llm`.
+`title_llm.model` is empty, `llm` is used. Both entry points resolve it the same way.
 
 ## Content analysis (LLM-based scoring)
 
@@ -385,7 +390,7 @@ content_analysis:
   analyze_frames: 2              # Frames per segment (1-4)
   min_confidence: 0.5
   frame_max_height: 480
-  openai_image_detail: "low"     # low (85 tokens) or high (1889 tokens)
+  openai_image_detail: "low"     # low (85 tokens), high (1889 tokens), or auto
 
 audio_content:
   enabled: false
@@ -452,8 +457,9 @@ One entry forces that language and skips detection entirely. Several restrict de
 languages, so the model chooses between the two or three your library actually contains instead of
 guessing among 99.
 
-Transcripts are stored on the top five candidate segments of each video and **do not affect any
-score**. Nothing reads them yet.
+Transcripts are stored on the top five candidate segments of each video, and the vision model reads
+them — see [What the transcript is used for](#what-the-transcript-is-used-for) below. They move
+LLM-derived scores.
 
 Unlike the FireRedVAD weights, which ship inside the package, whisper models are downloaded from
 HuggingFace on first use — about 1.5 GB for the `medium` default. In Docker, mount the model
@@ -477,12 +483,10 @@ is unchanged, only the audio handed to the model widens.
 
 ### What the gate can and cannot catch
 
-Measured over 80 clips and 282 candidate segments from a real family library:
+Measured over 80 clips from a real family library:
 
 | | |
 |---|---|
-| Clips with no voice activity at all | 9% |
-| Candidate segments declined before reaching whisper | 71% |
 | Whisper calls saved by reusing overlapping candidates | 46% |
 | Cost per segment, `medium` | ~0.6 s |
 
@@ -511,8 +515,9 @@ same description as the frames alone.
 Because the model reads the speech, spoken names can end up in the stored description. Enabling
 transcription therefore changes what the analysis cache records about the people in your videos.
 
-Turning transcription on changes LLM-derived scores, so it bumps the scoring version and cached
-scores are recomputed.
+Because transcripts change what the model is given, wiring them in bumped the scoring version once,
+which invalidated every cached LLM score at that release. Toggling the setting afterwards does not
+bump anything: `SCORING_VERSION` is a fixed constant, not a function of your config.
 
 ## Title screens
 
@@ -586,13 +591,15 @@ server:
                                  # Immich library behind it
 ```
 
-These can also be set via CLI flags: `immich-memories ui --host 127.0.0.1 --port 9090`.
+`host` and `port` also have CLI flags: `immich-memories ui --host 127.0.0.1 --port 9090`. The rest
+of the section is config-only.
 
 `trigger_token` turns on the HTTP trigger — one POST that runs whatever `auto run` would have
 decided, so an Immich workflow (or a cron, or a phone shortcut) can start a memory. See
 [Trigger from Immich or anything else](../create/recipes/trigger-endpoint.md). Keep it out of
 `config.yaml` with `IMMICH_MEMORIES_SERVER__TRIGGER_TOKEN` or a `${VAR}` reference; either way it
-is redacted from logs, `/health`, and the config viewer like every other secret.
+is redacted from `/health` and the config viewer. There is no global log filter, so treat anything
+you print yourself as your own problem.
 
 `host` is the one value "save" leaves out of `config.yaml` when you never set it. Writing the
 `0.0.0.0` default would make the next load treat it as your decision and quietly retire the
