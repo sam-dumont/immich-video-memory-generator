@@ -603,7 +603,7 @@ scheduler:
       params: {}
 ```
 
-## Smart automation
+## Automation
 
 Controls what `immich-memories auto suggest` and `auto run` detect and generate. See the [auto CLI docs](../create/cli/auto.md) for the full command reference. Tier 2 — lives under `advanced:` when the app writes the file.
 

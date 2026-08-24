@@ -23,7 +23,7 @@ immich-memories analyze [OPTIONS]
 
 ## `auto`
 
-Smart automation -- detect and generate memory candidates.
+Automation -- detect and generate memory candidates.
 
 ```bash
 immich-memories auto [OPTIONS]

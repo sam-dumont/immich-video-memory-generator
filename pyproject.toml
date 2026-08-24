@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "immich-memories"
 dynamic = ["version"]
-description = "Turn your Immich photo library into video memory compilations with music and smart cuts"
+description = "Turn your Immich photo library into video memory compilations with music and scene-aware cuts"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
