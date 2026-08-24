@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import calendar
 import json
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import click
@@ -95,19 +95,36 @@ def _register_due(main: click.Group) -> None:
                 subtitle=raw.get("subtitle", ""),
                 what=raw.get("what", ""),
                 photos=raw.get("photos", 0),
-                window=None,
+                window=_window_in(raw.get("window")),
             )
             for raw in _load_catalogue(catalogue)
             if raw.get("day")
         ]
 
         for entry, years in anniversaries_due(entries, when):
-            console.print(
-                f"[bold]{years} years ago[/bold]  {entry.day}  {entry.title or entry.what}"
-            )
+            line = f"[bold]{years} years ago[/bold]  {entry.day}  {entry.title or entry.what}"
+            if entry.window:
+                start, end = entry.window
+                line += f"  [dim]{start:%H:%M}-{end:%H:%M}[/dim]"
+            console.print(line)
             if entry.subtitle:
                 console.print(f"                {entry.subtitle}")
         print_success(f"{len(entries)} days in the catalogue, checked against {when}")
+
+
+def _window_in(raw: object) -> tuple[datetime, datetime] | None:
+    """The hours a catalogue entry recorded for its event, if it recorded any.
+
+    Entries written before the scan looked for one have no window, and a scan
+    of twenty years is not something to ask anybody to run again.
+    """
+    if not isinstance(raw, list) or len(raw) != 2:
+        return None
+    try:
+        return (datetime.fromisoformat(raw[0]), datetime.fromisoformat(raw[1]))
+    except (TypeError, ValueError):
+        console.print(f"[yellow]Ignoring an unreadable window in the catalogue: {raw!r}[/yellow]")
+        return None
 
 
 def _load_catalogue(path: Path) -> list[dict]:

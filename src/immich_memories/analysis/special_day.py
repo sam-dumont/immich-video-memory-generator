@@ -128,11 +128,15 @@ Give it a title and a line under it, the way a photographer would caption a
 set they were proud of. Not the date and not the place — those are already on
 the card. Say something about the day.
 
+If one clear event fills part of the day, give the clock times it ran between,
+and leave the window null when the day was all one thing.
+
 Answer with STRICT JSON only, no prose:
 {{"special": true|false,
   "title": "<a few words, or empty>",
   "subtitle": "<one line, or empty>",
-  "what": "<a few words, or empty>"}}"""
+  "what": "<a few words, or empty>",
+  "window": ["HH:MM", "HH:MM"] or null}}"""
 
 
 def candidate_days(
@@ -407,10 +411,17 @@ def _only_if_grounded(text: str, vocabulary: set[str], *, located: bool, places:
 
 # Two places count as one if they are closer than this.
 _SAME_PLACE_KM = 2.0
-# A dominant place must hold this much of the day to define its window...
+# A dominant place must hold this much of the day to define its window.
 _DOMINANT_SHARE = 0.6
-# ...and occupy less than this much of it, or the day simply happened there.
-_WINDOW_SHARE_OF_DAY = 0.5
+# A window has to be long enough to hold a memory. Without a floor, a dense
+# burst in one place produced a 69-second window on a 12.6-hour day, and
+# everything that day was about sat outside it.
+_MIN_WINDOW = timedelta(minutes=30)
+# And trimming has to actually remove something — this much clock time, and
+# this much of the day. A ratio on its own read a race photographed from
+# arrival to podium as "the day simply happened there" and returned nothing.
+_MIN_TRIM = timedelta(minutes=45)
+_MIN_TRIM_SHARE = 0.15
 
 
 def event_window(assets: list) -> tuple[datetime, datetime] | None:
@@ -422,8 +433,10 @@ def event_window(assets: list) -> tuple[datetime, datetime] | None:
     wedding also put 83% in one place, but across all fifteen hours it ran, so
     there is nothing to trim.
 
-    What separates them is not whether a place dominates — all of them do — but
-    how much of the day it takes up.
+    What separates them is whether trimming to the dominant place would remove
+    a meaningful part of the day. Asking instead how much of the day the place
+    takes up punished the days photographed best: a race covered from arrival
+    to podium filled two thirds of its day and was given no window at all.
     """
     located = [
         (a.file_created_at, a.exif_info.latitude, a.exif_info.longitude)
@@ -450,12 +463,56 @@ def event_window(assets: list) -> tuple[datetime, datetime] | None:
     if biggest["n"] / len(located) < _DOMINANT_SHARE:
         return None
 
-    day_span = (located[-1][0] - located[0][0]).total_seconds()
-    window_span = (biggest["last"] - biggest["first"]).total_seconds()
-    if day_span <= 0 or window_span / day_span >= _WINDOW_SHARE_OF_DAY:
+    day_span = located[-1][0] - located[0][0]
+    window_span = biggest["last"] - biggest["first"]
+    trimmed = day_span - window_span
+    if window_span < _MIN_WINDOW:
+        return None
+    if trimmed < _MIN_TRIM or trimmed < _MIN_TRIM_SHARE * day_span:
         return None
 
     return biggest["first"], biggest["last"]
+
+
+# How far outside its own pictures a written clock time may fall. The model
+# reads the times off the evidence lines and rounds them — "20:00" for a last
+# picture at 19:44 — and refusing that would throw away a good window.
+_CLOCK_SLACK = timedelta(hours=1)
+
+
+def _at_clock(written: Any, first: datetime, last: datetime) -> datetime | None:
+    """A written HH:MM placed on the day's own timeline.
+
+    Placed rather than parsed: a run of activity can cross midnight, so an
+    02:00 end belongs to the following calendar date.
+    """
+    match = re.fullmatch(r"\s*(\d{1,2}):(\d{2})\s*", str(written))
+    if not match or int(match[1]) > 23 or int(match[2]) > 59:
+        return None
+    moment = first.replace(hour=int(match[1]), minute=int(match[2]), second=0, microsecond=0)
+    if moment < first - _CLOCK_SLACK:
+        moment += timedelta(days=1)
+    return moment if first - _CLOCK_SLACK <= moment <= last + _CLOCK_SLACK else None
+
+
+def _window_the_model_gave(answer: dict, assets: list) -> tuple[datetime, datetime] | None:
+    """The clock times the model put on the day's one clear event.
+
+    Worth asking for because geometry cannot answer it. A race day's
+    coordinates are identical from the moment the car is parked to the moment
+    it leaves, so the cluster starts at arrival; the per-picture lines carry
+    timestamps and say what is in the frame, so the model can tell arrival
+    from the start of the thing that happened.
+    """
+    written = answer.get("window")
+    if not isinstance(written, list) or len(written) != 2:
+        return None
+    times = [a.file_created_at for a in assets]
+    first, last = min(times), max(times)
+    start, end = _at_clock(written[0], first, last), _at_clock(written[1], first, last)
+    if start is None or end is None or end - start < _MIN_WINDOW:
+        return None
+    return start, end
 
 
 def _line_for(asset: Any, described: str | None) -> str:
@@ -580,6 +637,7 @@ class SpecialDay:
     title: str = ""
     subtitle: str = ""
     what: str = ""
+    window: tuple[datetime, datetime] | None = None
 
 
 def ask_if_special(
@@ -661,4 +719,5 @@ def ask_if_special(
             places=places,
         ),
         what=str(answer.get("what", ""))[:80].strip(),
+        window=_window_the_model_gave(answer, assets),
     )

@@ -42,6 +42,32 @@ occasion; the calendar disagrees.
 Two things are skipped outright: days inside a detected trip, because a trip memory
 already tells that story end to end, and holidays, which have their own memory type.
 
+## The part of the day that was the event
+
+Some days are an event; some days contain one. A track day put most of its pictures in one
+place inside a couple of hours of a long day — the rest of that day is a cat on a balcony —
+and the memory should start at the circuit. So a discovered day can carry a window: the
+hours the thing that happened actually ran.
+
+Two things look for it. The model is asked, in the same question, for the clock times the
+event ran between. It reads those off the per-picture lines, which is why it can answer at
+all: a circuit's coordinates are identical from the moment the car is parked to the moment
+it leaves, so the map cannot tell arrival from the start of the race and the pictures can.
+
+Where the model declines, the geometry is the fallback — the first and last picture of the
+place that dominates the day. That window is kept only when trimming to it removes at least
+45 minutes and at least 15% of the day, and only when what is left runs at least half an
+hour.
+
+Both bounds are there for a measured failure. Without the floor, a dense burst in one place
+produced a 69-second window on a 12.6-hour day. And the rule that came before — drop the
+window whenever the dominant place covers half the day or more — punished the days
+photographed best: a race covered from arrival to podium filled two thirds of its day and
+was given no window at all.
+
+A day that was all one thing has nothing to trim and gets no window, which is the right
+answer for a wedding that ran fifteen hours in one place.
+
 ## Fast eyes, then a considered answer
 
 With `llm.thinking: true` the question runs in two steps: one fast call that
@@ -112,8 +138,11 @@ first — ten years reads louder than nine, which is the whole appeal of arrivin
 unannounced.
 
 ```
-10 years ago  2015-06-12  A long evening out
+10 years ago  2015-06-12  A long evening out  18:40-23:55
 ```
+
+The hours on the right are the day's window, when it found one. Catalogues written before
+windows existed simply have none, and still read.
 
 `--on YYYY-MM-DD` checks a different date, and `--catalogue PATH` reads a different file.
 Anniversaries either side of New Year are found: a day at the end of December is due in

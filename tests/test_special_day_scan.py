@@ -68,7 +68,9 @@ def test_without_a_homebase_the_scan_excludes_no_days(monkeypatch) -> None:
     # WHY: ask_if_special is the LLM call; the verdict is not what this tests.
     monkeypatch.setattr(
         "immich_memories.automation.special_day_scan.ask_if_special",
-        lambda *_a, **_k: SimpleNamespace(special=True, title="A day", subtitle="", what="out"),
+        lambda *_a, **_k: SimpleNamespace(
+            special=True, title="A day", subtitle="", what="out", window=None
+        ),
     )
     # WHY: detect_trips reverse-geocodes over the network, and without a home
     # there is nothing for it to measure against — it must not run at all.

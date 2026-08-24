@@ -145,7 +145,9 @@ def scan_year(
                 subtitle=verdict.subtitle,
                 what=verdict.what,
                 photos=len(items),
-                window=event_window(items),
+                # The model read the day's own timestamps and what was in the
+                # frames; event_window only knows where the pictures were.
+                window=verdict.window or event_window(items),
             )
         )
     return found
