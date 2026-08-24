@@ -1,8 +1,9 @@
 # Immich Memories — self-hoster quickstart
 # Usage: docker compose up -d
 # Then open http://localhost:8080
-# Authentication is disabled by default. Do not publish port 8080 outside a trusted network
-# until auth is enabled. The stateful UI supports one user flow in one replica.
+# Authentication is disabled by default, so the UI is published on localhost only.
+# Reaching it from another machine is a deliberate two-step change — see the ports block.
+# The stateful UI supports one user flow in one replica.
 #
 # Resource requirements:
 #   Idle (UI): ~100MB RAM
@@ -17,8 +18,11 @@ services:
   immich-memories:
     image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
     container_name: immich-memories
+    # Localhost only. This container holds an Immich API key to your whole library.
+    # To reach it from other machines: turn on auth first, then use "8080:8080".
+    # https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/configuration/authentication
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     volumes:
       - immich-memories-config:/home/immich/.immich-memories
       - ./output:/app/output
