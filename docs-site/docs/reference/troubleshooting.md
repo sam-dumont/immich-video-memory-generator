@@ -61,7 +61,7 @@ relevant Immich server logs. API keys are redacted.
 
 First-run analysis takes roughly 1-2 minutes per clip on a CPU-only box, about 1 minute per 10 clips on Apple Silicon or a GPU. Downscaling to 480p is already on by default (`analysis.enable_downscaling`, `analysis.analysis_resolution`), so the levers left are:
 
-- **Analyze fewer clips**: `--analysis-depth fast` (or the "Analysis Depth" selector in Step 1) runs the LLM pass on favorites only; every other clip falls back to metadata scoring. `auto` (the default) analyses every eligible clip while 60 or fewer of them still need work under the active model, and shortlists by density past that. It does not drop to favorites-only unless you also set `preset: fast`.
+- **Analyze fewer clips**: `--analysis-depth fast` (or the "Analysis Depth" selector in Step 1) does two things — it shortlists candidates by density instead of taking every eligible clip, and it runs the LLM pass on favorites only, leaving the rest to metadata scoring. `auto` (the default) takes every eligible clip while 60 or fewer of them still need work under the active model, and shortlists past that. It never drops to favorites-only unless you also set `preset: fast`.
 - **Narrow the period**: a month or a person filter is analyzed in minutes; a whole year of a busy library is an overnight job on a NAS.
 - **Let the cache work**: results are stored per asset in `~/.immich-memories/cache.db`, so the second run over the same clips skips analysis. Do not clear the cache between runs.
 - **Turn off the LLM pass**: it is off by default, but with `content_analysis.enabled: true` every candidate waits on the model server and a slow Ollama box dominates the run.
