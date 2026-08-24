@@ -9,7 +9,7 @@ before reporting.
 
 | Version | Supported          |
 | ------- | ------------------ |
-| latest release (0.40.x at time of writing) | :white_check_mark: |
+| [latest release](https://github.com/sam-dumont/immich-video-memory-generator/releases) | :white_check_mark: |
 | older   | :x:                |
 
 ## Reporting a Vulnerability
@@ -24,7 +24,10 @@ If you discover a security vulnerability in Immich Memories, please report it re
    - Potential impact
    - Suggested fix (if any)
 
-We will acknowledge receipt within 48 hours and provide a detailed response within 7 days.
+I'm a solo maintainer on a hobby project, so there is no SLA. Security reports go to the front
+of the queue, but "the front of the queue" realistically means a few days, sometimes longer. If a
+week passes with no reply, open a public issue asking me to check my inbox, without describing
+the vulnerability.
 
 ## Deployment posture (short version)
 
@@ -35,8 +38,9 @@ We will acknowledge receipt within 48 hours and provide a detailed response with
   never deletes or edits existing assets.
 - What leaves your network (geocoding, map tiles, LLM, music, notifications) is listed on the
   [network & privacy page](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/configuration/network-and-privacy).
-- CI runs Bandit, Semgrep, pip-audit, gitleaks and OpenSSF Scorecard on every change; the
-  Docker image is digest-pinned and runs as a non-root user.
+- CI runs five security scans on every change: Bandit, Semgrep, pip-audit, Gitleaks and Hadolint.
+  OpenSSF Scorecard runs on its own schedule and on pushes to `main`. The Docker image is
+  digest-pinned and runs as a non-root user.
 
 ## Security Considerations
 
@@ -59,8 +63,10 @@ We will acknowledge receipt within 48 hours and provide a detailed response with
 
 ## Dependencies
 
-We regularly update dependencies to patch known vulnerabilities. Run:
+The pip-audit gate blocks any PR that introduces a dependency with a known CVE. To pick up the
+patches, upgrade:
 
 ```bash
-pip install --upgrade immich-video-memory-generator  # or pull latest Docker image
+uv tool upgrade immich-memories        # or: pip install --upgrade immich-memories
+docker compose pull                    # Docker installs
 ```
