@@ -1,0 +1,77 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "timezone": "Europe/Brussels",
+  "schedule": ["* 4-8 * * 1"],
+  "prConcurrentLimit": 2,
+  "prHourlyLimit": 1,
+  "labels": ["dependencies"],
+  "rebaseWhen": "conflicted",
+  "minimumReleaseAge": "7 days",
+  "automerge": false,
+  "platformAutomerge": false,
+  "enabledManagers": ["pep621", "npm", "github-actions", "dockerfile"],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 5am on the first day of the month"],
+    "semanticCommitType": "build"
+  },
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "schedule": ["at any time"],
+    "minimumReleaseAge": null,
+    "labels": ["dependencies", "security"]
+  },
+  "packageRules": [
+    {
+      "description": "Majors wait for an explicit tick on the dependency dashboard — this repo pins on purpose",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Action digests move together; the # vN comment is kept in sync",
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions",
+      "semanticCommitType": "ci",
+      "labels": ["dependencies", "ci"]
+    },
+    {
+      "matchManagers": ["npm"],
+      "matchFileNames": ["docs-site/package.json"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "docs-site npm packages",
+      "semanticCommitType": "build"
+    },
+    {
+      "matchManagers": ["npm"],
+      "matchFileNames": ["docs-site/remotion/package.json"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "remotion npm packages",
+      "semanticCommitType": "build"
+    },
+    {
+      "matchManagers": ["pep621"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "python dependencies",
+      "semanticCommitType": "build"
+    },
+    {
+      "description": "The runtime image is deliberately python 3.11-slim — take security rebuilds, not version jumps",
+      "matchManagers": ["dockerfile"],
+      "matchUpdateTypes": ["major", "minor", "patch"],
+      "enabled": false
+    },
+    {
+      "matchManagers": ["dockerfile"],
+      "matchUpdateTypes": ["digest"],
+      "groupName": "docker base images",
+      "semanticCommitType": "build",
+      "labels": ["dependencies", "docker"]
+    }
+  ]
+}
