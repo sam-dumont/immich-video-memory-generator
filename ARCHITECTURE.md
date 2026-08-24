@@ -229,7 +229,8 @@ src/immich_memories/
 │       ├── factory.py          # Generator factory
 │       ├── memory_budget.py    # Will this ACE-Step profile fit in RAM? (checked before jetsam decides)
 │       ├── musicgen_backend.py # MusicGen API (generation + remote Demucs stems)
-│       ├── ace_step_backend.py # ACE-Step lib/API (generation)
+│       ├── ace_step_backend.py # ACE-Step lib/API (mode choice, captions, REST protocol)
+│       ├── ace_step_runtime.py # ACE-Step in-process handlers: device, MLX/torch memory, one render
 │       ├── ace_step_captions.py # Dense caption templates
 │       └── demucs_local.py     # Local Demucs stem separation (in-process)
 │
@@ -259,7 +260,8 @@ src/immich_memories/
 │   ├── taichi_particles.py     # ParticleField: bokeh drift / fireworks physics
 │   ├── taichi_text.py          # TitleTextRenderer: SDF + PIL text compositing
 │   ├── renderer_ffmpeg.py      # FFmpeg-based renderer
-│   ├── taichi_kernels.py       # Taichi GPU kernels
+│   ├── taichi_kernels.py       # Taichi GPU kernels + lazy compilation (init_taichi)
+│   ├── taichi_backend_probe.py # Which Taichi arch can dispatch here (isolated child probe)
 │   ├── taichi_video.py         # Taichi video creation
 │   ├── ffmpeg_pipe.py          # Feed raw frames to FFmpeg without deadlocking on an unread stderr
 │   ├── safe_zones.py           # Keep vertical titles clear of the Reels/Shorts/TikTok button rail
@@ -307,6 +309,7 @@ src/immich_memories/
 │   ├── app.py                  # App setup & routing
 │   ├── auth.py                 # Auth middleware, credential verification, session helpers
 │   ├── auth_oidc.py            # OIDC client (authlib starlette integration, singleton)
+│   ├── trigger_api.py          # POST /api/trigger — runs what `auto run` decides, 202 + status URL
 │   ├── reverse_proxy.py        # Secure cookie + trusted X-Forwarded-* kwargs for ui.run
 │   ├── state.py                # Shared UI state
 │   ├── session_storage.py      # Expire the storage-user-*.json files NiceGUI writes but never cleans
@@ -338,6 +341,8 @@ src/immich_memories/
 │
 ├── tracking/                   # Run history & telemetry
 │   ├── run_database.py         # SQLite run storage
+│   ├── run_database_rows.py    # SQLite row <-> model conversion
+│   ├── run_lifecycle_errors.py # Refused lifecycle transitions and their diagnosis
 │   ├── run_tracker.py          # Pipeline run tracking
 │   ├── run_id.py               # Run ID generation
 │   ├── models.py               # Run/phase data models

@@ -337,7 +337,7 @@ plugins = ["pydantic.mypy"]
 # required without, one is the other way round. warn_unused_ignores cannot be
 # correct in both environments at once, so it is off for these two files.
 module = [
-    "immich_memories.audio.generators.ace_step_backend",
+    "immich_memories.audio.generators.ace_step_runtime",
     "immich_memories.audio.generators.demucs_local",
 ]
 warn_unused_ignores = false
@@ -454,6 +454,7 @@ module = [
     "immich_memories.titles.renderer_taichi",
     "immich_memories.titles.taichi_text",
     "immich_memories.titles.sdf_font",
+    "immich_memories.titles.taichi_backend_probe",
     "immich_memories.titles.taichi_kernels",
     "immich_memories.titles.sdf_font_rendering",
     "immich_memories.titles.taichi_video",
