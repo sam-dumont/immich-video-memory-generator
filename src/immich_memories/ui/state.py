@@ -178,6 +178,21 @@ class AppState:
         )
 
     @property
+    def person_ids(self) -> list[str]:
+        """The people this memory is narrowed to, as the one list a fetch reads.
+
+        The wizard writes a single pick into ``selected_person`` and a group
+        pick into ``memory_preset_params['person_ids']`` -- two fields, because
+        two different cards collect them. Every read of "who is this memory
+        about" goes through here so the fetch sees the same list the CLI builds
+        from ``--person``: a group of one is a filter, not an absence of one.
+        """
+        group = self.memory_preset_params.get("person_ids") or []
+        if group:
+            return list(group)
+        return [self.selected_person.id] if self.selected_person else []
+
+    @property
     def scope_is_selected(self) -> bool:
         """Whether step 1 has enough to go find media with.
 

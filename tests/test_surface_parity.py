@@ -423,16 +423,6 @@ class FetchScenario:
     divergence: str | None = None
 
 
-MULTI_PERSON_OF_ONE_DIVERGENCE = (
-    "A Multi-Person memory naming one person is unfiltered in the wizard and "
-    "filtered on the CLI. step2_loading._fetch_assets only reads "
-    "memory_preset_params['person_ids'] when it holds two or more, and the "
-    "Multi-Person card never sets state.selected_person, so the single id falls "
-    "through to the whole-window query. The CLI's fetch_videos_and_live_photos "
-    "branches on len(person_ids) == 1 and filters. Same request, one video of "
-    "Alice and one of everybody."
-)
-
 PERSON_FILTER_ON_NON_PERSON_TYPE_DIVERGENCE = (
     "--person narrows any memory type on the CLI and no type but two in the "
     "wizard. fetch_videos_and_live_photos takes whatever person_ids generate.py "
@@ -448,7 +438,7 @@ FETCH_SCENARIOS = (
     FetchScenario(MemoryType.YEAR_IN_REVIEW, ()),
     FetchScenario(MemoryType.PERSON_SPOTLIGHT, (ALICE,)),
     FetchScenario(MemoryType.MULTI_PERSON, (ALICE, BOB)),
-    FetchScenario(MemoryType.MULTI_PERSON, (ALICE,), MULTI_PERSON_OF_ONE_DIVERGENCE),
+    FetchScenario(MemoryType.MULTI_PERSON, (ALICE,)),
     FetchScenario(
         MemoryType.YEAR_IN_REVIEW, (ALICE, BOB), PERSON_FILTER_ON_NON_PERSON_TYPE_DIVERGENCE
     ),

@@ -590,3 +590,30 @@ class TestFormatDurationEdgeCases:
 
         result = format_duration(61.9)
         assert result == "1:01"
+
+
+class TestPersonScope:
+    """Who a memory is about, as the one list every fetch reads."""
+
+    def test_a_group_of_one_is_still_a_filter(self) -> None:
+        """A Multi-Person memory naming one person used to fetch everybody.
+
+        That card writes its picks to memory_preset_params and never touches
+        selected_person, so a lone id read as "no people named" turned a memory
+        of Alice into a memory of the whole window.
+        """
+        state = AppState()
+        state.memory_preset_params = {"person_ids": ["person-alice"]}
+
+        assert state.person_ids == ["person-alice"]
+
+    def test_a_single_pick_reads_as_a_list_of_one(self) -> None:
+        from immich_memories.api.models import Person
+
+        state = AppState()
+        state.selected_person = Person(id="person-alice", name="Alice")
+
+        assert state.person_ids == ["person-alice"]
+
+    def test_a_memory_about_nobody_names_nobody(self) -> None:
+        assert AppState().person_ids == []
