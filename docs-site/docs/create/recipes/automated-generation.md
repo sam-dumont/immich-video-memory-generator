@@ -5,11 +5,10 @@ title: Automated Generation
 
 # Automated Generation
 
-Once you know your preferred settings, automate the whole thing. The recommended path is one
-`auto run` a day, which picks what to make for you; the scheduler daemon and hand-written cron are
-advanced/legacy alternatives.
+Once you know your preferred settings, automate the whole thing. The recommended path is one daily
+smart decision; the scheduler daemon and hand-written cron are advanced/legacy alternatives.
 
-## Daily `auto` runs (recommended)
+## Smart Automation (Recommended)
 
 The `auto` system scans your library, detects what's worth turning into a memory video, and generates the best candidate. It runs 8 detectors (monthly, yearly, trips, person spotlights, birthdays, activity bursts, on-this-day, multi-person pairs) and picks the highest-scoring one.
 
@@ -63,7 +62,7 @@ appears on schedule, uploads if `upload_to_immich` is on, and notifies if notifi
 
 ## Scheduler daemon (advanced/legacy)
 
-:::tip Use `auto` instead
+:::tip Use smart automation instead
 Most users should use the `auto` system above — it figures out what to generate automatically. The scheduler below is for Docker/K8s deployments or when you need exact control over what generates when (specific memory types on specific dates).
 :::
 
