@@ -14,11 +14,9 @@ from typing import TYPE_CHECKING
 import click
 
 from immich_memories.analysis.trip_detection import DetectedTrip, haversine_km
+from immich_memories.cli._asset_fetch import fetch_videos_and_live_photos
 from immich_memories.cli._helpers import console, print_error, print_info, print_success
-from immich_memories.cli._pipeline_runner import (
-    fetch_videos_and_live_photos,
-    run_pipeline_and_generate,
-)
+from immich_memories.cli._pipeline_runner import run_pipeline_and_generate
 from immich_memories.processing.encoding_plan import resolve_output_selection
 from immich_memories.timeperiod import DateRange
 

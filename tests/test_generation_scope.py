@@ -9,7 +9,7 @@ import pytest
 from rich.table import Table
 
 from immich_memories.cli._generate_display import _add_scope_rows, _format_target_duration
-from immich_memories.cli.generate import (
+from immich_memories.cli.generate_resolution import (
     _reject_album_scope_conflicts,
     _resolve_generation_scope,
 )

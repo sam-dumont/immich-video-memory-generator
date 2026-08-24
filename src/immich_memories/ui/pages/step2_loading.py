@@ -149,6 +149,7 @@ def _build_clips(assets: list) -> tuple[list[VideoClipInfo], int]:
 def _fetch_photos(state) -> list:
     """Fetch photo assets (blocking), one query per window."""
     person_id = state.selected_person.id if state.selected_person else None
+    multi_ids = state.memory_preset_params.get("person_ids", [])
     with SyncImmichClient(
         base_url=state.immich_url,
         api_key=state.immich_api_key,
@@ -156,7 +157,13 @@ def _fetch_photos(state) -> list:
     ) as client:
         photos: list = []
         for date_range in state.date_ranges:
-            photos.extend(client.get_photos_for_date_range(date_range, person_id=person_id))
+            photos.extend(
+                client.get_photos_for_date_range(
+                    date_range,
+                    person_id=person_id,
+                    person_ids=multi_ids if len(multi_ids) >= 2 else None,
+                )
+            )
         return _dedup_by_id(photos)
 
 

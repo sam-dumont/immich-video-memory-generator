@@ -83,6 +83,7 @@ these helper modules:
 - `generate_privacy.py`: GPS anonymization, fake names/cities, trip titles
 - `generate_settings.py`: assembly/title settings, assembler creation
 - `generate_timeline.py`: final-duration validation and content budget guards
+- `generate_delivery.py`: Immich upload of a finished artifact + delivered/pending/failed run state
 
 ## Package Structure
 
@@ -229,7 +230,8 @@ src/immich_memories/
 │       ├── factory.py          # Generator factory
 │       ├── memory_budget.py    # Will this ACE-Step profile fit in RAM? (checked before jetsam decides)
 │       ├── musicgen_backend.py # MusicGen API (generation + remote Demucs stems)
-│       ├── ace_step_backend.py # ACE-Step lib/API (generation)
+│       ├── ace_step_backend.py # ACE-Step lib/API (mode choice, captions, REST protocol)
+│       ├── ace_step_runtime.py # ACE-Step in-process handlers: device, MLX/torch memory, one render
 │       ├── ace_step_captions.py # Dense caption templates
 │       └── demucs_local.py     # Local Demucs stem separation (in-process)
 │
@@ -259,7 +261,8 @@ src/immich_memories/
 │   ├── taichi_particles.py     # ParticleField: bokeh drift / fireworks physics
 │   ├── taichi_text.py          # TitleTextRenderer: SDF + PIL text compositing
 │   ├── renderer_ffmpeg.py      # FFmpeg-based renderer
-│   ├── taichi_kernels.py       # Taichi GPU kernels
+│   ├── taichi_kernels.py       # Taichi GPU kernels + lazy compilation (init_taichi)
+│   ├── taichi_backend_probe.py # Which Taichi arch can dispatch here (isolated child probe)
 │   ├── taichi_video.py         # Taichi video creation
 │   ├── ffmpeg_pipe.py          # Feed raw frames to FFmpeg without deadlocking on an unread stderr
 │   ├── safe_zones.py           # Keep vertical titles clear of the Reels/Shorts/TikTok button rail
@@ -279,6 +282,8 @@ src/immich_memories/
 ├── cli/                        # Command-line interface (Click)
 │   ├── __init__.py             # Main CLI group + `ui` command
 │   ├── generate.py             # `generate`
+│   ├── generate_options.py     # `generate`'s flags, grouped; group order is the --help order
+│   ├── generate_resolution.py  # What those flags mean against the config, presets and conflicts
 │   ├── _analyze_export.py      # `analyze`, `export-project`
 │   ├── config_cmd.py           # `config`, `people`, `years`, `preflight`
 │   ├── scheduler_cmd.py        # `scheduler list/status/start`
@@ -293,7 +298,9 @@ src/immich_memories/
 │   ├── _generation_preview.py  # Plain-text summary for read-only generation planning (--dry-run)
 │   ├── _config_errors.py       # Config error formatting
 │   ├── _flags.py               # Shared validation for flags more than one command takes
-│   ├── _pipeline_runner.py     # Fetch assets + run SmartPipeline + generate
+│   ├── _pipeline_runner.py     # Run SmartPipeline over the fetched assets + generate
+│   ├── _asset_fetch.py         # What a memory asks Immich for: videos, Live Photos, stills
+│   ├── _candidate_pool.py      # Videos + photos merged into one pool, then filtered
 │   ├── _album_generation.py    # Album mode: an Immich album is the candidate pool
 │   ├── _llm_title.py           # Opt-in LLM title on the CLI path (the wizard's default differs)
 │   ├── _trip_generation.py     # Trip detection, selection, per-trip generation
@@ -307,6 +314,8 @@ src/immich_memories/
 │   ├── app.py                  # App setup & routing
 │   ├── auth.py                 # Auth middleware, credential verification, session helpers
 │   ├── auth_oidc.py            # OIDC client (authlib starlette integration, singleton)
+│   ├── health_api.py           # GET /health, /health/live, /health/ready — probe payloads + snapshot cache
+│   ├── trigger_api.py          # POST /api/trigger — runs what `auto run` decides, 202 + status URL
 │   ├── reverse_proxy.py        # Secure cookie + trusted X-Forwarded-* kwargs for ui.run
 │   ├── state.py                # Shared UI state
 │   ├── session_storage.py      # Expire the storage-user-*.json files NiceGUI writes but never cleans
@@ -338,6 +347,8 @@ src/immich_memories/
 │
 ├── tracking/                   # Run history & telemetry
 │   ├── run_database.py         # SQLite run storage
+│   ├── run_database_rows.py    # SQLite row <-> model conversion
+│   ├── run_lifecycle_errors.py # Refused lifecycle transitions and their diagnosis
 │   ├── run_tracker.py          # Pipeline run tracking
 │   ├── run_id.py               # Run ID generation
 │   ├── models.py               # Run/phase data models
@@ -407,12 +418,13 @@ src/immich_memories/
 ├── config_models_soundtrack.py # Music under a memory: local library, MusicGen, ACE-Step
 ├── generate.py                 # End-to-end generation orchestrator
 ├── generate_clips.py           # Clip extraction, probing, cleanup
+├── generate_delivery.py        # Immich upload + delivered/pending/failed run state
 ├── generate_downloads.py       # Parallel asset downloads
 ├── generate_music.py           # Music resolution, AI generation, audio mixing
 ├── generate_photos.py          # Photo rendering, budget allocation, clip merging
 ├── generate_privacy.py         # GPS anonymization, fake names/cities, trip titles
 ├── generate_progress.py        # Adapters from pipeline progress to caller-supplied callbacks
-├── generate_settings.py        # Assembly/title settings, assembler creation, music, upload
+├── generate_settings.py        # Assembly/title settings, assembler creation, music, upload call
 ├── generate_timeline.py        # Final-duration validation + content budget guards
 ├── filename_builder.py         # Output filename generation
 ├── timeperiod.py               # Date range utilities

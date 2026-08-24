@@ -12,8 +12,10 @@ from immich_memories.config_models import expand_env_vars
 class LLMConfig(BaseModel):
     """Shared LLM provider settings.
 
-    Two providers: "ollama" (native Ollama API) or "openai-compatible"
-    (any server speaking /v1/chat/completions — OpenAI, Groq, mlx-vlm, vLLM, etc.).
+    Five accepted values, three code paths: "ollama" speaks the native Ollama
+    API, "anthropic" speaks /v1/messages, and "openai-compatible", "openai" and
+    "zai" all speak /v1/chat/completions — any server that does will work
+    (OpenAI, Groq, mlx-vlm, vLLM).
     """
 
     provider: Literal["ollama", "openai-compatible", "openai", "zai", "anthropic"] = Field(
@@ -58,6 +60,16 @@ class LLMConfig(BaseModel):
         description=(
             "Request fields merged into a thinking call. Default is the Qwen "
             "dialect (vLLM/mlx); OpenAI wants {'reasoning_effort': 'medium'}."
+        ),
+    )
+    no_thinking_params: dict[str, Any] = Field(
+        default_factory=lambda: {"chat_template_kwargs": {"enable_thinking": False}},
+        description=(
+            "Request fields merged into a NON-thinking call on a server whose "
+            "chat template reasons by default. Omitting the enable switch does "
+            "not disable it: bulk analysis then reasons at its small token "
+            "budget, truncates mid-thought and returns nothing parseable. "
+            "Servers that reason only when asked want {}."
         ),
     )
     max_tokens_param: str = Field(

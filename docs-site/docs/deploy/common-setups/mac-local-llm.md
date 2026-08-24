@@ -4,7 +4,7 @@ sidebar_label: "Mac + Local LLM"
 
 # Mac + Local LLM Setup
 
-For Mac users who want the full experience: local LLM for smart clip scoring, Apple Silicon hardware acceleration, and native install without Docker.
+For Mac users running everything locally: LLM clip scoring, Apple Silicon hardware acceleration, and a native install without Docker.
 
 ## Who this is for
 
@@ -17,9 +17,9 @@ You have a Mac with Apple Silicon (M1/M2/M3/M4). You want LLM-powered content an
 │ Mac (Apple Silicon)                               │
 │                                                   │
 │  ┌──────────────┐  ┌──────────────────────────┐  │
-│  │  mlx-vlm     │  │   Immich Memories         │  │
-│  │  (Qwen2.5-VL)│←─│   (native Python)         │  │
-│  │  port 8081   │  │   VideoToolbox encoding   │  │
+│  │  oMLX        │  │   Immich Memories         │  │
+│  │  (Qwen3.6)   │←─│   (native Python)         │  │
+│  │  port 8000   │  │   VideoToolbox encoding   │  │
 │  │              │  │   Vision face detection   │  │
 │  └──────────────┘  └──────────────────────────┘  │
 │                             │                     │
@@ -48,41 +48,67 @@ Framework and Taichi paths described below.
 
 Open [http://localhost:8080](http://localhost:8080).
 
-## Set up mlx-vlm for LLM analysis
+## Set up a local vision model
 
-[mlx-vlm](https://github.com/Blaizzy/mlx-vlm) runs vision-language models natively on Apple Silicon via MLX. Qwen2.5-VL is the recommended model: fast, accurate, handles video frames well.
+This is developed and tested against **Qwen3.6-27B** and **Qwen3.6-35B-A3B**, served by
+[oMLX](https://github.com/jundot/omlx) on Apple Silicon. Vision is built into the Qwen3.x models —
+there is no separate `-VL` variant to hunt for. Anything else that speaks the OpenAI
+`/v1/chat/completions` contract and accepts images will work; it just is not what the pipeline was
+exercised against.
+
+oMLX is a menu-bar app that serves MLX models over an OpenAI-compatible API. macOS 15+, Python
+3.11-3.13:
 
 ```bash
-# Install mlx-vlm
-pip install mlx-vlm
-
-# Start the server (downloads the model on first run, ~4 GB)
-mlx_vlm.server --model mlx-community/Qwen2.5-VL-7B-Instruct-8bit --port 8081
+brew tap jundot/omlx https://github.com/jundot/omlx
+brew install jundot/omlx/omlx
+omlx start        # background service on port 8000
 ```
 
-Then configure Immich Memories to use it. Add to `~/.immich-memories/config.yaml`:
+Pull a model from the admin dashboard at [http://localhost:8000/admin/chat](http://localhost:8000/admin/chat),
+or drop it into the model directory yourself. The weights are on Hugging Face:
+
+| Model | Repo | Download |
+|-------|------|----------|
+| Qwen3.6-27B, 8-bit | `mlx-community/Qwen3.6-27B-8bit` | 29.5 GB |
+| Qwen3.6-27B, 4-bit | `mlx-community/Qwen3.6-27B-4bit` | 16.1 GB |
+| Qwen3.6-35B-A3B, 8-bit | `mlx-community/Qwen3.6-35B-A3B-8bit` | 37.7 GB |
+| Qwen3.6-35B-A3B, 4-bit | `mlx-community/Qwen3.6-35B-A3B-4bit` | 20.4 GB |
+
+Those are download sizes, and the weights stay resident while the server is up — read them as the
+floor for how much unified memory the model alone takes.
+
+Then point Immich Memories at it in `~/.immich-memories/config.yaml`:
 
 ```yaml
 advanced:
   llm:
     provider: openai-compatible
-    base_url: http://localhost:8081/v1
-    model: mlx-community/Qwen2.5-VL-7B-Instruct-8bit
+    base_url: http://localhost:8000/v1
+    model: mlx-community/Qwen3.6-27B-8bit
   content_analysis:
     enabled: true
 ```
 
+`model` has to match what the server reports at `GET /v1/models`, not the name you typed anywhere else.
+
 Or set via environment variables:
 
 ```bash
-export IMMICH_MEMORIES_LLM__BASE_URL=http://localhost:8081/v1
-export IMMICH_MEMORIES_LLM__MODEL=mlx-community/Qwen2.5-VL-7B-Instruct-8bit
+export IMMICH_MEMORIES_LLM__BASE_URL=http://localhost:8000/v1
+export IMMICH_MEMORIES_LLM__MODEL=mlx-community/Qwen3.6-27B-8bit
 export IMMICH_MEMORIES_CONTENT_ANALYSIS__ENABLED=true
 ```
 
+:::note mlx-vlm
+[mlx-vlm](https://github.com/Blaizzy/mlx-vlm) is the other common way to serve a vision model on a
+Mac and works the same way from this side of the wire. Its README lists Qwen support through 3.5,
+so check it covers whatever you load before you count on it.
+:::
+
 ## What works
 
-- **LLM content analysis**: Qwen2.5-VL analyzes video frames and scores clips based on content (birthday cakes, sunsets, kids playing). Adds a content score weighted at 35% in the overall clip ranking.
+- **LLM content analysis**: the model reads video frames and scores clips on what is in them (birthday cakes, sunsets, kids playing). Adds a content score weighted at 35% in the overall clip ranking.
 - **VideoToolbox encoding**: hardware-accelerated H.264/H.265 encoding via Apple's VideoToolbox. 5-10x faster than CPU encoding.
 - **Vision framework face detection**: uses macOS native Vision framework for face detection. More accurate than the CPU fallback, no additional model downloads needed.
 - **Taichi GPU title renderer**: particle effects and gradient backgrounds rendered on Apple GPU.
@@ -119,15 +145,22 @@ On an M2 Pro (12-core, 32 GB):
 | 30 | 4K | ~5 min | ~14 min |
 | 50 | 1080p | ~8 min | ~12 min |
 
-LLM analysis is the slowest phase. The 7B model analyzes 2 frames per clip at ~3 seconds per frame. After the first run, analysis results are cached: subsequent runs for the same clips skip analysis entirely.
+Those numbers are from an earlier 7B vision model (2 frames per clip at ~3 seconds per frame) and
+have not been re-measured against the Qwen3.6 pair, which is several times larger — read them as a
+floor, not a forecast. What has not changed is the shape: LLM analysis is the slowest phase, and it
+is cached. A second run over the same clips skips it entirely.
 
-Memory usage: ~2 GB for Immich Memories, ~5 GB for mlx-vlm with the 8-bit model. Keep at least 16 GB total RAM.
+Memory is the constraint, not time. Immich Memories itself wants ~2 GB; the model wants its whole
+weight file resident (16-38 GB from the table above) for as long as the server is up.
 
-Those two are what makes local music generation tighter here than on a machine doing nothing else: mlx-vlm holding 5 GB is exactly the situation where an XL profile stops fitting. Stopping the LLM server before a music-heavy run buys back that 5 GB.
+That is what makes local music generation tighter here than on a machine doing nothing else: a
+27B model holding 30 GB is exactly the situation where an ACE-Step XL profile stops fitting.
+Stopping the LLM server before a music-heavy run buys all of it back.
 
 ## Tips
 
-- **Start mlx-vlm before Immich Memories.** If the LLM server isn't running, content analysis silently falls back to metadata-only scoring. You'll still get results, just without the LLM content understanding.
-- **The 8-bit quant is the sweet spot.** The 4-bit version is faster but less accurate. The full 16-bit version needs 16 GB+ of unified memory just for the model.
-- **Ollama works too.** If you prefer Ollama: `ollama run qwen2.5-vl`, then set `provider: ollama` and `base_url: http://localhost:11434` in config.
+- **Start the LLM server before Immich Memories.** If it isn't running, content analysis silently falls back to metadata-only scoring. You'll still get results, just without the LLM content understanding.
+- **Take 8-bit if the memory is there, 4-bit if it isn't.** 4-bit roughly halves the resident weights (16.1 GB against 29.5 GB for the 27B) and costs accuracy. On a 32 GB Mac the 4-bit 27B is the one that leaves room for anything else.
+- **Smaller Qwen3.x sizes exist** for tighter machines, and they are not part of the tested pair — treat them as your own experiment rather than a supported configuration.
+- **Ollama works too.** `ollama pull qwen3.6:27b` (17 GB), then set `provider: ollama`, `base_url: http://localhost:11434` and `model: qwen3.6:27b` in config.
 - **The default `--analysis-depth auto` is usually right.** It analyzes every eligible clip when at most 60 need fresh work, then shortlists larger libraries. Use `thorough` to force every eligible clip through LLM analysis, or `fast` to reserve LLM calls for favorites. Exact current-model cache hits are reused; stale model results restart.

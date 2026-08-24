@@ -66,6 +66,20 @@ def _handle_duration_mode_change(state: AppState, event: Any) -> None:
     ui.navigate.to("/step2")
 
 
+def _render_pool_coverage_notice(pipeline_result: dict) -> None:
+    """Say so when the selection ranked most of its pool without looking (#489).
+
+    Silent on a well-analyzed run: the point is to mark the runs where the
+    review below is doing the real work, not to decorate every one of them.
+    """
+    from immich_memories.analysis.selection_coverage import thin_coverage_notice
+
+    coverage = pipeline_result.get("coverage")
+    notice = thin_coverage_notice(coverage) if coverage else None
+    if notice:
+        im_info_card(notice, variant="warning")
+
+
 def _render_step2_header(state) -> bool:
     """Render Step 2 header: session guard, date range, cache init, clip loading.
 
@@ -128,6 +142,7 @@ def _render_step2_header(state) -> bool:
 
     if state.pipeline_result:
         render_pipeline_summary(state.pipeline_result)
+        _render_pool_coverage_notice(state.pipeline_result)
 
         with ui.row().classes("w-full gap-4 mt-4"):
 

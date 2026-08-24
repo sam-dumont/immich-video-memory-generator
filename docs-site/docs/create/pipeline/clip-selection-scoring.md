@@ -68,7 +68,8 @@ Photos use a mix of metadata and optional LLM visual analysis:
 | Camera original | 0.05 | Real camera EXIF (not screenshot) |
 | LLM visual | 0.30 | VLM rates interest + quality |
 
-Photo scores are multiplied by `(1 - score_penalty)` (default 0.8) so videos win ties.
+Photo scores are multiplied by `(1 - score_penalty)`. The default penalty is 0.2, so a photo
+scores 80% of an equally good video and videos win ties.
 
 ### Live Photo Scoring
 
@@ -218,13 +219,15 @@ recap spent two of its thirty-nine slots on a single night at a venue.
 
 | memory spans | one moment is |
 |---|---|
-| up to a month | the configured window (5 minutes by default) |
+| up to a month | 5 minutes |
 | up to a season | 30 minutes |
 | up to a year | 90 minutes |
 | longer | 3 hours |
 
-The configured `temporal_dedup_window_minutes` is a floor, never a ceiling — asking for
-a wider window widens every memory type. Zero turns deduplication off entirely.
+That five minutes is `temporal_dedup_window_minutes`, and it is a floor rather than a
+ceiling: the wider spans below it always win. It is not a dial you can reach, though. The
+field lives on `PipelineConfig` in `analysis/smart_pipeline.py` with no YAML key and no CLI
+flag wired to it, so five minutes is what every run gets.
 
 A moment keeps one clip unless moments are genuinely scarce: only when there are at
 most half as many as the cut needs clips does a moment contribute more than one, which
@@ -259,6 +262,28 @@ CLI: `--analysis-depth auto|fast|thorough`
 Cache reuse is model-aware. Results from the exact configured model are loaded automatically and
 shown in review; they skip another LLM request. Results with no model identity or from a different
 model are stale and are analyzed again.
+
+### How much of the pool was actually looked at
+
+Not every candidate gets analyzed. The ones that don't are scored from metadata — duration,
+resolution, whether you starred it — and metadata produces a lot of identical scores. On a real
+April 2021 recap, 25 of 149 candidates had been visually analyzed and 55% of the pool carried the
+same fallback score. When scores tie, the ranking is list order wearing a number.
+
+So the pipeline now says so. When fewer than 60% of the candidates were visually analyzed, you get
+one line — in the review step and in `generate` output:
+
+> 25 of 149 candidates (17%) were visually analyzed; the rest were picked on metadata. Review
+> recommended.
+
+Above 60% it says nothing, because a warning on every run is a warning nobody reads on the run that
+needed it. The count is always in `--trace-selection` output, thin or not.
+
+Treat it as a signal about where your attention is worth spending, not an error. A low number
+usually means an uncurated period with no favorites to seed from and a pool the analysis budget
+never reached. The clips are fine; the *ranking* between them is close to arbitrary, so the review
+step is doing more work than usual. Run `--analysis-depth thorough` if you'd rather the machine
+decide, or just spend the extra minute in review.
 
 ## Performance: 480p Downscaling
 

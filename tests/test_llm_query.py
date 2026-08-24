@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from immich_memories.analysis.llm_query import THINKING_MIN_MAX_TOKENS
 from immich_memories.config_models_llm import LLMConfig
 
 
@@ -129,13 +130,32 @@ class TestThinkingMode:
         assert payload["chat_template_kwargs"] == {"enable_thinking": True}
 
     @pytest.mark.asyncio
-    async def test_config_off_keeps_the_payload_clean_for_any_server(self):
-        """A call may opt in, but only the config knows the server accepts the kwarg."""
+    async def test_config_off_refuses_a_calls_request_to_think(self):
+        """A call may opt in; the config decides, and the server is told.
+
+        `thinking` says whether to reason, `no_thinking_params` says whether
+        the server speaks this dialect — they used to be the same field, which
+        left a config with reasoning off silently reasoning anyway.
+        """
         from immich_memories.analysis.llm_query import query_llm
 
         # WHY: the LLM server is the external boundary this request reaches.
         with patch("httpx.AsyncClient.post", return_value=_openai_response()) as mock_post:
             await query_llm("Judge this cut", _thinking_config(thinking=False), thinking=True)
+
+        payload = mock_post.call_args[1]["json"]
+        assert payload["chat_template_kwargs"] == {"enable_thinking": False}
+        assert payload["max_tokens"] < THINKING_MIN_MAX_TOKENS
+
+    @pytest.mark.asyncio
+    async def test_a_server_that_does_not_speak_the_dialect_stays_clean(self):
+        """Servers that reason only when asked want neither switch."""
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = _thinking_config(thinking=False, no_thinking_params={})
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", return_value=_openai_response()) as mock_post:
+            await query_llm("Judge this cut", config)
 
         assert "chat_template_kwargs" not in mock_post.call_args[1]["json"]
 
@@ -185,8 +205,11 @@ class TestThinkingMode:
             result = await query_llm("Judge this cut", _thinking_config(), thinking=True)
 
         assert result == '{"drop": "B"}'
+        # The retry exists to get a fast answer, so it must say so. Dropping
+        # the switch is not enough on a server that reasons by default: the
+        # retry would reason again and truncate again.
         retry_payload = mock_post.call_args_list[1][1]["json"]
-        assert "chat_template_kwargs" not in retry_payload
+        assert retry_payload["chat_template_kwargs"] == {"enable_thinking": False}
 
     @pytest.mark.asyncio
     async def test_thinking_params_are_configurable_per_server(self):
@@ -438,3 +461,72 @@ class TestQueryLlmWithImages:
         content = mock_post.call_args[1]["json"]["messages"][0]["content"]
         assert content[0]["text"] == "What is this?"
         assert content[1]["image_url"]["url"].startswith("data:image/jpeg;base64,")
+
+
+class TestBulkCallsDoNotThink:
+    """A server that thinks by default thinks on every call it is not told to skip.
+
+    Measured 2026-08-24 against the live endpoint after server-side thinking
+    was switched on: the photo prompt at its 500-token budget came back
+    finish_reason=length, 1800 chars of unterminated reasoning and no JSON,
+    3 times out of 3. The same prompt with the switch sent off parsed 3/3 in
+    1.5s. Omitting the enable switch is not the same as disabling it.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_bulk_call_asks_a_thinking_server_not_to_think(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", return_value=_openai_response()) as mock_post:
+            await query_llm("Describe this photo", _thinking_config(), max_tokens=500)
+
+        payload = mock_post.call_args[1]["json"]
+        assert payload["chat_template_kwargs"] == {"enable_thinking": False}
+
+    @pytest.mark.asyncio
+    async def test_reasoning_turned_off_still_tells_the_server_so(self):
+        """llm.thinking: false says "don't reason", not "this server won't".
+
+        A user who turns reasoning off on a server whose template reasons by
+        default gets the same truncated bulk calls, so the off-switch hangs
+        off the switch itself rather than off the reasoning setting.
+        """
+        from immich_memories.analysis.llm_query import query_llm
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", return_value=_openai_response()) as mock_post:
+            await query_llm("Describe this photo", _thinking_config(thinking=False))
+
+        payload = mock_post.call_args[1]["json"]
+        assert payload["chat_template_kwargs"] == {"enable_thinking": False}
+
+    @pytest.mark.asyncio
+    async def test_a_server_that_rejects_the_switch_is_asked_without_it(self):
+        """Sending the kwarg by default is only safe if a refusal adapts."""
+        import httpx
+
+        from immich_memories.analysis.llm_query import query_llm
+
+        refusal = MagicMock(status_code=400)
+        refusal.json = MagicMock(
+            return_value={
+                "error": {"message": "Unrecognized request argument: chat_template_kwargs"}
+            }
+        )
+        refusal.text = "Unrecognized request argument: chat_template_kwargs"
+        rejected = AsyncMock()
+        rejected.status_code = 400
+        rejected.json = refusal.json
+        rejected.text = refusal.text
+        rejected.raise_for_status = MagicMock(
+            side_effect=httpx.HTTPStatusError("400", request=MagicMock(), response=refusal)
+        )
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch(
+            "httpx.AsyncClient.post", side_effect=[rejected, _openai_response()]
+        ) as mock_post:
+            await query_llm("Describe this photo", _thinking_config(model="picky"))
+
+        assert "chat_template_kwargs" not in mock_post.call_args_list[-1][1]["json"]

@@ -39,8 +39,44 @@ A day also ends when the photographs stop for five hours, not at midnight. A wed
 runs past one, or a birth that starts with contractions at ten in the evening, is one
 occasion; the calendar disagrees.
 
-Two things are skipped outright: days inside a detected trip, because a trip memory
-already tells that story end to end, and holidays, which have their own memory type.
+Two things are skipped: days inside a detected trip, because a trip memory already tells
+that story end to end, and holidays, which have their own memory type.
+
+A holiday is only skipped when the day's pictures agree that it was one — that is, when
+they were taken around home, where the holiday is actually kept. A day that merely lands
+on the same date and was spent 67 km away at a race circuit is not that holiday, and it
+goes to the model like any other candidate. A day that recorded no coordinates at all is
+skipped on the date alone, as it always was.
+
+Both filters read the thresholds under `trips:` — your homebase, how far from it counts as
+away, and how trips are grouped — so this command and the rest of the app agree on what
+"away" means.
+
+## The part of the day that was the event
+
+Some days are an event; some days contain one. A track day put most of its pictures in one
+place inside a couple of hours of a long day — the rest of that day is a cat on a balcony —
+and the memory should start at the circuit. So a discovered day can carry a window: the
+hours the thing that happened actually ran.
+
+Two things look for it. The model is asked, in the same question, for the clock times the
+event ran between. It reads those off the per-picture lines, which is why it can answer at
+all: a circuit's coordinates are identical from the moment the car is parked to the moment
+it leaves, so the map cannot tell arrival from the start of the race and the pictures can.
+
+Where the model declines, the geometry is the fallback — the first and last picture of the
+place that dominates the day. That window is kept only when trimming to it removes at least
+45 minutes and at least 15% of the day, and only when what is left runs at least half an
+hour.
+
+Both bounds are there for a measured failure. Without the floor, a dense burst in one place
+produced a 69-second window on a 12.6-hour day. And the rule that came before — drop the
+window whenever the dominant place covers half the day or more — punished the days
+photographed best: a race covered from arrival to podium filled two thirds of its day and
+was given no window at all.
+
+A day that was all one thing has nothing to trim and gets no window, which is the right
+answer for a wedding that ran fifteen hours in one place.
 
 ## Fast eyes, then a considered answer
 
@@ -76,7 +112,7 @@ immich-memories discover-days
 ```
 
 It walks year by year, prints what it finds, and writes a catalogue to
-`special-days.json`.
+`~/.immich-memories/special-days.json`.
 
 ```
 2019: 3854 assets
@@ -91,7 +127,7 @@ It walks year by year, prints what it finds, and writes a catalogue to
 | `--until` | this year | last year to scan |
 | `--per-year` | 6 | how many of the busiest candidate days to ask the model about |
 | `--also-skip` | – | a holiday name or `MM-DD` your library keeps that the defaults miss |
-| `--out` | `special-days.json` | where to write the catalogue |
+| `--out` | `~/.immich-memories/special-days.json` | where to write the catalogue |
 | `--rescan` | off | start over, ignoring and replacing the existing catalogue |
 
 The scan takes hours across twenty years, so it resumes by default: years already in the
@@ -112,8 +148,16 @@ first — ten years reads louder than nine, which is the whole appeal of arrivin
 unannounced.
 
 ```
-10 years ago  2015-06-12  A long evening out
+10 years ago  2015-06-12  A long evening out  18:40-23:55  9h
 ```
+
+The clock times are the day's window, when it found one. The `9h` is how many hours of
+the clock the day put pictures in — the number the scan measured to decide the day was
+worth asking about at all, now kept in the catalogue with the times the day's run started
+and ended. A run is grouped by the date it began and ends when the pictures stop for five
+hours, so a night that ran to three in the morning ends on the following date, and its
+extent says so where the date alone cannot. Catalogues written before any of this existed
+simply have none of it, and still read.
 
 `--on YYYY-MM-DD` checks a different date, and `--catalogue PATH` reads a different file.
 Anniversaries either side of New Year are found: a day at the end of December is due in
@@ -127,5 +171,6 @@ reasons from times, places and recognised names alone. That is the difference be
 "Driving through somewhere" and knowing what was being driven.
 
 Titles are checked against what the day actually recorded before they are kept. A title
-naming a place the day was never in is dropped rather than shown — a title card is the
-wrong place for a plausible invention.
+naming a place the day was never in is dropped rather than shown, and so is one claiming a
+distance or a race — "the 10K" — that nothing the model was shown mentions. A title card is
+the wrong place for a plausible invention, and a number reads exactly as true as a real one.

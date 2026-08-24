@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from datetime import date, datetime
 
 import click
@@ -15,18 +16,40 @@ from immich_memories.timeperiod import (
     parse_date,
 )
 
+# A leap year, so a 29 February birthday survives being given a filler one.
+_BIRTHDAY_FILLER_YEAR = 2000
+
+# How a birthday read out of Immich is written back into the --birthday value.
+# Month first and dash-separated is the one short form _parse_birthday reads
+# with no ambiguity, so auto-detection cannot disagree with a typed birthday.
+BIRTHDAY_FLAG_FORMAT = "%m-%d"
+
 
 def _parse_birthday(value: str) -> date:
-    """Parse the birthday option's documented MM/DD forms before generic dates."""
-    for candidate, date_format in (
-        (value, "%m/%d/%Y"),
-        (f"{value}/2000", "%m/%d/%Y"),
-    ):
-        try:
-            return datetime.strptime(candidate, date_format).date()
-        except ValueError:
-            continue
-    return parse_date(value)
+    """Read --birthday in the same date dialect as every other date flag.
+
+    parse_date handles anything carrying a year. The short forms do not, so
+    they get their own attempt: dashes are month-day, matching --holiday's
+    MM-DD; slashes are day-first, matching parse_date's DD/MM/YYYY, and fall
+    back to month-first only when day-first cannot be a date.
+
+    This flag alone used to read slashes month-first, so 07/02 meant July for
+    a 7 February birthday and the memory covered the wrong half of two years.
+    """
+    with contextlib.suppress(ValueError):
+        return parse_date(value)
+
+    with contextlib.suppress(ValueError):
+        return datetime.strptime(f"{_BIRTHDAY_FILLER_YEAR}-{value}", "%Y-%m-%d").date()
+
+    for date_format in ("%d/%m/%Y", "%m/%d/%Y"):
+        with contextlib.suppress(ValueError):
+            return datetime.strptime(f"{value}/{_BIRTHDAY_FILLER_YEAR}", date_format).date()
+
+    raise ValueError(
+        f"Cannot parse birthday: '{value}'. Expected MM-DD (e.g. 03-15), "
+        "DD/MM, or a full date such as YYYY-MM-DD."
+    )
 
 
 def _resolve_manual_dates(
@@ -201,31 +224,40 @@ def duration_from_date_range(date_range: DateRange) -> float:
     return float(max(30, min(600, duration)))
 
 
-# WHY these two by name: they span whole years, and duration_from_date_range's
-# curve was fitted on 1-12 months -- it turns negative past ~40 months, so five
-# Christmases clamped to the same 30s floor as an empty weekend (#511). Their
-# presets already state the length they want, so the CLI reads that instead.
-_PRESET_DURATION_TYPES = ("holiday", "then_and_now")
+# WHY these by name: duration_from_date_range's curve was fitted on 1-12
+# months and is wrong at both ends. Past ~40 months it turns negative, so five
+# Christmases clamped to the same 30s floor as an empty weekend (#511); at a
+# one-day span it evaluates negative too, so a special day would render as 30
+# seconds however much happened on it. Their presets already state the length
+# they want, so the CLI reads that instead.
+_PRESET_DURATION_TYPES = ("holiday", "then_and_now", "special_day")
 
 
-def _preset_duration(memory_type: str) -> float | None:
+def _preset_duration(memory_type: str, preset_params: dict | None = None) -> float | None:
     """The registered preset's own intended length for a memory type."""
     from immich_memories.memory_types.factory import create_preset
     from immich_memories.memory_types.registry import MemoryType
 
-    return create_preset(MemoryType(memory_type)).default_duration_seconds
+    preset = create_preset(MemoryType(memory_type), **(preset_params or {}))
+    return preset.default_duration_seconds
 
 
 def default_duration_for_type(
-    memory_type: str | None, date_range: DateRange | None
+    memory_type: str | None,
+    date_range: DateRange | None,
+    preset_params: dict | None = None,
 ) -> float | None:
     """Get default duration in seconds for a memory type.
 
     Date-range based types scale with span (1 month = 60s, 1 year = 600s).
     Trip dates provide an editorial estimate; discovered media later applies
-    the capacity cap. Types that span several years take the length their
-    preset asks for, since the span curve does not reach that far. Other fixed
-    types: on_this_day (45s), person without range (120s).
+    the capacity cap. Types the span curve cannot reach -- several years at one
+    end, a single day at the other -- take the length their preset asks for.
+    Other fixed types: on_this_day (45s), person without range (120s).
+
+    ``preset_params`` is forwarded to the preset factory for the types whose
+    length depends on more than the dates: a special day needs the day it
+    happened on and how long it stayed awake.
     """
     if not memory_type:
         return None
@@ -233,7 +265,7 @@ def default_duration_for_type(
     if memory_type == "on_this_day":
         return 45.0
     if memory_type in _PRESET_DURATION_TYPES:
-        return _preset_duration(memory_type)
+        return _preset_duration(memory_type, preset_params)
     if memory_type == "trip" and date_range is not None:
         from immich_memories.planning.auto_duration import trip_editorial_duration_seconds
 
@@ -263,7 +295,11 @@ def _multi_year_ranges(
     three each need their own defaults, and inlining them pushed the caller's
     cognitive complexity past the gate.
     """
-    from immich_memories.memory_types.date_builders import build_holiday, build_on_this_day
+    from immich_memories.memory_types.date_builders import (
+        build_holiday,
+        build_on_this_day,
+        build_then_and_now,
+    )
 
     if memory_type == "on_this_day":
         return build_on_this_day(on_this_day_target or date.today(), years_back=years_back)
@@ -282,13 +318,8 @@ def _multi_year_ranges(
         )
 
     if memory_type == "then_and_now":
-        # WHY two whole years rather than a window: the contrast is the point, and
-        # a narrow window in a year long past is often empty.
-        now_year = year or date.today().year
-        then_year = now_year - (years_back or 10)
-        # Most recent first, like the other multi-range types: the caller derives
-        # its display span as start=ranges[-1].start, end=ranges[0].end, which
-        # inverts on an ascending list.
-        return [calendar_year(now_year), calendar_year(then_year)]
+        # WHY the `or 10`: --years-back defaults to None here, and 0 is read as
+        # unset rather than as an error. The builder owns everything else.
+        return build_then_and_now(year or date.today().year, years_back or 10)
 
     return None

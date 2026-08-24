@@ -46,6 +46,17 @@ You can use a partial run ID: if it's unambiguous, it'll match:
 immich-memories runs show 20260105_1430
 ```
 
+### Model spend
+
+`runs show` reports what the run spent on the LLM — calls, judgment-cache hits,
+tokens, wall time, and any thinking calls truncated at the token budget.
+
+It is reported **per run, not per phase**, and the phase table is labelled
+"recorded phases only" for the same reason: the run tracker records clip
+extraction, assembly and music, all of which happen after selection. Analysis
+and selection run before the run row exists and account for most of the model
+budget, so a per-phase total would understate the bill.
+
 ## runs stats
 
 Aggregate statistics across all your runs:

@@ -96,3 +96,26 @@ def generate_on_this_day_title(
         subtitle=subtitle,
         selection_type=SelectionType.ON_THIS_DAY,
     )
+
+
+def generate_then_and_now_title(
+    start_date: date | None,
+    end_date: date | None,
+    locale: str,
+) -> TitleInfo:
+    """Generate title for a Then and Now memory.
+
+    Named by its two ends rather than its span: the years between them are
+    exactly what the type leaves out, so "January 2016 to December 2026" — what
+    the generic date-range fallback produced — describes the one thing it is not.
+    """
+    if start_date is None or end_date is None:
+        raise ValueError("Start and end dates required for Then and Now selection")
+    patterns = TITLE_PATTERNS.get(locale, TITLE_PATTERNS["en"])
+    return TitleInfo(
+        main_title=patterns["then_and_now"].format(
+            then_year=start_date.year, now_year=end_date.year
+        ),
+        subtitle=patterns["then_and_now_subtitle"],
+        selection_type=SelectionType.THEN_AND_NOW,
+    )

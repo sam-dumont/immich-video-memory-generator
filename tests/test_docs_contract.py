@@ -21,16 +21,8 @@ PRIMARY_MANUAL_CONTRACTS = [
         "that contract, so don't use them as upgrade flags.",
         id="readme",
     ),
-    pytest.param(
-        "docs/USER_GUIDE.md",
-        "### Immich Connection",
-        "### Time Period Selection",
-        "`auto` detects the server major version at runtime and selects the right API contract. "
-        "You do not need to choose a version for each run.",
-        "Explicit `v2` and `v3` are manual troubleshooting overrides: escape hatches for unusual "
-        "proxies or deployments where version detection is wrong; each one forces that contract.",
-        id="user-guide",
-    ),
+    # docs/USER_GUIDE.md is an index into the docs site, not a manual: the
+    # api_version policy it used to duplicate stays pinned three times below.
     pytest.param(
         "docs-site/docs/reference/config-reference.md",
         "## Immich connection",
@@ -159,8 +151,10 @@ def test_immich_environment_override_is_documented() -> None:
     )
 
     assert 'IMMICH_MEMORIES_IMMICH__API_VERSION="auto"' in section
-    assert "Keep `API_VERSION` on `auto` for default runtime detection" in section
-    assert "`v2` and `v3` are manual troubleshooting overrides: escape hatches" in section
+    assert (
+        "`auto` detects v2 or v3 at runtime; set `v2`/`v3` only to diagnose a proxy "
+        "that breaks detection" in section
+    )
 
 
 def test_upgrade_manual_explains_the_complete_v2_to_v3_contract() -> None:
@@ -412,14 +406,13 @@ def test_output_docs_explain_the_hdr_codec_contract() -> None:
 def test_output_docs_explain_effective_resolution_and_hardware_quality() -> None:
     reference = " ".join(_read("docs-site/docs/reference/config-reference.md").split())
     cli = " ".join(_read("docs-site/docs/create/cli/generate.md").split())
-    guide = " ".join(_read("docs/USER_GUIDE.md").split())
 
     assert "CRF is the image-quality authority" in reference
     assert "VideoToolbox" in reference
     assert "NVENC, VAAPI, QSV, and ProRes use their existing backend policies" in reference
     assert "encoder_preset" in reference
     assert "config value; `auto` matches source clips" in cli
-    assert "omitting `--resolution` uses `output.resolution`" in guide
+    assert "When `--resolution` is omitted, the command uses `output.resolution`" in cli
 
 
 def test_docs_check_preserves_the_underlying_build_exit_status(tmp_path: Path) -> None:

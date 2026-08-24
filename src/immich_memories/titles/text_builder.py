@@ -33,6 +33,7 @@ class SelectionType(Enum):
     PERSON_SPOTLIGHT = "person_spotlight"
     MULTI_PERSON = "multi_person"
     ON_THIS_DAY = "on_this_day"
+    THEN_AND_NOW = "then_and_now"
 
 
 @dataclass
@@ -73,6 +74,8 @@ TITLE_PATTERNS: dict[str, dict[str, str]] = {
         "season_year_span": "{season} {start_year}-{end_year}",
         "on_this_day": "{month} {day}",
         "on_this_day_subtitle": "Through the Years",
+        "then_and_now": "{then_year} & {now_year}",
+        "then_and_now_subtitle": "Then and Now",
         "person_spotlight_subtitle": "Your Year with {person}",
     },
     "fr": {
@@ -84,6 +87,8 @@ TITLE_PATTERNS: dict[str, dict[str, str]] = {
         "season_year_span": "{season} {start_year}-{end_year}",
         "on_this_day": "{month} {day}",
         "on_this_day_subtitle": "À travers les années",
+        "then_and_now": "{then_year} & {now_year}",
+        "then_and_now_subtitle": "Avant et maintenant",
         "person_spotlight_subtitle": "Votre année avec {person}",
     },
 }
@@ -221,6 +226,12 @@ def _title_on_this_day(**kwargs) -> TitleInfo:
     return generate_on_this_day_title(kwargs["start_date"], kwargs["locale"])
 
 
+def _title_then_and_now(**kwargs) -> TitleInfo:
+    from immich_memories.titles._text_memory_types import generate_then_and_now_title
+
+    return generate_then_and_now_title(kwargs["start_date"], kwargs["end_date"], kwargs["locale"])
+
+
 _TITLE_DISPATCH: dict[SelectionType, Callable[..., TitleInfo]] = {
     SelectionType.CALENDAR_YEAR: _title_calendar_year,
     SelectionType.BIRTHDAY_YEAR: _title_birthday_year,
@@ -231,6 +242,7 @@ _TITLE_DISPATCH: dict[SelectionType, Callable[..., TitleInfo]] = {
     SelectionType.PERSON_SPOTLIGHT: _title_person_spotlight,
     SelectionType.MULTI_PERSON: _title_multi_person,
     SelectionType.ON_THIS_DAY: _title_on_this_day,
+    SelectionType.THEN_AND_NOW: _title_then_and_now,
 }
 
 
@@ -375,6 +387,7 @@ def infer_selection_type(
     start_date: date | None = None,
     end_date: date | None = None,
     birthday_age: int | None = None,
+    memory_type: str | None = None,
 ) -> SelectionType:
     """Infer the selection type from provided parameters.
 
@@ -384,10 +397,17 @@ def infer_selection_type(
         start_date: Start date.
         end_date: End date.
         birthday_age: Birthday age if applicable.
+        memory_type: Memory type key, for the types the dates cannot reveal.
 
     Returns:
         Inferred SelectionType.
     """
+    # A then-and-now's two years look exactly like any other range spanning
+    # them, and the years in between are what it leaves out. Nothing in the
+    # dates can say so, so the type has to.
+    if memory_type == "then_and_now":
+        return SelectionType.THEN_AND_NOW
+
     if birthday_age is not None:
         return SelectionType.BIRTHDAY_YEAR
 

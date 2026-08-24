@@ -15,6 +15,8 @@ from immich_memories.memory_types.date_builders import (
     build_month,
     build_on_this_day,
     build_season,
+    build_special_day,
+    build_then_and_now,
     build_trip,
     resolve_holiday,
 )
@@ -24,7 +26,7 @@ from immich_memories.memory_types.presets import (
     ScoringProfile,
 )
 from immich_memories.memory_types.registry import MemoryType
-from immich_memories.timeperiod import DateRange, birthday_year, calendar_year
+from immich_memories.timeperiod import birthday_year, calendar_year
 
 # Registry: maps MemoryType -> factory callable
 _REGISTRY: dict[MemoryType, Callable[..., MemoryPreset]] = {}
@@ -395,9 +397,6 @@ def _then_and_now(
     The contrast is the whole point, so the gap is required: a then-and-now with
     no distance between the two is just a now.
     """
-    if years_back <= 0:
-        raise ValueError("years_back must be at least 1 for a then-and-now memory")
-
     year = year or date.today().year
     then_year = year - years_back
     person_filter = PersonFilter()
@@ -408,17 +407,58 @@ def _then_and_now(
         memory_type=MemoryType.THEN_AND_NOW,
         name=f"{then_year} and {year}",
         description=f"{then_year} beside {year}",
-        # Most recent first, matching the other multi-range types.
-        date_ranges=[
-            DateRange(start=datetime(year, 1, 1, 0, 0, 0), end=datetime(year, 12, 31, 23, 59, 59)),
-            DateRange(
-                start=datetime(then_year, 1, 1, 0, 0, 0),
-                end=datetime(then_year, 12, 31, 23, 59, 59),
-            ),
-        ],
+        date_ranges=build_then_and_now(year, years_back),
         person_filter=person_filter,
         scoring=ScoringProfile(face_weight=0.4, content_weight=0.3),
         title_template="{then_year} & {now_year}",
         subtitle_template="Then and Now",
         default_duration_seconds=45,
+    )
+
+
+@register_preset(
+    MemoryType.SPECIAL_DAY,
+    name="Special Day",
+    description="One day the library says something happened on",
+)
+def _special_day(
+    day: date | None = None,
+    window: tuple[datetime, datetime] | None = None,
+    title: str | None = None,
+    subtitle: str | None = None,
+    what: str | None = None,
+    active_hours: float = 0.0,
+    **kwargs,  # noqa: ARG001
+) -> MemoryPreset:
+    """One occasion, named by the catalogue that found it.
+
+    Refuse over fake: a day the model could not name is a day that should not
+    be rendered, so there is no "Memories from 12 June 2016" fallback here.
+    """
+    if day is None:
+        raise ValueError("day is required for SPECIAL_DAY memory type")
+
+    name = (title or "").strip() or (what or "").strip()
+    if not name:
+        raise ValueError(
+            f"The catalogue entry for {day.isoformat()} has neither a title nor a "
+            "'what', so there is nothing truthful to call the memory."
+        )
+
+    from immich_memories.planning.auto_duration import special_day_editorial_duration_seconds
+
+    hours = (window[1] - window[0]).total_seconds() / 3600.0 if window else active_hours
+
+    return MemoryPreset(
+        memory_type=MemoryType.SPECIAL_DAY,
+        name=name,
+        description=(subtitle or "").strip() or name,
+        date_ranges=[build_special_day(day, window)],
+        # Not person-filtered on purpose: the memory is the occasion, and real
+        # names would reach durable run history through it.
+        person_filter=PersonFilter(),
+        scoring=ScoringProfile(),
+        title_template="{title}",
+        subtitle_template="{subtitle}" if subtitle else None,
+        default_duration_seconds=special_day_editorial_duration_seconds(hours),
     )

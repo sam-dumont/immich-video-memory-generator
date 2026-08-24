@@ -9,7 +9,7 @@ from __future__ import annotations
 import calendar
 from datetime import date, datetime, timedelta
 
-from immich_memories.timeperiod import DateRange
+from immich_memories.timeperiod import DateRange, calendar_year
 
 # Northern hemisphere season definitions: season -> (start_month, end_month)
 # Winter spans two calendar years (Dec of year to Feb of year+1).
@@ -148,6 +148,34 @@ def build_on_this_day(
     return ranges
 
 
+def build_then_and_now(year: int, years_back: int) -> list[DateRange]:
+    """Build the two eras of a then-and-now, most recent first.
+
+    Two whole calendar years rather than two narrow windows: a short window in a
+    year long past is usually empty, and the contrast needs enough material on
+    both sides to read.
+
+    Callers must treat the result as an ordered list of eras and key off the
+    ranges themselves, never off ``range.start.year`` — the two eras are equal
+    calendar years today, but nothing in the memory type requires them to be.
+
+    Args:
+        year: The recent end of the pair.
+        years_back: The gap to the other end, in years. Must be at least 1.
+
+    Returns:
+        ``[now, then]`` — most recent first, matching the other multi-range
+        types, whose callers derive a display span as ``ranges[-1].start`` to
+        ``ranges[0].end``.
+
+    Raises:
+        ValueError: If years_back is zero or negative.
+    """
+    if years_back <= 0:
+        raise ValueError("years_back must be at least 1 for a then-and-now memory")
+    return [calendar_year(year), calendar_year(year - years_back)]
+
+
 def _resolve_date_in_year(target: date, year: int) -> date:
     """Resolve a date into a specific year, handling Feb 29."""
     try:
@@ -180,6 +208,35 @@ def build_trip(start: date, end: date) -> DateRange:
     return DateRange(
         start=datetime(start.year, start.month, start.day, 0, 0, 0),
         end=datetime(end.year, end.month, end.day, 23, 59, 59),
+    )
+
+
+def build_special_day(
+    day: date,
+    window: tuple[datetime, datetime] | None,
+) -> DateRange:
+    """The scope of one day the library says something happened on.
+
+    A recorded window *is* the scope, not a hint at it. The catalogue only
+    records one when trimming to it removes a meaningful slice of the day, which
+    is what says "the memory starts at the circuit, not at the cat on the
+    balcony that morning" — so anything softer than using it as the bounds
+    throws that judgement away. Its instants are passed through untouched,
+    offset included, because they reach Immich's takenAfter/takenBefore as
+    written and a window can legitimately end after midnight.
+
+    **Shrink, don't pad.** If the window yields too few usable clips the memory
+    gets shorter. It must never widen back to the whole day: that silently
+    undoes the trim, and it is padding by another name.
+
+    One range, never two. A day is one occasion, and the fetch list has no
+    priority ordering to express "this window first, then the rest".
+    """
+    if window is not None:
+        return DateRange(start=window[0], end=window[1])
+    return DateRange(
+        start=datetime(day.year, day.month, day.day, 0, 0, 0),
+        end=datetime(day.year, day.month, day.day, 23, 59, 59),
     )
 
 

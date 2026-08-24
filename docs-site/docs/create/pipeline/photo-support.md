@@ -18,7 +18,7 @@ Photos compete in the same selection pool as videos and live photos. There's no 
 5. **Render**: Selected photos are animated as Ken Burns clips at assembly time
 6. **Interleave**: No more than 2 consecutive clips of the same type (photo or video)
 
-Photos are capped at 50% of the final video when videos are plentiful. When videos are scarce (< 30% of selected clips), photos fill the budget freely.
+Photos are capped at 50% of the final video when videos are plentiful. Scarcity is measured against the target, not against the selection: when the video candidates available cannot fill even half the target duration, the cap is bypassed and photos fill the rest.
 
 ## Animation Effects
 

@@ -23,7 +23,7 @@ carries automation, pending-delivery, scheduler and Immich blocks):
   "status": "ready",
   "immich_reachable": true,
   "last_successful_run": "2025-12-15T10:30:00.000000",
-  "version": "0.40.1"
+  "version": "0.59.2"
 }
 ```
 

@@ -86,12 +86,22 @@ def _month_divider_count(clips: list[Any], title_settings: Any) -> int:
     return max(0, len(eligible) - 1)
 
 
-def _year_divider_count(clips: list[Any]) -> int:
+# Memory types whose windows are disjoint eras rather than one continuous span.
+# Their title card names the two ends as a pair — "2016 & 2026" — not the year
+# the opening block happens to belong to, so every era needs a card of its own.
+ERA_LABELED_TYPES = frozenset({"then_and_now"})
+
+
+def _year_divider_count(clips: list[Any], memory_type: str | None = None) -> int:
     years = list(
         dict.fromkeys(
             clip_date.year for clip in clips if (clip_date := _item_date(clip)) is not None
         )
     )
+    if memory_type in ERA_LABELED_TYPES:
+        return len(years)
+    # One fewer than the years present: a memory running continuously through
+    # them opens on a title card that already names the first.
     return max(0, len(years) - 1)
 
 
@@ -118,7 +128,7 @@ def _eligible_dividers(clips: list[Any], title_settings: Any, memory_type: str |
         return _location_divider_count(clips)
     divider_mode = getattr(title_settings, "divider_mode", "month")
     if divider_mode == "year":
-        return _year_divider_count(clips)
+        return _year_divider_count(clips, memory_type)
     if divider_mode == "month" and getattr(title_settings, "show_month_dividers", True):
         return _month_divider_count(clips, title_settings)
     return 0

@@ -10,6 +10,7 @@ from immich_memories.memory_types.date_builders import (
     build_month,
     build_on_this_day,
     build_season,
+    build_then_and_now,
 )
 from immich_memories.timeperiod import DateRange
 
@@ -200,3 +201,50 @@ class TestBuildOnThisDayFeb29:
         leap_range = result[3]  # 2020
         assert leap_range.start == datetime(2020, 2, 28, 0, 0, 0)
         assert leap_range.end == datetime(2020, 3, 1, 23, 59, 59)
+
+
+class TestBuildThenAndNow:
+    """The two-era rule, which lived in two places and could drift between them."""
+
+    def test_most_recent_era_comes_first(self) -> None:
+        result = build_then_and_now(2026, 10)
+        assert [r.start.year for r in result] == [2026, 2016]
+
+    def test_each_era_is_a_whole_calendar_year(self) -> None:
+        now, then = build_then_and_now(2026, 10)
+        assert (now.start, now.end) == (
+            datetime(2026, 1, 1, 0, 0, 0),
+            datetime(2026, 12, 31, 23, 59, 59),
+        )
+        assert (then.start, then.end) == (
+            datetime(2016, 1, 1, 0, 0, 0),
+            datetime(2016, 12, 31, 23, 59, 59),
+        )
+
+    def test_a_gap_of_zero_is_refused(self) -> None:
+        """A then-and-now with no distance between its ends is just a now."""
+        with pytest.raises(ValueError, match="years_back"):
+            build_then_and_now(2026, 0)
+
+    def test_the_cli_and_the_preset_cannot_disagree(self) -> None:
+        """The drift guard. Both front ends resolved this rule independently.
+
+        The CLI built the pair itself and read the preset factory only for a
+        default duration, so a change to one was invisible to the other.
+        """
+        from immich_memories.cli._date_resolution import resolve_date_range
+        from immich_memories.memory_types.factory import create_preset
+        from immich_memories.memory_types.registry import MemoryType
+
+        preset = create_preset(MemoryType.THEN_AND_NOW, year=2026, years_back=10)
+        cli = resolve_date_range(
+            year=2026,
+            start=None,
+            end=None,
+            period=None,
+            birthday=None,
+            memory_type="then_and_now",
+            years_back=10,
+        )
+
+        assert cli == preset.date_ranges

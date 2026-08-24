@@ -44,7 +44,6 @@ services:
     environment:
       IMMICH_URL: "${IMMICH_URL}"
       IMMICH_API_KEY: "${IMMICH_API_KEY}"
-      IMMICH_MEMORIES_OUTPUT__DIRECTORY: /app/output   # default is ~/Videos/Memories, outside every volume
     restart: unless-stopped
     deploy:
       resources:
@@ -66,12 +65,10 @@ To publish it on the LAN instead, do both halves: turn on
 [authentication](../configuration/authentication) first — the app holds an Immich API key to your
 whole photo library — then change the mapping to `"8080:8080"`.
 
-Two more things to get right before the first run:
+One more thing to get right before the first run:
 
-- **`IMMICH_MEMORIES_OUTPUT__DIRECTORY`**: without it, videos are written to
-  `/home/immich/Videos/Memories` inside the container — not on any volume — and vanish when the
-  container is recreated.
-- **Ownership of `./output`**: the container runs as UID/GID 1000. Create the folder yourself
+- **Ownership of `./output`**: the image already writes to `/app/output`, so the mount above is
+  where the videos land. The container runs as UID/GID 1000. Create the folder yourself
   (`mkdir -p output`) so Docker doesn't create it as root; if your NAS user isn't 1000,
   `chown 1000:1000 output`.
   On Synology/QNAP where that is awkward, use a named volume (`immich-memories-output:/app/output`)

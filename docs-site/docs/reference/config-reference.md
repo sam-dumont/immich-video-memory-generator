@@ -40,7 +40,8 @@ preset: null                       # null | fast
 `fast` sets, unless you set them yourself: `output.resolution: 1080p`, `output.codec: h264`,
 `output.quality: medium`, `hardware.encoder_preset: fast`, `speech.enabled: false` (no per-clip
 voice-activity pass), `title_screens.animated_background: false` (static title backgrounds),
-`photos.max_ratio: 0.25`; and an analysis depth of `auto` runs as `fast` (favorites first).
+`photos.max_ratio: 0.25`, `analysis.max_refinement_passes: 3` (three refinement rounds rather
+than ten); and an analysis depth of `auto` runs as `fast` (favorites first).
 The heavy optional features (LLM scoring, music generation, audio-content tagging, transcription)
 are already off by default and stay wherever you put them.
 
@@ -276,13 +277,16 @@ Used by content analysis and title generation. Any OpenAI-compatible endpoint wo
 llm:
   provider: "openai-compatible"   # openai-compatible | openai | zai | anthropic | ollama
   base_url: "http://localhost:8080/v1"
-  model: ""                        # e.g. mlx-community/Qwen2.5-VL-7B-Instruct-8bit
+  model: ""                        # e.g. mlx-community/Qwen3.6-27B-8bit
   api_key: ""                      # optional, only for cloud APIs
   timeout_seconds: 300             # increase for slow local models (10-3600)
   thinking: false                  # server has a reasoning switch
   # thinking_params:               # what the switch looks like on your server
   #   chat_template_kwargs:        # (default: the Qwen dialect, vLLM/mlx)
   #     enable_thinking: true
+  # no_thinking_params:            # how to say "don't reason" to that server
+  #   chat_template_kwargs:        # (default: the Qwen dialect, vLLM/mlx)
+  #     enable_thinking: false
 ```
 
 **The goal of this product is a fully local process** — your photos analyzed
@@ -317,6 +321,18 @@ matches your server's dialect: the default is Qwen's
 the OpenAI API use `{"reasoning_effort": "medium"}`. Leave `thinking` off
 unless you know the server supports your chosen switch — some
 OpenAI-compatible servers reject unknown request fields.
+
+`no_thinking_params` is the other half, and it matters on servers whose chat
+template reasons by default: not asking for reasoning is not the same as
+asking for none, so bulk analysis reasons anyway, at the small token budget
+those calls ask for, and comes back truncated mid-thought with nothing
+parseable in it. This field is sent on every non-thinking call — it hangs off
+the switch, not off `thinking`, because a server that reasons by default does
+so whether or not you turned reasoning on. The default is Qwen's
+`chat_template_kwargs: {"enable_thinking": false}`; set it to `{}` for servers
+that reason only when asked (the `openai` and `zai` presets already do). A
+server that rejects the field is detected from its 400 and asked without it
+from then on.
 
 Parameter dialects are otherwise handled automatically: OpenAI's reasoning
 models (gpt-5 family) reject `max_tokens` and non-default temperatures, and
@@ -514,8 +530,9 @@ title_screens:
   use_first_name_only: true      # "Alice" instead of "Alice Smith" in titles
 ```
 
-Those two switches are all the look-and-feel the config file exposes; the colour palette and
-custom fonts are not configurable today. `animated_background: false` keeps the gradient still
+`animated_background` and `show_decorative_lines` are all the look-and-feel the config file
+exposes; the colour palette and custom fonts are not configurable today.
+`animated_background: false` keeps the gradient still
 — no rotation, colour pulse or vignette pulse — which is what `preset: fast` selects. The
 `immich-memories titles` command exposes more of the look as flags for previewing.
 
@@ -561,12 +578,20 @@ server:
   port: 8080                     # Listen port (1-65535)
   enable_demo_mode: false        # Show the demo/privacy (blur) toggle in the sidebar
   secure_cookies: false          # Mark the session cookie Secure (turn on behind an HTTPS reverse proxy)
+  trigger_token: ""              # Shared secret for POST /api/trigger. Empty, and with auth
+                                 # off, the trigger API is not served at all
   allow_unauthenticated_lan: false  # Listen beyond localhost with auth disabled —
                                  # anyone reaching the port can use the UI and the
                                  # Immich library behind it
 ```
 
 These can also be set via CLI flags: `immich-memories ui --host 127.0.0.1 --port 9090`.
+
+`trigger_token` turns on the HTTP trigger — one POST that runs whatever `auto run` would have
+decided, so an Immich workflow (or a cron, or a phone shortcut) can start a memory. See
+[Trigger from Immich or anything else](../create/recipes/trigger-endpoint.md). Keep it out of
+`config.yaml` with `IMMICH_MEMORIES_SERVER__TRIGGER_TOKEN` or a `${VAR}` reference; either way it
+is redacted from logs, `/health`, and the config viewer like every other secret.
 
 `host` is the one value "save" leaves out of `config.yaml` when you never set it. Writing the
 `0.0.0.0` default would make the next load treat it as your decision and quietly retire the
@@ -603,7 +628,7 @@ scheduler:
       params: {}
 ```
 
-## Smart automation
+## Automation
 
 Controls what `immich-memories auto suggest` and `auto run` detect and generate. See the [auto CLI docs](../create/cli/auto.md) for the full command reference. Tier 2 — lives under `advanced:` when the app writes the file.
 

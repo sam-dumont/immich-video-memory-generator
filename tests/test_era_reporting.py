@@ -13,8 +13,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from immich_memories.cli._asset_fetch import fetch_videos_and_live_photos
 from immich_memories.cli._helpers import set_quiet_mode
-from immich_memories.cli._pipeline_runner import fetch_videos_and_live_photos
 from immich_memories.timeperiod import DateRange
 
 NOW = DateRange(start=datetime(2026, 1, 1), end=datetime(2026, 12, 31, 23, 59, 59))

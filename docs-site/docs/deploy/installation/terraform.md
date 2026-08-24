@@ -78,8 +78,9 @@ module "immich_memories" {
   immich_api_key = var.immich_api_key
 
   # Optional: LLM clip content analysis (any OpenAI-compatible API)
+  # Tested against Qwen3.6-27B and Qwen3.6-35B-A3B; `llm_model` is the tag the server serves
   llm_base_url = "http://ollama.ollama.svc.cluster.local:11434/v1"
-  llm_model    = "qwen2.5-vl"
+  llm_model    = "qwen3.6:27b"
 
   # Optional: anything else, e.g. the in-pod daily automation
   env = {
@@ -112,7 +113,7 @@ module "immich_memories" {
 | `namespace` | Kubernetes namespace | `string` | `"immich-memories"` |
 | `create_namespace` | Create the namespace | `bool` | `true` |
 | `image_repository` | Container image | `string` | `"ghcr.io/sam-dumont/immich-video-memory-generator"` |
-| `image_tag` | Image tag (no `v` prefix: `0.41.0`, `latest`) | `string` | `"latest"` |
+| `image_tag` | Image tag (no `v` prefix: `0.59.2`, `latest`) | `string` | `"latest"` |
 | `replicas` | Replica count — keep at 1, the UI is single-replica | `number` | `1` |
 | `resources` | Requests/limits object (`requests.memory/cpu`, `limits.memory/cpu`) | `object` | `2Gi/1000m` – `8Gi/4000m` |
 | `tmp_size` | `/tmp` emptyDir for FFmpeg intermediates (8Gi for 4K) | `string` | `"4Gi"` |

@@ -70,6 +70,9 @@ class TitleScreenConfig:
     title_override: str | None = None
     subtitle_override: str | None = None
 
+    # The memory type, for the ones whose dates cannot reveal them.
+    memory_type: str | None = None
+
     # Month dividers
     show_month_dividers: bool = True
     month_divider_threshold: int = 2  # Minimum clips to show month divider
@@ -192,6 +195,7 @@ class TitleScreenGenerator:
                 start_date=start_date,
                 end_date=end_date,
                 birthday_age=birthday_age,
+                memory_type=self.config.memory_type,
             )
 
         # Use LLM-generated title if available

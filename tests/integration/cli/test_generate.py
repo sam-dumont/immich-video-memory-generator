@@ -869,7 +869,7 @@ class TestCLIGenerate:
 
 
 class TestPipelineRunner:
-    """Tests for _pipeline_runner functions with mocked assembly.
+    """Tests for the fetch and runner functions with mocked assembly.
 
     WHY mock assembly: These functions run SmartPipeline + generate_memory.
     Assembly is FFmpeg-heavy; we mock it to test the pipeline wiring.
@@ -877,7 +877,7 @@ class TestPipelineRunner:
 
     def test_fetch_videos_returns_assets(self, tmp_path):
         """fetch_videos_and_live_photos returns deduped assets."""
-        from immich_memories.cli._pipeline_runner import fetch_videos_and_live_photos
+        from immich_memories.cli._asset_fetch import fetch_videos_and_live_photos
         from immich_memories.timeperiod import DateRange
 
         mock_client = MagicMock()
@@ -907,7 +907,7 @@ class TestPipelineRunner:
 
     def test_fetch_videos_person_filter(self, tmp_path):
         """fetch with single person_id calls person-specific API."""
-        from immich_memories.cli._pipeline_runner import fetch_videos_and_live_photos
+        from immich_memories.cli._asset_fetch import fetch_videos_and_live_photos
         from immich_memories.timeperiod import DateRange
 
         mock_client = MagicMock()
@@ -930,14 +930,14 @@ class TestPipelineRunner:
         mock_client.get_videos_for_person_and_date_range.assert_called_once()
 
     def test_fetch_videos_multi_person(self, tmp_path):
-        """fetch with multiple person_ids calls any-person API."""
-        from immich_memories.cli._pipeline_runner import fetch_videos_and_live_photos
+        """fetch with multiple person_ids asks for the videos holding all of them."""
+        from immich_memories.cli._asset_fetch import fetch_videos_and_live_photos
         from immich_memories.timeperiod import DateRange
 
         mock_client = MagicMock()
         mock_config = MagicMock()
         mock_progress = MagicMock()
-        mock_client.get_videos_for_any_person.return_value = []
+        mock_client.get_videos_for_all_persons.return_value = []
 
         dr = DateRange(
             start=datetime(2025, 1, 1),
@@ -951,7 +951,7 @@ class TestPipelineRunner:
             person_ids=["p1", "p2"],
             use_live_photos=False,
         )
-        mock_client.get_videos_for_any_person.assert_called_once()
+        mock_client.get_videos_for_all_persons.assert_called_once()
 
     def test_run_pipeline_wires_config_and_calls_generate(self, tmp_path, fixture_mp4):
         """run_pipeline_and_generate builds correct GenerationParams and calls generate_memory."""
