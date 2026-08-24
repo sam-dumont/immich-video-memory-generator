@@ -42,7 +42,7 @@ class TestValidateTorchcodec:
     """Real torchcodec validation with actually-installed packages."""
 
     def test_passes_when_versions_match(self):
-        from immich_memories.audio.generators.ace_step_backend import _validate_torchcodec
+        from immich_memories.audio.generators.ace_step_runtime import _validate_torchcodec
 
         _validate_torchcodec()
 
@@ -66,7 +66,7 @@ class TestRunWithSuppressedOutput:
     def test_keeps_process_stderr_visible(self, capfd):
         # WHY: the previous fd-2 redirect swallowed the only diagnostic when
         # a native MLX failure killed the UI process; stderr must stay visible.
-        from immich_memories.audio.generators.ace_step_backend import _run_with_suppressed_output
+        from immich_memories.audio.generators.ace_step_runtime import _run_with_suppressed_output
 
         def _noisy_fn(**kwargs):
             os.write(2, b"NATIVE DIAGNOSTIC")
@@ -77,13 +77,13 @@ class TestRunWithSuppressedOutput:
         assert "NATIVE DIAGNOSTIC" in capfd.readouterr().err
 
     def test_returns_function_result(self):
-        from immich_memories.audio.generators.ace_step_backend import _run_with_suppressed_output
+        from immich_memories.audio.generators.ace_step_runtime import _run_with_suppressed_output
 
         result = _run_with_suppressed_output(lambda **kw: kw["x"] + kw["y"], x=3, y=4)
         assert result == 7
 
     def test_restores_stderr_after_exception(self):
-        from immich_memories.audio.generators.ace_step_backend import _run_with_suppressed_output
+        from immich_memories.audio.generators.ace_step_runtime import _run_with_suppressed_output
 
         original_stderr_fd = os.dup(2)
         try:

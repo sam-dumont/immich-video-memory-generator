@@ -229,7 +229,8 @@ src/immich_memories/
 │       ├── factory.py          # Generator factory
 │       ├── memory_budget.py    # Will this ACE-Step profile fit in RAM? (checked before jetsam decides)
 │       ├── musicgen_backend.py # MusicGen API (generation + remote Demucs stems)
-│       ├── ace_step_backend.py # ACE-Step lib/API (generation)
+│       ├── ace_step_backend.py # ACE-Step lib/API (mode choice, captions, REST protocol)
+│       ├── ace_step_runtime.py # ACE-Step in-process handlers: device, MLX/torch memory, one render
 │       ├── ace_step_captions.py # Dense caption templates
 │       └── demucs_local.py     # Local Demucs stem separation (in-process)
 │
