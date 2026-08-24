@@ -198,6 +198,7 @@ tone-maps detected HDR sources and logs the reason. Use `hdr_mode: sdr` when SDR
 ```yaml
 photos:
   enabled: true                  # Include photos in memories
+  read_moments: false            # Read each moment from a contact sheet first
   max_ratio: 0.50               # Max 50% of clips can be photos (0-1)
   duration: 4.0                  # Seconds per photo clip (1-10)
   moment_gap_seconds: 120        # Window for "same moment as a video" (0-3600)

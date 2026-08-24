@@ -101,7 +101,10 @@ def score_photos(
     # One look per moment, not a few per shippable slot. Sizing the shortlist
     # from ship-count meant the model only ever saw what metadata had already
     # picked, so content could confirm that ranking and never overturn it.
-    moments = one_photo_per_moment(metadata_scored, _MOMENT_WINDOW_MINUTES)
+    read = _read_the_moments(metadata_scored, config, app_config, thumbnail_fn, thumbnail_cache)
+    moments = (
+        read if read is not None else one_photo_per_moment(metadata_scored, _MOMENT_WINDOW_MINUTES)
+    )
     shortlist = moments
     if len(shortlist) > LLM_SHORTLIST_CEILING:
         shortlist = _select_distributed(shortlist, LLM_SHORTLIST_CEILING)
@@ -525,6 +528,19 @@ def one_photo_per_moment(scored: list[tuple], window_minutes: float) -> list[tup
     mattered. Otherwise the best metadata score stands in until content can say
     better.
     """
+    return [
+        max(g, key=lambda item: (bool(item[0].is_favorite), item[1]))
+        for g in moments_of(scored, window_minutes)
+    ]
+
+
+def moments_of(scored: list[tuple], window_minutes: float) -> list[list[tuple]]:
+    """The photographs grouped into moments, in time order.
+
+    Named separately from picking a representative because reading a moment
+    from contact sheets needs every member of it, not the one photograph that
+    stands in for it. Two callers, one definition of what a moment is.
+    """
     if not scored:
         return []
     ordered = sorted(scored, key=lambda item: item[0].file_created_at or _EPOCH)
@@ -540,7 +556,7 @@ def one_photo_per_moment(scored: list[tuple], window_minutes: float) -> list[tup
             groups[-1].append(item)
             continue
         groups.append([item])
-    return [max(g, key=lambda item: (bool(item[0].is_favorite), item[1])) for g in groups]
+    return groups
 
 
 def _select_distributed(
@@ -825,3 +841,81 @@ def _get_photo_encoder_args() -> list[str]:
 def _get_sdr_encoder_args() -> list[str]:
     """SDR encoder args for when zscale is unavailable."""
     return ["-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p"]
+
+
+def _frames_for_reading(
+    moment: list[tuple], thumbnail_cache: Any, thumbnail_fn: Any
+) -> dict[str, Any]:
+    """The thumbnails a moment's sheet is tiled from, skipping what will not open."""
+    import io
+
+    from PIL import Image
+
+    frames: dict[str, Any] = {}
+    for asset, _score in moment:
+        data = thumbnail_cache.get(asset.id, "preview") if thumbnail_cache else None
+        if data is None and thumbnail_fn is not None:
+            try:
+                data = thumbnail_fn(asset.id, size="preview")
+            except (ImmichAPIError, OSError, RuntimeError, ValueError):
+                # A Live Photo's video component has no thumbnail of its own
+                # and answers 404. Measured on one day: 34 of 42 "videos" were
+                # components. One missing tile must not lose the sheet.
+                data = None
+        if not data:
+            continue
+        try:
+            frames[asset.id] = Image.open(io.BytesIO(data)).convert("RGB")
+        except (OSError, ValueError):
+            continue
+    return frames
+
+
+def _read_the_moments(
+    metadata_scored: list[tuple],
+    config: PhotoConfig,
+    app_config: Any,
+    thumbnail_fn: Any,
+    thumbnail_cache: Any,
+) -> list[tuple] | None:
+    """What each moment's contact sheet chose, or None to fall back to sampling.
+
+    Returns None rather than an empty list when it cannot read: no thumbnails
+    and no model means no reading, and an empty shortlist would silently ship
+    a memory chosen on metadata alone while claiming to have looked.
+    """
+    if not getattr(config, "read_moments", False) or app_config is None:
+        return None
+    if thumbnail_cache is thumbnail_fn is None:
+        return None
+
+    from immich_memories.analysis.moment_grouping import (
+        EPISODE_WINDOW_MINUTES,
+        moments_by_time_and_place,
+    )
+    from immich_memories.analysis.moment_reading import read_moment
+
+    by_id = {asset.id: (asset, score) for asset, score in metadata_scored}
+    kept: list[tuple] = []
+    # Sheets are asked about EPISODES, not ten-minute moments: a moment is
+    # often one photograph, and a sheet of one photograph says nothing.
+    for episode in moments_by_time_and_place(
+        [asset for asset, _score in metadata_scored],
+        window_minutes=EPISODE_WINDOW_MINUTES,
+    ):
+        frames = _frames_for_reading(
+            [by_id[a.id] for a in episode if a.id in by_id], thumbnail_cache, thumbnail_fn
+        )
+        if not frames:
+            continue
+        reading = read_moment(episode, frames, app_config.llm)
+        kept.extend(by_id[a.id] for a in reading.keep if a.id in by_id)
+    if not kept:
+        logger.info("Moment reading returned nothing; sampling one photo per moment instead")
+        return None
+    logger.info(
+        "Moment reading: %d photos -> %d kept by what the sheets showed",
+        len(metadata_scored),
+        len(kept),
+    )
+    return kept

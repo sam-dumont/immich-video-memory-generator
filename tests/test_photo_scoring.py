@@ -210,10 +210,12 @@ class TestCacheFirstScoring:
         }
 
         with (
+            # WHY: the model is the external boundary this test reaches.
             patch(
                 "immich_memories.photos.scoring._get_score_cache",
                 return_value=mock_cache,
             ),
+            # WHY: the model is the external boundary this test reaches.
             patch(
                 "immich_memories.photos.scoring._llm_score_photo",
             ) as mock_llm,
@@ -246,6 +248,7 @@ class TestCacheFirstScoring:
             content_analysis={"enabled": True},
         )
 
+        # WHY: the model is the external boundary this test reaches.
         with patch(
             "immich_memories.photos.scoring._llm_score_photo",
             return_value=PhotoLook(score=0.77, payload={"description": "a photograph"}),
@@ -278,6 +281,7 @@ class TestCacheFirstScoring:
             content_analysis={"enabled": True},
         )
 
+        # WHY: the model is the external boundary this test reaches.
         with patch(
             "immich_memories.photos.scoring._llm_score_photo",
             return_value=None,
@@ -316,6 +320,7 @@ class TestCacheFirstScoring:
             request=httpx.Request("POST", "http://localhost:9999/v1/chat/completions"),
         )
 
+        # WHY: the model is the external boundary this test reaches.
         with patch("httpx.post", return_value=response):
             result, _payloads = _enhance_with_llm(
                 [(_photo("photo-1"), 0.5)],
@@ -363,6 +368,7 @@ class TestCacheFirstScoring:
         mock_cache.get_asset_scores_batch.return_value = {}
 
         with (
+            # WHY: the model is the external boundary this test reaches.
             patch(
                 "immich_memories.photos.scoring._get_score_cache",
                 return_value=mock_cache,
@@ -418,6 +424,7 @@ class TestCacheFirstScoring:
         }
 
         with (
+            # WHY: the model is the external boundary this test reaches.
             patch(
                 "immich_memories.photos.scoring._get_score_cache",
                 return_value=mock_cache,
@@ -505,6 +512,7 @@ class TestCacheFirstScoring:
         # Write a dummy file so download succeeds
         (tmp_path / "fail-2.jpg").write_bytes(b"not-a-real-image")
 
+        # WHY: the model is the external boundary this test reaches.
         with patch(
             "immich_memories.photos.photo_pipeline.prepare_photo_source",
             side_effect=RuntimeError("decode failed"),
@@ -524,6 +532,7 @@ class TestCacheFirstScoring:
         """_get_score_cache returns None when dependencies are unavailable."""
         from immich_memories.photos.scoring import _get_score_cache
 
+        # WHY: the model is the external boundary this test reaches.
         with patch(
             "immich_memories.cache.asset_score_cache.AssetScoreCache",
             side_effect=ImportError("no module"),
@@ -568,7 +577,9 @@ class TestPhotoScoringTimeout:
         # per-phase budget is read off its construction, not off one request.
         # WHY: replaces the HTTP call to the configured LLM provider.
         with (
+            # WHY: the model is the external boundary this test reaches.
             patch("httpx.AsyncClient", side_effect=_capture_client),
+            # WHY: the model is the external boundary this test reaches.
             patch("httpx.AsyncClient.post", side_effect=httpx.ConnectError("no server")),
         ):
             _query_photo_llm(photo, config)
