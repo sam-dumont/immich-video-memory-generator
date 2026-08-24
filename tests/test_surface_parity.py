@@ -101,6 +101,13 @@ SPECS: dict[MemoryType, MemorySpec] = {
 # from what the album holds. Registering a preset for it must fail this file.
 ALBUM_HAS_NO_PRESET = MemoryType.ALBUM
 
+# A special day has a preset but nothing to reach it with yet. Its scope comes
+# from a catalogue entry -- the day, its window, its title -- and no flag or
+# card carries one, so there is no spec either surface could be handed. It
+# joins SPECS when `generate --day` and the Surprise me card land, and this
+# exception has to be deleted in the same PR.
+SPECIAL_DAY_HAS_NO_SURFACE_YET = MemoryType.SPECIAL_DAY
+
 # --memory-type's choices, copied from cli/generate_options.py so a type added to the
 # registry and not to the flag is caught here rather than by a user.
 CLI_MEMORY_TYPE_CHOICES = frozenset(
@@ -233,7 +240,7 @@ class TestRegistryCoverage:
     """A new memory type cannot ship without declaring what parity means for it."""
 
     def test_every_memory_type_has_parity_data(self) -> None:
-        declared = set(SPECS) | {ALBUM_HAS_NO_PRESET}
+        declared = set(SPECS) | {ALBUM_HAS_NO_PRESET, SPECIAL_DAY_HAS_NO_SURFACE_YET}
         missing = set(MemoryType) - declared
         assert not missing, (
             f"Memory types with no parity data: {sorted(str(m) for m in missing)}. "
