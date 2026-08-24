@@ -263,7 +263,11 @@ def _multi_year_ranges(
     three each need their own defaults, and inlining them pushed the caller's
     cognitive complexity past the gate.
     """
-    from immich_memories.memory_types.date_builders import build_holiday, build_on_this_day
+    from immich_memories.memory_types.date_builders import (
+        build_holiday,
+        build_on_this_day,
+        build_then_and_now,
+    )
 
     if memory_type == "on_this_day":
         return build_on_this_day(on_this_day_target or date.today(), years_back=years_back)
@@ -282,13 +286,8 @@ def _multi_year_ranges(
         )
 
     if memory_type == "then_and_now":
-        # WHY two whole years rather than a window: the contrast is the point, and
-        # a narrow window in a year long past is often empty.
-        now_year = year or date.today().year
-        then_year = now_year - (years_back or 10)
-        # Most recent first, like the other multi-range types: the caller derives
-        # its display span as start=ranges[-1].start, end=ranges[0].end, which
-        # inverts on an ascending list.
-        return [calendar_year(now_year), calendar_year(then_year)]
+        # WHY the `or 10`: --years-back defaults to None here, and 0 is read as
+        # unset rather than as an error. The builder owns everything else.
+        return build_then_and_now(year or date.today().year, years_back or 10)
 
     return None
