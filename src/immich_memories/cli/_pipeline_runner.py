@@ -848,6 +848,32 @@ def _drop_photos_already_shown_as_motion(
     )
 
 
+def fetch_photos(
+    *,
+    client: SyncImmichClient,
+    date_ranges: list[DateRange],
+    person_ids: list[str],
+) -> list:
+    """Fetch still photos for the memory's windows, honouring the person filter.
+
+    Several people means the photos holding all of them, the same rule videos
+    and Live Photos already follow.
+    """
+    photos: list = []
+    seen: set[str] = set()
+    for dr in date_ranges:
+        batch = client.get_photos_for_date_range(
+            dr,
+            person_id=person_ids[0] if len(person_ids) == 1 else None,
+            person_ids=person_ids if len(person_ids) > 1 else None,
+        )
+        for photo in batch:
+            if photo.id not in seen:
+                seen.add(photo.id)
+                photos.append(photo)
+    return photos
+
+
 def fetch_videos_and_live_photos(
     *,
     client: SyncImmichClient,
@@ -866,7 +892,9 @@ def fetch_videos_and_live_photos(
     all_assets = []
     for dr in date_ranges:
         if len(person_ids) > 1:
-            batch = client.get_videos_for_any_person(person_ids, dr)
+            # Naming several people asks for the moments that hold all of them,
+            # not the union of their solo reels. Live photos already intersect.
+            batch = client.get_videos_for_all_persons(person_ids, dr)
         elif len(person_ids) == 1:
             batch = client.get_videos_for_person_and_date_range(person_ids[0], dr)
         else:

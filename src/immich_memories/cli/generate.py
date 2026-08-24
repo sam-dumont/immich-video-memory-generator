@@ -24,6 +24,7 @@ from immich_memories.cli._generate_display import (
 )
 from immich_memories.cli._helpers import console, print_error, print_info, print_success
 from immich_memories.cli._pipeline_runner import (
+    fetch_photos,
     fetch_videos_and_live_photos,
     run_pipeline_and_generate,
 )
@@ -896,11 +897,11 @@ def register_generate_commands(main: click.Group) -> None:
                     # Fetch photos (if enabled)
                     fetched_photos: list = []
                     if use_photos:
-                        for dr in date_ranges:
-                            pid = person_ids[0] if len(person_ids) == 1 else None
-                            fetched_photos.extend(
-                                client.get_photos_for_date_range(dr, person_id=pid)
-                            )
+                        fetched_photos = fetch_photos(
+                            client=client,
+                            date_ranges=date_ranges,
+                            person_ids=person_ids,
+                        )
                         if fetched_photos:
                             print_info(f"Found {len(fetched_photos)} photos")
 

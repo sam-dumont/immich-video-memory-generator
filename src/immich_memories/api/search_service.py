@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, date, datetime, time
 from typing import TYPE_CHECKING, Any
 
@@ -29,6 +29,28 @@ def _api_datetime(value: date | datetime, *, inclusive_end: bool = False) -> str
         return datetime.combine(value, boundary, tzinfo=UTC).isoformat()
     value = value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
     return value.isoformat()
+
+
+async def _assets_holding_every_person(
+    fetch_for_person: Callable[[str], Awaitable[list[Asset]]],
+    person_ids: list[str],
+) -> list[Asset]:
+    """Assets that contain every one of the given people, oldest first.
+
+    Immich's metadata search answers one person at a time, so co-occurrence is
+    an intersection of per-person results rather than a single query.
+    """
+    per_person: list[set[str]] = []
+    by_id: dict[str, Asset] = {}
+    for person_id in person_ids:
+        assets = await fetch_for_person(person_id)
+        per_person.append({a.id for a in assets})
+        by_id.update({a.id: a for a in assets})
+
+    common = set.intersection(*per_person) if per_person else set()
+    result = [by_id[asset_id] for asset_id in common]
+    result.sort(key=lambda a: a.file_created_at)
+    return result
 
 
 class SearchService:
@@ -250,31 +272,6 @@ class SearchService:
         all_assets.sort(key=lambda a: a.file_created_at)
         return all_assets
 
-    async def get_videos_for_any_person(
-        self,
-        person_ids: list[str],
-        date_range: DateRange,
-        progress_callback: Callable[[int, int], None] | None = None,
-    ) -> list[Asset]:
-        """Get videos containing ANY of the specified people (OR/union)."""
-        if not person_ids:
-            return []
-
-        seen: dict[str, Asset] = {}
-        for person_id in person_ids:
-            assets = await self.get_videos_for_person_and_date_range(
-                person_id=person_id,
-                date_range=date_range,
-                progress_callback=progress_callback,
-            )
-            for asset in assets:
-                if asset.id not in seen:
-                    seen[asset.id] = asset
-
-        result = list(seen.values())
-        result.sort(key=lambda a: a.file_created_at)
-        return result
-
     async def get_videos_for_all_persons(
         self,
         person_ids: list[str],
@@ -284,22 +281,12 @@ class SearchService:
         """Get videos containing ALL specified people (AND/intersection)."""
         if not person_ids:
             return []
-        per_person: list[set[str]] = []
-        assets_by_id: dict[str, Asset] = {}
-        for pid in person_ids:
-            assets = await self.get_videos_for_person_and_date_range(
-                pid,
-                date_range,
-                progress_callback,
-            )
-            per_person.append({a.id for a in assets})
-            assets_by_id.update({a.id: a for a in assets})
-        common = per_person[0]
-        for s in per_person[1:]:
-            common &= s
-        result = [assets_by_id[aid] for aid in common]
-        result.sort(key=lambda a: a.file_created_at)
-        return result
+        return await _assets_holding_every_person(
+            lambda person_id: self.get_videos_for_person_and_date_range(
+                person_id, date_range, progress_callback
+            ),
+            person_ids,
+        )
 
     async def _get_live_photos_single_person(
         self,
@@ -342,20 +329,10 @@ class SearchService:
     ) -> list[Asset]:
         """Get Live Photo IMAGE assets, optionally filtered by person(s)."""
         if person_ids and len(person_ids) >= 2:
-            per_person: list[set[str]] = []
-            assets_by_id: dict[str, Asset] = {}
-            for pid in person_ids:
-                assets = await self._get_live_photos_single_person(
-                    date_range, progress_callback, pid
-                )
-                per_person.append({a.id for a in assets})
-                assets_by_id.update({a.id: a for a in assets})
-            common = per_person[0]
-            for s in per_person[1:]:
-                common &= s
-            result_list = [assets_by_id[aid] for aid in common]
-            result_list.sort(key=lambda a: a.file_created_at)
-            return result_list
+            return await _assets_holding_every_person(
+                lambda pid: self._get_live_photos_single_person(date_range, progress_callback, pid),
+                person_ids,
+            )
 
         return await self._get_live_photos_single_person(date_range, progress_callback, person_id)
 
@@ -364,8 +341,27 @@ class SearchService:
         date_range: DateRange,
         progress_callback: Callable[[int, int], None] | None = None,
         person_id: str | None = None,
+        person_ids: list[str] | None = None,
     ) -> list[Asset]:
-        """Get regular photo assets (IMAGE, excluding live photos)."""
+        """Get regular photo assets (IMAGE, excluding live photos), by person(s) if given.
+
+        Several people means the photos holding all of them, matching how videos
+        and Live Photos answer the same question.
+        """
+        if person_ids and len(person_ids) >= 2:
+            return await _assets_holding_every_person(
+                lambda pid: self._get_photos_single_person(date_range, progress_callback, pid),
+                person_ids,
+            )
+
+        return await self._get_photos_single_person(date_range, progress_callback, person_id)
+
+    async def _get_photos_single_person(
+        self,
+        date_range: DateRange,
+        progress_callback: Callable[[int, int], None] | None = None,
+        person_id: str | None = None,
+    ) -> list[Asset]:
         query_person_ids = [person_id] if person_id else None
         all_assets: list[Asset] = []
         page = 1
