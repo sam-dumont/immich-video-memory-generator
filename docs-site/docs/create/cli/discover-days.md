@@ -127,5 +127,6 @@ reasons from times, places and recognised names alone. That is the difference be
 "Driving through somewhere" and knowing what was being driven.
 
 Titles are checked against what the day actually recorded before they are kept. A title
-naming a place the day was never in is dropped rather than shown — a title card is the
-wrong place for a plausible invention.
+naming a place the day was never in is dropped rather than shown, and so is one claiming a
+distance or a race — "the 10K" — that nothing the model was shown mentions. A title card is
+the wrong place for a plausible invention, and a number reads exactly as true as a real one.
