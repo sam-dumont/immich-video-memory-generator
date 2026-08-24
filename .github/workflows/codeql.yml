@@ -1,0 +1,58 @@
+# CodeQL — GitHub's own SAST, complementing the Bandit and Semgrep passes that
+# already run per-PR in ci.yml. CodeQL finds what those cannot: cross-file taint
+# flow from a source (an Immich API response, a config file, a CLI argument) to
+# a sink (subprocess, filesystem, deserialisation) across module boundaries.
+#
+# WHY NOT on pull_request: a Python analysis of this tree takes minutes, and PRs
+# here merge fast and often — putting CodeQL on the PR path would slow every
+# merge to catch something a post-merge run catches within the hour. Findings
+# land in the Security tab either way, and OpenSSF Scorecard's SAST probe counts
+# a workflow that calls github/codeql-action/analyze regardless of its trigger.
+
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # Weekly Monday, offset from the Scorecard run at 07:25 so the two security
+    # workflows do not contend for the same runner slots.
+    - cron: '18 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze Python
+    runs-on: ubuntu-latest
+    if: github.repository == 'sam-dumont/immich-video-memory-generator'
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      # Publishing the SARIF results to the Security tab is the only write.
+      security-events: write
+      # CodeQL reads workflow run metadata to attribute results to a run.
+      actions: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@c10b8064de6f491fea524254123dbe5e09572f13 # v4
+        with:
+          languages: python
+          # Python needs no compilation, so CodeQL skips the build tracer and
+          # extracts straight from source — no uv sync, no FFmpeg, no fixtures.
+          build-mode: none
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@c10b8064de6f491fea524254123dbe5e09572f13 # v4
+        with:
+          category: "/language:python"

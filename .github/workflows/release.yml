@@ -194,6 +194,10 @@ jobs:
       name: ${{ needs.analyze.outputs.release_type == 'major' && 'production-major' || 'production' }}
     permissions:
       contents: write
+      # Provenance: the OIDC token is what identifies this workflow to
+      # Sigstore, and attestations is where the signed statement is filed.
+      id-token: write
+      attestations: write
 
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -246,6 +250,38 @@ jobs:
           ls -la dist/
           unzip -p dist/*.whl '*/METADATA' | grep '^Version:'
 
+      - name: Attest build provenance
+        id: attest
+        if: inputs.dry_run != 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
+        with:
+          subject-path: |
+            dist/*.whl
+            dist/*.tar.gz
+
+      - name: Stage the attestation as release assets
+        if: inputs.dry_run != 'true'
+        env:
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+          NEXT_VERSION: ${{ needs.analyze.outputs.next_version }}
+        run: |
+          set -euo pipefail
+          # WHY not dist/: the pypi-publish job hands the whole directory to
+          # twine, which rejects anything that is not a wheel or an sdist.
+          mkdir -p attestations
+          base="attestations/immich_memories-${NEXT_VERSION}"
+
+          # The Sigstore bundle is what `gh attestation verify --bundle` reads.
+          cp "$BUNDLE" "${base}.sigstore.json"
+
+          # The same statement as a bare DSSE envelope. SLSA consumers -- and
+          # OpenSSF Scorecard's provenance probe, which matches on the name
+          # alone -- expect provenance under .intoto.jsonl. -e fails the step
+          # if the bundle ever stops carrying an envelope.
+          jq -ce '.dsseEnvelope' "$BUNDLE" > "${base}.intoto.jsonl"
+
+          ls -la attestations/
+
       - name: Generate changelog
         id: changelog
         env:
@@ -288,6 +324,8 @@ jobs:
           files: |
             dist/*.whl
             dist/*.tar.gz
+            attestations/*.sigstore.json
+            attestations/*.intoto.jsonl
           draft: false
           prerelease: false
 
@@ -393,6 +431,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # Same provenance pair as the release job, for the image digest.
+      id-token: write
+      attestations: write
     strategy:
       fail-fast: false
       matrix:
@@ -435,6 +476,16 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.slug }}
           cache-to: type=gha,mode=max,scope=${{ matrix.slug }}
           outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true
+
+      # Attaches the attestation to the image in GHCR as an OCI referrer, so
+      # `gh attestation verify oci://...` and `cosign` can find it without
+      # knowing this repo. Each platform attests its own digest.
+      - name: Attest image provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
+        with:
+          subject-name: ghcr.io/${{ github.repository }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
 
       - name: Export digest
         run: |
