@@ -29,8 +29,16 @@ def test_it_fires_when_a_pull_request_closes() -> None:
 
 
 def test_it_may_cancel_runs() -> None:
-    """Without actions: write the cancel call returns 403 and the tail survives."""
-    assert _workflow()["permissions"]["actions"] == "write"
+    """Without actions: write the cancel call returns 403 and the tail survives.
+
+    A job-level `permissions:` block replaces the workflow-level default rather
+    than adding to it, so the grant counts wherever it is declared. What must
+    hold is that the cancel job ends up holding it.
+    """
+    workflow = _workflow()
+    granted = workflow["jobs"]["cancel"].get("permissions", workflow.get("permissions", {}))
+
+    assert granted.get("actions") == "write"
 
 
 def test_it_cancels_queued_runs_as_well_as_running_ones() -> None:
