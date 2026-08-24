@@ -30,13 +30,13 @@ def _call_with(error: Exception):
 
 
 def test_a_missing_asset_costs_the_live_photos_not_the_run():
-    assert _call_with(ImmichNotFoundError("asset 404")) == ([], set())
+    assert _call_with(ImmichNotFoundError("asset 404")) == ([], set(), [])
 
 
 def test_any_immich_api_error_is_tolerated():
-    assert _call_with(ImmichAPIError("500 from Immich")) == ([], set())
+    assert _call_with(ImmichAPIError("500 from Immich")) == ([], set(), [])
 
 
 def test_the_existing_tolerated_errors_still_are():
-    assert _call_with(OSError("socket died")) == ([], set())
-    assert _call_with(ValueError("bad payload")) == ([], set())
+    assert _call_with(OSError("socket died")) == ([], set(), [])
+    assert _call_with(ValueError("bad payload")) == ([], set(), [])

@@ -166,6 +166,18 @@ class AnalysisConfig(BaseModel):
         le=60.0,
         description="Max gap between Live Photos to group into a burst cluster",
     )
+    live_photo_min_clip_seconds: float = Field(
+        default=3.5,
+        ge=0.0,
+        le=30.0,
+        description=(
+            "How long a Live Photo burst must stitch to before it ships as a "
+            "clip instead of a still. A lone Live Photo is always 3.0s and the "
+            "smallest real stitch is 4.0s, so the default sits between them: "
+            "every burst that genuinely merges qualifies, and one second of "
+            "wobble never displaces the photograph it would replace."
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_duration_constraints(self) -> AnalysisConfig:

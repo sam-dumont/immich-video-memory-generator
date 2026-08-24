@@ -157,7 +157,11 @@ def fetch_videos_and_live_photos(
         all_lp_clips: list = []
         all_lp_video_ids: set[str] = set()
         for dr in date_ranges:
-            lp_clips, lp_vid_ids = fetch_live_photo_clips(
+            # The refused stills are ignored here on purpose: this path fetches
+            # photographs separately and they are already in that pool. With no
+            # clip claiming them, nothing suppresses them as "already shown as
+            # motion", so they simply stay.
+            lp_clips, lp_vid_ids, _stays_photos = fetch_live_photo_clips(
                 client,
                 dr,
                 person_id=person_ids[0] if len(person_ids) == 1 else None,

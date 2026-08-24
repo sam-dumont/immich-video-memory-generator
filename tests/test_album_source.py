@@ -34,7 +34,15 @@ def test_splits_videos_stills_and_live_photos_into_their_own_pools():
     assets = [
         _asset("vid-1", AssetType.VIDEO, base),
         _asset("still-1", AssetType.IMAGE, base + timedelta(minutes=5)),
+        # A burst, because one Live Photo alone no longer earns a clip: it
+        # stitches to 3.0s where a real merge reaches 4.0s.
         _asset("live-1", AssetType.IMAGE, base + timedelta(minutes=10), live_video_id="lv-1"),
+        _asset(
+            "live-2",
+            AssetType.IMAGE,
+            base + timedelta(minutes=10, seconds=2),
+            live_video_id="lv-2",
+        ),
     ]
 
     media = split_album_assets(assets, config=Config(), use_live_photos=True, use_photos=True)
@@ -42,6 +50,20 @@ def test_splits_videos_stills_and_live_photos_into_their_own_pools():
     assert [a.id for a in media.videos] == ["vid-1"]
     assert [a.id for a in media.photos] == ["still-1"]
     assert [c.asset.id for c in media.live_photo_clips] == ["live-1"]
+
+
+def test_a_live_photo_too_short_to_stitch_is_offered_as_a_photograph():
+    """It is a photograph either way; only the rendering was refused."""
+    base = datetime(2025, 6, 1, 12, 0, tzinfo=UTC)
+    assets = [
+        _asset("still-1", AssetType.IMAGE, base),
+        _asset("live-1", AssetType.IMAGE, base + timedelta(minutes=10), live_video_id="lv-1"),
+    ]
+
+    media = split_album_assets(assets, config=Config(), use_live_photos=True, use_photos=True)
+
+    assert media.live_photo_clips == []
+    assert [a.id for a in media.photos] == ["still-1", "live-1"]
 
 
 def test_date_range_spans_the_albums_oldest_and_newest_asset():

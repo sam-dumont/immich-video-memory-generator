@@ -125,6 +125,7 @@ analysis:
   # Live Photos (iPhone 3s video clips)
   include_live_photos: true      # Include Live Photo clips (ON by default)
   live_photo_merge_window_seconds: 10.0  # Max gap to group as burst (1-60s)
+  live_photo_min_clip_seconds: 3.5      # Burst must stitch this long to beat a still
 
   # Audio-aware boundaries
   use_unified_analysis: true     # Avoid mid-sentence cuts

@@ -154,7 +154,7 @@ def fetch_live_photo_clips(
     person_ids: list[str] | None = None,
     *,
     config: Config,
-) -> tuple[list[VideoClipInfo], set[str]]:
+) -> tuple[list[VideoClipInfo], set[str], list[Asset]]:
     """Fetch Live Photo assets and convert to VideoClipInfo clips.
 
     Returns:
@@ -175,22 +175,28 @@ def fetch_live_photo_clips(
         # actually raises -- a 404 for an asset mid-import or just deleted --
         # was the one error this guard could not catch.
         logger.warning("Failed to fetch live photos: %s", e, exc_info=True)
-        return [], set()
+        return [], set(), []
 
     if not live_assets:
         logger.info("No live photos found in date range")
-        return [], set()
+        return [], set(), []
 
     return build_live_photo_clips(live_assets, config=config)
 
 
 def build_live_photo_clips(
     live_assets: list[Asset], *, config: Config
-) -> tuple[list[VideoClipInfo], set[str]]:
-    """Cluster Live Photo stills into merged clips.
+) -> tuple[list[VideoClipInfo], set[str], list[Asset]]:
+    """Cluster Live Photo stills into merged clips, and hand back the rest.
+
+    A Live Photo is a photograph that MAY also be worth showing as motion. A
+    burst too short to stitch into a real clip is not worth the swap, so its
+    stills come back to be selected as photographs — the caller must put them
+    in the photo pool, because a refused burst that goes nowhere is a moment
+    lost rather than a rendering chosen.
 
     Returns:
-        Tuple of (live_photo_clips, live_video_ids).
+        Tuple of (live_photo_clips, live_video_ids, stills_that_stay_photos).
     """
     from immich_memories.processing.live_photo_merger import cluster_live_photos
 
@@ -202,11 +208,22 @@ def build_live_photo_clips(
         merge_window_seconds=merge_window,
     )
 
+    minimum = getattr(config.analysis, "live_photo_min_clip_seconds", 0.0)
     clips: list[VideoClipInfo] = []
+    stays_a_photo: list[Asset] = []
     for cluster in clusters:
         first_asset = cluster.assets[0]
         video_id = first_asset.live_photo_video_id
         if not video_id:
+            continue
+
+        # A Live Photo is a photograph; the motion has to earn the swap. One
+        # still's worth of wobble does not beat the photograph it would
+        # displace, so a cluster that cannot stitch to a real clip stays as
+        # stills — and because no clip then claims them, nothing suppresses
+        # them as "already shown as motion".
+        if cluster.estimated_duration < minimum:
+            stays_a_photo.extend(cluster.assets)
             continue
 
         burst_ids = cluster.video_asset_ids if cluster.count > 1 else None
@@ -233,7 +250,8 @@ def build_live_photo_clips(
     )
     logger.info(
         f"Live Photos: {len(live_assets)} photos → {len(clusters)} clusters → "
-        f"{len(clips)} clips ({len(live_video_ids)} video components to filter) "
+        f"{len(clips)} clips, {len(stays_a_photo)} stills too short to beat a photograph "
+        f"({len(live_video_ids)} video components to filter) "
         f"[devices: {', '.join(device_makes)}]"
     )
-    return clips, live_video_ids
+    return clips, live_video_ids, stays_a_photo

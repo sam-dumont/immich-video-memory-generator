@@ -180,7 +180,9 @@ def _fetch_live_photos(state) -> tuple[list[VideoClipInfo], set[str]]:
         clips: list[VideoClipInfo] = []
         video_ids: set[str] = set()
         for date_range in state.date_ranges:
-            window_clips, window_video_ids = fetch_live_photo_clips(
+            # Refused stills are ignored here: this path already has them in
+            # its photo pool, and with no clip claiming them nothing drops them.
+            window_clips, window_video_ids, _stays_photos = fetch_live_photo_clips(
                 lp_client,
                 date_range,
                 person_id=lp_person_id,

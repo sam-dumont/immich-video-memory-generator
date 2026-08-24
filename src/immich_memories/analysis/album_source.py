@@ -58,9 +58,13 @@ def split_album_assets(
     if use_live_photos and live_stills:
         from immich_memories.analysis.live_photo_pipeline import build_live_photo_clips
 
-        live_clips, live_video_ids = build_live_photo_clips(live_stills, config=config)
+        live_clips, live_video_ids, stay_photos = build_live_photo_clips(live_stills, config=config)
         # The album may also list the Live Photo's video component as its own asset.
         videos = [v for v in videos if v.id not in live_video_ids]
+        # A burst too short to beat a still is still a photograph. Nothing
+        # silently disappears.
+        if stay_photos:
+            plain_stills = sorted(plain_stills + stay_photos, key=lambda a: a.file_created_at)
     elif live_stills:
         plain_stills = sorted(plain_stills + live_stills, key=lambda a: a.file_created_at)
 
