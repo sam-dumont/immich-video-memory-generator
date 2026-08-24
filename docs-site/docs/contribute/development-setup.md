@@ -66,7 +66,7 @@ If `make ci` passes locally, CI will pass too. Use [conventional commit](https:/
 
 **Unit tests** (`make test`): pure logic, no external dependencies. Run in CI on every PR.
 
-**Integration tests** (`make test-integration`, or one suite such as `make test-integration-assembly`): real FFmpeg assembly, real Immich API reads. They live in per-suite folders under `tests/integration/` (`assembly`, `audio`, `auth`, `cli`, `live_photos`, `photos`, `pipeline`, `processing`, `titles`) and skip gracefully if a service isn't available. They run locally and on a self-hosted Linux GPU runner, which uploads its coverage to Codecov under the `integration-linux` flag. The per-suite coverage XMLs they write under `tests/` are gitignored — do not try to commit them.
+**Integration tests** (`make test-integration`, or one suite such as `make test-integration-assembly`): real FFmpeg assembly, real Immich API reads. They live in per-suite folders under `tests/integration/` (`assembly`, `audio`, `audio_mixing`, `auth`, `automation`, `cli`, `live_photos`, `photos`, `pipeline`, `processing`, `titles`) and skip gracefully if a service isn't available. They run locally and on a self-hosted Linux GPU runner, which uploads its coverage to Codecov under the `integration-linux` flag. The per-suite coverage XMLs they write under `tests/` are gitignored — do not try to commit them.
 
 If CI's diff-cover fails because changed lines aren't covered by unit tests, add unit tests for those lines; the GPU runner's integration coverage is merged on Codecov but does not feed diff-cover.
 
