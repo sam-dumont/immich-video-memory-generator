@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -655,9 +656,16 @@ def test_a_cold_photo_pass_reports_the_photos_it_had_to_score(tmp_path: Path, ca
         llm={"model": "some-vlm"},
     )
 
+    # Separate days, so these are two moments and both are scored: the
+    # shortlist samples one photo per moment, and make_asset dates every
+    # photo to now.
+    cold = [_photo("cold-1"), _photo("cold-2")]
+    for offset, asset in enumerate(cold):
+        asset.file_created_at = datetime(2020, 1, 1, tzinfo=UTC) + timedelta(days=offset)
+
     with caplog.at_level(logging.INFO):
         score_photos(
-            [_photo("cold-1"), _photo("cold-2")],
+            cold,
             config.photos,
             video_clip_count=0,
             work_dir=tmp_path,

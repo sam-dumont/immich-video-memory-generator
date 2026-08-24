@@ -635,5 +635,9 @@ class TestScorePhotos:
                 download_fn=MagicMock(),
             )
 
-        assert len(enhance.call_args.args[0]) == 6
+        # One look per moment, and these 20 photos are an hour apart, so all
+        # 20 are moments. The number is incidental; what this test guards is
+        # the line below — capping the LOOK must never shrink what selection
+        # can choose from.
+        assert len(enhance.call_args.args[0]) == 20
         assert {asset.id for asset, _score in result} == {asset.id for asset in assets}

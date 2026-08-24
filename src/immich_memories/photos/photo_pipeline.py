@@ -14,6 +14,7 @@ import random
 import subprocess
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -97,14 +98,17 @@ def score_photos(
         metadata_scored, config, thumbnail_cache, thumbnail_fn=thumbnail_fn
     )
 
-    # Cap only the expensive semantic-scoring shortlist.
-    shortlist_size = llm_shortlist_size(video_clip_count, len(metadata_scored), config.max_ratio)
-    shortlist = metadata_scored
-    if len(shortlist) > shortlist_size:
-        shortlist = _select_distributed(shortlist, shortlist_size)
+    # One look per moment, not a few per shippable slot. Sizing the shortlist
+    # from ship-count meant the model only ever saw what metadata had already
+    # picked, so content could confirm that ranking and never overturn it.
+    moments = one_photo_per_moment(metadata_scored, _MOMENT_WINDOW_MINUTES)
+    shortlist = moments
+    if len(shortlist) > LLM_SHORTLIST_CEILING:
+        shortlist = _select_distributed(shortlist, LLM_SHORTLIST_CEILING)
     logger.info(
-        "Photo scoring: %d available -> %d shortlisted for LLM (max %d selectable)",
+        "Photo scoring: %d available -> %d moments -> %d shortlisted for LLM (max %d selectable)",
         len(metadata_scored),
+        len(moments),
         len(shortlist),
         _compute_max_photos(video_clip_count, config.max_ratio),
     )
@@ -322,7 +326,12 @@ def render_photo_clips(
 # determines how long a run takes. A real library produced a 1194-photo
 # shortlist to place a few dozen photos, which ran for hours.
 LLM_SHORTLIST_CEILING = 200
-_LLM_SHORTLIST_HEADROOM = 3
+
+# Undated photos sort first rather than dropping out of the grouping.
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+
+# What counts as one moment when sampling photos for a content look.
+_MOMENT_WINDOW_MINUTES = 10.0
 
 
 # How much of a photo's score the pixels are allowed to decide. The metadata
@@ -499,14 +508,39 @@ def video_count_for_photo_budget(total_clips: int, live_photo_clips: int) -> int
     return max(0, total_clips - live_photo_clips)
 
 
-def llm_shortlist_size(video_count: int, available: int, max_ratio: float) -> int:
-    """How many photos are worth an LLM call.
+def one_photo_per_moment(scored: list[tuple], window_minutes: float) -> list[tuple]:
+    """One representative per moment, so every moment gets exactly one look.
 
-    Headroom over what can actually be selected, then an absolute ceiling: on a
-    large library the relative bound alone still authorises thousands of calls.
+    The shortlist used to be sized from how many photos the memory could ship,
+    which meant the model only ever saw what metadata had already chosen.
+    Measured on one month: 295 available, 3 shortlisted. Content could only
+    agree with the metadata ranking; a better photo ranked fourth was never
+    looked at, so it could not win.
+
+    Sampling by moment means nothing is skipped at the start. Note this bounds
+    the looking, not the selecting: score_photos still returns every photo, so
+    two members of one moment can still both be selected downstream.
+
+    A favourite represents its moment -- the user already said this one
+    mattered. Otherwise the best metadata score stands in until content can say
+    better.
     """
-    selectable = _compute_max_photos(video_count, max_ratio)
-    return min(available, selectable * _LLM_SHORTLIST_HEADROOM, LLM_SHORTLIST_CEILING)
+    if not scored:
+        return []
+    ordered = sorted(scored, key=lambda item: item[0].file_created_at or _EPOCH)
+    groups: list[list[tuple]] = []
+    for item in ordered:
+        when = item[0].file_created_at
+        opened = groups[-1][0][0].file_created_at if groups else None
+        if (
+            opened is not None
+            and when is not None
+            and (when - opened).total_seconds() <= window_minutes * 60
+        ):
+            groups[-1].append(item)
+            continue
+        groups.append([item])
+    return [max(g, key=lambda item: (bool(item[0].is_favorite), item[1])) for g in groups]
 
 
 def _select_distributed(
