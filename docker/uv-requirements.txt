@@ -1,0 +1,14 @@
+# uv is the only package pip fetches from PyPI while building the image; every
+# other install resolves from /wheels or the uv.lock constraints. Hash-pinning
+# it closes the build's last unverified download.
+#
+# The hashes cover both published arches (the image builds linux/amd64 and
+# linux/arm64) plus the sdist fallback — pip accepts whichever artifact it
+# resolves as long as it matches one of them. Bumping the version means
+# replacing every hash — renovate does it automatically, or read them from
+# https://pypi.org/pypi/uv/<version>/json (the linux wheels and the sdist).
+uv==0.8.17 \
+    --hash=sha256:b6d30d02fb65193309fc12a20f9e1a9fab67f469d3e487a254ca1145fd06788f \
+    --hash=sha256:3941cecd9a6a46d3d4505753912c9cf3e8ae5eea30b9d0813f3656210f8c5d01 \
+    --hash=sha256:84d56ae50ca71aec032577adf9737974554a82a94e52cee57722745656c1d383 \
+    --hash=sha256:2afd4525a53c8ab3a11a5a15093c503d27da67e76257a649b05e4f0bc2ebb5ae

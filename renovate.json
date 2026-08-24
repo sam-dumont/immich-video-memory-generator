@@ -15,7 +15,13 @@
   "minimumReleaseAge": "7 days",
   "automerge": false,
   "platformAutomerge": false,
-  "enabledManagers": ["pep621", "npm", "github-actions", "dockerfile"],
+  "enabledManagers": [
+    "pep621",
+    "npm",
+    "github-actions",
+    "dockerfile",
+    "pip_requirements"
+  ],
   "lockFileMaintenance": {
     "enabled": true,
     "schedule": ["before 5am on the first day of the month"],
@@ -59,6 +65,13 @@
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "python dependencies",
       "semanticCommitType": "build"
+    },
+    {
+      "description": "docker/uv-requirements.txt is hash-pinned; renovate refreshes the hashes with the version so the pin cannot rot",
+      "matchManagers": ["pip_requirements"],
+      "groupName": "docker build tooling",
+      "semanticCommitType": "build",
+      "labels": ["dependencies", "docker"]
     },
     {
       "description": "The runtime image is deliberately python 3.11-slim — take security rebuilds, not version jumps",
