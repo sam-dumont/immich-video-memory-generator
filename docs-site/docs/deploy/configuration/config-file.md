@@ -161,17 +161,18 @@ This check is read-only.
 
 ### What "supports v2 and v3" is claiming
 
-It is a claim about the code, not a field-tested matrix. Worth being explicit, because the two are
-easy to read as the same thing:
+Both majors have run against live servers, not just against tests. The project was developed
+day-to-day against a live Immich v2 server until the v3 migration in mid-2026, and has run
+day-to-day against live v3 since. This is one library and one server at a time, not a version
+matrix — but it is real usage, not a compatibility layer that only its own tests have seen.
 
 | Server major | Under `auto` | How it is covered |
 |--------------|--------------|-------------------|
-| 2 | v2 contract | contract tests over version resolution and the v2/v3 wire differences |
-| 3 | v3 contract | the same contract tests |
+| 2 | v2 contract | months of live-server development, plus contract tests pinning the v2/v3 wire differences |
+| 3 | v3 contract | daily live-server use since the migration, the hermetic E2E suite and the release smoke test (both run a faithful v3 service), plus the same contract tests |
 | anything else | the run stops with `UnsupportedImmichVersion` | — |
 
-The integration suite runs the real pipeline against one live Immich server, not a version matrix,
-so nothing here promises that every point release of both majors was exercised before a release.
+Nothing here promises that every point release of both majors was exercised before a release.
 What it does promise is that an unknown major fails immediately and says so, rather than sending
 requests of the wrong shape and failing somewhere less obvious. If yours breaks, that is a bug
 worth an issue.
