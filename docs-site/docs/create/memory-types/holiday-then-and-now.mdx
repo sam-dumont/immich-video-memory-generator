@@ -91,7 +91,7 @@ The gap is required either way: a then-and-now with no distance between its two 
 
 Unlike Holiday, each side is a **full calendar year**. A narrow window in a year long past is usually empty, and the point is to have enough material on both sides for the contrast to read.
 
-Clips play most recent first, so the video opens on now and reaches back.
+Clips play in chronological order, so the "then" year runs as one block and the "now" year follows it. The two ranges are built most-recent-first internally — that is how the memory derives its span — but the cut itself is oldest to newest, like every other memory.
 
 ### When to use it
 
@@ -111,5 +111,7 @@ Neither is titled after its span, because the span describes neither of them —
 |------|-------|----------|
 | Holiday | the occasion — "Christmas" | "Through the Years" |
 | Then and Now | both ends — "2016 & 2026" | "Then and Now" |
+
+Holiday's pair is currently produced by the web UI only. On the CLI a Holiday memory still falls through to the generic span title ("December 2021 to December 2026"); Then and Now is titled correctly on both.
 
 A custom `MM-DD` holiday with no name of its own is titled by its date ("14 September").

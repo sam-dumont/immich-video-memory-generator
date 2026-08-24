@@ -23,7 +23,7 @@ immich-memories analyze [OPTIONS]
 
 ## `auto`
 
-Smart automation -- detect and generate memory candidates.
+Automation -- detect and generate memory candidates.
 
 ```bash
 immich-memories auto [OPTIONS]
@@ -185,7 +185,7 @@ immich-memories days-due [OPTIONS]
 | Flag | Type | Default | Description |
 | --- | --- | --- | --- |
 | `--on` | datetime | - | The date to look around (default today) |
-| `--catalogue` | file | special-days.json |  |
+| `--catalogue` | file | ~/.immich-memories/special-days.json |  |
 
 ## `discover-days`
 
@@ -212,7 +212,7 @@ immich-memories discover-days [OPTIONS]
 | `--until` | integer | 2026 | Last year to scan |
 | `--per-year` | integer | 6 | Busiest candidates to ask about |
 | `--also-skip` | text | - | A holiday name or MM-DD this library keeps that the defaults miss |
-| `--out` | file | special-days.json | Where to write the catalogue |
+| `--out` | file | ~/.immich-memories/special-days.json | Where to write the catalogue |
 | `--rescan` | boolean | false | Start over, ignoring and replacing the existing catalogue |
 
 ## `export-project`
@@ -260,7 +260,7 @@ immich-memories generate [OPTIONS]
 | `--start` | text | - | Start date (YYYY-MM-DD or DD/MM/YYYY) |
 | `--end` | text | - | End date (use with --start) |
 | `--period` | text | - | Period from start date (e.g., 6m, 1y, 2w) |
-| `--birthday`, `-b` | text | - | Use birthday-based year (auto-detects from Immich, or specify MM/DD) |
+| `--birthday`, `-b` | text | - | Use birthday-based year (auto-detects from Immich, or specify MM-DD, e.g. 03-15) |
 | `--from-album` | text | - | Generate from an Immich album (name or ID) instead of a date range |
 | `--person`, `-p` | text | - | Person name (repeatable) |
 | `--memory-type` | choice: `year_in_review` \| `season` \| `person_spotlight` \| `multi_person` \| `monthly_highlights` \| `on_this_day` \| `trip` \| `holiday` \| `then_and_now` | - | Memory type preset |

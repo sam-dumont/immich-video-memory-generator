@@ -1294,7 +1294,9 @@ class TestGenerateMemoryInner:
 
         with contextlib.ExitStack() as stack:
             mocks = {name: stack.enter_context(p) for name, p in patches.items()}
-            upload_mock = stack.enter_context(patch("immich_memories.generate._upload_to_immich"))
+            upload_mock = stack.enter_context(
+                patch("immich_memories.generate_delivery._upload_to_immich")
+            )
             upload_mock.return_value = {"asset_id": "uploaded-asset"}
             _generate_memory_inner(params)
 
@@ -1309,7 +1311,9 @@ class TestGenerateMemoryInner:
 
         with contextlib.ExitStack() as stack:
             {name: stack.enter_context(p) for name, p in patches.items()}
-            upload_mock = stack.enter_context(patch("immich_memories.generate._upload_to_immich"))
+            upload_mock = stack.enter_context(
+                patch("immich_memories.generate_delivery._upload_to_immich")
+            )
             _generate_memory_inner(params)
 
         upload_mock.assert_not_called()
@@ -1696,7 +1700,7 @@ class TestRunMusicPhase:
 
 class TestUploadToImmich:
     def test_calls_client_upload(self, tmp_path):
-        from immich_memories.generate import _upload_to_immich
+        from immich_memories.generate_settings import _upload_to_immich
 
         video_path = tmp_path / "video.mp4"
         video_path.write_bytes(b"video")
@@ -1712,7 +1716,7 @@ class TestUploadToImmich:
         assert result["asset_id"] == "abc123"
 
     def test_none_album_name(self, tmp_path):
-        from immich_memories.generate import _upload_to_immich
+        from immich_memories.generate_settings import _upload_to_immich
 
         video_path = tmp_path / "video.mp4"
         video_path.write_bytes(b"video")

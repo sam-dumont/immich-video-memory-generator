@@ -17,7 +17,7 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/sdumont/immich-video-memory-generator"
+Homepage = "https://github.com/sam-dumont/immich-video-memory-generator"
 
 [tool.hatch.build.targets.wheel]
 packages = ["immich_memories_music"]

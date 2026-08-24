@@ -77,7 +77,7 @@ A PR passes 20 gates: 15 static checks in the quality job and 5 security scans i
 | Dependencies | pip-audit + deptry | Known CVEs; unused, missing or transitive imports |
 | Architecture | import-linter | Layer violations (e.g., UI importing from processing internals) |
 | Commits | commitizen | Non-conventional commit messages |
-| Tests | pytest | 5,000+ tests: 4,400+ unit in CI, 600+ integration/E2E locally and on the GPU runner |
+| Tests | pytest | 5,600+ tests: 5,000+ unit in CI, 600+ integration/E2E locally and on the GPU runner |
 
 ## How to Add a New Feature
 

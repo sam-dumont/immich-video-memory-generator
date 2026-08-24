@@ -1064,7 +1064,7 @@ def _prepare_generation(
     )
     monkeypatch.setattr(generate_module, "_create_assembler", lambda *_args: Assembler())
     monkeypatch.setattr(generate_module, "_run_music_phase", music_phase)
-    monkeypatch.setattr(generate_module, "_upload_to_immich", upload)
+    monkeypatch.setattr("immich_memories.generate_delivery._upload_to_immich", upload)
     monkeypatch.setattr(generate_module, "_cleanup_temp_clips", lambda _clips: None)
     monkeypatch.setattr(output_contract.subprocess, "run", run_probe)
     monkeypatch.setattr(generate_module, "validate_output", final_validate, raising=False)
@@ -1380,11 +1380,8 @@ def test_delivery_transition_failure_cannot_count_or_downgrade_a_second_attempt(
 ) -> None:
     """A post-upload persistence failure never enters the API-failure transition."""
     from immich_memories.config_loader import Config
-    from immich_memories.generate import (
-        DeliveryError,
-        GenerationParams,
-        _deliver_completed_artifact,
-    )
+    from immich_memories.generate import DeliveryError, GenerationParams
+    from immich_memories.generate_delivery import _deliver_completed_artifact
 
     class TransitionTracker:
         def __init__(self) -> None:
@@ -1408,7 +1405,7 @@ def test_delivery_transition_failure_cannot_count_or_downgrade_a_second_attempt(
         upload_enabled=True,
     )
     monkeypatch.setattr(
-        "immich_memories.generate._upload_to_immich",
+        "immich_memories.generate_delivery._upload_to_immich",
         lambda *_args: {"asset_id": "asset-already-committed"},
     )
 
@@ -1427,14 +1424,15 @@ def test_pending_state_persistence_failure_logs_no_exception_literal(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Secondary tracking failures use controlled text and cannot leak arbitrary secrets."""
-    from immich_memories.generate import DeliveryError, _raise_delivery_error
+    from immich_memories.generate import DeliveryError
+    from immich_memories.generate_delivery import _raise_delivery_error
 
     configured_literal = "unlabelled-tracking-secret"
     tracker = MagicMock()
     tracker.mark_delivery_pending.side_effect = OSError(configured_literal)
 
     with (
-        caplog.at_level(logging.ERROR, logger="immich_memories.generate"),
+        caplog.at_level(logging.ERROR, logger="immich_memories.generate_delivery"),
         pytest.raises(DeliveryError),
     ):
         _raise_delivery_error(
@@ -1565,7 +1563,6 @@ def test_hard_stop_during_upload_leaves_requested_delivery_pending(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A process stop inside the API call retains the pre-call retry record."""
-    from immich_memories import generate as generate_module
     from immich_memories.generate import generate_memory
 
     params, events = _prepare_generation(
@@ -1580,7 +1577,7 @@ def test_hard_stop_during_upload_leaves_requested_delivery_pending(
         events.append("upload-started")
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(generate_module, "_upload_to_immich", stop_during_upload)
+    monkeypatch.setattr("immich_memories.generate_delivery._upload_to_immich", stop_during_upload)
 
     with pytest.raises(KeyboardInterrupt):
         generate_memory(params)  # type: ignore[arg-type]

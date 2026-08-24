@@ -454,7 +454,9 @@ async def test_ui_success_toast_failure_preserves_delivered_state_and_upload_res
 
     monkeypatch.setattr(step4_generate, "validate_output", lambda *_args: _probe())
     monkeypatch.setattr(step4_generate.run, "io_bound", io_bound)
-    monkeypatch.setattr("immich_memories.generate._upload_to_immich", lambda *_args: upload_result)
+    monkeypatch.setattr(
+        "immich_memories.generate_delivery._upload_to_immich", lambda *_args: upload_result
+    )
     monkeypatch.setattr("immich_memories.ui.pages._step4_upload.ui.notify", fail_success_toast)
     caplog.set_level("WARNING", logger="immich_memories.ui.pages._step4_upload")
 
@@ -520,7 +522,9 @@ async def test_ui_reloads_delivered_truth_when_mark_delivered_commits_then_raise
     monkeypatch.setattr(tracker.db, "mark_delivered", commit_then_raise)
     monkeypatch.setattr(step4_generate, "validate_output", lambda *_args: _probe())
     monkeypatch.setattr(step4_generate.run, "io_bound", io_bound)
-    monkeypatch.setattr("immich_memories.generate._upload_to_immich", lambda *_args: upload_result)
+    monkeypatch.setattr(
+        "immich_memories.generate_delivery._upload_to_immich", lambda *_args: upload_result
+    )
     monkeypatch.setattr(
         "immich_memories.ui.pages._step4_upload.ui.notify",
         lambda message, **_kwargs: notifications.append(message),
@@ -627,7 +631,9 @@ async def test_run_generation_does_not_restore_stale_pending_delivery_after_ambi
         ),
     )
     monkeypatch.setattr(step4_generate.run, "io_bound", io_bound)
-    monkeypatch.setattr("immich_memories.generate._upload_to_immich", lambda *_args: upload_result)
+    monkeypatch.setattr(
+        "immich_memories.generate_delivery._upload_to_immich", lambda *_args: upload_result
+    )
     monkeypatch.setattr(
         "immich_memories.ui.pages._step4_upload.ui.notify", lambda *_args, **_kwargs: None
     )
@@ -660,7 +666,7 @@ async def test_ui_unexpected_delivery_error_keeps_pending_video_and_redacts_conf
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Even a secondary delivery-boundary bug cannot leak secrets or hide the local video."""
-    from immich_memories import generate as generate_module
+    from immich_memories import generate_delivery as delivery_module
     from immich_memories.ui.pages import _step4_generate as step4_generate
 
     configured_literal = "ui-config-secret-842"
@@ -698,7 +704,7 @@ async def test_ui_unexpected_delivery_error_keeps_pending_video_and_redacts_conf
     monkeypatch.setattr(step4_generate, "validate_output", lambda *_args: _probe())
     monkeypatch.setattr(step4_generate.run, "io_bound", io_bound)
     monkeypatch.setattr(
-        generate_module,
+        delivery_module,
         "deliver_completed_artifact",
         unexpected_boundary_failure,
     )

@@ -12,8 +12,10 @@ from immich_memories.config_models import expand_env_vars
 class LLMConfig(BaseModel):
     """Shared LLM provider settings.
 
-    Two providers: "ollama" (native Ollama API) or "openai-compatible"
-    (any server speaking /v1/chat/completions — OpenAI, Groq, mlx-vlm, vLLM, etc.).
+    Five accepted values, three code paths: "ollama" speaks the native Ollama
+    API, "anthropic" speaks /v1/messages, and "openai-compatible", "openai" and
+    "zai" all speak /v1/chat/completions — any server that does will work
+    (OpenAI, Groq, mlx-vlm, vLLM).
     """
 
     provider: Literal["ollama", "openai-compatible", "openai", "zai", "anthropic"] = Field(

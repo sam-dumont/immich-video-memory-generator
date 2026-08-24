@@ -334,7 +334,8 @@ Every drop triggers a re-selection, and a re-selection admits clips that nothing
 has judged yet. So verify and judge iterate together until a round changes
 nothing, the review runs, and if the review dropped anything the whole
 stabilisation runs again. `max_refinement_passes` (10) bounds each of these
-loops.
+loops — YAML `advanced.analysis.max_refinement_passes`, CLI
+`--refinement-passes`.
 
 If the review is still dropping clips when the round budget runs out, one final
 review runs that drops without refilling — the reasoning being that a cut four
@@ -411,8 +412,7 @@ two seconds. Everything else is waiting on someone else's HTTP.
 The 11 calls are not per-clip analysis — that is all cached. They are the
 selection loop: each holistic review pass, plus each verify pass that hits a
 clip with no LLM description. `max_refinement_passes` is 10 and every round can
-cost a review call, so that bound is the main dial — see the caveat below about
-it not being reachable from config.
+cost a review call, so that bound is the main dial, and it is one you can turn.
 
 ### What to actually do about it
 
@@ -425,14 +425,18 @@ If warm runs feel slow:
 1. **Move the LLM somewhere faster.** It is an HTTP endpoint. A quicker model
    server, or a smaller model, cuts the largest single line item without
    touching anything else. This is the highest-leverage change available.
-2. **Turn `content_analysis.enabled` off.** No LLM at all: no per-clip content
+2. **Ask for fewer rounds.** `--refinement-passes 3`, or
+   `advanced.analysis.max_refinement_passes: 3` in YAML, caps the loop at three
+   rounds instead of ten. That is what `preset: fast` sets, and the flag's own
+   help calls it the biggest dial on warm-run time. The cost is that a late
+   refill may ship less scrutinised than the clips around it.
+3. **Turn `content_analysis.enabled` off.** No LLM at all: no per-clip content
    analysis, no reviewer, no verify calls. Selection falls back to vision, audio
    and metadata, which is the default configuration anyway.
 
-There is no third option today. `max_refinement_passes` is the obvious dial —
-fewer rounds, fewer review calls — but it is a `PipelineConfig` default in
-`analysis/smart_pipeline.py` with no YAML key and no CLI flag behind it. Right
-now the choice is a faster model server, or no model at all.
+Those three are ordered by what they cost you. A faster server changes nothing
+about the output. Fewer rounds trades scrutiny for time. Turning the LLM off
+trades the whole holistic pass for it.
 
 If cold runs feel slow:
 

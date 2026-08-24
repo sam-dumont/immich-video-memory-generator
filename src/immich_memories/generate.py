@@ -14,7 +14,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
 from datetime import date
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, NoReturn, TypeVar, cast, overload
+from typing import TYPE_CHECKING, Literal, TypeVar, cast, overload
 
 from immich_memories.filename_builder import normalize_output_path
 from immich_memories.generate_clips import (
@@ -24,6 +24,10 @@ from immich_memories.generate_clips import (
     _extract_clips,
     _probe_file_duration,
     assets_to_clips,
+)
+from immich_memories.generate_delivery import (
+    _deliver_with_operational_progress,
+    _safe_delivery_message,
 )
 from immich_memories.generate_photos import (
     _add_photos_if_enabled,
@@ -46,7 +50,6 @@ from immich_memories.generate_settings import (
     _build_title_settings,
     _create_assembler,
     _run_music_phase,
-    _upload_to_immich,
 )
 from immich_memories.generate_timeline import (
     apply_final_content_budget as _apply_final_content_budget,
@@ -56,7 +59,6 @@ from immich_memories.operations.phases import OperationalPhase, PhaseEvent
 from immich_memories.processing.clip_validation import validate_clips
 from immich_memories.processing.output_canvas import OutputCanvas
 from immich_memories.processing.output_contract import validate_output
-from immich_memories.security import configured_secret_values, sanitize_error_message
 
 if TYPE_CHECKING:
     from immich_memories.api.immich import SyncImmichClient
@@ -84,7 +86,6 @@ __all__ = [
     "PreparedGeneration",
     "GenerationError",
     "DeliveryError",
-    "deliver_completed_artifact",
     "PipelineLock",
     "generate_memory",
     "check_disk_space",
@@ -107,7 +108,6 @@ __all__ = [
     "_build_title_settings",
     "_create_assembler",
     "_run_music_phase",
-    "_upload_to_immich",
 ]
 
 
@@ -315,124 +315,6 @@ def _build_memory_key(params: GenerationParams) -> str | None:
 
     person_names = [params.person_name] if params.person_name else []
     return make_memory_key(params.memory_type, params.date_start, params.date_end, person_names)
-
-
-def _safe_delivery_message(exc: Exception, config: Config) -> str:
-    """Sanitize one delivery error, including unlabelled configured secrets."""
-    safe_message = sanitize_error_message(str(exc))
-    for secret in configured_secret_values(config):
-        safe_message = safe_message.replace(secret, "***")
-    return safe_message
-
-
-def _pending_delivery_error(
-    run_tracker: RunTracker,
-    message: str,
-    *,
-    attempted: bool,
-) -> DeliveryError:
-    """Persist retry state and build a safe error outside any raw exception chain."""
-    try:
-        run_tracker.mark_delivery_pending(message, attempted=attempted)
-    except Exception:  # WHY: secondary details may contain secrets; keep the artifact primary
-        logger.error("Could not persist pending delivery state")
-    return DeliveryError(f"Immich delivery failed: {message}")
-
-
-def _raise_delivery_error(
-    run_tracker: RunTracker,
-    message: str,
-    *,
-    attempted: bool,
-) -> NoReturn:
-    """Persist retry state and raise without invalidating the completed artifact."""
-    error = _pending_delivery_error(run_tracker, message, attempted=attempted)
-    raise error from None
-
-
-def deliver_completed_artifact(
-    params: GenerationParams,
-    result_path: Path,
-    run_tracker: RunTracker,
-) -> dict | None:
-    """Deliver a completed artifact and persist exactly one API attempt."""
-    if not params.upload_enabled:
-        return None
-    if params.client is None:
-        _raise_delivery_error(
-            run_tracker,
-            "no Immich client is configured",
-            attempted=False,
-        )
-
-    _report(params, "upload", 0.95, "Uploading to Immich...")
-    delivery_error: DeliveryError | None = None
-    asset_id: str | None = None
-    try:
-        result = _upload_to_immich(params.client, result_path, params.upload_album)
-        asset_id = result.get("asset_id")
-        if not isinstance(asset_id, str) or not asset_id.strip():
-            raise ValueError("Immich upload returned no asset ID")
-    except Exception as exc:
-        safe_message = _safe_delivery_message(exc, params.config)
-        logger.warning("Immich delivery failed: %s", safe_message)
-        delivery_error = _pending_delivery_error(
-            run_tracker,
-            safe_message,
-            attempted=True,
-        )
-    if delivery_error is not None:
-        raise delivery_error from None
-
-    assert asset_id is not None  # validated in the API-call boundary above
-    normalized_asset_id = asset_id.strip()
-    try:
-        run_tracker.mark_delivered(asset_id)
-    except Exception as exc:
-        persisted = None
-        try:
-            persisted = run_tracker.db.get_run(run_tracker.run_id)
-        except Exception:  # WHY: an ambiguous transition must not trigger a second upload
-            logger.error("Could not inspect successful Immich delivery state")
-        if (
-            persisted is not None
-            and persisted.delivery_status.value == "delivered"
-            and persisted.immich_asset_id == normalized_asset_id
-        ):
-            return result
-        safe_message = _safe_delivery_message(exc, params.config)
-        logger.error("Could not persist successful Immich delivery: %s", safe_message)
-        delivery_error = DeliveryError(f"Immich delivery state update failed: {safe_message}")
-    if delivery_error is not None:
-        raise delivery_error from None
-    return result
-
-
-def _deliver_completed_artifact(
-    params: GenerationParams,
-    result_path: Path,
-    run_tracker: RunTracker,
-) -> dict | None:
-    """Compatibility wrapper for the original internal delivery boundary."""
-    return deliver_completed_artifact(params, result_path, run_tracker)
-
-
-def _deliver_with_operational_progress(
-    params: GenerationParams,
-    result_path: Path,
-    run_tracker: RunTracker,
-    operational: _OperationalProgress,
-) -> None:
-    """Expose optional delivery while preserving its existing error boundary."""
-    operational.emit(
-        OperationalPhase.DELIVERY,
-        0,
-        1 if params.upload_enabled else 0,
-        "Uploading to Immich" if params.upload_enabled else "Delivery not requested",
-    )
-    _deliver_completed_artifact(params, result_path, run_tracker)
-    if params.upload_enabled:
-        operational.emit(OperationalPhase.DELIVERY, 1, 1, "Delivered to Immich")
 
 
 def _complete_music_phase(

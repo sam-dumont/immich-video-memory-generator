@@ -103,9 +103,10 @@ Content analysis needs TWO config sections: `content_analysis` controls the feat
 
 ```yaml
 # Which LLM to use (shared with title generation)
+# Tested against Qwen3.6-27B and Qwen3.6-35B-A3B
 llm:
   base_url: "http://localhost:8000/v1"
-  model: "mlx-community/Qwen2.5-VL-7B-Instruct-8bit"
+  model: "mlx-community/Qwen3.6-27B-8bit"
   api_key: "not-needed"        # for local models
   provider: "openai-compatible"  # or "ollama"
   timeout_seconds: 300

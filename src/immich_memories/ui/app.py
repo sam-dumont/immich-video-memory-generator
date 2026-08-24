@@ -38,12 +38,15 @@ from immich_memories.ui.auth import (
     is_bypass_path,
     is_health_probe_path,
     is_rate_limited,
+    is_trigger_path,
     is_trusted_proxy,
     set_session,
+    trigger_token_authorizes,
 )
 from immich_memories.ui.reverse_proxy import reverse_proxy_run_kwargs
 from immich_memories.ui.state import ensure_config, get_app_state
 from immich_memories.ui.theme import apply_theme, render_theme_toggle
+from immich_memories.ui.trigger_api import register_trigger_routes
 
 logger = logging.getLogger(__name__)
 
@@ -587,6 +590,10 @@ app.add_api_route("/health", _health_handler, methods=["GET"])
 app.add_api_route("/health/live", _liveness_handler, methods=["GET"])
 app.add_api_route("/health/ready", _readiness_handler, methods=["GET"])
 
+# The URL an Immich workflow (or anything else) POSTs to. Off unless authentication
+# or `server.trigger_token` is configured — see ui/trigger_api.py.
+register_trigger_routes(app)
+
 
 # ============================================================================
 # Auth: Middleware + Routes
@@ -636,6 +643,13 @@ def _check_session_ttl(ttl_hours: int) -> RedirectResponse | None:
     return None
 
 
+def _unauthenticated_response(path: str) -> Response:
+    """Send an API caller a status it can act on, and a browser to the login page."""
+    if is_trigger_path(path):
+        return JSONResponse({"detail": "authentication required"}, status_code=401)
+    return RedirectResponse("/login", status_code=307)
+
+
 @app.middleware("http")
 async def _auth_middleware(request: Request, call_next):
     """Provider-agnostic auth check using NiceGUI's app.storage.user.
@@ -658,11 +672,14 @@ async def _auth_middleware(request: Request, call_next):
                 return blocked
         return await call_next(request)
 
+    if trigger_token_authorizes(request.url.path, request.headers, config.server.trigger_token):
+        return await call_next(request)
+
     if config.auth.provider == "header":
         _try_header_auth(request, config.auth)
 
     if not app.storage.user.get("authenticated"):
-        return RedirectResponse("/login", status_code=307)
+        return _unauthenticated_response(request.url.path)
 
     expired = _check_session_ttl(config.auth.session_ttl_hours)
     if expired:

@@ -14,7 +14,15 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from immich_memories.cli._helpers import print_error, print_info, print_success, print_warning
+from immich_memories.analysis import llm_metrics
+from immich_memories.cli._helpers import (
+    console,
+    print_error,
+    print_info,
+    print_success,
+    print_warning,
+)
+from immich_memories.cli._run_summary import render_run_summary
 from immich_memories.timeperiod import DateRange
 
 logger = logging.getLogger(__name__)
@@ -251,6 +259,7 @@ class _AttemptPhaseReporter:
         self._progress.update(self._task, description=event.message)
 
 
+@llm_metrics.collects
 def run_pipeline_and_generate(
     *,
     assets: list,
@@ -589,6 +598,18 @@ def run_pipeline_and_generate(
         _gen_time / _total_time * 100 if _total_time > 0 else 0,
     )
 
+    console.print(
+        render_run_summary(
+            total_seconds=_total_time,
+            analysis_seconds=_analysis_time,
+            generation_seconds=_gen_time,
+            eligible=len(all_candidates),
+            deeply_analyzed=pipeline.last_deep_analysis_count,
+            planned=len(selected_clips),
+            counters=llm_metrics.active(),
+        )
+    )
+
     _send_notification(config, memory_type, "completed", _total_time, str(result_path))
 
     return result_path, should_upload, album_name
@@ -880,6 +901,32 @@ def _report_per_window(assets: list, date_ranges: list[DateRange]) -> None:
             print_warning(f"no videos found for {label} — that window contributes nothing")
 
 
+def fetch_photos(
+    *,
+    client: SyncImmichClient,
+    date_ranges: list[DateRange],
+    person_ids: list[str],
+) -> list:
+    """Fetch still photos for the memory's windows, honouring the person filter.
+
+    Several people means the photos holding all of them, the same rule videos
+    and Live Photos already follow.
+    """
+    photos: list = []
+    seen: set[str] = set()
+    for dr in date_ranges:
+        batch = client.get_photos_for_date_range(
+            dr,
+            person_id=person_ids[0] if len(person_ids) == 1 else None,
+            person_ids=person_ids if len(person_ids) > 1 else None,
+        )
+        for photo in batch:
+            if photo.id not in seen:
+                seen.add(photo.id)
+                photos.append(photo)
+    return photos
+
+
 def fetch_videos_and_live_photos(
     *,
     client: SyncImmichClient,
@@ -898,7 +945,9 @@ def fetch_videos_and_live_photos(
     all_assets = []
     for dr in date_ranges:
         if len(person_ids) > 1:
-            batch = client.get_videos_for_any_person(person_ids, dr)
+            # Naming several people asks for the moments that hold all of them,
+            # not the union of their solo reels. Live photos already intersect.
+            batch = client.get_videos_for_all_persons(person_ids, dr)
         elif len(person_ids) == 1:
             batch = client.get_videos_for_person_and_date_range(person_ids[0], dr)
         else:

@@ -115,6 +115,19 @@ class TitleDividerPlanner:
         self._generator = generator
         self._title_settings = title_settings
 
+    @property
+    def _labels_every_era(self) -> bool:
+        """Whether the opening block needs a card of its own.
+
+        Normally it does not: a memory running continuously through its years
+        opens on a title card that already names the first, so a divider there
+        would say it twice. A then-and-now's title names its two ends as a pair
+        and never says which era the opening block is, so both get labeled.
+        """
+        from immich_memories.processing.timeline_budget import ERA_LABELED_TYPES
+
+        return getattr(self._title_settings, "memory_type", None) in ERA_LABELED_TYPES
+
     def generate_year_dividers(
         self,
         clips: list[AssemblyClip],
@@ -130,13 +143,41 @@ class TitleDividerPlanner:
             progress_callback(0.05, "Generating year dividers...")
 
         limit = _divider_limit(self._title_settings)
-        planned_changes = year_changes if limit is None else year_changes[1 : limit + 1]
+        if limit is None:
+            planned_changes = year_changes
+        elif self._labels_every_era:
+            planned_changes = year_changes[:limit]
+        else:
+            planned_changes = year_changes[1 : limit + 1]
         for _, year in planned_changes:
             if year not in year_divider_paths:
                 divider = self._generator.generate_year_divider(year)
                 year_divider_paths[year] = divider.path
                 logger.info(f"Generated year divider: {year}")
         return year_divider_paths
+
+    def _needs_a_year_card(
+        self,
+        year: int,
+        current_year: int | None,
+        limit: int | None,
+        available: dict[int, Path],
+    ) -> bool:
+        """Whether this clip begins a stretch whose year has to be named."""
+        if year not in available:
+            return False
+        if current_year is not None:
+            return year != current_year
+        return limit is None or self._labels_every_era
+
+    def _year_card(self, year: int, path: Path) -> AssemblyClip:
+        return AssemblyClip(
+            path=path,
+            duration=self._title_settings.month_divider_duration,
+            date=None,
+            asset_id=f"year_divider_{year}",
+            is_title_screen=True,
+        )
 
     def build_clips_with_year_dividers(
         self,
@@ -151,22 +192,12 @@ class TitleDividerPlanner:
         for clip in clips:
             clip_date = parse_clip_date(clip)
             if clip_date:
-                if (
-                    (limit is current_year is None)
-                    or (current_year is not None and clip_date.year != current_year)
-                ) and clip_date.year in year_divider_paths:
-                    if limit is not None and inserted >= limit:
-                        current_year = clip_date.year
-                        result.append(clip)
-                        continue
+                room_left = limit is None or inserted < limit
+                if room_left and self._needs_a_year_card(
+                    clip_date.year, current_year, limit, year_divider_paths
+                ):
                     result.append(
-                        AssemblyClip(
-                            path=year_divider_paths[clip_date.year],
-                            duration=self._title_settings.month_divider_duration,
-                            date=None,
-                            asset_id=f"year_divider_{clip_date.year}",
-                            is_title_screen=True,
-                        )
+                        self._year_card(clip_date.year, year_divider_paths[clip_date.year])
                     )
                     inserted += 1
                 current_year = clip_date.year

@@ -5,7 +5,7 @@ title: scheduler
 
 # scheduler
 
-:::tip Smart automation is the easier option
+:::tip The `auto` system is the easier option
 Most users should schedule one daily [`auto run`](./auto.md#auto-run) instead: it detects trips,
 birthdays, and highlights automatically. No cron expressions or explicit schedules needed. The
 scheduler below is the advanced/legacy cron daemon for Docker/K8s deployments or exact control
