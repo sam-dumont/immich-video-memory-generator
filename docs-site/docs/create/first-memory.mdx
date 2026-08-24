@@ -65,7 +65,7 @@ When it finishes, click **Review & Refine Selected Clips** to see what it picked
 Move to Step 3 (Generation Options). The defaults work well for a first video:
 
 - **Resolution:** Auto (match clips) — the default
-- **Transition:** Smart (mixes cuts and crossfades based on clip content)
+- **Transition:** "Smart (mix of fades & cuts)" — the default; it picks per cut point
 - **Background music:** **AI Generated** is the default when a music backend is configured; otherwise **None**. Pick **Upload file** for your own MP3/M4A/WAV
 
 You can leave everything at defaults. The only setting worth changing on your first run: if you have a specific MP3 you want as background music, upload it here.
@@ -91,6 +91,6 @@ The analysis results are cached in a local SQLite database. Next time you genera
 ## Next steps
 
 - Try other memory types: [Trip Memories](./memory-types/trip-memories.mdx) (needs GPS data), [Person Spotlight](./memory-types/monthly-person-season.mdx) (needs face recognition in Immich)
-- Set up [LLM content analysis](./pipeline/llm-content-analysis.md) for smarter clip scoring
+- Set up [LLM content analysis](./pipeline/llm-content-analysis.md) so scoring knows what is in the frame
 - Automate it: schedule one daily [`auto run`](./cli/auto.md) — see [Automated Generation](./recipes/automated-generation.md)
 - Explore [all CLI options](./cli/generate.md) for fine-grained control
