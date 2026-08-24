@@ -9,14 +9,16 @@ Things that save time and produce better results.
 
 ## Run Analysis First
 
-Analysis is the slow part. Run it once and cache the results:
+Analysis is the slow part on a cold library. `analyze` does it on its own, without
+rendering anything:
 
-```yaml
-analysis:
-  use_scene_detection: true
+```bash
+immich-memories analyze --year 2024
 ```
 
-Subsequent runs load from cache instantly. This matters a lot when you're iterating on clip selection.
+Subsequent generate runs read from that cache instead of re-analysing, which is what
+makes iterating on clip selection quick. On a NAS this is the thing to run overnight.
+See [Discovery & utility commands](../cli/discovery-and-utility.md).
 
 ## Use Hardware Acceleration
 
@@ -66,12 +68,15 @@ content_analysis:
 
 ## Downscaling for Analysis
 
-If analysis is slow, enable downscaling. The tool doesn't need full-resolution frames to detect scenes and score clips:
+Already on. `enable_downscaling` defaults to `true` and `analysis_resolution` to 480, so
+every run already scores clips off a 480p proxy rather than the 4K source — the tool does
+not need full-resolution frames to detect scenes or rank clips.
 
 ```yaml
 analysis:
-  enable_downscaling: true
-  analysis_resolution: 480
+  enable_downscaling: true   # default
+  analysis_resolution: 480   # default
 ```
 
-This can cut analysis time in half with virtually no impact on clip selection quality.
+The only reason to touch these is to go the other way: raise `analysis_resolution` if you
+think scoring is missing small faces in wide shots, and accept the slower analysis.
