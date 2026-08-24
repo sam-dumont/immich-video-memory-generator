@@ -190,8 +190,9 @@ def _resolve_memory_type_dates(
     """Resolve date ranges from memory type preset."""
     from immich_memories.memory_types.date_builders import build_month, build_season
 
-    if memory_type == "special_day":
-        return _special_day_scope(preset_params or {})
+    discovered = _discovered_scope(memory_type, preset_params or {})
+    if discovered is not None:
+        return discovered
 
     if memory_type == "season":
         if not season:
@@ -220,6 +221,35 @@ def _resolve_memory_type_dates(
         return build_month(month, year)
 
     return calendar_year(year)
+
+
+def _discovered_scope(memory_type: str, preset_params: dict) -> DateRange | None:
+    """The window a memory type discovers rather than reads off the date flags.
+
+    Two types find their own scope: the catalogue records a special day's, and
+    GPS detection finds a trip's. None means the date flags still decide.
+    """
+    if memory_type == "special_day":
+        return _special_day_scope(preset_params)
+    if memory_type == "trip":
+        return _trip_scope(preset_params)
+    return None
+
+
+def _trip_scope(preset_params: dict) -> DateRange | None:
+    """The detected trip's own span, or None while no trip has been picked yet.
+
+    ``--year`` scopes trip *detection*, not the memory: the window a trip memory
+    actually covers is the trip, and it only exists once detection has run and
+    one has been selected. Until then the year is the honest answer, which is
+    what the caller falls through to.
+    """
+    from immich_memories.memory_types.date_builders import build_trip
+
+    start, end = preset_params.get("trip_start"), preset_params.get("trip_end")
+    if start is None or end is None:
+        return None
+    return build_trip(start, end)
 
 
 def _special_day_scope(preset_params: dict) -> DateRange:

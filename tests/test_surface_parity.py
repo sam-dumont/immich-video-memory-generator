@@ -70,8 +70,6 @@ class MemorySpec:
             "holiday": self.holiday,
             "years_back": self.years_back,
             "target_date": self.on_this_day_target,
-            "trip_start": self.trip_start,
-            "trip_end": self.trip_end,
             "location_name": self.location_name,
             **self.as_cli_preset_params(),
         }
@@ -80,17 +78,22 @@ class MemorySpec:
     def as_cli_preset_params(self) -> dict:
         """What ``generate`` forwards to the preset factory, beside the flags.
 
-        Only a special day has inputs the CLI cannot spell as date flags: the
-        window and the title come out of the catalogue that ``--day`` names, so
-        they travel as preset parameters on both surfaces alike.
+        Two memory types have inputs the CLI cannot spell as date flags, and
+        both are discovered rather than typed: a special day's window and title
+        come out of the catalogue that ``--day`` names, and a trip's dates come
+        out of GPS detection. ``--start``/``--end`` mean something else on a
+        trip -- they pick which detected trip to render -- so the trip's own
+        span travels as preset parameters on both surfaces alike.
         """
-        catalogued = {
+        discovered = {
             "day": self.day,
             "window": self.window,
             "title": self.title,
             "active_hours": self.active_hours,
+            "trip_start": self.trip_start,
+            "trip_end": self.trip_end,
         }
-        return {key: value for key, value in catalogued.items() if value is not None}
+        return {key: value for key, value in discovered.items() if value is not None}
 
 
 # The people a spec can name, as the wizard would have picked them.
@@ -170,21 +173,6 @@ DOCUMENTED_DURATION_SPLIT: dict[MemoryType, DocumentedDifference] = {
     ),
 }
 
-# Divergences nobody decided on. Strict xfail, so the day one is repaired the
-# entry has to be deleted -- a fix cannot land while the record still claims
-# the surfaces disagree.
-TRIP_WINDOW_DIVERGENCE = (
-    "The CLI resolves --memory-type trip to the whole calendar year: "
-    "_resolve_memory_type_dates falls through to calendar_year() because no flag "
-    "carries the trip's dates. The window it really fetches is built a third time, "
-    "inline at cli/_trip_generation.py, from the detected trip -- and that copy ends "
-    "the last day at 23:59:59.999999 where date_builders.build_trip ends it at "
-    "23:59:59. The wizard calls build_trip through the preset. One rule, three "
-    "implementations, which is #658's disease on a second memory type. Duration "
-    "follows the window, so the CLI plans 300s off a 366-day span where the wizard "
-    "shows the trip's own editorial length."
-)
-
 
 def _bounds(date_range: DateRange) -> tuple[datetime, datetime]:
     return (date_range.start, date_range.end)
@@ -247,18 +235,14 @@ def ui_duration(memory_type: MemoryType, spec: MemorySpec) -> float | None:
     return create_preset(memory_type, **spec.as_preset_params()).default_duration_seconds
 
 
-def _parametrized_types(divergent: dict[MemoryType, str]):
-    """Every type in SPECS, with the ones known to disagree marked xfail."""
-    return [
-        pytest.param(
-            memory_type,
-            marks=pytest.mark.xfail(reason=divergent[memory_type], strict=True)
-            if memory_type in divergent
-            else (),
-            id=str(memory_type),
-        )
-        for memory_type in SPECS
-    ]
+def _every_type_with_a_spec():
+    """Every type in SPECS, each as its own case.
+
+    No window or duration divergence is outstanding. A new one is recorded the
+    way the fetch scenarios record theirs -- a strict xfail carrying the reason
+    -- so that repairing it forces the record to be deleted.
+    """
+    return [pytest.param(memory_type, id=str(memory_type)) for memory_type in SPECS]
 
 
 class TestRegistryCoverage:
@@ -285,9 +269,7 @@ class TestRegistryCoverage:
 class TestDateWindowParity:
     """Same spec, same windows to search."""
 
-    @pytest.mark.parametrize(
-        "memory_type", _parametrized_types({MemoryType.TRIP: TRIP_WINDOW_DIVERGENCE})
-    )
+    @pytest.mark.parametrize("memory_type", _every_type_with_a_spec())
     def test_windows_match(self, memory_type: MemoryType) -> None:
         spec = SPECS[memory_type]
         assert cli_windows(memory_type, spec) == ui_windows(memory_type, spec)
@@ -296,9 +278,7 @@ class TestDateWindowParity:
 class TestTargetDurationParity:
     """Same spec, same default length -- or the split #630 wrote down."""
 
-    @pytest.mark.parametrize(
-        "memory_type", _parametrized_types({MemoryType.TRIP: TRIP_WINDOW_DIVERGENCE})
-    )
+    @pytest.mark.parametrize("memory_type", _every_type_with_a_spec())
     def test_duration_matches_or_matches_the_record(self, memory_type: MemoryType) -> None:
         spec = SPECS[memory_type]
         cli, ui = cli_duration(memory_type, spec), ui_duration(memory_type, spec)

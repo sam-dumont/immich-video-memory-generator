@@ -17,8 +17,8 @@ from immich_memories.analysis.trip_detection import DetectedTrip, haversine_km
 from immich_memories.cli._asset_fetch import fetch_videos_and_live_photos
 from immich_memories.cli._helpers import console, print_error, print_info, print_success
 from immich_memories.cli._pipeline_runner import run_pipeline_and_generate
+from immich_memories.memory_types.date_builders import build_trip
 from immich_memories.processing.encoding_plan import resolve_output_selection
-from immich_memories.timeperiod import DateRange
 
 if TYPE_CHECKING:
     from immich_memories.api.immich import SyncImmichClient
@@ -185,8 +185,6 @@ def handle_trip_generation(
     dry_run: bool = False,
 ) -> None:
     """Detect trips, select, and generate video for each."""
-    from datetime import datetime as dt_cls
-
     from immich_memories.cli._trip_display import (
         format_trips_table,
         run_trip_detection,
@@ -229,10 +227,10 @@ def handle_trip_generation(
     )
 
     for trip in selected:
-        trip_date_range = DateRange(
-            start=dt_cls.combine(trip.start_date, dt_cls.min.time()),
-            end=dt_cls.combine(trip.end_date, dt_cls.max.time()),
-        )
+        # The wizard's Trip card resolves the same span through build_trip via
+        # the preset; sharing the builder is what keeps the two surfaces from
+        # ending the last day a microsecond apart.
+        trip_date_range = build_trip(trip.start_date, trip.end_date)
         trip_days = (trip.end_date - trip.start_date).days + 1
         trip_duration = float(duration) if duration is not None else None
 
