@@ -158,8 +158,30 @@ def candidate_days(
         for day, items in _runs_of_activity(assets).items()
         if day not in away_days
         and len(items) >= MIN_PHOTOS
-        and len({a.file_created_at.hour for a in items}) >= MIN_ACTIVE_HOURS
+        and active_hours(items) >= MIN_ACTIVE_HOURS
     }
+
+
+def active_hours(items: Iterable) -> int:
+    """How many hours of the clock a run put pictures in.
+
+    Hours of the clock rather than hours elapsed: the six-hour bar and every
+    number in this module's docstring were measured this way, and counting
+    elapsed hours instead would quietly move the bar on the long runs.
+    """
+    return len({a.file_created_at.hour for a in items})
+
+
+def run_extent(items: Iterable) -> tuple[datetime, datetime] | None:
+    """When a run's first and last pictures were taken.
+
+    Not the calendar day's bounds: the run is the occasion, and one labelled
+    day was a birth that ran 45 continuous hours, from one evening to the
+    afternoon two dates later. Anything that scopes itself to the date the
+    run began stops at midnight, part-way through what happened.
+    """
+    times = [a.file_created_at for a in items]
+    return (min(times), max(times)) if times else None
 
 
 # A day ends when the photographs stop for this long, not at midnight. One

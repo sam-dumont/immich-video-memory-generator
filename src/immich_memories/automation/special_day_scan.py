@@ -18,10 +18,12 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
 from immich_memories.analysis.special_day import (
+    active_hours,
     ask_if_special,
     candidate_days,
     days_covered_by_trips,
     event_window,
+    run_extent,
     sample_across_day,
 )
 from immich_memories.analysis.trip_detection import detect_trips, haversine_km
@@ -46,6 +48,12 @@ class DiscoveredDay:
     what: str
     photos: int
     window: tuple[datetime, datetime] | None
+    # How long the day stayed awake, and when it did. The run is keyed by the
+    # date it began and can end on another one, so its extent is the only
+    # honest scope for a memory of it — the calendar day stops at midnight.
+    active_hours: int = 0
+    run_start: datetime | None = None
+    run_end: datetime | None = None
 
 
 def holidays_in(year: int, extra: Iterable[str] = ()) -> set[date]:
@@ -193,6 +201,7 @@ def scan_year(
         verdict = ask_if_special(items, llm_config, thumbnails=thumbnails)
         if not verdict.special or not (verdict.title or verdict.what):
             continue
+        started, ended = run_extent(items) or (None, None)
         found.append(
             DiscoveredDay(
                 day=day,
@@ -203,6 +212,9 @@ def scan_year(
                 # The model read the day's own timestamps and what was in the
                 # frames; event_window only knows where the pictures were.
                 window=verdict.window or event_window(items),
+                active_hours=active_hours(items),
+                run_start=started,
+                run_end=ended,
             )
         )
     return found
