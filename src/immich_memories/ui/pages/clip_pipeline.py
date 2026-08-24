@@ -342,6 +342,7 @@ def _run_pipeline_blocking(
                 "clip_segments": result.clip_segments,
                 "errors": result.errors,
                 "stats": result.stats,
+                "coverage": result.coverage,
             }
             state.selected_clip_ids = {c.asset.id for c in result.selected_clips}
             state.clip_segments = result.clip_segments

@@ -6,6 +6,7 @@ import math
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
+from immich_memories.analysis.selection_coverage import AnalysisCoverage
 from immich_memories.analysis.smart_pipeline import PipelineConfig
 from immich_memories.api.models import Asset, AssetType, VideoClipInfo
 from immich_memories.config_loader import Config
@@ -206,3 +207,44 @@ def test_blocking_pipeline_hands_the_photo_merge_its_thumbnail_cache() -> None:
 
     assert progress_state["error"] is None
     assert merge_photos.call_args.kwargs.get("thumbnail_cache") is state.thumbnail_cache
+
+
+def test_blocking_pipeline_hands_the_review_page_its_pool_coverage() -> None:
+    """The review step warns when the pool was mostly metadata guesses (#489).
+
+    It can only do that if the count survives the hop from the worker thread to
+    `state.pipeline_result`, the plain dict the page reads back.
+    """
+    state = AppState(
+        config=Config(),
+        immich_url="http://immich.test",
+        immich_api_key="test-key",
+        thumbnail_cache=MagicMock(),
+        analysis_cache=MagicMock(),
+    )
+    pipeline = MagicMock()
+    pipeline.last_deep_analysis_count = 0
+    pipeline.run_analysis.return_value = []
+    pipeline.run_selection.return_value = MagicMock(
+        selected_clips=[],
+        clip_segments={},
+        errors=[],
+        stats={},
+        coverage=AnalysisCoverage(analyzed=25, total=149),
+    )
+    progress_state = {"cancelled": False, "done": False, "error": None}
+
+    # WHY: get_config would read the developer's own config.yaml off disk.
+    with (
+        # WHY: Immich is the external boundary — the wizard's library read.
+        patch("immich_memories.ui.pages.clip_pipeline.SyncImmichClient") as client_cls,
+        # WHY: the pipeline is not under test; only what it hands the page.
+        patch("immich_memories.analysis.smart_pipeline.SmartPipeline", return_value=pipeline),
+        patch("immich_memories.config.get_config", return_value=state.config),
+    ):
+        client_cls.return_value.__enter__.return_value = MagicMock()
+        _run_pipeline_blocking(state, PipelineConfig(), [], [], progress_state)
+
+    assert progress_state["error"] is None
+    assert state.pipeline_result is not None
+    assert state.pipeline_result["coverage"] == AnalysisCoverage(analyzed=25, total=149)
