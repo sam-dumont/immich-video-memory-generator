@@ -386,7 +386,9 @@ def _enhance_with_llm(
                 model_version=model_version,
             )
 
-    if cache_hits:
+    # Reported on any pass that had photos, not just one that hit: an all-miss
+    # pass staying silent is indistinguishable in a log from no photo work.
+    if scored:
         logger.info(f"Photo score cache: {cache_hits} hits, {len(scored) - cache_hits} misses")
 
     return enhanced, payloads
