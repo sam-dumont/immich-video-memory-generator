@@ -86,7 +86,9 @@ class TestAHolidayIsOnlySkippedWhenTheDayLooksLikeOne:
         # WHY: ask_if_special is the LLM call; which days reach it is the subject.
         monkeypatch.setattr(
             "immich_memories.automation.special_day_scan.ask_if_special",
-            lambda *_a, **_k: SimpleNamespace(special=True, title="A day", subtitle="", what="out"),
+            lambda *_a, **_k: SimpleNamespace(
+                special=True, title="A day", subtitle="", what="out", window=None
+            ),
         )
 
     def test_a_holiday_spent_away_from_home_still_reaches_the_model(self) -> None:
@@ -141,7 +143,9 @@ def test_trip_detection_runs_with_the_thresholds_this_library_configured(monkeyp
     # WHY: ask_if_special is the LLM call, and no day needs to reach it here.
     monkeypatch.setattr(
         "immich_memories.automation.special_day_scan.ask_if_special",
-        lambda *_a, **_k: SimpleNamespace(special=False, title="", subtitle="", what=""),
+        lambda *_a, **_k: SimpleNamespace(
+            special=False, title="", subtitle="", what="", window=None
+        ),
     )
 
     scan_year(
