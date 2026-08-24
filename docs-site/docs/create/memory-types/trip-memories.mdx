@@ -77,4 +77,4 @@ The homebase coordinates are required. Without them, the algorithm can't determi
 - **Set your homebase accurately.** The algorithm filters everything within `min_distance_km` of your home. If your coordinates are wrong, local trips might show up or real trips might get filtered out.
 - **Lower `min_distance_km` for local trips.** Default is 50 km. If you want to capture weekend drives to a nearby city, try 20 km.
 - **Lower `min_duration_days` for day trips.** Set it to 1 to include single-day excursions.
-- The person filter works with trips too: `--person "Alice"` generates a trip video using only clips that contain Alice.
+- **`--person` narrows trip *detection*, not the finished video.** `--person "Alice"` looks for trips among the assets Alice appears in — useful when one person's photos are the ones carrying GPS. Each video is then built from everything shot in that window, so the rest of the group is still in it.

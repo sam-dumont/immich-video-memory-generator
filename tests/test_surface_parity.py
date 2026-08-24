@@ -12,10 +12,13 @@ exception.
 
 Differences the project decided on live in ``DOCUMENTED_DURATION_SPLIT`` and
 are asserted *exactly*, so an intentional split still fails the day either side
-moves. Differences nobody decided on are recorded as strict ``xfail`` with the
-description they need in a tracker. Repairing them is not this file's job --
-each changes what a memory contains and wants its own PR and contact sheets.
-The point is to make the next divergence loud, not to quietly fix this one.
+moves. Differences nobody decided on are recorded as strict ``xfail`` carrying
+the reason, so repairing one forces its record to be deleted in the same commit
+-- a fix cannot land while the file still claims the surfaces disagree.
+
+One xfail is left on purpose. It is not drift: the wizard has no way to express
+the request at all, and closing it means deciding which surface is right. An
+xfail that needs a decision says so in its first line.
 """
 
 from __future__ import annotations
@@ -172,6 +175,36 @@ DOCUMENTED_DURATION_SPLIT: dict[MemoryType, DocumentedDifference] = {
         cli=62.30, ui=60, recorded_at=_SPLIT_RECORD
     ),
 }
+
+
+# ── Differences this file deliberately does not assert ────────────────────────
+#
+# The three below came out of #680's first run as findings rather than failures:
+# nothing here compares them, so each is written down with the reason it is not
+# drift. A finding that turns out to be drift becomes an xfail above, not a
+# longer comment.
+#
+# "All Time" has no CLI counterpart. The wizard's year pickers offer it and
+# _apply_preset_to_state answers it directly, without create_preset, because no
+# preset covers "every year you own" -- there is no window to build from a year
+# that was never chosen. On the CLI the same memory is --start/--end, which is
+# the manual path, not a memory type. Nothing to reconcile: the surfaces differ
+# because one has an affordance the other spells out.
+#
+# Each memory type computes its length its own way -- the span curve, the trip
+# and special-day editorial curves, a flat preset constant. That is three
+# formulas but not a surface divergence: what this file owns is that both
+# surfaces get the *same* answer per type, which TestTargetDurationParity
+# asserts, and DOCUMENTED_DURATION_SPLIT pins where the project chose otherwise.
+# Whether one curve should serve every type is a selection question, not a
+# parity one.
+#
+# A trip is not narrowed to a person on either surface. handle_trip_generation
+# fetches the trip's window with no person ids, and the wizard's Trip card
+# renders no person widget, so both take the window whole. --person still
+# reaches trip *detection* on the CLI, which is what scopes the GPS scan. This
+# is consistent, but it is the same open question as
+# PERSON_FILTER_ON_NON_PERSON_TYPE_DIVERGENCE below and moves with its answer.
 
 
 def _bounds(date_range: DateRange) -> tuple[datetime, datetime]:
@@ -394,8 +427,10 @@ def _wizard_state(
 
     step1_presets writes a single pick into ``state.selected_person`` and a
     multi-person pick into ``memory_preset_params["person_ids"]`` -- two
-    different fields, and only the Person Spotlight and Multi-Person cards
-    render a person widget at all.
+    different fields, because two different cards collect them, and only the
+    Person Spotlight and Multi-Person cards render a person widget at all. The
+    fields stay two; ``AppState.person_ids`` is what reads them as one, which is
+    the thing the fetch comparison below is really checking.
     """
     state = AppState()
     state.date_ranges = windows
@@ -441,14 +476,20 @@ class FetchScenario:
 
 
 PERSON_FILTER_ON_NON_PERSON_TYPE_DIVERGENCE = (
-    "--person narrows any memory type on the CLI and no type but two in the "
-    "wizard. fetch_videos_and_live_photos takes whatever person_ids generate.py "
+    "NEEDS A PRODUCT DECISION -- do not repair this by guessing. --person "
+    "narrows any memory type on the CLI and no type but two in the wizard. "
+    "fetch_videos_and_live_photos takes whatever person_ids generate.py "
     "resolved, so `--memory-type year_in_review --person Alice --person Bob` "
     "fetches only what holds both; the wizard renders a person widget for Person "
-    "Spotlight and Multi-Person alone, and create_preset's PersonFilter -- which "
-    "does carry the names for every type -- is discarded by "
-    "_apply_preset_to_state. This is the stills-filter and union-vs-intersection "
-    "family: the filter exists on one surface only."
+    "Spotlight and Multi-Person alone, so no other card can name anybody. The "
+    "question is which surface is right: is a person filter on every memory type "
+    "a feature the wizard is missing, or is it a two-card feature the CLI "
+    "over-offers? Answering it also settles what several names mean on a type "
+    "that is not about people -- the CLI intersects them, while create_preset's "
+    "PersonFilter keeps person_names[:1] and drops the rest, so the two would "
+    "still disagree after the widget shipped. Until then the wizard cannot even "
+    "express the request, which is why this stays a strict xfail rather than "
+    "becoming a documented exception."
 )
 
 FETCH_SCENARIOS = (
