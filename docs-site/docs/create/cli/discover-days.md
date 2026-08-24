@@ -112,7 +112,7 @@ immich-memories discover-days
 ```
 
 It walks year by year, prints what it finds, and writes a catalogue to
-`special-days.json`.
+`~/.immich-memories/special-days.json`.
 
 ```
 2019: 3854 assets
@@ -127,7 +127,7 @@ It walks year by year, prints what it finds, and writes a catalogue to
 | `--until` | this year | last year to scan |
 | `--per-year` | 6 | how many of the busiest candidate days to ask the model about |
 | `--also-skip` | – | a holiday name or `MM-DD` your library keeps that the defaults miss |
-| `--out` | `special-days.json` | where to write the catalogue |
+| `--out` | `~/.immich-memories/special-days.json` | where to write the catalogue |
 | `--rescan` | off | start over, ignoring and replacing the existing catalogue |
 
 The scan takes hours across twenty years, so it resumes by default: years already in the
