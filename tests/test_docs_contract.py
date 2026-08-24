@@ -13,10 +13,10 @@ PRIMARY_MANUAL_CONTRACTS = [
     pytest.param(
         "README.md",
         "### Supported Immich Versions",
-        "### Optional: LLM for smart clip analysis",
+        "### Optional: an LLM for clip analysis",
         "Leave this on `auto`. The app detects the server major version and uses the matching "
         "API contract; you do not choose a version for each run.",
-        "The explicit `v2` and `v3` values are manual troubleshooting overrides—escape hatches "
+        "The explicit `v2` and `v3` values are manual troubleshooting overrides: escape hatches "
         "for proxies or unusual deployments that hide or rewrite the version endpoint. They force "
         "that contract, so don't use them as upgrade flags.",
         id="readme",
@@ -27,7 +27,7 @@ PRIMARY_MANUAL_CONTRACTS = [
         "### Time Period Selection",
         "`auto` detects the server major version at runtime and selects the right API contract. "
         "You do not need to choose a version for each run.",
-        "Explicit `v2` and `v3` are manual troubleshooting overrides—escape hatches for unusual "
+        "Explicit `v2` and `v3` are manual troubleshooting overrides: escape hatches for unusual "
         "proxies or deployments where version detection is wrong; each one forces that contract.",
         id="user-guide",
     ),
@@ -160,7 +160,7 @@ def test_immich_environment_override_is_documented() -> None:
 
     assert 'IMMICH_MEMORIES_IMMICH__API_VERSION="auto"' in section
     assert "Keep `API_VERSION` on `auto` for default runtime detection" in section
-    assert "`v2` and `v3` are manual troubleshooting overrides—escape hatches" in section
+    assert "`v2` and `v3` are manual troubleshooting overrides: escape hatches" in section
 
 
 def test_upgrade_manual_explains_the_complete_v2_to_v3_contract() -> None:

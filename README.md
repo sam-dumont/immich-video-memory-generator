@@ -8,9 +8,9 @@
 [![License](https://img.shields.io/github/license/sam-dumont/immich-video-memory-generator)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-Docusaurus-blue)](https://sam-dumont.github.io/immich-video-memory-generator/)
 
-**Turn your [Immich](https://immich.app/) photo library into video memory compilations with music, title screens, and smart cuts.**
+**Cuts your [Immich](https://immich.app/) library into edited memory videos: title screens, music, and only the good five seconds of each clip.**
 
-Immich Memories connects to your self-hosted Immich server, selects the best moments from your videos *and* photos, and compiles them into shareable memory videos: year-end recaps, trip highlights, person spotlights, seasonal compilations, monthly highlights, "on this day" flashbacks.
+It connects to your self-hosted Immich server, scores every video and photo, and assembles the keepers into a real edit: a year in review, a trip with its map, one person across the years.
 
 > **Full documentation**: [sam-dumont.github.io/immich-video-memory-generator](https://sam-dumont.github.io/immich-video-memory-generator/)
 
@@ -49,7 +49,7 @@ cached, so the first run of a library is the slow one.
 |-------|-----|-----|---------------------|-----------------------------|
 | Idle (UI) | ~100MB | minimal | — | — |
 | Analyzing clips (first run) | 2-4GB | 2+ cores | ~1 min per 10 clips | ~1-2 min per clip |
-| Assembling 1080p | 4GB | 4 cores | ~2 min per 5 min of output | ~15 min for a 30-clip video |
+| Assembling 1080p | 4GB | 4 cores | ~2 min per 5 min of output | ~10-16 min for a 14-clip monthly (measured) |
 | Assembling 4K | 6-8GB | 4+ cores | ~5 min per 5 min of output | not recommended |
 
 Most of that assembly time is the title screens, not the encode: measured at 2 CPUs, title
@@ -93,13 +93,13 @@ immich:
 
 Leave this on `auto`. The app detects the server major version and uses the matching API contract;
 you do not choose a version for each run. The explicit `v2` and `v3` values are manual
-troubleshooting overrides—escape hatches for proxies or unusual deployments that hide or rewrite
+troubleshooting overrides: escape hatches for proxies or unusual deployments that hide or rewrite
 the version endpoint. They force that contract, so don't use them as upgrade flags.
 
 `immich-memories config test` reports the detected contract and checks your credentials without
 generating or uploading anything.
 
-### Optional: LLM for smart clip analysis
+### Optional: an LLM for clip analysis
 
 Everything runs on your own hardware by default: analysis, encoding, titles, music. The LLM below
 is the one piece you can point somewhere else, and it speaks any OpenAI-compatible endpoint. That
