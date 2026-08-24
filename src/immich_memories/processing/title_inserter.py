@@ -89,6 +89,7 @@ class TitleInserter:
             encoding_plan=self.settings.encoding_plan,
             title_override=title_settings.title_override,
             subtitle_override=title_settings.subtitle_override,
+            memory_type=title_settings.memory_type,
         )
 
     def _decide_transitions_for_final_clips(self, clips: list[AssemblyClip]) -> list[str]:

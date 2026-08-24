@@ -6,7 +6,11 @@ from datetime import date, datetime
 
 import pytest
 
-from immich_memories.cli._date_resolution import default_duration_for_type, resolve_date_range
+from immich_memories.cli._date_resolution import (
+    BIRTHDAY_FLAG_FORMAT,
+    default_duration_for_type,
+    resolve_date_range,
+)
 from immich_memories.cli._trip_display import _closest_trip_to_date, select_trips
 from immich_memories.timeperiod import DateRange
 
@@ -309,13 +313,98 @@ class TestBackwardCompatibility:
             start=None,
             end=None,
             period=None,
-            birthday="03/01/2000",
+            birthday="2000-03-01",
             memory_type="person_spotlight",
         )
 
         assert isinstance(result, DateRange)
         assert result.start == datetime(2025, 3, 1)
         assert result.end == datetime(2026, 2, 28, 23, 59, 59)
+
+    def test_ambiguous_slash_birthday_reads_day_first_like_every_other_date(self):
+        """07/02 is 7 February here, exactly as it is for --start and --end."""
+        result = resolve_date_range(
+            year=2025,
+            start=None,
+            end=None,
+            period=None,
+            birthday="07/02",
+            memory_type="person_spotlight",
+        )
+
+        assert isinstance(result, DateRange)
+        assert result.start == datetime(2025, 2, 7)
+        assert result.end == datetime(2026, 2, 6, 23, 59, 59)
+
+    def test_slash_birthday_that_can_only_be_month_first_still_parses(self):
+        """21 cannot be a month, so 07/21 keeps its only possible reading."""
+        result = resolve_date_range(
+            year=2025,
+            start=None,
+            end=None,
+            period=None,
+            birthday="07/21",
+            memory_type="person_spotlight",
+        )
+
+        assert isinstance(result, DateRange)
+        assert result.start == datetime(2025, 7, 21)
+
+    def test_dashed_birthday_is_month_day_like_the_holiday_flag(self):
+        result = resolve_date_range(
+            year=2025,
+            start=None,
+            end=None,
+            period=None,
+            birthday="02-07",
+            memory_type="person_spotlight",
+        )
+
+        assert isinstance(result, DateRange)
+        assert result.start == datetime(2025, 2, 7)
+
+    def test_late_year_birthday_window_crosses_into_the_next_year(self):
+        result = resolve_date_range(
+            year=2025,
+            start=None,
+            end=None,
+            period=None,
+            birthday="11-20",
+            memory_type="person_spotlight",
+        )
+
+        assert isinstance(result, DateRange)
+        assert result.start == datetime(2025, 11, 20)
+        assert result.end == datetime(2026, 11, 19, 23, 59, 59)
+
+    def test_birthday_detected_from_immich_round_trips_into_the_window(self):
+        """What auto-detection writes must mean the same thing when read back."""
+        detected = date(1990, 2, 7)
+
+        result = resolve_date_range(
+            year=2025,
+            start=None,
+            end=None,
+            period=None,
+            birthday=detected.strftime(BIRTHDAY_FLAG_FORMAT),
+            memory_type="person_spotlight",
+        )
+
+        assert isinstance(result, DateRange)
+        assert result.start == datetime(2025, 2, 7)
+
+    def test_unparseable_birthday_is_a_usage_error(self):
+        import click
+
+        with pytest.raises(click.UsageError, match="birthday"):
+            resolve_date_range(
+                year=2025,
+                start=None,
+                end=None,
+                period=None,
+                birthday="not-a-date",
+                memory_type="person_spotlight",
+            )
 
     def test_person_spotlight_auto_birthday_value_handles_leap_day(self):
         result = resolve_date_range(

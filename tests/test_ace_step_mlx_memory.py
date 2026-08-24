@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from immich_memories.audio.generators.ace_step_backend import _bound_mlx_memory
+from immich_memories.audio.generators.ace_step_runtime import _bound_mlx_memory
 
 ENV_VAR = "ACESTEP_MLX_VAE_CHUNK"
 

@@ -5,7 +5,7 @@ title: Audio & Music
 
 # Audio & Music
 
-The music pipeline has three stages:
+The music pipeline has four stages:
 
 1. **Mood detection**: A vision LLM looks at keyframes from your video and outputs a structured mood analysis (happy, calm, energetic, etc. plus genre and tempo suggestions).
 2. **Music generation**: The pipeline takes that mood and sends it to the configured music backend. ACE-Step can run directly in the app or through its REST API. MusicGen is the alternative generator when ACE-Step is disabled.
@@ -170,7 +170,7 @@ separation rather than paying for a Demucs run it would discard.
 
 You don't have to use AI-generated music. In the UI at Step 3, choose **Upload file** under **Background music** (MP3, M4A or WAV) and set the **Music volume** slider. On the CLI, pass `--music /path/to/track.mp3` (and `--music-volume 0.0-1.0`, default 0.5).
 
-To disable music, choose **None** in the UI or pass `--no-music` on the CLI. Without `--music`, the CLI generates an AI track when `ace_step.enabled` or `musicgen.enabled` is set, and otherwise renders with the clips' own audio.
+To disable music, choose **None** in the UI or pass `--no-music` on the CLI. Without `--music`, the CLI generates an AI track when `ace_step.enabled` or `musicgen.enabled` is set. With no generator configured — or with one that failed — it falls back to a bundled track, and only renders with the clips' own audio when the `music` extra isn't installed and there is nothing bundled to fall back to.
 
 For a local library, `immich-memories music search` and `music add` read `audio.local_music_dir` (default `~/Music/Memories`); see the [music command](../cli/music.md). Generation itself does not pick from that directory.
 
@@ -371,7 +371,7 @@ Which music plays is decided by three switches:
 | CLI | `--music PATH`, `--no-music`, `--music-volume 0.0-1.0` | Own file, no music at all, or the mix level (default 0.5) |
 | UI Step 3 | **Background music**: None / Upload file / AI Generated, plus the volume slider | Same choices per run |
 
-The music volume slider maps to a base music level of −20 dB (0.0) to 0 dB (1.0) before ducking. Ducking parameters are fixed in the mixer (sidechain threshold 0.02, ratio 4.0, 100 ms attack, 2.5 s release, 2 s fade in, 3 s fade out). The `audio:` section in the schema (`auto_music`, `music_source`, `ducking_threshold`, `ducking_ratio`, `music_volume_db`, `fade_in_seconds`, `fade_out_seconds`) is not read by generation; only `audio.local_music_dir` is used, by the `music` command. If you need custom fades or a dB level, run `immich-memories music add` on the finished file with `--volume`, `--fade-in`, `--fade-out`.
+The music volume slider maps to a base music level of −20 dB (0.0) to 0 dB (1.0) before ducking. Ducking parameters are fixed in the mixer (sidechain threshold 0.02, ratio 4.0, 100 ms attack, 2.5 s release, 2 s fade in, 3 s fade out). The `audio:` section holds exactly one key, `local_music_dir`, used by the `music` command; ducking and fades are fixed in the mixer and have no config surface. If you need custom fades or a dB level, run `immich-memories music add` on the finished file with `--volume`, `--fade-in`, `--fade-out`.
 
 ## Model Cache & Disk Usage
 

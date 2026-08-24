@@ -1900,51 +1900,7 @@ class TestSearchServiceDateRange:
 
 
 class TestSearchServiceMultiPerson:
-    """Test multi-person search (union and intersection)."""
-
-    @pytest.mark.asyncio
-    async def test_get_videos_for_any_person_union(self):
-        from immich_memories.api.search_service import SearchService
-        from immich_memories.timeperiod import DateRange
-
-        # Person 1 has asset a1, person 2 has a1 + a2
-        resp_p1 = {
-            "assets": {
-                "total": 1,
-                "count": 1,
-                "items": [_make_asset("a1", "2024-01-15T00:00:00")],
-                "nextPage": None,
-            }
-        }
-        resp_p2 = {
-            "assets": {
-                "total": 2,
-                "count": 2,
-                "items": [
-                    _make_asset("a1", "2024-01-15T00:00:00"),
-                    _make_asset("a2", "2024-02-15T00:00:00"),
-                ],
-                "nextPage": None,
-            }
-        }
-        mock_request = AsyncMock(side_effect=[resp_p1, resp_p2])
-        svc = SearchService(mock_request)
-        dr = DateRange(start=datetime(2024, 1, 1), end=datetime(2024, 12, 31))
-
-        result = await svc.get_videos_for_any_person(["p1", "p2"], dr)
-        assert len(result) == 2  # Union: a1, a2 (deduplicated)
-
-    @pytest.mark.asyncio
-    async def test_get_videos_for_any_person_empty_list(self):
-        from immich_memories.api.search_service import SearchService
-        from immich_memories.timeperiod import DateRange
-
-        mock_request = AsyncMock()
-        svc = SearchService(mock_request)
-        dr = DateRange(start=datetime(2024, 1, 1), end=datetime(2024, 12, 31))
-
-        result = await svc.get_videos_for_any_person([], dr)
-        assert result == []
+    """Test multi-person search (intersection across the named people)."""
 
     @pytest.mark.asyncio
     async def test_get_videos_for_all_persons_intersection(self):

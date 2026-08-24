@@ -76,7 +76,7 @@ kubectl apply -k overlays/gpu
 ```
 
 `kubectl kustomize overlays/gpu` shows the rendered result. `base/kustomization.yaml` pins the
-image tag (no `v` prefix: `0.41.0`); bump it when you upgrade.
+image tag (no `v` prefix: `0.59.2`); bump it when you upgrade.
 
 ## Access the UI
 
@@ -169,7 +169,7 @@ kubectl apply -f base/sealed-secret.yaml
   "configuration": "configured",
   "immich_reachable": true,
   "last_successful_run": "2025-12-15T10:30:00",
-  "version": "0.41.0"
+  "version": "0.59.2"
 }
 ```
 

@@ -99,7 +99,7 @@ async def upload_to_immich(
     progress_bar.value = 0.98
 
     try:
-        from immich_memories.generate import deliver_completed_artifact
+        from immich_memories.generate_delivery import deliver_completed_artifact
 
         result = await io_bound_result(deliver_completed_artifact, params, video_path, run_tracker)
         completed = _authoritative_delivery_run(run_tracker)

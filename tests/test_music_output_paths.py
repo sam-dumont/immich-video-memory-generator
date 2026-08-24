@@ -888,7 +888,7 @@ def test_optional_music_failure_preserves_base_and_uploads_valid_artifact(
             "immich_memories.generate_music.apply_music_file",
             side_effect=RuntimeError("music backend unavailable"),
         ),
-        patch.object(generate_module, "_upload_to_immich", side_effect=upload),
+        patch("immich_memories.generate_delivery._upload_to_immich", side_effect=upload),
         patch.object(generate_module, "_cleanup_temp_clips"),
     ):
         result = generate_memory(params)

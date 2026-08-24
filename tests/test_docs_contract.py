@@ -159,8 +159,10 @@ def test_immich_environment_override_is_documented() -> None:
     )
 
     assert 'IMMICH_MEMORIES_IMMICH__API_VERSION="auto"' in section
-    assert "Keep `API_VERSION` on `auto` for default runtime detection" in section
-    assert "`v2` and `v3` are manual troubleshooting overrides: escape hatches" in section
+    assert (
+        "`auto` detects v2 or v3 at runtime; set `v2`/`v3` only to diagnose a proxy "
+        "that breaks detection" in section
+    )
 
 
 def test_upgrade_manual_explains_the_complete_v2_to_v3_contract() -> None:

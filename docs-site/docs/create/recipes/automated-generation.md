@@ -6,9 +6,9 @@ title: Automated Generation
 # Automated Generation
 
 Once you know your preferred settings, automate the whole thing. The recommended path is one daily
-smart decision; the scheduler daemon and hand-written cron are advanced/legacy alternatives.
+decision; the scheduler daemon and hand-written cron are advanced/legacy alternatives.
 
-## Smart Automation (Recommended)
+## Automation (Recommended)
 
 The `auto` system scans your library, detects what's worth turning into a memory video, and generates the best candidate. It runs 8 detectors (monthly, yearly, trips, person spotlights, birthdays, activity bursts, on-this-day, multi-person pairs) and picks the highest-scoring one.
 
@@ -60,9 +60,13 @@ appears on schedule, uploads if `upload_to_immich` is on, and notifies if notifi
 - The timer never runs when `enabled` is `false` (the default) — `auto install` stays the route
   for bare-metal installs.
 
+To fire the same decision on demand instead of on a clock — from an Immich workflow, a cron on
+another machine, a phone shortcut — see
+[Trigger from Immich or Anything Else](./trigger-endpoint.md).
+
 ## Scheduler daemon (advanced/legacy)
 
-:::tip Use smart automation instead
+:::tip Use the `auto` system instead
 Most users should use the `auto` system above — it figures out what to generate automatically. The scheduler below is for Docker/K8s deployments or when you need exact control over what generates when (specific memory types on specific dates).
 :::
 

@@ -61,7 +61,8 @@ class AutomationLease:
         self._lock_path = lock_path
         self._fd: Any = None
 
-    def __enter__(self) -> AutomationLease:
+    def acquire(self) -> None:
+        """Take the lease, or refuse because another process already holds it."""
         import fcntl
 
         self._lock_path.parent.mkdir(parents=True, exist_ok=True)
@@ -72,15 +73,57 @@ class AutomationLease:
             self._fd.close()
             self._fd = None
             raise AutomationAlreadyRunningError("automation already running") from None
-        return self
 
-    def __exit__(self, *exc: object) -> None:
+    def release(self) -> None:
+        """Drop the lease. Safe to call when it was never taken."""
         import fcntl
 
         if self._fd is not None:
             fcntl.flock(self._fd, fcntl.LOCK_UN)
             self._fd.close()
             self._fd = None
+
+    def __enter__(self) -> AutomationLease:
+        self.acquire()
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.release()
+
+
+@dataclass(frozen=True)
+class StartedAutoRun:
+    """A held automation lease plus the durable attempt that owns it.
+
+    WHY this exists apart from `run_one`: an HTTP trigger has to answer with an
+    identifier while the generation it started is still hours from finishing, so
+    the attempt must become durable before the work runs — and the lease has to
+    survive the handover to whatever thread executes it.
+    """
+
+    runner: AutoRunner
+    attempt: AutomationAttempt
+    lease: AutomationLease
+
+    def execute(
+        self,
+        *,
+        force: bool = False,
+        cooldown_hours: int | None = None,
+        upload: bool = False,
+        dry_run: bool = False,
+    ) -> AutoRunResult:
+        """Run the decision this attempt owns, releasing its lease when it ends."""
+        try:
+            return self.runner._run_one_under_lease(
+                self.attempt,
+                force=force,
+                cooldown_hours=cooldown_hours,
+                upload=upload,
+                dry_run=dry_run,
+            )
+        finally:
+            self.lease.release()
 
 
 @dataclass(frozen=True)
@@ -438,6 +481,25 @@ class AutoRunner:
         self.last_backoff_skips = discovered.backoff_skips
         return discovered.candidates
 
+    def start_one(self, *, reason: str = "daily wake") -> StartedAutoRun:
+        """Take the automation lease and open the durable attempt that owns it.
+
+        The caller must execute the returned handle — that is what releases the
+        lease. `reason` becomes the attempt's history entry, so a triggered run
+        is told apart from a nightly one everywhere automation is inspected.
+
+        Raises:
+            AutomationAlreadyRunningError: another process holds the lease.
+        """
+        lease = AutomationLease(self.config.cache.database_path.parent / ".auto.lock")
+        lease.acquire()
+        try:
+            attempt = self.state.start_attempt(reason=reason)
+        except BaseException:
+            lease.release()
+            raise
+        return StartedAutoRun(self, attempt, lease)
+
     def run_one(
         self,
         *,
@@ -447,22 +509,19 @@ class AutoRunner:
         dry_run: bool = False,
     ) -> AutoRunResult:
         """Run one durable automation decision and return its exact outcome."""
-        lease_path = self.config.cache.database_path.parent / ".auto.lock"
         try:
-            with AutomationLease(lease_path):
-                attempt = self.state.start_attempt(reason="daily wake")
-                return self._run_one_under_lease(
-                    attempt,
-                    force=force,
-                    cooldown_hours=cooldown_hours,
-                    upload=upload,
-                    dry_run=dry_run,
-                )
+            started = self.start_one()
         except AutomationAlreadyRunningError:
             return AutoRunResult(
                 outcome=AutoOutcome.SKIPPED,
                 reason="automation already running",
             )
+        return started.execute(
+            force=force,
+            cooldown_hours=cooldown_hours,
+            upload=upload,
+            dry_run=dry_run,
+        )
 
     def _run_one_under_lease(
         self,

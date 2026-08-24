@@ -83,21 +83,28 @@ def _thumbnail(client, asset_id: str, video_id: str | None = None):
 
     Live Photo video components do not always answer on "preview", and a run
     that silently renders grey squares cannot be reviewed.
+
+    Returns the image and, when there is none, the reason to print in its place:
+    footage the server never thumbnailed is expected, footage sitting in the
+    cache that will not decode is a broken download worth chasing, and a tile
+    that does not say which is a blank the reviewer has to guess at.
     """
     from PIL import Image
 
     last: Exception | None = None
     for size in ("preview", "thumbnail"):
         try:
-            return Image.open(io.BytesIO(client.get_asset_thumbnail(asset_id, size))).convert("RGB")
+            image = Image.open(io.BytesIO(client.get_asset_thumbnail(asset_id, size)))
+            return image.convert("RGB"), ""
         except Exception as exc:  # noqa: BLE001, PERF203 - try the next size, then give up
             last = exc
             continue
-    frame = _frame_from_cache(*dict.fromkeys(i for i in (asset_id, video_id) if i))
+    ids = tuple(dict.fromkeys(i for i in (asset_id, video_id) if i))
+    frame = _frame_from_cache(*ids)
     if frame is not None:
-        return frame
+        return frame, ""
     logger.warning("No thumbnail for %s: %s", asset_id, type(last).__name__)
-    return None
+    return None, "would not decode" if _cached_video(*ids) else "no thumbnail"
 
 
 def _cached_video(*asset_ids: str) -> Path | None:
@@ -122,26 +129,17 @@ def _cached_video(*asset_ids: str) -> Path | None:
     return None
 
 
-def _frame_from_cache(*asset_ids: str):
-    """Grab a frame from the locally cached video, if we have one.
-
-    Immich does not always hold a thumbnail — measured at 8% of assets on this
-    library, all of them standalone .MOV files. Those are perfectly good clips
-    that the pipeline selected on merit; only the review sheet could not show
-    them, and a grey rectangle is the one thing a reviewer cannot judge.
-    """
+def _decode_frame(source: Path, seek: str):
+    """One ffmpeg frame grab at a given offset, or None if it decoded nothing."""
     import subprocess
     import tempfile
 
     from PIL import Image
 
-    source = _cached_video(*asset_ids)
-    if source is None:
-        return None
     with tempfile.NamedTemporaryFile(suffix=".jpg") as tmp:
         try:
             subprocess.run(
-                ["ffmpeg", "-y", "-v", "error", "-ss", "0.5", "-i", str(source),
+                ["ffmpeg", "-y", "-v", "error", "-ss", seek, "-i", str(source),
                  "-frames:v", "1", "-q:v", "4", tmp.name],
                 capture_output=True,
                 timeout=20,
@@ -150,6 +148,30 @@ def _frame_from_cache(*asset_ids: str):
             return Image.open(tmp.name).convert("RGB")
         except Exception:  # noqa: BLE001 - a tile is not worth failing the sheet
             return None
+
+
+def _frame_from_cache(*asset_ids: str):
+    """Grab a frame from the locally cached video, if we have one.
+
+    Immich does not always hold a thumbnail — measured at 8% of assets on this
+    library, all of them standalone .MOV files. Those are perfectly good clips
+    that the pipeline selected on merit; only the review sheet could not show
+    them, and a grey rectangle is the one thing a reviewer cannot judge.
+
+    Half a second in avoids the black lead-in most footage opens on, but it is
+    past the end of a trimmed Live Photo burst: ffmpeg writes no file at all and
+    the clip came back blank. Falling back to the first frame is worth more than
+    the lead-in it risks.
+    """
+    source = _cached_video(*asset_ids)
+    if source is None:
+        return None
+    for seek in ("0.5", "0"):
+        frame = _decode_frame(source, seek)
+        if frame is not None:
+            return frame
+    logger.warning("Cached video for %s decoded no frame: %s", asset_ids[0], source.name)
+    return None
 
 
 def _fonts():
@@ -195,13 +217,13 @@ def _draw(rows: list[dict], label: str, subtitle: str, out: Path) -> Path:
         for i, row in enumerate(rows):
             x = PAD + (i % COLUMNS) * (THUMB_W + PAD)
             y = HEADER_H + (i // COLUMNS) * (THUMB_H + LABEL_H + PAD)
-            image = _thumbnail(client, row["id"], row["video_id"])
+            image, reason = _thumbnail(client, row["id"], row["video_id"])
             row["lum"] = _mean_luma(image)
             if image is None:
                 # A blank tile is unreviewable, so say why rather than leave a
                 # grey square the reader has to guess at.
                 draw.rectangle([x, y, x + THUMB_W, y + THUMB_H], fill=(40, 40, 44))
-                draw.text((x + 10, y + THUMB_H // 2), "no thumbnail", (200, 120, 110), font=font)
+                draw.text((x + 10, y + THUMB_H // 2), reason, (200, 120, 110), font=font)
             else:
                 image.thumbnail((THUMB_W, THUMB_H))
                 sheet.paste(

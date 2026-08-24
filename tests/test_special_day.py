@@ -446,3 +446,83 @@ class TestADayEndsWhenThePhotographsDo:
         ]
 
         assert len(candidate_days(two)) == 2
+
+
+class TestANumberIsAClaimLikeAnyOther:
+    """A distance the day never recorded reads exactly as true as a real one.
+
+    Asked about a day of running with nothing anywhere saying how far, the
+    model answered with a specific race distance. The place guard had nothing
+    to say about it: it only ever looked at places.
+    """
+
+    def _day(self, described: str) -> list[SimpleNamespace]:
+        return [
+            SimpleNamespace(
+                file_created_at=datetime(2021, 5, 30, hour, tzinfo=UTC),
+                exif_info=SimpleNamespace(
+                    city="Anytown",
+                    state=None,
+                    country="Belgium",
+                    latitude=50.72,
+                    longitude=4.87,
+                ),
+                people=[],
+                llm_description=described,
+            )
+            for hour in range(8, 16)
+        ]
+
+    def _answer(self, described: str, title: str, subtitle: str = "") -> object:
+        # WHY: the model is the boundary; this pins what we accept back from it.
+        with patch(
+            "immich_memories.analysis.special_day._ask",
+            return_value=f'{{"special": true, "title": "{title}", "subtitle": "{subtitle}"}}',
+        ):
+            return ask_if_special(self._day(described), llm_config=SimpleNamespace())
+
+    def test_a_distance_nothing_recorded_is_not_a_title(self) -> None:
+        result = self._answer("a crowd of runners in numbered bibs", "The 10K at Anytown")
+
+        assert result.special is True, "the day is still an occasion"
+        assert result.title == "", "but nothing on it said how far anybody ran"
+
+    def test_the_distance_the_pictures_actually_show_survives(self) -> None:
+        result = self._answer("runners passing the 20K marker", "The 20K at Anytown")
+
+        assert result.title == "The 20K at Anytown"
+
+    def test_the_same_distance_written_differently_is_the_same_distance(self) -> None:
+        """ "20 km" in a description and "20km" in a title are one claim."""
+        result = self._answer("runners passing the 20 km marker", "A 20km morning at Anytown")
+
+        assert result.title == "A 20km morning at Anytown"
+
+    def test_a_race_the_pictures_never_showed_is_not_a_title(self) -> None:
+        result = self._answer("a crowd of runners in numbered bibs", "Marathon day at Anytown")
+
+        assert result.title == ""
+
+    def test_the_line_under_the_title_is_held_to_the_same_rule(self) -> None:
+        result = self._answer(
+            "a crowd of runners in numbered bibs",
+            "A morning of running",
+            subtitle="Twenty thousand of us over 10 miles",
+        )
+
+        assert result.title == "A morning of running"
+        assert result.subtitle == ""
+
+
+def test_the_prompt_grounds_every_specific_and_not_only_places() -> None:
+    """One affirmative rule rather than a list of things not to say.
+
+    The rule it replaces was scoped to places, so a made-up distance was
+    never addressed by it at all — and answering that by appending another
+    prohibition is a game with no end.
+    """
+    from immich_memories.analysis.special_day import _PROMPT
+
+    guidance = _PROMPT.split("{lines}")[1]
+
+    assert "distance" in guidance and "count" in guidance

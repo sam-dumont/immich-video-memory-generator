@@ -25,15 +25,25 @@ Or specify the date manually:
 immich-memories generate \
   --person "Emma" \
   --year 2024 \
-  --birthday 07/21 \
+  --birthday 07-21 \
   --duration 600
 ```
 
 The `--birthday` flag makes the year run from birthday to birthday (e.g., Jul 21, 2024 through Jul 20, 2025) instead of January to December.
 
+Give the date as `MM-DD` — that form has only one reading. A slashed `DD/MM` works too and is read day-first, the same way `--start` and `--end` read `DD/MM/YYYY`.
+
 ## UI
 
-In Step 1, select the "Birthday" time period option. Pick the birthday date and the tool calculates the range for you.
+There is no "Birthday" card. Two paths get you a birthday-to-birthday range:
+
+- **Person Spotlight** card: pick the person, then tick **Birthday to birthday**. If Immich
+  has a birth date on that person, the checkbox turns itself on when you select them.
+- **Custom** card → **Year** tab → **From Birthday**, which gives you a Birthday date field
+  and computes the range from it.
+
+Either way the range runs birthday to birthday rather than January to December. See
+[Step 1: Configuration](../web-ui/step1-configuration.mdx).
 
 ## Tips
 

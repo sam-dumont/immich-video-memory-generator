@@ -68,7 +68,8 @@ Photos use a mix of metadata and optional LLM visual analysis:
 | Camera original | 0.05 | Real camera EXIF (not screenshot) |
 | LLM visual | 0.30 | VLM rates interest + quality |
 
-Photo scores are multiplied by `(1 - score_penalty)` (default 0.8) so videos win ties.
+Photo scores are multiplied by `(1 - score_penalty)`. The default penalty is 0.2, so a photo
+scores 80% of an equally good video and videos win ties.
 
 ### Live Photo Scoring
 
@@ -218,13 +219,15 @@ recap spent two of its thirty-nine slots on a single night at a venue.
 
 | memory spans | one moment is |
 |---|---|
-| up to a month | the configured window (5 minutes by default) |
+| up to a month | 5 minutes |
 | up to a season | 30 minutes |
 | up to a year | 90 minutes |
 | longer | 3 hours |
 
-The configured `temporal_dedup_window_minutes` is a floor, never a ceiling — asking for
-a wider window widens every memory type. Zero turns deduplication off entirely.
+That five minutes is `temporal_dedup_window_minutes`, and it is a floor rather than a
+ceiling: the wider spans below it always win. It is not a dial you can reach, though. The
+field lives on `PipelineConfig` in `analysis/smart_pipeline.py` with no YAML key and no CLI
+flag wired to it, so five minutes is what every run gets.
 
 A moment keeps one clip unless moments are genuinely scarce: only when there are at
 most half as many as the cut needs clips does a moment contribute more than one, which

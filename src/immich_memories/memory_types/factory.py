@@ -7,7 +7,7 @@ Adding a new memory type = adding a new factory function with @register_preset.
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import date, datetime
+from datetime import date
 
 from immich_memories.memory_types.date_builders import (
     KNOWN_HOLIDAYS,
@@ -15,6 +15,7 @@ from immich_memories.memory_types.date_builders import (
     build_month,
     build_on_this_day,
     build_season,
+    build_then_and_now,
     build_trip,
     resolve_holiday,
 )
@@ -24,7 +25,7 @@ from immich_memories.memory_types.presets import (
     ScoringProfile,
 )
 from immich_memories.memory_types.registry import MemoryType
-from immich_memories.timeperiod import DateRange, birthday_year, calendar_year
+from immich_memories.timeperiod import birthday_year, calendar_year
 
 # Registry: maps MemoryType -> factory callable
 _REGISTRY: dict[MemoryType, Callable[..., MemoryPreset]] = {}
@@ -395,9 +396,6 @@ def _then_and_now(
     The contrast is the whole point, so the gap is required: a then-and-now with
     no distance between the two is just a now.
     """
-    if years_back <= 0:
-        raise ValueError("years_back must be at least 1 for a then-and-now memory")
-
     year = year or date.today().year
     then_year = year - years_back
     person_filter = PersonFilter()
@@ -408,14 +406,7 @@ def _then_and_now(
         memory_type=MemoryType.THEN_AND_NOW,
         name=f"{then_year} and {year}",
         description=f"{then_year} beside {year}",
-        # Most recent first, matching the other multi-range types.
-        date_ranges=[
-            DateRange(start=datetime(year, 1, 1, 0, 0, 0), end=datetime(year, 12, 31, 23, 59, 59)),
-            DateRange(
-                start=datetime(then_year, 1, 1, 0, 0, 0),
-                end=datetime(then_year, 12, 31, 23, 59, 59),
-            ),
-        ],
+        date_ranges=build_then_and_now(year, years_back),
         person_filter=person_filter,
         scoring=ScoringProfile(face_weight=0.4, content_weight=0.3),
         title_template="{then_year} & {now_year}",

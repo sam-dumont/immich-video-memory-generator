@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 # Control characters for sanitizing filenames
 _CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
 # Field names that hold a secret, wherever they appear in the config tree.
-CREDENTIAL_FIELD_NAMES = frozenset({"api_key", "password", "client_secret"})
+CREDENTIAL_FIELD_NAMES = frozenset({"api_key", "password", "client_secret", "trigger_token"})
 
 
 def write_secret_file(path: Path, text: str) -> None:

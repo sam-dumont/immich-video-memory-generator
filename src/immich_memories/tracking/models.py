@@ -181,6 +181,9 @@ class RunMetadata:
     clips_analyzed: int = 0
     clips_selected: int = 0
     errors_count: int = 0
+    # What the run spent on the model. Run-level rather than per-phase because
+    # analysis and selection are not tracked phases and spend most of it.
+    llm_metrics: dict[str, float | int] = field(default_factory=dict)
 
     # System info
     system_info: SystemInfo | None = None

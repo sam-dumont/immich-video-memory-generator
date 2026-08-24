@@ -27,6 +27,7 @@ def _fake_title_settings(**overrides) -> SimpleNamespace:
         "show_decorative_lines": False,
         "title_override": None,
         "subtitle_override": None,
+        "memory_type": None,
     }
     defaults.update(overrides)
     return SimpleNamespace(**defaults)

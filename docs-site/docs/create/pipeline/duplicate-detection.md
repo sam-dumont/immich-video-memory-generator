@@ -30,4 +30,4 @@ The threshold controls how aggressively duplicates are matched:
 
 ## How duplicates are resolved
 
-When a group of duplicates is found, they're ranked by quality (resolution, bitrate) and only the best version is kept for selection. The others are silently dropped: they still exist in your library, they just won't appear in the generated video.
+When a group of duplicates is found, they're ranked by favorite status first, then resolution, bitrate and duration, and only the top one is kept for selection. A favorited duplicate therefore wins even at a lower resolution — you flagged that copy on purpose. The others are silently dropped: they still exist in your library, they just won't appear in the generated video.

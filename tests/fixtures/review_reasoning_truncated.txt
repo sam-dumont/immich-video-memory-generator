@@ -1,0 +1,18 @@
+Here's a thinking process:
+
+1.  **Analyze the Input:**
+   - I have 14 clips in timeline order (Clip 1 to Clip 14).
+   - Each clip has: date, place, score, description, emotion.
+   - Place is consistently Jodoigne, Belgium for most clips (Clip 14 has no place listed but same date range/context).
+   - Dates span from 2008-08-04 to 2008-08-17.
+   - I need to evaluate the set as a whole for feel, coherence, variety.
+   - Drop criteria: REDUNDANT, CROWDING OUT, CLASHING, NOT A MEMORY.
+   - Output format: STRICT JSON only: `{"drop": [{"index": <clip number>, "reason": "<short reason>"}]}`
+
+2.  **Examine Each Clip & Identify Potential Issues:**
+   - *Clip 1 (Aug 4):* Children on paved area, one holding camera, green grass/trees/soccer goal. Emotion: curious. Good scene/memory.
+   - *Clip 2 (Aug 5):* Boy with hula hoops, woman covered in paint, pink headscarf, heart pin. Brick wall background. Emotion: joyful. Good scene/memory.
+   - *Clip 3 (Aug 6):* Two women talking under covered area. One in olive tank/denim shorts/green scarf, other in red hijab/patterned tunic/green fanny pack. Emotion: joyful. Good scene/memory.
+   - *Clip 4 (Aug 6):* Three people under weeping willow. Woman in red hijab/sunglasses/water gun, man in blue shirt/bucket hat/stick, woman in tank top/denim shorts/large sunglasses/colorful scarf. Emotion: joyful. Good scene/memory.
+   - *Clip 5 (Aug 6):* Two women sitting against brick wall. Left: red hijab/sunglasses on head/black cape/red trim/stitched scar on cheek. Right: large sunglasses/green tank/blue-green striped scarf/clothespins. Costumed/themed. Emotion: casual. Good scene/memory.
+   - *Clip 6 (Aug 7):* Young man profile, green shirt/blue
