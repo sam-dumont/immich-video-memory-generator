@@ -120,14 +120,14 @@ type ShowcaseItem = {
 
 const showcaseItems: ShowcaseItem[] = [
   {
-    title: '10 memory types',
-    description: 'Year in Review, Season, Person Spotlight, Multi-Person, Monthly Highlights, On This Day, Holiday, Then and Now, Trip, Album. Pick a preset and it handles the rest, or take the eleventh card, Custom, and set the date range yourself.',
+    title: '11 memory types',
+    description: 'Year in Review, Season, Person Spotlight, Multi-Person, Monthly Highlights, On This Day, Holiday, Then and Now, Trip, Album, and Surprise Me — a day your library says something happened on. Pick a preset and it handles the rest, or take the Custom card and set the date range yourself.',
     image: '/img/screenshots/step1-preset-cards.png',
     alt: 'Memory type preset selection cards',
   },
   {
-    title: 'AI-scored clip selection',
-    description: 'Scene detection, face recognition, motion analysis, and optional LLM scoring pick the moments worth keeping. Duplicates are filtered automatically.',
+    title: 'A curator, not a filter',
+    description: 'A vision model looks at your material and describes what is happening in it. Selection, duplicate judgment, and a final review of the whole cut all work from those descriptions — with real drop reasons, favourites treated as law, and strictly chronological order. The pipeline is the product.',
     image: '/img/screenshots/step2-refine-moments.png',
     alt: 'Clip review grid with scored video segments',
   },

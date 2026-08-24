@@ -5,7 +5,7 @@ title: Clip Selection & Scoring
 
 # Clip Selection & Scoring
 
-The whole point of a memory video is picking the *good* parts. Nobody wants to watch 30 seconds of your pocket recording a sidewalk. The pipeline scores every segment across multiple factors, then picks the winners.
+The whole point of a memory video is picking the *good* parts. Nobody wants to watch 30 seconds of your pocket recording a sidewalk. This page documents the arithmetic — budgets, weights, caps. The judgment those numbers serve — what the model looks at, how the cut is reviewed, and the rules it obeys — is in [The Curator](the-curator).
 
 ## The Density Budget
 

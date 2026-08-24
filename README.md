@@ -10,7 +10,12 @@
 
 **Cuts your [Immich](https://immich.app/) library into edited memory videos: title screens, music, and only the good five seconds of each clip.**
 
-It connects to your self-hosted Immich server, scores every video and photo, and assembles the keepers into a real edit: a year in review, a trip with its map, one person across the years.
+It connects to your self-hosted Immich server and runs a real editor over your library: a vision
+model looks at the material and describes what is happening, selection and review judge those
+descriptions, and the keepers become a real edit — a year in review, a trip with its map, one
+person across the years. Always chronological, favourites treated as law, and when it can't name
+a day honestly it refuses rather than faking it. How it decides is documented in
+[The Curator](https://sam-dumont.github.io/immich-video-memory-generator/docs/create/pipeline/the-curator).
 
 > **Full documentation**: [sam-dumont.github.io/immich-video-memory-generator](https://sam-dumont.github.io/immich-video-memory-generator/)
 
