@@ -88,7 +88,7 @@ Everything else (`immich`, `defaults`, `output`, `audio`, `title_screens`, `cach
 `trips`, `photos`, `scheduler`) stays at the top level.
 
 Unknown keys inside a section are silently ignored — a typo does not fail the load, it just does
-nothing. Unknown top-level keys and invalid values (`codec: av1`, `llm.provider: openai`) do fail
+nothing. Unknown top-level keys and invalid values (`codec: av1`, `llm.provider: gemini`) do fail
 with a validation error at startup.
 
 ## Footage the camera roll did not shoot

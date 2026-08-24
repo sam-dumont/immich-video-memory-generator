@@ -67,7 +67,7 @@ a video, create an album, or upload anything. A successful result includes the r
 
 ## Config compatibility
 
-There is no automatic config migration. If a release renames or removes a config field, you'll see a validation error on startup. The fix is always documented in the release notes: update your `config.yaml` to use the new field name.
+There is no automatic config migration, and a removed field will not tell you it is gone: unknown keys **inside** a known section are silently ignored, so a renamed field simply stops doing anything. (Unknown *top-level* keys and invalid values do fail at startup.) Renames are documented in the release notes — check them when a setting seems to have stopped taking effect.
 
 In practice, most config fields have been stable since v0.1. Breaking config changes are rare and always called out in the release notes.
 
