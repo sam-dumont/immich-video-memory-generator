@@ -259,7 +259,8 @@ src/immich_memories/
 │   ├── taichi_particles.py     # ParticleField: bokeh drift / fireworks physics
 │   ├── taichi_text.py          # TitleTextRenderer: SDF + PIL text compositing
 │   ├── renderer_ffmpeg.py      # FFmpeg-based renderer
-│   ├── taichi_kernels.py       # Taichi GPU kernels
+│   ├── taichi_kernels.py       # Taichi GPU kernels + lazy compilation (init_taichi)
+│   ├── taichi_backend_probe.py # Which Taichi arch can dispatch here (isolated child probe)
 │   ├── taichi_video.py         # Taichi video creation
 │   ├── ffmpeg_pipe.py          # Feed raw frames to FFmpeg without deadlocking on an unread stderr
 │   ├── safe_zones.py           # Keep vertical titles clear of the Reels/Shorts/TikTok button rail
