@@ -2,9 +2,9 @@
 
 ## Built With AI, On Purpose
 
-This entire codebase was written with AI (Claude by Anthropic). Not by accident, not as a shortcut: this is a deliberate experiment in how far you can push AI-assisted development while maintaining a clean, production-quality codebase.
+This entire codebase was written with AI (Claude by Anthropic). That's the experiment: how far AI-assisted development goes when every change has to survive a full verification stack before it lands.
 
-The question I'm trying to answer: can you build something genuinely complex with AI and have it NOT be a mess? So far the answer is yes, but it takes real engineering discipline on the human side: architecture decisions, code review, quality gates, and knowing when the AI is confidently wrong.
+The human half is architecture decisions, code review, and spotting when the AI is confidently wrong. The gates below catch the rest.
 
 ### The quality bar
 
@@ -28,7 +28,7 @@ The AI writes code. I make sure it's good. Every line goes through:
 - 20 gates on every PR: 15 static checks in the quality job, 5 security scans in the security job. They are tiered, so the cheap ones fail first and the tests, Docker builds and launch check only run after
 - Pre-commit hooks running all of the above locally
 
-If a human wrote this code, nobody would bat an eye at the quality. The AI part is the interesting experiment, not a caveat.
+That list is the claim, and you can check it yourself: the gates live in the `Makefile`, the pipeline in `.github/workflows/ci.yml`. The build stays red until they pass.
 
 ### Standard open-source stuff
 

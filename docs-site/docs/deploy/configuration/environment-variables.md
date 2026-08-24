@@ -35,7 +35,7 @@ export IMMICH_MEMORIES_IMMICH__API_VERSION="auto"
 
 Immich Memories supports Immich v2 and v3. Keep `API_VERSION` on `auto` for default runtime
 detection; the app chooses the contract, not the user on each run. `v2` and `v3` are manual
-troubleshooting overrides—escape hatches for unusual proxies or deployments—and force the selected
+troubleshooting overrides: escape hatches for unusual proxies or deployments—and force the selected
 contract.
 Run the read-only `immich-memories config test` command to verify the connection and see the
 resolved API version.

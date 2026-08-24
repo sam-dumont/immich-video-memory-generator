@@ -40,7 +40,11 @@ docker compose up -d
 uvx immich-memories ui
 ```
 
-Open [http://localhost:8080](http://localhost:8080) in your browser.
+Open [http://localhost:8080](http://localhost:8080) in your browser. Both routes keep the UI on
+localhost: the native install binds loopback, and the compose file publishes the port there. If
+the app runs on a different machine than your browser, see the
+[Docker install page](../deploy/installation/docker.md#quick-start) — it pairs publishing the
+port with turning on authentication.
 
 ## Step 2: Connect to Immich
 
