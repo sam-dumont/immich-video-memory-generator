@@ -88,7 +88,7 @@ tags: [GitHub releases](https://github.com/sam-dumont/immich-video-memory-genera
 then pull and recreate:
 
 ```yaml
-image: ghcr.io/sam-dumont/immich-video-memory-generator:0.40.1   # image tags have no `v` prefix
+image: ghcr.io/sam-dumont/immich-video-memory-generator:0.59.2   # image tags have no `v` prefix
 ```
 
 ```bash
@@ -98,9 +98,9 @@ docker compose up -d
 
 **uv/pip:**
 ```bash
-uv tool install immich-memories==0.40.1
+uv tool install immich-memories==0.59.2
 # or
-pip install immich-memories==0.40.1
+pip install immich-memories==0.59.2
 ```
 
 Your analysis cache and config are preserved across version changes. The only thing that might need attention is config field names if the version you're rolling back to used different names.
