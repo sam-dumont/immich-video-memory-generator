@@ -274,6 +274,23 @@ class TestDateWindowParity:
         spec = SPECS[memory_type]
         assert cli_windows(memory_type, spec) == ui_windows(memory_type, spec)
 
+    def test_a_holiday_with_no_year_given_skips_the_one_that_has_not_happened(self) -> None:
+        """Both surfaces default the year, so both must apply the same guard.
+
+        Asking for Christmas in August with no year spends one of the requested
+        years on a window no photo can fall in. The CLI refused to; the preset
+        the wizard calls had no way to know the year had been defaulted rather
+        than chosen, so it did not. SPECS pins an explicit year for every type,
+        which is the case where the two agreed all along.
+
+        Vacuous between Christmas and New Year, when there is no unhappened
+        Christmas left to skip. build_holiday's own guard is pinned against a
+        fixed ``today`` in tests/test_holiday_memory.py.
+        """
+        spec = MemorySpec(holiday="christmas", years_back=5)
+
+        assert cli_windows(MemoryType.HOLIDAY, spec) == ui_windows(MemoryType.HOLIDAY, spec)
+
 
 class TestTargetDurationParity:
     """Same spec, same default length -- or the split #630 wrote down."""

@@ -223,6 +223,17 @@ def _resolve_memory_type_dates(
     return calendar_year(year)
 
 
+def _holiday_ranges(holiday: str, year: int | None, years_back: int | None) -> list[DateRange]:
+    """One window per year around a holiday, as the registered preset builds them."""
+    from immich_memories.memory_types.factory import create_preset
+    from immich_memories.memory_types.registry import MemoryType
+
+    preset = create_preset(
+        MemoryType.HOLIDAY, holiday=holiday, year=year, years_back=years_back or 5
+    )
+    return preset.date_ranges
+
+
 def _discovered_scope(memory_type: str, preset_params: dict) -> DateRange | None:
     """The window a memory type discovers rather than reads off the date flags.
 
@@ -348,7 +359,6 @@ def _multi_year_ranges(
     cognitive complexity past the gate.
     """
     from immich_memories.memory_types.date_builders import (
-        build_holiday,
         build_on_this_day,
         build_then_and_now,
     )
@@ -359,15 +369,10 @@ def _multi_year_ranges(
     if memory_type == "holiday":
         if not holiday:
             raise click.UsageError("--holiday is required with --memory-type holiday")
-        # WHY today= only when the year was defaulted: asking for Christmas in
-        # August would otherwise spend one of the requested years on a window
-        # that has not happened. An explicit --year is a choice.
-        return build_holiday(
-            holiday,
-            year or date.today().year,
-            years_back=years_back or 5,
-            today=None if year else date.today(),
-        )
+        # Through the preset, not build_holiday: the rule that a defaulted year
+        # must skip a holiday that has not happened yet belongs to whoever
+        # defaults the year, and the wizard defaults it there too.
+        return _holiday_ranges(holiday, year, years_back)
 
     if memory_type == "then_and_now":
         # WHY the `or 10`: --years-back defaults to None here, and 0 is read as
