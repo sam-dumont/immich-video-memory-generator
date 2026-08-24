@@ -12,8 +12,9 @@ By default, the web UI has no authentication — and because of that, it binds t
 authentication, name the address yourself (`--host`, `IMMICH_MEMORIES_SERVER__HOST`, or a
 `server.host` in the config file that is not the `0.0.0.0` wildcard), or set
 `server.allow_unauthenticated_lan: true` — a name that spells out what it allows.
-(The Docker image passes `--host 0.0.0.0` explicitly; publishing its port is the
-compose file's deliberate decision, so enable auth there before exposing it.)
+(The Docker image passes `--host 0.0.0.0` explicitly — inside a container that is the only
+useful bind — so which port the compose file publishes is the real boundary. The shipped
+`docker-compose.yml` publishes `127.0.0.1:8080:8080`; enable auth before you widen it.)
 
 One line in a config file does not count: a bare `server.host: 0.0.0.0`. Older versions
 wrote it into every config they saved, chosen or not, so it says nothing about intent and

@@ -11,8 +11,8 @@ The pipeline is designed around GPU acceleration and ML-powered features for the
 
 | Feature | With GPU | Without GPU | Impact |
 |---------|----------|-------------|--------|
-| Video encoding | NVENC / VideoToolbox / VAAPI / QSV | libx264 / libx265 (software) | 3-10x slower encoding |
-| Title screens | Animated GPU-rendered (Taichi: bokeh particles, gradient animation, SDF text) | Static PIL-rendered (gradient background, text overlay) | Simpler visuals, same text |
+| Title screens | Animated GPU-rendered (Taichi: bokeh particles, gradient animation, SDF text) | Static PIL-rendered (gradient background, text overlay) | Simpler visuals, same text — and the dominant cost of a run (see below) |
+| Video encoding | NVENC / VideoToolbox / VAAPI / QSV | libx264 / libx265 (software) | 3-10x slower encoding, the smaller half |
 | Face detection (macOS) | Apple Vision (Neural Engine) | OpenCV Haar cascades (CPU) | Slightly less accurate |
 | SDF text rendering | Taichi GPU kernels + FreeType atlas | PIL text drawing | No SDF glow/shadow effects |
 | Video scaling | GPU-accelerated (scale_cuda, scale_vaapi) | FFmpeg swscale (CPU) | Slower for resolution changes |
