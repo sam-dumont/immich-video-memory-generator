@@ -175,12 +175,12 @@ class TestReadingAMoment:
         ) as asked:
             reading = read_moment(assets, self._frames(20), LLMConfig(model="m"), keep_cap=None)
 
-        # 20 photographs is two sheets, so two calls — not twenty.
-        assert asked.await_count == 2
+        # A moment is ONE sheet, so one call — not two, and not twenty. Split
+        # across sheets, each answers about its own share of an event and the
+        # first answer wins by accident.
+        assert asked.await_count == 1
         assert reading.about == "a walk"
-        # Tiles are 1-based, and each sheet answers only for its own numbers:
-        # both sheets said [2, 18], so sheet one contributes tile 2 and sheet
-        # two contributes tile 18 — neither reaches into the other.
+        # Tiles are 1-based: tile 2 is the second photograph.
         assert [a.id for a in reading.keep] == ["a1", "a17"]
 
     def test_a_moment_no_sheet_could_read_keeps_nothing(self) -> None:
@@ -201,3 +201,135 @@ class TestReadingAMoment:
 
         assert reading.about == ""
         assert reading.keep == ()
+
+
+class TestASheetIsLaidOutWide:
+    """One image for a whole moment, and wide rather than tall.
+
+    Measured on one 37-photograph episode: split into three sheets of sixteen,
+    the first sheet's answer won by accident and said "cyclists and cars at a
+    race track" while later sheets named the circuit. As ONE sheet at
+    1920x2240 it read no better and its shortlist collapsed — every one of the
+    37 came back as worth keeping. As one sheet at 2080x1300, using SMALLER
+    tiles, it named the circuit, the jerseys and the car, and kept 17.
+
+    Shape beats tile size: a tall image is downscaled harder before the model
+    ever sees it.
+    """
+
+    def test_a_moment_is_one_sheet_however_many_photographs(self) -> None:
+        from immich_memories.analysis.moment_reading import sheets_of
+
+        assert len(sheets_of(list(range(37)))) == 1
+
+    def test_a_sheet_is_wider_than_it_is_tall(self) -> None:
+        from immich_memories.analysis.moment_reading import sheet_layout
+
+        for count in (4, 16, 37, 80, 120):
+            columns, tile = sheet_layout(count)
+            rows = -(-count // columns)
+            assert columns * tile >= rows * tile, f"{count} tiles came out tall"
+
+    def test_a_sheet_stays_inside_what_the_model_can_read(self) -> None:
+        """Past this width the encoder downscales and tiles lose their detail."""
+        from immich_memories.analysis.moment_reading import MAX_SHEET_PX, sheet_layout
+
+        for count in (4, 37, 120):
+            columns, tile = sheet_layout(count)
+            rows = -(-count // columns)
+            assert columns * tile <= MAX_SHEET_PX * 1.05
+            assert rows * tile <= MAX_SHEET_PX * 1.25
+
+    def test_a_huge_moment_is_bounded_rather_than_shrunk_to_nothing(self) -> None:
+        """A thousand photographs at one sheet each would be postage stamps."""
+        from immich_memories.analysis.moment_reading import MAX_SHEET_TILES, sheets_of
+
+        sheets = sheets_of(list(range(1000)))
+        assert all(len(s) <= MAX_SHEET_TILES for s in sheets)
+        assert sum(len(s) for s in sheets) == 1000
+
+    def test_a_split_moment_keeps_each_sheet_to_its_own_numbers(self) -> None:
+        """Only a moment past the tile cap splits — and then numbers must not leak.
+
+        An earlier version shared the number-to-photograph map across sheets, so
+        a model answering with a number it had not been shown was handed a
+        different sheet's photograph.
+        """
+        from datetime import UTC, datetime, timedelta
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock, patch
+
+        from PIL import Image
+
+        from immich_memories.analysis.moment_reading import MAX_SHEET_TILES, read_moment
+        from immich_memories.config_models_llm import LLMConfig
+
+        count = MAX_SHEET_TILES + 10
+        assets = [
+            SimpleNamespace(
+                id=f"a{i}",
+                people=[],
+                file_created_at=datetime(2020, 1, 1, tzinfo=UTC) + timedelta(minutes=i),
+            )
+            for i in range(count)
+        ]
+        frames = {f"a{i}": Image.new("RGB", (40, 30), (i % 255, 20, 20)) for i in range(count)}
+        answer = f'{{"about": "a walk", "subjects": [], "best": [2, {count - 1}]}}'
+
+        # WHY: the model is the external boundary; both sheets get one answer.
+        with patch(
+            "immich_memories.analysis.llm_query.query_llm", new=AsyncMock(return_value=answer)
+        ) as asked:
+            reading = read_moment(assets, frames, LLMConfig(model="m"), keep_cap=None)
+
+        assert asked.await_count == 2
+        # Sheet one owns tile 2; sheet two owns the high number. Neither is
+        # handed the other's photograph for a number it never showed.
+        assert [a.id for a in reading.keep] == ["a1", f"a{count - 2}"]
+
+
+class TestWhereItWas:
+    """The place comes from coordinates, never from what the model reads.
+
+    The same episode came back as two different named circuits on two runs,
+    900km apart, and only one of them was where the photographs were taken.
+    Reading a name off a sign is worth having; trusting it is not. So the
+    place is supplied from GPS and the model is told not to name one.
+    """
+
+    def _asset(self, city: str | None):
+        from types import SimpleNamespace
+
+        exif = SimpleNamespace(city=city) if city is not None else None
+        return SimpleNamespace(id="a", exif_info=exif)
+
+    def test_a_place_agreed_by_the_coordinates_is_supplied(self) -> None:
+        from immich_memories.analysis.moment_reading import place_of
+
+        assert place_of([self._asset("Somewhere"), self._asset("Somewhere")]) == "Somewhere"
+
+    def test_a_single_stray_coordinate_names_no_place(self) -> None:
+        """One asset's city among many is a stray, not where the moment was."""
+        from immich_memories.analysis.moment_reading import place_of
+
+        assets = [self._asset("Here"), self._asset("Here"), self._asset("Elsewhere")]
+        assert place_of(assets) == "Here"
+
+    def test_no_coordinates_names_no_place(self) -> None:
+        from immich_memories.analysis.moment_reading import place_of
+
+        assert place_of([self._asset(None), self._asset(None)]) is None
+
+    def test_the_prompt_tells_the_model_where_it_was_and_not_to_guess(self) -> None:
+        from immich_memories.analysis.moment_reading import SHEET_PROMPT, prompt_for
+
+        asked = prompt_for([self._asset("Somewhere"), self._asset("Somewhere")])
+        assert "Somewhere" in asked
+        assert SHEET_PROMPT in asked
+
+    def test_without_coordinates_the_prompt_still_refuses_a_guess(self) -> None:
+        """Unknown is not licence to invent: most libraries are part-tagged."""
+        from immich_memories.analysis.moment_reading import prompt_for
+
+        asked = prompt_for([self._asset(None)])
+        assert "do not name" in asked.lower() or "not name the place" in asked.lower()

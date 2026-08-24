@@ -1,4 +1,12 @@
-"""Group assets into moments by time AND place.
+"""Group assets into moments by time AND place, foreign media already gone.
+
+`moments_to_read` is the only way in. Grouping itself is private because a
+reader that reaches the raw function skips the source filter, and received
+media — forwarded messages, screenshots, memes — is often the most striking
+thing in an episode. A period read without the filter reported a wedding and a
+chihuahua-versus-muffin meme as its remarkable days. Anything genuinely needing
+unfiltered grouping imports the private name and owns that decision.
+
 
 A day is not a timeline. Measured on a real day: a racing circuit at 16:37,
 a house 120km away at 16:49, the circuit again at 18:05. Not one person moving
@@ -76,7 +84,7 @@ def _belongs_with(asset: Any, moment: list[Any], window_minutes: float, radius: 
     return True
 
 
-def moments_by_time_and_place(
+def _group_by_time_and_place(
     assets: list[Any],
     window_minutes: float = MOMENT_WINDOW_MINUTES,
     radius_metres: float = MOMENT_RADIUS_METRES,
@@ -102,3 +110,29 @@ def moments_by_time_and_place(
         else:
             moments.append([asset])
     return moments
+
+
+def moments_to_read(
+    assets: list[Any],
+    config: Any,
+    window_minutes: float = EPISODE_WINDOW_MINUTES,
+    radius_metres: float = MOMENT_RADIUS_METRES,
+) -> list[list[Any]]:
+    """Assets grouped for reading, with foreign media dropped before tiling.
+
+    Received media is often the most striking thing in an episode. A period
+    read from unfiltered sheets reported a wedding, a fresh tattoo and a grid
+    comparing chihuahuas to muffins as its remarkable days; they were forwarded
+    messages, screenshots and a meme. Nothing about them was photographed here.
+
+    source_filter already says where this belongs — gone "before it is sampled
+    into a prompt" — so it sits at the one door into grouping-for-reading, and
+    every reader downstream inherits it rather than remembering to ask.
+    """
+    from immich_memories.analysis.source_filter import from_the_camera_roll
+
+    return _group_by_time_and_place(
+        from_the_camera_roll(assets, config),
+        window_minutes=window_minutes,
+        radius_metres=radius_metres,
+    )

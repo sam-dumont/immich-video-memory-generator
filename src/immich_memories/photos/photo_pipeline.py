@@ -889,20 +889,14 @@ def _read_the_moments(
     if thumbnail_cache is thumbnail_fn is None:
         return None
 
-    from immich_memories.analysis.moment_grouping import (
-        EPISODE_WINDOW_MINUTES,
-        moments_by_time_and_place,
-    )
+    from immich_memories.analysis.moment_grouping import moments_to_read
     from immich_memories.analysis.moment_reading import read_moment
 
     by_id = {asset.id: (asset, score) for asset, score in metadata_scored}
     kept: list[tuple] = []
     # Sheets are asked about EPISODES, not ten-minute moments: a moment is
     # often one photograph, and a sheet of one photograph says nothing.
-    for episode in moments_by_time_and_place(
-        [asset for asset, _score in metadata_scored],
-        window_minutes=EPISODE_WINDOW_MINUTES,
-    ):
+    for episode in moments_to_read([asset for asset, _score in metadata_scored], app_config):
         frames = _frames_for_reading(
             [by_id[a.id] for a in episode if a.id in by_id], thumbnail_cache, thumbnail_fn
         )
