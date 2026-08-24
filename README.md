@@ -230,7 +230,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 ## Built with AI
 
 > This entire codebase was written with AI (Claude) as an experiment in building complex
-> software cleanly with AI assistance. 5,000+ tests (4,400+ unit, 600+ integration/E2E), ~20 CI quality gates, 250+ source modules.
+> software cleanly with AI assistance. 5,000+ tests (4,400+ unit, 600+ integration/E2E), 20 CI quality gates, 250+ source modules.
 > See [DISCLAIMER.md](DISCLAIMER.md) for the full story.
 
 ## License

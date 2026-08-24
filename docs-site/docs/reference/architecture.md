@@ -40,6 +40,7 @@ CI runs in tiers, cheap to expensive. If lint fails in 10 seconds, there's no po
 - Dependency hygiene (deptry)
 - Architecture layer enforcement (import-linter)
 - Code duplication detection (jscpd)
+- CLI and config reference drift (the generated pages must match the Click tree and the pydantic schema)
 - AI code critique
 
 **Tier 2: Security** (parallel with Tier 1):
@@ -59,7 +60,7 @@ CI runs in tiers, cheap to expensive. If lint fails in 10 seconds, there's no po
 - Docs site build
 - Hermetic launch check on pull requests (`make launch-check`: build + docs + Playwright e2e)
 
-Locally, `make ci` runs the same 15 gates: lint, format-check, typecheck, file-length, complexity, cognitive-complexity, dead-code, security-lint, semgrep, refurb, dep-check, arch-check, duplication, critique, test. CI adds commitlint, pip-audit, gitleaks, hadolint, the build/docker/docs jobs and the launch check on top. Every PR must pass all of them.
+A PR passes 20 gates: 15 static checks in the quality job and 5 security scans in the security job. Locally, `make ci` runs 16 of them plus the unit tests: lint, format-check, typecheck, file-length, complexity, cognitive-complexity, dead-code, security-lint, semgrep, refurb, dep-check, arch-check, duplication, critique, docs-cli-check, docs-config-check, test. CI adds the four that need a remote or a diff (commitlint, pip-audit, gitleaks, hadolint), then the build/docker/docs jobs and the launch check. Every PR must pass all of them.
 
 ## Quality Gates Overview
 
