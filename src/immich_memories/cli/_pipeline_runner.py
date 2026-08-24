@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from immich_memories.cli._helpers import print_error, print_success
+from immich_memories.cli._helpers import print_error, print_info, print_success, print_warning
 from immich_memories.timeperiod import DateRange
 
 logger = logging.getLogger(__name__)
@@ -848,6 +848,38 @@ def _drop_photos_already_shown_as_motion(
     )
 
 
+def _window_label(date_range: DateRange) -> str:
+    """Name a window by its year, or by its dates when it is not a whole one."""
+    if date_range.start.year == date_range.end.year:
+        whole_year = (date_range.start.month, date_range.start.day) == (1, 1) and (
+            date_range.end.month,
+            date_range.end.day,
+        ) == (12, 31)
+        if whole_year:
+            return str(date_range.start.year)
+    return f"{date_range.start:%Y-%m-%d}..{date_range.end:%Y-%m-%d}"
+
+
+def _report_per_window(assets: list, date_ranges: list[DateRange]) -> None:
+    """Say what each window contributed, and shout when one contributed nothing.
+
+    A combined total hides the failure that matters on a multi-window memory: a
+    then-and-now whose older half is empty still renders, as a memory of the
+    recent half alone, and without this it looks like a clean run.
+    """
+    if len(date_ranges) < 2:
+        return
+
+    from immich_memories.memory_types.eras import count_by_era
+
+    counts = count_by_era([a.file_created_at for a in assets], date_ranges)
+    labels = [_window_label(r) for r in date_ranges]
+    print_info(" · ".join(f"{label}: {n}" for label, n in zip(labels, counts, strict=True)))
+    for label, n in zip(labels, counts, strict=True):
+        if n == 0:
+            print_warning(f"no videos found for {label} — that window contributes nothing")
+
+
 def fetch_videos_and_live_photos(
     *,
     client: SyncImmichClient,
@@ -883,6 +915,7 @@ def fetch_videos_and_live_photos(
 
     progress.update(task, completed=True)
     print_success(f"Found {len(assets)} videos")
+    _report_per_window(assets, date_ranges)
 
     live_photo_clips: list = []
     if use_live_photos:

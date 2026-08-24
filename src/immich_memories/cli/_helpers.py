@@ -51,6 +51,17 @@ def print_error(message: str) -> None:
         console.print(f"[red]Error:[/red] {message}")
 
 
+def print_warning(message: str) -> None:
+    """Print a warning — something the run survived but the reader must see."""
+    display = _active_display.get()
+    if display is not None:
+        display.print_message(f"[yellow]Warning:[/yellow] {message}")
+    elif _quiet_mode.get():
+        _logger.warning(message)
+    else:
+        console.print(f"[yellow]Warning:[/yellow] {message}")
+
+
 def print_success(message: str) -> None:
     """Print a success message."""
     display = _active_display.get()
