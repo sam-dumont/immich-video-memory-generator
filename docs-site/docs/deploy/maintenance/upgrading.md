@@ -35,8 +35,10 @@ Read the [GitHub release notes](https://github.com/sam-dumont/immich-video-memor
 
 ## Upgrading Immich from v2 to v3
 
-Immich Memories supports Immich v2 and v3. Keep the default automatic runtime policy during the
-server upgrade:
+Immich Memories supports Immich v2 and v3 — see
+[Immich API compatibility](../configuration/config-file.md#immich-api-compatibility) for what that
+covers and what is actually tested. Keep the default automatic runtime policy during the server
+upgrade:
 
 ```yaml
 immich:

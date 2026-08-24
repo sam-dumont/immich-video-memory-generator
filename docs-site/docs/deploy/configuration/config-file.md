@@ -159,8 +159,22 @@ immich-memories config test
 
 This check is read-only.
 
-`auto` is a runtime detection policy, not a switch you set before each generation. Use `v2` or
-`v3` only to diagnose a deployment that prevents detection, then return to `auto`.
+### What "supports v2 and v3" is claiming
+
+It is a claim about the code, not a field-tested matrix. Worth being explicit, because the two are
+easy to read as the same thing:
+
+| Server major | Under `auto` | How it is covered |
+|--------------|--------------|-------------------|
+| 2 | v2 contract | contract tests over version resolution and the v2/v3 wire differences |
+| 3 | v3 contract | the same contract tests |
+| anything else | the run stops with `UnsupportedImmichVersion` | — |
+
+The integration suite runs the real pipeline against one live Immich server, not a version matrix,
+so nothing here promises that every point release of both majors was exercised before a release.
+What it does promise is that an unknown major fails immediately and says so, rather than sending
+requests of the wrong shape and failing somewhere less obvious. If yours breaks, that is a bug
+worth an issue.
 
 ## Clip pacing
 

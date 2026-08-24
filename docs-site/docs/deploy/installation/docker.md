@@ -128,7 +128,7 @@ volumes:
 ```
 
 :::tip Immich port
-Inside Immich's own compose stack, `immich-server` listens on **2283** (every Immich v2/v3 release; this tool requires Immich v2 or newer). If you're connecting from a separate compose stack, use the URL you open Immich with in your browser instead (for example `http://nas.local:2283`).
+Inside Immich's own compose stack, `immich-server` listens on **2283** (every Immich v2/v3 release). This tool works with Immich v2 or v3 — not "or newer": an unrecognised major stops the run. See [Immich API compatibility](../configuration/config-file.md#immich-api-compatibility). If you're connecting from a separate compose stack, use the URL you open Immich with in your browser instead (for example `http://nas.local:2283`).
 :::
 
 ## Environment variables
