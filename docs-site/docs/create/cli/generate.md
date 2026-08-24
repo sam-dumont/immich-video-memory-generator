@@ -32,7 +32,7 @@ immich-memories generate [OPTIONS]
 | `--holiday` | — | text | — | Holiday name or `MM-DD` (with `--memory-type holiday`) |
 | `--from-album` | — | string | — | Generate from an Immich album (name or ID) instead of a date range. See [Album Memories](../memory-types/album-memories). Cannot be combined with any time-period or person flag |
 | `--person` | `-p` | string | — | Person name from Immich face recognition (repeatable: `--person "Alice" --person "Bob"`) |
-| `--birthday` | `-b` | flag/string | — | Use birthday-based year. Bare flag auto-detects from Immich; or pass `MM/DD` to override |
+| `--birthday` | `-b` | flag/string | — | Use birthday-based year. Bare flag auto-detects from Immich; or pass `MM-DD` to override |
 | `--season` | — | choice | — | `spring`, `summer`, `fall`, `autumn`, `winter` (use with `--memory-type season`) |
 | `--month` | — | int | — | Month 1-12 (with `--year`, generates that month; selects trip by month) |
 | `--hemisphere` | — | choice | `north` | `north` or `south` (for season date calculation) |
@@ -183,7 +183,7 @@ Auto-detects the birthday from Immich when `--birthday` is used as a flag:
 immich-memories generate --year 2024 --birthday --person "Emma" --duration 900
 ```
 
-Or specify manually: `--birthday 07/21`.
+Or specify manually: `--birthday 07-21`. Slashes work too and read day-first, like every other date flag — `--birthday 07/02` is 7 February. `MM-DD` is the form that cannot be misread.
 
 ### Person spotlight for a single month
 
@@ -293,7 +293,7 @@ immich-memories generate --year 2024 --include-photos --photo-duration 5.0
 | Period from start | `--start 2024-01-01 --period 6m` | 6 months from the start date |
 | Override preset | `--memory-type season --season summer --start 2024-07-01 --end 2024-07-31` | Custom dates with preset scoring |
 
-Date formats: `YYYY-MM-DD`, `DD/MM/YYYY`, or `MM/DD` (for `--birthday` manual override).
+Date formats: `YYYY-MM-DD` or `DD/MM/YYYY`. `--birthday` also takes the year-less `MM-DD` and `DD/MM` short forms.
 
 Period format: number + unit (`d` days, `w` weeks, `m` months, `y` years). Examples: `90d`, `2w`, `6m`, `1y`.
 

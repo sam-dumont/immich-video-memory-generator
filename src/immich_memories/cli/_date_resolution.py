@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from datetime import date, datetime
 
 import click
@@ -15,18 +16,40 @@ from immich_memories.timeperiod import (
     parse_date,
 )
 
+# A leap year, so a 29 February birthday survives being given a filler one.
+_BIRTHDAY_FILLER_YEAR = 2000
+
+# How a birthday read out of Immich is written back into the --birthday value.
+# Month first and dash-separated is the one short form _parse_birthday reads
+# with no ambiguity, so auto-detection cannot disagree with a typed birthday.
+BIRTHDAY_FLAG_FORMAT = "%m-%d"
+
 
 def _parse_birthday(value: str) -> date:
-    """Parse the birthday option's documented MM/DD forms before generic dates."""
-    for candidate, date_format in (
-        (value, "%m/%d/%Y"),
-        (f"{value}/2000", "%m/%d/%Y"),
-    ):
-        try:
-            return datetime.strptime(candidate, date_format).date()
-        except ValueError:
-            continue
-    return parse_date(value)
+    """Read --birthday in the same date dialect as every other date flag.
+
+    parse_date handles anything carrying a year. The short forms do not, so
+    they get their own attempt: dashes are month-day, matching --holiday's
+    MM-DD; slashes are day-first, matching parse_date's DD/MM/YYYY, and fall
+    back to month-first only when day-first cannot be a date.
+
+    This flag alone used to read slashes month-first, so 07/02 meant July for
+    a 7 February birthday and the memory covered the wrong half of two years.
+    """
+    with contextlib.suppress(ValueError):
+        return parse_date(value)
+
+    with contextlib.suppress(ValueError):
+        return datetime.strptime(f"{_BIRTHDAY_FILLER_YEAR}-{value}", "%Y-%m-%d").date()
+
+    for date_format in ("%d/%m/%Y", "%m/%d/%Y"):
+        with contextlib.suppress(ValueError):
+            return datetime.strptime(f"{value}/{_BIRTHDAY_FILLER_YEAR}", date_format).date()
+
+    raise ValueError(
+        f"Cannot parse birthday: '{value}'. Expected MM-DD (e.g. 03-15), "
+        "DD/MM, or a full date such as YYYY-MM-DD."
+    )
 
 
 def _resolve_manual_dates(

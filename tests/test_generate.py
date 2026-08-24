@@ -1076,3 +1076,68 @@ class TestDurationBudgetTolerance:
         """Past a point it is a planning bug, not jitter."""
         with pytest.raises(GenerationError, match="duration budget"):
             _validate_final_duration(self._params(tmp_path, 100.0), 130.0)
+
+
+class TestBirthdayFlagNamesTheWindowItRenders:
+    """The bare --birthday flag resolves the window after the file was named."""
+
+    def _person(self):
+        person = MagicMock()
+        person.id = "person-a"
+        person.name = "Person A"
+        person.birth_date = date(1990, 3, 15)
+        return person
+
+    def test_auto_detected_birthday_names_the_file_after_the_real_window(
+        self, tmp_path: Path
+    ) -> None:
+        from click.testing import CliRunner
+
+        from immich_memories.cli import main
+
+        config = Config(immich={"url": "https://immich.example.com", "api_key": "k"})
+        config.output.directory = str(tmp_path)
+
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        client.get_person_by_name.return_value = self._person()
+
+        captured: dict[str, Path] = {}
+
+        def _capture(**kwargs):
+            captured["output_path"] = kwargs["output_path"]
+            return kwargs["output_path"], False, None
+
+        # WHY: config on disk and the Immich HTTP client are external.
+        with (
+            patch("immich_memories.cli.get_config", return_value=config),
+            patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
+            # WHY: asset discovery needs a live Immich library.
+            patch(
+                "immich_memories.cli.generate.fetch_videos_and_live_photos",
+                return_value=([make_asset("a1")], []),
+            ),
+            # WHY: rendering a real video is minutes of FFmpeg; we want its arguments.
+            patch(
+                "immich_memories.cli.generate.run_pipeline_and_generate",
+                side_effect=_capture,
+            ),
+        ):
+            result = CliRunner().invoke(
+                main,
+                [
+                    "generate",
+                    "--memory-type",
+                    "person_spotlight",
+                    "--person",
+                    "Person A",
+                    "--year",
+                    "2025",
+                    "--birthday",
+                    "--no-music",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert captured["output_path"].name == "person_a_person_spotlight_20250315-20260314.mp4"

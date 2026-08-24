@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 import click
 
 from immich_memories.cli._date_resolution import (
+    BIRTHDAY_FLAG_FORMAT,
     default_duration_for_type,
     duration_from_date_range,
     infer_memory_type,
@@ -28,7 +29,7 @@ from immich_memories.cli._pipeline_runner import (
     run_pipeline_and_generate,
 )
 from immich_memories.cli._trip_generation import handle_trip_generation, resolve_music_arg
-from immich_memories.filename_builder import normalize_output_path
+from immich_memories.filename_builder import build_memory_output_path, normalize_output_path
 from immich_memories.processing.encoding_plan import resolve_output_selection
 from immich_memories.timeperiod import DateRange, parse_date
 
@@ -196,7 +197,7 @@ def register_generate_commands(main: click.Group) -> None:
         is_flag=False,
         flag_value="auto",
         default=None,
-        help="Use birthday-based year (auto-detects from Immich, or specify MM/DD)",
+        help="Use birthday-based year (auto-detects from Immich, or specify MM-DD, e.g. 03-15)",
     )
     @click.option(
         "--from-album",
@@ -643,21 +644,12 @@ def register_generate_commands(main: click.Group) -> None:
             # A placeholder directory anchor; the album handler names the file.
             output_path = config.output.output_path / f"album.{output_selection.container}"
         else:
-            output_dir = config.output.output_path
-            person_slug = (
-                "_".join(n.lower().replace(" ", "_") for n in person_names)
-                if person_names
-                else "all"
-            )
-            type_slug = memory_type or "memories"
-            if date_range.is_calendar_year:
-                date_slug = str(date_range.start.year)
-            else:
-                date_slug = (
-                    f"{date_range.start.strftime('%Y%m%d')}-{date_range.end.strftime('%Y%m%d')}"
-                )
-            output_path = output_dir / (
-                f"{person_slug}_{type_slug}_{date_slug}.{output_selection.container}"
+            output_path = build_memory_output_path(
+                output_dir=config.output.output_path,
+                person_names=person_names,
+                memory_type=memory_type,
+                date_range=date_range,
+                container=output_selection.container,
             )
 
         if not quiet:
@@ -853,7 +845,7 @@ def register_generate_commands(main: click.Group) -> None:
                     if birthday == "auto" and person_names:
                         found = client.get_person_by_name(person_names[0])
                         if found and found.birth_date:
-                            birthday = found.birth_date.strftime("%m/%d")
+                            birthday = found.birth_date.strftime(BIRTHDAY_FLAG_FORMAT)
                             print_success(f"Using birthday: {birthday}")
                         else:
                             print_error(f"No birthday found in Immich for {person_names[0]}")
@@ -882,6 +874,17 @@ def register_generate_commands(main: click.Group) -> None:
                             else:
                                 date_range = date_result
                                 date_ranges = [date_result]
+                            print_info(f"Memory window: {date_range.description}")
+                            # The file was named before the birthday was known,
+                            # off the stand-in calendar year used until now.
+                            if not output:
+                                output_path = build_memory_output_path(
+                                    output_dir=config.output.output_path,
+                                    person_names=person_names,
+                                    memory_type=memory_type,
+                                    date_range=date_range,
+                                    container=output_selection.container,
+                                )
 
                     # Fetch videos and optionally live photos
                     assets, live_photo_clips = fetch_videos_and_live_photos(

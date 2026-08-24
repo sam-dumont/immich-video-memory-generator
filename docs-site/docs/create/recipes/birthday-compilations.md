@@ -25,11 +25,13 @@ Or specify the date manually:
 immich-memories generate \
   --person "Emma" \
   --year 2024 \
-  --birthday 07/21 \
+  --birthday 07-21 \
   --duration 600
 ```
 
 The `--birthday` flag makes the year run from birthday to birthday (e.g., Jul 21, 2024 through Jul 20, 2025) instead of January to December.
+
+Give the date as `MM-DD` — that form has only one reading. A slashed `DD/MM` works too and is read day-first, the same way `--start` and `--end` read `DD/MM/YYYY`.
 
 ## UI
 
