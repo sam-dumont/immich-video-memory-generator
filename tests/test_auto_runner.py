@@ -33,6 +33,20 @@ from immich_memories.config_loader import Config
 from immich_memories.tracking.models import RunMetadata
 
 
+@pytest.fixture(autouse=True)
+def _no_machine_catalogue(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Point discovery at an absent catalogue instead of this machine's real one.
+
+    discover() reads the special-days catalogue from the user's home; on a
+    developer machine that file holds real discovered days, and these tests
+    would count candidates that CI never sees.
+    """
+    monkeypatch.setattr(
+        "immich_memories.automation.candidate_discovery.default_catalogue_path",
+        lambda: tmp_path / "no-catalogue.json",
+    )
+
+
 @pytest.fixture
 def config(tmp_path: Path) -> Config:
     """Create a Config with a temp database and Immich credentials."""
