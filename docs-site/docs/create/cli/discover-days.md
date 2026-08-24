@@ -64,8 +64,10 @@ what was in the pictures instead.
 The cost is roughly 40 seconds and about 3,000 completion tokens for each day
 it asks about. The scan asks about a handful of days per year.
 
-Run with `--verbose` to see the per-picture lines the judgement read — that is
-the record to check first when a day you expected comes back ordinary.
+The per-picture lines the judgement read would be the record to check first when a
+day you expected comes back ordinary. They are written to the log at `DEBUG`, and
+the CLI has no flag or environment variable that raises the log level that far, so
+today there is no way to see them without editing `configure_logging()`.
 
 ## Running it
 
