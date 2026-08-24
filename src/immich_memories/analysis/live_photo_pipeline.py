@@ -192,38 +192,33 @@ def build_live_photo_clips(
     Returns:
         Tuple of (live_photo_clips, live_video_ids).
     """
-    from immich_memories.processing.live_photo_merger import cluster_live_photos
+    from immich_memories.analysis.motion_rendering import motion_renderings
 
-    merge_window = config.analysis.live_photo_merge_window_seconds
     live_video_ids = {a.live_photo_video_id for a in live_assets if a.live_photo_video_id}
 
-    clusters = cluster_live_photos(
-        live_assets,
-        merge_window_seconds=merge_window,
-    )
-
+    # One definition of what a burst is, shared with whatever asks what a
+    # photograph could show as motion. Two places computing it means two places
+    # to disagree about it.
+    renderings = motion_renderings(live_assets, config)
+    by_still = {a.id: a for a in live_assets}
+    clusters = []
     clips: list[VideoClipInfo] = []
-    for cluster in clusters:
-        first_asset = cluster.assets[0]
-        video_id = first_asset.live_photo_video_id
-        if not video_id:
+    for rendering in dict.fromkeys(renderings.values()):
+        clusters.append(rendering)
+        members = [by_still[sid] for sid in rendering.still_ids if sid in by_still]
+        if not members or not members[0].live_photo_video_id:
             continue
 
-        burst_ids = cluster.video_asset_ids if cluster.count > 1 else None
-        burst_trims = cluster.trim_points() if cluster.count > 1 else None
-        burst_shutters = (
-            [a.file_created_at.timestamp() for a in cluster.assets] if cluster.count > 1 else None
-        )
-
+        merged = len(rendering.still_ids) > 1
         clip = VideoClipInfo(
-            asset=first_asset,
-            duration_seconds=cluster.estimated_duration,
-            live_burst_video_ids=burst_ids,
-            live_burst_trim_points=burst_trims,
-            live_burst_shutter_timestamps=burst_shutters,
-            live_burst_still_ids=[a.id for a in cluster.assets],
+            asset=members[0],
+            duration_seconds=rendering.duration_seconds,
+            live_burst_video_ids=list(rendering.video_ids) if merged else None,
+            live_burst_trim_points=list(rendering.trim_points) if merged else None,
+            live_burst_shutter_timestamps=(list(rendering.shutter_timestamps) if merged else None),
+            live_burst_still_ids=list(rendering.still_ids),
         )
-        if cluster.is_favorite:
+        if any(getattr(a, "is_favorite", False) for a in members):
             clip.asset.is_favorite = True
 
         clips.append(clip)
