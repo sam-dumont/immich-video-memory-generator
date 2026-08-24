@@ -62,6 +62,16 @@ class LLMConfig(BaseModel):
             "dialect (vLLM/mlx); OpenAI wants {'reasoning_effort': 'medium'}."
         ),
     )
+    no_thinking_params: dict[str, Any] = Field(
+        default_factory=lambda: {"chat_template_kwargs": {"enable_thinking": False}},
+        description=(
+            "Request fields merged into a NON-thinking call on a server whose "
+            "chat template reasons by default. Omitting the enable switch does "
+            "not disable it: bulk analysis then reasons at its small token "
+            "budget, truncates mid-thought and returns nothing parseable. "
+            "Servers that reason only when asked want {}."
+        ),
+    )
     max_tokens_param: str = Field(
         default="max_tokens",
         description=(

@@ -284,6 +284,9 @@ llm:
   # thinking_params:               # what the switch looks like on your server
   #   chat_template_kwargs:        # (default: the Qwen dialect, vLLM/mlx)
   #     enable_thinking: true
+  # no_thinking_params:            # how to say "don't reason" to that server
+  #   chat_template_kwargs:        # (default: the Qwen dialect, vLLM/mlx)
+  #     enable_thinking: false
 ```
 
 **The goal of this product is a fully local process** — your photos analyzed
@@ -318,6 +321,18 @@ matches your server's dialect: the default is Qwen's
 the OpenAI API use `{"reasoning_effort": "medium"}`. Leave `thinking` off
 unless you know the server supports your chosen switch — some
 OpenAI-compatible servers reject unknown request fields.
+
+`no_thinking_params` is the other half, and it matters on servers whose chat
+template reasons by default: not asking for reasoning is not the same as
+asking for none, so bulk analysis reasons anyway, at the small token budget
+those calls ask for, and comes back truncated mid-thought with nothing
+parseable in it. This field is sent on every non-thinking call — it hangs off
+the switch, not off `thinking`, because a server that reasons by default does
+so whether or not you turned reasoning on. The default is Qwen's
+`chat_template_kwargs: {"enable_thinking": false}`; set it to `{}` for servers
+that reason only when asked (the `openai` and `zai` presets already do). A
+server that rejects the field is detected from its 400 and asked without it
+from then on.
 
 Parameter dialects are otherwise handled automatically: OpenAI's reasoning
 models (gpt-5 family) reject `max_tokens` and non-default temperatures, and
