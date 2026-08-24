@@ -338,6 +338,8 @@ src/immich_memories/
 │
 ├── tracking/                   # Run history & telemetry
 │   ├── run_database.py         # SQLite run storage
+│   ├── run_database_rows.py    # SQLite row <-> model conversion
+│   ├── run_lifecycle_errors.py # Refused lifecycle transitions and their diagnosis
 │   ├── run_tracker.py          # Pipeline run tracking
 │   ├── run_id.py               # Run ID generation
 │   ├── models.py               # Run/phase data models
