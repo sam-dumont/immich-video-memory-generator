@@ -70,6 +70,18 @@ def entries_from(path: Path) -> list[DiscoveredDay]:
     ]
 
 
+def hours_awake(entry: DiscoveredDay) -> float:
+    """How long the day the catalogue found actually lasted.
+
+    `active_hours` counts distinct hours touched, so it saturates at 24 -- and
+    a run keyed by the date it began can span 45 hours. Where the extent was
+    recorded it is the only reading that survives midnight.
+    """
+    if entry.run_start is not None and entry.run_end is not None:
+        return (entry.run_end - entry.run_start).total_seconds() / 3600.0
+    return float(entry.active_hours)
+
+
 def _moment_in(raw: object) -> datetime | None:
     """One end of the run a catalogue entry recorded, if it recorded any."""
     if not isinstance(raw, str):

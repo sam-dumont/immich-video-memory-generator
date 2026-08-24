@@ -14,7 +14,7 @@ from typing import Any, TypeVar
 
 import click
 
-from immich_memories.cli._flags import output_path
+from immich_memories.cli._flags import calendar_day, output_path
 from immich_memories.cli.generate_resolution import SHORT_FORM_SECONDS
 
 FC = TypeVar("FC", bound=Callable[..., Any])
@@ -70,6 +70,7 @@ def scope_options(command: FC) -> FC:
                     "trip",
                     "holiday",
                     "then_and_now",
+                    "special_day",
                 ]
             ),
             default=None,
@@ -329,6 +330,17 @@ def per_memory_type_options(command: FC) -> FC:
             type=str,
             default=None,
             help="Select trip closest to this date (YYYY-MM-DD, use with --memory-type trip)",
+        ),
+        click.option(
+            "--day",
+            type=click.DateTime(formats=["%Y-%m-%d"]),
+            callback=calendar_day,
+            default=None,
+            help=(
+                "The catalogued day to generate (YYYY-MM-DD, use with --memory-type "
+                "special_day). Its title comes from the catalogue, not from here: run "
+                "`immich-memories days-due` to see which days are in it"
+            ),
         ),
     ]
     return _apply(command, options)

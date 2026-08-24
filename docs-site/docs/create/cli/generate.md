@@ -28,7 +28,7 @@ immich-memories generate [OPTIONS]
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--memory-type` | — | choice | — | `year_in_review`, `season`, `person_spotlight`, `multi_person`, `monthly_highlights`, `on_this_day`, `trip`, `holiday`, `then_and_now` |
+| `--memory-type` | — | choice | — | `year_in_review`, `season`, `person_spotlight`, `multi_person`, `monthly_highlights`, `on_this_day`, `trip`, `holiday`, `then_and_now`, `special_day` |
 | `--holiday` | — | text | — | Holiday name or `MM-DD` (with `--memory-type holiday`) |
 | `--from-album` | — | string | — | Generate from an Immich album (name or ID) instead of a date range. See [Album Memories](../memory-types/album-memories). Cannot be combined with any time-period or person flag |
 | `--person` | `-p` | string | — | Person name from Immich face recognition (repeatable: `--person "Alice" --person "Bob"`) |
@@ -164,6 +164,7 @@ have not set explicitly; the flags below still win. Persistent form: `preset: fa
 | `--trip-index` | — | int | — | Select a specific trip by index (use with `--memory-type trip`) |
 | `--all-trips` | — | flag | — | Generate a video for every detected trip (use with `--memory-type trip`) |
 | `--near-date` | — | string | — | Select trip closest to this date (`YYYY-MM-DD`, use with `--memory-type trip`) |
+| `--day` | — | datetime | — | The catalogued day to generate (`YYYY-MM-DD`, use with `--memory-type special_day`) |
 
 ## Examples
 
@@ -265,6 +266,38 @@ contrast is the point and a two-day window a decade ago is usually empty.
 
 Without `--duration` this runs 45 seconds — two years side by side, not the ten
 that separate them.
+
+### A day the catalogue found
+
+[`discover-days`](./discover-days) walks the library and writes down the days
+something happened on. `--day` generates one of them:
+
+```bash
+immich-memories generate --memory-type special_day --day 2016-06-12
+```
+
+The flag carries a **date, not a title**. The title and subtitle come from the
+catalogue, which this command re-reads — because argv is logged by the automation
+runner and is readable in `ps` and in launchd's logs, and the catalogue's titles
+name real people and places. `immich-memories days-due` lists what it holds.
+
+Three things are refused rather than faked:
+
+- `--memory-type special_day` with no `--day`
+- a `--day` the catalogue has never heard of — the error names the file it read
+- a catalogued day with neither a title nor a description of what it was
+
+There is no generic "Memories from 12 June 2016" card. A day the model could not
+name is a day that should not be rendered.
+
+Scope is the window the catalogue recorded for the day, when it recorded one:
+`discover-days` only writes a window when trimming to it drops a meaningful slice
+of the day, so it means "the memory starts at the circuit, not at the cat on the
+balcony that morning". A day with no window covers the whole calendar day.
+
+Without `--duration` the length comes from how long the day stayed awake —
+roughly a minute plus six seconds an hour, held between 60 and 180 seconds.
+`--title` and `--subtitle` still override the catalogue's naming.
 
 ### Trip closest to a date
 

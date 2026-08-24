@@ -24,6 +24,77 @@ if TYPE_CHECKING:
     from immich_memories.config_loader import Config
 
 
+def resolve_special_day(day: date | None, memory_type: str | None) -> dict | None:
+    """What the catalogue records about one day, as preset parameters.
+
+    ``--day`` carries a date and the catalogue is re-read here rather than
+    having the title passed in, because the runner logs the whole argv and argv
+    is readable in `ps` and in launchd's logs. The catalogue's titles name real
+    people and places; a date is the most a scheduled run should say out loud.
+
+    Refuse over fake throughout: a day the catalogue never found, or one the
+    model could not name, is a day with nothing truthful to put on its title
+    card, so it errors rather than rendering "Memories from 12 June 2016".
+    """
+    from immich_memories.automation.catalogue import (
+        default_catalogue_path,
+        entries_from,
+        hours_awake,
+    )
+
+    if day is None:
+        # The missing half of the pair is reported where the scope is resolved,
+        # beside --season's and --holiday's identical rule.
+        return None
+    if memory_type != "special_day":
+        raise click.UsageError("--day requires --memory-type special_day")
+
+    path = default_catalogue_path()
+    entry = next((e for e in entries_from(path) if e.day == day), None)
+    if entry is None:
+        raise click.UsageError(
+            f"{day.isoformat()} is not one of the days in {path}. Run "
+            "`immich-memories days-due` to see which days it holds, or "
+            "`immich-memories discover-days` to look for more."
+        )
+
+    name = (entry.title or "").strip() or (entry.what or "").strip()
+    if not name:
+        raise click.UsageError(
+            f"{path} has neither a title nor a 'what' for {day.isoformat()}, so there "
+            "is nothing truthful to call the memory. Re-run `immich-memories "
+            "discover-days --rescan` to name it."
+        )
+
+    return {
+        "day": entry.day,
+        "window": entry.window,
+        "title": name,
+        "subtitle": entry.subtitle,
+        "active_hours": hours_awake(entry),
+    }
+
+
+def name_from_catalogue(
+    special_day: dict | None,
+    title_override: str | None,
+    subtitle_override: str | None,
+) -> tuple[str | None, str | None]:
+    """Let the catalogue name the memory, unless the run named it itself.
+
+    The catalogue's title is the point of a special day and also the one thing
+    that must never travel on the command line, so it is picked up from the
+    file rather than passed in. --title and --subtitle still win: this fills a
+    gap, it does not argue.
+    """
+    if special_day is None:
+        return title_override, subtitle_override
+    return (
+        title_override or special_day["title"],
+        subtitle_override or special_day["subtitle"] or None,
+    )
+
+
 def _resolve_generation_scope(
     *,
     from_album: str | None,
@@ -39,6 +110,7 @@ def _resolve_generation_scope(
     years_back: int | None,
     on_this_day_target: date | None,
     holiday: str | None = None,
+    preset_params: dict | None = None,
 ) -> tuple[DateRange, list[DateRange]]:
     """Resolve what a memory covers: date range(s), or an album that defines its own.
 
@@ -65,6 +137,7 @@ def _resolve_generation_scope(
         years_back=years_back,
         on_this_day_target=on_this_day_target,
         holiday=holiday,
+        preset_params=preset_params,
     )
 
     # Normalize to single DateRange for display (multi-range for on_this_day)

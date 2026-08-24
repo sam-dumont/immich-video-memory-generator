@@ -263,7 +263,7 @@ immich-memories generate [OPTIONS]
 | `--birthday`, `-b` | text | - | Use birthday-based year (auto-detects from Immich, or specify MM-DD, e.g. 03-15) |
 | `--from-album` | text | - | Generate from an Immich album (name or ID) instead of a date range |
 | `--person`, `-p` | text | - | Person name (repeatable) |
-| `--memory-type` | choice: `year_in_review` \| `season` \| `person_spotlight` \| `multi_person` \| `monthly_highlights` \| `on_this_day` \| `trip` \| `holiday` \| `then_and_now` | - | Memory type preset |
+| `--memory-type` | choice: `year_in_review` \| `season` \| `person_spotlight` \| `multi_person` \| `monthly_highlights` \| `on_this_day` \| `trip` \| `holiday` \| `then_and_now` \| `special_day` | - | Memory type preset |
 | `--holiday` | text | - | Holiday name or MM-DD (use with --memory-type holiday) |
 | `--season` | choice: `spring` \| `summer` \| `fall` \| `autumn` \| `winter` | - | Season (use with --memory-type season) |
 | `--month` | integer | - | Month 1-12 (with --year, generates that month; selects trip by month) |
@@ -301,6 +301,7 @@ immich-memories generate [OPTIONS]
 | `--all-trips` | boolean | false | Generate a video for every detected trip (use with --memory-type trip) |
 | `--years-back` | integer | - | Years to look back for on_this_day, holiday or then_and_now |
 | `--near-date` | text | - | Select trip closest to this date (YYYY-MM-DD, use with --memory-type trip) |
+| `--day` | datetime | - | The catalogued day to generate (YYYY-MM-DD, use with --memory-type special_day). Its title comes from the catalogue, not from here: run `immich-memories days-due` to see which days are in it |
 | `--quiet` | boolean | false | Suppress interactive progress, emit log lines |
 
 ## `hardware`

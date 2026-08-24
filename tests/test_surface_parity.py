@@ -54,6 +54,10 @@ class MemorySpec:
     trip_end: date | None = None
     location_name: str | None = None
     people: tuple[Person, ...] = ()
+    day: date | None = None
+    window: tuple[datetime, datetime] | None = None
+    title: str | None = None
+    active_hours: float | None = None
 
     def as_preset_params(self) -> dict:
         """The spec as the UI's ``memory_preset_params`` bag."""
@@ -69,8 +73,24 @@ class MemorySpec:
             "trip_start": self.trip_start,
             "trip_end": self.trip_end,
             "location_name": self.location_name,
+            **self.as_cli_preset_params(),
         }
         return {key: value for key, value in params.items() if value is not None}
+
+    def as_cli_preset_params(self) -> dict:
+        """What ``generate`` forwards to the preset factory, beside the flags.
+
+        Only a special day has inputs the CLI cannot spell as date flags: the
+        window and the title come out of the catalogue that ``--day`` names, so
+        they travel as preset parameters on both surfaces alike.
+        """
+        catalogued = {
+            "day": self.day,
+            "window": self.window,
+            "title": self.title,
+            "active_hours": self.active_hours,
+        }
+        return {key: value for key, value in catalogued.items() if value is not None}
 
 
 # The people a spec can name, as the wizard would have picked them.
@@ -94,19 +114,20 @@ SPECS: dict[MemoryType, MemorySpec] = {
         trip_end=date(2024, 7, 10),
         location_name="Rome",
     ),
+    # An invented day, as the docs' fixtures name them. The catalogue that
+    # feeds this on both surfaces names real people and places.
+    MemoryType.SPECIAL_DAY: MemorySpec(
+        day=date(2016, 6, 12),
+        window=(datetime(2016, 6, 12, 10, 20), datetime(2016, 6, 12, 19, 50)),
+        title="An afternoon at the track",
+        active_hours=12.0,
+    ),
 }
 
 # An album brings its own assets, so neither surface resolves a window for it:
 # --from-album on the CLI, the Album card in the wizard, and both take the span
 # from what the album holds. Registering a preset for it must fail this file.
 ALBUM_HAS_NO_PRESET = MemoryType.ALBUM
-
-# A special day now has one surface: the wizard's Surprise me card reads the
-# catalogue and hands the preset a day, a window and a title. The CLI has no
-# `--day` yet, and a MemorySpec is a request phrased for *both* surfaces, so
-# there is still nothing to compare. This exception goes when `generate --day`
-# lands, in the PR that adds it.
-SPECIAL_DAY_HAS_NO_SURFACE_YET = MemoryType.SPECIAL_DAY
 
 # --memory-type's choices, copied from cli/generate_options.py so a type added to the
 # registry and not to the flag is caught here rather than by a user.
@@ -121,6 +142,7 @@ CLI_MEMORY_TYPE_CHOICES = frozenset(
         "trip",
         "holiday",
         "then_and_now",
+        "special_day",
     }
 )
 
@@ -188,6 +210,7 @@ def _cli_resolution(memory_type: MemoryType, spec: MemorySpec) -> DateRange | li
         years_back=spec.years_back,
         on_this_day_target=spec.on_this_day_target,
         holiday=spec.holiday,
+        preset_params=spec.as_cli_preset_params() or None,
     )
 
 
@@ -205,7 +228,9 @@ def cli_duration(memory_type: MemoryType, spec: MemorySpec) -> float | None:
     resolved = _cli_resolution(memory_type, spec)
     if isinstance(resolved, list):
         resolved = DateRange(start=resolved[-1].start, end=resolved[0].end)
-    return default_duration_for_type(str(memory_type), resolved)
+    return default_duration_for_type(
+        str(memory_type), resolved, spec.as_cli_preset_params() or None
+    )
 
 
 def ui_windows(memory_type: MemoryType, spec: MemorySpec) -> list[tuple[datetime, datetime]]:
@@ -240,7 +265,7 @@ class TestRegistryCoverage:
     """A new memory type cannot ship without declaring what parity means for it."""
 
     def test_every_memory_type_has_parity_data(self) -> None:
-        declared = set(SPECS) | {ALBUM_HAS_NO_PRESET, SPECIAL_DAY_HAS_NO_SURFACE_YET}
+        declared = set(SPECS) | {ALBUM_HAS_NO_PRESET}
         missing = set(MemoryType) - declared
         assert not missing, (
             f"Memory types with no parity data: {sorted(str(m) for m in missing)}. "

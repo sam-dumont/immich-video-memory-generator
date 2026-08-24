@@ -121,12 +121,16 @@ def resolve_date_range(
     years_back: int | None = None,
     on_this_day_target: date | None = None,
     holiday: str | None = None,
+    preset_params: dict | None = None,
 ) -> DateRange | list[DateRange]:
     """Resolve date range from command line options.
 
     When --memory-type is set, delegates to preset date builders.
     --start/--end can override the preset's default date range.
     Otherwise falls through to manual date range options.
+
+    ``preset_params`` carries what a memory type cannot spell as date flags: a
+    special day's window comes out of the catalogue, not off the command line.
     """
     if memory_type:
         default_range = _resolve_memory_type_dates(
@@ -138,6 +142,7 @@ def resolve_date_range(
             years_back,
             on_this_day_target,
             holiday,
+            preset_params,
         )
         manual_range = _resolve_manual_dates(start, end, period)
         if manual_range:
@@ -180,9 +185,13 @@ def _resolve_memory_type_dates(
     years_back: int | None = None,
     on_this_day_target: date | None = None,
     holiday: str | None = None,
+    preset_params: dict | None = None,
 ) -> DateRange | list[DateRange]:
     """Resolve date ranges from memory type preset."""
     from immich_memories.memory_types.date_builders import build_month, build_season
+
+    if memory_type == "special_day":
+        return _special_day_scope(preset_params or {})
 
     if memory_type == "season":
         if not season:
@@ -211,6 +220,19 @@ def _resolve_memory_type_dates(
         return build_month(month, year)
 
     return calendar_year(year)
+
+
+def _special_day_scope(preset_params: dict) -> DateRange:
+    """The window the catalogue recorded for one day, or the calendar day."""
+    from immich_memories.memory_types.date_builders import build_special_day
+
+    day = preset_params.get("day")
+    if day is None:
+        raise click.UsageError(
+            "--day is required with --memory-type special_day. Run "
+            "`immich-memories days-due` to see which days the catalogue holds."
+        )
+    return build_special_day(day, preset_params.get("window"))
 
 
 def duration_from_date_range(date_range: DateRange) -> float:

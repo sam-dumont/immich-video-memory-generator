@@ -36,8 +36,10 @@ from immich_memories.cli.generate_resolution import (
     _arm_selection_trace,
     _reject_album_scope_conflicts,
     _resolve_generation_scope,
+    name_from_catalogue,
     resolve_inclusion,
     resolve_short_form,
+    resolve_special_day,
 )
 from immich_memories.filename_builder import build_memory_output_path, normalize_output_path
 from immich_memories.processing.encoding_plan import resolve_output_selection
@@ -103,6 +105,7 @@ def register_generate_commands(main: click.Group) -> None:
         all_trips: bool,
         years_back: int | None,
         near_date: str | None,
+        day: date | None,
         source: str,
         memory_key: str | None,
         memory_category: str | None,
@@ -219,6 +222,12 @@ def register_generate_commands(main: click.Group) -> None:
             print_error("--years-back requires --memory-type on_this_day, holiday or then_and_now")
             sys.exit(1)
 
+        # The catalogue, not the command line, knows what the day was called.
+        special_day = resolve_special_day(day, memory_type)
+        title_override, subtitle_override = name_from_catalogue(
+            special_day, title_override, subtitle_override
+        )
+
         date_range, date_ranges = _resolve_generation_scope(
             from_album=from_album,
             year=year,
@@ -233,6 +242,7 @@ def register_generate_commands(main: click.Group) -> None:
             years_back=years_back,
             on_this_day_target=exact_on_this_day,
             holiday=holiday,
+            preset_params=special_day,
         )
 
         # Determine output path
@@ -282,7 +292,7 @@ def register_generate_commands(main: click.Group) -> None:
         # Resolve duration: CLI --duration > memory type default > date-range scaling
         # Album mode defers to the pipeline, which sizes it from the album's media.
         if duration is None and not from_album:
-            duration = default_duration_for_type(memory_type, date_range)
+            duration = default_duration_for_type(memory_type, date_range, special_day)
             if duration is None:
                 duration = duration_from_date_range(date_range)
 
