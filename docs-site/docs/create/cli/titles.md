@@ -51,7 +51,7 @@ immich-memories titles test --year 2024 --locale fr --style vintage_charm
 
 ## titles fonts
 
-Manage the fonts used for title screens. Fonts are OFL-licensed from Google Fonts and cached locally in `~/.immich-memories/fonts/`.
+Manage the fonts used for title screens. All five are OFL-1.1 licensed and ship inside the package (`titles/bundled_fonts/`); anything downloaded on top comes from the Fontsource CDN and is cached in `~/.immich-memories/fonts/`.
 
 ```bash
 # List fonts and their status (bare command or --list)
@@ -65,4 +65,4 @@ immich-memories titles fonts --download
 immich-memories titles fonts --clear
 ```
 
-If you haven't downloaded fonts yet, title generation will still work: it'll just use whatever's available on your system. But the downloaded fonts look better.
+You do not have to run any of this. Titles render correctly on a fresh install with no network, because `get_font_path()` checks the bundled copies before the cache and the bundle already carries every weight the renderer asks for. `--download` mirrors the same files from the CDN into `~/.immich-memories/fonts/`; it is there for inspecting or replacing what ships, not for making titles work.
