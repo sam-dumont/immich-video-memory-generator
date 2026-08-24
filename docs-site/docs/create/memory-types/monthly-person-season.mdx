@@ -42,7 +42,7 @@ Use birthday-based year (auto-detects from Immich):
 immich-memories generate --memory-type person_spotlight --person "Alice" --year 2025 --birthday
 ```
 
-Default duration: 120 seconds (full year), ~60 seconds (single month). Duration auto-scales with date range. You can also override the date range entirely with `--start/--end`.
+Default duration: the CLI scales it with the date range — about 60 seconds for a single month, 10 minutes for a full year. (The web UI's Person Spotlight card defaults to 2 minutes regardless of range; see [the note below](#ui-and-cli-defaults-disagree).) You can also override the date range entirely with `--start/--end`.
 
 **Best for:** parent-child compilations, partner videos, or any relationship where you want to see just that person's moments. Needs Immich face recognition to be set up and the person tagged.
 
@@ -56,7 +56,7 @@ Moments featuring multiple people together. By default, requires co-occurrence: 
 immich-memories generate --memory-type multi_person --person "Alice" --person "Bob" --year 2025
 ```
 
-Default duration: 300 seconds. Title screen shows "Alice & Bob" as the subtitle.
+Default duration: same range-scaled curve as Person Spotlight, so 10 minutes for a full year. (The web UI card says 5 minutes; see [the note below](#ui-and-cli-defaults-disagree).) Title screen shows "Alice & Bob" as the subtitle.
 
 **Best for:** couples, families, friend groups. The co-occurrence filter means you'll get clips where they're actually together, not separate appearances.
 
@@ -68,7 +68,7 @@ Highlights from a specific season (spring, summer, fall, winter). Scoring emphas
 immich-memories generate --memory-type season --season summer --year 2025
 ```
 
-Default duration: 135 seconds (~45 seconds per month of the season). The hemisphere flag controls which calendar months map to which season:
+Default duration: the range curve again, so about 3 minutes 15 seconds for a three-month season. (The web UI card says 2 minutes 15; see [the note below](#ui-and-cli-defaults-disagree).) The hemisphere flag controls which calendar months map to which season:
 
 ```bash
 # Southern hemisphere: summer = December-February
@@ -94,3 +94,26 @@ immich-memories generate --memory-type on_this_day --years-back 3
 Default duration: 45 seconds. No `--year` needed: it automatically looks back from today's date. By default, it searches all years with data (up to 30 years back).
 
 **Best for:** daily nostalgia, "what were we doing last year" moments. Works best if you've been shooting video for 3+ years. Can be combined with the scheduler for an automatic daily memory.
+
+## UI and CLI defaults disagree
+
+For three of the four types on this page, the number the web UI puts in the duration box is
+not the number the CLI computes for the same request. The CLI runs `default_duration_for_type()`
+in `cli/_date_resolution.py`, which fits a curve through the date range (1 month → 60 s,
+12 months → 600 s). The web UI's preset cards carry a fixed value from
+`memory_types/factory.py` and ignore the range.
+
+| type | web UI card | CLI |
+|---|---|---|
+| Monthly Highlights | 1 min | ~1 min for the month |
+| Person Spotlight | 2 min | ~1 min for a month, 10 min for a year |
+| Multi-Person | 5 min | ~1 min for a month, 10 min for a year |
+| Season | 2 min 15 | ~3 min 15 for a three-month season |
+| On This Day | 45 s | 45 s |
+
+Monthly Highlights and On This Day agree because their fixed value and their curve value
+land in the same place. The other three do not, and for Person Spotlight the gap is 5x.
+Neither number is wrong for the surface it belongs to — the CLI's is range-aware and the
+UI's is a card default you can edit before you start — but they are not the same product
+decision, and this page documents the CLI unless it says otherwise. Every duration on any
+surface is an editable default, not a cap.
