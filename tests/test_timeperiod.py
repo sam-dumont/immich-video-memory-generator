@@ -291,22 +291,16 @@ class TestParseDate:
         result = parse_date("2024-02-07")
         assert result == date(2024, 2, 7)
 
-    def test_parse_slash_ymd(self):
-        """Test YYYY/MM/DD format."""
-        result = parse_date("2024/02/07")
-        assert result == date(2024, 2, 7)
+    def test_every_slash_dialect_is_rejected_not_guessed(self):
+        """07/02/2024 meant February to one flag and July to another once.
 
-    def test_parse_european_format(self):
-        """Test DD/MM/YYYY format."""
-        result = parse_date("07/02/2024")
-        assert result == date(2024, 2, 7)
-
-    def test_parse_us_format(self):
-        """Test MM/DD/YYYY format when unambiguous (month > 12)."""
-        # Note: When day and month are both <= 12, DD/MM/YYYY is tried first
-        # Use a date where month > 12 is invalid to force MM/DD interpretation
-        result = parse_date("12/25/2024")  # December 25th
-        assert result == date(2024, 12, 25)
+        The dialects are gone (#748): anything that is not YYYY-MM-DD is an
+        error naming the format, because a guessed date silently builds the
+        wrong memory.
+        """
+        for dialect in ("2024/02/07", "07/02/2024", "12/25/2024"):
+            with pytest.raises(ValueError, match="RFC 3339"):
+                parse_date(dialect)
 
     def test_parse_with_whitespace(self):
         """Test parsing with whitespace."""

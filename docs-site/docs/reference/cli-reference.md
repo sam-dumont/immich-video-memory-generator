@@ -257,7 +257,7 @@ immich-memories generate [OPTIONS]
 | Flag | Type | Default | Description |
 | --- | --- | --- | --- |
 | `--year`, `-y` | integer | - | Year to generate video for (calendar year by default) |
-| `--start` | text | - | Start date (YYYY-MM-DD or DD/MM/YYYY) |
+| `--start` | text | - | Start date (YYYY-MM-DD) |
 | `--end` | text | - | End date (use with --start) |
 | `--period` | text | - | Period from start date (e.g., 6m, 1y, 2w) |
 | `--birthday`, `-b` | text | - | Run the year up to a birthday, plus earlier birthdays (reads Immich's birth date, or override with MM-DD, e.g. 03-15) |

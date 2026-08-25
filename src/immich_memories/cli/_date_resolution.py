@@ -25,15 +25,11 @@ BIRTHDAY_FLAG_FORMAT = "%m-%d"
 
 
 def _parse_birthday(value: str) -> date:
-    """Read --birthday in the same date dialect as every other date flag.
+    """Read --birthday as RFC 3339 order: MM-DD, or a full YYYY-MM-DD.
 
-    parse_date handles anything carrying a year. The short forms do not, so
-    they get their own attempt: dashes are month-day, matching --holiday's
-    MM-DD; slashes are day-first, matching parse_date's DD/MM/YYYY, and fall
-    back to month-first only when day-first cannot be a date.
-
-    This flag alone used to read slashes month-first, so 07/02 meant July for
-    a 7 February birthday and the memory covered the wrong half of two years.
+    This flag once read slashes month-first while every other flag read them
+    day-first, so 07/02 meant July for a 7 February birthday. Slash dialects
+    are gone everywhere (#748): big-endian or rejected, never guessed.
     """
     with contextlib.suppress(ValueError):
         return parse_date(value)
@@ -41,13 +37,9 @@ def _parse_birthday(value: str) -> date:
     with contextlib.suppress(ValueError):
         return datetime.strptime(f"{_BIRTHDAY_FILLER_YEAR}-{value}", "%Y-%m-%d").date()
 
-    for date_format in ("%d/%m/%Y", "%m/%d/%Y"):
-        with contextlib.suppress(ValueError):
-            return datetime.strptime(f"{value}/{_BIRTHDAY_FILLER_YEAR}", date_format).date()
-
     raise ValueError(
-        f"Cannot parse birthday: '{value}'. Expected MM-DD (e.g. 03-15), "
-        "DD/MM, or a full date such as YYYY-MM-DD."
+        f"Cannot parse birthday: '{value}'. Dates are RFC 3339 order: "
+        "MM-DD (for example 02-07), or a full date YYYY-MM-DD."
     )
 
 

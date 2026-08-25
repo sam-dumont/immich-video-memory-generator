@@ -9,7 +9,6 @@ Supports:
 
 from __future__ import annotations
 
-import contextlib
 import re
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
@@ -273,44 +272,20 @@ def custom_range(
 
 
 def parse_date(date_str: str) -> date:
-    """Parse a date string in various formats.
+    """Parse an RFC 3339 full date: YYYY-MM-DD, and nothing else.
 
-    Supported formats:
-    - YYYY-MM-DD (ISO format)
-    - DD/MM/YYYY
-    - MM/DD/YYYY (if unambiguous or month > 12)
-    - YYYY/MM/DD
-
-    Args:
-        date_str: Date string to parse
-
-    Returns:
-        Parsed date object
-
-    Raises:
-        ValueError: If date string cannot be parsed
+    07/02 meant July to one flag and February to another until the dialects
+    were removed (#748). A rejected date names the format; a guessed one
+    silently builds the wrong memory.
     """
     date_str = date_str.strip()
-
-    # Try ISO format first (YYYY-MM-DD)
-    with contextlib.suppress(ValueError):
+    try:
         return datetime.strptime(date_str, "%Y-%m-%d").date()
-
-    # Try YYYY/MM/DD
-    with contextlib.suppress(ValueError):
-        return datetime.strptime(date_str, "%Y/%m/%d").date()
-
-    # Try DD/MM/YYYY (European format)
-    with contextlib.suppress(ValueError):
-        return datetime.strptime(date_str, "%d/%m/%Y").date()
-
-    # Try MM/DD/YYYY (US format)
-    with contextlib.suppress(ValueError):
-        return datetime.strptime(date_str, "%m/%d/%Y").date()
-
-    raise ValueError(
-        f"Cannot parse date: '{date_str}'. Expected format: YYYY-MM-DD, DD/MM/YYYY, or MM/DD/YYYY"
-    )
+    except ValueError:
+        raise ValueError(
+            f"Cannot parse date: '{date_str}'. Dates are RFC 3339: YYYY-MM-DD "
+            f"(for example 2024-02-07)."
+        ) from None
 
 
 def available_years(

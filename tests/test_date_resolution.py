@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
+import click
 import pytest
 
 from immich_memories.cli._date_resolution import (
@@ -310,7 +311,7 @@ class TestBackwardCompatibility:
                 start=None,
                 end=None,
                 period=None,
-                birthday="07/21/2000",
+                birthday="2000-07-21",
             )
         )
         assert result.end.month == 7
@@ -331,36 +332,22 @@ class TestBackwardCompatibility:
         assert result.start == datetime(2024, 3, 2)
         assert result.end == datetime(2025, 3, 1, 23, 59, 59)
 
-    def test_ambiguous_slash_birthday_reads_day_first_like_every_other_date(self):
-        """07/02 is 7 February here, exactly as it is for --start and --end."""
-        result = _rolling_year(
-            resolve_date_range(
-                year=2025,
-                start=None,
-                end=None,
-                period=None,
-                birthday="07/02",
-                memory_type="person_spotlight",
-            )
-        )
+    def test_slash_birthdays_are_rejected_not_guessed(self):
+        """07/02 once meant July here and February everywhere else (#655).
 
-        assert result.start == datetime(2024, 2, 8)
-        assert result.end == datetime(2025, 2, 7, 23, 59, 59)
-
-    def test_slash_birthday_that_can_only_be_month_first_still_parses(self):
-        """21 cannot be a month, so 07/21 keeps its only possible reading."""
-        result = _rolling_year(
-            resolve_date_range(
-                year=2025,
-                start=None,
-                end=None,
-                period=None,
-                birthday="07/21",
-                memory_type="person_spotlight",
-            )
-        )
-
-        assert result.end == datetime(2025, 7, 21, 23, 59, 59)
+        The dialect machinery is deleted (#748): slashes are an error naming
+        the RFC 3339 forms, whichever reading they might have had.
+        """
+        for dialect in ("07/02", "07/21", "07/02/2024"):
+            with pytest.raises(click.UsageError, match="RFC 3339"):
+                resolve_date_range(
+                    year=2025,
+                    start=None,
+                    end=None,
+                    period=None,
+                    birthday=dialect,
+                    memory_type="person_spotlight",
+                )
 
     def test_dashed_birthday_is_month_day_like_the_holiday_flag(self):
         result = _rolling_year(
@@ -428,7 +415,7 @@ class TestBackwardCompatibility:
                 start=None,
                 end=None,
                 period=None,
-                birthday="02/29",
+                birthday="02-29",
                 memory_type="person_spotlight",
             )
         )
