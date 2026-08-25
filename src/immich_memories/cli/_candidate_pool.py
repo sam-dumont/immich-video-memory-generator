@@ -27,6 +27,7 @@ def _merge_photos_into_pool(
     *,
     photo_assets: list | None,
     include_photos: bool,
+    use_live_photos: bool = True,
     config: Config,
     client: SyncImmichClient,
     work_dir: Path,
@@ -44,9 +45,7 @@ def _merge_photos_into_pool(
 
     import logging
 
-    from immich_memories.analysis.smart_pipeline import ClipWithSegment
     from immich_memories.analysis.source_filter import from_the_camera_roll
-    from immich_memories.api.models import VideoClipInfo
     from immich_memories.photos.photo_pipeline import score_photos
     from immich_memories.photos.scoring import score_photo
 
@@ -70,6 +69,7 @@ def _merge_photos_into_pool(
         return analyzed_videos
 
     photo_duration = config.photos.duration
+    include_live_photos = use_live_photos and config.analysis.include_live_photos
     if dry_run:
         scored = [(asset, score_photo(asset, config.photos)) for asset in photo_assets]
     else:
@@ -101,30 +101,14 @@ def _merge_photos_into_pool(
     # What the VLM said about each photo, so the holistic review can read a
     # photograph the way it reads a video. Without it every still arrived as a
     # bare line and survived on the rule that protects unanalysed material.
-    from immich_memories.analysis.cache_projection import apply_semantic_payload
     from immich_memories.photos.scoring import semantic_payloads_for
 
     payloads = semantic_payloads_for(
         config.cache.database_path, [asset.id for asset, _ in scored], config.llm.model
     )
 
-    photo_candidates = []
-    for asset, photo_score in scored:
-        clip = VideoClipInfo(
-            asset=asset,
-            duration_seconds=photo_duration,
-            width=asset.width,
-            height=asset.height,
-        )
-        apply_semantic_payload(clip, payloads.get(asset.id))
-        photo_candidates.append(
-            ClipWithSegment(
-                clip=clip,
-                start_time=0.0,
-                end_time=photo_duration,
-                score=photo_score,
-            )
-        )
+    motion = _motion_by_carrier(scored, config) if include_live_photos else {}
+    photo_candidates = _photo_candidates(scored, motion, payloads, photo_duration)
 
     _logger.info(
         f"Unified pool: {len(analyzed_videos)} video + {len(photo_candidates)} photo candidates"
@@ -212,3 +196,75 @@ def _drop_photos_already_shown_as_motion(
         thumbnail_cache=thumbnail_cache,
         thumbnail_fn=client.get_asset_thumbnail,
     )
+
+
+def _motion_by_carrier(scored: list, config: Config) -> dict:
+    """The motion each burst will show, attached to one photograph of it.
+
+    motion_renderings describes a burst against every still in it, because any
+    of them may be the one selection keeps. Letting all of them carry it would
+    let one burst ship twice, so exactly one photograph carries the motion and
+    its siblings stay plain photographs.
+
+    Which one is the favourites law again: the owner's mark first, then merit
+    (asset_merit.ranking_key). A burst the owner starred shows its motion
+    against the frame they starred.
+
+    A burst that does not stitch past the threshold carries nothing: the
+    photograph is the default, and the motion has to be worth the one it would
+    replace.
+    """
+    from immich_memories.analysis.asset_merit import ranking_key
+    from immich_memories.analysis.motion_rendering import motion_renderings
+
+    renderings = motion_renderings([asset for asset, _score in scored], config)
+    if not renderings:
+        return {}
+
+    by_burst: dict[tuple, list] = {}
+    for asset, score in scored:
+        rendering = renderings.get(asset.id)
+        if rendering is None or not rendering.beats_a_still:
+            continue
+        by_burst.setdefault(rendering.still_ids, []).append((asset, score, rendering))
+
+    carriers = {}
+    for members in by_burst.values():
+        asset, _score, rendering = max(members, key=lambda m: ranking_key(m[0], m[1]))
+        carriers[asset.id] = rendering
+    if carriers:
+        logger.info(
+            "Live Photos: %d burst(s) will render as motion, %d photographs carry them",
+            len(by_burst),
+            len(carriers),
+        )
+    return carriers
+
+
+def _photo_candidates(scored: list, motion: dict, payloads: dict, still_seconds: float) -> list:
+    """One candidate per photograph, carrying whatever motion it will show.
+
+    The duration is the rendering's, so a burst that will stitch costs what the
+    stitch costs rather than what a still would have.
+    """
+    from immich_memories.analysis.cache_projection import apply_semantic_payload
+    from immich_memories.analysis.smart_pipeline import ClipWithSegment
+    from immich_memories.api.models import VideoClipInfo
+
+    candidates = []
+    for asset, score in scored:
+        shows = motion.get(asset.id)
+        seconds = shows.duration_seconds if shows else still_seconds
+        clip = VideoClipInfo(
+            asset=asset,
+            duration_seconds=seconds,
+            width=asset.width,
+            height=asset.height,
+            live_burst_video_ids=list(shows.video_ids) if shows else None,
+            live_burst_trim_points=list(shows.trim_points) if shows else None,
+            live_burst_shutter_timestamps=list(shows.shutter_timestamps) if shows else None,
+            live_burst_still_ids=list(shows.still_ids) if shows else None,
+        )
+        apply_semantic_payload(clip, payloads.get(asset.id))
+        candidates.append(ClipWithSegment(clip=clip, start_time=0.0, end_time=seconds, score=score))
+    return candidates

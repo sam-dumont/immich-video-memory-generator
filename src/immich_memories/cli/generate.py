@@ -8,7 +8,8 @@ from pathlib import Path
 
 import click
 
-from immich_memories.cli._asset_fetch import fetch_photos, fetch_videos_and_live_photos
+from immich_memories.analysis.live_photo_pipeline import drop_live_photo_components
+from immich_memories.cli._asset_fetch import fetch_photos, fetch_videos
 from immich_memories.cli._date_resolution import (
     BIRTHDAY_FLAG_FORMAT,
     default_duration_for_type,
@@ -494,14 +495,11 @@ def register_generate_commands(main: click.Group) -> None:
                                     container=output_selection.container,
                                 )
 
-                    # Fetch videos and optionally live photos
-                    assets, live_photo_clips = fetch_videos_and_live_photos(
+                    assets = fetch_videos(
                         client=client,
-                        config=config,
                         progress=progress,
                         date_ranges=date_ranges,
                         person_ids=person_ids,
-                        use_live_photos=use_live_photos,
                     )
 
                     # Fetch photos (if enabled)
@@ -515,15 +513,17 @@ def register_generate_commands(main: click.Group) -> None:
                         if fetched_photos:
                             print_info(f"Found {len(fetched_photos)} photos")
 
-                    if not assets and not live_photo_clips and not fetched_photos:
+                    # A Live Photo's video half is part of a photograph, not
+                    # footage: it must not compete as a video against its own still.
+                    assets = drop_live_photo_components(assets, fetched_photos)
+
+                    if not assets and not fetched_photos:
                         print_error("No videos or photos found matching criteria")
                         sys.exit(1)
 
                     # Display video summary
                     total_dur = sum(a.duration_seconds or 0 for a in assets)
                     print_info(f"Total video duration: {total_dur / 60:.1f} minutes")
-                    if live_photo_clips:
-                        print_info(f"Live photo clips: {len(live_photo_clips)}")
                     if fetched_photos:
                         print_info(f"Photo clips to render: {len(fetched_photos)}")
 
@@ -537,9 +537,9 @@ def register_generate_commands(main: click.Group) -> None:
 
                     result_path, should_upload, album_name = run_pipeline_and_generate(
                         assets=assets,
-                        live_photo_clips=live_photo_clips,
                         photo_assets=fetched_photos if use_photos else None,
                         include_photos=use_photos and bool(fetched_photos),
+                        use_live_photos=use_live_photos,
                         analysis_depth=effective_analysis_depth,
                         client=client,
                         config=config,

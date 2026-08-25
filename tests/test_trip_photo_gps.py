@@ -127,8 +127,8 @@ class TestTripGenerationPhotoFetch:
 
         with (
             patch(
-                "immich_memories.cli._trip_generation.fetch_videos_and_live_photos",
-                return_value=([], []),
+                "immich_memories.cli._trip_generation.fetch_videos",
+                return_value=[],
             ),
             patch(
                 "immich_memories.cli._trip_generation.run_pipeline_and_generate",
@@ -212,8 +212,8 @@ class TestTripGenerationPhotoFetch:
 
         with (
             patch(
-                "immich_memories.cli._trip_generation.fetch_videos_and_live_photos",
-                return_value=([], []),
+                "immich_memories.cli._trip_generation.fetch_videos",
+                return_value=[],
             ),
             patch(
                 "immich_memories.cli._trip_generation.run_pipeline_and_generate",

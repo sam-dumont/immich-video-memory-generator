@@ -144,7 +144,6 @@ src/immich_memories/
 │   ├── unified_analyzer.py     # UnifiedSegmentAnalyzer (composes SpeechAnalysisService)
 │   ├── speech_analysis.py      # SpeechAnalysisService: PANNs audio-content + VAD speech boundaries
 │   ├── segment_transcription.py # Transcribe the top candidate segments (whisper via speech/transcription.py)
-│   ├── unified_budget.py       # Unified photo+video budget selection (merge-then-fit)
 │   ├── photo_look.py           # VLM pass over the stills that shipped but were never shortlisted
 │   ├── segment_generation.py   # Boundary detection, candidate segment generation
 │   ├── segment_extents.py      # How long a clip may run and where it may be cut (duration caps, step 3b, best-segment repair)
@@ -166,7 +165,8 @@ src/immich_memories/
 │   ├── apple_vision.py         # macOS Vision framework integration
 │   ├── apple_vision_image.py   # Vision image conversion helpers
 │   ├── llm_query.py            # LLM query helpers
-│   └── live_photo_pipeline.py  # Live Photo fetch, cluster, convert (shared CLI/UI)
+│   ├── live_photo_pipeline.py  # Keep a Live Photo's video half out of the video pool
+│   └── motion_rendering.py     # What a photograph could show as motion, if the memory wants it
 │
 ├── processing/                 # Video processing & assembly
 │   ├── video_assembler.py      # VideoAssembler (composes 6 services)
@@ -301,7 +301,7 @@ src/immich_memories/
 │   ├── _flags.py               # Shared validation for flags more than one command takes
 │   ├── _pipeline_runner.py     # Run SmartPipeline over the fetched assets + generate
 │   ├── _asset_fetch.py         # What a memory asks Immich for: videos, Live Photos, stills
-│   ├── _candidate_pool.py      # Videos + photos merged into one pool, then filtered
+│   ├── _candidate_pool.py      # One pool: videos + photographs, each carrying its rendering
 │   ├── _album_generation.py    # Album mode: an Immich album is the candidate pool
 │   ├── _llm_title.py           # Opt-in LLM title on the CLI path (the wizard's default differs)
 │   ├── _trip_generation.py     # Trip detection, selection, per-trip generation

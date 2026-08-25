@@ -79,24 +79,25 @@ class TestListAlbums:
 
 
 class TestAlbumMediaAsClips:
-    def test_videos_and_live_photos_become_one_clip_pool(self):
-        live = VideoClipInfo(asset=_asset("live-1", AssetType.IMAGE), duration_seconds=3.0)
+    def test_the_clip_pool_is_video_and_the_photo_pool_is_photographs(self):
+        """Live Photo clips were a third pool flattened in here; there is no
+        third pool now, so a photograph stays in the photo pool whatever it
+        will later render as."""
         media = AlbumMedia(
             videos=[_asset("v1", AssetType.VIDEO)],
-            live_photo_clips=[live],
-            photos=[_asset("p1", AssetType.IMAGE)],
+            photos=[_asset("p1", AssetType.IMAGE), _asset("live-1", AssetType.IMAGE)],
         )
 
         clips, photos = album_media_as_clips(media)
 
-        assert {c.asset.id for c in clips} == {"v1", "live-1"}
-        assert [p.id for p in photos] == ["p1"]
+        assert {c.asset.id for c in clips} == {"v1"}
+        assert {p.id for p in photos} == {"p1", "live-1"}
 
     def test_clips_come_back_in_capture_order(self):
         first = _asset("v1", AssetType.VIDEO)
         second = _asset("v2", AssetType.VIDEO)
         second.file_created_at = datetime(2025, 7, 1, tzinfo=UTC)
-        media = AlbumMedia(videos=[second, first], live_photo_clips=[], photos=[])
+        media = AlbumMedia(videos=[second, first], photos=[])
 
         clips, _ = album_media_as_clips(media)
 

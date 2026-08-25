@@ -11,6 +11,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from immich_memories.analysis.live_photo_pipeline import drop_live_photo_components
 from immich_memories.api.models import AssetType
 from immich_memories.timeperiod import DateRange
 
@@ -28,7 +29,6 @@ class AlbumMedia:
     """The album's assets, split into the pools the pipeline consumes."""
 
     videos: list[Asset] = field(default_factory=list)
-    live_photo_clips: list[VideoClipInfo] = field(default_factory=list)
     photos: list[Asset] = field(default_factory=list)
     date_range: DateRange | None = None
     truncated: bool = False
@@ -41,50 +41,34 @@ def split_album_assets(
     use_live_photos: bool,
     use_photos: bool,
 ) -> AlbumMedia:
-    """Split an album's assets into videos, merged Live Photo clips and stills.
+    """Split an album's assets into the video and photograph pools.
 
-    With Live Photo merging off, a Live Photo counts as a still rather than being
-    dropped — the user picked these assets by hand, so nothing silently disappears.
+    Every image is a photograph, Live Photo or not. Whether a burst is worth
+    showing as motion is a rendering question asked later, about an asset that
+    has already won its place — so no image can fall between two pools, because
+    there is only one.
     """
     if not assets:
         return AlbumMedia()
 
     videos = [a for a in assets if a.type == AssetType.VIDEO]
     images = [a for a in assets if a.type == AssetType.IMAGE]
-    live_stills = [a for a in images if a.is_live_photo]
 
-    live_clips: list[VideoClipInfo] = []
-    if use_live_photos and live_stills:
-        from immich_memories.analysis.live_photo_pipeline import build_live_photo_clips
+    # The album may also list a Live Photo's video component as its own asset.
+    # It is part of a photograph, so it never competes as footage — whether or
+    # not the stills themselves are wanted.
+    videos = drop_live_photo_components(videos, images)
 
-        live_clips, live_video_ids = build_live_photo_clips(live_stills, config=config)
-        # The album may also list the Live Photo's video component as its own asset.
-        videos = [v for v in videos if v.id not in live_video_ids]
-
-    # Every image a clip is not showing. Partitioning on "is it a Live Photo"
-    # is what let a burst refused as motion belong to no pool at all; asking
-    # "is a clip showing it" cannot, because the answer comes from the clips
-    # that exist.
-    shown_as_motion = {sid for c in live_clips for sid in (c.live_burst_still_ids or ())}
-    photos = (
-        sorted(
-            (a for a in images if a.id not in shown_as_motion),
-            key=lambda a: a.file_created_at,
-        )
-        if use_photos
-        else []
-    )
+    photos = sorted(images, key=lambda a: a.file_created_at) if use_photos else []
 
     logger.info(
-        "Album pool: %d videos, %d live photo clips, %d photos (from %d assets)",
+        "Album pool: %d videos, %d photos (from %d assets)",
         len(videos),
-        len(live_clips),
         len(photos),
         len(assets),
     )
     return AlbumMedia(
         videos=videos,
-        live_photo_clips=live_clips,
         photos=photos,
         date_range=DateRange(
             start=min(a.file_created_at for a in assets),
@@ -134,14 +118,10 @@ def fetch_album_media(
 
 
 def album_media_as_clips(media: AlbumMedia) -> tuple[list[VideoClipInfo], list[Asset]]:
-    """Flatten an album's media into the clip and photo pools the wizard uses.
-
-    Videos and merged Live Photo clips are one pool, ordered by capture time, so
-    the album plays back in the order it was lived rather than by media type.
-    """
+    """Flatten an album's media into the clip and photo pools the wizard uses."""
     from immich_memories.generate import assets_to_clips
 
-    clips = assets_to_clips(media.videos) + media.live_photo_clips
+    clips = assets_to_clips(media.videos)
     clips.sort(key=lambda clip: clip.asset.file_created_at)
     return clips, media.photos.copy()
 

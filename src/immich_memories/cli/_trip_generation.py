@@ -13,8 +13,9 @@ from typing import TYPE_CHECKING
 
 import click
 
+from immich_memories.analysis.live_photo_pipeline import drop_live_photo_components
 from immich_memories.analysis.trip_detection import DetectedTrip, haversine_km
-from immich_memories.cli._asset_fetch import fetch_videos_and_live_photos
+from immich_memories.cli._asset_fetch import fetch_videos
 from immich_memories.cli._helpers import console, print_error, print_info, print_success
 from immich_memories.cli._pipeline_runner import run_pipeline_and_generate
 from immich_memories.memory_types.date_builders import build_trip
@@ -244,13 +245,11 @@ def handle_trip_generation(
             f"({trip.start_date} to {trip.end_date}, {trip_days} days, {trip.asset_count} assets)"
         )
 
-        trip_assets, trip_live = fetch_videos_and_live_photos(
+        trip_assets = fetch_videos(
             client=client,
-            config=config,
             progress=progress,
             date_ranges=[trip_date_range],
             person_ids=[],
-            use_live_photos=use_live_photos,
         )
 
         trip_photos: list = []
@@ -260,7 +259,10 @@ def handle_trip_generation(
             # near the trip centroid so home photos don't leak into trip memories
             trip_photos = _filter_photos_near_trip(all_photos, trip, config)
 
-        if not trip_assets and not trip_live and not trip_photos:
+        # A Live Photo's video half belongs to its still, not to the video pool.
+        trip_assets = drop_live_photo_components(trip_assets, trip_photos)
+
+        if not trip_assets and not trip_photos:
             print_error(f"No content found for trip: {trip.location_name}")
             continue
 
@@ -277,9 +279,9 @@ def handle_trip_generation(
 
         result_path, should_upload, album_name = run_pipeline_and_generate(
             assets=trip_assets,
-            live_photo_clips=trip_live,
             photo_assets=trip_photos if use_photos else None,
             include_photos=use_photos and bool(trip_photos),
+            use_live_photos=use_live_photos,
             analysis_depth=effective_analysis_depth,
             client=client,
             config=config,

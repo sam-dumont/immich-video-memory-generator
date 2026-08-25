@@ -301,8 +301,8 @@ class TestCLIGenerate:
             patch("immich_memories.cli.get_config", return_value=config),
             patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
             patch(
-                "immich_memories.cli.generate.fetch_videos_and_live_photos",
-                return_value=([asset], []),
+                "immich_memories.cli.generate.fetch_videos",
+                return_value=[asset],
             ),
             patch(
                 "immich_memories.cli.generate.run_pipeline_and_generate",
@@ -337,8 +337,8 @@ class TestCLIGenerate:
             patch("immich_memories.cli.get_config", return_value=config),
             patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
             patch(
-                "immich_memories.cli.generate.fetch_videos_and_live_photos",
-                return_value=([asset], []),
+                "immich_memories.cli.generate.fetch_videos",
+                return_value=[asset],
             ),
             patch(
                 "immich_memories.cli.generate.run_pipeline_and_generate",
@@ -380,8 +380,8 @@ class TestCLIGenerate:
             patch("immich_memories.cli.get_config", return_value=config),
             patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
             patch(
-                "immich_memories.cli.generate.fetch_videos_and_live_photos",
-                return_value=([asset], []),
+                "immich_memories.cli.generate.fetch_videos",
+                return_value=[asset],
             ),
             patch(
                 "immich_memories.cli.generate.run_pipeline_and_generate",
@@ -427,8 +427,8 @@ class TestCLIGenerate:
                 return_value=(output, False, None),
             ),
             patch(
-                "immich_memories.cli.generate.fetch_videos_and_live_photos",
-                return_value=([], []),
+                "immich_memories.cli.generate.fetch_videos",
+                return_value=[],
             ),
         ):
             # Create a fake output so the CLI doesn't complain
@@ -480,8 +480,8 @@ class TestCLIGenerate:
             patch("immich_memories.cli.get_config", return_value=config),
             patch("immich_memories.api.immich.SyncImmichClient", return_value=mock_client),
             patch(
-                "immich_memories.cli.generate.fetch_videos_and_live_photos",
-                return_value=([asset], []),
+                "immich_memories.cli.generate.fetch_videos",
+                return_value=[asset],
             ),
             patch(
                 "immich_memories.cli.generate.run_pipeline_and_generate",
@@ -528,8 +528,8 @@ class TestCLIGenerate:
             patch("immich_memories.cli.get_config", return_value=config),
             patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
             patch(
-                "immich_memories.cli.generate.fetch_videos_and_live_photos",
-                return_value=([asset], []),
+                "immich_memories.cli.generate.fetch_videos",
+                return_value=[asset],
             ) as fetch,
             patch(
                 "immich_memories.cli.generate.run_pipeline_and_generate",
@@ -725,8 +725,8 @@ class TestCLIGenerate:
             patch("immich_memories.cli.get_config", return_value=config),
             patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
             patch(
-                "immich_memories.cli.generate.fetch_videos_and_live_photos",
-                return_value=([asset], []),
+                "immich_memories.cli.generate.fetch_videos",
+                return_value=[asset],
             ),
             patch(
                 "immich_memories.cli.generate.run_pipeline_and_generate",
@@ -876,8 +876,8 @@ class TestPipelineRunner:
     """
 
     def test_fetch_videos_returns_assets(self, tmp_path):
-        """fetch_videos_and_live_photos returns deduped assets."""
-        from immich_memories.cli._asset_fetch import fetch_videos_and_live_photos
+        """fetch_videos returns deduped assets."""
+        from immich_memories.cli._asset_fetch import fetch_videos
         from immich_memories.timeperiod import DateRange
 
         mock_client = MagicMock()
@@ -893,7 +893,7 @@ class TestPipelineRunner:
             start=datetime(2025, 1, 1),
             end=datetime(2025, 1, 31, 23, 59, 59),
         )
-        assets, live = fetch_videos_and_live_photos(
+        assets, live = fetch_videos(
             client=mock_client,
             config=mock_config,
             progress=mock_progress,
@@ -907,7 +907,7 @@ class TestPipelineRunner:
 
     def test_fetch_videos_person_filter(self, tmp_path):
         """fetch with single person_id calls person-specific API."""
-        from immich_memories.cli._asset_fetch import fetch_videos_and_live_photos
+        from immich_memories.cli._asset_fetch import fetch_videos
         from immich_memories.timeperiod import DateRange
 
         mock_client = MagicMock()
@@ -919,7 +919,7 @@ class TestPipelineRunner:
             start=datetime(2025, 1, 1),
             end=datetime(2025, 1, 31, 23, 59, 59),
         )
-        fetch_videos_and_live_photos(
+        fetch_videos(
             client=mock_client,
             config=mock_config,
             progress=mock_progress,
@@ -931,7 +931,7 @@ class TestPipelineRunner:
 
     def test_fetch_videos_multi_person(self, tmp_path):
         """fetch with multiple person_ids asks for the videos holding all of them."""
-        from immich_memories.cli._asset_fetch import fetch_videos_and_live_photos
+        from immich_memories.cli._asset_fetch import fetch_videos
         from immich_memories.timeperiod import DateRange
 
         mock_client = MagicMock()
@@ -943,7 +943,7 @@ class TestPipelineRunner:
             start=datetime(2025, 1, 1),
             end=datetime(2025, 1, 31, 23, 59, 59),
         )
-        fetch_videos_and_live_photos(
+        fetch_videos(
             client=mock_client,
             config=mock_config,
             progress=mock_progress,
@@ -1309,8 +1309,8 @@ class TestTripGenerationFlow:
             ),
             # WHY: mock fetch — real one needs Immich videos in that date range
             patch(
-                "immich_memories.cli._trip_generation.fetch_videos_and_live_photos",
-                return_value=([MagicMock()], []),
+                "immich_memories.cli._trip_generation.fetch_videos",
+                return_value=[MagicMock()],
             ),
             # WHY: mock pipeline — real one runs SmartPipeline + FFmpeg
             patch(
@@ -1391,8 +1391,8 @@ class TestTripGenerationFlow:
         with (
             patch("immich_memories.cli._trip_display.run_trip_detection", return_value=trips),
             patch(
-                "immich_memories.cli._trip_generation.fetch_videos_and_live_photos",
-                return_value=([MagicMock()], []),
+                "immich_memories.cli._trip_generation.fetch_videos",
+                return_value=[MagicMock()],
             ) as mock_fetch,
             patch(
                 "immich_memories.cli._trip_generation.run_pipeline_and_generate",
@@ -1548,8 +1548,8 @@ class TestTripGenerationFlow:
             patch("immich_memories.api.immich.SyncImmichClient", return_value=mock_client),
             patch("immich_memories.cli._trip_display.run_trip_detection", return_value=trips),
             patch(
-                "immich_memories.cli._trip_generation.fetch_videos_and_live_photos",
-                return_value=([MagicMock()], []),
+                "immich_memories.cli._trip_generation.fetch_videos",
+                return_value=[MagicMock()],
             ),
             patch(
                 "immich_memories.cli._trip_generation.run_pipeline_and_generate",
@@ -1660,8 +1660,8 @@ def _combined_mock(tmp_path, mock_client=None):
                 return_value=(output, False, None),
             ),
             patch(
-                "immich_memories.cli.generate.fetch_videos_and_live_photos",
-                return_value=([], []),
+                "immich_memories.cli.generate.fetch_videos",
+                return_value=[],
             ),
         ):
             yield

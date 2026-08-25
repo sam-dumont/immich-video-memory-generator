@@ -9,8 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from immich_memories.cli._asset_fetch import fetch_photos, fetch_videos_and_live_photos
-from immich_memories.config_loader import Config
+from immich_memories.cli._asset_fetch import fetch_photos, fetch_videos
 from immich_memories.timeperiod import DateRange
 
 PERSON_A = "person-a"
@@ -77,13 +76,11 @@ class _SilentProgress:
 
 
 def _fetch(client: _LibraryClient, person_ids: list[str]) -> list[_Asset]:
-    assets, _live = fetch_videos_and_live_photos(
+    assets = fetch_videos(
         client=client,
-        config=Config(),
         progress=_SilentProgress(),
         date_ranges=[WINDOW],
         person_ids=person_ids,
-        use_live_photos=False,
     )
     return assets
 

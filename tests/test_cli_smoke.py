@@ -50,8 +50,8 @@ def _invoke_planned_generation(args: list[str], config: Config) -> Result:
     with (
         patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
         patch(
-            "immich_memories.cli.generate.fetch_videos_and_live_photos",
-            return_value=([asset], []),
+            "immich_memories.cli.generate.fetch_videos",
+            return_value=[asset],
         ),
         patch(
             "immich_memories.cli.generate.run_pipeline_and_generate",

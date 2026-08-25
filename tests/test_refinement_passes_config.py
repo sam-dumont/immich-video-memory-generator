@@ -40,8 +40,8 @@ def _generate_with(args: list[str], config: Config):
         # WHY: Immich is the external boundary — no live server in a unit test.
         patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
         patch(
-            "immich_memories.cli.generate.fetch_videos_and_live_photos",
-            return_value=([asset], []),
+            "immich_memories.cli.generate.fetch_videos",
+            return_value=[asset],
         ),
         # WHY: generation is the boundary past the flag resolution under test.
         patch(

@@ -343,10 +343,17 @@ class SearchService:
         person_id: str | None = None,
         person_ids: list[str] | None = None,
     ) -> list[Asset]:
-        """Get regular photo assets (IMAGE, excluding live photos), by person(s) if given.
+        """Every photograph in the range, by person(s) if given.
 
-        Several people means the photos holding all of them, matching how videos
-        and Live Photos answer the same question.
+        Live Photo stills are photographs and are included. They used to be
+        dropped here and fetched again as clips for a pool of their own, which
+        hid most of the library from selection: on a real month 17 of 18
+        favourites are Live Photos. Whether a burst is worth showing as motion
+        is a rendering question, asked later, about an asset that has already
+        won its place.
+
+        Several people means the photos holding all of them, matching how
+        videos answer the same question.
         """
         if person_ids and len(person_ids) >= 2:
             return await _assets_holding_every_person(
@@ -375,9 +382,7 @@ class SearchService:
                 page=page,
                 size=100,
             )
-            for asset in result.all_assets:
-                if not asset.is_live_photo:
-                    all_assets.append(asset)
+            all_assets.extend(result.all_assets)
             if progress_callback:
                 progress_callback(len(all_assets), None)
             if not result.next_page:

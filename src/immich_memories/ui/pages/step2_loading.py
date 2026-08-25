@@ -11,7 +11,6 @@ from immich_memories.analysis.cache_projection import (
     apply_cached_segment,
     is_compatible_analysis_cache,
 )
-from immich_memories.analysis.live_photo_pipeline import fetch_live_photo_clips
 from immich_memories.api.immich import SyncImmichClient
 from immich_memories.api.models import VideoClipInfo
 from immich_memories.api.person_scope import stills_person_args, videos_in_window
@@ -156,52 +155,6 @@ def _fetch_photos(state) -> list:
         return _dedup_by_id(photos)
 
 
-def _fetch_live_photos(state) -> tuple[list[VideoClipInfo], set[str]]:
-    """Fetch live photo clips (blocking), one query per window."""
-    lp_person_id, lp_group_ids = stills_person_args(state.person_ids)
-
-    with SyncImmichClient(
-        base_url=state.immich_url,
-        api_key=state.immich_api_key,
-        api_version=state.immich_api_version,
-    ) as lp_client:
-        clips: list[VideoClipInfo] = []
-        video_ids: set[str] = set()
-        for date_range in state.date_ranges:
-            window_clips, window_video_ids = fetch_live_photo_clips(
-                lp_client,
-                date_range,
-                person_id=lp_person_id,
-                person_ids=lp_group_ids,
-                config=state.config,
-            )
-            clips.extend(window_clips)
-            video_ids |= window_video_ids
-        seen: set[str] = set()
-        unique_clips = []
-        for clip in clips:
-            if clip.asset.id not in seen:
-                seen.add(clip.asset.id)
-                unique_clips.append(clip)
-        return unique_clips, video_ids
-
-
-def _merge_live_photos(
-    clips: list[VideoClipInfo], live_clips: list[VideoClipInfo], live_video_ids: set[str]
-) -> list[VideoClipInfo]:
-    """Merge live photo clips into main clip list, deduplicating video components."""
-    if live_video_ids:
-        before = len(clips)
-        clips = [c for c in clips if c.asset.id not in live_video_ids]
-        removed = before - len(clips)
-        if removed:
-            logger.info(f"Removed {removed} live photo video components")
-    if live_clips:
-        logger.info(f"Adding {len(live_clips)} Live Photo clips")
-        clips.extend(live_clips)
-    return clips
-
-
 def _set_initial_selection(clips: list[VideoClipInfo], state) -> None:
     """Make every discovered clip eligible for the user's review."""
     state.selected_clip_ids = {c.asset.id for c in clips}
@@ -248,16 +201,21 @@ async def _collect_date_range_media(state, status_label, progress_bar):
     progress_bar.value = 0.05
 
     clips, _ = _build_clips(assets)
-    if state.include_live_photos:
-        status_label.set_text("Fetching Live Photos...")
-        live_clips, live_video_ids = await io_bound_result(_fetch_live_photos, state)
-        clips = _merge_live_photos(clips, live_clips, live_video_ids)
 
     photo_assets = []
     if state.include_photos:
         status_label.set_text("Fetching photos...")
         photo_assets = await io_bound_result(_fetch_photos, state)
         logger.info(f"Found {len(photo_assets)} photos")
+
+    # A Live Photo's video half is part of a photograph. It is dropped from the
+    # video pool rather than fetched separately, so a burst can never compete
+    # against the still it belongs to.
+    clips = [
+        c
+        for c in clips
+        if c.asset.id not in {p.live_photo_video_id for p in photo_assets if p.live_photo_video_id}
+    ]
 
     clips.sort(key=lambda c: c.asset.file_created_at)
     return clips, photo_assets

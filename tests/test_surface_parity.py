@@ -29,7 +29,7 @@ from datetime import date, datetime
 import pytest
 
 from immich_memories.api.models import Person
-from immich_memories.cli._asset_fetch import fetch_photos, fetch_videos_and_live_photos
+from immich_memories.cli._asset_fetch import fetch_photos, fetch_videos
 from immich_memories.cli._date_resolution import default_duration_for_type, resolve_date_range
 from immich_memories.memory_types.factory import create_preset
 from immich_memories.memory_types.registry import MemoryType
@@ -410,14 +410,12 @@ def cli_fetch_calls(
     """What ``cli/_asset_fetch`` asks Immich for, given windows and people."""
     client = RecordingClient()
     person_ids = [person.id for person in people]
-    fetch_videos_and_live_photos(
+    fetch_videos(
         client=client,
         # Read only on the live-photo branch, which use_live_photos closes.
-        config=None,
         progress=SilentProgress(),
         date_ranges=windows,
         person_ids=person_ids,
-        use_live_photos=False,
     )
     if include_photos:
         fetch_photos(client=client, date_ranges=windows, person_ids=person_ids)

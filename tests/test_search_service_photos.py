@@ -26,11 +26,16 @@ def _make_image_asset(asset_id: str, *, is_live_photo: bool = False) -> Asset:
 
 
 class TestGetPhotosForDateRange:
-    """Tests for fetching photos (IMAGE assets, not live photos)."""
+    """Tests for fetching photographs — Live Photo stills included."""
 
     @pytest.mark.asyncio
-    async def test_returns_only_non_live_photo_images(self):
-        """Filters out live photos, keeps regular photos."""
+    async def test_returns_every_image_including_live_photo_stills(self):
+        """A Live Photo still is a photograph and belongs in the photo pool.
+
+        Dropping it here hid most of a real library from selection: 17 of 18
+        favourites in a measured month are Live Photos. Whether the burst is
+        worth showing as motion is a rendering question, asked later.
+        """
         regular_photo = _make_image_asset("photo-1", is_live_photo=False)
         live_photo = _make_image_asset("live-1", is_live_photo=True)
 
@@ -55,9 +60,7 @@ class TestGetPhotosForDateRange:
         )
         result = await service.get_photos_for_date_range(date_range)
 
-        assert len(result) == 1
-        assert result[0].id == "photo-1"
-        assert not result[0].is_live_photo
+        assert {a.id for a in result} == {"photo-1", "live-1"}
 
     @pytest.mark.asyncio
     async def test_returns_empty_for_no_images(self):
