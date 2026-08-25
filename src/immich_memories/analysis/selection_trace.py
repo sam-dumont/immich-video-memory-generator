@@ -262,7 +262,20 @@ def _dropped_at(stage: str, dropped: list[str]) -> list[str]:
 
 
 def _facts_of(item: object) -> str:
-    """One line saying what a clip is, for the account."""
+    """One line saying what a clip is, for the account.
+
+    The account is diagnostic. It may describe a candidate poorly; it may
+    never take a run down with it — and now that the pool's own stages record,
+    it sees candidates far earlier and from more call sites than the funnel
+    ever did.
+    """
+    try:
+        return _described(item)
+    except Exception:  # WHY broad: any field of any shape, and none worth a crash
+        return _asset_id(item)[:8] or "an unreadable candidate"
+
+
+def _described(item: object) -> str:
     clip = getattr(item, "clip", item)
     asset = getattr(clip, "asset", clip)
     when = getattr(asset, "file_created_at", None)
@@ -280,13 +293,26 @@ def _facts_of(item: object) -> str:
         value = getattr(source, attr, None)
         if value is not None:
             bits.append(f"{label}{value:g}" if isinstance(value, float) else f"{label}{value}")
-    return "  ".join(bits)
+    return "  ".join(str(bit) for bit in bits)
 
 
 def _is_favorite(item: object) -> bool:
     clip = getattr(item, "clip", item)
     asset = getattr(clip, "asset", clip)
     return bool(getattr(asset, "is_favorite", False))
+
+
+def path_from_env() -> Path | None:
+    """Where this run should write its trace, if the caller asked for one.
+
+    Read here rather than at each call site because two layers now open a
+    context — the CLI runner, so the pool's own filters are on the record, and
+    the pipeline, so a UI run still traces — and they must agree on the file.
+    """
+    import os
+
+    configured = os.environ.get("IMMICH_MEMORIES_SELECTION_TRACE")
+    return Path(configured) if configured else None
 
 
 def active() -> Trace | None:
@@ -349,12 +375,28 @@ class tracing:  # noqa: N801 - reads as a context manager at the call site
         self.path = path
         self.trace = Trace()
         self._token: Token[Trace | None] | None = None
+        self._joined = False
 
     def __enter__(self) -> Trace:
+        """Start a trace, or join the one already running.
+
+        The pipeline opens a context of its own, and stages that run before it
+        — the source-quality drop, the subject policy — can only be recorded
+        by a caller opening one earlier. Two independent traces would put those
+        stages in a report nobody writes out, so the inner context joins the
+        outer instead: one trace, one file, whichever layer asked first.
+        """
+        already = _active.get()
+        if already is not None:
+            self.trace = already
+            self._joined = True
+            return already
         self._token = _active.set(self.trace)
         return self.trace
 
     def __exit__(self, *_exc: object) -> None:
+        if self._joined:
+            return
         if self._token is not None:
             _active.reset(self._token)
         if self.path is not None:
