@@ -14,6 +14,10 @@ immich-memories people
 
 Lists every named person in your Immich library. Useful because `--person` matches on the name Immich holds, and "Emma" versus "Emma S." is the difference between a memory and an empty pool.
 
+`people` also has subcommands now — `people scan` and `people show` build and read the
+[people graph](./people.md), which works out who is who from counts and dates. Calling
+`immich-memories people` on its own still does exactly what it did before.
+
 ## `years` — where the material is
 
 ```bash

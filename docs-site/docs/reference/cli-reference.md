@@ -378,11 +378,49 @@ immich-memories music search [OPTIONS]
 
 ## `people`
 
-List all people in Immich.
+Who is in this library, and who they are to each other.
+
+Called on its own this still lists the people Immich knows, which is
+what `immich-memories people` has always done.
 
 ```bash
 immich-memories people [OPTIONS]
 ```
+
+### `people scan`
+
+Build or refresh the people file from Immich.
+
+Reads every named person's count and month curve, then asks about each
+remaining pair to find who appears with whom. Nothing here looks at a
+pixel and nothing here asks you a question — the library's own
+distribution is the whole input.
+
+Safe to re-run: everything under `confirmed:` in the file is copied
+through untouched, and preferred to this pass's reading forever after.
+
+```bash
+immich-memories people scan [OPTIONS]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--min-assets` | integer | 25 | Pictures a named person needs before the graph has an opinion |
+| `--owner` | text | - | The name of the person whose library this is, if the account does not say |
+| `--out` | file | - | Where to write the people file |
+
+### `people show`
+
+Print what the last scan wrote down.
+
+```bash
+immich-memories people show [OPTIONS]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--file` | file | - | The people file to read |
+| `--tier` | choice: `inner` \| `recurring` \| `episodic` \| `event` | - | Show only one tier |
 
 ## `preflight`
 

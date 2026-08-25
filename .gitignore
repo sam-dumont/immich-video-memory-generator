@@ -150,3 +150,6 @@ sweep-spec*.json
 
 # discover-days catalogue: real event titles, never repo data
 special-days*.json
+
+# people graph: the names of everyone in a real library, never repo data
+people*.yaml

@@ -127,36 +127,6 @@ def register_config_commands(main: click.Group) -> None:
 
     @main.command()
     @click.pass_context
-    def people(ctx: click.Context) -> None:
-        """List all people in Immich."""
-        cfg = ctx.obj["config"]
-
-        if not cfg.immich.url or not cfg.immich.api_key:
-            print_error("Immich not configured. Run 'immich-memories config' first.")
-            sys.exit(1)
-
-        from immich_memories.api.immich import SyncImmichClient
-
-        with SyncImmichClient(
-            base_url=cfg.immich.url,
-            api_key=cfg.immich.api_key,
-            api_version=cfg.immich.api_version,
-        ) as client:
-            people_list = client.get_all_people()
-
-            table = Table(title="People in Immich")
-            table.add_column("Name", style="cyan")
-            table.add_column("ID", style="dim")
-
-            for person in sorted(people_list, key=lambda p: p.name):
-                if person.name:
-                    table.add_row(person.name, person.id[:8] + "...")
-
-            console.print(table)
-            console.print(f"\nTotal: {len([p for p in people_list if p.name])} named people")
-
-    @main.command()
-    @click.pass_context
     def years(ctx: click.Context) -> None:
         """List years with video content."""
         cfg = ctx.obj["config"]

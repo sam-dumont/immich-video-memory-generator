@@ -571,6 +571,7 @@ source_modules = [
     "immich_memories.analysis",
     "immich_memories.processing",
     "immich_memories.titles",
+    "immich_memories.people",
 ]
 forbidden_modules = ["immich_memories.ui"]
 
@@ -583,6 +584,7 @@ source_modules = [
     "immich_memories.processing",
     "immich_memories.titles",
     "immich_memories.audio",
+    "immich_memories.people",
 ]
 forbidden_modules = ["immich_memories.cli"]
 
