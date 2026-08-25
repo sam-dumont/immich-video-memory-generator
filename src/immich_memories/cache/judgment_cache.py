@@ -201,7 +201,7 @@ class VisualJudgmentCache:
 
     def remember(self, key: str, answer: str, original_provenance: str) -> None:
         """Bank a complete visual answer with the decision that first produced it."""
-        if not answer:
+        if not answer.strip():
             return
         try:
             conn = self._connect()

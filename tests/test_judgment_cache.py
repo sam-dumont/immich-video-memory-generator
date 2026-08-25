@@ -214,3 +214,13 @@ def test_visual_cache_keeps_original_provenance_when_reused(tmp_path) -> None:
     cache.remember("visual-key", "raw answer", '{"request": "original"}')
 
     assert cache.answer_for("visual-key") == ("raw answer", '{"request": "original"}')
+
+
+def test_visual_cache_does_not_bank_whitespace_only_answers(tmp_path) -> None:
+    from immich_memories.cache.judgment_cache import VisualJudgmentCache
+
+    cache = VisualJudgmentCache(tmp_path / "judgments.db")
+
+    cache.remember("visual-key", " \n\t", '{"request": "original"}')
+
+    assert cache.answer_for("visual-key") is None

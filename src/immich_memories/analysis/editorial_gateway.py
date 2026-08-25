@@ -142,6 +142,8 @@ class VisualEditorialGateway:
                     require_complete=True,
                 )
             )
+            if not raw_text.strip():
+                raise ValueError("visual editorial answer must be nonblank")
         except Exception:
             self._record(
                 provenance,

@@ -157,6 +157,56 @@ def test_gateway_traces_each_null_content_retry_as_a_wire_attempt(tmp_path) -> N
     ]
 
 
+def test_gateway_rejects_whitespace_without_banking_the_real_post(tmp_path) -> None:
+    from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
+    from immich_memories.analysis.llm_query import LLMTransportAttempt
+
+    trace = Trace()
+    gateway = VisualEditorialGateway(
+        llm_config=LLMConfig(model="vision-test"), cache_path=tmp_path / "judgments.db", trace=trace
+    )
+
+    async def _whitespace(*_args, **kwargs):
+        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
+        return " \n\t"
+
+    # WHY: a completed transport with blank editorial content must still be traceable, not banked.
+    with (
+        patch("immich_memories.analysis.editorial_gateway.query_llm", new=_whitespace),
+        pytest.raises(ValueError, match="nonblank"),
+    ):
+        gateway.ask(_request(_page()))
+
+    request_trace = trace.as_dict()["requests"][0]
+    assert request_trace["actual_calls"] == 1
+    assert request_trace["attempts"][0]["outcome"] == "response"
+    assert gateway.cache.answer_for(request_trace["provenance"]["request_key"]) is None
+
+
+def test_gateway_traces_an_invalid_provider_response_as_one_real_post(tmp_path) -> None:
+    from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
+
+    response = MagicMock(status_code=200)
+    response.raise_for_status.return_value = None
+    response.json.side_effect = ValueError("not json")
+    trace = Trace()
+    gateway = VisualEditorialGateway(
+        llm_config=LLMConfig(model="vision-test"), cache_path=tmp_path / "judgments.db", trace=trace
+    )
+
+    # WHY: malformed provider content arrives after a real POST and must not look like a free failure.
+    with (
+        patch("httpx.AsyncClient.post", return_value=response),
+        pytest.raises(ValueError, match="not json"),
+    ):
+        gateway.ask(_request(_page()))
+
+    request_trace = trace.as_dict()["requests"][0]
+    assert request_trace["actual_calls"] == 1
+    assert [attempt["outcome"] for attempt in request_trace["attempts"]] == ["invalid_response"]
+    assert gateway.cache.answer_for(request_trace["provenance"]["request_key"]) is None
+
+
 @pytest.mark.asyncio
 async def test_gateway_works_inside_an_active_event_loop(tmp_path) -> None:
     from immich_memories.analysis.editorial_gateway import VisualEditorialGateway

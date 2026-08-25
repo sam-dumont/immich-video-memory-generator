@@ -137,7 +137,14 @@ async def _post_adapted(
             raise
         if resp.status_code != 400:
             return resp
-        adaptation = _adaptation_for(resp.json().get("error", {}).get("message", ""))
+        try:
+            error = _response_body(resp).get("error", {})
+            if not isinstance(error, dict):
+                raise TypeError("LLM error body is not an object")
+            adaptation = _adaptation_for(str(error.get("message", "")))
+        except (TypeError, ValueError):
+            _record_invalid_response(transport_observer, resp.status_code)
+            raise
         if adaptation is None or adaptation in adaptations:
             return resp
         _observe(transport_observer, 1, "dialect_adaptation", resp.status_code, adaptation)
@@ -348,7 +355,14 @@ async def _query_ollama(
         except httpx.HTTPStatusError:
             _observe(transport_observer, 1, "http_error", resp.status_code)
             raise
-        body = resp.json()
+        try:
+            body = _response_body(resp)
+            raw_text = body["response"]
+            if not isinstance(raw_text, str):
+                raise TypeError("Ollama response content is not text")
+        except (KeyError, TypeError, ValueError):
+            _record_invalid_response(transport_observer, resp.status_code)
+            raise
         if require_complete and body.get("done_reason") in {"length", "max_tokens", "truncated"}:
             _observe(transport_observer, 1, "incomplete", resp.status_code)
             raise ValueError("LLM returned incomplete content")
@@ -357,7 +371,7 @@ async def _query_ollama(
             prompt_tokens=body.get("prompt_eval_count", 0) or 0,
             completion_tokens=body.get("eval_count", 0) or 0,
         )
-        return body["response"]
+        return raw_text
 
 
 def _anthropic_content(prompt: str, images: Sequence[bytes]) -> str | list[dict]:
@@ -421,8 +435,7 @@ async def _query_anthropic(
         except httpx.HTTPStatusError:
             _observe(transport_observer, 1, "http_error", resp.status_code)
             raise
-        body = resp.json()
-        usage = body.get("usage") or {}
+        body, usage, raw_text = _anthropic_answer(resp, transport_observer)
         llm_metrics.record_reply(
             prompt_tokens=usage.get("input_tokens", 0) or 0,
             completion_tokens=usage.get("output_tokens", 0) or 0,
@@ -446,7 +459,7 @@ async def _query_anthropic(
                 require_complete=require_complete,
             )
         _observe(transport_observer, 1, "response", resp.status_code)
-        return "".join(b.get("text", "") for b in body["content"] if b.get("type") == "text")
+        return raw_text
 
 
 def _openai_content(
@@ -520,20 +533,12 @@ async def _query_openai(
                 client, f"{base_url}/chat/completions", payload, adaptations, transport_observer
             )
             _ensure_success(resp, transport_observer)
-            body = resp.json()
-            choice = body["choices"][0]
-            usage = body.get("usage") or {}
-            llm_metrics.record_reply(
-                prompt_tokens=usage.get("prompt_tokens", 0) or 0,
-                completion_tokens=usage.get("completion_tokens", 0) or 0,
-            )
-            content, retry_without_thinking = _openai_completion(
-                choice,
+            content, retry_without_thinking = _interpret_openai_response(
+                resp,
                 thinking,
                 require_complete,
                 transport_observer,
                 attempt + 1,
-                resp.status_code,
             )
             if retry_without_thinking:
                 llm_metrics.record_truncation()
@@ -579,6 +584,56 @@ def _openai_completion(
     return choice["message"]["content"], False
 
 
+def _anthropic_answer(
+    response: httpx.Response, observer: Callable[[LLMTransportAttempt], None] | None
+) -> tuple[dict, dict, str]:
+    """Decode the native Anthropic body before using any of its fields."""
+    try:
+        body = _response_body(response)
+        usage = body.get("usage") or {}
+        content = body["content"]
+        if not isinstance(usage, dict) or not isinstance(content, list):
+            raise TypeError("Anthropic response has an invalid body shape")
+        raw_text = "".join(
+            block.get("text", "") for block in content if block.get("type") == "text"
+        )
+    except (KeyError, TypeError, ValueError, AttributeError):
+        _record_invalid_response(observer, response.status_code)
+        raise
+    return body, usage, raw_text
+
+
+def _interpret_openai_response(
+    response: httpx.Response,
+    thinking: bool,
+    require_complete: bool,
+    observer: Callable[[LLMTransportAttempt], None] | None,
+    attempt: int,
+) -> tuple[str | None, bool]:
+    """Parse one OpenAI-style reply and preserve its completed-post outcome."""
+    try:
+        body = _response_body(response)
+        choice = body["choices"][0]
+        usage = body.get("usage") or {}
+        if not isinstance(choice, dict) or not isinstance(usage, dict):
+            raise TypeError("OpenAI response has an invalid body shape")
+    except (KeyError, TypeError, ValueError, IndexError):
+        _record_invalid_response(observer, response.status_code)
+        raise
+    try:
+        content, retry_without_thinking = _openai_completion(
+            choice, thinking, require_complete, observer, attempt, response.status_code
+        )
+    except (KeyError, TypeError, AttributeError):
+        _record_invalid_response(observer, response.status_code)
+        raise
+    llm_metrics.record_reply(
+        prompt_tokens=usage.get("prompt_tokens", 0) or 0,
+        completion_tokens=usage.get("completion_tokens", 0) or 0,
+    )
+    return content, retry_without_thinking
+
+
 def _observe(
     observer: Callable[[LLMTransportAttempt], None] | None,
     attempt: int,
@@ -588,6 +643,21 @@ def _observe(
 ) -> None:
     if observer is not None:
         observer(LLMTransportAttempt(attempt, outcome, status_code, adaptation))
+
+
+def _response_body(response: httpx.Response) -> dict:
+    """Decode one provider response as the object every dialect requires."""
+    body = response.json()
+    if not isinstance(body, dict):
+        raise TypeError("LLM response body is not an object")
+    return body
+
+
+def _record_invalid_response(
+    observer: Callable[[LLMTransportAttempt], None] | None, status_code: int
+) -> None:
+    """Trace the one completed POST whose content could not be parsed."""
+    _observe(observer, 1, "invalid_response", status_code)
 
 
 def _ensure_success(

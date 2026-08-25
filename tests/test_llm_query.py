@@ -554,6 +554,112 @@ async def test_transport_observer_records_each_null_content_wire_retry() -> None
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["ollama", "anthropic"])
+async def test_transport_observer_records_provider_http_failures(provider: str) -> None:
+    import httpx
+
+    from immich_memories.analysis.llm_query import query_llm
+
+    response = MagicMock(status_code=503)
+    response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "503", request=MagicMock(), response=response
+    )
+    attempts = []
+    config = LLMConfig(provider=provider, base_url="http://localhost/v1", model="vision")
+
+    # WHY: a provider's rejected HTTP response is still one real wire attempt.
+    with (
+        patch("httpx.AsyncClient.post", return_value=response),
+        pytest.raises(httpx.HTTPStatusError),
+    ):
+        await query_llm("look", config, transport_observer=attempts.append)
+
+    assert [(event.attempt, event.outcome, event.status_code) for event in attempts] == [
+        (1, "http_error", 503)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_transport_observer_records_openai_adaptation_and_success() -> None:
+    from immich_memories.analysis.llm_query import query_llm
+
+    rejected = AsyncMock(status_code=400)
+    rejected.json = MagicMock(
+        return_value={"error": {"message": "Unrecognized request argument: chat_template_kwargs"}}
+    )
+    attempts = []
+
+    # WHY: the compatibility retry posts twice, once rejected and once accepted.
+    with (
+        patch("httpx.AsyncClient.post", side_effect=[rejected, _openai_response()]),
+        patch("immich_memories.analysis.llm_query._PARAM_ADAPTATIONS", {}),
+    ):
+        await query_llm("look", _thinking_config(), transport_observer=attempts.append)
+
+    assert [
+        (event.attempt, event.outcome, event.status_code, event.adaptation) for event in attempts
+    ] == [(1, "dialect_adaptation", 400, "no_chat_template_kwargs"), (2, "response", 200, None)]
+
+
+@pytest.mark.asyncio
+async def test_transport_observer_records_connection_errors() -> None:
+    import httpx
+
+    from immich_memories.analysis.llm_query import query_llm
+
+    attempts = []
+    # WHY: no response object exists when the wire connection itself fails.
+    with (
+        patch("httpx.AsyncClient.post", side_effect=httpx.ConnectError("offline")),
+        pytest.raises(httpx.ConnectError),
+    ):
+        await query_llm("look", _thinking_config(), transport_observer=attempts.append)
+
+    assert [(event.attempt, event.outcome, event.status_code) for event in attempts] == [
+        (1, "connection_error", None)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_transport_observer_survives_thinking_fallback() -> None:
+    from immich_memories.analysis.llm_query import query_llm
+
+    attempts = []
+    # WHY: the fallback owns a new request but must retain the original observer.
+    with patch(
+        "httpx.AsyncClient.post",
+        side_effect=[_openai_response(finish_reason="length"), _openai_response()],
+    ):
+        await query_llm(
+            "judge", _thinking_config(), thinking=True, transport_observer=attempts.append
+        )
+
+    assert [(event.attempt, event.outcome, event.status_code) for event in attempts] == [
+        (1, "thinking_fallback", 200),
+        (2, "response", 200),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_transport_observers_are_isolated_across_concurrent_queries() -> None:
+    import asyncio
+
+    from immich_memories.analysis.llm_query import query_llm
+
+    first: list = []
+    second: list = []
+    # WHY: per-query attempt numbers must not leak between concurrent callers.
+    with patch("httpx.AsyncClient.post", return_value=_openai_response()):
+        await asyncio.gather(
+            query_llm("first", _thinking_config(), transport_observer=first.append),
+            query_llm("second", _thinking_config(), transport_observer=second.append),
+        )
+
+    assert [(event.attempt, event.outcome) for event in first] == [(1, "response")]
+    assert [(event.attempt, event.outcome) for event in second] == [(1, "response")]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("provider", ["ollama", "anthropic", "openai-compatible"])
 async def test_each_provider_payload_carries_the_exact_jpeg_bytes(provider: str) -> None:
     import base64
@@ -603,6 +709,7 @@ async def test_visual_completion_mode_rejects_known_truncation(provider: str, bo
     response = AsyncMock(status_code=200)
     response.json = MagicMock(return_value=body)
     response.raise_for_status = lambda: None
+    attempts = []
     # WHY: the provider response status is the external completion boundary.
     with patch("httpx.AsyncClient.post", return_value=response), pytest.raises(ValueError):
         await query_llm(
@@ -610,4 +717,69 @@ async def test_visual_completion_mode_rejects_known_truncation(provider: str, bo
             LLMConfig(provider=provider, base_url="http://localhost/v1", model="vision"),
             images=(b"jpeg",),
             require_complete=True,
+            transport_observer=attempts.append,
         )
+    assert [(event.attempt, event.outcome, event.status_code) for event in attempts] == [
+        (1, "incomplete", 200)
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["ollama", "anthropic", "openai-compatible"])
+async def test_transport_observer_records_invalid_json_for_each_provider(provider: str) -> None:
+    from immich_memories.analysis.llm_query import query_llm
+
+    response = MagicMock(status_code=200)
+    response.raise_for_status.return_value = None
+    response.json.side_effect = ValueError("not json")
+    attempts = []
+
+    # WHY: a successful POST with unparseable provider content still costs one call.
+    with (
+        patch("httpx.AsyncClient.post", return_value=response),
+        pytest.raises(ValueError, match="not json"),
+    ):
+        await query_llm(
+            "look",
+            LLMConfig(provider=provider, base_url="http://localhost/v1", model="vision"),
+            transport_observer=attempts.append,
+        )
+
+    assert [(event.attempt, event.outcome, event.status_code) for event in attempts] == [
+        (1, "invalid_response", 200)
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("provider", "body"),
+    [
+        ("ollama", {"response": []}),
+        ("anthropic", {"content": "not blocks"}),
+        ("openai-compatible", {"choices": "not choices"}),
+    ],
+)
+async def test_transport_observer_records_invalid_shape_for_each_provider(
+    provider: str, body: dict
+) -> None:
+    from immich_memories.analysis.llm_query import query_llm
+
+    response = MagicMock(status_code=200)
+    response.raise_for_status.return_value = None
+    response.json.return_value = body
+    attempts = []
+
+    # WHY: a syntactically valid but unusable provider body also spent one wire attempt.
+    with (
+        patch("httpx.AsyncClient.post", return_value=response),
+        pytest.raises((KeyError, TypeError, AttributeError)),
+    ):
+        await query_llm(
+            "look",
+            LLMConfig(provider=provider, base_url="http://localhost/v1", model="vision"),
+            transport_observer=attempts.append,
+        )
+
+    assert [(event.attempt, event.outcome, event.status_code) for event in attempts] == [
+        (1, "invalid_response", 200)
+    ]
