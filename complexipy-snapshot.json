@@ -100,7 +100,7 @@
         ]
       }
     ],
-    "complexity": 99
+    "complexity": 103
   },
   {
     "path": "src/immich_memories/automation/calendar_detectors.py",

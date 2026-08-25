@@ -9,18 +9,24 @@ This pass asks the question those caps were standing in for, once, at MOMENT
 granularity: which of these moments does the month's story need? Numbers still
 order things here — the table is chronological, durations are estimated, the
 keep-set is measured against the budget — but no number decides a kill. Every
-moment that goes is one the model named, or one the model itself ranked most
-expendable, released against a fixed envelope.
+moment that goes is one the model named, or one it ranked last itself: the
+keep list is written most essential first, and the envelope releases from its
+tail. Nothing here invents that order (see structure_answer.states_a_priority).
 
 Duration is a convergence bound, not an eviction rule. This is the rough cut
 and it only has to land near the content budget; the fine cut (the llm review)
-converges further downstream.
+converges further downstream. When the editor cannot say what to give up, the
+cut still stands and the counting stages narrow what it kept — see
+StructureCut.narrowed.
+
+The question itself, and the reading of its answer, live next door in
+structure_answer: the wording there is measured against real answers and fails
+differently from the editing done here.
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -36,6 +42,20 @@ if TYPE_CHECKING:
 
 from immich_memories.analysis import selection_trace as trace
 from immich_memories.analysis.llm_failures import stop_if_this_is_our_bug
+from immich_memories.analysis.structure_answer import (
+    ENVELOPE_CEILING,
+    ENVELOPE_FLOOR,
+    Answer,
+    Reply,
+    answer_in,
+    defect_prompt,
+    defects_in,
+    first_prompt,
+    order_mode,
+    reorder_prompt,
+    reordering_in,
+    states_a_priority,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,110 +63,8 @@ logger = logging.getLogger(__name__)
 # against a local reasoning model, for a prompt of the same shape.
 _STRUCTURE_MAX_TOKENS = 8000
 
-# How near the content budget the rough cut has to land. Not an eviction rule:
-# the fine cut converges further, and backfill fills an under-run.
-_ENVELOPE_FLOOR = 0.9
-_ENVELOPE_CEILING = 1.1
-
 # How much of a member's description one table line carries.
 _DESCRIPTION_CHARS = 120
-
-_PROMPT = """You are structuring the rough cut of a month's memory video from
-its moments. They are listed in the order they happened, and that order is
-fixed: what you include is your only lever.
-
-Ask ONE question of every moment: **does the month's story need it?**
-
-The story needs coverage of what actually happened, not only what looks
-strongest — the punch-up is not the march. A day earns a second moment only
-when the story needs both of them. A cut made of nothing but peaks is
-shapeless: vary the tension.
-
-`starred n/m` counts the items the owner marked a favourite. Those are the
-owner's own marks and they carry the month's meaning. Cut a starred moment
-only when its occasion is already over-represented AND another starred moment
-of that occasion stays in.
-
-Moments sharing an `episode` name are ONE occasion — an afternoon somewhere, a
-party, a hike — however different their descriptions read.
-
-{moments}
-
-The content budget is {target:.0f}s. Do the arithmetic: add up the `est`
-seconds of every moment you keep, and that sum must land between {floor:.0f}s
-and {ceiling:.0f}s. Keeping more than that is not an edit, it is a list.
-
-Every moment you cut needs a one-line reason. What you leave out is mined
-again later, and a bare no is useless to whoever reads it.
-
-Also return `release_order`: every moment you kept, most expendable first —
-what falls first if the cut still has to shrink. Choose that order yourself:
-the memory plays in the order things happened, so the last moment you keep is
-the month's closer, and nothing here will guess for you.
-
-Answer with STRICT JSON only, no prose:
-{{"keep": [<moment numbers>],
- "cut": [{{"index": <moment number>, "reason": "<short reason>"}}],
- "release_order": [<every kept moment number, most expendable first>]}}
-Every moment from 1 to {count} must appear exactly once across keep and cut."""
-
-
-_REVISION_PROMPT = """You have already edited this month, and what you kept
-does not fit its runtime. Here are the same moments, in the same order and
-numbered the same way:
-
-{moments}
-
-You kept: {kept}
-Assembled, those moments run about {shipped:.0f}s. The content budget is
-{target:.0f}s, so what you keep has to land between {floor:.0f}s and
-{ceiling:.0f}s.
-
-Revise the edit. Either cut more moments until what you keep fits, or give a
-`release_order` — every moment you keep, most expendable first — and the cut
-will shrink in the order you choose.
-
-What falls first matters. The memory plays in the order things happened, so
-the last moment you keep is the month's closer: an order that releases from
-the end shortens the month instead of trimming it.
-
-Same rules as before: starred moments carry the month's meaning, moments
-sharing an `episode` are one occasion, and every moment you cut needs a
-one-line reason.
-
-Answer with STRICT JSON only, no prose:
-{{"keep": [<moment numbers>],
- "cut": [{{"index": <moment number>, "reason": "<short reason>"}}],
- "release_order": [<every kept moment number, most expendable first>]}}
-Every moment from 1 to {count} must appear exactly once across keep and cut."""
-
-
-def _first_prompt(table: str, count: int, target_duration: float) -> str:
-    return _PROMPT.format(
-        moments=table,
-        count=count,
-        target=target_duration,
-        floor=target_duration * _ENVELOPE_FLOOR,
-        ceiling=target_duration * _ENVELOPE_CEILING,
-    )
-
-
-def _revision_prompt(
-    table: str,
-    count: int,
-    kept: tuple[int, ...],
-    shipped: float,
-    target_duration: float,
-) -> str:
-    return _REVISION_PROMPT.format(
-        moments=table,
-        count=count,
-        kept=", ".join(f"M{index}" for index in kept),
-        shipped=shipped,
-        target=target_duration,
-        floor=target_duration * _ENVELOPE_FLOOR,
-        ceiling=target_duration * _ENVELOPE_CEILING,
-    )
 
 
 def _ask(
@@ -196,7 +114,10 @@ def _shipped_est(kept: list[_Moment], target_clips: int) -> float:
     structure pass replaces.
 
     The share depends on how many moments are kept, so it is recomputed as the
-    keep-set shrinks rather than fixed at the start of a walk.
+    keep-set shrinks rather than fixed at the start of a walk. That makes this
+    deliberately NON-MONOTONE in the number of kept moments: crossing the
+    keep_per_moment threshold lets each surviving moment ship more, so
+    releasing a moment can raise the estimate rather than lower it.
     """
     from immich_memories.analysis.clip_refiner import _clips_per_moment
 
@@ -301,94 +222,18 @@ def _table(moments: list[_Moment]) -> str:
 
 
 @dataclass(frozen=True)
-class _Answer:
-    """The edit the model made, once it accounts for every moment."""
-
-    keep: tuple[int, ...]
-    cut: tuple[tuple[int, str], ...]
-    # None when the model stated no usable order. There is no fallback: see
-    # _stated_release_order.
-    release_order: tuple[int, ...] | None
-
-
-def _is_a_moment_number(value: object) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool)
-
-
-def _stated_release_order(given: object, kept: list[int]) -> tuple[int, ...] | None:
-    """The editor's own order over its own keeps, or None if it stated none.
-
-    No fallback, and that is the whole point. An order we invent is a
-    mechanical kill wearing an editor's clothes: guessing "the keeps are in
-    story order, so later means looser" released M53, M52, M50 and downwards
-    on a real June and amputated the end of the month. A memory plays in the
-    order things happened, so the last moment kept IS the closer, and a rule
-    that releases from the end is a rule that shortens the month.
-
-    Read as one list rather than entry by entry: an order naming something
-    that was never kept is not an order over this cut.
-    """
-    if (
-        isinstance(given, list)
-        and all(_is_a_moment_number(n) for n in given)
-        and set(given) == set(kept)
-    ):
-        return tuple(given)
-    return None
-
-
-def _accounted_for(payload: object, count: int) -> _Answer | None:
-    """The edit, but only if the answer accounts for every moment exactly once.
-
-    Under keep-semantics silence is a kill, so a truncated answer would cut
-    every moment it never reached. Requiring the two lists to partition 1..M
-    turns truncation back into a parse failure, which this pass survives by
-    handing the cut to the arithmetic funnel. It is also the cheapest check
-    that the model answered about THESE moments.
-    """
-    if not isinstance(payload, dict):
-        return None
-    keep, cut = payload.get("keep"), payload.get("cut")
-    if not isinstance(keep, list) or not isinstance(cut, list) or not keep:
-        return None
-    kept = [n for n in keep if _is_a_moment_number(n)]
-    entries = [
-        (entry["index"], str(entry.get("reason", "no reason given")))
-        for entry in cut
-        if isinstance(entry, dict) and _is_a_moment_number(entry.get("index"))
-    ]
-    if len(kept) != len(keep) or len(entries) != len(cut):
-        return None
-    if sorted(kept + [index for index, _ in entries]) != list(range(1, count + 1)):
-        return None
-    return _Answer(
-        tuple(kept), tuple(entries), _stated_release_order(payload.get("release_order"), kept)
-    )
-
-
-def _answer_in(raw: str | None, count: int) -> _Answer | None:
-    """The model's edit, or None when it never made one about these moments."""
-    if not raw:
-        return None
-    from immich_memories.analysis.selection_review import _balanced_objects
-
-    for candidate in reversed(_balanced_objects(raw)):
-        try:
-            payload = json.loads(candidate)
-        except json.JSONDecodeError:
-            continue
-        answer = _accounted_for(payload, count)
-        if answer is not None:
-            return answer
-    return None
-
-
-@dataclass(frozen=True)
 class StructureCut:
-    """The clips whose moments the story kept, and why each of the rest went."""
+    """The clips whose moments the story kept, and why each of the rest went.
+
+    `narrowed` says whether the length of this cut was settled here. False is
+    the honest fallback: the story made a cut it stands behind but could not
+    say what to give up first, so the counting stages narrow what it kept
+    rather than the whole pool.
+    """
 
     kept: list[ClipWithSegment]
     cuts: dict[str, str]
+    narrowed: bool = True
 
     @property
     def dropped(self) -> frozenset[str]:
@@ -425,8 +270,10 @@ class StructurePass:
     ) -> StructureCut | None:
         """The clips whose moments the story needs, or None if it never decided.
 
-        None is the signal to fall back: the arithmetic funnel makes the cut
-        instead, and the trace says so above the funnel.
+        None is the signal to fall back entirely: the arithmetic funnel makes
+        the cut over the whole pool, and the trace says so above the funnel. A
+        cut that stands but could not be shrunk comes back with `narrowed`
+        False instead — the judgment is kept, the length is not.
         """
         if self._fates is not None:
             return _replay(pool, self._fates)
@@ -438,61 +285,121 @@ class StructurePass:
             trace.record("structure", pool, pool, [f"not asked — {nothing_to_decide}"])
             return StructureCut(kept=pool.copy(), cuts={})
         table = _table(moments)
-        answer = self._put(_first_prompt(table, len(moments), target_duration), len(moments))
+        answer, asked_twice = self._edit_of(table, moments, target_duration)
         if answer is None:
             return None
-        edit = _edit_from(moments, answer, target_duration, target_clips)
-        if edit is None:
-            edit = self._revise(table, moments, answer, target_duration, target_clips)
-        if edit is None:
-            return None
-        cut = _apply(pool, edit)
+        cut = self._carry_out(
+            pool, moments, answer, target_duration, target_clips, may_ask=not asked_twice
+        )
         self._fates = cut.cuts.copy()
         return cut
 
-    def _revise(
+    def _edit_of(
+        self, table: str, moments: list[_Moment], target_duration: float
+    ) -> tuple[Answer | None, bool]:
+        """The edit, and whether asking for it cost the run its one re-ask.
+
+        A first answer whose two lists do not account for every moment gets
+        one retry, and that retry is told exactly which numbers were wrong.
+        An answer with no edit in it at all gets nothing: there is no defect
+        to name, so there is nothing to correct.
+        """
+        count = len(moments)
+        reply = self._put(first_prompt(table, count, target_duration), count)
+        if reply.answer is not None or not reply.reached:
+            return reply.answer, False
+        if not reply.defects:
+            _never_ran("the model's answer could not be read")
+            return None, True
+        retry = self._put(defect_prompt(table, count, reply.defects), count)
+        if retry.answer is None and retry.reached:
+            _never_ran("the revised answer still did not account for every moment")
+        return retry.answer, True
+
+    def _carry_out(
         self,
-        table: str,
+        pool: list[ClipWithSegment],
         moments: list[_Moment],
-        overshot: _Answer,
+        answer: Answer,
         target_duration: float,
         target_clips: int,
-    ) -> _Edit | None:
-        """One corrective ask, then the funnel. No retry ladder.
+        *,
+        may_ask: bool,
+    ) -> StructureCut:
+        """Apply the edit, and shrink it to the envelope if the editor said how."""
+        kept, notes, reasons = _keep_after_the_starred_rule(moments, answer)
+        reasons.append(order_mode(answer.keep))
+        shipped = _shipped_est(list(kept.values()), target_clips)
+        if shipped <= target_duration * ENVELOPE_CEILING:
+            return _apply(pool, kept, notes, reasons, target_duration, target_clips, len(moments))
+        order = self._priority_for(answer.keep, kept, shipped, target_duration, reasons, may_ask)
+        if order is None:
+            # The judgment stands; only the length is unsettled. Measured four
+            # times out of four, what the model cut was sound and what it said
+            # about order was not, so the cut is kept and the counting stages
+            # are handed the remainder rather than the pool.
+            reasons.append("no priority to shrink by — the funnel narrowed what was kept")
+            trace.warn(
+                "the structure pass cut, but stated no priority — "
+                "the arithmetic funnel narrowed the remainder"
+            )
+            return _apply(
+                pool,
+                kept,
+                notes,
+                reasons,
+                target_duration,
+                target_clips,
+                len(moments),
+                narrowed=False,
+            )
+        _release_to_fit(kept, order, target_duration, target_clips, notes, reasons)
+        return _apply(pool, kept, notes, reasons, target_duration, target_clips, len(moments))
 
-        The editor kept more than the runtime holds and named no order to
-        shrink by, so it is shown its own keep list, what it will actually run
-        and the envelope, and asked to revise. A revision that still overshoots
-        with no order is refused exactly like an unreadable answer: nothing
-        here may invent the order itself.
+    def _priority_for(
+        self,
+        keep: tuple[int, ...],
+        kept: dict[int, _Moment],
+        shipped: float,
+        target_duration: float,
+        reasons: list[str],
+        may_ask: bool,
+    ) -> tuple[int, ...] | None:
+        """The order to release in, asking once if the editor stated none.
+
+        The re-ask fires on the conjunction only: an unranked keep list is
+        harmless while everything in it fits, so it costs a reasoning call
+        only when something actually has to go.
         """
-        kept, _cuts, _account = _keep_after_the_starred_rule(moments, overshot)
-        prompt = _revision_prompt(
-            table,
-            len(moments),
-            tuple(sorted(kept)),
-            _shipped_est(list(kept.values()), target_clips),
-            target_duration,
-        )
-        answer = self._put(prompt, len(moments))
-        if answer is None:
+        if states_a_priority(keep):
+            reasons.append("priority stated with its first answer")
+            return keep
+        if not may_ask:
             return None
-        edit = _edit_from(moments, answer, target_duration, target_clips, revised=True)
-        if edit is None:
-            _never_ran("the revised cut still overshot the budget and stated no release order")
-        return edit
+        echoed = tuple(kept)
+        raw = self._say(reorder_prompt(echoed, shipped, target_duration))
+        order = reordering_in(raw, echoed) if raw is not None else None
+        if order is None or not states_a_priority(order):
+            return None
+        reasons.extend(("asked once to revise", "priority stated when asked to revise"))
+        return order
 
-    def _put(self, prompt: str, count: int) -> _Answer | None:
+    def _put(self, prompt: str, count: int) -> Reply:
+        raw = self._say(prompt)
+        if raw is None:
+            return Reply(None, reached=False)
+        answer = answer_in(raw, count)
+        if answer is not None:
+            return Reply(answer)
+        return Reply(None, defects_in(raw, count))
+
+    def _say(self, prompt: str) -> str | None:
         try:
-            raw = _ask(prompt, self._llm, self._timeout, self._cache_path)
+            return _ask(prompt, self._llm, self._timeout, self._cache_path)
         except Exception as e:  # WHY broad: the pass is optional; the funnel decides instead
             stop_if_this_is_our_bug(e, "structure pass")
             _never_ran(f"the model was unavailable ({type(e).__name__})")
             return None
-        answer = _answer_in(raw, count)
-        if answer is None:
-            _never_ran("the model's answer could not be read")
-        return answer
 
 
 def _never_ran(why: str) -> None:
@@ -522,7 +429,7 @@ def _nothing_to_decide(
     if len(moments) < 2:
         return "one moment is not a structure to decide"
     shipped = _shipped_est(moments, target_clips)
-    if shipped <= target_duration * _ENVELOPE_CEILING:
+    if shipped <= target_duration * ENVELOPE_CEILING:
         return (
             f"the pool already fits the budget — {shipped:.0f}s as it will ship "
             f"against {target_duration:.0f}s"
@@ -546,16 +453,8 @@ def _the_last_star_of_its_episode(moment: _Moment, kept: Iterable[_Moment]) -> b
     )
 
 
-@dataclass(frozen=True)
-class _Edit:
-    """A carried-out edit: why each dropped clip went, and the stage's account."""
-
-    notes: dict[str, str]
-    reasons: list[str]
-
-
 def _keep_after_the_starred_rule(
-    moments: list[_Moment], answer: _Answer
+    moments: list[_Moment], answer: Answer
 ) -> tuple[dict[int, _Moment], dict[str, str], list[str]]:
     """The keep-set this answer really produces, and the account of the rest.
 
@@ -581,58 +480,43 @@ def _keep_after_the_starred_rule(
     return kept, notes, reasons
 
 
-def _edit_from(
-    moments: list[_Moment],
-    answer: _Answer,
+def _apply(
+    pool: list[ClipWithSegment],
+    kept: dict[int, _Moment],
+    notes: dict[str, str],
+    reasons: list[str],
     target_duration: float,
     target_clips: int,
+    of_moments: int,
     *,
-    revised: bool = False,
-) -> _Edit | None:
-    """Carry out the answer, or None when it overshoots with no order to shrink by.
-
-    Kept moments continue whole; cut moments go whole, minus the occasions
-    that would be left with no starred moment. None is not a refusal on its
-    own — the caller asks the editor to revise once, and refuses only if that
-    comes back the same way.
-    """
-    kept, notes, reasons = _keep_after_the_starred_rule(moments, answer)
-    if revised:
-        reasons.insert(0, "the first answer overshot the budget: asked once to revise")
-
-    if _shipped_est(list(kept.values()), target_clips) > target_duration * _ENVELOPE_CEILING:
-        if answer.release_order is None:
-            return None
-        reasons.append(
-            "released against the editor's order, stated "
-            + ("when asked to revise" if revised else "with its first answer")
-        )
-        _release_to_fit(kept, answer.release_order, target_duration, target_clips, notes, reasons)
-
+    narrowed: bool = True,
+) -> StructureCut:
+    """Put the finished edit on the record and hand back what survived it."""
     representatives = sum(_est(m) for m in kept.values())
+    # Deliberately non-monotone in the number of kept moments: the share one
+    # moment may ship steps up as the keep-set shrinks, so releasing a moment
+    # can RAISE this estimate. A reader of the trace should not be surprised.
     total = _shipped_est(list(kept.values()), target_clips)
     reasons.insert(
         0,
-        f"kept {len(kept)} of {len(moments)} moment(s) — {representatives:.0f}s of "
+        f"kept {len(kept)} of {of_moments} moment(s) — {representatives:.0f}s of "
         f"representatives, {total:.0f}s as it will ship, against a "
         f"{target_duration:.0f}s budget",
     )
-    if total > target_duration * _ENVELOPE_CEILING:
+    if narrowed and total > target_duration * ENVELOPE_CEILING:
         # The walk ran out of moments it was allowed to release. Not a refusal:
-        # what stopped it is the starred rule, which outranks the envelope.
-        reasons.append("still over the ceiling — every remaining moment is protected")
-    if total < target_duration * _ENVELOPE_FLOOR:
+        # what stopped it is the starred rule, or the last moment standing.
+        reasons.append(
+            "still over the ceiling — nothing left to release that is not "
+            "protected or the last moment standing"
+        )
+    if total < target_duration * ENVELOPE_FLOOR:
         # Nothing is forced back in: backfill exists for exactly this, and a
         # moment the story does not need is not a way to fill a runtime.
         reasons.append(f"under-run — {target_duration - total:.0f}s left for backfill to fill")
-    return _Edit(notes=notes, reasons=reasons)
-
-
-def _apply(pool: list[ClipWithSegment], edit: _Edit) -> StructureCut:
-    """Put the edit on the record and hand back what survived it."""
-    survivors = [item for item in pool if item.clip.asset.id not in edit.notes]
-    trace.record("structure", pool, survivors, edit.reasons, edit.notes)
-    return StructureCut(kept=survivors, cuts=edit.notes)
+    survivors = [item for item in pool if item.clip.asset.id not in notes]
+    trace.record("structure", pool, survivors, reasons, notes)
+    return StructureCut(kept=survivors, cuts=notes, narrowed=narrowed)
 
 
 def _replay(pool: list[ClipWithSegment], fates: dict[str, str]) -> StructureCut:
@@ -660,20 +544,30 @@ def _replay(pool: list[ClipWithSegment], fates: dict[str, str]) -> StructureCut:
 
 def _release_to_fit(
     kept: dict[int, _Moment],
-    release_order: tuple[int, ...],
+    priority: tuple[int, ...],
     target_duration: float,
     target_clips: int,
     notes: dict[str, str],
     reasons: list[str],
 ) -> None:
-    """Shrink an over-long keep-set by the model's own order of expendability.
+    """Shrink an over-long keep-set from the tail of the editor's priority.
 
     The only stage here a number can start, and it still does not choose: the
-    envelope says how much has to go, the editor said in which order.
+    envelope says how much has to go, the editor's own order says which.
+
+    A floor it never crosses: the last moment standing is never released. An
+    empty cut with every id in the refused set is unrecoverable — backfill may
+    not touch them — so a memory that cannot be shrunk any further ships long
+    and says so, and the absorber warning at the end of the phase catches it.
     """
-    ceiling = target_duration * _ENVELOPE_CEILING
-    said = f"released to fit the {target_duration:.0f}s budget (the editor's stated release order)"
-    for index in release_order:
+    ceiling = target_duration * ENVELOPE_CEILING
+    said = (
+        f"released to fit the {target_duration:.0f}s budget "
+        "(released last from the editor's priority order)"
+    )
+    for index in reversed(priority):
+        if len(kept) <= 1:
+            return
         if _shipped_est(list(kept.values()), target_clips) <= ceiling:
             return
         moment = kept.get(index)

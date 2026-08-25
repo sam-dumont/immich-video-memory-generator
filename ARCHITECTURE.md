@@ -45,6 +45,13 @@ The four core orchestrators and their composed services:
 - `ClipScaler` (clip_scaler.py): scale to target duration, deduplicate
 - `SelectionQuality` (selection_quality.py): verify, judge, and make the cut
 
+`ClipRefiner` takes one optional collaborator, `StructurePass`
+(selection_structure.py), built by `structure_pass_for()` when content analysis is
+enabled. It decides which MOMENTS the story needs before any dedup runs, and its
+answer replaces the arithmetic funnel's narrowing. When it cannot decide, or cut
+but could not rank what to give up first, the funnel narrows instead — over the
+whole pool or over what the pass kept.
+
 It also owns a `ProviderCircuit` (provider_health.py, LLM provider circuit breaker) and an
 optional `VideoDownloadCache`. The density-proportional asset budget is a plain function,
 `compute_density_budget()` (density_budget.py), called from `_phase_filter()` — not an
@@ -124,7 +131,9 @@ src/immich_memories/
 │   ├── cache_projection.py     # Project compatible cached analysis back onto in-memory clips
 │   ├── clip_analyzer.py        # ClipAnalyzer: download + analyze + score
 │   ├── clip_refiner.py         # ClipRefiner: final selection + distribution
-│   ├── arithmetic_funnel.py    # The narrowing stages that decide a cut by counting (legacy path, #764)
+│   ├── arithmetic_funnel.py    # The narrowing stages that decide a cut by counting (fallback path, #764)
+│   ├── selection_structure.py  # StructurePass: which moments does the story need? (rough cut, #764)
+│   ├── structure_answer.py     # The structure question's prompts, and the reading of its answer
 │   ├── clip_scaler.py          # ClipScaler: duration scaling + dedup
 │   ├── selection_quality.py    # SelectionQuality: verify + judge + cut
 │   ├── selection_review.py     # LLM holistic pass that MAKES the cut: which clips belong, which do not

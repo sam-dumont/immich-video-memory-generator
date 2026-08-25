@@ -98,7 +98,7 @@ def _warn_if_an_absorber_will_have_to_act(
     if target_duration <= 0 or not selected:
         return
     slots = max(1, int(target_duration // MIN_CLIP_DURATION))
-    if len(selected) >= slots:
+    if len(selected) > slots:
         trace.warn(
             f"the cut hands generation {len(selected)} clips against a "
             f"{target_duration:.0f}s budget — the stride sampler will drop every "
@@ -679,22 +679,27 @@ class ClipRefiner:
             if self._structure is not None
             else None
         )
-        if structure is None:
+        if structure is not None:
+            # A condemned moment's members must never come back through the
+            # relaxation ladder, whichever stage settles the length.
+            self._refused_by_dedup |= set(structure.dropped)
+        # The story settles the length only when it said what to give up first.
+        # Otherwise the counting stages narrow what it kept — the same chain,
+        # over a smaller pool, so the dedup, the caps, backfill and the
+        # favourites law below all still run over the result.
+        by_arithmetic = structure is None or not structure.narrowed
+        if by_arithmetic:
             narrowed = narrow_by_arithmetic(
                 self,
-                all_analyzed,
+                all_analyzed if structure is None else structure.kept,
                 target_duration=target_duration,
                 max_overrun=max_overrun,
             )
             analyzed = narrowed.analyzed
             selected = narrowed.selected
             coverage_ids = narrowed.coverage_ids
-        else:
-            # The story decided this cut, so the counting stages do not run —
-            # neither the narrowing above nor the ratio caps below. A condemned
-            # moment's members join what backfill may not spend seconds on.
+        elif structure is not None:
             analyzed, selected, coverage_ids = all_analyzed, structure.kept, set()
-            self._refused_by_dedup |= set(structure.dropped)
 
         if moment_window > 0:
             before_dedup = selected
@@ -721,7 +726,7 @@ class ClipRefiner:
             self._remember_refusals(before_content, selected)
 
         photo_cap_bypassed = False
-        if structure is None:
+        if by_arithmetic:
             selected, photo_cap_bypassed = cap_ratios(
                 self.config,
                 selected,

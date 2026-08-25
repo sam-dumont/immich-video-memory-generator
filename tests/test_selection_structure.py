@@ -64,13 +64,14 @@ def _pool(
     ]
 
 
-def _answer(keep: list[int], cut: list[int], release_order: list[int] | None = None) -> str:
-    payload = {
-        "keep": keep,
-        "cut": [{"index": i, "reason": f"M{i} is not needed"} for i in cut],
-        "release_order": keep[::-1] if release_order is None else release_order,
-    }
-    return json.dumps(payload)
+def _answer(keep: list[int], cut: list[int]) -> str:
+    """An edit whose keep list is written most-essential-first."""
+    return json.dumps(
+        {
+            "keep": keep,
+            "cut": [{"index": i, "reason": f"M{i} is not needed"} for i in cut],
+        }
+    )
 
 
 def _choose(
@@ -123,7 +124,7 @@ class TestTheEnvelopeShrinksByTheEditorsOwnOrder:
 
         cut = _choose(
             pool,
-            _answer(keep=[1, 2, 3, 4, 5], cut=[], release_order=[3, 1, 5, 4, 2]),
+            _answer(keep=[2, 4, 1, 5, 3], cut=[]),
             target=10.0,
         )
 
@@ -135,13 +136,13 @@ class TestTheEnvelopeShrinksByTheEditorsOwnOrder:
         with selection_trace.tracing() as recorded:
             _choose(
                 pool,
-                _answer(keep=[1, 2, 3, 4, 5], cut=[], release_order=[3, 1, 5, 4, 2]),
+                _answer(keep=[2, 4, 1, 5, 3], cut=[]),
                 target=10.0,
             )
 
         stage = next(s for s in recorded.stages if s.name == "structure")
         assert stage.notes["m3c0"] == (
-            "released to fit the 10s budget (the editor's stated release order)"
+            "released to fit the 10s budget (released last from the editor's priority order)"
         )
 
     def test_an_answer_inside_the_envelope_releases_nothing(self):
@@ -195,7 +196,7 @@ class TestTheOwnersMarksSurviveTheirOccasion:
 
         cut = _choose(
             pool,
-            _answer(keep=[1, 2, 3, 4], cut=[], release_order=[2, 4, 3, 1]),
+            _answer(keep=[1, 3, 4, 2], cut=[]),
             target=10.0,
         )
 
@@ -447,7 +448,7 @@ class TestTheEnvelopeMeasuresWhatWillShip:
 
         cut = _choose(
             pool,
-            _answer(keep=[1, 2, 3, 4], cut=[], release_order=[4, 3, 2, 1]),
+            _answer(keep=[2, 1, 3, 4], cut=[]),
             target=20.0,
             target_clips=8,
         )
@@ -467,7 +468,7 @@ class TestTheEnvelopeMeasuresWhatWillShip:
         with selection_trace.tracing() as recorded:
             _choose(
                 pool,
-                _answer(keep=[1, 2, 3, 4], cut=[], release_order=[4, 3, 2, 1]),
+                _answer(keep=[2, 1, 3, 4], cut=[]),
                 target=20.0,
                 target_clips=8,
             )
@@ -537,85 +538,180 @@ def _choose_answers(
     return cut, asked
 
 
-KEPT_EVERYTHING = json.dumps({"keep": [1, 2, 3, 4, 5], "cut": []})
+# Kept every moment, in table order: an answer that states no priority at all.
+NO_PRIORITY = json.dumps({"keep": [1, 2, 3, 4, 5], "cut": []})
+# A priority order, and over budget: M3 falls first, then M5, then M1.
+PRIORITY = json.dumps({"keep": [2, 4, 1, 5, 3], "cut": []})
 
 
 class TestOneCorrectiveReask:
-    """An order we invent is a mechanical kill wearing an editor's clothes.
+    """The keep list IS the priority order — there is no second artifact.
 
-    The reversed-keep guess released M53, M52, M50 … strictly downwards on a
-    real June: it amputated the end of the month. The memory plays in the
-    order things happened, so the last moment kept IS the closer. When the
-    editor states no order, we ask it once — and refuse rather than guess.
+    Four real answers measured on one June: the model never once read
+    `release_order` as a ranking of what it KEPT. Every attempt ranked what it
+    had cut, prompt hardening and a keep-list echo included. A parallel list
+    with its own semantics was one concept too many, so the order it already
+    writes carries the meaning instead.
     """
 
-    def test_an_overshoot_with_no_stated_order_is_asked_about_once_more(self):
+    def test_a_keep_list_in_table_order_over_budget_is_asked_again(self):
         pool = _pool(moments=5)
 
-        cut, asked = _choose_answers(pool, [KEPT_EVERYTHING, _answer(keep=[1, 2], cut=[3, 4, 5])])
+        _cut, asked = _choose_answers(pool, [NO_PRIORITY, _answer(keep=[2, 4, 1, 5, 3], cut=[])])
 
         assert asked.call_count == 2
-        assert {c.clip.asset.id for c in cut.kept} == {"m1c0", "m1c1", "m2c0", "m2c1"}
 
-    def test_the_revision_may_state_the_order_instead_of_cutting_more(self):
+    def test_a_keep_list_in_table_order_that_fits_is_never_asked_again(self):
+        """The conjunction, not the tell: an unranked list nothing has to leave
+        costs no reasoning call at all."""
         pool = _pool(moments=5)
-        revised = _answer(keep=[1, 2, 3, 4, 5], cut=[], release_order=[5, 4, 3, 2, 1])
 
-        cut, asked = _choose_answers(pool, [KEPT_EVERYTHING, revised])
+        _cut, asked = _choose_answers(pool, [_answer(keep=[1, 2], cut=[3, 4, 5])])
+
+        assert asked.call_count == 1
+
+    def test_the_revision_may_reorder_its_own_keeps_instead_of_cutting_more(self):
+        pool = _pool(moments=5)
+
+        cut, asked = _choose_answers(pool, [NO_PRIORITY, _answer(keep=[2, 4, 1, 5, 3], cut=[])])
 
         assert asked.call_count == 2
-        assert {c.clip.asset.id for c in cut.kept} == {"m1c0", "m1c1", "m2c0", "m2c1"}
+        assert {c.clip.asset.id for c in cut.kept} == {"m2c0", "m2c1", "m4c0", "m4c1"}
 
-    def test_a_revision_that_still_overshoots_hands_the_cut_back(self):
+    def test_the_re_ask_asks_for_a_reordering_of_the_list_it_echoes(self):
+        pool = _pool(moments=5)
+
+        _cut, asked = _choose_answers(pool, [NO_PRIORITY, _answer(keep=[1, 2], cut=[3, 4, 5])])
+
+        revision = asked.call_args_list[1].args[0]
+        assert "You kept: M1, M2, M3, M4, M5" in revision
+        assert "most essential first" in revision
+
+    def test_a_stated_priority_is_carried_out_without_a_second_ask(self):
+        pool = _pool(moments=5)
+
+        _cut, asked = _choose_answers(pool, [PRIORITY])
+
+        assert asked.call_count == 1
+
+    def test_a_reordering_that_is_not_the_same_moments_is_refused(self):
+        """The re-ask regenerates no partition: only the order may change."""
+        pool = _pool(moments=5)
+        not_the_same_list = json.dumps({"keep": [2, 1]})
+
+        cut, asked = _choose_answers(pool, [NO_PRIORITY, not_the_same_list])
+
+        assert asked.call_count == 2
+        assert cut is not None and not cut.narrowed
+
+
+class TestAValidJudgmentIsNeverThrownAway:
+    """A failed re-ask must not cost the cut the model got right.
+
+    Four real answers: the FIRST ask produced a valid partition every time,
+    and the revision corrupted it every time. So a revision that fails leaves
+    the first answer's cuts standing and hands the length — only the length —
+    to the counting stages.
+    """
+
+    def test_a_revision_that_still_states_no_priority_keeps_the_first_cut(self):
+        pool = _pool(moments=5)
+
+        cut, asked = _choose_answers(pool, [NO_PRIORITY, NO_PRIORITY])
+
+        assert asked.call_count == 2
+        assert cut is not None
+        assert cut.dropped == frozenset()
+        assert not cut.narrowed
+
+    def test_an_unreadable_revision_keeps_the_first_cut(self):
+        pool = _pool(moments=5)
+        kept_three = json.dumps(
+            {"keep": [1, 2, 3], "cut": [{"index": 4, "reason": "x"}, {"index": 5, "reason": "x"}]}
+        )
+
+        cut, asked = _choose_answers(pool, [kept_three, "no idea"])
+
+        assert asked.call_count == 2
+        assert cut is not None
+        assert cut.dropped == frozenset({"m4c0", "m4c1", "m5c0", "m5c1"})
+        assert not cut.narrowed
+
+    def test_the_trace_says_the_funnel_narrowed_the_remainder(self):
         pool = _pool(moments=5)
 
         with selection_trace.tracing() as recorded:
-            cut, asked = _choose_answers(pool, [KEPT_EVERYTHING, KEPT_EVERYTHING])
+            _choose_answers(pool, [NO_PRIORITY, NO_PRIORITY])
 
-        assert cut is None
-        assert asked.call_count == 2
-        assert any("the structure pass never ran" in w for w in recorded.warnings)
+        assert any("the structure pass cut, but stated no priority" in w for w in recorded.warnings)
 
-    def test_an_unreadable_revision_hands_the_cut_back(self):
+
+class TestTheReAskNamesTheDefect:
+    """Vague revision requests are what corrupted the one revision measured.
+
+    Told only that its cut was too long, the model came back with M53 in both
+    lists and three moments in neither. Naming the numbers is the difference
+    between a correction and a re-roll.
+    """
+
+    def test_a_moment_in_both_lists_is_named_back_to_the_model(self):
         pool = _pool(moments=5)
-
-        cut, asked = _choose_answers(pool, [KEPT_EVERYTHING, "no idea"])
-
-        assert cut is None
-        assert asked.call_count == 2
-
-    def test_a_stated_order_is_carried_out_without_a_second_ask(self):
-        pool = _pool(moments=5)
-
-        _cut, asked = _choose_answers(
-            pool, [_answer(keep=[1, 2, 3, 4, 5], cut=[], release_order=[5, 4, 3, 2, 1])]
+        corrupt = json.dumps(
+            {"keep": [1, 2, 3], "cut": [{"index": 3, "reason": "x"}, {"index": 4, "reason": "x"}]}
         )
 
+        _cut, asked = _choose_answers(pool, [corrupt, _answer(keep=[1, 2], cut=[3, 4, 5])])
+
+        revision = asked.call_args_list[1].args[0]
+        assert "you listed M3 in both keep and cut" in revision
+
+    def test_omitted_moments_are_named_back_to_the_model(self):
+        pool = _pool(moments=5)
+        corrupt = json.dumps({"keep": [1, 2], "cut": [{"index": 4, "reason": "x"}]})
+
+        _cut, asked = _choose_answers(pool, [corrupt, _answer(keep=[1, 2], cut=[3, 4, 5])])
+
+        revision = asked.call_args_list[1].args[0]
+        assert "you omitted M3, M5" in revision
+
+    def test_a_corrupt_first_answer_that_stays_corrupt_hands_the_cut_back(self):
+        pool = _pool(moments=5)
+        corrupt = json.dumps({"keep": [1, 2], "cut": [{"index": 4, "reason": "x"}]})
+
+        cut, asked = _choose_answers(pool, [corrupt, corrupt])
+
+        assert cut is None
+        assert asked.call_count == 2
+
+    def test_an_answer_with_nothing_nameable_wrong_is_not_re_asked(self):
+        """Prose with no edit in it is not a defect anyone can correct."""
+        pool = _pool(moments=5)
+
+        cut, asked = _choose_answers(pool, ["I would keep most of these, honestly."])
+
+        assert cut is None
         assert asked.call_count == 1
 
 
 class TestTheTraceTellsTheTruthAboutTheOrder:
-    def test_a_walk_on_a_first_answer_says_where_the_order_came_from(self):
+    def test_a_walk_on_a_first_answer_says_where_the_priority_came_from(self):
         pool = _pool(moments=5)
 
         with selection_trace.tracing() as recorded:
-            _choose_answers(
-                pool, [_answer(keep=[1, 2, 3, 4, 5], cut=[], release_order=[5, 4, 3, 2, 1])]
-            )
+            _choose_answers(pool, [PRIORITY])
 
         stage = next(s for s in recorded.stages if s.name == "structure")
-        assert any("stated with its first answer" in reason for reason in stage.reasons)
+        assert any("priority stated with its first answer" in r for r in stage.reasons)
 
     def test_a_walk_after_a_revision_says_so_and_says_the_re_ask_fired(self):
         pool = _pool(moments=5)
-        revised = _answer(keep=[1, 2, 3, 4, 5], cut=[], release_order=[5, 4, 3, 2, 1])
 
         with selection_trace.tracing() as recorded:
-            _choose_answers(pool, [KEPT_EVERYTHING, revised])
+            _choose_answers(pool, [NO_PRIORITY, _answer(keep=[2, 4, 1, 5, 3], cut=[])])
 
         stage = next(s for s in recorded.stages if s.name == "structure")
-        assert any("stated when asked to revise" in reason for reason in stage.reasons)
-        assert any("asked once to revise" in reason for reason in stage.reasons)
+        assert any("priority stated when asked to revise" in r for r in stage.reasons)
+        assert any("asked once to revise" in r for r in stage.reasons)
 
 
 SUBJECTS = (
@@ -658,7 +754,7 @@ class TestTheAbsorbersDownstreamAreNotSilent:
         ]
 
         with selection_trace.tracing() as recorded:
-            _refine(pool, _answer(keep=[1, 2, 3], cut=[], release_order=[3, 2, 1]))
+            _refine(pool, _answer(keep=[2, 1, 3], cut=[]))
 
         assert any("trimmed to fit" in warning for warning in recorded.warnings)
 
@@ -729,4 +825,116 @@ class TestTheRevisionAsksAboutWhatWillActuallyShip:
         _cut, asked = _choose_answers(pool, [first, _answer(keep=[1], cut=[2, 3])], target=5.0)
 
         revision = asked.call_args_list[1].args[0]
-        assert "You kept: M1, M2, M3" in revision
+        assert "You kept: M1, M3, M2" in revision
+
+
+class TestTheTraceSaysWhatTheKeepOrderIsEvidenceOf:
+    """The next smoke render must answer "does this model rank at all?".
+
+    Never "the model echoed the table": a priority that happens to run
+    chronologically is indistinguishable from no priority at all, and that
+    coincidence is likeliest in a month whose best material is late — exactly
+    where the closer matters.
+    """
+
+    def _reasons(self, raws: list[str], *, target: float = 10.0) -> list[str]:
+        with selection_trace.tracing() as recorded:
+            _choose_answers(_pool(moments=5), raws, target=target)
+        return next(s for s in recorded.stages if s.name == "structure").reasons
+
+    def test_a_ranked_keep_list_is_recorded_as_an_expressed_priority(self):
+        assert "keep order: expressed priority" in self._reasons([PRIORITY])
+
+    def test_an_ascending_keep_list_is_recorded_as_indistinguishable(self):
+        reasons = self._reasons([NO_PRIORITY, NO_PRIORITY])
+
+        assert "keep order: indistinguishable from table order" in reasons
+        assert not any("echo" in reason for reason in reasons)
+
+    def test_a_single_kept_moment_says_there_was_nothing_to_rank(self):
+        reasons = self._reasons([_answer(keep=[1], cut=[2, 3, 4, 5])])
+
+        assert "keep order: a single moment, nothing to rank" in reasons
+
+
+class TestTheHybridRunsTheWholeChain:
+    """The funnel narrows the remainder — through the normal chain, not beside it.
+
+    fit-to-Ns protects coverage ids, not stars, so the favourites law at the
+    end of the phase is the safety net for any arithmetic narrowing. A hybrid
+    that skipped it could drop a starred moment through the honest-fallback
+    door.
+    """
+
+    def _stages(self, pool: list[ClipWithSegment]):
+        with selection_trace.tracing() as recorded:
+            _refine(pool, json.dumps({"keep": [1, 2, 3], "cut": [{"index": 4, "reason": "no"}]}))
+        return recorded, [stage.name for stage in recorded.stages]
+
+    def _pool(self) -> list[ClipWithSegment]:
+        return [
+            _clip(f"day{day}", days=day, shows=subject)
+            for day, subject in enumerate(SUBJECTS[:4], start=1)
+        ]
+
+    def test_the_counting_stages_run_after_the_structure_stage(self):
+        _recorded, names = self._stages(self._pool())
+
+        assert names.index("structure") < names.index("per-day photo cap")
+        assert "distribute by date" in names
+
+    def test_the_favourites_law_still_closes_the_phase(self):
+        _recorded, names = self._stages(self._pool())
+
+        assert names[-1] == "the favourite wins its moment"
+        assert names.index("per-day photo cap") < names.index("the favourite wins its moment")
+
+    def test_what_the_story_cut_stays_cut(self):
+        recorded, _names = self._stages(self._pool())
+
+        assert "day4" not in recorded.stages[-1].kept_ids
+
+    def test_the_warning_names_the_hybrid(self):
+        recorded, _names = self._stages(self._pool())
+
+        assert any("the arithmetic funnel narrowed the remainder" in w for w in recorded.warnings)
+
+
+class TestTheWalkHasAFloor:
+    def test_the_last_moment_standing_is_never_released(self):
+        """An empty cut with every id refused is unrecoverable: backfill may
+        not touch what a stage condemned."""
+        pool = [
+            _clip("huge1", days=1, seconds=50.0, shows=SUBJECTS[0]),
+            _clip("huge2", days=2, seconds=50.0, shows=SUBJECTS[1]),
+        ]
+
+        cut = _choose(pool, _answer(keep=[2, 1], cut=[]), target=10.0)
+
+        assert len(cut.kept) == 1
+
+    def test_the_stage_says_it_could_not_shrink_any_further(self):
+        pool = [
+            _clip("huge1", days=1, seconds=50.0, shows=SUBJECTS[0]),
+            _clip("huge2", days=2, seconds=50.0, shows=SUBJECTS[1]),
+        ]
+
+        with selection_trace.tracing() as recorded:
+            _choose(pool, _answer(keep=[2, 1], cut=[]), target=10.0)
+
+        stage = next(s for s in recorded.stages if s.name == "structure")
+        assert any("last moment standing" in reason for reason in stage.reasons)
+
+
+class TestTheSamplerWarningMatchesTheSampler:
+    def test_exactly_as_many_clips_as_slots_is_not_a_warning(self):
+        """The sampler acts above the count, not at it: `len(clips) <= max` returns."""
+        pool = [
+            _clip(f"tiny{day}", days=day, seconds=1.0, shows=subject)
+            for day, subject in enumerate(SUBJECTS[:6], start=1)
+        ]
+
+        with selection_trace.tracing() as recorded:
+            _refine(pool, "")
+
+        assert not any("stride sampler" in warning for warning in recorded.warnings)
