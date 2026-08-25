@@ -40,6 +40,7 @@ from immich_memories.analysis.clip_distribution import (
     moment_window_for,
     photos_per_day_for,
     span_days_of,
+    spread_across_moments,
 )
 from immich_memories.analysis.favourite_law import let_the_favourite_win
 
@@ -138,10 +139,13 @@ class ClipRefiner:
         selected_ids: set[str] = set()
         coverage_ids: set[str] = set()
         events = event_periods
+        # An event's several slots go to several of its moments. Taking the
+        # top N by score gave them all to one instant, and coverage protection
+        # then forbade dedup from noticing.
+        window = moment_window_for(span_days_of(clips), self.config.temporal_dedup_window_minutes)
         for period in densest_first[:reserved]:
             take = _EVENT_CLIPS_PER_PERIOD if period in events else 1
-            ranked = sorted(by_period[period], key=lambda c: c.score, reverse=True)
-            for best in ranked[:take]:
+            for best in spread_across_moments(by_period[period], take, window):
                 selected.append(best)
                 selected_ids.add(best.clip.asset.id)
                 coverage_ids.add(best.clip.asset.id)
