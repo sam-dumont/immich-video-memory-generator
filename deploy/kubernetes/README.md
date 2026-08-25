@@ -44,7 +44,10 @@ kubectl port-forward -n immich-memories svc/immich-memories 8080:80
 ```
 
 `base/kustomization.yaml` pins the image tag (`images: newTag`). Published tags carry no `v`
-prefix (`0.59.2`, `latest`); bump it when you upgrade.
+prefix — release `vX.Y.Z` is image tag `X.Y.Z` — plus `latest`. The checked-in pin trails the
+current release, so check it against the
+[releases page](https://github.com/sam-dumont/immich-video-memory-generator/releases) before you
+apply, and bump it when you upgrade.
 
 ## How the pod is wired
 
