@@ -194,6 +194,22 @@ class TestStructureUsesTheSharedMomentMap:
         ]
         assert [moment.episode for moment in moments] == ["E1", "E2"]
 
+    def test_parallel_places_are_counted_in_the_shipping_envelope(self):
+        brussels = (50.8466, 4.3528)
+        spa = (50.4922, 5.8645)
+        pool = [_clip(f"brussels-{index}", minutes=index, where=brussels) for index in range(3)] + [
+            _clip("spa", minutes=1, where=spa)
+        ]
+
+        _cut, asked = _choose_exactly(
+            pool,
+            [_answer(cut=[]), _priority([1, 2])],
+            target=15.0,
+            target_clips=12,
+        )
+
+        assert asked.call_count == 2
+
 
 class TestSilenceKeeps:
     """Reject-only, so a truncated answer costs coverage, never content.

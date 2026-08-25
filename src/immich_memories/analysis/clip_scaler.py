@@ -115,6 +115,34 @@ def group_by_moment(
     return groups + [[c] for c in undated]
 
 
+def group_by_moment_and_place(
+    clips: list[ClipWithSegment],
+    time_window_minutes: float,
+) -> list[list[ClipWithSegment]]:
+    """Group within the bounded time window, then split parallel places.
+
+    ``group_by_moment`` supplies the span bound that stops a whole day from
+    chaining into one moment. The shared place grouper then prevents two
+    devices in different towns from being thinned as duplicates merely because
+    their clocks overlap.
+    """
+    from immich_memories.analysis.moment_grouping import _group_by_time_and_place
+
+    groups: list[list[ClipWithSegment]] = []
+    for temporal_group in group_by_moment(clips, time_window_minutes):
+        if temporal_group[0].clip.asset.file_created_at is None:
+            groups.append(temporal_group)
+            continue
+        member_by_asset = {id(member.clip.asset): member for member in temporal_group}
+        for assets in _group_by_time_and_place(
+            [member.clip.asset for member in temporal_group],
+            window_minutes=time_window_minutes,
+        ):
+            groups.append([member_by_asset[id(asset)] for asset in assets])
+    groups.sort(key=lambda group: group[0].clip.asset.file_created_at or datetime.min)
+    return groups
+
+
 def _fit_temporally_distributed(
     clips: list[ClipWithSegment], max_duration: float
 ) -> list[ClipWithSegment]:
@@ -437,7 +465,7 @@ class ClipScaler:
 
         keep = max(1, keep_per_moment)
         protected = protected_ids or set()
-        for cluster_clips in group_by_moment(clips, time_window_minutes):
+        for cluster_clips in group_by_moment_and_place(clips, time_window_minutes):
             if len(cluster_clips) <= keep:
                 result.extend(cluster_clips)
                 continue

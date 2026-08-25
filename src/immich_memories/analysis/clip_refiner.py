@@ -709,9 +709,9 @@ class ClipRefiner:
             # How many clips one moment may keep depends on how many the cut
             # needs: thinning to one left a long memory too short to fill, and
             # backfill then restored the same clips by relaxing constraints.
-            from immich_memories.analysis.clip_scaler import group_by_moment
+            from immich_memories.analysis.clip_scaler import group_by_moment_and_place
 
-            moments = len(group_by_moment(selected, moment_window))
+            moments = len(group_by_moment_and_place(selected, moment_window))
             selected = self.scaler.deduplicate_temporal_clusters(
                 selected,
                 time_window_minutes=moment_window,

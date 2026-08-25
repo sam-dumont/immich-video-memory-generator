@@ -127,15 +127,15 @@ def _shipped_est(kept: list[_Moment], target_clips: int, *, moment_window: float
     releasing a moment can raise the estimate rather than lower it.
     """
     from immich_memories.analysis.clip_refiner import _clips_per_moment
-    from immich_memories.analysis.clip_scaler import group_by_moment
+    from immich_memories.analysis.clip_scaler import group_by_moment_and_place
 
     members = [member for moment in kept for member in moment.members]
     if moment_window <= 0:
         return sum(member.end_time - member.start_time for member in members)
-    temporal_groups = group_by_moment(members, moment_window)
-    share = _clips_per_moment(target_clips, len(temporal_groups))
+    moments = group_by_moment_and_place(members, moment_window)
+    share = _clips_per_moment(target_clips, len(moments))
     total = 0.0
-    for group in temporal_groups:
+    for group in moments:
         ranked = sorted(
             group,
             key=lambda member: (member.clip.asset.is_favorite, member.score),
@@ -164,31 +164,18 @@ def _moments_of(pool: list[ClipWithSegment], moment_window: float) -> list[_Mome
     they photographed. Episodes come from the same helper as the fine cut, so
     both passes call the same time-and-place block one occasion.
     """
-    from immich_memories.analysis.clip_scaler import group_by_moment
-    from immich_memories.analysis.moment_grouping import _group_by_time_and_place
+    from immich_memories.analysis.clip_scaler import group_by_moment_and_place
     from immich_memories.analysis.selection_review import _episode_labels
 
     episode_by_id = {
         member.clip.asset.id: episode
         for member, episode in zip(pool, _episode_labels(pool), strict=True)
     }
-    temporal_groups = (
+    groups = (
         [[member] for member in sorted(pool, key=lambda item: _started(item) or datetime.min)]
         if moment_window <= 0
-        else group_by_moment(pool, moment_window)
+        else group_by_moment_and_place(pool, moment_window)
     )
-    groups: list[list[ClipWithSegment]] = []
-    for temporal_group in temporal_groups:
-        if _started(temporal_group[0]) is None:
-            groups.append(temporal_group)
-            continue
-        by_id = {member.clip.asset.id: member for member in temporal_group}
-        for assets in _group_by_time_and_place(
-            [member.clip.asset for member in temporal_group],
-            window_minutes=moment_window,
-        ):
-            groups.append([by_id[asset.id] for asset in assets])
-    groups.sort(key=lambda group: _started(group[0]) or datetime.min)
     return [
         _Moment(tuple(group), episode_by_id.get(group[0].clip.asset.id, "E?")) for group in groups
     ]
