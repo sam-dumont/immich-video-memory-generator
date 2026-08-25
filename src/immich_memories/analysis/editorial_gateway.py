@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -87,6 +88,7 @@ class VisualEditorialGateway:
             thinking=request.thinking,
             image_detail=request.image_detail,
             pass_name=request.pass_name,
+            pass_version=request.pass_version,
             prompt_version=request.prompt_version,
             schema_version=request.schema_version,
             render_version=request.render_version,
@@ -129,7 +131,7 @@ class VisualEditorialGateway:
             )
 
         try:
-            raw_text = asyncio.run(
+            raw_text = _run_sync(
                 query_llm(
                     request.prompt,
                     self.llm_config,
@@ -137,6 +139,7 @@ class VisualEditorialGateway:
                     images=tuple(page.jpeg_bytes for page in request.pages),
                     image_detail=request.image_detail,
                     transport_observer=record_attempt,
+                    require_complete=True,
                 )
             )
         except Exception:
@@ -193,6 +196,28 @@ def _validated_page_hashes(pages: tuple[ContactSheetPage, ...]) -> tuple[str, ..
     if any(digest != page.sha256 for digest, page in zip(hashes, pages, strict=True)):
         raise ValueError("contact sheet digest does not match its exact bytes")
     return hashes
+
+
+def _run_sync(coroutine: object) -> str:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coroutine)  # type: ignore[arg-type]
+    result: list[str] = []
+    failure: list[BaseException] = []
+
+    def run() -> None:
+        try:
+            result.append(asyncio.run(coroutine))  # type: ignore[arg-type]
+        except BaseException as exc:  # WHY: preserve the provider exception across the bridge
+            failure.append(exc)
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join()
+    if failure:
+        raise failure[0]
+    return result[0]
 
 
 def _provenance(

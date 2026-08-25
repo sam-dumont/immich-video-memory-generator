@@ -4,6 +4,8 @@ from hashlib import sha256
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from immich_memories.analysis.contact_sheets import ContactSheetPage, TileRef
 from immich_memories.analysis.selection_trace import Trace
 from immich_memories.analysis.visual_request_planner import VisionRequestLimits
@@ -153,3 +155,23 @@ def test_gateway_traces_each_null_content_retry_as_a_wire_attempt(tmp_path) -> N
         "null_content",
         "response",
     ]
+
+
+@pytest.mark.asyncio
+async def test_gateway_works_inside_an_active_event_loop(tmp_path) -> None:
+    from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
+    from immich_memories.analysis.llm_query import LLMTransportAttempt
+
+    gateway = VisualEditorialGateway(
+        llm_config=LLMConfig(model="vision-test"),
+        cache_path=tmp_path / "judgments.db",
+        trace=Trace(),
+    )
+
+    async def _answer(*_args, **kwargs):
+        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
+        return "complete"
+
+    # WHY: query_llm is the provider boundary; the active loop is the behavior under test.
+    with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
+        assert gateway.ask(_request(_page())).raw_text == "complete"

@@ -185,6 +185,7 @@ def test_visual_identity_changes_for_each_piece_of_visual_evidence() -> None:
         thinking=True,
         image_detail="low",
         pass_name="cull",  # noqa: S106 - test-only pass identity
+        pass_version="pass-1",  # noqa: S106 - test-only pass identity
         prompt_version="p1",
         schema_version="s1",
         render_version="r1",
@@ -203,6 +204,7 @@ def test_visual_identity_changes_for_each_piece_of_visual_evidence() -> None:
     assert base.key() != replace(base, render_version="r2").key()
     assert base.key() != replace(base, layout_versions=("l2", "l1")).key()
     assert base.key() != replace(base, upstream_material=("insight-v2",)).key()
+    assert base.key() != replace(base, pass_version="pass-2").key()  # noqa: S106
 
 
 def test_visual_cache_keeps_original_provenance_when_reused(tmp_path) -> None:

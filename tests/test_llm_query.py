@@ -551,3 +551,63 @@ async def test_transport_observer_records_each_null_content_wire_retry() -> None
         (2, "null_content", 200),
         (3, "response", 200),
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["ollama", "anthropic", "openai-compatible"])
+async def test_each_provider_payload_carries_the_exact_jpeg_bytes(provider: str) -> None:
+    import base64
+
+    from immich_memories.analysis.llm_query import query_llm
+
+    image = b"exact-contact-sheet"
+    config = LLMConfig(provider=provider, base_url="http://localhost/v1", model="vision")
+    response = _openai_response()
+    if provider == "ollama":
+        response.json = MagicMock(return_value={"response": "ok"})
+    elif provider == "anthropic":
+        response.json = MagicMock(return_value={"content": [{"type": "text", "text": "ok"}]})
+
+    # WHY: the provider is the external boundary; this decodes its real dialect payload.
+    with patch("httpx.AsyncClient.post", return_value=response) as post:
+        await query_llm("look", config, images=(image,))
+
+    payload = post.call_args.kwargs["json"]
+    if provider == "ollama":
+        encoded = payload["images"][0]
+    elif provider == "anthropic":
+        encoded = payload["messages"][0]["content"][0]["source"]["data"]
+    else:
+        encoded = payload["messages"][0]["content"][1]["image_url"]["url"].split(",", 1)[1]
+    assert base64.b64decode(encoded) == image
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("provider", "body"),
+    [
+        ("ollama", {"response": "partial", "done_reason": "length"}),
+        (
+            "anthropic",
+            {"content": [{"type": "text", "text": "partial"}], "stop_reason": "max_tokens"},
+        ),
+        (
+            "openai-compatible",
+            {"choices": [{"message": {"content": "partial"}, "finish_reason": "length"}]},
+        ),
+    ],
+)
+async def test_visual_completion_mode_rejects_known_truncation(provider: str, body: dict) -> None:
+    from immich_memories.analysis.llm_query import query_llm
+
+    response = AsyncMock(status_code=200)
+    response.json = MagicMock(return_value=body)
+    response.raise_for_status = lambda: None
+    # WHY: the provider response status is the external completion boundary.
+    with patch("httpx.AsyncClient.post", return_value=response), pytest.raises(ValueError):
+        await query_llm(
+            "look",
+            LLMConfig(provider=provider, base_url="http://localhost/v1", model="vision"),
+            images=(b"jpeg",),
+            require_complete=True,
+        )

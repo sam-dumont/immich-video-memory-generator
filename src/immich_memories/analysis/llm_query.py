@@ -122,16 +122,25 @@ def _shape_for_provider(payload: dict, config: LLMConfig) -> None:
 
 
 async def _post_adapted(
-    client: httpx.AsyncClient, url: str, payload: dict, adaptations: set[str]
+    client: httpx.AsyncClient,
+    url: str,
+    payload: dict,
+    adaptations: set[str],
+    transport_observer: Callable[[LLMTransportAttempt], None] | None = None,
 ) -> httpx.Response:
     """POST, negotiating parameter dialects on explicit 400s (one per rule)."""
     while True:
-        resp = await client.post(url, json=payload)
+        try:
+            resp = await client.post(url, json=payload)
+        except httpx.HTTPError:
+            _observe(transport_observer, 1, "connection_error", None)
+            raise
         if resp.status_code != 400:
             return resp
         adaptation = _adaptation_for(resp.json().get("error", {}).get("message", ""))
         if adaptation is None or adaptation in adaptations:
             return resp
+        _observe(transport_observer, 1, "dialect_adaptation", resp.status_code, adaptation)
         adaptations.add(adaptation)
         _apply_adaptations(payload, adaptations)
         logger.info("LLM server dialect: adapting request (%s)", adaptation)
@@ -158,6 +167,7 @@ async def query_llm(
     image_detail: str = "low",
     cache_path: Path | None = None,
     transport_observer: Callable[[LLMTransportAttempt], None] | None = None,
+    require_complete: bool = False,
 ) -> str:
     """Send a prompt, optionally with JPEG images, and return the response.
 
@@ -185,6 +195,18 @@ async def query_llm(
         logger.debug("Reusing the answer to an identical question")
         llm_metrics.record_cache_hit()
         return remembered
+    attempt_number = 0
+
+    def observe(attempt: LLMTransportAttempt) -> None:
+        nonlocal attempt_number
+        attempt_number += 1
+        if transport_observer is not None:
+            transport_observer(
+                LLMTransportAttempt(
+                    attempt_number, attempt.outcome, attempt.status_code, attempt.adaptation
+                )
+            )
+
     started = time.monotonic()
     try:
         answer = await _dispatch(
@@ -196,7 +218,8 @@ async def query_llm(
             thinking,
             images,
             image_detail,
-            transport_observer,
+            observe,
+            require_complete,
         )
     finally:
         # In `finally` so a failed call still shows the time it burned; a run
@@ -249,10 +272,17 @@ async def _dispatch(
     images: Sequence[bytes],
     image_detail: str,
     transport_observer: Callable[[LLMTransportAttempt], None] | None = None,
+    require_complete: bool = False,
 ) -> str:
     if llm_config.provider == "ollama":
         return await _query_ollama(
-            prompt, llm_config, temperature, timeout_seconds, images, transport_observer
+            prompt,
+            llm_config,
+            temperature,
+            timeout_seconds,
+            images,
+            transport_observer,
+            require_complete,
         )
     think = thinking and llm_config.thinking and not images
     if llm_config.provider == "anthropic":
@@ -265,6 +295,7 @@ async def _dispatch(
             think,
             images,
             transport_observer,
+            require_complete,
         )
     return await _query_openai(
         prompt,
@@ -276,6 +307,7 @@ async def _dispatch(
         images,
         image_detail,
         transport_observer,
+        require_complete,
     )
 
 
@@ -286,6 +318,7 @@ async def _query_ollama(
     timeout: int,
     images: Sequence[bytes] = (),
     transport_observer: Callable[[LLMTransportAttempt], None] | None = None,
+    require_complete: bool = False,
 ) -> str:
     base_url = config.base_url.rstrip("/")
     payload: dict = {
@@ -305,10 +338,21 @@ async def _query_ollama(
         else:
             payload[name] = value
     async with httpx.AsyncClient(timeout=build_llm_timeout(float(timeout))) as client:
-        resp = await client.post(f"{base_url}/api/generate", json=payload)
-        _observe(transport_observer, 1, "response", resp.status_code)
-        resp.raise_for_status()
+        try:
+            resp = await client.post(f"{base_url}/api/generate", json=payload)
+        except httpx.HTTPError:
+            _observe(transport_observer, 1, "connection_error", None)
+            raise
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError:
+            _observe(transport_observer, 1, "http_error", resp.status_code)
+            raise
         body = resp.json()
+        if require_complete and body.get("done_reason") in {"length", "max_tokens", "truncated"}:
+            _observe(transport_observer, 1, "incomplete", resp.status_code)
+            raise ValueError("LLM returned incomplete content")
+        _observe(transport_observer, 1, "response", resp.status_code)
         llm_metrics.record_reply(
             prompt_tokens=body.get("prompt_eval_count", 0) or 0,
             completion_tokens=body.get("eval_count", 0) or 0,
@@ -345,6 +389,7 @@ async def _query_anthropic(
     thinking: bool = False,
     images: Sequence[bytes] = (),
     transport_observer: Callable[[LLMTransportAttempt], None] | None = None,
+    require_complete: bool = False,
 ) -> str:
     """Native /v1/messages dialect: Claude, or z.ai's Anthropic endpoint."""
     base_url = config.base_url.rstrip("/")
@@ -366,16 +411,27 @@ async def _query_anthropic(
     async with httpx.AsyncClient(
         timeout=build_llm_timeout(float(timeout)), headers=headers
     ) as client:
-        resp = await client.post(f"{base_url}/v1/messages", json=payload)
-        _observe(transport_observer, 1, "response", resp.status_code)
-        resp.raise_for_status()
+        try:
+            resp = await client.post(f"{base_url}/v1/messages", json=payload)
+        except httpx.HTTPError:
+            _observe(transport_observer, 1, "connection_error", None)
+            raise
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError:
+            _observe(transport_observer, 1, "http_error", resp.status_code)
+            raise
         body = resp.json()
         usage = body.get("usage") or {}
         llm_metrics.record_reply(
             prompt_tokens=usage.get("input_tokens", 0) or 0,
             completion_tokens=usage.get("output_tokens", 0) or 0,
         )
+        if body.get("stop_reason") == "max_tokens" and require_complete:
+            _observe(transport_observer, 1, "incomplete", resp.status_code)
+            raise ValueError("LLM returned incomplete content")
         if thinking and body.get("stop_reason") == "max_tokens":
+            _observe(transport_observer, 1, "thinking_fallback", resp.status_code)
             llm_metrics.record_truncation()
             logger.warning("Thinking hit the token budget; retrying without thinking")
             return await _query_anthropic(
@@ -387,7 +443,9 @@ async def _query_anthropic(
                 thinking=False,
                 images=images,
                 transport_observer=transport_observer,
+                require_complete=require_complete,
             )
+        _observe(transport_observer, 1, "response", resp.status_code)
         return "".join(b.get("text", "") for b in body["content"] if b.get("type") == "text")
 
 
@@ -425,6 +483,7 @@ async def _query_openai(
     images: Sequence[bytes] = (),
     image_detail: str = "low",
     transport_observer: Callable[[LLMTransportAttempt], None] | None = None,
+    require_complete: bool = False,
 ) -> str:
     base_url = config.base_url.rstrip("/")
     headers: dict[str, str] = {}
@@ -457,8 +516,10 @@ async def _query_openai(
         timeout=build_llm_timeout(float(timeout)), headers=headers
     ) as client:
         for attempt in range(3):
-            resp = await _post_adapted(client, f"{base_url}/chat/completions", payload, adaptations)
-            resp.raise_for_status()
+            resp = await _post_adapted(
+                client, f"{base_url}/chat/completions", payload, adaptations, transport_observer
+            )
+            _ensure_success(resp, transport_observer)
             body = resp.json()
             choice = body["choices"][0]
             usage = body.get("usage") or {}
@@ -466,7 +527,15 @@ async def _query_openai(
                 prompt_tokens=usage.get("prompt_tokens", 0) or 0,
                 completion_tokens=usage.get("completion_tokens", 0) or 0,
             )
-            if thinking and choice.get("finish_reason") == "length":
+            content, retry_without_thinking = _openai_completion(
+                choice,
+                thinking,
+                require_complete,
+                transport_observer,
+                attempt + 1,
+                resp.status_code,
+            )
+            if retry_without_thinking:
                 llm_metrics.record_truncation()
                 # Truncation mid-think leaves the unfinished reasoning in the
                 # content channel — unparseable. A fast answer beats no answer.
@@ -480,8 +549,9 @@ async def _query_openai(
                     thinking=False,
                     images=images,
                     image_detail=image_detail,
+                    transport_observer=transport_observer,
+                    require_complete=require_complete,
                 )
-            content = choice["message"]["content"]
             if content is not None:
                 _observe(transport_observer, attempt + 1, "response", resp.status_code)
                 return content
@@ -489,6 +559,24 @@ async def _query_openai(
             logger.debug("LLM null content (attempt %d/3)", attempt + 1)
     msg = "LLM returned null content after 3 retries"
     raise ValueError(msg)
+
+
+def _openai_completion(
+    choice: dict,
+    thinking: bool,
+    require_complete: bool,
+    observer: Callable[[LLMTransportAttempt], None] | None,
+    attempt: int,
+    status_code: int,
+) -> tuple[str | None, bool]:
+    truncated = choice.get("finish_reason") == "length"
+    if truncated and require_complete:
+        _observe(observer, attempt, "incomplete", status_code)
+        raise ValueError("LLM returned incomplete content")
+    if truncated and thinking:
+        _observe(observer, attempt, "thinking_fallback", status_code)
+        return None, True
+    return choice["message"]["content"], False
 
 
 def _observe(
@@ -500,3 +588,13 @@ def _observe(
 ) -> None:
     if observer is not None:
         observer(LLMTransportAttempt(attempt, outcome, status_code, adaptation))
+
+
+def _ensure_success(
+    response: httpx.Response, observer: Callable[[LLMTransportAttempt], None] | None
+) -> None:
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError:
+        _observe(observer, 1, "http_error", response.status_code)
+        raise

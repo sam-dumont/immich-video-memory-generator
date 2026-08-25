@@ -60,6 +60,7 @@ class VisualJudgmentIdentity:
     thinking: bool
     image_detail: str
     pass_name: str
+    pass_version: str
     prompt_version: str
     schema_version: str
     render_version: str
@@ -81,6 +82,7 @@ class VisualJudgmentIdentity:
             "thinking": self.thinking,
             "image_detail": self.image_detail,
             "pass_name": self.pass_name,
+            "pass_version": self.pass_version,
             "prompt_version": self.prompt_version,
             "schema_version": self.schema_version,
             "render_version": self.render_version,
