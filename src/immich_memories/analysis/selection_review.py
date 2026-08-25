@@ -37,11 +37,20 @@ _REVIEW_MAX_TOKENS = 8000
 _PROMPT = """You are reviewing the final cut of a personal memory video.
 Below is every clip in timeline order, with everything we can see and hear.
 
+Each clip carries `when=` (its timestamp) and `moment=` (which moment it
+belongs to). Clips sharing a moment name were shot in the same place within
+minutes of each other — they ARE the same moment, whatever their descriptions
+say. Two clips can also show one scene under different dates: cameras keep
+their own clocks and one of them is often wrong by hours or a day, so trust
+what the descriptions show over what the dates imply.
+
 {clips}
 
 Judge the SET as a whole: feel, coherence, variety. Drop a clip when it is
 
 - REDUNDANT: the same moment, scene or kind of shot is already in the set.
+  Two clips sharing a `moment=` name are the same moment: keep the better one
+  unless each shows something the other does not.
   Self-portraits and mirror shots repeat hard — three of them from three days
   is one idea shown three times, however different the days were. A selfie of
   one person alone is the weakest way to record a day: prefer the clip that
@@ -129,7 +138,7 @@ def _place_for_llm(exif: object) -> str | None:
     return ", ".join(named) if named else None
 
 
-def _clip_line(index: int, member: ClipWithSegment) -> str:
+def _clip_line(index: int, member: ClipWithSegment, moment: str | None = None) -> str:
 
     clip = member.clip
     parts = [f"Clip {index}:"]
@@ -137,7 +146,12 @@ def _clip_line(index: int, member: ClipWithSegment) -> str:
     # VideoClipInfo — reading them off the clip silently sent nothing (#475).
     taken = getattr(clip.asset, "file_created_at", None)
     if taken:
-        parts.append(f"date={taken.date().isoformat()}")
+        # The time of day, not just the date. Asked to drop "the same moment",
+        # the judge was shown date=2011-08-04 twice and could not tell ten
+        # minutes from ten hours: a ship-deck performance shipped three times.
+        parts.append(f"when={taken.isoformat(timespec='minutes')}")
+    if moment:
+        parts.append(f"moment={moment}")
     where = _place_for_llm(getattr(clip.asset, "exif_info", None))
     if where:
         parts.append(f"place={where}")
@@ -153,6 +167,33 @@ def _clip_line(index: int, member: ClipWithSegment) -> str:
         if value:
             parts.append(f"{label}={value!s}")
     return " ".join(parts)
+
+
+def _clips_block(selected: list[ClipWithSegment]) -> str:
+    """Every clip as the judge sees it, each one told which moment it is in.
+
+    Moments come from the shared time-and-place grouping rather than a window
+    invented here, so "the same moment" means the same thing to the judge as
+    it does to the stages that built the cut.
+    """
+    return "\n".join(
+        _clip_line(index + 1, member, moment)
+        for index, (member, moment) in enumerate(
+            zip(selected, _moment_labels(selected), strict=True)
+        )
+    )
+
+
+def _moment_labels(selected: list[ClipWithSegment]) -> list[str]:
+    """A moment name per clip, in the order given."""
+    from immich_memories.analysis.moment_grouping import _group_by_time_and_place
+
+    assets = [m.clip.asset for m in selected]
+    by_asset: dict[str, str] = {}
+    for number, moment in enumerate(_group_by_time_and_place(assets), start=1):
+        for asset in moment:
+            by_asset[asset.id] = f"M{number}"
+    return [by_asset.get(m.clip.asset.id, "M?") for m in selected]
 
 
 def _verdict_in(raw: str | None) -> list | None:
@@ -222,7 +263,7 @@ def review_selection(
     if len(selected) < 3:
         logger.debug("Selection review: %d clips is too few to judge as a set", len(selected))
         return []
-    clips_block = "\n".join(_clip_line(i + 1, m) for i, m in enumerate(selected))
+    clips_block = _clips_block(selected)
     prompt = _PROMPT.format(clips=clips_block)
     try:
         raw = _ask(prompt, llm_config, timeout_seconds, cache_path)
