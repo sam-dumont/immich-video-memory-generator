@@ -11,6 +11,12 @@ The format can be selected via:
 run_id injection:
 - Call set_current_run_id() at pipeline start to tag all subsequent log lines.
 - Enables: jq 'select(.run_id=="...")' for JSON logs.
+
+Secret redaction:
+- Call install_secret_redaction() at config load with the configured credentials;
+  SecretRedactionFilter then strips those values from every record.
+- Config load is the earliest the values are known, so the lines printed before
+  it -- startup, a config file that fails to parse -- are unredacted.
 """
 
 from __future__ import annotations
@@ -21,6 +27,7 @@ import logging
 import os
 import sys
 import traceback
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Protocol
 
@@ -49,6 +56,72 @@ class RunIdFilter(logging.Filter):
         return True
 
 
+REDACTED = "[redacted]"
+
+# A secret shorter than this is not worth hiding: substring-replacing "abc"
+# would shred every innocent line that happens to contain it, and the damage
+# would outlast the leak it prevented.
+MIN_REDACTABLE_SECRET_LENGTH = 8
+
+# Secret VALUES to strip from log records. Populated at config load, because
+# that is the first moment the values are known.
+_secret_values: tuple[str, ...] = ()
+
+
+def install_secret_redaction(values: Iterable[str]) -> None:
+    """Register secret values to strip from every subsequent log record.
+
+    Accumulates rather than replaces, so reloading a config never un-redacts a
+    secret that earlier code may already have captured. Values shorter than
+    MIN_REDACTABLE_SECRET_LENGTH and empty values are ignored.
+
+    Log lines emitted before this is called -- startup, config parse errors --
+    are unredacted by construction: nothing knows the secrets yet.
+    """
+    global _secret_values
+    keep = {v for v in values if isinstance(v, str) and len(v) >= MIN_REDACTABLE_SECRET_LENGTH}
+    # WHY: longest first -- when one secret contains another (an api key inside
+    # a notification URL), replacing the short one first would leave the rest of
+    # the long one in the clear.
+    _secret_values = tuple(sorted(keep | set(_secret_values), key=len, reverse=True))
+
+
+def _redact(text: str) -> str:
+    for secret in _secret_values:
+        text = text.replace(secret, REDACTED)
+    return text
+
+
+class SecretRedactionFilter(logging.Filter):
+    """Strip registered secret values out of a record's message and traceback."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if not _secret_values:
+            return True
+
+        # WHY: collapse msg % args into one string before redacting. A secret
+        # can arrive as a non-str arg (an exception object, a URL wrapper) whose
+        # value only surfaces once %-formatting has run, so redacting msg and
+        # args separately would miss it. Only a record that actually carried a
+        # secret is rewritten; getMessage() skips %-formatting when args is
+        # None, so the substituted text is safe to re-emit verbatim.
+        message = record.getMessage()
+        redacted = _redact(message)
+        if redacted != message:
+            record.msg = redacted
+            record.args = None
+
+        if record.exc_text:
+            record.exc_text = _redact(record.exc_text)
+        elif record.exc_info and record.exc_info[1] is not None:
+            # WHY: formatters render the traceback from exc_info, out of a
+            # filter's reach. Pre-rendering it into exc_text -- the cache
+            # logging.Formatter prefers -- is the only place redaction can land.
+            record.exc_text = _redact("".join(traceback.format_exception(*record.exc_info)))
+
+        return True
+
+
 class JsonFormatter(logging.Formatter):
     """Format log records as single-line JSON."""
 
@@ -66,7 +139,11 @@ class JsonFormatter(logging.Formatter):
             log_entry["run_id"] = run_id
 
         if record.exc_info and record.exc_info[1] is not None:
-            log_entry["exception"] = traceback.format_exception(*record.exc_info)
+            # WHY: exc_text carries SecretRedactionFilter's already-cleaned
+            # traceback. Re-rendering from exc_info here would undo it and put
+            # the secrets straight back into the JSON.
+            text = record.exc_text or "".join(traceback.format_exception(*record.exc_info))
+            log_entry["exception"] = text.splitlines(keepends=True)
 
         return json.dumps(log_entry, default=str)
 
@@ -121,6 +198,7 @@ def install_live_handler(display: _LogSink) -> list[logging.Handler]:
 
     handler = LiveDisplayLogHandler(display)
     handler.addFilter(RunIdFilter())
+    handler.addFilter(SecretRedactionFilter())
     root.addHandler(handler)
 
     # WHY: Disable lastResort handler — Python's logging module has a
@@ -181,6 +259,7 @@ def configure_logging(
 
     stream_handler = logging.StreamHandler(sys.stdout)
     stream_handler.addFilter(RunIdFilter())
+    stream_handler.addFilter(SecretRedactionFilter())
 
     if fmt == "json":
         stream_handler.setFormatter(JsonFormatter())
@@ -195,6 +274,7 @@ def configure_logging(
     if log_file:
         file_handler = logging.FileHandler(log_file)
         file_handler.addFilter(RunIdFilter())
+        file_handler.addFilter(SecretRedactionFilter())
         if fmt == "json":
             file_handler.setFormatter(JsonFormatter())
         else:
