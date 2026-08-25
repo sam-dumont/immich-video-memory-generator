@@ -63,7 +63,7 @@ def test_a_verdict_buried_in_reasoning_prose_is_found() -> None:
 
     # WHY: the LLM server is the external boundary; this is its real reply.
     with patch("immich_memories.analysis.selection_review._ask", return_value=answer):
-        drops = review_selection(_selection(), _config())
+        drops = review_selection(_selection(), _config()).drops
 
     # this particular capture never reached a verdict, so no drops — but the
     # parser must not have been fooled into treating the echo as one either
@@ -81,7 +81,7 @@ def test_a_verdict_after_prose_is_read() -> None:
 
     # WHY: the LLM server is the external boundary.
     with patch("immich_memories.analysis.selection_review._ask", return_value=answer):
-        drops = review_selection(_selection(), _config())
+        drops = review_selection(_selection(), _config()).drops
 
     assert drops == ["asset-14"], f"the template echo beat the real verdict: {drops}"
 
@@ -92,7 +92,7 @@ def test_a_real_verdict_is_read(caplog) -> None:
 
     # WHY: the LLM server is the external boundary; this is its real reply.
     with patch("immich_memories.analysis.selection_review._ask", return_value=answer):
-        drops = review_selection(_selection(), _config())
+        drops = review_selection(_selection(), _config()).drops
 
     assert drops == ["asset-13"], f"did not read the model's actual verdict: {drops}"
 
@@ -113,7 +113,7 @@ def test_the_prompt_template_echo_is_not_mistaken_for_a_verdict(caplog) -> None:
         patch("immich_memories.analysis.selection_review._ask", return_value=answer),
         caplog.at_level(logging.WARNING, logger="immich_memories.analysis.selection_review"),
     ):
-        drops = review_selection(_selection(), _config())
+        drops = review_selection(_selection(), _config()).drops
 
     assert drops == []
     assert any(r.levelno >= logging.WARNING for r in caplog.records), (

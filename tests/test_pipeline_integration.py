@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
+from immich_memories.analysis.selection_review import ReviewVerdict
 from immich_memories.analysis.smart_pipeline import (
     PipelineConfig,
     PipelineResult,
@@ -561,7 +562,7 @@ class TestHolisticReview:
         with (
             patch(
                 "immich_memories.analysis.selection_review.review_selection",
-                return_value=[clips[1].asset.id],
+                return_value=ReviewVerdict(drops=[clips[1].asset.id]),
             ),
             patch.object(
                 pipeline.analyzer,
@@ -682,7 +683,7 @@ class TestQualityStagesAreOneLoop:
         # WHY: review_selection wraps the external LLM
         with patch(
             "immich_memories.analysis.selection_review.review_selection",
-            return_value=[redundant.asset.id],
+            return_value=ReviewVerdict(drops=[redundant.asset.id]),
         ):
             result = pipeline.run_selection(candidates)
 

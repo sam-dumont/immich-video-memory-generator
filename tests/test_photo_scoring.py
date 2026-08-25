@@ -227,7 +227,7 @@ class TestCacheFirstScoring:
 
         mock_cache = MagicMock()
         mock_cache.get_asset_scores_batch.return_value = {
-            "cached-1": {"combined_score": 0.88},
+            "cached-1": {"combined_score": 0.88, "llm_category": "people"},
         }
 
         with (
@@ -512,6 +512,9 @@ class TestCacheFirstScoring:
             llm_quality=None,
             llm_emotion=None,
             llm_description="a photograph",
+            # A look that named no category still answers: "unknown" is
+            # what stops it being re-asked on every run.
+            llm_category="unknown",
             # The key names the model and the prompt it answered, so rows from
             # before a photo could describe itself are invalidated once.
             model_version=_photo_look_version("qwen-test"),
@@ -530,8 +533,8 @@ class TestCacheFirstScoring:
         mock_cache = MagicMock()
         # WHY: database — two hits, one miss
         mock_cache.get_asset_scores_batch.return_value = {
-            "hit-1": {"combined_score": 0.91},
-            "hit-2": {"combined_score": 0.82},
+            "hit-1": {"combined_score": 0.91, "llm_category": "people"},
+            "hit-2": {"combined_score": 0.82, "llm_category": "people"},
         }
 
         with (

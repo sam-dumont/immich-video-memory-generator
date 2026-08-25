@@ -87,6 +87,7 @@ class AssetScoreCache:
         llm_quality: float | None = None,
         llm_emotion: str | None = None,
         llm_description: str | None = None,
+        llm_category: str | None = None,
         model_version: str | None = None,
     ) -> None:
         """Bank a look under its version, replacing only that version's answer.
@@ -102,8 +103,8 @@ class AssetScoreCache:
                 INSERT OR REPLACE INTO asset_scores (
                     asset_id, asset_type, metadata_score, combined_score,
                     llm_interest, llm_quality, llm_emotion, llm_description,
-                    analyzed_at, model_version
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
+                    llm_category, analyzed_at, model_version
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
                 """,
                 (
                     asset_id,
@@ -114,6 +115,7 @@ class AssetScoreCache:
                     llm_quality,
                     llm_emotion,
                     llm_description,
+                    llm_category,
                     model_version or "",
                 ),
             )

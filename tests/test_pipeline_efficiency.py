@@ -538,8 +538,10 @@ class TestNothingIsJudgedBlind:
         judged: list = []
 
         def _capture(selected, _llm_config, **_kwargs):
+            from immich_memories.analysis.selection_review import ReviewVerdict
+
             judged.extend(selected)
-            return []
+            return ReviewVerdict()
 
         # WHY: the review is an LLM call; what it is handed is the subject here.
         with patch("immich_memories.analysis.selection_review.review_selection", _capture):

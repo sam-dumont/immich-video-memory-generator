@@ -108,6 +108,18 @@ def _merge_photos_into_pool(
     )
 
     motion = _motion_by_carrier(scored, config) if include_live_photos else {}
+    # A burst was analysed as video, under whichever still led the merge — so
+    # asset_scores has nothing for the photograph that carries it here, and the
+    # pool would receive a pain-cave screen as an unlabelled photograph.
+    bursts = {
+        asset_id: rendering.still_ids
+        for asset_id, rendering in motion.items()
+        if not (payloads.get(asset_id) or {}).get("category")
+    }
+    if bursts:
+        from immich_memories.photos.scoring import semantic_payloads_for_bursts
+
+        payloads = payloads | semantic_payloads_for_bursts(config.cache.database_path, bursts)
     photo_candidates = _photo_candidates(scored, motion, payloads, photo_duration)
 
     _logger.info(

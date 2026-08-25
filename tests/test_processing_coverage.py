@@ -660,7 +660,9 @@ class TestEnhanceWithLlm:
         app_config = Config(llm={"model": "qwen-test"}, content_analysis={"enabled": True})
 
         mock_cache = MagicMock()
-        mock_cache.get_asset_scores_batch.return_value = {"cached-001": {"combined_score": 0.95}}
+        mock_cache.get_asset_scores_batch.return_value = {
+            "cached-001": {"combined_score": 0.95, "llm_category": "people"}
+        }
 
         # WHY: _get_score_cache imports from cache module — mock to avoid DB
         with patch(
