@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -150,6 +150,9 @@ class SyncImmichClient:
         progress_callback: Callable[[int, int], None] | None = None,
     ) -> list[Asset]:
         return self._run(self._async_client.get_all_videos_for_year(year, progress_callback))
+
+    def count_assets_with_people(self, person_ids: Sequence[str]) -> int:
+        return self._run(self._async_client.search.count_assets_with_people(person_ids))
 
     def get_time_buckets(self, **kwargs) -> list[TimeBucket]:
         return self._run(self._async_client.get_time_buckets(**kwargs))

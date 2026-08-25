@@ -130,6 +130,7 @@ from immich_memories.cli.config_cmd import register_config_commands  # noqa: E40
 from immich_memories.cli.generate import register_generate_commands  # noqa: E402
 from immich_memories.cli.hardware_cmd import register_hardware_commands  # noqa: E402
 from immich_memories.cli.music_cmd import register_music_commands  # noqa: E402
+from immich_memories.cli.people_cmd import register_people_commands  # noqa: E402
 from immich_memories.cli.runs import register_runs_commands  # noqa: E402
 from immich_memories.cli.scheduler_cmd import register_scheduler_commands  # noqa: E402
 from immich_memories.cli.special_days_cmd import register_special_day_commands  # noqa: E402
@@ -143,6 +144,7 @@ register_music_commands(main)
 register_runs_commands(main)
 register_scheduler_commands(main)
 register_special_day_commands(main)
+register_people_commands(main)
 register_cache_commands(main)
 register_auto_commands(main)
 

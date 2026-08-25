@@ -376,6 +376,11 @@ src/immich_memories/
 │   ├── daemon.py               # Daemon loop (foreground, SIGINT/SIGTERM)
 │   └── models.py               # Scheduling data models
 │
+├── people/                     # The library's people graph (counts and dates, no pixels)
+│   ├── signatures.py           # Tiers, onset, twins, duplicates, dyads, owner curve pairing
+│   ├── graph.py                # build_graph(): Immich roster + co-occurrence -> PeopleGraph
+│   └── companion.py            # ~/.immich-memories/people.yaml; confirmed beats inferred
+│
 ├── automation/                 # Smart automation (auto suggest/run)
 │   ├── __init__.py             # Public API re-exports
 │   ├── candidates.py           # Memory candidate detection

@@ -553,9 +553,9 @@
     "functions": [
       {
         "name": "register_config_commands",
-        "complexity": 52,
+        "complexity": 42,
         "line_start": 41,
-        "line_end": 254,
+        "line_end": 224,
         "line_complexities": [
           {
             "line": 58,
@@ -662,43 +662,47 @@
             "complexity": 0
           },
           {
-            "line": 147,
-            "complexity": 0
-          },
-          {
-            "line": 151,
+            "line": 148,
             "complexity": 3
           },
           {
-            "line": 152,
-            "complexity": 4
-          },
-          {
-            "line": 162,
+            "line": 169,
             "complexity": 0
           },
           {
-            "line": 164,
+            "line": 174,
+            "complexity": 0
+          },
+          {
+            "line": 177,
+            "complexity": 0
+          },
+          {
+            "line": 181,
+            "complexity": 2
+          },
+          {
+            "line": 184,
+            "complexity": 0
+          },
+          {
+            "line": 191,
+            "complexity": 2
+          },
+          {
+            "line": 192,
+            "complexity": 0
+          },
+          {
+            "line": 197,
             "complexity": 3
           },
           {
-            "line": 170,
+            "line": 205,
             "complexity": 0
           },
           {
-            "line": 175,
-            "complexity": 0
-          },
-          {
-            "line": 178,
-            "complexity": 3
-          },
-          {
-            "line": 199,
-            "complexity": 0
-          },
-          {
-            "line": 204,
+            "line": 206,
             "complexity": 0
           },
           {
@@ -706,69 +710,37 @@
             "complexity": 0
           },
           {
+            "line": 208,
+            "complexity": 0
+          },
+          {
+            "line": 210,
+            "complexity": 0
+          },
+          {
             "line": 211,
+            "complexity": 0
+          },
+          {
+            "line": 213,
             "complexity": 2
           },
           {
             "line": 214,
-            "complexity": 0
-          },
-          {
-            "line": 221,
-            "complexity": 2
-          },
-          {
-            "line": 222,
-            "complexity": 0
-          },
-          {
-            "line": 227,
             "complexity": 3
           },
           {
-            "line": 235,
-            "complexity": 0
-          },
-          {
-            "line": 236,
-            "complexity": 0
-          },
-          {
-            "line": 237,
-            "complexity": 0
-          },
-          {
-            "line": 238,
-            "complexity": 0
-          },
-          {
-            "line": 240,
-            "complexity": 0
-          },
-          {
-            "line": 241,
-            "complexity": 0
-          },
-          {
-            "line": 243,
-            "complexity": 2
-          },
-          {
-            "line": 244,
-            "complexity": 3
-          },
-          {
-            "line": 248,
+            "line": 218,
             "complexity": 1
           },
           {
-            "line": 250,
+            "line": 220,
             "complexity": 1
           }
         ]
       }
     ],
-    "complexity": 55
+    "complexity": 45
   },
   {
     "path": "src/immich_memories/cli/generate.py",
