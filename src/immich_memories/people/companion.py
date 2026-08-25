@@ -10,6 +10,7 @@ when they fall off the roster.
 
 from __future__ import annotations
 
+import copy
 import logging
 from datetime import date, datetime
 from pathlib import Path
@@ -115,7 +116,11 @@ def _entry_for(node: PersonNode, kept: dict[str, dict[str, Any]]) -> dict[str, A
             "evidence": _evidence_block(node),
             "links": [_link_block(link) for link in node.links],
         },
-        "confirmed": kept.get(person.person_id, _blank_confirmed()),
+        # Copied, not referenced: one entry can name several ids, and handing
+        # the same object to two people makes yaml emit an anchor and an alias.
+        # In a file people edit by hand that is a trap — changing one person
+        # changes the other, and deleting the anchor breaks both.
+        "confirmed": copy.deepcopy(kept.get(person.person_id)) or _blank_confirmed(),
     }
 
 

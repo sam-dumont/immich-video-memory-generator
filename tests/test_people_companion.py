@@ -151,3 +151,27 @@ def _confirm(path: Path, person_id: str, **fields: object) -> None:
         if person_id in entry["ids"]:
             entry["confirmed"].update(fields)
     path.write_text(yaml.dump(document, sort_keys=False, allow_unicode=True))
+
+
+class TestOneEntryPerPerson:
+    def test_two_people_sharing_a_confirmed_block_do_not_become_yaml_anchors(self, tmp_path):
+        # An entry that lists several ids — a person merged by hand, or the
+        # cross-account identities to come — hands the same confirmed block to
+        # two people. Written as one object, yaml emits `&id001`/`*id001`, and
+        # a file meant to be hand-edited must not contain aliases: editing one
+        # person silently edits the other, and deleting the anchor breaks both.
+        path = tmp_path / "people.yaml"
+        path.write_text(
+            "version: 1\npeople:\n"
+            "  - ids: [id-alex-example, id-sam-sample]\n"
+            "    name: Alex Example\n"
+            "    confirmed: {role: partner, links: []}\n"
+        )
+
+        save_graph(path, _graph(_node("Alex Example", Tier.INNER), _node("Sam Sample", Tier.INNER)))
+
+        assert "&id" not in path.read_text()
+        assert [entry["confirmed"]["role"] for entry in people_entries(load_document(path))] == [
+            "partner",
+            "partner",
+        ]
