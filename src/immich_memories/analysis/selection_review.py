@@ -37,8 +37,24 @@ _REVIEW_MAX_TOKENS = 8000
 _PROMPT = """You are reviewing the final cut of a personal memory video.
 Below is every clip in timeline order, with everything we can see and hear.
 
+Ask ONE question of every clip: **would you show this to someone else?**
+
+That is the whole test. Not whether the photograph is good, not whether the
+day was important — whether this particular clip is one you would put in front
+of another person as part of the story. A picture kept for a reason that is
+nobody else's business fails it: an injury, a symptom, a bathroom, a screen
+you photographed to remember something, a room you were documenting. So does
+the fourth photograph of a thing already shown three times, however good it
+is on its own.
+
+The categories below are ways a clip fails that question, not a checklist to
+match against. When one of them fits, the answer was already no.
+
 Each clip carries `when=` (its timestamp), `episode=` (which occasion it
-belongs to) and `starred=yes` when the owner marked it a favourite.
+belongs to), `starred=yes` when the owner marked it a favourite, and
+`camera=front` when the selfie camera took it. A front-camera picture is
+usually of the person holding the phone; some are worth showing and many are
+not, so let it inform the question rather than answer it.
 
 Clips sharing an episode name happened in one place across one stretch of
 time — one site visit, one party, one hike. They are ONE OCCASION however
@@ -57,7 +73,8 @@ only case where dropping a starred clip is right.
 
 {clips}
 
-Judge the SET as a whole: feel, coherence, variety. Drop a clip when it is
+Judge the SET as a whole: feel, coherence, variety. A clip fails the question
+when it is
 
 - REDUNDANT: the same moment, scene or kind of shot is already in the set.
   An episode earns ONE place unless each of its clips shows something the
@@ -135,6 +152,16 @@ def _ask(
     )
 
 
+def _front_camera(exif: object) -> bool:
+    """Whether the selfie camera took this.
+
+    Immich carries the lens through from EXIF, and a front lens names itself.
+    An asset with no lens recorded says nothing either way.
+    """
+    lens = getattr(exif, "lens_model", None)
+    return isinstance(lens, str) and "front" in lens.lower()
+
+
 def _place_for_llm(exif: object) -> str | None:
     """City, state and country — the caption form is too thin to reason from.
 
@@ -164,6 +191,11 @@ def _clip_line(index: int, member: ClipWithSegment, moment: str | None = None) -
         parts.append(f"when={taken.isoformat(timespec='minutes')}")
     if moment:
         parts.append(f"episode={moment}")
+    if _front_camera(getattr(clip.asset, "exif_info", None)):
+        # How a phone says "this is a picture of me". The owner's junk list is
+        # full of them and his keepers are not, but the description cannot
+        # tell them apart: "a person indoors" is both.
+        parts.append("camera=front")
     if getattr(clip.asset, "is_favorite", False):
         # Several starred clips in one occasion are a battle to judge between.
         # Not saying so let the review drop a favourite and keep the unstarred
