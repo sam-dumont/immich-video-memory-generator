@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -236,6 +237,18 @@ def _clip_line(
     return " ".join(parts)
 
 
+@dataclass(frozen=True)
+class ReviewVerdict:
+    """The drops that were carried out, and one line per entry saying why.
+
+    Returned rather than logged alone so the trace can carry the ledger into
+    the file a rejection is diagnosed from.
+    """
+
+    drops: list[str] = field(default_factory=list)
+    fates: list[str] = field(default_factory=list)
+
+
 def _clips_block(
     selected: list[ClipWithSegment],
     unreadable_ids: set[str] | frozenset[str] = frozenset(),
@@ -339,8 +352,10 @@ def review_selection(
     timeout_seconds: int = 45,
     cache_path: Path | None = None,
     unreadable_ids: set[str] | frozenset[str] = frozenset(),
-) -> list[str]:
-    """Asset ids the LLM says to drop from the selection; [] on any doubt.
+) -> ReviewVerdict:
+    """What the review decided, and what was done about each part of it.
+
+    Nothing is dropped on any doubt — the pass is fail-open by design.
 
     Every outcome here says which one it was. The pass is fail-open by design
     — a model that cannot answer must not be able to gut a memory — and that
@@ -351,7 +366,7 @@ def review_selection(
     """
     if len(selected) < 3:
         logger.debug("Selection review: %d clips is too few to judge as a set", len(selected))
-        return []
+        return ReviewVerdict()
     clips_block = _clips_block(selected, unreadable_ids)
     prompt = _PROMPT.format(clips=clips_block)
     try:
@@ -359,7 +374,7 @@ def review_selection(
     except Exception as e:  # WHY broad: the review is optional; never break selection
         stop_if_this_is_our_bug(e, "selection review")
         logger.warning("Selection review unavailable (%s): nothing dropped", type(e).__name__)
-        return []
+        return ReviewVerdict()
 
     entries = _verdict_in(raw)
     if entries is None:
@@ -370,30 +385,78 @@ def review_selection(
             len(raw) if raw else 0,
             UNREADABLE_VERDICT_MARKER,
         )
-        return []
-    try:
-        indices = [int(e["index"]) for e in entries if "index" in e]
-    except (TypeError, ValueError) as e:
-        logger.warning(
-            "Selection review answer could not be read (%s) [%s]: nothing dropped",
-            type(e).__name__,
-            UNREADABLE_VERDICT_MARKER,
-        )
-        return []
+        return ReviewVerdict()
+    verdict = _apply(entries, selected)
+    for fate in verdict.fates:
+        logger.info("Selection review: %s", fate)
+    if not verdict.drops:
+        logger.info("Selection review: read %d clips as a set, nothing to drop", len(selected))
+    return verdict
+
+
+def _apply(entries: list, selected: list[ClipWithSegment]) -> ReviewVerdict:
+    """Carry out the verdict, and say what happened to every part of it.
+
+    Each entry gets one line naming its fate. The old code logged
+    `entries[:len(drops)]` — the FIRST n entries rather than the applied ones —
+    so a vetoed entry was reported as dropped and four renders of drop lines
+    were partly fiction.
+
+    The starred rule is the owner's, and it is a battle, not an immunity: an
+    occasion the owner starred repeatedly earns one place, so a starred clip
+    may lose to a starred sibling from the same occasion but never to anything
+    else. The code this replaces skipped every starred clip silently, which
+    made starred junk immortal and the prompt's instruction a dead letter.
+    """
+    from collections import Counter
 
     max_drops = max(1, int(len(selected) * _MAX_DROP_RATIO))
-    drops = []
-    for idx in indices[:max_drops]:
-        if 1 <= idx <= len(selected):
-            member = selected[idx - 1]
-            if not getattr(member.clip.asset, "is_favorite", False):
-                drops.append(member.clip.asset.id)
-    for entry in entries[: len(drops)]:
-        logger.info(
-            "Selection review: dropping clip %s (%s)",
-            entry.get("index"),
-            entry.get("reason", "no reason given"),
-        )
-    if not drops:
-        logger.info("Selection review: read %d clips as a set, nothing to drop", len(selected))
-    return drops
+    episodes = _episode_labels(selected)
+    stars_left = Counter(
+        episode
+        for episode, member in zip(episodes, selected, strict=True)
+        if getattr(member.clip.asset, "is_favorite", False)
+    )
+
+    drops: list[str] = []
+    fates: list[str] = []
+    for entry in entries:
+        dropped, fate = _fate_of(entry, selected, episodes, stars_left, drops, max_drops)
+        fates.append(fate)
+        if dropped is not None:
+            drops.append(dropped)
+    return ReviewVerdict(drops=drops, fates=fates)
+
+
+def _fate_of(
+    entry: object,
+    selected: list[ClipWithSegment],
+    episodes: list[str],
+    stars_left: dict[str, int],
+    drops: list[str],
+    max_drops: int,
+) -> tuple[str | None, str]:
+    """What becomes of one verdict entry, and the line that says so."""
+    index = entry.get("index") if isinstance(entry, dict) else None
+    reason = entry.get("reason", "no reason given") if isinstance(entry, dict) else "unreadable"
+    if not isinstance(index, int) or isinstance(index, bool):
+        return None, f"clip {index!r}: not a clip number, ignored ({reason})"
+    if not 1 <= index <= len(selected):
+        return None, f"clip {index}: no such clip in the cut, ignored ({reason})"
+
+    member = selected[index - 1]
+    asset_id = member.clip.asset.id
+    if asset_id in drops:
+        return None, f"{asset_id}: named twice, already dropped ({reason})"
+    if len(drops) >= max_drops:
+        return None, f"{asset_id}: kept — cap of {max_drops} drop(s) this round reached ({reason})"
+
+    episode = episodes[index - 1]
+    if getattr(member.clip.asset, "is_favorite", False):
+        if stars_left[episode] < 2:
+            return (
+                None,
+                f"{asset_id}: kept — starred, and the only starred clip of its occasion ({reason})",
+            )
+        stars_left[episode] -= 1
+    return asset_id, f"{asset_id}: applied ({reason})"

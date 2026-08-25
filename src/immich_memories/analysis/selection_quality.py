@@ -245,15 +245,15 @@ class SelectionQuality:
 
         by_id = {c.clip.asset.id: c for c in analyzed}
         selected = [by_id[c.asset.id] for c in result.selected_clips if c.asset.id in by_id]
-        drops = set(
-            review_selection(
-                selected,
-                self._app_config.llm,
-                cache_path=self._verdicts,
-                unreadable_ids=self._unreadable_ids(selected),
-            )
+        verdict = review_selection(
+            selected,
+            self._app_config.llm,
+            cache_path=self._verdicts,
+            unreadable_ids=self._unreadable_ids(selected),
         )
+        drops = set(verdict.drops)
         if not drops:
+            trace.record("final review", selected, selected, verdict.fates)
             return result, analyzed
 
         kept = [c for c in result.selected_clips if c.asset.id not in drops]
@@ -436,20 +436,24 @@ class SelectionQuality:
 
         by_id = {c.clip.asset.id: c for c in analyzed}
         selected = [by_id[c.asset.id] for c in result.selected_clips if c.asset.id in by_id]
-        drops = review_selection(
+        verdict = review_selection(
             selected,
             self._app_config.llm,
             cache_path=self._verdicts,
             unreadable_ids=self._unreadable_ids(selected),
         )
-        if not drops:
-            trace.record("llm review", selected, selected)
+        if not verdict.drops:
+            # The ledger goes in even when nothing was dropped: "nothing to
+            # drop" and "everything it named was vetoed" are different, and
+            # they used to look identical from outside.
+            trace.record("llm review", selected, selected, verdict.fates)
             return result, analyzed, False
-        dropped = set(drops)
+        dropped = set(verdict.drops)
         trace.record(
             "llm review",
             selected,
             [c for c in selected if c.clip.asset.id not in dropped],
+            verdict.fates,
         )
         remaining = [c for c in analyzed if c.clip.asset.id not in dropped]
         if not remaining:

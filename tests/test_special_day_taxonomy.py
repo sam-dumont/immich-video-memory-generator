@@ -143,4 +143,4 @@ def test_the_selection_review_still_survives_an_unreachable_model() -> None:
 
     # WHY: the LLM server is the external boundary; here it is unreachable.
     with patch("immich_memories.analysis.selection_review._ask", side_effect=OSError("no route")):
-        assert review_selection(selection, SimpleNamespace(model="m", thinking=True)) == []
+        assert review_selection(selection, SimpleNamespace(model="m", thinking=True)).drops == []

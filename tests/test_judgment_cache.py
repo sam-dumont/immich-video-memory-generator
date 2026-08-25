@@ -130,7 +130,7 @@ def test_a_cache_that_cannot_be_opened_costs_calls_not_the_run(tmp_path) -> None
 
     # WHY: the LLM server is the external boundary.
     with patch("immich_memories.analysis.llm_query._dispatch", new=_always):
-        drops = review_selection(_selection(), _config(), cache_path=unwritable)
+        drops = review_selection(_selection(), _config(), cache_path=unwritable).drops
 
     assert drops == []
 

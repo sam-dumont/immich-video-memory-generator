@@ -33,7 +33,7 @@ class TestReviewSelection:
             "immich_memories.analysis.selection_review._ask",
             return_value='{"drop": [{"index": 2, "reason": "duplicate of clip 1"}]}',
         ):
-            drops = review_selection(_selection(), LLMConfig())
+            drops = review_selection(_selection(), LLMConfig()).drops
 
         assert drops == ["a-2"]
 
@@ -54,7 +54,7 @@ class TestReviewSelection:
             "immich_memories.analysis.selection_review._ask",
             side_effect=RuntimeError("model gone"),
         ):
-            assert review_selection(_selection(), LLMConfig()) == []
+            assert review_selection(_selection(), LLMConfig()).drops == []
 
     def test_garbage_output_drops_nothing(self):
         # WHY: the LLM call is the external boundary
@@ -62,7 +62,7 @@ class TestReviewSelection:
             "immich_memories.analysis.selection_review._ask",
             return_value="sure! here are my thoughts...",
         ):
-            assert review_selection(_selection(), LLMConfig()) == []
+            assert review_selection(_selection(), LLMConfig()).drops == []
 
     def test_the_llm_cannot_gut_the_video(self):
         """A cap keeps an overeager model from dropping half the memory."""
@@ -71,7 +71,7 @@ class TestReviewSelection:
             "immich_memories.analysis.selection_review._ask",
             return_value='{"drop": [{"index": 1}, {"index": 2}, {"index": 3}]}',
         ):
-            drops = review_selection(_selection(), LLMConfig())
+            drops = review_selection(_selection(), LLMConfig()).drops
 
         assert len(drops) <= 1  # 20% of 3, floored, min 1
 
@@ -156,7 +156,7 @@ class TestSilenceIsNotApproval:
             ),
             caplog.at_level(logging.INFO, logger="immich_memories.analysis.selection_review"),
         ):
-            drops = review_selection(_selection(), LLMConfig())
+            drops = review_selection(_selection(), LLMConfig()).drops
 
         assert drops == []
         assert any(
@@ -173,7 +173,7 @@ class TestSilenceIsNotApproval:
             patch("immich_memories.analysis.selection_review._ask", return_value=""),
             caplog.at_level(logging.DEBUG, logger="immich_memories.analysis.selection_review"),
         ):
-            drops = review_selection(_selection(), LLMConfig())
+            drops = review_selection(_selection(), LLMConfig()).drops
 
         assert drops == []
         assert any(record.levelno >= logging.WARNING for record in caplog.records), (
@@ -192,7 +192,7 @@ class TestSilenceIsNotApproval:
             ),
             caplog.at_level(logging.DEBUG, logger="immich_memories.analysis.selection_review"),
         ):
-            drops = review_selection(_selection(), LLMConfig())
+            drops = review_selection(_selection(), LLMConfig()).drops
 
         assert drops == []
         assert any(record.levelno >= logging.WARNING for record in caplog.records)
@@ -202,7 +202,7 @@ class TestSilenceIsNotApproval:
         import logging
 
         with caplog.at_level(logging.DEBUG, logger="immich_memories.analysis.selection_review"):
-            drops = review_selection(_selection()[:2], LLMConfig())
+            drops = review_selection(_selection()[:2], LLMConfig()).drops
 
         assert drops == []
         assert not any(record.levelno >= logging.WARNING for record in caplog.records)
