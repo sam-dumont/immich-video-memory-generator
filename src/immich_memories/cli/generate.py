@@ -509,6 +509,7 @@ def register_generate_commands(main: click.Group) -> None:
                             client=client,
                             date_ranges=date_ranges,
                             person_ids=person_ids,
+                            merge_window_seconds=(config.analysis.live_photo_merge_window_seconds),
                         )
                         if fetched_photos:
                             print_info(f"Found {len(fetched_photos)} photos")

@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from immich_memories.analysis.live_photo_pipeline import with_burst_neighbours
 from immich_memories.api.person_scope import stills_person_args, videos_in_window
 from immich_memories.cli._helpers import print_info, print_success, print_warning
 from immich_memories.timeperiod import DateRange
@@ -92,6 +93,7 @@ def fetch_photos(
     client: SyncImmichClient,
     date_ranges: list[DateRange],
     person_ids: list[str],
+    merge_window_seconds: float = 10.0,
 ) -> list:
     """Fetch every photograph in the memory's windows, honouring the person filter.
 
@@ -118,6 +120,16 @@ def fetch_photos(
             if photo.id not in seen:
                 seen.add(photo.id)
                 photos.append(photo)
+
+    # Immich tags one frame of a burst, so a person filter returns that frame
+    # alone and the burst has nothing to stitch to.
+    if person_ids:
+        photos = with_burst_neighbours(
+            client,
+            photos,
+            date_ranges=date_ranges,
+            merge_window_seconds=merge_window_seconds,
+        )
     return photos
 
 
