@@ -51,7 +51,15 @@ def _collect(rows: list[dict]):
                     "video_id": getattr(clip.asset, "live_photo_video_id", None),
                     "when": taken.strftime("%d %b %H:%M") if taken else "?",
                     "day": taken.strftime("%Y-%m-%d") if taken else "?",
-                    "kind": "PHO" if "IMAGE" in str(getattr(clip.asset, "type", "")) else "VID",
+                    # LVS = a Live Photo burst the pipeline chose to render as
+                    # motion (the stitch), distinct from a plain still (PHO).
+                    "kind": (
+                        "LVS"
+                        if getattr(clip, "live_burst_video_ids", None)
+                        else "PHO"
+                        if "IMAGE" in str(getattr(clip.asset, "type", ""))
+                        else "VID"
+                    ),
                     "city": (clip.asset.exif_info.city if clip.asset.exif_info else None) or "",
                     "score": round(member.score, 2) if member else 0.0,
                     "secs": round(end - start, 1),
