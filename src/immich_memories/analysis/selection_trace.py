@@ -27,6 +27,22 @@ if TYPE_CHECKING:
 _active: ContextVar[Trace | None] = ContextVar("selection_trace", default=None)
 
 
+# How many dropped clips to name per stage before summarising the rest.
+_ACCOUNT_LIMIT = 12
+
+
+@dataclass(frozen=True)
+class ClipStory:
+    """What became of one clip, and where."""
+
+    asset_id: str
+    facts: str
+    shipped: bool
+    survived: tuple[str, ...]
+    dropped_at: str | None
+    admitted_at: str | None
+
+
 @dataclass(frozen=True)
 class Stage:
     """One decision point: what went in, what came out, and why."""
@@ -37,6 +53,11 @@ class Stage:
     favorites_in: int
     favorites_out: int
     reasons: list[str] = field(default_factory=list)
+    # Which ones. record() already works these out to count them; keeping
+    # them is what turns a funnel into an account of each clip.
+    kept_ids: tuple[str, ...] = ()
+    lost_ids: tuple[str, ...] = ()
+    gained_ids: tuple[str, ...] = ()
 
 
 @dataclass
@@ -47,6 +68,8 @@ class Trace:
     # Moments that shipped something else while their favourite was dropped.
     # None means nothing checked; an empty list means the law held.
     lost_favourites: list | None = None
+    # What each clip was, keyed by asset id, so a story can name it.
+    clips: dict[str, str] = field(default_factory=dict)
     # Not a stage: it describes the pool every stage worked on, not a step
     # the pool passed through. Re-set by each re-selection, so the value that
     # survives is the one the verify passes left behind (#489).
@@ -61,8 +84,11 @@ class Trace:
     ) -> None:
         """Note that `name` turned `before` into `after`."""
         before_list, after_list = list(before), list(after)
+        before_ids = {_asset_id(item) for item in before_list}
         after_ids = {_asset_id(item) for item in after_list}
         lost = [item for item in before_list if _asset_id(item) not in after_ids]
+        self._remember(before_list)
+        self._remember(after_list)
         self.stages.append(
             Stage(
                 name=name,
@@ -71,7 +97,40 @@ class Trace:
                 favorites_in=sum(_is_favorite(i) for i in before_list),
                 favorites_out=sum(_is_favorite(i) for i in after_list),
                 reasons=reasons or [],
+                kept_ids=tuple(sorted(after_ids)),
+                lost_ids=tuple(_asset_id(i) for i in lost),
+                gained_ids=tuple(sorted(after_ids - before_ids)),
             )
+        )
+
+    def _remember(self, items: list) -> None:
+        """Keep what each clip was, so the account can name it."""
+        for item in items:
+            asset_id = _asset_id(item)
+            if asset_id not in self.clips:
+                self.clips[asset_id] = _facts_of(item)
+
+    def story_of(self, asset_id: str) -> ClipStory:
+        """Everything this run decided about one clip, in order."""
+        survived: list[str] = []
+        dropped_at: str | None = None
+        admitted_at: str | None = None
+        for stage in self.stages:
+            if asset_id in stage.gained_ids:
+                admitted_at = stage.name
+            if asset_id in stage.lost_ids:
+                dropped_at = stage.name
+                survived = []
+            elif asset_id in stage.kept_ids:
+                survived.append(stage.name)
+        shipped = bool(self.stages) and asset_id in self.stages[-1].kept_ids
+        return ClipStory(
+            asset_id=asset_id,
+            facts=self.clips.get(asset_id, ""),
+            shipped=shipped,
+            survived=tuple(survived),
+            dropped_at=None if shipped else dropped_at,
+            admitted_at=admitted_at,
         )
 
     def _favourite_law_lines(self) -> list[str]:
@@ -113,7 +172,37 @@ class Trace:
                 f"{favorites:>12}{marker}"
             )
             lines.extend(f"{' ' * width}    - {reason}" for reason in stage.reasons)
-        return "\n".join(lines) + "\n"
+        return "\n".join([*lines, *self._account_lines()]) + "\n"
+
+    def _account_lines(self) -> list[str]:
+        """Why each clip is in the cut, and why the rest are not."""
+        if not self.stages:
+            return []
+        return [*self._shipped_lines(), *self._rejected_lines()]
+
+    def _shipped_lines(self) -> list[str]:
+        lines = ["", "why each clip is in the cut", "-" * 27]
+        shipped = [self.story_of(asset_id) for asset_id in self.stages[-1].kept_ids]
+        for story in sorted(shipped, key=lambda s: s.facts):
+            lines.append(f"  {story.facts}")
+            if story.admitted_at:
+                lines.append(f"      admitted by: {story.admitted_at}")
+            if story.survived:
+                lines.append(f"      survived: {', '.join(story.survived)}")
+        return lines
+
+    def _rejected_lines(self) -> list[str]:
+        by_stage: dict[str, list[str]] = {}
+        for asset_id in {i for stage in self.stages for i in stage.lost_ids}:
+            story = self.story_of(asset_id)
+            if not story.shipped and story.dropped_at is not None:
+                by_stage.setdefault(story.dropped_at, []).append(story.facts)
+        if not by_stage:
+            return []
+        lines = ["", "and why the rest are not", "-" * 24]
+        for stage in (s.name for s in self.stages):
+            lines += _dropped_at(stage, sorted(by_stage.pop(stage, [])))
+        return lines
 
     def _coverage_lines(self) -> list[str]:
         """The pool's coverage, above the funnel — it frames everything below."""
@@ -140,9 +229,13 @@ class Trace:
                     "favorites_in": s.favorites_in,
                     "favorites_out": s.favorites_out,
                     "reasons": s.reasons,
+                    "kept_ids": list(s.kept_ids),
+                    "lost_ids": list(s.lost_ids),
+                    "gained_ids": list(s.gained_ids),
                 }
                 for s in self.stages
             ],
+            "clips": self.clips,
         }
 
 
@@ -150,6 +243,39 @@ def _asset_id(item: object) -> str:
     clip = getattr(item, "clip", item)
     asset = getattr(clip, "asset", clip)
     return str(getattr(asset, "id", id(item)))
+
+
+def _dropped_at(stage: str, dropped: list[str]) -> list[str]:
+    """One stage's rejects, named up to the limit and then counted."""
+    if not dropped:
+        return []
+    lines = [f"  dropped at {stage} ({len(dropped)}):"]
+    lines += [f"      {facts}" for facts in dropped[:_ACCOUNT_LIMIT]]
+    if len(dropped) > _ACCOUNT_LIMIT:
+        lines.append(f"      ... and {len(dropped) - _ACCOUNT_LIMIT} more")
+    return lines
+
+
+def _facts_of(item: object) -> str:
+    """One line saying what a clip is, for the account."""
+    clip = getattr(item, "clip", item)
+    asset = getattr(clip, "asset", clip)
+    when = getattr(asset, "file_created_at", None)
+    bits = [
+        str(getattr(asset, "original_file_name", "") or _asset_id(item)[:8]),
+        when.isoformat(timespec="minutes") if when else "undated",
+        f"score={getattr(item, 'score', 0.0):.2f}",
+    ]
+    if getattr(asset, "is_favorite", False):
+        bits.append("starred")
+    for label, source, attr in (
+        ("", clip, "llm_category"),
+        ("interest=", clip, "llm_interestingness"),
+    ):
+        value = getattr(source, attr, None)
+        if value is not None:
+            bits.append(f"{label}{value:g}" if isinstance(value, float) else f"{label}{value}")
+    return "  ".join(bits)
 
 
 def _is_favorite(item: object) -> bool:
