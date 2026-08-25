@@ -15,7 +15,6 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from immich_memories.analysis import selection_trace as trace
-from immich_memories.analysis.source_filter import is_a_still
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -38,6 +37,22 @@ logger = logging.getLogger(__name__)
 # pocket, the ground, somebody's feet — and no amount of being the only thing
 # from its day makes it worth shipping.
 _UNUSABLE_SHARE_OF_FLOOR = 1.0 / 3.0
+
+
+def looks_like_a_photograph(asset: object) -> bool:
+    """Whether the photo look is the right way to see this asset.
+
+    Any image, Live Photo or not. `is_a_still` deliberately excludes a Live
+    Photo because every rule about footage applies to how it is RENDERED — but
+    the question here is which analyser can read it, and the answer for
+    anything with a still is the photo scorer. Sent to the video analyser
+    instead, a burst carrier fails in milliseconds, is marked attempted, and
+    is never looked at again: the label its burst already carries never
+    reaches the review, and it ships undescribed.
+    """
+    from immich_memories.api.models import AssetType
+
+    return getattr(asset, "type", None) == AssetType.IMAGE
 
 
 class SelectionQuality:
@@ -201,7 +216,7 @@ class SelectionQuality:
         """
         from immich_memories.analysis import photo_look
 
-        stills = [u for u in unverified if is_a_still(u.clip.asset)]
+        stills = [u for u in unverified if looks_like_a_photograph(u.clip.asset)]
         deps = {
             "config": self._app_config,
             "client": self.client,
@@ -215,7 +230,7 @@ class SelectionQuality:
                 **deps,
             )
             result = self.refiner.phase_refine(list(by_id.values()), self.tracker)
-        return [u for u in unverified if not is_a_still(u.clip.asset)], result
+        return [u for u in unverified if not looks_like_a_photograph(u.clip.asset)], result
 
     def final_review_drop(
         self,

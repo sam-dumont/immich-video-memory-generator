@@ -353,13 +353,28 @@ def _payload_from_cache(row: dict) -> dict:
     """What a cached row can tell the review, in the shape a clip expects."""
     return {
         "description": row.get("llm_description"),
-        "category": None,
+        "category": row.get("llm_category"),
         "emotion": row.get("llm_emotion"),
         "subjects": None,
         "setting": None,
         "interestingness": row.get("llm_interest"),
         "quality": row.get("llm_quality"),
     }
+
+
+def _still_answers(row: dict | None) -> bool:
+    """Whether a cached look can answer what the pool asks of it now.
+
+    A row with no category cannot. Subject policy acts on that label and
+    refuses to guess from prose, and the column went unwritten for so long
+    that every row on a real library predates it — 8,827 of them. Reading
+    those as answers is what let an uncategorised frying pan past a bar it
+    scored under.
+
+    A row saying "unknown" HAS answered: the model was asked and named
+    nothing, which is a different thing from never having been asked.
+    """
+    return bool(row and row.get("llm_category"))
 
 
 def _enhance_with_llm(
@@ -392,8 +407,7 @@ def _enhance_with_llm(
     enhanced: list[tuple[Asset, float]] = []
     payloads: dict[str, dict] = {}
     for asset, meta_score in scored:
-        # Cache hit — use stored score, and the words stored with it
-        if asset.id in cached:
+        if _still_answers(cached.get(asset.id)):
             row = cached[asset.id]
             enhanced.append((asset, row["combined_score"]))
             payloads[asset.id] = _payload_from_cache(row)
@@ -450,6 +464,11 @@ def _bank_look(cache, asset_id: str, meta_score: float, look: PhotoLook, version
         llm_quality=_as_float(look.payload.get("quality")),
         llm_emotion=_as_text(look.payload.get("emotion")),
         llm_description=_as_text(look.payload.get("description")),
+        # "unknown" rather than NULL when the model named no category: the
+        # field is optional in the prompt, so a small model answering with the
+        # two numbers alone would otherwise be re-asked on every run forever.
+        # A row saying unknown HAS answered.
+        llm_category=_as_text(look.payload.get("category")) or "unknown",
         model_version=version,
     )
 
@@ -597,3 +616,43 @@ def _get_score_cache(db_path: Path):
     except (ImportError, OSError, sqlite3.Error) as exc:
         logger.debug("Photo score cache unavailable (%s): scores will not persist", exc)
         return None
+
+
+def semantic_payloads_for_bursts(
+    db_path: Path | None,
+    bursts: dict[str, tuple[str, ...]],
+) -> dict[str, dict]:
+    """What a burst already said about itself, keyed by the carrier's asset id.
+
+    A Live Photo burst is analysed as video, and its segments are stored under
+    whichever still led the merge — never under the photograph that ends up
+    carrying it into the pool. So `semantic_payloads_for`, which reads
+    asset_scores, finds nothing for a carrier and the pool receives it as an
+    unlabelled photograph. Subject policy then reads UNKNOWN and lets it past
+    the bar it would have failed.
+
+    The answer is already banked: the leader's best segment carries the
+    description, the category and the interest.
+    """
+    if not db_path or not bursts:
+        return {}
+    from immich_memories.analysis.cache_projection import semantic_payload_from_segment
+    from immich_memories.cache.database import VideoAnalysisCache
+
+    try:
+        cache = VideoAnalysisCache(db_path)
+    except Exception as exc:  # noqa: BLE001 - a missing cache costs labels, not the run
+        logger.debug("Burst semantics unavailable (%s)", exc)
+        return {}
+
+    found: dict[str, dict] = {}
+    for carrier_id, still_ids in bursts.items():
+        for still_id in still_ids:
+            analysis = cache.get_analysis(still_id)
+            segments = getattr(analysis, "segments", None) or []
+            best = max(segments, key=lambda s: getattr(s, "total_score", 0.0), default=None)
+            payload = semantic_payload_from_segment(best) if best is not None else None
+            if payload:
+                found[carrier_id] = payload
+                break
+    return found
