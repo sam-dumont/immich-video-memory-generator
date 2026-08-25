@@ -17,7 +17,7 @@ import math
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from immich_memories.api.immich import ImmichAPIError
 from immich_memories.api.models import Asset
@@ -64,20 +64,23 @@ def score_photo_with_llm(
     config: PhotoConfig,
     app_config: Config,
     provider_circuit=None,
-) -> PhotoLook | None:
+) -> PhotoLook | LookFailed | None:
     """Enhance a photo's score with what the VLM sees, and keep what it says.
 
     Sends the photo to the configured VLM (the same one video content analysis
     uses) and blends its interest and quality into the metadata score. The
     words come back too: a photograph that cannot describe itself is a
     photograph the holistic review cannot judge.
+
+    Returns a typed verdict when the look fails, and None only when no look was
+    attempted at all — content analysis is off, so there is nothing to remember.
     """
     if app_config is None or not app_config.content_analysis.enabled:
         return None
 
     look = _query_photo_llm(photo_path, app_config, provider_circuit=provider_circuit)
-    if look is None:
-        return None
+    if isinstance(look, LookFailed):
+        return look
 
     # Blend: replace the LLM placeholder weight with actual LLM score
     # metadata_score was computed with _W_LLM * 0.5 as placeholder
@@ -124,6 +127,31 @@ def _photo_score_value(value: object) -> float | None:
     return score
 
 
+FailureKind = Literal["truncated", "unparseable", "provider_down", "download_failed"]
+
+# There is no refusal class here on purpose: the local model is abliterated and
+# nothing refused in any measured run. A refusal, if one ever appeared, would
+# arrive as `unparseable` — prose where JSON was asked for.
+#
+# A dead server and a missing thumbnail say nothing about the photograph, so
+# banking them would freeze a network blip into a permanently unanswerable
+# asset. They are retried on the next run; within a run the provider circuit
+# already stops the pipeline from asking a server that is down.
+_TRANSIENT_FAILURES: frozenset[str] = frozenset({"provider_down", "download_failed"})
+
+# A prompt that truncates or comes back unparseable will do it again — the
+# picture and the question have not changed. Two tries rides out a flake
+# without paying for a third; a prompt edit resets the count by changing the key.
+_MAX_LOOK_ATTEMPTS = 2
+
+
+@dataclass(frozen=True)
+class LookFailed:
+    """Why a look produced no answer, in the vocabulary the cache banks."""
+
+    kind: FailureKind
+
+
 @dataclass(frozen=True)
 class PhotoLook:
     """One look at a photograph: the score, and what the model saw in it.
@@ -145,29 +173,33 @@ def _text_field(value: object) -> str | None:
     return cleaned[:400] or None
 
 
-def _parse_photo_look(text: str) -> PhotoLook | None:
+def _parse_photo_look(text: str) -> PhotoLook | LookFailed:
     """Extract the scores a photo must have, and whatever else it came with.
 
     interest and quality stay required — they are what selection ranks on, and
     a response without them is not an answer. Everything else is optional: a
     small model that returns the two numbers alone still scores exactly as it
     used to, it just tells the review nothing.
+
+    A failure says which kind it is, because the two are worth different
+    things to the cache. An answer that opened a JSON object and never closed
+    it ran out of tokens; anything else came back whole and unusable.
     """
     match = re.search(r"\{[^}]+\}", text)
     if not match:
         logger.debug("LLM photo analysis: no JSON in response: %s", text[:100])
-        return None
+        return LookFailed("truncated" if "{" in text else "unparseable")
 
     data = json.loads(match.group())
     if not isinstance(data, dict) or not {"interest", "quality"} <= data.keys():
         logger.debug("LLM photo analysis: response omitted required score fields")
-        return None
+        return LookFailed("unparseable")
 
     interest = _photo_score_value(data["interest"])
     quality = _photo_score_value(data["quality"])
     if interest is None or quality is None:
         logger.debug("LLM photo analysis: score fields were invalid")
-        return None
+        return LookFailed("unparseable")
 
     subjects = data.get("subjects")
     return PhotoLook(
@@ -186,7 +218,9 @@ def _parse_photo_look(text: str) -> PhotoLook | None:
     )
 
 
-def _query_photo_llm(photo_path: Path, config: object, provider_circuit=None) -> PhotoLook | None:
+def _query_photo_llm(
+    photo_path: Path, config: object, provider_circuit=None
+) -> PhotoLook | LookFailed:
     """Ask the configured model about a photo, through the one client.
 
     This used to be a second HTTP client with its own rules: it POSTed
@@ -199,7 +233,15 @@ def _query_photo_llm(photo_path: Path, config: object, provider_circuit=None) ->
     for a run when the provider is unwell.
     """
     if provider_circuit is not None and not provider_circuit.available:
-        return None
+        return LookFailed("provider_down")
+
+    # Read outside the try below: a picture that cannot be read never reached
+    # the model, so it is not a bad answer and must not be banked as one.
+    try:
+        image = photo_path.read_bytes()
+    except OSError as e:
+        logger.debug(f"Photo unreadable for analysis: {e}")
+        return LookFailed("download_failed")
 
     try:
         import httpx
@@ -216,7 +258,7 @@ def _query_photo_llm(photo_path: Path, config: object, provider_circuit=None) ->
                 temperature=0.1,
                 max_tokens=_PHOTO_ANSWER_TOKENS,
                 timeout_seconds=llm_config.timeout_seconds,
-                images=[photo_path.read_bytes()],
+                images=[image],
                 image_detail=ca_config.openai_image_detail,
             )
         )
@@ -224,15 +266,17 @@ def _query_photo_llm(photo_path: Path, config: object, provider_circuit=None) ->
 
     except httpx.HTTPStatusError as e:
         _note_provider_health(e.response, config, provider_circuit)
-        return None
+        return LookFailed("provider_down")
     except httpx.HTTPError as e:
         if provider_circuit is not None:
             provider_circuit.disable("content-analysis provider is unreachable")
         logger.debug(f"LLM photo analysis failed: {e}")
-        return None
+        return LookFailed("provider_down")
     except (RuntimeError, ValueError, OSError, KeyError, IndexError, TypeError) as e:
+        # Malformed JSON, a missing key, an answer that was never content —
+        # a reply arrived and could not be read.
         logger.debug(f"LLM photo analysis returned an invalid response: {e}")
-        return None
+        return LookFailed("unparseable")
 
 
 def _note_provider_health(response: object, config: object, provider_circuit) -> None:
@@ -343,6 +387,7 @@ def _enhance_with_llm(
     asset_ids = [a.id for a, _ in scored]
     model_version = _photo_look_version(app_config.llm.model)
     cached = _cached_scores(cache, asset_ids, model_version)
+    spent = _exhausted_looks(cache, asset_ids, model_version)
 
     cache_hits = 0
     enhanced: list[tuple[Asset, float]] = []
@@ -356,6 +401,11 @@ def _enhance_with_llm(
             cache_hits += 1
             continue
 
+        # This prompt has already failed on this photo as often as it is worth.
+        if asset.id in spent:
+            enhanced.append((asset, meta_score))
+            continue
+
         # Cache miss — download + LLM
         look = _llm_score_photo(
             asset,
@@ -367,31 +417,77 @@ def _enhance_with_llm(
             thumbnail_fn=thumbnail_fn,
             provider_circuit=provider_circuit,
         )
-        effective_score = look.score if look is not None else meta_score
-        enhanced.append((asset, effective_score))
-        if look is not None:
+        if isinstance(look, PhotoLook):
+            enhanced.append((asset, look.score))
             payloads[asset.id] = look.payload
+            _bank_look(cache, asset.id, meta_score, look, model_version)
+            continue
 
-        # Only successful semantic results belong to the configured model.
-        if cache and look is not None and model_version:
-            cache.save_asset_score(
-                asset_id=asset.id,
-                asset_type="photo",
-                metadata_score=meta_score,
-                combined_score=effective_score,
-                llm_interest=_as_float(look.payload.get("interestingness")),
-                llm_quality=_as_float(look.payload.get("quality")),
-                llm_emotion=_as_text(look.payload.get("emotion")),
-                llm_description=_as_text(look.payload.get("description")),
-                model_version=model_version,
-            )
+        enhanced.append((asset, meta_score))
+        if isinstance(look, LookFailed):
+            _bank_failure(cache, asset.id, look, model_version)
 
     # Reported on any pass that had photos, not just one that hit: an all-miss
     # pass staying silent is indistinguishable in a log from no photo work.
     if scored:
-        logger.info(f"Photo score cache: {cache_hits} hits, {len(scored) - cache_hits} misses")
+        given_up = f", {len(spent)} given up on" if spent else ""
+        logger.info(
+            f"Photo score cache: {cache_hits} hits, {len(scored) - cache_hits} misses{given_up}"
+        )
 
     return enhanced, payloads
+
+
+def _bank_look(cache, asset_id: str, meta_score: float, look: PhotoLook, version: str) -> None:
+    """Keep what the model said, under the version that said it."""
+    if not cache or not version:
+        return
+    cache.save_asset_score(
+        asset_id=asset_id,
+        asset_type="photo",
+        metadata_score=meta_score,
+        combined_score=look.score,
+        llm_interest=_as_float(look.payload.get("interestingness")),
+        llm_quality=_as_float(look.payload.get("quality")),
+        llm_emotion=_as_text(look.payload.get("emotion")),
+        llm_description=_as_text(look.payload.get("description")),
+        model_version=version,
+    )
+
+
+def _bank_failure(cache, asset_id: str, failure: LookFailed, version: str) -> None:
+    """Remember a failure by kind — unless the kind is one that may pass.
+
+    A transient failure banked is a network blip frozen into a permanently
+    unanswerable asset, so those are simply not written and are asked again on
+    the next run.
+    """
+    import sqlite3
+
+    if not cache or not version or failure.kind in _TRANSIENT_FAILURES:
+        return
+    try:
+        cache.record_failed_look(asset_id, version, failure.kind)
+    except (OSError, sqlite3.Error) as exc:
+        logger.debug("Photo score cache unwritable (%s): the failure is not remembered", exc)
+
+
+def _exhausted_looks(cache, asset_ids: list[str], version: str) -> set[str]:
+    """Assets this prompt has already failed on as often as it is worth."""
+    import sqlite3
+
+    if not cache or not version:
+        return set()
+    try:
+        failures = cache.failed_looks(asset_ids, model_version=version)
+    except (OSError, sqlite3.Error) as exc:
+        logger.debug("Photo failure ledger unreadable (%s): asking again", exc)
+        return set()
+    return {
+        asset_id
+        for asset_id, row in failures.items()
+        if row.get("attempts", 0) >= _MAX_LOOK_ATTEMPTS
+    }
 
 
 def _llm_score_photo(
@@ -403,16 +499,19 @@ def _llm_score_photo(
     app_config: Any,
     thumbnail_fn: Any = None,
     provider_circuit: Any = None,
-) -> PhotoLook | None:
+) -> PhotoLook | LookFailed | None:
     """Look at a photo with the VLM, using a lightweight thumbnail.
 
     Uses Immich thumbnail API (~100 KB) instead of downloading the full
     HEIC (5-15 MB). Falls back to full download if no thumbnail_fn.
+
+    Never reaching a picture is `download_failed`: transient by nature, and a
+    verdict about the network rather than about the photograph.
     """
     from immich_memories.photos.scoring import score_photo_with_llm
 
     if provider_circuit is not None and not provider_circuit.available:
-        return None
+        return LookFailed("provider_down")
 
     thumb_path = work_dir / f"{asset.id}_thumb.jpg"
 
@@ -435,7 +534,10 @@ def _llm_score_photo(
                 provider_circuit=provider_circuit,
             )
         except (OSError, RuntimeError, ValueError):
-            return None
+            # The look path classifies its own failures, so anything escaping it
+            # is unclassifiable — call it transient and ask again rather than
+            # write the asset off over a code path nobody understands yet.
+            return LookFailed("download_failed")
 
     # Fallback: download full file (old behavior)
     ext = Path(asset.original_file_name).suffix if asset.original_file_name else ".jpg"
@@ -444,7 +546,7 @@ def _llm_score_photo(
         try:
             download_fn(asset.id, raw_path)
         except (ImmichAPIError, OSError, RuntimeError, ValueError):
-            return None
+            return LookFailed("download_failed")
 
     try:
         from immich_memories.photos.animator import prepare_photo_source
@@ -458,7 +560,7 @@ def _llm_score_photo(
             provider_circuit=provider_circuit,
         )
     except (OSError, RuntimeError, ValueError):
-        return None
+        return LookFailed("download_failed")
 
 
 def _cached_scores(cache, asset_ids: list[str], model_version: str | None) -> dict:

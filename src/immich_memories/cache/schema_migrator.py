@@ -22,6 +22,7 @@ from immich_memories.cache.migration_v17 import migrate_segment_transcripts
 from immich_memories.cache.migration_v19 import migrate_target_duration_seconds
 from immich_memories.cache.migration_v21 import migrate_run_llm_metrics
 from immich_memories.cache.migration_v22 import migrate_asset_score_version_key
+from immich_memories.cache.migration_v23 import migrate_look_failure_ledger
 
 if TYPE_CHECKING:
     from contextlib import AbstractContextManager
@@ -98,6 +99,7 @@ class SchemaMigrator:
             20: self._migration_v20_safe_cut_gaps,
             21: migrate_run_llm_metrics,
             22: migrate_asset_score_version_key,
+            23: migrate_look_failure_ledger,
         }
 
         for version in range(from_version + 1, target_version + 1):

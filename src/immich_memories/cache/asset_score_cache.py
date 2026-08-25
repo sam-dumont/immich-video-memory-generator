@@ -119,6 +119,41 @@ class AssetScoreCache:
             )
             conn.commit()
 
+    def failed_looks(self, asset_ids: list[str], *, model_version: str) -> dict[str, dict]:
+        """What failed for these assets under this exact version, and how often.
+
+        Answers `{asset_id: {"kind": ..., "attempts": ...}}` for the assets that
+        have one. Whether that many attempts is enough to stop asking is the
+        caller's policy, not the cache's.
+        """
+        if not asset_ids:
+            return {}
+        with self._get_connection() as conn:
+            placeholders = ",".join("?" * len(asset_ids))
+            rows = conn.execute(
+                "SELECT asset_id, kind, attempts FROM asset_look_failures"  # noqa: S608
+                f" WHERE asset_id IN ({placeholders}) AND model_version = ?",
+                [*asset_ids, model_version],
+            ).fetchall()
+            return {row["asset_id"]: dict(row) for row in rows}
+
+    def record_failed_look(self, asset_id: str, model_version: str, kind: str) -> None:
+        """Bank one failed look, counting how often it has failed this way."""
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO asset_look_failures (
+                    asset_id, model_version, kind, attempts, last_attempt_at
+                ) VALUES (?, ?, ?, 1, datetime('now'))
+                ON CONFLICT(asset_id, model_version) DO UPDATE SET
+                    kind = excluded.kind,
+                    attempts = attempts + 1,
+                    last_attempt_at = excluded.last_attempt_at
+                """,
+                (asset_id, model_version, kind),
+            )
+            conn.commit()
+
     def get_cache_stats(self) -> dict:
         """Statistics for the `cache stats` CLI command.
 

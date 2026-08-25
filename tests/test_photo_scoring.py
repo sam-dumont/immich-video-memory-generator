@@ -11,6 +11,7 @@ import pytest
 from immich_memories.api.models import Person
 from immich_memories.config_models_render import PhotoConfig
 from immich_memories.photos.scoring import (
+    LookFailed,
     PhotoLook,
     _photo_look_version,
     score_photo,
@@ -100,7 +101,21 @@ class TestPhotoScoring:
     def test_parse_photo_look_rejects_missing_required_field(self) -> None:
         from immich_memories.photos.scoring import _parse_photo_look
 
-        assert _parse_photo_look('{"message": "analysis unavailable"}') is None
+        assert _parse_photo_look('{"message": "analysis unavailable"}') == LookFailed("unparseable")
+
+    def test_an_answer_that_never_closed_its_json_is_truncated_not_unparseable(self) -> None:
+        """The two permanent kinds are worth the same to the ledger, not to a human.
+
+        An answer cut off mid-object ran out of tokens; one that came back
+        whole and useless is a different problem with a different fix.
+        """
+        from immich_memories.photos.scoring import _parse_photo_look
+
+        cut_off = _parse_photo_look('{"description": "A child on a beach, holding a')
+        whole = _parse_photo_look("I looked at the photo and saw a child.")
+
+        assert cut_off == LookFailed("truncated")
+        assert whole == LookFailed("unparseable")
 
     def test_the_look_keeps_what_the_model_saw(self) -> None:
         """The model was asked only for two numbers and its answer averaged.
@@ -145,6 +160,23 @@ class TestPhotoScoring:
 
         assert _photo_score_value(value) is None
 
+    def test_a_picture_that_cannot_be_read_is_transient_not_a_bad_answer(
+        self, tmp_path: Path
+    ) -> None:
+        """The model never saw it, so it never said anything unparseable.
+
+        Classing a local read failure as a bad answer would bank it, and two
+        runs later the asset would be written off over a disk hiccup.
+        """
+        from immich_memories.config_loader import Config
+        from immich_memories.photos.scoring import _query_photo_llm
+
+        config = Config(llm={"model": "qwen-vl"}, content_analysis={"enabled": True})
+
+        assert _query_photo_llm(tmp_path / "never-written.jpg", config) == LookFailed(
+            "download_failed"
+        )
+
     def test_permanent_llm_failure_is_not_cached_or_retried(self, tmp_path: Path) -> None:
         """A provider failure stays distinguishable while opening the run circuit."""
         import httpx
@@ -176,8 +208,8 @@ class TestPhotoScoring:
                 photo_b, 0.42, PhotoConfig(), config, provider_circuit=circuit
             )
 
-        assert first is None
-        assert second is None
+        assert first == LookFailed("provider_down")
+        assert second == LookFailed("provider_down")
         assert request.call_count == 1
 
 
@@ -274,6 +306,89 @@ class TestCacheFirstScoring:
         assert result[0][1] == 0.77
         assert banked["photo-1"]["combined_score"] == 0.77
         assert stranded["photo-1"]["combined_score"] == 0.91
+
+    def _failing_runs(
+        self, tmp_path: Path, failure: LookFailed, runs: int
+    ) -> tuple[int, str, Path]:
+        """Score one photo `runs` times against a model that always fails."""
+        from immich_memories.cache.database import VideoAnalysisCache
+        from immich_memories.config_loader import Config
+        from immich_memories.photos.scoring import _enhance_with_llm
+
+        db_path = tmp_path / "scores.db"
+        VideoAnalysisCache(db_path)
+        app_config = Config(llm={"model": "qwen-3.6"}, content_analysis={"enabled": True})
+
+        # WHY: the model is the external boundary this test reaches.
+        with patch(
+            "immich_memories.photos.scoring._llm_score_photo",
+            return_value=failure,
+        ) as mock_look:
+            for _ in range(runs):
+                _enhance_with_llm(
+                    [(_photo("photo-1"), 0.5)],
+                    PhotoConfig(),
+                    tmp_path,
+                    lambda *_args: None,
+                    db_path=db_path,
+                    app_config=app_config,
+                )
+
+        return mock_look.call_count, _photo_look_version("qwen-3.6"), db_path
+
+    def test_a_truncated_look_is_re_asked_once_more_then_left_alone(self, tmp_path: Path) -> None:
+        calls, _version, _db = self._failing_runs(tmp_path, LookFailed("truncated"), runs=4)
+
+        assert calls == 2
+
+    def test_an_unparseable_look_is_remembered_by_its_kind(self, tmp_path: Path) -> None:
+        from immich_memories.cache.asset_score_cache import AssetScoreCache
+
+        _calls, version, db_path = self._failing_runs(tmp_path, LookFailed("unparseable"), runs=1)
+        cache = AssetScoreCache(db_path)
+
+        assert cache.failed_looks(["photo-1"], model_version=version)["photo-1"]["kind"] == (
+            "unparseable"
+        )
+        # A verdict is not a score: nothing must read back as the model's answer.
+        assert cache.get_asset_scores_batch(["photo-1"], model_version=version) == {}
+
+    @pytest.mark.parametrize("kind", ["provider_down", "download_failed"])
+    def test_a_transient_failure_is_never_banked_and_is_asked_again(
+        self, tmp_path: Path, kind: str
+    ) -> None:
+        from immich_memories.cache.asset_score_cache import AssetScoreCache
+
+        calls, version, db_path = self._failing_runs(tmp_path, LookFailed(kind), runs=4)
+
+        assert calls == 4
+        assert AssetScoreCache(db_path).failed_looks(["photo-1"], model_version=version) == {}
+
+    def test_a_version_bump_re_asks_a_look_that_had_been_given_up_on(self, tmp_path: Path) -> None:
+        from immich_memories.cache.database import VideoAnalysisCache
+        from immich_memories.config_loader import Config
+        from immich_memories.photos.scoring import _enhance_with_llm
+
+        _calls, _version, db_path = self._failing_runs(tmp_path, LookFailed("truncated"), runs=3)
+        bumped = Config(llm={"model": "qwen-4.0"}, content_analysis={"enabled": True})
+        VideoAnalysisCache(db_path)
+
+        # WHY: the model is the external boundary this test reaches.
+        with patch(
+            "immich_memories.photos.scoring._llm_score_photo",
+            return_value=PhotoLook(score=0.66, payload={"description": "a photograph"}),
+        ) as mock_look:
+            result, _payloads = _enhance_with_llm(
+                [(_photo("photo-1"), 0.5)],
+                PhotoConfig(),
+                tmp_path,
+                lambda *_args: None,
+                db_path=db_path,
+                app_config=bumped,
+            )
+
+        assert mock_look.call_count == 1
+        assert result[0][1] == 0.66
 
     def test_failed_semantic_score_falls_back_without_claiming_model(self, tmp_path: Path) -> None:
         from immich_memories.cache.asset_score_cache import AssetScoreCache
@@ -506,7 +621,7 @@ class TestCacheFirstScoring:
         result = _llm_score_photo(
             asset, meta_score, PhotoConfig(), tmp_path, download_explodes, None
         )
-        assert result is None
+        assert result == LookFailed("download_failed")
 
     def test_llm_prepare_failure_is_not_a_semantic_score(self, tmp_path: Path):
         """A decode failure remains distinguishable so callers avoid caching it."""
@@ -533,7 +648,7 @@ class TestCacheFirstScoring:
                 None,
             )
 
-        assert result is None
+        assert result == LookFailed("download_failed")
 
     def test_get_score_cache_returns_none_on_import_error(self):
         """_get_score_cache returns None when dependencies are unavailable."""
