@@ -21,6 +21,7 @@ from immich_memories.automation.system_scheduler import (
 )
 from immich_memories.cli import main
 from immich_memories.config_loader import Config
+from immich_memories.memory_types.registry import MemoryType
 
 
 def _invoke(args: list[str], config: Config | None = None) -> Result:
@@ -221,6 +222,21 @@ class TestCLIMemoryTypeFlags:
         """--person flag accepts multiple values."""
         result = _invoke(["generate", "--help"])
         assert "--person" in result.output
+
+    def test_choices_are_every_memory_type_but_album(self):
+        """The flag's choice list is hand-written; MemoryType is what it must track.
+
+        `album` is the one member left out on purpose: an album is a set of
+        assets rather than a window to resolve, so it is selected by naming it
+        with `--from-album`, and `--memory-type album` would have nothing to
+        compute. Any other member missing here ships unreachable from the CLI.
+        """
+        memory_type_option = next(
+            param for param in main.commands["generate"].params if param.name == "memory_type"
+        )
+        assert set(memory_type_option.type.choices) == {m.value for m in MemoryType} - {"album"}, (
+            "--memory-type's choices in cli/generate_options.py have fallen behind MemoryType"
+        )
 
 
 class TestCLIMemoryTypeResolve:
