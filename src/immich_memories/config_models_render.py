@@ -222,9 +222,3 @@ class PhotoConfig(BaseModel):
             "still count as the same scene (0 = only identical framing)"
         ),
     )
-    score_penalty: float = Field(
-        default=0.2,
-        ge=0.0,
-        le=1.0,
-        description="Score reduction for photos vs videos (0.2 = photos score 80% of videos)",
-    )

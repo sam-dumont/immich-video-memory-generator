@@ -4,8 +4,11 @@ Two scoring modes:
 1. Fast (metadata only): favorites, faces, camera — no I/O, instant
 2. LLM (visual analysis): sends the photo to VLM for interest/quality rating
 
-Photos score lower than videos by default (via score_penalty) to ensure
-videos always win in a tie.
+A photograph is scored on the same scale as footage. It used to be scaled to
+80% so a video won every tie, which was the asset's TYPE deciding the ranking
+before anything asked which asset was better -- and it forced two further
+mechanisms to exist purely to undo it: a discounted judge floor for stills, and
+a matching discount inside the frame-quality re-weighting.
 """
 
 from __future__ import annotations
@@ -26,8 +29,11 @@ from immich_memories.config_models_render import PhotoConfig
 
 logger = logging.getLogger(__name__)
 
-# Weight distribution for metadata scoring
-_W_FAVORITE = 0.25
+# Weight distribution for metadata scoring.
+# A favourite is deliberately absent: it orders photographs rather than scoring
+# them (analysis.asset_merit.ranking_key), which is how video has always
+# treated it. Added here as well it was worth 0.25 -- exactly what 0.15 + 0.10
+# of detected faces was worth -- so three strangers tied with the owner's mark.
 _W_FACES = 0.15
 _W_FACE_COUNT = 0.10  # More faces = more interesting
 _W_CAMERA = 0.05
@@ -38,9 +44,6 @@ _W_BASE = 0.15
 def score_photo(asset: Asset, config: PhotoConfig) -> float:
     """Score a photo for selection priority. Returns 0.0-1.0."""
     raw = _W_BASE
-
-    if asset.is_favorite:
-        raw += _W_FAVORITE
 
     if asset.people:
         raw += _W_FACES
@@ -54,8 +57,7 @@ def score_photo(asset: Asset, config: PhotoConfig) -> float:
     # Without LLM, redistribute that weight to base
     raw += _W_LLM * 0.5  # Assume average LLM score when not available
 
-    raw = min(1.0, max(0.0, raw))
-    return raw * (1.0 - config.score_penalty)
+    return min(1.0, max(0.0, raw))
 
 
 def score_photo_with_llm(
@@ -79,13 +81,10 @@ def score_photo_with_llm(
     if look is None:
         return None
 
-    # Blend: replace the LLM placeholder weight with actual LLM score
-    # metadata_score was computed with _W_LLM * 0.5 as placeholder
-    penalty = 1.0 - config.score_penalty
-    # Remove placeholder, add actual LLM score
-    adjusted = (metadata_score / penalty) - _W_LLM * 0.5 + _W_LLM * look.score
-    blended = min(1.0, max(0.0, adjusted)) * penalty
-    return PhotoLook(score=blended, payload=look.payload)
+    # metadata_score was computed with _W_LLM * 0.5 standing in for the answer
+    # that has now arrived: swap the placeholder for the real one.
+    adjusted = metadata_score - _W_LLM * 0.5 + _W_LLM * look.score
+    return PhotoLook(score=min(1.0, max(0.0, adjusted)), payload=look.payload)
 
 
 # The same fields the video path asks the same model for. A photo used to be

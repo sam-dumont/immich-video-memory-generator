@@ -62,14 +62,19 @@ Photos use a mix of metadata and optional LLM visual analysis:
 | Factor | Weight | How |
 |--------|--------|-----|
 | Base | 0.15 | Every photo starts here |
-| Favorite | 0.25 | Favorited in Immich |
 | Has faces | 0.15 | People detected by Immich |
 | Face count | 0.10 | More faces = family moments (capped at 3+) |
 | Camera original | 0.05 | Real camera EXIF (not screenshot) |
 | LLM visual | 0.30 | VLM rates interest + quality |
 
-Photo scores are multiplied by `(1 - score_penalty)`. The default penalty is 0.2, so a photo
-scores 80% of an equally good video and videos win ties.
+A favourite is not in the table. It orders photos rather than scoring them: a
+starred photo sorts above an unstarred one whatever either measures. Scored as
+well, it was worth 0.25 — exactly what faces plus face count are worth — so
+three detected strangers tied with the owner saying this one mattered.
+
+Photos are scored on the same scale as footage. Stills used to be scaled to 80%
+so a video won every tie, which meant the asset's type decided the ranking
+before anything asked which asset was better.
 
 ### Live Photo Scoring
 
@@ -326,5 +331,4 @@ Set in config: `analysis.clip_style: balanced` (or pass no value to use individu
 photos:
   enabled: true           # Include photos (default: true)
   max_ratio: 0.50         # Max 50% of clips can be photos
-  score_penalty: 0.2      # Photos score 80% of equivalent videos
 ```

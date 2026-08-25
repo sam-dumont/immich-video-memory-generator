@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import io
 
-from immich_memories.config_models_render import PhotoConfig
 from immich_memories.photos.photo_pipeline import _apply_frame_quality
 from tests.conftest import make_asset
 
@@ -49,7 +48,6 @@ def test_the_pixels_break_the_tie_when_nothing_cached_them(tmp_path) -> None:
 
     rescored = _apply_frame_quality(
         pool,
-        PhotoConfig(),
         _EmptyCache(),
         thumbnail_fn=lambda asset_id, **_kw: frames[asset_id],
     )
@@ -73,7 +71,6 @@ def test_a_cached_frame_is_not_fetched_again(tmp_path) -> None:
 
     rescored = _apply_frame_quality(
         pool,
-        PhotoConfig(),
         _WarmCache(),
         thumbnail_fn=lambda asset_id, **_kw: fetched.append(asset_id) or sharp,
     )
@@ -92,7 +89,7 @@ def test_without_a_way_to_fetch_it_still_uses_what_is_cached(tmp_path) -> None:
         def get(self, asset_id: str, _size: str) -> bytes | None:
             return sharp if asset_id.endswith("0") else (blurry if asset_id.endswith("1") else None)
 
-    rescored = _apply_frame_quality(pool, PhotoConfig(), _PartialCache())
+    rescored = _apply_frame_quality(pool, _PartialCache())
 
     assert len({round(score, 6) for _asset, score in rescored}) > 1
 

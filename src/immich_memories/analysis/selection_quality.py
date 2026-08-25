@@ -316,21 +316,6 @@ class SelectionQuality:
         result = self.refiner.phase_refine(analyzed, self.tracker)
         return result, analyzed, True
 
-    def _floor_for(self, member: ClipWithSegment) -> float:
-        """The gate this clip answers to, on the scale its score was built on.
-
-        photos.score_penalty says outright that a photo scores a fixed share
-        of a video, so a floor calibrated on footage is that much too high for
-        a still. A no-people, non-favorite photo tops out at 0.15 base + 0.05
-        camera + half the LLM weight — 0.28 after the penalty, against a floor
-        of 0.30. Landscapes, pets and scenery could not clear it at all, and
-        were dropped as a class along with any day only they represented.
-        """
-        floor = self.config.judge_floor_score
-        if not is_a_still(member.clip.asset):
-            return floor
-        return floor * (1.0 - self._app_config.photos.score_penalty)
-
     def spare_last_voices(
         self,
         offenders: set[str],
@@ -394,7 +379,8 @@ class SelectionQuality:
         # dropped for being a weak last note is fine anywhere else, and
         # keeping it for lack of an alternative would defeat the rule.
         offenders = self.spare_last_voices(
-            {s.clip.asset.id for s in judgeable if s.score < self._floor_for(s)}, selected
+            {s.clip.asset.id for s in judgeable if s.score < self.config.judge_floor_score},
+            selected,
         )
         scores = [s.score for s in selected]
         mean_score = sum(scores) / len(scores)

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import operator
 import random
 import subprocess
 from collections.abc import Iterator
@@ -21,6 +20,7 @@ from typing import Any
 import cv2
 import numpy as np
 
+from immich_memories.analysis.asset_merit import ranking_key
 from immich_memories.analysis.source_filter import from_the_camera_roll
 from immich_memories.analysis.unified_budget import (
     BudgetCandidate,
@@ -83,12 +83,6 @@ def score_photos(
     if not assets:
         return []
 
-    # Photos score below videos so a recap prefers moving footage. With no
-    # video in the month there is nothing to defer to, and the penalty only
-    # compresses the range the selection has to work with.
-    if video_clip_count == 0:
-        config = config.model_copy(update={"score_penalty": 0.0})
-
     # Phase 1: Fast metadata scoring (no I/O). Keep this complete pool so the
     # final optimizer can use unshortlisted photos when preferred media is sparse.
     metadata_scored = [(a, score_photo(a, config)) for a in assets]
@@ -101,7 +95,7 @@ def score_photos(
     # The metadata score alone ties hundreds of photos onto a handful of
     # values; what the pixels say breaks those ties (#489).
     metadata_scored = _apply_frame_quality(
-        metadata_scored, config, thumbnail_cache, thumbnail_fn=thumbnail_fn
+        metadata_scored, thumbnail_cache, thumbnail_fn=thumbnail_fn
     )
 
     # One look per moment, not a few per shippable slot. Sizing the shortlist
@@ -399,7 +393,6 @@ def _frames_for_quality(
 
 def _apply_frame_quality(
     scored: list[tuple[Asset, float]],
-    config: PhotoConfig,
     thumbnail_cache: Any,
     thumbnail_fn: Any = None,
     budget: int = _QUALITY_FETCH_BUDGET,
@@ -434,13 +427,9 @@ def _apply_frame_quality(
 
     # An unmeasurable thumbnail sits mid-pool rather than last: we know nothing
     # about it, which is not the same as knowing it is bad.
-    # The metadata score arrives already carrying the photo penalty, so the
-    # quality share takes it too — otherwise a third of every photo's score
-    # would quietly escape the rule that keeps photos behind videos.
-    penalty = 1.0 - config.score_penalty
     rescored = []
     for i, (asset, score) in enumerate(scored):
-        share = quality.get(i, 0.5) * penalty
+        share = quality.get(i, 0.5)
         rescored.append((asset, score * (1.0 - _QUALITY_SHARE) + share * _QUALITY_SHARE))
     logger.info(
         "Frame quality: %d of %d photos measured, %.0f%% of the score",
@@ -480,6 +469,7 @@ def _drop_burst_duplicates(
                 taken_at=asset.file_created_at,
                 thumbnail_hash=digest,
                 score=score,
+                is_favorite=asset.is_favorite,
             )
         )
 
@@ -537,7 +527,7 @@ def one_photo_per_moment(scored: list[tuple], window_minutes: float) -> list[tup
     better.
     """
     return [
-        max(g, key=lambda item: (bool(item[0].is_favorite), item[1]))
+        max(g, key=lambda item: ranking_key(item[0], item[1]))
         for g in moments_of(scored, window_minutes)
     ]
 
@@ -591,7 +581,7 @@ def _select_distributed(
             break
         bucket = by_date[bucket_start : bucket_start + bucket_size]
         # Pick the highest-scored photo in this bucket
-        best = max(bucket, key=operator.itemgetter(1))
+        best = max(bucket, key=lambda item: ranking_key(item[0], item[1]))
         if best[0].id not in seen:
             selected.append(best)
             seen.add(best[0].id)
