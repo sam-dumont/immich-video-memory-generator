@@ -23,7 +23,7 @@ from immich_memories.memory_types.date_builders import (
 from immich_memories.memory_types.presets import (
     MemoryPreset,
     PersonFilter,
-    ScoringProfile,
+    person_filter_for,
 )
 from immich_memories.memory_types.registry import MemoryType
 from immich_memories.timeperiod import birthday_year, calendar_year
@@ -95,17 +95,12 @@ def _year_in_review(
     person_names: list[str] | None = None,
     **kwargs,  # noqa: ARG001
 ) -> MemoryPreset:
-    person_filter = PersonFilter()
-    if person_names:
-        person_filter = PersonFilter(mode="single", person_names=person_names[:1])
     return MemoryPreset(
         memory_type=MemoryType.YEAR_IN_REVIEW,
         name=f"{year} Memories",
         description=f"A look back at your best moments of {year}",
         date_ranges=[calendar_year(year)],
-        person_filter=person_filter,
-        scoring=ScoringProfile(),
-        title_template="{year}",
+        person_filter=person_filter_for(person_names),
         default_duration_seconds=600,  # ~50s per month × 12
     )
 
@@ -126,17 +121,12 @@ def _season(
         raise ValueError("season is required for SEASON memory type")
     date_range = build_season(season, year, hemisphere)
     season_cap = season.capitalize()
-    person_filter = PersonFilter()
-    if person_names:
-        person_filter = PersonFilter(mode="single", person_names=person_names[:1])
     return MemoryPreset(
         memory_type=MemoryType.SEASON,
         name=f"{season_cap} {year}",
         description=f"{season_cap} highlights of {year}",
         date_ranges=[date_range],
-        person_filter=person_filter,
-        scoring=ScoringProfile(motion_weight=0.35),
-        title_template="{season} {year}",
+        person_filter=person_filter_for(person_names),
         default_duration_seconds=135,  # ~45s per month × 3
     )
 
@@ -162,10 +152,9 @@ def _person_spotlight(
         name=f"Your Year with {name}",
         description=f"Best moments with {name} in {year}",
         date_ranges=[date_range],
-        person_filter=PersonFilter(mode="single", person_names=[name]),
-        scoring=ScoringProfile(face_weight=0.6, motion_weight=0.15),
-        title_template="{year}",
-        subtitle_template="Your Year with {person}",
+        # A spotlight is one person by definition, so extra names name a
+        # different memory -- Multi-Person -- rather than narrowing this one.
+        person_filter=person_filter_for([name]),
         default_duration_seconds=120,
     )
 
@@ -195,9 +184,6 @@ def _multi_person(
             person_names=list(person_names),
             require_co_occurrence=require_co_occurrence,
         ),
-        scoring=ScoringProfile(face_weight=0.5, motion_weight=0.2),
-        title_template="{year}",
-        subtitle_template="{persons}",
         default_duration_seconds=300,
     )
 
@@ -219,17 +205,12 @@ def _monthly_highlights(
 
     month_name = cal.month_name[month]
     date_range = build_month(month, year)
-    person_filter = PersonFilter()
-    if person_names:
-        person_filter = PersonFilter(mode="single", person_names=person_names[:1])
     return MemoryPreset(
         memory_type=MemoryType.MONTHLY_HIGHLIGHTS,
         name=f"{month_name} {year}",
         description=f"Highlights from {month_name} {year}",
         date_ranges=[date_range],
-        person_filter=person_filter,
-        scoring=ScoringProfile(),
-        title_template="{month} {year}",
+        person_filter=person_filter_for(person_names),
         default_duration_seconds=60,
     )
 
@@ -251,18 +232,12 @@ def _on_this_day(
     import calendar
 
     month_name = calendar.month_name[target_date.month]
-    person_filter = PersonFilter()
-    if person_names:
-        person_filter = PersonFilter(mode="single", person_names=person_names[:1])
     return MemoryPreset(
         memory_type=MemoryType.ON_THIS_DAY,
         name=f"{month_name} {target_date.day} Through the Years",
         description=f"Memories from {month_name} {target_date.day} across previous years",
         date_ranges=date_ranges,
-        person_filter=person_filter,
-        scoring=ScoringProfile(),
-        title_template="{month} {day}",
-        subtitle_template="Through the Years",
+        person_filter=person_filter_for(person_names),
         default_duration_seconds=45,  # ~30-45s — it's a single date across years
     )
 
@@ -292,26 +267,13 @@ def _trip(
     from immich_memories.planning.auto_duration import trip_editorial_duration_seconds
 
     duration = trip_editorial_duration_seconds(trip_days)
-    person_filter = PersonFilter()
-    if person_names:
-        person_filter = PersonFilter(mode="single", person_names=person_names[:1])
 
     return MemoryPreset(
         memory_type=MemoryType.TRIP,
         name=location,
         description=f"Trip to {location}",
         date_ranges=[date_range],
-        person_filter=person_filter,
-        scoring=ScoringProfile(
-            motion_weight=0.3,
-            content_weight=0.3,
-            face_weight=0.2,
-            stability_weight=0.1,
-            audio_weight=0.0,
-            duration_weight=0.1,
-        ),
-        title_template="{location}",
-        subtitle_template="{start_date} - {end_date}",
+        person_filter=person_filter_for(person_names),
         default_duration_seconds=duration,
     )
 
@@ -369,19 +331,13 @@ def _holiday(
     today = None if year else date.today()
     year = year or date.today().year
     label = holiday_label(holiday, year)
-    person_filter = PersonFilter()
-    if person_names:
-        person_filter = PersonFilter(mode="single", person_names=person_names[:1])
 
     return MemoryPreset(
         memory_type=MemoryType.HOLIDAY,
         name=f"{label} Through the Years",
         description=f"{label} across {years_back} years",
         date_ranges=build_holiday(holiday, year, years_back, window_days, today=today),
-        person_filter=person_filter,
-        scoring=ScoringProfile(face_weight=0.3, content_weight=0.3),
-        title_template="{holiday}",
-        subtitle_template="Through the Years",
+        person_filter=person_filter_for(person_names),
         default_duration_seconds=60,
     )
 
@@ -404,19 +360,13 @@ def _then_and_now(
     """
     year = year or date.today().year
     then_year = year - years_back
-    person_filter = PersonFilter()
-    if person_names:
-        person_filter = PersonFilter(mode="single", person_names=person_names[:1])
 
     return MemoryPreset(
         memory_type=MemoryType.THEN_AND_NOW,
         name=f"{then_year} and {year}",
         description=f"{then_year} beside {year}",
         date_ranges=build_then_and_now(year, years_back),
-        person_filter=person_filter,
-        scoring=ScoringProfile(face_weight=0.4, content_weight=0.3),
-        title_template="{then_year} & {now_year}",
-        subtitle_template="Then and Now",
+        person_filter=person_filter_for(person_names),
         default_duration_seconds=45,
     )
 
@@ -462,8 +412,5 @@ def _special_day(
         # Not person-filtered on purpose: the memory is the occasion, and real
         # names would reach durable run history through it.
         person_filter=PersonFilter(),
-        scoring=ScoringProfile(),
-        title_template="{title}",
-        subtitle_template="{subtitle}" if subtitle else None,
         default_duration_seconds=special_day_editorial_duration_seconds(hours),
     )

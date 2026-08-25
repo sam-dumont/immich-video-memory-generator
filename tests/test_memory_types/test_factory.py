@@ -13,7 +13,7 @@ from immich_memories.memory_types.registry import MemoryType
 
 
 class TestCreatePresetYearInReview:
-    """Year in Review preset uses calendar year with default weights."""
+    """Year in Review preset uses the calendar year."""
 
     def test_creates_preset(self) -> None:
         preset = create_preset(MemoryType.YEAR_IN_REVIEW, year=2024)
@@ -26,27 +26,50 @@ class TestCreatePresetYearInReview:
         assert preset.date_ranges[0].start == datetime(2024, 1, 1, 0, 0, 0)
         assert preset.date_ranges[0].end == datetime(2024, 12, 31, 23, 59, 59)
 
-    def test_default_scoring_weights(self) -> None:
-        preset = create_preset(MemoryType.YEAR_IN_REVIEW, year=2024)
-        assert preset.scoring.face_weight == 0.4
-        assert preset.scoring.motion_weight == 0.25
-
     def test_title_template(self) -> None:
         preset = create_preset(MemoryType.YEAR_IN_REVIEW, year=2024)
         assert "2024" in preset.name
 
 
+class TestPersonFilterOnEveryType:
+    """#683: a memory type that is not about people still narrows to them.
+
+    Every factory that takes ``person_names`` kept only the first, so
+    ``--person Alice --person Bob`` fetched what held both while the wizard's
+    preset asked for Alice alone. One rule now, and it is the CLI's.
+    """
+
+    @pytest.mark.parametrize(
+        ("memory_type", "params"),
+        [
+            (MemoryType.YEAR_IN_REVIEW, {"year": 2024}),
+            (MemoryType.SEASON, {"year": 2024, "season": "summer"}),
+            (MemoryType.MONTHLY_HIGHLIGHTS, {"year": 2024, "month": 3}),
+            (MemoryType.ON_THIS_DAY, {"target_date": date(2024, 6, 15)}),
+            (MemoryType.HOLIDAY, {"year": 2024, "holiday": "christmas"}),
+            (MemoryType.THEN_AND_NOW, {"year": 2024}),
+        ],
+        ids=str,
+    )
+    def test_every_name_survives_and_intersects(self, memory_type, params) -> None:
+        preset = create_preset(memory_type, person_names=["Alice", "Bob"], **params)
+
+        assert preset.person_filter.person_names == ["Alice", "Bob"]
+        assert preset.person_filter.require_co_occurrence
+
+    def test_naming_nobody_leaves_the_memory_wide(self) -> None:
+        preset = create_preset(MemoryType.YEAR_IN_REVIEW, year=2024)
+
+        assert not preset.person_filter.person_names
+
+
 class TestCreatePresetSeason:
-    """Season preset uses season date range with boosted motion weight."""
+    """Season preset uses the season's own date range."""
 
     def test_summer_date_range(self) -> None:
         preset = create_preset(MemoryType.SEASON, year=2024, season="summer")
         expected = build_season("summer", 2024)
         assert preset.date_ranges[0] == expected
-
-    def test_boosted_motion_weight(self) -> None:
-        preset = create_preset(MemoryType.SEASON, year=2024, season="summer")
-        assert preset.scoring.motion_weight == 0.35
 
     def test_winter_uses_hemisphere(self) -> None:
         preset = create_preset(MemoryType.SEASON, year=2024, season="winter", hemisphere="south")
@@ -59,11 +82,7 @@ class TestCreatePresetSeason:
 
 
 class TestCreatePresetPersonSpotlight:
-    """Person spotlight preset boosts face weight."""
-
-    def test_boosted_face_weight(self) -> None:
-        preset = create_preset(MemoryType.PERSON_SPOTLIGHT, year=2024, person_names=["Alice"])
-        assert preset.scoring.face_weight == 0.6
+    """Person spotlight is a year narrowed to one person."""
 
     def test_single_person_filter(self) -> None:
         preset = create_preset(MemoryType.PERSON_SPOTLIGHT, year=2024, person_names=["Alice"])
@@ -107,10 +126,6 @@ class TestCreatePresetPersonSpotlight:
 
 class TestCreatePresetMultiPerson:
     """Multi-person preset requires co-occurrence by default."""
-
-    def test_boosted_face_weight(self) -> None:
-        preset = create_preset(MemoryType.MULTI_PERSON, year=2024, person_names=["Alice", "Bob"])
-        assert preset.scoring.face_weight == 0.5
 
     def test_co_occurrence_default(self) -> None:
         preset = create_preset(MemoryType.MULTI_PERSON, year=2024, person_names=["Alice", "Bob"])
@@ -225,19 +240,6 @@ class TestCreatePresetTrip:
             location_name="Barcelona, Spain",
         )
         assert "Barcelona" in preset.name
-        assert preset.title_template == "{location}"
-
-    def test_scoring_boosts_motion_and_content(self) -> None:
-        preset = create_preset(
-            MemoryType.TRIP,
-            year=2024,
-            trip_start=date(2024, 6, 12),
-            trip_end=date(2024, 6, 18),
-            location_name="Barcelona, Spain",
-        )
-        assert preset.scoring.motion_weight == 0.3
-        assert preset.scoring.content_weight == 0.3
-        assert preset.scoring.face_weight == 0.2
 
     def test_twelve_day_trip_starts_with_a_realistic_auto_duration(self) -> None:
         """Regression: the old 35-seconds/day placeholder produced seven minutes."""

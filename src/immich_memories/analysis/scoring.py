@@ -26,7 +26,6 @@ from immich_memories.analysis.scenes import Scene, get_video_info
 if TYPE_CHECKING:
     from immich_memories.analysis.content_analyzer import ContentAnalyzer
     from immich_memories.config_models_analysis import AnalysisConfig, ContentAnalysisConfig
-    from immich_memories.memory_types.presets import ScoringProfile
 
 logger = logging.getLogger(__name__)
 
@@ -486,12 +485,6 @@ class SceneScorer:
     def content_min_confidence(self) -> float:
         """Minimum confidence required to accept a semantic score."""
         return self._content_analysis_config.min_confidence
-
-    @classmethod
-    def from_profile(cls, profile: ScoringProfile, **kwargs) -> SceneScorer:
-        """Create a SceneScorer from a ScoringProfile dataclass."""
-        weights = profile.to_dict()
-        return cls(**weights, **kwargs)  # type: ignore[arg-type]
 
     def _get_capture(self, video_path: Path) -> cv2.VideoCapture:
         """Get or create video capture, reusing if same file."""

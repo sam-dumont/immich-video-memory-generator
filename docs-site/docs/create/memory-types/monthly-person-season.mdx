@@ -24,7 +24,7 @@ Default duration: 60 seconds. The title screen shows the month and year (e.g., "
 
 ## Person Spotlight
 
-A year focused on one person. Filters clips to only those containing the named person (requires face recognition enabled in Immich). Scoring weights faces higher than usual (60% face weight vs the default 40%).
+A year focused on one person. Filters clips to only those containing the named person (requires face recognition enabled in Immich). Every memory type is scored the same way — see [Clip Selection & Scoring](../pipeline/clip-selection-scoring.md); what makes this one a spotlight is the filter, not a different set of weights.
 
 ```bash
 immich-memories generate --memory-type person_spotlight --person "Alice" --year 2025
@@ -60,9 +60,17 @@ Default duration: same range-scaled curve as Person Spotlight, so 10 minutes for
 
 **Best for:** couples, families, friend groups. The co-occurrence filter means you'll get clips where they're actually together, not separate appearances.
 
+The same rule applies wherever you name several people. Repeating `--person` on
+any memory type, or picking more than one in the wizard's **Only with** box,
+keeps what holds all of them:
+
+```bash
+immich-memories generate --memory-type season --season summer --year 2025 --person "Alice" --person "Bob"
+```
+
 ## Season
 
-Highlights from a specific season (spring, summer, fall, winter). Scoring emphasizes motion slightly more (35% motion weight) to favor outdoor activities.
+Highlights from a specific season (spring, summer, fall, winter).
 
 ```bash
 immich-memories generate --memory-type season --season summer --year 2025

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import calendar as cal
 import logging
+from collections.abc import Callable
 from datetime import date
 from typing import TYPE_CHECKING
 
@@ -13,7 +14,13 @@ from immich_memories.memory_types.factory import create_preset
 from immich_memories.memory_types.registry import MemoryType
 from immich_memories.ui.components import im_card
 from immich_memories.ui.nicegui_compat import io_bound_result
-from immich_memories.ui.state import get_app_state
+from immich_memories.ui.pages.step1_people import (
+    PERSON_FILTERABLE,
+    render_multi_person_params,
+    render_person_picker,
+    render_person_spotlight_params,
+)
+from immich_memories.ui.state import AppState, get_app_state
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -117,41 +124,26 @@ def _render_params(key: str) -> None:
     except ValueError:
         return
 
+    state = get_app_state()
     with im_card() as card:
         card.classes("p-4 mt-3")
-
-        if memory_type == MemoryType.YEAR_IN_REVIEW:
-            _render_year_picker()
-        elif memory_type == MemoryType.SEASON:
-            _render_season_params()
-        elif memory_type == MemoryType.PERSON_SPOTLIGHT:
-            _render_person_spotlight_params()
-        elif memory_type == MemoryType.MULTI_PERSON:
-            _render_multi_person_params()
-        elif memory_type == MemoryType.MONTHLY_HIGHLIGHTS:
-            _render_monthly_params()
-        elif memory_type == MemoryType.ON_THIS_DAY:
-            ui.label("Automatically uses today's date across previous years").style(
-                "color: var(--im-text-secondary)"
-            ).classes("text-sm italic")
-            _apply_preset_to_state(memory_type)
-        elif memory_type == MemoryType.HOLIDAY:
-            _render_holiday_params()
-        elif memory_type == MemoryType.THEN_AND_NOW:
-            _render_then_and_now_params()
-        elif memory_type == MemoryType.TRIP:
-            _render_trip_params()
-        elif memory_type == MemoryType.ALBUM:
-            _render_album_picker()
-        elif memory_type == MemoryType.SPECIAL_DAY:
-            _render_special_day_params()
+        _CARD_RENDERERS[memory_type](state)
+        if memory_type in PERSON_FILTERABLE:
+            render_person_picker(state, memory_type, _apply_preset_to_state)
 
 
-def _render_holiday_params() -> None:
+def _render_on_this_day_params(state: AppState) -> None:  # noqa: ARG001
+    """The only card with nothing to ask: today's date is the whole parameter."""
+    ui.label("Automatically uses today's date across previous years").style(
+        "color: var(--im-text-secondary)"
+    ).classes("text-sm italic")
+    _apply_preset_to_state(MemoryType.ON_THIS_DAY)
+
+
+def _render_holiday_params(state: AppState) -> None:
     """Holiday + year + how many years back to span."""
     from immich_memories.memory_types.factory import holiday_choices
 
-    state = get_app_state()
     choices = holiday_choices()
 
     with ui.row().classes("gap-4 items-end flex-wrap"):
@@ -201,9 +193,8 @@ def _render_holiday_params() -> None:
     _apply_preset_to_state(MemoryType.HOLIDAY)
 
 
-def _render_then_and_now_params() -> None:
+def _render_then_and_now_params(state: AppState) -> None:
     """The recent year, and how far back the other one sits."""
-    state = get_app_state()
 
     with ui.row().classes("gap-4 items-end flex-wrap"):
         year_options = state.years or list(range(2024, 2019, -1))
@@ -250,9 +241,8 @@ def _year_options_with_all() -> list:
     return [("all", "All Time")] + [(y, str(y)) for y in years]
 
 
-def _render_year_picker() -> None:
+def _render_year_picker(state: AppState) -> None:
     """Year picker shared by multiple presets."""
-    state = get_app_state()
     year_options = state.years or list(range(2024, 2019, -1))
     current = state.memory_preset_params.get("year", year_options[0] if year_options else 2024)
 
@@ -267,9 +257,8 @@ def _render_year_picker() -> None:
     _apply_preset_to_state(MemoryType(state.memory_type))  # type: ignore[arg-type]
 
 
-def _render_season_params() -> None:
+def _render_season_params(state: AppState) -> None:
     """Year + Season + Hemisphere pickers."""
-    state = get_app_state()
 
     with ui.row().classes("gap-4 items-end flex-wrap"):
         year_options = state.years or list(range(2024, 2019, -1))
@@ -311,113 +300,8 @@ def _render_season_params() -> None:
     _apply_preset_to_state(MemoryType.SEASON)
 
 
-def _render_person_spotlight_params() -> None:
-    """Year (with All Time) + single person picker + birthday toggle."""
-    state = get_app_state()
-    named_people = [p for p in state.people if p.name]
-    name_to_person = {p.name: p for p in named_people}
-
-    with ui.row().classes("gap-4 items-end flex-wrap"):
-        year_options = state.years or list(range(2024, 2019, -1))
-        year_list = ["All Time"] + [str(y) for y in year_options]
-        default_year = year_options[0] if year_options else 2024
-        saved_year = state.memory_preset_params.get("year", default_year)
-        current_label = "All Time" if saved_year == 0 else str(saved_year)
-
-        def on_year(e):
-            val = 0 if e.value == "All Time" else int(e.value)
-            state.memory_preset_params["year"] = val
-            _apply_preset_to_state(MemoryType.PERSON_SPOTLIGHT)
-
-        ui.select(options=year_list, label="Year", value=current_label, on_change=on_year).classes(
-            "w-36"
-        )
-
-        person_names = [p.name for p in named_people]
-        saved_person_id = state.memory_preset_params.get("person_id")
-        current_name = next((p.name for p in named_people if p.id == saved_person_id), None)
-
-        def on_person(e):
-            selected = name_to_person.get(e.value)
-            if selected:
-                state.memory_preset_params["person_id"] = selected.id
-                state.memory_preset_params["person_names"] = [selected.name]
-                state.selected_person = selected
-                # Auto-enable birthday mode if person has a birth_date
-                if hasattr(selected, "birth_date") and selected.birth_date:
-                    state.memory_preset_params["use_birthday"] = True
-                    state.memory_preset_params["birthday"] = selected.birth_date
-            _apply_preset_to_state(MemoryType.PERSON_SPOTLIGHT)
-
-        ui.select(
-            options=person_names,
-            label="Person",
-            value=current_name,
-            on_change=on_person,
-        ).classes("w-48")
-
-    # Birthday-to-birthday toggle
-    def on_birthday_toggle(e):
-        state.memory_preset_params["use_birthday"] = e.value
-        _apply_preset_to_state(MemoryType.PERSON_SPOTLIGHT)
-
-    ui.checkbox(
-        "Birthday to birthday",
-        value=state.memory_preset_params.get("use_birthday", False),
-        on_change=on_birthday_toggle,
-    ).classes("mt-2").tooltip("Year runs from birthday to birthday instead of January to December")
-
-    state.memory_preset_params.setdefault("year", saved_year)
-    _apply_preset_to_state(MemoryType.PERSON_SPOTLIGHT)
-
-
-def _render_multi_person_params() -> None:
-    """Year (with All Time) + multi-person chips (2+ people)."""
-    state = get_app_state()
-    named_people = [p for p in state.people if p.name]
-    name_to_person = {p.name: p for p in named_people}
-
-    with ui.row().classes("gap-4 items-end flex-wrap"):
-        year_options = state.years or list(range(2024, 2019, -1))
-        year_list = ["All Time"] + [str(y) for y in year_options]
-        saved_year = state.memory_preset_params.get("year", 0)
-        current_label = "All Time" if saved_year == 0 else str(saved_year)
-
-        def on_year(e):
-            val = 0 if e.value == "All Time" else int(e.value)
-            state.memory_preset_params["year"] = val
-            _apply_preset_to_state(MemoryType.MULTI_PERSON)
-
-        ui.select(options=year_list, label="Year", value=current_label, on_change=on_year).classes(
-            "w-36"
-        )
-
-        person_names = [p.name for p in named_people]
-        saved_ids = state.memory_preset_params.get("person_ids", [])
-        current_names = [p.name for p in named_people if p.id in saved_ids]
-
-        def on_people(e):
-            selected_names = list(e.value) if e.value else []
-            selected = [name_to_person[n] for n in selected_names if n in name_to_person]
-            state.memory_preset_params["person_ids"] = [p.id for p in selected]
-            state.memory_preset_params["person_names"] = [p.name for p in selected]
-            _apply_preset_to_state(MemoryType.MULTI_PERSON)
-
-        ui.select(
-            options=person_names,
-            label="People (select 2+)",
-            value=current_names,
-            on_change=on_people,
-            multiple=True,
-        ).props("use-chips").classes("w-64")
-
-    state.memory_preset_params.setdefault("year", saved_year)
-    _apply_preset_to_state(MemoryType.MULTI_PERSON)
-
-
-def _render_monthly_params() -> None:
+def _render_monthly_params(state: AppState) -> None:
     """Year + month picker."""
-    state = get_app_state()
 
     with ui.row().classes("gap-4 items-end flex-wrap"):
         year_options = state.years or list(range(2024, 2019, -1))
@@ -448,9 +332,8 @@ def _render_monthly_params() -> None:
     _apply_preset_to_state(MemoryType.MONTHLY_HIGHLIGHTS)
 
 
-def _render_album_picker() -> None:
+def _render_album_picker(state: AppState) -> None:
     """Album dropdown. The album is the whole pool, so no date range is chosen."""
-    state = get_app_state()
     album_container = ui.column().classes("w-full mt-2")
 
     def _select(album_id: str | None, albums: dict[str, str]) -> None:
@@ -524,11 +407,9 @@ def _render_album_picker() -> None:
     ui.timer(0.1, _load_albums, once=True)
 
 
-def _render_trip_params() -> None:
+def _render_trip_params(state: AppState) -> None:
     """Year picker + dynamic trip detection dropdown."""
     from immich_memories.analysis.trip_detection import DetectedTrip
-
-    state = get_app_state()
 
     year_options = state.years or list(range(2024, 2019, -1))
     current_year = state.memory_preset_params.get("year", year_options[0] if year_options else 2024)
@@ -733,9 +614,8 @@ def _choose_special_day(entry: DiscoveredDay) -> None:
     state.title_suggestion_subtitle = entry.subtitle or None
 
 
-def _render_special_day_params() -> None:
+def _render_special_day_params(state: AppState) -> None:
     """The days the catalogue found, read on mount."""
-    state = get_app_state()
     container = ui.column().classes("w-full mt-2")
 
     def _offer_the_catalogue() -> None:
@@ -770,29 +650,49 @@ def _render_special_day_params() -> None:
 
 
 def _apply_preset_to_state(memory_type: MemoryType) -> None:
-    """Create a preset and write its date_range + duration into app state."""
+    """Build the preset the card describes and let the state adopt it."""
     from immich_memories.timeperiod import custom_range
 
     state = get_app_state()
     params = state.memory_preset_params
 
-    # "All Time" → wide date range covering all years
+    # "All Time" → wide date range covering all years. No preset covers "every
+    # year you own", so this is the one path with no filter to adopt and the
+    # picker's names are resolved directly.
     if params.get("year") == 0:
         state.date_ranges = [custom_range(date(2000, 1, 1), date.today())]
         state.target_duration = 10
+        state.narrow_to_people(params.get("person_names") or [])
         return
 
     try:
-        preset = create_preset(memory_type, **params)
-        state.date_ranges = preset.date_ranges.copy()
-        if preset.default_duration_seconds:
-            state.target_duration = preset.default_duration_seconds / 60
-            state.duration_mode = "auto"
-        elif preset.date_ranges:
-            # Auto-compute duration from date range: ~1 min/month, ~8 min/year
-            days = preset.date_ranges[0].days
-            state.target_duration = max(1, min(10, round(days / 45)))
+        state.apply_preset(create_preset(memory_type, **params))
     except (ValueError, TypeError) as exc:
-        # Preset not fully configured yet (e.g. no person selected) — clear stale ranges
+        # Preset not fully configured yet (e.g. no person selected) — clear stale
+        # ranges. The picker's names are still the truth about who was named, so
+        # emptying it has to reach the fetch even when no window can be built.
         state.date_ranges = []
+        state.narrow_to_people(params.get("person_names") or [])
         logger.debug("Preset not ready yet: %s", exc)
+
+
+# Which widgets a card puts inside its panel. Every memory type appears, so a
+# type added to the registry and not here fails loudly on click rather than
+# rendering an empty card.
+_CARD_RENDERERS: dict[MemoryType, Callable[[AppState], None]] = {
+    MemoryType.YEAR_IN_REVIEW: _render_year_picker,
+    MemoryType.SEASON: _render_season_params,
+    MemoryType.PERSON_SPOTLIGHT: lambda state: render_person_spotlight_params(
+        state, _apply_preset_to_state
+    ),
+    MemoryType.MULTI_PERSON: lambda state: render_multi_person_params(
+        state, _apply_preset_to_state
+    ),
+    MemoryType.MONTHLY_HIGHLIGHTS: _render_monthly_params,
+    MemoryType.ON_THIS_DAY: _render_on_this_day_params,
+    MemoryType.HOLIDAY: _render_holiday_params,
+    MemoryType.THEN_AND_NOW: _render_then_and_now_params,
+    MemoryType.TRIP: _render_trip_params,
+    MemoryType.ALBUM: _render_album_picker,
+    MemoryType.SPECIAL_DAY: _render_special_day_params,
+}
