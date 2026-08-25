@@ -61,6 +61,7 @@ def _is_backfill_candidate_admissible(
     remaining_budget: float,
     enforce_favorite_ratio: bool = True,
     enforce_temporal_spacing: bool = True,
+    enforce_occasion_spacing: bool = True,
 ) -> bool:
     """Return whether a leftover preserves active selection constraints."""
     from immich_memories.analysis.clip_scaler import is_same_moment
@@ -74,6 +75,22 @@ def _is_backfill_candidate_admissible(
     # the whole point of the ladder is to find something else — and the
     # highest-scoring leftover is usually the near-duplicate just dropped.
     if candidate.clip.asset.id in context.refused_ids:
+        return False
+
+    # Shrink over pad, extended to quality: a memory that cannot fill runs
+    # short, it does not fill with a screen. This is the door June's residue
+    # came through — the judge threw out a sibling of every piece of it and
+    # the supply restocked until the budget ran out. Never conceded: there is
+    # no gap worth a photograph of a monitor.
+    if _is_never_worth_padding(candidate):
+        return False
+
+    # An occasion already in the cut is not a gap. The rung below measures a
+    # moment; a site visit runs over an hour, so its later shots looked like
+    # fresh material and were offered again after each drop. Strict only —
+    # conceded first, because a wedding is one occasion all day and a hard
+    # rule would starve it.
+    if enforce_occasion_spacing and _is_same_occasion(candidate, context):
         return False
 
     # Conceding temporal spacing relaxes the window back to the configured
@@ -123,6 +140,7 @@ def _admissible_backfill_candidates(
     remaining_budget: float,
     enforce_favorite_ratio: bool = True,
     enforce_temporal_spacing: bool = True,
+    enforce_occasion_spacing: bool = True,
 ) -> list[ClipWithSegment]:
     """Filter leftovers through the active backfill constraints."""
     return [
@@ -135,6 +153,7 @@ def _admissible_backfill_candidates(
             remaining_budget=remaining_budget,
             enforce_favorite_ratio=enforce_favorite_ratio,
             enforce_temporal_spacing=enforce_temporal_spacing,
+            enforce_occasion_spacing=enforce_occasion_spacing,
         )
     ]
 
@@ -156,6 +175,19 @@ def _resolve_backfill_candidates(
     if exact:
         return _BackfillCandidates(exact, active_photo_limit)
 
+    # Cheapest concession, and the first: an occasion already in the cut may
+    # be revisited. This is exactly the behaviour that shipped before the
+    # occasion rung existed, so nothing is lost when supply is thin.
+    revisits = _admissible_backfill_candidates(
+        available,
+        context=context,
+        photo_limit=active_photo_limit,
+        remaining_budget=remaining_budget,
+        enforce_occasion_spacing=False,
+    )
+    if revisits:
+        return _BackfillCandidates(revisits, active_photo_limit, "occasion_revisit")
+
     # Order of concessions, worst-last. Loosening who appears (non-favorites)
     # barely shows. Admitting a few more stills shows a little. Admitting a
     # clip from a moment already in the cut shows most of all: a real August
@@ -170,6 +202,7 @@ def _resolve_backfill_candidates(
         photo_limit=active_photo_limit,
         remaining_budget=remaining_budget,
         enforce_favorite_ratio=False,
+        enforce_occasion_spacing=False,
     )
     if relaxed_favorites:
         return _BackfillCandidates(relaxed_favorites, active_photo_limit, "favorite_ratio")
@@ -183,6 +216,7 @@ def _resolve_backfill_candidates(
             photo_limit=relaxed_photo_limit,
             remaining_budget=remaining_budget,
             enforce_favorite_ratio=False,
+            enforce_occasion_spacing=False,
         )
         if relaxed_photos:
             return _BackfillCandidates(relaxed_photos, relaxed_photo_limit, "photo_ratio_70")
@@ -193,6 +227,7 @@ def _resolve_backfill_candidates(
         photo_limit=relaxed_photo_limit,
         remaining_budget=remaining_budget,
         enforce_favorite_ratio=False,
+        enforce_occasion_spacing=False,
         enforce_temporal_spacing=False,
     )
     if relaxed_temporal:
@@ -205,6 +240,7 @@ def _resolve_backfill_candidates(
             photo_limit=None,
             remaining_budget=remaining_budget,
             enforce_favorite_ratio=False,
+            enforce_occasion_spacing=False,
             enforce_temporal_spacing=False,
         )
         if unlimited_photos:
@@ -216,6 +252,7 @@ def _resolve_backfill_candidates(
         photo_limit=None,
         remaining_budget=remaining_budget + 2.0,
         enforce_favorite_ratio=False,
+        enforce_occasion_spacing=False,
         enforce_temporal_spacing=False,
     )
     return _BackfillCandidates(
@@ -375,6 +412,7 @@ def _log_backfill_resolution(
             "relaxing photo ratio from %.0f%% to 70%%",
             (original_photo_limit * 100,),
         ),
+        "occasion_revisit": ("revisiting an occasion already in the cut", ()),
         "favorite_ratio": ("allowing additional non-favorites", ()),
         "temporal_spacing": ("allowing a nearby moment", ()),
         "photo_ratio_unlimited": ("allowing photos beyond the ratio cap", ()),
@@ -407,3 +445,39 @@ def _log_backfill_summary(
             "Post-filter backfill: no valid leftover fits the remaining %.1fs",
             max_duration - total_duration,
         )
+
+
+def _is_never_worth_padding(candidate: ClipWithSegment) -> bool:
+    """Whether this is a thing rather than a moment.
+
+    Only screens and objects, and only for PADDING — selection may still pick
+    one on its merits. Scenery and animals are kept (scenery earns its place,
+    animals are a garnish), and an unlabelled clip is kept because a third of a
+    real pool has no analysis yet and reading that silence as junk would empty
+    the quiet months that need backfill most.
+    """
+    from immich_memories.analysis.subject_policy import SubjectCategory, classify_subject
+
+    subject = classify_subject(
+        tagged_people=len(candidate.clip.asset.people),
+        category=candidate.clip.llm_category,
+    )
+    return subject in (SubjectCategory.SCREEN, SubjectCategory.OBJECT)
+
+
+def _is_same_occasion(candidate: ClipWithSegment, context: _BackfillContext) -> bool:
+    """Whether an occasion already in the cut covers this clip.
+
+    Distance from what is already selected, like the moment rung it sits above
+    — not the place-aware grouping, because this runs per candidate and needs
+    no new state. The window is the episode one, never narrower than the
+    moment window already in force, so a long memory is unaffected. A zero
+    window still means no deduplication at all.
+    """
+    from immich_memories.analysis.clip_scaler import is_same_moment
+    from immich_memories.analysis.moment_grouping import EPISODE_WINDOW_MINUTES
+
+    if context.temporal_window <= 0:
+        return False
+    spacing = max(EPISODE_WINDOW_MINUTES, context.temporal_window)
+    return is_same_moment(candidate.clip.asset.file_created_at, context.occupied_moments, spacing)
