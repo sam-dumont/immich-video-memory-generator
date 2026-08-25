@@ -24,6 +24,9 @@ its moments. They are listed in the order they happened.
 
 Ask ONE question of every moment: **does the month's story need it?**
 
+Name the moments the story does NOT need, and give one line of why for each.
+Everything you do not name stays in.
+
 The story needs coverage of what actually happened, not only what looks
 strongest — the punch-up is not the march. A day earns a second moment only
 when the story needs both of them. A cut made of nothing but peaks is
@@ -39,56 +42,45 @@ party, a hike — however different their descriptions read.
 
 {moments}
 
-The content budget is {target:.0f}s. Do the arithmetic: add up the `est`
-seconds of every moment you keep, and that sum must land between {floor:.0f}s
-and {ceiling:.0f}s. Keeping more than that is not an edit, it is a list.
+The content budget is {target:.0f}s. Do the arithmetic: cut enough that the
+`est` seconds of what remains add up to between {floor:.0f}s and {ceiling:.0f}s.
+Leaving more than that in is not an edit, it is a list.
 
-WRITE THE KEEP LIST MOST ESSENTIAL FIRST. The finished memory always plays in
-the order things happened — nothing you write changes that — so the order of
-your keep list means only one thing: how essential each moment is to the
-story. Put the moment the month would be pointless without at the front, and
-the one you would give up first at the end. If the cut still has to shrink,
-the LAST entries fall first, so the end of your list is the sacrifice you are
-choosing. Choose it: the last moment left in the memory is the month's closer.
-
-Every moment you cut needs a one-line reason. What you leave out is mined
+Every moment you name needs a one-line reason. What you leave out is mined
 again later, and a bare no is useless to whoever reads it.
 
 Answer with STRICT JSON only, no prose:
-{{"keep": [<moment numbers, most essential first>],
- "cut": [{{"index": <moment number>, "reason": "<short reason>"}}]}}
-Every moment from 1 to {count} must appear exactly once across keep and cut."""
+{{"cut": [{{"index": <moment number>, "reason": "<short reason>"}}]}}
+Use moment numbers from 1 to {count} and nothing else. An empty list means the
+month needs all of it."""
 
 
-_DEFECT_PROMPT = """You have already edited this month and the answer could not
-be used: {defects}.
+_DEFECT_PROMPT = """You have already named the moments this month's story does
+not need, and some of what you named could not be used: {defects}.
 
 Here are the same moments, in the same order and numbered the same way:
 
 {moments}
 
-Edit it again. Every moment from 1 to {count} must appear exactly once — each
-number in keep or in cut, never in both, never in neither. Write the keep list
-most essential first: the memory plays in the order things happened whatever
-you write, so that order says only how essential each moment is, and if the
-cut has to shrink the last entries fall first.
+Name them again. Use moment numbers from 1 to {count} and nothing else, and
+give every one of them a one-line reason. Everything you do not name stays in.
 
 Answer with STRICT JSON only, no prose:
-{{"keep": [<moment numbers, most essential first>],
- "cut": [{{"index": <moment number>, "reason": "<short reason>"}}]}}"""
+{{"cut": [{{"index": <moment number>, "reason": "<short reason>"}}]}}"""
 
 
-_REORDER_PROMPT = """You kept these moments of the month, and they run about
-{shipped:.0f}s against a {target:.0f}s budget — more than the memory holds, so
-some of them have to go.
+_REORDER_PROMPT = """These are the moments of the month you kept. They run
+about {shipped:.0f}s against a {target:.0f}s budget — more than the memory
+holds, so some of them have to go.
+
+{moments}
 
 You kept: {kept}
 
-You listed them in table order, which says nothing about which of them the
-story needs most. Do not change what you kept and do not cut anything here.
-Give that exact list back, REORDERED most essential first: the moment the
-month would be pointless without at the front, the one you would give up
-first at the end.
+Rank them. Give that exact list back, most essential first: the moment the
+month would be pointless without at the front, the one you would give up first
+at the end. Do not add anything, do not remove anything, do not cut anything
+here — only the order changes.
 
 The memory plays in the order things happened whatever order you write, so
 this order means only how essential each moment is. The last entries fall
@@ -113,8 +105,18 @@ def defect_prompt(table: str, count: int, defects: tuple[str, ...]) -> str:
     return _DEFECT_PROMPT.format(moments=table, count=count, defects="; ".join(defects))
 
 
-def reorder_prompt(kept: tuple[int, ...], shipped: float, target_duration: float) -> str:
+def reorder_prompt(
+    table: str, kept: tuple[int, ...], shipped: float, target_duration: float
+) -> str:
+    """The rank question, showing the moments it is asking about.
+
+    The table is not decoration. Handed a bare "You kept: M1, M2, M3", the
+    model ranks opaque integers, and whatever permutation comes back would
+    then kill moments by it — an uninformed ranking is a mechanical kill
+    wearing the editor's clothes, which is the one thing this pass forbids.
+    """
     return _REORDER_PROMPT.format(
+        moments=table,
         kept=", ".join(f"M{index}" for index in kept),
         shipped=shipped,
         target=target_duration,
@@ -123,91 +125,70 @@ def reorder_prompt(kept: tuple[int, ...], shipped: float, target_duration: float
 
 @dataclass(frozen=True)
 class Answer:
-    """The edit the model made, once it accounts for every moment.
+    """The moments the model says the story does not need, and why each.
 
-    `keep` is BOTH the set of kept moments and their order of essentiality.
-    One artifact, because two was one too many: measured across four real
-    answers, a parallel `release_order` list was never once read as a ranking
-    of the keeps — every attempt ranked the cuts instead, prompt hardening and
-    a keep-list echo included.
+    Rejects only. Everything it never names is kept, so this carries no keep
+    list and no order at all — the ranking is a separate question, asked only
+    when something has to go.
     """
 
-    keep: tuple[int, ...]
     cut: tuple[tuple[int, str], ...]
+
+    def survivors(self, count: int) -> tuple[int, ...]:
+        """The moments left standing, in the order they happened."""
+        named = {index for index, _ in self.cut}
+        return tuple(index for index in range(1, count + 1) if index not in named)
 
 
 def _is_a_moment_number(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
-def states_a_priority(keep: tuple[int, ...]) -> bool:
-    """Whether the keep list says anything about what matters most.
-
-    Written in table order it says nothing that can be acted on. That is the
-    shape a model produces when it has not ranked at all, and a walk that
-    trusted it would release from the end of the month — which is the closer,
-    since a memory plays in the order things happened.
-
-    One moment cannot be ranked against anything, so there is nothing here to
-    ask about either.
-    """
-    return len(keep) > 1 and list(keep) != sorted(keep)
-
-
-def order_mode(keep: tuple[int, ...]) -> str:
-    """What the keep list's order is evidence of, said in the trace.
-
-    Never "the model echoed the table": ascending is indistinguishable from a
-    genuine priority that happens to run chronologically, and that coincidence
-    is likeliest in a month whose best material is late — exactly where the
-    closer matters. The line records what the evidence supports.
-    """
-    if len(keep) <= 1:
-        return "keep order: a single moment, nothing to rank"
-    if states_a_priority(keep):
-        return "keep order: expressed priority"
-    return "keep order: indistinguishable from table order"
-
-
-def _accounted_for(payload: object, count: int) -> Answer | None:
-    """The edit, but only if the answer accounts for every moment exactly once.
-
-    Under keep-semantics silence is a kill, so a truncated answer would cut
-    every moment it never reached. Requiring the two lists to partition 1..M
-    turns truncation back into a parse failure, which this pass survives by
-    handing the cut to the arithmetic funnel. It is also the cheapest check
-    that the model answered about THESE moments.
-    """
+def _entries_in(payload: object) -> list | None:
+    """The cut list, if this payload has one at all."""
     if not isinstance(payload, dict):
         return None
-    keep, cut = payload.get("keep"), payload.get("cut")
-    if not isinstance(keep, list) or not isinstance(cut, list) or not keep:
+    cut = payload.get("cut")
+    return cut if isinstance(cut, list) else None
+
+
+def _read_cut(payload: object, count: int) -> Answer | None:
+    """The rejects, but only if every entry names a moment and says why.
+
+    Deliberately NOT the strict partition the fine cut uses (see
+    selection_review._accounted_for). That check exists to stop silent
+    deletion-by-truncation, which is real under keep-semantics: an answer that
+    stops after four clips cuts everything it never reached. Reject-only gets
+    the same protection BY CONSTRUCTION, and fails in the safe direction when
+    it fails at all — a truncated answer names fewer rejects, so more content
+    survives, not less.
+
+    Keep-semantics remain right for Pass 4, where N is small and the model
+    sees the whole finished cut. At 53 moments the full partition is a cliff:
+    every measured answer went over it by dropping indices, and the retry
+    rewrote from scratch rather than patching.
+
+    One moment named twice is one decision, not a defect: the first reason
+    stands.
+    """
+    entries = _entries_in(payload)
+    if entries is None:
         return None
-    kept = [n for n in keep if _is_a_moment_number(n)]
-    entries = [
-        (entry["index"], str(entry.get("reason", "no reason given")))
-        for entry in cut
-        if isinstance(entry, dict) and _is_a_moment_number(entry.get("index"))
-    ]
-    if len(kept) != len(keep) or len(entries) != len(cut):
-        return None
-    if sorted(kept + [index for index, _ in entries]) != list(range(1, count + 1)):
-        return None
-    return Answer(tuple(kept), tuple(entries))
+    seen: dict[int, str] = {}
+    for entry in entries:
+        if not isinstance(entry, dict) or not _is_a_moment_number(entry.get("index")):
+            return None
+        index, reason = entry["index"], entry.get("reason")
+        if not 1 <= index <= count or not isinstance(reason, str) or not reason.strip():
+            return None
+        seen.setdefault(index, reason.strip())
+    return Answer(tuple(seen.items()))
 
 
 def answer_in(raw: str | None, count: int) -> Answer | None:
-    """The model's edit, or None when it never made one about these moments."""
-    if not raw:
-        return None
-    from immich_memories.analysis.selection_review import _balanced_objects
-
-    for candidate in reversed(_balanced_objects(raw)):
-        try:
-            payload = json.loads(candidate)
-        except json.JSONDecodeError:
-            continue
-        answer = _accounted_for(payload, count)
+    """The model's rejects, or None when it named none we could read."""
+    for payload in _payloads_in(raw):
+        answer = _read_cut(payload, count)
         if answer is not None:
             return answer
     return None
@@ -230,56 +211,44 @@ def _payloads_in(raw: str | None) -> list[dict]:
     return found
 
 
-def _numbers_named_in(payload: dict) -> tuple[list[int], list[int]] | None:
-    """The keep and cut numbers an answer names, however badly it named them."""
-    keep, cut = payload.get("keep"), payload.get("cut")
-    if not isinstance(keep, list) or not isinstance(cut, list):
-        return None
-    kept = [n for n in keep if _is_a_moment_number(n)]
-    dropped = [
-        entry["index"]
-        for entry in cut
-        if isinstance(entry, dict) and _is_a_moment_number(entry.get("index"))
-    ]
-    return kept, dropped
-
-
 def defects_in(raw: str | None, count: int) -> tuple[str, ...]:
     """What was wrong with an answer we could not use, in words it can act on.
 
     A vague "that did not work, try again" is what corrupted the one revision
-    ever measured: told only that its cut ran long, the model came back with
-    one moment in both lists and three in neither. Naming the numbers is the
+    ever measured: told only that its answer was unusable, the model rewrote
+    the whole edit from scratch and came back worse. Naming the entries is the
     difference between a correction and a re-roll.
 
-    Empty means nothing nameable — prose, or no edit at all — and there is
+    Empty means nothing nameable — prose, or no cut list at all — and there is
     nothing to ask again about.
     """
     for payload in _payloads_in(raw):
-        named = _numbers_named_in(payload)
-        if named is not None:
-            return _what_is_wrong_with(named, count)
+        entries = _entries_in(payload)
+        if entries is not None:
+            return _what_is_wrong_with(entries, count)
     return ()
 
 
-def _what_is_wrong_with(named: tuple[list[int], list[int]], count: int) -> tuple[str, ...]:
-    keep, cut = named
-    both = sorted(set(keep) & set(cut))
-    everything = keep + cut
-    repeated = sorted({n for n in everything if everything.count(n) > 1})
-    missing = sorted(set(range(1, count + 1)) - set(everything))
-    outside = sorted({n for n in everything if not 1 <= n <= count})
+def _what_is_wrong_with(entries: list, count: int) -> tuple[str, ...]:
+    outside: list[int] = []
+    reasonless: list[int] = []
+    unreadable = 0
+    for entry in entries:
+        if not isinstance(entry, dict) or not _is_a_moment_number(entry.get("index")):
+            unreadable += 1
+            continue
+        index, reason = entry["index"], entry.get("reason")
+        if not 1 <= index <= count:
+            outside.append(index)
+        elif not isinstance(reason, str) or not reason.strip():
+            reasonless.append(index)
     defects = []
-    if not keep:
-        defects.append("you kept nothing, and a memory with nothing in it is not an edit")
-    if both:
-        defects.append(f"you listed {_named(both)} in both keep and cut")
-    elif repeated:
-        defects.append(f"you listed {_named(repeated)} more than once")
-    if missing:
-        defects.append(f"you omitted {_named(missing)}")
     if outside:
-        defects.append(f"you named {_named(outside)}, which is not in the table")
+        defects.append(f"you named {_named(sorted(set(outside)))}, which is not in the table")
+    if reasonless:
+        defects.append(f"you named {_named(sorted(set(reasonless)))} with no reason")
+    if unreadable:
+        defects.append(f"{unreadable} of your entries named no moment at all")
     return tuple(defects)
 
 
@@ -297,12 +266,31 @@ def reordering_in(raw: str | None, echoed: tuple[int, ...]) -> tuple[int, ...] |
     """
     for payload in _payloads_in(raw):
         order = payload.get("keep")
-        if (
-            isinstance(order, list)
-            and all(_is_a_moment_number(n) for n in order)
-            and sorted(order) == sorted(echoed)
-        ):
-            return tuple(order)
+        if not isinstance(order, list):
+            continue
+        numbers = [_moment_number(entry) for entry in order]
+        if None in numbers:
+            continue
+        ranked = [n for n in numbers if n is not None]
+        if sorted(ranked) == sorted(echoed):
+            return tuple(ranked)
+    return None
+
+
+def _moment_number(value: object) -> int | None:
+    """A moment number, whether it came back as 12 or as "M12".
+
+    Measured against the local model: asked for bare integers it sometimes
+    labels them anyway. The label is not a different answer — it is the same
+    stated order with the table's own prefix on it — so it is read rather than
+    refused. The permutation check stays strict afterwards.
+    """
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        text = value.strip().removeprefix("M").removeprefix("m")
+        if text.isdigit():
+            return int(text)
     return None
 
 

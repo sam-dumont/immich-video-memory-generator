@@ -699,6 +699,9 @@ class ClipRefiner:
             selected = narrowed.selected
             coverage_ids = narrowed.coverage_ids
         elif structure is not None:
+            # `elif` only to re-narrow the type for mypy: by_arithmetic is
+            # False exactly when structure is a cut that settled its own
+            # length, so there is no third branch to reach.
             analyzed, selected, coverage_ids = all_analyzed, structure.kept, set()
 
         if moment_window > 0:

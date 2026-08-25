@@ -29,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
+from itertools import starmap
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -51,10 +52,8 @@ from immich_memories.analysis.structure_answer import (
     defect_prompt,
     defects_in,
     first_prompt,
-    order_mode,
     reorder_prompt,
     reordering_in,
-    states_a_priority,
 )
 
 logger = logging.getLogger(__name__)
@@ -70,6 +69,14 @@ _DESCRIPTION_CHARS = 120
 def _ask(
     prompt: str, llm_config: LLMConfig, timeout_seconds: int, cache_path: Path | None = None
 ) -> str:
+    """One question, one answer, reasoning on and with room to give it.
+
+    Both calls carry the full token ceiling. Measured on the rank question
+    against a 22-moment table: at the wrapper's 4000-token thinking floor the
+    model spends the budget reasoning, the answer truncates, and the
+    non-thinking retry comes back in table order — a silent loss of the
+    priority the whole call exists to get.
+    """
     from immich_memories.analysis.llm_query import query_llm
 
     return asyncio.run(
@@ -217,8 +224,13 @@ def _moment_line(index: int, moment: _Moment) -> str:
     return " · ".join(parts)
 
 
-def _table(moments: list[_Moment]) -> str:
-    return "\n".join(_moment_line(index + 1, m) for index, m in enumerate(moments))
+def _table(numbered: list[tuple[int, _Moment]]) -> str:
+    """The moments as the model sees them, each under the number it is known by.
+
+    Numbered by the caller rather than by position: the rank question shows
+    only the survivors, and they must keep the numbers the first answer used.
+    """
+    return "\n".join(starmap(_moment_line, numbered))
 
 
 @dataclass(frozen=True)
@@ -259,6 +271,11 @@ class StructurePass:
         # later pass dropped a clip — re-asking is whack-a-mole and ten more
         # reasoning calls.
         self._fates: dict[str, str] | None = None
+        # And WHO settled the length. Replaying a hybrid as fully-narrowed
+        # skips the funnel on every later round — and the last round is the
+        # one that ships: measured, round one selected 2 clips for a 10s
+        # budget and round two shipped all five.
+        self._fates_narrowed: bool = True
 
     def choose(
         self,
@@ -276,7 +293,7 @@ class StructurePass:
         False instead — the judgment is kept, the length is not.
         """
         if self._fates is not None:
-            return _replay(pool, self._fates)
+            return _replay(pool, self._fates, self._fates_narrowed)
         moments = _moments_of(pool, moment_window)
         nothing_to_decide = _nothing_to_decide(moments, target_duration, target_clips)
         if nothing_to_decide is not None:
@@ -284,25 +301,28 @@ class StructurePass:
             # a pool that fitted once is not a decision about the next pool.
             trace.record("structure", pool, pool, [f"not asked — {nothing_to_decide}"])
             return StructureCut(kept=pool.copy(), cuts={})
-        table = _table(moments)
-        answer, asked_twice = self._edit_of(table, moments, target_duration)
+        table = _table(list(enumerate(moments, start=1)))
+        answer, asked_twice = self._rejects_of(table, moments, target_duration)
         if answer is None:
+            return None
+        if len(answer.survivors(len(moments))) < 2:
+            _never_ran("the answer cut all but one moment, which is not an edit")
             return None
         cut = self._carry_out(
             pool, moments, answer, target_duration, target_clips, may_ask=not asked_twice
         )
-        self._fates = cut.cuts.copy()
+        self._fates, self._fates_narrowed = cut.cuts.copy(), cut.narrowed
         return cut
 
-    def _edit_of(
+    def _rejects_of(
         self, table: str, moments: list[_Moment], target_duration: float
     ) -> tuple[Answer | None, bool]:
-        """The edit, and whether asking for it cost the run its one re-ask.
+        """What the story does not need, and whether it cost the run its re-ask.
 
-        A first answer whose two lists do not account for every moment gets
-        one retry, and that retry is told exactly which numbers were wrong.
-        An answer with no edit in it at all gets nothing: there is no defect
-        to name, so there is nothing to correct.
+        An answer whose entries name a moment outside the table, or name one
+        with no reason, gets a single retry told exactly which entries were
+        wrong. An answer with no cut list in it at all gets nothing: there is
+        no defect to name, so there is nothing to correct.
         """
         count = len(moments)
         reply = self._put(first_prompt(table, count, target_duration), count)
@@ -313,7 +333,7 @@ class StructurePass:
             return None, True
         retry = self._put(defect_prompt(table, count, reply.defects), count)
         if retry.answer is None and retry.reached:
-            _never_ran("the revised answer still did not account for every moment")
+            _never_ran("the revised answer still could not be read")
         return retry.answer, True
 
     def _carry_out(
@@ -326,19 +346,18 @@ class StructurePass:
         *,
         may_ask: bool,
     ) -> StructureCut:
-        """Apply the edit, and shrink it to the envelope if the editor said how."""
+        """Apply the rejects, and shrink to the envelope if the editor ranks."""
         kept, notes, reasons = _keep_after_the_starred_rule(moments, answer)
-        reasons.append(order_mode(answer.keep))
         shipped = _shipped_est(list(kept.values()), target_clips)
         if shipped <= target_duration * ENVELOPE_CEILING:
             return _apply(pool, kept, notes, reasons, target_duration, target_clips, len(moments))
-        order = self._priority_for(answer.keep, kept, shipped, target_duration, reasons, may_ask)
+        order = self._priority_for(kept, shipped, target_duration, reasons, may_ask)
         if order is None:
-            # The judgment stands; only the length is unsettled. Measured four
-            # times out of four, what the model cut was sound and what it said
-            # about order was not, so the cut is kept and the counting stages
-            # are handed the remainder rather than the pool.
-            reasons.append("no priority to shrink by — the funnel narrowed what was kept")
+            # The judgment stands; only the length is unsettled. What the model
+            # cut has been sound in every measured run and what it said about
+            # order has not, so the cut is kept and the counting stages are
+            # handed the remainder rather than the whole pool.
+            reasons.append("priority: unstated — the arithmetic funnel narrowed the remainder")
             trace.warn(
                 "the structure pass cut, but stated no priority — "
                 "the arithmetic funnel narrowed the remainder"
@@ -358,30 +377,30 @@ class StructurePass:
 
     def _priority_for(
         self,
-        keep: tuple[int, ...],
         kept: dict[int, _Moment],
         shipped: float,
         target_duration: float,
         reasons: list[str],
         may_ask: bool,
     ) -> tuple[int, ...] | None:
-        """The order to release in, asking once if the editor stated none.
+        """The order to release in, asked for only when something has to go.
 
-        The re-ask fires on the conjunction only: an unranked keep list is
-        harmless while everything in it fits, so it costs a reasoning call
-        only when something actually has to go.
+        The first question carries no order — it names rejects — so this is
+        where a ranking comes from at all, and it costs a reasoning call only
+        when the cut actually overshoots.
         """
-        if states_a_priority(keep):
-            reasons.append("priority stated with its first answer")
-            return keep
         if not may_ask:
+            reasons.append("no re-ask left — the first answer had already been sent back once")
             return None
         echoed = tuple(kept)
-        raw = self._say(reorder_prompt(echoed, shipped, target_duration))
-        order = reordering_in(raw, echoed) if raw is not None else None
-        if order is None or not states_a_priority(order):
+        table = _table(list(kept.items()))
+        order = reordering_in(
+            self._say(reorder_prompt(table, echoed, shipped, target_duration)), echoed
+        )
+        if order is None:
+            reasons.append("asked to revise; the answer was unusable")
             return None
-        reasons.extend(("asked once to revise", "priority stated when asked to revise"))
+        reasons.append("priority: stated on request")
         return order
 
     def _put(self, prompt: str, count: int) -> Reply:
@@ -464,7 +483,7 @@ def _keep_after_the_starred_rule(
     a shorter month than the one it has.
     """
     by_index = {index + 1: moment for index, moment in enumerate(moments)}
-    kept = {index: by_index[index] for index in answer.keep}
+    kept = {index: by_index[index] for index in answer.survivors(len(moments))}
     notes: dict[str, str] = {}
     reasons: list[str] = []
     for index, why in answer.cut:
@@ -477,7 +496,10 @@ def _keep_after_the_starred_rule(
             )
             continue
         notes.update(dict.fromkeys(_ids(moment), why))
-    return kept, notes, reasons
+    # In the order they happened: a vetoed moment is re-admitted after the
+    # survivors, and both the rank question's table and its echoed list read
+    # as a timeline.
+    return {index: kept[index] for index in sorted(kept)}, notes, reasons
 
 
 def _apply(
@@ -519,7 +541,7 @@ def _apply(
     return StructureCut(kept=survivors, cuts=notes, narrowed=narrowed)
 
 
-def _replay(pool: list[ClipWithSegment], fates: dict[str, str]) -> StructureCut:
+def _replay(pool: list[ClipWithSegment], fates: dict[str, str], narrowed: bool) -> StructureCut:
     """Apply a decision already taken to whatever pool this round supplies.
 
     An id nobody decided about passes through: the pool only ever shrinks
@@ -536,10 +558,15 @@ def _replay(pool: list[ClipWithSegment], fates: dict[str, str]) -> StructureCut:
         "structure",
         pool,
         survivors,
-        ["the structure this run already decided, unchanged and unasked"],
+        [
+            "the structure this run already decided, unchanged and unasked",
+            "the length was settled here"
+            if narrowed
+            else "priority: unstated — the arithmetic funnel narrows the remainder",
+        ],
         cuts,
     )
-    return StructureCut(kept=survivors, cuts=cuts)
+    return StructureCut(kept=survivors, cuts=cuts, narrowed=narrowed)
 
 
 def _release_to_fit(
