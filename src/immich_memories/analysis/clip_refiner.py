@@ -74,6 +74,46 @@ def _clips_per_moment(target_clips: int, moments: int) -> int:
     return max(1, min(share, int(target_clips * _MAX_SHARE_FROM_ONE_MOMENT)))
 
 
+def _warn_if_an_absorber_will_have_to_act(
+    selected: list[ClipWithSegment], target_duration: float
+) -> None:
+    """Say so when generation will have to fix this cut rather than render it.
+
+    Two absorbers sit below selection and neither of them says anything. The
+    stride sampler in apply_final_content_budget keeps only every nth clip once
+    the cut holds more than the budget can give a minimum-length slot; the
+    proportional trim beside it shortens every clip when the content runs long.
+    Both turn a selection problem into a render nobody can explain, so the
+    trace names the condition while the cut is still readable.
+
+    Measured against the content budget selection was given, which is the
+    closest thing available here to the one generation will plan with — the
+    title cards come out of it later, so this errs on the permissive side.
+    """
+    # One definition, imported where it is used: the sampler's floor lives with
+    # the sampler. A copy here would drift from the number actually applied.
+    from immich_memories.analysis import selection_trace as trace
+    from immich_memories.generate_clips import MIN_CLIP_DURATION
+
+    if target_duration <= 0 or not selected:
+        return
+    slots = max(1, int(target_duration // MIN_CLIP_DURATION))
+    if len(selected) >= slots:
+        trace.warn(
+            f"the cut hands generation {len(selected)} clips against a "
+            f"{target_duration:.0f}s budget — the stride sampler will drop every "
+            "other one before it renders"
+        )
+    total = sum(item.end_time - item.start_time for item in selected)
+    # A hair of tolerance: backfill fills to exactly the ceiling on the
+    # arithmetic path, and float noise there is not an overrun.
+    if total - target_duration * 1.1 > 0.05:
+        trace.warn(
+            f"the cut hands generation {total:.0f}s of content against a "
+            f"{target_duration:.0f}s budget — every clip will be trimmed to fit"
+        )
+
+
 class ClipRefiner:
     """Selects, distributes, and refines the final clip selection."""
 
@@ -631,7 +671,10 @@ class ClipRefiner:
 
         structure = (
             self._structure.choose(
-                all_analyzed, target_duration=target_duration, moment_window=moment_window
+                all_analyzed,
+                target_duration=target_duration,
+                moment_window=moment_window,
+                target_clips=self.config.target_clips,
             )
             if self._structure is not None
             else None
@@ -705,6 +748,7 @@ class ClipRefiner:
         trace.record("the favourite wins its moment", before_law, selected)
 
         selected.sort(key=lambda c: c.clip.asset.file_created_at or datetime.min)
+        _warn_if_an_absorber_will_have_to_act(selected, target_duration)
 
         clip_segments: dict[str, tuple[float, float]] = {}
         selected_clips: list[VideoClipInfo] = []

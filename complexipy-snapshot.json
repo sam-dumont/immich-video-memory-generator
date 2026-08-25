@@ -6,101 +6,101 @@
       {
         "name": "ClipRefiner::_fill_empty_weeks",
         "complexity": 20,
-        "line_start": 252,
-        "line_end": 295,
+        "line_start": 292,
+        "line_end": 335,
         "line_complexities": [
           {
-            "line": 262,
+            "line": 302,
             "complexity": 0
           },
           {
-            "line": 263,
+            "line": 303,
             "complexity": 1
           },
           {
-            "line": 264,
+            "line": 304,
             "complexity": 0
           },
           {
-            "line": 267,
+            "line": 307,
             "complexity": 0
           },
           {
-            "line": 268,
+            "line": 308,
             "complexity": 1
           },
           {
-            "line": 269,
+            "line": 309,
             "complexity": 0
           },
           {
-            "line": 272,
+            "line": 312,
             "complexity": 0
           },
           {
-            "line": 273,
+            "line": 313,
             "complexity": 0
           },
           {
-            "line": 275,
+            "line": 315,
             "complexity": 0
           },
           {
-            "line": 276,
+            "line": 316,
             "complexity": 0
           },
           {
-            "line": 277,
+            "line": 317,
             "complexity": 1
           },
           {
-            "line": 278,
+            "line": 318,
             "complexity": 0
           },
           {
-            "line": 279,
+            "line": 319,
             "complexity": 2
           },
           {
-            "line": 281,
+            "line": 321,
             "complexity": 0
           },
           {
-            "line": 283,
+            "line": 323,
             "complexity": 0
           },
           {
-            "line": 284,
+            "line": 324,
             "complexity": 1
           },
           {
-            "line": 285,
+            "line": 325,
             "complexity": 2
           },
           {
-            "line": 286,
+            "line": 326,
             "complexity": 0
           },
           {
-            "line": 287,
+            "line": 327,
             "complexity": 3
           },
           {
-            "line": 289,
+            "line": 329,
             "complexity": 4
           },
           {
-            "line": 290,
+            "line": 330,
             "complexity": 5
           },
           {
-            "line": 295,
+            "line": 335,
             "complexity": 0
           }
         ]
       }
     ],
-    "complexity": 95
+    "complexity": 99
   },
   {
     "path": "src/immich_memories/automation/calendar_detectors.py",
