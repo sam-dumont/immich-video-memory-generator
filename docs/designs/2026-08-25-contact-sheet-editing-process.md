@@ -1,8 +1,8 @@
 ---
 date: 2026-08-25
-status: proposed for owner review
+status: owner approved
 issue: 764
-draft_pr: 768
+rejected_experiment_pr: 768
 decision: contact sheets are the working surface of every editorial pass
 ---
 
@@ -38,9 +38,9 @@ This keeps the editing process described in the craft research: binary passes, a
 selects before assembly, a revisable thesis, explicit sacrifices, and a fine cut that judges the
 whole. It changes the implementation order and contracts, not the underlying editorial method.
 
-Draft PR #768 stays open but blocked while this foundation is built. Its June sheet is a migration
-gate, not an accepted selection. We do not tune the current Structure prompt until it happens to
-pass one month.
+PR #768 is retained as rejected experimental evidence. Its June sheet is a migration gate, not an
+accepted selection, and its branch is not the base for this replacement. We do not tune the current
+Structure prompt until it happens to pass one month.
 
 ## Why the current draft regressed
 
@@ -465,7 +465,14 @@ feature.
 ## Migration plan and slice gates
 
 Build replacements in dependency order. Update issue #764 as the design of record; do not open a
-competing architecture issue. Keep PR #768 draft until Pass 3 runs on the real upstream contracts.
+competing architecture issue. Keep PR #768 available as rejected evidence while Pass 3 is rebuilt
+on the real upstream contracts.
+
+The replacement uses a two-level branch model. `feature/764-editorial-selection` is a long-lived
+integration trunk created from `origin/main`. Every implementation slice branches from and opens a
+pull request back into that integration trunk. Published integration history is merged forward from
+`main`, never rebased underneath active slice branches. The existing selector remains untouched on
+`main` until a final, owner-approved cutover pull request merges the complete integration trunk.
 
 ### Slice A: Pass 0 visual insight
 
@@ -513,9 +520,9 @@ competing architecture issue. Keep PR #768 draft until Pass 3 runs on the real u
   pass the real gates.
 - Update public documentation and configuration migration notes.
 
-Stacked builds remain allowed. Each slice blocks its own merge until the owner accepts its contact
-sheet. Deletions remain last so a rejected experimental pass does not leave the product without a
-working fallback.
+Stacked builds remain allowed inside the feature trunk. Each slice blocks its merge into the
+feature trunk until the owner accepts its contact sheet. Deletions remain last so a rejected
+experimental pass does not leave the product without a working fallback.
 
 ## Test strategy
 
@@ -581,5 +588,6 @@ Each slice also runs the full repository gate and critique process. The final mi
 - Refusal and truncation cannot cause unnamed losses.
 - The JSON trace accounts for every candidate; Markdown truncation is explicitly display-only.
 - CLI, UI, automation, and dry-run execute the same source and editorial contracts.
-- June is at least as strong as the accepted pre-regression sheet before #768 can leave draft.
-- The owner approves this architecture before an implementation plan or production-code change.
+- June is at least as strong as the accepted pre-regression sheet before the replacement Structure
+  slice can merge into the feature trunk.
+- The owner approved this architecture before implementation planning and production-code changes.
