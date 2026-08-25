@@ -29,12 +29,12 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 from itertools import starmap
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
-    from datetime import datetime
     from pathlib import Path
 
     from immich_memories.analysis.smart_pipeline import ClipWithSegment
@@ -110,7 +110,7 @@ def _est(moment: _Moment) -> float:
     return best.end_time - best.start_time
 
 
-def _shipped_est(kept: list[_Moment], target_clips: int) -> float:
+def _shipped_est(kept: list[_Moment], target_clips: int, *, moment_window: float) -> float:
     """What the kept moments will actually run once the cut reaches assembly.
 
     Not one representative each. This pass hands ALL members of a kept moment
@@ -127,12 +127,17 @@ def _shipped_est(kept: list[_Moment], target_clips: int) -> float:
     releasing a moment can raise the estimate rather than lower it.
     """
     from immich_memories.analysis.clip_refiner import _clips_per_moment
+    from immich_memories.analysis.clip_scaler import group_by_moment
 
-    share = _clips_per_moment(target_clips, len(kept))
+    members = [member for moment in kept for member in moment.members]
+    if moment_window <= 0:
+        return sum(member.end_time - member.start_time for member in members)
+    temporal_groups = group_by_moment(members, moment_window)
+    share = _clips_per_moment(target_clips, len(temporal_groups))
     total = 0.0
-    for moment in kept:
+    for group in temporal_groups:
         ranked = sorted(
-            moment.members,
+            group,
             key=lambda member: (member.clip.asset.is_favorite, member.score),
             reverse=True,
         )
@@ -152,31 +157,41 @@ def _ids(moment: _Moment) -> set[str]:
 
 
 def _moments_of(pool: list[ClipWithSegment], moment_window: float) -> list[_Moment]:
-    """The pool as moments, chained into episodes, in chronological order.
+    """The pool as time-and-place moments and episodes, in chronological order.
 
-    The same grouping the dedup stage collapses on, so the pass reasons in the
-    unit its decision is later carried out in. Episodes chain those moments
-    the way the review labels them: a gap wider than the episode window starts
-    a new occasion.
+    The temporal boundary stays the one the downstream dedup stage uses, then
+    the shared place rule splits parallel devices into the separate moments
+    they photographed. Episodes come from the same helper as the fine cut, so
+    both passes call the same time-and-place block one occasion.
     """
     from immich_memories.analysis.clip_scaler import group_by_moment
-    from immich_memories.analysis.moment_grouping import EPISODE_WINDOW_MINUTES
+    from immich_memories.analysis.moment_grouping import _group_by_time_and_place
+    from immich_memories.analysis.selection_review import _episode_labels
 
-    moments: list[_Moment] = []
-    episode = 0
-    previous: datetime | None = None
-    for group in group_by_moment(pool, moment_window):
-        start = _started(group[0])
-        # An undated moment can neither continue an occasion nor be continued.
-        if (
-            start is None
-            or previous is None
-            or (start - previous).total_seconds() > EPISODE_WINDOW_MINUTES * 60
+    episode_by_id = {
+        member.clip.asset.id: episode
+        for member, episode in zip(pool, _episode_labels(pool), strict=True)
+    }
+    temporal_groups = (
+        [[member] for member in sorted(pool, key=lambda item: _started(item) or datetime.min)]
+        if moment_window <= 0
+        else group_by_moment(pool, moment_window)
+    )
+    groups: list[list[ClipWithSegment]] = []
+    for temporal_group in temporal_groups:
+        if _started(temporal_group[0]) is None:
+            groups.append(temporal_group)
+            continue
+        by_id = {member.clip.asset.id: member for member in temporal_group}
+        for assets in _group_by_time_and_place(
+            [member.clip.asset for member in temporal_group],
+            window_minutes=moment_window,
         ):
-            episode += 1
-        moments.append(_Moment(tuple(group), f"E{episode}"))
-        previous = start
-    return moments
+            groups.append([by_id[asset.id] for asset in assets])
+    groups.sort(key=lambda group: _started(group[0]) or datetime.min)
+    return [
+        _Moment(tuple(group), episode_by_id.get(group[0].clip.asset.id, "E?")) for group in groups
+    ]
 
 
 def _when(moment: _Moment) -> str:
@@ -306,7 +321,12 @@ class StructurePass:
         if self._fates is not None:
             return _replay(pool, self._fates, self._fates_narrowed)
         moments = _moments_of(pool, moment_window)
-        nothing_to_decide = _nothing_to_decide(moments, target_duration, target_clips)
+        nothing_to_decide = _nothing_to_decide(
+            moments,
+            target_duration,
+            target_clips,
+            moment_window=moment_window,
+        )
         if nothing_to_decide is not None:
             # No memo: a later round may see more material than this one, and
             # a pool that fitted once is not a decision about the next pool.
@@ -320,7 +340,13 @@ class StructurePass:
             _never_ran("the answer cut all but one moment, which is not an edit")
             return None
         cut = self._carry_out(
-            pool, moments, answer, target_duration, target_clips, may_ask=not asked_twice
+            pool,
+            moments,
+            answer,
+            target_duration,
+            target_clips,
+            moment_window,
+            may_ask=not asked_twice,
         )
         self._fates, self._fates_narrowed = cut.cuts.copy(), cut.narrowed
         return cut
@@ -354,14 +380,24 @@ class StructurePass:
         answer: Answer,
         target_duration: float,
         target_clips: int,
+        moment_window: float,
         *,
         may_ask: bool,
     ) -> StructureCut:
         """Apply the rejects, and shrink to the envelope if the editor ranks."""
         kept, notes, reasons = _keep_after_the_starred_rule(moments, answer)
-        shipped = _shipped_est(list(kept.values()), target_clips)
+        shipped = _shipped_est(list(kept.values()), target_clips, moment_window=moment_window)
         if shipped <= target_duration * ENVELOPE_CEILING:
-            return _apply(pool, kept, notes, reasons, target_duration, target_clips, len(moments))
+            return _apply(
+                pool,
+                kept,
+                notes,
+                reasons,
+                target_duration,
+                target_clips,
+                moment_window,
+                len(moments),
+            )
         order = self._priority_for(kept, shipped, target_duration, reasons, may_ask)
         if order is None:
             # The judgment stands; only the length is unsettled. What the model
@@ -380,11 +416,29 @@ class StructurePass:
                 reasons,
                 target_duration,
                 target_clips,
+                moment_window,
                 len(moments),
                 narrowed=False,
             )
-        _release_to_fit(kept, order, target_duration, target_clips, notes, reasons)
-        return _apply(pool, kept, notes, reasons, target_duration, target_clips, len(moments))
+        _release_to_fit(
+            kept,
+            order,
+            target_duration,
+            target_clips,
+            moment_window,
+            notes,
+            reasons,
+        )
+        return _apply(
+            pool,
+            kept,
+            notes,
+            reasons,
+            target_duration,
+            target_clips,
+            moment_window,
+            len(moments),
+        )
 
     def _priority_for(
         self,
@@ -444,7 +498,11 @@ def _never_ran(why: str) -> None:
 
 
 def _nothing_to_decide(
-    moments: list[_Moment], target_duration: float, target_clips: int
+    moments: list[_Moment],
+    target_duration: float,
+    target_clips: int,
+    *,
+    moment_window: float,
 ) -> str | None:
     """Why this pool needs no editing, or None when it does.
 
@@ -458,7 +516,7 @@ def _nothing_to_decide(
     """
     if len(moments) < 2:
         return "one moment is not a structure to decide"
-    shipped = _shipped_est(moments, target_clips)
+    shipped = _shipped_est(moments, target_clips, moment_window=moment_window)
     if shipped <= target_duration * ENVELOPE_CEILING:
         return (
             f"the pool already fits the budget — {shipped:.0f}s as it will ship "
@@ -520,6 +578,7 @@ def _apply(
     reasons: list[str],
     target_duration: float,
     target_clips: int,
+    moment_window: float,
     of_moments: int,
     *,
     narrowed: bool = True,
@@ -529,7 +588,7 @@ def _apply(
     # Deliberately non-monotone in the number of kept moments: the share one
     # moment may ship steps up as the keep-set shrinks, so releasing a moment
     # can RAISE this estimate. A reader of the trace should not be surprised.
-    total = _shipped_est(list(kept.values()), target_clips)
+    total = _shipped_est(list(kept.values()), target_clips, moment_window=moment_window)
     reasons.insert(
         0,
         f"kept {len(kept)} of {of_moments} moment(s) — {representatives:.0f}s of "
@@ -585,6 +644,7 @@ def _release_to_fit(
     priority: tuple[int, ...],
     target_duration: float,
     target_clips: int,
+    moment_window: float,
     notes: dict[str, str],
     reasons: list[str],
 ) -> None:
@@ -606,7 +666,7 @@ def _release_to_fit(
     for index in reversed(priority):
         if len(kept) <= 1:
             return
-        if _shipped_est(list(kept.values()), target_clips) <= ceiling:
+        if _shipped_est(list(kept.values()), target_clips, moment_window=moment_window) <= ceiling:
             return
         moment = kept.get(index)
         if moment is None or _the_last_star_of_its_episode(moment, kept.values()):

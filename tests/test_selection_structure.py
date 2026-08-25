@@ -23,7 +23,7 @@ from unittest.mock import patch
 from immich_memories.analysis import selection_trace
 from immich_memories.analysis.selection_structure import StructurePass
 from immich_memories.analysis.smart_pipeline import ClipWithSegment
-from immich_memories.api.models import Asset, AssetType, VideoClipInfo
+from immich_memories.api.models import Asset, AssetType, ExifInfo, VideoClipInfo
 from immich_memories.config_models_llm import LLMConfig
 
 JUNE = datetime(2023, 6, 1, 12, tzinfo=UTC)
@@ -50,6 +50,7 @@ def _clip(
     score: float = 0.5,
     seconds: float = 5.0,
     shows: str | None = None,
+    where: tuple[float, float] | None = None,
 ) -> ClipWithSegment:
     when = JUNE + timedelta(days=days, minutes=minutes)
     asset = Asset(
@@ -59,6 +60,7 @@ def _clip(
         fileModifiedAt=when,
         updatedAt=when,
         isFavorite=starred,
+        exifInfo=ExifInfo(latitude=where[0], longitude=where[1]) if where else None,
     )
     clip = VideoClipInfo(asset=asset, duration_seconds=seconds)
     clip.llm_description = shows or f"a shot called {asset_id}"
@@ -95,8 +97,15 @@ def _choose(
     *,
     target: float = 10.0,
     target_clips: int = 2,
+    moment_window: float = MOMENT_WINDOW,
 ):
-    return _choose_answers(pool, [raw], target=target, target_clips=target_clips)[0]
+    return _choose_answers(
+        pool,
+        [raw],
+        target=target,
+        target_clips=target_clips,
+        moment_window=moment_window,
+    )[0]
 
 
 def _choose_answers(
@@ -105,6 +114,7 @@ def _choose_answers(
     *,
     target: float = 10.0,
     target_clips: int = 2,
+    moment_window: float = MOMENT_WINDOW,
 ):
     pass_ = StructurePass(LLMConfig())
     # Under test is how often we go back to it, and what we do with the answer.
@@ -113,7 +123,7 @@ def _choose_answers(
         cut = pass_.choose(
             pool,
             target_duration=target,
-            moment_window=MOMENT_WINDOW,
+            moment_window=moment_window,
             target_clips=target_clips,
         )
     return cut, asked
@@ -125,6 +135,7 @@ def _choose_exactly(
     *,
     target: float = 10.0,
     target_clips: int = 2,
+    moment_window: float = MOMENT_WINDOW,
 ):
     """Like _choose_answers, but a call past the end of `raws` is an error."""
     pass_ = StructurePass(LLMConfig())
@@ -135,7 +146,7 @@ def _choose_exactly(
         cut = pass_.choose(
             pool,
             target_duration=target,
-            moment_window=MOMENT_WINDOW,
+            moment_window=moment_window,
             target_clips=target_clips,
         )
     return cut, asked
@@ -161,6 +172,27 @@ class TestTheStoryChoosesItsMoments:
         assert stage.notes["m3c0"] == "M3 is not needed"
         assert stage.notes["m3c1"] == "M3 is not needed"
         assert stage.notes["m4c0"] == "M4 is not needed"
+
+
+class TestStructureUsesTheSharedMomentMap:
+    def test_parallel_places_are_separate_moments_and_occasions(self):
+        from immich_memories.analysis.selection_structure import _moments_of
+
+        brussels = (50.8466, 4.3528)
+        spa = (50.4922, 5.8645)
+        pool = [
+            _clip("brussels-a", minutes=0, where=brussels),
+            _clip("brussels-b", minutes=1, where=brussels),
+            _clip("spa", minutes=1, where=spa),
+        ]
+
+        moments = _moments_of(pool, MOMENT_WINDOW)
+
+        assert [[member.clip.asset.id for member in moment.members] for moment in moments] == [
+            ["brussels-a", "brussels-b"],
+            ["spa"],
+        ]
+        assert [moment.episode for moment in moments] == ["E1", "E2"]
 
 
 class TestSilenceKeeps:
@@ -478,6 +510,20 @@ class TestTheEnvelopeMeasuresWhatWillShip:
         _cut, asked = _choose_answers(pool, [_answer(cut=[])], target=10.0, target_clips=2)
 
         assert asked.call_count >= 1
+
+    def test_disabling_the_moment_cap_counts_and_can_release_every_clip(self):
+        pool = [_clip(f"m{day}c{index}", days=day) for day in range(1, 3) for index in range(4)]
+
+        cut, asked = _choose_exactly(
+            pool,
+            [_answer(cut=[]), _priority(list(range(1, 9)))],
+            target=10.0,
+            target_clips=2,
+            moment_window=0.0,
+        )
+
+        assert asked.call_count == 2
+        assert sum(member.end_time - member.start_time for member in cut.kept) == 10.0
 
     def test_the_walk_releases_on_what_will_ship_not_on_one_clip_a_moment(self):
         pool = _pool(moments=4, per_moment=3)
