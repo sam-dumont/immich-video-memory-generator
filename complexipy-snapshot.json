@@ -778,7 +778,7 @@
         "name": "register_generate_commands",
         "complexity": 149,
         "line_start": 51,
-        "line_end": 628,
+        "line_end": 629,
         "line_complexities": [
           {
             "line": 139,
@@ -1105,59 +1105,59 @@
             "complexity": 0
           },
           {
-            "line": 539,
+            "line": 540,
             "complexity": 6
           },
           {
-            "line": 544,
+            "line": 545,
             "complexity": 0
           },
           {
-            "line": 546,
+            "line": 547,
             "complexity": 6
           },
           {
-            "line": 551,
+            "line": 552,
             "complexity": 0
           },
           {
-            "line": 553,
+            "line": 554,
             "complexity": 5
           },
           {
-            "line": 557,
+            "line": 558,
             "complexity": 5
           },
           {
-            "line": 560,
+            "line": 561,
             "complexity": 1
           },
           {
-            "line": 562,
+            "line": 563,
             "complexity": 0
           },
           {
-            "line": 564,
+            "line": 565,
             "complexity": 0
           },
           {
-            "line": 611,
+            "line": 612,
             "complexity": 1
           },
           {
-            "line": 614,
-            "complexity": 1
-          },
-          {
-            "line": 617,
+            "line": 615,
             "complexity": 1
           },
           {
             "line": 618,
-            "complexity": 0
+            "complexity": 1
           },
           {
             "line": 619,
+            "complexity": 0
+          },
+          {
+            "line": 620,
             "complexity": 1
           }
         ]

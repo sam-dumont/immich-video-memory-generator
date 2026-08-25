@@ -35,6 +35,7 @@ from immich_memories.cli._date_resolution import (
     default_duration_for_type,
     resolve_date_range,
 )
+from immich_memories.config import Config
 from immich_memories.memory_types.factory import create_preset
 from immich_memories.memory_types.registry import MemoryType
 from immich_memories.timeperiod import DateRange
@@ -479,6 +480,10 @@ def _wizard_state(
     """
     spec = replace(SPECS[memory_type], people=people)
     state = AppState()
+    # The wizard always has a config by the time it fetches: step 1 sets it.
+    # Without it the fetch cannot read the burst merge window, and the two
+    # surfaces would differ over a fixture gap rather than a real divergence.
+    state.config = Config()
     state.people = list(people)
     state.apply_preset(create_preset(memory_type, **spec.as_preset_params()))
     assert _windows(state.date_ranges) == _windows(windows), (

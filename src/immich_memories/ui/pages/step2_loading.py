@@ -152,7 +152,20 @@ def _fetch_photos(state) -> list:
                     date_range, person_id=person_id, person_ids=group_ids
                 )
             )
-        return _dedup_by_id(photos)
+        photos = _dedup_by_id(photos)
+
+        # Immich tags one frame of a burst, so a person filter returns that
+        # frame alone and the burst has nothing to stitch to.
+        if state.person_ids:
+            from immich_memories.analysis.live_photo_pipeline import with_burst_neighbours
+
+            photos = with_burst_neighbours(
+                client,
+                photos,
+                date_ranges=state.date_ranges,
+                merge_window_seconds=state.config.analysis.live_photo_merge_window_seconds,
+            )
+        return photos
 
 
 def _set_initial_selection(clips: list[VideoClipInfo], state) -> None:
