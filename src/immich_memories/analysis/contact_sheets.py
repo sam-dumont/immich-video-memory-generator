@@ -92,6 +92,8 @@ def build_contact_sheets(
     per_sheet: int = MAX_SHEET_TILES,
 ) -> tuple[ContactSheetPage, ...]:
     """Encode each page once, write those exact bytes, and retain its stable mapping."""
+    if not 1 <= per_sheet <= MAX_SHEET_TILES:
+        raise ValueError(f"per_sheet must be between 1 and {MAX_SHEET_TILES}")
     entries = list(tiles)
     entity_ids = [getattr(tile, "entity_id", None) for tile in entries]
     if any(not isinstance(entity_id, str) or not entity_id for entity_id in entity_ids):

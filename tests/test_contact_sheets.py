@@ -55,3 +55,14 @@ def test_contact_sheets_reject_duplicate_entity_ids(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="unique entity IDs"):
         build_contact_sheets((_tile("same", "red"), _tile("same", "blue")), "scope", tmp_path)
+
+
+@pytest.mark.parametrize("per_sheet", (0, -1, 121))
+def test_contact_sheets_reject_per_sheet_outside_the_visual_evidence_limit(
+    tmp_path: Path, per_sheet: int
+) -> None:
+    """Every public override keeps pages positive and at most 120 numbered tiles."""
+    from immich_memories.analysis.contact_sheets import build_contact_sheets
+
+    with pytest.raises(ValueError, match="between 1 and 120"):
+        build_contact_sheets((_tile("asset-1", "red"),), "scope", tmp_path, per_sheet=per_sheet)

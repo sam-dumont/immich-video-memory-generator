@@ -116,7 +116,9 @@ def _cached_preview(thumbnail_cache: Any | None, entity_id: str) -> bytes | None
 
 
 def _has_motion(source: AtlasSource) -> bool:
-    return source.motion_path is not None and bool(getattr(source.asset, "is_video", False))
+    return source.motion_path is not None and bool(
+        getattr(source.asset, "is_video", False) or getattr(source.asset, "is_live_photo", False)
+    )
 
 
 def _filmstrip_for(source: AtlasSource, frame_cache_dir: Path | None) -> tuple[bytes, int] | None:
