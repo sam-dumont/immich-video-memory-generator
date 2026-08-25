@@ -30,7 +30,11 @@ import pytest
 
 from immich_memories.api.models import Person
 from immich_memories.cli._asset_fetch import fetch_photos, fetch_videos
-from immich_memories.cli._date_resolution import default_duration_for_type, resolve_date_range
+from immich_memories.cli._date_resolution import (
+    BIRTHDAY_FLAG_FORMAT,
+    default_duration_for_type,
+    resolve_date_range,
+)
 from immich_memories.memory_types.factory import create_preset
 from immich_memories.memory_types.registry import MemoryType
 from immich_memories.timeperiod import DateRange
@@ -61,6 +65,16 @@ class MemorySpec:
     window: tuple[datetime, datetime] | None = None
     title: str | None = None
     active_hours: float | None = None
+    birthday: date | None = None
+
+    @property
+    def birthday_flag(self) -> str | None:
+        """The birthday as ``--birthday`` carries it.
+
+        Derived rather than written twice, so the flag the CLI reads and the
+        date the wizard picks cannot describe different days.
+        """
+        return self.birthday.strftime(BIRTHDAY_FLAG_FORMAT) if self.birthday else None
 
     def as_preset_params(self) -> dict:
         """The spec as the UI's ``memory_preset_params`` bag."""
@@ -74,6 +88,8 @@ class MemorySpec:
             "years_back": self.years_back,
             "target_date": self.on_this_day_target,
             "location_name": self.location_name,
+            "birthday": self.birthday,
+            "use_birthday": bool(self.birthday) or None,
             **self.as_cli_preset_params(),
         }
         return {key: value for key, value in params.items() if value is not None}
@@ -227,7 +243,7 @@ def _cli_resolution(memory_type: MemoryType, spec: MemorySpec) -> DateRange | li
         None,
         None,
         None,
-        None,
+        spec.birthday_flag,
         memory_type=str(memory_type),
         season=spec.season,
         month=spec.month,
@@ -251,10 +267,12 @@ def cli_duration(memory_type: MemoryType, spec: MemorySpec) -> float | None:
     one span before asking for a duration.
     """
     resolved = _cli_resolution(memory_type, spec)
-    if isinstance(resolved, list):
-        resolved = DateRange(start=resolved[-1].start, end=resolved[0].end)
+    windows = resolved if isinstance(resolved, list) else [resolved]
     return default_duration_for_type(
-        str(memory_type), resolved, spec.as_cli_preset_params() or None
+        str(memory_type),
+        DateRange(start=windows[-1].start, end=windows[0].end),
+        spec.as_cli_preset_params() or None,
+        primary_window=windows[0],
     )
 
 
@@ -310,6 +328,32 @@ class TestDateWindowParity:
     def test_windows_match(self, memory_type: MemoryType) -> None:
         spec = SPECS[memory_type]
         assert cli_windows(memory_type, spec) == ui_windows(memory_type, spec)
+
+    def test_a_birthday_spotlight_resolves_the_same_windows_on_both_surfaces(self) -> None:
+        """The CLI reads a flag and the wizard picks a date; one builder answers.
+
+        SPECS pins the calendar-year spotlight, which says nothing about the
+        birthday-anchored one -- and that is the variant that ran July to July
+        (#719). Both surfaces must land on the rolling year *and* every
+        flashback window, so a divergence in either half fails here.
+        """
+        spec = replace(SPECS[MemoryType.PERSON_SPOTLIGHT], birthday=date(2018, 2, 7))
+
+        windows = cli_windows(MemoryType.PERSON_SPOTLIGHT, spec)
+
+        assert windows == ui_windows(MemoryType.PERSON_SPOTLIGHT, spec)
+        assert len(windows) > 1, "a birthday memory looks at earlier birthdays too"
+        assert windows[0][1] == datetime(2024, 2, 7, 23, 59, 59), (
+            "the rolling year must end on the birthday --year names"
+        )
+
+    def test_a_birthday_spotlight_is_the_same_length_on_both_surfaces(self) -> None:
+        """The split #630 recorded is about the calendar-year card, not this one."""
+        spec = replace(SPECS[MemoryType.PERSON_SPOTLIGHT], birthday=date(2018, 2, 7))
+
+        cli = cli_duration(MemoryType.PERSON_SPOTLIGHT, spec)
+
+        assert cli == pytest.approx(ui_duration(MemoryType.PERSON_SPOTLIGHT, spec))
 
     def test_a_holiday_with_no_year_given_skips_the_one_that_has_not_happened(self) -> None:
         """Both surfaces default the year, so both must apply the same guard.

@@ -9,7 +9,7 @@ from __future__ import annotations
 import calendar
 from datetime import date, datetime, timedelta
 
-from immich_memories.timeperiod import DateRange, calendar_year
+from immich_memories.timeperiod import DateRange, birthday_year, calendar_year, same_day_in_year
 
 # Northern hemisphere season definitions: season -> (start_month, end_month)
 # Winter spans two calendar years (Dec of year to Feb of year+1).
@@ -133,7 +133,7 @@ def build_on_this_day(
         past_year = target_date.year - i
 
         # Resolve the target day in the past year
-        center = _resolve_date_in_year(target_date, past_year)
+        center = same_day_in_year(target_date, past_year)
 
         day_before = _subtract_one_day(center)
         day_after = _add_one_day(center)
@@ -146,6 +146,92 @@ def build_on_this_day(
         )
 
     return ranges
+
+
+# build_birthday_windows returns the rolling year first and the flashbacks after
+# it, so this is where the expected-sparse tail of the list begins. A caller
+# reporting per-window emptiness needs it: one empty rolling year is a real
+# failure, a handful of empty single days is what a library looks like.
+BIRTHDAY_HISTORY_FROM = 1
+
+# How many earlier birthdays to look for, matching what On This Day and Holiday
+# ask for. The builder's own thirty-year ceiling is still reachable with
+# --years-back, but as a default it turns every birthday memory into a
+# decades-wide fetch and names the file after a span it barely uses.
+BIRTHDAY_HISTORY_YEARS = 5
+
+
+def build_birthday_windows(
+    birthday: date,
+    year: int | None = None,
+    years_back: int | None = None,
+    today: date | None = None,
+) -> list[DateRange]:
+    """Everything a memory anchored on a birthday covers, most recent first.
+
+    Two kinds of window. The rolling year is the twelve months ending on the
+    birthday being celebrated, and the flashbacks are ±1 day around that
+    birthday in each earlier year — the same shape On This Day builds, so a
+    birthday's history and a date's history are the same thing seen twice, leap
+    day included.
+
+    ``year`` names the birthday celebrated rather than a calendar year to run
+    forward from. With no year the most recent birthday on or before ``today``
+    is the one celebrated, so a run in August is still about February's, and a
+    run on the day itself is about that morning's party. A year the caller named
+    is a choice and is honoured even if it has not happened yet — the same rule
+    ``build_holiday`` follows.
+
+    Most recent first, so the display span the callers derive as
+    ``ranges[-1].start`` to ``ranges[0].end`` reaches from the oldest flashback
+    to the birthday.
+    """
+    celebrated = (
+        same_day_in_year(birthday, year)
+        if year is not None
+        else _last_occurrence(birthday, today or date.today())
+    )
+    reach = BIRTHDAY_HISTORY_YEARS if years_back is None else years_back
+    return [
+        birthday_year(birthday, celebrated.year),
+        *build_on_this_day(celebrated, reach),
+    ]
+
+
+def birthday_anchor(
+    immich_birth_date: date | None,
+    override: date | None,
+    *,
+    person_name: str,
+) -> date:
+    """The event a birthday memory is anchored on, and where it came from.
+
+    Immich is the source of truth: a birth date curated on the person is what
+    every surface reads, so filling one in has a visible payoff. A date given
+    for one run — ``--birthday MM-DD``, the wizard's picker — is an override
+    and wins, because the only reason to type one is that the stored value is
+    absent or wrong.
+
+    With neither, this refuses rather than inventing an anchor, and the message
+    says where to put one: a memory quietly rendered off a guessed date is
+    worse than a memory that did not render.
+    """
+    chosen = override if override is not None else immich_birth_date
+    if chosen is None:
+        raise ValueError(
+            f"{person_name} has no birth date, so there is no birthday to anchor the "
+            f"memory on. Set one in Immich — People → {person_name} → edit → birth "
+            "date — and every birthday memory will follow it from then on."
+        )
+    return date(chosen.year, chosen.month, chosen.day)
+
+
+def _last_occurrence(birthday: date, reference: date) -> date:
+    """The birthday on or before ``reference`` — today's counts as celebrated."""
+    this_year = same_day_in_year(birthday, reference.year)
+    if this_year <= reference:
+        return this_year
+    return same_day_in_year(birthday, reference.year - 1)
 
 
 def build_then_and_now(year: int, years_back: int) -> list[DateRange]:
@@ -174,15 +260,6 @@ def build_then_and_now(year: int, years_back: int) -> list[DateRange]:
     if years_back <= 0:
         raise ValueError("years_back must be at least 1 for a then-and-now memory")
     return [calendar_year(year), calendar_year(year - years_back)]
-
-
-def _resolve_date_in_year(target: date, year: int) -> date:
-    """Resolve a date into a specific year, handling Feb 29."""
-    try:
-        return date(year, target.month, target.day)
-    except ValueError:
-        # Feb 29 in a non-leap year -> use Feb 28
-        return date(year, 2, 28)
 
 
 def _subtract_one_day(d: date) -> date:

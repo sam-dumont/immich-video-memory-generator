@@ -126,7 +126,7 @@ def _candidate(
                 "--memory-type",
                 "person_spotlight",
                 "--year",
-                "2024",
+                "2025",
                 "--birthday",
                 "--person=Alice",
                 "--source=auto",

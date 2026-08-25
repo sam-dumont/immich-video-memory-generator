@@ -15,7 +15,7 @@ from immich_memories.automation.trip_input_cache import load_or_fetch_trip_asset
 from immich_memories.automation.variety import VarietyDecision, apply_variety_rules
 from immich_memories.config_loader import Config
 from immich_memories.config_models_automation import AutomationConfig
-from immich_memories.timeperiod import DateRange, birthday_year
+from immich_memories.timeperiod import DateRange, same_day_in_year
 from immich_memories.tracking.models import RunMetadata
 
 
@@ -113,9 +113,9 @@ def _compute_upcoming_birthday_ids(people: list, today: date, lookahead_days: in
         if not getattr(person, "birth_date", None):
             continue
         bday = person.birth_date
-        next_bday = birthday_year(bday, today.year).start.date()
+        next_bday = same_day_in_year(bday, today.year)
         if next_bday < today:
-            next_bday = birthday_year(bday, today.year + 1).start.date()
+            next_bday = same_day_in_year(bday, today.year + 1)
         days_until = (next_bday - today).days
         if 0 <= days_until <= lookahead_days:
             ids.add(person.id)

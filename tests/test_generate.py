@@ -1138,4 +1138,46 @@ class TestBirthdayFlagNamesTheWindowItRenders:
             )
 
         assert result.exit_code == 0, result.output
-        assert captured["output_path"].name == "person_a_person_spotlight_20250315-20260314.mp4"
+        # --year names the birthday celebrated, so the memory ends on 15 March
+        # 2025 and reaches back to the oldest flashback window it looks in.
+        assert captured["output_path"].name == "person_a_person_spotlight_20200314-20250315.mp4"
+
+    def test_a_person_with_no_birth_date_is_told_where_to_put_one(self, tmp_path: Path) -> None:
+        """Refuse over fake, and make the refusal teach the Immich workflow."""
+        from click.testing import CliRunner
+
+        from immich_memories.cli import main
+
+        config = Config(immich={"url": "https://immich.example.com", "api_key": "k"})
+        config.output.directory = str(tmp_path)
+
+        person = self._person()
+        person.birth_date = None
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        client.get_person_by_name.return_value = person
+
+        # WHY: config on disk and the Immich HTTP client are external.
+        with (
+            patch("immich_memories.cli.get_config", return_value=config),
+            patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
+        ):
+            result = CliRunner().invoke(
+                main,
+                [
+                    "generate",
+                    "--memory-type",
+                    "person_spotlight",
+                    "--person",
+                    "Person A",
+                    "--year",
+                    "2025",
+                    "--birthday",
+                    "--no-music",
+                ],
+            )
+
+        assert result.exit_code == 1
+        assert "People" in result.output
+        assert "birth" in result.output

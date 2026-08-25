@@ -193,13 +193,12 @@ class TestCalendarYear:
 
 
 class TestBirthdayYear:
-    """Tests for birthday_year function."""
+    """The year of someone's life that ends on the birthday the year names."""
 
     def test_birthday_year_basic(self):
-        """Test basic birthday year generation."""
         dr = birthday_year(date(1990, 2, 7), 2024)
-        assert dr.start == datetime(2024, 2, 7, 0, 0, 0)
-        assert dr.end == datetime(2025, 2, 6, 23, 59, 59)
+        assert dr.start == datetime(2023, 2, 8, 0, 0, 0)
+        assert dr.end == datetime(2024, 2, 7, 23, 59, 59)
 
     def test_birthday_year_not_calendar_year(self):
         """Test that birthday year is not identified as calendar year."""
@@ -207,15 +206,14 @@ class TestBirthdayYear:
         assert not dr.is_calendar_year
 
     def test_birthday_year_leap_year_birthday(self):
-        """Test Feb 29 birthday on non-leap year."""
+        """A 29 February birthday is celebrated on the 28th in an ordinary year."""
         dr = birthday_year(date(2000, 2, 29), 2023)
-        # 2023 is not leap year, so Feb 28 is used
-        assert dr.start == datetime(2023, 2, 28, 0, 0, 0)
+        assert dr.end == datetime(2023, 2, 28, 23, 59, 59)
 
     def test_birthday_year_datetime_input(self):
         """Test with datetime input."""
         dr = birthday_year(datetime(1990, 2, 7, 12, 0, 0), 2024)
-        assert dr.start == datetime(2024, 2, 7, 0, 0, 0)
+        assert dr.end == datetime(2024, 2, 7, 23, 59, 59)
 
 
 class TestFromPeriod:
@@ -364,16 +362,16 @@ class TestDateRangeEdgeCases:
         assert dr.contains(datetime(2025, 1, 1, 0, 0, 0)) is False
 
     def test_birthday_year_jan_1_birthday(self):
-        """Jan 1 birthday year spans exactly one calendar year."""
+        """A New Year's Day birthday ends the memory on the first of the year."""
         dr = birthday_year(date(2000, 1, 1), 2024)
-        assert dr.start == datetime(2024, 1, 1, 0, 0, 0)
-        assert dr.end == datetime(2024, 12, 31, 23, 59, 59)
+        assert dr.start == datetime(2023, 1, 2, 0, 0, 0)
+        assert dr.end == datetime(2024, 1, 1, 23, 59, 59)
 
     def test_birthday_year_dec_31_birthday(self):
-        """Dec 31 birthday wraps to next year."""
+        """A 31 December birthday makes the memory a calendar year exactly."""
         dr = birthday_year(date(2000, 12, 31), 2024)
-        assert dr.start == datetime(2024, 12, 31, 0, 0, 0)
-        assert dr.end == datetime(2025, 12, 30, 23, 59, 59)
+        assert dr.start == datetime(2024, 1, 1, 0, 0, 0)
+        assert dr.end == datetime(2024, 12, 31, 23, 59, 59)
 
     def test_custom_range_single_day_has_one_day(self):
         """Same start and end date produces exactly 1 day."""
