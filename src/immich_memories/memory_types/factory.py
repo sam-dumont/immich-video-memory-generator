@@ -11,6 +11,7 @@ from datetime import date, datetime
 
 from immich_memories.memory_types.date_builders import (
     KNOWN_HOLIDAYS,
+    build_birthday_windows,
     build_holiday,
     build_month,
     build_on_this_day,
@@ -26,7 +27,12 @@ from immich_memories.memory_types.presets import (
     person_filter_for,
 )
 from immich_memories.memory_types.registry import MemoryType
-from immich_memories.timeperiod import birthday_year, calendar_year
+from immich_memories.timeperiod import calendar_year
+
+# A birthday memory is a year plus a stack of flashbacks, and #703's use case
+# asks for five to ten minutes of it. Ten is what the CLI's span curve already
+# returns for a year with one person, so both surfaces land on the same number.
+BIRTHDAY_MEMORY_SECONDS = 600.0
 
 # Registry: maps MemoryType -> factory callable
 _REGISTRY: dict[MemoryType, Callable[..., MemoryPreset]] = {}
@@ -137,21 +143,39 @@ def _season(
     description="A year focused on one person",
 )
 def _person_spotlight(
-    year: int,
+    year: int | None = None,
     person_names: list[str] | None = None,
     use_birthday: bool = False,
     birthday: date | None = None,
+    years_back: int | None = None,
     **kwargs,  # noqa: ARG001
 ) -> MemoryPreset:
+    """A year with one person — a calendar one, or the one between two birthdays.
+
+    Anchored on a birthday it is a different memory: the rolling year ending on
+    the party, plus that birthday in every earlier year the library reaches.
+    Long enough to be a story rather than a montage, which is why it asks for
+    ten minutes where the calendar year asks for two.
+    """
     if not person_names:
         raise ValueError("person_names is required for PERSON_SPOTLIGHT memory type")
     name = person_names[0]
-    date_range = birthday_year(birthday, year) if use_birthday and birthday else calendar_year(year)
+    if use_birthday and birthday:
+        return MemoryPreset(
+            memory_type=MemoryType.PERSON_SPOTLIGHT,
+            name=f"{name}'s Year",
+            description=f"A year with {name}, birthday to birthday",
+            date_ranges=build_birthday_windows(birthday, year, years_back),
+            person_filter=person_filter_for([name]),
+            default_duration_seconds=BIRTHDAY_MEMORY_SECONDS,
+        )
+    if year is None:
+        raise ValueError("year is required for a PERSON_SPOTLIGHT that is not birthday-anchored")
     return MemoryPreset(
         memory_type=MemoryType.PERSON_SPOTLIGHT,
         name=f"Your Year with {name}",
         description=f"Best moments with {name} in {year}",
-        date_ranges=[date_range],
+        date_ranges=[calendar_year(year)],
         # A spotlight is one person by definition, so extra names name a
         # different memory -- Multi-Person -- rather than narrowing this one.
         person_filter=person_filter_for([name]),

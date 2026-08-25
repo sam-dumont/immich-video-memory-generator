@@ -47,7 +47,10 @@ def scope_options(command: FC) -> FC:
             is_flag=False,
             flag_value="auto",
             default=None,
-            help="Use birthday-based year (auto-detects from Immich, or specify MM-DD, e.g. 03-15)",
+            help=(
+                "Run the year up to a birthday, plus earlier birthdays "
+                "(reads Immich's birth date, or override with MM-DD, e.g. 03-15)"
+            ),
         ),
         click.option(
             "--from-album",
@@ -323,7 +326,7 @@ def per_memory_type_options(command: FC) -> FC:
             "--years-back",
             type=int,
             default=None,
-            help="Years to look back for on_this_day, holiday or then_and_now",
+            help="Years to look back for --birthday, on_this_day, holiday or then_and_now",
         ),
         click.option(
             "--near-date",

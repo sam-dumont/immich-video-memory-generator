@@ -100,7 +100,7 @@ class TestCreatePresetPersonSpotlight:
         assert preset.date_ranges[0].end == datetime(2024, 12, 31, 23, 59, 59)
 
     def test_birthday_range_when_enabled(self) -> None:
-        """With use_birthday=True and a birthday, uses birthday-to-birthday range."""
+        """With use_birthday=True, the year runs up to the birthday --year names."""
         preset = create_preset(
             MemoryType.PERSON_SPOTLIGHT,
             year=2024,
@@ -108,10 +108,19 @@ class TestCreatePresetPersonSpotlight:
             use_birthday=True,
             birthday=date(1990, 3, 15),
         )
-        # Should start on March 15, 2024
-        assert preset.date_ranges[0].start == datetime(2024, 3, 15, 0, 0, 0)
-        # Should end on March 14, 2025 (day before next birthday)
-        assert preset.date_ranges[0].end == datetime(2025, 3, 14, 23, 59, 59)
+        assert preset.date_ranges[0].start == datetime(2023, 3, 16, 0, 0, 0)
+        assert preset.date_ranges[0].end == datetime(2024, 3, 15, 23, 59, 59)
+
+    def test_birthday_spotlight_also_looks_at_earlier_birthdays(self) -> None:
+        preset = create_preset(
+            MemoryType.PERSON_SPOTLIGHT,
+            year=2024,
+            person_names=["Alice"],
+            use_birthday=True,
+            birthday=date(1990, 3, 15),
+            years_back=2,
+        )
+        assert [r.start.year for r in preset.date_ranges[1:]] == [2023, 2022]
 
     def test_birthday_flag_without_birthday_falls_back_to_calendar(self) -> None:
         """use_birthday=True but no birthday date falls back to calendar year."""

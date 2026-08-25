@@ -16,7 +16,7 @@ from immich_memories.automation.candidates import (
 )
 from immich_memories.config_loader import Config
 from immich_memories.i18n import get_ordinal
-from immich_memories.timeperiod import birthday_year
+from immich_memories.timeperiod import birthday_year, same_day_in_year
 
 
 class MonthlyDetector:
@@ -296,14 +296,14 @@ class BirthdayDetector:
 
             bday = person.birth_date
             # WHY: 2-day minimum buffer after birthday to let photo sync happen
-            most_recent_bday = birthday_year(bday, today.year).start.date()
+            most_recent_bday = same_day_in_year(bday, today.year)
             if most_recent_bday > today:
-                most_recent_bday = birthday_year(bday, today.year - 1).start.date()
+                most_recent_bday = same_day_in_year(bday, today.year - 1)
             days_since = (today - most_recent_bday).days
             if days_since < 2 or days_since > self.WINDOW_DAYS:
                 continue
 
-            completed_birthday_year = birthday_year(bday, most_recent_bday.year - 1)
+            completed_birthday_year = birthday_year(bday, most_recent_bday.year)
             start = completed_birthday_year.start.date()
             end = completed_birthday_year.end.date()
             name_lower = person.name.lower()

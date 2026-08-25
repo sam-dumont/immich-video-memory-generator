@@ -326,8 +326,10 @@ class TestSuggestReturnsCandidates:
             candidates = AutoRunner(config).suggest(limit=10)
 
         birthday = next(c for c in candidates if c.category is CandidateCategory.BIRTHDAY)
-        assert birthday.date_range_start == date(2024, 2, 29)
-        assert birthday.date_range_end == date(2025, 2, 27)
+        # The year runs from the day after the leap birthday to the 28th, which
+        # is where a 29 February birthday lands in a year that has no 29th.
+        assert birthday.date_range_start == date(2024, 3, 1)
+        assert birthday.date_range_end == date(2025, 2, 28)
 
     def test_upcoming_january_birthday_suppresses_december_spotlight(self, config: Config) -> None:
         """Discovery looks into next year when rotating people near New Year."""

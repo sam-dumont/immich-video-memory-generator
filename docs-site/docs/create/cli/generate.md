@@ -32,7 +32,7 @@ immich-memories generate [OPTIONS]
 | `--holiday` | — | text | — | Holiday name or `MM-DD` (with `--memory-type holiday`) |
 | `--from-album` | — | string | — | Generate from an Immich album (name or ID) instead of a date range. See [Album Memories](../memory-types/album-memories). Cannot be combined with any time-period or person flag |
 | `--person` | `-p` | string | — | Person name from Immich face recognition (repeatable: `--person "Alice" --person "Bob"`) |
-| `--birthday` | `-b` | flag/string | — | Use birthday-based year. Bare flag auto-detects from Immich; or pass `MM-DD` to override |
+| `--birthday` | `-b` | flag/string | — | Anchor the memory on a birthday. Bare flag reads Immich's birth date; pass `MM-DD` to override |
 | `--season` | — | choice | — | `spring`, `summer`, `fall`, `autumn`, `winter` (use with `--memory-type season`) |
 | `--month` | — | int | — | Month 1-12 (with `--year`, generates that month; selects trip by month) |
 | `--hemisphere` | — | choice | `north` | `north` or `south` (for season date calculation) |
@@ -178,13 +178,15 @@ immich-memories generate --year 2024
 
 ### Birthday year
 
-Auto-detects the birthday from Immich when `--birthday` is used as a flag:
+Reads the birth date off the Immich person when `--birthday` is used as a bare flag:
 
 ```bash
-immich-memories generate --year 2024 --birthday --person "Emma" --duration 900
+immich-memories generate --year 2025 --birthday --person "Emma" --duration 900
 ```
 
-Or specify manually: `--birthday 07-21`. Slashes work too and read day-first, like every other date flag — `--birthday 07/02` is 7 February. `MM-DD` is the form that cannot be misread.
+`--year` names the birthday being celebrated. The memory is the year **ending** on it — 22 July 2024 to 21 July 2025 for a 21 July birthday — plus the five previous birthdays as ±1 day windows. `--years-back` changes how many.
+
+If the person has no birth date in Immich the run stops and says where to add one. Override for a single run with `--birthday 07-21`; slashes work too and read day-first, like every other date flag — `--birthday 07/02` is 7 February. `MM-DD` is the form that cannot be misread.
 
 ### Person spotlight for a single month
 
@@ -320,7 +322,7 @@ immich-memories generate --year 2024 --include-photos --photo-duration 5.0
 | Method | Flags | What you get |
 |--------|-------|-------------|
 | Calendar year | `--year 2024` | Jan 1 2024 to Dec 31 2024 |
-| Birthday year | `--year 2024 --birthday --person "Emma"` | Birthday to birthday (auto-detected from Immich) |
+| Birthday year | `--year 2025 --birthday --person "Emma"` | The year ending on the 2025 birthday, plus earlier birthdays (date read from Immich) |
 | Single month | `--year 2024 --month 7` | Jul 1 to Jul 31 2024 |
 | Custom range | `--start 2024-06-01 --end 2024-08-31` | Exact start and end dates |
 | Period from start | `--start 2024-01-01 --period 6m` | 6 months from the start date |
