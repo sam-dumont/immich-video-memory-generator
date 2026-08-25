@@ -41,6 +41,7 @@ from immich_memories.analysis.clip_distribution import (
     photos_per_day_for,
     span_days_of,
 )
+from immich_memories.analysis.favourite_law import let_the_favourite_win
 
 logger = logging.getLogger(__name__)
 
@@ -748,6 +749,13 @@ class ClipRefiner:
             temporal_window=moment_window,
         )
         trace.record("duration backfill", before_backfill, selected)
+
+        # Last, and once: every stage above can drop a favourite while a
+        # neighbour from the same moment survives, each for its own good
+        # reason. The rule they all answer to is applied to what they produced.
+        before_law = selected
+        selected = let_the_favourite_win(selected, all_analyzed)
+        trace.record("the favourite wins its moment", before_law, selected)
 
         selected.sort(key=lambda c: c.clip.asset.file_created_at or datetime.min)
 

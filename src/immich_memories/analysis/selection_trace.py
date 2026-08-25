@@ -44,6 +44,9 @@ class Trace:
     """Everything a run decided, in order."""
 
     stages: list[Stage] = field(default_factory=list)
+    # Moments that shipped something else while their favourite was dropped.
+    # None means nothing checked; an empty list means the law held.
+    lost_favourites: list | None = None
     # Not a stage: it describes the pool every stage worked on, not a step
     # the pool passed through. Re-set by each re-selection, so the value that
     # survives is the one the verify passes left behind (#489).
@@ -71,6 +74,22 @@ class Trace:
             )
         )
 
+    def _favourite_law_lines(self) -> list[str]:
+        """Whether any moment shipped a neighbour of the photograph it starred."""
+        if self.lost_favourites is None:
+            return []
+        if not self.lost_favourites:
+            return ["favourites law: held — no moment shipped over its favourite", ""]
+        lines = [
+            f"favourites law: BROKEN in {len(self.lost_favourites)} moment(s) — "
+            "a favourite was dropped and a neighbour shipped",
+        ]
+        for lost in self.lost_favourites[:5]:
+            lines.append(
+                f"    dropped {', '.join(lost.favourites)} · shipped {', '.join(lost.shipped)}"
+            )
+        return [*lines, ""]
+
     def report(self) -> str:
         """The funnel, as text — widest column is where the pool went."""
         if not self.stages:
@@ -78,6 +97,7 @@ class Trace:
         width = max(len(s.name) for s in self.stages)
         lines = [
             *self._coverage_lines(),
+            *self._favourite_law_lines(),
             f"{'stage'.ljust(width)}  {'kept':>5} {'lost':>5}  {'favorites':>12}",
             "",
         ]
@@ -160,6 +180,29 @@ def record_coverage(coverage: AnalysisCoverage) -> None:
     trace = _active.get()
     if trace is not None:
         trace.coverage = coverage
+
+
+def record_favourite_law(pool: Iterable, selected: Iterable) -> None:
+    """Check the one rule selection is not allowed to break, when tracing is on.
+
+    Measured against the finished cut rather than asserted mid-funnel: a
+    favourite may legitimately be dropped by one stage and restored by
+    backfill, and only the end of the run knows what actually shipped.
+    """
+    trace = _active.get()
+    if trace is None:
+        return
+    from immich_memories.analysis.favourite_law import moments_that_lost_their_favourite
+
+    trace.lost_favourites = moments_that_lost_their_favourite(
+        [_asset_of(item) for item in pool],
+        {_asset_id(item) for item in selected},
+    )
+
+
+def _asset_of(item: object) -> object:
+    clip = getattr(item, "clip", None)
+    return getattr(clip, "asset", None) if clip is not None else item
 
 
 class tracing:  # noqa: N801 - reads as a context manager at the call site
