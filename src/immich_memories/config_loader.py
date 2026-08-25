@@ -343,6 +343,8 @@ def _apply_env_overrides(config: Config) -> None:
         config.ace_step.mode = ace_step_mode  # type: ignore[assignment]
     if ace_step_url := os.environ.get("ACE_STEP_API_URL"):
         config.ace_step.api_url = ace_step_url
+    if ace_step_key := os.environ.get("ACE_STEP_API_KEY"):
+        config.ace_step.api_key = ace_step_key
 
     # Auth shortcut: set both USERNAME + PASSWORD to auto-enable basic auth
     if (auth_user := os.environ.get("IMMICH_MEMORIES_AUTH_USERNAME")) and (
