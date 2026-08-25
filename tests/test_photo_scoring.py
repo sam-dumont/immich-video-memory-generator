@@ -233,7 +233,9 @@ class TestCacheFirstScoring:
         assert result[0][1] == 0.88
         mock_llm.assert_not_called()
 
-    def test_different_model_refreshes_and_replaces_cached_score(self, tmp_path: Path) -> None:
+    def test_a_version_bump_re_looks_once_and_leaves_the_old_answer_banked(
+        self, tmp_path: Path
+    ) -> None:
         from immich_memories.cache.asset_score_cache import AssetScoreCache
         from immich_memories.cache.database import VideoAnalysisCache
         from immich_memories.config_loader import Config
@@ -242,7 +244,8 @@ class TestCacheFirstScoring:
         db_path = tmp_path / "scores.db"
         VideoAnalysisCache(db_path)
         score_cache = AssetScoreCache(db_path)
-        score_cache.save_asset_score("photo-1", "photo", 0.5, 0.91, model_version="qwen-3.5")
+        old_version = _photo_look_version("qwen-3.5")
+        score_cache.save_asset_score("photo-1", "photo", 0.5, 0.91, model_version=old_version)
         app_config = Config(
             llm={"model": "qwen-3.6"},
             content_analysis={"enabled": True},
@@ -252,21 +255,25 @@ class TestCacheFirstScoring:
         with patch(
             "immich_memories.photos.scoring._llm_score_photo",
             return_value=PhotoLook(score=0.77, payload={"description": "a photograph"}),
-        ):
-            result, _payloads = _enhance_with_llm(
-                [(_photo("photo-1"), 0.5)],
-                PhotoConfig(),
-                tmp_path,
-                lambda *_args: None,
-                db_path=db_path,
-                app_config=app_config,
-            )
+        ) as mock_look:
+            for _ in range(2):
+                result, _payloads = _enhance_with_llm(
+                    [(_photo("photo-1"), 0.5)],
+                    PhotoConfig(),
+                    tmp_path,
+                    lambda *_args: None,
+                    db_path=db_path,
+                    app_config=app_config,
+                )
 
-        refreshed = score_cache.get_asset_score("photo-1")
+        new_version = _photo_look_version("qwen-3.6")
+        banked = score_cache.get_asset_scores_batch(["photo-1"], model_version=new_version)
+        stranded = score_cache.get_asset_scores_batch(["photo-1"], model_version=old_version)
+
+        assert mock_look.call_count == 1
         assert result[0][1] == 0.77
-        assert refreshed is not None
-        assert refreshed["combined_score"] == 0.77
-        assert refreshed["model_version"] == _photo_look_version("qwen-3.6")
+        assert banked["photo-1"]["combined_score"] == 0.77
+        assert stranded["photo-1"]["combined_score"] == 0.91
 
     def test_failed_semantic_score_falls_back_without_claiming_model(self, tmp_path: Path) -> None:
         from immich_memories.cache.asset_score_cache import AssetScoreCache

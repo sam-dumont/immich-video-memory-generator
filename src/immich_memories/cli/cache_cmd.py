@@ -33,7 +33,8 @@ def register_cache_commands(cli_group: click.Group) -> None:
         table.add_column("Metric", style="cyan")
         table.add_column("Value", style="green")
 
-        table.add_row("Total scored assets", str(s["total"]))
+        table.add_row("Scored assets", str(s["assets"]))
+        table.add_row("Banked looks (all versions)", str(s["total"]))
         for asset_type, count in s.get("by_type", {}).items():
             table.add_row(f"  {asset_type}", str(count))
         table.add_row("With LLM analysis", str(s["with_llm"]))
