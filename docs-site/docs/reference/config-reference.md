@@ -598,8 +598,9 @@ of the section is config-only.
 decided, so an Immich workflow (or a cron, or a phone shortcut) can start a memory. See
 [Trigger from Immich or anything else](../create/recipes/trigger-endpoint.md). Keep it out of
 `config.yaml` with `IMMICH_MEMORIES_SERVER__TRIGGER_TOKEN` or a `${VAR}` reference; either way it
-is redacted from `/health` and the config viewer. There is no global log filter, so treat anything
-you print yourself as your own problem.
+is redacted from `/health`, the config viewer, and the logs. Log redaction is armed at config
+load, so the handful of lines printed before the config exists — startup, a config file that
+fails to parse — cannot be covered by it.
 
 `host` is the one value "save" leaves out of `config.yaml` when you never set it. Writing the
 `0.0.0.0` default would make the next load treat it as your decision and quietly retire the

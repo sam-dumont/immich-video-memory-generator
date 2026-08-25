@@ -42,8 +42,13 @@ from immich_memories.config_models_render import (
 from immich_memories.config_models_server import WILDCARD_HOST, ServerConfig
 from immich_memories.config_models_soundtrack import ACEStepConfig, AudioConfig, MusicGenConfig
 from immich_memories.config_presets import PresetName, apply_preset
+from immich_memories.logging_config import install_secret_redaction
 from immich_memories.scheduling.models import SchedulerConfig
-from immich_memories.security import CREDENTIAL_FIELD_NAMES, write_secret_file
+from immich_memories.security import (
+    CREDENTIAL_FIELD_NAMES,
+    configured_secret_values,
+    write_secret_file,
+)
 
 # Tier 2 sections — grouped under `advanced:` in YAML, flat on Config at runtime.
 _TIER2_SECTIONS = frozenset(
@@ -268,6 +273,7 @@ class Config(BaseSettings):
         try:
             config = cls()
             config._credential_templates = _credential_templates(_yaml_source_data)
+            _arm_log_redaction(config)
             return config
         finally:
             _yaml_source_data = {}
@@ -319,6 +325,16 @@ class Config(BaseSettings):
 _config: Config | None = None
 
 
+def _arm_log_redaction(config: Config) -> None:
+    """Teach the log filter this config's secrets so they never reach a log line.
+
+    Called from every path that produces a live Config, because config load is
+    the first moment the values exist. Lines logged before it -- startup, a
+    config file that fails to parse -- cannot be redacted by construction.
+    """
+    install_secret_redaction(configured_secret_values(config))
+
+
 def _apply_env_overrides(config: Config) -> None:
     """Apply environment variable overrides to a Config instance."""
     if url := os.environ.get("IMMICH_URL"):
@@ -368,6 +384,8 @@ def get_config(reload: bool = False) -> Config:
     if _config is None or reload:
         _config = Config.from_yaml(Config.get_default_path())
         _apply_env_overrides(_config)
+        # Env vars can introduce credentials the YAML never held.
+        _arm_log_redaction(_config)
 
     return _config
 
@@ -376,6 +394,7 @@ def set_config(config: Config) -> None:
     """Set the global configuration instance."""
     global _config
     _config = config
+    _arm_log_redaction(config)
 
 
 def init_config_dir() -> Path:
