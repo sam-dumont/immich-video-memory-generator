@@ -53,7 +53,16 @@ match against. When one of them fits, the answer was already no.
 
 Each clip carries `when=` (its timestamp), `episode=` (which occasion it
 belongs to), `starred=yes` when the owner marked it a favourite, and
-`camera=front` when the selfie camera took it. A front-camera picture is
+`camera=front` when the selfie camera took it.
+
+It also carries what happened in it: its length, `activities=`, `people=` and
+`interest=`. Read those against the description rather than instead of it. A
+description can be well written about nothing — "a view onto a garden, an
+evergreen, a small shed" is a competent sentence about two and a half seconds
+in which nothing moves, nobody appears and nothing is done. Ask what the clip
+would show someone, not how well it is described. The reverse also holds: two
+and a half seconds of a sleeping newborn has no activities either, and is the
+whole point of the month. A front-camera picture is
 usually of the person holding the phone; some are worth showing and many are
 not, so let it inform the question rather than answer it.
 
@@ -105,7 +114,12 @@ when it is
 - NOT A MEMORY: it records a thing rather than a moment — an object or a
   product photographed on its own, a screen or a video game, a document or
   a receipt, an empty room, a photo taken to remember information rather
-  than an occasion. A person can be in one of these: a head-and-shoulders
+  than an occasion. One exception, and it is not a loosening of this class:
+  when the object IS the news, the photograph is the occasion: a positive
+  pregnancy test, a ring, the keys to a first home, an acceptance letter.
+  Somebody photographed it because their life had just changed, and it
+  announces something no other clip in the set can. Keep it. The same
+  object photographed in a month where nothing changed is still junk. A person can be in one of these: a head-and-shoulders
   portrait against a blank wall, facing the camera, no expression and no
   surroundings, is an identity photo taken for a form. Nothing happened when
   it was taken, and several of them in one set is a giveaway.
@@ -218,7 +232,20 @@ def _clip_line(
     where = _place_for_llm(getattr(clip.asset, "exif_info", None))
     if where:
         parts.append(f"place={where}")
-    parts.append(f"score={member.score:.2f}")
+    # Whether anything happened, which competent prose can hide. A 2.5s
+    # window survived five renders on a description that reads like a garden.
+    activities = getattr(clip, "llm_activities", None)
+    parts.extend(
+        (
+            f"score={member.score:.2f}",
+            f"{member.end_time - member.start_time:.1f}s",
+            f"activities={','.join(activities) if activities else 'none'}",
+            f"people={len(getattr(clip.asset, 'people', None) or [])}",
+        )
+    )
+    interest = getattr(clip, "llm_interestingness", None)
+    if isinstance(interest, (int, float)):
+        parts.append(f"interest={interest:g}")
     if unreadable and not getattr(clip, "llm_description", None):
         # Looked at, and could not be described. Distinct from silence: the
         # rule that protects a clip nobody has queued would otherwise protect
