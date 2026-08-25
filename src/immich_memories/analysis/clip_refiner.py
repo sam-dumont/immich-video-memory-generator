@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     )
     from immich_memories.api.models import VideoClipInfo
 
+from immich_memories.analysis.arithmetic_funnel import cap_ratios, narrow_by_arithmetic
 from immich_memories.analysis.clip_backfill import (
     _build_backfill_context,
     _choose_backfill_candidate,
@@ -34,11 +35,8 @@ from immich_memories.analysis.clip_distribution import (
     _EVENT_CLIPS_PER_PERIOD,
     _event_periods_of,
     _fill_gap_periods,
-    _partition_photos_per_day,
     _period_key,
-    enforce_photo_cap,
     moment_window_for,
-    photos_per_day_for,
     span_days_of,
     spread_across_moments,
 )
@@ -73,29 +71,6 @@ def _clips_per_moment(target_clips: int, moments: int) -> int:
         return 1
     share = math.ceil(target_clips / moments)
     return max(1, min(share, int(target_clips * _MAX_SHARE_FROM_ONE_MOMENT)))
-
-
-def _trim_non_favorites(
-    non_favorites: list[ClipWithSegment],
-    max_non_favorites: int,
-    coverage_ids: set[str],
-) -> list[ClipWithSegment]:
-    """Cut the ratio down to size without cutting what covers a period.
-
-    The scaler, the photo cap and the moment dedup all treat a coverage clip
-    as untouchable. This was the last drop site that did not: it sorted by
-    score and truncated, so the one clip standing for a whole month could be
-    cut for scoring low — which is exactly why it was added in the first
-    place, since the month had nothing better.
-    """
-    covering = [c for c in non_favorites if c.clip.asset.id in coverage_ids]
-    rest = sorted(
-        (c for c in non_favorites if c.clip.asset.id not in coverage_ids),
-        key=lambda c: c.score,
-        reverse=True,
-    )
-    room = max(0, max_non_favorites - len(covering))
-    return covering + rest[:room]
 
 
 class ClipRefiner:
@@ -633,50 +608,25 @@ class ClipRefiner:
         # Prefer two photos/day during initial selection, while retaining the
         # overflow as a fallback if the diverse pool cannot fill the target.
         all_analyzed = analyzed
-        # Measured before the per-day cap flattens every day into the same
-        # narrow range (#488).
-        event_periods = _event_periods_of(all_analyzed)
-        active_days = len(
-            {
-                c.clip.asset.file_created_at.date()
-                for c in all_analyzed
-                if c.clip.asset.file_created_at
-            }
-        )
         # A moment is relative to the story: five minutes inside a month, an
         # evening inside a year.
         moment_window = moment_window_for(
             span_days_of(all_analyzed), self.config.temporal_dedup_window_minutes
         )
-        analyzed, _photo_overflow = _partition_photos_per_day(
-            all_analyzed,
-            photos_per_day_for(self.config.target_clips, active_days),
-        )
-        trace.record("per-day photo cap", all_analyzed, analyzed)
-
-        target_with_buffer = int(self.config.target_clips * 1.2)
-
-        if self.config.overnight_bases:
-            selected = self.select_clips_by_trip_segments(analyzed, target_with_buffer)
-        else:
-            selected = self.select_clips_distributed_by_date(
-                analyzed, target_with_buffer, event_periods
-            )
-        trace.record("distribute by date", analyzed, selected)
-
         target_duration = self.config.duration_target
         max_overrun = (
             0.0 if self.config.target_duration_seconds is not None else target_duration * 0.10
         )
-        coverage_ids: set[str] = getattr(self, "_coverage_ids", set())
-        before_scale = selected
-        selected = self.scaler.scale_to_target_duration(
-            selected,
-            target_duration,
-            protected_ids=coverage_ids,
-            max_overrun_seconds=max_overrun,
+
+        narrowed = narrow_by_arithmetic(
+            self,
+            all_analyzed,
+            target_duration=target_duration,
+            max_overrun=max_overrun,
         )
-        trace.record(f"fit to {target_duration:.0f}s", before_scale, selected)
+        analyzed = narrowed.analyzed
+        selected = narrowed.selected
+        coverage_ids = narrowed.coverage_ids
 
         if moment_window > 0:
             before_dedup = selected
@@ -702,47 +652,13 @@ class ClipRefiner:
             trace.record("same-thing dedup", before_content, selected)
             self._remember_refusals(before_content, selected)
 
-        if self.config.max_non_favorite_ratio < 1.0 and self.config.prioritize_favorites:
-            favorites = [c for c in selected if c.clip.asset.is_favorite]
-            non_favorites = [c for c in selected if not c.clip.asset.is_favorite]
-
-            max_non_favorites = int(len(selected) * self.config.max_non_favorite_ratio)
-            min_non_favorites = max(0, self.config.target_clips - len(favorites))
-            max_non_favorites = max(max_non_favorites, min_non_favorites)
-
-            if len(non_favorites) > max_non_favorites:
-                non_favorites = _trim_non_favorites(non_favorites, max_non_favorites, coverage_ids)
-
-                logger.info(
-                    f"Final selection: limiting non-favorites to {len(non_favorites)} "
-                    f"({self.config.max_non_favorite_ratio:.0%} of {len(selected)})"
-                )
-
-                selected = favorites + non_favorites
-
-        # Enforce photo ratio cap (drop lowest-scored photos if over limit)
-        photo_cap_bypassed = False
-        if self.config.photo_max_ratio < 1.0:
-            from immich_memories.api.models import AssetType
-
-            # WHY: Scarcity is determined from the available supply, not an
-            # already photo-biased selection. Match unified_budget exactly:
-            # photos fill freely only when videos cannot fill half the budget.
-            available_video_duration = sum(
-                c.end_time - c.start_time for c in analyzed if c.clip.asset.type != AssetType.IMAGE
-            )
-            videos_scarce = available_video_duration < target_duration * 0.5
-            photo_cap_bypassed = videos_scarce
-            # Even when photos may ultimately fill freely, first normalize a
-            # photo-biased selection so backfill has room to use every valid
-            # video candidate. The backfill exemption then admits photos again.
-            before_cap = selected
-            selected = enforce_photo_cap(
-                selected,
-                self.config.photo_max_ratio,
-                protected_ids=coverage_ids,
-            )
-            trace.record("photo ratio cap", before_cap, selected)
+        selected, photo_cap_bypassed = cap_ratios(
+            self.config,
+            selected,
+            analyzed,
+            coverage_ids=coverage_ids,
+            target_duration=target_duration,
+        )
 
         before_backfill = selected
         selected = self._backfill_to_duration(

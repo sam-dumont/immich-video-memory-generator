@@ -124,6 +124,7 @@ src/immich_memories/
 │   ├── cache_projection.py     # Project compatible cached analysis back onto in-memory clips
 │   ├── clip_analyzer.py        # ClipAnalyzer: download + analyze + score
 │   ├── clip_refiner.py         # ClipRefiner: final selection + distribution
+│   ├── arithmetic_funnel.py    # The narrowing stages that decide a cut by counting (legacy path, #764)
 │   ├── clip_scaler.py          # ClipScaler: duration scaling + dedup
 │   ├── selection_quality.py    # SelectionQuality: verify + judge + cut
 │   ├── selection_review.py     # LLM holistic pass that MAKES the cut: which clips belong, which do not
