@@ -59,3 +59,21 @@ class RequestTrace:
 
     provenance: DecisionProvenance
     attached_sheet_hashes: tuple[str, ...]
+    planned_calls: int = 1
+    actual_calls: int = 0
+    cache_hit: bool = False
+    tile_count: int = 0
+    provider: str = ""
+    model: str = ""
+    attempts: tuple[RequestAttemptTrace, ...] = ()
+    original_provenance: DecisionProvenance | None = None
+
+
+@dataclass(frozen=True)
+class RequestAttemptTrace:
+    """One wire attempt, including failures and request dialect adjustments."""
+
+    attempt: int
+    outcome: str
+    status_code: int | None = None
+    adaptation: str | None = None

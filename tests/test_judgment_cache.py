@@ -7,6 +7,7 @@ of the same memory presents them again. In reasoning mode each of those costs
 measured ~15 minutes a memory spent almost entirely here.
 """
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -170,3 +171,44 @@ def test_without_a_cache_path_nothing_is_remembered(tmp_path) -> None:
         review_selection(_selection(), _config())
 
     assert len(calls) == 2
+
+
+def test_visual_identity_changes_for_each_piece_of_visual_evidence() -> None:
+    from immich_memories.cache.judgment_cache import VisualJudgmentIdentity
+
+    base = VisualJudgmentIdentity(
+        page_bytes=(b"first", b"second"),
+        ordered_input_ids=("a", "b"),
+        ordered_group_ids=("g",),
+        annotations=("known place",),
+        model="vision-a",
+        thinking=True,
+        image_detail="low",
+        pass_name="cull",  # noqa: S106 - test-only pass identity
+        prompt_version="p1",
+        schema_version="s1",
+        render_version="r1",
+        layout_versions=("l1", "l1"),
+        upstream_material=("insight-v1",),
+        request_limits=("pages=1",),
+        continuation_identity=(1, 1),
+    )
+
+    assert base.key() != replace(base, page_bytes=(b"changed", b"second")).key()
+    assert base.key() != replace(base, page_bytes=(b"second", b"first")).key()
+    assert base.key() != replace(base, annotations=("other place",)).key()
+    assert base.key() != replace(base, model="vision-b").key()
+    assert base.key() != replace(base, prompt_version="p2").key()
+    assert base.key() != replace(base, schema_version="s2").key()
+    assert base.key() != replace(base, render_version="r2").key()
+    assert base.key() != replace(base, layout_versions=("l2", "l1")).key()
+    assert base.key() != replace(base, upstream_material=("insight-v2",)).key()
+
+
+def test_visual_cache_keeps_original_provenance_when_reused(tmp_path) -> None:
+    from immich_memories.cache.judgment_cache import VisualJudgmentCache
+
+    cache = VisualJudgmentCache(tmp_path / "judgments.db")
+    cache.remember("visual-key", "raw answer", '{"request": "original"}')
+
+    assert cache.answer_for("visual-key") == ("raw answer", '{"request": "original"}')

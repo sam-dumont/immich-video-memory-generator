@@ -530,3 +530,24 @@ class TestBulkCallsDoNotThink:
             await query_llm("Describe this photo", _thinking_config(model="picky"))
 
         assert "chat_template_kwargs" not in mock_post.call_args_list[-1][1]["json"]
+
+
+@pytest.mark.asyncio
+async def test_transport_observer_records_each_null_content_wire_retry() -> None:
+    from immich_memories.analysis.llm_query import query_llm
+
+    attempts = []
+    responses = [_openai_response(content=None), _openai_response(content=None), _openai_response()]
+    # WHY: the LLM server is the external boundary; null-content retries happen at its response.
+    with patch("httpx.AsyncClient.post", side_effect=responses):
+        await query_llm(
+            "Describe this",
+            _thinking_config(thinking=False),
+            transport_observer=attempts.append,
+        )
+
+    assert [(attempt.attempt, attempt.outcome, attempt.status_code) for attempt in attempts] == [
+        (1, "null_content", 200),
+        (2, "null_content", 200),
+        (3, "response", 200),
+    ]

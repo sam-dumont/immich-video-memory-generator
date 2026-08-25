@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 import logging
 import time
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import httpx
@@ -22,10 +23,21 @@ from immich_memories.analysis import llm_metrics
 from immich_memories.config_models_llm import LLMConfig
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
     from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class LLMTransportAttempt:
+    """One actual HTTP POST outcome, kept separate from accepted-reply metrics."""
+
+    attempt: int
+    outcome: str
+    status_code: int | None
+    adaptation: str | None = None
+
 
 # A stuck server should fail while connecting, not hold the full generation
 # budget. httpx timeouts are per-I/O-operation rather than per-request totals,
@@ -145,6 +157,7 @@ async def query_llm(
     images: Sequence[bytes] = (),
     image_detail: str = "low",
     cache_path: Path | None = None,
+    transport_observer: Callable[[LLMTransportAttempt], None] | None = None,
 ) -> str:
     """Send a prompt, optionally with JPEG images, and return the response.
 
@@ -183,6 +196,7 @@ async def query_llm(
             thinking,
             images,
             image_detail,
+            transport_observer,
         )
     finally:
         # In `finally` so a failed call still shows the time it burned; a run
@@ -234,16 +248,34 @@ async def _dispatch(
     thinking: bool,
     images: Sequence[bytes],
     image_detail: str,
+    transport_observer: Callable[[LLMTransportAttempt], None] | None = None,
 ) -> str:
     if llm_config.provider == "ollama":
-        return await _query_ollama(prompt, llm_config, temperature, timeout_seconds, images)
+        return await _query_ollama(
+            prompt, llm_config, temperature, timeout_seconds, images, transport_observer
+        )
     think = thinking and llm_config.thinking and not images
     if llm_config.provider == "anthropic":
         return await _query_anthropic(
-            prompt, llm_config, temperature, max_tokens, timeout_seconds, think, images
+            prompt,
+            llm_config,
+            temperature,
+            max_tokens,
+            timeout_seconds,
+            think,
+            images,
+            transport_observer,
         )
     return await _query_openai(
-        prompt, llm_config, temperature, max_tokens, timeout_seconds, think, images, image_detail
+        prompt,
+        llm_config,
+        temperature,
+        max_tokens,
+        timeout_seconds,
+        think,
+        images,
+        image_detail,
+        transport_observer,
     )
 
 
@@ -253,6 +285,7 @@ async def _query_ollama(
     temperature: float,
     timeout: int,
     images: Sequence[bytes] = (),
+    transport_observer: Callable[[LLMTransportAttempt], None] | None = None,
 ) -> str:
     base_url = config.base_url.rstrip("/")
     payload: dict = {
@@ -273,6 +306,7 @@ async def _query_ollama(
             payload[name] = value
     async with httpx.AsyncClient(timeout=build_llm_timeout(float(timeout))) as client:
         resp = await client.post(f"{base_url}/api/generate", json=payload)
+        _observe(transport_observer, 1, "response", resp.status_code)
         resp.raise_for_status()
         body = resp.json()
         llm_metrics.record_reply(
@@ -310,6 +344,7 @@ async def _query_anthropic(
     timeout: int,
     thinking: bool = False,
     images: Sequence[bytes] = (),
+    transport_observer: Callable[[LLMTransportAttempt], None] | None = None,
 ) -> str:
     """Native /v1/messages dialect: Claude, or z.ai's Anthropic endpoint."""
     base_url = config.base_url.rstrip("/")
@@ -332,6 +367,7 @@ async def _query_anthropic(
         timeout=build_llm_timeout(float(timeout)), headers=headers
     ) as client:
         resp = await client.post(f"{base_url}/v1/messages", json=payload)
+        _observe(transport_observer, 1, "response", resp.status_code)
         resp.raise_for_status()
         body = resp.json()
         usage = body.get("usage") or {}
@@ -343,7 +379,14 @@ async def _query_anthropic(
             llm_metrics.record_truncation()
             logger.warning("Thinking hit the token budget; retrying without thinking")
             return await _query_anthropic(
-                prompt, config, temperature, max_tokens, timeout, thinking=False, images=images
+                prompt,
+                config,
+                temperature,
+                max_tokens,
+                timeout,
+                thinking=False,
+                images=images,
+                transport_observer=transport_observer,
             )
         return "".join(b.get("text", "") for b in body["content"] if b.get("type") == "text")
 
@@ -381,6 +424,7 @@ async def _query_openai(
     thinking: bool = False,
     images: Sequence[bytes] = (),
     image_detail: str = "low",
+    transport_observer: Callable[[LLMTransportAttempt], None] | None = None,
 ) -> str:
     base_url = config.base_url.rstrip("/")
     headers: dict[str, str] = {}
@@ -439,7 +483,20 @@ async def _query_openai(
                 )
             content = choice["message"]["content"]
             if content is not None:
+                _observe(transport_observer, attempt + 1, "response", resp.status_code)
                 return content
+            _observe(transport_observer, attempt + 1, "null_content", resp.status_code)
             logger.debug("LLM null content (attempt %d/3)", attempt + 1)
     msg = "LLM returned null content after 3 retries"
     raise ValueError(msg)
+
+
+def _observe(
+    observer: Callable[[LLMTransportAttempt], None] | None,
+    attempt: int,
+    outcome: str,
+    status_code: int | None,
+    adaptation: str | None = None,
+) -> None:
+    if observer is not None:
+        observer(LLMTransportAttempt(attempt, outcome, status_code, adaptation))

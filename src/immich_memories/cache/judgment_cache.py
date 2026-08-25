@@ -18,8 +18,10 @@ file can be deleted at any time and costs only the calls it saved.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import sqlite3
+from dataclasses import dataclass
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -35,6 +37,61 @@ CREATE TABLE IF NOT EXISTS judgments (
     answered_at TEXT NOT NULL DEFAULT (datetime('now'))
 )
 """
+
+_VISUAL_SCHEMA = """
+CREATE TABLE IF NOT EXISTS visual_judgments (
+    key TEXT PRIMARY KEY,
+    answer TEXT NOT NULL,
+    original_provenance TEXT NOT NULL,
+    answered_at TEXT NOT NULL DEFAULT (datetime('now'))
+)
+"""
+
+
+@dataclass(frozen=True)
+class VisualJudgmentIdentity:
+    """All evidence and request settings that could change a visual answer."""
+
+    page_bytes: tuple[bytes, ...]
+    ordered_input_ids: tuple[str, ...]
+    ordered_group_ids: tuple[str, ...]
+    annotations: tuple[str, ...]
+    model: str | None
+    thinking: bool
+    image_detail: str
+    pass_name: str
+    prompt_version: str
+    schema_version: str
+    render_version: str
+    layout_versions: tuple[str, ...]
+    upstream_material: tuple[str, ...]
+    request_limits: tuple[str, ...]
+    continuation_identity: tuple[int, int]
+    endpoint: str = ""
+
+    def key(self) -> str:
+        """Return the deterministic key without including credentials or paths."""
+        material = {
+            "version": "visual1",
+            "page_hashes": [hashlib.sha256(page).hexdigest() for page in self.page_bytes],
+            "ordered_input_ids": self.ordered_input_ids,
+            "ordered_group_ids": self.ordered_group_ids,
+            "annotations": self.annotations,
+            "model": self.model or "",
+            "thinking": self.thinking,
+            "image_detail": self.image_detail,
+            "pass_name": self.pass_name,
+            "prompt_version": self.prompt_version,
+            "schema_version": self.schema_version,
+            "render_version": self.render_version,
+            "layout_versions": self.layout_versions,
+            "upstream_material": self.upstream_material,
+            "request_limits": self.request_limits,
+            "continuation_identity": self.continuation_identity,
+            "endpoint": self.endpoint,
+        }
+        encoded = json.dumps(material, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
 
 
 def judgment_key(*, model: str | None, prompt: str, thinking: bool) -> str:
@@ -106,5 +163,57 @@ class JudgmentCache:
             conn.commit()
         except sqlite3.Error as exc:
             logger.debug("Judgment cache unwritable (%s): the answer is not kept", exc)
+        finally:
+            conn.close()
+
+
+class VisualJudgmentCache:
+    """A visual-answer cache independent of the legacy prompt-only table."""
+
+    def __init__(self, db_path: Path) -> None:
+        self.db_path = Path(db_path)
+
+    def _connect(self) -> sqlite3.Connection:
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(self.db_path, timeout=5.0)
+        conn.execute(_VISUAL_SCHEMA)
+        return conn
+
+    def answer_for(self, key: str) -> tuple[str, str] | None:
+        """Return a banked answer and its original provenance, if available."""
+        try:
+            conn = self._connect()
+        except (OSError, sqlite3.Error) as exc:
+            logger.debug("Visual judgment cache unreadable (%s): asking again", exc)
+            return None
+        try:
+            row = conn.execute(
+                "SELECT answer, original_provenance FROM visual_judgments WHERE key = ?", (key,)
+            ).fetchone()
+        except sqlite3.Error as exc:
+            logger.debug("Visual judgment cache unreadable (%s): asking again", exc)
+            return None
+        finally:
+            conn.close()
+        return (str(row[0]), str(row[1])) if row else None
+
+    def remember(self, key: str, answer: str, original_provenance: str) -> None:
+        """Bank a complete visual answer with the decision that first produced it."""
+        if not answer:
+            return
+        try:
+            conn = self._connect()
+        except (OSError, sqlite3.Error) as exc:
+            logger.debug("Visual judgment cache unwritable (%s): answer not kept", exc)
+            return
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO visual_judgments (key, answer, original_provenance) "
+                "VALUES (?, ?, ?)",
+                (key, answer, original_provenance),
+            )
+            conn.commit()
+        except sqlite3.Error as exc:
+            logger.debug("Visual judgment cache unwritable (%s): answer not kept", exc)
         finally:
             conn.close()

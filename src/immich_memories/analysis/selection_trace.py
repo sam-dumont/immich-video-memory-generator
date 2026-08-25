@@ -97,6 +97,11 @@ class Trace:
     warnings: list[str] = field(default_factory=list)
     # New editorial passes sit beside the legacy stage adapter until Task 14.
     editorial_passes: list[PassTrace] = field(default_factory=list)
+    requests: list[RequestTrace] = field(default_factory=list)
+
+    def record_request(self, request_trace: RequestTrace) -> None:
+        """Record one planned visual request and every wire outcome it caused."""
+        self.requests.append(request_trace)
 
     def record_editorial_pass(self, pass_trace: PassTrace) -> None:
         """Record one immutable editorial pass and its conservation result."""
@@ -311,6 +316,7 @@ class Trace:
             "editorial_passes": [
                 _editorial_pass_dict(pass_trace) for pass_trace in self.editorial_passes
             ],
+            "requests": [_request_dict(request) for request in self.requests],
             "clips": self.clips,
         }
 
@@ -377,6 +383,26 @@ def _request_dict(request: RequestTrace) -> dict:
     return {
         "provenance": _provenance_dict(request.provenance),
         "attached_sheet_hashes": list(request.attached_sheet_hashes),
+        "planned_calls": request.planned_calls,
+        "actual_calls": request.actual_calls,
+        "cache_hit": request.cache_hit,
+        "tile_count": request.tile_count,
+        "provider": request.provider,
+        "model": request.model,
+        "attempts": [
+            {
+                "attempt": attempt.attempt,
+                "outcome": attempt.outcome,
+                "status_code": attempt.status_code,
+                "adaptation": attempt.adaptation,
+            }
+            for attempt in request.attempts
+        ],
+        "original_provenance": (
+            None
+            if request.original_provenance is None
+            else _provenance_dict(request.original_provenance)
+        ),
     }
 
 
