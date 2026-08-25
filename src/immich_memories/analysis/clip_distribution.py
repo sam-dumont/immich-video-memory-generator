@@ -162,6 +162,47 @@ def _event_periods_of(clips: list[ClipWithSegment]) -> set[str]:
     return _event_periods(by_period)
 
 
+def spread_across_moments(
+    period_clips: list[ClipWithSegment],
+    take: int,
+    window_minutes: float,
+) -> list[ClipWithSegment]:
+    """A period's best `take` clips, drawn from as many of its moments as it has.
+
+    Best-by-score alone spends an event's slots on a single instant. A burst IS
+    one moment photographed over and over, so it holds the period's top scores
+    — and those picks then join coverage_ids, which the same-moment dedup may
+    not touch. Nothing downstream could undo it, and a month with no favourites
+    shipped three clips of the same second.
+
+    Moments are ranked by their best clip and taken one at a time, so a period
+    with fewer moments than slots still fills them, from its best frames. Same
+    window as the dedup stage, so what this calls distinct is what that would.
+    """
+    from immich_memories.analysis.clip_scaler import group_by_moment
+
+    ranked_by_score = sorted(period_clips, key=lambda c: c.score, reverse=True)
+    if take <= 1 or window_minutes <= 0:
+        return ranked_by_score[:take]
+
+    moments = [
+        sorted(moment, key=lambda c: c.score, reverse=True)
+        for moment in group_by_moment(period_clips, window_minutes)
+    ]
+    moments.sort(key=lambda moment: moment[0].score, reverse=True)
+
+    picked: list[ClipWithSegment] = []
+    depth = 0
+    while len(picked) < take and any(len(moment) > depth for moment in moments):
+        for moment in moments:
+            if len(picked) >= take:
+                break
+            if len(moment) > depth:
+                picked.append(moment[depth])
+        depth += 1
+    return picked
+
+
 def _fill_gap_periods(
     unselected_by_period: dict[str, list[ClipWithSegment]],
     covered: set[str],
