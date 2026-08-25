@@ -434,6 +434,13 @@ def _apply(entries: list, selected: list[ClipWithSegment]) -> ReviewVerdict:
     may lose to a starred sibling from the same occasion but never to anything
     else. The code this replaces skipped every starred clip silently, which
     made starred junk immortal and the prompt's instruction a dead letter.
+
+    "Never to anything else" is also a rule about ORDER. A battle between two
+    stars is only reached once the occasion has nothing unstarred left to give
+    up: while an unstarred clip of that occasion is still shipping, it is the
+    one whose place is in question, not the star's. So both counters are kept
+    — stars and plain clips still standing per occasion — and the entries are
+    judged against the cut as it stands after the drops already applied.
     """
     from collections import Counter
 
@@ -444,11 +451,18 @@ def _apply(entries: list, selected: list[ClipWithSegment]) -> ReviewVerdict:
         for episode, member in zip(episodes, selected, strict=True)
         if getattr(member.clip.asset, "is_favorite", False)
     )
+    plain_left = Counter(
+        episode
+        for episode, member in zip(episodes, selected, strict=True)
+        if not getattr(member.clip.asset, "is_favorite", False)
+    )
 
     drops: list[str] = []
     fates: list[str] = []
     for entry in entries:
-        dropped, fate = _fate_of(entry, selected, episodes, stars_left, drops, max_drops)
+        dropped, fate = _fate_of(
+            entry, selected, episodes, stars_left, plain_left, drops, max_drops
+        )
         fates.append(fate)
         if dropped is not None:
             drops.append(dropped)
@@ -460,6 +474,7 @@ def _fate_of(
     selected: list[ClipWithSegment],
     episodes: list[str],
     stars_left: dict[str, int],
+    plain_left: dict[str, int],
     drops: list[str],
     max_drops: int,
 ) -> tuple[str | None, str]:
@@ -485,5 +500,17 @@ def _fate_of(
                 None,
                 f"{asset_id}: kept — starred, and the only starred clip of its occasion ({reason})",
             )
+        if plain_left[episode]:
+            # The battle is the last resort, not the first. An occasion earns
+            # one place; spending it on an unstarred clip while dropping a
+            # starred one inverts the owner's own judgment, and the review
+            # shrinks the pool, so nothing downstream can put the star back.
+            return (
+                None,
+                f"{asset_id}: kept — starred, and its occasion still ships "
+                f"{plain_left[episode]} unstarred clip(s) ({reason})",
+            )
         stars_left[episode] -= 1
+    else:
+        plain_left[episode] -= 1
     return asset_id, f"{asset_id}: applied ({reason})"

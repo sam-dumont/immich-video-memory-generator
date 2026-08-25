@@ -64,6 +64,54 @@ class TestTheStarredBattleIsActuallyFought:
 
         assert verdict.drops == ["star-b"]
 
+    def test_a_star_holds_while_an_unstarred_sibling_still_ships(self):
+        """The battle is a last resort, not a first one.
+
+        An occasion earns one place. When the judge wants that place spent on
+        an unstarred clip of the same occasion, the owner's mark decides it —
+        so a star may only lose to a star once nothing unstarred from its
+        occasion is left in the cut.
+        """
+        selection = [
+            _clip("star-a", starred=True),
+            _clip("star-b", minutes=20, starred=True),
+            _clip("plain-same-occasion", minutes=40),
+            _clip("elsewhere", minutes=6000),
+        ]
+
+        verdict = _review(selection, _verdict({"index": 2, "reason": "same occasion as clip 1"}))
+
+        assert verdict.drops == []
+        assert any("star-b" in fate and "kept" in fate for fate in verdict.fates)
+
+    def test_neither_star_falls_while_the_occasion_has_an_unstarred_clip(self):
+        """The measured breach, pinned.
+
+        One afternoon in one place, photographed across three ten-minute
+        boxes: two of them starred, one not. Every mechanism read the boxes as
+        three moments, so nothing objected — and the review spent the
+        occasion's place on the unstarred clip. Episode scope is stricter than
+        the law needs (the law's unit is the moment), and that is deliberate:
+        while the occasion still has an unstarred clip to give up, no star of
+        it is the one in question.
+        """
+        selection = [
+            _clip("star-first-box", starred=True),
+            _clip("star-second-box", minutes=15, starred=True),
+            _clip("plain-third-box", minutes=57),
+            _clip("elsewhere", minutes=6000),
+        ]
+
+        verdict = _review(
+            selection,
+            _verdict(
+                {"index": 1, "reason": "one place for the occasion"},
+                {"index": 2, "reason": "one place for the occasion"},
+            ),
+        )
+
+        assert verdict.drops == []
+
     def test_a_lone_star_is_kept_and_the_veto_is_reported(self):
         """The owner's mark still wins its occasion — but not in silence.
 
