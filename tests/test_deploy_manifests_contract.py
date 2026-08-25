@@ -88,6 +88,22 @@ def test_kustomization_pins_a_published_image_tag() -> None:
     assert "commonLabels" not in kustomization
 
 
+def test_only_the_kustomization_pin_names_a_concrete_version() -> None:
+    """One `0.59.2` was copied into five prose sites and all six rotted together (#732).
+
+    The pin is the only number a reader should trust, so everything else states the rule
+    (`vX.Y.Z` ships as `X.Y.Z`) instead of quoting a release that goes stale within a day.
+    """
+    offenders = {}
+    for name, text in _deploy_texts().items():
+        if name.endswith("base/kustomization.yaml"):
+            text = re.sub(r"(?m)^\s*newTag:.*$", "", text)
+        if found := re.findall(r"\d+\.\d+\.\d+", text):
+            offenders[name] = found
+
+    assert not offenders, offenders
+
+
 def test_config_directory_is_a_writable_persistent_volume() -> None:
     """The app writes cache/, projects/, cache.db and .storage_secret at startup."""
     for label, pod in _pod_specs():

@@ -20,7 +20,9 @@ resources:
   #   cp ingress.yaml.example ingress.yaml
   # - ingress.yaml
 
-# Published image tags carry no `v` prefix (0.59.2, latest). Bump on upgrade.
+# Published image tags carry no `v` prefix: release `vX.Y.Z` ships as image tag `X.Y.Z`
+# (plus `latest`). Releases land faster than this pin does — check it against the releases
+# page before you apply, and bump it when you upgrade.
 images:
   - name: ghcr.io/sam-dumont/immich-video-memory-generator
-    newTag: "0.59.2"
+    newTag: "0.70.0"
