@@ -24,13 +24,18 @@ from immich_memories.analysis.clip_backfill import (
 from immich_memories.analysis.smart_pipeline import PipelineConfig
 
 
-def _clip(asset_id: str, minute: int, score: float, duration: float = 4.0):
-    when = datetime(2011, 8, 4, 12, minute, tzinfo=UTC)
+def _clip(asset_id: str, minute: int, score: float, duration: float = 4.0, *, day: int = 4):
+    when = datetime(2011, 8, day, 12, minute, tzinfo=UTC)
     return SimpleNamespace(
         clip=SimpleNamespace(
             asset=SimpleNamespace(
-                id=asset_id, is_favorite=False, file_created_at=when, type="VIDEO"
+                id=asset_id,
+                is_favorite=False,
+                file_created_at=when,
+                type="VIDEO",
+                people=[],
             ),
+            llm_category=None,
             duration_seconds=duration,
         ),
         start_time=0.0,
@@ -69,9 +74,14 @@ def test_a_refused_clip_stays_refused_even_when_spacing_is_relaxed() -> None:
 
 
 def test_an_unrefused_clip_elsewhere_is_still_admissible() -> None:
-    """Freed seconds go somewhere — just not backwards."""
+    """Freed seconds go somewhere — just not backwards.
+
+    Elsewhere means another occasion. Forty-five minutes later is the same
+    afternoon, and the strict pass now says so; a different day is the
+    "somewhere" this rule was always about.
+    """
     kept = _clip("kept", minute=0, score=0.80)
-    elsewhere = _clip("elsewhere", minute=45, score=0.55)
+    elsewhere = _clip("elsewhere", minute=45, score=0.55, day=6)
 
     assert _admissible(elsewhere, selected=[kept], refused={"near-dup"}, relax_spacing=False)
 
@@ -79,6 +89,6 @@ def test_an_unrefused_clip_elsewhere_is_still_admissible() -> None:
 def test_nothing_is_refused_by_default() -> None:
     """An empty refusal set must not change today's behaviour."""
     kept = _clip("kept", minute=0, score=0.80)
-    other = _clip("other", minute=45, score=0.55)
+    other = _clip("other", minute=45, score=0.55, day=6)
 
     assert _admissible(other, selected=[kept], refused=set(), relax_spacing=False)
