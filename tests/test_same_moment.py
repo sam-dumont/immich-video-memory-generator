@@ -15,6 +15,7 @@ import pytest
 
 from immich_memories.analysis.clip_scaler import ClipScaler, group_by_moment, is_same_moment
 from immich_memories.analysis.smart_pipeline import ClipWithSegment
+from immich_memories.api.models import ExifInfo
 from tests.conftest import make_clip
 
 
@@ -46,6 +47,21 @@ def test_shots_further_apart_than_the_window_are_separate_moments() -> None:
     )
 
     assert len(kept) == 2
+
+
+def test_parallel_places_are_not_temporal_duplicates() -> None:
+    """A nearby timestamp cannot erase a different place's moment."""
+    brussels = _at(15, 54, score=0.9)
+    spa = _at(15, 56, score=0.8)
+    brussels.clip.asset.exif_info = ExifInfo(latitude=50.8466, longitude=4.3528)
+    spa.clip.asset.exif_info = ExifInfo(latitude=50.4922, longitude=5.8645)
+
+    kept = ClipScaler().deduplicate_temporal_clusters([brussels, spa], time_window_minutes=5.0)
+
+    assert {clip.clip.asset.id for clip in kept} == {
+        brussels.clip.asset.id,
+        spa.clip.asset.id,
+    }
 
 
 def test_a_held_shutter_stays_one_moment_however_long_it_runs() -> None:

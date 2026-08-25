@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from immich_memories.analysis.clip_scaler import ClipScaler
+    from immich_memories.analysis.selection_structure import StructurePass
     from immich_memories.analysis.smart_pipeline import (
         ClipWithSegment,
         PipelineConfig,
@@ -20,6 +21,7 @@ if TYPE_CHECKING:
     )
     from immich_memories.api.models import VideoClipInfo
 
+from immich_memories.analysis.arithmetic_funnel import cap_ratios, narrow_by_arithmetic
 from immich_memories.analysis.clip_backfill import (
     _build_backfill_context,
     _choose_backfill_candidate,
@@ -34,11 +36,8 @@ from immich_memories.analysis.clip_distribution import (
     _EVENT_CLIPS_PER_PERIOD,
     _event_periods_of,
     _fill_gap_periods,
-    _partition_photos_per_day,
     _period_key,
-    enforce_photo_cap,
     moment_window_for,
-    photos_per_day_for,
     span_days_of,
     spread_across_moments,
 )
@@ -75,35 +74,62 @@ def _clips_per_moment(target_clips: int, moments: int) -> int:
     return max(1, min(share, int(target_clips * _MAX_SHARE_FROM_ONE_MOMENT)))
 
 
-def _trim_non_favorites(
-    non_favorites: list[ClipWithSegment],
-    max_non_favorites: int,
-    coverage_ids: set[str],
-) -> list[ClipWithSegment]:
-    """Cut the ratio down to size without cutting what covers a period.
+def _warn_if_an_absorber_will_have_to_act(
+    selected: list[ClipWithSegment], target_duration: float
+) -> None:
+    """Say so when generation will have to fix this cut rather than render it.
 
-    The scaler, the photo cap and the moment dedup all treat a coverage clip
-    as untouchable. This was the last drop site that did not: it sorted by
-    score and truncated, so the one clip standing for a whole month could be
-    cut for scoring low — which is exactly why it was added in the first
-    place, since the month had nothing better.
+    Two absorbers sit below selection and neither of them says anything. The
+    stride sampler in apply_final_content_budget keeps only every nth clip once
+    the cut holds more than the budget can give a minimum-length slot; the
+    proportional trim beside it shortens every clip when the content runs long.
+    Both turn a selection problem into a render nobody can explain, so the
+    trace names the condition while the cut is still readable.
+
+    Measured against the content budget selection was given, which is the
+    closest thing available here to the one generation will plan with — the
+    title cards come out of it later, so this errs on the permissive side.
     """
-    covering = [c for c in non_favorites if c.clip.asset.id in coverage_ids]
-    rest = sorted(
-        (c for c in non_favorites if c.clip.asset.id not in coverage_ids),
-        key=lambda c: c.score,
-        reverse=True,
-    )
-    room = max(0, max_non_favorites - len(covering))
-    return covering + rest[:room]
+    # One definition, imported where it is used: the sampler's floor lives with
+    # the sampler. A copy here would drift from the number actually applied.
+    from immich_memories.analysis import selection_trace as trace
+    from immich_memories.generate_clips import MIN_CLIP_DURATION
+
+    if target_duration <= 0 or not selected:
+        return
+    slots = max(1, int(target_duration // MIN_CLIP_DURATION))
+    if len(selected) > slots:
+        trace.warn(
+            f"the cut hands generation {len(selected)} clips against a "
+            f"{target_duration:.0f}s budget — the stride sampler will drop every "
+            "other one before it renders"
+        )
+    total = sum(item.end_time - item.start_time for item in selected)
+    # A hair of tolerance: backfill fills to exactly the ceiling on the
+    # arithmetic path, and float noise there is not an overrun.
+    if total - target_duration * 1.1 > 0.05:
+        trace.warn(
+            f"the cut hands generation {total:.0f}s of content against a "
+            f"{target_duration:.0f}s budget — every clip will be trimmed to fit"
+        )
 
 
 class ClipRefiner:
     """Selects, distributes, and refines the final clip selection."""
 
-    def __init__(self, config: PipelineConfig, scaler: ClipScaler):
+    def __init__(
+        self,
+        config: PipelineConfig,
+        scaler: ClipScaler,
+        *,
+        structure: StructurePass | None = None,
+    ):
         self.config = config
         self.scaler = scaler
+        # The editor that decides which moments the story needs (#764). Absent
+        # — no LLM configured — or unable to answer, the arithmetic funnel
+        # makes the cut instead, exactly as it always has.
+        self._structure = structure
         # What dedup has refused this run. Backfill may not spend freed seconds
         # on it, however far its relaxation ladder goes.
         self._refused_by_dedup: set[str] = set()
@@ -633,59 +659,59 @@ class ClipRefiner:
         # Prefer two photos/day during initial selection, while retaining the
         # overflow as a fallback if the diverse pool cannot fill the target.
         all_analyzed = analyzed
-        # Measured before the per-day cap flattens every day into the same
-        # narrow range (#488).
-        event_periods = _event_periods_of(all_analyzed)
-        active_days = len(
-            {
-                c.clip.asset.file_created_at.date()
-                for c in all_analyzed
-                if c.clip.asset.file_created_at
-            }
-        )
         # A moment is relative to the story: five minutes inside a month, an
         # evening inside a year.
         moment_window = moment_window_for(
             span_days_of(all_analyzed), self.config.temporal_dedup_window_minutes
         )
-        analyzed, _photo_overflow = _partition_photos_per_day(
-            all_analyzed,
-            photos_per_day_for(self.config.target_clips, active_days),
-        )
-        trace.record("per-day photo cap", all_analyzed, analyzed)
-
-        target_with_buffer = int(self.config.target_clips * 1.2)
-
-        if self.config.overnight_bases:
-            selected = self.select_clips_by_trip_segments(analyzed, target_with_buffer)
-        else:
-            selected = self.select_clips_distributed_by_date(
-                analyzed, target_with_buffer, event_periods
-            )
-        trace.record("distribute by date", analyzed, selected)
-
         target_duration = self.config.duration_target
         max_overrun = (
             0.0 if self.config.target_duration_seconds is not None else target_duration * 0.10
         )
-        coverage_ids: set[str] = getattr(self, "_coverage_ids", set())
-        before_scale = selected
-        selected = self.scaler.scale_to_target_duration(
-            selected,
-            target_duration,
-            protected_ids=coverage_ids,
-            max_overrun_seconds=max_overrun,
+
+        structure = (
+            self._structure.choose(
+                all_analyzed,
+                target_duration=target_duration,
+                moment_window=moment_window,
+                target_clips=self.config.target_clips,
+            )
+            if self._structure is not None
+            else None
         )
-        trace.record(f"fit to {target_duration:.0f}s", before_scale, selected)
+        if structure is not None:
+            # A condemned moment's members must never come back through the
+            # relaxation ladder, whichever stage settles the length.
+            self._refused_by_dedup |= set(structure.dropped)
+        # The story settles the length only when it said what to give up first.
+        # Otherwise the counting stages narrow what it kept — the same chain,
+        # over a smaller pool, so the dedup, the caps, backfill and the
+        # favourites law below all still run over the result.
+        by_arithmetic = structure is None or not structure.narrowed
+        if by_arithmetic:
+            narrowed = narrow_by_arithmetic(
+                self,
+                all_analyzed if structure is None else structure.kept,
+                target_duration=target_duration,
+                max_overrun=max_overrun,
+            )
+            analyzed = narrowed.analyzed
+            selected = narrowed.selected
+            coverage_ids = narrowed.coverage_ids
+        elif structure is not None:
+            # `elif` only to re-narrow the type for mypy: by_arithmetic is
+            # False exactly when structure is a cut that settled its own
+            # length, so there is no third branch to reach.
+            analyzed, selected, coverage_ids = all_analyzed, structure.kept, set()
 
         if moment_window > 0:
             before_dedup = selected
             # How many clips one moment may keep depends on how many the cut
             # needs: thinning to one left a long memory too short to fill, and
             # backfill then restored the same clips by relaxing constraints.
-            from immich_memories.analysis.clip_scaler import group_by_moment
+            from immich_memories.analysis.clip_scaler import group_by_moment_and_place
 
-            moments = len(group_by_moment(selected, moment_window))
+            moments = len(group_by_moment_and_place(selected, moment_window))
             selected = self.scaler.deduplicate_temporal_clusters(
                 selected,
                 time_window_minutes=moment_window,
@@ -702,47 +728,15 @@ class ClipRefiner:
             trace.record("same-thing dedup", before_content, selected)
             self._remember_refusals(before_content, selected)
 
-        if self.config.max_non_favorite_ratio < 1.0 and self.config.prioritize_favorites:
-            favorites = [c for c in selected if c.clip.asset.is_favorite]
-            non_favorites = [c for c in selected if not c.clip.asset.is_favorite]
-
-            max_non_favorites = int(len(selected) * self.config.max_non_favorite_ratio)
-            min_non_favorites = max(0, self.config.target_clips - len(favorites))
-            max_non_favorites = max(max_non_favorites, min_non_favorites)
-
-            if len(non_favorites) > max_non_favorites:
-                non_favorites = _trim_non_favorites(non_favorites, max_non_favorites, coverage_ids)
-
-                logger.info(
-                    f"Final selection: limiting non-favorites to {len(non_favorites)} "
-                    f"({self.config.max_non_favorite_ratio:.0%} of {len(selected)})"
-                )
-
-                selected = favorites + non_favorites
-
-        # Enforce photo ratio cap (drop lowest-scored photos if over limit)
         photo_cap_bypassed = False
-        if self.config.photo_max_ratio < 1.0:
-            from immich_memories.api.models import AssetType
-
-            # WHY: Scarcity is determined from the available supply, not an
-            # already photo-biased selection. Match unified_budget exactly:
-            # photos fill freely only when videos cannot fill half the budget.
-            available_video_duration = sum(
-                c.end_time - c.start_time for c in analyzed if c.clip.asset.type != AssetType.IMAGE
-            )
-            videos_scarce = available_video_duration < target_duration * 0.5
-            photo_cap_bypassed = videos_scarce
-            # Even when photos may ultimately fill freely, first normalize a
-            # photo-biased selection so backfill has room to use every valid
-            # video candidate. The backfill exemption then admits photos again.
-            before_cap = selected
-            selected = enforce_photo_cap(
+        if by_arithmetic:
+            selected, photo_cap_bypassed = cap_ratios(
+                self.config,
                 selected,
-                self.config.photo_max_ratio,
-                protected_ids=coverage_ids,
+                analyzed,
+                coverage_ids=coverage_ids,
+                target_duration=target_duration,
             )
-            trace.record("photo ratio cap", before_cap, selected)
 
         before_backfill = selected
         selected = self._backfill_to_duration(
@@ -758,10 +752,19 @@ class ClipRefiner:
         # neighbour from the same moment survives, each for its own good
         # reason. The rule they all answer to is applied to what they produced.
         before_law = selected
-        selected = let_the_favourite_win(selected, all_analyzed)
+        # Structure made an editorial rejection, not a mechanical drop for the
+        # law to repair. Its grouping can differ from the law's, so exclusion
+        # by id is what keeps a condemned moment condemned.
+        favourite_pool = (
+            [item for item in all_analyzed if item.clip.asset.id not in structure.dropped]
+            if structure is not None
+            else all_analyzed
+        )
+        selected = let_the_favourite_win(selected, favourite_pool)
         trace.record("the favourite wins its moment", before_law, selected)
 
         selected.sort(key=lambda c: c.clip.asset.file_created_at or datetime.min)
+        _warn_if_an_absorber_will_have_to_act(selected, target_duration)
 
         clip_segments: dict[str, tuple[float, float]] = {}
         selected_clips: list[VideoClipInfo] = []

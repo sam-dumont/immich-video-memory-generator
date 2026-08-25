@@ -618,7 +618,7 @@ class TestEnforcePhotoCap:
         assert len(result) == 5
 
     def test_all_photos_no_videos_returns_all(self):
-        from immich_memories.analysis.clip_refiner import enforce_photo_cap
+        from immich_memories.analysis.clip_distribution import enforce_photo_cap
 
         clips = [
             _make_clip_with_segment(f"p{i}", asset_type="IMAGE", score=float(i)) for i in range(5)
@@ -627,7 +627,7 @@ class TestEnforcePhotoCap:
         assert len(result) == 5
 
     def test_photos_trimmed_to_cap(self):
-        from immich_memories.analysis.clip_refiner import enforce_photo_cap
+        from immich_memories.analysis.clip_distribution import enforce_photo_cap
 
         videos = [_make_clip_with_segment(f"v{i}") for i in range(4)]
         photos = [
@@ -645,7 +645,7 @@ class TestEnforcePhotoCap:
         assert photo_ids == {"p5"}  # score=5.0
 
     def test_photos_within_cap_unchanged(self):
-        from immich_memories.analysis.clip_refiner import enforce_photo_cap
+        from immich_memories.analysis.clip_distribution import enforce_photo_cap
 
         videos = [_make_clip_with_segment(f"v{i}") for i in range(8)]
         photos = [_make_clip_with_segment(f"p{i}", asset_type="IMAGE") for i in range(2)]

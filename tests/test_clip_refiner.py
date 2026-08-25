@@ -289,7 +289,7 @@ class TestPhotoCapScarcity:
     """Photo cap should respect video scarcity — let photos fill when needed."""
 
     def test_cap_enforced_when_videos_plentiful(self):
-        from immich_memories.analysis.clip_refiner import enforce_photo_cap
+        from immich_memories.analysis.clip_distribution import enforce_photo_cap
 
         base = datetime(2021, 7, 22, tzinfo=UTC)
         clips = [
@@ -307,7 +307,7 @@ class TestPhotoCapScarcity:
 
     def test_no_videos_all_photos_kept(self):
         """All photos, no videos — nothing to cap against."""
-        from immich_memories.analysis.clip_refiner import enforce_photo_cap
+        from immich_memories.analysis.clip_distribution import enforce_photo_cap
 
         base = datetime(2021, 7, 22, tzinfo=UTC)
         clips = [
@@ -319,7 +319,7 @@ class TestPhotoCapScarcity:
 
     def test_cap_is_calculated_against_final_not_prefilter_total(self):
         """One video at a 50% cap can retain one photo, regardless of input size."""
-        from immich_memories.analysis.clip_refiner import enforce_photo_cap
+        from immich_memories.analysis.clip_distribution import enforce_photo_cap
 
         base = datetime(2021, 7, 22, tzinfo=UTC)
         clips = [_make_clip("video", base, asset_type=AssetType.VIDEO, score=0.5)] + [
@@ -672,7 +672,7 @@ class TestTheRatioTrimHonoursCoverage:
     """
 
     def test_a_coverage_clip_survives_the_non_favorite_trim(self) -> None:
-        from immich_memories.analysis.clip_refiner import _trim_non_favorites
+        from immich_memories.analysis.arithmetic_funnel import _trim_non_favorites
 
         covering = _make_clip("covers-a-month", datetime(2026, 3, 2, 12, tzinfo=UTC))
         covering.score = 0.1

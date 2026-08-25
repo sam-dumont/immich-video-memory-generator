@@ -6,101 +6,101 @@
       {
         "name": "ClipRefiner::_fill_empty_weeks",
         "complexity": 20,
-        "line_start": 266,
-        "line_end": 309,
+        "line_start": 292,
+        "line_end": 335,
         "line_complexities": [
           {
-            "line": 276,
+            "line": 302,
             "complexity": 0
-          },
-          {
-            "line": 277,
-            "complexity": 1
-          },
-          {
-            "line": 278,
-            "complexity": 0
-          },
-          {
-            "line": 281,
-            "complexity": 0
-          },
-          {
-            "line": 282,
-            "complexity": 1
-          },
-          {
-            "line": 283,
-            "complexity": 0
-          },
-          {
-            "line": 286,
-            "complexity": 0
-          },
-          {
-            "line": 287,
-            "complexity": 0
-          },
-          {
-            "line": 289,
-            "complexity": 0
-          },
-          {
-            "line": 290,
-            "complexity": 0
-          },
-          {
-            "line": 291,
-            "complexity": 1
-          },
-          {
-            "line": 292,
-            "complexity": 0
-          },
-          {
-            "line": 293,
-            "complexity": 2
-          },
-          {
-            "line": 295,
-            "complexity": 0
-          },
-          {
-            "line": 297,
-            "complexity": 0
-          },
-          {
-            "line": 298,
-            "complexity": 1
-          },
-          {
-            "line": 299,
-            "complexity": 2
-          },
-          {
-            "line": 300,
-            "complexity": 0
-          },
-          {
-            "line": 301,
-            "complexity": 3
           },
           {
             "line": 303,
-            "complexity": 4
+            "complexity": 1
           },
           {
             "line": 304,
-            "complexity": 5
+            "complexity": 0
+          },
+          {
+            "line": 307,
+            "complexity": 0
+          },
+          {
+            "line": 308,
+            "complexity": 1
           },
           {
             "line": 309,
+            "complexity": 0
+          },
+          {
+            "line": 312,
+            "complexity": 0
+          },
+          {
+            "line": 313,
+            "complexity": 0
+          },
+          {
+            "line": 315,
+            "complexity": 0
+          },
+          {
+            "line": 316,
+            "complexity": 0
+          },
+          {
+            "line": 317,
+            "complexity": 1
+          },
+          {
+            "line": 318,
+            "complexity": 0
+          },
+          {
+            "line": 319,
+            "complexity": 2
+          },
+          {
+            "line": 321,
+            "complexity": 0
+          },
+          {
+            "line": 323,
+            "complexity": 0
+          },
+          {
+            "line": 324,
+            "complexity": 1
+          },
+          {
+            "line": 325,
+            "complexity": 2
+          },
+          {
+            "line": 326,
+            "complexity": 0
+          },
+          {
+            "line": 327,
+            "complexity": 3
+          },
+          {
+            "line": 329,
+            "complexity": 4
+          },
+          {
+            "line": 330,
+            "complexity": 5
+          },
+          {
+            "line": 335,
             "complexity": 0
           }
         ]
       }
     ],
-    "complexity": 98
+    "complexity": 104
   },
   {
     "path": "src/immich_memories/automation/calendar_detectors.py",
