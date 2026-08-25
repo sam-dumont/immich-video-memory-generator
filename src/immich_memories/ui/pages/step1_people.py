@@ -101,10 +101,12 @@ def render_person_spotlight_params(state: AppState, apply: ApplyPreset) -> None:
             if selected:
                 state.memory_preset_params["person_id"] = selected.id
                 state.memory_preset_params["person_names"] = [e.value]
-                # Auto-enable birthday mode if person has a birth_date
-                if selected.birth_date:
-                    state.memory_preset_params["use_birthday"] = True
-                    state.memory_preset_params["birthday"] = selected.birth_date
+                # Immich is the source of truth for the anchor, so the mode
+                # follows the birth date -- and drops with it, rather than
+                # leaving the previous person's date behind to silently
+                # decide the window.
+                state.memory_preset_params["birthday"] = selected.birth_date
+                state.memory_preset_params["use_birthday"] = bool(selected.birth_date)
             apply(MemoryType.PERSON_SPOTLIGHT)
 
         ui.select(
@@ -118,11 +120,16 @@ def render_person_spotlight_params(state: AppState, apply: ApplyPreset) -> None:
         state.memory_preset_params["use_birthday"] = e.value
         apply(MemoryType.PERSON_SPOTLIGHT)
 
+    anchored = state.memory_preset_params.get("birthday") is not None
     ui.checkbox(
         "Birthday to birthday",
-        value=state.memory_preset_params.get("use_birthday", False),
+        value=bool(state.memory_preset_params.get("use_birthday")) and anchored,
         on_change=on_birthday_toggle,
-    ).classes("mt-2").tooltip("Year runs from birthday to birthday instead of January to December")
+    ).classes("mt-2").props("" if anchored else "disable").tooltip(
+        "The year runs up to the birthday, and earlier birthdays come with it"
+        if anchored
+        else "This person has no birth date in Immich — add one under People to unlock this"
+    )
 
     state.memory_preset_params.setdefault("year", saved_year)
     apply(MemoryType.PERSON_SPOTLIGHT)

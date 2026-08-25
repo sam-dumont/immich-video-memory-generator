@@ -43,6 +43,7 @@ from immich_memories.cli.generate_resolution import (
     resolve_special_day,
 )
 from immich_memories.filename_builder import build_memory_output_path, normalize_output_path
+from immich_memories.memory_types.date_builders import BIRTHDAY_HISTORY_FROM, birthday_anchor
 from immich_memories.processing.encoding_plan import resolve_output_selection
 from immich_memories.timeperiod import DateRange, parse_date
 
@@ -215,12 +216,22 @@ def register_generate_commands(main: click.Group) -> None:
             print_error("--near-date requires --memory-type trip")
             sys.exit(1)
 
-        if years_back is not None and memory_type not in (
-            "on_this_day",
-            "holiday",
-            "then_and_now",
+        # A birthday memory reaches back over earlier birthdays, so --years-back
+        # means something to it too -- how many of them to look for.
+        if (
+            years_back is not None
+            and not birthday
+            and memory_type
+            not in (
+                "on_this_day",
+                "holiday",
+                "then_and_now",
+            )
         ):
-            print_error("--years-back requires --memory-type on_this_day, holiday or then_and_now")
+            print_error(
+                "--years-back requires --birthday, or --memory-type on_this_day, "
+                "holiday or then_and_now"
+            )
             sys.exit(1)
 
         # The catalogue, not the command line, knows what the day was called.
@@ -293,7 +304,12 @@ def register_generate_commands(main: click.Group) -> None:
         # Resolve duration: CLI --duration > memory type default > date-range scaling
         # Album mode defers to the pipeline, which sizes it from the album's media.
         if duration is None and not from_album:
-            duration = default_duration_for_type(memory_type, date_range, special_day)
+            duration = default_duration_for_type(
+                memory_type,
+                date_range,
+                special_day,
+                primary_window=next(iter(date_ranges), None),
+            )
             if duration is None:
                 duration = duration_from_date_range(date_range)
 
@@ -450,52 +466,62 @@ def register_generate_commands(main: click.Group) -> None:
                             progress.update(task, completed=True)
                             print_success(f"Found person: {found_person.name}")
 
-                    # When --birthday flag used without value, detect from Immich
+                    # Immich holds the birth date; the bare --birthday flag is
+                    # how a run says "use it". Curating one there is what makes
+                    # every birthday memory land on the right week.
                     if birthday == "auto" and person_names:
                         found = client.get_person_by_name(person_names[0])
-                        if found and found.birth_date:
-                            birthday = found.birth_date.strftime(BIRTHDAY_FLAG_FORMAT)
-                            print_success(f"Using birthday: {birthday}")
-                        else:
-                            print_error(f"No birthday found in Immich for {person_names[0]}")
-                            sys.exit(1)
-
-                        # Re-resolve date range with detected birthday
-                        if birthday and birthday != "auto":
-                            date_result = resolve_date_range(
-                                year,
-                                start,
-                                end,
-                                period,
-                                birthday,
-                                memory_type=memory_type,
-                                season=season,
-                                month=month,
-                                hemisphere=hemisphere,
-                                years_back=years_back,
-                                on_this_day_target=exact_on_this_day,
+                        try:
+                            anchor = birthday_anchor(
+                                found.birth_date if found else None,
+                                None,
+                                person_name=person_names[0],
                             )
-                            if isinstance(date_result, list):
-                                date_ranges = date_result
-                                date_range = DateRange(
-                                    start=date_ranges[-1].start, end=date_ranges[0].end
-                                )
-                            else:
-                                date_range = date_result
-                                date_ranges = [date_result]
-                            print_info(f"Memory window: {date_range.description}")
-                            # The file was named before the birthday was known,
-                            # off the stand-in calendar year used until now.
-                            if not output:
-                                output_path = build_memory_output_path(
-                                    output_dir=config.output.output_path,
-                                    person_names=person_names,
-                                    memory_type=memory_type,
-                                    date_range=date_range,
-                                    container=output_selection.container,
-                                )
+                        except ValueError as exc:
+                            print_error(str(exc))
+                            sys.exit(1)
+                        birthday = anchor.strftime(BIRTHDAY_FLAG_FORMAT)
+                        print_success(f"Using birthday: {birthday}")
 
+                        # The first resolution ran before the birthday was known
+                        # and yielded a stand-in calendar year, so both the
+                        # window and the file named after it are redone here.
+                        date_result = resolve_date_range(
+                            year,
+                            start,
+                            end,
+                            period,
+                            birthday,
+                            memory_type=memory_type,
+                            season=season,
+                            month=month,
+                            hemisphere=hemisphere,
+                            years_back=years_back,
+                            on_this_day_target=exact_on_this_day,
+                        )
+                        if isinstance(date_result, list):
+                            date_ranges = date_result
+                            date_range = DateRange(
+                                start=date_ranges[-1].start, end=date_ranges[0].end
+                            )
+                        else:
+                            date_range = date_result
+                            date_ranges = [date_result]
+                        print_info(f"Memory window: {date_range.description}")
+                        if not output:
+                            output_path = build_memory_output_path(
+                                output_dir=config.output.output_path,
+                                person_names=person_names,
+                                memory_type=memory_type,
+                                date_range=date_range,
+                                container=output_selection.container,
+                            )
+
+                    # A birthday memory's flashback windows are single days years
+                    # apart, so most of them are empty and #661's per-window
+                    # warning would bury the one that matters — the rolling year.
                     assets = fetch_videos(
+                        history_from=BIRTHDAY_HISTORY_FROM if birthday else None,
                         client=client,
                         progress=progress,
                         date_ranges=date_ranges,

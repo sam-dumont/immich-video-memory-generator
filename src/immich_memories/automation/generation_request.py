@@ -81,7 +81,10 @@ class GenerationRequest:
                 argv.extend(["--year", str(self.start.year)])
                 argv.extend(f"--person={name}" for name in self.people)
             case CandidateCategory.BIRTHDAY:
-                argv.extend(["--year", str(self.start.year), "--birthday"])
+                # WHY end and not start: --year names the birthday being
+                # celebrated, and a birthday memory is the year *leading up to*
+                # it -- so the year the window ends in is the one to ask for.
+                argv.extend(["--year", str(self.end.year), "--birthday"])
                 argv.extend(f"--person={name}" for name in self.people)
             case CandidateCategory.MULTI_PERSON:
                 argv.extend(["--year", str(self.start.year)])

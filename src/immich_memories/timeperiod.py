@@ -12,7 +12,7 @@ from __future__ import annotations
 import contextlib
 import re
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from enum import StrEnum
 from typing import NamedTuple
 
@@ -166,46 +166,46 @@ def calendar_year(year: int) -> DateRange:
     )
 
 
+def same_day_in_year(day: date, year: int) -> date:
+    """The day an annual date falls on in a given year.
+
+    29 February lands on the 28th in a year that has no 29th, which is the
+    reading a birthday takes everywhere else in the world.
+    """
+    try:
+        return date(year, day.month, day.day)
+    except ValueError:
+        return date(year, 2, 28)
+
+
 def birthday_year(
     birthday: date | datetime,
     year: int | None = None,
 ) -> DateRange:
-    """Get date range for a year starting from a birthday.
+    """The year of a person's life that ends on one of their birthdays.
 
-    Args:
-        birthday: The birthday date (only month/day used)
-        year: The starting year. If None, uses current year.
+    ``year`` names the birthday being celebrated, not a calendar year to run
+    forward from: the window starts the day *after* the previous birthday and
+    ends on this one. A birthday memory is about the year leading up to the
+    party, and the party itself belongs in it.
 
-    Returns:
-        DateRange from birthday to day before next birthday
+    Running forward instead put the celebrated birthday outside its own memory
+    and last year's inside it, and made the twelve months you got depend on
+    which year number the request happened to name rather than on the event
+    (#719).
 
     Example:
-        birthday_year(date(1990, 2, 7), 2024)
-        -> Feb 7, 2024 to Feb 6, 2025
+        birthday_year(date(1990, 2, 7), 2026)
+        -> Feb 8, 2025 to Feb 7, 2026
     """
     if year is None:
         year = datetime.now().year
 
-    # Extract month and day from birthday
-    month = birthday.month
-    day = birthday.day
+    celebrated = same_day_in_year(birthday, year)
+    previous = same_day_in_year(birthday, year - 1)
 
-    # Handle Feb 29 birthdays on non-leap years
-    import calendar
-
-    if month == 2 and day == 29 and not calendar.isleap(year):
-        day = 28
-
-    start = datetime(year, month, day, 0, 0, 0)
-
-    # End is one day before next birthday
-    next_year = year + 1
-    next_day = birthday.day
-    if month == 2 and birthday.day == 29 and not calendar.isleap(next_year):
-        next_day = 28
-
-    end = datetime(next_year, month, next_day, 23, 59, 59) - timedelta(days=1)
-
+    start = datetime.combine(previous + timedelta(days=1), time.min)
+    end = datetime.combine(celebrated, time(23, 59, 59))
     return DateRange(start=start, end=end)
 
 

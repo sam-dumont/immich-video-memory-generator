@@ -260,7 +260,7 @@ immich-memories generate [OPTIONS]
 | `--start` | text | - | Start date (YYYY-MM-DD or DD/MM/YYYY) |
 | `--end` | text | - | End date (use with --start) |
 | `--period` | text | - | Period from start date (e.g., 6m, 1y, 2w) |
-| `--birthday`, `-b` | text | - | Use birthday-based year (auto-detects from Immich, or specify MM-DD, e.g. 03-15) |
+| `--birthday`, `-b` | text | - | Run the year up to a birthday, plus earlier birthdays (reads Immich's birth date, or override with MM-DD, e.g. 03-15) |
 | `--from-album` | text | - | Generate from an Immich album (name or ID) instead of a date range |
 | `--person`, `-p` | text | - | Person name (repeatable) |
 | `--memory-type` | choice: `year_in_review` \| `season` \| `person_spotlight` \| `multi_person` \| `monthly_highlights` \| `on_this_day` \| `trip` \| `holiday` \| `then_and_now` \| `special_day` | - | Memory type preset |
@@ -299,7 +299,7 @@ immich-memories generate [OPTIONS]
 | `--analysis-depth` | choice: `auto` \| `fast` \| `thorough` | - | Analysis depth: auto (full analysis for manageable pools), fast (favorites first), or thorough (every eligible clip) |
 | `--trip-index` | integer | - | Select a specific trip by index (use with --memory-type trip) |
 | `--all-trips` | boolean | false | Generate a video for every detected trip (use with --memory-type trip) |
-| `--years-back` | integer | - | Years to look back for on_this_day, holiday or then_and_now |
+| `--years-back` | integer | - | Years to look back for --birthday, on_this_day, holiday or then_and_now |
 | `--near-date` | text | - | Select trip closest to this date (YYYY-MM-DD, use with --memory-type trip) |
 | `--day` | datetime | - | The catalogued day to generate (YYYY-MM-DD, use with --memory-type special_day). Its title comes from the catalogue, not from here: run `immich-memories days-due` to see which days are in it |
 | `--quiet` | boolean | false | Suppress interactive progress, emit log lines |

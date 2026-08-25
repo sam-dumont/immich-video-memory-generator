@@ -67,12 +67,23 @@ def _empty_window_warning(label: str, anchor: str | None) -> str:
     return f"no videos found for {label} — that window contributes nothing"
 
 
-def _report_per_window(assets: list, date_ranges: list[DateRange], person_ids: list[str]) -> None:
+def _report_per_window(
+    assets: list,
+    date_ranges: list[DateRange],
+    person_ids: list[str],
+    history_from: int | None = None,
+) -> None:
     """Say what each window contributed, and shout when one contributed nothing.
 
     A combined total hides the failure that matters on a multi-window memory: a
     then-and-now whose older half is empty still renders, as a memory of the
     recent half alone, and without this it looks like a clean run.
+
+    ``history_from`` marks where a memory's expected-sparse tail begins. A
+    birthday memory looks at the same single day in several earlier years, and
+    most of those days hold nothing — warning once per empty year would bury
+    the one warning that means something, so the tail is counted instead of
+    listed. Everything before the mark keeps its own warning.
     """
     if len(date_ranges) < 2:
         return
@@ -82,10 +93,29 @@ def _report_per_window(assets: list, date_ranges: list[DateRange], person_ids: l
     counts = count_by_era([a.file_created_at for a in assets], date_ranges)
     labels = [_window_label(r) for r in date_ranges]
     anchor = _anchor_name(assets, person_ids)
-    print_info(" · ".join(f"{label}: {n}" for label, n in zip(labels, counts, strict=True)))
-    for label, n in zip(labels, counts, strict=True):
+
+    reported = len(counts) if history_from is None else history_from
+    print_info(
+        " · ".join(
+            f"{label}: {n}" for label, n in zip(labels[:reported], counts[:reported], strict=True)
+        )
+    )
+    for label, n in zip(labels[:reported], counts[:reported], strict=True):
         if n == 0:
             print_warning(_empty_window_warning(label, anchor))
+
+    history = counts[reported:]
+    if history:
+        _report_history(history, anchor)
+
+
+def _report_history(counts: list[int], anchor: str | None) -> None:
+    """One line for the whole tail, and a warning only if none of it landed."""
+    held = sum(1 for n in counts if n)
+    print_info(f"history: {held} of {len(counts)} earlier windows hold material")
+    if held == 0:
+        who = f"{anchor} appears in none" if anchor else "nothing was found in any"
+        print_warning(f"{who} of the {len(counts)} earlier windows — the memory has no history")
 
 
 def fetch_photos(
@@ -139,6 +169,7 @@ def fetch_videos(
     progress: ProgressDisplay,
     date_ranges: list[DateRange],
     person_ids: list[str],
+    history_from: int | None = None,
 ) -> list:
     """Fetch the video assets for the memory's windows.
 
@@ -146,6 +177,9 @@ def fetch_videos(
     photographs, because that is what they are; the video half is dropped from
     this pool once the photographs are known
     (live_photo_pipeline.drop_live_photo_components).
+
+    ``history_from`` names where the memory's expected-sparse windows start, so
+    the per-window report can summarise them rather than warn about each.
     """
     task = progress.add_task("Fetching videos...", total=None)
 
@@ -163,6 +197,6 @@ def fetch_videos(
 
     progress.update(task, completed=True)
     print_success(f"Found {len(assets)} videos")
-    _report_per_window(assets, date_ranges, person_ids)
+    _report_per_window(assets, date_ranges, person_ids, history_from)
 
     return assets

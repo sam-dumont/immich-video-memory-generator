@@ -36,13 +36,15 @@ Narrow to a single month with `--month`:
 immich-memories generate --memory-type person_spotlight --person "Alice" --year 2025 --month 7
 ```
 
-Use birthday-based year (auto-detects from Immich):
+Anchor it on the person's birthday instead, reading the birth date from Immich:
 
 ```bash
 immich-memories generate --memory-type person_spotlight --person "Alice" --year 2025 --birthday
 ```
 
-Default duration: the CLI scales it with the date range — about 60 seconds for a single month, 10 minutes for a full year. (The web UI's Person Spotlight card defaults to 2 minutes regardless of range; see [the note below](#ui-and-cli-defaults-disagree).) You can also override the date range entirely with `--start/--end`.
+That is a different memory: the year **ending** on the 2025 birthday, plus each of the five previous birthdays as a ±1 day cutaway. It asks for 10 minutes on both surfaces. See [Birthday Compilations](../recipes/birthday-compilations.md).
+
+Default duration for the calendar-year version: the CLI scales it with the date range — about 60 seconds for a single month, 10 minutes for a full year. (The web UI's Person Spotlight card defaults to 2 minutes regardless of range; see [the note below](#ui-and-cli-defaults-disagree).) You can also override the date range entirely with `--start/--end`.
 
 **Best for:** parent-child compilations, partner videos, or any relationship where you want to see just that person's moments. Needs Immich face recognition to be set up and the person tagged.
 

@@ -9,7 +9,6 @@ import click
 
 from immich_memories.timeperiod import (
     DateRange,
-    birthday_year,
     calendar_year,
     custom_range,
     from_period,
@@ -50,6 +49,26 @@ def _parse_birthday(value: str) -> date:
         f"Cannot parse birthday: '{value}'. Expected MM-DD (e.g. 03-15), "
         "DD/MM, or a full date such as YYYY-MM-DD."
     )
+
+
+def _birthday_windows(
+    birthday: str,
+    year: int | None,
+    years_back: int | None,
+) -> list[DateRange]:
+    """The CLI's --birthday, answered by the builder the wizard's card uses.
+
+    One builder, so a birthday memory is the same memory whichever way it was
+    asked for (#659, #724). The parse stays here because only the CLI has a
+    string to read: the wizard picks a date.
+    """
+    from immich_memories.memory_types.date_builders import build_birthday_windows
+
+    try:
+        anchor = _parse_birthday(birthday)
+    except ValueError as e:
+        raise click.UsageError(str(e))
+    return build_birthday_windows(anchor, year, years_back)
 
 
 def _resolve_manual_dates(
@@ -133,6 +152,13 @@ def resolve_date_range(
     special day's window comes out of the catalogue, not off the command line.
     """
     if memory_type:
+        # Ahead of the other types because a birthday memory is the one that
+        # does not need --year: with none given the builder celebrates the most
+        # recent birthday, which is what "make Emma's birthday video" means.
+        if memory_type == "person_spotlight" and birthday:
+            return _resolve_manual_dates(start, end, period) or _birthday_windows(
+                birthday, year, years_back
+            )
         default_range = _resolve_memory_type_dates(
             memory_type,
             year,
@@ -147,11 +173,6 @@ def resolve_date_range(
         manual_range = _resolve_manual_dates(start, end, period)
         if manual_range:
             return manual_range
-        if memory_type == "person_spotlight" and birthday:
-            try:
-                return birthday_year(_parse_birthday(birthday), year)
-            except ValueError as e:
-                raise click.UsageError(str(e))
         return default_range
 
     manual = _resolve_manual_dates(start, end, period)
@@ -160,10 +181,7 @@ def resolve_date_range(
 
     if year:
         if birthday:
-            try:
-                return birthday_year(_parse_birthday(birthday), year)
-            except ValueError as e:
-                raise click.UsageError(str(e))
+            return _birthday_windows(birthday, year, years_back)
         return calendar_year(year)
 
     raise click.UsageError(
@@ -309,6 +327,7 @@ def default_duration_for_type(
     memory_type: str | None,
     date_range: DateRange | None,
     preset_params: dict | None = None,
+    primary_window: DateRange | None = None,
 ) -> float | None:
     """Get default duration in seconds for a memory type.
 
@@ -321,6 +340,11 @@ def default_duration_for_type(
     ``preset_params`` is forwarded to the preset factory for the types whose
     length depends on more than the dates: a special day needs the day it
     happened on and how long it stayed awake.
+
+    ``primary_window`` is the window a memory is actually made of, when that is
+    narrower than the span it displays. A birthday memory shows decades and is
+    a single year; measured off the display span the curve returns the 30-second
+    floor (#511, #719).
     """
     if not memory_type:
         return None
@@ -337,7 +361,7 @@ def default_duration_for_type(
     if memory_type in ("person_spotlight", "multi_person"):
         if date_range is None:
             return 120.0
-        return duration_from_date_range(date_range)
+        return duration_from_date_range(primary_window or date_range)
 
     # Everything else: scale by date range
     if date_range is not None:

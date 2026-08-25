@@ -12,7 +12,15 @@ from immich_memories.cli._date_resolution import (
     resolve_date_range,
 )
 from immich_memories.cli._trip_display import _closest_trip_to_date, select_trips
+from immich_memories.memory_types.date_builders import BIRTHDAY_HISTORY_FROM
 from immich_memories.timeperiod import DateRange
+
+
+def _rolling_year(resolved: DateRange | list[DateRange]) -> DateRange:
+    """The year a birthday memory is made of, ahead of its flashback windows."""
+    assert isinstance(resolved, list), "a birthday memory resolves to several windows"
+    assert len(resolved) > BIRTHDAY_HISTORY_FROM, "the flashbacks are missing"
+    return resolved[0]
 
 
 class TestMonthNarrowsYearlyTypes:
@@ -296,102 +304,109 @@ class TestBackwardCompatibility:
         assert result.end.day == 31
 
     def test_no_memory_type_birthday_year(self):
-        result = resolve_date_range(
-            year=2025,
-            start=None,
-            end=None,
-            period=None,
-            birthday="07/21/2000",
+        result = _rolling_year(
+            resolve_date_range(
+                year=2025,
+                start=None,
+                end=None,
+                period=None,
+                birthday="07/21/2000",
+            )
         )
-        assert isinstance(result, DateRange)
-        assert result.start.month == 7
-        assert result.start.day == 21
+        assert result.end.month == 7
+        assert result.end.day == 21
 
     def test_person_spotlight_birthday_selector_overrides_calendar_year(self):
-        result = resolve_date_range(
-            year=2025,
-            start=None,
-            end=None,
-            period=None,
-            birthday="2000-03-01",
-            memory_type="person_spotlight",
+        result = _rolling_year(
+            resolve_date_range(
+                year=2025,
+                start=None,
+                end=None,
+                period=None,
+                birthday="2000-03-01",
+                memory_type="person_spotlight",
+            )
         )
 
-        assert isinstance(result, DateRange)
-        assert result.start == datetime(2025, 3, 1)
-        assert result.end == datetime(2026, 2, 28, 23, 59, 59)
+        assert result.start == datetime(2024, 3, 2)
+        assert result.end == datetime(2025, 3, 1, 23, 59, 59)
 
     def test_ambiguous_slash_birthday_reads_day_first_like_every_other_date(self):
         """07/02 is 7 February here, exactly as it is for --start and --end."""
-        result = resolve_date_range(
-            year=2025,
-            start=None,
-            end=None,
-            period=None,
-            birthday="07/02",
-            memory_type="person_spotlight",
+        result = _rolling_year(
+            resolve_date_range(
+                year=2025,
+                start=None,
+                end=None,
+                period=None,
+                birthday="07/02",
+                memory_type="person_spotlight",
+            )
         )
 
-        assert isinstance(result, DateRange)
-        assert result.start == datetime(2025, 2, 7)
-        assert result.end == datetime(2026, 2, 6, 23, 59, 59)
+        assert result.start == datetime(2024, 2, 8)
+        assert result.end == datetime(2025, 2, 7, 23, 59, 59)
 
     def test_slash_birthday_that_can_only_be_month_first_still_parses(self):
         """21 cannot be a month, so 07/21 keeps its only possible reading."""
-        result = resolve_date_range(
-            year=2025,
-            start=None,
-            end=None,
-            period=None,
-            birthday="07/21",
-            memory_type="person_spotlight",
+        result = _rolling_year(
+            resolve_date_range(
+                year=2025,
+                start=None,
+                end=None,
+                period=None,
+                birthday="07/21",
+                memory_type="person_spotlight",
+            )
         )
 
-        assert isinstance(result, DateRange)
-        assert result.start == datetime(2025, 7, 21)
+        assert result.end == datetime(2025, 7, 21, 23, 59, 59)
 
     def test_dashed_birthday_is_month_day_like_the_holiday_flag(self):
-        result = resolve_date_range(
-            year=2025,
-            start=None,
-            end=None,
-            period=None,
-            birthday="02-07",
-            memory_type="person_spotlight",
+        result = _rolling_year(
+            resolve_date_range(
+                year=2025,
+                start=None,
+                end=None,
+                period=None,
+                birthday="02-07",
+                memory_type="person_spotlight",
+            )
         )
 
-        assert isinstance(result, DateRange)
-        assert result.start == datetime(2025, 2, 7)
+        assert result.end == datetime(2025, 2, 7, 23, 59, 59)
 
     def test_late_year_birthday_window_crosses_into_the_next_year(self):
-        result = resolve_date_range(
-            year=2025,
-            start=None,
-            end=None,
-            period=None,
-            birthday="11-20",
-            memory_type="person_spotlight",
+        result = _rolling_year(
+            resolve_date_range(
+                year=2025,
+                start=None,
+                end=None,
+                period=None,
+                birthday="11-20",
+                memory_type="person_spotlight",
+            )
         )
 
-        assert isinstance(result, DateRange)
-        assert result.start == datetime(2025, 11, 20)
-        assert result.end == datetime(2026, 11, 19, 23, 59, 59)
+        assert result.start == datetime(2024, 11, 21)
+        assert result.end == datetime(2025, 11, 20, 23, 59, 59)
 
     def test_birthday_detected_from_immich_round_trips_into_the_window(self):
         """What auto-detection writes must mean the same thing when read back."""
         detected = date(1990, 2, 7)
 
-        result = resolve_date_range(
-            year=2025,
-            start=None,
-            end=None,
-            period=None,
-            birthday=detected.strftime(BIRTHDAY_FLAG_FORMAT),
-            memory_type="person_spotlight",
+        result = _rolling_year(
+            resolve_date_range(
+                year=2025,
+                start=None,
+                end=None,
+                period=None,
+                birthday=detected.strftime(BIRTHDAY_FLAG_FORMAT),
+                memory_type="person_spotlight",
+            )
         )
 
-        assert isinstance(result, DateRange)
-        assert result.start == datetime(2025, 2, 7)
+        assert result.end == datetime(2025, 2, 7, 23, 59, 59)
 
     def test_unparseable_birthday_is_a_usage_error(self):
         import click
@@ -407,18 +422,19 @@ class TestBackwardCompatibility:
             )
 
     def test_person_spotlight_auto_birthday_value_handles_leap_day(self):
-        result = resolve_date_range(
-            year=2024,
-            start=None,
-            end=None,
-            period=None,
-            birthday="02/29",
-            memory_type="person_spotlight",
+        result = _rolling_year(
+            resolve_date_range(
+                year=2024,
+                start=None,
+                end=None,
+                period=None,
+                birthday="02/29",
+                memory_type="person_spotlight",
+            )
         )
 
-        assert isinstance(result, DateRange)
-        assert result.start == datetime(2024, 2, 29)
-        assert result.end == datetime(2025, 2, 27, 23, 59, 59)
+        assert result.start == datetime(2023, 3, 1)
+        assert result.end == datetime(2024, 2, 29, 23, 59, 59)
 
     def test_no_options_raises_usage_error(self):
         import click
