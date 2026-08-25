@@ -63,11 +63,18 @@ def load_document(path: Path) -> dict[str, Any]:
 
 
 def people_entries(document: dict[str, Any]) -> list[dict[str, Any]]:
-    """The person entries in a document, skipping anything malformed."""
+    """The person entries in a document, skipping anything malformed.
+
+    An entry has to carry a list of ids to be an entry at all. The file is
+    meant to be hand-edited, and `ids: 5f2c…` written without the brackets is
+    a string that reads as a list of characters everywhere downstream.
+    """
     people = document.get("people")
     if not isinstance(people, list):
         return []
-    return [entry for entry in people if isinstance(entry, dict) and entry.get("ids")]
+    return [
+        entry for entry in people if isinstance(entry, dict) and isinstance(entry.get("ids"), list)
+    ]
 
 
 def save_graph(path: Path, graph: PeopleGraph) -> None:

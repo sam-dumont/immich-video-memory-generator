@@ -225,7 +225,7 @@ def _roster(source: PeopleSource, *, min_assets: int) -> list[PersonEvidence]:
     """
     roster: list[PersonEvidence] = []
     for person in source.get_all_people():
-        if not getattr(person, "name", "").strip():
+        if not person.name.strip():
             continue
         months = _active_months(source, person.id)
         count = sum(months.values())
@@ -237,7 +237,7 @@ def _roster(source: PeopleSource, *, min_assets: int) -> list[PersonEvidence]:
                 name=person.name,
                 count=count,
                 active_months=tuple(sorted(months)),
-                birth_date=_as_date(getattr(person, "birth_date", None)),
+                birth_date=_as_date(person.birth_date),
             )
         )
     return roster
@@ -252,9 +252,9 @@ def _active_months(source: PeopleSource, person_id: str) -> dict[date, int]:
     """
     months: dict[date, int] = {}
     for bucket in source.get_time_buckets(size="MONTH", person_id=person_id):
-        month = _as_month(getattr(bucket, "time_bucket", None))
+        month = _as_month(bucket.time_bucket)
         if month is not None and month >= EXIF_NOISE_FLOOR:
-            months[month] = months.get(month, 0) + getattr(bucket, "count", 0)
+            months[month] = months.get(month, 0) + bucket.count
     return months
 
 
@@ -265,7 +265,7 @@ def _by_name(evidence: Sequence[PersonEvidence], name: str) -> PersonEvidence | 
 
 def _account_name(source: PeopleSource) -> str:
     try:
-        return str(getattr(source.get_current_user(), "name", "") or "")
+        return str(source.get_current_user().name or "")
     except Exception as exc:  # noqa: BLE001 - an unreachable account is not fatal
         logger.warning("Could not read the Immich account name: %s", type(exc).__name__)
         return ""

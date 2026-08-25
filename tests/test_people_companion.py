@@ -128,6 +128,22 @@ class TestConfirmedBeatsInferred:
         assert [entry["name"] for entry in people_entries(load_document(path))] == ["Alex Example"]
 
 
+class TestAHandEditedFile:
+    def test_an_id_written_without_brackets_is_not_read_as_a_list_of_letters(self, tmp_path):
+        # The file exists to be edited by hand, and `ids: 5f2c` without the
+        # brackets is a string that iterates as characters everywhere after.
+        path = tmp_path / "people.yaml"
+        path.write_text("version: 1\npeople:\n  - ids: abc\n    name: Alex Example\n")
+
+        assert people_entries(load_document(path)) == []
+
+    def test_a_document_that_is_not_a_mapping_reads_as_nothing(self, tmp_path):
+        path = tmp_path / "people.yaml"
+        path.write_text("- just\n- a list\n")
+
+        assert load_document(path) == {}
+
+
 def _confirm(path: Path, person_id: str, **fields: object) -> None:
     """Stand in for the hand edit or the settings page that fills these in."""
     document = yaml.safe_load(path.read_text())
