@@ -72,3 +72,23 @@ class TestTheReportShowsIt:
         assert "kept" in report
         assert "cut" in report
         assert "per-day photo cap" in report
+
+
+class TestTheAccountShowsTheClipAsItFinallyWas:
+    def test_facts_learned_later_reach_the_account(self):
+        """A look can happen after a clip is already in the cut.
+
+        Facts were snapshotted the first time any stage saw a clip and never
+        refreshed, so a carrier looked at during verify still read as
+        category-less in the account — and that artifact was mistaken for
+        evidence that the label never arrived.
+        """
+        clip = _clip("carrier")
+        clip.clip.llm_category = None
+
+        trace = Trace()
+        trace.record("pool", [clip], [clip])
+        clip.clip.llm_category = "screen"
+        trace.record("verify", [clip], [clip])
+
+        assert "screen" in trace.story_of("carrier").facts

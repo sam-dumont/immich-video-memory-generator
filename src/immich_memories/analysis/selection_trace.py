@@ -104,11 +104,16 @@ class Trace:
         )
 
     def _remember(self, items: list) -> None:
-        """Keep what each clip was, so the account can name it."""
+        """Keep what each clip is, so the account can name it.
+
+        Refreshed at every sighting, not snapshotted at the first. A clip can
+        be looked at long after it enters the cut — the verify pass describes
+        what the pool could not — and a first-sight snapshot showed a carrier
+        as category-less after the look that categorised it. That artifact was
+        read as evidence the label never arrived.
+        """
         for item in items:
-            asset_id = _asset_id(item)
-            if asset_id not in self.clips:
-                self.clips[asset_id] = _facts_of(item)
+            self.clips[_asset_id(item)] = _facts_of(item)
 
     def story_of(self, asset_id: str) -> ClipStory:
         """Everything this run decided about one clip, in order."""
