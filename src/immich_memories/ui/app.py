@@ -70,6 +70,7 @@ _STEPS = [
 
 _EXTRA_NAV = [
     ("Config", "description", "/settings/config"),
+    ("People", "groups", "/settings/people"),
     ("Cache", "cached", "/settings/cache"),
 ]
 
@@ -300,6 +301,23 @@ def config_page() -> None:
             )
             ui.label("Configuration").classes("text-2xl font-bold").style("color: var(--im-text)")
         render_config_page()
+
+
+@ui.page("/settings/people")
+def people_page() -> None:
+    """The companion editor: who is in this library, and who they are to you."""
+    from immich_memories.ui.pages.settings_people import render_people_page
+
+    apply_theme()
+    d = render_sidebar(0)
+    with ui.column().classes("w-full px-8 py-5"):
+        ui.page_title("Immich Memories - People")
+        with ui.row().classes("w-full items-center gap-2 mb-2"):
+            ui.button(icon="menu", on_click=d.toggle).props("flat dense round").style(
+                "color: var(--im-text-muted)"
+            )
+            ui.label("People").classes("text-2xl font-bold").style("color: var(--im-text)")
+        render_people_page()
 
 
 @ui.page("/settings/cache")

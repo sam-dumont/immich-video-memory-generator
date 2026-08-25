@@ -344,7 +344,8 @@ src/immich_memories/
 │       ├── step4_recovery.py       # Reload recovers a run that outlived the page
 │       ├── _step4_upload.py        # Upload-back to Immich
 │       ├── _step4_music.py         # Music generation/mixing helpers
-│       └── settings_config.py      # Settings page
+│       ├── settings_config.py      # Settings page
+│       └── settings_people.py      # The companion editor: confirm who's who, flag twins
 │
 ├── tracking/                   # Run history & telemetry
 │   ├── run_database.py         # SQLite run storage
@@ -379,7 +380,8 @@ src/immich_memories/
 ├── people/                     # The library's people graph (counts and dates, no pixels)
 │   ├── signatures.py           # Tiers, onset, twins, duplicates, dyads, owner curve pairing
 │   ├── graph.py                # build_graph(): Immich roster + co-occurrence -> PeopleGraph
-│   └── companion.py            # ~/.immich-memories/people.yaml; confirmed beats inferred
+│   ├── companion.py            # ~/.immich-memories/people.yaml; confirmed beats inferred
+│   └── editor.py               # The companion editor's model: the file as rows, and back
 │
 ├── automation/                 # Smart automation (auto suggest/run)
 │   ├── __init__.py             # Public API re-exports

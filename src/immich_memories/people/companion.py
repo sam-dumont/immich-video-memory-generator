@@ -84,12 +84,36 @@ def save_graph(path: Path, graph: PeopleGraph) -> None:
     kept = _confirmed_by_id(standing)
     entries = [_entry_for(node, kept) for node in graph.people]
     entries.extend(_annotated_strangers(standing, graph))
-    document = {
-        "version": SCHEMA_VERSION,
-        "generated": (graph.built_at or datetime.now()).isoformat(timespec="seconds"),
-        "owner": _owner_block(graph),
-        "people": entries,
-    }
+    _write(
+        path,
+        {
+            "version": SCHEMA_VERSION,
+            "generated": (graph.built_at or datetime.now()).isoformat(timespec="seconds"),
+            "owner": _owner_block(graph),
+            "people": entries,
+        },
+    )
+
+
+def save_confirmed(path: Path, person_id: str, confirmed: dict[str, Any]) -> None:
+    """Replace one person's confirmed block, leaving the rest of the file alone.
+
+    The settings page's write path, and the only other one there is. It reads
+    the file, swaps one block and writes the whole document back through the
+    same writer, so a confirmation cannot arrive with different permissions or
+    a different header than a scan's.
+    """
+    document = load_document(path)
+    entries = [entry for entry in people_entries(document) if person_id in entry["ids"]]
+    if not entries:
+        logger.warning("Nothing in %s to confirm for that person; the file moved underneath", path)
+        return
+    for entry in entries:
+        entry["confirmed"] = copy.deepcopy(confirmed)
+    _write(path, document)
+
+
+def _write(path: Path, document: dict[str, Any]) -> None:
     body = yaml.dump(document, sort_keys=False, allow_unicode=True, default_flow_style=False)
     write_secret_file(path, _FILE_HEADER + body)
 
@@ -148,8 +172,12 @@ def _link_block(link: Link) -> dict[str, Any]:
 
 
 def _blank_confirmed() -> dict[str, Any]:
-    """The space reserved for the user, and never filled by the scan."""
-    return {"role": None, "links": []}
+    """The space reserved for the user, and never filled by the scan.
+
+    Written out empty rather than omitted: the file is meant to be edited by
+    hand, and a field nobody can see is a field nobody fills in.
+    """
+    return {"role": None, "links": [], "notes": None}
 
 
 def _confirmed_by_id(document: dict[str, Any]) -> dict[str, dict[str, Any]]:
