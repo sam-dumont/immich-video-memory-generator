@@ -79,6 +79,16 @@ def _merge_photos_into_pool(
     else:
         photo_dir = work_dir / "photos"
         photo_dir.mkdir(parents=True, exist_ok=True)
+        # The sheet must show the whole moment: the videos and the Live
+        # Photos already claimed as motion go alongside the candidates, or a
+        # day that lives mostly in footage reads as three photographs.
+        seen_ids = {asset.id for asset in photo_assets}
+        alongside = []
+        for clip in analyzed_videos:
+            asset = getattr(clip, "asset", None)
+            if asset is not None and asset.id not in seen_ids:
+                seen_ids.add(asset.id)
+                alongside.append(asset)
         scored = score_photos(
             assets=photo_assets,
             config=config.photos,
@@ -92,6 +102,7 @@ def _merge_photos_into_pool(
             thumbnail_fn=client.get_asset_thumbnail,
             provider_circuit=provider_circuit,
             thumbnail_cache=thumbnail_cache,
+            alongside=alongside,
         )
 
     # What the VLM said about each photo, so the holistic review can read a

@@ -68,11 +68,17 @@ def score_photos(
     thumbnail_fn: Any = None,
     provider_circuit: Any = None,
     thumbnail_cache: Any = None,
+    alongside: list[Any] | None = None,
 ) -> list[tuple[Asset, float]]:
     """Score photos (metadata + LLM) without rendering.
 
     Runs Phases 1 (metadata scoring) and 2 (LLM enhancement) only.
     Pre-caps shortlist to avoid excessive LLM calls.
+
+    `alongside` is everything else in the same moments — videos, and the Live
+    Photos already claimed as motion. They are never candidates here, but a
+    contact sheet built without them describes a fragment of a day and then
+    judges from it.
     """
     if not assets:
         return []
@@ -101,7 +107,9 @@ def score_photos(
     # One look per moment, not a few per shippable slot. Sizing the shortlist
     # from ship-count meant the model only ever saw what metadata had already
     # picked, so content could confirm that ranking and never overturn it.
-    read = _read_the_moments(metadata_scored, config, app_config, thumbnail_fn, thumbnail_cache)
+    read = _read_the_moments(
+        metadata_scored, config, app_config, thumbnail_fn, thumbnail_cache, alongside
+    )
     moments = (
         read if read is not None else one_photo_per_moment(metadata_scored, _MOMENT_WINDOW_MINUTES)
     )
@@ -844,7 +852,7 @@ def _get_sdr_encoder_args() -> list[str]:
 
 
 def _frames_for_reading(
-    moment: list[tuple], thumbnail_cache: Any, thumbnail_fn: Any
+    moment: list[Any], thumbnail_cache: Any, thumbnail_fn: Any
 ) -> dict[str, Any]:
     """The thumbnails a moment's sheet is tiled from, skipping what will not open."""
     import io
@@ -852,7 +860,7 @@ def _frames_for_reading(
     from PIL import Image
 
     frames: dict[str, Any] = {}
-    for asset, _score in moment:
+    for asset in moment:
         data = thumbnail_cache.get(asset.id, "preview") if thumbnail_cache else None
         if data is None and thumbnail_fn is not None:
             try:
@@ -877,6 +885,7 @@ def _read_the_moments(
     app_config: Any,
     thumbnail_fn: Any,
     thumbnail_cache: Any,
+    alongside: list[Any] | None = None,
 ) -> list[tuple] | None:
     """What each moment's contact sheet chose, or None to fall back to sampling.
 
@@ -894,12 +903,15 @@ def _read_the_moments(
 
     by_id = {asset.id: (asset, score) for asset, score in metadata_scored}
     kept: list[tuple] = []
+    # The sheet shows the whole moment — videos and claimed Live Photos
+    # included — but only candidates can be chosen from it. A sheet built
+    # from the photo pool alone describes a fragment of a day and then
+    # judges from it.
+    everything = [asset for asset, _score in metadata_scored] + list(alongside or [])
     # Sheets are asked about EPISODES, not ten-minute moments: a moment is
     # often one photograph, and a sheet of one photograph says nothing.
-    for episode in moments_to_read([asset for asset, _score in metadata_scored], app_config):
-        frames = _frames_for_reading(
-            [by_id[a.id] for a in episode if a.id in by_id], thumbnail_cache, thumbnail_fn
-        )
+    for episode in moments_to_read(everything, app_config):
+        frames = _frames_for_reading(episode, thumbnail_cache, thumbnail_fn)
         if not frames:
             continue
         reading = read_moment(episode, frames, app_config.llm)
