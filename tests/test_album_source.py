@@ -40,8 +40,10 @@ def test_splits_videos_stills_and_live_photos_into_their_own_pools():
     media = split_album_assets(assets, config=Config(), use_live_photos=True, use_photos=True)
 
     assert [a.id for a in media.videos] == ["vid-1"]
-    assert [a.id for a in media.photos] == ["still-1"]
-    assert [c.asset.id for c in media.live_photo_clips] == ["live-1"]
+    # A lone Live Photo is a photograph: it stitches to the raw 3.0s with
+    # nothing merged, and does not beat the still it would replace.
+    assert [a.id for a in media.photos] == ["still-1", "live-1"]
+    assert media.live_photo_clips == []
 
 
 def test_date_range_spans_the_albums_oldest_and_newest_asset():
@@ -145,3 +147,23 @@ def test_fetch_skips_images_entirely_when_photos_and_live_photos_are_off():
     assert AssetType.IMAGE not in client.limits
     assert media.photos == []
     assert media.truncated is False
+
+
+def test_a_burst_long_enough_to_stitch_ships_as_motion_not_as_photographs():
+    """The moment shows once, and as the better of its two renderings."""
+    base = datetime(2025, 6, 1, 12, 0, tzinfo=UTC)
+    assets = [
+        _asset("still-1", AssetType.IMAGE, base),
+        _asset("live-1", AssetType.IMAGE, base + timedelta(minutes=10), live_video_id="lv-1"),
+        _asset(
+            "live-2",
+            AssetType.IMAGE,
+            base + timedelta(minutes=10, seconds=2),
+            live_video_id="lv-2",
+        ),
+    ]
+
+    media = split_album_assets(assets, config=Config(), use_live_photos=True, use_photos=True)
+
+    assert [c.asset.id for c in media.live_photo_clips] == ["live-1"]
+    assert [a.id for a in media.photos] == ["still-1"]

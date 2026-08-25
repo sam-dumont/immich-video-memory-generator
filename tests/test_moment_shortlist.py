@@ -244,3 +244,80 @@ class TestReadingMomentsInsteadOfSamplingThem:
             )
 
         never.assert_not_called()
+
+
+class TestASheetShowsTheWholeMoment:
+    """A moment is not only its photographs.
+
+    On one real day the photo pool held 3 assets while the moment held 133 —
+    the rest were video and Live Photos. A sheet built from the pool alone
+    describes a fragment and then judges from it: photos-only read nothing of
+    that day, while the whole moment named the event, the circuit and the cars.
+
+    So everything in the moment goes on the sheet, and only the candidates can
+    be chosen from it.
+    """
+
+    def _jpeg(self):
+        import io
+
+        from PIL import Image
+
+        buffer = io.BytesIO()
+        Image.new("RGB", (32, 24), (90, 90, 90)).save(buffer, "JPEG")
+        return buffer.getvalue()
+
+    def _asset(self, name: str, minutes: int):
+        from datetime import UTC, datetime, timedelta
+
+        from tests.conftest import make_asset
+
+        asset = make_asset(name, exif_make="Apple", duration=None)
+        asset.file_created_at = datetime(2020, 1, 1, tzinfo=UTC) + timedelta(minutes=minutes)
+        return asset
+
+    def test_the_sheet_is_tiled_from_candidates_and_context_alike(self, tmp_path) -> None:
+        from unittest.mock import patch
+
+        from immich_memories.analysis.moment_reading import MomentReading
+        from immich_memories.config import Config
+        from immich_memories.photos.photo_pipeline import score_photos
+
+        photos = [self._asset(f"p{i}", i) for i in range(2)]
+        alongside = [self._asset(f"v{i}", i) for i in range(4)]
+        config = Config(
+            cache={"database": str(tmp_path / "c.db"), "directory": str(tmp_path)},
+            photos={"read_moments": True},
+            content_analysis={"enabled": True},
+        )
+
+        seen: list[int] = []
+
+        def _record(assets, frames, *_a, **_k):
+            seen.append(len(assets))
+            return MomentReading(about="a day", subjects=(), keep=(photos[1],))
+
+        with (
+            # WHY: the model is the external boundary; this asserts what it is shown.
+            patch("immich_memories.analysis.moment_reading.read_moment", side_effect=_record),
+            # WHY: the per-photo look is the expensive call the sheet decides on.
+            patch(
+                "immich_memories.photos.photo_pipeline._enhance_with_llm",
+                side_effect=lambda shortlist, *_a, **_k: (shortlist, {}),
+            ) as enhanced,
+        ):
+            score_photos(
+                photos,
+                config.photos,
+                video_clip_count=0,
+                work_dir=tmp_path,
+                download_fn=None,
+                thumbnail_fn=lambda _id, **_kw: self._jpeg(),
+                db_path=config.cache.database_path,
+                app_config=config,
+                alongside=alongside,
+            )
+
+        assert seen == [6], "the sheet must show the whole moment, not just the candidates"
+        looked_at = [asset.id for asset, _score in enhanced.call_args.args[0]]
+        assert looked_at == ["p1"], "only candidates can be chosen from it"
