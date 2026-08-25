@@ -245,7 +245,14 @@ class SelectionQuality:
 
         by_id = {c.clip.asset.id: c for c in analyzed}
         selected = [by_id[c.asset.id] for c in result.selected_clips if c.asset.id in by_id]
-        drops = set(review_selection(selected, self._app_config.llm, cache_path=self._verdicts))
+        drops = set(
+            review_selection(
+                selected,
+                self._app_config.llm,
+                cache_path=self._verdicts,
+                unreadable_ids=self._unreadable_ids(selected),
+            )
+        )
         if not drops:
             return result, analyzed
 
@@ -267,6 +274,21 @@ class SelectionQuality:
             },
         )
         return trimmed, [c for c in analyzed if c.clip.asset.id not in drops]
+
+    def _unreadable_ids(self, selected: list[ClipWithSegment]) -> frozenset[str]:
+        """Clips verification has already tried, and still cannot describe.
+
+        Verify never re-queues an attempt — deliberately, so a clip whose
+        analysis fails cannot loop forever. That termination guarantee is also
+        a blind spot: the clip keeps reaching the review as a bare line, and
+        the rule protecting clips nobody has looked at protects it too. Naming
+        them lets the review tell the two silences apart.
+        """
+        return frozenset(
+            member.clip.asset.id
+            for member in selected
+            if member.clip.asset.id in self._verify_attempted and self._needs_a_real_look(member)
+        )
 
     def _needs_a_real_look(self, member: ClipWithSegment) -> bool:
         """Would the LLM review be judging this clip blind?
@@ -414,7 +436,12 @@ class SelectionQuality:
 
         by_id = {c.clip.asset.id: c for c in analyzed}
         selected = [by_id[c.asset.id] for c in result.selected_clips if c.asset.id in by_id]
-        drops = review_selection(selected, self._app_config.llm, cache_path=self._verdicts)
+        drops = review_selection(
+            selected,
+            self._app_config.llm,
+            cache_path=self._verdicts,
+            unreadable_ids=self._unreadable_ids(selected),
+        )
         if not drops:
             trace.record("llm review", selected, selected)
             return result, analyzed, False
