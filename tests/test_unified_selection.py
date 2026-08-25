@@ -624,26 +624,6 @@ class TestExtractClipsHandlesImages:
         assert result[0].asset_id == "video-test-001"
 
 
-class TestAddPhotosSkipped:
-    """When photos are in the unified pool, _add_photos_if_enabled is a no-op."""
-
-    def test_add_photos_returns_unchanged_when_disabled(self):
-        from immich_memories.generate import GenerationParams, _add_photos_if_enabled
-
-        params = GenerationParams(
-            clips=[],
-            output_path=Path("/tmp/test.mp4"),
-            config=Config(),
-            include_photos=False,
-            photo_assets=None,
-        )
-        fake_clips = [MagicMock()]
-        result = _add_photos_if_enabled(fake_clips, params, Path("/tmp"))
-
-        # Should return the input unchanged — no photo processing
-        assert result is fake_clips
-
-
 class TestRunBackwardCompat:
     """run() still works as before — calls run_analysis + run_selection."""
 

@@ -268,15 +268,18 @@ def _partition_photos_per_day(
 def enforce_photo_cap(
     clips: list[ClipWithSegment],
     max_ratio: float,
-    videos_scarce: bool = False,
     protected_ids: set[str] | None = None,
 ) -> list[ClipWithSegment]:
     """Drop lowest-scored photos until photo ratio <= max_ratio.
 
     Videos are never dropped. If only photos exist (no videos),
     all are kept since the ratio can't be improved by dropping.
-    When videos_scarce is True, the cap is bypassed entirely —
-    photos fill the budget freely (matches unified_budget PR #224).
+
+    The cap always applies here, even when videos are too scarce to fill the
+    budget. That is deliberate and two-stage: normalising a photo-biased
+    selection first leaves backfill room to use every valid video candidate,
+    and backfill then re-admits photos through photo_cap_bypassed. Bypassing
+    here as well would admit them twice.
 
     protected_ids survive the cap. They are the clips selection kept to
     represent a period, and some months hold their best day entirely in
@@ -291,9 +294,6 @@ def enforce_photo_cap(
     photos = [c for c in clips if c.clip.asset.type == AssetType.IMAGE]
 
     if not photos or not videos:
-        return clips
-
-    if videos_scarce:
         return clips
 
     if max_ratio >= 1.0:

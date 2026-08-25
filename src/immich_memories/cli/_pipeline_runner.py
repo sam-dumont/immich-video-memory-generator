@@ -433,7 +433,6 @@ def run_pipeline_and_generate(
     # Merge photos into the unified selection pool (if enabled)
     all_candidates = _merge_photos_into_pool(
         analyzed_videos,
-        live_photo_clips=live_photo_clips,
         photo_assets=photo_assets,
         include_photos=include_photos,
         config=config,

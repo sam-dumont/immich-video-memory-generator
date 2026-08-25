@@ -735,7 +735,6 @@ class ClipRefiner:
             selected = enforce_photo_cap(
                 selected,
                 self.config.photo_max_ratio,
-                videos_scarce=False,
                 protected_ids=coverage_ids,
             )
             trace.record("photo ratio cap", before_cap, selected)

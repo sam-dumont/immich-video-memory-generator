@@ -943,8 +943,6 @@ class TestPhaseAllocation:
 
         pp.report("download", 0.0, "start")
         pp.report("download", 1.0, "done")
-        pp.report("photos", 0.0, "start")
-        pp.report("photos", 1.0, "done")
         pp.report("assembly", 0.0, "start")
         pp.report("assembly", 0.5, "mid")
         pp.report("assembly", 1.0, "done")

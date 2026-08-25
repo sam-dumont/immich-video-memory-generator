@@ -7,14 +7,12 @@ clip beside it was turned away.
 
 from __future__ import annotations
 
-from pathlib import Path
 from types import SimpleNamespace
 
 from immich_memories.analysis.source_filter import from_an_excluded_source
 from immich_memories.api.models import AssetType
 from immich_memories.config import Config
 from immich_memories.config_models_analysis import AnalysisConfig
-from immich_memories.photos.photo_pipeline import score_and_select_photos
 from tests.conftest import make_asset
 
 
@@ -24,20 +22,6 @@ def _photo(asset_id: str, name: str):
     asset = make_asset(asset_id, original_file_name=name)
     asset.type = AssetType.IMAGE
     return asset
-
-
-def test_a_forwarded_photo_never_reaches_scoring(tmp_path: Path) -> None:
-    """Turning it away before scoring is also what keeps it out of the VLM."""
-    result = score_and_select_photos(
-        photo_assets=[_photo("forwarded", "IMG-20190105-WA0006.jpg")],
-        video_candidates=[],
-        config=Config(cache={"directory": str(tmp_path / "cache")}),
-        target_duration=60.0,
-        work_dir=tmp_path,
-        download_fn=None,
-    )
-
-    assert result.scored_photos == []
 
 
 def test_a_photo_from_the_camera_roll_is_kept() -> None:
@@ -172,39 +156,6 @@ def test_a_score_cached_before_photos_could_describe_themselves_is_re_asked(tmp_
 
     assert enhanced == [(asset, 0.42)], "the stale row must not stand in for a look"
     assert payloads["shot"]["description"] == "a whiteboard"
-
-
-def test_a_pool_with_no_usable_photos_keeps_every_video(tmp_path) -> None:
-    """An empty selection is not a verdict that nothing was worth keeping.
-
-    The consumer filters videos to selection.kept_video_ids, so returning an
-    empty selection when there is simply nothing to choose between discards
-    every already-selected video and renders a memory with no content.
-    """
-    from immich_memories.analysis.unified_budget import BudgetCandidate
-
-    videos = [
-        BudgetCandidate(
-            asset_id=f"video-{i}",
-            duration=4.0,
-            score=0.5,
-            candidate_type="video",
-            date=None,
-            is_favorite=False,
-        )
-        for i in range(3)
-    ]
-
-    result = score_and_select_photos(
-        photo_assets=[_photo("forwarded", "IMG-20190105-WA0006.jpg")],
-        video_candidates=videos,
-        config=Config(cache={"directory": str(tmp_path / "cache")}),
-        target_duration=60.0,
-        work_dir=tmp_path,
-        download_fn=None,
-    )
-
-    assert result.selection.kept_video_ids == {"video-0", "video-1", "video-2"}
 
 
 def test_a_starred_photo_passes_whatever_its_filename_says() -> None:

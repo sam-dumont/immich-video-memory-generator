@@ -1,7 +1,7 @@
 """Real Immich integration tests for photos/photo_pipeline.py rendering.
 
 Downloads real photos from Immich, scores them, renders animated clips,
-verifies the output. Tests the full render_photo_clips and score_photos
+verifies the output. Tests the full _render_single_photo and score_photos
 flows with actual image data.
 """
 
@@ -14,7 +14,7 @@ import pytest
 
 from immich_memories.config_loader import Config
 from immich_memories.config_models_render import PhotoConfig
-from immich_memories.photos.photo_pipeline import render_photo_clips, score_photos
+from immich_memories.photos.photo_pipeline import _render_single_photo, score_photos
 from immich_memories.timeperiod import DateRange
 from tests.integration.conftest import ffprobe_json, get_duration, has_stream, requires_ffmpeg
 
@@ -88,55 +88,36 @@ class TestScorePhotosRealImmich:
         )
 
 
-class TestRenderPhotoClipsRealImmich:
+class TestRenderSinglePhotoRealImmich:
     def test_render_produces_valid_video_clips(self, immich_photo_assets, tmp_path):
-        """render_photo_clips with real Immich photos should produce playable clips."""
-        photos, config, client = immich_photo_assets
+        """Real Immich photographs each render to a playable clip.
+
+        The max_ratio cap this class also exercised lived inside the batch
+        renderer, as a second independent cap over an already-selected set.
+        max_ratio is now one policy on the ranked list (enforce_photo_cap).
+        """
+        photos, _config, client = immich_photo_assets
         photo_config = PhotoConfig()
         photo_config.duration = 3.0
 
-        clips = render_photo_clips(
-            assets=photos[:3],
-            config=photo_config,
-            target_w=1280,
-            target_h=720,
-            work_dir=tmp_path / "render_work",
-            download_fn=client.download_asset,
-            video_clip_count=10,
-            thumbnail_fn=client.get_asset_thumbnail,
-        )
+        clips = [
+            _render_single_photo(
+                asset=photo,
+                config=photo_config,
+                target_w=1280,
+                target_h=720,
+                work_dir=tmp_path / "render_work",
+                download_fn=client.download_asset,
+            )
+            for photo in photos[:3]
+        ]
+        rendered = [clip for clip in clips if clip is not None]
 
-        assert len(clips) > 0
-        for clip in clips:
+        assert rendered
+        for clip in rendered:
             assert clip.path.exists()
             probe = ffprobe_json(clip.path)
             assert has_stream(probe, "video")
             duration = get_duration(probe)
             assert duration > 1.0
             logger.info(f"Rendered photo clip: {clip.asset_id}, {duration:.1f}s")
-
-    def test_max_ratio_caps_photo_count(self, immich_photo_assets, tmp_path):
-        """With many photos and low max_ratio, the cap should limit rendered clips."""
-        photos, config, client = immich_photo_assets
-
-        if len(photos) < 5:
-            pytest.skip("Need at least 5 photos for ratio cap test")
-
-        photo_config = PhotoConfig()
-        photo_config.duration = 2.0
-        photo_config.max_ratio = 0.25
-
-        clips = render_photo_clips(
-            assets=photos[:10],
-            config=photo_config,
-            target_w=640,
-            target_h=360,
-            work_dir=tmp_path / "ratio_work",
-            download_fn=client.download_asset,
-            video_clip_count=20,  # 20 videos → max 25% photos ≈ 6
-            thumbnail_fn=client.get_asset_thumbnail,
-        )
-
-        # With 20 videos and max_ratio=0.25: max photos = 20 * 0.25 / 0.75 ≈ 6
-        assert len(clips) <= 7
-        logger.info(f"Rendered {len(clips)} photo clips (max_ratio=0.25, 20 videos)")

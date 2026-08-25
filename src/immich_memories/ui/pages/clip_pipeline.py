@@ -355,8 +355,6 @@ def _run_pipeline_blocking(
                 state.selected_photo_ids = {
                     c.asset.id for c in result.selected_clips if c.asset.type == AssetType.IMAGE
                 }
-                state.scored_photos = []
-                state.photo_budget_result = None
 
             state.pipeline_running = False
             progress_state["done"] = True

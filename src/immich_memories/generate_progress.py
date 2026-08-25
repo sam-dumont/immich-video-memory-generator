@@ -118,9 +118,10 @@ class _PipelineProgress:
         # WHY: Estimated relative durations for each phase.
         # These determine how much of the progress bar each phase occupies.
         # Tune based on _log_phase_timing output from real runs.
+        # Photographs are rendered inside the download phase, by _extract_clips,
+        # so the estimate that used to sit on its own "photos" phase belongs here.
         weights = {
-            "download": clip_count * 3.0,
-            "photos": 20.0,
+            "download": clip_count * 3.0 + 20.0,
             "assembly": 180.0 + clip_count * 8.0,  # titles + encoding
             "music": 120.0 if has_music else 0.0,
         }

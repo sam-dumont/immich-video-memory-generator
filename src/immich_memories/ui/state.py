@@ -111,8 +111,6 @@ class AppState:
     photo_assets: list[Any] = field(default_factory=list)
     selected_photo_ids: set[str] = field(default_factory=set)
     photo_duration: float = 4.0
-    scored_photos: list[Any] = field(default_factory=list)
-    photo_budget_result: Any | None = None
 
     # Analysis depth (auto, fast, or thorough)
     analysis_depth: str = "auto"
@@ -268,8 +266,6 @@ class AppState:
         self.title_suggestion_title = None
         self.title_suggestion_subtitle = None
         self.cancel_requested = False
-        self.scored_photos = []
-        self.photo_budget_result = None
         self.thumbnail_hashes = {}
         self.discard_music_preview()
 

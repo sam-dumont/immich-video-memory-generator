@@ -12,7 +12,6 @@ import logging
 import random
 import subprocess
 from collections.abc import Iterator
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -21,13 +20,6 @@ import cv2
 import numpy as np
 
 from immich_memories.analysis.asset_merit import ranking_key
-from immich_memories.analysis.source_filter import from_the_camera_roll
-from immich_memories.analysis.unified_budget import (
-    BudgetCandidate,
-    UnifiedSelection,
-    estimate_title_overhead,
-    select_within_budget,
-)
 from immich_memories.api.immich import ImmichAPIError
 from immich_memories.api.models import Asset
 from immich_memories.config_models_render import PhotoConfig
@@ -48,19 +40,29 @@ logger = logging.getLogger(__name__)
 # is the cost the LLM shortlist exists to avoid.
 _QUALITY_FETCH_BUDGET = 120
 
+# Scoring one photo costs an LLM round trip, so the shortlist is what actually
+# determines how long a run takes. A real library produced a 1194-photo
+# shortlist to place a few dozen photos, which ran for hours.
+LLM_SHORTLIST_CEILING = 200
 
-@dataclass
-class PhotoSelectionResult:
-    """Result of photo scoring + budget selection."""
+# Undated photos sort first rather than dropping out of the grouping.
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
-    scored_photos: list[tuple[Asset, float]]
-    selection: UnifiedSelection
+# What counts as one moment when sampling photos for a content look.
+_MOMENT_WINDOW_MINUTES = 10.0
+
+# How much of a photo's score the pixels are allowed to decide. The metadata
+# terms keep their meaning, but they no longer decide the whole ordering on
+# their own.
+_QUALITY_SHARE = 0.35
+_SHARPNESS_SHARE = 0.6
+_CONTRAST_SHARE = 0.2
+_EXPOSURE_SHARE = 0.2
 
 
 def score_photos(
     assets: list[Asset],
     config: PhotoConfig,
-    video_clip_count: int,
     work_dir: Path,
     download_fn: Any,
     db_path: Path | None = None,
@@ -111,11 +113,10 @@ def score_photos(
     if len(shortlist) > LLM_SHORTLIST_CEILING:
         shortlist = _select_distributed(shortlist, LLM_SHORTLIST_CEILING)
     logger.info(
-        "Photo scoring: %d available -> %d moments -> %d shortlisted for LLM (max %d selectable)",
+        "Photo scoring: %d available -> %d moments -> %d shortlisted for LLM",
         len(metadata_scored),
         len(moments),
         len(shortlist),
-        _compute_max_photos(video_clip_count, config.max_ratio),
     )
 
     # Phase 2: LLM scoring on shortlist (uses thumbnails, not full downloads)
@@ -175,177 +176,6 @@ def look_at_selected_photos(
         for asset_id, payload in payloads.items()
         if asset_id in looked
     }
-
-
-def _no_photos_to_choose_between(video_candidates: list[BudgetCandidate]) -> PhotoSelectionResult:
-    """No photo competes for the budget, so every video keeps its place.
-
-    The caller filters its videos down to kept_video_ids, so an empty
-    selection is not "nothing was worth keeping" — it renders a memory with
-    no content at all. Nothing to select between means nothing to drop.
-    """
-    return PhotoSelectionResult(
-        scored_photos=[],
-        selection=UnifiedSelection(
-            kept_video_ids={candidate.asset_id for candidate in video_candidates}
-        ),
-    )
-
-
-def score_and_select_photos(
-    photo_assets: list[Asset],
-    video_candidates: list[BudgetCandidate],
-    config: Any,
-    target_duration: float,
-    work_dir: Path,
-    download_fn: Any,
-    thumbnail_fn: Any | None = None,
-    title_settings: Any | None = None,
-    clip_dates: list[str] | None = None,
-    memory_type: str | None = None,
-    transition_duration: float = 0.5,
-    provider_circuit: Any = None,
-    thumbnail_cache: Any = None,
-) -> PhotoSelectionResult:
-    """Score photos and select within unified budget.
-
-    Extracted from generate.py:_apply_unified_budget() so it can be
-    called from both UI (Step 2) and CLI (generation time).
-    """
-    photo_assets = from_the_camera_roll(photo_assets, config)
-    if not photo_assets:
-        return _no_photos_to_choose_between(video_candidates)
-
-    # WHY every argument: score_photos degrades silently without them. No
-    # app_config and the VLM never scores a photo; no thumbnail_cache and both
-    # burst dedup and the frame-quality re-weighting return early, leaving the
-    # metadata lattice that ties hundreds of photos onto a handful of values;
-    # no db_path and every LLM score is paid for again next run.
-    scored = score_photos(
-        assets=photo_assets,
-        config=config.photos,
-        video_clip_count=len(video_candidates),
-        work_dir=work_dir,
-        download_fn=download_fn,
-        thumbnail_fn=thumbnail_fn,
-        provider_circuit=provider_circuit,
-        app_config=config,
-        db_path=config.cache.database_path,
-        thumbnail_cache=thumbnail_cache,
-    )
-
-    if not scored:
-        return _no_photos_to_choose_between(video_candidates)
-
-    photo_candidates = [
-        BudgetCandidate(
-            asset_id=asset.id,
-            duration=config.photos.duration,
-            score=score,
-            candidate_type="photo",
-            date=asset.file_created_at,
-            is_favorite=asset.is_favorite,
-        )
-        for asset, score in scored
-    ]
-
-    overhead = 0.0
-    if title_settings is not None:
-        overhead = estimate_title_overhead(
-            clip_dates=clip_dates or [],
-            title_settings=title_settings,
-            target_duration=target_duration,
-            memory_type=memory_type,
-            num_clips=len(video_candidates),
-            transition_duration=transition_duration,
-        )
-    content_budget = target_duration - overhead
-
-    selection = select_within_budget(
-        video_candidates,
-        photo_candidates,
-        content_budget=content_budget,
-        max_photo_ratio=config.photos.max_ratio,
-        min_photo_ratio=0.10,
-    )
-
-    return PhotoSelectionResult(scored_photos=scored, selection=selection)
-
-
-def render_photo_clips(
-    assets: list[Asset],
-    config: PhotoConfig,
-    target_w: int,
-    target_h: int,
-    work_dir: Path,
-    download_fn: Any,
-    video_clip_count: int = 0,
-    fps: int = 30,
-    db_path: Path | None = None,
-    app_config: Any = None,
-    thumbnail_fn: Any = None,
-    provider_circuit: Any = None,
-) -> list[AssemblyClip]:
-    """Convert photo assets to animated video clips for assembly.
-
-    Pre-caps the number of photos based on video_clip_count and max_ratio
-    BEFORE rendering, so we never waste memory/time on excess photos.
-    Streams frames to FFmpeg — O(1) memory per photo.
-    """
-    if not assets:
-        return []
-
-    scored = score_photos(
-        assets,
-        config,
-        video_clip_count,
-        work_dir,
-        download_fn,
-        db_path=db_path,
-        app_config=app_config,
-        thumbnail_fn=thumbnail_fn,
-        provider_circuit=provider_circuit,
-    )
-    if not scored:
-        return []
-
-    # Final selection: top N after LLM scoring, distributed
-    max_photos = _compute_max_photos(video_clip_count, config.max_ratio)
-    if len(scored) > max_photos:
-        scored = _select_distributed(scored, max_photos)
-    logger.info(f"Photo selection: {len(assets)} → {len(scored)} (max {max_photos})")
-
-    # Phase 3: Render each selected photo
-    clips: list[AssemblyClip] = []
-    for i, (asset, score) in enumerate(scored):
-        logger.info(f"Rendering photo {i + 1}/{len(scored)}: {asset.id[:8]}... (score={score:.2f})")
-        clip = _render_single_photo(asset, config, target_w, target_h, work_dir, download_fn, fps)
-        if clip:
-            clips.append(clip)
-
-    logger.info(f"Rendered {len(clips)} photo clips from {len(assets)} photos")
-    return clips
-
-
-# Scoring one photo costs an LLM round trip, so the shortlist is what actually
-# determines how long a run takes. A real library produced a 1194-photo
-# shortlist to place a few dozen photos, which ran for hours.
-LLM_SHORTLIST_CEILING = 200
-
-# Undated photos sort first rather than dropping out of the grouping.
-_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
-
-# What counts as one moment when sampling photos for a content look.
-_MOMENT_WINDOW_MINUTES = 10.0
-
-
-# How much of a photo's score the pixels are allowed to decide. The metadata
-# terms keep their meaning — a favorite is still the user telling us directly —
-# but they no longer decide the whole ordering on their own.
-_QUALITY_SHARE = 0.35
-_SHARPNESS_SHARE = 0.6
-_CONTRAST_SHARE = 0.2
-_EXPOSURE_SHARE = 0.2
 
 
 def _frames_for_quality(
@@ -481,32 +311,6 @@ def _drop_burst_duplicates(
         )
     )
     return [(asset, score) for asset, score in scored if asset.id in kept]
-
-
-def _compute_max_photos(video_count: int, max_ratio: float) -> int:
-    """How many photos to render given video count and max photo ratio."""
-    if max_ratio >= 1.0:
-        return 999
-    if video_count == 0:
-        return 10  # Sensible limit when there are no videos
-    # max_ratio is the photos' share of the finished timeline:
-    #   photos / (videos + photos) <= max_ratio
-    # so photos <= max_ratio * videos / (1 - max_ratio). At max_ratio 0.5 that
-    # is exactly video_count, which reads as a cap but is really a 1:1 licence
-    # to score a photo for every video. Never exceed the video count.
-    ratio_bound = int(max_ratio * video_count / (1 - max_ratio))
-    return max(1, min(ratio_bound, video_count))
-
-
-def video_count_for_photo_budget(total_clips: int, live_photo_clips: int) -> int:
-    """Real video clips, excluding live-photo clips.
-
-    The photo budget is a ratio against video content. Live-photo clips are
-    themselves built from photos, so counting them as videos lets the photo
-    budget grow from the content it is supposed to be balanced against -- on a
-    real library 778 live photos became 349 clips and tripled the shortlist.
-    """
-    return max(0, total_clips - live_photo_clips)
 
 
 def one_photo_per_moment(scored: list[tuple], window_minutes: float) -> list[tuple]:

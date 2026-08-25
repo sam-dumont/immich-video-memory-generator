@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 import subprocess
-from datetime import UTC, date
+from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -16,18 +16,13 @@ from immich_memories.generate import (
     GenerationError,
     GenerationParams,
     PipelineLock,
-    _add_photos_if_enabled,
     _build_assembly_settings,
     _build_title_settings,
-    _build_title_settings_for_overhead,
     _cleanup_temp_clips,
     _cleanup_temp_dirs,
     _detect_photo_resolution,
     _extract_clips,
     _log_phase_timing,
-    _merge_by_date,
-    _parse_clip_date,
-    _render_photos,
     _total_clip_duration,
     assets_to_clips,
     check_disk_space,
@@ -50,93 +45,6 @@ def _h264_output_plan():
         pixel_format="yuv420p",
         container="mp4",
     )
-
-
-# ---------------------------------------------------------------------------
-# _parse_clip_date
-# ---------------------------------------------------------------------------
-
-
-class TestParseClipDate:
-    def test_valid_iso_date(self):
-        result = _parse_clip_date("2025-07-15")
-        assert result.year == 2025
-        assert result.month == 7
-        assert result.day == 15
-
-    def test_valid_iso_datetime(self):
-        result = _parse_clip_date("2025-07-15T14:30:00")
-        assert result.hour == 14
-        assert result.minute == 30
-
-    def test_none_returns_epoch_fallback(self):
-        result = _parse_clip_date(None)
-        assert result.year == 2000
-        assert result.month == 1
-
-    def test_empty_string_returns_epoch_fallback(self):
-        result = _parse_clip_date("")
-        assert result.year == 2000
-
-    def test_invalid_string_returns_epoch_fallback(self):
-        result = _parse_clip_date("not-a-date")
-        assert result.year == 2000
-
-    def test_result_always_has_utc_timezone(self):
-        result = _parse_clip_date("2025-07-15")
-        assert result.tzinfo == UTC
-
-    def test_fallback_also_has_utc_timezone(self):
-        result = _parse_clip_date("garbage")
-        assert result.tzinfo == UTC
-
-
-# ---------------------------------------------------------------------------
-# _merge_by_date
-# ---------------------------------------------------------------------------
-
-
-class TestMergeByDate:
-    def test_empty_video_and_photo_lists(self):
-        result = _merge_by_date([], [])
-        assert result == []
-
-    def test_videos_only(self):
-        clips = [
-            AssemblyClip(path=Path("/a.mp4"), duration=3.0, date="2025-03-01"),
-            AssemblyClip(path=Path("/b.mp4"), duration=3.0, date="2025-01-01"),
-        ]
-        result = _merge_by_date(clips, [])
-        assert result[0].date == "2025-01-01"
-        assert result[1].date == "2025-03-01"
-
-    def test_photos_only(self):
-        photos = [
-            AssemblyClip(path=Path("/p.mp4"), duration=3.0, date="2025-06-01"),
-        ]
-        result = _merge_by_date([], photos)
-        assert len(result) == 1
-
-    def test_interleaved_by_date(self):
-        videos = [
-            AssemblyClip(path=Path("/v1.mp4"), duration=3.0, date="2025-01-10"),
-            AssemblyClip(path=Path("/v2.mp4"), duration=3.0, date="2025-03-10"),
-        ]
-        photos = [
-            AssemblyClip(path=Path("/p1.mp4"), duration=3.0, date="2025-02-05"),
-        ]
-        result = _merge_by_date(videos, photos)
-        assert [c.date for c in result] == ["2025-01-10", "2025-02-05", "2025-03-10"]
-
-    def test_clips_with_none_dates_sort_first(self):
-        clips = [
-            AssemblyClip(path=Path("/a.mp4"), duration=3.0, date="2025-06-01"),
-            AssemblyClip(path=Path("/b.mp4"), duration=3.0, date=None),
-        ]
-        result = _merge_by_date(clips, [])
-        # None sorts as "" which comes before any date string
-        assert result[0].date is None
-        assert result[1].date == "2025-06-01"
 
 
 # ---------------------------------------------------------------------------
@@ -179,185 +87,6 @@ class TestDetectPhotoResolution:
         params = GenerationParams(clips=[], output_path=Path("/tmp/o.mp4"), config=Config())
         w, h = _detect_photo_resolution(params)
         assert w > h
-
-
-# ---------------------------------------------------------------------------
-# _build_title_settings_for_overhead
-# ---------------------------------------------------------------------------
-
-
-class TestBuildTitleSettingsForOverhead:
-    def test_returns_none_when_title_screens_disabled(self):
-        config = Config()
-        config.title_screens.enabled = False
-        params = GenerationParams(clips=[], output_path=Path("/tmp/o.mp4"), config=config)
-        assert _build_title_settings_for_overhead(params) is None
-
-    def test_returns_settings_when_enabled(self):
-        config = Config()
-        config.title_screens.enabled = True
-        config.title_screens.title_duration = 4.0
-        params = GenerationParams(clips=[], output_path=Path("/tmp/o.mp4"), config=config)
-        result = _build_title_settings_for_overhead(params)
-        assert result is not None
-        assert result.enabled is True
-        assert result.title_duration == 4.0
-
-    def test_carries_month_divider_settings(self):
-        config = Config()
-        config.title_screens.show_month_dividers = False
-        config.title_screens.month_divider_threshold = 5
-        params = GenerationParams(clips=[], output_path=Path("/tmp/o.mp4"), config=config)
-        result = _build_title_settings_for_overhead(params)
-        assert result.show_month_dividers is False
-        assert result.month_divider_threshold == 5
-
-
-# ---------------------------------------------------------------------------
-# _render_photos
-# ---------------------------------------------------------------------------
-
-
-class TestRenderPhotos:
-    def test_no_client_returns_empty_list(self):
-        params = GenerationParams(
-            clips=[],
-            output_path=Path("/tmp/o.mp4"),
-            config=Config(),
-            client=None,
-            photo_assets=[make_asset("p1")],
-        )
-        result = _render_photos(params, Path("/tmp"), video_clip_count=5)
-        assert result == []
-
-    def test_no_client_no_photo_assets(self):
-        params = GenerationParams(
-            clips=[],
-            output_path=Path("/tmp/o.mp4"),
-            config=Config(),
-            client=None,
-            photo_assets=None,
-        )
-        result = _render_photos(params, Path("/tmp"), video_clip_count=0)
-        assert result == []
-
-
-# ---------------------------------------------------------------------------
-# _add_photos_if_enabled
-# ---------------------------------------------------------------------------
-
-
-class TestAddPhotosIfEnabled:
-    def test_photos_disabled_returns_clips_unchanged(self):
-        clips = [AssemblyClip(path=Path("/a.mp4"), duration=3.0)]
-        params = GenerationParams(
-            clips=[],
-            output_path=Path("/tmp/o.mp4"),
-            config=Config(),
-            include_photos=False,
-        )
-        result = _add_photos_if_enabled(clips, params, Path("/tmp"))
-        assert result is clips
-
-    def test_no_photo_assets_returns_clips_unchanged(self):
-        clips = [AssemblyClip(path=Path("/a.mp4"), duration=3.0)]
-        params = GenerationParams(
-            clips=[],
-            output_path=Path("/tmp/o.mp4"),
-            config=Config(),
-            include_photos=True,
-            photo_assets=None,
-        )
-        result = _add_photos_if_enabled(clips, params, Path("/tmp"))
-        assert result is clips
-
-    def test_empty_photo_assets_returns_clips_unchanged(self):
-        clips = [AssemblyClip(path=Path("/a.mp4"), duration=3.0)]
-        params = GenerationParams(
-            clips=[],
-            output_path=Path("/tmp/o.mp4"),
-            config=Config(),
-            include_photos=True,
-            photo_assets=[],
-        )
-        result = _add_photos_if_enabled(clips, params, Path("/tmp"))
-        assert result is clips
-
-    def test_selected_photo_ids_no_client_returns_clips(self):
-        asset = make_asset("photo-1")
-        clips = [AssemblyClip(path=Path("/a.mp4"), duration=3.0)]
-        params = GenerationParams(
-            clips=[],
-            output_path=Path("/tmp/o.mp4"),
-            config=Config(),
-            include_photos=True,
-            photo_assets=[asset],
-            selected_photo_ids={"photo-1"},
-            client=None,
-        )
-        result = _add_photos_if_enabled(clips, params, Path("/tmp"))
-        assert result is clips
-
-    def test_selected_photo_ids_empty_match_returns_clips(self, tmp_path):
-        asset = make_asset("photo-999")
-        clips = [AssemblyClip(path=Path("/a.mp4"), duration=3.0)]
-        params = GenerationParams(
-            clips=[],
-            output_path=Path("/tmp/o.mp4"),
-            config=Config(),
-            include_photos=True,
-            photo_assets=[asset],
-            selected_photo_ids={"nonexistent-id"},
-            client=MagicMock(),
-        )
-        result = _add_photos_if_enabled(clips, params, tmp_path)
-        assert result is clips
-
-    def test_fallback_path_computes_effective_duration(self, tmp_path):
-        """When selected_photo_ids is None, falls back to full scoring path."""
-        asset = make_asset("photo-1")
-        clips = [AssemblyClip(path=Path("/a.mp4"), duration=10.0)]
-        params = GenerationParams(
-            clips=[],
-            output_path=Path("/tmp/o.mp4"),
-            config=Config(),
-            include_photos=True,
-            photo_assets=[asset],
-            selected_photo_ids=None,
-            client=None,
-            target_duration_seconds=None,
-        )
-
-        # WHY: mock the budget function to avoid real photo scoring logic
-        with patch("immich_memories.generate_photos._apply_unified_budget") as mock_budget:
-            mock_budget.return_value = (clips, [])
-            _add_photos_if_enabled(clips, params, tmp_path)
-
-        mock_budget.assert_called_once()
-        # effective_duration = sum(durations) * 1.25 = 10 * 1.25 = 12.5
-        call_kwargs = mock_budget.call_args
-        assert call_kwargs[1]["target_override"] == 12.5
-
-    def test_fallback_path_uses_explicit_target_duration(self, tmp_path):
-        asset = make_asset("photo-1")
-        clips = [AssemblyClip(path=Path("/a.mp4"), duration=10.0)]
-        params = GenerationParams(
-            clips=[],
-            output_path=Path("/tmp/o.mp4"),
-            config=Config(),
-            include_photos=True,
-            photo_assets=[asset],
-            selected_photo_ids=None,
-            client=None,
-            target_duration_seconds=60.0,
-        )
-
-        # WHY: mock the budget function to avoid real photo scoring logic
-        with patch("immich_memories.generate_photos._apply_unified_budget") as mock_budget:
-            mock_budget.return_value = (clips, [])
-            _add_photos_if_enabled(clips, params, tmp_path)
-
-        assert mock_budget.call_args[1]["target_override"] == 60.0
 
 
 # ---------------------------------------------------------------------------
@@ -1132,11 +861,6 @@ class TestGenerateMemoryInner:
                 "immich_memories.generate._extract_clips",
                 return_value=[assembly_clip],
             ),
-            # WHY: _add_photos_if_enabled renders photos via FFmpeg
-            "photos": patch(
-                "immich_memories.generate._add_photos_if_enabled",
-                return_value=[assembly_clip],
-            ),
             # WHY: validate_clips checks file existence on disk
             "validate": patch(
                 "immich_memories.generate.validate_clips",
@@ -1730,67 +1454,6 @@ class TestUploadToImmich:
 # ---------------------------------------------------------------------------
 # _apply_unified_budget
 # ---------------------------------------------------------------------------
-
-
-class TestApplyUnifiedBudget:
-    def test_no_client_returns_clips_unchanged(self, tmp_path):
-        from immich_memories.generate import _apply_unified_budget
-
-        clips = [AssemblyClip(path=Path("/a.mp4"), duration=5.0, asset_id="v1")]
-        params = GenerationParams(
-            clips=[],
-            output_path=Path("/tmp/o.mp4"),
-            config=Config(),
-            client=None,
-            include_photos=True,
-            photo_assets=[make_asset("p1")],
-            target_duration_seconds=60.0,
-        )
-        videos, photos = _apply_unified_budget(clips, params, tmp_path)
-        assert videos is clips
-        assert photos == []
-
-    def test_with_client_calls_scoring_pipeline(self, tmp_path):
-        from immich_memories.generate import _apply_unified_budget
-
-        clips = [AssemblyClip(path=Path("/a.mp4"), duration=5.0, asset_id="v1", date="2025-07-15")]
-        mock_client = MagicMock()
-        params = GenerationParams(
-            clips=[],
-            output_path=Path("/tmp/o.mp4"),
-            config=Config(),
-            client=mock_client,
-            include_photos=True,
-            photo_assets=[make_asset("p1")],
-            target_duration_seconds=60.0,
-        )
-
-        mock_selection = MagicMock()
-        mock_selection.content_duration = 55.0
-        mock_selection.kept_video_ids = {"v1"}
-        mock_selection.selected_photo_ids = []
-
-        mock_result = MagicMock()
-        mock_result.selection = mock_selection
-        mock_result.scored_photos = []
-
-        # WHY: score_and_select_photos runs expensive analysis + scoring
-        with (
-            patch(
-                "immich_memories.photos.photo_pipeline.score_and_select_photos",
-                return_value=mock_result,
-            ),
-            patch("immich_memories.photos.photo_pipeline.render_photo_clips", return_value=[]),
-        ):
-            videos, photos = _apply_unified_budget(clips, params, tmp_path, target_override=60.0)
-
-        assert len(videos) == 1
-        assert videos[0].asset_id == "v1"
-
-
-# ===========================================================================
-# generate_downloads.py
-# ===========================================================================
 
 
 class TestDownloadClip:

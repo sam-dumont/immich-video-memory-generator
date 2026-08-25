@@ -789,7 +789,6 @@ def test_a_cold_photo_pass_reports_the_photos_it_had_to_score(tmp_path: Path, ca
         score_photos(
             cold,
             config.photos,
-            video_clip_count=0,
             work_dir=tmp_path,
             download_fn=None,
             db_path=config.cache.database_path,

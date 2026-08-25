@@ -109,7 +109,6 @@ def test_a_library_of_moments_is_still_bounded(tmp_path, caplog) -> None:
         score_photos(
             far_apart,
             config.photos,
-            video_clip_count=0,
             work_dir=tmp_path,
             download_fn=None,
             db_path=config.cache.database_path,
@@ -203,7 +202,6 @@ class TestReadingMomentsInsteadOfSamplingThem:
             score_photos(
                 assets,
                 config.photos,
-                video_clip_count=0,
                 work_dir=tmp_path,
                 download_fn=None,
                 thumbnail_fn=lambda _id, **_kw: self._jpeg(),
@@ -236,7 +234,6 @@ class TestReadingMomentsInsteadOfSamplingThem:
             score_photos(
                 assets,
                 config.photos,
-                video_clip_count=0,
                 work_dir=tmp_path,
                 download_fn=None,
                 db_path=config.cache.database_path,
@@ -309,7 +306,6 @@ class TestASheetShowsTheWholeMoment:
             score_photos(
                 photos,
                 config.photos,
-                video_clip_count=0,
                 work_dir=tmp_path,
                 download_fn=None,
                 thumbnail_fn=lambda _id, **_kw: self._jpeg(),
