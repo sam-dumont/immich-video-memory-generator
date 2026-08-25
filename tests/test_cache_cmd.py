@@ -76,6 +76,7 @@ class TestCacheStats:
     def test_renders_table_with_stats(self):
         stats = {
             "total": 42,
+            "assets": 37,
             "by_type": {"VIDEO": 30, "IMAGE": 12},
             "with_llm": 15,
             "oldest": "2025-01-01 10:00:00",
@@ -94,6 +95,7 @@ class TestCacheStats:
     def test_renders_empty_cache(self):
         stats = {
             "total": 0,
+            "assets": 0,
             "by_type": {},
             "with_llm": 0,
             "oldest": None,

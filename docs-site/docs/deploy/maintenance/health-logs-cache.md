@@ -142,6 +142,14 @@ From the CLI:
 immich-memories cache stats
 ```
 
+`cache stats` reports **scored assets** and **banked looks** separately. They
+differ because a look is stored against the model and prompt version that
+produced it: when either changes, the new answer is banked *beside* the old one
+rather than replacing it, so an asset can hold several. That is deliberate —
+the previous behaviour made every stored answer unreadable on a prompt edit, and
+re-analysed the whole library from scratch. The cost is a few MB; the benefit is
+that a rollback is free and the corpus keeps growing instead of resetting.
+
 The CLI has no `clear` command. To clear caches:
 
 - **UI**: the Cache page (sidebar > Cache) shows current usage and has per-cache

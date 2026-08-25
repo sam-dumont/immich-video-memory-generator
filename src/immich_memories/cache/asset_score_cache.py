@@ -36,10 +36,17 @@ class AssetScoreCache:
             conn.close()
 
     def get_asset_score(self, asset_id: str) -> dict | None:
-        """Look up cached score for an asset. Returns None if not cached."""
+        """The most recent look banked for an asset, whichever version wrote it.
+
+        An asset now holds a row per model+prompt version, so this answers with
+        the newest of them. Callers that need the answer a *particular* version
+        gave must ask for it by version through ``get_asset_scores_batch``.
+        """
         with self._get_connection() as conn:
             row = conn.execute(
-                "SELECT * FROM asset_scores WHERE asset_id = ?", (asset_id,)
+                "SELECT * FROM asset_scores WHERE asset_id = ?"
+                " ORDER BY analyzed_at DESC, rowid DESC LIMIT 1",
+                (asset_id,),
             ).fetchone()
             if row:
                 return dict(row)
@@ -51,7 +58,11 @@ class AssetScoreCache:
         *,
         model_version: str | None = None,
     ) -> dict[str, dict]:
-        """Look up cached scores, optionally restricted to an exact model."""
+        """Look up cached scores, optionally restricted to an exact model.
+
+        Without a version this answers with each asset's newest look, since an
+        asset may now hold one per model+prompt version.
+        """
         if not asset_ids:
             return {}
         with self._get_connection() as conn:
@@ -61,6 +72,8 @@ class AssetScoreCache:
             if model_version is not None:
                 query += " AND model_version = ?"
                 params.append(model_version)
+            # Oldest first, so the newest row is the one left standing per asset.
+            query += " ORDER BY analyzed_at, rowid"
             rows = conn.execute(query, params).fetchall()
             return {row["asset_id"]: dict(row) for row in rows}
 
@@ -76,7 +89,13 @@ class AssetScoreCache:
         llm_description: str | None = None,
         model_version: str | None = None,
     ) -> None:
-        """Save or update a cached asset score."""
+        """Bank a look under its version, replacing only that version's answer.
+
+        A save under a new version leaves what earlier versions said in place —
+        a prompt edit re-asks the model, it does not throw the corpus away.
+        Rows saved without a version share the one empty-string version, which
+        is what the pre-versioning rows migrate onto.
+        """
         with self._get_connection() as conn:
             conn.execute(
                 """
@@ -95,15 +114,21 @@ class AssetScoreCache:
                     llm_quality,
                     llm_emotion,
                     llm_description,
-                    model_version,
+                    model_version or "",
                 ),
             )
             conn.commit()
 
     def get_cache_stats(self) -> dict:
-        """Get cache statistics for the `cache stats` CLI command."""
+        """Statistics for the `cache stats` CLI command.
+
+        `total` counts banked looks and `assets` counts the assets they are
+        about — the two differ once a prompt version bump leaves an asset
+        holding an answer from each version, which is the point of doing so.
+        """
         with self._get_connection() as conn:
             total = conn.execute("SELECT COUNT(*) FROM asset_scores").fetchone()[0]
+            assets = conn.execute("SELECT COUNT(DISTINCT asset_id) FROM asset_scores").fetchone()[0]
             by_type = conn.execute(
                 "SELECT asset_type, COUNT(*) as cnt FROM asset_scores GROUP BY asset_type"
             ).fetchall()
@@ -114,6 +139,7 @@ class AssetScoreCache:
             ).fetchone()[0]
         return {
             "total": total,
+            "assets": assets,
             "by_type": {row["asset_type"]: row["cnt"] for row in by_type},
             "with_llm": with_llm,
             "oldest": oldest,

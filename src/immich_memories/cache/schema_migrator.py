@@ -21,6 +21,7 @@ from immich_memories.cache.migration_v16 import migrate_video_analysis_model_ver
 from immich_memories.cache.migration_v17 import migrate_segment_transcripts
 from immich_memories.cache.migration_v19 import migrate_target_duration_seconds
 from immich_memories.cache.migration_v21 import migrate_run_llm_metrics
+from immich_memories.cache.migration_v22 import migrate_asset_score_version_key
 
 if TYPE_CHECKING:
     from contextlib import AbstractContextManager
@@ -96,6 +97,7 @@ class SchemaMigrator:
             19: migrate_target_duration_seconds,
             20: self._migration_v20_safe_cut_gaps,
             21: migrate_run_llm_metrics,
+            22: migrate_asset_score_version_key,
         }
 
         for version in range(from_version + 1, target_version + 1):
