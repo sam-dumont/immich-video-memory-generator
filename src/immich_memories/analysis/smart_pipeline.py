@@ -433,6 +433,10 @@ class SmartPipeline:
         *,
         verify: bool,
     ) -> PipelineResult:
+        # What selection was given, before any stage narrowed it. The one rule
+        # it may not break is measured against this, not against whatever
+        # survived to the end.
+        pool = analyzed.copy()
         try:
             result = self.refiner.phase_refine(analyzed, self.tracker)
             if verify:
@@ -457,6 +461,7 @@ class SmartPipeline:
                     # once more and simply drop what fails: a cut four seconds
                     # short beats a cut that ends on a shelf.
                     result, analyzed = self.quality.final_review_drop(analyzed, result)
+            trace.record_favourite_law(pool, result.selected_clips)
             self.tracker.finish()
             return result
         except (

@@ -18,6 +18,8 @@ from typing import TYPE_CHECKING, NamedTuple
 if TYPE_CHECKING:
     from immich_memories.analysis.smart_pipeline import ClipWithSegment
 
+from immich_memories.analysis.asset_merit import ranking_key
+
 logger = logging.getLogger(__name__)
 
 
@@ -229,8 +231,14 @@ def _partition_photos_per_day(
 ) -> tuple[list[ClipWithSegment], list[ClipWithSegment]]:
     """Partition same-day photos into preferred and duration-fallback pools.
 
-    Videos are always preferred. Within each day, the highest-scored photos
-    enter initial selection and the remainder stay available for backfill.
+    Videos are always preferred. Within each day, the best photos enter initial
+    selection and the remainder stay available for backfill.
+
+    Best means the owner's mark first, then score (asset_merit.ranking_key).
+    Ranking on score alone made this the stage where favourites went: measured
+    on one real month, 52 in the pool and 13 left after it. It never asks
+    whether a photograph was starred, and it is the widest cut in the funnel,
+    so a star could be evicted by any neighbour that merely scored better.
     """
     from immich_memories.api.models import AssetType
 
@@ -250,7 +258,11 @@ def _partition_photos_per_day(
     kept_photos: list[ClipWithSegment] = []
     overflow_photos: list[ClipWithSegment] = []
     for day_key in sorted(by_day):
-        day_photos = sorted(by_day[day_key], key=lambda c: c.score, reverse=True)
+        day_photos = sorted(
+            by_day[day_key],
+            key=lambda c: ranking_key(c.clip.asset, c.score),
+            reverse=True,
+        )
         cap = day_caps[day_key]
         kept_photos.extend(day_photos[:cap])
         overflow_photos.extend(day_photos[cap:])
