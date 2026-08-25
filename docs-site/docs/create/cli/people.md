@@ -115,6 +115,7 @@ people:
     confirmed:
       role: null
       links: []
+      notes: null
 ```
 
 ## Confirmed beats inferred
@@ -130,8 +131,54 @@ The contract, which the builder is not allowed to break:
   to delete an answer you gave;
 - where the two disagree, consumers are to prefer `confirmed:`.
 
-Fill `confirmed:` by editing the file, or leave it for the settings page that will write
-here. Both write the same schema.
+Fill `confirmed:` by editing the file, or from the settings page below. Both write the
+same schema, through the same writer.
+
+## The editor — Settings → People
+
+The web UI has the same file as a page, at **Settings → People** (`/settings/people`).
+It is the file, not a second copy of it: everything the page writes lands in
+`people.yaml` immediately, and everything you have edited by hand shows up there.
+
+Each person is one card: their Immich face crop, their name, the tier the scan put them
+in with the evidence behind it in one line, and the edges the scan found.
+
+**What you can confirm.**
+
+| control | writes | what it means |
+|---|---|---|
+| Role | `confirmed.role` | pick from partner, child, parent, sibling, family, friend, acquaintance — or type your own. The list is only what inference can suggest; a role only you can name is what the free text is for |
+| ✓ / ✗ on a link | `confirmed.links[]` | yes they are, or no they are not. Pressing the answer you already gave takes it back — undecided is a real state, and it writes nothing |
+| Notes | `confirmed.notes` | anything you want to remember about this person |
+
+Nothing is saved behind a button: each control writes as you change it, and a rescan then
+copies all of it through untouched.
+
+**Birth dates are read-only here.** They are mirrored from Immich and must never diverge
+from it, so the card shows the date with an *edit in Immich* link next to it rather than
+a field. The same link opens any person's record in your Immich install.
+
+**Curation, at the top of the page.** Two things the scan can spot but only Immich can
+fix, so the page names them and points you there:
+
+- **Twins** — same family name, same birth date. Face recognition merges identical faces,
+  so one record ends up holding nearly all the pictures and the other almost none
+  (measured on a real library: 576 against 20). Neither count means anything alone, and
+  both cards carry a *counts unreliable* badge. Merge them in Immich or keep them apart —
+  it is your call, and the graph reads the pair as one unit either way.
+- **Same-name duplicates** — one name on two person records is a split face cluster.
+  Merge those records in Immich.
+
+Both are guesses, and both can be wrong: two people really can share a surname and a
+birthday, or a name. Press ✗ on the link in either person's card and the flag stops
+appearing — a prompt you have already answered is nagging, not curation.
+
+**Rescan the library** runs exactly what `people scan` runs, in the background, and
+redraws the page when it finishes. Your confirmations survive it — that is the whole
+contract above.
+
+Unnamed faces do not appear here at all, however often they show up: the graph skips
+them, because naming a face is work that belongs in Immich.
 
 ## Options
 

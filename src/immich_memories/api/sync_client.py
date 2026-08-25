@@ -113,6 +113,9 @@ class SyncImmichClient:
     def get_person_asset_count(self, person_id: str) -> int:
         return self._run(self._async_client.people.get_person_asset_count(person_id))
 
+    def get_person_thumbnail(self, person_id: str) -> bytes:
+        return self._run(self._async_client.people.get_person_thumbnail(person_id))
+
     def get_asset(self, asset_id: str) -> Asset:
         return self._run(self._async_client.get_asset(asset_id))
 

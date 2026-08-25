@@ -29,6 +29,10 @@ class PersonService:
         data = await self._request("GET", f"/people/{person_id}")
         return Person(**data)
 
+    async def get_person_thumbnail(self, person_id: str) -> bytes:
+        """The face crop Immich shows for this person."""
+        return await self._request("GET", f"/people/{person_id}/thumbnail")
+
     async def get_person_asset_count(self, person_id: str) -> int:
         """Get total asset count for a person via /people/{id}/statistics."""
         data = await self._request("GET", f"/people/{person_id}/statistics")

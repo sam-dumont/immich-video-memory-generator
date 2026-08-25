@@ -15,6 +15,7 @@ from immich_memories.people.companion import (
     default_people_path,
     load_document,
     people_entries,
+    save_confirmed,
     save_graph,
 )
 from immich_memories.people.graph import Owner, PeopleGraph, PersonNode
@@ -54,7 +55,7 @@ class TestTheFile:
         save_graph(path, _graph(_node("Alex Example", Tier.INNER)))
 
         entry = people_entries(load_document(path))[0]
-        assert entry["confirmed"] == {"role": None, "links": []}
+        assert entry["confirmed"] == {"role": None, "links": [], "notes": None}
         assert entry["inferred"]["tier"] == "inner"
 
     def test_the_file_records_the_evidence_behind_each_reading(self, tmp_path):
@@ -126,6 +127,27 @@ class TestConfirmedBeatsInferred:
         save_graph(path, _graph(_node("Alex Example", Tier.INNER)))
 
         assert [entry["name"] for entry in people_entries(load_document(path))] == ["Alex Example"]
+
+
+class TestTheEditorsWritePath:
+    def test_it_fills_one_person_and_leaves_the_rest_of_the_file_alone(self, tmp_path):
+        path = tmp_path / "people.yaml"
+        save_graph(path, _graph(_node("Alex Example", Tier.INNER), _node("Sam Sample", Tier.EVENT)))
+
+        save_confirmed(path, "id-sam-sample", {"role": "friend", "links": [], "notes": None})
+
+        by_name = {entry["name"]: entry for entry in people_entries(load_document(path))}
+        assert by_name["Sam Sample"]["confirmed"]["role"] == "friend"
+        assert by_name["Alex Example"]["confirmed"]["role"] is None
+        assert by_name["Alex Example"]["inferred"]["tier"] == "inner"
+
+    def test_it_writes_a_file_only_its_owner_can_read(self, tmp_path):
+        path = tmp_path / "people.yaml"
+        save_graph(path, _graph(_node("Alex Example", Tier.INNER)))
+
+        save_confirmed(path, "id-alex-example", {"role": "partner", "links": [], "notes": None})
+
+        assert path.stat().st_mode & 0o077 == 0
 
 
 class TestAHandEditedFile:
