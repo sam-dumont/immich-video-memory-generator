@@ -8,6 +8,8 @@ import pytest
 
 from immich_memories.api.compatibility import ApiVersionPolicy
 from immich_memories.config_loader import Config
+from immich_memories.memory_types.factory import create_preset
+from immich_memories.memory_types.registry import MemoryType
 from immich_memories.tracking import DeliveryStatus
 from immich_memories.ui.state import (
     AppState,
@@ -619,14 +621,93 @@ class TestPersonScope:
         assert AppState().person_ids == []
 
 
+class TestAdoptingAPreset:
+    """A preset is the one thing the wizard reads a memory's scope from.
+
+    ``apply_preset`` is where a card's answer becomes state, so the person
+    filter it carries has to reach the fetch the same way its windows do --
+    that is what makes the wizard and ``--person`` agree (#666, #683).
+    """
+
+    def _state_with(self, *people):
+        from immich_memories.api.models import Person
+
+        state = AppState()
+        state.people = [Person(id=f"person-{n.lower()}", name=n) for n in people]
+        return state
+
+    def test_a_year_in_review_narrows_to_everyone_the_filter_names(self) -> None:
+        """The wizard could not phrase this at all before #666."""
+        state = self._state_with("Alice", "Bob")
+
+        state.apply_preset(
+            create_preset(MemoryType.YEAR_IN_REVIEW, year=2024, person_names=["Alice", "Bob"])
+        )
+
+        assert state.person_ids == ["person-alice", "person-bob"]
+
+    def test_naming_nobody_leaves_the_memory_wide(self) -> None:
+        state = self._state_with("Alice", "Bob")
+
+        state.apply_preset(create_preset(MemoryType.YEAR_IN_REVIEW, year=2024))
+
+        assert state.person_ids == []
+
+    def test_a_name_immich_does_not_know_narrows_nothing(self) -> None:
+        """A filter is written in names and fetched by ids, and only ids exist.
+
+        The roster is what Immich returned; a name absent from it has no id to
+        query with, so it cannot silently become "everybody".
+        """
+        state = self._state_with("Alice")
+
+        state.apply_preset(
+            create_preset(MemoryType.YEAR_IN_REVIEW, year=2024, person_names=["Alice", "Mallory"])
+        )
+
+        assert state.person_ids == ["person-alice"]
+
+    def test_one_person_is_named_for_the_title(self) -> None:
+        state = self._state_with("Alice", "Bob")
+
+        state.apply_preset(
+            create_preset(MemoryType.PERSON_SPOTLIGHT, year=2024, person_names=["Alice"])
+        )
+
+        assert state.selected_person is not None
+        assert state.selected_person.name == "Alice"
+
+    def test_a_group_has_no_single_name_to_put_on_the_title(self) -> None:
+        state = self._state_with("Alice", "Bob")
+        state.apply_preset(
+            create_preset(MemoryType.PERSON_SPOTLIGHT, year=2024, person_names=["Alice"])
+        )
+
+        state.apply_preset(
+            create_preset(MemoryType.MULTI_PERSON, year=2024, person_names=["Alice", "Bob"])
+        )
+
+        assert state.selected_person is None
+
+    def test_the_preset_also_brings_its_windows_and_its_length(self) -> None:
+        state = self._state_with("Alice")
+        preset = create_preset(MemoryType.MONTHLY_HIGHLIGHTS, year=2024, month=3)
+
+        state.apply_preset(preset)
+
+        assert state.date_ranges == preset.date_ranges
+        assert state.target_duration == 1.0
+
+
 class TestChoosingAMemoryType:
     """Switching cards drops what the previous card collected."""
 
     def test_the_person_does_not_follow_you_to_the_next_card(self) -> None:
         """Alice picked for a Person Spotlight must not narrow a Year in Review.
 
-        Only two cards show a person widget, so a person left behind by the
-        previous one filters the new memory with nothing on screen saying so.
+        Every card shows a person widget now, so a person left behind by the
+        previous one would filter the new memory with a picker on screen
+        claiming nobody is named.
         """
         from immich_memories.api.models import Person
 

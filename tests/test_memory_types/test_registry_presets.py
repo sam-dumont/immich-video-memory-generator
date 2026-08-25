@@ -2,11 +2,9 @@
 
 from datetime import datetime
 
-from immich_memories.memory_types.presets import (
-    MemoryPreset,
-    PersonFilter,
-    ScoringProfile,
-)
+import pytest
+
+from immich_memories.memory_types.presets import MemoryPreset, PersonFilter, person_filter_for
 from immich_memories.memory_types.registry import MemoryType
 from immich_memories.timeperiod import DateRange
 
@@ -57,43 +55,6 @@ class TestMemoryTypeEnum:
         assert MemoryType.TRIP == "trip"
 
 
-class TestScoringProfile:
-    """Tests for ScoringProfile dataclass."""
-
-    def test_defaults(self) -> None:
-        profile = ScoringProfile()
-        assert profile.face_weight == 0.4
-        assert profile.motion_weight == 0.25
-        assert profile.stability_weight == 0.2
-        assert profile.audio_weight == 0.15
-        assert profile.content_weight == 0.0
-        assert profile.duration_weight == 0.15
-
-    def test_to_dict(self) -> None:
-        profile = ScoringProfile()
-        result = profile.to_dict()
-        assert result == {
-            "face_weight": 0.4,
-            "motion_weight": 0.25,
-            "stability_weight": 0.2,
-            "audio_weight": 0.15,
-            "content_weight": 0.0,
-            "duration_weight": 0.15,
-        }
-
-    def test_custom_weights(self) -> None:
-        profile = ScoringProfile(face_weight=0.8, content_weight=0.5)
-        assert profile.face_weight == 0.8
-        assert profile.content_weight == 0.5
-        # Other defaults remain
-        assert profile.motion_weight == 0.25
-
-    def test_custom_weights_in_to_dict(self) -> None:
-        profile = ScoringProfile(face_weight=0.9)
-        result = profile.to_dict()
-        assert result["face_weight"] == 0.9
-
-
 class TestPersonFilter:
     """Tests for PersonFilter dataclass."""
 
@@ -121,44 +82,45 @@ class TestPersonFilter:
         assert not pf2.person_names
 
 
-class TestMemoryPreset:
-    """Tests for MemoryPreset dataclass."""
+class TestPersonFilterFor:
+    """One rule for what a list of names means, on every memory type."""
 
-    def test_creation_with_all_fields(self) -> None:
-        date_range = DateRange(
-            start=datetime(2025, 1, 1),
-            end=datetime(2025, 12, 31),
-        )
-        preset = MemoryPreset(
-            memory_type=MemoryType.YEAR_IN_REVIEW,
-            name="Year in Review 2025",
-            description="A look back at your best moments of 2025",
-            date_ranges=[date_range],
-            person_filter=PersonFilter(),
-            scoring=ScoringProfile(),
-            title_template="Your {year} in Review",
-            subtitle_template="Best moments of {year}",
-            default_duration_seconds=300,
-        )
-        assert preset.memory_type == MemoryType.YEAR_IN_REVIEW
-        assert preset.name == "Year in Review 2025"
-        assert len(preset.date_ranges) == 1
-        assert preset.subtitle_template == "Best moments of {year}"
-        assert preset.default_duration_seconds == 300
+    def test_several_names_intersect(self) -> None:
+        """Both on the picture — the CLI's semantics, now the preset's too."""
+        pf = person_filter_for(["Alice", "Bob"])
 
-    def test_optional_fields_default_to_none(self) -> None:
-        date_range = DateRange(
-            start=datetime(2025, 6, 1),
-            end=datetime(2025, 8, 31),
-        )
-        preset = MemoryPreset(
-            memory_type=MemoryType.SEASON,
-            name="Summer 2025",
-            description="Summer highlights",
-            date_ranges=[date_range],
-            person_filter=PersonFilter(),
-            scoring=ScoringProfile(),
-            title_template="Summer {year}",
-        )
-        assert preset.subtitle_template is None
-        assert preset.default_duration_seconds is None
+        assert pf.person_names == ["Alice", "Bob"]
+        assert pf.require_co_occurrence
+
+    def test_no_names_narrows_nothing(self) -> None:
+        assert not person_filter_for(None).person_names
+        assert not person_filter_for([]).person_names
+
+
+class TestBuriedFields:
+    """#666: three fields no code ever read, and the pins that keep them dead.
+
+    They were never functional, so they were removed outright rather than
+    deprecated. Building a preset that still names one has to fail loudly —
+    a silently ignored keyword is how they survived this long.
+    """
+
+    @pytest.mark.parametrize("dead", ["scoring", "title_template", "subtitle_template"])
+    def test_naming_a_buried_field_is_an_error(self, dead: str) -> None:
+        with pytest.raises(TypeError, match=dead):
+            MemoryPreset(
+                memory_type=MemoryType.YEAR_IN_REVIEW,
+                name="2025 Memories",
+                description="A look back",
+                date_ranges=[DateRange(start=datetime(2025, 1, 1), end=datetime(2025, 12, 31))],
+                person_filter=PersonFilter(),
+                **{dead: "whatever it used to hold"},
+            )
+
+    def test_the_scoring_profile_is_gone_from_the_package(self) -> None:
+        """Its only converter, SceneScorer.from_profile, went with it."""
+        import immich_memories.memory_types as memory_types
+        from immich_memories.analysis.scoring import SceneScorer
+
+        assert not hasattr(memory_types, "ScoringProfile")
+        assert not hasattr(SceneScorer, "from_profile")

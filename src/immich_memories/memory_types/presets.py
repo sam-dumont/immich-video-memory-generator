@@ -1,34 +1,12 @@
-"""Memory presets — dataclasses for scoring, filtering, and preset config."""
+"""Memory presets — what a memory type asks for before anything is fetched."""
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from immich_memories.memory_types.registry import MemoryType
 from immich_memories.timeperiod import DateRange
-
-
-@dataclass
-class ScoringProfile:
-    """Weights for video clip scoring across different dimensions."""
-
-    face_weight: float = 0.4
-    motion_weight: float = 0.25
-    stability_weight: float = 0.2
-    audio_weight: float = 0.15
-    content_weight: float = 0.0
-    duration_weight: float = 0.15
-
-    def to_dict(self) -> dict[str, float]:
-        """Return scoring weights as a plain dictionary."""
-        return {
-            "face_weight": self.face_weight,
-            "motion_weight": self.motion_weight,
-            "stability_weight": self.stability_weight,
-            "audio_weight": self.audio_weight,
-            "content_weight": self.content_weight,
-            "duration_weight": self.duration_weight,
-        }
 
 
 @dataclass
@@ -40,6 +18,22 @@ class PersonFilter:
     require_co_occurrence: bool = False
 
 
+def person_filter_for(person_names: Sequence[str] | None) -> PersonFilter:
+    """The people a memory is narrowed to, whatever memory type it is.
+
+    Several names intersect: the memory is what holds all of them, which is
+    what ``--person Alice --person Bob`` has always fetched and what a
+    multi-person memory has always meant. Keeping only the first name was how
+    the wizard and the CLI came to disagree on the same request (#683).
+    """
+    names = list(person_names or [])
+    if not names:
+        return PersonFilter()
+    if len(names) == 1:
+        return PersonFilter(mode="single", person_names=names)
+    return PersonFilter(mode="all_of", person_names=names, require_co_occurrence=True)
+
+
 @dataclass
 class MemoryPreset:
     """Full preset configuration for a memory type."""
@@ -49,7 +43,4 @@ class MemoryPreset:
     description: str
     date_ranges: list[DateRange]
     person_filter: PersonFilter
-    scoring: ScoringProfile
-    title_template: str
-    subtitle_template: str | None = None
     default_duration_seconds: float | None = None

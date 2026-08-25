@@ -1612,22 +1612,6 @@ class TestSceneScorerInit:
         assert scorer._use_vision is False
         assert scorer._face_cascade is not None
 
-    def test_from_profile_factory(self):
-        """from_profile creates a SceneScorer from a ScoringProfile."""
-        from immich_memories.analysis.scoring import SceneScorer
-        from immich_memories.memory_types.presets import ScoringProfile
-
-        profile = ScoringProfile(face_weight=0.5, motion_weight=0.3)
-        # WHY: check_vision_available does OS detection — mock for unit test
-        with patch("immich_memories.analysis.scoring.check_vision_available", return_value=False):
-            scorer = SceneScorer.from_profile(
-                profile,
-                content_analysis_config=MagicMock(),
-                analysis_config=AnalysisConfig(),
-            )
-        assert scorer.face_weight > 0
-        assert scorer.motion_weight > 0
-
 
 class TestSceneScorerCapture:
     """Cover lines 621-623, 630: _get_capture reuse and release_capture."""

@@ -27,14 +27,14 @@ Each preset sets the date range and a default target duration, then shows the pa
 
 | Card | Parameters shown | Default target |
 |------|------------------|----------------|
-| Year in Review | Year | 10 min |
-| Season | Year, Season (spring/summer/autumn/winter), Hemisphere (north/south) | 2 min 15 s |
+| Year in Review | Year, Only with | 10 min |
+| Season | Year, Season (spring/summer/autumn/winter), Hemisphere (north/south), Only with | 2 min 15 s |
 | Person Spotlight | Year (or "All Time"), Person, checkbox "Birthday to birthday" | 2 min |
 | Multi-Person | Year, People (select 2+) | 5 min |
-| Monthly Highlights | Year, Month | 1 min |
-| On This Day | none (uses today's date across previous years) | 45 s |
-| Holiday | Holiday, Most recent year, Years to span (2–10) | 1 min |
-| Then and Now | Now (year), Years back (1–20) | 45 s |
+| Monthly Highlights | Year, Month, Only with | 1 min |
+| On This Day | Only with (otherwise uses today's date across previous years) | 45 s |
+| Holiday | Holiday, Most recent year, Years to span (2–10), Only with | 1 min |
+| Then and Now | Now (year), Years back (1–20), Only with | 45 s |
 | Trip | Year, then "Select a trip" from the trips detected in your GPS data | auto: 30 s + 10 s per active day, bounded 60–300 s |
 | Album | "Select an album" from your Immich albums | auto: 4 s per item in the album, bounded 30 s–10 min |
 | Surprise me | "Pick a day" from the days [`discover-days`](../cli/discover-days.md) found | auto: 30 s + 6 s per active hour, bounded 60–180 s |
@@ -90,9 +90,31 @@ command builds one, and Step 1 stays incomplete. It will not offer a random day.
 
 <ThemedScreenshot name="step1-person-dropdown" alt="Person Selection" />
 
-The **Person** dropdown is populated from Immich's face recognition data. It appears inside the Person Spotlight card (one person) and the Multi-Person card (pick 2 or more; the tool keeps clips where all of them appear).
+Every person dropdown is populated from Immich's face recognition data, so only
+named faces are offered.
 
-The Custom card has its own **Person** filter under "Person Filter", defaulting to **All people**, next to a **Target Duration (minutes)** field.
+Two cards are *about* people and collect them as part of the memory: **Person
+Spotlight** takes one person, and **Multi-Person** takes 2 or more.
+
+Every other card that covers a period — Year in Review, Season, Monthly
+Highlights, On This Day, Holiday, Then and Now — carries an optional **Only
+with** picker instead. Leave it empty and the memory covers everyone. Name one
+person and it becomes that person's version of the memory. Name several and only
+moments with **all** of them are used, which is exactly what repeating
+`--person` does on the CLI:
+
+```bash
+immich-memories generate --memory-type year_in_review --year 2025 --person "Alice" --person "Bob"
+```
+
+Three cards carry no person filter, each for its own reason:
+
+- **Album** is its own pool — the album decides what is in the memory, so
+  `--from-album` rejects `--person` too.
+- **Trip** takes its window whole on both surfaces. On the CLI `--person`
+  narrows trip *detection* — whose GPS trail is scanned — and the trip that
+  comes back is built from everything shot in that window.
+- **Surprise me** is the occasion rather than its guest list.
 
 ## Custom date range
 

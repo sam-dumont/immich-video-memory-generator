@@ -16,9 +16,9 @@ moves. Differences nobody decided on are recorded as strict ``xfail`` carrying
 the reason, so repairing one forces its record to be deleted in the same commit
 -- a fix cannot land while the file still claims the surfaces disagree.
 
-One xfail is left on purpose. It is not drift: the wizard has no way to express
-the request at all, and closing it means deciding which surface is right. An
-xfail that needs a decision says so in its first line.
+No xfail is outstanding. A new divergence is recorded as one -- ``FetchScenario``
+carries the reason and ``_fetch_params`` marks it strict -- and an xfail that
+needs a product decision rather than a repair says so in its first line.
 """
 
 from __future__ import annotations
@@ -200,11 +200,15 @@ DOCUMENTED_DURATION_SPLIT: dict[MemoryType, DocumentedDifference] = {
 # parity one.
 #
 # A trip is not narrowed to a person on either surface. handle_trip_generation
-# fetches the trip's window with no person ids, and the wizard's Trip card
-# renders no person widget, so both take the window whole. --person still
-# reaches trip *detection* on the CLI, which is what scopes the GPS scan. This
-# is consistent, but it is the same open question as
-# PERSON_FILTER_ON_NON_PERSON_TYPE_DIVERGENCE below and moves with its answer.
+# fetches the trip's window with no person ids, and the wizard's Trip card is
+# the one card #666 left without a person picker, so both take the window
+# whole. That is deliberate rather than left over: on the CLI --person scopes
+# trip *detection* -- which people's GPS trail is scanned -- and the trip that
+# comes back is then rendered entire. A picker on the wizard's Trip card would
+# narrow its fetch and nothing else's, which is how a divergence gets made
+# while another is being closed. Widening it means changing what a trip
+# selects on both surfaces at once, which is a selection change with its own
+# contact sheets, not this file's business.
 
 
 def _bounds(date_range: DateRange) -> tuple[datetime, datetime]:
@@ -423,22 +427,21 @@ def cli_fetch_calls(
 def _wizard_state(
     memory_type: MemoryType, windows: list[DateRange], people: tuple[Person, ...]
 ) -> AppState:
-    """The state the wizard's two person widgets leave behind.
+    """The state the wizard leaves behind once a card has been filled in.
 
-    step1_presets writes a single pick into ``state.selected_person`` and a
-    multi-person pick into ``memory_preset_params["person_ids"]`` -- two
-    different fields, because two different cards collect them, and only the
-    Person Spotlight and Multi-Person cards render a person widget at all. The
-    fields stay two; ``AppState.person_ids`` is what reads them as one, which is
-    the thing the fetch comparison below is really checking.
+    Every card ends at ``AppState.apply_preset``, which is where the preset's
+    windows, length and person filter become state -- so this builds the state
+    the same way ``step1_presets._apply_preset_to_state`` does rather than
+    imitating the widgets. ``people`` is the roster Immich returned, which is
+    what a filter's names resolve against.
     """
+    spec = replace(SPECS[memory_type], people=people)
     state = AppState()
-    state.date_ranges = windows
-    if memory_type is MemoryType.PERSON_SPOTLIGHT and people:
-        state.selected_person = people[0]
-        state.memory_preset_params = {"person_id": people[0].id}
-    elif memory_type is MemoryType.MULTI_PERSON:
-        state.memory_preset_params = {"person_ids": [person.id for person in people]}
+    state.people = list(people)
+    state.apply_preset(create_preset(memory_type, **spec.as_preset_params()))
+    assert _windows(state.date_ranges) == _windows(windows), (
+        "apply_preset disagreed with the windows the fetch was handed"
+    )
     return state
 
 
@@ -475,31 +478,17 @@ class FetchScenario:
     divergence: str | None = None
 
 
-PERSON_FILTER_ON_NON_PERSON_TYPE_DIVERGENCE = (
-    "NEEDS A PRODUCT DECISION -- do not repair this by guessing. --person "
-    "narrows any memory type on the CLI and no type but two in the wizard. "
-    "fetch_videos_and_live_photos takes whatever person_ids generate.py "
-    "resolved, so `--memory-type year_in_review --person Alice --person Bob` "
-    "fetches only what holds both; the wizard renders a person widget for Person "
-    "Spotlight and Multi-Person alone, so no other card can name anybody. The "
-    "question is which surface is right: is a person filter on every memory type "
-    "a feature the wizard is missing, or is it a two-card feature the CLI "
-    "over-offers? Answering it also settles what several names mean on a type "
-    "that is not about people -- the CLI intersects them, while create_preset's "
-    "PersonFilter keeps person_names[:1] and drops the rest, so the two would "
-    "still disagree after the widget shipped. Until then the wizard cannot even "
-    "express the request, which is why this stays a strict xfail rather than "
-    "becoming a documented exception."
-)
-
+# A person filter is not a two-card feature. #666 ruled that the wizard offers
+# one wherever the CLI's --person reaches, and that several names mean the same
+# thing on both surfaces: an intersection, the way a multi-person memory has
+# always meant "both on the picture". So a Year in Review narrowed to Alice and
+# Bob is a request both surfaces can now phrase, and both answer identically.
 FETCH_SCENARIOS = (
     FetchScenario(MemoryType.YEAR_IN_REVIEW, ()),
     FetchScenario(MemoryType.PERSON_SPOTLIGHT, (ALICE,)),
     FetchScenario(MemoryType.MULTI_PERSON, (ALICE, BOB)),
     FetchScenario(MemoryType.MULTI_PERSON, (ALICE,)),
-    FetchScenario(
-        MemoryType.YEAR_IN_REVIEW, (ALICE, BOB), PERSON_FILTER_ON_NON_PERSON_TYPE_DIVERGENCE
-    ),
+    FetchScenario(MemoryType.YEAR_IN_REVIEW, (ALICE, BOB)),
 )
 
 

@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from immich_memories.api.models import Person, VideoClipInfo
     from immich_memories.cache.thumbnail_cache import ThumbnailCache
     from immich_memories.config_loader import Config
+    from immich_memories.memory_types.presets import MemoryPreset
     from immich_memories.processing.timeline_budget import TimelinePlan
 
 
@@ -181,16 +182,49 @@ class AppState:
     def person_ids(self) -> list[str]:
         """The people this memory is narrowed to, as the one list a fetch reads.
 
-        The wizard writes a single pick into ``selected_person`` and a group
-        pick into ``memory_preset_params['person_ids']`` -- two fields, because
-        two different cards collect them. Every read of "who is this memory
-        about" goes through here so the fetch sees the same list the CLI builds
-        from ``--person``: a group of one is a filter, not an absence of one.
+        ``apply_preset`` resolves a preset's person filter into
+        ``memory_preset_params['person_ids']``; ``selected_person`` is the
+        older single pick and still answers for the paths that set it directly.
+        Every read of "who is this memory about" goes through here so the fetch
+        sees the same list the CLI builds from ``--person``: a group of one is
+        a filter, not an absence of one.
         """
         group = self.memory_preset_params.get("person_ids") or []
         if group:
             return list(group)
         return [self.selected_person.id] if self.selected_person else []
+
+    def apply_preset(self, preset: MemoryPreset) -> None:
+        """Adopt everything a preset decided: its windows, its length, its people.
+
+        The person filter travels on the preset rather than being re-derived per
+        card, so a Year in Review narrowed to two people asks Immich exactly
+        what ``--person Alice --person Bob`` asks it -- one rule, both surfaces
+        (#666, #683). Names resolve against ``people``, the roster Immich
+        returned, because a filter is written in names and fetched by id.
+        """
+        self.date_ranges = preset.date_ranges.copy()
+        if preset.default_duration_seconds:
+            self.target_duration = preset.default_duration_seconds / 60
+            self.duration_mode = "auto"
+        elif preset.date_ranges:
+            # ~1 min per month, ~8 min per year, for a preset with no opinion.
+            self.target_duration = max(1, min(10, round(preset.date_ranges[0].days / 45)))
+        self.narrow_to_people(preset.person_filter.person_names)
+
+    def narrow_to_people(self, person_names: list[str]) -> None:
+        """Resolve a filter's names to the ids a fetch queries with.
+
+        Public because "All Time" has no preset to carry a filter -- no window
+        can be built from a year that was never chosen -- and it still has to
+        answer the same picker.
+        """
+        by_name = {person.name: person for person in self.people if person.name}
+        wanted = [by_name[name] for name in person_names if name in by_name]
+        self.memory_preset_params["person_ids"] = [person.id for person in wanted]
+        # Kept for the title and the filename, which want a name and only make
+        # sense when the memory is about exactly one person.
+        self.selected_person = wanted[0] if len(wanted) == 1 else None
 
     @property
     def scope_is_selected(self) -> bool:
