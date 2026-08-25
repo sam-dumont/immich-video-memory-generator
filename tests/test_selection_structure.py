@@ -207,6 +207,14 @@ class TestSilenceKeeps:
 
         assert cut is None
 
+    def test_the_question_says_that_at_least_two_moments_must_survive(self):
+        pool = _pool(moments=5)
+
+        _cut, asked = _choose_answers(pool, [_answer(cut=[2, 3, 4, 5])])
+
+        prompt = asked.call_args_list[0].args[0]
+        assert "Leave at least two moments in the month" in prompt
+
 
 class TestAnUnusableAnswerHandsTheCutBack:
     def test_an_index_that_is_not_in_the_table_is_refused_after_one_retry(self):
@@ -234,6 +242,19 @@ class TestAnUnusableAnswerHandsTheCutBack:
         nonsense = json.dumps({"cut": [{"index": 99, "reason": "no such moment"}]})
 
         cut, asked = _choose_exactly(pool, [nonsense, _answer(cut=[3, 4])])
+
+        assert asked.call_count == 2
+        assert cut.dropped == frozenset({"m3c0", "m3c1", "m4c0", "m4c1"})
+
+    def test_a_malformed_final_object_is_retried_instead_of_using_an_earlier_draft(self):
+        pool = _pool(moments=4)
+        draft = _answer(cut=[4])
+        malformed_final = json.dumps({"cut": [{"index": "four", "reason": "quiet"}]})
+
+        cut, asked = _choose_exactly(
+            pool,
+            [f"{draft}\n{malformed_final}", _answer(cut=[3, 4])],
+        )
 
         assert asked.call_count == 2
         assert cut.dropped == frozenset({"m3c0", "m3c1", "m4c0", "m4c1"})
@@ -287,6 +308,15 @@ class TestTheReAskNamesTheDefect:
 
         revision = asked.call_args_list[1].args[0]
         assert "M3 with no reason" in revision
+
+    def test_the_revision_also_requires_two_surviving_moments(self):
+        pool = _pool(moments=5)
+        nonsense = json.dumps({"cut": [{"index": 99, "reason": "no such moment"}]})
+
+        _cut, asked = _choose_exactly(pool, [nonsense, _answer(cut=[3, 4, 5])])
+
+        revision = asked.call_args_list[1].args[0]
+        assert "Leave at least two moments in the month" in revision
 
     def test_an_answer_with_nothing_nameable_wrong_is_not_re_asked(self):
         """Prose with no edit in it is not a defect anyone can correct."""
@@ -630,6 +660,18 @@ class TestAValidJudgmentIsNeverThrownAway:
         assert asked.call_count == 2
         assert cut is not None and not cut.narrowed
 
+    def test_a_malformed_moment_label_keeps_the_first_cut(self):
+        """A bad rank is an unusable answer, not an exception from selection."""
+        pool = _pool(moments=5)
+        malformed_rank = json.dumps({"keep": ["M²", "M1", "M2", "M3"]})
+
+        cut, asked = _choose_exactly(pool, [_answer(cut=[5]), malformed_rank])
+
+        assert asked.call_count == 2
+        assert cut is not None
+        assert cut.dropped == frozenset({"m5c0", "m5c1"})
+        assert not cut.narrowed
+
     def test_the_trace_says_the_funnel_narrowed_the_remainder(self):
         pool = _pool(moments=5)
 
@@ -721,7 +763,10 @@ class TestTheQuestionIsAskedOnce:
 
         names = [stage.name for stage in recorded.stages]
         assert "per-day photo cap" in names
+        assert "distribute by date" in names
+        assert any(name.startswith("fit to ") for name in names)
         assert "photo ratio cap" in names
+        assert names[-1] == "the favourite wins its moment"
 
 
 class TestACondemnedMomentStaysCondemned:
@@ -745,6 +790,26 @@ class TestACondemnedMomentStaysCondemned:
 
         shipped = {c.asset.id for c in result.selected_clips}
         assert shipped == {"keep0", "keep1", "keep2", "keep3"}
+
+    def test_the_favourites_law_cannot_resurrect_a_structure_cut(self):
+        """The law repairs mechanical drops; it does not overrule the editor."""
+        pool = [
+            _clip("plain", minutes=0),
+            _clip("cut-star", minutes=6, starred=True),
+            _clip("kept-star", minutes=30, starred=True),
+        ]
+        refiner, tracker = _wired(dedup_window=5.0)
+
+        # WHY: the model. It cuts the middle moment while another starred
+        # moment keeps the occasion represented.
+        with patch(
+            "immich_memories.analysis.selection_structure._ask",
+            return_value=_answer(cut=[2]),
+        ):
+            result = refiner.phase_refine(pool, tracker)
+
+        shipped = {c.asset.id for c in result.selected_clips}
+        assert shipped == {"plain", "kept-star"}
 
 
 class TestTheHybridRunsTheWholeChain:

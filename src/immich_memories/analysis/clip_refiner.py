@@ -752,7 +752,15 @@ class ClipRefiner:
         # neighbour from the same moment survives, each for its own good
         # reason. The rule they all answer to is applied to what they produced.
         before_law = selected
-        selected = let_the_favourite_win(selected, all_analyzed)
+        # Structure made an editorial rejection, not a mechanical drop for the
+        # law to repair. Its grouping can differ from the law's, so exclusion
+        # by id is what keeps a condemned moment condemned.
+        favourite_pool = (
+            [item for item in all_analyzed if item.clip.asset.id not in structure.dropped]
+            if structure is not None
+            else all_analyzed
+        )
+        selected = let_the_favourite_win(selected, favourite_pool)
         trace.record("the favourite wins its moment", before_law, selected)
 
         selected.sort(key=lambda c: c.clip.asset.file_created_at or datetime.min)

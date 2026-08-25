@@ -9,9 +9,9 @@ This pass asks the question those caps were standing in for, once, at MOMENT
 granularity: which of these moments does the month's story need? Numbers still
 order things here — the table is chronological, durations are estimated, the
 keep-set is measured against the budget — but no number decides a kill. Every
-moment that goes is one the model named, or one it ranked last itself: the
-keep list is written most essential first, and the envelope releases from its
-tail. Nothing here invents that order (see structure_answer.states_a_priority).
+moment that goes is one the model named. If those survivors exceed the
+envelope, a separate question ranks that exact set most essential first and
+the envelope releases from its tail. Nothing here invents a fallback order.
 
 Duration is a convergence bound, not an eviction rule. This is the rough cut
 and it only has to land near the content budget; the fine cut (the llm review)

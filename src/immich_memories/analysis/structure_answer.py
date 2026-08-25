@@ -45,6 +45,7 @@ party, a hike — however different their descriptions read.
 The content budget is {target:.0f}s. Do the arithmetic: cut enough that the
 `est` seconds of what remains add up to between {floor:.0f}s and {ceiling:.0f}s.
 Leaving more than that in is not an edit, it is a list.
+Leave at least two moments in the month; one moment alone is not a structure.
 
 Every moment you name needs a one-line reason. What you leave out is mined
 again later, and a bare no is useless to whoever reads it.
@@ -64,6 +65,7 @@ Here are the same moments, in the same order and numbered the same way:
 
 Name them again. Use moment numbers from 1 to {count} and nothing else, and
 give every one of them a one-line reason. Everything you do not name stays in.
+Leave at least two moments in the month; one moment alone is not a structure.
 
 Answer with STRICT JSON only, no prose:
 {{"cut": [{{"index": <moment number>, "reason": "<short reason>"}}]}}"""
@@ -195,20 +197,19 @@ def answer_in(raw: str | None, count: int) -> Answer | None:
 
 
 def _payloads_in(raw: str | None) -> list[dict]:
-    """Every JSON object in an answer, last first — the verdict follows the prose."""
+    """The final JSON object in an answer — the verdict follows the prose."""
     if not raw:
         return []
     from immich_memories.analysis.selection_review import _balanced_objects
 
-    found = []
-    for candidate in reversed(_balanced_objects(raw)):
-        try:
-            payload = json.loads(candidate)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(payload, dict):
-            found.append(payload)
-    return found
+    candidates = _balanced_objects(raw)
+    if not candidates:
+        return []
+    try:
+        payload = json.loads(candidates[-1])
+    except json.JSONDecodeError:
+        return []
+    return [payload] if isinstance(payload, dict) else []
 
 
 def defects_in(raw: str | None, count: int) -> tuple[str, ...]:
@@ -290,7 +291,10 @@ def _moment_number(value: object) -> int | None:
     if isinstance(value, str):
         text = value.strip().removeprefix("M").removeprefix("m")
         if text.isdigit():
-            return int(text)
+            try:
+                return int(text)
+            except ValueError:
+                return None
     return None
 
 
