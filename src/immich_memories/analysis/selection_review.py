@@ -121,6 +121,12 @@ A clip with no description has not been analysed yet. That says nothing about
 whether it is any good: never drop a clip for missing information, and never
 treat it as a duplicate on those grounds.
 
+`unreadable=yes` is different, and the rule above does not cover it. That clip
+WAS looked at and could not be described. Nothing will ever describe it, so it
+cannot be judged on what it shows and cannot answer the question. Shipping
+something nobody can describe is worse than a shorter memory: drop it unless
+the rest of the line gives you a reason to keep it.
+
 Most good selections need no changes. Answer with STRICT JSON only, no prose:
 {{"drop": [{{"index": <clip number>, "reason": "<short reason>"}}]}}
 Use an empty list when the set is good."""
@@ -177,7 +183,13 @@ def _place_for_llm(exif: object) -> str | None:
     return ", ".join(named) if named else None
 
 
-def _clip_line(index: int, member: ClipWithSegment, moment: str | None = None) -> str:
+def _clip_line(
+    index: int,
+    member: ClipWithSegment,
+    moment: str | None = None,
+    *,
+    unreadable: bool = False,
+) -> str:
 
     clip = member.clip
     parts = [f"Clip {index}:"]
@@ -206,6 +218,11 @@ def _clip_line(index: int, member: ClipWithSegment, moment: str | None = None) -
     if where:
         parts.append(f"place={where}")
     parts.append(f"score={member.score:.2f}")
+    if unreadable and not getattr(clip, "llm_description", None):
+        # Looked at, and could not be described. Distinct from silence: the
+        # rule that protects a clip nobody has queued would otherwise protect
+        # this one forever, and verify never re-queues an attempt.
+        parts.append("unreadable=yes")
     for label, attr in (
         ("description", "llm_description"),
         ("emotion", "llm_emotion"),
@@ -219,7 +236,10 @@ def _clip_line(index: int, member: ClipWithSegment, moment: str | None = None) -
     return " ".join(parts)
 
 
-def _clips_block(selected: list[ClipWithSegment]) -> str:
+def _clips_block(
+    selected: list[ClipWithSegment],
+    unreadable_ids: set[str] | frozenset[str] = frozenset(),
+) -> str:
     """Every clip as the judge sees it, each one told which moment it is in.
 
     Occasions come from the shared time-and-place grouping rather than a
@@ -227,7 +247,12 @@ def _clips_block(selected: list[ClipWithSegment]) -> str:
     the rest of the pipeline reasons about.
     """
     return "\n".join(
-        _clip_line(index + 1, member, episode)
+        _clip_line(
+            index + 1,
+            member,
+            episode,
+            unreadable=member.clip.asset.id in unreadable_ids,
+        )
         for index, (member, episode) in enumerate(
             zip(selected, _episode_labels(selected), strict=True)
         )
@@ -313,6 +338,7 @@ def review_selection(
     *,
     timeout_seconds: int = 45,
     cache_path: Path | None = None,
+    unreadable_ids: set[str] | frozenset[str] = frozenset(),
 ) -> list[str]:
     """Asset ids the LLM says to drop from the selection; [] on any doubt.
 
@@ -326,7 +352,7 @@ def review_selection(
     if len(selected) < 3:
         logger.debug("Selection review: %d clips is too few to judge as a set", len(selected))
         return []
-    clips_block = _clips_block(selected)
+    clips_block = _clips_block(selected, unreadable_ids)
     prompt = _PROMPT.format(clips=clips_block)
     try:
         raw = _ask(prompt, llm_config, timeout_seconds, cache_path)
