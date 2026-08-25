@@ -116,7 +116,7 @@ def test_the_description_survives_scoring_and_the_score_stays_a_number(tmp_path,
 
     enhanced, payloads = photo_pipeline._enhance_with_llm(
         [(asset, 0.3)],
-        config=SimpleNamespace(score_penalty=0.0),
+        config=SimpleNamespace(),
         work_dir=tmp_path,
         download_fn=None,
         app_config=SimpleNamespace(
@@ -158,7 +158,7 @@ def test_a_score_cached_before_photos_could_describe_themselves_is_re_asked(tmp_
 
     enhanced, payloads = photo_pipeline._enhance_with_llm(
         [(asset, 0.3)],
-        config=SimpleNamespace(score_penalty=0.0),
+        config=SimpleNamespace(),
         work_dir=tmp_path,
         download_fn=None,
         db_path=tmp_path / "scores.db",

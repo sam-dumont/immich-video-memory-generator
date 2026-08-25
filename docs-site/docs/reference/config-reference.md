@@ -206,7 +206,6 @@ photos:
   duration: 4.0                  # Seconds per photo clip (1-10)
   moment_gap_seconds: 120        # Window for "same moment as a video" (0-3600)
   moment_hash_threshold: 10      # Hash bits allowed between photo and that video (0-64)
-  score_penalty: 0.2             # Photos score 80% of equivalent videos (0-1)
   burst_window_seconds: 300      # Near-identical photos this close apart are one burst (0-3600)
   burst_hash_threshold: 8        # Hash bits two photos may differ by and still be one burst (0-64)
 ```

@@ -68,7 +68,6 @@ photos:
   burst_hash_threshold: 8    # Hash bits two frames may differ by and still be one burst
   moment_gap_seconds: 120 # Window for "same moment as a video" (seconds)
   moment_hash_threshold: 10  # Bits a photo may differ from that video and still match
-  score_penalty: 0.2      # Photos score 80% of equivalent videos
 ```
 
 Older configs may still contain `collage_duration`, `animation_mode`, `enable_collage`, `series_gap_seconds` or `zoom_factor`; those keys were removed in 0.41 and are ignored (the zoom amount is randomized per photo, and collages no longer exist).

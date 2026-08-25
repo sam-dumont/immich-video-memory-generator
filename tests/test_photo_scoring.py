@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from immich_memories.analysis.asset_merit import ranking_key
 from immich_memories.api.models import Person
 from immich_memories.config_models_render import PhotoConfig
 from immich_memories.photos.scoring import (
@@ -47,12 +48,21 @@ class TestPhotoScoring:
         score = score_photo(_photo(), config)
         assert 0.0 <= score <= 1.0
 
-    def test_favorite_boost(self):
-        """Favorites score higher than non-favorites."""
+    def test_favorite_outranks_without_scoring_higher(self):
+        """A favourite outranks, but is not scored -- it orders.
+
+        Scored as well it was worth 0.25, exactly what detected faces were
+        worth, so three strangers tied with the owner's mark. It now sits in
+        the sort key that video has always used (asset_merit.ranking_key).
+        """
         config = PhotoConfig()
-        normal = score_photo(_photo("p1", is_favorite=False), config)
-        fav = score_photo(_photo("p2", is_favorite=True), config)
-        assert fav > normal
+        normal = _photo("p1", is_favorite=False)
+        fav = _photo("p2", is_favorite=True)
+
+        assert score_photo(fav, config) == score_photo(normal, config)
+        assert ranking_key(fav, score_photo(fav, config)) > ranking_key(
+            normal, score_photo(normal, config)
+        )
 
     def test_faces_boost(self):
         """Photos with faces score higher."""
@@ -68,27 +78,6 @@ class TestPhotoScoring:
         camera = score_photo(_photo("p1", exif_make="Apple"), config)
         screenshot = score_photo(_photo("p2", exif_make=None), config)
         assert camera > screenshot
-
-    def test_penalty_applied(self):
-        """Score is reduced by score_penalty factor."""
-        config_no_penalty = PhotoConfig(score_penalty=0.0)
-        config_with_penalty = PhotoConfig(score_penalty=0.3)
-        score_full = score_photo(_photo(), config_no_penalty)
-        score_penalized = score_photo(_photo(), config_with_penalty)
-        assert score_penalized < score_full
-
-    def test_zero_penalty_means_full_score(self):
-        """With score_penalty=0, score equals raw score."""
-        config = PhotoConfig(score_penalty=0.0)
-        score = score_photo(_photo(), config)
-        # Should be the raw score, not reduced
-        assert score > 0.0
-
-    def test_max_penalty_gives_zero(self):
-        """With score_penalty=1.0, all photos score 0."""
-        config = PhotoConfig(score_penalty=1.0)
-        score = score_photo(_photo(), config)
-        assert score == 0.0
 
     def test_parse_photo_look_averages_complete_numeric_fields(self) -> None:
         from immich_memories.photos.scoring import _parse_photo_look

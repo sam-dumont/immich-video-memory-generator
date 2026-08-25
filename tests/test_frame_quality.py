@@ -77,7 +77,6 @@ def test_frame_quality_breaks_a_metadata_tie_group() -> None:
     Without this, "best N photos" means "first N of the largest tie group",
     in whatever order the API happened to return them.
     """
-    from immich_memories.config_models_render import PhotoConfig
     from immich_memories.photos.photo_pipeline import _apply_frame_quality
 
     class _Thumbnails:
@@ -102,7 +101,7 @@ def test_frame_quality_breaks_a_metadata_tie_group() -> None:
         }
     )
 
-    rescored = _apply_frame_quality(scored, PhotoConfig(), thumbs)
+    rescored = _apply_frame_quality(scored, thumbs)
 
     scores = [s for _a, s in rescored]
     assert len(set(scores)) == len(scores), "a tie group must come out ordered"

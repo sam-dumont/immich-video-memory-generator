@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
+from immich_memories.analysis.asset_merit import ranking_key
 from immich_memories.analysis.unified_budget import (
     BudgetCandidate,
     _fill_with_photos,
@@ -605,9 +606,10 @@ class TestScorePhotos:
         assert len(result) == 2
         # Each entry is (Asset, float)
         assert all(isinstance(score, float) for _, score in result)
-        # Favorite should score higher than non-favorite
-        scores_by_id = {a.id: s for a, s in result}
-        assert scores_by_id["photo1"] > scores_by_id["photo2"]
+        # A favourite orders above a non-favourite rather than scoring above
+        # it: the star is a sort key, not a term (asset_merit.ranking_key).
+        by_id = {a.id: (a, s) for a, s in result}
+        assert ranking_key(*by_id["photo1"]) > ranking_key(*by_id["photo2"])
 
     def test_vlm_shortlist_does_not_delete_metadata_scored_photo_fallbacks(self, tmp_path):
         """Only semantic scoring is capped; every eligible photo remains selectable."""

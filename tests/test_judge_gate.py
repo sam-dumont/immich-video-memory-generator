@@ -1,11 +1,12 @@
-"""The mechanical judge sees scores, and a photo's score is on another scale.
+"""The mechanical judge sees scores, and silence is not a verdict.
 
-photos.score_penalty documents the difference outright — "photos score 80% of
-videos" — and the judge applied a video-calibrated floor to both. A no-people,
-non-favorite photo cannot clear it: 0.15 base + 0.05 camera + half the LLM
-weight is 0.28 after the penalty, against a floor of 0.30. Landscapes, pets
-and scenery were dropped as a class, and the days only they represented went
-with them.
+A photograph nobody has looked at scores 0.15 base + 0.05 camera + half the
+LLM weight standing in for the answer that has not arrived — 0.35, clearing
+the 0.30 floor on its own. A photograph the model actively called dull scores
+0.29 and does not. The gate must separate those two, and it once could not:
+photos.score_penalty scaled every still to 80%, putting the quiet landscape at
+0.28, so landscapes, pets and scenery were dropped as a class and the days
+only they represented went with them.
 """
 
 from __future__ import annotations
@@ -42,11 +43,11 @@ def _member(asset_id: str, score: float, *, photo: bool, hour: int = 12) -> Clip
 
 
 def test_a_landscape_nobody_has_looked_at_yet_is_not_an_offender(tmp_path: Path) -> None:
-    """0.280 is what a no-people photo scores before the VLM has an opinion.
+    """0.35 is what a no-people photo scores before the VLM has an opinion.
 
     Silence is not a verdict, and this one was being read as one.
     """
-    quiet_landscape = _member("landscape", 0.280, photo=True)
+    quiet_landscape = _member("landscape", 0.35, photo=True)
     others = [_member(f"v-{i}", 0.6, photo=False, hour=13 + i) for i in range(3)]
 
     offenders = _pipeline(tmp_path).quality.judge_offenders([quiet_landscape, *others])
@@ -55,8 +56,11 @@ def test_a_landscape_nobody_has_looked_at_yet_is_not_an_offender(tmp_path: Path)
 
 
 def test_a_photo_the_model_called_dull_is_still_an_offender(tmp_path: Path) -> None:
-    """0.232 is a photo the VLM actively scored 0.3. That is a verdict."""
-    dull = _member("dull", 0.232, photo=True)
+    """0.29 is a photo the VLM actively scored 0.3. That is a verdict.
+
+    0.35 metadata, less the 0.15 placeholder, plus 0.30 x 0.3 of real answer.
+    """
+    dull = _member("dull", 0.29, photo=True)
     others = [_member(f"v-{i}", 0.6, photo=False, hour=13 + i) for i in range(3)]
 
     offenders = _pipeline(tmp_path).quality.judge_offenders([dull, *others])

@@ -15,6 +15,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 
+from immich_memories.analysis.asset_merit import ranking_key
 from immich_memories.analysis.duplicate_hashing import hamming_distance
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,7 @@ class PhotoCandidate:
     taken_at: datetime
     thumbnail_hash: str | None
     score: float = 0.0
+    is_favorite: bool = False
 
 
 def drop_burst_duplicates(
@@ -45,6 +47,9 @@ def drop_burst_duplicates(
 
     A photo with no thumbnail hash is always kept. Redundancy is measured, never
     assumed -- a missing thumbnail says nothing about the picture.
+
+    Best means the owner's mark first, then score. A burst that contains the
+    starred frame keeps that frame, whatever the sharper ones measure.
     """
     if not photos:
         return []
@@ -57,7 +62,7 @@ def drop_burst_duplicates(
             continue
         burst = _burst_starting_at(by_time, index, window_seconds, hash_threshold, superseded)
         if len(burst) > 1:
-            best = max(burst, key=lambda p: p.score)
+            best = max(burst, key=lambda p: ranking_key(p, p.score))
             superseded.update(p.key for p in burst if p.key != best.key)
 
     if superseded:

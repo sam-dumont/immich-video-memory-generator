@@ -18,14 +18,13 @@ class TestPhotoConfig:
         assert cfg.enabled is True
         assert cfg.max_ratio == 0.50
         assert cfg.duration == 4.0
-        assert cfg.score_penalty == 0.2
 
     def test_boundary_values_accepted(self):
         """Boundary values at min/max are accepted."""
-        cfg = PhotoConfig(max_ratio=0.0, duration=1.0, score_penalty=0.0)
+        cfg = PhotoConfig(max_ratio=0.0, duration=1.0)
         assert cfg.max_ratio == 0.0
 
-        cfg = PhotoConfig(max_ratio=1.0, duration=10.0, score_penalty=1.0)
+        cfg = PhotoConfig(max_ratio=1.0, duration=10.0)
         assert cfg.max_ratio == 1.0
 
     @pytest.mark.parametrize(
@@ -35,8 +34,6 @@ class TestPhotoConfig:
             pytest.param("max_ratio", 1.1, "less than", id="ratio-over-1"),
             pytest.param("duration", 0.5, "greater than", id="duration-too-short"),
             pytest.param("duration", 20.0, "less than", id="duration-too-long"),
-            pytest.param("score_penalty", -0.1, "greater than", id="penalty-negative"),
-            pytest.param("score_penalty", 1.5, "less than", id="penalty-over-1"),
         ],
     )
     def test_validation_rejects_out_of_range(self, field, value, match):
@@ -61,12 +58,11 @@ class TestPhotoConfigInConfig:
         from immich_memories.config_loader import Config
 
         config_path = tmp_path / "config.yaml"
-        original = Config(photos=PhotoConfig(enabled=True, duration=5.0, score_penalty=0.3))
+        original = Config(photos=PhotoConfig(enabled=True, duration=5.0))
         original.save_yaml(config_path)
         loaded = Config.from_yaml(config_path)
         assert loaded.photos.enabled is True
         assert loaded.photos.duration == 5.0
-        assert loaded.photos.score_penalty == 0.3
 
     def test_photos_in_yaml_tier1(self, tmp_path):
         """Photos config loads from tier 1 (top-level YAML)."""
