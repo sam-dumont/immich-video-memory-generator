@@ -26,13 +26,23 @@ class MotionRendering:
     shutter_timestamps: tuple[float, ...]
     duration_seconds: float
     still_ids: tuple[str, ...]
+    minimum_seconds: float
 
-    # Whether the motion is worth the photograph it would replace arrives with
-    # the code that chooses a rendering — duration alone, and deliberately.
-    # Motion magnitude was measured on 64 real bursts: it correlates with
-    # something having happened (median 2.04 against 0.48) but does not
-    # separate it, since a baby's mouth closing scored 0.31 while the same
-    # instant twice with a camera shift scored 0.63.
+    @property
+    def beats_a_still(self) -> bool:
+        """Whether the motion is worth the photograph it would replace.
+
+        Duration alone, and deliberately. A lone Live Photo stitches to exactly
+        the raw 3.0s with nothing merged, while the smallest genuine merge of
+        two reaches 4.0s, so the threshold sits between them.
+
+        Motion magnitude is NOT part of this. Measured on 64 real bursts it
+        correlates with something having happened (median 2.04 against 0.48)
+        but does not separate it — a baby's mouth closing scored 0.31 while the
+        same instant twice with a camera shift scored 0.63 — so a gate on it
+        would drop the quiet moments a memory is for.
+        """
+        return self.duration_seconds >= self.minimum_seconds
 
 
 def motion_renderings(assets: list[Any], config: Any) -> dict[str, MotionRendering]:
@@ -49,6 +59,7 @@ def motion_renderings(assets: list[Any], config: Any) -> dict[str, MotionRenderi
 
     analysis = getattr(config, "analysis", None)
     window = getattr(analysis, "live_photo_merge_window_seconds", 10.0)
+    minimum = getattr(analysis, "live_photo_min_clip_seconds", 3.5)
 
     found: dict[str, MotionRendering] = {}
     for cluster in cluster_live_photos(live, merge_window_seconds=window):
@@ -58,6 +69,7 @@ def motion_renderings(assets: list[Any], config: Any) -> dict[str, MotionRenderi
             shutter_timestamps=tuple(a.file_created_at.timestamp() for a in cluster.assets),
             duration_seconds=cluster.estimated_duration,
             still_ids=tuple(a.id for a in cluster.assets),
+            minimum_seconds=minimum,
         )
         for asset in cluster.assets:
             found[asset.id] = rendering

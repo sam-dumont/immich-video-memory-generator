@@ -209,6 +209,11 @@ def build_live_photo_clips(
         if not members or not members[0].live_photo_video_id:
             continue
 
+        # A photograph is the default. The motion has to be worth more than
+        # the one it would replace, and a burst of one never is.
+        if not rendering.beats_a_still:
+            continue
+
         merged = len(rendering.still_ids) > 1
         clip = VideoClipInfo(
             asset=members[0],
