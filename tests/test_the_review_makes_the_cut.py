@@ -135,3 +135,106 @@ class TestTheCutIsTheResult:
         # this cut is one pass among four to come — condemning the material
         # here would be the hard early reject the craft warns against.
         assert [m.clip.asset.id for m in remaining] == ["c0", "c1", "c2", "c3", "c4"]
+
+
+class TestASilentPassIsNotAnApprovedCut:
+    """The pass is fail-open and it is now the ONLY quality judgment.
+
+    "0 drops" has meant both "the model read the set and approved it" and
+    "the model never answered" for as long as the review has existed, and a
+    reader could not tell them apart — the standing advice on this repo is to
+    grep the log before blaming selection. With the old loop gone a fail-open
+    run ships the whole pre-cut, and the strict partition check makes an
+    unreadable answer MORE likely, by design. So the trace has to say it, in
+    the artifact the cut is judged from rather than in another file.
+    """
+
+    def _quality(self):
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        from immich_memories.analysis.selection_quality import SelectionQuality
+        from immich_memories.config_loader import Config
+
+        # WHY MagicMock: the composed services. Every clip here is analysed
+        # and described, so the verify pass has nothing to look at.
+        return SelectionQuality(
+            config=SimpleNamespace(max_refinement_passes=3),
+            app_config=Config(content_analysis={"enabled": True}),
+            analyzer=MagicMock(),
+            refiner=MagicMock(),
+            tracker=MagicMock(),
+            client=MagicMock(),
+            provider_circuit=MagicMock(),
+        )
+
+    def _run(self, answer: str, tmp_path):
+        from immich_memories.analysis import selection_trace as trace
+        from immich_memories.analysis.smart_pipeline import PipelineResult
+
+        selection = [_clip(f"c{n}", days=n) for n in range(5)]
+        for member in selection:
+            member.analyzed = True
+        result = PipelineResult(
+            selected_clips=[m.clip for m in selection],
+            clip_segments={m.clip.asset.id: (0.0, 4.0) for m in selection},
+            errors=[],
+            stats={},
+        )
+        report_path = tmp_path / "trace.md"
+        # WHY: the model. What the trace says about its answer is the subject.
+        with (
+            trace.tracing(report_path),
+            patch("immich_memories.analysis.selection_review._ask", return_value=answer),
+        ):
+            self._quality().cut(selection, result)
+        return report_path.read_text()
+
+    def test_an_unreadable_answer_says_so_in_the_trace(self, tmp_path):
+        report = self._run("I could not decide, sorry", tmp_path)
+
+        assert "could not be read" in report
+        assert "not an approved cut" in report.lower()
+
+    def test_an_approved_cut_is_not_reported_as_a_failure(self, tmp_path):
+        report = self._run(_cut(keep=[1, 2, 3, 4, 5], cut=[]), tmp_path)
+
+        assert "not an approved cut" not in report.lower()
+
+
+class TestTheAccountSaysWhyAClipWasCut:
+    def test_a_cut_clip_carries_its_reason_into_the_account(self, tmp_path):
+        """Sam reads the account, not the log.
+
+        The reason a clip went used to live only in the fate lines beside the
+        funnel; the per-clip account named the stage and stopped there. "And
+        why the rest are not" has to answer the question it asks.
+        """
+        from immich_memories.analysis import selection_trace as trace
+        from immich_memories.analysis.smart_pipeline import PipelineResult
+
+        selection = [_clip(f"c{n}", days=n) for n in range(5)]
+        for member in selection:
+            member.analyzed = True
+        result = PipelineResult(
+            selected_clips=[m.clip for m in selection],
+            clip_segments={m.clip.asset.id: (0.0, 4.0) for m in selection},
+            errors=[],
+            stats={},
+        )
+        answer = json.dumps(
+            {
+                "keep": [1, 2, 3, 4],
+                "cut": [{"index": 5, "reason": "an empty hallway, records a place"}],
+            }
+        )
+        report_path = tmp_path / "trace.md"
+        # WHY: the model. What the trace does with its reasons is the subject.
+        with (
+            trace.tracing(report_path),
+            patch("immich_memories.analysis.selection_review._ask", return_value=answer),
+        ):
+            TestASilentPassIsNotAnApprovedCut()._quality().cut(selection, result)
+
+        rejected = report_path.read_text().split("and why the rest are not")[1]
+        assert "an empty hallway, records a place" in rejected

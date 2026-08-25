@@ -266,14 +266,25 @@ def _clip_line(
 
 @dataclass(frozen=True)
 class ReviewVerdict:
-    """The drops that were carried out, and one line per entry saying why.
+    """The cut that was carried out, one line per entry saying why, and
+    whether a verdict exists at all.
 
     Returned rather than logged alone so the trace can carry the ledger into
     the file a rejection is diagnosed from.
+
+    `unanswered` is the field that separates "the model read the set and
+    approved it" from "the model never answered" — identical from outside for
+    as long as this pass has existed, and now the difference between a cut and
+    a whole uncut selection shipping in silence.
+
+    `reasons` is what the model said about each clip it actually cut, keyed by
+    asset id, so the account can answer the question it asks.
     """
 
     drops: list[str] = field(default_factory=list)
     fates: list[str] = field(default_factory=list)
+    reasons: dict[str, str] = field(default_factory=dict)
+    unanswered: str | None = None
 
 
 def _clips_block(
@@ -431,7 +442,7 @@ def review_selection(
     """
     if len(selected) < 3:
         logger.debug("Selection review: %d clips is too few to judge as a set", len(selected))
-        return ReviewVerdict()
+        return ReviewVerdict(unanswered=f"{len(selected)} clips is too few to judge as a set")
     clips_block = _clips_block(selected, unreadable_ids)
     prompt = _PROMPT.format(clips=clips_block)
     try:
@@ -439,7 +450,7 @@ def review_selection(
     except Exception as e:  # WHY broad: the review is optional; never break selection
         stop_if_this_is_our_bug(e, "selection review")
         logger.warning("Selection review unavailable (%s): nothing dropped", type(e).__name__)
-        return ReviewVerdict()
+        return ReviewVerdict(unanswered=f"the model was unavailable ({type(e).__name__})")
 
     entries = _the_cut_in(raw, len(selected))
     if entries is None:
@@ -450,7 +461,7 @@ def review_selection(
             len(raw) if raw else 0,
             UNREADABLE_VERDICT_MARKER,
         )
-        return ReviewVerdict()
+        return ReviewVerdict(unanswered="the model's answer could not be read")
     verdict = _apply(entries, selected)
     for fate in verdict.fates:
         logger.info("Selection review: %s", fate)
@@ -496,12 +507,14 @@ def _apply(entries: list, selected: list[ClipWithSegment]) -> ReviewVerdict:
 
     drops: list[str] = []
     fates: list[str] = []
+    reasons: dict[str, str] = {}
     for entry in entries:
         dropped, fate = _fate_of(entry, selected, episodes, stars_left, plain_left, drops)
         fates.append(fate)
         if dropped is not None:
             drops.append(dropped)
-    return ReviewVerdict(drops=drops, fates=fates)
+            reasons[dropped] = str(entry.get("reason", "no reason given"))
+    return ReviewVerdict(drops=drops, fates=fates, reasons=reasons)
 
 
 def _fate_of(

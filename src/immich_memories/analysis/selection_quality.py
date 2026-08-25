@@ -275,6 +275,15 @@ class SelectionQuality:
             cache_path=self._verdicts,
             unreadable_ids=self._unreadable_ids(selected),
         )
+        if verdict.unanswered:
+            # The pass is fail-open and it is the only quality judgment left.
+            # Without this the trace reads "llm review, 0 dropped", which is
+            # what an approved cut looks like — and the whole uncut selection
+            # ships in silence.
+            trace.warn(
+                f"the fine cut never ran — {verdict.unanswered}. "
+                "Nothing was cut; this is NOT an approved cut."
+            )
         drops = set(verdict.drops)
         kept = [c for c in result.selected_clips if c.asset.id not in drops]
         if not drops or not kept:
@@ -289,6 +298,7 @@ class SelectionQuality:
             selected,
             [c for c in selected if c.clip.asset.id not in drops],
             verdict.fates,
+            verdict.reasons,
         )
         trimmed = replace(
             result,
