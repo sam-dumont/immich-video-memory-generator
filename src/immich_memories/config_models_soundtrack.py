@@ -132,7 +132,7 @@ class ACEStepConfig(BaseModel):
         description="Maximum time per generation job (seconds)",
     )
 
-    @field_validator("api_url", mode="before")
+    @field_validator("api_url", "api_key", mode="before")
     @classmethod
     def expand_env(cls, v: str) -> str:
         """Expand environment variables in config values."""

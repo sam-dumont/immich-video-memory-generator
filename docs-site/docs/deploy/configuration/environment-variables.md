@@ -105,6 +105,7 @@ A few common variables are also supported without the full prefix, for convenien
 | `ACE_STEP_ENABLED` | `ace_step.enabled` |
 | `ACE_STEP_MODE` | `ace_step.mode` (`api` or `lib`; other values ignored) |
 | `ACE_STEP_API_URL` | `ace_step.api_url` |
+| `ACE_STEP_API_KEY` | `ace_step.api_key` |
 | `IMMICH_MEMORIES_AUTH_USERNAME` + `IMMICH_MEMORIES_AUTH_PASSWORD` | `auth.username` / `auth.password`, and sets `auth.enabled=true`, `auth.provider=basic`. **Both** must be set; either alone is ignored. |
 
 :::caution Shorthand vars are skipped with an explicit config path
