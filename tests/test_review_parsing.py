@@ -72,11 +72,13 @@ def test_a_verdict_buried_in_reasoning_prose_is_found() -> None:
 
 def test_a_verdict_after_prose_is_read() -> None:
     """A response that reasons aloud and then answers must be read."""
+    keep = list(range(1, 14))
     answer = (
         "Here is a thinking process:\n\n1. The format is "
-        '{"drop": [{"index": <number>, "reason": "<short reason>"}]}\n'
+        '{"keep": [<clip numbers>], "cut": [{"index": <number>, "reason": "<short reason>"}]}\n'
         "2. Clip 14 is a plain portrait.\n\n"
-        'Final answer:\n{"drop": [{"index": 14, "reason": "plain portrait"}]}'
+        f'Final answer:\n{{"keep": {keep}, '
+        '"cut": [{"index": 14, "reason": "plain portrait"}]}'
     )
 
     # WHY: the LLM server is the external boundary.
@@ -86,15 +88,29 @@ def test_a_verdict_after_prose_is_read() -> None:
     assert drops == ["asset-14"], f"the template echo beat the real verdict: {drops}"
 
 
-def test_a_real_verdict_is_read(caplog) -> None:
-    """The completed response from the probe: one drop, index 13."""
+def test_an_answer_in_the_retired_drop_shape_is_not_a_cut(caplog) -> None:
+    """A real capture from before the pass answered with the cut (#764).
+
+    Kept as a capture rather than rewritten into the new shape: the point is
+    that a well-formed answer to the OLD question is not silently read as an
+    answer to the new one. It names one clip to drop and says nothing about
+    the other thirteen, so it cannot be a cut — and a pass that guessed the
+    rest would be inventing thirteen verdicts.
+    """
+    import logging
+
     answer = (_FIXTURES / "review_reasoning_complete.txt").read_text()
+    assert '"drop"' in answer, "fixture no longer carries the retired shape"
 
     # WHY: the LLM server is the external boundary; this is its real reply.
-    with patch("immich_memories.analysis.selection_review._ask", return_value=answer):
+    with (
+        patch("immich_memories.analysis.selection_review._ask", return_value=answer),
+        caplog.at_level(logging.WARNING, logger="immich_memories.analysis.selection_review"),
+    ):
         drops = review_selection(_selection(), _config()).drops
 
-    assert drops == ["asset-13"], f"did not read the model's actual verdict: {drops}"
+    assert drops == []
+    assert any(record.levelno >= logging.WARNING for record in caplog.records)
 
 
 def test_the_prompt_template_echo_is_not_mistaken_for_a_verdict(caplog) -> None:

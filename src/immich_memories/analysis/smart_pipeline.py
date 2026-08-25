@@ -439,26 +439,11 @@ class SmartPipeline:
             result = self.refiner.phase_refine(analyzed, self.tracker)
             if verify:
                 result, analyzed = self.quality.stabilize(analyzed, result)
-                # WHY a loop: one review pass drops what it can see, and the
-                # refill puts new clips in their place that nothing has looked
-                # at yet. Reviewing once leaves whatever the last refill
-                # admitted unjudged, which is how a product shot survived a
-                # cut that had already dropped two others.
-                review_changed = True
-                for _ in range(max(1, self.config.max_refinement_passes)):
-                    result, analyzed, review_changed = self.quality.review(analyzed, result)
-                    if not review_changed:
-                        break
-                    # The review's re-selection can admit new fallback clips,
-                    # exactly like a judge drop — same stabilization.
-                    result, analyzed = self.quality.stabilize(analyzed, result)
-                if review_changed:
-                    # Every pass so far dropped something and refilled, so the
-                    # last refill has never been looked at — which is how a
-                    # photo of a games console ended a December cut. Judge it
-                    # once more and simply drop what fails: a cut four seconds
-                    # short beats a cut that ends on a shelf.
-                    result, analyzed = self.quality.final_review_drop(analyzed, result)
+                # One pass, and its answer is the cut. The loop this replaces
+                # existed because the review vetoed a finished selection and
+                # the refill it triggered had never been judged; a pass that
+                # makes the cut has nothing to iterate towards.
+                result, analyzed = self.quality.cut(analyzed, result)
             trace.record_favourite_law(pool, result.selected_clips)
             self.tracker.finish()
             return result

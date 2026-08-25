@@ -232,25 +232,34 @@ class SelectionQuality:
             result = self.refiner.phase_refine(list(by_id.values()), self.tracker)
         return [u for u in unverified if not looks_like_a_photograph(u.clip.asset)], result
 
-    def final_review_drop(
+    def cut(
         self,
         analyzed: list[ClipWithSegment],
         result: PipelineResult,
     ) -> tuple[PipelineResult, list[ClipWithSegment]]:
-        """One last review that drops without refilling.
+        """The one holistic pass, and its answer stands (#764).
 
-        The iterating review always leaves its own last refill unjudged: it
-        stops when the budget runs out, and by then it has just re-selected.
-        Refilling again would only admit more unseen clips, so this pass takes
-        the cut it has and removes what does not belong.
+        This used to be two methods and a loop. The review vetoed a finished
+        cut — at most a fifth of it per round — then selection refilled the
+        gap, and the refill had never been judged, so the whole thing ran
+        again. One real month took eight rounds to remove what the first round
+        had already named, and a clip it named three rounds running was capped
+        away twice before it went.
 
-        It looks at them first. The review is told — correctly — never to drop
-        a clip for missing information, since a third of a real pool has no
-        analysis yet and treating silence as a verdict would gut the memory.
-        The cost of that rule is that an unanalysed clip is immune to the only
-        quality judgment in the pipeline, and a rendered year recap shipped
-        whiteboards and desks on exactly that immunity. Nothing is judged
-        blind, so the rule never has to protect anything that shipped.
+        The pass now makes the cut. What it removes is not replaced: a memory
+        four seconds short beats one topped up with whatever ranked next,
+        which was where a games console and a shelf came from.
+
+        It looks at everything first. The review is told — correctly — never
+        to drop a clip for missing information, since a third of a real pool
+        has no analysis yet and treating silence as a verdict would gut the
+        memory. The cost of that rule is that an unanalysed clip is immune to
+        the only quality judgment in the pipeline. Nothing is judged blind, so
+        the rule never has to protect anything that ships.
+
+        The pool comes back whole. Only the cut changed, and every clip left
+        out of it has its reason on the record — the material is still there
+        for a later pass to reconsider.
         """
         if not self._app_config.content_analysis.enabled:
             return result, analyzed
@@ -267,17 +276,19 @@ class SelectionQuality:
             unreadable_ids=self._unreadable_ids(selected),
         )
         drops = set(verdict.drops)
-        if not drops:
-            trace.record("final review", selected, selected, verdict.fates)
+        kept = [c for c in result.selected_clips if c.asset.id not in drops]
+        if not drops or not kept:
+            trace.record("llm review", selected, selected, verdict.fates)
             return result, analyzed
 
-        kept = [c for c in result.selected_clips if c.asset.id not in drops]
-        if not kept:
-            return result, analyzed
         logger.info(
-            "Selection review: budget spent, dropping %d unreviewed clip(s) "
-            "rather than shipping them",
-            len(result.selected_clips) - len(kept),
+            "Selection review: the cut is %d clip(s) of %d", len(kept), len(result.selected_clips)
+        )
+        trace.record(
+            "llm review",
+            selected,
+            [c for c in selected if c.clip.asset.id not in drops],
+            verdict.fates,
         )
         trimmed = replace(
             result,
@@ -288,7 +299,7 @@ class SelectionQuality:
                 if asset_id not in drops
             },
         )
-        return trimmed, [c for c in analyzed if c.clip.asset.id not in drops]
+        return trimmed, analyzed
 
     def _unreadable_ids(self, selected: list[ClipWithSegment]) -> frozenset[str]:
         """Clips verification has already tried, and still cannot describe.
@@ -433,46 +444,3 @@ class SelectionQuality:
         ):
             offenders.add(ending.clip.asset.id)
         return offenders
-
-    def review(
-        self,
-        analyzed: list[ClipWithSegment],
-        result: PipelineResult,
-    ) -> tuple[PipelineResult, list[ClipWithSegment], bool]:
-        """One LLM pass over the finished cut (#468): redundancy and feel.
-
-        The mechanical judge sees scores; only something reading the
-        descriptions can see the same birthday candles twice. Optional by
-        construction — no LLM, no drops, selection unchanged.
-        """
-        if not self._app_config.content_analysis.enabled:
-            return result, analyzed, False
-        from immich_memories.analysis.selection_review import review_selection
-
-        by_id = {c.clip.asset.id: c for c in analyzed}
-        selected = [by_id[c.asset.id] for c in result.selected_clips if c.asset.id in by_id]
-        verdict = review_selection(
-            selected,
-            self._app_config.llm,
-            cache_path=self._verdicts,
-            unreadable_ids=self._unreadable_ids(selected),
-        )
-        if not verdict.drops:
-            # The ledger goes in even when nothing was dropped: "nothing to
-            # drop" and "everything it named was vetoed" are different, and
-            # they used to look identical from outside.
-            trace.record("llm review", selected, selected, verdict.fates)
-            return result, analyzed, False
-        dropped = set(verdict.drops)
-        trace.record(
-            "llm review",
-            selected,
-            [c for c in selected if c.clip.asset.id not in dropped],
-            verdict.fates,
-        )
-        remaining = [c for c in analyzed if c.clip.asset.id not in dropped]
-        if not remaining:
-            return result, analyzed, False
-        # WHY the pool shrinks too: a later stabilization re-refines from the
-        # pool — returning the old one would resurrect the LLM's drops.
-        return self.refiner.phase_refine(remaining, self.tracker), remaining, True

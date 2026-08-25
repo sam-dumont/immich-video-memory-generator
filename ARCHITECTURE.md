@@ -43,7 +43,7 @@ The four core orchestrators and their composed services:
 - `PreviewBuilder` (preview_builder.py): extract preview segments
 - `ClipRefiner` (clip_refiner.py): select and distribute final clips
 - `ClipScaler` (clip_scaler.py): scale to target duration, deduplicate
-- `SelectionQuality` (selection_quality.py): verify, judge and review the finished cut
+- `SelectionQuality` (selection_quality.py): verify, judge, and make the cut
 
 It also owns a `ProviderCircuit` (provider_health.py, LLM provider circuit breaker) and an
 optional `VideoDownloadCache`. The density-proportional asset budget is a plain function,
@@ -125,8 +125,8 @@ src/immich_memories/
 │   ├── clip_analyzer.py        # ClipAnalyzer: download + analyze + score
 │   ├── clip_refiner.py         # ClipRefiner: final selection + distribution
 │   ├── clip_scaler.py          # ClipScaler: duration scaling + dedup
-│   ├── selection_quality.py    # SelectionQuality: verify + judge + review
-│   ├── selection_review.py     # LLM holistic pass over the finished cut: redundant / clashing clips
+│   ├── selection_quality.py    # SelectionQuality: verify + judge + cut
+│   ├── selection_review.py     # LLM holistic pass that MAKES the cut: which clips belong, which do not
 │   ├── selection_trace.py      # Per-stage funnel record: what each filter received and let through
 │   ├── clip_selection.py       # Standalone clip selection functions
 │   ├── clip_distribution.py    # Which periods make the cut (per-period caps, applied after ranking)

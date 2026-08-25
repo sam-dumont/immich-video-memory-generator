@@ -28,10 +28,6 @@ from immich_memories.analysis.llm_failures import stop_if_this_is_our_bug
 
 logger = logging.getLogger(__name__)
 
-# An overeager model must not gut the video: at most this share of the
-# selection can be dropped in one review, never below one allowed drop.
-_MAX_DROP_RATIO = 0.2
-
 # Enough room that the model answers rather than narrating; see _ask.
 _REVIEW_MAX_TOKENS = 8000
 
@@ -142,9 +138,13 @@ cannot be judged on what it shows and cannot answer the question. Shipping
 something nobody can describe is worse than a shorter memory: drop it unless
 the rest of the line gives you a reason to keep it.
 
-Most good selections need no changes. Answer with STRICT JSON only, no prose:
-{{"drop": [{{"index": <clip number>, "reason": "<short reason>"}}]}}
-Use an empty list when the set is good."""
+You are MAKING the cut, not vetoing one. Say which clips belong in the
+memory and which do not. Every clip must appear exactly once, in one list or
+the other. Keeping all of them is a legitimate answer when the set is good.
+
+Answer with STRICT JSON only, no prose:
+{{"keep": [<clip numbers>],
+ "cut": [{{"index": <clip number>, "reason": "<short reason>"}}]}}"""
 
 
 def _ask(
@@ -324,8 +324,8 @@ def _episode_labels(selected: list[ClipWithSegment]) -> list[str]:
     return [by_asset.get(m.clip.asset.id, "E?") for m in selected]
 
 
-def _verdict_in(raw: str | None) -> list | None:
-    r"""The drop list the model actually produced, or None if it produced none.
+def _the_cut_in(raw: str | None, clip_count: int) -> list | None:
+    r"""The clips the model cut, or None if it never answered the question.
 
     Not re.search(r"\{.*\}") over the whole answer. The prompt shows the model
     the shape it wants, and a model reasoning aloud quotes that shape back —
@@ -344,9 +344,47 @@ def _verdict_in(raw: str | None) -> list | None:
             payload = json.loads(candidate)
         except json.JSONDecodeError:
             continue
-        if isinstance(payload, dict) and isinstance(payload.get("drop"), list):
-            return payload["drop"]
+        entries = _accounted_for(payload, clip_count)
+        if entries is not None:
+            return entries
     return None
+
+
+def _accounted_for(payload: object, clip_count: int) -> list | None:
+    """The cut entries, but only if the answer accounts for every clip once.
+
+    Under keep-semantics silence is a kill, so the failure that used to cost a
+    verdict now costs a memory: an answer truncated after four kept clips would
+    cut everything it never reached. Requiring the two lists to partition
+    1..N turns truncation back into a parse failure, which the pass already
+    knows how to survive — it drops nothing and says the answer was unreadable.
+
+    It is also the cheapest check that the model answered about THIS cut. A
+    keep list of five against fourteen clips is not a strict edit; it is an
+    answer to some other question.
+    """
+    if not isinstance(payload, dict):
+        return None
+    keep, cut = payload.get("keep"), payload.get("cut")
+    if not isinstance(keep, list) or not isinstance(cut, list):
+        return None
+    if not keep:
+        # A memory with nothing in it is not an edit, whatever the model meant
+        # by it. Refusing here rather than downstream keeps the reason with
+        # the answer: this pass could not be read, so nothing was cut.
+        return None
+    kept = [n for n in keep if _is_a_clip_number(n)]
+    numbered = [entry.get("index") for entry in cut if isinstance(entry, dict)]
+    dropped = [n for n in numbered if _is_a_clip_number(n)]
+    if len(kept) != len(keep) or len(dropped) != len(cut):
+        return None
+    if sorted(kept + dropped) != list(range(1, clip_count + 1)):
+        return None
+    return cut
+
+
+def _is_a_clip_number(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
 def _balanced_objects(text: str) -> list[str]:
@@ -403,7 +441,7 @@ def review_selection(
         logger.warning("Selection review unavailable (%s): nothing dropped", type(e).__name__)
         return ReviewVerdict()
 
-    entries = _verdict_in(raw)
+    entries = _the_cut_in(raw, len(selected))
     if entries is None:
         logger.warning(
             "Selection review: could not read a verdict from %d chars — nothing dropped. "
@@ -444,7 +482,6 @@ def _apply(entries: list, selected: list[ClipWithSegment]) -> ReviewVerdict:
     """
     from collections import Counter
 
-    max_drops = max(1, int(len(selected) * _MAX_DROP_RATIO))
     episodes = _episode_labels(selected)
     stars_left = Counter(
         episode
@@ -460,9 +497,7 @@ def _apply(entries: list, selected: list[ClipWithSegment]) -> ReviewVerdict:
     drops: list[str] = []
     fates: list[str] = []
     for entry in entries:
-        dropped, fate = _fate_of(
-            entry, selected, episodes, stars_left, plain_left, drops, max_drops
-        )
+        dropped, fate = _fate_of(entry, selected, episodes, stars_left, plain_left, drops)
         fates.append(fate)
         if dropped is not None:
             drops.append(dropped)
@@ -470,28 +505,27 @@ def _apply(entries: list, selected: list[ClipWithSegment]) -> ReviewVerdict:
 
 
 def _fate_of(
-    entry: object,
+    entry: dict,
     selected: list[ClipWithSegment],
     episodes: list[str],
     stars_left: dict[str, int],
     plain_left: dict[str, int],
     drops: list[str],
-    max_drops: int,
 ) -> tuple[str | None, str]:
-    """What becomes of one verdict entry, and the line that says so."""
-    index = entry.get("index") if isinstance(entry, dict) else None
-    reason = entry.get("reason", "no reason given") if isinstance(entry, dict) else "unreadable"
-    if not isinstance(index, int) or isinstance(index, bool):
-        return None, f"clip {index!r}: not a clip number, ignored ({reason})"
-    if not 1 <= index <= len(selected):
-        return None, f"clip {index}: no such clip in the cut, ignored ({reason})"
+    """What becomes of one cut entry, and the line that says so.
 
+    The entry is known good: an answer only reaches here once its two lists
+    account for every clip exactly once, so the index is an integer naming a
+    clip in this cut. An answer that names clip 99 is not a cut with one bad
+    line in it — it is an answer about some other set of clips, and the parser
+    refuses the whole of it.
+    """
+    index = entry["index"]
+    reason = entry.get("reason", "no reason given")
     member = selected[index - 1]
     asset_id = member.clip.asset.id
     if asset_id in drops:
-        return None, f"{asset_id}: named twice, already dropped ({reason})"
-    if len(drops) >= max_drops:
-        return None, f"{asset_id}: kept — cap of {max_drops} drop(s) this round reached ({reason})"
+        return None, f"{asset_id}: named twice, already cut ({reason})"
 
     episode = episodes[index - 1]
     if getattr(member.clip.asset, "is_favorite", False):
