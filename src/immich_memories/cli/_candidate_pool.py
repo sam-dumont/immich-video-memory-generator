@@ -25,7 +25,6 @@ if TYPE_CHECKING:
 def _merge_photos_into_pool(
     analyzed_videos: list,
     *,
-    live_photo_clips: list | None = None,
     photo_assets: list | None,
     include_photos: bool,
     config: Config,
@@ -48,10 +47,7 @@ def _merge_photos_into_pool(
     from immich_memories.analysis.smart_pipeline import ClipWithSegment
     from immich_memories.analysis.source_filter import from_the_camera_roll
     from immich_memories.api.models import VideoClipInfo
-    from immich_memories.photos.photo_pipeline import (
-        score_photos,
-        video_count_for_photo_budget,
-    )
+    from immich_memories.photos.photo_pipeline import score_photos
     from immich_memories.photos.scoring import score_photo
 
     _logger = logging.getLogger(__name__)
@@ -92,9 +88,6 @@ def _merge_photos_into_pool(
         scored = score_photos(
             assets=photo_assets,
             config=config.photos,
-            video_clip_count=video_count_for_photo_budget(
-                len(analyzed_videos), len(live_photo_clips or [])
-            ),
             work_dir=photo_dir,
             download_fn=client.download_asset,
             db_path=config.cache.database_path,

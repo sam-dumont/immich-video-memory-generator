@@ -30,15 +30,8 @@ from immich_memories.generate_delivery import (
     _safe_delivery_message,
 )
 from immich_memories.generate_photos import (
-    _add_photos_if_enabled,
-    _apply_unified_budget,
-    _build_title_settings_for_overhead,
     _detect_photo_resolution,
-    _interleave_clip_types,
-    _merge_by_date,
-    _parse_clip_date,
     _render_photo_as_clip,
-    _render_photos,
 )
 from immich_memories.generate_privacy import (
     anonymize_clips_for_privacy,
@@ -91,15 +84,8 @@ __all__ = [
     "check_disk_space",
     "assets_to_clips",
     "MIN_CLIP_DURATION",
-    "_add_photos_if_enabled",
-    "_apply_unified_budget",
-    "_build_title_settings_for_overhead",
     "_detect_photo_resolution",
-    "_interleave_clip_types",
-    "_merge_by_date",
-    "_parse_clip_date",
     "_render_photo_as_clip",
-    "_render_photos",
     "_probe_file_duration",
     "_extract_clips",
     "_cleanup_temp_clips",
@@ -598,13 +584,6 @@ def _generate_memory_inner(
         _phase_times["download"] = _time.monotonic() - _phase_start
         pp.report("download", 1.0, "Clips downloaded")
 
-        # Phase 1b: Unified budget selection + render selected photos
-        _t = _time.monotonic()
-        pp.report("photos", 0.0, "Selecting and rendering photos...")
-        assembly_clips = _add_photos_if_enabled(assembly_clips, params, run_output_dir)
-        _phase_times["photos"] = _time.monotonic() - _t
-        pp.report("photos", 1.0, "Photos ready")
-
         # Pre-assembly validation: skip clips with missing/empty files
         assembly_clips, skipped = validate_clips(assembly_clips)
 
@@ -746,7 +725,7 @@ def _log_phase_timing(times: dict[str, float], clip_count: int) -> None:
     """Log phase durations to help tune progress bar estimates."""
     total = times.get("total", 0)
     parts = []
-    for phase in ("download", "photos", "assembly", "music"):
+    for phase in ("download", "assembly", "music"):
         dur = times.get(phase, 0)
         pct = (dur / total * 100) if total > 0 else 0
         parts.append(f"{phase}={dur:.1f}s ({pct:.0f}%)")

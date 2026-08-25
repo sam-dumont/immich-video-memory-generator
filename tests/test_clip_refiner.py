@@ -301,25 +301,9 @@ class TestPhotoCapScarcity:
             )
             for i in range(6)
         ]
-        result = enforce_photo_cap(clips, max_ratio=0.40, videos_scarce=False)
+        result = enforce_photo_cap(clips, max_ratio=0.40)
         photos = [c for c in result if c.clip.asset.type == AssetType.IMAGE]
         assert len(photos) <= int(len(result) * 0.40) + 1
-
-    def test_cap_skipped_when_videos_scarce(self):
-        from immich_memories.analysis.clip_refiner import enforce_photo_cap
-
-        base = datetime(2021, 7, 22, tzinfo=UTC)
-        clips = [
-            _make_clip("v1", base, asset_type=AssetType.VIDEO, score=0.5),
-        ] + [
-            _make_clip(
-                f"p{i}", base + timedelta(hours=i + 1), asset_type=AssetType.IMAGE, score=0.3
-            )
-            for i in range(8)
-        ]
-        # With videos_scarce=True, all photos should be kept
-        result = enforce_photo_cap(clips, max_ratio=0.40, videos_scarce=True)
-        assert len(result) == 9
 
     def test_no_videos_all_photos_kept(self):
         """All photos, no videos — nothing to cap against."""
@@ -330,7 +314,7 @@ class TestPhotoCapScarcity:
             _make_clip(f"p{i}", base + timedelta(hours=i), asset_type=AssetType.IMAGE, score=0.3)
             for i in range(5)
         ]
-        result = enforce_photo_cap(clips, max_ratio=0.40, videos_scarce=False)
+        result = enforce_photo_cap(clips, max_ratio=0.40)
         assert len(result) == 5
 
     def test_cap_is_calculated_against_final_not_prefilter_total(self):
@@ -348,7 +332,7 @@ class TestPhotoCapScarcity:
             for i in range(9)
         ]
 
-        result = enforce_photo_cap(clips, max_ratio=0.50, videos_scarce=False)
+        result = enforce_photo_cap(clips, max_ratio=0.50)
 
         photos = [c for c in result if c.clip.asset.type == AssetType.IMAGE]
         assert len(photos) == 1

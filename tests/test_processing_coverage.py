@@ -617,31 +617,6 @@ class TestBuildClipOutputPath:
         assert "_enc" in result.name
 
 
-# ============================================================================
-# Module 2: photo_pipeline.py
-# ============================================================================
-
-
-class TestComputeMaxPhotos:
-    """Lines 212-220: max photo count from video count + ratio."""
-
-    def test_full_ratio_returns_999(self):
-        from immich_memories.photos.photo_pipeline import _compute_max_photos
-
-        assert _compute_max_photos(10, 1.0) == 999
-
-    def test_zero_videos_returns_10(self):
-        from immich_memories.photos.photo_pipeline import _compute_max_photos
-
-        assert _compute_max_photos(0, 0.25) == 10
-
-    def test_normal_ratio(self):
-        from immich_memories.photos.photo_pipeline import _compute_max_photos
-
-        # 0.25 ratio with 12 videos: 0.25 * 12 / 0.75 = 4
-        assert _compute_max_photos(12, 0.25) == 4
-
-
 class TestSelectDistributed:
     """Lines 231-252: temporal distribution of photos."""
 
