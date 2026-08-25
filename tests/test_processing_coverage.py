@@ -766,7 +766,7 @@ class TestLlmScorePhoto:
 
     def test_llm_error_is_not_reported_as_a_semantic_score(self, tmp_path):
         from immich_memories.config_models_render import PhotoConfig
-        from immich_memories.photos.scoring import _llm_score_photo
+        from immich_memories.photos.scoring import LookFailed, _llm_score_photo
 
         asset = _make_asset(id="err-001")
         config = PhotoConfig()
@@ -787,7 +787,7 @@ class TestLlmScorePhoto:
                 thumbnail_fn=MagicMock(return_value=b"\xff"),
             )
 
-        assert result is None
+        assert result == LookFailed("download_failed")
 
     def test_falls_back_to_full_download(self, tmp_path):
         from immich_memories.config_models_render import PhotoConfig
@@ -823,7 +823,7 @@ class TestLlmScorePhoto:
 
     def test_download_failure_is_not_reported_as_a_semantic_score(self, tmp_path):
         from immich_memories.config_models_render import PhotoConfig
-        from immich_memories.photos.scoring import _llm_score_photo
+        from immich_memories.photos.scoring import LookFailed, _llm_score_photo
 
         asset = _make_asset(id="dl-fail-001")
         config = PhotoConfig()
@@ -834,7 +834,7 @@ class TestLlmScorePhoto:
         result = _llm_score_photo(
             asset, 0.3, config, tmp_path, fail_download, None, thumbnail_fn=None
         )
-        assert result is None
+        assert result == LookFailed("download_failed")
 
 
 class TestRenderSinglePhoto:

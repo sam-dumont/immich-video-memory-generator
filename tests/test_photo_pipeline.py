@@ -148,6 +148,8 @@ def test_a_score_cached_before_photos_could_describe_themselves_is_re_asked(tmp_
             stale if model_version == "qwen-3.6" else {}
         ),
         save_asset_score=lambda **_kw: None,
+        failed_looks=lambda _ids, **_kw: {},
+        record_failed_look=lambda *_a: None,
     )
     monkeypatch.setattr(scoring, "_get_score_cache", lambda _db: cache)
     monkeypatch.setattr(
