@@ -24,6 +24,7 @@ from immich_memories.analysis.preview_builder import PreviewBuilder
 from immich_memories.analysis.progress import PipelinePhase, ProgressTracker
 from immich_memories.analysis.selection_coverage import AnalysisCoverage
 from immich_memories.analysis.selection_quality import SelectionQuality
+from immich_memories.analysis.selection_structure import structure_pass_for
 from immich_memories.analysis.source_filter import not_shot_here
 from immich_memories.analysis.thumbnail_prefetch import ThumbnailPrefetcher
 from immich_memories.config_presets import resolve_analysis_depth
@@ -236,7 +237,9 @@ class SmartPipeline:
             provider_circuit=self.provider_circuit,
         )
         self.scaler = ClipScaler()
-        self.refiner = ClipRefiner(self.config, self.scaler)
+        self.refiner = ClipRefiner(
+            self.config, self.scaler, structure=structure_pass_for(app_config)
+        )
         self.thumbnail_prefetcher = ThumbnailPrefetcher.from_client(
             client,
             thumbnail_cache,

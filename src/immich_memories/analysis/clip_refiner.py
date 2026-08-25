@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from immich_memories.analysis.clip_scaler import ClipScaler
+    from immich_memories.analysis.selection_structure import StructurePass
     from immich_memories.analysis.smart_pipeline import (
         ClipWithSegment,
         PipelineConfig,
@@ -76,9 +77,19 @@ def _clips_per_moment(target_clips: int, moments: int) -> int:
 class ClipRefiner:
     """Selects, distributes, and refines the final clip selection."""
 
-    def __init__(self, config: PipelineConfig, scaler: ClipScaler):
+    def __init__(
+        self,
+        config: PipelineConfig,
+        scaler: ClipScaler,
+        *,
+        structure: StructurePass | None = None,
+    ):
         self.config = config
         self.scaler = scaler
+        # The editor that decides which moments the story needs (#764). Absent
+        # — no LLM configured — or unable to answer, the arithmetic funnel
+        # makes the cut instead, exactly as it always has.
+        self._structure = structure
         # What dedup has refused this run. Backfill may not spend freed seconds
         # on it, however far its relaxation ladder goes.
         self._refused_by_dedup: set[str] = set()
@@ -618,15 +629,29 @@ class ClipRefiner:
             0.0 if self.config.target_duration_seconds is not None else target_duration * 0.10
         )
 
-        narrowed = narrow_by_arithmetic(
-            self,
-            all_analyzed,
-            target_duration=target_duration,
-            max_overrun=max_overrun,
+        structure = (
+            self._structure.choose(
+                all_analyzed, target_duration=target_duration, moment_window=moment_window
+            )
+            if self._structure is not None
+            else None
         )
-        analyzed = narrowed.analyzed
-        selected = narrowed.selected
-        coverage_ids = narrowed.coverage_ids
+        if structure is None:
+            narrowed = narrow_by_arithmetic(
+                self,
+                all_analyzed,
+                target_duration=target_duration,
+                max_overrun=max_overrun,
+            )
+            analyzed = narrowed.analyzed
+            selected = narrowed.selected
+            coverage_ids = narrowed.coverage_ids
+        else:
+            # The story decided this cut, so the counting stages do not run —
+            # neither the narrowing above nor the ratio caps below. A condemned
+            # moment's members join what backfill may not spend seconds on.
+            analyzed, selected, coverage_ids = all_analyzed, structure.kept, set()
+            self._refused_by_dedup |= set(structure.dropped)
 
         if moment_window > 0:
             before_dedup = selected
@@ -652,13 +677,15 @@ class ClipRefiner:
             trace.record("same-thing dedup", before_content, selected)
             self._remember_refusals(before_content, selected)
 
-        selected, photo_cap_bypassed = cap_ratios(
-            self.config,
-            selected,
-            analyzed,
-            coverage_ids=coverage_ids,
-            target_duration=target_duration,
-        )
+        photo_cap_bypassed = False
+        if structure is None:
+            selected, photo_cap_bypassed = cap_ratios(
+                self.config,
+                selected,
+                analyzed,
+                coverage_ids=coverage_ids,
+                target_duration=target_duration,
+            )
 
         before_backfill = selected
         selected = self._backfill_to_duration(
