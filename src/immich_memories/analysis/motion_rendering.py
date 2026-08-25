@@ -57,9 +57,9 @@ def motion_renderings(assets: list[Any], config: Any) -> dict[str, MotionRenderi
     if not live:
         return {}
 
-    analysis = getattr(config, "analysis", None)
-    window = getattr(analysis, "live_photo_merge_window_seconds", 10.0)
-    minimum = getattr(analysis, "live_photo_min_clip_seconds", 3.5)
+    analysis = config.analysis
+    window = analysis.live_photo_merge_window_seconds
+    minimum = analysis.live_photo_min_clip_seconds
 
     found: dict[str, MotionRendering] = {}
     for cluster in cluster_live_photos(live, merge_window_seconds=window):

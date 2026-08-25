@@ -183,7 +183,6 @@ def _finish_without_rendering(
     pipeline_result: PipelineResult,
     timeline_plan: TimelinePlan,
     assets: list,
-    live_photo_clips: list | None,
     photo_assets: list | None,
     config: Config,
     output_canvas: OutputCanvas,
@@ -217,7 +216,7 @@ def _finish_without_rendering(
         memory_type=memory_type or "custom",
         date_range=date_range.description,
         video_candidates=len(assets),
-        live_photo_candidates=len(live_photo_clips or []),
+        live_photo_candidates=sum(1 for photo in (photo_assets or []) if photo.live_photo_video_id),
         photo_candidates=len(photo_assets or []),
         selected_videos=len(selected_clips) - selected_photos,
         selected_photos=selected_photos,
@@ -265,9 +264,9 @@ class _AttemptPhaseReporter:
 def run_pipeline_and_generate(
     *,
     assets: list,
-    live_photo_clips: list | None = None,
     photo_assets: list | None = None,
     include_photos: bool = False,
+    use_live_photos: bool = True,
     analysis_depth: str = "auto",
     client: SyncImmichClient,
     config: Config,
@@ -326,8 +325,6 @@ def run_pipeline_and_generate(
     )
 
     clips = assets_to_clips(assets)
-    if live_photo_clips:
-        clips.extend(live_photo_clips)
     if not clips and not resolved.has_photos:
         print_error("No usable content (no video clips or photos)")
         sys.exit(1)
@@ -435,6 +432,7 @@ def run_pipeline_and_generate(
         analyzed_videos,
         photo_assets=photo_assets,
         include_photos=include_photos,
+        use_live_photos=use_live_photos,
         config=config,
         client=client,
         work_dir=output_path.parent,
@@ -514,7 +512,6 @@ def run_pipeline_and_generate(
             pipeline_result=pipeline_result,
             timeline_plan=timeline_plan,
             assets=assets,
-            live_photo_clips=live_photo_clips,
             photo_assets=photo_assets,
             config=config,
             output_canvas=output_canvas,

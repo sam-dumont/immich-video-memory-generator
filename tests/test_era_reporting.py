@@ -13,7 +13,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from immich_memories.cli._asset_fetch import fetch_videos_and_live_photos
+from immich_memories.cli._asset_fetch import fetch_videos
 from immich_memories.cli._helpers import set_quiet_mode
 from immich_memories.timeperiod import DateRange
 
@@ -64,13 +64,11 @@ def _quiet():
 
 def _fetch(by_range, caplog):
     with caplog.at_level(logging.INFO):
-        assets, _ = fetch_videos_and_live_photos(
+        assets = fetch_videos(
             client=_Immich(by_range),
-            config=SimpleNamespace(),
             progress=_Progress(),
             date_ranges=[NOW, THEN],
             person_ids=[],
-            use_live_photos=False,
         )
     return assets, caplog.text
 
@@ -101,13 +99,11 @@ def test_a_window_that_returned_nothing_is_a_warning(caplog) -> None:
 def test_a_single_window_memory_says_nothing_extra(caplog) -> None:
     """Every other memory type has one range; the breakdown would be noise."""
     with caplog.at_level(logging.INFO):
-        fetch_videos_and_live_photos(
+        fetch_videos(
             client=_Immich({NOW: [_asset("a", datetime(2026, 3, 1))]}),
-            config=SimpleNamespace(),
             progress=_Progress(),
             date_ranges=[NOW],
             person_ids=[],
-            use_live_photos=False,
         )
 
     assert "2026:" not in caplog.text
@@ -126,13 +122,11 @@ ALEX = _person("p-alex", "Alex")
 
 def _fetch_for_person(by_range, caplog, person_ids):
     with caplog.at_level(logging.INFO):
-        fetch_videos_and_live_photos(
+        fetch_videos(
             client=_Immich(by_range),
-            config=SimpleNamespace(),
             progress=_Progress(),
             date_ranges=[NOW, THEN],
             person_ids=person_ids,
-            use_live_photos=False,
         )
     return caplog.text
 
@@ -168,13 +162,11 @@ def test_a_person_present_on_both_sides_is_not_warned_about(caplog) -> None:
 def test_a_single_window_memory_never_checks_a_persons_spread(caplog) -> None:
     """Only a multi-window memory can be lopsided across windows."""
     with caplog.at_level(logging.INFO):
-        fetch_videos_and_live_photos(
+        fetch_videos(
             client=_Immich({NOW: [_asset_with("a", datetime(2026, 3, 1), [ALEX])]}),
-            config=SimpleNamespace(),
             progress=_Progress(),
             date_ranges=[NOW],
             person_ids=["p-alex"],
-            use_live_photos=False,
         )
 
     assert "Alex" not in caplog.text

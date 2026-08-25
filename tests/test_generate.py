@@ -86,8 +86,8 @@ def test_cli_generate_passes_configured_api_version_to_client(tmp_path: Path) ->
         patch("immich_memories.cli.get_config", return_value=config),
         patch("immich_memories.api.immich.SyncImmichClient", return_value=client) as client_factory,
         patch(
-            "immich_memories.cli.generate.fetch_videos_and_live_photos",
-            return_value=([], []),
+            "immich_memories.cli.generate.fetch_videos",
+            return_value=[],
         ),
     ):
         result = CliRunner().invoke(
@@ -1113,8 +1113,8 @@ class TestBirthdayFlagNamesTheWindowItRenders:
             patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
             # WHY: asset discovery needs a live Immich library.
             patch(
-                "immich_memories.cli.generate.fetch_videos_and_live_photos",
-                return_value=([make_asset("a1")], []),
+                "immich_memories.cli.generate.fetch_videos",
+                return_value=[make_asset("a1")],
             ),
             # WHY: rendering a real video is minutes of FFmpeg; we want its arguments.
             patch(

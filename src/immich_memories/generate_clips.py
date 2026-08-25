@@ -46,7 +46,7 @@ def _prefetch_assets(clips: list) -> list[PrefetchAsset]:
     for clip in clips:
         if clip.local_path and Path(clip.local_path).exists():
             continue
-        if clip.asset.type == AssetType.IMAGE and not clip.asset.live_photo_video_id:
+        if clip.asset.type == AssetType.IMAGE and not clip.live_burst_video_ids:
             continue
         if clip.live_burst_video_ids and clip.live_burst_trim_points:
             targets.extend(DownloadTarget(id=video_id) for video_id in clip.live_burst_video_ids)
@@ -122,10 +122,12 @@ def _extract_clips(
         _report("extract", progress, f"Downloading: {clip_name}")
 
         try:
-            # IMAGE-type clips from the unified selection pool:
-            # - Live photos (has video component) → download video, extract segment
-            # - Static photos → render as Ken Burns animation
-            if clip.asset.type == AssetType.IMAGE and not clip.asset.live_photo_video_id:
+            # IMAGE-type clips from the unified selection pool. The question is
+            # what the candidate CARRIES, not what kind of asset it is: a Live
+            # Photo whose burst was not worth stitching is a photograph, and
+            # asking whether it has a video component at all sent every one of
+            # them off to download a video for a still.
+            if clip.asset.type == AssetType.IMAGE and not clip.live_burst_video_ids:
                 photo_clip = _render_photo_as_clip(clip, params, output_dir)
                 if photo_clip:
                     assembly_clips.append(photo_clip)

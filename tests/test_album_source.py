@@ -29,7 +29,7 @@ def _asset(
     )
 
 
-def test_splits_videos_stills_and_live_photos_into_their_own_pools():
+def test_every_image_is_a_photograph_whatever_it_was_captured_as():
     base = datetime(2025, 6, 1, 12, 0, tzinfo=UTC)
     assets = [
         _asset("vid-1", AssetType.VIDEO, base),
@@ -43,7 +43,6 @@ def test_splits_videos_stills_and_live_photos_into_their_own_pools():
     # A lone Live Photo is a photograph: it stitches to the raw 3.0s with
     # nothing merged, and does not beat the still it would replace.
     assert [a.id for a in media.photos] == ["still-1", "live-1"]
-    assert media.live_photo_clips == []
 
 
 def test_date_range_spans_the_albums_oldest_and_newest_asset():
@@ -70,7 +69,6 @@ def test_live_photos_become_stills_when_merging_is_disabled():
 
     media = split_album_assets(assets, config=Config(), use_live_photos=False, use_photos=True)
 
-    assert media.live_photo_clips == []
     assert [a.id for a in media.photos] == ["still-1", "live-1"]
 
 
@@ -149,8 +147,14 @@ def test_fetch_skips_images_entirely_when_photos_and_live_photos_are_off():
     assert media.truncated is False
 
 
-def test_a_burst_long_enough_to_stitch_ships_as_motion_not_as_photographs():
-    """The moment shows once, and as the better of its two renderings."""
+def test_a_burst_stays_in_the_photo_pool_whatever_it_will_render_as():
+    """Which rendering a burst ships as is not a question the album pool asks.
+
+    It used to be: a burst long enough to stitch became a clip here, and its
+    stills were removed from the photo pool to stop it shipping twice. One pool
+    cannot ship anything twice, so the album just reports what it holds and the
+    rendering is chosen later, against a candidate that has already won.
+    """
     base = datetime(2025, 6, 1, 12, 0, tzinfo=UTC)
     assets = [
         _asset("still-1", AssetType.IMAGE, base),
@@ -165,5 +169,4 @@ def test_a_burst_long_enough_to_stitch_ships_as_motion_not_as_photographs():
 
     media = split_album_assets(assets, config=Config(), use_live_photos=True, use_photos=True)
 
-    assert [c.asset.id for c in media.live_photo_clips] == ["live-1"]
-    assert [a.id for a in media.photos] == ["still-1"]
+    assert [a.id for a in media.photos] == ["still-1", "live-1", "live-2"]

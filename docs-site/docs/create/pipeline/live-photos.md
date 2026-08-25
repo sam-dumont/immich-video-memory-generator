@@ -31,21 +31,47 @@ Here's what happens when you rapid-fire 3 photos of an Italian hilltop. Each Liv
 
 <Video src="/demos/live-photos/bike_race/merged.mp4" width={720} controls />
 
+## A Live Photo is a photograph
+
+That is the whole model. A Live Photo's still arrives with the photographs and
+competes as one. Whether its burst is worth showing **as motion** is a rendering
+question, asked afterwards, about an asset that has already won its place.
+
+It used to work the other way round: Live Photos were fetched separately, turned
+into clips in a pool of their own, and their stills were removed from the photo
+pool so the same instant would not ship twice. Anything that pool refused — a
+burst too short to be worth stitching — then belonged to no pool at all and was
+invisible to selection. Measured on one real month, 44 Live Photo stills were in
+that position, of which only 8 bursts were long enough to become clips.
+
 ## How it works
 
-1. **Discovery**: queries Immich for IMAGE assets with a linked `livePhotoVideoId`
-2. **Person filtering**: searches by person with no asset type filter, then filters client-side for live photos (Immich quirk)
-3. **Neighbor expansion**: untagged live photos taken within the merge window of a tagged one get pulled in automatically
-4. **Clustering**: groups photos taken within a configurable time window (default 10.0s) into bursts
-5. **Spectrogram alignment**: cross-correlates audio between overlapping clips to find the exact temporal offset (sample-accurate, ~10ms per pair)
-6. **Burst merging**: stitches clips with shutter-centered cuts, exposure normalization, and 30ms audio fade at boundaries
-7. **Prioritization**: if there's enough regular video, live photos are available but not pre-selected
+1. **Discovery**: Live Photo stills come back with the photographs; nothing is fetched twice
+2. **Video components**: the video half of a Live Photo is dropped from the video pool — it is part of a photograph, not footage somebody shot
+3. **Clustering**: photos taken within a configurable window (default 10.0s) form a burst
+4. **Rendering choice**: a burst that stitches to at least `live_photo_min_clip_seconds` (default 3.5s) renders as motion; anything shorter renders as the photograph it is
+5. **One carrier per burst**: exactly one photograph of a burst carries its motion — the favourite if there is one, otherwise the best-scored — so a burst cannot ship twice, and its siblings stay selectable as photographs
+6. **Spectrogram alignment**: cross-correlates audio between overlapping clips to find the exact temporal offset (sample-accurate, ~10ms per pair)
+7. **Burst merging**: stitches clips with shutter-centered cuts, exposure normalization, and 30ms audio fade at boundaries
 
-## Video prioritization
+## Why 3.5 seconds
 
-Real video clips are almost always better than live photo clips: longer, better stabilized, intentionally filmed. So when you enable live photos, immich-memories checks whether your regular videos already cover the target duration. If they do, live photos show up in the review grid (with a purple "Live" badge) but unchecked by default. You can manually add any that look good.
+A lone Live Photo stitches to exactly 3.0s — the raw clip, with nothing merged —
+while the smallest genuine merge of two reaches 4.0s. The threshold sits between
+them, so a burst of one never displaces the photograph it would have shipped as.
 
-If there aren't enough regular videos to fill the target, live photos get selected automatically to make up the difference.
+Motion magnitude is deliberately **not** part of this. Measured over 64 real
+bursts it correlates with something having happened (median 2.04 against 0.48)
+but does not separate it: a baby's mouth closing scored 0.31 while the same
+instant twice with a camera shift scored 0.63. Duration is structural and free;
+motion is a signal for later, never a gate.
+
+:::note Person-filtered memories
+Immich tags one frame of a burst with a person, not all of them. In a memory
+filtered by person only the tagged frames are fetched, so a burst usually has
+one frame and renders as a photograph rather than as motion. The photographs
+themselves are always selectable.
+:::
 
 ## Burst merging: spectrogram-aligned shutter-centered cuts
 
@@ -101,6 +127,7 @@ For devices without audio (like Google Pixel Motion Photos), spectrogram alignme
 analysis:
   include_live_photos: true                # ON by default
   live_photo_merge_window_seconds: 10.0    # Max gap between photos to form a burst
+  live_photo_min_clip_seconds: 3.5         # Shorter than this, it ships as a photograph
 ```
 
 Two Live Photos inside that window are already a burst — pairs are common for quick

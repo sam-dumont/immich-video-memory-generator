@@ -9,16 +9,18 @@ offered to selection in both forms.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from immich_memories.api.person_scope import stills_person_args, videos_in_window
 from immich_memories.cli._helpers import print_info, print_success, print_warning
 from immich_memories.timeperiod import DateRange
 
+logger = logging.getLogger(__name__)
+
 if TYPE_CHECKING:
     from immich_memories.api.immich import SyncImmichClient
     from immich_memories.cli._live_display import ProgressDisplay
-    from immich_memories.config_loader import Config
 
 
 def _window_label(date_range: DateRange) -> str:
@@ -91,16 +93,27 @@ def fetch_photos(
     date_ranges: list[DateRange],
     person_ids: list[str],
 ) -> list:
-    """Fetch still photos for the memory's windows, honouring the person filter.
+    """Fetch every photograph in the memory's windows, honouring the person filter.
 
     Several people means the photos holding all of them, the same rule videos
-    and Live Photos already follow.
+    follow.
+
+    A window that cannot be read costs that window, not the run. Live Photos
+    used to be fetched through a wrapper that said so out loud; their stills
+    arrive here now, and in a large library there is always an asset mid-import
+    or just deleted, so a 404 is a Tuesday rather than an edge case.
     """
+    from immich_memories.api.immich import ImmichAPIError
+
     person_id, group_ids = stills_person_args(person_ids)
     photos: list = []
     seen: set[str] = set()
     for dr in date_ranges:
-        batch = client.get_photos_for_date_range(dr, person_id=person_id, person_ids=group_ids)
+        try:
+            batch = client.get_photos_for_date_range(dr, person_id=person_id, person_ids=group_ids)
+        except (ImmichAPIError, OSError, RuntimeError, ValueError) as exc:
+            logger.warning("Failed to fetch photos for one window: %s", exc, exc_info=True)
+            continue
         for photo in batch:
             if photo.id not in seen:
                 seen.add(photo.id)
@@ -108,18 +121,19 @@ def fetch_photos(
     return photos
 
 
-def fetch_videos_and_live_photos(
+def fetch_videos(
     *,
     client: SyncImmichClient,
-    config: Config,
     progress: ProgressDisplay,
     date_ranges: list[DateRange],
     person_ids: list[str],
-    use_live_photos: bool,
-) -> tuple[list, list]:
-    """Fetch video assets and optionally live photo clips.
+) -> list:
+    """Fetch the video assets for the memory's windows.
 
-    Returns (assets, live_photo_clips).
+    Live Photos are not fetched here any more. Their stills come back with the
+    photographs, because that is what they are; the video half is dropped from
+    this pool once the photographs are known
+    (live_photo_pipeline.drop_live_photo_components).
     """
     task = progress.add_task("Fetching videos...", total=None)
 
@@ -139,30 +153,4 @@ def fetch_videos_and_live_photos(
     print_success(f"Found {len(assets)} videos")
     _report_per_window(assets, date_ranges, person_ids)
 
-    live_photo_clips: list = []
-    if use_live_photos:
-        from immich_memories.analysis.live_photo_pipeline import fetch_live_photo_clips
-
-        lp_task = progress.add_task("Fetching live photos...", total=None)
-        lp_person_id, lp_group_ids = stills_person_args(person_ids)
-        all_lp_clips: list = []
-        all_lp_video_ids: set[str] = set()
-        for dr in date_ranges:
-            lp_clips, lp_vid_ids = fetch_live_photo_clips(
-                client,
-                dr,
-                person_id=lp_person_id,
-                person_ids=lp_group_ids,
-                config=config,
-            )
-            all_lp_clips.extend(lp_clips)
-            all_lp_video_ids.update(lp_vid_ids)
-
-        if all_lp_video_ids:
-            assets = [a for a in assets if a.id not in all_lp_video_ids]
-        live_photo_clips = all_lp_clips
-        progress.update(lp_task, completed=True)
-        if live_photo_clips:
-            print_success(f"Found {len(live_photo_clips)} live photo clips")
-
-    return assets, live_photo_clips
+    return assets

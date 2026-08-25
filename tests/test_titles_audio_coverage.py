@@ -2084,7 +2084,7 @@ class TestSearchServiceLivePhotos:
         assert result[0].id == "lp1"
 
     @pytest.mark.asyncio
-    async def test_get_photos_excludes_live_photos(self):
+    async def test_get_photos_includes_live_photo_stills(self):
         from immich_memories.api.search_service import SearchService
         from immich_memories.timeperiod import DateRange
 
@@ -2117,9 +2117,10 @@ class TestSearchServiceLivePhotos:
         svc = SearchService(mock_request)
         dr = DateRange(start=datetime(2024, 6, 1), end=datetime(2024, 6, 30))
 
+        # A Live Photo still is a photograph: it competes in the one pool, and
+        # whether its burst is worth showing as motion is decided later.
         result = await svc.get_photos_for_date_range(dr)
-        assert len(result) == 1
-        assert result[0].id == "img1"
+        assert {a.id for a in result} == {"lp1", "img1"}
 
     @pytest.mark.asyncio
     async def test_get_live_photos_multi_person_intersection(self):

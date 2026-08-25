@@ -80,8 +80,8 @@ def print_generation_preview(preview: GenerationPreview) -> None:
     click.echo(
         "Candidates: "
         f"{preview.video_candidates} video, "
-        f"{preview.live_photo_candidates} Live Photo, "
-        f"{preview.photo_candidates} photo"
+        f"{preview.photo_candidates} photo "
+        f"({preview.live_photo_candidates} of them Live Photos)"
     )
     click.echo(
         f"Selected: {preview.selected_total} "

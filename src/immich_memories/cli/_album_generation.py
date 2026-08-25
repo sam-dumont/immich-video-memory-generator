@@ -94,14 +94,11 @@ def handle_album_generation(
             f"Album exceeds {config.analysis.max_album_assets} assets per type — "
             "using the most recent ones"
         )
-    if media.date_range is None or not (media.videos or media.live_photo_clips or media.photos):
+    if media.date_range is None or not (media.videos or media.photos):
         print_error(f"No usable videos or photos in album: {resolved.name}")
         sys.exit(1)
 
-    print_info(
-        f"Album pool: {len(media.videos)} videos, "
-        f"{len(media.live_photo_clips)} live photo clips, {len(media.photos)} photos"
-    )
+    print_info(f"Album pool: {len(media.videos)} videos, {len(media.photos)} photos")
 
     output_selection = resolve_output_selection(
         config_codec=config.output.codec,
@@ -112,9 +109,9 @@ def handle_album_generation(
 
     result_path, should_upload, album_name = run_pipeline_and_generate(
         assets=media.videos,
-        live_photo_clips=media.live_photo_clips,
         photo_assets=media.photos or None,
         include_photos=use_photos and bool(media.photos),
+        use_live_photos=use_live_photos,
         analysis_depth=effective_analysis_depth,
         client=client,
         config=config,

@@ -1,42 +1,39 @@
-"""An Immich error while fetching live photos must not end the run.
+"""An Immich error while fetching photographs must not end the run.
 
-`fetch_live_photo_clips` already intends tolerance -- it logs "Failed to fetch
-live photos" and returns empty so the memory is built from what did load. But it
-caught `(OSError, RuntimeError, ValueError)`, and `ImmichAPIError` inherits from
-`Exception` alone, so the one error the call actually raises was the one the
-guard could not catch.
+Live Photos used to be fetched by their own tolerant wrapper, which logged and
+returned empty so the memory was built from whatever did load. Their stills
+come back with the photographs now, so the tolerance has to live where the
+fetch does -- otherwise moving them into one pool quietly costs them the guard.
 
-In a large library there is always an asset mid-import or just deleted, so a 404
-here is a Tuesday rather than an edge case.
+In a large library there is always an asset mid-import or just deleted, so a
+404 here is a Tuesday rather than an edge case.
 """
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-from immich_memories.analysis.live_photo_pipeline import fetch_live_photo_clips
 from immich_memories.api.immich import ImmichAPIError, ImmichNotFoundError
-from immich_memories.config_loader import Config
+from immich_memories.cli._asset_fetch import fetch_photos
 from immich_memories.timeperiod import DateRange
 
 
 def _call_with(error: Exception):
     date_range = DateRange(start="2026-01-01", end="2026-01-31")
     # WHY: the Immich server; the point of the test is what it raises.
-    with patch(
-        "immich_memories.analysis.live_photo_pipeline.search_live_photos", side_effect=error
-    ):
-        return fetch_live_photo_clips(MagicMock(), date_range, config=Config())
+    client = MagicMock()
+    client.get_photos_for_date_range.side_effect = error
+    return fetch_photos(client=client, date_ranges=[date_range], person_ids=[])
 
 
-def test_a_missing_asset_costs_the_live_photos_not_the_run():
-    assert _call_with(ImmichNotFoundError("asset 404")) == ([], set())
+def test_a_missing_asset_costs_its_window_not_the_run():
+    assert _call_with(ImmichNotFoundError("asset 404")) == []
 
 
 def test_any_immich_api_error_is_tolerated():
-    assert _call_with(ImmichAPIError("500 from Immich")) == ([], set())
+    assert _call_with(ImmichAPIError("500 from Immich")) == []
 
 
 def test_the_existing_tolerated_errors_still_are():
-    assert _call_with(OSError("socket died")) == ([], set())
-    assert _call_with(ValueError("bad payload")) == ([], set())
+    assert _call_with(OSError("socket died")) == []
+    assert _call_with(ValueError("bad payload")) == []

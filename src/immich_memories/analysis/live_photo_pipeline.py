@@ -1,4 +1,10 @@
-"""Live Photo fetching and clustering pipeline.
+"""What happens to a Live Photo on its way into the pool.
+
+Almost nothing, now. A Live Photo is a photograph: its still arrives with the
+photographs and competes as one, and whether the burst is worth showing as
+motion is a rendering question asked later
+(analysis/motion_rendering.py). All this has to do is keep the video half out
+of the video pool, where it would compete as footage against its own still.
 
 Shared between CLI and UI — no NiceGUI imports allowed here.
 """
@@ -8,232 +14,29 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from immich_memories.api.immich import ImmichAPIError
-from immich_memories.api.models import VideoClipInfo
-
 if TYPE_CHECKING:
-    from immich_memories.api.immich import SyncImmichClient
     from immich_memories.api.models import Asset
-    from immich_memories.config_loader import Config
-    from immich_memories.timeperiod import DateRange
 
 logger = logging.getLogger(__name__)
 
 
-def expand_to_neighbors(
-    tagged: list,
-    all_live: list,
-    *,
-    merge_window_seconds: float = 10.0,
-) -> list:
-    """Include untagged live photos that are near tagged ones.
+def drop_live_photo_components(videos: list[Asset], photos: list[Asset]) -> list[Asset]:
+    """Remove the video half of a Live Photo from the video pool.
 
-    If photos 1, 2, 3 were taken within the merge window and only 2 is
-    tagged with the person, 1 and 3 are clearly from the same moment and
-    should be included too.
+    A Live Photo's video component is part of a photograph, not footage
+    somebody shot. Left in the pool it competes as a video against the still it
+    belongs to, and the same instant can ship twice.
+
+    The exclusion set comes from the photographs themselves, so nothing has to
+    be fetched twice to learn it.
     """
-    window = merge_window_seconds
-
-    tagged_ids = {a.id for a in tagged}
-    tagged_times = [a.file_created_at for a in tagged]
-
-    result_ids = tagged_ids.copy()
-    for asset in all_live:
-        if asset.id in result_ids:
-            continue
-        for t in tagged_times:
-            diff = abs((asset.file_created_at - t).total_seconds())
-            if diff <= window:
-                result_ids.add(asset.id)
-                break
-
-    by_id = {a.id: a for a in all_live}
-    by_id.update({a.id: a for a in tagged})
-    result = [by_id[aid] for aid in result_ids if aid in by_id]
-    result.sort(key=lambda a: a.file_created_at)
-    return result
-
-
-def _search_live_photos_multi_person(
-    client: SyncImmichClient,
-    date_range: DateRange,
-    person_ids: list[str],
-    *,
-    merge_window_seconds: float = 10.0,
-) -> list:
-    """Intersect live photos across multiple persons."""
-
-    per_person: list[set[str]] = []
-    assets_by_id: dict[str, Asset] = {}
-    for pid in person_ids:
-        results = search_live_photos(
-            client, date_range, person_id=pid, merge_window_seconds=merge_window_seconds
+    components = {p.live_photo_video_id for p in photos if p.live_photo_video_id}
+    if not components:
+        return videos
+    kept = [v for v in videos if v.id not in components]
+    if len(kept) != len(videos):
+        logger.info(
+            "Live Photos: %d video components dropped from the video pool",
+            len(videos) - len(kept),
         )
-        per_person.append({a.id for a in results})
-        assets_by_id.update({a.id: a for a in results})
-    common = per_person[0]
-    for s in per_person[1:]:
-        common &= s
-    result = [assets_by_id[aid] for aid in common]
-    result.sort(key=lambda a: a.file_created_at)
-    return result
-
-
-def _search_live_photos_for_person(
-    client: SyncImmichClient,
-    date_range: DateRange,
-    person_id: str,
-    *,
-    merge_window_seconds: float = 10.0,
-) -> list:
-    """Fetch live photos tagged with a specific person, then expand to neighbors."""
-
-    tagged: list[Asset] = []
-    page = 1
-    while True:
-        result = client._run(
-            client._async_client.search_metadata(
-                person_ids=[person_id],
-                taken_after=date_range.start,
-                taken_before=date_range.end,
-                page=page,
-                size=100,
-            )
-        )
-        for asset in result.all_assets:
-            if asset.is_live_photo:
-                tagged.append(asset)
-        if not result.next_page:
-            break
-        page += 1
-
-    if not tagged:
-        logger.info("Live photo person search: 0 tagged live photos")
-        return []
-
-    all_live = client.get_live_photos_for_date_range(date_range)
-    merged = expand_to_neighbors(tagged, all_live, merge_window_seconds=merge_window_seconds)
-    logger.info(
-        f"Live photo person search: {len(tagged)} tagged, "
-        f"{len(merged)} after neighbor expansion (from {len(all_live)} total)"
-    )
-    return merged
-
-
-def search_live_photos(
-    client: SyncImmichClient,
-    date_range: DateRange,
-    person_id: str | None = None,
-    person_ids: list[str] | None = None,
-    *,
-    merge_window_seconds: float = 10.0,
-) -> list:
-    """Search for live photo assets, handling person filtering.
-
-    When a person is selected, we search by person with NO asset type
-    filter, then keep only ``is_live_photo`` results.  This works around
-    an Immich quirk where IMAGE+person search omits ``livePhotoVideoId``.
-
-    Without a person filter we use the dedicated live photo endpoint.
-    """
-    if person_ids and len(person_ids) >= 2:
-        return _search_live_photos_multi_person(
-            client, date_range, person_ids, merge_window_seconds=merge_window_seconds
-        )
-    if person_id:
-        return _search_live_photos_for_person(
-            client, date_range, person_id, merge_window_seconds=merge_window_seconds
-        )
-    return client.get_live_photos_for_date_range(date_range)
-
-
-def fetch_live_photo_clips(
-    client: SyncImmichClient,
-    date_range: DateRange,
-    person_id: str | None = None,
-    person_ids: list[str] | None = None,
-    *,
-    config: Config,
-) -> tuple[list[VideoClipInfo], set[str]]:
-    """Fetch Live Photo assets and convert to VideoClipInfo clips.
-
-    Returns:
-        Tuple of (live_photo_clips, live_video_ids).
-    """
-    merge_window = config.analysis.live_photo_merge_window_seconds
-
-    try:
-        live_assets = search_live_photos(
-            client,
-            date_range,
-            person_id=person_id,
-            person_ids=person_ids,
-            merge_window_seconds=merge_window,
-        )
-    except (OSError, RuntimeError, ValueError, ImmichAPIError) as e:
-        # ImmichAPIError inherits from Exception alone, so the error this call
-        # actually raises -- a 404 for an asset mid-import or just deleted --
-        # was the one error this guard could not catch.
-        logger.warning("Failed to fetch live photos: %s", e, exc_info=True)
-        return [], set()
-
-    if not live_assets:
-        logger.info("No live photos found in date range")
-        return [], set()
-
-    return build_live_photo_clips(live_assets, config=config)
-
-
-def build_live_photo_clips(
-    live_assets: list[Asset], *, config: Config
-) -> tuple[list[VideoClipInfo], set[str]]:
-    """Cluster Live Photo stills into merged clips.
-
-    Returns:
-        Tuple of (live_photo_clips, live_video_ids).
-    """
-    from immich_memories.analysis.motion_rendering import motion_renderings
-
-    live_video_ids = {a.live_photo_video_id for a in live_assets if a.live_photo_video_id}
-
-    # One definition of what a burst is, shared with whatever asks what a
-    # photograph could show as motion. Two places computing it means two places
-    # to disagree about it.
-    renderings = motion_renderings(live_assets, config)
-    by_still = {a.id: a for a in live_assets}
-    clusters = []
-    clips: list[VideoClipInfo] = []
-    for rendering in dict.fromkeys(renderings.values()):
-        clusters.append(rendering)
-        members = [by_still[sid] for sid in rendering.still_ids if sid in by_still]
-        if not members or not members[0].live_photo_video_id:
-            continue
-
-        # A photograph is the default. The motion has to be worth more than
-        # the one it would replace, and a burst of one never is.
-        if not rendering.beats_a_still:
-            continue
-
-        merged = len(rendering.still_ids) > 1
-        clip = VideoClipInfo(
-            asset=members[0],
-            duration_seconds=rendering.duration_seconds,
-            live_burst_video_ids=list(rendering.video_ids) if merged else None,
-            live_burst_trim_points=list(rendering.trim_points) if merged else None,
-            live_burst_shutter_timestamps=(list(rendering.shutter_timestamps) if merged else None),
-            live_burst_still_ids=list(rendering.still_ids),
-        )
-        if any(getattr(a, "is_favorite", False) for a in members):
-            clip.asset.is_favorite = True
-
-        clips.append(clip)
-
-    device_makes = sorted(
-        {(a.exif_info.make or "unknown") for a in live_assets if a.exif_info} or {"unknown"}
-    )
-    logger.info(
-        f"Live Photos: {len(live_assets)} photos → {len(clusters)} clusters → "
-        f"{len(clips)} clips ({len(live_video_ids)} video components to filter) "
-        f"[devices: {', '.join(device_makes)}]"
-    )
-    return clips, live_video_ids
+    return kept

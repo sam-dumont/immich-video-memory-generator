@@ -166,6 +166,15 @@ class AnalysisConfig(BaseModel):
         le=60.0,
         description="Max gap between Live Photos to group into a burst cluster",
     )
+    # A lone Live Photo stitches to exactly the raw 3.0s with nothing merged,
+    # and the smallest genuine merge of two reaches 4.0s, so the boundary sits
+    # between them. Measured, not chosen.
+    live_photo_min_clip_seconds: float = Field(
+        default=3.5,
+        ge=0.0,
+        le=30.0,
+        description="Below this a burst renders as a photograph rather than as motion",
+    )
 
     @model_validator(mode="after")
     def validate_duration_constraints(self) -> AnalysisConfig:

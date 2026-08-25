@@ -322,6 +322,7 @@ def _run_pipeline_blocking(
                     analyzed,
                     photo_assets=photos,
                     include_photos=True,
+                    use_live_photos=state.include_live_photos,
                     config=app_config,
                     client=client,
                     work_dir=Path(app_config.cache.cache_path) / "photo_scoring",
