@@ -129,7 +129,18 @@ def _shipped_est(kept: list[_Moment], target_clips: int) -> float:
     from immich_memories.analysis.clip_refiner import _clips_per_moment
 
     share = _clips_per_moment(target_clips, len(kept))
-    return sum(_est(m) * min(len(m.members), share) for m in kept)
+    total = 0.0
+    for moment in kept:
+        ranked = sorted(
+            moment.members,
+            key=lambda member: (member.clip.asset.is_favorite, member.score),
+            reverse=True,
+        )
+        starred = [member for member in ranked if member.clip.asset.is_favorite]
+        rest = [member for member in ranked if not member.clip.asset.is_favorite]
+        shipping = starred + rest[: max(0, share - len(starred))]
+        total += sum(member.end_time - member.start_time for member in shipping)
+    return total
 
 
 def _starred(moment: _Moment) -> int:

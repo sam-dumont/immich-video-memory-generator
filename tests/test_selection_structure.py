@@ -468,6 +468,17 @@ class TestTheEnvelopeMeasuresWhatWillShip:
 
         assert asked.call_count >= 1
 
+    def test_favourites_exempt_from_the_moment_cap_are_part_of_the_estimate(self):
+        pool = [
+            _clip("m1-star-a", days=1, starred=True, seconds=8.0),
+            _clip("m1-star-b", days=1, minutes=2, starred=True, seconds=8.0),
+            _clip("m2", days=2, seconds=1.0),
+        ]
+
+        _cut, asked = _choose_answers(pool, [_answer(cut=[])], target=10.0, target_clips=2)
+
+        assert asked.call_count >= 1
+
     def test_the_walk_releases_on_what_will_ship_not_on_one_clip_a_moment(self):
         pool = _pool(moments=4, per_moment=3)
 
