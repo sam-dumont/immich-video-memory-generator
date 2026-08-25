@@ -783,3 +783,71 @@ async def test_transport_observer_records_invalid_shape_for_each_provider(
     assert [(event.attempt, event.outcome, event.status_code) for event in attempts] == [
         (1, "invalid_response", 200)
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("provider", "body", "usage"),
+    [
+        ("ollama", {"prompt_eval_count": 3, "eval_count": 5, "response": []}, (3, 5)),
+        (
+            "anthropic",
+            {"usage": {"input_tokens": 3, "output_tokens": 5}, "content": "not blocks"},
+            (3, 5),
+        ),
+        (
+            "openai-compatible",
+            {
+                "usage": {"prompt_tokens": 3, "completion_tokens": 5},
+                "choices": [{"message": {}}],
+            },
+            (3, 5),
+        ),
+    ],
+)
+async def test_parseable_malformed_content_keeps_legacy_reply_metrics(
+    provider: str, body: dict, usage: tuple[int, int]
+) -> None:
+    from immich_memories.analysis.llm_query import query_llm
+
+    response = MagicMock(status_code=200)
+    response.raise_for_status.return_value = None
+    response.json.return_value = body
+
+    # WHY: content may be malformed after the provider has supplied billable usage.
+    with (
+        patch("httpx.AsyncClient.post", return_value=response),
+        patch("immich_memories.analysis.llm_query.llm_metrics.record_reply") as record_reply,
+        pytest.raises((KeyError, TypeError, AttributeError)),
+    ):
+        await query_llm(
+            "look", LLMConfig(provider=provider, base_url="http://localhost/v1", model="vision")
+        )
+
+    assert record_reply.call_args.kwargs == {
+        "prompt_tokens": usage[0],
+        "completion_tokens": usage[1],
+    }
+    assert record_reply.call_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["ollama", "anthropic", "openai-compatible"])
+async def test_invalid_json_does_not_create_legacy_reply_metrics(provider: str) -> None:
+    from immich_memories.analysis.llm_query import query_llm
+
+    response = MagicMock(status_code=200)
+    response.raise_for_status.return_value = None
+    response.json.side_effect = ValueError("not json")
+
+    # WHY: a body that cannot be decoded has no trustworthy usage to count.
+    with (
+        patch("httpx.AsyncClient.post", return_value=response),
+        patch("immich_memories.analysis.llm_query.llm_metrics.record_reply") as record_reply,
+        pytest.raises(ValueError, match="not json"),
+    ):
+        await query_llm(
+            "look", LLMConfig(provider=provider, base_url="http://localhost/v1", model="vision")
+        )
+
+    record_reply.assert_not_called()

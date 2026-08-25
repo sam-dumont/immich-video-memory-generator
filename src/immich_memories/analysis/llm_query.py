@@ -357,20 +357,24 @@ async def _query_ollama(
             raise
         try:
             body = _response_body(resp)
-            raw_text = body["response"]
-            if not isinstance(raw_text, str):
-                raise TypeError("Ollama response content is not text")
-        except (KeyError, TypeError, ValueError):
+        except (TypeError, ValueError):
             _record_invalid_response(transport_observer, resp.status_code)
             raise
         if require_complete and body.get("done_reason") in {"length", "max_tokens", "truncated"}:
             _observe(transport_observer, 1, "incomplete", resp.status_code)
             raise ValueError("LLM returned incomplete content")
-        _observe(transport_observer, 1, "response", resp.status_code)
         llm_metrics.record_reply(
             prompt_tokens=body.get("prompt_eval_count", 0) or 0,
             completion_tokens=body.get("eval_count", 0) or 0,
         )
+        try:
+            raw_text = body["response"]
+            if not isinstance(raw_text, str):
+                raise TypeError("Ollama response content is not text")
+        except (KeyError, TypeError):
+            _record_invalid_response(transport_observer, resp.status_code)
+            raise
+        _observe(transport_observer, 1, "response", resp.status_code)
         return raw_text
 
 
@@ -435,11 +439,12 @@ async def _query_anthropic(
         except httpx.HTTPStatusError:
             _observe(transport_observer, 1, "http_error", resp.status_code)
             raise
-        body, usage, raw_text = _anthropic_answer(resp, transport_observer)
+        body, usage = _anthropic_usage(resp, transport_observer)
         llm_metrics.record_reply(
             prompt_tokens=usage.get("input_tokens", 0) or 0,
             completion_tokens=usage.get("output_tokens", 0) or 0,
         )
+        raw_text = _anthropic_answer(body, resp, transport_observer)
         if body.get("stop_reason") == "max_tokens" and require_complete:
             _observe(transport_observer, 1, "incomplete", resp.status_code)
             raise ValueError("LLM returned incomplete content")
@@ -584,23 +589,33 @@ def _openai_completion(
     return choice["message"]["content"], False
 
 
-def _anthropic_answer(
+def _anthropic_usage(
     response: httpx.Response, observer: Callable[[LLMTransportAttempt], None] | None
-) -> tuple[dict, dict, str]:
-    """Decode the native Anthropic body before using any of its fields."""
+) -> tuple[dict, dict]:
+    """Decode the native Anthropic body far enough to retain usage metrics."""
     try:
         body = _response_body(response)
         usage = body.get("usage") or {}
-        content = body["content"]
-        if not isinstance(usage, dict) or not isinstance(content, list):
-            raise TypeError("Anthropic response has an invalid body shape")
-        raw_text = "".join(
-            block.get("text", "") for block in content if block.get("type") == "text"
-        )
-    except (KeyError, TypeError, ValueError, AttributeError):
+        if not isinstance(usage, dict):
+            raise TypeError("Anthropic usage is not an object")
+    except (TypeError, ValueError):
         _record_invalid_response(observer, response.status_code)
         raise
-    return body, usage, raw_text
+    return body, usage
+
+
+def _anthropic_answer(
+    body: dict, response: httpx.Response, observer: Callable[[LLMTransportAttempt], None] | None
+) -> str:
+    """Validate the Anthropic content after its parseable usage was counted."""
+    try:
+        content = body["content"]
+        if not isinstance(content, list):
+            raise TypeError("Anthropic response content is not a list")
+        return "".join(block.get("text", "") for block in content if block.get("type") == "text")
+    except (KeyError, TypeError, AttributeError):
+        _record_invalid_response(observer, response.status_code)
+        raise
 
 
 def _interpret_openai_response(
@@ -620,6 +635,10 @@ def _interpret_openai_response(
     except (KeyError, TypeError, ValueError, IndexError):
         _record_invalid_response(observer, response.status_code)
         raise
+    llm_metrics.record_reply(
+        prompt_tokens=usage.get("prompt_tokens", 0) or 0,
+        completion_tokens=usage.get("completion_tokens", 0) or 0,
+    )
     try:
         content, retry_without_thinking = _openai_completion(
             choice, thinking, require_complete, observer, attempt, response.status_code
@@ -627,10 +646,6 @@ def _interpret_openai_response(
     except (KeyError, TypeError, AttributeError):
         _record_invalid_response(observer, response.status_code)
         raise
-    llm_metrics.record_reply(
-        prompt_tokens=usage.get("prompt_tokens", 0) or 0,
-        completion_tokens=usage.get("completion_tokens", 0) or 0,
-    )
     return content, retry_without_thinking
 
 
