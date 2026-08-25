@@ -48,7 +48,7 @@ immich-memories generate \
 
 `--year` names the birthday being celebrated, not a calendar year to run forward from.
 
-Give the date as `MM-DD` — that form has only one reading. A slashed `DD/MM` works too and is read day-first, the same way `--start` and `--end` read `DD/MM/YYYY`.
+Give the date as `MM-DD` — month first, matching every other date in the project (RFC 3339 order). Slashed forms are rejected rather than guessed.
 
 29 February is celebrated on the 28th in a year that has no 29th, and the ±1 day cutaways still reach the 29th in the years that do.
 

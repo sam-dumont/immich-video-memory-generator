@@ -123,7 +123,6 @@ class AssemblySettings:
     music_other_path: Path | None = None  # Other instruments stem
     add_date_overlay: bool = False
     add_place_overlay: bool = False
-    date_format: str = "%B %d, %Y"
     preserve_framerate: bool = True  # Keep original frame rate (e.g., 60fps)
     target_framerate: int | None = None  # Force specific frame rate (None = auto)
     # Resolution settings

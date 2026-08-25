@@ -38,7 +38,7 @@ def scope_options(command: FC) -> FC:
         click.option(
             "--year", "-y", type=int, help="Year to generate video for (calendar year by default)"
         ),
-        click.option("--start", type=str, help="Start date (YYYY-MM-DD or DD/MM/YYYY)"),
+        click.option("--start", type=str, help="Start date (YYYY-MM-DD)"),
         click.option("--end", type=str, help="End date (use with --start)"),
         click.option("--period", type=str, help="Period from start date (e.g., 6m, 1y, 2w)"),
         click.option(

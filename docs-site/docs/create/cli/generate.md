@@ -20,7 +20,7 @@ immich-memories generate [OPTIONS]
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
 | `--year` | `-y` | int | — | Year to generate (calendar year by default) |
-| `--start` | — | string | — | Start date (`YYYY-MM-DD` or `DD/MM/YYYY`). Overrides memory type date range when combined with `--end` |
+| `--start` | — | string | — | Start date (`YYYY-MM-DD`). Overrides memory type date range when combined with `--end` |
 | `--end` | — | string | — | End date (use with `--start`) |
 | `--period` | — | string | — | Period from start date (e.g., `6m`, `1y`, `2w`, `30d`) |
 
@@ -328,7 +328,7 @@ immich-memories generate --year 2024 --include-photos --photo-duration 5.0
 | Period from start | `--start 2024-01-01 --period 6m` | 6 months from the start date |
 | Override preset | `--memory-type season --season summer --start 2024-07-01 --end 2024-07-31` | Custom dates with preset scoring |
 
-Date formats: `YYYY-MM-DD` or `DD/MM/YYYY`. `--birthday` also takes the year-less `MM-DD` and `DD/MM` short forms.
+Dates are RFC 3339: `YYYY-MM-DD`, always. `--birthday` also takes the year-less `MM-DD` short form — same order, no year. Slashed and day-first forms are rejected with an error naming the format, never guessed.
 
 Period format: number + unit (`d` days, `w` weeks, `m` months, `y` years). Examples: `90d`, `2w`, `6m`, `1y`.
 
