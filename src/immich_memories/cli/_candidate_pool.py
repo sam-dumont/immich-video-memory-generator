@@ -15,6 +15,8 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from immich_memories.analysis import selection_trace as trace
+
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
@@ -147,6 +149,7 @@ def _drop_reencoded_sources(candidates: list, *, config: Config) -> list:
             min_short_side=floor,
         )
     ]
+    trace.record("source quality", candidates, kept)
     if len(kept) < len(candidates):
         logger.info(
             "Source quality: dropped %d clips under %dp with no camera EXIF",
@@ -174,13 +177,15 @@ def _apply_subject_policy(
 
     from immich_memories.analysis.subject_policy import filter_candidates_by_subject
 
-    return filter_candidates_by_subject(
+    kept = filter_candidates_by_subject(
         candidates,
         animal_ratio=config.analysis.max_animal_ratio,
         object_ratio=config.analysis.max_object_ratio,
         content_budget_seconds=content_budget_seconds,
         photo_asset_ids={a.id for a in photo_assets or []},
     )
+    trace.record("subject policy", candidates, kept)
+    return kept
 
 
 def _drop_photos_already_shown_as_motion(

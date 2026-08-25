@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import contextlib
 import logging
-import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -423,8 +422,7 @@ class SmartPipeline:
         # WHY an environment variable rather than an argument: every caller of
         # this method — CLI, UI, scripts — would otherwise need a parameter it
         # does not use, to carry a debugging concern four layers down.
-        trace_path = os.environ.get("IMMICH_MEMORIES_SELECTION_TRACE")
-        with trace.tracing(Path(trace_path) if trace_path else None):
+        with trace.tracing(trace.path_from_env()):
             return self._run_selection(analyzed, verify=verify)
 
     def _run_selection(

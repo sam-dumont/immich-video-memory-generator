@@ -261,6 +261,58 @@ class _AttemptPhaseReporter:
 
 
 @llm_metrics.collects
+def _pool_and_select(
+    pipeline,
+    analyzed_videos: list,
+    *,
+    phases,
+    photo_assets: list | None,
+    include_photos: bool,
+    use_live_photos: bool,
+    config,
+    client,
+    work_dir: Path,
+    dry_run: bool,
+    thumbnail_cache,
+    content_budget_seconds: float,
+) -> tuple[list, object]:
+    """Build the pool, then choose from it, with ONE trace over both.
+
+    The trace is opened here rather than inside `run_selection` because the
+    pool's own filters run before the pipeline is entered. Recorded from in
+    there they land in no context at all, which is how a stage that removed
+    eleven candidates — including a life-event photograph — stayed invisible
+    in the funnel across four renders. The pipeline still opens a context of
+    its own for callers that have not (the UI); nesting joins rather than
+    starting a second trace.
+    """
+    from immich_memories.analysis import selection_trace as trace
+    from immich_memories.operations.phases import OperationalPhase
+
+    with trace.tracing(trace.path_from_env()):
+        candidates = _merge_photos_into_pool(
+            analyzed_videos,
+            photo_assets=photo_assets,
+            include_photos=include_photos,
+            use_live_photos=use_live_photos,
+            config=config,
+            client=client,
+            work_dir=work_dir,
+            provider_circuit=pipeline.provider_circuit,
+            dry_run=dry_run,
+            thumbnail_cache=thumbnail_cache,
+        )
+        candidates = _drop_reencoded_sources(candidates, config=config)
+        candidates = _apply_subject_policy(
+            candidates,
+            config=config,
+            content_budget_seconds=content_budget_seconds,
+            photo_assets=photo_assets,
+        )
+        phases.emit(OperationalPhase.SELECTION, 0, len(candidates), "Selecting clips")
+        return candidates, pipeline.run_selection(candidates, verify=not dry_run)
+
+
 def run_pipeline_and_generate(
     *,
     assets: list,
@@ -427,31 +479,20 @@ def run_pipeline_and_generate(
         dry_run=dry_run,
     )
 
-    # Merge photos into the unified selection pool (if enabled)
-    all_candidates = _merge_photos_into_pool(
+    all_candidates, pipeline_result = _pool_and_select(
+        pipeline,
         analyzed_videos,
+        phases=phases,
         photo_assets=photo_assets,
         include_photos=include_photos,
         use_live_photos=use_live_photos,
         config=config,
         client=client,
         work_dir=output_path.parent,
-        provider_circuit=pipeline.provider_circuit,
         dry_run=dry_run,
         thumbnail_cache=thumbnail_cache,
-    )
-
-    all_candidates = _drop_reencoded_sources(all_candidates, config=config)
-    all_candidates = _apply_subject_policy(
-        all_candidates,
-        config=config,
         content_budget_seconds=timeline_plan.content_budget,
-        photo_assets=photo_assets,
     )
-
-    # Phase 4: Unified selection (videos + photos compete together)
-    phases.emit(OperationalPhase.SELECTION, 0, len(all_candidates), "Selecting clips")
-    pipeline_result = pipeline.run_selection(all_candidates, verify=not dry_run)
     _analysis_time = _time.monotonic() - _pipeline_start
     selected_clips = pipeline_result.selected_clips
     clip_segments = pipeline_result.clip_segments
