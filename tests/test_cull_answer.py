@@ -101,8 +101,6 @@ def test_an_empty_answer_is_a_valid_answer_that_removes_nothing() -> None:
 @pytest.mark.parametrize(
     "rejects",
     (
-        # a tile belonging to another episode: the answer stopped tracking scope
-        [{"episode": 1, "notes": [3], "failed": []}],
         # a tile nothing on this sheet shows
         [{"episode": 1, "notes": [99], "failed": []}],
         # an episode this pack does not have
@@ -231,3 +229,34 @@ def test_the_prompt_shows_the_exact_shape_its_parser_accepts() -> None:
     assert parsed.cull_valid
     # The shown envelope decides nothing, which is the honest default.
     assert parsed.cull_rejects == ()
+
+
+def test_a_tile_filed_under_the_wrong_episode_still_decides_its_own_pixels() -> None:
+    """One misattributed tile must not void every correct judgement beside it.
+
+    Measured on a real month: a pack of fifteen episodes came back with every
+    bucket right except a single tile filed one episode early. Voiding the
+    namespace threw away all fifteen episodes' work over the bookkeeping.
+    """
+    from immich_memories.analysis.cull_answer import read_cull_namespaces
+
+    parsed = read_cull_namespaces(
+        json.dumps(
+            {
+                "schema_version": "episode-scan-v4",
+                "pack": 1,
+                "cull_rejects": [
+                    {"episode": 1, "notes": [1], "failed": []},
+                    {"episode": 2, "notes": [2, 3], "failed": []},
+                ],
+            }
+        ),
+        pack_alias=1,
+        tile_map={1: "a", 2: "b", 3: "c"},
+        episode_tiles={1: (1, 2), 2: (3,)},
+    )
+
+    assert parsed is not None
+    assert parsed.cull_valid
+    assert tuple(d.asset_id for d in parsed.cull_rejects) == ("a", "b", "c")
+    assert parsed.warnings == ("!! Cull filed tile 2 under episode 2",)

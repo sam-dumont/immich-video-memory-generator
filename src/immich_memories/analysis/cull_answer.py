@@ -114,23 +114,25 @@ def read_cull_namespaces(
         or payload.get("pack") != pack_alias
     ):
         return None
-    rejects = _read_scoped_rejects(payload.get("cull_rejects"), tile_map, episode_tiles)
-    if rejects is None:
+    read = _read_scoped_rejects(payload.get("cull_rejects"), tile_map, episode_tiles)
+    if read is None:
         return ParsedCullNamespaces(cull_rejects=(), warnings=(), cull_valid=False)
+    rejects, misfiled = read
     kept, warnings = _discard_unavailable_decisions(rejects, unavailable_asset_ids)
-    return ParsedCullNamespaces(cull_rejects=kept, warnings=warnings, cull_valid=True)
+    return ParsedCullNamespaces(cull_rejects=kept, warnings=misfiled + warnings, cull_valid=True)
 
 
 def _read_scoped_rejects(
     value: object,
     tile_map: Mapping[int, str],
     episode_tiles: Mapping[int, tuple[int, ...]],
-) -> tuple[CullDecision, ...] | None:
+) -> tuple[tuple[CullDecision, ...], tuple[str, ...]] | None:
     if not isinstance(value, list):
         return None
     seen_episodes: set[int] = set()
     seen_tiles: set[int] = set()
     parsed: list[CullDecision] = []
+    misfiled: list[str] = []
     for entry in value:
         if not isinstance(entry, dict) or set(entry) != set(CULL_SCOPE_WIRE_KEYS):
             return None
@@ -142,28 +144,35 @@ def _read_scoped_rejects(
         seen_episodes.add(episode)
         scope = frozenset(episode_tiles[episode])
         for bucket in CULL_BUCKETS:
-            tiles = _tiles_in(entry.get(bucket), scope, tile_map, seen_tiles)
+            tiles = _tiles_in(entry.get(bucket), tile_map, seen_tiles)
             if tiles is None:
                 return None
+            # Which episode a tile was filed under is bookkeeping; the judgement
+            # is about pixels this sheet really shows. One tile filed an episode
+            # early must not void the fifteen episodes answered correctly beside
+            # it, which is what a real month did.
+            misfiled.extend(
+                f"!! Cull filed tile {tile} under episode {episode}"
+                for tile in tiles
+                if tile not in scope
+            )
             parsed.extend(CullDecision(tile_map[tile], bucket) for tile in tiles)
-    return tuple(parsed)
+    return tuple(parsed), tuple(misfiled)
 
 
 def _tiles_in(
     value: object,
-    scope: frozenset[int],
     tile_map: Mapping[int, str],
     seen_tiles: set[int],
 ) -> tuple[int, ...] | None:
-    """Tiles named for one bucket, or None when the answer left its own scope."""
+    """Tiles named for one bucket, or None when the answer left the sheet."""
     if not isinstance(value, list):
         return None
     tiles: list[int] = []
     for tile in value:
-        # Scope is the whole mechanism. A tile named under an episode it does
-        # not belong to means the answer stopped tracking which sheet it was
-        # reading, and nothing in it can be trusted.
-        if not _is_integer_alias(tile) or tile not in scope or tile not in tile_map:
+        # A tile this pack never showed means the answer stopped tracking which
+        # sheet it was reading, and nothing in it can be trusted.
+        if not _is_integer_alias(tile) or tile not in tile_map:
             return None
         if tile in seen_tiles:
             return None
