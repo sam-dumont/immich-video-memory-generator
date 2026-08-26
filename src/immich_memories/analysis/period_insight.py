@@ -197,19 +197,31 @@ def run_period_insight(
             banked,
             reason="source corpus was empty",
         )
-    elif len(readings) != len(episode_sheets):
+    elif not readings:
         _warn_once(
             prepared,
             warnings,
-            "Pass 0 incomplete visual evidence; period thesis unavailable",
+            "Pass 0 no episode could be read; period thesis unavailable",
         )
         insight = _unavailable_insight(
             prepared,
             episode_packs,
             banked,
-            reason="one or more required episode pages were unreadable",
+            reason="no episode page could be read",
         )
     else:
+        # An episode nobody could read costs its own pictures a reading, not the
+        # month its thesis: a real dense month read 100 of 101 and was refused a
+        # thesis over the hundred-and-first. The wall is built from what was
+        # read, the trace names what was not, and those pictures stay in the
+        # corpus for the passes that come after.
+        if len(readings) != len(episode_sheets):
+            _warn_once(
+                prepared,
+                warnings,
+                f"Pass 0 {len(episode_sheets) - len(readings)} of "
+                f"{len(episode_sheets)} episodes could not be read",
+            )
         period_pages, period_answer, insight = _read_period_wall(
             prepared,
             readings,

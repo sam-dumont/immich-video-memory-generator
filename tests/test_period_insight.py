@@ -542,13 +542,12 @@ def test_incomplete_121_tile_episode_banks_valid_page_but_blocks_period_thesis(
     assert trace.editorial_passes[-1].provenance.sheet_hashes == tuple(
         page.sha256 for page in episode.pages
     )
-    assert any(
-        warning.startswith("!! Pass 0 incomplete visual evidence") for warning in result.warnings
-    )
+    # its only episode is a continuation whose page is invalid, so nothing read
+    assert any("no episode could be read" in warning for warning in result.warnings)
     assert trace.as_dict()["warnings"] == [
-        "!! Pass 0 incomplete visual evidence; period thesis unavailable"
+        "!! Pass 0 no episode could be read; period thesis unavailable"
     ]
-    assert trace.report().count("!! Pass 0 incomplete visual evidence") == 1
+    assert trace.report().count("!! Pass 0 no episode could be read") == 1
 
 
 def test_complete_episode_builds_one_pixel_bearing_period_wall_and_visual_trace(
@@ -1098,8 +1097,8 @@ def test_one_packed_raw_answer_banks_valid_siblings_when_one_episode_is_invalid(
         prepared.episode_groups[0].group_id,
         prepared.episode_groups[2].group_id,
     )
-    assert result.insight.thesis is None
-    assert len(prepared.trace.requests) == 1
+    # the valid sibling still carries the wall, so the thesis is attempted
+    assert len(prepared.trace.requests) == 2
 
 
 def test_complete_121_tile_episode_combines_every_continuation_provenance(
@@ -1332,3 +1331,75 @@ def test_a_visual_nobody_can_see_is_not_asked_about(tmp_path: Path) -> None:
         scope.unavailable_asset_ids for pack in result.episode_packs for scope in pack.scopes
     )
     assert any("blind" in warning for warning in result.warnings)
+
+
+def test_an_unread_episode_costs_its_own_pictures_not_the_month(tmp_path: Path) -> None:
+    """A pack that failed hands its pictures on; it does not veto the period.
+
+    Measured on a real dense month: 100 of 101 episodes read, and the thesis was
+    refused because of the hundred-and-first. The wall is built from the
+    episodes that could be read, the trace names the one that could not, and its
+    pictures stay in the corpus for the passes that come after.
+    """
+    from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
+    from immich_memories.analysis.llm_query import LLMTransportAttempt
+    from immich_memories.analysis.period_insight import run_period_insight
+
+    start = datetime(2026, 8, 25, 12, tzinfo=UTC)
+    assets = tuple(
+        make_asset(f"asset-{index:02d}", file_created_at=start + timedelta(days=index))
+        for index in range(16)  # one per day: 16 episodes, so more than one pack
+    )
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(
+            source_fetcher=lambda _scope: assets,
+            preview_jpeg=lambda _asset: _jpeg("sienna"),
+        ),
+    )
+    calls = 0
+
+    async def _answer(prompt, _config, **kwargs):
+        nonlocal calls
+        calls += 1
+        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
+        if "chronological episode pack" in prompt:
+            # the first pack refuses; the rest answer
+            if calls == 1:
+                return "I cannot help with that."
+            return _episode_pack_answer(prompt)
+        return json.dumps(
+            {
+                "schema_version": "period-insight-v1",
+                "period_insight": {
+                    "thesis": "Built from the episodes that could be read.",
+                    "evidence": [
+                        {"observation": "What tile 1 shows.", "representative_tiles": [1]}
+                    ],
+                    "tensions": [],
+                    "recurring_threads": [],
+                    "unavailable_reason": None,
+                },
+            }
+        )
+
+    gateway = VisualEditorialGateway(
+        llm_config=LLMConfig(model="vision-test"),
+        cache_path=tmp_path / "judgments.db",
+        trace=prepared.trace,
+    )
+    # WHY: query_llm is the provider boundary; packing, reading and synthesis stay real.
+    with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
+        result = run_period_insight(
+            prepared,
+            requester=gateway,
+            sheet_output_dir=tmp_path / "sheets",
+            frame_cache_dir=None,
+        )
+
+    assert len(result.episode_readings) < len(result.episode_sheets)
+    assert result.insight is not None
+    assert result.insight.thesis == "Built from the episodes that could be read."
+    assert any("episodes could not be read" in warning for warning in result.warnings)
+    # the unread episode's pictures are still in the corpus for later passes
+    assert result.retained_ids == prepared.candidate_ids

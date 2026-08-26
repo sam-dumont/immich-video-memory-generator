@@ -767,12 +767,16 @@ def test_failed_middle_pack_does_not_shift_later_bank_or_reused_wire_alias(
     assert _survivor_ids(result) == ("middle",)
     assert tuple(decision.asset_id for decision in result.rejected) == ("first", "third")
     assert result.warnings == (
-        "!! Pass 0 incomplete visual evidence; period thesis unavailable",
+        "!! Pass 0 1 of 3 episodes could not be read",
+        # the wall is now attempted from the two that read, and this fixture's
+        # provider has no period answer for it
+        "!! Pass 0 period synthesis unreadable; thesis unavailable",
         f"!! Pass 1 mismatched episode scan provenance: {pass_zero.episode_packs[0].page.sheet_id}",
         f"!! Pass 1 failed episode scan: {pass_zero.episode_packs[1].page.sheet_id}",
         f"!! Pass 1 mismatched episode scan provenance: {pass_zero.episode_packs[2].page.sheet_id}",
     )
-    assert len(prepared.trace.requests) == 3
+    # three episode packs plus the period wall, which is now attempted
+    assert len(prepared.trace.requests) == 4
     assert sum(request.actual_calls for request in result.trace.request_traces) == 0
     assert result.trace.request_traces[1].provenance.request_key == (
         original_attempts[1].request_trace.provenance.request_key
