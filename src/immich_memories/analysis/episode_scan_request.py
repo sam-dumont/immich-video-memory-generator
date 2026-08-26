@@ -31,28 +31,31 @@ _RENDER_VERSION = "visual-atlas-v1/contact-sheet-v1"
 
 
 def episode_response_shape(*, tile: int) -> str:
-    """One complete example envelope, built from the keys the parser demands.
+    """The envelope to return, then the shape of an entry when one is warranted.
 
-    The model is shown the shape rather than told about it in prose. Every
-    namespace here is read back by a parser that voids the whole namespace on
-    an unexpected key, so a described-but-not-shown shape fails silently on
-    every real answer.
+    The envelope shows both decision arrays EMPTY. Everything in an example is
+    instruction, values included: a populated cull entry was copied verbatim
+    onto seven unrelated visuals, because a closed vocabulary makes any shown
+    value a plausible answer. An empty array is the honest default and cannot
+    be copied into a decision. The one entry shown must still parse, so its
+    defect is the narrowest in the vocabulary rather than the most reachable:
+    shown "unusable_motion_blur", the model applied it to still screenshots.
     """
     record = dict(
         zip(
             RECORD_SHOT_WIRE_KEYS,
-            (tile, "what this records", "what makes it legible"),
+            (tile, "what this records", "what makes it proof"),
             strict=True,
         )
     )
     reject = dict(
         zip(
             CULL_REJECT_WIRE_KEYS,
-            (tile, "unusable_motion_blur", "subject_unrecognizable"),
+            (tile, "accidental_capture", "blank_floor_ceiling"),
             strict=True,
         )
     )
-    return json.dumps(
+    envelope = json.dumps(
         {
             "schema_version": EPISODE_SCAN_SCHEMA_VERSION,
             "pack": 1,
@@ -65,10 +68,17 @@ def episode_response_shape(*, tile: int) -> str:
                     "representative_reason": "why these read best on a wall",
                 }
             ],
-            "record_shots": [record],
-            "cull_rejects": [reject],
+            "record_shots": [],
+            "cull_rejects": [],
         },
         separators=(",", ":"),
+    )
+    return (
+        envelope
+        + "\nA record_shots entry, only when one is warranted, has exactly these keys: "
+        + json.dumps(record, separators=(",", ":"))
+        + "\nA cull_rejects entry, only when one is warranted, has exactly these keys: "
+        + json.dumps(reject, separators=(",", ":"))
     )
 
 
@@ -135,20 +145,19 @@ def _episode_prompt(pack: EpisodeScanPack) -> str:
         "wall legible. All episode and record text must use printable ASCII except double quote "
         "and backslash; use one line with no control characters. Apostrophes and basic punctuation "
         "are allowed. "
-        "Representatives reject nothing. Return record_shots only for visuals that function "
-        "as evidence, proof, a ticket, a sign, a document, or another necessary factual record; "
-        "most visuals are not record shots. Its function is at most "
+        "Representatives reject nothing. Return record_shots only for visuals that are proof "
+        "of something that happened to these people; legible text alone is not proof. Most "
+        "visuals are not record shots. Its function is at most "
         f"{RECORD_SHOT_FUNCTION_MAX_CHARS} characters and its reason at most "
         f"{RECORD_SHOT_REASON_MAX_CHARS} characters. "
-        "Return cull_rejects only for clearly unusable non-record, non-favourite visuals, "
-        "with one matching defect/evidence pair: "
+        "Return cull_rejects only for visuals whose pixels are unusable. Most visuals have no "
+        "defect. Each reject is a non-record, non-favourite visual with one matching "
+        "defect/evidence pair: "
         "accidental_capture with camera_obstructed, unintended_partial, or blank_floor_ceiling; "
         "unusable_motion_blur with subject_unrecognizable or frame_smeared_beyond_use; "
         "unusable_exposure with detail_lost_to_darkness or detail_lost_to_highlights; or "
         "corrupt_or_obscured_pixels with decode_corruption, lens_obscured, or "
-        "content_not_visible. Do not return Cull prose. Subject, repetition, relative weakness, "
-        "duration, resolution, similarity, and thesis relevance cannot actuate Cull. Return both "
-        "arrays even when empty. Use exactly these keys and no others:\n"
+        "content_not_visible. Use exactly these keys and no others:\n"
         + episode_response_shape(tile=first_tile)
     )
 
