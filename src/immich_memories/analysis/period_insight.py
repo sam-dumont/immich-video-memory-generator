@@ -551,7 +551,18 @@ def _pack_id(group_ids: tuple[str, ...]) -> str:
     return f"episode-pack-v1-{digest}"
 
 
+# The output budget bounds how much a pack can SAY, not how much it can be asked
+# about. Measured at temperature 0 on two real months: a 36-episode pack came
+# back complete, valid, and with every Cull list empty -- no refusal, no warning,
+# just silence on the second half of the question. The same month split into six
+# smaller packs culled 4.6%, and a dense month whose packs held 4 to 14 episodes
+# culled 4.4%. Fourteen answered; thirty-six did not.
+MAX_EPISODES_PER_PACK = 14
+
+
 def _episode_groups_fit(groups: tuple[EditorialGroup, ...], limits: VisionRequestLimits) -> bool:
+    if len(groups) > MAX_EPISODES_PER_PACK:
+        return False
     candidates = tuple(
         sorted(
             (candidate for group in groups for candidate in group.candidates),

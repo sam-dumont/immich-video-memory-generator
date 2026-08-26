@@ -105,8 +105,12 @@ def _maximum_fused_response(pack) -> str:
 
 
 def _assert_next_episode_would_overflow(packs, *, max_output_tokens: int = 4000) -> None:
-    """Prove each greedy pack stops only because its next complete episode cannot fit."""
+    """Prove each greedy pack stops for a reason: the budget, or the episode cap."""
+    from immich_memories.analysis.period_insight import MAX_EPISODES_PER_PACK
+
     for pack, next_pack in zip(packs, packs[1:], strict=False):
+        if len(pack.scopes) >= MAX_EPISODES_PER_PACK:
+            continue
         displayed = [tuple(ref.number for ref in scope.tile_refs) for scope in pack.scopes]
         next_size = len(next_pack.scopes[0].tile_refs)
         first_new_number = len(pack.page.tile_refs) + 1
@@ -271,7 +275,7 @@ def test_v4_episode_packs_budget_every_possible_cull_member(
         ref.entity_id for pack in result.episode_packs for ref in pack.page.tile_refs
     )
     assert planned_ids == prepared.candidate_ids
-    assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [39, 39, 39, 3]
+    assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [14] * 8 + [8]
     for pack in result.episode_packs:
         request = build_episode_request(pack, limits=VisionRequestLimits())
         assert request.pages == (pack.page,)
@@ -732,7 +736,7 @@ def test_approved_multi_page_period_wall_is_attached_as_one_holistic_request(
             ),
         )
 
-    assert len(captured_images) == 3
+    assert len(captured_images) == 4
     assert captured_images[-1] == tuple(page.jpeg_bytes for page in result.period_pages)
     assert result.insight.thesis == "Unfamiliar stages accumulate into a progression."
     assert result.insight.evidence[0].asset_ids == ("visual-00-0", "visual-40-0")
@@ -1297,3 +1301,50 @@ def test_banked_episode_scan_can_be_reparsed_after_a_later_physical_failure(
 
     assert replay is not None and replay.invalid_observations == ()
     assert before == after == (2, 2, banked.answer.provenance.request_key)
+
+
+def test_a_pack_holds_no_more_episodes_than_the_model_will_answer_about(
+    tmp_path: Path,
+) -> None:
+    """Too many episodes on one sheet and the second half of the question dies.
+
+    Measured on two real months at temperature 0. A 36-episode pack returned a
+    complete, valid answer whose Cull lists were all empty -- silently, with no
+    warning -- while the same month split into six smaller packs culled 4.6% and
+    a dense month whose packs held 4 to 14 episodes culled 4.4%. The token
+    budget alone does not bound this, so the pack bounds it directly.
+    """
+    from immich_memories.analysis.period_insight import (
+        MAX_EPISODES_PER_PACK,
+        run_period_insight,
+    )
+
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    # one asset per hour: every asset lands in its own episode
+    assets = tuple(
+        make_asset(f"asset-{index:03d}", file_created_at=start + timedelta(days=index))
+        for index in range(MAX_EPISODES_PER_PACK * 2 + 3)
+    )
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(
+            source_fetcher=lambda _scope: assets,
+            preview_jpeg=lambda _asset: _jpeg("teal"),
+        ),
+    )
+
+    class NoProvider:
+        def ask(self, _request):
+            raise TimeoutError("packs only")
+
+    result = run_period_insight(
+        prepared,
+        requester=NoProvider(),
+        sheet_output_dir=tmp_path / "sheets",
+        frame_cache_dir=None,
+    )
+
+    assert len(prepared.episode_groups) == len(assets)
+    assert all(len(pack.scopes) <= MAX_EPISODES_PER_PACK for pack in result.episode_packs)
+    # still greedy: only the last pack is allowed to be short
+    assert all(len(pack.scopes) == MAX_EPISODES_PER_PACK for pack in result.episode_packs[:-1])
