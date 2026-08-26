@@ -506,3 +506,48 @@ def test_a_photograph_of_a_screen_is_cullable_though_its_pixels_are_fine() -> No
     assert parsed is not None
     assert parsed.cull_valid
     assert tuple(d.asset_id for d in parsed.cull_rejects) == ("tv-wallpaper",)
+
+
+def test_a_record_mark_cannot_rescue_junk_but_still_rescues_a_weak_picture() -> None:
+    """Cull removes junk and failed pictures; the record lane may only argue about looks.
+
+    Measured on a real month: the lane marked a bank contract "document
+    verification", a receipt "proof of purchase", a tyre label "product
+    identification" and a watch face "records watch data" -- and because a
+    record mark shielded them from Cull, every one was protected on its way
+    into the edit. A frame's category is not something a mark may overrule.
+    """
+    from immich_memories.analysis.cull_answer import read_cull_namespaces
+
+    parsed = read_cull_namespaces(
+        json.dumps(
+            {
+                "schema_version": "episode-scan-v3",
+                "pack": 1,
+                "record_shots": [
+                    {"tile": 1, "function": "document verification", "reason": "Text is legible."},
+                    {"tile": 2, "function": "medical result", "reason": "Two lines are visible."},
+                ],
+                "cull_rejects": [
+                    {
+                        "tile": 1,
+                        "defect": "paperwork_not_a_moment",
+                        "evidence": "document_is_the_subject",
+                    },
+                    {
+                        "tile": 2,
+                        "defect": "unusable_exposure",
+                        "evidence": "detail_lost_to_darkness",
+                    },
+                ],
+            }
+        ),
+        pack_alias=1,
+        tile_map={1: "bank-contract", 2: "weak-test-photo"},
+    )
+
+    assert parsed is not None
+    assert parsed.cull_valid
+    # Junk is a fact about the frame, so the mark does not survive it.
+    assert tuple(d.asset_id for d in parsed.cull_rejects) == ("bank-contract",)
+    assert tuple(m.asset_id for m in parsed.record_shots) == ("weak-test-photo",)

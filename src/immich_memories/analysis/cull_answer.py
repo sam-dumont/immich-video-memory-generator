@@ -48,6 +48,12 @@ CULL_EVIDENCE_REASONS = {
     "photograph_of_a_screen": {
         "screen_is_the_subject": "a screen's content is the subject, not what was happening",
     },
+    "paperwork_not_a_moment": {
+        "document_is_the_subject": "a document was photographed for its text, not as a moment",
+    },
+    "reference_shot_not_a_moment": {
+        "object_noted_for_reference": "an object was photographed to note what it is",
+    },
     "corrupt_or_obscured_pixels": {
         "decode_corruption": "decode corruption destroys the visible content",
         "lens_obscured": "the lens is visibly obscured",
@@ -55,6 +61,12 @@ CULL_EVIDENCE_REASONS = {
     },
 }
 ALLOWED_CULL_DEFECTS = frozenset(CULL_EVIDENCE_REASONS)
+# A record mark argues that a picture is worth keeping despite how it LOOKS. It
+# has no standing over what a picture IS: a bank contract, a receipt, a tyre
+# label and a watch face were each marked and thereby shielded on a real month.
+JUNK_DEFECTS = frozenset(
+    {"photograph_of_a_screen", "paperwork_not_a_moment", "reference_shot_not_a_moment"}
+)
 _RESPONSE_PLANNING_CHARS_PER_TOKEN = 3
 
 
@@ -161,12 +173,12 @@ def read_cull_namespaces(
         parsed_rejects,
         unavailable_asset_ids,
     )
-    accepted_rejects, collision_warnings = _shield_record_collisions(
+    kept_records, accepted_rejects, collision_warnings = _shield_record_collisions(
         valid_records,
         valid_rejects,
     )
     return ParsedCullNamespaces(
-        record_shots=valid_records,
+        record_shots=kept_records,
         cull_rejects=accepted_rejects,
         warnings=unavailable_warnings + collision_warnings,
         record_valid=record_valid,
@@ -199,14 +211,23 @@ def _discard_unavailable_decisions(
 def _shield_record_collisions(
     records: tuple[RecordShotMark, ...],
     rejects: tuple[CullDecision, ...],
-) -> tuple[tuple[CullDecision, ...], tuple[str, ...]]:
+) -> tuple[tuple[RecordShotMark, ...], tuple[CullDecision, ...], tuple[str, ...]]:
     record_ids = {mark.asset_id for mark in records}
-    collisions = tuple(decision.asset_id for decision in rejects if decision.asset_id in record_ids)
-    accepted = tuple(decision for decision in rejects if decision.asset_id not in record_ids)
-    warnings = tuple(
-        f"!! cull reject conflicted with record-shot mark: {asset_id}" for asset_id in collisions
+    shielded = tuple(
+        decision
+        for decision in rejects
+        if decision.asset_id in record_ids and decision.defect not in JUNK_DEFECTS
     )
-    return accepted, warnings
+    accepted = tuple(decision for decision in rejects if decision not in shielded)
+    # A mark on something Cull removed as junk goes with it; a record shot that
+    # is not in the cut is not a record of anything.
+    removed = {decision.asset_id for decision in accepted}
+    kept_records = tuple(mark for mark in records if mark.asset_id not in removed)
+    warnings = tuple(
+        f"!! cull reject conflicted with record-shot mark: {decision.asset_id}"
+        for decision in shielded
+    )
+    return kept_records, accepted, warnings
 
 
 def _read_record_shots(
