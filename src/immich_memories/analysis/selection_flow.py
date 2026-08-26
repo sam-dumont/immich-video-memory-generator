@@ -29,6 +29,7 @@ from immich_memories.analysis.selection_trace import Trace
 from immich_memories.analysis.source_filter import (
     is_editorial_source_asset,
     live_photo_component_ids,
+    not_shot_here,
 )
 from immich_memories.analysis.source_quality import grounded_source_annotations
 from immich_memories.analysis.visual_atlas import AtlasSource
@@ -62,6 +63,11 @@ class SourceScope:
     start_at: datetime | None = None
     end_at: datetime | None = None
     library_ids: tuple[str, ...] = ()
+    # Provenance, not quality: whether a file came off this library's camera is
+    # a fact about the file, so it settles scope rather than waiting for a pass
+    # to judge it. Every other pool builder asks the same question here.
+    excluded_filename_patterns: tuple[str, ...] = ()
+    stills_need_a_camera: bool = False
 
 
 @dataclass(frozen=True)
@@ -623,6 +629,12 @@ def _source_exclusion_reason(
         return "owner exclusion"
     if asset.id in components:
         return "Live Photo component"
+    if not_shot_here(
+        asset,
+        patterns=request.scope.excluded_filename_patterns,
+        stills_need_a_camera=request.scope.stills_need_a_camera,
+    ):
+        return "not shot on this camera"
     if request.scope.library_ids:
         if dependencies.library_membership is None:
             raise ValueError("library scope requires a library_membership dependency")

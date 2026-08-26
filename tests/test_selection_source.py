@@ -766,3 +766,52 @@ def test_a_video_no_still_claims_is_footage_and_stays_a_candidate() -> None:
 
     assert prepared.candidate_ids == ("still", "filmed")
     assert prepared.excluded_ids == ("claimed",)
+
+
+def test_material_that_never_came_from_this_camera_is_not_editorial_source() -> None:
+    """Half a real month is forwarded graphics, and none of it is theirs to remember.
+
+    Measured on the real library: 282 of 543 June visuals and 350 of 654 in
+    August carry no camera at all. The story built on them was about a festival
+    the owner never attended.
+    """
+    when = datetime(2023, 8, 5, 12, tzinfo=UTC)
+    theirs = make_asset("theirs", original_file_name="IMG_0776.HEIC", file_created_at=when)
+    theirs.type = AssetType.IMAGE
+    forwarded = make_asset(
+        "forwarded",
+        original_file_name="8cfb4458-b9a5-4a2c-afff-f594d861fdb1.jpg",
+        exif_make=None,
+        exif_model=None,
+        file_created_at=when,
+    )
+    forwarded.type = AssetType.IMAGE
+    messaged = make_asset(
+        "messaged",
+        original_file_name="img-20230805-wa0007.jpg",
+        file_created_at=when,
+    )
+    messaged.type = AssetType.IMAGE
+    starred = make_asset(
+        "starred",
+        original_file_name="c810423e-51b7-4a56-8e5b-977cee49338a.jpg",
+        exif_make=None,
+        exif_model=None,
+        is_favorite=True,
+        file_created_at=when,
+    )
+    starred.type = AssetType.IMAGE
+
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(
+            scope=SourceScope(
+                excluded_filename_patterns=("img-*-wa[0-9][0-9][0-9][0-9]*",),
+                stills_need_a_camera=True,
+            )
+        ),
+        EditorialDependencies(source_fetcher=lambda _s: (theirs, forwarded, messaged, starred)),
+    )
+
+    # The star settles it here as it settles every other hard gate.
+    assert set(prepared.candidate_ids) == {"theirs", "starred"}
+    assert set(prepared.excluded_ids) == {"forwarded", "messaged"}
