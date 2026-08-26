@@ -225,6 +225,7 @@ def run_period_insight(
         period_pages, period_answer, insight = _read_period_wall(
             prepared,
             readings,
+            warnings,
             atlas=atlas,
             requester=requester,
             output_dir=sheet_output_dir / "period",
@@ -277,9 +278,27 @@ def run_period_insight(
     )
 
 
+def _wall_sample(representative_ids: tuple[str, ...]) -> tuple[str, ...]:
+    """At most a wall's worth, spread evenly across the period in order.
+
+    Every episode still reaches the synthesis in words: only the PIXELS are
+    sampled, and they are sampled chronologically so the wall still reads as
+    the period's shape rather than as its first sixty minutes.
+    """
+    if len(representative_ids) <= MAX_WALL_TILES:
+        return representative_ids
+    step = len(representative_ids) / MAX_WALL_TILES
+    picked = {
+        representative_ids[min(int(index * step), len(representative_ids) - 1)]
+        for index in range(MAX_WALL_TILES)
+    }
+    return tuple(asset_id for asset_id in representative_ids if asset_id in picked)
+
+
 def _read_period_wall(
     prepared: PreparedEditorialSource,
     readings: tuple[EpisodeReading, ...],
+    warnings: list[str],
     *,
     atlas: VisualAtlas,
     requester: EditorialGateway,
@@ -298,8 +317,16 @@ def _read_period_wall(
             key=lambda asset_id: (candidates[asset_id].taken_at, asset_id),
         )
     )
+    shown_ids = _wall_sample(representative_ids)
+    if len(shown_ids) != len(representative_ids):
+        _warn_once(
+            prepared,
+            warnings,
+            f"Pass 0 wall shows {len(shown_ids)} of {len(representative_ids)} "
+            "representatives; every episode still reaches the synthesis in words",
+        )
     period_pages = build_contact_sheets(
-        tuple(atlas.tile_for(asset_id) for asset_id in representative_ids),
+        tuple(atlas.tile_for(asset_id) for asset_id in shown_ids),
         "period-wall",
         output_dir,
     )
@@ -593,6 +620,12 @@ def _pack_id(group_ids: tuple[str, ...]) -> str:
 # smaller packs culled 4.6%, and a dense month whose packs held 4 to 14 episodes
 # culled 4.4%. Fourteen answered; thirty-six did not.
 MAX_EPISODES_PER_PACK = 14
+# A wall too big is not refused, it is answered wrongly. Measured at temperature
+# 0 on a real dense month: walls of 10, 20, 40 and 60 representatives produced
+# theses that matched the month, and a wall of 100 fixated on one tile and
+# invented a fact about the period. A confident wrong thesis is the worst
+# failure this pass has, so the bound is structural rather than a warning.
+MAX_WALL_TILES = 60
 
 
 def _episode_groups_fit(groups: tuple[EditorialGroup, ...], limits: VisionRequestLimits) -> bool:

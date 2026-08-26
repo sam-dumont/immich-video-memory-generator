@@ -619,7 +619,7 @@ def test_complete_episode_builds_one_pixel_bearing_period_wall_and_visual_trace(
     assert prepared.trace.story_of("effort").first_pass == "pass-0"  # noqa: S105
 
 
-def test_multi_page_period_wall_is_not_split_without_an_approved_limit(tmp_path: Path) -> None:
+def test_a_period_wall_is_capped_rather_than_split(tmp_path: Path) -> None:
     """A default one-page budget yields no independent partial-period theses."""
     from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
     from immich_memories.analysis.llm_query import LLMTransportAttempt
@@ -664,85 +664,22 @@ def test_multi_page_period_wall_is_not_split_without_an_approved_limit(tmp_path:
             limits=VisionRequestLimits(max_output_tokens=_TIGHT_BUDGET),
         )
 
-    assert calls == 5
+    # four episode packs, a fifth, and the wall -- which is now capped to one
+    # page rather than refused for needing two
+    assert calls == 6
     assert [len(pack.scopes) for pack in result.episode_packs] == [10, 10, 10, 10, 1]
     assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [30, 30, 30, 30, 3]
     _assert_next_episode_would_overflow(result.episode_packs, max_output_tokens=_TIGHT_BUDGET)
-    assert len(result.period_pages) == 2
-    assert result.period_answer is None
+    # capped to a single readable page, so the wall is asked rather than refused
+    assert len(result.period_pages) == 1
+    # this fixture answers only episode packs, so the wall has nothing to parse
     assert result.insight.thesis is None
     assert result.retained_ids == prepared.candidate_ids
-    assert result.warnings == ("!! Pass 0 period synthesis unreadable; thesis unavailable",)
-
-
-def test_approved_multi_page_period_wall_is_attached_as_one_holistic_request(
-    tmp_path: Path,
-) -> None:
-    """A probed two-page limit changes packing, never the single-thesis boundary."""
-    from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
-    from immich_memories.analysis.llm_query import LLMTransportAttempt
-    from immich_memories.analysis.period_insight import run_period_insight
-
-    start = datetime(2026, 1, 1, tzinfo=UTC)
-    assets = tuple(
-        make_asset(
-            f"visual-{episode:02d}-{member}",
-            file_created_at=start + timedelta(hours=episode * 2, seconds=member),
-        )
-        for episode in range(41)
-        for member in range(3)
+    assert result.warnings == (
+        "!! Pass 0 wall shows 60 of 123 representatives; "
+        "every episode still reaches the synthesis in words",
+        "!! Pass 0 period synthesis unreadable; thesis unavailable",
     )
-    prepared = prepare_editorial_source(
-        EditorialSelectionRequest(scope=SourceScope()),
-        EditorialDependencies(
-            source_fetcher=lambda _scope: assets,
-            preview_jpeg=lambda _asset: _jpeg("navy"),
-        ),
-    )
-    captured_images: list[tuple[bytes, ...]] = []
-
-    async def _answer(prompt, _config, **kwargs):
-        captured_images.append(kwargs["images"])
-        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
-        if "complete chronological period wall" in prompt:
-            return (
-                '{"schema_version":"period-insight-v1","period_insight":{'
-                '"thesis":"Unfamiliar stages accumulate into a progression.",'
-                '"evidence":[{"observation":"The beginning contrasts with the final stage.",'
-                '"representative_tiles":[{"page_id":"period-wall-001","tile":1},'
-                '{"page_id":"period-wall-002","tile":121}]}],'
-                '"tensions":[],"recurring_threads":["progression"],'
-                '"unavailable_reason":null}}'
-            )
-        return _episode_pack_answer(prompt, summary="Three visual stages.")
-
-    gateway = VisualEditorialGateway(
-        llm_config=LLMConfig(model="vision-test"),
-        cache_path=tmp_path / "judgments.db",
-        trace=prepared.trace,
-    )
-    # WHY: query_llm is the only external provider boundary; packing and encoded pages stay real.
-    with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
-        result = run_period_insight(
-            prepared,
-            requester=gateway,
-            sheet_output_dir=tmp_path / "sheets",
-            frame_cache_dir=None,
-            limits=VisionRequestLimits(
-                max_pages_per_request=2,
-                max_output_tokens=4000,
-                timeout_seconds=120,
-            ),
-        )
-
-    assert len(captured_images) == 4
-    assert captured_images[-1] == tuple(page.jpeg_bytes for page in result.period_pages)
-    assert result.insight.thesis == "Unfamiliar stages accumulate into a progression."
-    assert result.insight.evidence[0].asset_ids == ("visual-00-0", "visual-40-0")
-    assert prepared.trace.requests[-1].attached_sheet_hashes == tuple(
-        page.sha256 for page in result.period_pages
-    )
-    assert result.warnings == ()
 
 
 def test_interleaved_episodes_share_one_chronological_pack_with_explicit_membership(
@@ -1403,3 +1340,72 @@ def test_an_unread_episode_costs_its_own_pictures_not_the_month(tmp_path: Path) 
     assert any("episodes could not be read" in warning for warning in result.warnings)
     # the unread episode's pictures are still in the corpus for later passes
     assert result.retained_ids == prepared.candidate_ids
+
+
+def test_a_wall_holds_no_more_representatives_than_it_can_be_read_from(
+    tmp_path: Path,
+) -> None:
+    """A wall too big is not refused, it is answered wrongly.
+
+    Measured at temperature 0 on a real dense month's own representatives:
+    walls of 10, 20, 40 and 60 produced theses that matched the month, and a
+    wall of 100 fixated on a single tile and invented a fact about the period.
+    The failure is a confident wrong answer, so the bound has to be structural.
+    """
+    from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
+    from immich_memories.analysis.llm_query import LLMTransportAttempt
+    from immich_memories.analysis.period_insight import MAX_WALL_TILES, run_period_insight
+
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    assets = tuple(
+        make_asset(f"asset-{index:03d}", file_created_at=start + timedelta(days=index))
+        for index in range(MAX_WALL_TILES + 20)
+    )
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(
+            source_fetcher=lambda _scope: assets,
+            preview_jpeg=lambda _asset: _jpeg("indigo"),
+        ),
+    )
+
+    async def _answer(prompt, _config, **kwargs):
+        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
+        if "chronological episode pack" in prompt:
+            return _episode_pack_answer(prompt)
+        return json.dumps(
+            {
+                "schema_version": "period-insight-v1",
+                "period_insight": {
+                    "thesis": "A period read from a wall it could hold.",
+                    "evidence": [
+                        {"observation": "What tile 1 shows.", "representative_tiles": [1]}
+                    ],
+                    "tensions": [],
+                    "recurring_threads": [],
+                    "unavailable_reason": None,
+                },
+            }
+        )
+
+    gateway = VisualEditorialGateway(
+        llm_config=LLMConfig(model="vision-test"),
+        cache_path=tmp_path / "judgments.db",
+        trace=prepared.trace,
+    )
+    # WHY: query_llm is the provider boundary; the wall is built for real.
+    with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
+        result = run_period_insight(
+            prepared,
+            requester=gateway,
+            sheet_output_dir=tmp_path / "sheets",
+            frame_cache_dir=None,
+        )
+
+    assert len(result.episode_readings) > MAX_WALL_TILES
+    assert result.period_pages
+    shown = sum(len(page.tile_refs) for page in result.period_pages)
+    assert shown <= MAX_WALL_TILES
+    assert result.insight is not None
+    assert result.insight.thesis == "A period read from a wall it could hold."
+    assert any("representatives" in warning for warning in result.warnings)
