@@ -10,7 +10,11 @@ run re-decoded the same video forever.
 from pathlib import Path
 from unittest.mock import patch
 
-from immich_memories.processing.frame_sampling import even_timestamps, sample_frames
+from immich_memories.processing.frame_sampling import (
+    even_timestamps,
+    sample_frames,
+    sample_segment_frames,
+)
 
 
 def test_frames_are_spread_evenly_across_the_video() -> None:
@@ -61,6 +65,73 @@ def test_a_different_width_is_a_different_ask(tmp_path) -> None:
         sample_frames(video, count=2, width=320, cache_dir=tmp_path / "frames")
 
     assert len({w for _, w in calls}) == 2, "one width served the other's frames"
+
+
+def test_segment_cache_identity_changes_for_bounds_and_render_version(tmp_path) -> None:
+    """Filmstrip frames never survive a change to the portion or pixel recipe."""
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"not really a video")
+    calls: list[float] = []
+
+    def _fake_extract(_video, timestamp, _width, out_path):
+        calls.append(timestamp)
+        out_path.write_bytes(b"jpeg")
+        return True
+
+    # WHY: FFmpeg extraction is external; cache identity is the behavior under test.
+    with patch("immich_memories.processing.frame_sampling._extract_one", new=_fake_extract):
+        first = sample_segment_frames(
+            video, start_time=0, end_time=2, count=2, width=320, cache_dir=tmp_path / "frames"
+        )
+        same = sample_segment_frames(
+            video, start_time=0, end_time=2, count=2, width=320, cache_dir=tmp_path / "frames"
+        )
+        changed_segment = sample_segment_frames(
+            video, start_time=1, end_time=2, count=2, width=320, cache_dir=tmp_path / "frames"
+        )
+        changed_end = sample_segment_frames(
+            video, start_time=0, end_time=3, count=2, width=320, cache_dir=tmp_path / "frames"
+        )
+        changed_render = sample_segment_frames(
+            video,
+            start_time=0,
+            end_time=2,
+            count=2,
+            width=320,
+            cache_dir=tmp_path / "frames",
+            render_version="new-filmstrip",
+        )
+
+    assert first == same
+    assert changed_segment != first
+    assert changed_end != first
+    assert changed_render != first
+    assert len(calls) == 8
+
+
+def test_segment_sampler_rejects_partial_and_empty_video_inputs(tmp_path) -> None:
+    """An in-flight download or empty placeholder must never be sent to FFmpeg."""
+    partial = tmp_path / "clip.mp4.part"
+    empty = tmp_path / "empty.mp4"
+    partial.write_bytes(b"in flight")
+    empty.touch()
+
+    # WHY: FFmpeg is external and must not run for rejected cache entries.
+    with patch("immich_memories.processing.frame_sampling._extract_one") as extract:
+        assert (
+            sample_segment_frames(
+                partial, start_time=0, end_time=1, count=1, width=320, cache_dir=tmp_path
+            )
+            == ()
+        )
+        assert (
+            sample_segment_frames(
+                empty, start_time=0, end_time=1, count=1, width=320, cache_dir=tmp_path
+            )
+            == ()
+        )
+
+    extract.assert_not_called()
 
 
 def test_a_cache_that_cannot_be_written_still_returns_frames(tmp_path) -> None:

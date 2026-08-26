@@ -406,8 +406,16 @@ bandit-ci:
 	sys.exit(len(high))"
 
 # Commit message lint (Commitizen conventional commits)
+# An empty range is a pass, not a failure: a run that happens after its commits
+# have merged has nothing left to check, and `cz check` exits 3 on "No commit
+# found with range". That made every post-merge re-run unpassable.
 commitlint:
-	uvx --from commitizen cz check --rev-range $${COMMIT_RANGE:-HEAD~1..HEAD}
+	@range="$${COMMIT_RANGE:-HEAD~1..HEAD}"; \
+	if [ -z "$$(git rev-list "$$range" 2>/dev/null)" ]; then \
+		echo "commitlint: no commits in $$range - nothing to check"; \
+	else \
+		uvx --from commitizen cz check --rev-range "$$range"; \
+	fi
 
 # Cognitive complexity (complements cyclomatic complexity)
 # On failure the FAILED list is only the grandfathered backlog — the actual
@@ -445,8 +453,12 @@ refurb:
 # Semgrep SAST (cross-file security analysis)
 # Excludes sqlalchemy-execute-raw-query: our SQL uses ?-parameterized values,
 # column names are hardcoded in code. Semgrep can't distinguish f-string placeholders from injection.
+# Pinned to 3.12 on purpose. semgrep publishes no cp313 manylinux wheel, so on
+# a Linux runner using 3.13 uv builds it from the sdist -- which carries no
+# semgrep-core binary, and the scan dies with "Failed to find semgrep-core".
+# The interpreter running semgrep is unrelated to the project's own.
 semgrep:
-	uvx semgrep scan --config auto --config p/python --error --severity ERROR \
+	uvx --python 3.12 semgrep scan --config auto --config p/python --error --severity ERROR \
 		--exclude-rule python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query \
 		src/
 
@@ -460,10 +472,14 @@ dep-check:
 arch-check:
 	uv run lint-imports
 
+# Diff base for local runs and pull-request CI. CI overrides this with the
+# actual pull request base branch; local runs safely default to main.
+DIFF_BASE ?= origin/main
+
 # Diff coverage (for PRs: new code must be ≥95% covered)
 diff-cover:
 	uv run pytest --cov=src/immich_memories --cov-branch --cov-report=xml -q
-	uvx diff-cover coverage.xml --compare-branch=origin/main --fail-under=80
+	uvx diff-cover coverage.xml --compare-branch=$(DIFF_BASE) --fail-under=80
 
 # Dependency vulnerability audit
 # Fails closed: a truncated export or a crashed pip-audit must not read as a clean audit.
@@ -490,7 +506,7 @@ diff-cover-local:  ## Check diff-cover locally before pushing (runs tests + merg
 	for f in tests/*-coverage.xml; do \
 		if [ -f "$$f" ]; then COVERAGE_FILES="$$COVERAGE_FILES $$f"; fi; \
 	done; \
-	uvx diff-cover $$COVERAGE_FILES --compare-branch=origin/main --fail-under=80 \
+	uvx diff-cover $$COVERAGE_FILES --compare-branch=$(DIFF_BASE) --fail-under=80 \
 	|| (echo "" && echo "⚠️  Diff coverage below 80% on changed lines." && \
 		echo "" && \
 		echo "   CI runs the FFmpeg-only integration suites that cover your changed" && \
@@ -506,7 +522,7 @@ diff-cover-local:  ## Check diff-cover locally before pushing (runs tests + merg
 		exit 1)
 
 integration-coverage-for-diff:  ## Run only the FFmpeg-only integration suites the diff touches (used by CI before diff-cover)
-	@CHANGED=$$(git diff --name-only origin/main...HEAD -- 'src/immich_memories/**/*.py' 2>/dev/null); \
+	@CHANGED=$$(git diff --name-only $(DIFF_BASE)...HEAD -- 'src/immich_memories/**/*.py' 2>/dev/null); \
 	SUITES=""; \
 	case "$$CHANGED" in *src/immich_memories/titles/*) SUITES="$$SUITES titles";; esac; \
 	case "$$CHANGED" in *src/immich_memories/processing/*) SUITES="$$SUITES processing assembly";; esac; \
@@ -529,7 +545,7 @@ integration-coverage-for-diff:  ## Run only the FFmpeg-only integration suites t
 # tests/*-coverage.xml is gitignored and can never arrive from a contributor's
 # machine, which is why CI produces it rather than asking them to commit it.
 diff-cover-ci:
-	@SRC_CHANGED=$$(git diff --numstat origin/main...HEAD -- '*.py' 2>/dev/null | grep '^' | grep -v 'tests/' | awk '{s+=$$1+$$2} END {print s+0}'); \
+	@SRC_CHANGED=$$(git diff --numstat $(DIFF_BASE)...HEAD -- '*.py' 2>/dev/null | grep '^' | grep -v 'tests/' | awk '{s+=$$1+$$2} END {print s+0}'); \
 	echo "Changed source lines (excl tests): $${SRC_CHANGED}"; \
 	if [ "$${SRC_CHANGED}" -gt 1000 ]; then \
 		echo "WARN: Skipping diff-cover: $${SRC_CHANGED} lines changed (>1000). Large refactor."; \
@@ -545,7 +561,7 @@ diff-cover-ci:
 		if [ "$$COVERAGE_FILES" != "coverage.xml" ]; then \
 			echo "Merging local integration coverage with CI coverage"; \
 		fi; \
-		uvx diff-cover $$COVERAGE_FILES --compare-branch=origin/main --fail-under=80 --exclude "**/analysis/apple_vision*.py"; \
+		uvx diff-cover $$COVERAGE_FILES --compare-branch=$(DIFF_BASE) --fail-under=80 --exclude "**/analysis/apple_vision*.py"; \
 	fi
 
 # Build check (twine)
