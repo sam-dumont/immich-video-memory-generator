@@ -56,7 +56,7 @@ class TestQueryLlmOllama:
         call_payload = mock_post.call_args[1]["json"]
         assert call_payload["format"] == "json"
         assert call_payload["options"] == {
-            "temperature": 0.3,
+            "temperature": 0.0,
             "num_ctx": 8192,
             "num_predict": 500,
         }
@@ -83,7 +83,7 @@ class TestQueryLlmOllama:
 
         payload = mock_post.call_args[1]["json"]
         assert payload["options"] == {
-            "temperature": 0.3,
+            "temperature": 0.0,
             "num_ctx": 8192,
             "top_k": 20,
             "num_predict": 733,

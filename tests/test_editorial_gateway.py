@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from immich_memories.analysis.contact_sheets import ContactSheetPage, TileRef
+from immich_memories.analysis.llm_query import LLMTransportAttempt
 from immich_memories.analysis.selection_trace import Trace
 from immich_memories.analysis.visual_request_planner import VisionRequestLimits
 from immich_memories.config_models_llm import LLMConfig
@@ -382,3 +383,33 @@ async def test_gateway_works_inside_an_active_event_loop(tmp_path) -> None:
     # WHY: query_llm is the provider boundary; the active loop is the behavior under test.
     with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
         assert gateway.ask(_request(_page())).raw_text == "complete"
+
+
+def test_a_decision_pass_asks_for_the_same_answer_every_time(tmp_path: Path) -> None:
+    """Sampling a decision makes the same evidence yield different verdicts.
+
+    Measured on one real pack, four repeats each: at the transport default of
+    0.3 the answers differed every run and one named all 105 tiles in the pack;
+    at 0 all four responses were byte-identical. A pass that decides membership
+    must be reproducible, and a banked answer is only meaningful if re-asking
+    would have produced it again.
+    """
+    seen: list[float | None] = []
+
+    async def _answer(_prompt, _config, **kwargs):
+        seen.append(kwargs.get("temperature"))
+        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
+        return "{}"
+
+    from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
+
+    gateway = VisualEditorialGateway(
+        llm_config=LLMConfig(model="vision-test"),
+        cache_path=tmp_path / "judgments.db",
+        trace=Trace(),
+    )
+    # WHY: query_llm is the provider boundary; the request identity stays real.
+    with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
+        gateway.ask(_request(_page()))
+
+    assert seen == [0.0]

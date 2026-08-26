@@ -30,6 +30,15 @@ __all__ = [
 ]
 
 
+# Every pass behind this gateway DECIDES something, so it is asked greedily
+# rather than sampled. Measured on one real pack, four repeats each: at the
+# transport default of 0.3 no two answers matched and one named all 105 tiles
+# in the pack; at 0 all four responses were byte-identical. Sampling also makes
+# a banked answer a lie -- the cache would return something re-asking would not
+# have produced.
+EDITORIAL_TEMPERATURE = 0.0
+
+
 @dataclass(frozen=True)
 class VisualEditorialRequest:
     """All non-semantic evidence and versioning supplied to one visual pass."""
@@ -140,6 +149,7 @@ class VisualEditorialGateway:
                 query_llm(
                     _provider_prompt(request),
                     self.llm_config,
+                    temperature=EDITORIAL_TEMPERATURE,
                     thinking=request.thinking,
                     images=tuple(page.jpeg_bytes for page in request.pages),
                     image_detail=request.image_detail,
