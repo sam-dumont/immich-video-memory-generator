@@ -66,3 +66,21 @@ def test_contact_sheets_reject_per_sheet_outside_the_visual_evidence_limit(
 
     with pytest.raises(ValueError, match="between 1 and 120"):
         build_contact_sheets((_tile("asset-1", "red"),), "scope", tmp_path, per_sheet=per_sheet)
+
+
+def test_a_pass_gets_the_tile_fidelity_its_own_question_needs(tmp_path: Path) -> None:
+    """A near-duplicate battle cannot be judged at the density Cull reads at.
+
+    Nine tiles land on a 4x3 grid either way. The default caps a tile at 400px,
+    which is the whole page's compromise across every pass; a pass that has to
+    separate frames of the same subject says so and gets its own.
+    """
+    from immich_memories.analysis.contact_sheets import build_contact_sheets
+
+    tiles = tuple(_tile(f"asset-{number}", "red") for number in range(9))
+
+    shared = build_contact_sheets(tiles, scope_id="shared", output_dir=tmp_path)[0]
+    battle = build_contact_sheets(tiles, scope_id="battle", output_dir=tmp_path, tile_px=600)[0]
+
+    assert Image.open(BytesIO(shared.jpeg_bytes)).size == (4 * 400, 3 * 400)
+    assert Image.open(BytesIO(battle.jpeg_bytes)).size == (4 * 600, 3 * 600)

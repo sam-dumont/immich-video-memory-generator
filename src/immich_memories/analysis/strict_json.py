@@ -7,12 +7,26 @@ from typing import Any, TypeGuard
 
 
 def is_safe_model_text(value: object, *, max_chars: int) -> TypeGuard[str]:
-    """Whether model prose has the exact bounded no-escaping wire alphabet."""
+    """Whether model prose is bounded, single-line, and free of escaping hazards.
+
+    The guard used to demand every character sit in 32..126, which threw away
+    good decisions over punctuation the model produces on its own: measured
+    verbatim, "the baby's most alert expression -- eyes wide" carries a curly
+    apostrophe and an em dash, and one of those voided a whole episode reading.
+    A Belgian library adds cafe, Noel and Liege to the same fate.
+
+    What still earns its place is the quote, the backslash, the length and the
+    single line. `json.loads` has already decoded this text and it reaches no
+    shell and no SQL, so the letter range was protecting nothing. `isprintable`
+    keeps out control characters, newlines and zero-width format characters
+    without having an opinion about alphabets.
+    """
     return (
         isinstance(value, str)
         and value == value.strip()
         and 0 < len(value) <= max_chars
-        and all(32 <= ord(character) <= 126 and character not in {'"', "\\"} for character in value)
+        and value.isprintable()
+        and not any(character in {'"', "\\"} for character in value)
     )
 
 

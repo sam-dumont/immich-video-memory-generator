@@ -41,9 +41,17 @@ class ContactSheetPage:
     layout_version: str
 
 
-def sheet_layout(count: int) -> tuple[int, int]:
-    """Return the wide grid dimensions for one page of visual evidence."""
+def sheet_layout(count: int, *, tile_px: int | None = None) -> tuple[int, int]:
+    """Return the wide grid dimensions for one page of visual evidence.
+
+    `tile_px` is how a pass states the fidelity its own question needs. A pass
+    may only ask what its viewing conditions can answer, and separating frames
+    of the same subject is a full-screen judgement: the default here is what a
+    hundred-tile page can afford, not what that decision takes.
+    """
     columns = max(1, round(math.sqrt(count * _TARGET_ASPECT)))
+    if tile_px is not None:
+        return columns, tile_px
     tile = min(_MAX_TILE, MAX_SHEET_PX // columns)
     rows = -(-count // columns)
     if rows * tile > MAX_SHEET_PX * 1.2:
@@ -62,13 +70,13 @@ def sheets_of(items: list[T], per_sheet: int = MAX_SHEET_TILES) -> list[list[tup
     ]
 
 
-def tile_sheet(frames: list[tuple[int, Any | None]]):
+def tile_sheet(frames: list[tuple[int, Any | None]], *, tile_px: int | None = None):
     """Lay images in a numbered wide grid without dropping unavailable entries."""
     from PIL import Image, ImageDraw
 
     if not frames:
         return None
-    columns, tile = sheet_layout(len(frames))
+    columns, tile = sheet_layout(len(frames), tile_px=tile_px)
     rows = -(-len(frames) // columns)
     sheet = Image.new("RGB", (columns * tile, rows * tile), _SHEET_BACKGROUND)
     draw = ImageDraw.Draw(sheet)
@@ -91,6 +99,7 @@ def build_contact_sheets(
     *,
     per_sheet: int = MAX_SHEET_TILES,
     page_sizes: tuple[int, ...] | None = None,
+    tile_px: int | None = None,
 ) -> tuple[ContactSheetPage, ...]:
     """Encode each page once, write those exact bytes, and retain its stable mapping."""
     if not 1 <= per_sheet <= MAX_SHEET_TILES:
@@ -119,10 +128,10 @@ def build_contact_sheets(
     )
     for page_index, numbered in enumerate(numbered_pages, start=1):
         frames = [
-            (number, _image_for(tile, tile_size=sheet_layout(len(numbered))[1]))
+            (number, _image_for(tile, tile_size=sheet_layout(len(numbered), tile_px=tile_px)[1]))
             for number, tile in numbered
         ]
-        sheet = tile_sheet(frames)
+        sheet = tile_sheet(frames, tile_px=tile_px)
         assert sheet is not None
         jpeg_bytes = _encode_jpeg(sheet)
         sheet_id = f"{scope_id}-{page_index:03d}"

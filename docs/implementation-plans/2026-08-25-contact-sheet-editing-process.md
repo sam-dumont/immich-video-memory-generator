@@ -720,74 +720,115 @@ Measured on the first real run, and required of any re-run:
 - Zero `!!` in the trace. Two of the first three runs looked clean by their decision counts alone.
 
 ---
-
-## Task 7: Select Representatives with Visual Moment Battles
+## Task 7: Reduce Repetition Without Asking the Model to Rank
 
 **Branch:** `feat/764-selects`
 
+**Rewritten 2026-08-26.** The original task asked for one `MomentSelect` per group chosen by a
+visual battle. That question was measured against the real model and it does not work: see
+`docs/implementation-plans/2026-08-26-what-the-model-can-be-asked.md`. Peak-of-N follows tile
+position, not the picture, in **0 of 12** cases across widths 3–8 and fidelities 150–700px, while
+the answers parse cleanly and carry fluent grounded-sounding reasons. Built as specified, this pass
+would ship confident nonsense through every gate the project has.
+
+The rule the measurements support: **a pass may ask the model to classify against a fixed
+definition; it may not ask the model to rank its inputs against each other.** Cull's questions point
+at something outside the comparison and are byte-identical across repeats. Every ranking question
+points only inward, and with nothing to anchor on the model anchors on position.
+
+The craft says the same. duChemin: "Pick them or don't pick them, but don't rate them." Thein builds
+a rank as an *output* of repeated binary rounds. Eisenhardt: documentary selects keep **25–50%**,
+and "the big cuts happen later, at structure, not at the item filter." Selects marks. Structure cuts.
+
 **Files:**
 
-- Create: `src/immich_memories/analysis/selects_answer.py`
 - Create: `src/immich_memories/analysis/selection_selects.py`
-- Modify: `src/immich_memories/analysis/moment_grouping.py`
-- Modify: `src/immich_memories/analysis/favourite_law.py`
-- Modify: `src/immich_memories/analysis/selection_flow.py`
-- Create: `tests/test_selects_answer.py`
+- Modify: `src/immich_memories/analysis/editorial_contracts.py`
+- Modify: `src/immich_memories/analysis/selection_flow.py` (after the source split below)
 - Create: `tests/test_selection_selects.py`
 - Modify: `tests/test_favourite_law.py`
-- Modify: `tests/test_same_moment.py`
 
-- [ ] RED: prove favorite construction semantics:
+**Prerequisite:** `selection_flow.py` is at 798 of 800 lines and Tasks 7–11 all modify it. Split
+source preparation out first, as its own commit — its tests are already `test_selection_source.py`,
+and the split lets the orchestrator import passes at module level instead of through the
+function-local import that papers over the cycle today.
 
-```python
-def test_one_favourite_wins_its_moment_and_record_shot_stays_separate() -> None:
-    result = run_selects((group("plain", "star", "record"),), record_shots=(mark("record"),), requester=never_called(), trace=Trace())
-    assert result.selects[0].selected_asset_id == "star"
-    assert result.record_shots[0].asset_id == "record"
-```
+### A. Arithmetic absorbs the repetition it can prove
 
-- [ ] GREEN: a single favorite auto-wins. If several favorites collide, build a battle containing
-  only those favorites. Favorites outside the winning occasion are not globally immune.
+- [ ] RED/GREEN: candidates sharing an exact capture instant inside one moment collapse to one
+  survivor. Measured share of a real month: **558 of 1468 candidates (38%)** in the dense month,
+  1 of 261 in the sparse one. Zero model calls.
 
-- [ ] RED/GREEN: treat one `rendering_family_id` as one still-or-motion option inside its moment.
-  Select exactly one asset for that family/moment and preserve its family reference. A lone exact
-  favourite wins; multiple favourites in the family battle only one another. If RECORD and
-  favourite annotations land on different family members, they must not silently become two final
-  outputs: preserve RECORD as a sidecar and resolve one editorial representative explicitly.
-- [ ] RED/GREEN: a selected non-favourite member retains the same family option on merit. Family
-  membership never makes its siblings Cull-immune and never depends on the legacy enriched carrier.
+- [ ] The survivor is chosen by a **stated** rule, in this order: a favourite; then the existing
+  `SourceEvidence`; then the earliest. Written to the trace as a rule, never as a judgement. This is
+  not scoring returning by the back door — Thein's set test is "at a glance, one should not be
+  mistaken for another", so when two frames are the same instant, which one ships is not an
+  editorial question.
 
-- [ ] RED/GREEN: for ordinary groups, pack many complete separated battles per request. The answer
-  is exactly one `MomentSelect` (`selected` or `no_peak`) per group plus at most one reason-specific
-  alternate. Unknown, duplicate, cross-group, or incomplete decisions leave that group unresolved
-  and add `!!`; scalar score never selects a fallback.
+- [ ] RED/GREEN: two devices at one instant are two *vantages*, so record what was absorbed and why.
+  This is the one place the rule is known to be occasionally wrong, and the trace has to admit it.
 
-- [ ] RED/GREEN: five repeated events in cycling and live-music fixtures produce decisions from
-  visible contribution, not a fixed count. Swapping topic labels preserves the decision shape.
+- [ ] Do NOT extend this to a similarity threshold. "Within 2 seconds" would absorb 50% of the dense
+  month, and a 2-second gap is a different photograph, not the same one.
 
-- [ ] Add:
+### B. The model is asked only questions with an external referent
 
-```python
-def run_selects(
-    groups: Sequence[MomentGroup],
-    *,
-    record_shots: Sequence[RecordShotMark],
-    requester: EditorialGateway,
-    trace: Trace,
-) -> SelectsPassResult: ...
-```
+- [ ] **Probe before building.** No question for this stage has been measured yet, and it must not
+  be guessed. Build the probe from the production path, delete its judgment cache first, and check
+  every candidate question under **cyclic rotation** — a question whose answer follows tile position
+  rather than the picture is not usable at any width or fidelity.
 
-Every selected representative exposes its actual shippable duration. Record shots stay in a
-sidecar lane and are added to the workprint without competing for the aesthetic slot.
+- [ ] The question must be answerable about **one tile against a definition**, in Cull's shape.
+  "Which is better", "which are alike" and "which is the peak" are all excluded by measurement.
 
-- [ ] Stop membership-changing dedup, burst winners, photo-vs-motion suppression, and post-select
-  scalar dedup in the new flow. Keep their similarity calculations as grounded annotations and
-  leave old functions present for the legacy selector until Task 14.
+- [ ] Whatever survives the probe actuates only through the intersection of **two arrangements** of
+  the same tiles. Thein: "those that overlap are the ones that make it into the final cut."
+  Disagreement means keep, matching the project's asymmetry — a wrong keep is fixed by a later pass
+  a person can check, a wrong cut is permanent and invisible.
+
+- [ ] Sheets for this pass declare their own `tile_px`. The answer moved between 150px and 400px in
+  4 of 4 moments and stopped moving above 400px, so packing battles to the 120-tile page cap would
+  run the pass at 150px — 86% less pixel area on its own decision.
+
+### C. Selects marks; it does not reduce to one per moment
+
+- [ ] RED/GREEN: a moment may keep several survivors. There is no "exactly one representative"
+  requirement, and no `no_peak` verdict, because neither is a question the model can answer.
+
+- [ ] RED/GREEN: a favourite always survives this pass. Where several favourites share one moment
+  they all survive; Structure decides among them with the whole cut visible.
+
+- [ ] RED/GREEN: a moment whose model answers disagree is left whole with a warning, not resolved
+  arbitrarily. Scalar score never selects a fallback.
+
+- [ ] Report the surviving share in the trace. The craft's expectation is 25–50%; a pass cutting far
+  past that is cutting on something it cannot justify.
+
+### D. Grouping is content-blind and this task does not fix it
+
+Moments are grouped by time and place, so one moment holds several attempts at several pictures —
+the model objected to this on its own, unprompted: "1-3 are one attempt (baby sleeping) and 4-7 are
+another (man posing with empty carrier)". Chaining is **not** the defect; measured, only 1 moment
+across two months is a drizzle-chain, and median gaps inside the big moments are 0.0–4.2 seconds.
+
+- [ ] Record the limitation in the trace rather than working around it. Sub-splitting a moment by
+  content needs a stable partition, and the partition question measured at pair Jaccard **0.15**.
+
+- [ ] Do not tune `MOMENT_WINDOW_MINUTES` to compensate. No time-and-place rule can separate two
+  different things happening in one room inside ten minutes.
+
+### What this task must not do
+
+- [ ] Do not ask for a peak, a best, a winner, a rank, or an alternate ranked against a chosen one.
+- [ ] Do not consume Cull's `ordinary` bucket as a decision. It was formed at 161–210px on a
+  question needing 400px, and it is the pass's own judgement arriving pre-made. It may route which
+  moments are worth looking at; it may not say which frame wins.
+- [ ] Do not treat a parsed answer as a working one. Every failed shape in the measurements parsed.
 
 - [ ] Run:
 
 ```bash
-make test-one T="tests/test_selects_answer.py tests/test_selection_selects.py tests/test_favourite_law.py tests/test_same_moment.py tests/test_content_dedup.py tests/test_photo_burst_dedup.py tests/test_moment_suppression.py"
+make test-one T="tests/test_selection_selects.py tests/test_favourite_law.py tests/test_same_moment.py"
 make test
 make critique
 make ci
@@ -796,11 +837,14 @@ make ci
 - [ ] Commit:
 
 ```bash
-git add src/immich_memories/analysis/selects_answer.py src/immich_memories/analysis/selection_selects.py src/immich_memories/analysis/moment_grouping.py src/immich_memories/analysis/favourite_law.py src/immich_memories/analysis/selection_flow.py tests/test_selects_answer.py tests/test_selection_selects.py tests/test_favourite_law.py tests/test_same_moment.py
-git commit -m "feat(selection): choose peaks with visual moment battles (#764)"
+git add src/immich_memories/analysis/selection_selects.py src/immich_memories/analysis/editorial_contracts.py src/immich_memories/analysis/selection_flow.py tests/test_selection_selects.py tests/test_favourite_law.py
+git commit -m "feat(selection): reduce repetition without asking the model to rank (#764)"
 ```
 
----
+**Slice gate:** the sheet shows what was absorbed as an exact-instant duplicate and by which rule,
+what the model marked and under how many arrangements, and what survived. Every favourite present.
+Surviving share inside 25–50% or a stated reason why not. Zero `!!`, and the count of model calls
+matches the count the trace planned.
 
 ## Task 8: Move Expensive Analysis behind Selects
 

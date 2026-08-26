@@ -19,15 +19,13 @@ from immich_memories.analysis.period_insight_answer import (
 )
 
 
-@pytest.mark.parametrize(
-    "unsafe", ('quote"mark', "back\\slash", "line\nbreak", "caf\N{LATIN SMALL LETTER E WITH ACUTE}")
-)
+@pytest.mark.parametrize("unsafe", ('quote"mark', "back\\slash", "line\nbreak", "tab\there"))
 @pytest.mark.parametrize("field", ("visual_summary", "representative_reason"))
-def test_episode_reading_constructor_rejects_text_outside_the_safe_wire_alphabet(
+def test_episode_reading_constructor_rejects_text_that_cannot_survive_the_wire(
     field: str,
     unsafe: str,
 ) -> None:
-    """Direct episode readings cannot bypass the response estimator's alphabet."""
+    """Direct episode readings cannot bypass the escaping and single-line rules."""
     values = {
         "visual_summary": "A visible finish.",
         "representative_reason": "The finish summarizes the page.",
@@ -44,8 +42,46 @@ def test_episode_reading_constructor_rejects_text_outside_the_safe_wire_alphabet
         )
 
 
+@pytest.mark.parametrize(
+    "prose",
+    (
+        "caf\N{LATIN SMALL LETTER E WITH ACUTE}",
+        "the baby\N{RIGHT SINGLE QUOTATION MARK}s expression \N{EM DASH} eyes wide",
+    ),
+)
+@pytest.mark.parametrize("field", ("visual_summary", "representative_reason"))
+def test_episode_reading_keeps_the_punctuation_the_model_actually_writes(
+    field: str,
+    prose: str,
+) -> None:
+    """An accent or a curly apostrophe used to discard the whole episode reading.
+
+    The em-dash example is verbatim from the local model during the Selects
+    probes. Nothing asked it for one.
+    """
+    values = {
+        "visual_summary": "A visible finish.",
+        "representative_reason": "The finish summarizes the page.",
+    }
+    values[field] = prose
+
+    reading = EpisodePageReading(
+        "episode",
+        "page",
+        values["visual_summary"],
+        ("asset",),
+        values["representative_reason"],
+    )
+
+    assert getattr(reading, field) == prose
+
+
 def test_invalid_episode_text_fails_open_without_erasing_the_cull_namespace() -> None:
-    """Unsafe episode prose does not poison independently valid record and Cull arrays."""
+    """Unsafe episode prose does not poison an independently valid Cull array.
+
+    The unsafe example used to be an accented word, which is no longer unsafe
+    and never should have been. A raw double quote still is.
+    """
     from immich_memories.analysis.cull_answer import read_cull_namespaces
 
     raw = json.dumps(
@@ -56,7 +92,7 @@ def test_invalid_episode_text_fails_open_without_erasing_the_cull_namespace() ->
                 {
                     "episode": 1,
                     "page": 1,
-                    "visual_summary": "A caf\N{LATIN SMALL LETTER E WITH ACUTE} finish.",
+                    "visual_summary": 'A "finish" nobody can quote safely.',
                     "representative_tiles": [1],
                     "representative_reason": "The finish identifies the page.",
                 }

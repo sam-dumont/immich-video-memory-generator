@@ -64,7 +64,10 @@ def _pass_zero_for(tmp_path: Path, *, assets: tuple[str, ...], when, favourites:
         EditorialSelectionRequest(scope=SourceScope()),
         EditorialDependencies(
             source_fetcher=lambda _scope: built,
-            preview_jpeg=lambda _asset: _jpeg("slate"),
+            # "slate" is not a PIL colour name, so this raised and every caller
+            # ran Pass 0 against tiles with no pixels at all -- passing, but not
+            # for the reason the tests state.
+            preview_jpeg=lambda _asset: _jpeg("navy"),
         ),
     )
 
@@ -1637,3 +1640,66 @@ def test_explicit_provider_refusal_is_fail_open_and_owner_visible(tmp_path: Path
     assert result.prepared.trace.warnings == list(result.pass_one.warnings)
     assert len(result.prepared.trace.requests) == 1
     assert result.prepared.trace.requests[0].actual_calls == 1
+
+
+def test_the_notes_bucket_does_not_ask_for_what_a_record_shot_is(tmp_path: Path) -> None:
+    """Cull may remove a note. It may not remove proof that something happened.
+
+    The bucket read "a screen, a document, or an object photographed to record
+    what it is", which is what a record shot IS -- the one category a cull is
+    not entitled to judge, and much of what a memory of a life is made of. A
+    real sparse month culled "three objects held up to the camera" under it.
+    """
+    from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
+    from immich_memories.analysis.llm_query import LLMTransportAttempt
+    from immich_memories.analysis.period_insight import run_period_insight
+
+    prompts: list[str] = []
+    built = tuple(
+        make_asset(asset_id, file_created_at=datetime(2024, 2, 3, 12, tzinfo=UTC))
+        for asset_id in ("held-up-object", "a-screen")
+    )
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(
+            source_fetcher=lambda _scope: built,
+            preview_jpeg=lambda _asset: _jpeg("navy"),
+        ),
+    )
+
+    async def _answer(prompt, _config, **kwargs):
+        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
+        prompts.append(prompt)
+        return json.dumps(
+            {
+                "schema_version": "episode-scan-v4",
+                "pack": 1,
+                "episode_readings": [
+                    {
+                        "episode": 1,
+                        "page": 1,
+                        "visual_summary": "An afternoon indoors.",
+                        "representative_tiles": [1],
+                        "representative_reason": "The room is visible.",
+                    }
+                ],
+                "cull_rejects": [],
+            }
+        )
+
+    # WHY: query_llm is the one external boundary here -- the vision endpoint.
+    with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
+        run_period_insight(
+            prepared,
+            requester=VisualEditorialGateway(
+                llm_config=LLMConfig(model="vision-test"),
+                cache_path=tmp_path / "judgments.db",
+                trace=prepared.trace,
+            ),
+            sheet_output_dir=tmp_path / "sheets",
+            frame_cache_dir=tmp_path / "frames",
+        )
+
+    episode_prompt = next(prompt for prompt in prompts if "chronological episode pack" in prompt)
+    assert "notes:" in episode_prompt
+    assert "photographed to record what" not in episode_prompt

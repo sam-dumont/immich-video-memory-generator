@@ -148,7 +148,7 @@ Asked inside **each episode's own scope**, two lists per episode:
 
 | bucket | means | acted on |
 |---|---|---|
-| `notes` | taken as a note rather than as a memory — a screen, a document, an object photographed to record what it is | removed |
+| `notes` | taken as a note rather than as a memory — a screen, a document | removed |
 | `failed` | the picture did not come out — obstructed, smeared, unreadable | removed |
 | `ordinary` | nothing wrong with it, just unremarkable or one of several alike | **read, validated, discarded** |
 

@@ -119,13 +119,20 @@ def _episode_prompt(pack: EpisodeScanPack) -> str:
         f"{EPISODE_VISUAL_SUMMARY_MAX_CHARS} characters), representative_tiles from that episode, "
         "and a representative_reason grounded in the visible pixels (at most "
         f"{EPISODE_REPRESENTATIVE_REASON_MAX_CHARS} characters). Representatives make a later "
-        "wall legible. All episode and record text must use printable ASCII except double quote "
-        "and backslash; use one line with no control characters. Apostrophes and basic punctuation "
-        "are allowed. "
+        # Was three sentences teaching a printable-ASCII rule the parser no longer
+        # has, naming a `record` namespace this request no longer asks for. What
+        # is left is the two things a reading cannot be recovered from.
+        "wall legible. Keep each text field on one line, without double quotes or backslashes. "
         "Representatives reject nothing. Then, for EACH episode above, look only at that "
+        # An object photographed to record what it is used to belong to `notes`, and that
+        # is what a RECORD SHOT is -- the pregnancy test, the hospital band, the drawing
+        # brought home from school. A cull is not entitled to judge those: their value is
+        # relational, not aesthetic, and a memory of a life is largely made of them.
+        # Measured cost of the old wording: a sparse month culled "three objects held up
+        # to the camera". Screens and documents stay, because those really are notes.
         "episode's own tiles and sort them into three lists. notes: taken as a note rather than "
-        "as a memory, such as a screen, a document, or an object photographed to record what "
-        "it is. failed: the picture did not come out, being obstructed, smeared, or "
+        "as a memory, such as a screen or a document. "
+        "failed: the picture did not come out, being obstructed, smeared, or "
         "unreadable. ordinary: nothing wrong with it, just unremarkable or one of several "
         "alike. Most tiles are ordinary, and empty notes and failed lists are the normal "
         "answer. Never list a tile "

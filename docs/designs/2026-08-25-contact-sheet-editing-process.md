@@ -294,6 +294,24 @@ upstream under the old policy.
 
 ### Pass 2 sheet: choose the peak frame in each moment
 
+> **Superseded 2026-08-26 by measurement.** This section describes a pass that asks the model which
+> frame in a moment is its peak. Measured against the real model on the real library, that question
+> follows tile *position* rather than the picture in **0 of 12** cases, across battle widths 3–8 and
+> tile fidelities 150–700px — while producing answers that parse and carry fluent, specific reasons.
+> Reject-only and same-picture partitions over a moment degrade the same way (kept-set Jaccard
+> 0.57–0.72; pair Jaccard 0.15). What the model does answer reliably is Cull's shape: one tile
+> against a definition that exists outside the comparison.
+>
+> The replacement — arithmetic absorbs exact-instant duplicates, the model is asked only
+> externally-anchored questions, Selects marks rather than reduces to one, and Structure does the
+> cutting — is Task 7 of the implementation plan. The evidence, the controls and the two metric
+> artifacts that nearly hid the result are in
+> `docs/implementation-plans/2026-08-26-what-the-model-can-be-asked.md`.
+>
+> What survives from this section unchanged: the favourite wins its occasion, record shots stay in a
+> sidecar lane out of the aesthetic comparison, an unreadable answer leaves the moment unresolved
+> with `!!`, and scalar score never silently chooses a winner.
+
 Pass 2 uses packed battle sheets containing as many complete, visually separated `MomentGroup`s as
 remain judgeable. It compares neighbours directly and returns one namespaced decision per group in
 the request. Its question is: “Does this moment reach a peak; if so, which visual expresses it, and
