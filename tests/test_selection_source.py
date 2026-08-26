@@ -3,8 +3,17 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from unittest.mock import patch
 
-from immich_memories.analysis.editorial_contracts import SourceEvidence
+import pytest
+from PIL import Image
+
+from immich_memories.analysis.editorial_contracts import (
+    LivePhotoRenderingFamily,
+    SourceEvidence,
+    live_photo_rendering_family_id,
+)
 from immich_memories.analysis.selection_flow import (
     EditorialDependencies,
     EditorialSelectionRequest,
@@ -233,6 +242,390 @@ def test_duplicate_asset_representations_prefer_the_enriched_clip() -> None:
     assert candidate.media_kind == "live_photo"
     assert candidate.shippable_duration == 1.5
     assert "burst-members:2" in candidate.grounded_annotations
+
+
+@pytest.mark.parametrize("richer_first", (False, True))
+def test_duplicate_source_favourite_is_or_merged_without_losing_motion_evidence(
+    tmp_path: Path,
+    richer_first: bool,
+) -> None:
+    """Arrival order cannot trade a star for the richer representation of the same asset."""
+    favourite_snapshot = make_asset("live-photo", is_favorite=True)
+    favourite_snapshot.type = AssetType.IMAGE
+    favourite_snapshot.live_photo_video_id = "live-photo-motion"
+    clip_asset = favourite_snapshot.model_copy(update={"is_favorite": False})
+    local_path = tmp_path / "live-photo.mov"
+    local_path.write_bytes(b"generated motion placeholder")
+    richer = VideoClipInfo(
+        asset=clip_asset,
+        local_path=str(local_path),
+        duration_seconds=3.5,
+        width=1920,
+        height=1080,
+        live_burst_still_ids=["live-photo", "neighbour"],
+        live_burst_video_ids=["live-photo-motion", "neighbour-motion"],
+        live_burst_trim_points=[(0.0, 1.0), (0.5, 1.5)],
+        live_burst_shutter_timestamps=[
+            favourite_snapshot.file_created_at.timestamp(),
+            favourite_snapshot.file_created_at.timestamp() + 1.0,
+        ],
+    )
+    sources = (richer, favourite_snapshot) if richer_first else (favourite_snapshot, richer)
+
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(source_fetcher=lambda _scope: sources),
+    )
+
+    assert prepared.candidate_ids == ("live-photo",)
+    assert prepared.candidates[0].favourite is True
+    assert prepared.candidates[0].shippable_duration == 3.5
+    assert "burst-members:2" in prepared.candidates[0].grounded_annotations
+    assert prepared.visual_sources[0].motion_path == local_path
+
+
+def test_enriched_stitch_identity_is_propagated_symmetrically_to_admitted_members() -> None:
+    """A later pass can see the exact source-declared stitch without choosing its carrier."""
+    when = datetime(2026, 8, 25, 12, tzinfo=UTC)
+    favourite = make_asset("favourite", file_created_at=when, is_favorite=True)
+    favourite.type = AssetType.IMAGE
+    favourite.live_photo_video_id = "favourite-motion"
+    sibling = make_asset("sibling", file_created_at=when + timedelta(seconds=1))
+    sibling.type = AssetType.IMAGE
+    sibling.live_photo_video_id = "sibling-motion"
+    enriched = VideoClipInfo(
+        asset=favourite,
+        duration_seconds=4.0,
+        width=1920,
+        height=1080,
+        live_burst_still_ids=["sibling", "favourite"],
+        live_burst_video_ids=["sibling-motion", "favourite-motion"],
+        live_burst_trim_points=[(0.5, 1.5), (0.0, 1.0)],
+        live_burst_shutter_timestamps=[
+            sibling.file_created_at.timestamp(),
+            favourite.file_created_at.timestamp(),
+        ],
+    )
+
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(source_fetcher=lambda _scope: (sibling, enriched)),
+    )
+
+    assert prepared.candidate_ids == ("favourite", "sibling")
+    assert tuple(candidate.live_photo_stitch_member_ids for candidate in prepared.candidates) == (
+        ("favourite", "sibling"),
+        ("favourite", "sibling"),
+    )
+    family_ids = tuple(candidate.rendering_family_id for candidate in prepared.candidates)
+    assert len(set(family_ids)) == 1
+    assert family_ids[0] is not None
+    assert family_ids[0].startswith("live-photo-rendering-family-v1-")
+    assert len(prepared.rendering_families) == 1
+    family = prepared.rendering_families[0]
+    assert family.family_id == family_ids[0]
+    assert family.still_ids == ("favourite", "sibling")
+    assert family.video_ids == ("favourite-motion", "sibling-motion")
+    assert family.trim_points == ((0.0, 1.0), (0.5, 1.5))
+    assert family.shutter_timestamps == (
+        favourite.file_created_at.timestamp(),
+        sibling.file_created_at.timestamp(),
+    )
+    assert family.motion_duration_seconds is None
+    assert family.minimum_motion_seconds is None
+
+
+def test_stitch_sidecar_cannot_reintroduce_an_owner_excluded_member() -> None:
+    """Source scope wins over a richer wrapper's broader stitch declaration."""
+    admitted = make_asset("admitted")
+    admitted.type = AssetType.IMAGE
+    admitted.live_photo_video_id = "admitted-motion"
+    excluded = make_asset("excluded")
+    excluded.type = AssetType.IMAGE
+    excluded.live_photo_video_id = "excluded-motion"
+    enriched = VideoClipInfo(
+        asset=admitted,
+        duration_seconds=4.0,
+        width=1920,
+        height=1080,
+        live_burst_still_ids=["admitted", "excluded"],
+        live_burst_video_ids=["admitted-motion", "excluded-motion"],
+        live_burst_trim_points=[(0.0, 1.0), (0.25, 1.25)],
+        live_burst_shutter_timestamps=[
+            admitted.file_created_at.timestamp(),
+            excluded.file_created_at.timestamp(),
+        ],
+    )
+
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(
+            scope=SourceScope(),
+            owner_excluded_asset_ids=("excluded",),
+        ),
+        EditorialDependencies(source_fetcher=lambda _scope: (excluded, enriched)),
+    )
+
+    assert prepared.candidate_ids == ("admitted",)
+    assert prepared.excluded_ids == ("excluded",)
+    assert prepared.candidates[0].live_photo_stitch_member_ids == ("admitted",)
+    assert prepared.candidates[0].rendering_family_id == prepared.rendering_families[0].family_id
+    assert prepared.rendering_families[0].still_ids == ("admitted",)
+    assert prepared.rendering_families[0].video_ids == ("admitted-motion",)
+    assert "excluded" not in " ".join(prepared.candidates[0].grounded_annotations)
+
+
+def test_rendering_family_manifest_is_canonical_across_source_and_entry_order() -> None:
+    """The family hash follows aligned chronology, never independent array sorting."""
+    when = datetime(2026, 8, 25, 12, tzinfo=UTC)
+    first = make_asset("first", file_created_at=when)
+    first.live_photo_video_id = "video-first"
+    second = make_asset("second", file_created_at=when + timedelta(seconds=1))
+    second.live_photo_video_id = "video-second"
+
+    def prepare(reverse: bool):
+        aligned = (
+            ["second", "first"] if reverse else ["first", "second"],
+            ["video-second", "video-first"] if reverse else ["video-first", "video-second"],
+            [(0.5, 1.5), (0.0, 1.0)] if reverse else [(0.0, 1.0), (0.5, 1.5)],
+            [second.file_created_at.timestamp(), first.file_created_at.timestamp()]
+            if reverse
+            else [first.file_created_at.timestamp(), second.file_created_at.timestamp()],
+        )
+        enriched = VideoClipInfo(
+            asset=second,
+            duration_seconds=4.0,
+            live_burst_still_ids=aligned[0],
+            live_burst_video_ids=aligned[1],
+            live_burst_trim_points=aligned[2],
+            live_burst_shutter_timestamps=aligned[3],
+        )
+        sources = (enriched, first) if reverse else (first, enriched)
+        return prepare_editorial_source(
+            EditorialSelectionRequest(scope=SourceScope()),
+            EditorialDependencies(source_fetcher=lambda _scope: sources),
+        )
+
+    chronological = prepare(False)
+    permuted = prepare(True)
+
+    assert chronological.rendering_families == permuted.rendering_families
+    family = chronological.rendering_families[0]
+    assert family.still_ids == ("first", "second")
+    assert family.video_ids == ("video-first", "video-second")
+    assert family.trim_points == ((0.0, 1.0), (0.5, 1.5))
+
+
+def test_incomplete_rendering_manifest_fails_visibly_but_keeps_stills() -> None:
+    """Incomplete source evidence cannot invent a later motion option."""
+    still = make_asset("still")
+    enriched = VideoClipInfo(
+        asset=still,
+        duration_seconds=2.0,
+        live_burst_still_ids=["still"],
+    )
+
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(source_fetcher=lambda _scope: (enriched,)),
+    )
+
+    assert prepared.candidate_ids == ("still",)
+    assert prepared.rendering_families == ()
+    assert prepared.candidates[0].rendering_family_id is None
+    assert prepared.source_warnings == (
+        "!! invalid Live Photo rendering family for still: incomplete aligned manifest",
+    )
+    assert prepared.trace.warnings == list(prepared.source_warnings)
+
+
+def test_conflicting_rendering_manifests_fail_visibly_without_an_invented_union() -> None:
+    """Two overlapping but different source manifests invalidate both families."""
+    when = datetime(2026, 8, 25, 12, tzinfo=UTC)
+    a = make_asset("a", file_created_at=when)
+    b = make_asset("b", file_created_at=when + timedelta(seconds=1))
+    c = make_asset("c", file_created_at=when + timedelta(seconds=2))
+    first = VideoClipInfo(
+        asset=a,
+        live_burst_still_ids=["a", "b"],
+        live_burst_video_ids=["va", "vb"],
+        live_burst_trim_points=[(0.0, 1.0), (0.0, 1.0)],
+        live_burst_shutter_timestamps=[
+            a.file_created_at.timestamp(),
+            b.file_created_at.timestamp(),
+        ],
+    )
+    second = VideoClipInfo(
+        asset=c,
+        live_burst_still_ids=["b", "c"],
+        live_burst_video_ids=["vb-other", "vc"],
+        live_burst_trim_points=[(0.0, 1.0), (0.0, 1.0)],
+        live_burst_shutter_timestamps=[
+            b.file_created_at.timestamp(),
+            c.file_created_at.timestamp(),
+        ],
+    )
+
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(source_fetcher=lambda _scope: (first, b, second)),
+    )
+
+    assert prepared.candidate_ids == ("a", "b", "c")
+    assert prepared.rendering_families == ()
+    assert all(candidate.rendering_family_id is None for candidate in prepared.candidates)
+    assert prepared.source_warnings == (
+        "!! conflicting Live Photo rendering family for admitted asset b",
+    )
+
+
+def test_duplicate_enriched_source_conflict_fails_visibly_as_still() -> None:
+    """Coalescing duplicate snapshots cannot hide contradictory render evidence."""
+    still = make_asset("still")
+    still.live_photo_video_id = "motion"
+    first = VideoClipInfo(
+        asset=still,
+        duration_seconds=2.0,
+        live_burst_still_ids=["still"],
+        live_burst_video_ids=["motion"],
+        live_burst_trim_points=[(0.0, 1.0)],
+        live_burst_shutter_timestamps=[still.file_created_at.timestamp()],
+    )
+    contradictory = first.model_copy(
+        update={
+            "live_burst_video_ids": ["different-motion"],
+            "live_burst_trim_points": [(0.25, 1.25)],
+        }
+    )
+
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(source_fetcher=lambda _scope: (first, contradictory)),
+    )
+
+    assert prepared.candidate_ids == ("still",)
+    assert prepared.rendering_families == ()
+    assert prepared.candidates[0].rendering_family_id is None
+    assert prepared.source_warnings == (
+        "!! conflicting Live Photo rendering manifests for duplicate asset still",
+    )
+
+
+def test_rendering_family_cannot_cross_editorial_moment_groups() -> None:
+    """A source declaration spanning two moments fails rather than creating two outputs."""
+    when = datetime(2026, 8, 25, 12, tzinfo=UTC)
+    early = make_asset("early", file_created_at=when)
+    late = make_asset("late", file_created_at=when + timedelta(hours=3))
+    enriched = VideoClipInfo(
+        asset=early,
+        live_burst_still_ids=["early", "late"],
+        live_burst_video_ids=["ve", "vl"],
+        live_burst_trim_points=[(0.0, 1.0), (0.0, 1.0)],
+        live_burst_shutter_timestamps=[
+            early.file_created_at.timestamp(),
+            late.file_created_at.timestamp(),
+        ],
+    )
+
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(source_fetcher=lambda _scope: (enriched, late)),
+    )
+
+    assert prepared.rendering_families == ()
+    assert all(candidate.rendering_family_id is None for candidate in prepared.candidates)
+    assert prepared.source_warnings[0].startswith(
+        "!! Live Photo rendering family crosses moment groups: live-photo-rendering-family-v1-"
+    )
+
+
+def test_rendering_family_contract_rejects_unsafe_or_misaligned_manifests() -> None:
+    """The immutable bridge accepts only a versioned, safe, chronological manifest."""
+    still_ids = ("a",)
+    video_ids = ("v",)
+    trim_points = ((0.0, 1.0),)
+    timestamps = (1.0,)
+    family_id = live_photo_rendering_family_id(
+        still_ids,
+        video_ids,
+        trim_points,
+        timestamps,
+        motion_duration_seconds=None,
+        minimum_motion_seconds=None,
+    )
+
+    valid = LivePhotoRenderingFamily(
+        family_id=family_id,
+        still_ids=still_ids,
+        video_ids=video_ids,
+        trim_points=trim_points,
+        shutter_timestamps=timestamps,
+    )
+    assert valid.family_id == family_id
+    with pytest.raises(ValueError, match="safe aligned timing"):
+        LivePhotoRenderingFamily(
+            family_id=family_id,
+            still_ids=still_ids,
+            video_ids=video_ids,
+            trim_points=((0.0, float("inf")),),
+            shutter_timestamps=timestamps,
+        )
+    with pytest.raises(ValueError, match="duration and minimum"):
+        LivePhotoRenderingFamily(
+            family_id=family_id,
+            still_ids=still_ids,
+            video_ids=video_ids,
+            trim_points=trim_points,
+            shutter_timestamps=timestamps,
+            motion_duration_seconds=2.0,
+        )
+
+
+def test_failed_preview_does_not_mark_a_video_unavailable_when_motion_frames_work(
+    tmp_path: Path,
+) -> None:
+    """Usable motion pixels outrank a failed still-preview provider."""
+    from immich_memories.analysis.visual_atlas import build_visual_atlas
+
+    asset = make_asset("motion", duration="0:00:03.000")
+    local_path = tmp_path / "motion.mp4"
+    local_path.write_bytes(b"generated motion placeholder")
+    clip = VideoClipInfo(
+        asset=asset,
+        duration_seconds=3.0,
+        width=1920,
+        height=1080,
+        local_path=str(local_path),
+    )
+    frames = []
+    for index, colour in enumerate(("red", "green", "blue")):
+        path = tmp_path / f"frame-{index}.jpg"
+        Image.new("RGB", (48, 32), colour).save(path, "JPEG")
+        frames.append(path)
+
+    def failed_preview(_asset):
+        raise RuntimeError("generated preview failure")
+
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(
+            source_fetcher=lambda _scope: (clip,),
+            preview_jpeg=failed_preview,
+        ),
+    )
+    # WHY: duration probing and frame decoding are the two external FFmpeg boundaries.
+    with (
+        patch("immich_memories.analysis.visual_atlas.probe_duration", return_value=3.0),
+        patch(
+            "immich_memories.analysis.visual_atlas.sample_segment_frames",
+            return_value=tuple(frames),
+        ),
+    ):
+        atlas = build_visual_atlas(prepared.visual_sources, frame_cache_dir=tmp_path / "frames")
+
+    tile = atlas.tile_for("motion")
+    assert prepared.candidate_ids == ("motion",)
+    assert tile.kind == "filmstrip"
+    assert tile.unavailable_reason is None
 
 
 def test_conflicting_duplicate_asset_representations_are_rejected() -> None:

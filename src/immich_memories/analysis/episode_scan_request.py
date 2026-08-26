@@ -33,6 +33,7 @@ def build_episode_request(
     limits: VisionRequestLimits,
 ) -> VisualEditorialRequest:
     """Build the one physical request shared by Pass 0 and Pass 1."""
+    _validate_v3_one_page_pack(pack)
     return VisualEditorialRequest(
         pass_name="episode-scan",  # noqa: S106 - versioned editorial pass identity
         pass_version=EPISODE_SCAN_PASS_VERSION,
@@ -49,6 +50,21 @@ def build_episode_request(
         continuation_number=pack.continuation_number,
         continuation_count=pack.continuation_count,
     )
+
+
+def _validate_v3_one_page_pack(pack: EpisodeScanPack) -> None:
+    """Keep v3 aliases pack-local; multi-page requests require a schema/version bump."""
+    page_refs = pack.page.tile_refs
+    page_numbers = tuple(ref.number for ref in page_refs)
+    scoped_refs = tuple(ref for scope in pack.scopes for ref in scope.tile_refs)
+    if len(page_numbers) != len(set(page_numbers)):
+        raise ValueError("episode-scan-v3 needs unique pack-local tile numbers")
+    if any(scope.page_id != pack.page.sheet_id or scope.page_alias != 1 for scope in pack.scopes):
+        raise ValueError("episode-scan-v3 supports exactly one physical page per request")
+    if sorted(scoped_refs, key=lambda ref: ref.number) != sorted(
+        page_refs, key=lambda ref: ref.number
+    ):
+        raise ValueError("episode-scan-v3 scopes must exactly partition the physical page")
 
 
 def _episode_prompt(pack: EpisodeScanPack) -> str:

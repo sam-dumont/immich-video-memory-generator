@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
+import math
 from dataclasses import dataclass
 from datetime import datetime
+from hashlib import sha256
 from typing import TYPE_CHECKING, Literal
 
 from immich_memories.analysis.strict_json import is_safe_model_text
@@ -13,6 +16,7 @@ if TYPE_CHECKING:
 
 RECORD_SHOT_FUNCTION_MAX_CHARS = 48
 RECORD_SHOT_REASON_MAX_CHARS = 96
+LIVE_PHOTO_RENDERING_FAMILY_VERSION = "live-photo-rendering-family-v1"
 
 
 @dataclass(frozen=True)
@@ -22,11 +26,115 @@ class EditorialCandidate:
     asset_id: str
     taken_at: datetime
     media_kind: Literal["photo", "video", "live_photo"]
+    live_photo_stitch_member_ids: tuple[str, ...]
+    rendering_family_id: str | None
     favourite: bool
     source: Asset
     proposed_segment: tuple[float, float] | None
     shippable_duration: float
     grounded_annotations: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class LivePhotoRenderingFamily:
+    """Source-owned aligned options for one later still-or-motion rendering choice."""
+
+    family_id: str
+    still_ids: tuple[str, ...]
+    video_ids: tuple[str, ...]
+    trim_points: tuple[tuple[float, float], ...]
+    shutter_timestamps: tuple[float, ...]
+    motion_duration_seconds: float | None = None
+    minimum_motion_seconds: float | None = None
+
+    def __post_init__(self) -> None:
+        _validate_rendering_family_ids(self)
+        _validate_rendering_family_timing(self)
+        _validate_rendering_family_durations(self)
+        expected = live_photo_rendering_family_id(
+            self.still_ids,
+            self.video_ids,
+            self.trim_points,
+            self.shutter_timestamps,
+            motion_duration_seconds=self.motion_duration_seconds,
+            minimum_motion_seconds=self.minimum_motion_seconds,
+        )
+        if self.family_id != expected:
+            raise ValueError("Live Photo rendering family ID must hash its canonical manifest")
+
+
+def _validate_rendering_family_ids(family: LivePhotoRenderingFamily) -> None:
+    size = len(family.still_ids)
+    aligned_sizes = (
+        len(family.video_ids),
+        len(family.trim_points),
+        len(family.shutter_timestamps),
+    )
+    unique = len(set(family.still_ids)) == size == len(set(family.video_ids))
+    nonblank = all(value.strip() for value in (*family.still_ids, *family.video_ids))
+    if size == 0 or any(item != size for item in aligned_sizes) or not unique or not nonblank:
+        raise ValueError("Live Photo rendering family needs unique aligned source IDs")
+
+
+def _validate_rendering_family_timing(family: LivePhotoRenderingFamily) -> None:
+    trims_are_safe = all(
+        _is_finite_number(start) and _is_finite_number(end) and start >= 0 and end > start
+        for start, end in family.trim_points
+    )
+    shutters_are_safe = all(_is_finite_number(value) for value in family.shutter_timestamps)
+    if not trims_are_safe or not shutters_are_safe:
+        raise ValueError("Live Photo rendering family needs safe aligned timing")
+    order = tuple(zip(family.shutter_timestamps, family.still_ids, strict=True))
+    if order != tuple(sorted(order)):
+        raise ValueError("Live Photo rendering family entries must be chronological")
+
+
+def _validate_rendering_family_durations(family: LivePhotoRenderingFamily) -> None:
+    durations = (family.motion_duration_seconds, family.minimum_motion_seconds)
+    paired = (durations[0] is None) == (durations[1] is None)
+    safe = all(value is None or (_is_finite_number(value) and value > 0) for value in durations)
+    if not paired or not safe:
+        raise ValueError("Live Photo rendering duration and minimum must be safe and paired")
+
+
+def _is_finite_number(value: object) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def live_photo_rendering_family_id(
+    still_ids: tuple[str, ...],
+    video_ids: tuple[str, ...],
+    trim_points: tuple[tuple[float, float], ...],
+    shutter_timestamps: tuple[float, ...],
+    *,
+    motion_duration_seconds: float | None,
+    minimum_motion_seconds: float | None,
+) -> str:
+    """Hash the versioned aligned rendering manifest without choosing a render mode."""
+    manifest = {
+        "version": LIVE_PHOTO_RENDERING_FAMILY_VERSION,
+        "entries": [
+            {
+                "still_id": still_id,
+                "video_id": video_id,
+                "trim_point": [start, end],
+                "shutter_timestamp": timestamp,
+            }
+            for still_id, video_id, (start, end), timestamp in zip(
+                still_ids,
+                video_ids,
+                trim_points,
+                shutter_timestamps,
+                strict=True,
+            )
+        ],
+        "motion_duration_seconds": motion_duration_seconds,
+        "minimum_motion_seconds": minimum_motion_seconds,
+    }
+    digest = sha256(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+    ).hexdigest()
+    return f"{LIVE_PHOTO_RENDERING_FAMILY_VERSION}-{digest}"
 
 
 @dataclass(frozen=True)

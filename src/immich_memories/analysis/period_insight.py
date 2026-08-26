@@ -158,6 +158,14 @@ def run_period_insight(
     """Read every required episode page before attempting a period thesis."""
     request_limits = limits or VisionRequestLimits(max_output_tokens=4000, timeout_seconds=120)
     atlas = build_visual_atlas(prepared.visual_sources, frame_cache_dir=frame_cache_dir)
+    warnings: list[str] = []
+    for tile in atlas.tiles:
+        if tile.kind == "unavailable":
+            _warn_once(
+                prepared,
+                warnings,
+                f"Pass 0 visual unavailable: {tile.entity_id} ({tile.unavailable_reason})",
+            )
     episode_sheets, episode_packs = _episode_material(
         prepared.episode_groups,
         atlas=atlas,
@@ -171,7 +179,6 @@ def run_period_insight(
         limits=request_limits,
     )
     readings = _complete_episode_readings(episode_sheets, observations)
-    warnings: list[str] = []
     period_pages: tuple[ContactSheetPage, ...] = ()
     period_answer: BankedVisualAnswer | None = None
     insight: PeriodInsight | None = None

@@ -610,6 +610,16 @@ def test_record_mark_wins_a_namespace_collision_without_discarding_siblings() ->
   Cull may reject only clearly unusable non-record items. Subject labels, repetition, relative
   weakness, and thesis relevance are invalid Cull reasons.
 
+- [ ] RED/GREEN: freeze `episode-scan-v3` at one physical page per request with unique pack-local
+  tile aliases. Scopes exactly partition that page. A future multi-page request bumps the pass,
+  prompt, and schema instead of reinterpreting v3 aliases.
+
+- [ ] RED/GREEN: normalize duplicate snapshots with favourite OR semantics. Preserve a complete,
+  aligned, source-owned `LivePhotoRenderingFamily` with a versioned manifest hash and propagate its
+  reference to every admitted member. Owner exclusions trim aligned entries. Incomplete,
+  contradictory, or cross-moment manifests warn and create no family; never elect a carrier or a
+  render mode here.
+
 - [ ] RED/GREEN: refusal, timeout, invalid IDs, and truncated JSON reject nothing. Valid sibling
   namespaces remain banked. More than 75% rejection adds `!! possible over-cull` but does not
   restore by score.
@@ -681,6 +691,14 @@ def test_one_favourite_wins_its_moment_and_record_shot_stays_separate() -> None:
 
 - [ ] GREEN: a single favorite auto-wins. If several favorites collide, build a battle containing
   only those favorites. Favorites outside the winning occasion are not globally immune.
+
+- [ ] RED/GREEN: treat one `rendering_family_id` as one still-or-motion option inside its moment.
+  Select exactly one asset for that family/moment and preserve its family reference. A lone exact
+  favourite wins; multiple favourites in the family battle only one another. If RECORD and
+  favourite annotations land on different family members, they must not silently become two final
+  outputs: preserve RECORD as a sidecar and resolve one editorial representative explicitly.
+- [ ] RED/GREEN: a selected non-favourite member retains the same family option on merit. Family
+  membership never makes its siblings Cull-immune and never depends on the legacy enriched carrier.
 
 - [ ] RED/GREEN: for ordinary groups, pack many complete separated battles per request. The answer
   is exactly one `MomentSelect` (`selected` or `no_peak`) per group plus at most one reason-specific
@@ -972,7 +990,7 @@ git commit -m "feat(selection): judge the complete visual cut (#764)"
 - Add: `tests/integration/assembly/test_editorial_membership.py`
 
 - [ ] RED: select photo/video/Live Photo visuals in a known order and assert render planning chooses
-  a mode without changing membership.
+  a mode from the selected asset's immutable `LivePhotoRenderingFamily` without changing membership.
 
 ```python
 def test_render_plan_preserves_ordered_editorial_membership() -> None:
@@ -981,8 +999,15 @@ def test_render_plan_preserves_ordered_editorial_membership() -> None:
     assert tuple(item.asset_id for item in plan) == ("photo", "live", "video")
 ```
 
-- [ ] GREEN: resolve still versus motion only after Fine Cut. A Live Photo remains one selected
-  visual with render options, not two editorial candidates.
+- [ ] GREEN: resolve still versus stitched motion only after Fine Cut from the preserved ordered,
+  aligned family manifest. Emit the selected asset identity for either mode, remove legacy
+  `_motion_by_carrier`, and never independently align sorted still/video/trim/shutter arrays.
+- [ ] RED/GREEN: pre-render stages carry per-mode duration options or explicit mode-neutral bounds;
+  a single intended duration must not secretly choose motion. Validate the final chosen mode's
+  duration contract during render planning.
+- [ ] RED/GREEN: the visual atlas eventually places a Live Photo still and bounded local motion
+  evidence in the same tile and existing request. It adds no LLM call and never claims motion was
+  judged when motion pixels were unavailable.
 
 - [ ] RED/GREEN: remove membership changes from `_sample_for_minimum_duration()`. Budget adjustment
   may trim intended segments proportionally within their contracts; it cannot add, drop, reorder,

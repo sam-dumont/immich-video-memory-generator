@@ -105,7 +105,6 @@ def run_cull(
         len(ordered_rejects),
         len(prepared.candidates),
     )
-    warnings = _ordered_unique((*pass_zero.warnings, *pass_one_warnings))
     _record_new_warnings(prepared, pass_one_warnings)
     recorded_trace = _record_cull_trace(
         prepared,
@@ -115,6 +114,7 @@ def run_cull(
         ordered_rejects,
         logical_requests,
     )
+    warnings = _authoritative_warnings(prepared)
     review = _render_review(
         prepared,
         pass_zero,
@@ -158,6 +158,9 @@ def _read_pack_cull(
         attempt.answer.raw_text,
         pack_alias=1,
         tile_map=_tile_map(pack),
+        unavailable_asset_ids=frozenset(
+            asset_id for scope in pack.scopes for asset_id in scope.unavailable_asset_ids
+        ),
     )
     if parsed is None:
         return _PackCullReading(
@@ -249,6 +252,15 @@ def _record_new_warnings(
 ) -> None:
     prepared.trace.warnings.extend(
         warning for warning in warnings if warning not in prepared.trace.warnings
+    )
+
+
+def _authoritative_warnings(prepared: PreparedEditorialSource) -> tuple[str, ...]:
+    return _ordered_unique(
+        tuple(
+            warning if warning.startswith("!!") else f"!! {warning}"
+            for warning in prepared.trace.warnings
+        )
     )
 
 

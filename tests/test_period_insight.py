@@ -11,6 +11,7 @@ from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from PIL import Image
 
 from immich_memories.analysis.editorial_contracts import SourceEvidence
@@ -246,6 +247,7 @@ def test_v3_episode_packs_budget_every_possible_record_and_cull_member(
     tmp_path: Path,
 ) -> None:
     """Maximum valid fused output, rather than an average reply, bounds every pack."""
+    from immich_memories.analysis.episode_scan_request import build_episode_request
     from immich_memories.analysis.period_insight import run_period_insight
 
     start = datetime(2026, 1, 1, tzinfo=UTC)
@@ -278,8 +280,46 @@ def test_v3_episode_packs_budget_every_possible_record_and_cull_member(
     assert planned_ids == prepared.candidate_ids
     assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [27, 27, 27, 27, 12]
     for pack in result.episode_packs:
+        request = build_episode_request(pack, limits=VisionRequestLimits())
+        assert request.pages == (pack.page,)
+        assert len({ref.number for ref in request.pages[0].tile_refs}) == len(
+            request.pages[0].tile_refs
+        )
         assert len(_maximum_fused_response(pack)) <= 4000 * 3
     _assert_next_episode_would_overflow(result.episode_packs)
+
+
+def test_v3_episode_request_rejects_duplicate_pack_local_tile_aliases(tmp_path: Path) -> None:
+    """A future multi-page/alias layout must bump the v3 wire contract first."""
+    from immich_memories.analysis.episode_scan_request import build_episode_request
+    from immich_memories.analysis.period_insight import run_period_insight
+
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(
+            source_fetcher=lambda _scope: (make_asset("asset"),),
+            preview_jpeg=lambda _asset: _jpeg("navy"),
+        ),
+    )
+
+    class NoProvider:
+        def ask(self, _request):
+            raise TimeoutError("generated timeout")
+
+    result = run_period_insight(
+        prepared,
+        requester=NoProvider(),
+        sheet_output_dir=tmp_path / "sheets",
+        frame_cache_dir=None,
+    )
+    pack = result.episode_packs[0]
+    duplicate_page = replace(pack.page, tile_refs=(pack.page.tile_refs[0],) * 2)
+
+    with pytest.raises(ValueError, match="unique pack-local tile numbers"):
+        build_episode_request(
+            replace(pack, page=duplicate_page),
+            limits=VisionRequestLimits(),
+        )
 
 
 def test_one_sub_120_episode_response_splits_into_bounded_continuations(
@@ -1014,7 +1054,10 @@ def test_unavailable_atlas_tile_blocks_a_claimed_episode_and_period_thesis(
     assert result.episode_readings == ()
     assert result.insight.thesis is None
     assert result.retained_ids == prepared.candidate_ids
-    assert result.warnings == ("!! Pass 0 incomplete visual evidence; period thesis unavailable",)
+    assert result.warnings == (
+        "!! Pass 0 visual unavailable: missing-pixels (no usable local preview or motion frames)",
+        "!! Pass 0 incomplete visual evidence; period thesis unavailable",
+    )
 
 
 def test_empty_prepared_corpus_records_pass_zero_without_visual_calls(tmp_path: Path) -> None:

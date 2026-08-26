@@ -55,7 +55,39 @@ class TestQueryLlmOllama:
 
         call_payload = mock_post.call_args[1]["json"]
         assert call_payload["format"] == "json"
-        assert call_payload["options"] == {"temperature": 0.3, "num_ctx": 8192}
+        assert call_payload["options"] == {
+            "temperature": 0.3,
+            "num_ctx": 8192,
+            "num_predict": 500,
+        }
+
+    @pytest.mark.asyncio
+    async def test_max_tokens_reaches_ollama_as_num_predict_beside_existing_options(self):
+        """The provider receives the same output ceiling recorded by the editorial request."""
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(
+            provider="ollama",
+            base_url="http://localhost:11434",
+            model="llava",
+            extra_params={"format": "json", "options": {"num_ctx": 8192, "top_k": 20}},
+        )
+        mock_response = AsyncMock()
+        mock_response.status_code = 200
+        mock_response.json = MagicMock(return_value={"response": "{}"})
+        mock_response.raise_for_status = lambda: None
+
+        # WHY: the LLM server is the external boundary whose exact provider payload matters.
+        with patch("httpx.AsyncClient.post", return_value=mock_response) as mock_post:
+            await query_llm("Read this sheet", config, max_tokens=733)
+
+        payload = mock_post.call_args[1]["json"]
+        assert payload["options"] == {
+            "temperature": 0.3,
+            "num_ctx": 8192,
+            "top_k": 20,
+            "num_predict": 733,
+        }
 
 
 class TestQueryLlmOpenAI:

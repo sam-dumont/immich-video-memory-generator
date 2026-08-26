@@ -188,8 +188,10 @@ and measured visual judgement quality.
   sheets. Do not ask a model to describe the same pixels again for each pass.
 - Pack as many complete episode or moment groups as remain legible on one sheet. One Pass 2 request
   returns decisions for many visually separated moment battles.
-- Attach multiple sheet pages to one request when the configured provider supports it and a probe
-  proves that numbering and decision accuracy remain reliable.
+- Attach multiple sheet pages to one request only when that pass's versioned wire contract supports
+  it and a probe proves numbering and decision accuracy remain reliable. `episode-scan-v3` is
+  deliberately stricter: exactly one page per request with unique pack-local tile numbers. A
+  multi-page episode scan requires a schema/prompt/pass version bump.
 - Combine independent questions over the exact same visual evidence. The episode scan may return
   the Pass 0 `EpisodeReading` plus separately namespaced Pass 1 record marks and clear-unusable
   rejects in one response. This is safe because Cull is deliberately independent of the thesis.
@@ -263,6 +265,18 @@ weakness relative to another frame, and relevance to the thesis are not Cull rea
 subject quotas do not run. Screenshots, documents, and near-duplicates wait for their visible
 function or comparison to be understood. Ambiguous material survives. A parser failure,
 truncation, refusal, or missing model answer kills nothing and adds a loud `!!` warning.
+
+Cull also protects the exact starred candidate so that Pass 2, not Pass 1, applies favourite law.
+That protection does not spread to every member of a Live Photo stitch or burst. A non-favourite
+sibling may still be rejected for a valid visual defect, and no still-versus-motion choice happens
+in Cull.
+
+Source preparation preserves a complete Live Photo burst as a frozen rendering family rather than
+electing the enriched `VideoClipInfo` carrier. Its versioned ID hashes one chronologically ordered,
+aligned manifest of admitted still IDs, video IDs, trim points, and shutter timestamps. Every
+admitted member carries the same family reference. Owner-excluded components are filtered out;
+incomplete, contradictory, or cross-moment declarations produce `!!` and no family instead of an
+invented union. This is option identity, not a render decision and not group-wide favourite state.
 
 If Cull rejects more than 75% of an otherwise source-eligible corpus, emit `!! possible over-cull`.
 This is a diagnostic, not a quota: the system never restores items by score to satisfy a ratio.
@@ -378,12 +392,17 @@ the editorial membership, the run warns and the gate is invalid.
 
 ## Rendering comes last
 
-The editorial system selects visuals and their intended durations before deciding how to render
-them. A Live Photo remains one visual with a still or motion rendering option. It is not a second
-editorial candidate simply because it has a video component.
+The editorial system selects visuals and mode-neutral duration bounds before deciding how to render
+them. A selected Live Photo carries its source-owned rendering-family reference; it does not become
+a second editorial candidate merely because motion is available. Pre-render stages must not store
+one duration that silently assumes the motion option.
 
-The renderer may trim, animate, or choose the Live Photo motion component inside the selected
-visual's contract. It may not change the membership of the cut.
+After Fine Cut, the renderer chooses still or stitched motion from the preserved ordered manifest
+and emits the selected asset identity either way. It may trim or animate inside that contract, but
+may not change membership. The aligned arrays are never independently sorted or zipped, and the
+legacy `_motion_by_carrier` shortcut must not decide availability. A later atlas revision must show
+still plus local motion evidence in one tile/call; until those pixels exist, no pass may claim that
+motion itself was visually judged.
 
 ## Banking and cache identity
 

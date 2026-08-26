@@ -23,6 +23,7 @@ class AtlasSource:
     preview_jpeg: bytes | None = None
     motion_path: Path | None = None
     proposed_segment: tuple[float, float] | None = None
+    unavailable_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -105,7 +106,9 @@ def _tile_for(
         jpeg_bytes=None,
         sha256=None,
         frame_count=0,
-        unavailable_reason="no usable local preview or motion frames",
+        unavailable_reason=(
+            source.unavailable_reason or "no usable local preview or motion frames"
+        ),
     )
 
 

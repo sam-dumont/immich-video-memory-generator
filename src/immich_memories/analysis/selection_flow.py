@@ -4,18 +4,21 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from hashlib import sha256
+from operator import itemgetter
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from immich_memories.analysis.editorial_contracts import (
     DecisionProvenance,
     EditorialCandidate,
+    LivePhotoRenderingFamily,
     PassTrace,
     SourceEvidence,
     TraceDecision,
+    live_photo_rendering_family_id,
 )
 from immich_memories.analysis.moment_grouping import (
     EPISODE_WINDOW_MINUTES,
@@ -95,6 +98,8 @@ class PreparedEditorialSource:
 
     candidates: tuple[EditorialCandidate, ...]
     visual_sources: tuple[AtlasSource, ...]
+    rendering_families: tuple[LivePhotoRenderingFamily, ...]
+    source_warnings: tuple[str, ...]
     trace: Trace
     episode_groups: tuple[EditorialGroup, ...]
     moment_groups: tuple[EditorialGroup, ...]
@@ -157,7 +162,7 @@ def prepare_editorial_source(
 ) -> PreparedEditorialSource:
     """Acquire, normalize, and admit the complete source-eligible corpus."""
     excluded = set(request.owner_excluded_asset_ids)
-    sources = _coalesce_sources(
+    sources, normalization_warnings = _coalesce_sources(
         tuple(
             sorted(
                 dependencies.source_fetcher(request.scope),
@@ -172,11 +177,20 @@ def prepare_editorial_source(
     eligible_sources = tuple(
         source for source, exclusion_reason in source_decisions if exclusion_reason is None
     )
+    (
+        rendering_families,
+        stitch_memberships,
+        rendering_family_ids,
+        family_warnings,
+    ) = _rendering_family_material(eligible_sources)
+    source_warnings = (*normalization_warnings, *family_warnings)
     candidates = tuple(
         sorted(
             (
                 _candidate_from(
                     source,
+                    stitch_memberships.get(_asset_id(source), ()),
+                    rendering_family_ids.get(_asset_id(source)),
                     dependencies.source_evidence(source)
                     if dependencies.source_evidence is not None
                     else None,
@@ -191,7 +205,28 @@ def prepare_editorial_source(
     )
     episode_groups = build_episode_groups(candidates)
     moment_groups = build_moment_groups(candidates)
+    crossing_family_ids = _cross_moment_family_ids(rendering_families, moment_groups)
+    if crossing_family_ids:
+        source_warnings = (
+            *source_warnings,
+            *(
+                f"!! Live Photo rendering family crosses moment groups: {family_id}"
+                for family_id in crossing_family_ids
+            ),
+        )
+        rendering_families = tuple(
+            family for family in rendering_families if family.family_id not in crossing_family_ids
+        )
+        candidates = tuple(
+            _without_rendering_family(candidate)
+            if candidate.rendering_family_id in crossing_family_ids
+            else candidate
+            for candidate in candidates
+        )
+        episode_groups = build_episode_groups(candidates)
+        moment_groups = build_moment_groups(candidates)
     trace = Trace()
+    trace.warnings.extend(source_warnings)
     candidate_ids = tuple(candidate.asset_id for candidate in candidates)
     source_ids = tuple(_asset_id(source) for source in sources)
     trace.record_editorial_pass(
@@ -213,6 +248,8 @@ def prepare_editorial_source(
     prepared = PreparedEditorialSource(
         candidates=candidates,
         visual_sources=visual_sources,
+        rendering_families=rendering_families,
+        source_warnings=source_warnings,
         trace=trace,
         episode_groups=episode_groups,
         moment_groups=moment_groups,
@@ -223,14 +260,29 @@ def prepare_editorial_source(
 
 def _candidate_from(
     source: Asset | VideoClipInfo,
+    live_photo_stitch_member_ids: tuple[str, ...],
+    rendering_family_id: str | None,
     evidence: SourceEvidence | None,
 ) -> EditorialCandidate:
     asset = source.asset if isinstance(source, VideoClipInfo) else source
     is_video = asset.type == AssetType.VIDEO
+    grounded_annotations = grounded_source_annotations(
+        asset,
+        source if isinstance(source, VideoClipInfo) else None,
+        evidence,
+    )
+    if rendering_family_id is not None:
+        grounded_annotations = (
+            *grounded_annotations,
+            f"live-photo-rendering-family:{rendering_family_id}",
+            f"live-photo-stitch-members:{','.join(live_photo_stitch_member_ids)}",
+        )
     return EditorialCandidate(
         asset_id=asset.id,
         taken_at=asset.file_created_at,
         media_kind=("live_photo" if asset.is_live_photo else "video" if is_video else "photo"),
+        live_photo_stitch_member_ids=live_photo_stitch_member_ids,
+        rendering_family_id=rendering_family_id,
         favourite=asset.is_favorite,
         source=asset,
         proposed_segment=None,
@@ -239,11 +291,7 @@ def _candidate_from(
             if isinstance(source, VideoClipInfo)
             else (asset.duration_seconds or 0.0)
         ),
-        grounded_annotations=grounded_source_annotations(
-            asset,
-            source if isinstance(source, VideoClipInfo) else None,
-            evidence,
-        ),
+        grounded_annotations=grounded_annotations,
     )
 
 
@@ -252,14 +300,24 @@ def _visual_source_from(
     preview_jpeg: Callable[[Asset], bytes | None] | None,
 ) -> AtlasSource:
     asset = _asset(source)
+    preview: bytes | None = None
+    unavailable_reason: str | None = None
+    if preview_jpeg is not None:
+        try:
+            preview = preview_jpeg(asset)
+        except Exception as exc:  # WHY: one failed external preview read cannot abort the corpus
+            unavailable_reason = (
+                f"preview provider raised {type(exc).__name__} and no usable motion frames"
+            )
     return AtlasSource(
         asset=asset,
-        preview_jpeg=preview_jpeg(asset) if preview_jpeg is not None else None,
+        preview_jpeg=preview,
         motion_path=(
             Path(source.local_path)
             if isinstance(source, VideoClipInfo) and source.local_path is not None
             else None
         ),
+        unavailable_reason=unavailable_reason,
     )
 
 
@@ -273,9 +331,11 @@ def _asset(source: Asset | VideoClipInfo) -> Asset:
 
 def _coalesce_sources(
     sources: Sequence[Asset | VideoClipInfo],
-) -> tuple[Asset | VideoClipInfo, ...]:
+) -> tuple[tuple[Asset | VideoClipInfo, ...], tuple[str, ...]]:
     """Keep one canonical source per asset ID, preferring richer clip evidence."""
     coalesced: dict[str, Asset | VideoClipInfo] = {}
+    conflicting_render_manifests: set[str] = set()
+    warnings: list[str] = []
     for source in sources:
         asset_id = _asset_id(source)
         existing = coalesced.get(asset_id)
@@ -284,9 +344,239 @@ def _coalesce_sources(
             continue
         if _asset_signature(existing) != _asset_signature(source):
             raise ValueError(f"conflicting source representations for asset {asset_id}")
-        if _source_evidence_rank(source) > _source_evidence_rank(existing):
-            coalesced[asset_id] = source
-    return tuple(coalesced.values())
+        preferred = (
+            source if _source_evidence_rank(source) > _source_evidence_rank(existing) else existing
+        )
+        existing_manifest = _rendering_manifest_signature(existing)
+        source_manifest = _rendering_manifest_signature(source)
+        if (
+            existing_manifest is not None
+            and source_manifest is not None
+            and existing_manifest != source_manifest
+            and asset_id not in conflicting_render_manifests
+        ):
+            conflicting_render_manifests.add(asset_id)
+            warnings.append(
+                f"!! conflicting Live Photo rendering manifests for duplicate asset {asset_id}"
+            )
+        coalesced[asset_id] = _with_favourite(
+            _without_rendering_evidence(preferred)
+            if asset_id in conflicting_render_manifests
+            else preferred,
+            _asset(existing).is_favorite or _asset(source).is_favorite,
+        )
+    return tuple(coalesced.values()), tuple(warnings)
+
+
+def _rendering_manifest_signature(source: Asset | VideoClipInfo) -> tuple[object, ...] | None:
+    if not isinstance(source, VideoClipInfo) or not _has_rendering_family_evidence(source):
+        return None
+    manifests = (
+        source.live_burst_still_ids,
+        source.live_burst_video_ids,
+        source.live_burst_trim_points,
+        source.live_burst_shutter_timestamps,
+    )
+    if all(value is not None for value in manifests):
+        still_ids, video_ids, trim_points, timestamps = manifests
+        assert still_ids is not None
+        assert video_ids is not None
+        assert trim_points is not None
+        assert timestamps is not None
+        if len(still_ids) == len(video_ids) == len(trim_points) == len(timestamps):
+            return (
+                "aligned",
+                tuple(
+                    sorted(
+                        zip(timestamps, still_ids, video_ids, trim_points, strict=True),
+                        key=itemgetter(0, 1),
+                    )
+                ),
+            )
+    return (
+        "invalid",
+        tuple(source.live_burst_still_ids or ()),
+        tuple(source.live_burst_video_ids or ()),
+        tuple(source.live_burst_trim_points or ()),
+        tuple(source.live_burst_shutter_timestamps or ()),
+    )
+
+
+def _without_rendering_evidence(source: Asset | VideoClipInfo) -> Asset | VideoClipInfo:
+    if not isinstance(source, VideoClipInfo):
+        return source
+    return source.model_copy(
+        update={
+            "live_burst_still_ids": None,
+            "live_burst_video_ids": None,
+            "live_burst_trim_points": None,
+            "live_burst_shutter_timestamps": None,
+        }
+    )
+
+
+def _with_favourite(source: Asset | VideoClipInfo, favourite: bool) -> Asset | VideoClipInfo:
+    asset = _asset(source)
+    if asset.is_favorite is favourite:
+        return source
+    merged_asset = asset.model_copy(update={"is_favorite": favourite})
+    if isinstance(source, VideoClipInfo):
+        return source.model_copy(update={"asset": merged_asset})
+    return merged_asset
+
+
+def _rendering_family_material(
+    sources: Sequence[Asset | VideoClipInfo],
+) -> tuple[
+    tuple[LivePhotoRenderingFamily, ...],
+    dict[str, tuple[str, ...]],
+    dict[str, str],
+    tuple[str, ...],
+]:
+    families: dict[str, LivePhotoRenderingFamily] = {}
+    family_by_member: dict[str, str] = {}
+    warnings: list[str] = []
+    conflicting_family_ids: set[str] = set()
+    admitted_ids = {_asset_id(source) for source in sources}
+    for source in sources:
+        if not isinstance(source, VideoClipInfo) or not _has_rendering_family_evidence(source):
+            continue
+        try:
+            family = _rendering_family_from(source, admitted_ids)
+        except ValueError as exc:
+            warnings.append(f"!! invalid Live Photo rendering family for {source.asset.id}: {exc}")
+            continue
+        families[family.family_id] = family
+        for asset_id in family.still_ids:
+            existing = family_by_member.get(asset_id)
+            if existing is not None and existing != family.family_id:
+                conflicting_family_ids.update((existing, family.family_id))
+                warnings.append(
+                    f"!! conflicting Live Photo rendering family for admitted asset {asset_id}"
+                )
+            family_by_member[asset_id] = family.family_id
+    if conflicting_family_ids:
+        families = {
+            family_id: family
+            for family_id, family in families.items()
+            if family_id not in conflicting_family_ids
+        }
+        family_by_member = {
+            asset_id: family_id
+            for asset_id, family_id in family_by_member.items()
+            if family_id not in conflicting_family_ids
+        }
+    memberships = {
+        asset_id: families[family_id].still_ids for asset_id, family_id in family_by_member.items()
+    }
+    return (
+        tuple(sorted(families.values(), key=lambda family: family.family_id)),
+        memberships,
+        family_by_member,
+        tuple(dict.fromkeys(warnings)),
+    )
+
+
+def _has_rendering_family_evidence(source: VideoClipInfo) -> bool:
+    return any(
+        value is not None
+        for value in (
+            source.live_burst_still_ids,
+            source.live_burst_video_ids,
+            source.live_burst_trim_points,
+            source.live_burst_shutter_timestamps,
+        )
+    )
+
+
+def _rendering_family_from(
+    source: VideoClipInfo,
+    admitted_ids: set[str],
+) -> LivePhotoRenderingFamily:
+    manifests = (
+        source.live_burst_still_ids,
+        source.live_burst_video_ids,
+        source.live_burst_trim_points,
+        source.live_burst_shutter_timestamps,
+    )
+    if any(value is None for value in manifests):
+        raise ValueError("incomplete aligned manifest")
+    still_ids, video_ids, trim_points, timestamps = manifests
+    assert still_ids is not None
+    assert video_ids is not None
+    assert trim_points is not None
+    assert timestamps is not None
+    if not still_ids or not (
+        len(still_ids) == len(video_ids) == len(trim_points) == len(timestamps)
+    ):
+        raise ValueError("unaligned manifest lengths")
+    if source.asset.id not in still_ids:
+        raise ValueError("enriched source is absent from its still manifest")
+    admitted_entries = tuple(
+        sorted(
+            (
+                (timestamp, still_id, video_id, trim_point)
+                for still_id, video_id, trim_point, timestamp in zip(
+                    still_ids,
+                    video_ids,
+                    trim_points,
+                    timestamps,
+                    strict=True,
+                )
+                if still_id in admitted_ids
+            ),
+            key=itemgetter(0, 1),
+        )
+    )
+    if not admitted_entries:
+        raise ValueError("manifest has no admitted still")
+    ordered_timestamps = tuple(entry[0] for entry in admitted_entries)
+    ordered_still_ids = tuple(entry[1] for entry in admitted_entries)
+    ordered_video_ids = tuple(entry[2] for entry in admitted_entries)
+    ordered_trim_points = tuple(entry[3] for entry in admitted_entries)
+    family_id = live_photo_rendering_family_id(
+        ordered_still_ids,
+        ordered_video_ids,
+        ordered_trim_points,
+        ordered_timestamps,
+        motion_duration_seconds=None,
+        minimum_motion_seconds=None,
+    )
+    return LivePhotoRenderingFamily(
+        family_id=family_id,
+        still_ids=ordered_still_ids,
+        video_ids=ordered_video_ids,
+        trim_points=ordered_trim_points,
+        shutter_timestamps=ordered_timestamps,
+    )
+
+
+def _cross_moment_family_ids(
+    families: tuple[LivePhotoRenderingFamily, ...],
+    moment_groups: tuple[EditorialGroup, ...],
+) -> frozenset[str]:
+    moment_by_asset = {
+        asset_id: group.group_id for group in moment_groups for asset_id in group.candidate_ids
+    }
+    return frozenset(
+        family.family_id
+        for family in families
+        if len({moment_by_asset[asset_id] for asset_id in family.still_ids}) > 1
+    )
+
+
+def _without_rendering_family(candidate: EditorialCandidate) -> EditorialCandidate:
+    annotations = tuple(
+        annotation
+        for annotation in candidate.grounded_annotations
+        if not annotation.startswith(("live-photo-rendering-family:", "live-photo-stitch-members:"))
+    )
+    return replace(
+        candidate,
+        live_photo_stitch_member_ids=(),
+        rendering_family_id=None,
+        grounded_annotations=annotations,
+    )
 
 
 def _asset_signature(source: Asset | VideoClipInfo) -> tuple[object, ...]:
@@ -346,6 +636,44 @@ def _validate_prepared_source(prepared: PreparedEditorialSource) -> None:
     visual_ids = tuple(str(source.asset.id) for source in prepared.visual_sources)
     if visual_ids != prepared.candidate_ids:
         raise ValueError("editorial candidates and visual sources must conserve order and identity")
+    _validate_rendering_family_references(prepared)
+
+
+def _validate_rendering_family_references(prepared: PreparedEditorialSource) -> None:
+    families = {family.family_id: family for family in prepared.rendering_families}
+    if len(families) != len(prepared.rendering_families):
+        raise ValueError("editorial rendering family IDs must be unique")
+    candidates = {candidate.asset_id: candidate for candidate in prepared.candidates}
+    for candidate in prepared.candidates:
+        _validate_candidate_family_reference(candidate, families)
+    for family in prepared.rendering_families:
+        if not _family_members_are_admitted(family, candidates):
+            raise ValueError("rendering family may contain only admitted referenced candidates")
+
+
+def _validate_candidate_family_reference(
+    candidate: EditorialCandidate,
+    families: dict[str, LivePhotoRenderingFamily],
+) -> None:
+    if candidate.rendering_family_id is None:
+        if candidate.live_photo_stitch_member_ids:
+            raise ValueError("diagnostic stitch membership requires a rendering family")
+        return
+    family = families.get(candidate.rendering_family_id)
+    if family is None or candidate.asset_id not in family.still_ids:
+        raise ValueError("editorial candidate references an unavailable rendering family")
+    if candidate.live_photo_stitch_member_ids != family.still_ids:
+        raise ValueError("editorial candidate stitch membership must match its family")
+
+
+def _family_members_are_admitted(
+    family: LivePhotoRenderingFamily,
+    candidates: dict[str, EditorialCandidate],
+) -> bool:
+    return all(
+        asset_id in candidates and candidates[asset_id].rendering_family_id == family.family_id
+        for asset_id in family.still_ids
+    )
 
 
 def _scope_exclusion_reason(asset: Asset, scope: SourceScope) -> str:

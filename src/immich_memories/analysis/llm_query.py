@@ -286,6 +286,7 @@ async def _dispatch(
             prompt,
             llm_config,
             temperature,
+            max_tokens,
             timeout_seconds,
             images,
             transport_observer,
@@ -322,6 +323,7 @@ async def _query_ollama(
     prompt: str,
     config: LLMConfig,
     temperature: float,
+    max_tokens: int,
     timeout: int,
     images: Sequence[bytes] = (),
     transport_observer: Callable[[LLMTransportAttempt], None] | None = None,
@@ -344,6 +346,7 @@ async def _query_ollama(
             payload["options"].update(value)
         else:
             payload[name] = value
+    payload["options"]["num_predict"] = max_tokens
     async with httpx.AsyncClient(timeout=build_llm_timeout(float(timeout))) as client:
         try:
             resp = await client.post(f"{base_url}/api/generate", json=payload)

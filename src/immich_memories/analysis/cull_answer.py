@@ -127,6 +127,7 @@ def read_cull_namespaces(
     *,
     pack_alias: int,
     tile_map: Mapping[int, str],
+    unavailable_asset_ids: frozenset[str] = frozenset(),
 ) -> ParsedCullNamespaces | None:
     """Read Pass 1 namespaces without repairing a malformed outer response."""
     payload = final_json_object(raw)
@@ -141,24 +142,59 @@ def read_cull_namespaces(
     cull_rejects = _read_cull_rejects(payload.get("cull_rejects"), tile_map)
     record_valid = record_shots is not None
     cull_valid = cull_rejects is not None
-    valid_records = record_shots or ()
-    valid_rejects = cull_rejects or ()
-    record_ids = {mark.asset_id for mark in valid_records}
-    collisions = tuple(
-        decision.asset_id for decision in valid_rejects if decision.asset_id in record_ids
+    parsed_records = record_shots or ()
+    parsed_rejects = cull_rejects or ()
+    valid_records, valid_rejects, unavailable_warnings = _discard_unavailable_decisions(
+        parsed_records,
+        parsed_rejects,
+        unavailable_asset_ids,
+    )
+    accepted_rejects, collision_warnings = _shield_record_collisions(
+        valid_records,
+        valid_rejects,
     )
     return ParsedCullNamespaces(
         record_shots=valid_records,
-        cull_rejects=tuple(
-            decision for decision in valid_rejects if decision.asset_id not in record_ids
-        ),
-        warnings=tuple(
-            f"!! cull reject conflicted with record-shot mark: {asset_id}"
-            for asset_id in collisions
-        ),
+        cull_rejects=accepted_rejects,
+        warnings=unavailable_warnings + collision_warnings,
         record_valid=record_valid,
         cull_valid=cull_valid,
     )
+
+
+def _discard_unavailable_decisions(
+    records: tuple[RecordShotMark, ...],
+    rejects: tuple[CullDecision, ...],
+    unavailable_asset_ids: frozenset[str],
+) -> tuple[tuple[RecordShotMark, ...], tuple[CullDecision, ...], tuple[str, ...]]:
+    unavailable_records = tuple(
+        mark.asset_id for mark in records if mark.asset_id in unavailable_asset_ids
+    )
+    unavailable_rejects = tuple(
+        decision.asset_id for decision in rejects if decision.asset_id in unavailable_asset_ids
+    )
+    valid_records = tuple(mark for mark in records if mark.asset_id not in unavailable_asset_ids)
+    valid_rejects = tuple(
+        decision for decision in rejects if decision.asset_id not in unavailable_asset_ids
+    )
+    warnings = (
+        *(f"!! unavailable record-shot decision: {asset_id}" for asset_id in unavailable_records),
+        *(f"!! unavailable Cull decision: {asset_id}" for asset_id in unavailable_rejects),
+    )
+    return valid_records, valid_rejects, warnings
+
+
+def _shield_record_collisions(
+    records: tuple[RecordShotMark, ...],
+    rejects: tuple[CullDecision, ...],
+) -> tuple[tuple[CullDecision, ...], tuple[str, ...]]:
+    record_ids = {mark.asset_id for mark in records}
+    collisions = tuple(decision.asset_id for decision in rejects if decision.asset_id in record_ids)
+    accepted = tuple(decision for decision in rejects if decision.asset_id not in record_ids)
+    warnings = tuple(
+        f"!! cull reject conflicted with record-shot mark: {asset_id}" for asset_id in collisions
+    )
+    return accepted, warnings
 
 
 def _read_record_shots(
