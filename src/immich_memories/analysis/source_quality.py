@@ -84,15 +84,14 @@ def _available_image_observations(
     exif = asset.exif_info
     if exif and exif.exposure_time:
         annotations.append(f"exposure:{exif.exposure_time}")
-    if clip is None:
-        return annotations
-    annotations.append("motion:available")
-    if clip.live_burst_still_ids:
-        annotations.append(f"burst-members:{len(clip.live_burst_still_ids)}")
-    if clip.llm_category:
-        annotations.append(f"subject:{clip.llm_category}")
-    if clip.llm_quality is not None:
-        annotations.append(f"analysis-quality:{clip.llm_quality}")
+    if clip is not None:
+        annotations.append("motion:available")
+        if clip.live_burst_still_ids:
+            annotations.append(f"burst-members:{len(clip.live_burst_still_ids)}")
+        if clip.llm_category:
+            annotations.append(f"subject:{clip.llm_category}")
+        if clip.llm_quality is not None:
+            annotations.append(f"analysis-quality:{clip.llm_quality}")
     if evidence is not None:
         annotations.extend(_precomputed_annotations(evidence))
     return annotations

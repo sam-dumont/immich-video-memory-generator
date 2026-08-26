@@ -282,3 +282,27 @@ def test_precomputed_evidence_and_clip_analysis_survive_source_preparation() -> 
         "exposure:0.75",
         "similarity:cluster-7",
     )
+
+
+def test_precomputed_evidence_survives_raw_photo_source_preparation() -> None:
+    """Already-computed visual evidence remains available when there is no clip wrapper."""
+    photo = make_asset("analysed-photo")
+    photo.type = AssetType.IMAGE
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(
+            source_fetcher=lambda _scope: (photo,),
+            source_evidence=lambda _source: SourceEvidence(
+                blur=0.25,
+                exposure=0.5,
+                similarity="photo-cluster",
+            ),
+        ),
+    )
+
+    assert prepared.candidates[0].grounded_annotations == (
+        "duration:10.000s",
+        "blur:0.25",
+        "exposure:0.5",
+        "similarity:photo-cluster",
+    )
