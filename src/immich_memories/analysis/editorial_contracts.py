@@ -3,6 +3,25 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from immich_memories.api.models import Asset
+
+
+@dataclass(frozen=True)
+class EditorialCandidate:
+    """One source-eligible visual before any editorial decision has happened."""
+
+    asset_id: str
+    taken_at: datetime
+    media_kind: Literal["photo", "video", "live_photo"]
+    favourite: bool
+    source: Asset
+    proposed_segment: tuple[float, float] | None
+    shippable_duration: float
+    grounded_annotations: tuple[str, ...]
 
 
 @dataclass(frozen=True)
