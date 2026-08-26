@@ -146,10 +146,18 @@ deciding among those belongs to Selects and Structure.
 
 Asked inside **each episode's own scope**, two lists per episode:
 
-| bucket | means |
-|---|---|
-| `notes` | taken as a note rather than as a memory — a screen, a document, an object photographed to record what it is |
-| `failed` | the picture did not come out — obstructed, smeared, unreadable |
+| bucket | means | acted on |
+|---|---|---|
+| `notes` | taken as a note rather than as a memory — a screen, a document, an object photographed to record what it is | removed |
+| `failed` | the picture did not come out — obstructed, smeared, unreadable | removed |
+| `ordinary` | nothing wrong with it, just unremarkable or one of several alike | **read, validated, discarded** |
+
+`ordinary` exists so that `notes` does not become a dumping ground. Without it the
+model had only two ways to express a verdict, and "this frame is unremarkable"
+landed in `notes`: measured at temperature 0 on one real pack, `notes` held 19
+tiles of which nine were fields and cycling paths. With the third list it held four
+— a document and three shots of a television — and `ordinary` absorbed 24
+landscapes. It is optional on the wire: an answer that omits it has still answered.
 
 Protections and fail-safes:
 
@@ -224,16 +232,20 @@ Both months at temperature 0, with the cap:
 | sparse | 5 | 5 | 58/58 | 19 (7.3%) |
 | dense | 15 | 15 | 88/101 | 64 (4.4%) |
 
-**The mechanism works; the judgement does not yet.** Reviewing the sparse month's
-19 by eye: roughly eight are right — photographed documents and shots of a
-television — and roughly ten are wrong, mostly landscape and cycling frames culled
-as "notes" when they are ordinary photographs. Worse, it still keeps a watch face,
-two bike computers, two phone screens, three television wallpapers, a washing
-machine and a rim label, all of which are exactly what `notes` is for.
+**Precision is now the point, and it is good.** The sparse month's culls are two
+photographed documents, four shots of a television, and three objects held up to
+the camera. No landscape, no path, no portrait — every false positive from the
+two-bucket version is gone.
 
-So the bucket is firing on "dull" rather than on "taken as a note". That is a
-semantics problem in the prompt, and it is now measurable: at temperature 0 one
-call is an answer, so a wording change can be A/B'd honestly for the first time.
+**Recall is deliberately behind it.** A watch face, two bike computers, a washing
+machine and a rim label survive in packs that answered; they went to `ordinary`.
+That is the right direction to fail: a wrong cull is permanent and invisible, a
+wrong keep is fixed by a later pass a person can check.
+
+**The open reliability gap is whole packs, not whole months.** Two of the sparse
+month's five packs returned an answer whose Cull namespace did not parse, so their
+decisions were discarded and the sheet is marked invalid. Fail-open works; the
+frequency does not.
 
 ## 5. Open, not yet built
 
