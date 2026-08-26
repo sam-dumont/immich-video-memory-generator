@@ -46,6 +46,76 @@ def _assert_pixel_near(
     )
 
 
+def _pass_zero_for(tmp_path: Path, *, assets: tuple[str, ...], when, favourites: tuple = ()):
+    """A prepared corpus and a Pass 0 whose model answered, culling nothing."""
+    from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
+    from immich_memories.analysis.llm_query import LLMTransportAttempt
+    from immich_memories.analysis.period_insight import run_period_insight
+
+    built = tuple(
+        make_asset(
+            asset_id,
+            file_created_at=when + timedelta(seconds=index),
+            is_favorite=asset_id in favourites,
+        )
+        for index, asset_id in enumerate(assets)
+    )
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(
+            source_fetcher=lambda _scope: built,
+            preview_jpeg=lambda _asset: _jpeg("slate"),
+        ),
+    )
+
+    async def _answer(prompt, _config, **kwargs):
+        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
+        if "chronological episode pack" in prompt:
+            return json.dumps(
+                {
+                    "schema_version": "episode-scan-v4",
+                    "pack": 1,
+                    "episode_readings": [
+                        {
+                            "episode": 1,
+                            "page": 1,
+                            "visual_summary": "Generated frames.",
+                            "representative_tiles": [1],
+                            "representative_reason": "The first tile stands for the page.",
+                        }
+                    ],
+                    "cull_rejects": [{"episode": 1, "notes": [], "failed": []}],
+                }
+            )
+        return json.dumps(
+            {
+                "schema_version": "period-insight-v1",
+                "period_insight": {
+                    "thesis": None,
+                    "evidence": [],
+                    "tensions": [],
+                    "recurring_threads": [],
+                    "unavailable_reason": "Too little for a thesis.",
+                },
+            }
+        )
+
+    gateway = VisualEditorialGateway(
+        llm_config=LLMConfig(model="vision-test"),
+        cache_path=tmp_path / "judgments.db",
+        trace=prepared.trace,
+    )
+    # WHY: query_llm is the provider boundary; source, atlas and packing stay real.
+    with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
+        pass_zero = run_period_insight(
+            prepared,
+            requester=gateway,
+            sheet_output_dir=tmp_path / "sheets",
+            frame_cache_dir=None,
+        )
+    return prepared, pass_zero
+
+
 def _run_single_protection_case(tmp_path: Path, *, favourite: bool):
     from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
     from immich_memories.analysis.llm_query import LLMTransportAttempt

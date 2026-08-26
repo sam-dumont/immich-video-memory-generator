@@ -6,6 +6,7 @@ import io
 import json
 from dataclasses import dataclass, replace
 from hashlib import sha256
+from itertools import starmap
 from pathlib import Path
 from typing import Any, Literal
 
@@ -28,6 +29,7 @@ from immich_memories.analysis.period_insight import (
     PassZeroResult,
 )
 from immich_memories.analysis.selection_flow import PreparedEditorialSource
+from immich_memories.cache.editorial_verdicts import EditorialVerdicts
 
 PASS_ONE_VERSION = "pass-1-v1"  # noqa: S105 - public editorial pass identity
 _REVIEW_STATE_COLOURS = {
@@ -36,6 +38,11 @@ _REVIEW_STATE_COLOURS = {
     "CULL": (170, 20, 20),
 }
 _REVIEW_FAVOURITE_COLOUR = (180, 130, 0)
+
+
+# Scopes a remembered verdict to what the buckets MEANT. Re-rendering a picture
+# must not clear a judgement about what it is; redefining `notes` must.
+CULL_PASS_VERSION = "pass-1-cull-v1"  # noqa: S105 - editorial pass identity
 
 
 @dataclass(frozen=True)
@@ -86,6 +93,7 @@ def run_cull(
     pass_zero: PassZeroResult,
     *,
     review_output_dir: Path,
+    verdicts: EditorialVerdicts | None = None,
 ) -> CullPassResult:
     """Reparse banked v3 Pass 1 namespaces without making another model request."""
     attempts = {(attempt.pack_id, attempt.page_id): attempt for attempt in pass_zero.scan_attempts}
@@ -94,6 +102,11 @@ def run_cull(
         for pack in pass_zero.episode_packs
     )
     rejects, pass_one_warnings, logical_requests = _combine_pack_readings(readings)
+    # What a picture IS does not change between memories, so a verdict reached
+    # once stands for all of them. What it sat beside does change, which is why
+    # only the two removing buckets are remembered.
+    rejects, remembered_warnings = _with_remembered_verdicts(prepared, rejects, verdicts)
+    pass_one_warnings = _ordered_unique((*pass_one_warnings, *remembered_warnings))
     rejects, favourite_warnings = _protect_favourites(prepared, rejects)
     pass_one_warnings = _ordered_unique((*pass_one_warnings, *favourite_warnings))
     ordered_rejects, survivors = _apply_cull(prepared, rejects)
@@ -110,6 +123,11 @@ def run_cull(
         ordered_rejects,
         logical_requests,
     )
+    if verdicts is not None:
+        verdicts.remember(
+            ((item.asset_id, item.bucket) for item in ordered_rejects),
+            pass_version=CULL_PASS_VERSION,
+        )
     warnings = _authoritative_warnings(prepared)
     review = _render_review(
         prepared,
@@ -199,6 +217,28 @@ def _apply_cull(
         candidate for candidate in prepared.candidates if candidate.asset_id not in rejected_ids
     )
     return ordered_rejects, survivors
+
+
+def _with_remembered_verdicts(
+    prepared: PreparedEditorialSource,
+    rejects: tuple[CullDecision, ...],
+    verdicts: EditorialVerdicts | None,
+) -> tuple[tuple[CullDecision, ...], tuple[str, ...]]:
+    """This run's rejects, plus the standing verdicts about the same pictures."""
+    if verdicts is None:
+        return rejects, ()
+    decided = {decision.asset_id for decision in rejects}
+    remembered = verdicts.recall(prepared.candidate_ids, pass_version=CULL_PASS_VERSION)
+    added = tuple(
+        starmap(
+            CullDecision,
+            (pair for pair in remembered.items() if pair[0] not in decided),
+        )
+    )
+    warnings = tuple(
+        f"!! remembered verdict culled {decision.asset_id}: {decision.reason}" for decision in added
+    )
+    return (*rejects, *added), warnings
 
 
 def _protect_favourites(
