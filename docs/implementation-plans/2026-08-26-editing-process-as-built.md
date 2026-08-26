@@ -190,11 +190,14 @@ Never restate in prose what the parser already enforces.
 **Bounded prose is fitted, not fatal.** A reason running past its bound is trimmed;
 the decision it explains survives.
 
-**The content is less stable than the shape.** Across three repeats of the same
-pack, the same pixels and the same prompt: 6 episodes gave 11 named tiles once and
-an empty answer twice; 9 episodes returned tile aliases as strings rather than
-integers on one run. The envelope is reliable; what the model chooses to put in it
-is not. Anything downstream must treat one run's Cull as a sample, not a verdict.
+**Decide greedily, always.** Every call in the project was sampling at the
+transport default of 0.3, because nothing ever passed a temperature. That, not the
+prompt and not the model, was the instability: four repeats of one real pack gave
+2107, 1917, 2253 and 2448 characters, and the fourth named all 105 tiles in the
+pack. At 0.0 all four were byte-identical. The default is now 0.0 everywhere.
+
+This is what makes the rest measurable. Before it, comparing two prompts was
+comparing two samples, and a banked answer was not what re-asking would return.
 
 **Some assets have no preview at all.** A dense month raised 23
 `!! Pass 0 visual unavailable` warnings where the preview endpoint answered 404.
