@@ -5,7 +5,7 @@
 > `2026-08-25-contact-sheet-editing-process.md` is the plan; this is the outcome.
 > Written so the user-facing documentation can be assembled from it at the end.
 
-Corpus for every measurement below: **June 2023**, a real library month.
+Every measurement below comes from real library months, never synthetic fixtures.
 
 ---
 
@@ -16,10 +16,20 @@ Corpus for every measurement below: **June 2023**, a real library month.
 | stage | calls | notes |
 |---|---|---|
 | Source preparation | **0** | metadata only — no model, no downloads |
-| Pass 0 — episode scan | **one per pack** | June: **6 packs → 6 calls** for 261 candidates |
+| Pass 0 — episode scan | **one per pack** | one call per contact sheet |
 | Pass 0 — period synthesis | **1** | one wall over the episode representatives |
 | Pass 1 — Cull | **0** | reparses Pass 0's banked answer as a second namespace |
-| **Total, one month** | **7** | |
+
+Measured on two real months of very different shape:
+
+| month | fetched | candidates | episodes | packs | **total calls** |
+|---|---|---|---|---|---|
+| a sparse month | 729 | 261 | 58 | 3 | **4** |
+| a dense month | 2016 | 1468 | 101 | 15 | **16** |
+
+Cost scales with contact sheets, not with assets: a corpus 5.6× larger costs 4×
+the calls. A pack is tile-capped at ~120, so a dense month's packs hold 4–14
+episodes while a sparse, scattered month packed as many as 36 into one.
 
 **Cull is free.** It is a logical pass, not a request: Pass 0 and Pass 1 ride in one
 fused envelope over identical evidence. This is the single most important cost
@@ -29,26 +39,29 @@ property of the design and it must survive every later change.
 
 A pack is one contact sheet, and the packer fills it until the largest *valid*
 response would no longer fit the output budget (`fused_episode_response_fits`).
-Measured on June: **6 packs for 261 candidates ≈ 43 tiles per call**, largest pack
-57 tiles.
-
-Raising tiles-per-pack lowers call count and raises latency per call. It also has a
-hard quality limit — see §3.
+Raising tiles-per-pack lowers the call count and has a hard quality limit — see §3.
+**Episodes per pack is the binding constraint, not tiles.** A pack of 36 episodes
+came back with `cull_rejects` omitted from an otherwise complete and valid answer:
+the model spent itself describing 36 episodes and never reached the second half of
+the question. The same contract at ~15 episodes answered, and at 2 episodes it was
+identical across three repeats.
 
 ### Measured wall-clock
 
 | run | scope | calls | time |
 |---|---|---|---|
 | one day | 9 candidates, 1 pack | 2 | ~12 s |
-| full month | 261 candidates, 6 packs | 7 | a few minutes |
+| sparse month | 261 candidates, 3 packs | 4 | ~1 min |
+| dense month | 1468 candidates, 15 packs | 16 | several minutes |
 
 Thumbnails are fetched once per asset and reused across passes; the atlas is built
 once and every pass is handed the same encoded JPEG bytes.
 
 ### Requirements this sets
 
-- **A month must not cost more than ~10 model calls.** Anything that adds a call
-  per asset, per moment, or per episode is out.
+- **Cost must scale with contact sheets, never with assets.** 4 calls for a sparse
+  month and 16 for one 5.6× larger is the shape to preserve; anything that adds a
+  call per asset, per moment, or per episode is out.
 - **A pass that needs its own request must justify it against a fused namespace.**
   Fusion is only valid over identical evidence with independent namespaces.
 - **No pass may re-download or re-encode pixels.** One atlas, hashed, reused.
@@ -63,7 +76,7 @@ Runs before any pass and removes only **facts about the file**, never judgements
 Every exclusion is recorded with a named reason, so the account still answers for
 the whole fetch.
 
-| removed | why | June |
+| removed | why | sparse month |
 |---|---|---|
 | Live Photo motion components | the video half is part of a photograph, not a second visual | **186** |
 | not shot on this camera | forwarded and downloaded material is not theirs to remember | **282** |
@@ -101,8 +114,10 @@ Protections and fail-safes:
 
 - a **favourite** named by Cull is kept, with a warning;
 - **unavailable pixels** cannot actuate a decision;
-- refusal, timeout, truncation, an unknown tile, or a tile named under the wrong
-  episode **rejects nothing** and raises a loud `!!`;
+- refusal, timeout, truncation, or a tile this pack never showed **rejects nothing**
+  and raises a loud `!!`;
+- a tile filed under the wrong episode is still applied and warned — bookkeeping
+  must not void a pack of correct judgements, which it did on a real month;
 - more than 75% rejected raises `!! possible over-cull` — a diagnostic, never a quota;
 - any `!!` marks the review sheet **invalid for an owner verdict**.
 
