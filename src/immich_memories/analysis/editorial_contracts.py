@@ -17,6 +17,10 @@ if TYPE_CHECKING:
 RECORD_SHOT_FUNCTION_MAX_CHARS = 48
 RECORD_SHOT_REASON_MAX_CHARS = 96
 LIVE_PHOTO_RENDERING_FAMILY_VERSION = "live-photo-rendering-family-v1"
+# The request shows these to the model and the parser demands exactly them.
+# Naming them once is what stops a prose prompt drifting from a strict reader.
+RECORD_SHOT_WIRE_KEYS = ("tile", "function", "reason")
+CULL_REJECT_WIRE_KEYS = ("tile", "defect", "evidence")
 
 
 @dataclass(frozen=True)

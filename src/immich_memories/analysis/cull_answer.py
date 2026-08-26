@@ -9,8 +9,10 @@ from itertools import chain
 from typing import TypeGuard
 
 from immich_memories.analysis.editorial_contracts import (
+    CULL_REJECT_WIRE_KEYS,
     RECORD_SHOT_FUNCTION_MAX_CHARS,
     RECORD_SHOT_REASON_MAX_CHARS,
+    RECORD_SHOT_WIRE_KEYS,
     RecordShotMark,
 )
 from immich_memories.analysis.period_insight_answer import (
@@ -206,7 +208,7 @@ def _read_record_shots(
     parsed: list[RecordShotMark] = []
     keys: list[int] = []
     for item in value:
-        if not isinstance(item, dict) or set(item) != {"tile", "function", "reason"}:
+        if not isinstance(item, dict) or set(item) != set(RECORD_SHOT_WIRE_KEYS):
             return None
         key = item.get("tile")
         function = item.get("function")
@@ -234,7 +236,7 @@ def _read_cull_rejects(
     parsed: list[CullDecision] = []
     keys: list[int] = []
     for item in value:
-        if not isinstance(item, dict) or set(item) != {"tile", "defect", "evidence"}:
+        if not isinstance(item, dict) or set(item) != set(CULL_REJECT_WIRE_KEYS):
             return None
         key = item.get("tile")
         defect = item.get("defect")

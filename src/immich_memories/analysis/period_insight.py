@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
@@ -336,16 +337,42 @@ def _read_period_wall(
     )
 
 
+def period_response_shape(*, tile: int) -> str:
+    """One complete example envelope for the period synthesis.
+
+    Its nesting and its scalar types are the part a prose description leaves to
+    the model, and the parser voids the whole answer on either.
+    """
+    return json.dumps(
+        {
+            "schema_version": PERIOD_INSIGHT_SCHEMA_VERSION,
+            "period_insight": {
+                "thesis": "what this period was about, or null",
+                "evidence": [
+                    {
+                        "observation": "what these tiles show",
+                        "representative_tiles": [tile],
+                    }
+                ],
+                "tensions": ["one sentence, as plain text"],
+                "recurring_threads": ["one sentence, as plain text"],
+                "unavailable_reason": None,
+            },
+        },
+        separators=(",", ":"),
+    )
+
+
 def _period_prompt(upstream: tuple[str, ...], pages: tuple[ContactSheetPage, ...]) -> str:
     page_names = ", ".join(page.sheet_id for page in pages)
     return (
         "Read this complete chronological period wall of actual representative pixels. The prior "
         "episode observations follow as grounded context, not substitutes for the images:\n"
         + "\n".join(upstream)
-        + f'\nReturn one complete JSON object with schema_version="{PERIOD_INSIGHT_SCHEMA_VERSION}" '
-        f"for pages {page_names}. period_insight needs thesis (string or null), evidence entries "
-        "with observation and representative_tiles, tensions, recurring_threads, and "
-        "unavailable_reason. A null thesis is honest when the material does not support one."
+        + f"\nReturn one complete JSON object for pages {page_names}. A null thesis is honest "
+        "when the material does not support one, and it is the only case that fills "
+        "unavailable_reason. tensions and recurring_threads are lists of plain sentences. "
+        "Use exactly this shape and these keys:\n" + period_response_shape(tile=1)
     )
 
 

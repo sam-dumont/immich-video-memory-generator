@@ -389,3 +389,51 @@ def test_boolean_unknown_cross_page_overlong_or_policy_cull_invalidates_namespac
     assert answer.record_valid is True
     assert answer.cull_valid is False
     assert answer.cull_rejects == ()
+
+
+def _wire_objects_in(prompt: str) -> tuple[dict[str, object], ...]:
+    """Every complete JSON object the prompt shows the model."""
+    decoder = json.JSONDecoder()
+    found: list[dict[str, object]] = []
+    for index, character in enumerate(prompt):
+        if character != "{":
+            continue
+        try:
+            value, _ = decoder.raw_decode(prompt, index)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            found.append(value)
+    return tuple(found)
+
+
+def test_the_episode_prompt_shows_the_exact_shape_its_parser_accepts() -> None:
+    """Prose asks for a shape; the parser demands one; nothing keeps them equal.
+
+    Measured against the local model: the prompt asked for "function ... and
+    visible reason", the model sent "visible_reason", the parser required
+    "reason", and every real record-shot namespace was voided.
+    """
+    from immich_memories.analysis.cull_answer import read_cull_namespaces
+    from immich_memories.analysis.episode_scan_request import episode_response_shape
+
+    shown = _wire_objects_in(episode_response_shape(tile=1))
+    record = next(item for item in shown if "function" in item)
+    reject = next(item for item in shown if "defect" in item)
+
+    parsed = read_cull_namespaces(
+        json.dumps(
+            {
+                "schema_version": "episode-scan-v3",
+                "pack": 1,
+                "record_shots": [record],
+                "cull_rejects": [reject],
+            }
+        ),
+        pack_alias=1,
+        tile_map={1: "asset"},
+    )
+
+    assert parsed is not None
+    assert parsed.record_valid
+    assert parsed.cull_valid

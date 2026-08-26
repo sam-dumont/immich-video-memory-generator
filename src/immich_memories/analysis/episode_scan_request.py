@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 from immich_memories.analysis.contact_sheets import TileRef
 from immich_memories.analysis.editorial_contracts import (
+    CULL_REJECT_WIRE_KEYS,
     RECORD_SHOT_FUNCTION_MAX_CHARS,
     RECORD_SHOT_REASON_MAX_CHARS,
+    RECORD_SHOT_WIRE_KEYS,
     EditorialCandidate,
 )
 from immich_memories.analysis.editorial_gateway import VisualEditorialRequest
@@ -25,6 +28,48 @@ if TYPE_CHECKING:
 EPISODE_SCAN_PASS_VERSION = "episode-scan-v3"  # noqa: S105 - editorial pass identity
 EPISODE_SCAN_PROMPT_VERSION = "episode-scan-prompt-v3"
 _RENDER_VERSION = "visual-atlas-v1/contact-sheet-v1"
+
+
+def episode_response_shape(*, tile: int) -> str:
+    """One complete example envelope, built from the keys the parser demands.
+
+    The model is shown the shape rather than told about it in prose. Every
+    namespace here is read back by a parser that voids the whole namespace on
+    an unexpected key, so a described-but-not-shown shape fails silently on
+    every real answer.
+    """
+    record = dict(
+        zip(
+            RECORD_SHOT_WIRE_KEYS,
+            (tile, "what this records", "what makes it legible"),
+            strict=True,
+        )
+    )
+    reject = dict(
+        zip(
+            CULL_REJECT_WIRE_KEYS,
+            (tile, "unusable_motion_blur", "subject_unrecognizable"),
+            strict=True,
+        )
+    )
+    return json.dumps(
+        {
+            "schema_version": EPISODE_SCAN_SCHEMA_VERSION,
+            "pack": 1,
+            "episode_readings": [
+                {
+                    "episode": 1,
+                    "page": 1,
+                    "visual_summary": "what this episode shows",
+                    "representative_tiles": [tile],
+                    "representative_reason": "why these read best on a wall",
+                }
+            ],
+            "record_shots": [record],
+            "cull_rejects": [reject],
+        },
+        separators=(",", ":"),
+    )
 
 
 def build_episode_request(
@@ -68,6 +113,9 @@ def _validate_v3_one_page_pack(pack: EpisodeScanPack) -> None:
 
 
 def _episode_prompt(pack: EpisodeScanPack) -> str:
+    # The example carries a tile this pack really has, so copying it verbatim
+    # costs a wrong mark rather than voiding the namespace on an unknown alias.
+    first_tile = pack.page.tile_refs[0].number
     scopes = "\n".join(
         f"episode={scope.episode_alias} page={scope.page_alias} "
         f"tiles=[{','.join(str(ref.number) for ref in scope.tile_refs)}]"
@@ -87,21 +135,21 @@ def _episode_prompt(pack: EpisodeScanPack) -> str:
         "wall legible. All episode and record text must use printable ASCII except double quote "
         "and backslash; use one line with no control characters. Apostrophes and basic punctuation "
         "are allowed. "
-        "Representatives reject nothing. First return record_shots for visuals that function "
-        "as evidence, proof, a ticket, a sign, a document, or another necessary factual record. "
-        "Each entry needs only the pack-local integer tile, function (at most "
-        f"{RECORD_SHOT_FUNCTION_MAX_CHARS} characters), and visible reason (at most "
-        f"{RECORD_SHOT_REASON_MAX_CHARS} characters). "
-        "Then return cull_rejects only for clearly unusable non-record, non-favourite visuals. "
-        "Each entry needs "
-        "only the pack-local integer tile plus one matching defect/evidence pair: "
+        "Representatives reject nothing. Return record_shots only for visuals that function "
+        "as evidence, proof, a ticket, a sign, a document, or another necessary factual record; "
+        "most visuals are not record shots. Its function is at most "
+        f"{RECORD_SHOT_FUNCTION_MAX_CHARS} characters and its reason at most "
+        f"{RECORD_SHOT_REASON_MAX_CHARS} characters. "
+        "Return cull_rejects only for clearly unusable non-record, non-favourite visuals, "
+        "with one matching defect/evidence pair: "
         "accidental_capture with camera_obstructed, unintended_partial, or blank_floor_ceiling; "
         "unusable_motion_blur with subject_unrecognizable or frame_smeared_beyond_use; "
         "unusable_exposure with detail_lost_to_darkness or detail_lost_to_highlights; or "
         "corrupt_or_obscured_pixels with decode_corruption, lens_obscured, or "
         "content_not_visible. Do not return Cull prose. Subject, repetition, relative weakness, "
         "duration, resolution, similarity, and thesis relevance cannot actuate Cull. Return both "
-        "arrays even when empty."
+        "arrays even when empty. Use exactly these keys and no others:\n"
+        + episode_response_shape(tile=first_tile)
     )
 
 

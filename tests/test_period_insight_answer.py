@@ -637,3 +637,26 @@ def test_singular_and_packed_episode_parsers_share_strict_namespace_validation()
     assert packed is not None
     assert packed.readings == ()
     assert packed.invalid_observations == (("a", "page"),)
+
+
+def test_the_period_prompt_shows_the_exact_shape_its_parser_accepts() -> None:
+    """Naming fields in prose leaves their nesting and their types to the model.
+
+    Measured against the local model: it put thesis and evidence at the top
+    level instead of under period_insight, and returned tensions and
+    recurring_threads as objects where the parser demands plain strings. A good
+    thesis was discarded three times over.
+    """
+    from immich_memories.analysis.period_insight import period_response_shape
+    from immich_memories.analysis.period_insight_answer import read_period_answer
+
+    answer = read_period_answer(
+        period_response_shape(tile=1),
+        page_ids=("page-1",),
+        tile_map={("page-1", 1): ("episode-1", "asset-1")},
+    )
+
+    assert answer is not None
+    assert answer.thesis
+    assert answer.tensions
+    assert answer.recurring_threads
