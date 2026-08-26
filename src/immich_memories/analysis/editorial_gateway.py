@@ -59,6 +59,7 @@ class BankedVisualAnswer:
     raw_text: str
     provenance: DecisionProvenance
     original_provenance: DecisionProvenance
+    request_trace: RequestTrace
 
 
 class EditorialGateway(Protocol):
@@ -94,7 +95,11 @@ class VisualEditorialGateway:
             render_version=request.render_version,
             layout_versions=tuple(page.layout_version for page in request.pages),
             upstream_material=request.upstream_material,
-            request_limits=(f"max_pages={request.limits.max_pages_per_request}",),
+            request_limits=(
+                f"max_pages={request.limits.max_pages_per_request}",
+                f"max_output_tokens={request.limits.max_output_tokens}",
+                f"timeout_seconds={request.limits.timeout_seconds}",
+            ),
             continuation_identity=(request.continuation_number, request.continuation_count),
             endpoint=self.llm_config.base_url.rstrip("/"),
         )
@@ -106,14 +111,14 @@ class VisualEditorialGateway:
             provenance = _provenance(
                 request, page_hashes, request_key, cache_hit=True, model=self.llm_config.model
             )
-            self._record(
+            request_trace = self._record(
                 provenance,
                 request.pages,
                 page_hashes,
                 cache_hit=True,
                 original_provenance=original,
             )
-            return BankedVisualAnswer(raw_text, provenance, original)
+            return BankedVisualAnswer(raw_text, provenance, original, request_trace)
 
         provenance = _provenance(
             request, page_hashes, request_key, cache_hit=False, model=self.llm_config.model
@@ -140,6 +145,8 @@ class VisualEditorialGateway:
                     image_detail=request.image_detail,
                     transport_observer=record_attempt,
                     require_complete=True,
+                    max_tokens=request.limits.max_output_tokens,
+                    timeout_seconds=request.limits.timeout_seconds,
                 )
             )
             if not raw_text.strip():
@@ -155,7 +162,7 @@ class VisualEditorialGateway:
             )
             raise
         self.cache.remember(request_key, raw_text, _provenance_json(provenance))
-        self._record(
+        request_trace = self._record(
             provenance,
             request.pages,
             page_hashes,
@@ -163,7 +170,7 @@ class VisualEditorialGateway:
             actual_calls=len(attempts),
             attempts=tuple(attempts),
         )
-        return BankedVisualAnswer(raw_text, provenance, provenance)
+        return BankedVisualAnswer(raw_text, provenance, provenance, request_trace)
 
     def _record(
         self,
@@ -175,20 +182,20 @@ class VisualEditorialGateway:
         actual_calls: int = 0,
         original_provenance: DecisionProvenance | None = None,
         attempts: tuple[RequestAttemptTrace, ...] = (),
-    ) -> None:
-        self.trace.record_request(
-            RequestTrace(
-                provenance=provenance,
-                attached_sheet_hashes=page_hashes,
-                actual_calls=actual_calls,
-                cache_hit=cache_hit,
-                tile_count=sum(len(page.tile_refs) for page in pages),
-                provider=self.llm_config.provider,
-                model=self.llm_config.model,
-                attempts=attempts,
-                original_provenance=original_provenance,
-            )
+    ) -> RequestTrace:
+        request_trace = RequestTrace(
+            provenance=provenance,
+            attached_sheet_hashes=page_hashes,
+            actual_calls=actual_calls,
+            cache_hit=cache_hit,
+            tile_count=sum(len(page.tile_refs) for page in pages),
+            provider=self.llm_config.provider,
+            model=self.llm_config.model,
+            attempts=attempts,
+            original_provenance=original_provenance,
         )
+        self.trace.record_request(request_trace)
+        return request_trace
 
 
 def _validated_page_hashes(pages: tuple[ContactSheetPage, ...]) -> tuple[str, ...]:

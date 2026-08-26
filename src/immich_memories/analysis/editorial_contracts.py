@@ -34,6 +34,34 @@ class SourceEvidence:
 
 
 @dataclass(frozen=True)
+class InsightEvidence:
+    """One period observation grounded in the episodes and pixels that support it."""
+
+    observation: str
+    episode_ids: tuple[str, ...]
+    asset_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class PeriodInsight:
+    """The provisional reading of one complete period wall."""
+
+    thesis: str | None
+    evidence: tuple[InsightEvidence, ...]
+    tensions: tuple[str, ...]
+    recurring_threads: tuple[str, ...]
+    unavailable_reason: str | None
+    revision: int
+    provenance: DecisionProvenance
+
+    def __post_init__(self) -> None:
+        if self.revision < 0:
+            raise ValueError("period insight revision cannot be negative")
+        if any(not item.episode_ids or not item.asset_ids for item in self.evidence):
+            raise ValueError("period insight evidence must identify episodes and assets")
+
+
+@dataclass(frozen=True)
 class DecisionProvenance:
     """Evidence that lets a decision be reproduced from its original request."""
 

@@ -42,7 +42,8 @@ def test_only_source_scope_and_owner_exclusions_apply_before_pass_zero() -> None
 
     assert prepared.candidate_ids == ("pregnancy-test", "screenshot", "short-clip")
     assert prepared.excluded_ids == ("owner-excluded",)
-    assert prepared.trace.story_of("pregnancy-test").first_pass == "pass-0"  # noqa: S105
+    assert prepared.trace.story_of("pregnancy-test").first_pass is None
+    assert [item.name for item in prepared.trace.editorial_passes] == ["source-eligibility"]
 
 
 def test_source_observations_survive_without_running_legacy_selectors(monkeypatch) -> None:

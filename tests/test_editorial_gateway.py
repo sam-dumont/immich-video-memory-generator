@@ -73,6 +73,79 @@ def test_gateway_attaches_exact_page_bytes_and_traces_the_same_hash(tmp_path) ->
     assert request_trace["actual_calls"] == 1
 
 
+def test_gateway_returns_its_physical_trace_and_uses_explicit_request_budget(tmp_path) -> None:
+    """A fused logical consumer can reuse one answer without recounting its wire call."""
+    from dataclasses import replace
+
+    from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
+
+    captured: dict[str, object] = {}
+
+    async def _answer(_prompt, _config, **kwargs):
+        from immich_memories.analysis.llm_query import LLMTransportAttempt
+
+        captured.update(kwargs)
+        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
+        return '{"episode_reading":{}}'
+
+    trace = Trace()
+    gateway = VisualEditorialGateway(
+        llm_config=LLMConfig(model="vision-test"), cache_path=tmp_path / "judgments.db", trace=trace
+    )
+    request = replace(
+        _request(_page()),
+        pass_name="episode-scan",  # noqa: S106 - test-only pass identity
+        limits=VisionRequestLimits(max_output_tokens=2400, timeout_seconds=90),
+    )
+
+    # WHY: query_llm is the sole external provider transport this gateway may use.
+    with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
+        answer = gateway.ask(request)
+
+    assert captured["max_tokens"] == 2400
+    assert captured["timeout_seconds"] == 90
+    assert answer.request_trace.actual_calls == 1
+    assert answer.request_trace.provenance.request_key == answer.provenance.request_key
+    assert trace.requests == [answer.request_trace]
+
+
+def test_visual_request_budget_changes_cache_identity(tmp_path) -> None:
+    """A larger response envelope cannot reuse an answer truncated to a smaller budget."""
+    from dataclasses import replace
+
+    from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
+    from immich_memories.analysis.llm_query import LLMTransportAttempt
+
+    calls: list[None] = []
+
+    async def _answer(*_args, **kwargs):
+        calls.append(None)
+        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
+        return '{"episode_reading":{}}'
+
+    gateway = VisualEditorialGateway(
+        llm_config=LLMConfig(model="vision-test"),
+        cache_path=tmp_path / "judgments.db",
+        trace=Trace(),
+    )
+    first = replace(
+        _request(_page()),
+        limits=VisionRequestLimits(max_output_tokens=1200, timeout_seconds=60),
+    )
+    second = replace(
+        first,
+        limits=VisionRequestLimits(max_output_tokens=2400, timeout_seconds=90),
+    )
+
+    # WHY: query_llm is the external transport; the visual cache remains real.
+    with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
+        first_answer = gateway.ask(first)
+        second_answer = gateway.ask(second)
+
+    assert len(calls) == 2
+    assert first_answer.provenance.request_key != second_answer.provenance.request_key
+
+
 def test_gateway_reuses_banked_answer_with_original_and_reuse_provenance(tmp_path) -> None:
     from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
 
@@ -99,6 +172,8 @@ def test_gateway_reuses_banked_answer_with_original_and_reuse_provenance(tmp_pat
     assert len(calls) == 1
     assert reused.provenance.cache_hit is True
     assert reused.original_provenance.cache_hit is False
+    assert reused.request_trace.actual_calls == 0
+    assert reused.request_trace.cache_hit is True
     reuse_trace = trace.as_dict()["requests"][-1]
     assert reuse_trace["cache_hit"] is True
     assert reuse_trace["original_provenance"]["cache_hit"] is False

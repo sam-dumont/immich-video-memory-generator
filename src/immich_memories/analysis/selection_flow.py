@@ -7,6 +7,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from hashlib import sha256
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from immich_memories.analysis.editorial_contracts import (
@@ -24,6 +25,7 @@ from immich_memories.analysis.moment_grouping import (
 from immich_memories.analysis.selection_trace import Trace
 from immich_memories.analysis.source_filter import is_editorial_source_asset
 from immich_memories.analysis.source_quality import grounded_source_annotations
+from immich_memories.analysis.visual_atlas import AtlasSource
 from immich_memories.api.models import AssetType, VideoClipInfo
 
 if TYPE_CHECKING:
@@ -54,6 +56,7 @@ class EditorialDependencies:
     source_fetcher: Callable[[SourceScope], Sequence[Asset | VideoClipInfo]]
     library_membership: Callable[[Asset, tuple[str, ...]], bool] | None = None
     source_evidence: Callable[[Asset | VideoClipInfo], SourceEvidence | None] | None = None
+    preview_jpeg: Callable[[Asset], bytes | None] | None = None
 
 
 @dataclass(frozen=True)
@@ -74,6 +77,7 @@ class PreparedEditorialSource:
     """Chronological candidates and their admission record for subsequent passes."""
 
     candidates: tuple[EditorialCandidate, ...]
+    visual_sources: tuple[AtlasSource, ...]
     trace: Trace
     episode_groups: tuple[EditorialGroup, ...]
     moment_groups: tuple[EditorialGroup, ...]
@@ -129,6 +133,9 @@ def prepare_editorial_source(
             key=lambda candidate: (candidate.taken_at, candidate.asset_id),
         )
     )
+    visual_sources = tuple(
+        _visual_source_from(source, dependencies.preview_jpeg) for source in eligible_sources
+    )
     episode_groups = build_episode_groups(candidates)
     moment_groups = build_moment_groups(candidates)
     trace = Trace()
@@ -150,20 +157,9 @@ def prepare_editorial_source(
             provenance=_source_provenance("source-eligibility", source_ids),
         )
     )
-    trace.record_editorial_pass(
-        PassTrace(
-            name="pass-0",
-            input_ids=candidate_ids,
-            kept_ids=candidate_ids,
-            rejected=(),
-            unresolved=(),
-            duration_before=sum(candidate.shippable_duration for candidate in candidates),
-            duration_after=sum(candidate.shippable_duration for candidate in candidates),
-            provenance=_source_provenance("pass-0", candidate_ids),
-        )
-    )
     prepared = PreparedEditorialSource(
         candidates=candidates,
+        visual_sources=visual_sources,
         trace=trace,
         episode_groups=episode_groups,
         moment_groups=moment_groups,
@@ -194,6 +190,22 @@ def _candidate_from(
             asset,
             source if isinstance(source, VideoClipInfo) else None,
             evidence,
+        ),
+    )
+
+
+def _visual_source_from(
+    source: Asset | VideoClipInfo,
+    preview_jpeg: Callable[[Asset], bytes | None] | None,
+) -> AtlasSource:
+    asset = _asset(source)
+    return AtlasSource(
+        asset=asset,
+        preview_jpeg=preview_jpeg(asset) if preview_jpeg is not None else None,
+        motion_path=(
+            Path(source.local_path)
+            if isinstance(source, VideoClipInfo) and source.local_path is not None
+            else None
         ),
     )
 
@@ -278,6 +290,9 @@ def _source_exclusion_reason(
 def _validate_prepared_source(prepared: PreparedEditorialSource) -> None:
     if set(prepared.candidate_ids).intersection(prepared.excluded_ids):
         raise ValueError("editorial source cannot both admit and exclude an asset")
+    visual_ids = tuple(str(source.asset.id) for source in prepared.visual_sources)
+    if visual_ids != prepared.candidate_ids:
+        raise ValueError("editorial candidates and visual sources must conserve order and identity")
 
 
 def _scope_exclusion_reason(asset: Asset, scope: SourceScope) -> str:

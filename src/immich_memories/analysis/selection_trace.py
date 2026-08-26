@@ -299,7 +299,13 @@ class Trace:
         """What a reader must see before anything else in the report."""
         if not self.warnings:
             return []
-        return [*(f"!! {warning}" for warning in self.warnings), ""]
+        return [
+            *(
+                warning if warning.startswith("!! ") else f"!! {warning}"
+                for warning in self.warnings
+            ),
+            "",
+        ]
 
     def _coverage_lines(self) -> list[str]:
         """The pool's coverage, above the funnel — it frames everything below."""
