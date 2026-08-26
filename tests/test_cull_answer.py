@@ -110,8 +110,6 @@ def test_an_empty_answer_is_a_valid_answer_that_removes_nothing() -> None:
             {"episode": 1, "notes": [1], "failed": []},
             {"episode": 1, "notes": [2], "failed": []},
         ],
-        # the same tile in both buckets
-        [{"episode": 1, "notes": [1], "failed": [1]}],
         # a boolean is not a tile alias
         [{"episode": 1, "notes": [True], "failed": []}],
         # an unexpected key
@@ -323,3 +321,60 @@ def test_a_repeated_ordinary_tile_does_not_void_the_decisions_beside_it() -> Non
     assert parsed.cull_valid
     # the removal stands; the ordinary mentions of the same tile change nothing
     assert tuple(d.asset_id for d in parsed.cull_rejects) == ("a-screen",)
+
+
+def test_the_same_verdict_twice_is_one_verdict_not_a_broken_answer() -> None:
+    """Repeating a decision agrees with itself; it is not a contradiction.
+
+    Measured on a real dense month: one pack of fifteen named tiles 27 and 28
+    as notes under episode 1 and again under episode 3, and the partition check
+    voided all four of its episodes over a verdict that did not disagree with
+    anything.
+    """
+    from immich_memories.analysis.cull_answer import read_cull_namespaces
+
+    parsed = read_cull_namespaces(
+        json.dumps(
+            {
+                "schema_version": "episode-scan-v4",
+                "pack": 1,
+                "cull_rejects": [
+                    {"episode": 1, "notes": [3], "failed": [], "ordinary": []},
+                    {"episode": 2, "notes": [3], "failed": [], "ordinary": []},
+                ],
+            }
+        ),
+        pack_alias=1,
+        tile_map={1: "a", 2: "b", 3: "a-screen"},
+        episode_tiles={1: (1, 3), 2: (2,)},
+    )
+
+    assert parsed is not None
+    assert parsed.cull_valid
+    assert tuple(d.asset_id for d in parsed.cull_rejects) == ("a-screen",)
+
+
+def test_two_different_verdicts_about_one_tile_keep_the_tile() -> None:
+    """A contradiction resolves toward keeping, and never voids its neighbours."""
+    from immich_memories.analysis.cull_answer import read_cull_namespaces
+
+    parsed = read_cull_namespaces(
+        json.dumps(
+            {
+                "schema_version": "episode-scan-v4",
+                "pack": 1,
+                "cull_rejects": [
+                    {"episode": 1, "notes": [1], "failed": [2], "ordinary": []},
+                    {"episode": 2, "notes": [], "failed": [1], "ordinary": []},
+                ],
+            }
+        ),
+        pack_alias=1,
+        tile_map={1: "argued-over", 2: "plainly-failed"},
+        episode_tiles={1: (1, 2), 2: ()},
+    )
+
+    assert parsed is not None
+    assert parsed.cull_valid
+    assert tuple(d.asset_id for d in parsed.cull_rejects) == ("plainly-failed",)
+    assert any("contradict" in warning for warning in parsed.warnings)

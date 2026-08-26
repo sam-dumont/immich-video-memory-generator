@@ -137,17 +137,34 @@ def _read_scoped_rejects(
     if not isinstance(value, list):
         return None
     seen_episodes: set[int] = set()
-    seen_tiles: set[int] = set()
-    parsed: list[CullDecision] = []
+    verdicts: dict[str, set[str]] = {}
     misfiled: list[str] = []
     for entry in value:
-        read = _one_episode_entry(entry, tile_map, episode_tiles, seen_episodes, seen_tiles)
+        read = _one_episode_entry(entry, tile_map, episode_tiles, seen_episodes, verdicts)
         if read is None:
             return None
-        decisions, notes = read
-        parsed.extend(decisions)
-        misfiled.extend(notes)
-    return tuple(parsed), tuple(misfiled)
+        misfiled.extend(read)
+    return _resolve_verdicts(verdicts, tuple(misfiled))
+
+
+def _resolve_verdicts(
+    verdicts: dict[str, set[str]], misfiled: tuple[str, ...]
+) -> tuple[tuple[CullDecision, ...], tuple[str, ...]]:
+    """One decision per asset, resolving a disagreement toward keeping it.
+
+    Naming the same tile twice with the same verdict agrees with itself and is
+    one decision. Naming it with two different verdicts is a contradiction, and
+    a contradiction about whether to remove something resolves the only safe
+    way: the asset stays, and the trace says why.
+    """
+    decisions: list[CullDecision] = []
+    warnings = list(misfiled)
+    for asset_id, buckets in verdicts.items():
+        if len(buckets) > 1:
+            warnings.append(f"!! Cull gave contradictory verdicts for {asset_id}")
+            continue
+        decisions.append(CullDecision(asset_id, next(iter(buckets))))
+    return tuple(decisions), tuple(warnings)
 
 
 def _one_episode_entry(
@@ -155,14 +172,13 @@ def _one_episode_entry(
     tile_map: Mapping[int, str],
     episode_tiles: Mapping[int, tuple[int, ...]],
     seen_episodes: set[int],
-    seen_tiles: set[int],
-) -> tuple[tuple[CullDecision, ...], tuple[str, ...]] | None:
-    """One episode's lists, or None when the answer left the sheet."""
+    verdicts: dict[str, set[str]],
+) -> tuple[str, ...] | None:
+    """This episode's misfiling notes, or None when the answer left the sheet."""
     episode = _entry_episode(entry, episode_tiles, seen_episodes)
     if episode is None:
         return None
     scope = frozenset(episode_tiles[episode])
-    decisions: list[CullDecision] = []
     misfiled: list[str] = []
     assert isinstance(entry, dict)
     for bucket in DISCARDED_BUCKETS:
@@ -172,10 +188,10 @@ def _one_episode_entry(
         # naming tiles this sheet really shows: a real month sent episode 1's
         # ordinary list naming every tile and each later episode naming its own
         # again, and holding that to the partition voided two packs of five.
-        if named is not None and _tiles_in(named, tile_map, set()) is None:
+        if named is not None and _tiles_in(named, tile_map) is None:
             return None
     for bucket in CULL_BUCKETS:
-        tiles = _tiles_in(entry.get(bucket), tile_map, seen_tiles)
+        tiles = _tiles_in(entry.get(bucket), tile_map)
         if tiles is None:
             return None
         # Which episode a tile was filed under is bookkeeping; the judgement is
@@ -185,8 +201,9 @@ def _one_episode_entry(
             for tile in tiles
             if tile not in scope
         )
-        decisions.extend(CullDecision(tile_map[tile], bucket) for tile in tiles)
-    return tuple(decisions), tuple(misfiled)
+        for tile in tiles:
+            verdicts.setdefault(tile_map[tile], set()).add(bucket)
+    return tuple(misfiled)
 
 
 def _entry_episode(
@@ -213,7 +230,6 @@ def _entry_episode(
 def _tiles_in(
     value: object,
     tile_map: Mapping[int, str],
-    seen_tiles: set[int],
 ) -> tuple[int, ...] | None:
     """Tiles named for one bucket, or None when the answer left the sheet."""
     if not isinstance(value, list):
@@ -224,9 +240,6 @@ def _tiles_in(
         # sheet it was reading, and nothing in it can be trusted.
         if not _is_integer_alias(tile) or tile not in tile_map:
             return None
-        if tile in seen_tiles:
-            return None
-        seen_tiles.add(tile)
         tiles.append(tile)
     return tuple(tiles)
 
