@@ -406,8 +406,16 @@ bandit-ci:
 	sys.exit(len(high))"
 
 # Commit message lint (Commitizen conventional commits)
+# An empty range is a pass, not a failure: a run that happens after its commits
+# have merged has nothing left to check, and `cz check` exits 3 on "No commit
+# found with range". That made every post-merge re-run unpassable.
 commitlint:
-	uvx --from commitizen cz check --rev-range $${COMMIT_RANGE:-HEAD~1..HEAD}
+	@range="$${COMMIT_RANGE:-HEAD~1..HEAD}"; \
+	if [ -z "$$(git rev-list "$$range" 2>/dev/null)" ]; then \
+		echo "commitlint: no commits in $$range - nothing to check"; \
+	else \
+		uvx --from commitizen cz check --rev-range "$$range"; \
+	fi
 
 # Cognitive complexity (complements cyclomatic complexity)
 # On failure the FAILED list is only the grandfathered backlog — the actual
@@ -445,8 +453,12 @@ refurb:
 # Semgrep SAST (cross-file security analysis)
 # Excludes sqlalchemy-execute-raw-query: our SQL uses ?-parameterized values,
 # column names are hardcoded in code. Semgrep can't distinguish f-string placeholders from injection.
+# Pinned to 3.12 on purpose. semgrep publishes no cp313 manylinux wheel, so on
+# a Linux runner using 3.13 uv builds it from the sdist -- which carries no
+# semgrep-core binary, and the scan dies with "Failed to find semgrep-core".
+# The interpreter running semgrep is unrelated to the project's own.
 semgrep:
-	uvx semgrep scan --config auto --config p/python --error --severity ERROR \
+	uvx --python 3.12 semgrep scan --config auto --config p/python --error --severity ERROR \
 		--exclude-rule python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query \
 		src/
 
