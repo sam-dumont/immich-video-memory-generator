@@ -35,6 +35,13 @@ CULL_BUCKET_REASONS = {
     "failed": "the picture did not come out",
 }
 CULL_BUCKETS = tuple(CULL_BUCKET_REASONS)
+# Read, validated, and thrown away. Without somewhere to put "merely
+# unremarkable" the model puts it in notes: measured at temperature 0 on one
+# real pack, notes held 19 tiles of which nine were fields and cycling paths.
+# Given this third list it held four -- a photographed document and three shots
+# of a television -- and nothing else. Choosing between similar frames is a
+# later pass's work, so what lands here is not Cull's to act on.
+DISCARDED_BUCKETS = ("ordinary",)
 CULL_SCOPE_WIRE_KEYS = ("episode", *CULL_BUCKETS)
 _RESPONSE_PLANNING_CHARS_PER_TOKEN = 3
 
@@ -134,30 +141,58 @@ def _read_scoped_rejects(
     parsed: list[CullDecision] = []
     misfiled: list[str] = []
     for entry in value:
-        if not isinstance(entry, dict) or set(entry) != set(CULL_SCOPE_WIRE_KEYS):
+        read = _one_episode_entry(entry, tile_map, episode_tiles, seen_episodes, seen_tiles)
+        if read is None:
             return None
-        episode = entry.get("episode")
-        if not _is_integer_alias(episode) or episode not in episode_tiles:
-            return None
-        if episode in seen_episodes:
-            return None
-        seen_episodes.add(episode)
-        scope = frozenset(episode_tiles[episode])
-        for bucket in CULL_BUCKETS:
-            tiles = _tiles_in(entry.get(bucket), tile_map, seen_tiles)
-            if tiles is None:
-                return None
-            # Which episode a tile was filed under is bookkeeping; the judgement
-            # is about pixels this sheet really shows. One tile filed an episode
-            # early must not void the fifteen episodes answered correctly beside
-            # it, which is what a real month did.
-            misfiled.extend(
-                f"!! Cull filed tile {tile} under episode {episode}"
-                for tile in tiles
-                if tile not in scope
-            )
-            parsed.extend(CullDecision(tile_map[tile], bucket) for tile in tiles)
+        decisions, notes = read
+        parsed.extend(decisions)
+        misfiled.extend(notes)
     return tuple(parsed), tuple(misfiled)
+
+
+def _one_episode_entry(
+    entry: object,
+    tile_map: Mapping[int, str],
+    episode_tiles: Mapping[int, tuple[int, ...]],
+    seen_episodes: set[int],
+    seen_tiles: set[int],
+) -> tuple[tuple[CullDecision, ...], tuple[str, ...]] | None:
+    """One episode's three lists, or None when the answer left the sheet."""
+    if not isinstance(entry, dict):
+        return None
+    # The discarded lists are optional: an answer that omits one has still
+    # answered, and voiding it over a key nothing acts on would be absurd.
+    if set(entry) - set(DISCARDED_BUCKETS) != set(CULL_SCOPE_WIRE_KEYS):
+        return None
+    episode = entry.get("episode")
+    if not _is_integer_alias(episode) or episode not in episode_tiles:
+        return None
+    if episode in seen_episodes:
+        return None
+    seen_episodes.add(episode)
+    scope = frozenset(episode_tiles[episode])
+    decisions: list[CullDecision] = []
+    misfiled: list[str] = []
+    for bucket in (*CULL_BUCKETS, *DISCARDED_BUCKETS):
+        named = entry.get(bucket)
+        if named is None and bucket in DISCARDED_BUCKETS:
+            continue
+        tiles = _tiles_in(named, tile_map, seen_tiles)
+        if tiles is None:
+            return None
+        if bucket in DISCARDED_BUCKETS:
+            continue
+        # Which episode a tile was filed under is bookkeeping; the judgement is
+        # about pixels this sheet really shows. One tile filed an episode early
+        # must not void the fifteen episodes answered correctly beside it,
+        # which is what a real month did.
+        misfiled.extend(
+            f"!! Cull filed tile {tile} under episode {episode}"
+            for tile in tiles
+            if tile not in scope
+        )
+        decisions.extend(CullDecision(tile_map[tile], bucket) for tile in tiles)
+    return tuple(decisions), tuple(misfiled)
 
 
 def _tiles_in(

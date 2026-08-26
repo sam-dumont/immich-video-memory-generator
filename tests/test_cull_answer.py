@@ -260,3 +260,55 @@ def test_a_tile_filed_under_the_wrong_episode_still_decides_its_own_pixels() -> 
     assert parsed.cull_valid
     assert tuple(d.asset_id for d in parsed.cull_rejects) == ("a", "b", "c")
     assert parsed.warnings == ("!! Cull filed tile 2 under episode 2",)
+
+
+def test_an_ordinary_list_absorbs_what_cull_must_not_remove() -> None:
+    """Give 'merely unremarkable' its own place or it lands in notes.
+
+    Measured at temperature 0 on one real pack: with two lists, notes held 19
+    tiles of which nine were fields and cycling paths. With a third list to put
+    them in, notes held four -- a photographed document and three shots of a
+    television -- and nothing else. The list is read, validated, and discarded:
+    choosing between similar frames is a later pass's work.
+    """
+    from immich_memories.analysis.cull_answer import read_cull_namespaces
+
+    parsed = read_cull_namespaces(
+        json.dumps(
+            {
+                "schema_version": "episode-scan-v4",
+                "pack": 1,
+                "cull_rejects": [
+                    {"episode": 1, "notes": [1], "failed": [2], "ordinary": [3]},
+                ],
+            }
+        ),
+        pack_alias=1,
+        tile_map={1: "a-screen", 2: "a-smeared-frame", 3: "an-ordinary-field"},
+        episode_tiles={1: (1, 2, 3)},
+    )
+
+    assert parsed is not None
+    assert parsed.cull_valid
+    assert tuple(d.asset_id for d in parsed.cull_rejects) == ("a-screen", "a-smeared-frame")
+
+
+def test_a_tile_cannot_be_ordinary_and_removed_at_once() -> None:
+    """The three lists partition what the model looked at; overlap is not an answer."""
+    from immich_memories.analysis.cull_answer import read_cull_namespaces
+
+    parsed = read_cull_namespaces(
+        json.dumps(
+            {
+                "schema_version": "episode-scan-v4",
+                "pack": 1,
+                "cull_rejects": [{"episode": 1, "notes": [1], "failed": [], "ordinary": [1]}],
+            }
+        ),
+        pack_alias=1,
+        tile_map={1: "a"},
+        episode_tiles={1: (1,)},
+    )
+
+    assert parsed is not None
+    assert not parsed.cull_valid

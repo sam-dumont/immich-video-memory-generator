@@ -6,7 +6,10 @@ import json
 from typing import TYPE_CHECKING
 
 from immich_memories.analysis.contact_sheets import TileRef
-from immich_memories.analysis.cull_answer import CULL_SCOPE_WIRE_KEYS
+from immich_memories.analysis.cull_answer import (
+    CULL_SCOPE_WIRE_KEYS,
+    DISCARDED_BUCKETS,
+)
 from immich_memories.analysis.editorial_contracts import (
     EditorialCandidate,
 )
@@ -48,7 +51,8 @@ def episode_response_shape(*, episode_alias: int, tile: int) -> str:
                 }
             ],
             "cull_rejects": [
-                dict.fromkeys(CULL_SCOPE_WIRE_KEYS[1:], []) | {"episode": episode_alias}
+                dict.fromkeys((*CULL_SCOPE_WIRE_KEYS[1:], *DISCARDED_BUCKETS), [])
+                | {"episode": episode_alias}
             ],
         },
         separators=(",", ":"),
@@ -119,12 +123,13 @@ def _episode_prompt(pack: EpisodeScanPack) -> str:
         "and backslash; use one line with no control characters. Apostrophes and basic punctuation "
         "are allowed. "
         "Representatives reject nothing. Then, for EACH episode above, look only at that "
-        "episode's own tiles and sort them into two lists. notes: taken as a note rather than "
+        "episode's own tiles and sort them into three lists. notes: taken as a note rather than "
         "as a memory, such as a screen, a document, or an object photographed to record what "
         "it is. failed: the picture did not come out, being obstructed, smeared, or "
-        "unreadable. Most tiles are neither, and an empty list is the normal answer. Never "
-        "list a tile for being ordinary or repeated, and never list a tile that belongs to "
-        "another episode. Use exactly these keys and no others:\n"
+        "unreadable. ordinary: nothing wrong with it, just unremarkable or one of several "
+        "alike. Most tiles are ordinary, and empty notes and failed lists are the normal "
+        "answer. Never list a tile "
+        "that belongs to another episode. Use exactly these keys and no others:\n"
         + episode_response_shape(episode_alias=pack.scopes[0].episode_alias, tile=first_tile)
     )
 
