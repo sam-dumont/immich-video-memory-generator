@@ -163,10 +163,18 @@ def build_llm_timeout(read_timeout: float) -> httpx.Timeout:
     )
 
 
+# Every model call this project makes is a judgement it wants back the same way
+# twice: a description that feeds a decision, or a decision itself. Sampling was
+# measured turning one real pack's answer over four repeats into four different
+# answers, one of which named all 105 tiles. Greedy decoding also makes the
+# judgement cache honest -- a banked answer is what re-asking would return.
+DEFAULT_TEMPERATURE = 0.0
+
+
 async def query_llm(
     prompt: str,
     llm_config: LLMConfig,
-    temperature: float = 0.3,
+    temperature: float = DEFAULT_TEMPERATURE,
     max_tokens: int = 500,
     timeout_seconds: int = 30,
     thinking: bool = False,
@@ -286,6 +294,7 @@ async def _dispatch(
             prompt,
             llm_config,
             temperature,
+            max_tokens,
             timeout_seconds,
             images,
             transport_observer,
@@ -322,6 +331,7 @@ async def _query_ollama(
     prompt: str,
     config: LLMConfig,
     temperature: float,
+    max_tokens: int,
     timeout: int,
     images: Sequence[bytes] = (),
     transport_observer: Callable[[LLMTransportAttempt], None] | None = None,
@@ -344,6 +354,7 @@ async def _query_ollama(
             payload["options"].update(value)
         else:
             payload[name] = value
+    payload["options"]["num_predict"] = max_tokens
     async with httpx.AsyncClient(timeout=build_llm_timeout(float(timeout))) as client:
         try:
             resp = await client.post(f"{base_url}/api/generate", json=payload)

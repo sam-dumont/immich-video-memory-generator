@@ -30,6 +30,15 @@ __all__ = [
 ]
 
 
+# Every pass behind this gateway DECIDES something, so it is asked greedily
+# rather than sampled. Measured on one real pack, four repeats each: at the
+# transport default of 0.3 no two answers matched and one named all 105 tiles
+# in the pack; at 0 all four responses were byte-identical. Sampling also makes
+# a banked answer a lie -- the cache would return something re-asking would not
+# have produced.
+EDITORIAL_TEMPERATURE = 0.0
+
+
 @dataclass(frozen=True)
 class VisualEditorialRequest:
     """All non-semantic evidence and versioning supplied to one visual pass."""
@@ -59,6 +68,7 @@ class BankedVisualAnswer:
     raw_text: str
     provenance: DecisionProvenance
     original_provenance: DecisionProvenance
+    request_trace: RequestTrace
 
 
 class EditorialGateway(Protocol):
@@ -94,7 +104,11 @@ class VisualEditorialGateway:
             render_version=request.render_version,
             layout_versions=tuple(page.layout_version for page in request.pages),
             upstream_material=request.upstream_material,
-            request_limits=(f"max_pages={request.limits.max_pages_per_request}",),
+            request_limits=(
+                f"max_pages={request.limits.max_pages_per_request}",
+                f"max_output_tokens={request.limits.max_output_tokens}",
+                f"timeout_seconds={request.limits.timeout_seconds}",
+            ),
             continuation_identity=(request.continuation_number, request.continuation_count),
             endpoint=self.llm_config.base_url.rstrip("/"),
         )
@@ -106,14 +120,14 @@ class VisualEditorialGateway:
             provenance = _provenance(
                 request, page_hashes, request_key, cache_hit=True, model=self.llm_config.model
             )
-            self._record(
+            request_trace = self._record(
                 provenance,
                 request.pages,
                 page_hashes,
                 cache_hit=True,
                 original_provenance=original,
             )
-            return BankedVisualAnswer(raw_text, provenance, original)
+            return BankedVisualAnswer(raw_text, provenance, original, request_trace)
 
         provenance = _provenance(
             request, page_hashes, request_key, cache_hit=False, model=self.llm_config.model
@@ -133,19 +147,22 @@ class VisualEditorialGateway:
         try:
             raw_text = _run_sync(
                 query_llm(
-                    request.prompt,
+                    _provider_prompt(request),
                     self.llm_config,
+                    temperature=EDITORIAL_TEMPERATURE,
                     thinking=request.thinking,
                     images=tuple(page.jpeg_bytes for page in request.pages),
                     image_detail=request.image_detail,
                     transport_observer=record_attempt,
                     require_complete=True,
+                    max_tokens=request.limits.max_output_tokens,
+                    timeout_seconds=request.limits.timeout_seconds,
                 )
             )
             if not raw_text.strip():
                 raise ValueError("visual editorial answer must be nonblank")
-        except Exception:
-            self._record(
+        except Exception as exc:
+            failed_trace = self._record(
                 provenance,
                 request.pages,
                 page_hashes,
@@ -153,9 +170,10 @@ class VisualEditorialGateway:
                 actual_calls=len(attempts),
                 attempts=tuple(attempts),
             )
+            setattr(exc, "request_trace", failed_trace)  # noqa: B010 - preserve original exception
             raise
         self.cache.remember(request_key, raw_text, _provenance_json(provenance))
-        self._record(
+        request_trace = self._record(
             provenance,
             request.pages,
             page_hashes,
@@ -163,7 +181,7 @@ class VisualEditorialGateway:
             actual_calls=len(attempts),
             attempts=tuple(attempts),
         )
-        return BankedVisualAnswer(raw_text, provenance, provenance)
+        return BankedVisualAnswer(raw_text, provenance, provenance, request_trace)
 
     def _record(
         self,
@@ -175,20 +193,20 @@ class VisualEditorialGateway:
         actual_calls: int = 0,
         original_provenance: DecisionProvenance | None = None,
         attempts: tuple[RequestAttemptTrace, ...] = (),
-    ) -> None:
-        self.trace.record_request(
-            RequestTrace(
-                provenance=provenance,
-                attached_sheet_hashes=page_hashes,
-                actual_calls=actual_calls,
-                cache_hit=cache_hit,
-                tile_count=sum(len(page.tile_refs) for page in pages),
-                provider=self.llm_config.provider,
-                model=self.llm_config.model,
-                attempts=attempts,
-                original_provenance=original_provenance,
-            )
+    ) -> RequestTrace:
+        request_trace = RequestTrace(
+            provenance=provenance,
+            attached_sheet_hashes=page_hashes,
+            actual_calls=actual_calls,
+            cache_hit=cache_hit,
+            tile_count=sum(len(page.tile_refs) for page in pages),
+            provider=self.llm_config.provider,
+            model=self.llm_config.model,
+            attempts=attempts,
+            original_provenance=original_provenance,
         )
+        self.trace.record_request(request_trace)
+        return request_trace
 
 
 def _validated_page_hashes(pages: tuple[ContactSheetPage, ...]) -> tuple[str, ...]:
@@ -198,6 +216,17 @@ def _validated_page_hashes(pages: tuple[ContactSheetPage, ...]) -> tuple[str, ..
     if any(digest != page.sha256 for digest, page in zip(hashes, pages, strict=True)):
         raise ValueError("contact sheet digest does not match its exact bytes")
     return hashes
+
+
+def _provider_prompt(request: VisualEditorialRequest) -> str:
+    if not request.grounded_annotations:
+        return request.prompt
+    annotations = json.dumps(
+        request.grounded_annotations,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return f"{request.prompt}\n\nGrounded annotations (ordered JSON):\n{annotations}"
 
 
 def _run_sync(coroutine: object) -> str:

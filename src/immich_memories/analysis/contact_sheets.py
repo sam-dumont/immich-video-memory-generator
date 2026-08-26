@@ -90,6 +90,7 @@ def build_contact_sheets(
     output_dir: Path,
     *,
     per_sheet: int = MAX_SHEET_TILES,
+    page_sizes: tuple[int, ...] | None = None,
 ) -> tuple[ContactSheetPage, ...]:
     """Encode each page once, write those exact bytes, and retain its stable mapping."""
     if not 1 <= per_sheet <= MAX_SHEET_TILES:
@@ -100,13 +101,23 @@ def build_contact_sheets(
         raise ValueError("contact sheet tiles need non-empty entity IDs")
     if len(set(entity_ids)) != len(entity_ids):
         raise ValueError("contact sheet tiles must have unique entity IDs")
+    if page_sizes is not None and (
+        any(size < 1 or size > MAX_SHEET_TILES for size in page_sizes)
+        or sum(page_sizes) != len(entries)
+    ):
+        raise ValueError("contact sheet page sizes must exactly partition the tiles")
     try:
         output_dir.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
         raise ValueError(f"cannot create contact sheet directory: {output_dir}") from exc
 
     pages: list[ContactSheetPage] = []
-    for page_index, numbered in enumerate(sheets_of(entries, per_sheet), start=1):
+    numbered_pages = (
+        sheets_of(entries, per_sheet)
+        if page_sizes is None
+        else _pages_with_sizes(entries, page_sizes)
+    )
+    for page_index, numbered in enumerate(numbered_pages, start=1):
         frames = [
             (number, _image_for(tile, tile_size=sheet_layout(len(numbered))[1]))
             for number, tile in numbered
@@ -128,6 +139,17 @@ def build_contact_sheets(
             )
         )
     return tuple(pages)
+
+
+def _pages_with_sizes(items: list[T], page_sizes: tuple[int, ...]) -> list[list[tuple[int, T]]]:
+    pages: list[list[tuple[int, T]]] = []
+    offset = 0
+    for size in page_sizes:
+        pages.append(
+            [(offset + index + 1, item) for index, item in enumerate(items[offset : offset + size])]
+        )
+        offset += size
+    return pages
 
 
 def _image_for(tile: Any, *, tile_size: int):

@@ -54,6 +54,7 @@ class ClipStory:
     admitted_at: str | None
     # Why the stage that dropped it did so, when that stage said.
     reason: str | None = None
+    first_pass: str | None = None
 
 
 @dataclass(frozen=True)
@@ -160,6 +161,25 @@ class Trace:
         dropped_at: str | None = None
         admitted_at: str | None = None
         reason: str | None = None
+        first_pass = next(
+            (
+                pass_trace.name
+                for pass_trace in self.editorial_passes
+                if pass_trace.name != "source-eligibility" and asset_id in pass_trace.input_ids
+            ),
+            None,
+        )
+        for pass_trace in self.editorial_passes:
+            rejected = next(
+                (decision for decision in pass_trace.rejected if decision.asset_id == asset_id),
+                None,
+            )
+            if rejected is not None:
+                dropped_at = pass_trace.name
+                reason = rejected.reason
+                survived = []
+            elif asset_id in pass_trace.kept_ids:
+                admitted_at = pass_trace.name
         for stage in self.stages:
             if asset_id in stage.gained_ids:
                 admitted_at = stage.name
@@ -178,6 +198,7 @@ class Trace:
             dropped_at=None if shipped else dropped_at,
             admitted_at=admitted_at,
             reason=None if shipped else reason,
+            first_pass=first_pass,
         )
 
     def _favourite_law_lines(self) -> list[str]:
@@ -278,7 +299,13 @@ class Trace:
         """What a reader must see before anything else in the report."""
         if not self.warnings:
             return []
-        return [*(f"!! {warning}" for warning in self.warnings), ""]
+        return [
+            *(
+                warning if warning.startswith("!! ") else f"!! {warning}"
+                for warning in self.warnings
+            ),
+            "",
+        ]
 
     def _coverage_lines(self) -> list[str]:
         """The pool's coverage, above the funnel — it frames everything below."""

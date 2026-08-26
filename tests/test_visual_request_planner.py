@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from immich_memories.analysis.contact_sheets import ContactSheetPage, TileRef
 from immich_memories.analysis.visual_request_planner import (
     SheetGroup,
@@ -54,3 +56,16 @@ def test_confirmed_limit_packs_only_complete_ordered_groups() -> None:
     )
 
     assert [plan.group_ids for plan in plans] == [("a", "b"), ("c",)]
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    (
+        {"max_pages_per_request": 0},
+        {"max_output_tokens": 0},
+        {"timeout_seconds": 0},
+    ),
+)
+def test_visual_request_limits_reject_non_positive_transport_budgets(overrides) -> None:
+    with pytest.raises(ValueError, match="at least one"):
+        VisionRequestLimits(**overrides)

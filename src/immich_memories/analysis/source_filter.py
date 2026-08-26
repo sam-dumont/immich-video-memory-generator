@@ -16,12 +16,48 @@ from __future__ import annotations
 
 import fnmatch
 import logging
+from collections.abc import Iterable
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
+
+
+def is_editorial_source_asset(
+    asset: Any,
+    *,
+    start_at: datetime | None,
+    end_at: datetime | None,
+) -> bool:
+    """Whether an asset is in the requested editorial scope before Pass 0."""
+    from immich_memories.api.models import AssetType
+
+    if getattr(asset, "type", None) not in (AssetType.IMAGE, AssetType.VIDEO):
+        return False
+    taken_at = getattr(asset, "file_created_at", None)
+    if taken_at is None:
+        return False
+    return (start_at is None or taken_at >= start_at) and (end_at is None or taken_at <= end_at)
+
+
+def live_photo_component_ids(sources: Iterable[Any]) -> frozenset[str]:
+    """The video halves claimed by the stills in this pool.
+
+    Immich lists a Live Photo's motion component as its own video asset, so one
+    query returns both halves of the same photograph. The still is the
+    photograph; the component is how it can be rendered. Reading the pool for
+    the components its own stills claim is what `drop_live_photo_components`
+    does for every other pool builder, expressed as a set the editorial path
+    can put on the record instead of dropping silently.
+    """
+    return frozenset(
+        component
+        for source in sources
+        if (component := getattr(source, "live_photo_video_id", None))
+    )
 
 
 def from_an_excluded_source(name: str | None, patterns: Sequence[str]) -> bool:

@@ -14,10 +14,16 @@ class VisionRequestLimits:
     """The empirically approved limits for one endpoint and model."""
 
     max_pages_per_request: int = 1
+    max_output_tokens: int = 500
+    timeout_seconds: int = 30
 
     def __post_init__(self) -> None:
         if self.max_pages_per_request < 1:
             raise ValueError("max_pages_per_request must be at least one")
+        if self.max_output_tokens < 1:
+            raise ValueError("max_output_tokens must be at least one")
+        if self.timeout_seconds < 1:
+            raise ValueError("timeout_seconds must be at least one")
 
 
 @dataclass(frozen=True)
