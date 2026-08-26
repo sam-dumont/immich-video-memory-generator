@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal
 
+from immich_memories.analysis.strict_json import is_safe_model_text
+
 if TYPE_CHECKING:
     from immich_memories.api.models import Asset
 
@@ -111,10 +113,14 @@ class RecordShotMark:
     def __post_init__(self) -> None:
         if (
             not self.asset_id.strip()
-            or not self.function.strip()
-            or len(self.function) > RECORD_SHOT_FUNCTION_MAX_CHARS
-            or not self.reason.strip()
-            or len(self.reason) > RECORD_SHOT_REASON_MAX_CHARS
+            or not is_safe_model_text(
+                self.function,
+                max_chars=RECORD_SHOT_FUNCTION_MAX_CHARS,
+            )
+            or not is_safe_model_text(
+                self.reason,
+                max_chars=RECORD_SHOT_REASON_MAX_CHARS,
+            )
         ):
             raise ValueError("record-shot mark needs a stable asset and bounded function/reason")
 

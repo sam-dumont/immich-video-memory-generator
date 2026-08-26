@@ -9,6 +9,117 @@ import pytest
 from immich_memories.analysis.editorial_contracts import RecordShotMark
 
 
+def test_structured_cull_evidence_derives_the_only_durable_reason() -> None:
+    """A rejection's human explanation is local data, not actuating model prose."""
+    from immich_memories.analysis.cull_answer import CullDecision
+
+    decision = CullDecision(
+        "asset",
+        "unusable_exposure",
+        "detail_lost_to_highlights",
+    )
+
+    assert decision.evidence == "detail_lost_to_highlights"
+    assert decision.reason == "highlight clipping erased the visible detail"
+
+
+@pytest.mark.parametrize(
+    "policy_prose",
+    (
+        "A relative alternative is stronger.",
+        "This is an uninteresting selfie.",
+        "This repeats an earlier shot.",
+        "This does not support the thesis.",
+    ),
+)
+def test_allowed_defect_cannot_actuate_from_free_policy_prose(policy_prose: str) -> None:
+    """An allowed defect label cannot smuggle an editorial cut through free prose."""
+    from immich_memories.analysis.cull_answer import read_cull_namespaces
+
+    answer = read_cull_namespaces(
+        json.dumps(
+            {
+                "schema_version": "episode-scan-v3",
+                "pack": 1,
+                "record_shots": [],
+                "cull_rejects": [
+                    {
+                        "tile": 1,
+                        "defect": "unusable_exposure",
+                        "reason": policy_prose,
+                    }
+                ],
+            }
+        ),
+        pack_alias=1,
+        tile_map={1: "asset"},
+    )
+
+    assert answer is not None
+    assert answer.cull_valid is False
+    assert answer.cull_rejects == ()
+
+
+@pytest.mark.parametrize(
+    "unsafe", ('quote"mark', "back\\slash", "line\nbreak", "caf\N{LATIN SMALL LETTER E WITH ACUTE}")
+)
+@pytest.mark.parametrize("field", ("function", "reason"))
+def test_record_mark_constructor_rejects_text_outside_the_safe_wire_alphabet(
+    field: str,
+    unsafe: str,
+) -> None:
+    """Direct record marks enforce the same bounded alphabet as the wire parser."""
+    values = {"function": "result proof", "reason": "Records the visible result."}
+    values[field] = unsafe
+
+    with pytest.raises(ValueError, match="record-shot"):
+        RecordShotMark("asset", values["function"], values["reason"])
+
+
+def test_invalid_record_text_fails_open_without_erasing_structured_cull() -> None:
+    """One unsafe record namespace cannot erase its valid structured sibling."""
+    from immich_memories.analysis.cull_answer import read_cull_namespaces
+
+    answer = read_cull_namespaces(
+        json.dumps(
+            {
+                "schema_version": "episode-scan-v3",
+                "pack": 1,
+                "record_shots": [
+                    {
+                        "tile": 1,
+                        "function": "result proof",
+                        "reason": 'The model called it "important".',
+                    }
+                ],
+                "cull_rejects": [
+                    {
+                        "tile": 2,
+                        "defect": "unusable_motion_blur",
+                        "evidence": "frame_smeared_beyond_use",
+                    }
+                ],
+            }
+        ),
+        pack_alias=1,
+        tile_map={1: "record", 2: "blur"},
+    )
+
+    assert answer is not None
+    assert answer.record_valid is False
+    assert answer.record_shots == ()
+    assert answer.cull_valid is True
+    assert tuple(decision.asset_id for decision in answer.cull_rejects) == ("blur",)
+
+
+def test_safe_model_text_keeps_apostrophes_and_basic_punctuation() -> None:
+    """The canonical alphabet stays useful for terse visual descriptions."""
+    mark = RecordShotMark("asset", "ticket's proof", "Visible: gate #4 - admitted!")
+
+    assert mark.function == "ticket's proof"
+    assert mark.reason == "Visible: gate #4 - admitted!"
+
+
 @pytest.mark.parametrize(
     ("function", "reason"),
     (
@@ -27,7 +138,7 @@ def test_record_mark_constructor_rejects_unusable_function_or_reason(
 
 
 @pytest.mark.parametrize(
-    ("defect", "reason"),
+    ("defect", "evidence"),
     (
         ("subject", "It is a selfie."),
         ("repetition", "Another frame is stronger."),
@@ -40,14 +151,14 @@ def test_record_mark_constructor_rejects_unusable_function_or_reason(
         ("unusable_exposure", "r" * 97),
     ),
 )
-def test_cull_constructor_rejects_non_defects_and_unusable_reasons(
-    defect: str, reason: str
+def test_cull_constructor_rejects_non_defects_and_mismatched_evidence(
+    defect: str, evidence: str
 ) -> None:
     """No caller can actuate topic policy by constructing a Cull decision directly."""
     from immich_memories.analysis.cull_answer import CullDecision
 
     with pytest.raises(ValueError, match="Cull"):
-        CullDecision("asset", defect, reason)
+        CullDecision("asset", defect, evidence)
 
 
 def test_record_mark_wins_a_namespace_collision_without_discarding_siblings() -> None:
@@ -74,12 +185,12 @@ def test_record_mark_wins_a_namespace_collision_without_discarding_siblings() ->
                 {
                     "tile": 1,
                     "defect": "unusable_exposure",
-                    "reason": "The pixels are completely blown out.",
+                    "evidence": "detail_lost_to_highlights",
                 },
                 {
                     "tile": 2,
                     "defect": "unusable_motion_blur",
-                    "reason": "The frame is unreadable through motion blur.",
+                    "evidence": "frame_smeared_beyond_use",
                 },
             ],
         }
@@ -97,7 +208,7 @@ def test_record_mark_wins_a_namespace_collision_without_discarding_siblings() ->
         CullDecision(
             "blur",
             "unusable_motion_blur",
-            "The frame is unreadable through motion blur.",
+            "frame_smeared_beyond_use",
         ),
     )
     assert answer.warnings == ("!! cull reject conflicted with record-shot mark: test",)
@@ -108,7 +219,13 @@ def test_record_mark_wins_a_namespace_collision_without_discarding_siblings() ->
     (
         (
             [{"tile": 1, "function": "admission proof", "reason": "Records a ticket."}],
-            [{"tile": True, "defect": "unusable_exposure", "reason": "Unreadable."}],
+            [
+                {
+                    "tile": True,
+                    "defect": "unusable_exposure",
+                    "evidence": "detail_lost_to_highlights",
+                }
+            ],
             True,
             False,
             ("ticket",),
@@ -116,7 +233,13 @@ def test_record_mark_wins_a_namespace_collision_without_discarding_siblings() ->
         ),
         (
             [{"page": 2, "tile": 1, "function": "proof", "reason": "Wrong page."}],
-            [{"tile": 2, "defect": "unusable_exposure", "reason": "Unreadable."}],
+            [
+                {
+                    "tile": 2,
+                    "defect": "unusable_exposure",
+                    "evidence": "detail_lost_to_highlights",
+                }
+            ],
             False,
             True,
             (),
@@ -211,17 +334,29 @@ def test_duplicate_unknown_or_overlong_record_member_invalidates_record_namespac
 @pytest.mark.parametrize(
     "member",
     (
-        {"tile": 1, "defect": "unusable_exposure", "reason": "Duplicate."},
-        {"tile": True, "defect": "unusable_exposure", "reason": "Unreadable."},
-        {"tile": 99, "defect": "unusable_exposure", "reason": "Unknown."},
+        {
+            "tile": 1,
+            "defect": "unusable_exposure",
+            "evidence": "detail_lost_to_highlights",
+        },
+        {
+            "tile": True,
+            "defect": "unusable_exposure",
+            "evidence": "detail_lost_to_highlights",
+        },
+        {
+            "tile": 99,
+            "defect": "unusable_exposure",
+            "evidence": "detail_lost_to_highlights",
+        },
         {
             "page": 2,
             "tile": 2,
             "defect": "unusable_exposure",
-            "reason": "Wrong page.",
+            "evidence": "detail_lost_to_highlights",
         },
-        {"tile": 2, "defect": "unusable_exposure", "reason": "r" * 97},
-        {"tile": 2, "defect": "repetition", "reason": "A sibling is stronger."},
+        {"tile": 2, "defect": "unusable_exposure", "evidence": "relative_weakness"},
+        {"tile": 2, "defect": "repetition", "evidence": "frame_smeared_beyond_use"},
     ),
 )
 def test_boolean_unknown_cross_page_overlong_or_policy_cull_invalidates_namespace(
@@ -237,7 +372,11 @@ def test_boolean_unknown_cross_page_overlong_or_policy_cull_invalidates_namespac
                 "pack": 1,
                 "record_shots": [],
                 "cull_rejects": [
-                    {"tile": 1, "defect": "unusable_exposure", "reason": "Unreadable."},
+                    {
+                        "tile": 1,
+                        "defect": "unusable_exposure",
+                        "evidence": "detail_lost_to_highlights",
+                    },
                     member,
                 ],
             }

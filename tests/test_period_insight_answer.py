@@ -10,11 +10,101 @@ from immich_memories.analysis.editorial_contracts import (
     PeriodInsight,
 )
 from immich_memories.analysis.period_insight_answer import (
+    EpisodePageReading,
     PeriodInsightAnswer,
     read_episode_answer,
     read_episode_answers,
     read_period_answer,
 )
+
+
+@pytest.mark.parametrize(
+    "unsafe", ('quote"mark', "back\\slash", "line\nbreak", "caf\N{LATIN SMALL LETTER E WITH ACUTE}")
+)
+@pytest.mark.parametrize("field", ("visual_summary", "representative_reason"))
+def test_episode_reading_constructor_rejects_text_outside_the_safe_wire_alphabet(
+    field: str,
+    unsafe: str,
+) -> None:
+    """Direct episode readings cannot bypass the response estimator's alphabet."""
+    values = {
+        "visual_summary": "A visible finish.",
+        "representative_reason": "The finish summarizes the page.",
+    }
+    values[field] = unsafe
+
+    with pytest.raises(ValueError, match="episode page reading"):
+        EpisodePageReading(
+            "episode",
+            "page",
+            values["visual_summary"],
+            ("asset",),
+            values["representative_reason"],
+        )
+
+
+def test_invalid_episode_text_fails_open_without_erasing_pass_one_siblings() -> None:
+    """Unsafe episode prose does not poison independently valid record and Cull arrays."""
+    from immich_memories.analysis.cull_answer import read_cull_namespaces
+
+    raw = json.dumps(
+        {
+            "schema_version": "episode-scan-v3",
+            "pack": 1,
+            "episode_readings": [
+                {
+                    "episode": 1,
+                    "page": 1,
+                    "visual_summary": "A caf\N{LATIN SMALL LETTER E WITH ACUTE} finish.",
+                    "representative_tiles": [1],
+                    "representative_reason": "The finish identifies the page.",
+                }
+            ],
+            "record_shots": [
+                {"tile": 1, "function": "result proof", "reason": "Records the result."}
+            ],
+            "cull_rejects": [
+                {
+                    "tile": 2,
+                    "defect": "unusable_exposure",
+                    "evidence": "detail_lost_to_darkness",
+                }
+            ],
+        }
+    )
+
+    readings = read_episode_answers(
+        raw,
+        pack_alias=1,
+        expected_observations=(("episode", "page"),),
+        observation_map={(1, 1): ("episode", "page")},
+        tile_map={(1, 1, 1): "record", (1, 1, 2): "dark"},
+    )
+    pass_one = read_cull_namespaces(
+        raw,
+        pack_alias=1,
+        tile_map={1: "record", 2: "dark"},
+    )
+
+    assert readings is not None
+    assert readings.readings == ()
+    assert readings.invalid_observations == (("episode", "page"),)
+    assert pass_one is not None
+    assert tuple(mark.asset_id for mark in pass_one.record_shots) == ("record",)
+    assert tuple(decision.asset_id for decision in pass_one.cull_rejects) == ("dark",)
+
+
+def test_episode_safe_text_keeps_apostrophes_and_basic_punctuation() -> None:
+    """Useful terse episode prose remains valid inside the canonical alphabet."""
+    reading = EpisodePageReading(
+        "episode",
+        "page",
+        "Rider's finish: medal #1!",
+        ("asset",),
+        "Effort -> payoff; both are visible.",
+    )
+
+    assert reading.visual_summary == "Rider's finish: medal #1!"
 
 
 def _provenance() -> DecisionProvenance:

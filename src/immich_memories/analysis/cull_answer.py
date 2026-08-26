@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from itertools import chain
 from typing import TypeGuard
 
@@ -18,19 +18,31 @@ from immich_memories.analysis.period_insight_answer import (
     EPISODE_SCAN_SCHEMA_VERSION,
     EPISODE_VISUAL_SUMMARY_MAX_CHARS,
 )
-from immich_memories.analysis.strict_json import final_json_object
+from immich_memories.analysis.strict_json import final_json_object, is_safe_model_text
 
 RECORD_REASON_MAX_CHARS = RECORD_SHOT_REASON_MAX_CHARS
 RECORD_FUNCTION_MAX_CHARS = RECORD_SHOT_FUNCTION_MAX_CHARS
-CULL_REASON_MAX_CHARS = 96
-ALLOWED_CULL_DEFECTS = frozenset(
-    {
-        "accidental_capture",
-        "unusable_motion_blur",
-        "unusable_exposure",
-        "corrupt_or_obscured_pixels",
-    }
-)
+CULL_EVIDENCE_REASONS = {
+    "accidental_capture": {
+        "camera_obstructed": "the camera is visibly obstructed",
+        "unintended_partial": "the frame is visibly an unintended partial capture",
+        "blank_floor_ceiling": "the frame shows only a blank floor or ceiling",
+    },
+    "unusable_motion_blur": {
+        "subject_unrecognizable": "motion blur makes the visible subject unrecognizable",
+        "frame_smeared_beyond_use": "motion smears the entire frame beyond use",
+    },
+    "unusable_exposure": {
+        "detail_lost_to_darkness": "shadow clipping erased the visible detail",
+        "detail_lost_to_highlights": "highlight clipping erased the visible detail",
+    },
+    "corrupt_or_obscured_pixels": {
+        "decode_corruption": "decode corruption destroys the visible content",
+        "lens_obscured": "the lens is visibly obscured",
+        "content_not_visible": "the intended visual content is not visible",
+    },
+}
+ALLOWED_CULL_DEFECTS = frozenset(CULL_EVIDENCE_REASONS)
 _RESPONSE_PLANNING_CHARS_PER_TOKEN = 3
 
 
@@ -40,18 +52,14 @@ class CullDecision:
 
     asset_id: str
     defect: str
-    reason: str
+    evidence: str
+    reason: str = field(init=False)
 
     def __post_init__(self) -> None:
-        if (
-            not self.asset_id.strip()
-            or self.defect not in ALLOWED_CULL_DEFECTS
-            or not self.reason.strip()
-            or len(self.reason) > CULL_REASON_MAX_CHARS
-        ):
-            raise ValueError(
-                "Cull decision needs a stable asset, allowed defect, and bounded reason"
-            )
+        reason = CULL_EVIDENCE_REASONS.get(self.defect, {}).get(self.evidence)
+        if not self.asset_id.strip() or reason is None:
+            raise ValueError("Cull decision needs a stable asset and matching defect evidence")
+        object.__setattr__(self, "reason", reason)
 
 
 @dataclass(frozen=True)
@@ -93,10 +101,10 @@ def fused_episode_response_fits(
         cull_member = {
             "tile": tile,
             "defect": "corrupt_or_obscured_pixels",
-            "reason": "r" * CULL_REASON_MAX_CHARS,
+            "evidence": "content_not_visible",
         }
-        record_json = json.dumps(record_member, separators=(",", ":"))
-        cull_json = json.dumps(cull_member, separators=(",", ":"))
+        record_json = json.dumps(record_member, separators=(",", ":"), ensure_ascii=True)
+        cull_json = json.dumps(cull_member, separators=(",", ":"), ensure_ascii=True)
         (record_shots if len(record_json) > len(cull_json) else cull_rejects).append(
             record_member if len(record_json) > len(cull_json) else cull_member
         )
@@ -109,6 +117,7 @@ def fused_episode_response_fits(
             "cull_rejects": cull_rejects,
         },
         separators=(",", ":"),
+        ensure_ascii=True,
     )
     return len(envelope) <= max_output_tokens * _RESPONSE_PLANNING_CHARS_PER_TOKEN
 
@@ -169,16 +178,12 @@ def _read_record_shots(
         if (
             not _is_integer_alias(key)
             or key not in tile_map
-            or not isinstance(function, str)
-            or not function.strip()
-            or len(function) > RECORD_FUNCTION_MAX_CHARS
-            or not isinstance(reason, str)
-            or not reason.strip()
-            or len(reason) > RECORD_REASON_MAX_CHARS
+            or not is_safe_model_text(function, max_chars=RECORD_FUNCTION_MAX_CHARS)
+            or not is_safe_model_text(reason, max_chars=RECORD_REASON_MAX_CHARS)
         ):
             return None
         keys.append(key)
-        parsed.append(RecordShotMark(tile_map[key], function.strip(), reason.strip()))
+        parsed.append(RecordShotMark(tile_map[key], function, reason))
     if len(keys) != len(set(keys)):
         return None
     return tuple(parsed)
@@ -193,23 +198,22 @@ def _read_cull_rejects(
     parsed: list[CullDecision] = []
     keys: list[int] = []
     for item in value:
-        if not isinstance(item, dict) or set(item) != {"tile", "defect", "reason"}:
+        if not isinstance(item, dict) or set(item) != {"tile", "defect", "evidence"}:
             return None
         key = item.get("tile")
         defect = item.get("defect")
-        reason = item.get("reason")
+        evidence = item.get("evidence")
         if (
             not _is_integer_alias(key)
             or key not in tile_map
             or not isinstance(defect, str)
             or defect not in ALLOWED_CULL_DEFECTS
-            or not isinstance(reason, str)
-            or not reason.strip()
-            or len(reason) > CULL_REASON_MAX_CHARS
+            or not isinstance(evidence, str)
+            or evidence not in CULL_EVIDENCE_REASONS[defect]
         ):
             return None
         keys.append(key)
-        parsed.append(CullDecision(tile_map[key], defect, reason.strip()))
+        parsed.append(CullDecision(tile_map[key], defect, evidence))
     if len(keys) != len(set(keys)):
         return None
     return tuple(parsed)

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any, TypeGuard
 
 from immich_memories.analysis.editorial_contracts import InsightEvidence
-from immich_memories.analysis.strict_json import final_json_object
+from immich_memories.analysis.strict_json import final_json_object, is_safe_model_text
 
 EpisodeObservationKey = tuple[int, int]
 EpisodeObservationValue = tuple[str, str]
@@ -30,6 +30,16 @@ class EpisodePageReading:
     visual_summary: str
     representative_asset_ids: tuple[str, ...]
     representative_reason: str
+
+    def __post_init__(self) -> None:
+        if not is_safe_model_text(
+            self.visual_summary,
+            max_chars=EPISODE_VISUAL_SUMMARY_MAX_CHARS,
+        ) or not is_safe_model_text(
+            self.representative_reason,
+            max_chars=EPISODE_REPRESENTATIVE_REASON_MAX_CHARS,
+        ):
+            raise ValueError("episode page reading needs bounded safe single-line text")
 
 
 @dataclass(frozen=True)
@@ -175,12 +185,11 @@ def _read_episode_namespace(
     representative_reason = reading.get("representative_reason")
     numbers = _tile_numbers(displayed)
     if (
-        not isinstance(summary, str)
-        or not summary.strip()
-        or len(summary) > EPISODE_VISUAL_SUMMARY_MAX_CHARS
-        or not isinstance(representative_reason, str)
-        or not representative_reason.strip()
-        or len(representative_reason) > EPISODE_REPRESENTATIVE_REASON_MAX_CHARS
+        not is_safe_model_text(summary, max_chars=EPISODE_VISUAL_SUMMARY_MAX_CHARS)
+        or not is_safe_model_text(
+            representative_reason,
+            max_chars=EPISODE_REPRESENTATIVE_REASON_MAX_CHARS,
+        )
         or not numbers
     ):
         return None
@@ -192,9 +201,9 @@ def _read_episode_namespace(
     return EpisodePageReading(
         episode_id=episode_id,
         page_id=page_id,
-        visual_summary=summary.strip(),
+        visual_summary=summary,
         representative_asset_ids=tuple(tile_map[key] for key in keys),
-        representative_reason=representative_reason.strip(),
+        representative_reason=representative_reason,
     )
 
 

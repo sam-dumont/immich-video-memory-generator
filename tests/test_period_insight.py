@@ -81,7 +81,7 @@ def _maximum_fused_response_for(
         {
             "tile": tile,
             "defect": "corrupt_or_obscured_pixels",
-            "reason": "r" * 96,
+            "evidence": "content_not_visible",
         }
         for tile in tiles
     ]
@@ -918,7 +918,7 @@ def test_singleton_episode_packs_fit_their_complete_response_budget(tmp_path: Pa
                     {
                         **alias,
                         "defect": "corrupt_or_obscured_pixels",
-                        "reason": "r" * 96,
+                        "evidence": "content_not_visible",
                     }
                     for alias in aliases
                 ],

@@ -7,9 +7,13 @@ import json
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
-from immich_memories.analysis.contact_sheets import ContactSheetPage, build_contact_sheets
+from immich_memories.analysis.contact_sheets import (
+    ContactSheetPage,
+    build_contact_sheets,
+    sheet_layout,
+)
 from immich_memories.analysis.cull_answer import CullDecision, read_cull_namespaces
 from immich_memories.analysis.editorial_contracts import (
     DecisionProvenance,
@@ -25,9 +29,14 @@ from immich_memories.analysis.period_insight import (
     PassZeroResult,
 )
 from immich_memories.analysis.selection_flow import PreparedEditorialSource
-from immich_memories.analysis.visual_atlas import AtlasTile
 
 PASS_ONE_VERSION = "pass-1-v1"  # noqa: S105 - public editorial pass identity
+_REVIEW_STATE_COLOURS = {
+    "KEEP": (45, 65, 75),
+    "RECORD": (0, 115, 150),
+    "CULL": (170, 20, 20),
+}
+_REVIEW_FAVOURITE_COLOUR = (180, 130, 0)
 
 
 @dataclass(frozen=True)
@@ -88,6 +97,8 @@ def run_cull(
         for pack in pass_zero.episode_packs
     )
     marks, rejects, pass_one_warnings, logical_requests = _combine_pack_readings(readings)
+    rejects, favourite_warnings = _protect_favourites(prepared, rejects)
+    pass_one_warnings = _ordered_unique((*pass_one_warnings, *favourite_warnings))
     ordered_marks, ordered_rejects, survivors = _apply_cull(prepared, marks, rejects)
     pass_one_warnings = _with_over_cull_warning(
         pass_one_warnings,
@@ -208,6 +219,20 @@ def _apply_cull(
     return ordered_marks, ordered_rejects, survivors
 
 
+def _protect_favourites(
+    prepared: PreparedEditorialSource,
+    rejects: tuple[CullDecision, ...],
+) -> tuple[tuple[CullDecision, ...], tuple[str, ...]]:
+    favourite_ids = {candidate.asset_id for candidate in prepared.candidates if candidate.favourite}
+    protected = tuple(decision for decision in rejects if decision.asset_id in favourite_ids)
+    accepted = tuple(decision for decision in rejects if decision.asset_id not in favourite_ids)
+    warnings = tuple(
+        f"!! cull reject conflicted with protected favourite: {decision.asset_id}"
+        for decision in protected
+    )
+    return accepted, warnings
+
+
 def _with_over_cull_warning(
     warnings: tuple[str, ...],
     reject_count: int,
@@ -297,18 +322,10 @@ def _render_review(
 ) -> CullReviewArtifacts:
     mark_by_id = {mark.asset_id: mark for mark in marks}
     reject_by_id = {decision.asset_id: decision for decision in rejects}
-    decorated = tuple(
-        _review_tile(
-            pass_zero.atlas.tile_for(candidate.asset_id),
-            favourite=candidate.favourite,
-            record=candidate.asset_id in mark_by_id,
-            rejected=reject_by_id.get(candidate.asset_id),
-        )
-        for candidate in prepared.candidates
+    atlas_tiles = tuple(
+        pass_zero.atlas.tile_for(candidate.asset_id) for candidate in prepared.candidates
     )
-    pages = build_contact_sheets(decorated, "pass-0-1-review", output_dir)
-    if warnings:
-        pages = tuple(_add_warning_banner(page, warnings) for page in pages)
+    pages = build_contact_sheets(atlas_tiles, "pass-0-1-review", output_dir)
     page_by_asset = {ref.entity_id: page.sheet_id for page in pages for ref in page.tile_refs}
     number_by_asset = {ref.entity_id: ref.number for page in pages for ref in page.tile_refs}
     entries = tuple(
@@ -340,6 +357,15 @@ def _render_review(
         )
         for candidate in prepared.candidates
     )
+    pages = tuple(
+        _decorate_review_page(
+            page,
+            tuple(entry for entry in entries if entry.page_id == page.sheet_id),
+        )
+        for page in pages
+    )
+    if warnings:
+        pages = tuple(_add_warning_banner(page, warnings) for page in pages)
     manifest_path = output_dir / "pass-0-1-review.json"
     manifest_path.write_text(
         json.dumps(
@@ -367,38 +393,96 @@ def _review_entry_dict(entry: CullReviewEntry) -> dict[str, object]:
     }
 
 
-def _review_tile(
-    tile: AtlasTile,
-    *,
-    favourite: bool,
-    record: bool,
-    rejected: CullDecision | None,
-) -> AtlasTile:
+def _decorate_review_page(
+    page: ContactSheetPage,
+    entries: tuple[CullReviewEntry, ...],
+) -> ContactSheetPage:
     from PIL import Image, ImageDraw
 
-    if tile.jpeg_bytes is None:
-        image = Image.new("RGB", (360, 240), (35, 35, 35))
-    else:
-        with Image.open(io.BytesIO(tile.jpeg_bytes)) as decoded:
-            image = decoded.convert("RGB")
-    draw = ImageDraw.Draw(image)
-    badges: list[tuple[str, tuple[int, int, int]]] = []
-    if favourite:
-        badges.append(("FAV", (180, 130, 0)))
-    if record:
-        badges.append(("RECORD", (0, 115, 150)))
-    elif rejected is not None:
-        badges.append((f"CULL {rejected.defect}", (170, 20, 20)))
-    top = 4
-    for text, colour in badges:
-        width = max(48, 8 * len(text) + 10)
-        draw.rectangle((4, top, 4 + width, top + 22), fill=colour)
-        draw.text((9, top + 5), text, fill=(255, 255, 255))
-        top += 25
+    with Image.open(io.BytesIO(page.jpeg_bytes)) as decoded:
+        sheet = decoded.convert("RGB")
+    draw = ImageDraw.Draw(sheet)
+    columns, tile = sheet_layout(len(page.tile_refs))
+    entry_by_number = {entry.number: entry for entry in entries}
+    for position, ref in enumerate(page.tile_refs):
+        _draw_review_markers(
+            draw,
+            left=(position % columns) * tile,
+            top=(position // columns) * tile,
+            tile=tile,
+            entry=entry_by_number[ref.number],
+        )
+    with_legend = _append_review_legend(sheet, entries)
+    return _replace_page_image(page, with_legend)
+
+
+def _draw_review_markers(
+    draw: Any,
+    *,
+    left: int,
+    top: int,
+    tile: int,
+    entry: CullReviewEntry,
+) -> None:
+    strip_height = max(18, min(26, tile // 6))
+    strip_top = top + tile - strip_height - 3
+    draw.rectangle(
+        (left + 3, strip_top, left + tile - 3, top + tile - 3),
+        fill=_REVIEW_STATE_COLOURS[entry.status],
+    )
+    draw.text((left + 7, strip_top + 4), entry.status, fill=(255, 255, 255))
+    if entry.favourite:
+        fav_width = 38
+        draw.rectangle(
+            (left + tile - fav_width - 3, top + 3, left + tile - 3, top + 21),
+            fill=_REVIEW_FAVOURITE_COLOUR,
+        )
+        draw.text((left + tile - fav_width + 2, top + 6), "FAV", fill=(255, 255, 255))
+
+
+def _append_review_legend(image: Any, entries: tuple[CullReviewEntry, ...]):
+    from PIL import Image, ImageDraw
+
+    decisions = tuple(entry for entry in entries if entry.status != "KEEP")
+    lines = tuple(
+        f"#{entry.number} {entry.status} {entry.reason}"
+        for entry in decisions
+        if entry.reason is not None
+    ) or ("No RECORD/CULL decisions on this page.",)
+    columns = 2
+    rows = -(-len(lines) // columns)
+    line_height = 14
+    footer_height = 34 + rows * line_height
+    composed = Image.new(
+        "RGB",
+        (image.width, image.height + footer_height),
+        (25, 25, 25),
+    )
+    composed.paste(image, (0, 0))
+    draw = ImageDraw.Draw(composed)
+    draw.text(
+        (8, image.height + 7),
+        "VISIBLE DECISION LEGEND - number -> function/defect/reason",
+        fill=(255, 255, 255),
+    )
+    column_width = image.width // columns
+    for index, line in enumerate(lines):
+        column = index % columns
+        row = index // columns
+        draw.text(
+            (8 + column * column_width, image.height + 25 + row * line_height),
+            line,
+            fill=(225, 225, 225),
+        )
+    return composed
+
+
+def _replace_page_image(page: ContactSheetPage, image: Any) -> ContactSheetPage:
     output = io.BytesIO()
-    image.save(output, "JPEG", quality=85)
+    image.save(output, "JPEG", quality=88)
     data = output.getvalue()
-    return AtlasTile(tile.entity_id, tile.kind, data, sha256(data).hexdigest(), tile.frame_count)
+    page.path.write_bytes(data)
+    return replace(page, jpeg_bytes=data, sha256=sha256(data).hexdigest())
 
 
 def _add_warning_banner(

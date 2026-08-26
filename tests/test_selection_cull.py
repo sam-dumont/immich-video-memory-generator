@@ -33,7 +33,155 @@ def _survivor_ids(result) -> tuple[str, ...]:
     return tuple(candidate.asset_id for candidate in result.survivors)
 
 
-def test_record_collision_keeps_the_record_and_applies_a_valid_sibling_reject(
+def _assert_pixel_near(
+    image: Image.Image,
+    point: tuple[int, int],
+    expected: tuple[int, int, int],
+    *,
+    tolerance: int = 35,
+) -> None:
+    actual = image.convert("RGB").getpixel(point)
+    assert all(
+        abs(channel - target) <= tolerance for channel, target in zip(actual, expected, strict=True)
+    )
+
+
+def _run_single_protection_case(
+    tmp_path: Path,
+    *,
+    favourite: bool,
+    record: bool,
+):
+    from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
+    from immich_memories.analysis.llm_query import LLMTransportAttempt
+    from immich_memories.analysis.period_insight import run_period_insight
+    from immich_memories.analysis.selection_cull import run_cull
+
+    asset = make_asset(
+        "asset",
+        file_created_at=datetime(2026, 8, 25, 12, tzinfo=UTC),
+        is_favorite=favourite,
+    )
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(
+            source_fetcher=lambda _scope: (asset,),
+            preview_jpeg=lambda _asset: _jpeg("navy"),
+        ),
+    )
+
+    async def _answer(prompt, _config, **kwargs):
+        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
+        if "chronological episode pack" in prompt:
+            return json.dumps(
+                {
+                    "schema_version": "episode-scan-v3",
+                    "pack": 1,
+                    "episode_readings": [
+                        {
+                            "episode": 1,
+                            "page": 1,
+                            "visual_summary": "One generated visual.",
+                            "representative_tiles": [1],
+                            "representative_reason": "The tile is the complete page.",
+                        }
+                    ],
+                    "record_shots": (
+                        [
+                            {
+                                "tile": 1,
+                                "function": "result proof",
+                                "reason": "Records the visible result.",
+                            }
+                        ]
+                        if record
+                        else []
+                    ),
+                    "cull_rejects": [
+                        {
+                            "tile": 1,
+                            "defect": "unusable_exposure",
+                            "evidence": "detail_lost_to_highlights",
+                        }
+                    ],
+                }
+            )
+        return json.dumps(
+            {
+                "schema_version": "period-insight-v1",
+                "period_insight": {
+                    "thesis": None,
+                    "evidence": [],
+                    "tensions": [],
+                    "recurring_threads": [],
+                    "unavailable_reason": "One visual has no period thesis.",
+                },
+            }
+        )
+
+    gateway = VisualEditorialGateway(
+        llm_config=LLMConfig(model="vision-test"),
+        cache_path=tmp_path / "judgments.db",
+        trace=prepared.trace,
+    )
+    # WHY: query_llm is the external provider boundary; protection and review stay real.
+    with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
+        pass_zero = run_period_insight(
+            prepared,
+            requester=gateway,
+            sheet_output_dir=tmp_path / "sheets",
+            frame_cache_dir=None,
+        )
+    return run_cull(prepared, pass_zero, review_output_dir=tmp_path / "review")
+
+
+def test_favourite_only_reject_is_protected_and_owner_visible(tmp_path: Path) -> None:
+    """A favourite reaches Pass 2 even when Cull returns valid defect evidence."""
+    result = _run_single_protection_case(tmp_path, favourite=True, record=False)
+
+    assert _survivor_ids(result) == ("asset",)
+    assert result.rejected == ()
+    assert result.warnings == ("!! cull reject conflicted with protected favourite: asset",)
+    assert result.review.entries[0].favourite is True
+    assert result.review.entries[0].status == "KEEP"
+
+
+def test_record_only_reject_is_protected_and_owner_visible(tmp_path: Path) -> None:
+    """A non-favourite record mark independently defeats its Cull collision."""
+    result = _run_single_protection_case(tmp_path, favourite=False, record=True)
+
+    assert _survivor_ids(result) == ("asset",)
+    assert result.rejected == ()
+    assert result.warnings == ("!! cull reject conflicted with record-shot mark: asset",)
+    assert result.review.entries[0].favourite is False
+    assert result.review.entries[0].status == "RECORD"
+
+
+def test_favourite_record_reject_uses_record_first_without_duplicate_warning(
+    tmp_path: Path,
+) -> None:
+    """One dual protection emits only the record-first collision warning."""
+    result = _run_single_protection_case(tmp_path, favourite=True, record=True)
+
+    assert _survivor_ids(result) == ("asset",)
+    assert result.rejected == ()
+    assert result.warnings == ("!! cull reject conflicted with record-shot mark: asset",)
+    assert result.review.entries[0].favourite is True
+    assert result.review.entries[0].status == "RECORD"
+
+
+def test_neither_favourite_nor_record_allows_structured_cull(tmp_path: Path) -> None:
+    """The protection matrix does not disable a valid ordinary defect rejection."""
+    result = _run_single_protection_case(tmp_path, favourite=False, record=False)
+
+    assert _survivor_ids(result) == ()
+    assert tuple(decision.asset_id for decision in result.rejected) == ("asset",)
+    assert result.warnings == ("!! possible over-cull",)
+    assert result.review.entries[0].favourite is False
+    assert result.review.entries[0].status == "CULL"
+
+
+def test_record_and_favourite_protection_keep_assets_and_apply_a_valid_sibling_reject(
     tmp_path: Path,
 ) -> None:
     """Pass 1 reparses one bank and never asks again to protect a record shot."""
@@ -45,7 +193,11 @@ def test_record_collision_keeps_the_record_and_applies_a_valid_sibling_reject(
     when = datetime(2026, 8, 25, 12, tzinfo=UTC)
     test = make_asset("test", file_created_at=when, is_favorite=True)
     blur = make_asset("blur", file_created_at=when + timedelta(seconds=1))
-    neutral = make_asset("neutral", file_created_at=when + timedelta(seconds=2))
+    neutral = make_asset(
+        "neutral",
+        file_created_at=when + timedelta(seconds=2),
+        is_favorite=True,
+    )
     prepared = prepare_editorial_source(
         EditorialSelectionRequest(scope=SourceScope()),
         EditorialDependencies(
@@ -86,12 +238,17 @@ def test_record_collision_keeps_the_record_and_applies_a_valid_sibling_reject(
                         {
                             "tile": 1,
                             "defect": "unusable_exposure",
-                            "reason": "The pixels are blown out.",
+                            "evidence": "detail_lost_to_highlights",
                         },
                         {
                             "tile": 2,
                             "defect": "unusable_motion_blur",
-                            "reason": "The subject is unreadable through motion blur.",
+                            "evidence": "subject_unrecognizable",
+                        },
+                        {
+                            "tile": 3,
+                            "defect": "corrupt_or_obscured_pixels",
+                            "evidence": "content_not_visible",
                         },
                     ],
                 }
@@ -131,7 +288,10 @@ def test_record_collision_keeps_the_record_and_applies_a_valid_sibling_reject(
     assert tuple(decision.asset_id for decision in result.rejected) == ("blur",)
     assert before == (calls, len(prepared.trace.requests))
     assert result.actual_calls == 0
-    assert result.warnings == ("!! cull reject conflicted with record-shot mark: test",)
+    assert result.warnings == (
+        "!! cull reject conflicted with record-shot mark: test",
+        "!! cull reject conflicted with protected favourite: neutral",
+    )
     pass_one = prepared.trace.editorial_passes[-1]
     assert pass_one.name == "pass-1-cull"
     assert pass_one.record_shots == result.record_shots
@@ -139,13 +299,18 @@ def test_record_collision_keeps_the_record_and_applies_a_valid_sibling_reject(
     assert tuple(entry.asset_id for entry in result.review.entries) == prepared.candidate_ids
     assert tuple(entry.number for entry in result.review.entries) == (1, 2, 3)
     assert tuple(entry.status for entry in result.review.entries) == ("RECORD", "CULL", "KEEP")
-    assert tuple(entry.favourite for entry in result.review.entries) == (True, False, False)
+    assert tuple(entry.favourite for entry in result.review.entries) == (True, False, True)
     assert tuple(entry.source_tile_sha256 for entry in result.review.entries) == tuple(
         pass_zero.atlas.tile_for(asset_id).sha256 for asset_id in prepared.candidate_ids
     )
     manifest = json.loads(result.review.manifest_path.read_text())
-    assert manifest["warnings"] == ["!! cull reject conflicted with record-shot mark: test"]
+    assert manifest["warnings"] == [
+        "!! cull reject conflicted with record-shot mark: test",
+        "!! cull reject conflicted with protected favourite: neutral",
+    ]
     assert [entry["asset_id"] for entry in manifest["entries"]] == list(prepared.candidate_ids)
+    assert manifest["entries"][2]["status"] == "KEEP"
+    assert manifest["entries"][2]["favourite"] is True
     with Image.open(BytesIO(result.review.pages[0].jpeg_bytes)) as review_page:
         red, green, blue = review_page.convert("RGB").getpixel((2, 2))
     assert red > 120 and green < 80 and blue < 80
@@ -200,7 +365,7 @@ def test_failed_middle_pack_does_not_shift_later_bank_or_reused_wire_alias(
                     {
                         "tile": 1,
                         "defect": "unusable_exposure",
-                        "reason": "The pixels are completely unreadable.",
+                        "evidence": "detail_lost_to_darkness",
                     }
                 ],
             }
@@ -304,7 +469,7 @@ def test_malformed_episode_reading_does_not_erase_valid_pass_one_namespaces(
                     {
                         "tile": 2,
                         "defect": "accidental_capture",
-                        "reason": "The lens is fully obscured by a finger.",
+                        "evidence": "camera_obstructed",
                     }
                 ],
             }
@@ -393,7 +558,7 @@ def test_missing_pass_one_namespace_warns_and_preserves_its_valid_sibling(
                 {
                     "tile": 2,
                     "defect": "unusable_exposure",
-                    "reason": "The pixels are fully blown out.",
+                    "evidence": "detail_lost_to_highlights",
                 }
             ],
         }
@@ -481,7 +646,7 @@ def test_over_cull_warns_only_above_seventy_five_percent_without_restoration(
                         {
                             "tile": number,
                             "defect": "unusable_exposure",
-                            "reason": "The pixels are fully blown out.",
+                            "evidence": "detail_lost_to_highlights",
                         }
                         for number in range(1, reject_count + 1)
                     ],
@@ -541,7 +706,11 @@ def test_multi_page_review_reuses_atlas_and_marks_generic_record_functions(
 
     when = datetime(2026, 8, 25, 12, tzinfo=UTC)
     assets = tuple(
-        make_asset(f"asset-{index:03d}", file_created_at=when + timedelta(seconds=index))
+        make_asset(
+            f"asset-{index:03d}",
+            file_created_at=when + timedelta(seconds=index),
+            is_favorite=index == 0,
+        )
         for index in range(121)
     )
     preview_calls = 0
@@ -613,14 +782,9 @@ def test_multi_page_review_reuses_atlas_and_marks_generic_record_functions(
                 "cull_rejects": (
                     [
                         {
-                            "tile": 1,
-                            "defect": "unusable_exposure",
-                            "reason": "The pixels are very bright.",
-                        },
-                        {
                             "tile": 3,
                             "defect": "corrupt_or_obscured_pixels",
-                            "reason": "The pixels are fully obscured.",
+                            "evidence": "content_not_visible",
                         },
                     ]
                     if first_page
@@ -688,14 +852,34 @@ def test_multi_page_review_reuses_atlas_and_marks_generic_record_functions(
     assert manifest["entries"][0]["reason"] == (
         "pregnancy result: Records a pregnancy-test result."
     )
-    assert (
-        manifest["warnings"].count("!! cull reject conflicted with record-shot mark: asset-000")
-        == 1
-    )
-    for page in result.review.pages:
-        with Image.open(BytesIO(page.jpeg_bytes)) as image:
-            red, green, blue = image.convert("RGB").getpixel((2, 2))
-        assert red > 120 and green < 80 and blue < 80
+    assert manifest["warnings"] == []
+
+    from immich_memories.analysis.contact_sheets import sheet_layout
+
+    first_columns, first_tile = sheet_layout(120)
+    first_grid_height = ((120 + first_columns - 1) // first_columns) * first_tile
+    with Image.open(BytesIO(result.review.pages[0].jpeg_bytes)) as first_page:
+        assert first_page.height > first_grid_height
+        _assert_pixel_near(first_page, (4, 4), (0, 0, 0))
+        _assert_pixel_near(first_page, (first_tile - 5, 5), (180, 130, 0))
+        _assert_pixel_near(first_page, (5, first_tile - 5), (0, 115, 150))
+        _assert_pixel_near(first_page, (first_tile + 5, first_tile - 5), (0, 115, 150))
+        _assert_pixel_near(first_page, (2 * first_tile + 5, first_tile - 5), (170, 20, 20))
+        _assert_pixel_near(first_page, (3 * first_tile + 5, first_tile - 5), (45, 65, 75))
+        state_top = first_tile - max(18, min(26, first_tile // 6)) - 3
+        assert state_top > 3 + 16
+        footer = first_page.convert("RGB").crop(
+            (0, first_grid_height, first_page.width, first_page.height)
+        )
+        assert footer.getbbox() is not None
+        assert len(footer.getcolors(maxcolors=1_000_000) or ()) > 2
+
+    second_columns, second_tile = sheet_layout(1)
+    second_grid_height = ((1 + second_columns - 1) // second_columns) * second_tile
+    with Image.open(BytesIO(result.review.pages[1].jpeg_bytes)) as second_page:
+        assert second_page.height > second_grid_height
+        _assert_pixel_near(second_page, (4, 4), (0, 0, 0))
+        _assert_pixel_near(second_page, (5, second_tile - 5), (45, 65, 75))
 
 
 def test_public_source_insight_cull_flow_uses_one_trace_and_never_subject_quotas(
