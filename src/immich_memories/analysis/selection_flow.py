@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from immich_memories.analysis.period_insight import PassZeroResult, run_period_insight
 from immich_memories.analysis.selection_cull import CullPassResult, run_cull
+from immich_memories.analysis.selection_selects import SelectsPassResult, run_selects
 from immich_memories.analysis.selection_source import (
     EditorialDependencies,
     EditorialSelectionRequest,
@@ -21,19 +22,20 @@ if TYPE_CHECKING:
     from immich_memories.analysis.editorial_gateway import EditorialGateway
     from immich_memories.analysis.visual_request_planner import VisionRequestLimits
 
-__all__ = ["EditorialInsightCullResult", "run_editorial_insight_cull"]
+__all__ = ["EditorialSelectionResult", "run_editorial_selection"]
 
 
 @dataclass(frozen=True)
-class EditorialInsightCullResult:
-    """The public replacement slice through source, Insight, and Cull."""
+class EditorialSelectionResult:
+    """The public replacement slice through source, Insight, Cull, and Selects."""
 
     prepared: PreparedEditorialSource
     pass_zero: PassZeroResult
     pass_one: CullPassResult
+    pass_two: SelectsPassResult
 
 
-def run_editorial_insight_cull(
+def run_editorial_selection(
     request: EditorialSelectionRequest,
     dependencies: EditorialDependencies,
     *,
@@ -42,8 +44,8 @@ def run_editorial_insight_cull(
     frame_cache_dir: Path | None,
     review_output_dir: Path,
     limits: VisionRequestLimits | None = None,
-) -> EditorialInsightCullResult:
-    """Run the single source-to-Pass-1 path on one shared trace and gateway."""
+) -> EditorialSelectionResult:
+    """Run the single source-to-Pass-2 path on one shared trace and gateway."""
     prepared = prepare_editorial_source(request, dependencies)
     gateway = gateway_factory(prepared.trace)
     pass_zero = run_period_insight(
@@ -54,4 +56,5 @@ def run_editorial_insight_cull(
         limits=limits,
     )
     pass_one = run_cull(prepared, pass_zero, review_output_dir=review_output_dir)
-    return EditorialInsightCullResult(prepared, pass_zero, pass_one)
+    pass_two = run_selects(prepared, pass_one.survivors)
+    return EditorialSelectionResult(prepared, pass_zero, pass_one, pass_two)

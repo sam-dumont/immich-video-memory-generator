@@ -189,7 +189,7 @@ def _run_single_protection_case(tmp_path: Path, *, favourite: bool):
 def _run_unstarred_stitch_case(tmp_path: Path):
     from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
     from immich_memories.analysis.llm_query import LLMTransportAttempt
-    from immich_memories.analysis.selection_flow import run_editorial_insight_cull
+    from immich_memories.analysis.selection_flow import run_editorial_selection
     from immich_memories.api.models import AssetType, VideoClipInfo
 
     when = datetime(2026, 8, 25, 12, tzinfo=UTC)
@@ -254,7 +254,7 @@ def _run_unstarred_stitch_case(tmp_path: Path):
 
     # WHY: query_llm is the provider boundary; stitch membership and Cull stay production-real.
     with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
-        return run_editorial_insight_cull(
+        return run_editorial_selection(
             EditorialSelectionRequest(scope=SourceScope()),
             EditorialDependencies(
                 source_fetcher=lambda _scope: (noncarrier, enriched),
@@ -295,7 +295,7 @@ def test_live_photo_favourite_shields_only_its_exact_candidate_not_stitch_siblin
     """Cull preserves the star without choosing its later still-or-motion rendering."""
     from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
     from immich_memories.analysis.llm_query import LLMTransportAttempt
-    from immich_memories.analysis.selection_flow import run_editorial_insight_cull
+    from immich_memories.analysis.selection_flow import run_editorial_selection
     from immich_memories.api.models import AssetType, VideoClipInfo
 
     when = datetime(2026, 8, 25, 12, tzinfo=UTC)
@@ -360,7 +360,7 @@ def test_live_photo_favourite_shields_only_its_exact_candidate_not_stitch_siblin
 
     # WHY: query_llm is the provider boundary; exact favourite protection stays production-real.
     with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
-        result = run_editorial_insight_cull(
+        result = run_editorial_selection(
             EditorialSelectionRequest(scope=SourceScope()),
             EditorialDependencies(
                 source_fetcher=lambda _scope: (favourite, enriched),
@@ -526,7 +526,7 @@ def test_unavailable_pixels_cannot_actuate_record_or_cull_but_visible_sibling_st
     """
     from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
     from immich_memories.analysis.llm_query import LLMTransportAttempt
-    from immich_memories.analysis.selection_flow import run_editorial_insight_cull
+    from immich_memories.analysis.selection_flow import run_editorial_selection
 
     when = datetime(2026, 8, 25, 12, tzinfo=UTC)
     unavailable = make_asset("unavailable", file_created_at=when)
@@ -560,7 +560,7 @@ def test_unavailable_pixels_cannot_actuate_record_or_cull_but_visible_sibling_st
 
     # WHY: query_llm is the provider boundary; source, atlas, bank, Cull, and review stay real.
     with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
-        result = run_editorial_insight_cull(
+        result = run_editorial_selection(
             EditorialSelectionRequest(scope=SourceScope()),
             EditorialDependencies(
                 source_fetcher=lambda _scope: (unavailable, visible),
@@ -591,7 +591,7 @@ def test_preview_exception_is_one_unavailable_tile_and_does_not_abort_visible_si
     """A failed preview read stays local to its asset and remains owner-visible."""
     from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
     from immich_memories.analysis.llm_query import LLMTransportAttempt
-    from immich_memories.analysis.selection_flow import run_editorial_insight_cull
+    from immich_memories.analysis.selection_flow import run_editorial_selection
 
     when = datetime(2026, 8, 25, 12, tzinfo=UTC)
     broken = make_asset("broken", file_created_at=when)
@@ -632,7 +632,7 @@ def test_preview_exception_is_one_unavailable_tile_and_does_not_abort_visible_si
 
     # WHY: query_llm is the provider boundary; preview containment and the rest of the flow are real.
     with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
-        result = run_editorial_insight_cull(
+        result = run_editorial_selection(
             EditorialSelectionRequest(scope=SourceScope()),
             EditorialDependencies(
                 source_fetcher=lambda _scope: (broken, visible),
@@ -1262,7 +1262,7 @@ def test_public_source_insight_cull_flow_uses_one_trace_and_never_subject_quotas
     """Every source kind reaches one fused visual request with subject evidence only."""
     from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
     from immich_memories.analysis.llm_query import LLMTransportAttempt
-    from immich_memories.analysis.selection_flow import run_editorial_insight_cull
+    from immich_memories.analysis.selection_flow import run_editorial_selection
     from immich_memories.api.models import AssetType, Person, VideoClipInfo
 
     when = datetime(2026, 8, 25, 12, tzinfo=UTC)
@@ -1358,7 +1358,7 @@ def test_public_source_insight_cull_flow_uses_one_trace_and_never_subject_quotas
             side_effect=AssertionError("legacy subject filter called"),
         ),
     ):
-        result = run_editorial_insight_cull(
+        result = run_editorial_selection(
             EditorialSelectionRequest(scope=SourceScope()),
             EditorialDependencies(
                 source_fetcher=lambda _scope: sources,
@@ -1384,6 +1384,7 @@ def test_public_source_insight_cull_flow_uses_one_trace_and_never_subject_quotas
         "source-eligibility",
         "pass-0",
         "pass-1-cull",
+        "pass-2-selects",
     ]
     assert len(result.prepared.trace.requests) == 2
     assert episode_asks == 1
@@ -1402,7 +1403,7 @@ def test_arbitrary_unrelated_topics_share_the_same_production_flow_without_quota
     """Topic labels remain evidence; they never select a branch or membership policy."""
     from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
     from immich_memories.analysis.llm_query import LLMTransportAttempt
-    from immich_memories.analysis.selection_flow import run_editorial_insight_cull
+    from immich_memories.analysis.selection_flow import run_editorial_selection
     from immich_memories.api.models import VideoClipInfo
 
     when = datetime(2026, 8, 25, 8, tzinfo=UTC)
@@ -1478,7 +1479,7 @@ def test_arbitrary_unrelated_topics_share_the_same_production_flow_without_quota
             side_effect=AssertionError("legacy filter called"),
         ),
     ):
-        result = run_editorial_insight_cull(
+        result = run_editorial_selection(
             EditorialSelectionRequest(scope=SourceScope()),
             EditorialDependencies(
                 source_fetcher=lambda _scope: sources,
@@ -1514,7 +1515,7 @@ def test_reencode_reaches_fused_visual_request_with_pixels_and_empty_cull_keeps_
     """A weak metadata prior remains provider-visible evidence, never a source deletion."""
     from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
     from immich_memories.analysis.llm_query import LLMTransportAttempt
-    from immich_memories.analysis.selection_flow import run_editorial_insight_cull
+    from immich_memories.analysis.selection_flow import run_editorial_selection
     from immich_memories.api.models import VideoClipInfo
 
     clip = VideoClipInfo(
@@ -1572,7 +1573,7 @@ def test_reencode_reaches_fused_visual_request_with_pixels_and_empty_cull_keeps_
 
     # WHY: query_llm is the provider boundary; source annotations and attached sheets stay real.
     with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
-        result = run_editorial_insight_cull(
+        result = run_editorial_selection(
             EditorialSelectionRequest(scope=SourceScope()),
             EditorialDependencies(
                 source_fetcher=lambda _scope: (clip,),
@@ -1604,7 +1605,7 @@ def test_explicit_provider_refusal_is_fail_open_and_owner_visible(tmp_path: Path
     """A refusal is evidence failure, never permission to invent a Pass 1 decision."""
     from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
     from immich_memories.analysis.llm_query import LLMTransportAttempt
-    from immich_memories.analysis.selection_flow import run_editorial_insight_cull
+    from immich_memories.analysis.selection_flow import run_editorial_selection
 
     asset = make_asset("safe")
 
@@ -1621,7 +1622,7 @@ def test_explicit_provider_refusal_is_fail_open_and_owner_visible(tmp_path: Path
 
     # WHY: query_llm is the provider boundary; refusal handling and owner output stay real.
     with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_refuse):
-        result = run_editorial_insight_cull(
+        result = run_editorial_selection(
             EditorialSelectionRequest(scope=SourceScope()),
             EditorialDependencies(
                 source_fetcher=lambda _scope: (asset,),
