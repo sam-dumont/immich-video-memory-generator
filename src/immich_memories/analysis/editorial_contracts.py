@@ -25,6 +25,15 @@ class EditorialCandidate:
 
 
 @dataclass(frozen=True)
+class SourceEvidence:
+    """Precomputed source measurements supplied without running new analysis."""
+
+    blur: float | None = None
+    exposure: float | None = None
+    similarity: str | None = None
+
+
+@dataclass(frozen=True)
 class DecisionProvenance:
     """Evidence that lets a decision be reproduced from its original request."""
 

@@ -165,10 +165,21 @@ class Trace:
             (
                 pass_trace.name
                 for pass_trace in self.editorial_passes
-                if asset_id in pass_trace.input_ids
+                if pass_trace.name != "source-eligibility" and asset_id in pass_trace.input_ids
             ),
             None,
         )
+        for pass_trace in self.editorial_passes:
+            rejected = next(
+                (decision for decision in pass_trace.rejected if decision.asset_id == asset_id),
+                None,
+            )
+            if rejected is not None:
+                dropped_at = pass_trace.name
+                reason = rejected.reason
+                survived = []
+            elif asset_id in pass_trace.kept_ids:
+                admitted_at = pass_trace.name
         for stage in self.stages:
             if asset_id in stage.gained_ids:
                 admitted_at = stage.name

@@ -1,8 +1,6 @@
 __getattr__  # unused function (src/immich_memories/analysis/__init__.py:80)
 media_kind  # unused variable (src/immich_memories/analysis/editorial_contracts.py:19)
 favourite  # unused variable (src/immich_memories/analysis/editorial_contracts.py:20)
-library_ids  # unused variable (src/immich_memories/analysis/selection_flow.py:36)
-excluded_ids  # unused variable (src/immich_memories/analysis/selection_flow.py:72)
 prepare_editorial_source  # unused function (src/immich_memories/analysis/selection_flow.py:83)
 left_eye  # unused variable (src/immich_memories/analysis/apple_vision.py:39)
 right_eye  # unused variable (src/immich_memories/analysis/apple_vision.py:40)

@@ -15,6 +15,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from immich_memories.analysis.editorial_contracts import SourceEvidence
+
 if TYPE_CHECKING:
     from immich_memories.api.models import Asset, VideoClipInfo
 
@@ -42,6 +44,7 @@ def is_usable_source(
 def grounded_source_annotations(
     asset: Asset,
     clip: VideoClipInfo | None = None,
+    evidence: SourceEvidence | None = None,
 ) -> tuple[str, ...]:
     """Return existing technical and semantic observations without judging a source."""
     width, height = _dimensions(asset, clip)
@@ -53,7 +56,7 @@ def grounded_source_annotations(
     duration = clip.duration_seconds if clip is not None else asset.duration_seconds
     if duration is not None:
         annotations.append(f"duration:{duration:.3f}s")
-    annotations.extend(_available_image_observations(asset, clip))
+    annotations.extend(_available_image_observations(asset, clip, evidence))
     return tuple(annotations)
 
 
@@ -72,7 +75,11 @@ def _has_camera_exif(asset: Asset) -> bool:
     return bool(exif and (exif.make or exif.model))
 
 
-def _available_image_observations(asset: Asset, clip: VideoClipInfo | None) -> list[str]:
+def _available_image_observations(
+    asset: Asset,
+    clip: VideoClipInfo | None,
+    evidence: SourceEvidence | None,
+) -> list[str]:
     annotations: list[str] = []
     exif = asset.exif_info
     if exif and exif.exposure_time:
@@ -84,18 +91,20 @@ def _available_image_observations(asset: Asset, clip: VideoClipInfo | None) -> l
         annotations.append(f"burst-members:{len(clip.live_burst_still_ids)}")
     if clip.llm_category:
         annotations.append(f"subject:{clip.llm_category}")
-    annotations.extend(_available_metrics(clip))
+    if clip.llm_quality is not None:
+        annotations.append(f"analysis-quality:{clip.llm_quality}")
+    if evidence is not None:
+        annotations.extend(_precomputed_annotations(evidence))
     return annotations
 
 
-def _available_metrics(clip: VideoClipInfo) -> list[str]:
-    annotations: list[str] = []
-    for attribute, label in (
-        ("blur_score", "blur"),
-        ("exposure_score", "exposure"),
-        ("similarity_group_id", "similarity"),
-    ):
-        value = getattr(clip, attribute, None)
-        if value is not None:
-            annotations.append(f"{label}:{value}")
-    return annotations
+def _precomputed_annotations(evidence: SourceEvidence) -> list[str]:
+    return [
+        f"{label}:{value}"
+        for value, label in (
+            (evidence.blur, "blur"),
+            (evidence.exposure, "exposure"),
+            (evidence.similarity, "similarity"),
+        )
+        if value is not None
+    ]

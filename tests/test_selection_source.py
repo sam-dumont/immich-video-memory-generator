@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+from immich_memories.analysis.editorial_contracts import SourceEvidence
 from immich_memories.analysis.selection_flow import (
     EditorialDependencies,
     EditorialSelectionRequest,
@@ -126,5 +127,158 @@ def test_requested_dates_and_supported_media_define_the_source_scope() -> None:
     )
 
     assert prepared.candidate_ids == ("in-window",)
-    assert prepared.excluded_ids == ()
+    assert prepared.excluded_ids == ("too-early", "audio")
     assert prepared.candidates[0].shippable_duration == 10.0
+    assert prepared.trace.as_dict()["editorial_passes"][0] == {
+        "name": "source-eligibility",
+        "input_ids": ["too-early", "audio", "in-window"],
+        "kept_ids": ["in-window"],
+        "rejected": [
+            {"asset_id": "too-early", "reason": "outside date scope"},
+            {"asset_id": "audio", "reason": "unsupported media"},
+        ],
+        "unresolved": [],
+        "duration_before": 30.0,
+        "duration_after": 10.0,
+        "provenance": {
+            "pass_name": "source-eligibility",
+            "pass_version": "1",
+            "schema_version": "1",
+            "model_identity": "",
+            "input_ids": ["too-early", "audio", "in-window"],
+            "sheet_hashes": [],
+            "request_key": "source-eligibility",
+            "cache_hit": False,
+        },
+        "conservation": {
+            "valid": True,
+            "missing_ids": [],
+            "duplicate_ids": [],
+            "unexpected_ids": [],
+        },
+        "request_traces": [],
+    }
+
+
+def test_library_scope_rejects_an_over_returned_asset_and_records_why() -> None:
+    """The source boundary is enforced even when acquisition over-returns another library's asset."""
+    scoped = make_asset("in-library")
+    other_library = make_asset("elsewhere")
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope(library_ids=("family-library",))),
+        EditorialDependencies(
+            source_fetcher=lambda _scope: (scoped, other_library),
+            library_membership=lambda asset, _library_ids: asset.id == "in-library",
+        ),
+    )
+
+    assert prepared.candidate_ids == ("in-library",)
+    assert prepared.excluded_ids == ("elsewhere",)
+    source_trace = prepared.trace.as_dict()["editorial_passes"][0]
+    assert source_trace["rejected"] == [
+        {"asset_id": "elsewhere", "reason": "outside library scope"}
+    ]
+    story = prepared.trace.story_of("elsewhere")
+    assert story.dropped_at == "source-eligibility"
+    assert story.reason == "outside library scope"
+
+
+def test_interleaved_place_threads_preserve_every_group_member() -> None:
+    """Place threads may interleave chronologically without being mistaken for missing assets."""
+    noon = datetime(2026, 8, 25, 12, 0, tzinfo=UTC)
+    circuit = make_asset("circuit", file_created_at=noon)
+    home = make_asset("home", file_created_at=noon + timedelta(minutes=3))
+    circuit2 = make_asset("circuit2", file_created_at=noon + timedelta(minutes=6))
+    for asset, location in (
+        (circuit, (50.437, 5.971)),
+        (home, (50.878, 4.326)),
+        (circuit2, (50.437, 5.971)),
+    ):
+        assert asset.exif_info is not None
+        asset.exif_info.latitude, asset.exif_info.longitude = location
+
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(source_fetcher=lambda _scope: (circuit, home, circuit2)),
+    )
+
+    assert tuple(group.candidate_ids for group in prepared.moment_groups) == (
+        ("circuit", "circuit2"),
+        ("home",),
+    )
+
+
+def test_duplicate_asset_representations_prefer_the_enriched_clip() -> None:
+    """A Live Photo's still and motion representation remain one editorial candidate."""
+    still = make_asset("live-photo", duration="0:00:00.500")
+    still.type = AssetType.IMAGE
+    still.live_photo_video_id = "live-photo-motion"
+    clip = VideoClipInfo(
+        asset=still,
+        duration_seconds=1.5,
+        width=1920,
+        height=1080,
+        live_burst_still_ids=["live-photo", "burst-neighbour"],
+    )
+
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(source_fetcher=lambda _scope: (still, clip)),
+    )
+
+    assert prepared.candidate_ids == ("live-photo",)
+    candidate = prepared.candidates[0]
+    assert candidate.media_kind == "live_photo"
+    assert candidate.shippable_duration == 1.5
+    assert "burst-members:2" in candidate.grounded_annotations
+
+
+def test_conflicting_duplicate_asset_representations_are_rejected() -> None:
+    """Two different records claiming one ID cannot be coalesced silently."""
+    noon = datetime(2026, 8, 25, 12, 0, tzinfo=UTC)
+    first = make_asset("duplicated", file_created_at=noon)
+    conflicting = make_asset(
+        "duplicated",
+        file_created_at=noon,
+        original_file_name="different-source.mov",
+    )
+
+    from pytest import raises
+
+    with raises(ValueError, match="conflicting source representations for asset duplicated"):
+        prepare_editorial_source(
+            EditorialSelectionRequest(scope=SourceScope()),
+            EditorialDependencies(source_fetcher=lambda _scope: (first, conflicting)),
+        )
+
+
+def test_precomputed_evidence_and_clip_analysis_survive_source_preparation() -> None:
+    """Already-available measurements become annotations without triggering new analysis."""
+    clip = VideoClipInfo(
+        asset=make_asset("analysed"),
+        duration_seconds=2.0,
+        width=1920,
+        height=1080,
+        llm_quality=0.875,
+    )
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(
+            source_fetcher=lambda _scope: (clip,),
+            source_evidence=lambda _source: SourceEvidence(
+                blur=0.125,
+                exposure=0.75,
+                similarity="cluster-7",
+            ),
+        ),
+    )
+
+    assert prepared.candidates[0].grounded_annotations == (
+        "resolution:1920x1080",
+        "duration:2.000s",
+        "motion:available",
+        "analysis-quality:0.875",
+        "blur:0.125",
+        "exposure:0.75",
+        "similarity:cluster-7",
+    )
