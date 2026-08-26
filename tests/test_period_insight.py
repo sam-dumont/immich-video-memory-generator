@@ -1002,65 +1002,6 @@ def test_singleton_episode_packs_fit_their_complete_response_budget(tmp_path: Pa
     assert len(result.episode_readings) == 120
 
 
-def test_unavailable_atlas_tile_blocks_a_claimed_episode_and_period_thesis(
-    tmp_path: Path,
-) -> None:
-    """A numbered placeholder is not visual evidence the model may promote as a representative."""
-    from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
-    from immich_memories.analysis.llm_query import LLMTransportAttempt
-    from immich_memories.analysis.period_insight import run_period_insight
-
-    start = datetime(2026, 8, 25, 12, tzinfo=UTC)
-    assets = (
-        make_asset("visible", file_created_at=start),
-        make_asset("missing-pixels", file_created_at=start + timedelta(seconds=1)),
-    )
-    prepared = prepare_editorial_source(
-        EditorialSelectionRequest(scope=SourceScope()),
-        EditorialDependencies(
-            source_fetcher=lambda _scope: assets,
-            preview_jpeg=lambda asset: _jpeg("plum") if asset.id == "visible" else None,
-        ),
-    )
-    calls = 0
-
-    async def _claim(prompt, _config, **kwargs):
-        nonlocal calls
-        calls += 1
-        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
-        if calls == 1:
-            return _episode_pack_answer(prompt, summary="Both numbered tiles are visible.")
-        return (
-            '{"schema_version":"period-insight-v1","period_insight":{'
-            '"thesis":"The missing tile proves a story.",'
-            '"evidence":[{"observation":"Invented evidence.","representative_tiles":[2]}],'
-            '"tensions":[],"recurring_threads":[],"unavailable_reason":null}}'
-        )
-
-    gateway = VisualEditorialGateway(
-        llm_config=LLMConfig(model="vision-test"),
-        cache_path=tmp_path / "judgments.db",
-        trace=prepared.trace,
-    )
-    # WHY: query_llm is the external provider; unavailable atlas evidence stays real.
-    with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_claim):
-        result = run_period_insight(
-            prepared,
-            requester=gateway,
-            sheet_output_dir=tmp_path / "sheets",
-            frame_cache_dir=None,
-        )
-
-    assert calls == 1
-    assert result.episode_readings == ()
-    assert result.insight.thesis is None
-    assert result.retained_ids == prepared.candidate_ids
-    assert result.warnings == (
-        "!! Pass 0 visual unavailable: missing-pixels (no usable local preview or motion frames)",
-        "!! Pass 0 incomplete visual evidence; period thesis unavailable",
-    )
-
-
 def test_empty_prepared_corpus_records_pass_zero_without_visual_calls(tmp_path: Path) -> None:
     from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
     from immich_memories.analysis.period_insight import run_period_insight
@@ -1348,3 +1289,46 @@ def test_a_pack_holds_no_more_episodes_than_the_model_will_answer_about(
     assert all(len(pack.scopes) <= MAX_EPISODES_PER_PACK for pack in result.episode_packs)
     # still greedy: only the last pack is allowed to be short
     assert all(len(pack.scopes) == MAX_EPISODES_PER_PACK for pack in result.episode_packs[:-1])
+
+
+def test_a_visual_nobody_can_see_is_not_asked_about(tmp_path: Path) -> None:
+    """No pixels, no tile, no question — and it never reaches a sheet.
+
+    An asset with no preview and no usable frames was carried onto the sheet as
+    a numbered placeholder, which the model could then promote as a
+    representative and which voided its whole episode's reading. Seventeen such
+    assets in a real dense month cost the month its thesis. Nothing showable is
+    a fact about the file, so it leaves before any pass is asked anything.
+    """
+    from immich_memories.analysis.period_insight import run_period_insight
+
+    when = datetime(2026, 8, 25, 12, tzinfo=UTC)
+    seen = make_asset("seen", file_created_at=when)
+    blind = make_asset("blind", file_created_at=when + timedelta(seconds=30))
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(
+            source_fetcher=lambda _scope: (seen, blind),
+            # WHY: the preview provider is the external boundary; one asset has none.
+            preview_jpeg=lambda asset: None if asset.id == "blind" else _jpeg("olive"),
+        ),
+    )
+
+    class NoProvider:
+        def ask(self, _request):
+            raise TimeoutError("no model needed to build the sheets")
+
+    result = run_period_insight(
+        prepared,
+        requester=NoProvider(),
+        sheet_output_dir=tmp_path / "sheets",
+        frame_cache_dir=None,
+    )
+
+    assert result.retained_ids == ("seen",)
+    shown = {ref.entity_id for pack in result.episode_packs for ref in pack.page.tile_refs}
+    assert shown == {"seen"}
+    assert not any(
+        scope.unavailable_asset_ids for pack in result.episode_packs for scope in pack.scopes
+    )
+    assert any("blind" in warning for warning in result.warnings)

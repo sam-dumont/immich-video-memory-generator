@@ -167,8 +167,15 @@ def run_period_insight(
                 warnings,
                 f"Pass 0 visual unavailable: {tile.entity_id} ({tile.unavailable_reason})",
             )
+    # Nothing showable is a fact about the file, not a judgement about it, so it
+    # leaves before any pass is asked anything. Carried onto a sheet it became a
+    # numbered placeholder the model could promote as a representative, and it
+    # voided its whole episode's reading: seventeen such assets in a real dense
+    # month cost that month its thesis.
+    viewable = _viewable_groups(prepared.episode_groups, atlas)
+    retained_ids = tuple(candidate.asset_id for group in viewable for candidate in group.candidates)
     episode_sheets, episode_packs = _episode_material(
-        prepared.episode_groups,
+        viewable,
         atlas=atlas,
         output_dir=sheet_output_dir / "episodes",
         limits=request_limits,
@@ -242,7 +249,7 @@ def run_period_insight(
     _record_pass_zero(prepared, provenance, logical_requests)
     physical_requests = prepared.trace.requests[request_start:]
     return PassZeroResult(
-        retained_ids=prepared.candidate_ids,
+        retained_ids=retained_ids,
         atlas=atlas,
         episode_sheets=episode_sheets,
         episode_packs=episode_packs,
@@ -374,6 +381,22 @@ def _period_prompt(upstream: tuple[str, ...], pages: tuple[ContactSheetPage, ...
         "unavailable_reason. tensions and recurring_threads are lists of plain sentences. "
         "Use exactly this shape and these keys:\n" + period_response_shape(tile=1)
     )
+
+
+def _viewable_groups(
+    groups: tuple[EditorialGroup, ...], atlas: VisualAtlas
+) -> tuple[EditorialGroup, ...]:
+    """The same groups without the candidates that have no pixels to show."""
+    kept = []
+    for group in groups:
+        members = tuple(
+            candidate
+            for candidate in group.candidates
+            if atlas.tile_for(candidate.asset_id).kind != "unavailable"
+        )
+        if members:
+            kept.append(replace(group, candidates=members))
+    return tuple(kept)
 
 
 def _episode_material(
@@ -644,9 +667,10 @@ def _read_episode_packs(
             EpisodePageObservation(
                 scope.episode_id,
                 scope.page_id,
+                # Unviewable candidates left before the sheet was built, so a
+                # scope with no tiles is an empty episode rather than a blind one.
                 None
-                if scope.unavailable_asset_ids
-                or (scope.episode_id, scope.page_id) in invalid_observations
+                if not scope.tile_refs or (scope.episode_id, scope.page_id) in invalid_observations
                 else by_identity.get((scope.episode_id, scope.page_id)),
                 scan,
             )

@@ -445,7 +445,12 @@ def test_cull_reparses_one_bank_and_never_asks_again(
 def test_unavailable_pixels_cannot_actuate_record_or_cull_but_visible_sibling_still_culls(
     tmp_path: Path,
 ) -> None:
-    """Placeholder tiles have no editorial authority in either Pass 1 namespace."""
+    """A visual nobody can see is never asked about, and never blocks its sibling.
+
+    It leaves before the sheet is built, so it occupies no numbered square and
+    the tiles renumber around it. It survives Pass 1 unjudged rather than being
+    removed on evidence that does not exist.
+    """
     from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
     from immich_memories.analysis.llm_query import LLMTransportAttempt
     from immich_memories.analysis.selection_flow import run_editorial_insight_cull
@@ -465,11 +470,11 @@ def test_unavailable_pixels_cannot_actuate_record_or_cull_but_visible_sibling_st
                         "episode": 1,
                         "page": 1,
                         "visual_summary": "One placeholder and one visible frame.",
-                        "representative_tiles": [2],
-                        "representative_reason": "Only the second tile has source pixels.",
+                        "representative_tiles": [1],
+                        "representative_reason": "The only tile with source pixels.",
                     }
                 ],
-                "cull_rejects": [{"episode": 1, "notes": [], "failed": [1, 2]}],
+                "cull_rejects": [{"episode": 1, "notes": [], "failed": [1]}],
             }
         )
 
@@ -496,12 +501,10 @@ def test_unavailable_pixels_cannot_actuate_record_or_cull_but_visible_sibling_st
 
     assert _survivor_ids(result.pass_one) == ("unavailable",)
     assert tuple(decision.asset_id for decision in result.pass_one.rejected) == ("visible",)
-    assert any(
-        "unavailable Cull decision: unavailable" in item for item in result.pass_one.warnings
-    )
-    assert any(
-        "unavailable Cull decision: unavailable" in item for item in result.pass_one.warnings
-    )
+    # It is reported as unseeable, not as a decision that had to be thrown away:
+    # Cull was never shown it and so could not name it.
+    assert any("visual unavailable: unavailable" in item for item in result.pass_one.warnings)
+    assert not any("unavailable Cull decision" in item for item in result.pass_one.warnings)
     assert tuple(entry.status for entry in result.pass_one.review.entries) == ("KEEP", "CULL")
     assert result.pass_one.review.warnings == result.pass_one.warnings
     with Image.open(BytesIO(result.pass_one.review.pages[0].jpeg_bytes)) as review_page:
