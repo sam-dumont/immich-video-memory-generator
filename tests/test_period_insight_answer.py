@@ -1,29 +1,50 @@
 """Strict parsing for the visual episode-scan envelope."""
 
+import json
+
+import pytest
+
+from immich_memories.analysis.editorial_contracts import (
+    DecisionProvenance,
+    InsightEvidence,
+    PeriodInsight,
+)
 from immich_memories.analysis.period_insight_answer import (
+    PeriodInsightAnswer,
     read_episode_answer,
     read_episode_answers,
     read_period_answer,
 )
 
 
+def _provenance() -> DecisionProvenance:
+    return DecisionProvenance(
+        pass_name="period-insight",  # noqa: S106 - test-only pass identity
+        pass_version="1",  # noqa: S106 - test-only pass version
+        schema_version="1",
+        model_identity="generated-test",
+        input_ids=("asset",),
+        sheet_hashes=("hash",),
+        request_key="request",
+        cache_hit=False,
+    )
+
+
 def test_truncated_episode_answer_cannot_select_representatives() -> None:
     """An auto-closable fragment is still not a completed visual observation."""
     raw = (
-        '{"schema_version":"episode-scan-v1","episode_id":"day-1",'
-        '"page_id":"day-1-002","episode_reading":{"visual_summary":"the finish",'
+        '{"schema_version":"episode-scan-v1","episode":1,'
+        '"page":1,"episode_reading":{"visual_summary":"the finish",'
         '"representative_tiles":[1,2]'
     )
-    tile_map = {
-        ("day-1", "day-1-002", 1): "asset-121",
-        ("day-1", "day-1-002", 2): "asset-122",
-    }
+    tile_map = {(1, 1, 1): "asset-121", (1, 1, 2): "asset-122"}
 
     assert (
         read_episode_answer(
             raw,
-            episode_id="day-1",
-            page_id="day-1-002",
+            episode_alias=1,
+            page_alias=1,
+            observation_map={(1, 1): ("day-1", "day-1-002")},
             tile_map=tile_map,
         )
         is None
@@ -31,25 +52,26 @@ def test_truncated_episode_answer_cannot_select_representatives() -> None:
 
 
 def test_complete_final_episode_object_resolves_only_its_page_tiles() -> None:
-    """A complete envelope maps displayed numbers through its qualified page."""
+    """Compact wire aliases map back through the qualified stable episode page."""
     raw = """The requested visual observation follows.
 ```json
- {"schema_version":"episode-scan-v1","episode_id":"day-1","page_id":"day-1-002",
+ {"schema_version":"episode-scan-v1","episode":7,"page":2,
  "episode_reading":{"visual_summary":"A rider reaches the finish and shows the medal.",
  "representative_tiles":[121,122],
  "representative_reason":"The effort and payoff summarize this page."}}
 ```"""
     tile_map = {
-        ("day-1", "day-1-001", 121): "wrong-page-a",
-        ("day-1", "day-1-001", 122): "wrong-page-b",
-        ("day-1", "day-1-002", 121): "finish",
-        ("day-1", "day-1-002", 122): "medal",
+        (7, 1, 121): "wrong-page-a",
+        (7, 1, 122): "wrong-page-b",
+        (7, 2, 121): "finish",
+        (7, 2, 122): "medal",
     }
 
     answer = read_episode_answer(
         raw,
-        episode_id="day-1",
-        page_id="day-1-002",
+        episode_alias=7,
+        page_alias=2,
+        observation_map={(7, 2): ("day-1", "day-1-002")},
         tile_map=tile_map,
     )
 
@@ -84,6 +106,90 @@ def test_complete_period_object_grounds_evidence_in_representative_pixels() -> N
     assert answer.thesis == "Training, racing, and the people around both."
     assert answer.evidence[0].episode_ids == ("training", "race-day")
     assert answer.evidence[0].asset_ids == ("effort", "medal")
+
+
+def test_period_answer_rejects_thesis_with_an_unavailable_reason() -> None:
+    """A response cannot claim a grounded thesis and claim that thesis was unavailable."""
+    raw = """{
+      "schema_version":"period-insight-v1",
+      "period_insight":{
+        "thesis":"A claimed visual arc.",
+        "evidence":[{"observation":"Visible change.","representative_tiles":[1]}],
+        "tensions":[],
+        "recurring_threads":[],
+        "unavailable_reason":"The evidence was incomplete."
+      }
+    }"""
+
+    assert (
+        read_period_answer(
+            raw,
+            page_ids=("period-wall-001",),
+            tile_map={("period-wall-001", 1): ("episode", "asset")},
+        )
+        is None
+    )
+
+
+def test_period_answer_rejects_a_thesis_without_visual_evidence() -> None:
+    """A thesis needs at least one page-qualified visual observation."""
+    raw = """{
+      "schema_version":"period-insight-v1",
+      "period_insight":{
+        "thesis":"An unsupported visual arc.",
+        "evidence":[],
+        "tensions":[],
+        "recurring_threads":[],
+        "unavailable_reason":null
+      }
+    }"""
+
+    assert (
+        read_period_answer(
+            raw,
+            page_ids=("period-wall-001",),
+            tile_map={("period-wall-001", 1): ("episode", "asset")},
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    ("evidence", "unavailable_reason"),
+    (
+        (
+            (InsightEvidence("Visible change.", ("episode",), ("asset",)),),
+            "The same thesis was unavailable.",
+        ),
+        ((), None),
+    ),
+)
+def test_period_insight_constructor_cannot_bypass_grounded_exclusive_state(
+    evidence: tuple[InsightEvidence, ...], unavailable_reason: str | None
+) -> None:
+    """Direct construction rejects contradictory or visually unsupported theses."""
+    with pytest.raises(ValueError, match="period insight"):
+        PeriodInsight(
+            thesis="A claimed visual arc.",
+            evidence=evidence,
+            tensions=(),
+            recurring_threads=(),
+            unavailable_reason=unavailable_reason,
+            revision=0,
+            provenance=_provenance(),
+        )
+
+
+def test_period_answer_constructor_cannot_bypass_grounded_exclusive_state() -> None:
+    """The parsed-answer record independently rejects an unsupported thesis."""
+    with pytest.raises(ValueError, match="period insight answer"):
+        PeriodInsightAnswer(
+            thesis="A claimed visual arc.",
+            evidence=(),
+            tensions=(),
+            recurring_threads=(),
+            unavailable_reason=None,
+        )
 
 
 def test_period_answer_cannot_hide_a_missing_thesis_without_a_reason() -> None:
@@ -138,12 +244,12 @@ def test_one_episode_scan_pack_returns_independent_page_qualified_readings() -> 
     """Many complete small episodes share one physical answer without sharing tile scope."""
     raw = """{
       "schema_version":"episode-scan-v1",
-      "pack_id":"pack-1",
+      "pack":1,
       "episode_readings":[
-        {"episode_id":"morning","page_id":"pack-1-001",
+        {"episode":1,"page":1,
          "visual_summary":"Preparation in a quiet room {before the crowd}.",
          "representative_tiles":[1],"representative_reason":"The setup is visible."},
-        {"episode_id":"evening","page_id":"pack-1-001",
+        {"episode":2,"page":1,
          "visual_summary":"A public performance.",
          "representative_tiles":[2],"representative_reason":"The stage is the visible peak."}
       ],
@@ -151,15 +257,17 @@ def test_one_episode_scan_pack_returns_independent_page_qualified_readings() -> 
       "cull_rejects":[{"tile":true}]
     }"""
     expected = (("morning", "pack-1-001"), ("evening", "pack-1-001"))
-    tile_map = {
-        ("morning", "pack-1-001", 1): "warmup",
-        ("evening", "pack-1-001", 2): "stage",
+    observation_map = {
+        (1, 1): ("morning", "pack-1-001"),
+        (2, 1): ("evening", "pack-1-001"),
     }
+    tile_map = {(1, 1, 1): "warmup", (2, 1, 2): "stage"}
 
     answer = read_episode_answers(
         raw,
-        pack_id="pack-1",
+        pack_alias=1,
         expected_observations=expected,
+        observation_map=observation_map,
         tile_map=tile_map,
     )
 
@@ -172,20 +280,68 @@ def test_one_episode_scan_pack_returns_independent_page_qualified_readings() -> 
     assert answer.invalid_observations == ()
 
 
-def test_episode_namespace_keeps_four_reasoned_representatives_without_a_topic_cap() -> None:
-    """Representative count emerges from the pixels; only the global wall bounds it."""
-    raw = """{
-      "schema_version":"episode-scan-v1","pack_id":"pack-1",
-      "episode_readings":[{"episode_id":"episode","page_id":"pack-1-001",
-        "visual_summary":"Four frames.","representative_tiles":[1,2,3,4],
-        "representative_reason":"All four differ."}]
-    }"""
-    tile_map = {("episode", "pack-1-001", number): f"asset-{number}" for number in range(1, 5)}
+@pytest.mark.parametrize(
+    ("overlong_summary", "overlong_reason"),
+    (("s" * 65, "visible A"), ("Visible A", "r" * 97)),
+)
+def test_overlong_episode_prose_invalidates_only_that_packed_reading(
+    overlong_summary: str, overlong_reason: str
+) -> None:
+    """The response estimator's prose bounds are enforced without poisoning valid siblings."""
+    raw = json.dumps(
+        {
+            "schema_version": "episode-scan-v1",
+            "pack": 1,
+            "episode_readings": [
+                {
+                    "episode": 1,
+                    "page": 1,
+                    "visual_summary": overlong_summary,
+                    "representative_tiles": [1],
+                    "representative_reason": overlong_reason,
+                },
+                {
+                    "episode": 2,
+                    "page": 1,
+                    "visual_summary": "Visible B",
+                    "representative_tiles": [2],
+                    "representative_reason": "visible B",
+                },
+            ],
+        }
+    )
 
     answer = read_episode_answers(
         raw,
-        pack_id="pack-1",
+        pack_alias=1,
+        expected_observations=(("a", "stable-page"), ("b", "stable-page")),
+        observation_map={
+            (1, 1): ("a", "stable-page"),
+            (2, 1): ("b", "stable-page"),
+        },
+        tile_map={(1, 1, 1): "asset-a", (2, 1, 2): "asset-b"},
+    )
+
+    assert answer is not None
+    assert tuple(reading.episode_id for reading in answer.readings) == ("b",)
+    assert answer.invalid_observations == (("a", "stable-page"),)
+
+
+def test_episode_namespace_keeps_four_reasoned_representatives_without_a_topic_cap() -> None:
+    """Representative count emerges from the pixels; only the global wall bounds it."""
+    raw = """{
+      "schema_version":"episode-scan-v1","pack":1,
+      "episode_readings":[{"episode":1,"page":1,
+        "visual_summary":"Four frames.","representative_tiles":[1,2,3,4],
+        "representative_reason":"All four differ."}]
+    }"""
+    tile_map = {(1, 1, number): f"asset-{number}" for number in range(1, 5)}
+
+    answer = read_episode_answers(
+        raw,
+        pack_alias=1,
         expected_observations=(("episode", "pack-1-001"),),
+        observation_map={(1, 1): ("episode", "pack-1-001")},
         tile_map=tile_map,
     )
 
@@ -199,28 +355,33 @@ def test_episode_namespace_keeps_four_reasoned_representatives_without_a_topic_c
     assert answer.invalid_observations == ()
 
 
-def test_invalid_episode_namespace_keeps_valid_pack_siblings() -> None:
-    """An unknown tile invalidates only that episode reading, not the physical answer."""
+def test_unknown_episode_alias_keeps_valid_pack_siblings() -> None:
+    """An unknown alias leaves its expected episode invalid without poisoning siblings."""
     raw = """{
-      "schema_version":"episode-scan-v1","pack_id":"pack-1",
+      "schema_version":"episode-scan-v1","pack":1,
       "episode_readings":[
-        {"episode_id":"a","page_id":"page","visual_summary":"A",
+        {"episode":1,"page":1,"visual_summary":"A",
          "representative_tiles":[1],"representative_reason":"visible A"},
-        {"episode_id":"b","page_id":"page","visual_summary":"B",
-         "representative_tiles":[99],"representative_reason":"invented B"},
-        {"episode_id":"c","page_id":"page","visual_summary":"C",
+        {"episode":99,"page":1,"visual_summary":"B",
+         "representative_tiles":[2],"representative_reason":"invented B"},
+        {"episode":3,"page":1,"visual_summary":"C",
          "representative_tiles":[3],"representative_reason":"visible C"}
       ]
     }"""
 
     answer = read_episode_answers(
         raw,
-        pack_id="pack-1",
+        pack_alias=1,
         expected_observations=(("a", "page"), ("b", "page"), ("c", "page")),
+        observation_map={
+            (1, 1): ("a", "page"),
+            (2, 1): ("b", "page"),
+            (3, 1): ("c", "page"),
+        },
         tile_map={
-            ("a", "page", 1): "asset-a",
-            ("b", "page", 2): "asset-b",
-            ("c", "page", 3): "asset-c",
+            (1, 1, 1): "asset-a",
+            (2, 1, 2): "asset-b",
+            (3, 1, 3): "asset-c",
         },
     )
 
@@ -232,24 +393,29 @@ def test_invalid_episode_namespace_keeps_valid_pack_siblings() -> None:
 def test_duplicate_and_missing_episode_entries_do_not_poison_valid_sibling() -> None:
     """Completeness is checked per expected episode namespace inside one pack."""
     duplicate = (
-        '{"episode_id":"a","page_id":"page","visual_summary":"A",'
+        '{"episode":1,"page":1,"visual_summary":"A",'
         '"representative_tiles":[1],"representative_reason":"visible A"}'
     )
     raw = (
-        '{"schema_version":"episode-scan-v1","pack_id":"pack-1",'
+        '{"schema_version":"episode-scan-v1","pack":1,'
         f'"episode_readings":[{duplicate},{duplicate},'
-        '{"episode_id":"c","page_id":"page","visual_summary":"C",'
+        '{"episode":3,"page":1,"visual_summary":"C",'
         '"representative_tiles":[3],"representative_reason":"visible C"}]}'
     )
 
     answer = read_episode_answers(
         raw,
-        pack_id="pack-1",
+        pack_alias=1,
         expected_observations=(("a", "page"), ("b", "page"), ("c", "page")),
+        observation_map={
+            (1, 1): ("a", "page"),
+            (2, 1): ("b", "page"),
+            (3, 1): ("c", "page"),
+        },
         tile_map={
-            ("a", "page", 1): "asset-a",
-            ("b", "page", 2): "asset-b",
-            ("c", "page", 3): "asset-c",
+            (1, 1, 1): "asset-a",
+            (2, 1, 2): "asset-b",
+            (3, 1, 3): "asset-c",
         },
     )
 
@@ -261,17 +427,18 @@ def test_duplicate_and_missing_episode_entries_do_not_poison_valid_sibling() -> 
 def test_boolean_tile_ids_are_not_accepted_as_json_integers() -> None:
     """Python's bool-is-int quirk cannot resolve true to displayed tile one."""
     raw = """{
-      "schema_version":"episode-scan-v1","pack_id":"pack-1",
-      "episode_readings":[{"episode_id":"a","page_id":"page",
+      "schema_version":"episode-scan-v1","pack":1,
+      "episode_readings":[{"episode":1,"page":1,
         "visual_summary":"A claimed frame.","representative_tiles":[true],
         "representative_reason":"Claimed visible."}]
     }"""
 
     answer = read_episode_answers(
         raw,
-        pack_id="pack-1",
+        pack_alias=1,
         expected_observations=(("a", "page"),),
-        tile_map={("a", "page", 1): "asset-a"},
+        observation_map={(1, 1): ("a", "page")},
+        tile_map={(1, 1, 1): "asset-a"},
     )
 
     assert answer is not None
@@ -282,31 +449,34 @@ def test_boolean_tile_ids_are_not_accepted_as_json_integers() -> None:
 def test_singular_and_packed_episode_parsers_share_strict_namespace_validation() -> None:
     """The packed transport delegates each member through the singular validation path."""
     singular_raw = """{
-      "schema_version":"episode-scan-v1","episode_id":"a","page_id":"page",
+      "schema_version":"episode-scan-v1","episode":1,"page":1,
       "episode_reading":{"visual_summary":"Claimed frame.",
         "representative_tiles":[1,1],"representative_reason":"Claimed visible."}
     }"""
     packed_raw = """{
-      "schema_version":"episode-scan-v1","pack_id":"pack-1",
-      "episode_readings":[{"episode_id":"a","page_id":"page",
+      "schema_version":"episode-scan-v1","pack":1,
+      "episode_readings":[{"episode":1,"page":1,
         "visual_summary":"Claimed frame.","representative_tiles":[1,1],
         "representative_reason":"Claimed visible."}]
     }"""
-    tile_map = {("a", "page", 1): "asset-a"}
+    observation_map = {(1, 1): ("a", "page")}
+    tile_map = {(1, 1, 1): "asset-a"}
 
     assert (
         read_episode_answer(
             singular_raw,
-            episode_id="a",
-            page_id="page",
+            episode_alias=1,
+            page_alias=1,
+            observation_map=observation_map,
             tile_map=tile_map,
         )
         is None
     )
     packed = read_episode_answers(
         packed_raw,
-        pack_id="pack-1",
+        pack_alias=1,
         expected_observations=(("a", "page"),),
+        observation_map=observation_map,
         tile_map=tile_map,
     )
     assert packed is not None

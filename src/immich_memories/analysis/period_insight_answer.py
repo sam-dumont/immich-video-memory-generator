@@ -5,15 +5,19 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeGuard
 
 from immich_memories.analysis.editorial_contracts import InsightEvidence
 
-EpisodeTileKey = tuple[str, str, int]
+EpisodeObservationKey = tuple[int, int]
+EpisodeObservationValue = tuple[str, str]
+EpisodeTileKey = tuple[int, int, int]
 PeriodTileKey = tuple[str, int]
 PeriodTileValue = tuple[str, str]
 EPISODE_SCAN_SCHEMA_VERSION = "episode-scan-v1"
 PERIOD_INSIGHT_SCHEMA_VERSION = "period-insight-v1"
+EPISODE_VISUAL_SUMMARY_MAX_CHARS = 64
+EPISODE_REPRESENTATIVE_REASON_MAX_CHARS = 96
 
 
 @dataclass(frozen=True)
@@ -37,6 +41,16 @@ class PeriodInsightAnswer:
     recurring_threads: tuple[str, ...]
     unavailable_reason: str | None
 
+    def __post_init__(self) -> None:
+        if (self.thesis is None) == (self.unavailable_reason is None):
+            raise ValueError("period insight answer needs exactly one outcome")
+        if self.thesis is not None and (not self.thesis.strip() or not self.evidence):
+            raise ValueError("period insight answer thesis needs visual evidence")
+        if self.unavailable_reason is not None and not self.unavailable_reason.strip():
+            raise ValueError("period insight answer unavailable reason cannot be blank")
+        if any(not item.episode_ids or not item.asset_ids for item in self.evidence):
+            raise ValueError("period insight answer evidence must identify episodes and assets")
+
 
 @dataclass(frozen=True)
 class EpisodeScanReadings:
@@ -49,8 +63,9 @@ class EpisodeScanReadings:
 def read_episode_answer(
     raw: str,
     *,
-    episode_id: str,
-    page_id: str,
+    episode_alias: int,
+    page_alias: int,
+    observation_map: Mapping[EpisodeObservationKey, EpisodeObservationValue],
     tile_map: Mapping[EpisodeTileKey, str],
 ) -> EpisodePageReading | None:
     """Read one complete page namespace without repairing malformed JSON."""
@@ -59,15 +74,25 @@ def read_episode_answer(
         return None
     if payload.get("schema_version") != EPISODE_SCAN_SCHEMA_VERSION:
         return None
-    if payload.get("episode_id") != episode_id or payload.get("page_id") != page_id:
+    if (
+        not _is_integer_alias(payload.get("episode"))
+        or not _is_integer_alias(payload.get("page"))
+        or payload.get("episode") != episode_alias
+        or payload.get("page") != page_alias
+    ):
+        return None
+    stable_identity = observation_map.get((episode_alias, page_alias))
+    if stable_identity is None:
         return None
     reading = payload.get("episode_reading")
     if not isinstance(reading, dict):
         return None
     return _read_episode_namespace(
         reading,
-        episode_id=episode_id,
-        page_id=page_id,
+        episode_alias=episode_alias,
+        page_alias=page_alias,
+        episode_id=stable_identity[0],
+        page_id=stable_identity[1],
         tile_map=tile_map,
     )
 
@@ -75,8 +100,9 @@ def read_episode_answer(
 def read_episode_answers(
     raw: str,
     *,
-    pack_id: str,
+    pack_alias: int,
     expected_observations: tuple[tuple[str, str], ...],
+    observation_map: Mapping[EpisodeObservationKey, EpisodeObservationValue],
     tile_map: Mapping[EpisodeTileKey, str],
 ) -> EpisodeScanReadings | None:
     """Parse each required episode namespace independently from one physical pack."""
@@ -84,41 +110,47 @@ def read_episode_answers(
     if (
         payload is None
         or payload.get("schema_version") != EPISODE_SCAN_SCHEMA_VERSION
-        or payload.get("pack_id") != pack_id
+        or not _is_integer_alias(payload.get("pack"))
+        or payload.get("pack") != pack_alias
         or len(expected_observations) != len(set(expected_observations))
+        or len(observation_map) != len(set(observation_map.values()))
+        or set(observation_map.values()) != set(expected_observations)
     ):
         return None
     values = payload.get("episode_readings")
     if not isinstance(values, list):
         return None
-    by_identity: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    by_alias: dict[EpisodeObservationKey, list[dict[str, Any]]] = {}
     for value in values:
         if not isinstance(value, dict):
             continue
-        episode_id = value.get("episode_id")
-        page_id = value.get("page_id")
-        if not isinstance(episode_id, str) or not isinstance(page_id, str):
+        episode_alias = value.get("episode")
+        page_alias = value.get("page")
+        if not _is_integer_alias(episode_alias) or not _is_integer_alias(page_alias):
             continue
-        by_identity.setdefault((episode_id, page_id), []).append(value)
+        by_alias.setdefault((episode_alias, page_alias), []).append(value)
+    alias_by_observation = {stable: alias for alias, stable in observation_map.items()}
     readings: list[EpisodePageReading] = []
     invalid: list[tuple[str, str]] = []
     for episode_id, page_id in expected_observations:
-        candidates = by_identity.get((episode_id, page_id), [])
+        episode_alias, page_alias = alias_by_observation[(episode_id, page_id)]
+        candidates = by_alias.get((episode_alias, page_alias), [])
         reading = None
         if len(candidates) == 1:
             singular_raw = json.dumps(
                 {
                     "schema_version": EPISODE_SCAN_SCHEMA_VERSION,
-                    "episode_id": episode_id,
-                    "page_id": page_id,
+                    "episode": episode_alias,
+                    "page": page_alias,
                     "episode_reading": candidates[0],
                 },
                 separators=(",", ":"),
             )
             reading = read_episode_answer(
                 singular_raw,
-                episode_id=episode_id,
-                page_id=page_id,
+                episode_alias=episode_alias,
+                page_alias=page_alias,
+                observation_map=observation_map,
                 tile_map=tile_map,
             )
         if reading is None:
@@ -131,6 +163,8 @@ def read_episode_answers(
 def _read_episode_namespace(
     reading: Mapping[str, object],
     *,
+    episode_alias: int,
+    page_alias: int,
     episode_id: str,
     page_id: str,
     tile_map: Mapping[EpisodeTileKey, str],
@@ -142,14 +176,16 @@ def _read_episode_namespace(
     if (
         not isinstance(summary, str)
         or not summary.strip()
+        or len(summary) > EPISODE_VISUAL_SUMMARY_MAX_CHARS
         or not isinstance(representative_reason, str)
         or not representative_reason.strip()
+        or len(representative_reason) > EPISODE_REPRESENTATIVE_REASON_MAX_CHARS
         or not numbers
     ):
         return None
     if len(numbers) != len(set(numbers)):
         return None
-    keys = tuple((episode_id, page_id, number) for number in numbers)
+    keys = tuple((episode_alias, page_alias, number) for number in numbers)
     if any(key not in tile_map for key in keys):
         return None
     return EpisodePageReading(
@@ -182,14 +218,19 @@ def read_period_answer(
         not isinstance(unavailable_reason, str) or not unavailable_reason.strip()
     ):
         return None
-    if thesis is unavailable_reason is None:
+    if (thesis is None) == (unavailable_reason is None):
         return None
     if not page_ids or len(page_ids) != len(set(page_ids)):
         return None
     evidence = _evidence(insight.get("evidence"), page_ids=page_ids, tile_map=tile_map)
     tensions = _texts(insight.get("tensions"))
     recurring_threads = _texts(insight.get("recurring_threads"))
-    if evidence is None or tensions is None or recurring_threads is None:
+    if (
+        evidence is None
+        or tensions is None
+        or recurring_threads is None
+        or (thesis is not None and not evidence)
+    ):
         return None
     return PeriodInsightAnswer(
         thesis=thesis.strip() if isinstance(thesis, str) else None,
@@ -276,6 +317,10 @@ def _tile_numbers(value: object) -> tuple[int, ...]:
     if any(not isinstance(item, int) or isinstance(item, bool) for item in value):
         return ()
     return tuple(value)
+
+
+def _is_integer_alias(value: object) -> TypeGuard[int]:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 1
 
 
 def _final_json_object(raw: str) -> dict[str, Any] | None:

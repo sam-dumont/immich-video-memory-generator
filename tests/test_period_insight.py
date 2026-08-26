@@ -31,19 +31,18 @@ def _jpeg(colour: str) -> bytes:
 
 
 def _episode_pack_answer(prompt: str, *, summary: str = "Visible stages develop.") -> str:
-    pack_id = re.search(r'pack_id="([^"]+)"', prompt)
     scopes = re.findall(
-        r'episode_id="([^"]+)" page_id="([^"]+)" tiles=\[([^\]]+)\]',
+        r"episode=(\d+) page=(\d+) tiles=\[([^\]]+)\]",
         prompt,
     )
-    assert pack_id is not None and scopes
+    assert scopes
     readings = []
-    for episode_id, page_id, displayed in scopes:
+    for episode_alias, page_alias, displayed in scopes:
         numbers = [int(value) for value in displayed.split(",")]
         readings.append(
             {
-                "episode_id": episode_id,
-                "page_id": page_id,
+                "episode": int(episode_alias),
+                "page": int(page_alias),
                 "visual_summary": summary,
                 "representative_tiles": numbers[:3],
                 "representative_reason": "These visible stages distinguish the episode.",
@@ -52,7 +51,7 @@ def _episode_pack_answer(prompt: str, *, summary: str = "Visible stages develop.
     return json.dumps(
         {
             "schema_version": "episode-scan-v1",
-            "pack_id": pack_id.group(1),
+            "pack": 1,
             "episode_readings": readings,
         },
         separators=(",", ":"),
@@ -141,6 +140,7 @@ def test_incomplete_121_tile_episode_banks_valid_page_but_blocks_period_thesis(
         )
 
     episode = result.episode_sheets[0]
+    assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [120, 1]
     assert tuple(ref.number for ref in episode.pages[1].tile_refs) == (121,)
     assert captured_images == [(episode.pages[0].jpeg_bytes,), (episode.pages[1].jpeg_bytes,)]
     assert [observation.reading is not None for observation in result.page_observations] == [
@@ -279,6 +279,8 @@ def test_multi_page_period_wall_is_not_split_without_an_approved_limit(tmp_path:
         )
 
     assert calls == 2
+    assert [len(pack.scopes) for pack in result.episode_packs] == [40, 1]
+    assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [120, 3]
     assert len(result.period_pages) == 2
     assert result.period_answer is None
     assert result.insight.thesis is None
@@ -508,6 +510,95 @@ def test_packer_keeps_a_four_tile_episode_whole_at_the_120_tile_boundary(
     )
 
 
+def test_singleton_episode_packs_fit_their_complete_response_budget(tmp_path: Path) -> None:
+    """Many tiny episodes split before their required JSON can exceed the token envelope."""
+    from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
+    from immich_memories.analysis.llm_query import LLMTransportAttempt
+    from immich_memories.analysis.period_insight import run_period_insight
+
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    assets = tuple(
+        make_asset(
+            f"singleton-{number:03d}",
+            file_created_at=start + timedelta(hours=number * 2),
+        )
+        for number in range(120)
+    )
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(
+            source_fetcher=lambda _scope: assets,
+            preview_jpeg=lambda _asset: _jpeg("maroon"),
+        ),
+    )
+    response_envelopes: list[tuple[int, int, int]] = []
+
+    async def _answer(prompt, _config, **kwargs):
+        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
+        if "complete chronological period wall" in prompt:
+            return (
+                '{"schema_version":"period-insight-v1","period_insight":{'
+                '"thesis":null,"evidence":[],"tensions":[],"recurring_threads":[],'
+                '"unavailable_reason":"No honest thesis."}}'
+            )
+        scopes = re.findall(
+            r"episode=(\d+) page=(\d+) tiles=\[([^\]]+)\]",
+            prompt,
+        )
+        assert scopes
+        readings = []
+        for episode_alias, page_alias, displayed in scopes:
+            readings.append(
+                {
+                    "episode": int(episode_alias),
+                    "page": int(page_alias),
+                    "visual_summary": "s" * 64,
+                    "representative_tiles": [int(value) for value in displayed.split(",")],
+                    "representative_reason": "r" * 96,
+                }
+            )
+        raw = json.dumps(
+            {
+                "schema_version": "episode-scan-v1",
+                "pack": 1,
+                "episode_readings": readings,
+            },
+            separators=(",", ":"),
+        )
+        response_envelopes.append((len(scopes), len(raw), kwargs["max_tokens"] * 3))
+        return raw
+
+    gateway = VisualEditorialGateway(
+        llm_config=LLMConfig(model="vision-test"),
+        cache_path=tmp_path / "judgments.db",
+        trace=prepared.trace,
+    )
+    # WHY: query_llm is the provider boundary; source grouping, packing, pages, and parsing stay real.
+    with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
+        result = run_period_insight(
+            prepared,
+            requester=gateway,
+            sheet_output_dir=tmp_path / "sheets",
+            frame_cache_dir=None,
+        )
+
+    assert [item[0] for item in response_envelopes] == [46, 46, 28]
+    assert all(
+        response_chars <= budget_chars for _, response_chars, budget_chars in response_envelopes
+    )
+    assert Counter(reading.episode_id for reading in result.episode_readings) == Counter(
+        group.group_id for group in prepared.episode_groups
+    )
+    assert Counter(
+        ref.entity_id
+        for pack in result.episode_packs
+        for scope in pack.scopes
+        for ref in scope.tile_refs
+    ) == Counter(prepared.candidate_ids)
+    assert result.retained_ids == prepared.candidate_ids
+    assert len(result.episode_readings) == 120
+
+
 def test_unavailable_atlas_tile_blocks_a_claimed_episode_and_period_thesis(
     tmp_path: Path,
 ) -> None:
@@ -619,23 +710,22 @@ def test_one_packed_raw_answer_banks_valid_siblings_when_one_episode_is_invalid(
 
     async def _answer(prompt, _config, **kwargs):
         kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
-        pack_id = re.search(r'pack_id="([^"]+)"', prompt)
-        scopes = re.findall(r'episode_id="([^"]+)" page_id="([^"]+)"', prompt)
-        assert pack_id is not None and len(scopes) == 3
+        scopes = re.findall(r"episode=(\d+) page=(\d+)", prompt)
+        assert len(scopes) == 3
         entries = [
             {
-                "episode_id": episode_id,
-                "page_id": page_id,
-                "visual_summary": f"Visible {episode_id}",
+                "episode": int(episode_alias),
+                "page": int(page_alias),
+                "visual_summary": f"Visible episode {episode_alias}",
                 "representative_tiles": [99 if index == 1 else index + 1],
                 "representative_reason": "The named tile is visible.",
             }
-            for index, (episode_id, page_id) in enumerate(scopes)
+            for index, (episode_alias, page_alias) in enumerate(scopes)
         ]
         return json.dumps(
             {
                 "schema_version": "episode-scan-v1",
-                "pack_id": pack_id.group(1),
+                "pack": 1,
                 "episode_readings": entries,
                 "future_namespace": {"tile": True},
             }
@@ -778,12 +868,16 @@ def test_banked_episode_scan_can_be_reparsed_after_a_later_physical_failure(
     )
     replay = read_episode_answers(
         banked.answer.raw_text,
-        pack_id=first_pack.pack_id,
+        pack_alias=1,
         expected_observations=tuple(
             (scope.episode_id, scope.page_id) for scope in first_pack.scopes
         ),
+        observation_map={
+            (scope.episode_alias, scope.page_alias): (scope.episode_id, scope.page_id)
+            for scope in first_pack.scopes
+        },
         tile_map={
-            (scope.episode_id, scope.page_id, ref.number): ref.entity_id
+            (scope.episode_alias, scope.page_alias, ref.number): ref.entity_id
             for scope in first_pack.scopes
             for ref in scope.tile_refs
         },

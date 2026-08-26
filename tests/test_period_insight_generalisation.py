@@ -29,16 +29,16 @@ def test_topic_label_swaps_preserve_grounded_insight_shape(
     episode_raw = json.dumps(
         {
             "schema_version": "episode-scan-v1",
-            "pack_id": "generated-pack-π",
+            "pack": 1,
             "episode_readings": [
                 {
-                    "episode_id": episode_id,
-                    "page_id": page_id,
+                    "episode": number,
+                    "page": 1,
                     "visual_summary": f"Generated {label} evidence.",
                     "representative_tiles": [number],
                     "representative_reason": f"The {label} contribution is visible.",
                 }
-                for number, (episode_id, label) in enumerate(
+                for number, (_episode_id, label) in enumerate(
                     zip(episode_ids, (first_label, second_label), strict=True),
                     start=1,
                 )
@@ -47,11 +47,15 @@ def test_topic_label_swaps_preserve_grounded_insight_shape(
     )
     episode_answer = read_episode_answers(
         episode_raw,
-        pack_id="generated-pack-π",
+        pack_alias=1,
         expected_observations=tuple((episode_id, page_id) for episode_id in episode_ids),
+        observation_map={
+            (number, 1): (episode_id, page_id)
+            for number, episode_id in enumerate(episode_ids, start=1)
+        },
         tile_map={
-            (episode_id, page_id, number): asset_id
-            for number, (episode_id, asset_id) in enumerate(
+            (number, 1, number): asset_id
+            for number, (_episode_id, asset_id) in enumerate(
                 zip(episode_ids, asset_ids, strict=True),
                 start=1,
             )

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
@@ -25,7 +26,9 @@ from immich_memories.analysis.editorial_gateway import (
     VisualEditorialRequest,
 )
 from immich_memories.analysis.period_insight_answer import (
+    EPISODE_REPRESENTATIVE_REASON_MAX_CHARS,
     EPISODE_SCAN_SCHEMA_VERSION,
+    EPISODE_VISUAL_SUMMARY_MAX_CHARS,
     PERIOD_INSIGHT_SCHEMA_VERSION,
     EpisodePageReading,
     read_episode_answers,
@@ -41,6 +44,10 @@ PASS_ZERO_VERSION = "pass-0-v1"  # noqa: S105 - editorial pass identity
 PERIOD_INSIGHT_PASS_VERSION = "period-insight-v1"  # noqa: S105 - editorial pass identity
 PERIOD_INSIGHT_PROMPT_VERSION = "period-insight-prompt-v1"
 _RENDER_VERSION = "visual-atlas-v1/contact-sheet-v1"
+# No provider tokenizer is available at this planning layer. Three response
+# characters per token reserves 25% headroom below the ordinary four-character
+# heuristic; it is a deterministic planning guard, not a provider guarantee.
+_RESPONSE_PLANNING_CHARS_PER_TOKEN = 3
 
 
 @dataclass(frozen=True)
@@ -58,6 +65,8 @@ class EpisodePackScope:
 
     episode_id: str
     page_id: str
+    episode_alias: int
+    page_alias: int
     tile_refs: tuple[TileRef, ...]
     candidates: tuple[EditorialCandidate, ...]
     unavailable_asset_ids: tuple[str, ...] = ()
@@ -146,6 +155,7 @@ def run_period_insight(
         prepared.episode_groups,
         atlas=atlas,
         output_dir=sheet_output_dir / "episodes",
+        limits=request_limits,
     )
     request_start = len(prepared.trace.requests)
     observations, banked = _read_episode_packs(
@@ -328,6 +338,7 @@ def _episode_material(
     *,
     atlas: VisualAtlas,
     output_dir: Path,
+    limits: VisionRequestLimits,
 ) -> tuple[tuple[EpisodeSheet, ...], tuple[EpisodeScanPack, ...]]:
     sheets: list[EpisodeSheet] = []
     packs: list[EpisodeScanPack] = []
@@ -348,47 +359,94 @@ def _episode_material(
         size = len(group.candidates)
         if size > MAX_SHEET_TILES:
             flush_pending()
-            pages = build_contact_sheets(
-                tuple(atlas.tile_for(candidate.asset_id) for candidate in group.candidates),
-                _pack_id((group.group_id,)),
-                output_dir,
+            episode_sheet, continuation_packs = _episode_continuation_material(
+                group,
+                atlas=atlas,
+                output_dir=output_dir,
+                limits=limits,
             )
-            sheets.append(EpisodeSheet(group.group_id, group.candidates, pages))
-            for number, page in enumerate(pages, start=1):
-                page_asset_ids = {ref.entity_id for ref in page.tile_refs}
-                page_candidates = tuple(
-                    candidate
-                    for candidate in group.candidates
-                    if candidate.asset_id in page_asset_ids
-                )
-                packs.append(
-                    EpisodeScanPack(
-                        pack_id=page.sheet_id.rsplit("-", 1)[0],
-                        page=page,
-                        scopes=(
-                            EpisodePackScope(
-                                group.group_id,
-                                page.sheet_id,
-                                page.tile_refs,
-                                page_candidates,
-                                tuple(
-                                    candidate.asset_id
-                                    for candidate in page_candidates
-                                    if atlas.tile_for(candidate.asset_id).kind == "unavailable"
-                                ),
-                            ),
-                        ),
-                        continuation_number=number,
-                        continuation_count=len(pages),
-                    )
-                )
+            sheets.append(episode_sheet)
+            packs.extend(continuation_packs)
             continue
-        if pending and pending_count + size > MAX_SHEET_TILES:
+        proposed = (*pending, group)
+        if pending and (
+            pending_count + size > MAX_SHEET_TILES or not _episode_groups_fit(proposed, limits)
+        ):
             flush_pending()
+        if not _episode_groups_fit((group,), limits):
+            raise ValueError("episode scan output budget cannot fit one complete episode")
         pending.append(group)
         pending_count += size
     flush_pending()
     return tuple(sheets), tuple(packs)
+
+
+def _episode_continuation_material(
+    group: EditorialGroup,
+    *,
+    atlas: VisualAtlas,
+    output_dir: Path,
+    limits: VisionRequestLimits,
+) -> tuple[EpisodeSheet, tuple[EpisodeScanPack, ...]]:
+    size = len(group.candidates)
+    displayed_pages = tuple(
+        tuple(range(offset + 1, min(offset + MAX_SHEET_TILES, size) + 1))
+        for offset in range(0, size, MAX_SHEET_TILES)
+    )
+    if any(not _episode_response_fits((displayed,), limits) for displayed in displayed_pages):
+        raise ValueError("episode scan output budget cannot fit one continuation")
+    pages = build_contact_sheets(
+        tuple(atlas.tile_for(candidate.asset_id) for candidate in group.candidates),
+        _pack_id((group.group_id,)),
+        output_dir,
+    )
+    packs = tuple(
+        _episode_continuation_pack(
+            group,
+            page=page,
+            number=number,
+            count=len(pages),
+            atlas=atlas,
+        )
+        for number, page in enumerate(pages, start=1)
+    )
+    return EpisodeSheet(group.group_id, group.candidates, pages), packs
+
+
+def _episode_continuation_pack(
+    group: EditorialGroup,
+    *,
+    page: ContactSheetPage,
+    number: int,
+    count: int,
+    atlas: VisualAtlas,
+) -> EpisodeScanPack:
+    page_asset_ids = {ref.entity_id for ref in page.tile_refs}
+    page_candidates = tuple(
+        candidate for candidate in group.candidates if candidate.asset_id in page_asset_ids
+    )
+    unavailable_asset_ids = tuple(
+        candidate.asset_id
+        for candidate in page_candidates
+        if atlas.tile_for(candidate.asset_id).kind == "unavailable"
+    )
+    return EpisodeScanPack(
+        pack_id=page.sheet_id.rsplit("-", 1)[0],
+        page=page,
+        scopes=(
+            EpisodePackScope(
+                group.group_id,
+                page.sheet_id,
+                1,
+                1,
+                page.tile_refs,
+                page_candidates,
+                unavailable_asset_ids,
+            ),
+        ),
+        continuation_number=number,
+        continuation_count=count,
+    )
 
 
 def _shared_pack_page(
@@ -418,6 +476,8 @@ def _shared_pack_page(
         EpisodePackScope(
             episode_id=group.group_id,
             page_id=page.sheet_id,
+            episode_alias=episode_alias,
+            page_alias=1,
             tile_refs=tuple(
                 ref for ref in page.tile_refs if episode_by_asset[ref.entity_id] == group.group_id
             ),
@@ -428,7 +488,7 @@ def _shared_pack_page(
                 if atlas.tile_for(candidate.asset_id).kind == "unavailable"
             ),
         )
-        for group in groups
+        for episode_alias, group in enumerate(groups, start=1)
     )
     return page, scopes
 
@@ -436,6 +496,47 @@ def _shared_pack_page(
 def _pack_id(group_ids: tuple[str, ...]) -> str:
     digest = sha256("\x00".join(group_ids).encode()).hexdigest()
     return f"episode-pack-v1-{digest}"
+
+
+def _episode_groups_fit(groups: tuple[EditorialGroup, ...], limits: VisionRequestLimits) -> bool:
+    candidates = tuple(
+        sorted(
+            (candidate for group in groups for candidate in group.candidates),
+            key=lambda candidate: (candidate.taken_at, candidate.asset_id),
+        )
+    )
+    number_by_asset = {
+        candidate.asset_id: number for number, candidate in enumerate(candidates, start=1)
+    }
+    displayed_by_episode = tuple(
+        tuple(number_by_asset[candidate.asset_id] for candidate in group.candidates)
+        for group in groups
+    )
+    return _episode_response_fits(displayed_by_episode, limits)
+
+
+def _episode_response_fits(
+    displayed_by_episode: tuple[tuple[int, ...], ...], limits: VisionRequestLimits
+) -> bool:
+    readings = tuple(
+        {
+            "episode": episode_alias,
+            "page": 1,
+            "visual_summary": "s" * EPISODE_VISUAL_SUMMARY_MAX_CHARS,
+            "representative_tiles": displayed,
+            "representative_reason": "r" * EPISODE_REPRESENTATIVE_REASON_MAX_CHARS,
+        }
+        for episode_alias, displayed in enumerate(displayed_by_episode, start=1)
+    )
+    envelope = json.dumps(
+        {
+            "schema_version": EPISODE_SCAN_SCHEMA_VERSION,
+            "pack": 1,
+            "episode_readings": readings,
+        },
+        separators=(",", ":"),
+    )
+    return len(envelope) <= limits.max_output_tokens * _RESPONSE_PLANNING_CHARS_PER_TOKEN
 
 
 def _read_episode_packs(
@@ -457,16 +558,21 @@ def _read_episode_packs(
             scan = BankedEpisodeScan(pack.pack_id, pack.page.sheet_id, answer)
             banked.append(scan)
             tile_map = {
-                (scope.episode_id, scope.page_id, ref.number): ref.entity_id
+                (scope.episode_alias, scope.page_alias, ref.number): ref.entity_id
                 for scope in pack.scopes
                 for ref in scope.tile_refs
             }
+            observation_map = {
+                (scope.episode_alias, scope.page_alias): (scope.episode_id, scope.page_id)
+                for scope in pack.scopes
+            }
             parsed = read_episode_answers(
                 answer.raw_text,
-                pack_id=pack.pack_id,
+                pack_alias=1,
                 expected_observations=tuple(
                     (scope.episode_id, scope.page_id) for scope in pack.scopes
                 ),
+                observation_map=observation_map,
                 tile_map=tile_map,
             )
         by_identity = {
@@ -515,7 +621,7 @@ def _episode_request(
 
 def _episode_prompt(pack: EpisodeScanPack) -> str:
     scopes = "\n".join(
-        f'episode_id="{scope.episode_id}" page_id="{scope.page_id}" '
+        f"episode={scope.episode_alias} page={scope.page_alias} "
         f"tiles=[{','.join(str(ref.number) for ref in scope.tile_refs)}]"
         for scope in pack.scopes
     )
@@ -524,11 +630,13 @@ def _episode_prompt(pack: EpisodeScanPack) -> str:
         "below preserves complete episodes even when their members interleave in time:\n"
         + scopes
         + "\nReturn only one complete "
-        f'JSON object with schema_version="{EPISODE_SCAN_SCHEMA_VERSION}", '
-        f'pack_id="{pack.pack_id}", and one episode_readings entry for every mapped episode. '
-        "Each entry needs episode_id, page_id, a short visual_summary, concise "
+        f'JSON object with schema_version="{EPISODE_SCAN_SCHEMA_VERSION}", pack=1, and one '
+        "episode_readings entry for every mapped episode. Each entry needs the integer episode "
+        "and page aliases, visual_summary (at most "
+        f"{EPISODE_VISUAL_SUMMARY_MAX_CHARS} characters), "
         "representative_tiles from that episode, and a representative_reason grounded in the "
-        "visible pixels. Representatives make a later wall legible; they reject nothing. "
+        f"visible pixels (at most {EPISODE_REPRESENTATIVE_REASON_MAX_CHARS} characters). "
+        "Representatives make a later wall legible; they reject nothing. "
         "Do not answer record_shots or cull_rejects yet."
     )
 
