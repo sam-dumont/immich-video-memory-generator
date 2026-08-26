@@ -676,8 +676,7 @@ def test_a_period_wall_is_capped_rather_than_split(tmp_path: Path) -> None:
     assert result.insight.thesis is None
     assert result.retained_ids == prepared.candidate_ids
     assert result.warnings == (
-        "!! Pass 0 wall shows 60 of 123 representatives; "
-        "every episode still reaches the synthesis in words",
+        "!! Pass 0 wall reads 60 of 123 representatives, spread across the period",
         "!! Pass 0 period synthesis unreadable; thesis unavailable",
     )
 

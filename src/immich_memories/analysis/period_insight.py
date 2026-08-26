@@ -322,8 +322,8 @@ def _read_period_wall(
         _warn_once(
             prepared,
             warnings,
-            f"Pass 0 wall shows {len(shown_ids)} of {len(representative_ids)} "
-            "representatives; every episode still reaches the synthesis in words",
+            f"Pass 0 wall reads {len(shown_ids)} of {len(representative_ids)} "
+            "representatives, spread across the period",
         )
     period_pages = build_contact_sheets(
         tuple(atlas.tile_for(asset_id) for asset_id in shown_ids),
@@ -332,11 +332,16 @@ def _read_period_wall(
     )
     if not period_pages or len(period_pages) > limits.max_pages_per_request:
         return period_pages, None, None
+    # The wall's words must describe the wall's tiles. Listing every episode
+    # beside a sampled sheet gave the model two numbering universes, and it
+    # answered with evidence about tiles 61 and 70 of a sixty-tile wall.
+    shown = set(shown_ids)
     upstream = tuple(
         f"episode:{reading.episode_id} | {reading.visual_summary} | "
         f"representatives:{','.join(reading.representative_asset_ids)} | "
         f"reasons:{' / '.join(reading.representative_reasons)}"
         for reading in readings
+        if shown.intersection(reading.representative_asset_ids)
     )
     request = VisualEditorialRequest(
         pass_name="period-insight",  # noqa: S106 - versioned editorial pass identity
