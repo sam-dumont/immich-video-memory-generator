@@ -714,3 +714,59 @@ def test_an_overlong_reason_trims_instead_of_discarding_its_episode() -> None:
     assert reading.representative_asset_ids == ("asset",)
     assert len(reading.representative_reason) <= EPISODE_REPRESENTATIVE_REASON_MAX_CHARS
     assert reading.representative_reason.startswith("Tx")
+
+
+def test_a_thesis_declined_without_a_stated_reason_is_still_an_answer() -> None:
+    """Declining is the decision; explaining the decline is prose.
+
+    Measured: the model set thesis to null and left unavailable_reason null
+    beside it. The parser demanded exactly one of the two and discarded the
+    evidence, tensions and threads that had all parsed correctly.
+    """
+    answer = read_period_answer(
+        json.dumps(
+            {
+                "schema_version": "period-insight-v1",
+                "period_insight": {
+                    "thesis": None,
+                    "evidence": [
+                        {"observation": "What tile 1 shows.", "representative_tiles": [1]}
+                    ],
+                    "tensions": ["A stated tension."],
+                    "recurring_threads": ["A stated thread."],
+                    "unavailable_reason": None,
+                },
+            }
+        ),
+        page_ids=("page-1",),
+        tile_map={("page-1", 1): ("episode-1", "asset-1")},
+    )
+
+    assert answer is not None
+    assert answer.thesis is None
+    assert answer.unavailable_reason
+    assert answer.tensions == ("A stated tension.",)
+
+
+def test_a_thesis_and_a_reason_not_to_have_one_stay_contradictory() -> None:
+    """Claiming both remains unreadable: that is a contradiction, not an omission."""
+    answer = read_period_answer(
+        json.dumps(
+            {
+                "schema_version": "period-insight-v1",
+                "period_insight": {
+                    "thesis": "The period was about a move.",
+                    "evidence": [
+                        {"observation": "What tile 1 shows.", "representative_tiles": [1]}
+                    ],
+                    "tensions": [],
+                    "recurring_threads": [],
+                    "unavailable_reason": "there was not enough to say",
+                },
+            }
+        ),
+        page_ids=("page-1",),
+        tile_map={("page-1", 1): ("episode-1", "asset-1")},
+    )
+
+    assert answer is None

@@ -38,6 +38,16 @@ CULL_EVIDENCE_REASONS = {
         "detail_lost_to_darkness": "shadow clipping erased the visible detail",
         "detail_lost_to_highlights": "highlight clipping erased the visible detail",
     },
+    # Not a flaw in the pixels -- a fact about what is in front of the lens. A
+    # screen showing someone else's content is the received-media problem taken
+    # with a camera instead of forwarded, and the legacy selector already held
+    # the line: there is no gap worth a photograph of a monitor. Kept to one
+    # narrow evidence so it cannot stretch into "weak" or "repetitive", and a
+    # record-shot mark still shields a screen that genuinely documents
+    # something -- a result, a booking -- through the existing collision rule.
+    "photograph_of_a_screen": {
+        "screen_is_the_subject": "a screen's content is the subject, not what was happening",
+    },
     "corrupt_or_obscured_pixels": {
         "decode_corruption": "decode corruption destroys the visible content",
         "lens_obscured": "the lens is visibly obscured",

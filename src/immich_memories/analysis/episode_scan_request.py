@@ -150,14 +150,15 @@ def _episode_prompt(pack: EpisodeScanPack) -> str:
         "visuals are not record shots. Its function is at most "
         f"{RECORD_SHOT_FUNCTION_MAX_CHARS} characters and its reason at most "
         f"{RECORD_SHOT_REASON_MAX_CHARS} characters. "
-        "Return cull_rejects only for visuals whose pixels are unusable. Most visuals have no "
-        "defect. Each reject is a non-record, non-favourite visual with one matching "
+        "Return cull_rejects only for visuals that are unusable, or that photograph a screen "
+        "rather than a scene. Most visuals have no defect. Each reject is a non-record, "
+        "non-favourite visual with one matching "
         "defect/evidence pair: "
         "accidental_capture with camera_obstructed, unintended_partial, or blank_floor_ceiling; "
         "unusable_motion_blur with subject_unrecognizable or frame_smeared_beyond_use; "
         "unusable_exposure with detail_lost_to_darkness or detail_lost_to_highlights; or "
         "corrupt_or_obscured_pixels with decode_corruption, lens_obscured, or "
-        "content_not_visible. Use exactly these keys and no others:\n"
+        "content_not_visible; or photograph_of_a_screen with screen_is_the_subject. Use exactly these keys and no others:\n"
         + episode_response_shape(tile=first_tile)
     )
 

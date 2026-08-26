@@ -21,6 +21,9 @@ PeriodTileKey = tuple[str, int]
 PeriodTileValue = tuple[str, str]
 EPISODE_SCAN_SCHEMA_VERSION = "episode-scan-v3"
 PERIOD_INSIGHT_SCHEMA_VERSION = "period-insight-v1"
+# Declining is the decision; explaining the decline is prose. A model that
+# sets thesis to null and says nothing beside it has still answered.
+THESIS_DECLINED_WITHOUT_REASON = "no thesis offered, and no reason stated"
 EPISODE_VISUAL_SUMMARY_MAX_CHARS = 64
 EPISODE_REPRESENTATIVE_REASON_MAX_CHARS = 96
 
@@ -209,6 +212,25 @@ def _read_episode_namespace(
     )
 
 
+def _stated_outcome(insight: dict[str, object]) -> tuple[str | None, str | None] | None:
+    """The thesis and the reason there is none, or None when they contradict.
+
+    Exactly one of the two is the answer. Both set is a contradiction; neither
+    set is an omission, resolved once the rest of the answer is known.
+    """
+    thesis = insight.get("thesis")
+    unavailable_reason = insight.get("unavailable_reason")
+    for value in (thesis, unavailable_reason):
+        if value is not None and (not isinstance(value, str) or not value.strip()):
+            return None
+    if thesis is not None and unavailable_reason is not None:
+        return None
+    return (
+        thesis.strip() if isinstance(thesis, str) else None,
+        unavailable_reason.strip() if isinstance(unavailable_reason, str) else None,
+    )
+
+
 def read_period_answer(
     raw: str,
     *,
@@ -220,20 +242,12 @@ def read_period_answer(
     if payload is None or payload.get("schema_version") != PERIOD_INSIGHT_SCHEMA_VERSION:
         return None
     insight = payload.get("period_insight")
-    if not isinstance(insight, dict):
+    if not isinstance(insight, dict) or not page_ids or len(page_ids) != len(set(page_ids)):
         return None
-    thesis = insight.get("thesis")
-    unavailable_reason = insight.get("unavailable_reason")
-    if thesis is not None and (not isinstance(thesis, str) or not thesis.strip()):
+    outcome = _stated_outcome(insight)
+    if outcome is None:
         return None
-    if unavailable_reason is not None and (
-        not isinstance(unavailable_reason, str) or not unavailable_reason.strip()
-    ):
-        return None
-    if (thesis is None) == (unavailable_reason is None):
-        return None
-    if not page_ids or len(page_ids) != len(set(page_ids)):
-        return None
+    thesis, unavailable_reason = outcome
     evidence = _evidence(insight.get("evidence"), page_ids=page_ids, tile_map=tile_map)
     tensions = _texts(insight.get("tensions"))
     recurring_threads = _texts(insight.get("recurring_threads"))
@@ -244,14 +258,18 @@ def read_period_answer(
         or (thesis is not None and not evidence)
     ):
         return None
+    if thesis is unavailable_reason is None:
+        # An answer that declined a thesis but still read the wall has answered.
+        # One that says nothing at all has not, and stays unreadable.
+        if not (evidence or tensions or recurring_threads):
+            return None
+        unavailable_reason = THESIS_DECLINED_WITHOUT_REASON
     return PeriodInsightAnswer(
-        thesis=thesis.strip() if isinstance(thesis, str) else None,
+        thesis=thesis,
         evidence=evidence,
         tensions=tensions,
         recurring_threads=recurring_threads,
-        unavailable_reason=(
-            unavailable_reason.strip() if isinstance(unavailable_reason, str) else None
-        ),
+        unavailable_reason=unavailable_reason,
     )
 
 

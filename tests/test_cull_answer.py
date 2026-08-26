@@ -472,3 +472,37 @@ def test_an_overlong_record_reason_trims_instead_of_voiding_every_mark() -> None
     assert set(marks) == {"long", "sibling"}
     assert len(marks["long"].reason) <= RECORD_SHOT_REASON_MAX_CHARS
     assert marks["long"].reason.startswith("Rx")
+
+
+def test_a_photograph_of_a_screen_is_cullable_though_its_pixels_are_fine() -> None:
+    """Junk is not the same as defective, and the vocabulary decides what can be said.
+
+    A TV showing a stock wallpaper is sharp, exposed and uncorrupted, so every
+    technical defect is false of it and Cull had no way to reject it. The
+    legacy selector already held this rule: "there is no gap worth a
+    photograph of a monitor".
+    """
+    from immich_memories.analysis.cull_answer import read_cull_namespaces
+
+    parsed = read_cull_namespaces(
+        json.dumps(
+            {
+                "schema_version": "episode-scan-v3",
+                "pack": 1,
+                "record_shots": [],
+                "cull_rejects": [
+                    {
+                        "tile": 1,
+                        "defect": "photograph_of_a_screen",
+                        "evidence": "screen_is_the_subject",
+                    }
+                ],
+            }
+        ),
+        pack_alias=1,
+        tile_map={1: "tv-wallpaper"},
+    )
+
+    assert parsed is not None
+    assert parsed.cull_valid
+    assert tuple(d.asset_id for d in parsed.cull_rejects) == ("tv-wallpaper",)
