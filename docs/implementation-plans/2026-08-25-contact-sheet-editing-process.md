@@ -29,6 +29,16 @@ Click, GitHub Actions.
   before every commit.
 - Do not tune product rules to June. June, April, and August are private acceptance corpora; the
   synthetic suite must prove the same decision shapes under unrelated topics and label swaps.
+- **Separate provenance from evidence.** "Only explicit source scope removes before Pass 0" means
+  no *judgement* may pre-cull. It never meant the corpus is unfiltered. Whether a file came off
+  this library's camera, and whether it is the motion half of a photograph, are facts about the
+  file, not opinions about its quality — they belong to scope and they run before Pass 0. Both
+  were lost by reading this constraint the other way; 52% of one acceptance month is material the
+  owner never photographed.
+- **Consult `2026-08-25-existing-selection-rules.md` before building any pool, group, or corpus.**
+  It lists what the current selector already gets right, which of those rules are carried, and
+  which are still AT RISK. A rule with four legacy callers and none of them yours is a rule you
+  have lost. Adding a second door to a one-door rule removes the guarantee.
 - Contact sheets are the model input, not merely a diagnostic. Hash, write, attach, cache, and trace
   the same encoded JPEG bytes.
 - A video filmstrip is composed locally inside one tile. It costs no additional model request.
@@ -36,6 +46,22 @@ Click, GitHub Actions.
   bank answers, and fuse only independent namespaces over identical evidence.
 - Start at one sheet per request. Increase that limit only after a provider probe proves tile
   conservation and decision quality. Never infer image limits from a provider name.
+- **Show the response shape; never describe it.** Every prompt embeds a complete example envelope
+  built from the same wire keys its parser demands, and a test parses that very example. A prose
+  schema and a strict parser drift silently, and fixtures written from the parser can never catch
+  it: on the first real gate this voided three of four namespaces.
+- **Everything in an example is instruction, values and whitespace included.** Show placeholders,
+  not plausible literals — shown "ticket", the model labelled a pregnancy test a ticket; shown a
+  populated cull entry, it copied that defect onto seven unrelated visuals. Decision arrays are
+  shown EMPTY, which also states the honest default.
+- **Ask the small local model for less.** Measured three times: each added paragraph made the
+  answer worse — more rejects carrying one identical label, then a defect/evidence pair that was
+  not even legal. Prefer deleting a sentence to adding one, and never restate in prose what the
+  parser already enforces; a closed vocabulary cannot express "repetitive", so forbidding it only
+  spends attention.
+- **Bounded model prose is fitted, not fatal.** A reason that runs long is trimmed to its bound and
+  its decision survives. The same images produced 91/84/76-character reasons on one run and
+  103/105/104 on the next, so a hard bound makes every pass a coin flip that fails open and unseen.
 - Reject-only actions fail open. Refusal, truncation, unknown IDs, incomplete partitions, or request
   failure cannot create an unnamed loss. Any mechanical preview carries `!!` and is invalid for an
   owner verdict.
@@ -72,6 +98,13 @@ origin/main
   lines when cohesion permits. Do not use `Fixes #764` until the final cutover PR.
 - A slice merges into the feature trunk only after focused tests, `make critique`, `make ci`, its
   warning-free trace, and the owner-visible contact-sheet gate described below.
+- A slice that builds a pool, a group, or a corpus additionally answers the standing check in
+  `2026-08-25-existing-selection-rules.md`: name every rule the legacy path applies at that stage
+  and say, per rule, whether it is carried, superseded, or deliberately dropped. Green CI is not
+  evidence here — both lost rules passed full CI and an independent review.
+- Every gate runs on a corpus that is the owner's own material. A judgement measured on the wrong
+  corpus tells you nothing: four rounds of prompt tuning were spent on behaviour that turned out to
+  be caused by forwarded images in the pool.
 - The final feature-trunk → `main` PR contains no new editorial behavior. It only syncs `main`,
   resolves integration drift, reruns all gates, and records the final owner verdict.
 
@@ -500,6 +533,15 @@ def test_only_source_scope_and_owner_exclusions_apply_before_pass_zero() -> None
   adapter for raw `Asset`/`VideoClipInfo`. Eligibility is date/library scope, supported media, and
   explicit hard owner exclusions only.
 
+- [x] RED/GREEN: provenance is part of scope, not evidence. A Live Photo's motion component and
+  anything `not_shot_here()` rejects are excluded before Pass 0, each recorded with a named reason
+  so the account still answers for the whole fetch. `SourceScope` carries the filename patterns and
+  the stills-need-a-camera flag; a star still overrides both. Landed `b8ecc10` + this branch.
+
+- [ ] RED/GREEN: decide, do not default, whether `with_burst_neighbours()` and
+  `expand_to_neighbors()` are still needed. The editorial path fetches a date range rather than a
+  person, so they may be genuinely unnecessary — record which, and why, in the rules inventory.
+
 - [ ] RED/GREEN: expose pure chronological `build_episode_groups()` and `build_moment_groups()`
   over already-eligible candidates. Stable group IDs derive from ordered asset IDs and grouping
   version. Move no winners here.
@@ -662,6 +704,21 @@ git commit -m "feat(selection): cull visibly and preserve record shots (#764)"
 asset appears; the pregnancy test is marked as a record shot; refusal/truncation rejects nothing;
 the trace reports episode-scan packs rather than one request per asset.
 
+Measured on the first real run, and required of any re-run:
+
+- The sheet contains no material the owner did not photograph. Before provenance was restored the
+  same day yielded 15 candidates of which 6 were forwarded, and the record lane marked tweet
+  screenshots and an advert — record marks shield from Cull, so the lane was protecting the junk.
+  With provenance applied the same day yields 9, and the marks are the medical result and the
+  handwritten notes.
+- A record shot is proof of something that happened to these people. Legible text is never enough
+  on its own, and the scene has to be one they were in.
+- Cull returns an empty array unless the pixels are unusable. Confabulated defects are the failure
+  to watch for: three invented rejects on the first run, then seven carrying one identical copied
+  label. The asymmetry is the reason to keep — a wrong keep is fixed by a later pass a person can
+  check, a wrong cull is permanent and invisible.
+- Zero `!!` in the trace. Two of the first three runs looked clean by their decision counts alone.
+
 ---
 
 ## Task 7: Select Representatives with Visual Moment Battles
@@ -747,6 +804,10 @@ git commit -m "feat(selection): choose peaks with visual moment battles (#764)"
 
 ## Task 8: Move Expensive Analysis behind Selects
 
+- [ ] RED/GREEN: carry `looks_like_a_photograph()`. Anything with a still goes to the photo scorer,
+  Live Photo or not. Sent to the video analyser a burst carrier "fails in milliseconds, is marked
+  attempted, and is never looked at again" — and ships undescribed.
+
 **Files:**
 
 - Modify: `src/immich_memories/analysis/smart_pipeline.py:269-390`
@@ -794,6 +855,16 @@ representatives only—not the final narrative cut yet.
 ---
 
 ## Task 9: Rewrite Structure as a Visual Reject-Only Rough Cut
+
+- [ ] RED/GREEN: **temporal coverage.** At least one visual per period across the whole range, with
+  the granularity the current selector uses: daily up to a month, weekly to three months, monthly
+  to a year, quarterly beyond. The plan did not mention this rule at all before the rules
+  inventory; Structure is where a period can vanish silently.
+
+- [ ] RED/GREEN: **proportion.** No single moment may supply more than a quarter of the cut. Selects
+  kills duplicate frames by construction, which covers redundancy but not proportion: nothing else
+  stops a memory spending itself on one very good afternoon. `ceil()` alone is the measured wrong
+  answer — it "handed every memory two per moment".
 
 **Branch:** `refactor/764-structure-projection`
 
@@ -905,6 +976,13 @@ may survive if its three contributions earn the time. No topic count is asserted
 ---
 
 ## Task 11: Judge the Whole Cut and Perform One Bounded Repair
+
+- [ ] RED/GREEN: **a period's last voice survives Fine Cut unless it is unusable.** Carry
+  `spare_last_voices()` as a CORRECTION applied after the verdict, never as an exemption granted
+  before it — "exempting has to guess in advance which clips carry a period, and both ways of
+  guessing are wrong." Unusable stays dropped however alone it is; merely weak does not. Every
+  drop site in the cut must treat a period's only visual as untouchable, which is the lesson
+  `_trim_non_favorites` records as the last site that did not.
 
 **Branch:** `feat/764-fine-cut`
 
