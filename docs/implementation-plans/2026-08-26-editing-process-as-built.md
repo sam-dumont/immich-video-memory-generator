@@ -40,6 +40,12 @@ property of the design and it must survive every later change.
 A pack is one contact sheet, and the packer fills it until the largest *valid*
 response would no longer fit the output budget (`fused_episode_response_fits`).
 Raising tiles-per-pack lowers the call count and has a hard quality limit — see §3.
+**A pack holds at most 14 episodes** (`MAX_EPISODES_PER_PACK`). The output budget
+bounds how much a pack can SAY, never how much it can be asked about. Measured at
+temperature 0: a 36-episode pack returned a complete, valid answer with every Cull
+list empty — no refusal, no truncation, no warning, indistinguishable from a month
+with no junk in it. Capping it took the same month from 0 culls to 19.
+
 Episode count per pack matters less than first measured. Probed across packs of 1,
 4, 6, 7, 8, 9, 11 and 14 episodes at ~110 tiles each, three repeats: **23 of 24 runs
 parsed and every one carried `cull_rejects`.** There is no cliff. (An earlier probe
@@ -209,7 +215,27 @@ alone.
 
 ---
 
-## 4. Open, not yet built
+## 4. Where Cull stands, measured
+
+Both months at temperature 0, with the cap:
+
+| month | packs | calls | readings | culled |
+|---|---|---|---|---|
+| sparse | 5 | 5 | 58/58 | 19 (7.3%) |
+| dense | 15 | 15 | 88/101 | 64 (4.4%) |
+
+**The mechanism works; the judgement does not yet.** Reviewing the sparse month's
+19 by eye: roughly eight are right — photographed documents and shots of a
+television — and roughly ten are wrong, mostly landscape and cycling frames culled
+as "notes" when they are ordinary photographs. Worse, it still keeps a watch face,
+two bike computers, two phone screens, three television wallpapers, a washing
+machine and a rim label, all of which are exactly what `notes` is for.
+
+So the bucket is firing on "dull" rather than on "taken as a note". That is a
+semantics problem in the prompt, and it is now measurable: at temperature 0 one
+call is an answer, so a wording change can be A/B'd honestly for the first time.
+
+## 5. Open, not yet built
 
 Passes 2–4 (Selects, Structure, Fine Cut) and the surface convergence. The
 near-duplicate reduction — the largest single quality lever on the sheet — lives
