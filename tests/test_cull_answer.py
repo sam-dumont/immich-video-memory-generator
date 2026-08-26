@@ -293,8 +293,14 @@ def test_an_ordinary_list_absorbs_what_cull_must_not_remove() -> None:
     assert tuple(d.asset_id for d in parsed.cull_rejects) == ("a-screen", "a-smeared-frame")
 
 
-def test_a_tile_cannot_be_ordinary_and_removed_at_once() -> None:
-    """The three lists partition what the model looked at; overlap is not an answer."""
+def test_a_repeated_ordinary_tile_does_not_void_the_decisions_beside_it() -> None:
+    """The partition binds the lists that remove things, not the one thrown away.
+
+    Measured on a real month: two packs of five came back with episode 1's
+    ordinary list naming every tile on the sheet and each later episode naming
+    its own again. Held to the partition, that voided both packs entirely --
+    over repeats in a list nothing acts on.
+    """
     from immich_memories.analysis.cull_answer import read_cull_namespaces
 
     parsed = read_cull_namespaces(
@@ -302,13 +308,18 @@ def test_a_tile_cannot_be_ordinary_and_removed_at_once() -> None:
             {
                 "schema_version": "episode-scan-v4",
                 "pack": 1,
-                "cull_rejects": [{"episode": 1, "notes": [1], "failed": [], "ordinary": [1]}],
+                "cull_rejects": [
+                    {"episode": 1, "notes": [1], "failed": [], "ordinary": [1, 2, 3]},
+                    {"episode": 2, "notes": [], "failed": [], "ordinary": [2, 3]},
+                ],
             }
         ),
         pack_alias=1,
-        tile_map={1: "a"},
-        episode_tiles={1: (1,)},
+        tile_map={1: "a-screen", 2: "b", 3: "c"},
+        episode_tiles={1: (1, 2), 2: (3,)},
     )
 
     assert parsed is not None
-    assert not parsed.cull_valid
+    assert parsed.cull_valid
+    # the removal stands; the ordinary mentions of the same tile change nothing
+    assert tuple(d.asset_id for d in parsed.cull_rejects) == ("a-screen",)

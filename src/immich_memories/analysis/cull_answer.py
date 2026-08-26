@@ -157,7 +157,44 @@ def _one_episode_entry(
     seen_episodes: set[int],
     seen_tiles: set[int],
 ) -> tuple[tuple[CullDecision, ...], tuple[str, ...]] | None:
-    """One episode's three lists, or None when the answer left the sheet."""
+    """One episode's lists, or None when the answer left the sheet."""
+    episode = _entry_episode(entry, episode_tiles, seen_episodes)
+    if episode is None:
+        return None
+    scope = frozenset(episode_tiles[episode])
+    decisions: list[CullDecision] = []
+    misfiled: list[str] = []
+    assert isinstance(entry, dict)
+    for bucket in DISCARDED_BUCKETS:
+        named = entry.get(bucket)
+        # The partition binds the lists that REMOVE things. A discarded list
+        # cannot contradict anything that matters, so it is checked only for
+        # naming tiles this sheet really shows: a real month sent episode 1's
+        # ordinary list naming every tile and each later episode naming its own
+        # again, and holding that to the partition voided two packs of five.
+        if named is not None and _tiles_in(named, tile_map, set()) is None:
+            return None
+    for bucket in CULL_BUCKETS:
+        tiles = _tiles_in(entry.get(bucket), tile_map, seen_tiles)
+        if tiles is None:
+            return None
+        # Which episode a tile was filed under is bookkeeping; the judgement is
+        # about pixels this sheet really shows.
+        misfiled.extend(
+            f"!! Cull filed tile {tile} under episode {episode}"
+            for tile in tiles
+            if tile not in scope
+        )
+        decisions.extend(CullDecision(tile_map[tile], bucket) for tile in tiles)
+    return tuple(decisions), tuple(misfiled)
+
+
+def _entry_episode(
+    entry: object,
+    episode_tiles: Mapping[int, tuple[int, ...]],
+    seen_episodes: set[int],
+) -> int | None:
+    """The episode this entry answers for, or None if it is not a usable entry."""
     if not isinstance(entry, dict):
         return None
     # The discarded lists are optional: an answer that omits one has still
@@ -170,29 +207,7 @@ def _one_episode_entry(
     if episode in seen_episodes:
         return None
     seen_episodes.add(episode)
-    scope = frozenset(episode_tiles[episode])
-    decisions: list[CullDecision] = []
-    misfiled: list[str] = []
-    for bucket in (*CULL_BUCKETS, *DISCARDED_BUCKETS):
-        named = entry.get(bucket)
-        if named is None and bucket in DISCARDED_BUCKETS:
-            continue
-        tiles = _tiles_in(named, tile_map, seen_tiles)
-        if tiles is None:
-            return None
-        if bucket in DISCARDED_BUCKETS:
-            continue
-        # Which episode a tile was filed under is bookkeeping; the judgement is
-        # about pixels this sheet really shows. One tile filed an episode early
-        # must not void the fifteen episodes answered correctly beside it,
-        # which is what a real month did.
-        misfiled.extend(
-            f"!! Cull filed tile {tile} under episode {episode}"
-            for tile in tiles
-            if tile not in scope
-        )
-        decisions.extend(CullDecision(tile_map[tile], bucket) for tile in tiles)
-    return tuple(decisions), tuple(misfiled)
+    return episode
 
 
 def _tiles_in(
