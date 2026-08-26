@@ -40,22 +40,57 @@ property of the design and it must survive every later change.
 A pack is one contact sheet, and the packer fills it until the largest *valid*
 response would no longer fit the output budget (`fused_episode_response_fits`).
 Raising tiles-per-pack lowers the call count and has a hard quality limit — see §3.
-**Episodes per pack is the binding constraint, not tiles.** A pack of 36 episodes
-came back with `cull_rejects` omitted from an otherwise complete and valid answer:
-the model spent itself describing 36 episodes and never reached the second half of
-the question. The same contract at ~15 episodes answered, and at 2 episodes it was
-identical across three repeats.
+Episode count per pack matters less than first measured. Probed across packs of 1,
+4, 6, 7, 8, 9, 11 and 14 episodes at ~110 tiles each, three repeats: **23 of 24 runs
+parsed and every one carried `cull_rejects`.** There is no cliff. (An earlier probe
+that appeared to show one at 8 episodes was starving the model on the dataclass
+default of 500 output tokens instead of production's 4000.)
+
+The observed failure is at the extreme: one 36-episode pack returned a complete,
+valid answer with `cull_rejects` simply absent, and one 14-episode run ran away to
+15,586 characters. Both are tail behaviour, not a threshold.
 
 ### Measured wall-clock
 
 | run | scope | calls | time |
 |---|---|---|---|
 | one day | 9 candidates, 1 pack | 2 | ~12 s |
-| sparse month | 261 candidates, 3 packs | 4 | ~1 min |
-| dense month | 1468 candidates, 15 packs | 16 | several minutes |
+| sparse month | 261 candidates, 3 packs | 4 | **49 s** |
+| dense month | 1468 candidates, 15 packs | 16 | **189 s (3.2 min)** |
+
+**~12 s per call**, flat across pack sizes. A month is a few minutes, and the
+cost is dominated by the number of sheets, not by their contents.
 
 Thumbnails are fetched once per asset and reused across passes; the atlas is built
 once and every pass is handed the same encoded JPEG bytes.
+
+### Cacheability
+
+Answers are banked against `VisualJudgmentIdentity`: the exact sheet bytes plus the
+exact question. Measured on the sparse month:
+
+| | cold bank | warm bank |
+|---|---|---|
+| wall time | 49 s | **10 s** |
+| cache hits | 0 of 3 | **3 of 3** |
+| model calls | 3 | **0** |
+
+Three tiers, in order of how much they cost:
+
+1. **An unchanged month re-runs free.** Pack identities are byte-identical across
+   runs, so every call is a hit and the decisions replay exactly.
+2. **One asset changed re-asks about one pack.** Removing a real candidate mid-month
+   left 2 of 3 pack identities intact — packs break on episode boundaries, so a
+   change stays local instead of cascading down the month.
+3. **Any change to the question re-asks the whole library.** Model, prompt version,
+   pass version, schema version, render version, layout version, image detail,
+   thinking, and the request limits are all in the key. The v3 → v4 bump stranded
+   every banked answer.
+
+The coarseness is inherent: a holistic pass judges in context, so the unit of cache
+has to be the sheet, not the asset. The practical consequence is that **prompt tuning
+is expensive once a library is banked** — settle a contract on small probes before a
+full-library bank exists.
 
 ### Requirements this sets
 
@@ -155,6 +190,16 @@ Never restate in prose what the parser already enforces.
 **Bounded prose is fitted, not fatal.** A reason running past its bound is trimmed;
 the decision it explains survives.
 
+**The content is less stable than the shape.** Across three repeats of the same
+pack, the same pixels and the same prompt: 6 episodes gave 11 named tiles once and
+an empty answer twice; 9 episodes returned tile aliases as strings rather than
+integers on one run. The envelope is reliable; what the model chooses to put in it
+is not. Anything downstream must treat one run's Cull as a sample, not a verdict.
+
+**Some assets have no preview at all.** A dense month raised 23
+`!! Pass 0 visual unavailable` warnings where the preview endpoint answered 404.
+Those visuals cannot be judged and correctly actuate nothing.
+
 **Failing open is only safe if it is loud.** Every fail-open path writes `!!`, and
 the sheet says INVALID. Two of three early runs looked clean by their decision counts
 alone.
@@ -170,3 +215,7 @@ there, not in Cull.
 Rules still owed, from `2026-08-25-existing-selection-rules.md`: a period's last
 voice, temporal coverage with adaptive granularity, and the quarter-of-the-cut
 proportion cap.
+
+Known open behaviour: the period thesis is all-or-nothing on episode readings, so 14
+unreadable episodes out of 101 cost the thesis for the other 87. That is the same
+asymmetry corrected everywhere else in this pass and has not been corrected here.
