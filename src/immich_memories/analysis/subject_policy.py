@@ -56,6 +56,13 @@ def classify_subject(
     return _stated_category(category) or SubjectCategory.UNKNOWN
 
 
+def subject_evidence(*, tagged_people: int, category: str | None) -> str:
+    """Expose the closed-set observation without making a membership decision."""
+    return (
+        f"subject-evidence:{classify_subject(tagged_people=tagged_people, category=category).value}"
+    )
+
+
 def _stated_category(category: str | None) -> SubjectCategory | None:
     """The model's own label, when it is one of the ones we asked for."""
     if not category:

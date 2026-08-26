@@ -336,6 +336,34 @@ def test_gateway_traces_an_invalid_provider_response_as_one_real_post(tmp_path) 
     assert gateway.cache.answer_for(request_trace["provenance"]["request_key"]) is None
 
 
+def test_gateway_failure_carries_the_exact_recorded_request_trace(tmp_path) -> None:
+    """A fail-open pass can retain failed-pack provenance without searching a shared ledger."""
+    from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
+    from immich_memories.analysis.llm_query import LLMTransportAttempt
+
+    trace = Trace()
+    gateway = VisualEditorialGateway(
+        llm_config=LLMConfig(model="vision-test"),
+        cache_path=tmp_path / "judgments.db",
+        trace=trace,
+    )
+
+    async def _fail(*_args, **kwargs):
+        kwargs["transport_observer"](LLMTransportAttempt(1, "timeout", None))
+        raise TimeoutError("generated timeout")
+
+    # WHY: query_llm is the external provider; failure provenance belongs to the real gateway.
+    with (
+        patch("immich_memories.analysis.editorial_gateway.query_llm", new=_fail),
+        pytest.raises(TimeoutError, match="generated timeout") as caught,
+    ):
+        gateway.ask(_request(_page()))
+
+    assert caught.value.request_trace is trace.requests[0]
+    assert caught.value.request_trace.actual_calls == 1
+    assert caught.value.request_trace.attached_sheet_hashes == (_page().sha256,)
+
+
 @pytest.mark.asyncio
 async def test_gateway_works_inside_an_active_event_loop(tmp_path) -> None:
     from immich_memories.analysis.editorial_gateway import VisualEditorialGateway

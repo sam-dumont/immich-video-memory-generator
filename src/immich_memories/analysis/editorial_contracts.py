@@ -9,6 +9,9 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     from immich_memories.api.models import Asset
 
+RECORD_SHOT_FUNCTION_MAX_CHARS = 48
+RECORD_SHOT_REASON_MAX_CHARS = 96
+
 
 @dataclass(frozen=True)
 class EditorialCandidate:
@@ -98,6 +101,25 @@ class TraceDecision:
 
 
 @dataclass(frozen=True)
+class RecordShotMark:
+    """A kept visual whose factual function must remain independently auditable."""
+
+    asset_id: str
+    function: str
+    reason: str
+
+    def __post_init__(self) -> None:
+        if (
+            not self.asset_id.strip()
+            or not self.function.strip()
+            or len(self.function) > RECORD_SHOT_FUNCTION_MAX_CHARS
+            or not self.reason.strip()
+            or len(self.reason) > RECORD_SHOT_REASON_MAX_CHARS
+        ):
+            raise ValueError("record-shot mark needs a stable asset and bounded function/reason")
+
+
+@dataclass(frozen=True)
 class ConservationCheck:
     """Whether an editorial pass gave every input exactly one fate."""
 
@@ -121,6 +143,7 @@ class PassTrace:
     provenance: DecisionProvenance
     request_traces: tuple[RequestTrace, ...] = ()
     conservation: ConservationCheck | None = None
+    record_shots: tuple[RecordShotMark, ...] = ()
 
 
 @dataclass(frozen=True)

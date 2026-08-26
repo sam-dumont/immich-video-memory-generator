@@ -151,8 +151,8 @@ class VisualEditorialGateway:
             )
             if not raw_text.strip():
                 raise ValueError("visual editorial answer must be nonblank")
-        except Exception:
-            self._record(
+        except Exception as exc:
+            failed_trace = self._record(
                 provenance,
                 request.pages,
                 page_hashes,
@@ -160,6 +160,7 @@ class VisualEditorialGateway:
                 actual_calls=len(attempts),
                 attempts=tuple(attempts),
             )
+            setattr(exc, "request_trace", failed_trace)  # noqa: B010 - preserve original exception
             raise
         self.cache.remember(request_key, raw_text, _provenance_json(provenance))
         request_trace = self._record(

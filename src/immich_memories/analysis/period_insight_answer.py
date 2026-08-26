@@ -8,13 +8,14 @@ from dataclasses import dataclass
 from typing import Any, TypeGuard
 
 from immich_memories.analysis.editorial_contracts import InsightEvidence
+from immich_memories.analysis.strict_json import final_json_object
 
 EpisodeObservationKey = tuple[int, int]
 EpisodeObservationValue = tuple[str, str]
 EpisodeTileKey = tuple[int, int, int]
 PeriodTileKey = tuple[str, int]
 PeriodTileValue = tuple[str, str]
-EPISODE_SCAN_SCHEMA_VERSION = "episode-scan-v2"
+EPISODE_SCAN_SCHEMA_VERSION = "episode-scan-v3"
 PERIOD_INSIGHT_SCHEMA_VERSION = "period-insight-v1"
 EPISODE_VISUAL_SUMMARY_MAX_CHARS = 64
 EPISODE_REPRESENTATIVE_REASON_MAX_CHARS = 96
@@ -69,7 +70,7 @@ def read_episode_answer(
     tile_map: Mapping[EpisodeTileKey, str],
 ) -> EpisodePageReading | None:
     """Read one complete page namespace without repairing malformed JSON."""
-    payload = _final_json_object(raw)
+    payload = final_json_object(raw)
     if payload is None:
         return None
     if payload.get("schema_version") != EPISODE_SCAN_SCHEMA_VERSION:
@@ -106,7 +107,7 @@ def read_episode_answers(
     tile_map: Mapping[EpisodeTileKey, str],
 ) -> EpisodeScanReadings | None:
     """Parse each required episode namespace independently from one physical pack."""
-    payload = _final_json_object(raw)
+    payload = final_json_object(raw)
     if (
         payload is None
         or payload.get("schema_version") != EPISODE_SCAN_SCHEMA_VERSION
@@ -204,7 +205,7 @@ def read_period_answer(
     tile_map: Mapping[PeriodTileKey, PeriodTileValue],
 ) -> PeriodInsightAnswer | None:
     """Read a complete period synthesis whose evidence resolves to visible tiles."""
-    payload = _final_json_object(raw)
+    payload = final_json_object(raw)
     if payload is None or payload.get("schema_version") != PERIOD_INSIGHT_SCHEMA_VERSION:
         return None
     insight = payload.get("period_insight")
@@ -323,17 +324,3 @@ def _tile_numbers(value: object) -> tuple[int, ...]:
 
 def _is_integer_alias(value: object) -> TypeGuard[int]:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 1
-
-
-def _final_json_object(raw: str) -> dict[str, Any] | None:
-    decoder = json.JSONDecoder()
-    for index, character in enumerate(raw):
-        if character != "{":
-            continue
-        try:
-            value, end = decoder.raw_decode(raw, index)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(value, dict) and raw[end:].strip() in ("", "```"):
-            return value
-    return None

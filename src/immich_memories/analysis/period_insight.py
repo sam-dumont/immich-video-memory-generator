@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
@@ -13,6 +12,7 @@ from immich_memories.analysis.contact_sheets import (
     TileRef,
     build_contact_sheets,
 )
+from immich_memories.analysis.cull_answer import fused_episode_response_fits
 from immich_memories.analysis.editorial_contracts import (
     DecisionProvenance,
     EditorialCandidate,
@@ -25,10 +25,8 @@ from immich_memories.analysis.editorial_gateway import (
     EditorialGateway,
     VisualEditorialRequest,
 )
+from immich_memories.analysis.episode_scan_request import build_episode_request
 from immich_memories.analysis.period_insight_answer import (
-    EPISODE_REPRESENTATIVE_REASON_MAX_CHARS,
-    EPISODE_SCAN_SCHEMA_VERSION,
-    EPISODE_VISUAL_SUMMARY_MAX_CHARS,
     PERIOD_INSIGHT_SCHEMA_VERSION,
     EpisodePageReading,
     read_episode_answers,
@@ -38,15 +36,10 @@ from immich_memories.analysis.selection_flow import EditorialGroup, PreparedEdit
 from immich_memories.analysis.visual_atlas import VisualAtlas, build_visual_atlas
 from immich_memories.analysis.visual_request_planner import VisionRequestLimits
 
-EPISODE_SCAN_PASS_VERSION = "episode-scan-v2"  # noqa: S105 - editorial pass identity
-EPISODE_SCAN_PROMPT_VERSION = "episode-scan-prompt-v2"
 PASS_ZERO_VERSION = "pass-0-v1"  # noqa: S105 - editorial pass identity
 PERIOD_INSIGHT_PASS_VERSION = "period-insight-v1"  # noqa: S105 - editorial pass identity
 PERIOD_INSIGHT_PROMPT_VERSION = "period-insight-prompt-v1"
 _RENDER_VERSION = "visual-atlas-v1/contact-sheet-v1"
-# Without a provider tokenizer, three response chars/token reserves 25% headroom below
-# the four-character heuristic; it is a planning guard, not a provider guarantee.
-_RESPONSE_PLANNING_CHARS_PER_TOKEN = 3
 
 
 @dataclass(frozen=True)
@@ -92,6 +85,16 @@ class BankedEpisodeScan:
 
 
 @dataclass(frozen=True)
+class EpisodeScanAttempt:
+    """One pack's exact physical attempt, including fail-open transport failures."""
+
+    pack_id: str
+    page_id: str
+    answer: BankedVisualAnswer | None
+    request_trace: RequestTrace | None
+
+
+@dataclass(frozen=True)
 class EpisodePageObservation:
     """Whether one required visual page produced a valid episode namespace."""
 
@@ -117,8 +120,10 @@ class PassZeroResult:
     """Observation-only Pass 0 result; membership remains the prepared corpus."""
 
     retained_ids: tuple[str, ...]
+    atlas: VisualAtlas
     episode_sheets: tuple[EpisodeSheet, ...]
     episode_packs: tuple[EpisodeScanPack, ...]
+    scan_attempts: tuple[EpisodeScanAttempt, ...]
     page_observations: tuple[EpisodePageObservation, ...]
     episode_readings: tuple[EpisodeReading, ...]
     banked_scans: tuple[BankedEpisodeScan, ...]
@@ -137,6 +142,9 @@ class PassZeroResult:
         scan_ids = tuple((scan.pack_id, scan.page_id) for scan in self.banked_scans)
         if len(scan_ids) != len(set(scan_ids)):
             raise ValueError("Pass 0 banked scan identities must be unique")
+        attempt_ids = tuple((attempt.pack_id, attempt.page_id) for attempt in self.scan_attempts)
+        if len(attempt_ids) != len(set(attempt_ids)):
+            raise ValueError("Pass 0 scan attempt identities must be unique")
 
 
 def run_period_insight(
@@ -157,7 +165,7 @@ def run_period_insight(
         limits=request_limits,
     )
     request_start = len(prepared.trace.requests)
-    observations, banked = _read_episode_packs(
+    observations, banked, scan_attempts = _read_episode_packs(
         episode_packs,
         requester=requester,
         limits=request_limits,
@@ -227,8 +235,10 @@ def run_period_insight(
     physical_requests = prepared.trace.requests[request_start:]
     return PassZeroResult(
         retained_ids=prepared.candidate_ids,
+        atlas=atlas,
         episode_sheets=episode_sheets,
         episode_packs=episode_packs,
+        scan_attempts=scan_attempts,
         page_observations=observations,
         episode_readings=readings,
         banked_scans=banked,
@@ -356,7 +366,7 @@ def _episode_material(
 
     for group in groups:
         size = len(group.candidates)
-        if size > MAX_SHEET_TILES:
+        if size > MAX_SHEET_TILES or not _episode_groups_fit((group,), limits):
             flush_pending()
             episode_sheet, continuation_packs = _episode_continuation_material(
                 group,
@@ -372,8 +382,6 @@ def _episode_material(
             pending_count + size > MAX_SHEET_TILES or not _episode_groups_fit(proposed, limits)
         ):
             flush_pending()
-        if not _episode_groups_fit((group,), limits):
-            raise ValueError("episode scan output budget cannot fit one complete episode")
         pending.append(group)
         pending_count += size
     flush_pending()
@@ -388,16 +396,12 @@ def _episode_continuation_material(
     limits: VisionRequestLimits,
 ) -> tuple[EpisodeSheet, tuple[EpisodeScanPack, ...]]:
     size = len(group.candidates)
-    displayed_pages = tuple(
-        tuple(range(offset + 1, min(offset + MAX_SHEET_TILES, size) + 1))
-        for offset in range(0, size, MAX_SHEET_TILES)
-    )
-    if any(not _episode_response_fits((displayed,), limits) for displayed in displayed_pages):
-        raise ValueError("episode scan output budget cannot fit one continuation")
+    page_sizes = _continuation_page_sizes(size, limits)
     pages = build_contact_sheets(
         tuple(atlas.tile_for(candidate.asset_id) for candidate in group.candidates),
         _pack_id((group.group_id,)),
         output_dir,
+        page_sizes=page_sizes,
     )
     packs = tuple(
         _episode_continuation_pack(
@@ -410,6 +414,22 @@ def _episode_continuation_material(
         for number, page in enumerate(pages, start=1)
     )
     return EpisodeSheet(group.group_id, group.candidates, pages), packs
+
+
+def _continuation_page_sizes(size: int, limits: VisionRequestLimits) -> tuple[int, ...]:
+    sizes: list[int] = []
+    offset = 0
+    while offset < size:
+        count = min(MAX_SHEET_TILES, size - offset)
+        while count and not _episode_response_fits(
+            (tuple(range(offset + 1, offset + count + 1)),), limits
+        ):
+            count -= 1
+        if count == 0:
+            raise ValueError("episode scan output budget cannot fit one continuation tile")
+        sizes.append(count)
+        offset += count
+    return tuple(sizes)
 
 
 def _episode_continuation_pack(
@@ -517,25 +537,10 @@ def _episode_groups_fit(groups: tuple[EditorialGroup, ...], limits: VisionReques
 def _episode_response_fits(
     displayed_by_episode: tuple[tuple[int, ...], ...], limits: VisionRequestLimits
 ) -> bool:
-    readings = tuple(
-        {
-            "episode": episode_alias,
-            "page": 1,
-            "visual_summary": "s" * EPISODE_VISUAL_SUMMARY_MAX_CHARS,
-            "representative_tiles": displayed,
-            "representative_reason": "r" * EPISODE_REPRESENTATIVE_REASON_MAX_CHARS,
-        }
-        for episode_alias, displayed in enumerate(displayed_by_episode, start=1)
+    return fused_episode_response_fits(
+        displayed_by_episode,
+        max_output_tokens=limits.max_output_tokens,
     )
-    envelope = json.dumps(
-        {
-            "schema_version": EPISODE_SCAN_SCHEMA_VERSION,
-            "pack": 1,
-            "episode_readings": readings,
-        },
-        separators=(",", ":"),
-    )
-    return len(envelope) <= limits.max_output_tokens * _RESPONSE_PLANNING_CHARS_PER_TOKEN
 
 
 def _read_episode_packs(
@@ -543,16 +548,25 @@ def _read_episode_packs(
     *,
     requester: EditorialGateway,
     limits: VisionRequestLimits,
-) -> tuple[tuple[EpisodePageObservation, ...], tuple[BankedEpisodeScan, ...]]:
+) -> tuple[
+    tuple[EpisodePageObservation, ...],
+    tuple[BankedEpisodeScan, ...],
+    tuple[EpisodeScanAttempt, ...],
+]:
     observations: list[EpisodePageObservation] = []
     banked: list[BankedEpisodeScan] = []
+    attempts: list[EpisodeScanAttempt] = []
     for pack in packs:
         scan: BankedEpisodeScan | None = None
         parsed = None
+        request_trace: RequestTrace | None = None
         try:
-            answer = requester.ask(_episode_request(pack, limits=limits))
-        except Exception:  # WHY: optional model failure cannot remove source membership
+            answer = requester.ask(build_episode_request(pack, limits=limits))
+        except Exception as exc:  # WHY: optional model failure cannot remove source membership
             answer = None
+            request_trace = getattr(exc, "request_trace", None)
+            if not isinstance(request_trace, RequestTrace):
+                request_trace = None
         if answer is not None:
             scan = BankedEpisodeScan(pack.pack_id, pack.page.sheet_id, answer)
             banked.append(scan)
@@ -574,6 +588,8 @@ def _read_episode_packs(
                 observation_map=observation_map,
                 tile_map=tile_map,
             )
+            request_trace = answer.request_trace
+        attempts.append(EpisodeScanAttempt(pack.pack_id, pack.page.sheet_id, answer, request_trace))
         by_identity = {
             (reading.episode_id, reading.page_id): reading
             for reading in (() if parsed is None else parsed.readings)
@@ -591,87 +607,7 @@ def _read_episode_packs(
             )
             for scope in pack.scopes
         )
-    return tuple(observations), tuple(banked)
-
-
-def _episode_request(
-    pack: EpisodeScanPack,
-    *,
-    limits: VisionRequestLimits,
-) -> VisualEditorialRequest:
-    annotations = _episode_annotations(pack)
-    return VisualEditorialRequest(
-        pass_name="episode-scan",  # noqa: S106 - versioned editorial pass identity
-        pass_version=EPISODE_SCAN_PASS_VERSION,
-        prompt=_episode_prompt(pack),
-        prompt_version=EPISODE_SCAN_PROMPT_VERSION,
-        schema_version=EPISODE_SCAN_SCHEMA_VERSION,
-        pages=(pack.page,),
-        ordered_input_ids=tuple(ref.entity_id for ref in pack.page.tile_refs),
-        ordered_group_ids=tuple(scope.episode_id for scope in pack.scopes),
-        grounded_annotations=annotations,
-        upstream_material=(),
-        render_version=_RENDER_VERSION,
-        limits=limits,
-        continuation_number=pack.continuation_number,
-        continuation_count=pack.continuation_count,
-    )
-
-
-def _episode_prompt(pack: EpisodeScanPack) -> str:
-    scopes = "\n".join(
-        f"episode={scope.episode_alias} page={scope.page_alias} "
-        f"tiles=[{','.join(str(ref.number) for ref in scope.tile_refs)}]"
-        for scope in pack.scopes
-    )
-    return (
-        "Read every numbered visual on this chronological episode pack. The explicit tile map "
-        "below preserves complete episodes even when their members interleave in time:\n"
-        + scopes
-        + "\nReturn only one complete "
-        f'JSON object with schema_version="{EPISODE_SCAN_SCHEMA_VERSION}", pack=1, and one '
-        "episode_readings entry for every mapped episode. Each entry needs the integer episode "
-        "and page aliases, visual_summary (at most "
-        f"{EPISODE_VISUAL_SUMMARY_MAX_CHARS} characters), "
-        "representative_tiles from that episode, and a representative_reason grounded in the "
-        f"visible pixels (at most {EPISODE_REPRESENTATIVE_REASON_MAX_CHARS} characters). "
-        "Representatives make a later wall legible; they reject nothing. "
-        "Do not answer record_shots or cull_rejects yet."
-    )
-
-
-def _episode_annotations(pack: EpisodeScanPack) -> tuple[str, ...]:
-    candidate_by_id = {
-        candidate.asset_id: candidate for scope in pack.scopes for candidate in scope.candidates
-    }
-    episode_alias_by_id = {
-        ref.entity_id: scope.episode_alias for scope in pack.scopes for ref in scope.tile_refs
-    }
-    return tuple(
-        _candidate_annotation(
-            ref,
-            candidate_by_id[ref.entity_id],
-            episode_alias_by_id[ref.entity_id],
-        )
-        for ref in pack.page.tile_refs
-    )
-
-
-def _candidate_annotation(
-    ref: TileRef,
-    candidate: EditorialCandidate,
-    episode_alias: int,
-) -> str:
-    return " | ".join(
-        (
-            f"tile:{ref.number}",
-            f"episode:{episode_alias}",
-            f"taken:{candidate.taken_at.isoformat()}",
-            f"media:{candidate.media_kind}",
-            f"favourite:{str(candidate.favourite).lower()}",
-            *candidate.grounded_annotations,
-        )
-    )
+    return tuple(observations), tuple(banked), tuple(attempts)
 
 
 def _complete_episode_readings(

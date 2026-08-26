@@ -5,6 +5,7 @@ from __future__ import annotations
 from immich_memories.analysis.editorial_contracts import (
     DecisionProvenance,
     PassTrace,
+    RecordShotMark,
     TraceDecision,
 )
 from immich_memories.analysis.selection_trace import Trace, record, tracing
@@ -126,3 +127,36 @@ def test_editorial_report_marks_abbreviated_decisions_as_display_only() -> None:
         "asset_id": "reject-12",
         "reason": "reason 12",
     }
+
+
+def test_record_shot_sidecar_survives_in_trace_json_report_and_asset_story() -> None:
+    """A protected visual remains auditable after the transient Cull result is gone."""
+    trace = Trace()
+    trace.record_editorial_pass(
+        PassTrace(
+            name="pass-1-cull",
+            input_ids=("test", "blur"),
+            kept_ids=("test",),
+            rejected=(TraceDecision("blur", "unusable_motion_blur: unreadable"),),
+            unresolved=(),
+            duration_before=8.0,
+            duration_after=4.0,
+            provenance=_provenance(("test", "blur")),
+            record_shots=(RecordShotMark("test", "result proof", "Records the result."),),
+        )
+    )
+
+    payload = trace.as_dict()["editorial_passes"][0]
+
+    assert payload["record_shots"] == [
+        {
+            "asset_id": "test",
+            "function": "result proof",
+            "reason": "Records the result.",
+        }
+    ]
+    assert "test — RECORD [result proof]: Records the result." in trace.report()
+    assert trace.story_of("test").record_shot_function == "result proof"
+    assert trace.story_of("test").record_shot_reason == "Records the result."
+    assert trace.editorial_passes[0].conservation is not None
+    assert trace.editorial_passes[0].conservation.valid is True

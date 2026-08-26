@@ -52,12 +52,82 @@ def _episode_pack_answer(prompt: str, *, summary: str = "Visible stages develop.
         )
     return json.dumps(
         {
-            "schema_version": "episode-scan-v2",
+            "schema_version": "episode-scan-v3",
             "pack": 1,
             "episode_readings": readings,
+            "record_shots": [],
+            "cull_rejects": [],
         },
         separators=(",", ":"),
     )
+
+
+def _maximum_fused_response_for(
+    displayed_by_episode: tuple[tuple[int, ...], ...],
+) -> str:
+    readings = [
+        {
+            "episode": episode,
+            "page": 1,
+            "visual_summary": "s" * 64,
+            "representative_tiles": list(displayed),
+            "representative_reason": "r" * 96,
+        }
+        for episode, displayed in enumerate(displayed_by_episode, start=1)
+    ]
+    tiles = [tile for displayed in displayed_by_episode for tile in displayed]
+    record_shots = [{"tile": tile, "function": "f" * 48, "reason": "r" * 96} for tile in tiles]
+    cull_rejects = [
+        {
+            "tile": tile,
+            "defect": "corrupt_or_obscured_pixels",
+            "reason": "r" * 96,
+        }
+        for tile in tiles
+    ]
+    # Every valid tile has at most one Pass 1 decision. The larger namespace shape is exact max.
+    if len(json.dumps(record_shots, separators=(",", ":"))) > len(
+        json.dumps(cull_rejects, separators=(",", ":"))
+    ):
+        cull_rejects = []
+    else:
+        record_shots = []
+    return json.dumps(
+        {
+            "schema_version": "episode-scan-v3",
+            "pack": 1,
+            "episode_readings": readings,
+            "record_shots": record_shots,
+            "cull_rejects": cull_rejects,
+        },
+        separators=(",", ":"),
+    )
+
+
+def _maximum_fused_response(pack) -> str:
+    return _maximum_fused_response_for(
+        tuple(tuple(ref.number for ref in scope.tile_refs) for scope in pack.scopes)
+    )
+
+
+def _assert_next_episode_would_overflow(packs, *, max_output_tokens: int = 4000) -> None:
+    """Prove each greedy pack stops only because its next complete episode cannot fit."""
+    for pack, next_pack in zip(packs, packs[1:], strict=False):
+        displayed = [tuple(ref.number for ref in scope.tile_refs) for scope in pack.scopes]
+        next_size = len(next_pack.scopes[0].tile_refs)
+        first_new_number = len(pack.page.tile_refs) + 1
+        displayed.append(tuple(range(first_new_number, first_new_number + next_size)))
+        assert len(_maximum_fused_response_for(tuple(displayed))) > max_output_tokens * 3
+
+
+def _assert_next_continuation_tile_would_overflow(packs, *, max_output_tokens: int = 4000) -> None:
+    """Prove each non-final continuation is maximal under the fused response budget."""
+    for pack in packs[:-1]:
+        displayed = tuple(ref.number for ref in pack.scopes[0].tile_refs)
+        assert (
+            len(_maximum_fused_response_for(((*displayed, displayed[-1] + 1),)))
+            > max_output_tokens * 3
+        )
 
 
 def test_source_preparation_preserves_real_visual_sources_in_candidate_order(
@@ -100,7 +170,7 @@ def test_source_preparation_preserves_real_visual_sources_in_candidate_order(
     assert prepared.visual_sources[1].motion_path == tmp_path / "video.mp4"
 
 
-def test_compact_episode_v2_request_cannot_reuse_a_legacy_v1_bank(
+def test_fused_episode_v3_request_cannot_reuse_a_legacy_v2_bank(
     tmp_path: Path,
 ) -> None:
     """Changing the wire aliases abandons the old answer even with identical visual evidence."""
@@ -138,12 +208,12 @@ def test_compact_episode_v2_request_cannot_reuse_a_legacy_v1_bank(
         current.pass_version,
         current.prompt_version,
         current.schema_version,
-    ) == ("episode-scan-v2", "episode-scan-prompt-v2", "episode-scan-v2")
+    ) == ("episode-scan-v3", "episode-scan-prompt-v3", "episode-scan-v3")
     legacy = replace(
         current,
-        pass_version="episode-scan-v1",  # noqa: S106 - historical pass identity fixture
-        prompt_version="episode-scan-prompt-v1",
-        schema_version="episode-scan-v1",
+        pass_version="episode-scan-v2",  # noqa: S106 - historical pass identity fixture
+        prompt_version="episode-scan-prompt-v2",
+        schema_version="episode-scan-v2",
     )
     calls: list[str] = []
 
@@ -170,6 +240,128 @@ def test_compact_episode_v2_request_cannot_reuse_a_legacy_v1_bank(
     assert current_answer.provenance.request_key != legacy_answer.provenance.request_key
     assert reused_current.provenance.cache_hit is True
     assert reused_current.request_trace.actual_calls == 0
+
+
+def test_v3_episode_packs_budget_every_possible_record_and_cull_member(
+    tmp_path: Path,
+) -> None:
+    """Maximum valid fused output, rather than an average reply, bounds every pack."""
+    from immich_memories.analysis.period_insight import run_period_insight
+
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    assets = tuple(
+        make_asset(f"asset-{index:03d}", file_created_at=start + timedelta(hours=index * 2))
+        for index in range(120)
+    )
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(
+            source_fetcher=lambda _scope: assets,
+            preview_jpeg=lambda _asset: _jpeg("navy"),
+        ),
+    )
+
+    class NoProvider:
+        def ask(self, _request):
+            raise TimeoutError("generated timeout")
+
+    result = run_period_insight(
+        prepared,
+        requester=NoProvider(),
+        sheet_output_dir=tmp_path / "sheets",
+        frame_cache_dir=None,
+    )
+
+    planned_ids = tuple(
+        ref.entity_id for pack in result.episode_packs for ref in pack.page.tile_refs
+    )
+    assert planned_ids == prepared.candidate_ids
+    assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [27, 27, 27, 27, 12]
+    for pack in result.episode_packs:
+        assert len(_maximum_fused_response(pack)) <= 4000 * 3
+    _assert_next_episode_would_overflow(result.episode_packs)
+
+
+def test_one_sub_120_episode_response_splits_into_bounded_continuations(
+    tmp_path: Path,
+) -> None:
+    """One large episode continues by response capacity even below the visual tile limit."""
+    from immich_memories.analysis.period_insight import run_period_insight
+
+    when = datetime(2026, 8, 25, 12, tzinfo=UTC)
+    assets = tuple(
+        make_asset(f"asset-{index:02d}", file_created_at=when + timedelta(seconds=index))
+        for index in range(80)
+    )
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(
+            source_fetcher=lambda _scope: assets,
+            preview_jpeg=lambda _asset: _jpeg("orange"),
+        ),
+    )
+
+    class NoProvider:
+        def ask(self, _request):
+            raise TimeoutError("generated timeout")
+
+    result = run_period_insight(
+        prepared,
+        requester=NoProvider(),
+        sheet_output_dir=tmp_path / "sheets",
+        frame_cache_dir=None,
+    )
+
+    assert len(result.episode_sheets) == 1
+    assert len(result.episode_packs) > 1
+    assert tuple(
+        ref.number for pack in result.episode_packs for ref in pack.page.tile_refs
+    ) == tuple(range(1, 81))
+    assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [63, 17]
+    assert all(len(_maximum_fused_response(pack)) <= 4000 * 3 for pack in result.episode_packs)
+    _assert_next_continuation_tile_would_overflow(result.episode_packs)
+    assert {pack.continuation_count for pack in result.episode_packs} == {len(result.episode_packs)}
+
+
+def test_pass_zero_retains_the_atlas_and_failed_pack_provenance(tmp_path: Path) -> None:
+    """A timeout keeps both reusable pixels and the exact failed request association."""
+    from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
+    from immich_memories.analysis.llm_query import LLMTransportAttempt
+    from immich_memories.analysis.period_insight import run_period_insight
+
+    asset = make_asset("asset", file_created_at=datetime(2026, 8, 25, 12, tzinfo=UTC))
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(
+            source_fetcher=lambda _scope: (asset,),
+            preview_jpeg=lambda _asset: _jpeg("purple"),
+        ),
+    )
+    gateway = VisualEditorialGateway(
+        llm_config=LLMConfig(model="vision-test"),
+        cache_path=tmp_path / "judgments.db",
+        trace=prepared.trace,
+    )
+
+    async def _timeout(*_args, **kwargs):
+        kwargs["transport_observer"](LLMTransportAttempt(1, "timeout", None))
+        raise TimeoutError("generated timeout")
+
+    # WHY: query_llm is the provider boundary; atlas construction and trace association stay real.
+    with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_timeout):
+        result = run_period_insight(
+            prepared,
+            requester=gateway,
+            sheet_output_dir=tmp_path / "sheets",
+            frame_cache_dir=None,
+        )
+
+    assert result.atlas.tile_for("asset").jpeg_bytes == _jpeg("purple")
+    assert len(result.scan_attempts) == 1
+    assert result.scan_attempts[0].answer is None
+    assert result.scan_attempts[0].request_trace is prepared.trace.requests[0]
+    assert result.scan_attempts[0].pack_id == result.episode_packs[0].pack_id
+    assert result.scan_attempts[0].page_id == result.episode_packs[0].page.sheet_id
 
 
 def test_task5_provider_prompt_maps_source_evidence_to_compact_visual_aliases(
@@ -238,7 +430,8 @@ def test_task5_provider_prompt_maps_source_evidence_to_compact_visual_aliases(
     episode_grounding = prompts[0].split("Grounded annotations (ordered JSON):\n", 1)[1]
     assert episode_grounding == (
         '["tile:1 | episode:1 | taken:2026-08-25T12:00:00+00:00 | media:photo | '
-        'favourite:true | blur:0.125 | similarity:source-one"]'
+        "favourite:true | subject-evidence:unknown | blur:0.125 | "
+        'similarity:source-one"]'
     )
     assert stable_asset_id not in episode_grounding
     assert "Grounded annotations (ordered JSON):" in prompts[1]
@@ -287,18 +480,21 @@ def test_incomplete_121_tile_episode_banks_valid_page_but_blocks_period_thesis(
         )
 
     episode = result.episode_sheets[0]
-    assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [120, 1]
-    assert tuple(ref.number for ref in episode.pages[1].tile_refs) == (121,)
-    assert captured_images == [(episode.pages[0].jpeg_bytes,), (episode.pages[1].jpeg_bytes,)]
+    assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [37, 36, 36, 12]
+    _assert_next_continuation_tile_would_overflow(result.episode_packs, max_output_tokens=2400)
+    assert tuple(ref.number for ref in episode.pages[-1].tile_refs) == tuple(range(110, 122))
+    assert captured_images == [(page.jpeg_bytes,) for page in episode.pages]
     assert [observation.reading is not None for observation in result.page_observations] == [
         True,
+        False,
+        False,
         False,
     ]
     assert result.retained_ids == prepared.candidate_ids
     assert result.insight.thesis is None
     assert result.period_pages == ()
-    assert len(result.banked_scans) == 2
-    assert sum(request.actual_calls for request in trace.requests) == 2
+    assert len(result.banked_scans) == 4
+    assert sum(request.actual_calls for request in trace.requests) == 4
     assert len([item for item in trace.editorial_passes if item.name == "pass-0"]) == 1
     assert trace.editorial_passes[-1].provenance.sheet_hashes == tuple(
         page.sha256 for page in episode.pages
@@ -425,9 +621,10 @@ def test_multi_page_period_wall_is_not_split_without_an_approved_limit(tmp_path:
             frame_cache_dir=None,
         )
 
-    assert calls == 2
-    assert [len(pack.scopes) for pack in result.episode_packs] == [40, 1]
-    assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [120, 3]
+    assert calls == 3
+    assert [len(pack.scopes) for pack in result.episode_packs] == [14, 14, 13]
+    assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [42, 42, 39]
+    _assert_next_episode_would_overflow(result.episode_packs)
     assert len(result.period_pages) == 2
     assert result.period_answer is None
     assert result.insight.thesis is None
@@ -495,7 +692,7 @@ def test_approved_multi_page_period_wall_is_attached_as_one_holistic_request(
             ),
         )
 
-    assert len(captured_images) == 3
+    assert len(captured_images) == 4
     assert captured_images[-1] == tuple(page.jpeg_bytes for page in result.period_pages)
     assert result.insight.thesis == "Unfamiliar stages accumulate into a progression."
     assert result.insight.evidence[0].asset_ids == ("visual-00-0", "visual-40-0")
@@ -575,10 +772,10 @@ def test_interleaved_episodes_share_one_chronological_pack_with_explicit_members
     assert result.warnings == ()
 
 
-def test_packer_keeps_a_four_tile_episode_whole_at_the_120_tile_boundary(
+def test_packer_keeps_a_four_tile_episode_whole_at_the_v3_response_boundary(
     tmp_path: Path,
 ) -> None:
-    """Thirty-nine triples fill 117 tiles; the following four stay together in pack two."""
+    """Response-bounded packs still keep the following four-tile episode whole."""
     from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
     from immich_memories.analysis.llm_query import LLMTransportAttempt
     from immich_memories.analysis.period_insight import run_period_insight
@@ -630,8 +827,10 @@ def test_packer_keeps_a_four_tile_episode_whole_at_the_120_tile_boundary(
             frame_cache_dir=None,
         )
 
-    assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [117, 4]
-    assert tuple(ref.entity_id for ref in result.episode_packs[1].scopes[0].tile_refs) == (
+    assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [42, 42, 37]
+    assert [len(pack.scopes) for pack in result.episode_packs] == [14, 14, 12]
+    _assert_next_episode_would_overflow(result.episode_packs)
+    assert tuple(ref.entity_id for ref in result.episode_packs[-1].scopes[-1].tile_refs) == (
         "quad-0",
         "quad-1",
         "quad-2",
@@ -653,7 +852,7 @@ def test_packer_keeps_a_four_tile_episode_whole_at_the_120_tile_boundary(
                 if request.provenance.pass_name == "episode-scan"  # noqa: S105
             ]
         )
-        == 2
+        == 3
     )
 
 
@@ -704,11 +903,25 @@ def test_singleton_episode_packs_fit_their_complete_response_budget(tmp_path: Pa
                     "representative_reason": "r" * 96,
                 }
             )
+        aliases = [
+            {"tile": int(value)}
+            for _episode_alias, _page_alias, displayed in scopes
+            for value in displayed.split(",")
+        ]
         raw = json.dumps(
             {
-                "schema_version": "episode-scan-v2",
+                "schema_version": "episode-scan-v3",
                 "pack": 1,
                 "episode_readings": readings,
+                "record_shots": [],
+                "cull_rejects": [
+                    {
+                        **alias,
+                        "defect": "corrupt_or_obscured_pixels",
+                        "reason": "r" * 96,
+                    }
+                    for alias in aliases
+                ],
             },
             separators=(",", ":"),
         )
@@ -729,7 +942,9 @@ def test_singleton_episode_packs_fit_their_complete_response_budget(tmp_path: Pa
             frame_cache_dir=None,
         )
 
-    assert [item[0] for item in response_envelopes] == [46, 46, 28]
+    assert [item[0] for item in response_envelopes] == [27, 27, 27, 27, 12]
+    assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [27, 27, 27, 27, 12]
+    _assert_next_episode_would_overflow(result.episode_packs)
     assert all(
         response_chars <= budget_chars for _, response_chars, budget_chars in response_envelopes
     )
@@ -871,7 +1086,7 @@ def test_one_packed_raw_answer_banks_valid_siblings_when_one_episode_is_invalid(
         ]
         return json.dumps(
             {
-                "schema_version": "episode-scan-v2",
+                "schema_version": "episode-scan-v3",
                 "pack": 1,
                 "episode_readings": entries,
                 "future_namespace": {"tile": True},
@@ -947,6 +1162,8 @@ def test_complete_121_tile_episode_combines_every_continuation_provenance(
         )
 
     reading = result.episode_readings[0]
+    assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [63, 58]
+    _assert_next_continuation_tile_would_overflow(result.episode_packs)
     assert len(reading.page_provenances) == 2
     assert tuple(item.sheet_hashes for item in reading.page_provenances) == tuple(
         (pack.page.sha256,) for pack in result.episode_packs

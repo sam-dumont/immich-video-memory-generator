@@ -28,7 +28,7 @@ def test_topic_label_swaps_preserve_grounded_insight_shape(
     asset_ids = ("asset#left:001", "asset/right?002")
     episode_raw = json.dumps(
         {
-            "schema_version": "episode-scan-v2",
+            "schema_version": "episode-scan-v3",
             "pack": 1,
             "episode_readings": [
                 {

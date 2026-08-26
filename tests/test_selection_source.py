@@ -158,6 +158,7 @@ def test_requested_dates_and_supported_media_define_the_source_scope() -> None:
             "unexpected_ids": [],
         },
         "request_traces": [],
+        "record_shots": [],
     }
 
 
