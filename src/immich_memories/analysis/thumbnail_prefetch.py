@@ -35,6 +35,11 @@ logger = logging.getLogger(__name__)
 THUMBNAIL_SIZE = "preview"
 
 
+def cached_preview_bytes(thumbnail_cache: ThumbnailCache, asset_id: str) -> bytes | None:
+    """Read an already-fetched preview without turning atlas construction into a network call."""
+    return thumbnail_cache.get(asset_id, THUMBNAIL_SIZE)
+
+
 class ThumbnailPrefetcher:
     """Best-effort preview fetcher; failures degrade de-dup, never abort the run."""
 

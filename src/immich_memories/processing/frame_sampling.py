@@ -24,6 +24,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 _FALLBACK_DURATION_SECONDS = 60.0
+SEGMENT_RENDER_VERSION = "1"
 
 
 def even_timestamps(duration: float, count: int) -> list[float]:
@@ -90,20 +91,6 @@ def _extract_one(video: Path, timestamp: float, width: int, out_path: Path) -> b
     return out_path.exists()
 
 
-def _key_for(video: Path, count: int, width: int) -> str:
-    """What identifies these frames: which video, how many, how wide.
-
-    Size and mtime stand in for content — hashing gigabytes to decide whether
-    to skip a decode would cost more than the decode.
-    """
-    try:
-        stat = video.stat()
-        identity = f"{video.name}:{stat.st_size}:{int(stat.st_mtime)}"
-    except OSError:
-        identity = video.name
-    return hashlib.sha256(f"{identity}:{count}:{width}".encode()).hexdigest()[:16]
-
-
 def sample_frames(
     video: Path,
     *,
@@ -117,23 +104,90 @@ def sample_frames(
     nothing returns an empty list rather than raising: a caller that cannot see
     the pictures should degrade, not fail.
     """
-    target = _prepared_dir(cache_dir, _key_for(video, count, width))
+    duration = probe_duration(video)
+    return list(
+        sample_segment_frames(
+            video,
+            start_time=0.0,
+            end_time=duration if duration > 0 else _FALLBACK_DURATION_SECONDS,
+            count=count,
+            width=width,
+            cache_dir=cache_dir,
+        )
+    )
+
+
+def sample_segment_frames(
+    video: Path,
+    *,
+    start_time: float,
+    end_time: float,
+    count: int,
+    width: int,
+    cache_dir: Path | None,
+    render_version: str | None = None,
+) -> tuple[Path, ...]:
+    """Sample a bounded video segment, caching only complete usable frame sets."""
+    if count <= 0 or width <= 0 or end_time <= start_time or not _usable_video(video):
+        return ()
+    version = render_version or SEGMENT_RENDER_VERSION
+    key = _segment_key_for(video, start_time, end_time, count, width, version)
+    target = _prepared_dir(cache_dir, key)
     if target is not None:
-        cached = sorted(target.glob("frame_*.jpg"))
+        cached = _usable_cached_frames(target, count)
         if len(cached) == count:
-            logger.debug("Reusing %d cached frame(s) for %s", count, video.name)
-            return cached
+            logger.debug("Reusing %d segment frame(s) for %s", count, video.name)
+            return tuple(cached)
 
     out_dir = target if target is not None else _scratch_dir(video)
     if out_dir is None:
-        return []
-
-    frames = []
-    for index, timestamp in enumerate(even_timestamps(probe_duration(video), count)):
+        return ()
+    timestamps = [start_time + moment for moment in even_timestamps(end_time - start_time, count)]
+    frames: list[Path] = []
+    for index, timestamp in enumerate(timestamps):
         out_path = out_dir / f"frame_{index:03d}.jpg"
-        if _extract_one(video, timestamp, width, out_path):
+        if _extract_one(video, timestamp, width, out_path) or (
+            timestamp != start_time and _extract_one(video, start_time, width, out_path)
+        ):
             frames.append(out_path)
-    return frames
+    return tuple(frames)
+
+
+def _segment_key_for(
+    video: Path,
+    start_time: float,
+    end_time: float,
+    count: int,
+    width: int,
+    render_version: str,
+) -> str:
+    """Identify pixels by resolved source metadata and every rendering choice."""
+    try:
+        stat = video.stat()
+        identity = f"{video.resolve()}:{stat.st_size}:{stat.st_mtime_ns}"
+    except OSError:
+        identity = str(video.resolve())
+    payload = f"{identity}:{start_time:.9f}:{end_time:.9f}:{count}:{width}:{render_version}"
+    return hashlib.sha256(payload.encode()).hexdigest()[:16]
+
+
+def _usable_video(video: Path) -> bool:
+    """Reject incomplete downloads and empty inputs before invoking FFmpeg."""
+    try:
+        return video.is_file() and video.suffix != ".part" and video.stat().st_size > 0
+    except OSError:
+        return False
+
+
+def _usable_cached_frames(target: Path, count: int) -> list[Path]:
+    frames: list[Path] = []
+    for frame in sorted(target.glob("frame_*.jpg")):
+        try:
+            if frame.is_file() and frame.suffix != ".part" and frame.stat().st_size > 0:
+                frames.append(frame)
+        except OSError:
+            continue
+    return frames if len(frames) == count else []
 
 
 def _prepared_dir(cache_dir: Path | None, key: str) -> Path | None:
