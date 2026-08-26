@@ -701,3 +701,68 @@ def test_precomputed_evidence_survives_raw_photo_source_preparation() -> None:
         "exposure:0.5",
         "similarity:photo-cluster",
     )
+
+
+def test_a_live_photo_component_is_not_a_candidate_beside_its_still() -> None:
+    """Immich lists the motion half as its own asset; it is the photograph, not a second visual."""
+    shutter = datetime(2023, 6, 16, 6, 52, 28, 616000, tzinfo=UTC)
+    still = make_asset("still", original_file_name="IMG_0955.JPG", file_created_at=shutter)
+    still.type = AssetType.IMAGE
+    still.live_photo_video_id = "motion"
+    # Measured on the real library: the component is filed a beat BEFORE its own
+    # still, so it reaches the pool first and cannot be resolved by arrival order.
+    motion = make_asset(
+        "motion",
+        original_file_name="IMG_0955.MOV",
+        file_created_at=shutter - timedelta(seconds=1, milliseconds=616),
+    )
+    motion.type = AssetType.VIDEO
+
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(source_fetcher=lambda _scope: (motion, still)),
+    )
+
+    assert prepared.candidate_ids == ("still",)
+    assert prepared.excluded_ids == ("motion",)
+
+
+def test_an_owner_excluded_still_still_claims_its_own_component() -> None:
+    """Dropping the photograph must not readmit the same instant as footage."""
+    shutter = datetime(2023, 6, 16, 6, 52, 28, tzinfo=UTC)
+    still = make_asset("still", file_created_at=shutter)
+    still.type = AssetType.IMAGE
+    still.live_photo_video_id = "motion"
+    motion = make_asset("motion", file_created_at=shutter - timedelta(seconds=1))
+    motion.type = AssetType.VIDEO
+
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(
+            scope=SourceScope(),
+            owner_excluded_asset_ids=("still",),
+        ),
+        EditorialDependencies(source_fetcher=lambda _scope: (motion, still)),
+    )
+
+    assert prepared.candidate_ids == ()
+    assert prepared.excluded_ids == ("motion", "still")
+
+
+def test_a_video_no_still_claims_is_footage_and_stays_a_candidate() -> None:
+    """Only a claimed component is a photograph's half; everything else was filmed."""
+    shutter = datetime(2023, 6, 16, 7, 4, 10, tzinfo=UTC)
+    still = make_asset("still", file_created_at=shutter)
+    still.type = AssetType.IMAGE
+    still.live_photo_video_id = "claimed"
+    claimed = make_asset("claimed", file_created_at=shutter - timedelta(seconds=1))
+    claimed.type = AssetType.VIDEO
+    filmed = make_asset("filmed", file_created_at=shutter + timedelta(minutes=5))
+    filmed.type = AssetType.VIDEO
+
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(source_fetcher=lambda _scope: (claimed, still, filmed)),
+    )
+
+    assert prepared.candidate_ids == ("still", "filmed")
+    assert prepared.excluded_ids == ("claimed",)

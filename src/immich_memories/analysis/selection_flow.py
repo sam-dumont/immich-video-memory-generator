@@ -26,7 +26,10 @@ from immich_memories.analysis.moment_grouping import (
     group_by_time_and_place,
 )
 from immich_memories.analysis.selection_trace import Trace
-from immich_memories.analysis.source_filter import is_editorial_source_asset
+from immich_memories.analysis.source_filter import (
+    is_editorial_source_asset,
+    live_photo_component_ids,
+)
 from immich_memories.analysis.source_quality import grounded_source_annotations
 from immich_memories.analysis.visual_atlas import AtlasSource
 from immich_memories.api.models import AssetType, VideoClipInfo
@@ -170,8 +173,9 @@ def prepare_editorial_source(
             )
         )
     )
+    components = live_photo_component_ids(_asset(source) for source in sources)
     source_decisions = tuple(
-        (source, _source_exclusion_reason(source, request, dependencies, excluded))
+        (source, _source_exclusion_reason(source, request, dependencies, excluded, components))
         for source in sources
     )
     eligible_sources = tuple(
@@ -612,10 +616,13 @@ def _source_exclusion_reason(
     request: EditorialSelectionRequest,
     dependencies: EditorialDependencies,
     owner_exclusions: set[str],
+    components: frozenset[str],
 ) -> str | None:
     asset = _asset(source)
     if asset.id in owner_exclusions:
         return "owner exclusion"
+    if asset.id in components:
+        return "Live Photo component"
     if request.scope.library_ids:
         if dependencies.library_membership is None:
             raise ValueError("library scope requires a library_membership dependency")
