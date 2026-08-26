@@ -20,7 +20,7 @@ from immich_memories.analysis.period_insight_answer import (
     EPISODE_SCAN_SCHEMA_VERSION,
     EPISODE_VISUAL_SUMMARY_MAX_CHARS,
 )
-from immich_memories.analysis.strict_json import final_json_object, is_safe_model_text
+from immich_memories.analysis.strict_json import bounded_model_text, final_json_object
 
 RECORD_REASON_MAX_CHARS = RECORD_SHOT_REASON_MAX_CHARS
 RECORD_FUNCTION_MAX_CHARS = RECORD_SHOT_FUNCTION_MAX_CHARS
@@ -211,14 +211,9 @@ def _read_record_shots(
         if not isinstance(item, dict) or set(item) != set(RECORD_SHOT_WIRE_KEYS):
             return None
         key = item.get("tile")
-        function = item.get("function")
-        reason = item.get("reason")
-        if (
-            not _is_integer_alias(key)
-            or key not in tile_map
-            or not is_safe_model_text(function, max_chars=RECORD_FUNCTION_MAX_CHARS)
-            or not is_safe_model_text(reason, max_chars=RECORD_REASON_MAX_CHARS)
-        ):
+        function = bounded_model_text(item.get("function"), max_chars=RECORD_FUNCTION_MAX_CHARS)
+        reason = bounded_model_text(item.get("reason"), max_chars=RECORD_REASON_MAX_CHARS)
+        if not _is_integer_alias(key) or key not in tile_map or function is None or reason is None:
             return None
         keys.append(key)
         parsed.append(RecordShotMark(tile_map[key], function, reason))

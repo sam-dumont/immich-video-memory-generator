@@ -8,7 +8,11 @@ from dataclasses import dataclass
 from typing import Any, TypeGuard
 
 from immich_memories.analysis.editorial_contracts import InsightEvidence
-from immich_memories.analysis.strict_json import final_json_object, is_safe_model_text
+from immich_memories.analysis.strict_json import (
+    bounded_model_text,
+    final_json_object,
+    is_safe_model_text,
+)
 
 EpisodeObservationKey = tuple[int, int]
 EpisodeObservationValue = tuple[str, str]
@@ -180,18 +184,16 @@ def _read_episode_namespace(
     page_id: str,
     tile_map: Mapping[EpisodeTileKey, str],
 ) -> EpisodePageReading | None:
-    summary = reading.get("visual_summary")
+    summary = bounded_model_text(
+        reading.get("visual_summary"), max_chars=EPISODE_VISUAL_SUMMARY_MAX_CHARS
+    )
     displayed = reading.get("representative_tiles")
-    representative_reason = reading.get("representative_reason")
+    representative_reason = bounded_model_text(
+        reading.get("representative_reason"),
+        max_chars=EPISODE_REPRESENTATIVE_REASON_MAX_CHARS,
+    )
     numbers = _tile_numbers(displayed)
-    if (
-        not is_safe_model_text(summary, max_chars=EPISODE_VISUAL_SUMMARY_MAX_CHARS)
-        or not is_safe_model_text(
-            representative_reason,
-            max_chars=EPISODE_REPRESENTATIVE_REASON_MAX_CHARS,
-        )
-        or not numbers
-    ):
+    if summary is None or representative_reason is None or not numbers:
         return None
     if len(numbers) != len(set(numbers)):
         return None

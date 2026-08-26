@@ -299,14 +299,20 @@ def test_malformed_outer_envelope_has_no_pass_one_decisions(raw: str) -> None:
     (
         {"tile": 1, "function": "proof", "reason": "A."},
         {"tile": 99, "function": "proof", "reason": "Unknown."},
-        {"tile": 2, "function": "f" * 49, "reason": "Visible."},
-        {"tile": 2, "function": "proof", "reason": "r" * 97},
+        {"tile": 2, "function": "pro\tof", "reason": "Visible."},
+        {"tile": 2, "function": "proof", "reason": 42},
+        {"tile": 2, "function": "proof", "reason": "  "},
     ),
 )
-def test_duplicate_unknown_or_overlong_record_member_invalidates_record_namespace(
+def test_duplicate_unknown_or_unusable_record_member_invalidates_record_namespace(
     member: dict[str, object],
 ) -> None:
-    """One bad record member cannot leave a plausible-looking partial record list."""
+    """One bad record member cannot leave a plausible-looking partial record list.
+
+    An over-long function or reason is not in this list: it is fitted to its
+    bound, because the mark is a decision and losing every mark in the pack to
+    one long sentence is the wrong direction to fail.
+    """
     from immich_memories.analysis.cull_answer import read_cull_namespaces
 
     answer = read_cull_namespaces(
@@ -437,3 +443,32 @@ def test_the_episode_prompt_shows_the_exact_shape_its_parser_accepts() -> None:
     assert parsed is not None
     assert parsed.record_valid
     assert parsed.cull_valid
+
+
+def test_an_overlong_record_reason_trims_instead_of_voiding_every_mark() -> None:
+    """One long sentence must not erase the marks that were right beside it."""
+    from immich_memories.analysis.cull_answer import read_cull_namespaces
+    from immich_memories.analysis.editorial_contracts import RECORD_SHOT_REASON_MAX_CHARS
+
+    parsed = read_cull_namespaces(
+        json.dumps(
+            {
+                "schema_version": "episode-scan-v3",
+                "pack": 1,
+                "record_shots": [
+                    {"tile": 1, "function": "result", "reason": "R" + "x" * 300},
+                    {"tile": 2, "function": "ticket", "reason": "Venue and date legible."},
+                ],
+                "cull_rejects": [],
+            }
+        ),
+        pack_alias=1,
+        tile_map={1: "long", 2: "sibling"},
+    )
+
+    assert parsed is not None
+    assert parsed.record_valid
+    marks = {mark.asset_id: mark for mark in parsed.record_shots}
+    assert set(marks) == {"long", "sibling"}
+    assert len(marks["long"].reason) <= RECORD_SHOT_REASON_MAX_CHARS
+    assert marks["long"].reason.startswith("Rx")

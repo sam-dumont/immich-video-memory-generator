@@ -10,6 +10,7 @@ from immich_memories.analysis.editorial_contracts import (
     PeriodInsight,
 )
 from immich_memories.analysis.period_insight_answer import (
+    EPISODE_REPRESENTATIVE_REASON_MAX_CHARS,
     EpisodePageReading,
     PeriodInsightAnswer,
     read_episode_answer,
@@ -436,13 +437,22 @@ def test_one_episode_scan_pack_returns_independent_page_qualified_readings() -> 
 
 
 @pytest.mark.parametrize(
-    ("overlong_summary", "overlong_reason"),
-    (("s" * 65, "visible A"), ("Visible A", "r" * 97)),
+    ("unusable_summary", "unusable_reason"),
+    (
+        ("Visible\tA", "visible A"),
+        ("Visible A", 'he said "visible"'),
+        ("Visible A", 42),
+        ("Visible A", "   "),
+    ),
 )
-def test_overlong_episode_prose_invalidates_only_that_packed_reading(
-    overlong_summary: str, overlong_reason: str
+def test_unusable_episode_prose_invalidates_only_that_packed_reading(
+    unusable_summary: object, unusable_reason: object
 ) -> None:
-    """The response estimator's prose bounds are enforced without poisoning valid siblings."""
+    """Text that cannot be trusted or shown poisons its own reading and no other.
+
+    Length is not in this list: an over-long reason is fitted to its bound
+    instead, because the reading is a decision and the prose only explains it.
+    """
     raw = json.dumps(
         {
             "schema_version": "episode-scan-v3",
@@ -451,9 +461,9 @@ def test_overlong_episode_prose_invalidates_only_that_packed_reading(
                 {
                     "episode": 1,
                     "page": 1,
-                    "visual_summary": overlong_summary,
+                    "visual_summary": unusable_summary,
                     "representative_tiles": [1],
-                    "representative_reason": overlong_reason,
+                    "representative_reason": unusable_reason,
                 },
                 {
                     "episode": 2,
@@ -660,3 +670,47 @@ def test_the_period_prompt_shows_the_exact_shape_its_parser_accepts() -> None:
     assert answer.thesis
     assert answer.tensions
     assert answer.recurring_threads
+
+
+def test_an_overlong_reason_trims_instead_of_discarding_its_episode() -> None:
+    """The prose is display text; the reading it explains is a decision.
+
+    Measured against the local model: the same prompt on the same images
+    produced 91/84/76-character reasons on one run and 103/105/104 on the next.
+    At a 96-character bound that is a coin flip on whether the whole period
+    thesis exists, and nothing downstream can tell it was ever attempted.
+    """
+    overlong = "T" + "x" * 200
+    raw = json.dumps(
+        {
+            "schema_version": "episode-scan-v3",
+            "pack": 1,
+            "episode_readings": [
+                {
+                    "episode": 1,
+                    "page": 1,
+                    "visual_summary": "A finish line.",
+                    "representative_tiles": [1],
+                    "representative_reason": overlong,
+                }
+            ],
+            "record_shots": [],
+            "cull_rejects": [],
+        }
+    )
+
+    readings = read_episode_answers(
+        raw,
+        pack_alias=1,
+        expected_observations=(("episode", "page"),),
+        observation_map={(1, 1): ("episode", "page")},
+        tile_map={(1, 1, 1): "asset"},
+    )
+
+    assert readings is not None
+    assert readings.invalid_observations == ()
+    assert len(readings.readings) == 1
+    reading = readings.readings[0]
+    assert reading.representative_asset_ids == ("asset",)
+    assert len(reading.representative_reason) <= EPISODE_REPRESENTATIVE_REASON_MAX_CHARS
+    assert reading.representative_reason.startswith("Tx")
