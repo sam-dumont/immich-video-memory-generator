@@ -6,18 +6,24 @@
 
 ## Why this page exists
 
-Two rules were lost in the first six tasks of the replacement, and both were found
-only because a real library happened to expose them:
+Three rules were lost in the first six tasks of the replacement, and every one of
+them was found only because a real library happened to expose it — never by a test,
+a review, or a reading of the code:
 
 - `drop_live_photo_components` — one month admitted 729 candidates for 543
   photographs. Restored in `b8ecc10`.
 - `not_shot_here` / `from_the_camera_roll` — **52% of one month and 54% of another**
   is material that never came off this library's camera. A period read from the
   unfiltered corpus produced a thesis about a festival the owner never attended.
+- `SubjectCategory.SCREEN` / `_is_never_worth_padding` — the replacement's Cull
+  vocabulary was entirely technical, so a photograph of a TV showing a stock
+  wallpaper was inexpressible and survived untouched while Cull reported zero
+  rejects. Restored as `photograph_of_a_screen` in `c67d098`.
 
-Neither was a judgement call anyone made. Both happened because the replacement
-builds its source pool from scratch, and a rule that lives in a module the new path
-does not import is indistinguishable from a rule that does not exist.
+None was a judgement call anyone made. They happened because the replacement builds
+its pool, its groups and its vocabulary from scratch, and **a rule that lives in a
+module the new path does not import is indistinguishable from a rule that does not
+exist.**
 
 `moment_grouping.moments_to_read` had already recorded this exact failure and its
 fix — *"a wedding, a fresh tattoo and a grid comparing chihuahuas to muffins"* read
@@ -50,6 +56,7 @@ them belongs to a pass. They run before Pass 0 or they do not run.
 | Untagged frames of a fetched burst come too | `live_photo_pipeline.with_burst_neighbours` | **AT RISK** |
 | Untagged Live Photos beside tagged ones come too | `live_photo_pipeline.expand_to_neighbors` | **AT RISK** |
 | An image with a still goes to the photo scorer, not the video one | `selection_quality.looks_like_a_photograph` | **AT RISK** — Task 8 |
+| A photograph of a screen is a thing, not a moment | `subject_policy.SubjectCategory.SCREEN`, `clip_backfill._is_never_worth_padding` | **RESTORED** `c67d098` |
 
 **On the two burst/neighbour rules:** both exist because a moment is not one
 asset. If frames 1, 2, 3 are one moment and only 2 is tagged, 1 and 3 belong to
@@ -130,6 +137,14 @@ is not thrown out with the mechanism.
 | `arithmetic_funnel`, numeric rank | the five passes | numbers may order, never decide |
 | `clip_backfill` | shorter strong cuts beat filler | but see `_is_never_worth_padding` below |
 | `selection_review` | Fine Cut (Task 11) | one question the judge answers |
+
+**Junk is not the same as defective.** The replacement's Cull vocabulary described
+only ways pixels can fail — obstruction, motion blur, exposure, corruption. A TV
+wallpaper is sharp, exposed and uncorrupted, so every one of them is false of it and
+the pass had no way to say what was wrong. The old selector was blunt about this:
+*"there is no gap worth a photograph of a monitor."* The lesson generalises past
+screens: **a closed vocabulary decides what a pass is able to notice**, so a gap in
+it reads as silence rather than as an error.
 
 **`_is_never_worth_padding` carries a rule that must survive its module:** an
 *unlabelled* clip is kept, because "a third of a real pool has no analysis yet and
