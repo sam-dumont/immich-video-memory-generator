@@ -28,7 +28,7 @@ from immich_memories.analysis.period_insight import (
     EpisodeScanPack,
     PassZeroResult,
 )
-from immich_memories.analysis.selection_flow import PreparedEditorialSource
+from immich_memories.analysis.selection_source import PreparedEditorialSource
 from immich_memories.cache.editorial_verdicts import EditorialVerdicts
 
 PASS_ONE_VERSION = "pass-1-v1"  # noqa: S105 - public editorial pass identity

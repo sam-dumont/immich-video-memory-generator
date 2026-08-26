@@ -13,7 +13,7 @@ from unittest.mock import patch
 import pytest
 from PIL import Image
 
-from immich_memories.analysis.selection_flow import (
+from immich_memories.analysis.selection_source import (
     EditorialDependencies,
     EditorialSelectionRequest,
     SourceScope,

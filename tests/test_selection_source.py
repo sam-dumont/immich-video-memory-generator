@@ -14,7 +14,7 @@ from immich_memories.analysis.editorial_contracts import (
     SourceEvidence,
     live_photo_rendering_family_id,
 )
-from immich_memories.analysis.selection_flow import (
+from immich_memories.analysis.selection_source import (
     EditorialDependencies,
     EditorialSelectionRequest,
     SourceScope,

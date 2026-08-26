@@ -33,7 +33,7 @@ from immich_memories.analysis.period_insight_answer import (
     read_episode_answers,
     read_period_answer,
 )
-from immich_memories.analysis.selection_flow import EditorialGroup, PreparedEditorialSource
+from immich_memories.analysis.selection_source import EditorialGroup, PreparedEditorialSource
 from immich_memories.analysis.visual_atlas import VisualAtlas, build_visual_atlas
 from immich_memories.analysis.visual_request_planner import VisionRequestLimits
 

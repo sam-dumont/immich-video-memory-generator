@@ -15,7 +15,7 @@ import pytest
 from PIL import Image
 
 from immich_memories.analysis.editorial_contracts import SourceEvidence
-from immich_memories.analysis.selection_flow import (
+from immich_memories.analysis.selection_source import (
     EditorialDependencies,
     EditorialSelectionRequest,
     SourceScope,
