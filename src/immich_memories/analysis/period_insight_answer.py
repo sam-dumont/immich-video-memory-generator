@@ -19,7 +19,7 @@ EpisodeObservationValue = tuple[str, str]
 EpisodeTileKey = tuple[int, int, int]
 PeriodTileKey = tuple[str, int]
 PeriodTileValue = tuple[str, str]
-EPISODE_SCAN_SCHEMA_VERSION = "episode-scan-v3"
+EPISODE_SCAN_SCHEMA_VERSION = "episode-scan-v4"
 PERIOD_INSIGHT_SCHEMA_VERSION = "period-insight-v1"
 # Declining is the decision; explaining the decline is prose. A model that
 # sets thesis to null and says nothing beside it has still answered.

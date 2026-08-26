@@ -23,7 +23,6 @@ from immich_memories.analysis.editorial_contracts import (
     ConservationCheck,
     DecisionProvenance,
     PassTrace,
-    RecordShotMark,
     RequestTrace,
     TraceDecision,
 )
@@ -56,8 +55,6 @@ class ClipStory:
     # Why the stage that dropped it did so, when that stage said.
     reason: str | None = None
     first_pass: str | None = None
-    record_shot_function: str | None = None
-    record_shot_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -172,7 +169,6 @@ class Trace:
             ),
             None,
         )
-        record_shot = _record_shot_for(self.editorial_passes, asset_id)
         for pass_trace in self.editorial_passes:
             rejected = next(
                 (decision for decision in pass_trace.rejected if decision.asset_id == asset_id),
@@ -203,8 +199,6 @@ class Trace:
             admitted_at=admitted_at,
             reason=None if shipped else reason,
             first_pass=first_pass,
-            record_shot_function=None if record_shot is None else record_shot.function,
-            record_shot_reason=None if record_shot is None else record_shot.reason,
         )
 
     def _favourite_law_lines(self) -> list[str]:
@@ -263,10 +257,6 @@ class Trace:
                 f"      {decision.asset_id} — {decision.reason}"
                 for decision in decisions[:_EDITORIAL_DECISION_LIMIT]
             )
-            lines.extend(
-                f"      {mark.asset_id} — RECORD [{mark.function}]: {mark.reason}"
-                for mark in pass_trace.record_shots
-            )
             if len(decisions) > _EDITORIAL_DECISION_LIMIT:
                 lines.append(
                     f"      showing {_EDITORIAL_DECISION_LIMIT} of {len(decisions)}; "
@@ -287,10 +277,6 @@ class Trace:
             lines.append(f"  {story.facts}")
             if story.admitted_at:
                 lines.append(f"      admitted by: {story.admitted_at}")
-            if story.record_shot_function and story.record_shot_reason:
-                lines.append(
-                    f"      record: {story.record_shot_function} — {story.record_shot_reason}"
-                )
             if story.survived:
                 lines.append(f"      survived: {', '.join(story.survived)}")
         return lines
@@ -385,17 +371,6 @@ def _check_conservation(pass_trace: PassTrace) -> ConservationCheck:
     )
 
 
-def _record_shot_for(
-    editorial_passes: list[PassTrace],
-    asset_id: str,
-) -> RecordShotMark | None:
-    for pass_trace in editorial_passes:
-        for mark in pass_trace.record_shots:
-            if mark.asset_id == asset_id:
-                return mark
-    return None
-
-
 def _unique_ids(asset_ids: tuple[str, ...]) -> tuple[str, ...]:
     seen: set[str] = set()
     unique: list[str] = []
@@ -418,7 +393,6 @@ def _editorial_pass_dict(pass_trace: PassTrace) -> dict:
         "duration_after": pass_trace.duration_after,
         "provenance": _provenance_dict(pass_trace.provenance),
         "request_traces": [_request_dict(request) for request in pass_trace.request_traces],
-        "record_shots": [_record_shot_dict(mark) for mark in pass_trace.record_shots],
         "conservation": {
             "valid": conservation.valid,
             "missing_ids": list(conservation.missing_ids),
@@ -430,10 +404,6 @@ def _editorial_pass_dict(pass_trace: PassTrace) -> dict:
 
 def _decision_dict(decision: TraceDecision) -> dict:
     return {"asset_id": decision.asset_id, "reason": decision.reason}
-
-
-def _record_shot_dict(mark: RecordShotMark) -> dict:
-    return {"asset_id": mark.asset_id, "function": mark.function, "reason": mark.reason}
 
 
 def _request_dict(request: RequestTrace) -> dict:

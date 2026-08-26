@@ -9,18 +9,10 @@ from datetime import datetime
 from hashlib import sha256
 from typing import TYPE_CHECKING, Literal
 
-from immich_memories.analysis.strict_json import is_safe_model_text
-
 if TYPE_CHECKING:
     from immich_memories.api.models import Asset
 
-RECORD_SHOT_FUNCTION_MAX_CHARS = 48
-RECORD_SHOT_REASON_MAX_CHARS = 96
 LIVE_PHOTO_RENDERING_FAMILY_VERSION = "live-photo-rendering-family-v1"
-# The request shows these to the model and the parser demands exactly them.
-# Naming them once is what stops a prose prompt drifting from a strict reader.
-RECORD_SHOT_WIRE_KEYS = ("tile", "function", "reason")
-CULL_REJECT_WIRE_KEYS = ("tile", "defect", "evidence")
 
 
 @dataclass(frozen=True)
@@ -215,29 +207,6 @@ class TraceDecision:
 
 
 @dataclass(frozen=True)
-class RecordShotMark:
-    """A kept visual whose factual function must remain independently auditable."""
-
-    asset_id: str
-    function: str
-    reason: str
-
-    def __post_init__(self) -> None:
-        if (
-            not self.asset_id.strip()
-            or not is_safe_model_text(
-                self.function,
-                max_chars=RECORD_SHOT_FUNCTION_MAX_CHARS,
-            )
-            or not is_safe_model_text(
-                self.reason,
-                max_chars=RECORD_SHOT_REASON_MAX_CHARS,
-            )
-        ):
-            raise ValueError("record-shot mark needs a stable asset and bounded function/reason")
-
-
-@dataclass(frozen=True)
 class ConservationCheck:
     """Whether an editorial pass gave every input exactly one fate."""
 
@@ -261,7 +230,6 @@ class PassTrace:
     provenance: DecisionProvenance
     request_traces: tuple[RequestTrace, ...] = ()
     conservation: ConservationCheck | None = None
-    record_shots: tuple[RecordShotMark, ...] = ()
 
 
 @dataclass(frozen=True)

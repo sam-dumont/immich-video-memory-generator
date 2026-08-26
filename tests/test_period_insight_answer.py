@@ -44,13 +44,13 @@ def test_episode_reading_constructor_rejects_text_outside_the_safe_wire_alphabet
         )
 
 
-def test_invalid_episode_text_fails_open_without_erasing_pass_one_siblings() -> None:
+def test_invalid_episode_text_fails_open_without_erasing_the_cull_namespace() -> None:
     """Unsafe episode prose does not poison independently valid record and Cull arrays."""
     from immich_memories.analysis.cull_answer import read_cull_namespaces
 
     raw = json.dumps(
         {
-            "schema_version": "episode-scan-v3",
+            "schema_version": "episode-scan-v4",
             "pack": 1,
             "episode_readings": [
                 {
@@ -61,16 +61,7 @@ def test_invalid_episode_text_fails_open_without_erasing_pass_one_siblings() -> 
                     "representative_reason": "The finish identifies the page.",
                 }
             ],
-            "record_shots": [
-                {"tile": 1, "function": "result proof", "reason": "Records the result."}
-            ],
-            "cull_rejects": [
-                {
-                    "tile": 2,
-                    "defect": "unusable_exposure",
-                    "evidence": "detail_lost_to_darkness",
-                }
-            ],
+            "cull_rejects": [{"episode": 1, "notes": [], "failed": [2]}],
         }
     )
 
@@ -85,13 +76,14 @@ def test_invalid_episode_text_fails_open_without_erasing_pass_one_siblings() -> 
         raw,
         pack_alias=1,
         tile_map={1: "record", 2: "dark"},
+        episode_tiles={1: (1, 2)},
     )
 
     assert readings is not None
     assert readings.readings == ()
     assert readings.invalid_observations == (("episode", "page"),)
     assert pass_one is not None
-    assert tuple(mark.asset_id for mark in pass_one.record_shots) == ("record",)
+    assert pass_one.cull_valid
     assert tuple(decision.asset_id for decision in pass_one.cull_rejects) == ("dark",)
 
 
@@ -166,7 +158,7 @@ def test_honest_unavailable_period_records_need_no_invented_evidence() -> None:
 def test_truncated_episode_answer_cannot_select_representatives() -> None:
     """An auto-closable fragment is still not a completed visual observation."""
     raw = (
-        '{"schema_version":"episode-scan-v3","episode":1,'
+        '{"schema_version":"episode-scan-v4","episode":1,'
         '"page":1,"episode_reading":{"visual_summary":"the finish",'
         '"representative_tiles":[1,2]'
     )
@@ -188,7 +180,7 @@ def test_complete_final_episode_object_resolves_only_its_page_tiles() -> None:
     """Compact wire aliases map back through the qualified stable episode page."""
     raw = """The requested visual observation follows.
 ```json
- {"schema_version":"episode-scan-v3","episode":7,"page":2,
+ {"schema_version":"episode-scan-v4","episode":7,"page":2,
  "episode_reading":{"visual_summary":"A rider reaches the finish and shows the medal.",
  "representative_tiles":[121,122],
  "representative_reason":"The effort and payoff summarize this page."}}
@@ -399,7 +391,7 @@ def test_multi_page_period_evidence_requires_page_qualified_tile_references() ->
 def test_one_episode_scan_pack_returns_independent_page_qualified_readings() -> None:
     """Many complete small episodes share one physical answer without sharing tile scope."""
     raw = """{
-      "schema_version":"episode-scan-v3",
+      "schema_version":"episode-scan-v4",
       "pack":1,
       "episode_readings":[
         {"episode":1,"page":1,
@@ -455,7 +447,7 @@ def test_unusable_episode_prose_invalidates_only_that_packed_reading(
     """
     raw = json.dumps(
         {
-            "schema_version": "episode-scan-v3",
+            "schema_version": "episode-scan-v4",
             "pack": 1,
             "episode_readings": [
                 {
@@ -495,7 +487,7 @@ def test_unusable_episode_prose_invalidates_only_that_packed_reading(
 def test_episode_namespace_keeps_four_reasoned_representatives_without_a_topic_cap() -> None:
     """Representative count emerges from the pixels; only the global wall bounds it."""
     raw = """{
-      "schema_version":"episode-scan-v3","pack":1,
+      "schema_version":"episode-scan-v4","pack":1,
       "episode_readings":[{"episode":1,"page":1,
         "visual_summary":"Four frames.","representative_tiles":[1,2,3,4],
         "representative_reason":"All four differ."}]
@@ -523,7 +515,7 @@ def test_episode_namespace_keeps_four_reasoned_representatives_without_a_topic_c
 def test_unknown_episode_alias_keeps_valid_pack_siblings() -> None:
     """An unknown alias leaves its expected episode invalid without poisoning siblings."""
     raw = """{
-      "schema_version":"episode-scan-v3","pack":1,
+      "schema_version":"episode-scan-v4","pack":1,
       "episode_readings":[
         {"episode":1,"page":1,"visual_summary":"A",
          "representative_tiles":[1],"representative_reason":"visible A"},
@@ -562,7 +554,7 @@ def test_duplicate_and_missing_episode_entries_do_not_poison_valid_sibling() -> 
         '"representative_tiles":[1],"representative_reason":"visible A"}'
     )
     raw = (
-        '{"schema_version":"episode-scan-v3","pack":1,'
+        '{"schema_version":"episode-scan-v4","pack":1,'
         f'"episode_readings":[{duplicate},{duplicate},'
         '{"episode":3,"page":1,"visual_summary":"C",'
         '"representative_tiles":[3],"representative_reason":"visible C"}]}'
@@ -592,7 +584,7 @@ def test_duplicate_and_missing_episode_entries_do_not_poison_valid_sibling() -> 
 def test_boolean_tile_ids_are_not_accepted_as_json_integers() -> None:
     """Python's bool-is-int quirk cannot resolve true to displayed tile one."""
     raw = """{
-      "schema_version":"episode-scan-v3","pack":1,
+      "schema_version":"episode-scan-v4","pack":1,
       "episode_readings":[{"episode":1,"page":1,
         "visual_summary":"A claimed frame.","representative_tiles":[true],
         "representative_reason":"Claimed visible."}]
@@ -614,12 +606,12 @@ def test_boolean_tile_ids_are_not_accepted_as_json_integers() -> None:
 def test_singular_and_packed_episode_parsers_share_strict_namespace_validation() -> None:
     """The packed transport delegates each member through the singular validation path."""
     singular_raw = """{
-      "schema_version":"episode-scan-v3","episode":1,"page":1,
+      "schema_version":"episode-scan-v4","episode":1,"page":1,
       "episode_reading":{"visual_summary":"Claimed frame.",
         "representative_tiles":[1,1],"representative_reason":"Claimed visible."}
     }"""
     packed_raw = """{
-      "schema_version":"episode-scan-v3","pack":1,
+      "schema_version":"episode-scan-v4","pack":1,
       "episode_readings":[{"episode":1,"page":1,
         "visual_summary":"Claimed frame.","representative_tiles":[1,1],
         "representative_reason":"Claimed visible."}]
@@ -683,7 +675,7 @@ def test_an_overlong_reason_trims_instead_of_discarding_its_episode() -> None:
     overlong = "T" + "x" * 200
     raw = json.dumps(
         {
-            "schema_version": "episode-scan-v3",
+            "schema_version": "episode-scan-v4",
             "pack": 1,
             "episode_readings": [
                 {
@@ -694,8 +686,7 @@ def test_an_overlong_reason_trims_instead_of_discarding_its_episode() -> None:
                     "representative_reason": overlong,
                 }
             ],
-            "record_shots": [],
-            "cull_rejects": [],
+            "cull_rejects": [{"episode": 1, "notes": [], "failed": []}],
         }
     )
 

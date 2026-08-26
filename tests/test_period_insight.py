@@ -53,14 +53,19 @@ def _episode_pack_answer(prompt: str, *, summary: str = "Visible stages develop.
         )
     return json.dumps(
         {
-            "schema_version": "episode-scan-v3",
+            "schema_version": "episode-scan-v4",
             "pack": 1,
             "episode_readings": readings,
-            "record_shots": [],
-            "cull_rejects": [],
+            "cull_rejects": [{"episode": 1, "notes": [], "failed": []}],
         },
         separators=(",", ":"),
     )
+
+
+# v4's envelope is a fraction of v3's per tile, so the split boundaries these
+# tests exist to prove need a proportionally tighter budget to stay reachable.
+_TIGHT_BUDGET = 1100
+_SINGLE_EPISODE_BUDGET = 250
 
 
 def _maximum_fused_response_for(
@@ -76,32 +81,20 @@ def _maximum_fused_response_for(
         }
         for episode, displayed in enumerate(displayed_by_episode, start=1)
     ]
-    tiles = [tile for displayed in displayed_by_episode for tile in displayed]
-    record_shots = [{"tile": tile, "function": "f" * 48, "reason": "r" * 96} for tile in tiles]
+    # Worst case is every tile named once: a tile cannot sit in both buckets.
     cull_rejects = [
-        {
-            "tile": tile,
-            "defect": "corrupt_or_obscured_pixels",
-            "evidence": "content_not_visible",
-        }
-        for tile in tiles
+        {"episode": episode, "notes": list(displayed), "failed": []}
+        for episode, displayed in enumerate(displayed_by_episode, start=1)
     ]
-    # Every valid tile has at most one Pass 1 decision. The larger namespace shape is exact max.
-    if len(json.dumps(record_shots, separators=(",", ":"))) > len(
-        json.dumps(cull_rejects, separators=(",", ":"))
-    ):
-        cull_rejects = []
-    else:
-        record_shots = []
     return json.dumps(
         {
-            "schema_version": "episode-scan-v3",
+            "schema_version": "episode-scan-v4",
             "pack": 1,
             "episode_readings": readings,
-            "record_shots": record_shots,
             "cull_rejects": cull_rejects,
         },
         separators=(",", ":"),
+        ensure_ascii=True,
     )
 
 
@@ -171,7 +164,7 @@ def test_source_preparation_preserves_real_visual_sources_in_candidate_order(
     assert prepared.visual_sources[1].motion_path == tmp_path / "video.mp4"
 
 
-def test_fused_episode_v3_request_cannot_reuse_a_legacy_v2_bank(
+def test_fused_episode_v4_request_cannot_reuse_a_legacy_v3_bank(
     tmp_path: Path,
 ) -> None:
     """Changing the wire aliases abandons the old answer even with identical visual evidence."""
@@ -209,7 +202,7 @@ def test_fused_episode_v3_request_cannot_reuse_a_legacy_v2_bank(
         current.pass_version,
         current.prompt_version,
         current.schema_version,
-    ) == ("episode-scan-v3", "episode-scan-prompt-v3", "episode-scan-v3")
+    ) == ("episode-scan-v4", "episode-scan-prompt-v4", "episode-scan-v4")
     legacy = replace(
         current,
         pass_version="episode-scan-v2",  # noqa: S106 - historical pass identity fixture
@@ -243,7 +236,7 @@ def test_fused_episode_v3_request_cannot_reuse_a_legacy_v2_bank(
     assert reused_current.request_trace.actual_calls == 0
 
 
-def test_v3_episode_packs_budget_every_possible_record_and_cull_member(
+def test_v4_episode_packs_budget_every_possible_cull_member(
     tmp_path: Path,
 ) -> None:
     """Maximum valid fused output, rather than an average reply, bounds every pack."""
@@ -278,7 +271,7 @@ def test_v3_episode_packs_budget_every_possible_record_and_cull_member(
         ref.entity_id for pack in result.episode_packs for ref in pack.page.tile_refs
     )
     assert planned_ids == prepared.candidate_ids
-    assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [27, 27, 27, 27, 12]
+    assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [39, 39, 39, 3]
     for pack in result.episode_packs:
         request = build_episode_request(pack, limits=VisionRequestLimits())
         assert request.pages == (pack.page,)
@@ -350,6 +343,7 @@ def test_one_sub_120_episode_response_splits_into_bounded_continuations(
         requester=NoProvider(),
         sheet_output_dir=tmp_path / "sheets",
         frame_cache_dir=None,
+        limits=VisionRequestLimits(max_output_tokens=_SINGLE_EPISODE_BUDGET),
     )
 
     assert len(result.episode_sheets) == 1
@@ -357,9 +351,11 @@ def test_one_sub_120_episode_response_splits_into_bounded_continuations(
     assert tuple(
         ref.number for pack in result.episode_packs for ref in pack.page.tile_refs
     ) == tuple(range(1, 81))
-    assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [63, 17]
+    assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [65, 15]
     assert all(len(_maximum_fused_response(pack)) <= 4000 * 3 for pack in result.episode_packs)
-    _assert_next_continuation_tile_would_overflow(result.episode_packs)
+    _assert_next_continuation_tile_would_overflow(
+        result.episode_packs, max_output_tokens=_SINGLE_EPISODE_BUDGET
+    )
     assert {pack.continuation_count for pack in result.episode_packs} == {len(result.episode_packs)}
 
 
@@ -516,25 +512,28 @@ def test_incomplete_121_tile_episode_banks_valid_page_but_blocks_period_thesis(
             requester=gateway,
             sheet_output_dir=tmp_path / "sheets",
             frame_cache_dir=tmp_path / "frames",
-            limits=VisionRequestLimits(max_output_tokens=2400, timeout_seconds=90),
+            limits=VisionRequestLimits(
+                max_output_tokens=_SINGLE_EPISODE_BUDGET, timeout_seconds=90
+            ),
         )
 
     episode = result.episode_sheets[0]
-    assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [37, 36, 36, 12]
-    _assert_next_continuation_tile_would_overflow(result.episode_packs, max_output_tokens=2400)
-    assert tuple(ref.number for ref in episode.pages[-1].tile_refs) == tuple(range(110, 122))
+    assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [65, 55, 1]
+    _assert_next_continuation_tile_would_overflow(
+        result.episode_packs, max_output_tokens=_SINGLE_EPISODE_BUDGET
+    )
+    assert tuple(ref.number for ref in episode.pages[-1].tile_refs) == (121,)
     assert captured_images == [(page.jpeg_bytes,) for page in episode.pages]
     assert [observation.reading is not None for observation in result.page_observations] == [
         True,
-        False,
         False,
         False,
     ]
     assert result.retained_ids == prepared.candidate_ids
     assert result.insight.thesis is None
     assert result.period_pages == ()
-    assert len(result.banked_scans) == 4
-    assert sum(request.actual_calls for request in trace.requests) == 4
+    assert len(result.banked_scans) == 3
+    assert sum(request.actual_calls for request in trace.requests) == 3
     assert len([item for item in trace.editorial_passes if item.name == "pass-0"]) == 1
     assert trace.editorial_passes[-1].provenance.sheet_hashes == tuple(
         page.sha256 for page in episode.pages
@@ -659,12 +658,13 @@ def test_multi_page_period_wall_is_not_split_without_an_approved_limit(tmp_path:
             requester=gateway,
             sheet_output_dir=tmp_path / "sheets",
             frame_cache_dir=None,
+            limits=VisionRequestLimits(max_output_tokens=_TIGHT_BUDGET),
         )
 
-    assert calls == 3
-    assert [len(pack.scopes) for pack in result.episode_packs] == [14, 14, 13]
-    assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [42, 42, 39]
-    _assert_next_episode_would_overflow(result.episode_packs)
+    assert calls == 5
+    assert [len(pack.scopes) for pack in result.episode_packs] == [10, 10, 10, 10, 1]
+    assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [30, 30, 30, 30, 3]
+    _assert_next_episode_would_overflow(result.episode_packs, max_output_tokens=_TIGHT_BUDGET)
     assert len(result.period_pages) == 2
     assert result.period_answer is None
     assert result.insight.thesis is None
@@ -732,7 +732,7 @@ def test_approved_multi_page_period_wall_is_attached_as_one_holistic_request(
             ),
         )
 
-    assert len(captured_images) == 4
+    assert len(captured_images) == 3
     assert captured_images[-1] == tuple(page.jpeg_bytes for page in result.period_pages)
     assert result.insight.thesis == "Unfamiliar stages accumulate into a progression."
     assert result.insight.evidence[0].asset_ids == ("visual-00-0", "visual-40-0")
@@ -812,7 +812,7 @@ def test_interleaved_episodes_share_one_chronological_pack_with_explicit_members
     assert result.warnings == ()
 
 
-def test_packer_keeps_a_four_tile_episode_whole_at_the_v3_response_boundary(
+def test_packer_keeps_a_four_tile_episode_whole_at_the_v4_response_boundary(
     tmp_path: Path,
 ) -> None:
     """Response-bounded packs still keep the following four-tile episode whole."""
@@ -865,11 +865,12 @@ def test_packer_keeps_a_four_tile_episode_whole_at_the_v3_response_boundary(
             requester=gateway,
             sheet_output_dir=tmp_path / "sheets",
             frame_cache_dir=None,
+            limits=VisionRequestLimits(max_output_tokens=_TIGHT_BUDGET),
         )
 
-    assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [42, 42, 37]
-    assert [len(pack.scopes) for pack in result.episode_packs] == [14, 14, 12]
-    _assert_next_episode_would_overflow(result.episode_packs)
+    assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [30, 30, 30, 31]
+    assert [len(pack.scopes) for pack in result.episode_packs] == [10, 10, 10, 10]
+    _assert_next_episode_would_overflow(result.episode_packs, max_output_tokens=_TIGHT_BUDGET)
     assert tuple(ref.entity_id for ref in result.episode_packs[-1].scopes[-1].tile_refs) == (
         "quad-0",
         "quad-1",
@@ -892,7 +893,7 @@ def test_packer_keeps_a_four_tile_episode_whole_at_the_v3_response_boundary(
                 if request.provenance.pass_name == "episode-scan"  # noqa: S105
             ]
         )
-        == 3
+        == 4
     )
 
 
@@ -943,25 +944,20 @@ def test_singleton_episode_packs_fit_their_complete_response_budget(tmp_path: Pa
                     "representative_reason": "r" * 96,
                 }
             )
-        aliases = [
-            {"tile": int(value)}
-            for _episode_alias, _page_alias, displayed in scopes
-            for value in displayed.split(",")
+        rejects = [
+            {
+                "episode": episode_alias,
+                "notes": [int(value) for value in displayed.split(",")],
+                "failed": [],
+            }
+            for episode_alias, _page_alias, displayed in scopes
         ]
         raw = json.dumps(
             {
-                "schema_version": "episode-scan-v3",
+                "schema_version": "episode-scan-v4",
                 "pack": 1,
                 "episode_readings": readings,
-                "record_shots": [],
-                "cull_rejects": [
-                    {
-                        **alias,
-                        "defect": "corrupt_or_obscured_pixels",
-                        "evidence": "content_not_visible",
-                    }
-                    for alias in aliases
-                ],
+                "cull_rejects": rejects,
             },
             separators=(",", ":"),
         )
@@ -980,11 +976,12 @@ def test_singleton_episode_packs_fit_their_complete_response_budget(tmp_path: Pa
             requester=gateway,
             sheet_output_dir=tmp_path / "sheets",
             frame_cache_dir=None,
+            limits=VisionRequestLimits(max_output_tokens=_TIGHT_BUDGET),
         )
 
-    assert [item[0] for item in response_envelopes] == [27, 27, 27, 27, 12]
-    assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [27, 27, 27, 27, 12]
-    _assert_next_episode_would_overflow(result.episode_packs)
+    assert [item[0] for item in response_envelopes] == [10] * 12
+    assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [10] * 12
+    _assert_next_episode_would_overflow(result.episode_packs, max_output_tokens=_TIGHT_BUDGET)
     assert all(
         response_chars <= budget_chars for _, response_chars, budget_chars in response_envelopes
     )
@@ -1129,7 +1126,7 @@ def test_one_packed_raw_answer_banks_valid_siblings_when_one_episode_is_invalid(
         ]
         return json.dumps(
             {
-                "schema_version": "episode-scan-v3",
+                "schema_version": "episode-scan-v4",
                 "pack": 1,
                 "episode_readings": entries,
                 "future_namespace": {"tile": True},
@@ -1202,19 +1199,22 @@ def test_complete_121_tile_episode_combines_every_continuation_provenance(
             requester=gateway,
             sheet_output_dir=tmp_path / "sheets",
             frame_cache_dir=None,
+            limits=VisionRequestLimits(max_output_tokens=_SINGLE_EPISODE_BUDGET),
         )
 
     reading = result.episode_readings[0]
-    assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [63, 58]
-    _assert_next_continuation_tile_would_overflow(result.episode_packs)
-    assert len(reading.page_provenances) == 2
+    assert [len(pack.page.tile_refs) for pack in result.episode_packs] == [65, 55, 1]
+    _assert_next_continuation_tile_would_overflow(
+        result.episode_packs, max_output_tokens=_SINGLE_EPISODE_BUDGET
+    )
+    assert len(reading.page_provenances) == 3
     assert tuple(item.sheet_hashes for item in reading.page_provenances) == tuple(
         (pack.page.sha256,) for pack in result.episode_packs
     )
     assert tuple(item.request_key for item in reading.page_provenances) == tuple(
         scan.answer.request_trace.provenance.request_key for scan in result.banked_scans
     )
-    assert len({item.request_key for item in reading.page_provenances}) == 2
+    assert len({item.request_key for item in reading.page_provenances}) == 3
     assert result.insight.thesis is None
     assert result.warnings == ()
 

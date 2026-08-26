@@ -6,11 +6,8 @@ import json
 from typing import TYPE_CHECKING
 
 from immich_memories.analysis.contact_sheets import TileRef
+from immich_memories.analysis.cull_answer import CULL_SCOPE_WIRE_KEYS
 from immich_memories.analysis.editorial_contracts import (
-    CULL_REJECT_WIRE_KEYS,
-    RECORD_SHOT_FUNCTION_MAX_CHARS,
-    RECORD_SHOT_REASON_MAX_CHARS,
-    RECORD_SHOT_WIRE_KEYS,
     EditorialCandidate,
 )
 from immich_memories.analysis.editorial_gateway import VisualEditorialRequest
@@ -25,60 +22,36 @@ from immich_memories.analysis.visual_request_planner import VisionRequestLimits
 if TYPE_CHECKING:
     from immich_memories.analysis.period_insight import EpisodeScanPack
 
-EPISODE_SCAN_PASS_VERSION = "episode-scan-v3"  # noqa: S105 - editorial pass identity
-EPISODE_SCAN_PROMPT_VERSION = "episode-scan-prompt-v3"
+EPISODE_SCAN_PASS_VERSION = "episode-scan-v4"  # noqa: S105 - editorial pass identity
+EPISODE_SCAN_PROMPT_VERSION = "episode-scan-prompt-v4"
 _RENDER_VERSION = "visual-atlas-v1/contact-sheet-v1"
 
 
-def episode_response_shape(*, tile: int) -> str:
-    """The envelope to return, then the shape of an entry when one is warranted.
+def episode_response_shape(*, episode_alias: int, tile: int) -> str:
+    """One complete example envelope, built from the keys the parser demands.
 
-    The envelope shows both decision arrays EMPTY. Everything in an example is
-    instruction, values included: a populated cull entry was copied verbatim
-    onto seven unrelated visuals, because a closed vocabulary makes any shown
-    value a plausible answer. An empty array is the honest default and cannot
-    be copied into a decision. The one entry shown must still parse, so its
-    defect is the narrowest in the vocabulary rather than the most reachable:
-    shown "unusable_motion_blur", the model applied it to still screenshots.
+    Both decision lists are shown EMPTY. Everything in an example is
+    instruction, values included: shown a populated one, the model copied it
+    onto unrelated visuals. An empty list is also the honest default.
     """
-    record = dict(
-        zip(
-            RECORD_SHOT_WIRE_KEYS,
-            (tile, "what this records", "what makes it proof"),
-            strict=True,
-        )
-    )
-    reject = dict(
-        zip(
-            CULL_REJECT_WIRE_KEYS,
-            (tile, "accidental_capture", "blank_floor_ceiling"),
-            strict=True,
-        )
-    )
-    envelope = json.dumps(
+    return json.dumps(
         {
             "schema_version": EPISODE_SCAN_SCHEMA_VERSION,
             "pack": 1,
             "episode_readings": [
                 {
-                    "episode": 1,
+                    "episode": episode_alias,
                     "page": 1,
                     "visual_summary": "what this episode shows",
                     "representative_tiles": [tile],
                     "representative_reason": "why these read best on a wall",
                 }
             ],
-            "record_shots": [],
-            "cull_rejects": [],
+            "cull_rejects": [
+                dict.fromkeys(CULL_SCOPE_WIRE_KEYS[1:], []) | {"episode": episode_alias}
+            ],
         },
         separators=(",", ":"),
-    )
-    return (
-        envelope
-        + "\nA record_shots entry, only when one is warranted, has exactly these keys: "
-        + json.dumps(record, separators=(",", ":"))
-        + "\nA cull_rejects entry, only when one is warranted, has exactly these keys: "
-        + json.dumps(reject, separators=(",", ":"))
     )
 
 
@@ -145,26 +118,14 @@ def _episode_prompt(pack: EpisodeScanPack) -> str:
         "wall legible. All episode and record text must use printable ASCII except double quote "
         "and backslash; use one line with no control characters. Apostrophes and basic punctuation "
         "are allowed. "
-        "Representatives reject nothing. Return record_shots only for a visual that marks a "
-        "life event: a result, a ticket to something they attended, a finish time. Never for "
-        "prices, labels, contracts, model numbers, or anything noted down to deal with later. "
-        "Most visuals are not record shots. Its function is at most "
-        f"{RECORD_SHOT_FUNCTION_MAX_CHARS} characters and its reason at most "
-        f"{RECORD_SHOT_REASON_MAX_CHARS} characters. "
-        "Return cull_rejects for two kinds of visual: a picture that failed, and a picture "
-        "taken as a note rather than as a memory -- a screen, a document, or an object "
-        "photographed to record what it is. Never for a picture that is merely ordinary or "
-        "repeated; a later pass chooses between similar frames. Each reject is a "
-        "non-favourite visual with one matching "
-        "defect/evidence pair: "
-        "accidental_capture with camera_obstructed, unintended_partial, or blank_floor_ceiling; "
-        "unusable_motion_blur with subject_unrecognizable or frame_smeared_beyond_use; "
-        "unusable_exposure with detail_lost_to_darkness or detail_lost_to_highlights; or "
-        "corrupt_or_obscured_pixels with decode_corruption, lens_obscured, or "
-        "content_not_visible; photograph_of_a_screen with screen_is_the_subject; "
-        "paperwork_not_a_moment with document_is_the_subject; or "
-        "reference_shot_not_a_moment with object_noted_for_reference. Use exactly these keys and no others:\n"
-        + episode_response_shape(tile=first_tile)
+        "Representatives reject nothing. Then, for EACH episode above, look only at that "
+        "episode's own tiles and sort them into two lists. notes: taken as a note rather than "
+        "as a memory, such as a screen, a document, or an object photographed to record what "
+        "it is. failed: the picture did not come out, being obstructed, smeared, or "
+        "unreadable. Most tiles are neither, and an empty list is the normal answer. Never "
+        "list a tile for being ordinary or repeated, and never list a tile that belongs to "
+        "another episode. Use exactly these keys and no others:\n"
+        + episode_response_shape(episode_alias=pack.scopes[0].episode_alias, tile=first_tile)
     )
 
 

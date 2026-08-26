@@ -19,7 +19,6 @@ from immich_memories.analysis.editorial_contracts import (
     DecisionProvenance,
     EditorialCandidate,
     PassTrace,
-    RecordShotMark,
     RequestTrace,
     TraceDecision,
 )
@@ -65,10 +64,9 @@ class CullReviewArtifacts:
 
 @dataclass(frozen=True)
 class CullPassResult:
-    """Chronological Pass 1 membership plus independent record-shot marks."""
+    """Chronological Pass 1 membership after junk and failures are removed."""
 
     survivors: tuple[EditorialCandidate, ...]
-    record_shots: tuple[RecordShotMark, ...]
     rejected: tuple[CullDecision, ...]
     warnings: tuple[str, ...]
     trace: PassTrace
@@ -78,7 +76,6 @@ class CullPassResult:
 
 @dataclass(frozen=True)
 class _PackCullReading:
-    marks: tuple[RecordShotMark, ...] = ()
     rejects: tuple[CullDecision, ...] = ()
     warnings: tuple[str, ...] = ()
     requests: tuple[RequestTrace, ...] = ()
@@ -96,10 +93,10 @@ def run_cull(
         _read_pack_cull(pack, attempts.get((pack.pack_id, pack.page.sheet_id)))
         for pack in pass_zero.episode_packs
     )
-    marks, rejects, pass_one_warnings, logical_requests = _combine_pack_readings(readings)
+    rejects, pass_one_warnings, logical_requests = _combine_pack_readings(readings)
     rejects, favourite_warnings = _protect_favourites(prepared, rejects)
     pass_one_warnings = _ordered_unique((*pass_one_warnings, *favourite_warnings))
-    ordered_marks, ordered_rejects, survivors = _apply_cull(prepared, marks, rejects)
+    ordered_rejects, survivors = _apply_cull(prepared, rejects)
     pass_one_warnings = _with_over_cull_warning(
         pass_one_warnings,
         len(ordered_rejects),
@@ -110,7 +107,6 @@ def run_cull(
         prepared,
         pass_zero,
         survivors,
-        ordered_marks,
         ordered_rejects,
         logical_requests,
     )
@@ -118,14 +114,12 @@ def run_cull(
     review = _render_review(
         prepared,
         pass_zero,
-        ordered_marks,
         ordered_rejects,
         warnings,
         review_output_dir,
     )
     return CullPassResult(
         survivors,
-        ordered_marks,
         ordered_rejects,
         warnings,
         recorded_trace,
@@ -158,6 +152,7 @@ def _read_pack_cull(
         attempt.answer.raw_text,
         pack_alias=1,
         tile_map=_tile_map(pack),
+        episode_tiles=_episode_tiles(pack),
         unavailable_asset_ids=frozenset(
             asset_id for scope in pack.scopes for asset_id in scope.unavailable_asset_ids
         ),
@@ -168,58 +163,42 @@ def _read_pack_cull(
             requests=requests,
         )
     return _PackCullReading(
-        marks=parsed.record_shots,
         rejects=parsed.cull_rejects,
-        warnings=_namespace_warnings(pack.page.sheet_id, parsed.record_valid, parsed.cull_valid)
-        + parsed.warnings,
+        warnings=_namespace_warnings(pack.page.sheet_id, parsed.cull_valid) + parsed.warnings,
         requests=requests,
     )
 
 
-def _namespace_warnings(
-    page_id: str,
-    record_valid: bool,
-    cull_valid: bool,
-) -> tuple[str, ...]:
-    record = () if record_valid else (f"!! Pass 1 invalid record-shot namespace: {page_id}",)
-    cull = () if cull_valid else (f"!! Pass 1 invalid Cull namespace: {page_id}",)
-    return record + cull
+def _namespace_warnings(page_id: str, cull_valid: bool) -> tuple[str, ...]:
+    return () if cull_valid else (f"!! Pass 1 invalid Cull namespace: {page_id}",)
 
 
 def _combine_pack_readings(
     readings: tuple[_PackCullReading, ...],
 ) -> tuple[
-    tuple[RecordShotMark, ...],
     tuple[CullDecision, ...],
     tuple[str, ...],
     tuple[RequestTrace, ...],
 ]:
-    marks = tuple(mark for reading in readings for mark in reading.marks)
     rejects = tuple(reject for reading in readings for reject in reading.rejects)
     warnings = _ordered_unique(
         tuple(warning for reading in readings for warning in reading.warnings)
     )
     requests = tuple(request for reading in readings for request in reading.requests)
-    return marks, rejects, warnings, requests
+    return rejects, warnings, requests
 
 
 def _apply_cull(
     prepared: PreparedEditorialSource,
-    marks: tuple[RecordShotMark, ...],
     rejects: tuple[CullDecision, ...],
-) -> tuple[
-    tuple[RecordShotMark, ...],
-    tuple[CullDecision, ...],
-    tuple[EditorialCandidate, ...],
-]:
+) -> tuple[tuple[CullDecision, ...], tuple[EditorialCandidate, ...]]:
     order = {candidate.asset_id: index for index, candidate in enumerate(prepared.candidates)}
-    ordered_marks = tuple(sorted(marks, key=lambda mark: order[mark.asset_id]))
     ordered_rejects = tuple(sorted(rejects, key=lambda item: order[item.asset_id]))
     rejected_ids = {decision.asset_id for decision in ordered_rejects}
     survivors = tuple(
         candidate for candidate in prepared.candidates if candidate.asset_id not in rejected_ids
     )
-    return ordered_marks, ordered_rejects, survivors
+    return ordered_rejects, survivors
 
 
 def _protect_favourites(
@@ -268,7 +247,6 @@ def _record_cull_trace(
     prepared: PreparedEditorialSource,
     pass_zero: PassZeroResult,
     survivors: tuple[EditorialCandidate, ...],
-    marks: tuple[RecordShotMark, ...],
     rejects: tuple[CullDecision, ...],
     requests: tuple[RequestTrace, ...],
 ) -> PassTrace:
@@ -278,18 +256,21 @@ def _record_cull_trace(
             name="pass-1-cull",
             input_ids=prepared.candidate_ids,
             kept_ids=tuple(candidate.asset_id for candidate in survivors),
-            rejected=tuple(
-                TraceDecision(item.asset_id, f"{item.defect}: {item.reason}") for item in rejects
-            ),
+            rejected=tuple(TraceDecision(item.asset_id, item.reason) for item in rejects),
             unresolved=(),
             duration_before=sum(item.shippable_duration for item in prepared.candidates),
             duration_after=sum(item.shippable_duration for item in survivors),
             provenance=provenance,
             request_traces=requests,
-            record_shots=marks,
         )
     )
     return prepared.trace.editorial_passes[-1]
+
+
+def _episode_tiles(pack: EpisodeScanPack) -> dict[int, tuple[int, ...]]:
+    return {
+        scope.episode_alias: tuple(ref.number for ref in scope.tile_refs) for scope in pack.scopes
+    }
 
 
 def _tile_map(pack: EpisodeScanPack) -> dict[int, str]:
@@ -327,12 +308,10 @@ def _pass_provenance(
 def _render_review(
     prepared: PreparedEditorialSource,
     pass_zero: PassZeroResult,
-    marks: tuple[RecordShotMark, ...],
     rejects: tuple[CullDecision, ...],
     warnings: tuple[str, ...],
     output_dir: Path,
 ) -> CullReviewArtifacts:
-    mark_by_id = {mark.asset_id: mark for mark in marks}
     reject_by_id = {decision.asset_id: decision for decision in rejects}
     atlas_tiles = tuple(
         pass_zero.atlas.tile_for(candidate.asset_id) for candidate in prepared.candidates
@@ -347,23 +326,12 @@ def _render_review(
             asset_id=candidate.asset_id,
             taken_at=candidate.taken_at.isoformat(),
             favourite=candidate.favourite,
-            status=(
-                "RECORD"
-                if candidate.asset_id in mark_by_id
-                else "CULL"
-                if candidate.asset_id in reject_by_id
-                else "KEEP"
-            ),
+            status="CULL" if candidate.asset_id in reject_by_id else "KEEP",
             reason=(
-                f"{mark_by_id[candidate.asset_id].function}: "
-                f"{mark_by_id[candidate.asset_id].reason}"
-                if candidate.asset_id in mark_by_id
-                else (
-                    f"{reject_by_id[candidate.asset_id].defect}: "
-                    f"{reject_by_id[candidate.asset_id].reason}"
-                    if candidate.asset_id in reject_by_id
-                    else None
-                )
+                f"{reject_by_id[candidate.asset_id].bucket}: "
+                f"{reject_by_id[candidate.asset_id].reason}"
+                if candidate.asset_id in reject_by_id
+                else None
             ),
             source_tile_sha256=pass_zero.atlas.tile_for(candidate.asset_id).sha256,
         )

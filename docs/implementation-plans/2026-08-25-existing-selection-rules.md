@@ -138,6 +138,22 @@ is not thrown out with the mechanism.
 | `clip_backfill` | shorter strong cuts beat filler | but see `_is_never_worth_padding` below |
 | `selection_review` | Fine Cut (Task 11) | one question the judge answers |
 
+**Cull is two questions, not one.** Measured on a real month: *"remove the junk, remove
+the failed pictures, protect the favourites."* The replacement implemented only the
+second. A vocabulary of ways pixels can fail cannot reject a sharp, well-exposed
+photograph of a bank contract, and the record lane was actively shielding it.
+
+The junk half is decidable by looking, with no comparison and no score: **the photo
+was taken as a note rather than as a memory.** A screen, a document, an object shot
+to record what it is. Encoded as `photograph_of_a_screen`,
+`paperwork_not_a_moment`, `reference_shot_not_a_moment` — and those three
+**override a record mark**, because a mark argues about how a picture LOOKS and has
+no standing over what it IS. A mark on something Cull removed goes with it.
+
+What Cull must NOT do is choose between similar frames. A real month held ~170
+near-duplicates in runs of 8 to 35; that is Selects' and Structure's work, and
+letting Cull near it is how it becomes a taste pass.
+
 **Junk is not the same as defective.** The replacement's Cull vocabulary described
 only ways pixels can fail — obstruction, motion blur, exposure, corruption. A TV
 wallpaper is sharp, exposed and uncorrupted, so every one of them is false of it and
