@@ -29,6 +29,9 @@ logger = logging.getLogger(__name__)
 # Bump to abandon every stored answer — for a change in how the answer is used
 # that the prompt text itself does not capture.
 _ANSWER_VERSION = "judge1"
+# Bump when the shared visual gateway changes what identity material the
+# provider actually sees. visual1 keyed annotations without sending them.
+_VISUAL_ANSWER_VERSION = "visual2"
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS judgments (
@@ -73,7 +76,7 @@ class VisualJudgmentIdentity:
     def key(self) -> str:
         """Return the deterministic key without including credentials or paths."""
         material = {
-            "version": "visual1",
+            "version": _VISUAL_ANSWER_VERSION,
             "page_hashes": [hashlib.sha256(page).hexdigest() for page in self.page_bytes],
             "ordered_input_ids": self.ordered_input_ids,
             "ordered_group_ids": self.ordered_group_ids,

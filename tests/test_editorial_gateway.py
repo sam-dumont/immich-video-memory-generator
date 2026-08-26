@@ -73,6 +73,60 @@ def test_gateway_attaches_exact_page_bytes_and_traces_the_same_hash(tmp_path) ->
     assert request_trace["actual_calls"] == 1
 
 
+def test_gateway_sends_the_exact_grounded_annotations_used_by_cache_identity(tmp_path) -> None:
+    """Visible provider evidence and cache evidence cannot silently diverge."""
+    from dataclasses import replace
+
+    from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
+    from immich_memories.analysis.llm_query import LLMTransportAttempt
+
+    prompts: list[str] = []
+
+    async def _answer(prompt, _config, **kwargs):
+        prompts.append(prompt)
+        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
+        return '{"rejected":[]}'
+
+    first_request = replace(
+        _request(_page()),
+        grounded_annotations=(
+            "tile:1 | episode:1 | taken:2026-08-25T12:00:00+00:00 | media:photo | "
+            "favourite:true | source:camera",
+            "tile:2 | episode:1 | taken:2026-08-25T12:01:00+00:00 | media:video | "
+            "favourite:false | source:motion",
+        ),
+    )
+    changed_request = replace(
+        first_request,
+        grounded_annotations=(
+            first_request.grounded_annotations[0].replace("favourite:true", "favourite:false"),
+            first_request.grounded_annotations[1],
+        ),
+    )
+    gateway = VisualEditorialGateway(
+        llm_config=LLMConfig(model="vision-test"),
+        cache_path=tmp_path / "judgments.db",
+        trace=Trace(),
+    )
+
+    # WHY: query_llm is the sole provider boundary; cache and request composition stay real.
+    with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
+        first = gateway.ask(first_request)
+        changed = gateway.ask(changed_request)
+
+    assert prompts == [
+        "name only clear failures\n\nGrounded annotations (ordered JSON):\n"
+        '["tile:1 | episode:1 | taken:2026-08-25T12:00:00+00:00 | media:photo | '
+        'favourite:true | source:camera","tile:2 | episode:1 | '
+        'taken:2026-08-25T12:01:00+00:00 | media:video | favourite:false | source:motion"]',
+        "name only clear failures\n\nGrounded annotations (ordered JSON):\n"
+        '["tile:1 | episode:1 | taken:2026-08-25T12:00:00+00:00 | media:photo | '
+        'favourite:false | source:camera","tile:2 | episode:1 | '
+        'taken:2026-08-25T12:01:00+00:00 | media:video | favourite:false | source:motion"]',
+    ]
+    assert first.provenance.request_key != changed.provenance.request_key
+
+
 def test_gateway_returns_its_physical_trace_and_uses_explicit_request_budget(tmp_path) -> None:
     """A fused logical consumer can reuse one answer without recounting its wire call."""
     from dataclasses import replace

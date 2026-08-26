@@ -138,7 +138,7 @@ class VisualEditorialGateway:
         try:
             raw_text = _run_sync(
                 query_llm(
-                    request.prompt,
+                    _provider_prompt(request),
                     self.llm_config,
                     thinking=request.thinking,
                     images=tuple(page.jpeg_bytes for page in request.pages),
@@ -205,6 +205,17 @@ def _validated_page_hashes(pages: tuple[ContactSheetPage, ...]) -> tuple[str, ..
     if any(digest != page.sha256 for digest, page in zip(hashes, pages, strict=True)):
         raise ValueError("contact sheet digest does not match its exact bytes")
     return hashes
+
+
+def _provider_prompt(request: VisualEditorialRequest) -> str:
+    if not request.grounded_annotations:
+        return request.prompt
+    annotations = json.dumps(
+        request.grounded_annotations,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return f"{request.prompt}\n\nGrounded annotations (ordered JSON):\n{annotations}"
 
 
 def _run_sync(coroutine: object) -> str:

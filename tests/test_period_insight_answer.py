@@ -30,10 +30,52 @@ def _provenance() -> DecisionProvenance:
     )
 
 
+@pytest.mark.parametrize(
+    ("observation", "episode_ids", "asset_ids"),
+    (
+        (" ", ("episode",), ("asset",)),
+        ("Visible change.", (), ("asset",)),
+        ("Visible change.", ("",), ("asset",)),
+        ("Visible change.", ("episode",), ()),
+        ("Visible change.", ("episode",), (" ",)),
+    ),
+)
+def test_insight_evidence_constructor_rejects_unqualified_visual_references(
+    observation: str,
+    episode_ids: tuple[str, ...],
+    asset_ids: tuple[str, ...],
+) -> None:
+    """Direct callers cannot create evidence the strict parser would reject."""
+    with pytest.raises(ValueError, match="insight evidence"):
+        InsightEvidence(observation, episode_ids, asset_ids)
+
+
+def test_honest_unavailable_period_records_need_no_invented_evidence() -> None:
+    """No-thesis records stay constructible when their unavailable reason is explicit."""
+    insight = PeriodInsight(
+        thesis=None,
+        evidence=(),
+        tensions=(),
+        recurring_threads=(),
+        unavailable_reason="The complete wall was unavailable.",
+        revision=0,
+        provenance=_provenance(),
+    )
+    answer = PeriodInsightAnswer(
+        thesis=None,
+        evidence=(),
+        tensions=(),
+        recurring_threads=(),
+        unavailable_reason="The complete wall was unavailable.",
+    )
+
+    assert insight.evidence == answer.evidence == ()
+
+
 def test_truncated_episode_answer_cannot_select_representatives() -> None:
     """An auto-closable fragment is still not a completed visual observation."""
     raw = (
-        '{"schema_version":"episode-scan-v1","episode":1,'
+        '{"schema_version":"episode-scan-v2","episode":1,'
         '"page":1,"episode_reading":{"visual_summary":"the finish",'
         '"representative_tiles":[1,2]'
     )
@@ -55,7 +97,7 @@ def test_complete_final_episode_object_resolves_only_its_page_tiles() -> None:
     """Compact wire aliases map back through the qualified stable episode page."""
     raw = """The requested visual observation follows.
 ```json
- {"schema_version":"episode-scan-v1","episode":7,"page":2,
+ {"schema_version":"episode-scan-v2","episode":7,"page":2,
  "episode_reading":{"visual_summary":"A rider reaches the finish and shows the medal.",
  "representative_tiles":[121,122],
  "representative_reason":"The effort and payoff summarize this page."}}
@@ -154,6 +196,29 @@ def test_period_answer_rejects_a_thesis_without_visual_evidence() -> None:
     )
 
 
+def test_period_answer_rejects_evidence_with_blank_stable_identifiers() -> None:
+    """A page-qualified tile is not grounded when its stable identity is blank."""
+    raw = """{
+      "schema_version":"period-insight-v1",
+      "period_insight":{
+        "thesis":"An unsupported visual arc.",
+        "evidence":[{"observation":"Visible change.","representative_tiles":[1]}],
+        "tensions":[],
+        "recurring_threads":[],
+        "unavailable_reason":null
+      }
+    }"""
+
+    assert (
+        read_period_answer(
+            raw,
+            page_ids=("period-wall-001",),
+            tile_map={("period-wall-001", 1): (" ", "asset")},
+        )
+        is None
+    )
+
+
 @pytest.mark.parametrize(
     ("evidence", "unavailable_reason"),
     (
@@ -243,7 +308,7 @@ def test_multi_page_period_evidence_requires_page_qualified_tile_references() ->
 def test_one_episode_scan_pack_returns_independent_page_qualified_readings() -> None:
     """Many complete small episodes share one physical answer without sharing tile scope."""
     raw = """{
-      "schema_version":"episode-scan-v1",
+      "schema_version":"episode-scan-v2",
       "pack":1,
       "episode_readings":[
         {"episode":1,"page":1,
@@ -290,7 +355,7 @@ def test_overlong_episode_prose_invalidates_only_that_packed_reading(
     """The response estimator's prose bounds are enforced without poisoning valid siblings."""
     raw = json.dumps(
         {
-            "schema_version": "episode-scan-v1",
+            "schema_version": "episode-scan-v2",
             "pack": 1,
             "episode_readings": [
                 {
@@ -330,7 +395,7 @@ def test_overlong_episode_prose_invalidates_only_that_packed_reading(
 def test_episode_namespace_keeps_four_reasoned_representatives_without_a_topic_cap() -> None:
     """Representative count emerges from the pixels; only the global wall bounds it."""
     raw = """{
-      "schema_version":"episode-scan-v1","pack":1,
+      "schema_version":"episode-scan-v2","pack":1,
       "episode_readings":[{"episode":1,"page":1,
         "visual_summary":"Four frames.","representative_tiles":[1,2,3,4],
         "representative_reason":"All four differ."}]
@@ -358,7 +423,7 @@ def test_episode_namespace_keeps_four_reasoned_representatives_without_a_topic_c
 def test_unknown_episode_alias_keeps_valid_pack_siblings() -> None:
     """An unknown alias leaves its expected episode invalid without poisoning siblings."""
     raw = """{
-      "schema_version":"episode-scan-v1","pack":1,
+      "schema_version":"episode-scan-v2","pack":1,
       "episode_readings":[
         {"episode":1,"page":1,"visual_summary":"A",
          "representative_tiles":[1],"representative_reason":"visible A"},
@@ -397,7 +462,7 @@ def test_duplicate_and_missing_episode_entries_do_not_poison_valid_sibling() -> 
         '"representative_tiles":[1],"representative_reason":"visible A"}'
     )
     raw = (
-        '{"schema_version":"episode-scan-v1","pack":1,'
+        '{"schema_version":"episode-scan-v2","pack":1,'
         f'"episode_readings":[{duplicate},{duplicate},'
         '{"episode":3,"page":1,"visual_summary":"C",'
         '"representative_tiles":[3],"representative_reason":"visible C"}]}'
@@ -427,7 +492,7 @@ def test_duplicate_and_missing_episode_entries_do_not_poison_valid_sibling() -> 
 def test_boolean_tile_ids_are_not_accepted_as_json_integers() -> None:
     """Python's bool-is-int quirk cannot resolve true to displayed tile one."""
     raw = """{
-      "schema_version":"episode-scan-v1","pack":1,
+      "schema_version":"episode-scan-v2","pack":1,
       "episode_readings":[{"episode":1,"page":1,
         "visual_summary":"A claimed frame.","representative_tiles":[true],
         "representative_reason":"Claimed visible."}]
@@ -449,12 +514,12 @@ def test_boolean_tile_ids_are_not_accepted_as_json_integers() -> None:
 def test_singular_and_packed_episode_parsers_share_strict_namespace_validation() -> None:
     """The packed transport delegates each member through the singular validation path."""
     singular_raw = """{
-      "schema_version":"episode-scan-v1","episode":1,"page":1,
+      "schema_version":"episode-scan-v2","episode":1,"page":1,
       "episode_reading":{"visual_summary":"Claimed frame.",
         "representative_tiles":[1,1],"representative_reason":"Claimed visible."}
     }"""
     packed_raw = """{
-      "schema_version":"episode-scan-v1","pack":1,
+      "schema_version":"episode-scan-v2","pack":1,
       "episode_readings":[{"episode":1,"page":1,
         "visual_summary":"Claimed frame.","representative_tiles":[1,1],
         "representative_reason":"Claimed visible."}]

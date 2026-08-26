@@ -14,7 +14,7 @@ EpisodeObservationValue = tuple[str, str]
 EpisodeTileKey = tuple[int, int, int]
 PeriodTileKey = tuple[str, int]
 PeriodTileValue = tuple[str, str]
-EPISODE_SCAN_SCHEMA_VERSION = "episode-scan-v1"
+EPISODE_SCAN_SCHEMA_VERSION = "episode-scan-v2"
 PERIOD_INSIGHT_SCHEMA_VERSION = "period-insight-v1"
 EPISODE_VISUAL_SUMMARY_MAX_CHARS = 64
 EPISODE_REPRESENTATIVE_REASON_MAX_CHARS = 96
@@ -266,13 +266,15 @@ def _evidence(
         ):
             return None
         references = tuple(tile_map[key] for key in keys)
-        parsed.append(
-            InsightEvidence(
+        try:
+            evidence = InsightEvidence(
                 observation=observation.strip(),
                 episode_ids=_unique(reference[0] for reference in references),
                 asset_ids=_unique(reference[1] for reference in references),
             )
-        )
+        except ValueError:
+            return None
+        parsed.append(evidence)
     return tuple(parsed)
 
 

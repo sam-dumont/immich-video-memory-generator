@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 from collections import Counter
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -12,6 +13,7 @@ from unittest.mock import patch
 
 from PIL import Image
 
+from immich_memories.analysis.editorial_contracts import SourceEvidence
 from immich_memories.analysis.selection_flow import (
     EditorialDependencies,
     EditorialSelectionRequest,
@@ -50,7 +52,7 @@ def _episode_pack_answer(prompt: str, *, summary: str = "Visible stages develop.
         )
     return json.dumps(
         {
-            "schema_version": "episode-scan-v1",
+            "schema_version": "episode-scan-v2",
             "pack": 1,
             "episode_readings": readings,
         },
@@ -96,6 +98,151 @@ def test_source_preparation_preserves_real_visual_sources_in_candidate_order(
     assert preview_calls == ["photo", "video"]
     assert prepared.visual_sources[0].preview_jpeg == _jpeg("red")
     assert prepared.visual_sources[1].motion_path == tmp_path / "video.mp4"
+
+
+def test_compact_episode_v2_request_cannot_reuse_a_legacy_v1_bank(
+    tmp_path: Path,
+) -> None:
+    """Changing the wire aliases abandons the old answer even with identical visual evidence."""
+    from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
+    from immich_memories.analysis.llm_query import LLMTransportAttempt
+    from immich_memories.analysis.period_insight import run_period_insight
+
+    when = datetime(2026, 8, 25, 12, tzinfo=UTC)
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(
+            source_fetcher=lambda _scope: (make_asset("asset", file_created_at=when),),
+            preview_jpeg=lambda _asset: _jpeg("red"),
+        ),
+    )
+
+    class CaptureAndFail:
+        request = None
+
+        def ask(self, request):
+            if self.request is None:
+                self.request = request
+            raise RuntimeError("capture only")
+
+    capture = CaptureAndFail()
+    run_period_insight(
+        prepared,
+        requester=capture,
+        sheet_output_dir=tmp_path / "capture-sheets",
+        frame_cache_dir=None,
+    )
+    current = capture.request
+    assert current is not None
+    assert (
+        current.pass_version,
+        current.prompt_version,
+        current.schema_version,
+    ) == ("episode-scan-v2", "episode-scan-prompt-v2", "episode-scan-v2")
+    legacy = replace(
+        current,
+        pass_version="episode-scan-v1",  # noqa: S106 - historical pass identity fixture
+        prompt_version="episode-scan-prompt-v1",
+        schema_version="episode-scan-v1",
+    )
+    calls: list[str] = []
+
+    async def answer(_prompt, _config, **kwargs):
+        calls.append("physical")
+        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
+        return '{"legacy-or-current":"banked"}'
+
+    gateway = VisualEditorialGateway(
+        llm_config=LLMConfig(model="vision-test"),
+        cache_path=tmp_path / "judgments.db",
+        trace=prepared.trace,
+    )
+    # WHY: query_llm is the external provider; the cache and exact generated page stay real.
+    with patch("immich_memories.analysis.editorial_gateway.query_llm", new=answer):
+        legacy_answer = gateway.ask(legacy)
+        calls.clear()
+        current_answer = gateway.ask(current)
+        reused_current = gateway.ask(current)
+
+    assert calls == ["physical"]
+    assert current_answer.provenance.cache_hit is False
+    assert current_answer.request_trace.actual_calls == 1
+    assert current_answer.provenance.request_key != legacy_answer.provenance.request_key
+    assert reused_current.provenance.cache_hit is True
+    assert reused_current.request_trace.actual_calls == 0
+
+
+def test_task5_provider_prompt_maps_source_evidence_to_compact_visual_aliases(
+    tmp_path: Path,
+) -> None:
+    """The model sees the same concise tile evidence that keys the visual request."""
+    from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
+    from immich_memories.analysis.llm_query import LLMTransportAttempt
+    from immich_memories.analysis.period_insight import run_period_insight
+
+    when = datetime(2026, 8, 25, 12, tzinfo=UTC)
+    stable_asset_id = "asset-" + "a" * 64
+    photo = make_asset(
+        stable_asset_id,
+        is_favorite=True,
+        file_created_at=when,
+        duration=None,
+    )
+    photo.type = AssetType.IMAGE
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(
+            source_fetcher=lambda _scope: (photo,),
+            preview_jpeg=lambda _asset: _jpeg("blue"),
+            source_evidence=lambda _source: SourceEvidence(
+                blur=0.125,
+                similarity="source-one",
+            ),
+        ),
+    )
+    prompts: list[str] = []
+
+    async def answer(prompt, _config, **kwargs):
+        prompts.append(prompt)
+        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
+        if "chronological episode pack" in prompt:
+            return _episode_pack_answer(prompt)
+        return json.dumps(
+            {
+                "schema_version": "period-insight-v1",
+                "period_insight": {
+                    "thesis": None,
+                    "evidence": [],
+                    "tensions": [],
+                    "recurring_threads": [],
+                    "unavailable_reason": "One visual does not support a period thesis.",
+                },
+            }
+        )
+
+    gateway = VisualEditorialGateway(
+        llm_config=LLMConfig(model="vision-test"),
+        cache_path=tmp_path / "judgments.db",
+        trace=prepared.trace,
+    )
+    # WHY: query_llm is the provider boundary; source prep, atlas, sheets, and gateway stay real.
+    with patch("immich_memories.analysis.editorial_gateway.query_llm", new=answer):
+        run_period_insight(
+            prepared,
+            requester=gateway,
+            sheet_output_dir=tmp_path / "sheets",
+            frame_cache_dir=None,
+        )
+
+    assert len(prompts) == 2
+    episode_grounding = prompts[0].split("Grounded annotations (ordered JSON):\n", 1)[1]
+    assert episode_grounding == (
+        '["tile:1 | episode:1 | taken:2026-08-25T12:00:00+00:00 | media:photo | '
+        'favourite:true | blur:0.125 | similarity:source-one"]'
+    )
+    assert stable_asset_id not in episode_grounding
+    assert "Grounded annotations (ordered JSON):" in prompts[1]
+    assert "representatives:" in prompts[1]
 
 
 def test_incomplete_121_tile_episode_banks_valid_page_but_blocks_period_thesis(
@@ -559,7 +706,7 @@ def test_singleton_episode_packs_fit_their_complete_response_budget(tmp_path: Pa
             )
         raw = json.dumps(
             {
-                "schema_version": "episode-scan-v1",
+                "schema_version": "episode-scan-v2",
                 "pack": 1,
                 "episode_readings": readings,
             },
@@ -724,7 +871,7 @@ def test_one_packed_raw_answer_banks_valid_siblings_when_one_episode_is_invalid(
         ]
         return json.dumps(
             {
-                "schema_version": "episode-scan-v1",
+                "schema_version": "episode-scan-v2",
                 "pack": 1,
                 "episode_readings": entries,
                 "future_namespace": {"tile": True},

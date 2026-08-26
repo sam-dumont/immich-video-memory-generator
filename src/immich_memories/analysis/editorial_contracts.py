@@ -41,6 +41,14 @@ class InsightEvidence:
     episode_ids: tuple[str, ...]
     asset_ids: tuple[str, ...]
 
+    def __post_init__(self) -> None:
+        if not self.observation.strip():
+            raise ValueError("insight evidence observation cannot be blank")
+        if not self.episode_ids or any(not episode_id.strip() for episode_id in self.episode_ids):
+            raise ValueError("insight evidence needs nonblank episode IDs")
+        if not self.asset_ids or any(not asset_id.strip() for asset_id in self.asset_ids):
+            raise ValueError("insight evidence needs nonblank asset IDs")
+
 
 @dataclass(frozen=True)
 class PeriodInsight:

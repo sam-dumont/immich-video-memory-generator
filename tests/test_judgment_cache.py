@@ -7,6 +7,8 @@ of the same memory presents them again. In reasoning mode each of those costs
 measured ~15 minutes a memory spent almost entirely here.
 """
 
+import hashlib
+import json
 from dataclasses import replace
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -205,6 +207,60 @@ def test_visual_identity_changes_for_each_piece_of_visual_evidence() -> None:
     assert base.key() != replace(base, layout_versions=("l2", "l1")).key()
     assert base.key() != replace(base, upstream_material=("insight-v2",)).key()
     assert base.key() != replace(base, pass_version="pass-2").key()  # noqa: S106
+
+
+def test_visible_annotation_protocol_abandons_the_annotation_invisible_v1_bank(tmp_path) -> None:
+    """Answers produced before annotations reached the provider cannot be reused."""
+    from immich_memories.cache.judgment_cache import (
+        VisualJudgmentCache,
+        VisualJudgmentIdentity,
+    )
+
+    identity = VisualJudgmentIdentity(
+        page_bytes=(b"first", b"second"),
+        ordered_input_ids=("a", "b"),
+        ordered_group_ids=("g",),
+        annotations=("known place",),
+        model="vision-a",
+        thinking=True,
+        image_detail="low",
+        pass_name="cull",  # noqa: S106 - test-only pass identity
+        pass_version="pass-1",  # noqa: S106 - test-only pass identity
+        prompt_version="p1",
+        schema_version="s1",
+        render_version="r1",
+        layout_versions=("l1", "l1"),
+        upstream_material=("insight-v1",),
+        request_limits=("pages=1",),
+        continuation_identity=(1, 1),
+    )
+    legacy_material = {
+        "version": "visual1",
+        "page_hashes": [hashlib.sha256(page).hexdigest() for page in identity.page_bytes],
+        "ordered_input_ids": identity.ordered_input_ids,
+        "ordered_group_ids": identity.ordered_group_ids,
+        "annotations": identity.annotations,
+        "model": identity.model or "",
+        "thinking": identity.thinking,
+        "image_detail": identity.image_detail,
+        "pass_name": identity.pass_name,
+        "pass_version": identity.pass_version,
+        "prompt_version": identity.prompt_version,
+        "schema_version": identity.schema_version,
+        "render_version": identity.render_version,
+        "layout_versions": identity.layout_versions,
+        "upstream_material": identity.upstream_material,
+        "request_limits": identity.request_limits,
+        "continuation_identity": identity.continuation_identity,
+        "endpoint": identity.endpoint,
+    }
+    encoded = json.dumps(legacy_material, separators=(",", ":"), sort_keys=True).encode()
+    legacy_v1_key = hashlib.sha256(encoded).hexdigest()
+    cache = VisualJudgmentCache(tmp_path / "judgments.db")
+    cache.remember(legacy_v1_key, "annotation-invisible answer", '{"legacy":true}')
+
+    assert identity.key() != legacy_v1_key
+    assert cache.answer_for(identity.key()) is None
 
 
 def test_visual_cache_keeps_original_provenance_when_reused(tmp_path) -> None:

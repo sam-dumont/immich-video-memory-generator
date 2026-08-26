@@ -38,15 +38,14 @@ from immich_memories.analysis.selection_flow import EditorialGroup, PreparedEdit
 from immich_memories.analysis.visual_atlas import VisualAtlas, build_visual_atlas
 from immich_memories.analysis.visual_request_planner import VisionRequestLimits
 
-EPISODE_SCAN_PASS_VERSION = "episode-scan-v1"  # noqa: S105 - editorial pass identity
-EPISODE_SCAN_PROMPT_VERSION = "episode-scan-prompt-v1"
+EPISODE_SCAN_PASS_VERSION = "episode-scan-v2"  # noqa: S105 - editorial pass identity
+EPISODE_SCAN_PROMPT_VERSION = "episode-scan-prompt-v2"
 PASS_ZERO_VERSION = "pass-0-v1"  # noqa: S105 - editorial pass identity
 PERIOD_INSIGHT_PASS_VERSION = "period-insight-v1"  # noqa: S105 - editorial pass identity
 PERIOD_INSIGHT_PROMPT_VERSION = "period-insight-prompt-v1"
 _RENDER_VERSION = "visual-atlas-v1/contact-sheet-v1"
-# No provider tokenizer is available at this planning layer. Three response
-# characters per token reserves 25% headroom below the ordinary four-character
-# heuristic; it is a deterministic planning guard, not a provider guarantee.
+# Without a provider tokenizer, three response chars/token reserves 25% headroom below
+# the four-character heuristic; it is a planning guard, not a provider guarantee.
 _RESPONSE_PLANNING_CHARS_PER_TOKEN = 3
 
 
@@ -645,11 +644,15 @@ def _episode_annotations(pack: EpisodeScanPack) -> tuple[str, ...]:
     candidate_by_id = {
         candidate.asset_id: candidate for scope in pack.scopes for candidate in scope.candidates
     }
-    episode_by_id = {
-        ref.entity_id: scope.episode_id for scope in pack.scopes for ref in scope.tile_refs
+    episode_alias_by_id = {
+        ref.entity_id: scope.episode_alias for scope in pack.scopes for ref in scope.tile_refs
     }
     return tuple(
-        _candidate_annotation(ref, candidate_by_id[ref.entity_id], episode_by_id[ref.entity_id])
+        _candidate_annotation(
+            ref,
+            candidate_by_id[ref.entity_id],
+            episode_alias_by_id[ref.entity_id],
+        )
         for ref in pack.page.tile_refs
     )
 
@@ -657,13 +660,12 @@ def _episode_annotations(pack: EpisodeScanPack) -> tuple[str, ...]:
 def _candidate_annotation(
     ref: TileRef,
     candidate: EditorialCandidate,
-    episode_id: str,
+    episode_alias: int,
 ) -> str:
     return " | ".join(
         (
             f"tile:{ref.number}",
-            f"episode:{episode_id}",
-            f"asset:{candidate.asset_id}",
+            f"episode:{episode_alias}",
             f"taken:{candidate.taken_at.isoformat()}",
             f"media:{candidate.media_kind}",
             f"favourite:{str(candidate.favourite).lower()}",
