@@ -1181,13 +1181,20 @@ git add src/immich_memories/analysis/smart_pipeline.py src/immich_memories/photo
 git commit -m "refactor(selection): analyze the visuals that reach the cut (#764)"
 ```
 
-**Slice gate:** The Pass 2 sheet exposes complete moment battles, correct favorite behavior, the
-pregnancy-test sidecar, bounded alternates, actual durations, and measured request counts. Judge
-representatives only—not the final narrative cut yet.
+**Slice gate (rewritten 2026-08-27 — the original gated a pass that no longer exists):** the
+expensive analysis runs only for candidates that survive Selects, request counts are measured,
+and the trace names every skipped analysis with its reason. There are no battles, no bounded
+alternates, and no peak to judge.
 
 ---
 
 ## Task 9: Rewrite Structure as a Visual Reject-Only Rough Cut
+
+> **SUPERSEDED — do not implement this task.** Structure membership was measured
+> at its chance floor even after rebuilding the question in Cull's proven shape.
+> The accepted replacement is arithmetic allocation over durable facts, defined
+> in `2026-08-27-structure-allocation-steering.md`. The model may describe an
+> asset at 400px or validate the resulting cut; it may not choose membership.
 
 - [ ] RED/GREEN: **temporal coverage.** At least one visual per period across the whole range, with
   the granularity the current selector uses: daily up to a month, weekly to three months, monthly
@@ -1330,8 +1337,11 @@ may survive if its three contributions earn the time. No topic count is asserted
 - Adapt: `tests/test_review_parsing.py`
 - Adapt: `tests/test_review_drops_are_applied.py`
 
-- [ ] RED: Fine Cut sees one complete chronological cut sheet, current insight, Structure reasons,
-  record-shot marks, and one banked alternate per eligible moment. It returns a strict partition.
+- [ ] RED — **inputs stale as of 2026-08-27, redefine before starting**: "one banked alternate
+  per eligible moment" no longer exists (Task 7 removed ranked alternates), and "a strict
+  partition" is a measured-dead ask (complete partitions truncate; reject-only with an empty
+  default is the shape that survives). Redefine Fine Cut's contract against Selects' actual
+  output (survivors + absorbed runs) before writing this test.
 
 - [ ] GREEN: implement:
 

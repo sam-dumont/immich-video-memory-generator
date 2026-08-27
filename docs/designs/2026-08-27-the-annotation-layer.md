@@ -21,6 +21,13 @@ therefore `frames − moments` ≈ **9,800**, and the pass costs **1.39 calls pe
 pair** measured (910 for 653, after the short-circuit and the adaptive second
 vote) — about **13,600 calls**.
 
+> **Corrected 2026-08-27, measured:** the ~4% figure above is wrong. Source
+> eligibility and Cull removed **64%** of a measured month (725 → 261), and a
+> full-year run yielded **5,171 candidates** from these 21,458 assets — so
+> every figure derived from ~4%, the 13,600 included, is **inflated 3–4×**.
+> Re-derive from 5,171 before sizing anything; the durations below shrink by
+> the same factor.
+
 At the **pair** call cost of ~1.06s that is roughly **four hours of model time**;
 at the ~1.6s per call observed end-to-end in a real gate run, about **six**. Both
 numbers appear in this corpus and they are the same measurement with and without

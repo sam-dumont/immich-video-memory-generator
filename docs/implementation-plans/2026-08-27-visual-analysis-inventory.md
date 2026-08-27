@@ -8,7 +8,8 @@ issue: 764
 
 > Complete sweep of `src/` on `feat/764-selects` plus Tasks 0–15 and the
 > roadmap. Supersedes `2026-08-27-every-pixels-to-model-call.md`, which covered
-> only the #764 editorial path and was written one call at a time.
+> only the #764 editorial path and was written one call at a time — that file
+> was deleted 2026-08-27 (git history keeps it).
 
 The system asks pixels **seven distinct questions**. They are asked in nineteen
 places, which is why this looked like nineteen problems. It is seven.

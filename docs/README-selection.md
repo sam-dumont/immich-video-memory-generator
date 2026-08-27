@@ -30,6 +30,15 @@ filename order gives the wrong answer twice. This page is the ledger.
 7. **`implementation-plans/2026-08-26-editing-process-as-built.md`** — the only
    description of what actually runs today.
 
+**Where the cut comes from.** `implementation-plans/2026-08-27-structure-allocation-steering.md`
+is the accepted direction for the hole §0 leaves open:
+the cut is arithmetic, never a model question. The measured admission tests
+(owner acts + backward firsts) admit, the runtime's clip budget caps, and
+people-family weights break only the overflow, lexicographically.
+Description-novelty over the prefix is the control for single-camera libraries.
+It also carries the landing/cache/privacy fixes from Fable's evening
+consolidation — read it before touching stage 7.
+
 ## Status ledger
 
 | document | status | authority |
@@ -42,31 +51,23 @@ filename order gives the wrong answer twice. This page is the ledger.
 | `implementation-plans/…what-the-model-can-be-asked.md` | measurement | what the model can be asked |
 | `implementation-plans/…what-the-pass-costs.md` | measurement, **two conclusions reversed inline** | cost only; read its header |
 | `implementation-plans/…visual-analysis-inventory.md` | current | instrument selection, licences |
-| `implementation-plans/…every-pixels-to-model-call.md` | **SUPERSEDED — do not act on** | none |
+| `implementation-plans/…every-pixels-to-model-call.md` | **DELETED 2026-08-27** — superseded; in git history | none |
 | `implementation-plans/…editing-process-as-built.md` | current | what runs today |
 | `implementation-plans/…existing-selection-rules.md` | current | rules recovered from the old selector |
+| `implementation-plans/…structure-allocation-steering.md` | **accepted steering, not yet implemented** | the cut's direction; workprint fixes |
 
 ## What is dead, and what still points at it
 
-The design's **Pass 2 section** was killed by measurement (superseding note
-inline). Its consequences were not all removed, so these are stale and must not
-be built:
-
-- `MomentSelect.status = selected | no_peak | unresolved` and
-  `representative_asset_id` in the object model — there is no peak and no
-  `no_peak` verdict.
-- **Slice C's gate**, "gate on whether each retained moment has the right peak
-  frame" — that question was measured at 0 of 12.
-- **Task 8's slice gate**, "the Pass 2 sheet exposes complete moment battles…
-  bounded alternates" — a gate for a pass that no longer exists.
-- **Task 11 (Fine Cut)** consuming "one banked alternate per eligible moment" —
-  Task 7 removed ranked alternates. Fine Cut's repair needs redefining against
-  what Selects actually produces.
-- The design's **acceptance criterion** stating the runtime order as
-  `Insight → Cull → Selects → Structure → projection → Fine Cut`. Superseded by
-  `designs/2026-08-27-the-annotation-layer.md` **§5b**, which specifies the
-  eleven-stage order and identifies stage 7 (Structure over clustered
-  representatives) as the tentative cut.
+**Cleaned 2026-08-27: every dead consequence of the superseded Pass 2 now
+carries a tombstone at its own site**, so a document read cold says it itself —
+this list no longer needs consulting first. What was tombstoned: the
+`MomentSelect` object and the Pass 2 section body (design), Slice C's gate,
+Task 8's original gate, Task 11's banked-alternate inputs, Fine Cut's
+bounded-repair paragraph, and the design's acceptance-criterion runtime order
+(superseded by `designs/2026-08-27-the-annotation-layer.md` **§5b**, the
+eleven-stage order — stage 7, Structure over clustered representatives, is the
+tentative cut). The annotation layer's ~4% / 13,600-call cost paragraph now
+carries its measured correction inline (inflated 3–4×).
 
 ## The largest open risk — now measured, and worse than stated
 

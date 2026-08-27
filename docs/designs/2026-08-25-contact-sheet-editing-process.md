@@ -1,6 +1,6 @@
 ---
 date: 2026-08-25
-status: owner approved
+status: design of record, amended — historical pass order superseded
 issue: 764
 rejected_experiment_pr: 768
 decision: contact sheets are the working surface of every editorial pass
@@ -9,6 +9,14 @@ decision: contact sheets are the working surface of every editorial pass
 # Contact-Sheet Editing Process Design
 
 ## Decision
+
+> **Runtime-order amendment.** The diagram immediately below records the
+> originally approved process and is retained as history, not implementation
+> instruction. The live direction is the eleven-stage order in
+> `2026-08-27-the-annotation-layer.md` §5b, with the tentative cut supplied by
+> `../implementation-plans/2026-08-27-structure-allocation-steering.md`.
+> Structure allocates before demand-driven Selects; a model never chooses cut
+> membership.
 
 Rebuild smart selection in the order a human editor needs information:
 
@@ -249,16 +257,10 @@ MomentGroup
   episode_id: str
   candidate_asset_ids: list[str]
 
-MomentSelect
-  moment_id: str
-  episode_id: str
-  status: selected | no_peak | unresolved
-  representative_asset_id: str | None
-  alternate_asset_ids: list[str]
-  record_asset_ids: list[str]
-  selection_reason: str
-  unresolved_reason: str | None
-  shippable_duration: float
+MomentSelect — REMOVED 2026-08-27. It served the superseded Pass 2: there is
+no peak, no `no_peak` verdict and no ranked alternates (measured 0 of 12; see
+the Pass 2 tombstone below). Selects returns survivors and absorbed frames
+instead (`selection_selects.py`).
 
 StructureDecision
   moment_id: str
@@ -440,29 +442,11 @@ upstream under the old policy.
 > sidecar lane out of the aesthetic comparison, an unreadable answer leaves the moment unresolved
 > with `!!`, and scalar score never silently chooses a winner.
 
-Pass 2 uses packed battle sheets containing as many complete, visually separated `MomentGroup`s as
-remain judgeable. It compares neighbours directly and returns one namespaced decision per group in
-the request. Its question is: “Does this moment reach a peak; if so, which visual expresses it, and
-what useful alternate remains?”
-
-A favourite wins its moment automatically. If several favourites collide, only those favourites
-compete in the visual battle. This is battle semantics, not global immunity: the whole occasion can
-still be omitted by Structure through the protected-occasion decision. “Favourites intact” means
-each starred occasion that ships uses a starred representative; it does not mean every starred
-asset must ship.
-
-Without a favourite, the model may choose one representative and bank bounded alternates for a
-specific reason such as a better establishing view. It may instead return `no_peak` with a reason;
-a situation is not forced to produce a keeper merely because its answer parsed. Scalar score does
-not silently choose the winner. The chosen representative contributes its actual shippable
-duration to later planning.
-
-Record shots remain a sidecar lane and do not compete for the aesthetic representative slot. This
-prevents a visually strong favourite from hiding the evidentiary frame in the same moment.
-
-An unreadable answer leaves the moment unresolved. A mechanical preview frame may be used to keep
-a diagnostic render running, but it is marked non-editorial, cannot be banked as a valid select,
-and puts `!!` on the gate sheet.
+The section body was removed 2026-08-27: it specified battle sheets, `no_peak`
+verdicts and bounded alternates, all dead per the note above. The favourite-law
+formulation that scaled — "each starred occasion that ships uses a starred
+representative" — was hoisted into `2026-08-27-the-annotation-layer.md` §0,
+which is where it now lives.
 
 ### Pass 3 sheet: make the rough cut
 
@@ -526,11 +510,11 @@ It partitions the cut into keep and reject with a reason for every rejection. It
 Structure after seeing the whole. It cannot replenish the timeline with score-ranked material or
 run an open-ended stabilisation loop.
 
-Fine Cut may inspect one banked alternate from the same moment only when it rejects the current
-representative for a reason another representative could answer. The reason must name the hole,
-and the replacement gets one visual judgement. If the moment or occasion itself was rejected, no
-sibling may return. Reopening an occasion requires the single bounded Projection/Structure replay.
-This is bounded repair, not a second selection system.
+> **Superseded 2026-08-27.** The bounded-repair mechanism here consumed "one
+> banked alternate per eligible moment", and Task 7 removed ranked alternates.
+> Fine Cut's repair must be redefined against what Selects actually produces
+> (survivors plus absorbed runs); until then this paragraph specified inputs
+> that no longer exist.
 
 Fine Cut aims for the requested duration within a few percent when the material supports it. A
 shorter strong cut beats filler. If a downstream duration absorber, deduper, or score judge changes
@@ -656,10 +640,9 @@ pull request back into that integration trunk. Published integration history is 
 
 ### Slice C: Pass 2 selects
 
-- Build packed visual battle sheets with complete, separated moment groups.
-- Implement favourite auto-win and bounded alternates.
-- Remove score as the silent representative chooser.
-- Gate on whether each retained moment has the right peak frame.
+> **Superseded 2026-08-26.** Shipped as Task 7's rewrite instead: arithmetic
+> absorbs exact instants, pairwise sameness marks runs, nothing picks a peak.
+> The original gate here asked the 0-of-12 question.
 
 ### Slice D: rework Pass 3 Structure
 
@@ -746,7 +729,9 @@ Each slice also runs the full repository gate and critique process. The final mi
 ## Acceptance criteria
 
 - Every editorial pass judges pixels on a purpose-built contact sheet.
-- The runtime order is Insight → Cull/record → Selects → Structure → projection → Fine Cut.
+- The runtime order is the eleven-stage order of `2026-08-27-the-annotation-layer.md` §5b —
+  Structure cuts over clustered representatives BEFORE Selects. (The order this line originally
+  stated is superseded.)
 - Later passes receive the decisions and reasons that earlier passes learned.
 - No scalar score, rank tail, cap, deduper, or renderer silently changes editorial membership.
 - Repetition resolves from the material's contribution to this cut, not a topic quota.
