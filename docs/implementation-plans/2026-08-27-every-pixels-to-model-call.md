@@ -6,6 +6,13 @@ issue: 764
 
 # Every Pixels-to-Model Call
 
+> **Superseded 2026-08-27 by `2026-08-27-visual-analysis-inventory.md`.** This
+> page covered only the #764 editorial path and was assembled one call at a
+> time. The inventory sweeps all of `src/` including the legacy selector and the
+> adjacent subsystems, and finds that nineteen call sites ask **seven** distinct
+> questions. Its §3 also records that the hash band this page treated as ready
+> does not survive cross-validation.
+
 > Audited 2026-08-27 against the implementation on `feat/764-selects` and Tasks
 > 0–15 of the implementation plan. The goal set by the owner: carry as much
 > visual inspection as possible on one or two permissively-licensed models, keep
