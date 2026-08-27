@@ -89,9 +89,11 @@ The prose is 484 of 533 characters and half the wall clock.
 **It does move the verdict, and 30 pairs was too small a sample to see it.**
 Re-gated on the full dense month, the same corpus absorbed 502 frames with the
 reason and **388 without** — 23% fewer. Survival went 27% → 35% (sparse, 65% →
-73%). Both months still sit inside the 25–50% band, and the new answer is the
-more conservative one, which is the safe direction under this project's
-asymmetry. But "agrees 29/30" was a statement about a sample, and it was
+73%). The new answer is the more conservative one, which is the safe direction under
+this project's asymmetry. **Correction:** an earlier draft added "both months
+still sit inside the 25–50% band". They do not — 65% and 73% are outside it, and
+so is 35%. See the acceptance bar: survival percentage is not what a threshold is
+argued against. But "agrees 29/30" was a statement about a sample, and it was
 reported as though it were a statement about the pass.
 
 The third row is a trap of the kind already catalogued here: it reads as the
@@ -161,9 +163,12 @@ runs were contended — test suites and quality gates were run on the same
 machine during each. Not yet separated, and it should be before any further
 cost claim is made from a probe.
 
-**The saving that is real is fewer calls, not faster ones.** Dropping the
-written reason is still right — it removes tokens nothing read — but it is not
-the 2× the isolated timing suggested.
+**The saving that is real is fewer calls, not faster ones.** ~~Dropping the
+written reason is still right — it removes tokens nothing read.~~ **Struck
+2026-08-27:** this sentence survived the §3a reversal and contradicts it. The
+reason is *not* tokens nothing read — on this model, writing it is part of how
+the answer is arrived at, and dropping it flipped 126 pairs from "same" to
+"different" against 10 the other way. The pass carries the reason, on `pair-v3`.
 
 ## 7. Probes
 

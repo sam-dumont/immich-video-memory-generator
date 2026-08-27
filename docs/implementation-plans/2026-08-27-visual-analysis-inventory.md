@@ -283,8 +283,8 @@ year in about three minutes; a ViT-base at ~200 ms does not clear it at all.
 
 | job | model | licence | size | fits the time bar? |
 |---|---|---|---|---|
-| scene / `setting` | **Places365 ResNet18** | MIT code, CC-BY weights | ~46 MB | yes |
-| subject / `category` | **Open Images V4 SSD-MobileNetV2** — explicit `Person`/`Human` class | Apache-2.0 code, CC-BY labels | ~20–30 MB | yes |
+| ~~scene / `setting`~~ | ~~Places365 ResNet18~~ | MIT code, CC-BY weights | ~46 MB | **REJECTED — see below** |
+| ~~subject / `category`~~ | ~~SSD-MobileNet / Open Images~~ | Apache-2.0 | ~20–30 MB | **DECLINED at this size — see below** |
 | event clustering | **DINOv2 ViT-S** | **Apache-2.0** since Aug 2023 | ~86 MB | ~18 ms measured — yes |
 | eyes-closed / group photo | **MediaPipe / BlazeFace** landmarks + eye-aspect-ratio | Apache-2.0 | <1 MB | yes |
 | richer multi-label subject | **Tencent ML-Images ResNet-101**, 11k labels | BSD-3 code + weights | ~170 MB | **unmeasured** — size is fine, latency is the question |
@@ -292,6 +292,24 @@ year in about three minutes; a ViT-base at ~200 ms does not clear it at all.
 **ImageNet-21k carries a data-provenance caveat** separate from timm's Apache-2.0
 code licence: image-net.org states the data is for non-commercial research. That
 argues for Open Images over timm-21k for subject classification.
+
+### Two of these were then evaluated and rejected — this table is a shortlist, not a plan
+
+**Places365 was measured and fails on this material** (60% agreement even at high
+confidence; no person concept, and a family photograph is a people photograph
+with a room behind it). More importantly `setting` has no consumer that acts on
+it, and Immich already returns a real place name for 80% of a month. **Do not
+build it.**
+
+**The person detector was measured and declined** at 29.5 MB / 16 ms — it does
+not separate `people` from `object` at all. It may be worth re-pricing against
+NanoDet-Plus (<2 MB claimed); see Phase M. **Note the scope carefully:** the
+rejection is about `category` (what a picture is mainly *of*). Using a detector
+for *presence* — closing the 23% of people that face detection misses — is a
+different question and is **not** covered by that rejection.
+
+The authority on what to build is Phase M in the implementation plan and §6b of
+the annotation-layer design, not this shortlist.
 
 ### Two open questions this settles
 

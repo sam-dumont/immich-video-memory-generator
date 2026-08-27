@@ -38,12 +38,22 @@ be multiplied by a pair count** — earlier drafts did exactly that.
 | a 300-asset month | **~10 clips** |
 | a 2,000-asset year | **~120 clips** |
 
-**These are ratios, not a claim about library size.** Three to six percent
-survives, at roughly **10 to 15 items per minute of footage**, and transitions,
-month dividers and animated trip maps consume part of even that. The library
-measured throughout this document is far larger than the table's illustration —
-one month is 2,016 assets and one year is **12,072 to 21,458** — which only makes
-the point sharper: the denominator grows and the numerator does not.
+**The numerator is set by the video, not by the corpus.** A film of length *L*
+carries roughly **10–15 items per minute**, minus what transitions, month dividers
+and animated trip maps consume. That is the whole of it: ~10 clips for a short
+month, ~120 for a long yearly recap. **The survival *ratio* is an output, not a
+rule** — it falls as the library grows, and it is not 3–6% in general.
+
+An earlier draft of this section called 3–6% a ratio and then said "the
+denominator grows and the numerator does not" two sentences later. Both cannot be
+true. On the measured library — one month of 2,016 assets, one year of 12,072 to
+21,458 — a 120-clip year is **0.56%**, not 3–6%. The table's figures are one
+illustration; the *rule* is items-per-minute.
+
+**So a threshold is argued against the clip count, never against a survival
+percentage.** "Does this cut leave enough good candidates to fill 120 slots" is
+answerable; "is the survival rate inside a band" is not a question this bar
+asks.
 
 So the job is not to find the best 120. It is to make sure the 120 that ship
 carry the weight — the ones that say "this was great". The corpus is
@@ -516,6 +526,15 @@ floor). Different instruments, same answer.
 makes this actionable: enough to build the clustering version and gate it, not
 enough to declare the matter closed.
 
+**And it does not measure the thing this section proposes.** The probe scored
+**farthest-first** selection over an **episode**; §5b proposes a **medoid** over a
+**moment**. Different algorithm, different unit, and the two have opposite
+instincts — farthest-first maximises *spread*, a medoid takes the most *central*
+frame. So the 46% validates clustering for **stage 5's coverage wall**, where
+spread is exactly what a wall needs, and says nothing about **stage 4's per-moment
+representative**, where the right instinct is probably centrality. Stage 4 is
+**unmeasured** and needs its own probe.
+
 With that, the order is specifiable:
 
 | # | stage | cost | unit |
@@ -527,11 +546,21 @@ With that, the order is specifiable:
 | 4 | **one representative per moment by clustering** | **free** | per moment |
 | 5 | episode readings over the representative wall, **told who is present and how old** | ~190/yr | per episode, banked |
 | 6 | the insight | 1 | per question |
-| 7 | **Structure — the tentative cut**, reject-only over the representative work print | 1–2 | per question |
+| 7 | **Structure — the tentative cut**, reject-only over the representative work print | **see below** | per question |
 | 8 | **Selects inside in-cut moments only** — which frame actually ships | small | per pair, **forever** |
 | 9 | projection, revise the thesis once | 0–1 | per question |
 | 10 | fine cut over the whole cut | 1–2 | per question |
 | 11 | duration fit, then rendering — may not change membership | free | — |
+
+**Stage 7 does not cost 1–2 calls at year scale, and an earlier draft said it
+did.** It sees a representative of *every* moment — about 3,000 for a year —
+against a 120-tile page cap with one page per request, so **25+ sheets minimum**.
+Worse, "scope decides reliability" was measured here: a flat question over a
+57-tile pack parsed 1 run in 3, while the same question asked per episode parsed
+3 in 3. **A flat reject-only question over 3,000 tiles is that failure mode.**
+How the tentative cut scales past a month is unresolved and is the largest open
+question in this design — a hierarchical Structure (per episode, then over
+episode verdicts) is the obvious shape but is unmeasured.
 
 **Stage 0 is per-library, not per-memory.** `immich-memories people scan` already
 builds it and it is the only stage whose unit is the whole library rather than a
