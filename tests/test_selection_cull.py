@@ -1330,8 +1330,9 @@ def test_public_source_insight_cull_flow_uses_one_trace_and_never_subject_quotas
             pair_asks.append(prompt)
             return json.dumps(
                 {
-                    "schema_version": "pair-v2",
+                    "schema_version": "pair-v3",
                     "same": False,
+                    "reason": "six unrelated subjects",
                 }
             )
         return json.dumps(

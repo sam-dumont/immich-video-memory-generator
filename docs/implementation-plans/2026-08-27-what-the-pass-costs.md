@@ -33,7 +33,42 @@ declares changes what the model can *see* without changing what it *costs*.
 **400px stays.** It was chosen on a fidelity measurement and there is no cost
 argument against it.
 
-## 3. The written reason is half the runtime
+## 3. The written reason is half the runtime — and buying it back
+
+> **REVERSED 2026-08-27, same day.** Everything measured below is true and the
+> conclusion drawn from it was wrong. Dropping the written reason does not just
+> fail to pay; it makes the model materially worse at the question. The pass is
+> back on a reason-carrying contract (`pair-v3`). Read §3a before §3.
+
+### 3a. What the 30-pair sample could not see
+
+| | |
+|---|---|
+| pairs judged under **both** contracts | 650 |
+| agree | **514 (79%)** |
+| v1 "same" → v2 **"different"** | **126** |
+| v1 "different" → v2 "same" | 10 |
+
+One-directional, not noise. Two of the flipped pairs were looked at: one is a
+woman holding a newborn in the same chair, same pose, seconds apart; the other
+is the same baby in the same outfit on the same lap. Both are plainly one
+picture. `pair-v1` said same in both arrangements; `pair-v2` says different.
+
+**Writing the reason is not overhead on the answer — on this model it is part of
+how the answer is arrived at.** The 29/30 agreement was real and 30 pairs was
+too small to see a 21% disagreement rate.
+
+Two things this also explains:
+
+- The gate's survival moving 27% → 35% was reported as "more conservative,
+  which is the safe direction". It is not conservatism, it is **failure to merge
+  genuine duplicates**.
+- The cheap band collapsing to zero at every hash resolution was read as the
+  hash being too coarse. The recurring counterexample survives every resolution
+  because it is **a model error, not a hash collision** — and a band required to
+  be unanimous against a noisy ground truth can never open.
+
+
 
 | variant | median call | characters written | agrees with the banked answer |
 |---|---|---|---|

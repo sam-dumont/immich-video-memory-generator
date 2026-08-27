@@ -115,8 +115,8 @@ def test_the_favourite_survives_its_own_instant() -> None:
     assert result.absorbed[0].asset_id == "plain"
 
 
-def _pair_answer(same: bool) -> str:
-    return json.dumps({"schema_version": "pair-v2", "same": same})
+def _pair_answer(same: bool, reason: str = "same subject, framed alike") -> str:
+    return json.dumps({"schema_version": "pair-v3", "same": same, "reason": reason})
 
 
 def _gateway(tmp_path: Path, trace):
@@ -339,7 +339,7 @@ def test_an_answer_missing_its_verdict_cuts_nothing(tmp_path: Path) -> None:
 
     async def _answer(_prompt, _config, **kwargs):
         kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
-        return json.dumps({"schema_version": "pair-v2", "reason": "fluent and useless"})
+        return json.dumps({"schema_version": "pair-v3", "reason": "fluent and useless"})
 
     # WHY: query_llm is the only external provider boundary; atlas, sheets, gateway and trace stay real.
     with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
@@ -382,7 +382,7 @@ def test_the_pass_provenance_admits_when_a_model_was_asked(tmp_path: Path) -> No
             frame_cache_dir=tmp_path / "frames",
         )
 
-    assert result.trace.provenance.schema_version == "pair-v2"
+    assert result.trace.provenance.schema_version == "pair-v3"
     assert result.trace.provenance.model_identity == "vision-test"
 
 
@@ -495,7 +495,7 @@ def test_an_answer_on_the_wrong_wire_contract_is_not_read(tmp_path: Path) -> Non
 
     async def _answer(_prompt, _config, **kwargs):
         kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
-        return json.dumps({"schema_version": "pair-v1", "same": True})
+        return json.dumps({"schema_version": "pair-v2", "same": True})
 
     # WHY: query_llm is the only external provider boundary; atlas, sheets, gateway and trace stay real.
     with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):

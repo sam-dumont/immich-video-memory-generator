@@ -48,8 +48,8 @@ if TYPE_CHECKING:
 
 SELECTS_PASS_NAME = "pass-2-selects"  # noqa: S105 - public editorial pass identity
 SELECTS_PASS_VERSION = "pass-2-selects-v1"  # noqa: S105 - editorial pass identity
-PAIR_PROMPT_VERSION = "pair-prompt-v2"  # noqa: S105 - wire contract identity
-PAIR_SCHEMA_VERSION = "pair-v2"  # noqa: S105 - wire contract identity
+PAIR_PROMPT_VERSION = "pair-prompt-v3"  # noqa: S105 - wire contract identity
+PAIR_SCHEMA_VERSION = "pair-v3"  # noqa: S105 - wire contract identity
 
 # The answer moved between 150px and 400px in 4 of 4 moments and stopped moving
 # above it, so this pass states the fidelity its own question needs rather than
@@ -64,26 +64,24 @@ SELECTS_TILE_PX = 400
 SELECTS_SURVIVAL_FLOOR = 0.25
 
 _PAIR_SHAPE = json.dumps(
-    {"schema_version": PAIR_SCHEMA_VERSION, "same": False}, separators=(",", ":")
+    {"schema_version": PAIR_SCHEMA_VERSION, "same": False, "reason": "what makes them one or two"},
+    separators=(",", ":"),
 )
 # The question is the probe's, word for word. `same: false` is shown because
 # false is the safe default -- a copied example merges nothing. More prose
 # measurably makes this model worse, so none is added.
 #
-# No written reason is asked for, and that is a cost decision made on numbers.
-# Measured on 30 real pairs against this endpoint: asking for a reason writes
-# 484 characters and takes 1.06s; asking for the verdict alone writes 49 and
-# takes 0.51s, agreeing with the longer answer 29 times in 30. Shrinking the
-# tiles from 400px to 200px, by contrast, bought 11%. On a local single-stream
-# model the bill is tokens written, not pixels read.
-#
-# Murch's rule -- never store a bare verdict, because what is bad today may be
-# what you want in two months -- is met by the trace rather than by prose. Every
-# pair records its exact sheet hash, both arrangements' verdicts and the run it
-# built, so the decision can be reopened by looking at the two tiles that caused
-# it. That is the stronger record here: every failed question shape this project
-# measured returned fluent, specific, grounded-sounding reasons for answers that
-# were following tile position.
+# The written reason is asked for even though the parser reads only `same`, and
+# that is a QUALITY decision that reverses an earlier cost one. Dropping it
+# halved the call, and a 30-pair sample said the verdict agreed 29 times in 30.
+# Across the 650 pairs judged under both contracts it agrees 79% of the time,
+# and the disagreement is one-directional: 126 pairs went from "same" to
+# "different" and 10 the other way. Looked at, those pairs are the same picture
+# -- one is a woman holding a newborn in the same chair in the same pose, twice.
+# Writing the reason is not overhead on the answer; on this model it is part of
+# how the answer is arrived at, and 30 pairs was too small a sample to see it.
+
+
 _PAIR_PROMPT = (
     "Two numbered visuals. Are they two attempts at the same picture -- the same "
     "subject, framed the same way, moments apart -- or are they two different pictures? "
