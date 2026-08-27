@@ -268,6 +268,45 @@ GPU.** That means roughly 10–30 ms per image. Size matters only where it predi
 latency, and as a one-time first-run download. A 46 MB ResNet18 at ~10 ms clears a
 year in about three minutes; a ViT-base at ~200 ms does not clear it at all.
 
+### Deployment reality, corrected 2026-08-27
+
+Three corrections from a third survey, the first **verified against the installed
+runtime**.
+
+**The execution-provider list in this corpus was wrong.** ONNX Runtime 1.28
+reports `ROCMExecutionProvider` as **not in the build** — the AMD route is
+**MIGraphX** — and `ArmNNExecutionProvider` is absent too. Verified with
+`ort.get_all_providers()`. Earlier text here claimed both. The real list this
+build knows: **CUDA, MIGraphX, OpenVINO, CoreML, DirectML, CPU.**
+
+**"Runs on ONNX Runtime" is not the same as "runs on every provider."**
+No upstream project publishes a validation matrix covering the same graph across
+every EP. Distinguish:
+
+- **official ONNX** — the publisher ships the file;
+- **export required** — plausible, but *not production-qualified* until the
+  exported graph is tested on each target EP.
+
+**Places365 and DINOv2 are both export-required** — the exports used here were
+made locally and have been run only on CPU/CoreML. Portability is assumed, not
+demonstrated.
+
+**And the CPU numbers here are desktop numbers.** The first NAS-class evidence
+found, from OpenCV Zoo's own benchmarks:
+
+| model | i7-12700K | **Raspberry Pi 4** | 20,000 images on the Pi |
+|---|---|---|---|
+| NanoDet-m-plus 416 (3.62 MB, Apache-2.0, **official ONNX**) | 41 ms | **215 ms** | **~72 min** |
+| MediaPipe person detector (11.4 MB) | 7.7 ms | 106 ms | ~35 min |
+| YOLOX-S (34.2 MB) | 79 ms | **1,614 ms** | **~9 hours** |
+
+**This is the number that decides the architecture**, and it points where the
+annotation layer already points: none of this can be a query-time pass over
+20,000 assets on weak hardware. It is **ingestion-time metadata**, computed once
+per asset and stored, so a query becomes a database operation. That conclusion
+was reached independently by an external survey and matches
+`docs/designs/2026-08-27-the-annotation-layer.md` §0b.
+
 ### Excluded
 
 | what | why |
