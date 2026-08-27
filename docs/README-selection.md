@@ -63,9 +63,10 @@ be built:
   Task 7 removed ranked alternates. Fine Cut's repair needs redefining against
   what Selects actually produces.
 - The design's **acceptance criterion** stating the runtime order as
-  `Insight → Cull → Selects → Structure → projection → Fine Cut`. The annotation
-  layer moves Selects to **after** a tentative cut. **The new order is not yet
-  written down anywhere, because the tentative cut is not yet specified.**
+  `Insight → Cull → Selects → Structure → projection → Fine Cut`. Superseded by
+  `designs/2026-08-27-the-annotation-layer.md` **§5b**, which specifies the
+  eleven-stage order and identifies stage 7 (Structure over clustered
+  representatives) as the tentative cut.
 
 ## Two rules that genuinely conflict, unresolved
 

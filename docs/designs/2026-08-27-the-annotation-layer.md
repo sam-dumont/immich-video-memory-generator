@@ -276,6 +276,51 @@ below-cut-median (optional). One revisit per moment per generation, K=2–3.
 
 ---
 
+## 5b. The runtime order, and what makes the tentative cut
+
+Moving Selects after the cut left a hole the earlier draft did not close:
+**Structure must choose moments before anything has chosen frames**, so a moment
+is still N frames when it is judged. The hole and the `representative_tiles`
+finding are the same problem — both need one frame that stands for a moment, and
+the model cannot produce one (0.42 overlap by picture, 0.42 by position, against
+a 0.22 random floor).
+
+**It is a coverage question, not a quality one, so clustering answers it.**
+Cluster a moment's frames by perceptual distance and take the medoid; a favourite
+overrides. Deterministic, free, and position is not an input so it cannot have the
+measured failure mode. Mapping hint 5 is the craft's version: headings get ticked
+off, and an over-covered heading stops competing.
+
+With that, the order is specifiable:
+
+| # | stage | cost | unit |
+|---|---|---|---|
+| 1 | annotation — hash, sharpness/exposure, OCR, faces, EXIF | free | per asset, **forever** |
+| 2 | source eligibility, then cheap cull: `failed` by CV, documents routed by OCR | free | per asset |
+| 3 | group into episodes and moments | free | time + place |
+| 4 | **one representative per moment by clustering** | **free** | per moment |
+| 5 | episode readings over the representative wall | ~190/yr | per episode, banked |
+| 6 | the insight | 1 | per question |
+| 7 | **Structure — the tentative cut**, reject-only over the representative work print | 1–2 | per question |
+| 8 | **Selects inside in-cut moments only** — which frame actually ships | small | per pair, **forever** |
+| 9 | projection, revise the thesis once | 0–1 | per question |
+| 10 | fine cut over the whole cut | 1–2 | per question |
+| 11 | duration fit, then rendering — may not change membership | free | — |
+
+**Stage 7 is the tentative cut.** It is Structure, unchanged in contract —
+reject-only, named reasons, no ranking, chronology fixed — but it now runs on
+*clustered* representatives instead of on Selects' output, and Selects runs after
+it on the survivors. Nothing is skipped at the start: every asset reaches stages
+1–4, and stage 7 sees a representative of **every** moment in the corpus.
+
+This supersedes the design-of-record acceptance criterion
+`Insight → Cull → Selects → Structure → projection → Fine Cut`.
+
+**What remains open** is narrower than "the tentative cut is unspecified": does
+stage 7 need the representative *pixels*, or do the episode readings from stage 5
+carry enough? Pixels are the safe assumption and the design's own rule; the
+cheaper variant is unmeasured.
+
 ## 6. What is still unknown
 
 | question | status |
