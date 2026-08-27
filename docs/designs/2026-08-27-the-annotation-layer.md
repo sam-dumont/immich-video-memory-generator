@@ -17,6 +17,52 @@ for the next question over the same photos. That is the defect this design fixes
 
 ---
 
+## 0. The bar every threshold is argued against
+
+**Owner-stated, 2026-08-27.** Measured reduction, from the owner's own figures:
+
+| corpus | ships |
+|---|---|
+| a 300-asset month | **~10 clips** |
+| a 2,000-asset year | **~120 clips** |
+
+Three to six percent survives, and transitions, month dividers and animated trip
+maps consume part of even that. Roughly **10 to 15 items per minute of footage**.
+
+So the job is not to find the best 120. It is to make sure the 120 that ship
+carry the weight — the ones that say "this was great". The corpus is
+**over-supplied by an order of magnitude**: the year measured here holds 1,791
+favourites for ~120 slots.
+
+### What follows from that
+
+1. **Losing good pictures is acceptable.** Not desirable, but acceptable, because
+   another good one stands behind it. A pass that spends hours to avoid dropping
+   a frame that had fourteen equals is spending in the wrong place.
+2. **Losing an occasion is not acceptable.** The hospital, the birthday, the trip
+   — each must keep at least one frame. This is the invariant, and it is the only
+   one of its kind.
+3. **Emotional weight is the target, not completeness.** Coverage exists so the
+   story has its beats, not so every event gets equal airtime.
+
+### The gate assertions this implies
+
+Both computable with no model, both cheap enough to assert on every run:
+
+- **zero moments with zero survivors** — measured on the dense month, satisfied by
+  both a model-driven and a hash-only Selects;
+- **candidates per shipped slot** — the dense month offered 281 for ~45, an
+  over-supply of 6x. A run that falls near 1x has cut too hard somewhere upstream
+  and should say so.
+
+**Every threshold in this document is argued against this bar and not against
+"never make a wrong cut".** That earlier framing was the source of several
+measurements this session that were correct and irrelevant: a band rejected for
+7 wrong cuts in 550, a hash-only Selects rejected for dropping 30 frames of 719
+while leaving every one of 123 moments represented.
+
+---
+
 ## 1. The defect, in one line
 
 **#764 caches per REQUEST. A request contains a sheet, a sheet contains a moment,
