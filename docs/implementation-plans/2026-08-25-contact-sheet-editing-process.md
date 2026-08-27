@@ -20,6 +20,12 @@ Click, GitHub Actions.
 
 **Spec:** `docs/designs/2026-08-25-contact-sheet-editing-process.md`
 
+**Where each fact is cached:** `docs/designs/2026-08-27-the-annotation-layer.md`
+amends Tasks 4–9. Each fact is cached at the unit it is a fact ABOUT — the picture's
+own value per asset and forever, pairwise sameness per pair and forever, and only the
+reading and the weighting per question. Selects becomes demand-driven on in-cut
+moments rather than a pass over the corpus.
+
 **Which instrument answers which question:**
 `docs/implementation-plans/2026-08-27-visual-analysis-inventory.md` is the standing
 inventory — nineteen call sites, seven questions, and what should answer each. Read it

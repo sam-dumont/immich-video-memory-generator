@@ -67,6 +67,14 @@ byte-identical. The actual failure is the contract around Structure:
 Prompting harder cannot restore evidence that the model never receives. The fix is to make each
 pass see the right sheet and hand its decision to the next one.
 
+> **Amended 2026-08-27 by `2026-08-27-the-annotation-layer.md`.** Selects as
+> specified here runs over the whole corpus, which measured at ~13,600 model
+> calls and six hours for a year — and pays it again for the next question over
+> the same photos, because the cache is keyed per request and a request contains
+> a moment. The amendment keeps every editorial rule below and changes where the
+> facts are cached and when the passes run: per-asset annotation first, Selects
+> demand-driven on in-cut moments, weighting per memory type at selection.
+
 ## The model is a last resort
 
 **Added 2026-08-27, owner doctrine, after Stage B was measured against a real year.**
