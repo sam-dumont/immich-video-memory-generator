@@ -249,6 +249,65 @@ below-cut-median (optional). One revisit per moment per generation, K=2–3.
 
 ---
 
+## 6b. Things that look like free wins and are not
+
+Every item here was measured on the real library and rejected. Each looks like an
+obvious saving from the outside, which is why they are written down with their
+numbers: a reader who finds one of these attractive has almost certainly not seen
+the measurement.
+
+**Do not drop the written `reason` from the pair prompt.** The parser reads only
+`same`, the reason is 484 of 533 characters, and dropping it halves the call —
+1.06s to 0.51s. A 30-pair sample agreed 29 times in 30. Across the 650 pairs
+judged under both contracts it agrees **79%**, one-directional: **126 pairs went
+from "same" to "different" and 10 the other way**. Two of the flipped pairs,
+looked at rather than counted, are a woman holding a newborn in the same chair in
+the same pose seconds apart, and the same baby in the same outfit on the same lap.
+Both are plainly one picture. **On this model, writing the reason is part of how
+the answer is arrived at.** The wire contract is `pair-v3` and it carries the
+field. This was shipped as verdict-only and reverted the same day.
+
+**Do not let a distance band absorb a pair with no model call.** Calibrated and
+holdout-tested, it made wrong cuts, and the deeper problem is that a band required
+to be *unanimous* against a noisy oracle can never open: the counterexample that
+killed it at every hash resolution (8, 12, 16, 24) turned out to be a model error
+rather than a hash collision. The model must see every pair. What is safe is the
+adaptive second vote in §4, where the pixels only decide whether the SECOND
+arrangement is worth buying.
+
+**Do not pack several pairs into one request.** Four to six pairs per sheet is
+4x cheaper and changes ~20% of decisions. Permutation stability is flat at 83%
+across pack sizes, so the loss is the model's own noise rather than scope
+contamination — but 20% of decisions is not a trade this pass can make.
+
+**Do not swap the perceptual hash for an embedding.** DINOv2 ViT-S was measured
+on the same 656 pairs with the same verdicts: unanimous band 286 against the
+hash's 291. A tie, for 18 ms/image and an 86.6 MB model. Both cap at 44%, which
+says the ceiling is the pairs and not the signal.
+
+**Do not shrink the tile below 400px.** 400 to 200 quarters the pixel area and
+buys 11% of the call, while agreement with the 400px answer falls to 28/30. The
+vision encoder resizes to its own grid, so a smaller tile changes what the model
+can SEE without changing what it costs.
+
+**Do not cap output tokens tightly.** A 64-token cap looked like the fastest
+variant at 0.49s and killed **12 of 30 calls**, truncating mid-JSON. It scored
+well by having its failures leave the sample. Generation stops on its own after
+~49 characters; leave the cap high.
+
+**Do not let exposure actuate on its own** (§3), and **do not filter transcripts
+on confidence** (§3b).
+
+### Where the evidence lives
+
+Probes, banked verdicts and the Places365 artefacts:
+`~/.immich-memories-matrix/slice2b-probes-2026-08-27/`. The most valuable file
+there is `data/cost/pairs.json` — 656 real pairs judged in both arrangements
+under the reason-carrying contract. Nearly every decision on this page was
+calibrated against it and it cost roughly 1,300 live model calls to produce.
+Write-ups: `docs/implementation-plans/2026-08-27-what-the-pass-costs.md` and
+`2026-08-27-visual-analysis-inventory.md`.
+
 ## 7. Order of work
 
 1. **Fix the pair cache key** — drop `ordered_group_ids` from Q4 requests. Small,

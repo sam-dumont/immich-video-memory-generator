@@ -1,5 +1,13 @@
 # What the Pass Costs
 
+> **Two conclusions on this page were reversed the same day they were drawn.**
+> The measurements are sound; two of the inferences from them were not. §3 was
+> shipped and reverted — dropping the written reason halves the call and makes
+> the model materially worse. §6's projection did not survive whole-run
+> measurement. Both reversals are inline, but if you are reading this page for a
+> saving, read `docs/designs/2026-08-27-the-annotation-layer.md` §6b first: it
+> lists what was measured, rejected, and why.
+
 > Measured 2026-08-27 against the real library and the production path, on the
 > owner's local single-stream endpoint at temperature 0. Every number comes from
 > banked answers or timed live calls, not from a model of the model.
