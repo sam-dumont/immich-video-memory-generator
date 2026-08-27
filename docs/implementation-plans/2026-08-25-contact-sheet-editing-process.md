@@ -280,6 +280,56 @@ answers the existing pipeline has already banked — no new model calls to valid
       detection and then discards. Persist one count per pair and the rest
       follows; no model, no pixels, no new API call.
 
+### Reopened by an external survey, 2026-08-27
+
+A second survey (Gemini) named models the first one missed. Repo existence and
+licences below were **verified against the Hugging Face API**; sizes, latencies
+and training-set claims are **the survey's, unverified here** — and some of its
+citations look dubious (an arXiv id with a future date), so treat every number as
+a claim to test rather than a fact.
+
+**Two of this phase's conclusions are overturned and must be re-run.**
+
+- [ ] **Document vs photo — I said nothing off-the-shelf existed. Wrong.**
+      `vlad-m-dev/mobilenet_v3_small_onnx_photo_doc` is **MIT with ONNX already
+      exported** (fp32 and quantised), ~10–15 MB, claimed <50 ms. It is a binary
+      *document / photo* classifier, which is exactly the distinction OCR
+      coverage cannot make. **Test it on the known hard case first**: the birth
+      announcement at 18.8% OCR coverage, which must come back *photo*, and a
+      receipt, which must come back *document*. Survey caveat: trained on Italian
+      documents and Japanese photos, so it may not transfer.
+- [ ] **Re-price the person detector.** It was declined against
+      `ssd_mobilenet_v1_12` at 29.5 MB and 16 ms. **NanoDet-Plus (Apache-2.0) is
+      claimed at <2 MB INT8 and ~10 ms**, and YOLOX-Nano at ~3.5 MB. At that size
+      the trade that failed at 29.5 MB may pass — the recall gain was real
+      (77% → ~87%), only the price was wrong.
+
+**Three additions worth evaluating.**
+
+- [ ] **SPAQ for technical quality.** Trained on 11,125 smartphone photographs
+      from 66 phones, annotated for brightness, colourfulness, contrast,
+      graininess and **sharpness** — not on contest or stock imagery. This
+      directly addresses the false-positive class flagged in the blur work:
+      a Laplacian cannot tell deliberate shallow depth of field from a failed
+      focus, and a model trained on phone photographs plausibly can. **Compare it
+      against the Laplacian floor on the same frames.**
+- [ ] **Intel `open-closed-eye-0001`** — Apache-2.0, **46 KB**, claimed <1 ms, on a
+      32×32 eye crop. Immich already supplies face boxes, so this is nearly free.
+      A blink is a real reason to prefer a sibling frame.
+- [ ] **DINOv2 for event clustering, confirmed as the right tool** — and **SSCD is
+      not**, despite being MIT and compact: it is trained to push *different*
+      originals apart, so two photographs of one cake from opposite sides are
+      pushed apart by design. Useful confirmation that the DINOv2 rejection was
+      correctly scoped to near-duplicates only.
+
+**One landmine caught:** `MichalMlodawski/open-closed-eye-classification-mobilev2`
+is **CC-BY-NC-ND-4.0** — verified. Non-commercial *and* no-derivatives. Excluded.
+
+**One discrepancy to resolve:** the survey puts DINOv2 ViT-S CPU latency at
+100–150 ms; measured here it was **18 ms**. Probably input size — 224px
+thumbnails here against full-resolution there. Do not quote either number without
+saying which input it was measured on.
+
 ### Rules for this phase
 
 - Calibrate against **banked answers**, never against intuition.
