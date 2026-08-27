@@ -461,6 +461,7 @@ def _render_single_photo(
             target_h,
             gain_map_hdr=prepared.has_gain_map,
             peak_nits=peak_nits,
+            primaries=getattr(prepared, "primaries", "bt709"),
         )
 
         if not output_path.exists() or output_path.stat().st_size < 100:
@@ -483,6 +484,37 @@ def _render_single_photo(
         return None
 
 
+def _photo_filter_chain(
+    *, gain_map_hdr: bool, has_zscale: bool, peak_nits: int, primaries: str
+) -> tuple[str, str]:
+    """The pipe format and zscale chain for one photo clip.
+
+    A gain-mapped source arrives as 16-bit linear at its own peak; everything
+    else arrives 8-bit sRGB at 203 nits. Both leave as PQ.
+    """
+    if not has_zscale:
+        # WHY: without zscale neither transfer conversion is possible. Render
+        # plain SDR rather than tagging untransformed pixels as HDR.
+        logger.warning("zscale not available — rendering photo as SDR")
+        return "rgb24", "format=yuv420p"
+    if gain_map_hdr:
+        return "rgb48le", (
+            f"zscale=t=smpte2084:tin=linear"
+            f":p=bt2020:pin={primaries}"
+            f":m=bt2020nc:min=bt709"
+            f":npl={peak_nits}"
+            f",format=yuv420p10le"
+        )
+    # A photograph with no gain map still gets PQ, at SDR reference white.
+    return "rgb24", (
+        "zscale=t=smpte2084:tin=iec61966-2-1"
+        ":p=bt2020:pin=bt709"
+        ":m=bt2020nc:min=bt709"
+        ":npl=203"
+        ",format=yuv420p10le"
+    )
+
+
 def _stream_render_to_mp4(
     img: np.ndarray,
     params: KenBurnsParams,
@@ -491,6 +523,7 @@ def _stream_render_to_mp4(
     target_h: int,
     gain_map_hdr: bool = False,
     peak_nits: int = 203,
+    primaries: str = "bt709",
 ) -> None:
     """Render Ken Burns frames and stream directly to FFmpeg.
 
@@ -505,39 +538,17 @@ def _stream_render_to_mp4(
     from immich_memories.processing.hdr_utilities import check_zscale_available
 
     has_zscale = check_zscale_available()
-    encoder_args = _get_photo_encoder_args() if has_zscale else _get_sdr_encoder_args()
-
-    if gain_map_hdr:
-        pix_fmt = "rgb48le"
-        if has_zscale:
-            vf = (
-                f"zscale=t=arib-std-b67:tin=linear"
-                f":p=bt2020:pin=bt709"
-                f":m=bt2020nc:min=bt709"
-                f":npl={peak_nits}"
-                f",format=yuv420p10le"
-            )
-        else:
-            # WHY: Without zscale, HDR gain map data can't be properly
-            # converted. Fall back to SDR: drop to 8-bit, skip HDR metadata.
-            logger.warning("zscale not available — rendering photo as SDR (HDR gain map ignored)")
-            pix_fmt = "rgb24"
-            vf = "format=yuv420p"
-    else:
-        pix_fmt = "rgb24"
-        if has_zscale:
-            vf = (
-                "zscale=t=arib-std-b67:tin=iec61966-2-1"
-                ":p=bt2020:pin=bt709"
-                ":m=bt2020nc:min=bt709"
-                ":npl=203"
-                ",format=yuv420p10le"
-            )
-        else:
-            # WHY: Without zscale, render as plain SDR. Colors are correct
-            # but no HDR metadata — the photo won't match HDR video clips.
-            logger.warning("zscale not available — rendering photo as SDR")
-            vf = "format=yuv420p"
+    # WHY: photo clips are PQ, gain-mapped or not. HLG is relative -- its OETF
+    # is sqrt(3L) below 1/12 of peak, so a 12-nit shadow encodes at 0.173 and
+    # any link that skips the display OOTF shows it near 200 nits. That washed
+    # out every photograph, HDR and SDR alike. PQ names an absolute luminance,
+    # so nothing downstream can lift the shadows. Video clips stay HLG, which
+    # is what iPhone video is, and the assembler converts between the two.
+    transfer = "smpte2084"
+    encoder_args = _get_photo_encoder_args(transfer) if has_zscale else _get_sdr_encoder_args()
+    pix_fmt, vf = _photo_filter_chain(
+        gain_map_hdr=gain_map_hdr, has_zscale=has_zscale, peak_nits=peak_nits, primaries=primaries
+    )
 
     def _frames() -> Iterator[bytes]:
         use_16bit = pix_fmt == "rgb48le"
@@ -585,12 +596,14 @@ def _stream_render_to_mp4(
         raise RuntimeError(f"Photo FFmpeg encoding failed (exit {returncode}): {stderr_text}")
 
 
-def _get_photo_encoder_args() -> list[str]:
-    """Encoder args matching the video pipeline's HDR output (HEVC HLG BT.2020).
+def _get_photo_encoder_args(transfer: str = "arib-std-b67") -> list[str]:
+    """Encoder args for a 10-bit BT.2020 HEVC photo clip.
 
-    WHY: iPhone videos are HEVC HLG 10-bit BT.2020. Photo clips must
-    match to avoid the assembly pipeline's SDR→HDR zscale conversion
-    which produces red tint on the photos.
+    WHY: iPhone videos are HEVC HLG 10-bit BT.2020, and a photo clip has to
+    reach the assembler already in BT.2020 or the SDR->HDR zscale conversion
+    tints it red. The TRANSFER differs by source: a gain-mapped photograph is
+    natively PQ and says so, while everything else stays HLG to match video.
+    The assembler converts between the two where a cut needs it.
     """
     try:
         result = subprocess.run(
@@ -617,7 +630,7 @@ def _get_photo_encoder_args() -> list[str]:
             "-color_primaries",
             "bt2020",
             "-color_trc",
-            "arib-std-b67",
+            transfer,
         ]
 
     return [
@@ -634,9 +647,9 @@ def _get_photo_encoder_args() -> list[str]:
         "-color_primaries",
         "bt2020",
         "-color_trc",
-        "arib-std-b67",
+        transfer,
         "-x265-params",
-        "hdr-opt=1:repeat-headers=1:colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc",
+        f"hdr-opt=1:repeat-headers=1:colorprim=bt2020:transfer={transfer}:colormatrix=bt2020nc",
     ]
 
 

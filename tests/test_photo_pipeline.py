@@ -225,3 +225,118 @@ def test_the_messaging_glob_does_not_match_a_place_called_wa() -> None:
     assert from_an_excluded_source("VID-20190701-WA0000.mp4", patterns)
     assert not from_an_excluded_source("Olympia-WA2019.jpg", patterns)
     assert not from_an_excluded_source("Seattle-WA98101.jpg", patterns)
+
+
+def _captured_filter(*, primaries: str) -> str:
+    """Render one gain-mapped frame and return the -vf zscale expression."""
+    import pathlib
+    from unittest.mock import patch
+
+    import numpy as np
+
+    from immich_memories.photos.photo_pipeline import KenBurnsParams, _stream_render_to_mp4
+
+    seen: dict[str, str] = {}
+
+    def _capture(command, _frames, **_kwargs):
+        seen["vf"] = command[command.index("-vf") + 1]
+        return 0, ""
+
+    params = KenBurnsParams(
+        zoom_start=1.0, zoom_end=1.0, pan_start=(0.5, 0.5), pan_end=(0.5, 0.5), fps=1, duration=1.0
+    )
+    # WHY: both mocks below replace external boundaries, not project code.
+    with (
+        # WHY: FFmpeg is the boundary; the filter string is built before it.
+        patch("immich_memories.photos.photo_pipeline.write_frames_to_ffmpeg", _capture),
+        # WHY: replaces probing the host FFmpeg for zscale, which may lack it.
+        patch("immich_memories.processing.hdr_utilities.check_zscale_available", lambda: True),
+    ):
+        _stream_render_to_mp4(
+            np.zeros((8, 8, 3), dtype=np.float32),
+            params,
+            pathlib.Path("unused.mp4"),
+            8,
+            8,
+            gain_map_hdr=True,
+            peak_nits=1000,
+            primaries=primaries,
+        )
+    return seen["vf"]
+
+
+def test_a_display_p3_photo_is_not_encoded_as_if_it_were_bt709() -> None:
+    """iPhone HEICs are Display P3, and calling them BT.709 desaturates them.
+
+    pillow-heif hands back the RAW P3 values -- verified against Apple's own
+    colour-managed render of a real photograph: as-is they differ by 10.77/255
+    across the most saturated 5% of pixels, and converting them P3->sRGB first
+    brings that to 0.91/255. A whole-image mean hides this at 3.3/255, because
+    most of any photograph sits where the two gamuts agree.
+
+    So hardcoding pin=bt709 described those values as the narrower gamut.
+    Measured as chromaticity error against Apple's render, luminance divided out
+    so tone mapping cannot confound it: **0.02544 naming them bt709 versus
+    0.00518 naming them smpte432** over the saturated tenth of the frame.
+
+    Naming beats converting: BT.2020 contains P3, so a correctly named source
+    arrives whole, while a P3->sRGB conversion first would clip exactly the
+    colours this is trying to keep. The video path already works this way --
+    `_detect_color_primaries` reads the source and passes `pin=<its primaries>`.
+    """
+    assert "pin=smpte432" in _captured_filter(primaries="smpte432")
+    assert "pin=bt709" not in _captured_filter(primaries="smpte432")
+    assert "pin=bt709" in _captured_filter(primaries="bt709")
+
+
+def test_a_gain_mapped_photo_is_encoded_pq_not_hlg() -> None:
+    """An Apple HDR photograph is PQ. Encoding it HLG lifts its shadows.
+
+    HLG is a relative system: the signal is scene-referred and the display is
+    meant to apply an OOTF to bring it back down. It also spends enormous code
+    space on the bottom of the range -- its OETF is sqrt(3L) below 1/12 of peak
+    -- so a 12-nit shadow encodes as 0.173 rather than 0.01. Anything in the
+    chain that does not apply the OOTF shows that as 17% of peak, around 200
+    nits. The shadows come up and no amount of correctness upstream brings them
+    back down, which is exactly what the owner saw after the gain-map maths had
+    been verified to 2.23% against CoreImage.
+
+    PQ is absolute: a code value names a luminance in nits and nothing
+    downstream reinterprets it. It is also what the source actually is --
+    CoreImage reports Apple's own expansion as "Display P3, SMPTE ST 2084 PQ",
+    and the reference decoder ends at eotf_inverse_BT2100_PQ(203 * linear).
+
+    Video clips stay HLG, which is what iPhone video is; the assembler already
+    converts between the two in `_get_hdr_to_hdr_filter`, so one file can carry
+    both kinds of source.
+    """
+    hdr = _captured_filter(primaries="smpte432")
+
+    assert "t=smpte2084" in hdr
+    assert "arib-std-b67" not in hdr
+
+
+def test_a_jpeg_named_heic_still_renders(tmp_path) -> None:
+    """Extensions lie, and one bad file must not lose a photograph.
+
+    A real library asset carries a `.heic` name over JPEG bytes -- Immich hands
+    back the original, and `file` reports "JPEG image data, Exif ... model=iPhone
+    11". Routing on the extension sent it to pillow-heif, which raised
+    `No 'ftyp' box: File does not start with 'ftyp'`, and the render failed.
+
+    A photograph that a decoder can read should not be dropped over its name.
+    """
+    from PIL import Image
+
+    from immich_memories.photos.animator import prepare_photo_source
+
+    liar = tmp_path / "IMG_9999.heic"
+    Image.new("RGB", (64, 48), "orange").save(liar, "JPEG")
+
+    work = tmp_path / "work"
+    work.mkdir()
+    prepared = prepare_photo_source(liar, work)
+
+    assert prepared.width == 64
+    assert prepared.height == 48
+    assert prepared.has_gain_map is False
