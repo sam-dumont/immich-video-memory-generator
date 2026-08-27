@@ -56,5 +56,12 @@ def run_editorial_selection(
         limits=limits,
     )
     pass_one = run_cull(prepared, pass_zero, review_output_dir=review_output_dir)
-    pass_two = run_selects(prepared, pass_one.survivors)
+    pass_two = run_selects(
+        prepared,
+        pass_one.survivors,
+        requester=gateway,
+        sheet_output_dir=sheet_output_dir,
+        frame_cache_dir=frame_cache_dir,
+        limits=limits,
+    )
     return EditorialSelectionResult(prepared, pass_zero, pass_one, pass_two)

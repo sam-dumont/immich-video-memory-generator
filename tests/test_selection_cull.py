@@ -1298,6 +1298,7 @@ def test_public_source_insight_cull_flow_uses_one_trace_and_never_subject_quotas
     prompts: list[str] = []
     traces = []
     episode_asks = 0
+    pair_asks: list[str] = []
 
     async def _answer(prompt, _config, **kwargs):
         nonlocal episode_asks
@@ -1323,6 +1324,15 @@ def test_public_source_insight_cull_flow_uses_one_trace_and_never_subject_quotas
                         for episode, page, tiles in scopes
                     ],
                     "cull_rejects": [{"episode": 1, "notes": [], "failed": []}],
+                }
+            )
+        if "two attempts at the same picture" in prompt:
+            pair_asks.append(prompt)
+            return json.dumps(
+                {
+                    "schema_version": "pair-v1",
+                    "same": False,
+                    "reason": "Generated sources are six unrelated subjects.",
                 }
             )
         return json.dumps(
@@ -1386,8 +1396,14 @@ def test_public_source_insight_cull_flow_uses_one_trace_and_never_subject_quotas
         "pass-1-cull",
         "pass-2-selects",
     ]
-    assert len(result.prepared.trace.requests) == 2
+    # 1 episode scan + 1 period synthesis + both arrangements of each adjacent pair.
+    # Six candidates in one moment is five neighbouring pairs, and each is asked
+    # twice because only the intersection of two arrangements may absorb anything.
+    assert len(pair_asks) == 10
+    assert len(result.prepared.trace.requests) == 12
     assert episode_asks == 1
+    assert result.pass_two.warnings == ()
+    assert result.pass_two.absorbed == ()
     assert result.pass_one.warnings == ()
     assert result.pass_one.review.warnings == ()
     episode_prompt = next(prompt for prompt in prompts if "chronological episode pack" in prompt)
