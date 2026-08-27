@@ -156,6 +156,49 @@ each field. Nothing in it may depend on a date range, a moment, or a question.
 Measured for a year: roughly **ten minutes of I/O and CPU, zero model calls**,
 and it is paid once for the library rather than once per memory.
 
+### People are the strongest free signal, and the pipeline barely uses them
+
+Immich detects and clusters **every face in the library, whether or not anyone has
+named it**. Measured on this library:
+
+| | |
+|---|---|
+| person clusters Immich holds | **3,591** |
+| of those, named by the owner | 156 |
+| named **and** carrying a `birthDate` | 19 |
+| dense month: assets with a recognised person | **62%** |
+| dense month: assets with a person whose **age we know** | **58%** |
+| dense month: distinct clusters / face appearances | 71 / 1,755 |
+
+Four separate signals come out of that, all free, all already computed:
+
+1. **Presence** → `category: people`, measured at **98% precision and 77% recall**
+   against the language model's own labels. The 23% it misses are people
+   photographed from behind or too small for a face — a person *detector* would
+   close that gap, and nothing else needs one.
+2. **Identity without naming.** A cluster has an ID whether or not it has a name,
+   so "the same person again" is answerable across the whole library for free.
+3. **Who matters, by appearance distribution.** In the dense month the top three
+   clusters carry **1,295 of 1,755 appearances — 74%**, against a long tail of
+   21-and-below. The family ranks itself out of the frequency histogram; naming is
+   a convenience, not a prerequisite. This is the emergent doctrine applied to
+   people: weights come from the library's own distribution, never from a query.
+4. **Exact age at capture** wherever a `birthDate` exists — `birthDate` plus the
+   capture timestamp, no inference. In the dense month **588 assets contain a
+   person aged 0.0 years**.
+
+**That last one changes what the expensive call is asked.** The thesis of that
+month — a baby arrived — is derivable from metadata alone: a cluster appearing for
+the first time on a known date, aged zero, in 588 photographs. The episode reading
+should be *told* that and asked what else was happening, rather than sent to
+discover it from pixels. It also removes a measured failure: a sheet prompt once
+fabricated a name, a sex and twins, and the durable fix was better data rather
+than more instruction. **An age you were handed cannot be hallucinated.**
+
+The signal's strength varies with the material, and that is correct rather than a
+weakness: the dense month is 58% age-known, the sparse cycling month 9%. It is
+strongest on exactly the months that are about people.
+
 ### What falls out of it with no model at all
 
 - **`failed`** — blur below the library's own floor. Measured: the softest
@@ -314,11 +357,11 @@ With that, the order is specifiable:
 
 | # | stage | cost | unit |
 |---|---|---|---|
-| 1 | annotation — hash, sharpness/exposure, OCR, faces, EXIF | free | per asset, **forever** |
+| 1 | annotation — hash, sharpness/exposure, OCR, **people: cluster ids, appearance rank, age at capture**, EXIF | free | per asset, **forever** |
 | 2 | source eligibility, then cheap cull: `failed` by CV, documents routed by OCR | free | per asset |
 | 3 | group into episodes and moments | free | time + place |
 | 4 | **one representative per moment by clustering** | **free** | per moment |
-| 5 | episode readings over the representative wall | ~190/yr | per episode, banked |
+| 5 | episode readings over the representative wall, **told who is present and how old** | ~190/yr | per episode, banked |
 | 6 | the insight | 1 | per question |
 | 7 | **Structure — the tentative cut**, reject-only over the representative work print | 1–2 | per question |
 | 8 | **Selects inside in-cut moments only** — which frame actually ships | small | per pair, **forever** |
