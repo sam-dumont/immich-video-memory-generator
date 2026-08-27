@@ -24,6 +24,7 @@ from immich_memories.processing.ffmpeg_runner import (
     _run_ffmpeg_with_progress,
 )
 from immich_memories.processing.hdr_utilities import (
+    _detect_color_primaries,
     _detect_hdr_type,
     _get_colorspace_filter,
     _get_hdr_conversion_filter,
@@ -113,7 +114,18 @@ class ClipEncoder:
         )
         if plan.hdr:
             target_hdr = plan.target_transfer.value
-            conversion = _get_hdr_conversion_filter(source_hdr, target_hdr, required=True)
+            # WHY: an SDR source is not necessarily BT.709. iPhone SDR video is
+            # tagged Display P3 (smpte432), and converting it as if it were the
+            # narrower gamut desaturates every saturated colour on the way into
+            # BT.2020. The streaming path already reads this; this one defaulted.
+            source_primaries = (
+                _detect_color_primaries(clip.path, probe_cache=source_probe_cache)
+                if isinstance(source_probe_cache, ProbeCache)
+                else _detect_color_primaries(clip.path)
+            )
+            conversion = _get_hdr_conversion_filter(
+                source_hdr, target_hdr, source_primaries=source_primaries, required=True
+            )
             return target_hdr, conversion + _get_colorspace_filter(target_hdr)
         if source_hdr:
             return "sdr", _get_hdr_conversion_filter(

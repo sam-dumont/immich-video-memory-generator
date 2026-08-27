@@ -137,7 +137,11 @@ def _detect_color_primaries(
             streams = data.get("streams", [])
             if streams:
                 return streams[0].get("color_primaries") or None
-    except (OSError, subprocess.SubprocessError, ValueError) as e:
+    # WHY: TypeError joins the list because ffprobe's output is not guaranteed
+    # to be JSON at all -- a broken build, a truncated pipe or a stub in a test
+    # all land here, and an unreadable probe means "primaries unknown", never a
+    # crash that loses the clip.
+    except (OSError, subprocess.SubprocessError, TypeError, ValueError) as e:
         logger.debug(f"Color primaries detection failed for {video_path}: {e}")
     return None
 

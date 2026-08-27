@@ -488,3 +488,44 @@ class TestHdrConversionFilter:
             FilterBuilder(settings, MagicMock(), lambda _path: None).get_clip_hdr_conversion(
                 0, context
             )
+
+
+def test_the_clip_encoder_reads_the_source_primaries_it_converts_from() -> None:
+    """iPhone SDR video is Display P3, and calling it BT.709 desaturates it.
+
+    Two encode paths exist. The streaming one detects the source primaries and
+    passes them; the per-clip one let the argument default to bt709. Measured on
+    the library: a 2019 iPhone 11 clip is `smpte432` while a 2017 clip is
+    `bt709` and a 2023 Android clip is `bt470bg`, so the default was wrong for
+    real footage rather than merely imprecise.
+
+    Same defect the photo path had, on the other side of the pipeline.
+    """
+    from unittest.mock import MagicMock, patch
+
+    from immich_memories.processing.clip_encoder import ClipEncoder
+
+    encoder = ClipEncoder.__new__(ClipEncoder)
+    encoder.prober = MagicMock(probe_cache=None)
+    encoder.settings = MagicMock()
+    encoder.settings.encoding_plan.hdr = True
+    encoder.settings.encoding_plan.target_transfer.value = "hlg"
+    clip = MagicMock(path=Path("p3-source.mov"))
+
+    with (
+        # WHY: ffprobe is the boundary -- the source is SDR with P3 primaries.
+        patch("immich_memories.processing.clip_encoder._detect_hdr_type", return_value=None),
+        # WHY: ffprobe again, for the primaries this test is about.
+        patch(
+            "immich_memories.processing.clip_encoder._detect_color_primaries",
+            return_value="smpte432",
+        ),
+        # WHY: replaces probing the host FFmpeg build for zscale.
+        patch(
+            "immich_memories.processing.hdr_utilities._check_zscale_available", return_value=True
+        ),
+    ):
+        _, filters = encoder.resolve_encode_hdr(clip)
+
+    assert "pin=smpte432" in filters
+    assert "pin=bt709" not in filters
