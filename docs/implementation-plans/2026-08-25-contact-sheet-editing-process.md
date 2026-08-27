@@ -262,8 +262,13 @@ answers the existing pipeline has already banked — no new model calls to valid
       angle" is where a hash's pixel-layout assumption breaks.
 - [ ] **`animal`** — 6% of labelled segments, and the only `category` value with
       no free source.
-- [ ] **Relationship inference** from `people.yaml` — child by onset matching
-      birth date, then parents and couples by co-occurrence. Arithmetic, rung 3.
+- [~] **Relationship inference** from `people.yaml` — rung 3, arithmetic.
+      **Child detection works**: 5 found on this library with a 12-month
+      tolerance. **Parents are blocked on one missing field** — "inner tier and
+      predates the child" leaves 11-12 candidates, and the discriminator is
+      co-occurrence with that child, which `graph.py` computes for its link
+      detection and then discards. Persist one count per pair and the rest
+      follows; no model, no pixels, no new API call.
 
 ### Rules for this phase
 

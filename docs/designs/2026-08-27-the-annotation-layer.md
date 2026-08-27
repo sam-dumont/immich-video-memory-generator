@@ -284,6 +284,23 @@ library.** Of 18 people carrying a birth date, **4 match** — birth years 2013,
 months is a child who entered the library after their first year, so the rule
 needs a tolerance rather than an exact match.
 
+**Measured on this library with a 12-month tolerance: 5 children found** — born
+2013-11, 2015-05, 2018-05, 2022-02 and 2024-02. Four have an onset in their own
+birth month; the 2018 one needs the full twelve, which is why the rule wants a
+tolerance rather than equality.
+
+**Parents do not fall out as easily, and the blocker is precise.** Filtering to
+"inner tier and present before the child's onset" leaves **11–12 candidates** —
+presence is not discrimination. The discriminator must be **co-occurrence with
+that specific child**, and `people.yaml` does not carry it: `graph.py` computes
+pairwise co-occurrence, uses it to emit `tight-dyad` and `twin` links, and
+**discards the counts**. A sampled inner-tier person has `links: []`.
+
+So the raw material is already being computed and thrown away. **Persisting one
+number per pair — the count already in memory during the scan — turns twelve
+candidate parents into two, at no additional cost and no new API call.** That is
+the single change that unlocks the rest:
+
 From that anchor the rest follows arithmetically:
 
 | relationship | signature, all from the existing evidence block |
