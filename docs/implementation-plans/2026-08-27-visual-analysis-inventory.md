@@ -132,6 +132,49 @@ Splits into three, and only one needs language.
   recognition with names.
 - **Free description** — language. Needed for Q5's grounding, and only there.
 
+#### The evidence that Q1's closed half is a classifier's job
+
+Two numbers from the live cache, 2026-08-27, and neither was known when the
+inventory was first written.
+
+**The closed vocabulary still leaks.** `video_segments` holds 4,690 answers with
+a `setting`. `SETTING_VALUES` has exactly five members and the prompt states
+them. The answers include `water` (83), `kitchen` (20), `park` (11), `beach`
+(11) and `living room` (10) — about **3% off-vocabulary**, years after #483
+closed the vocabulary precisely to stop this. A classifier with five output
+neurons cannot emit "living room"; the failure is not reduced, it is
+structurally impossible.
+
+**And the per-photo half barely runs.** `asset_scores` holds 8,854 photos and
+**8,755 have no category at all** — 99 were ever looked at, **1.1%**. That is the
+3-of-295 shortlisting defect sitting in the data: the model only ever sees what
+metadata already chose, so content can only confirm metadata. A classifier at
+~15 ms an image makes the question affordable for every asset rather than for
+one in ninety.
+
+**State of the prototype:** Places365 ResNet18 downloaded and exported to ONNX
+(45.5 MB weights in an external `.onnx.data`; export needs torchvision +
+onnxscript, both build-time only). The 365-to-5 mapping is written with explicit
+lists and **14 scenes flagged ambiguous** rather than silently assigned —
+`corridor`, `lobby`, `porch`, `park`, `farm`, `campsite` and similar. Mapped
+distribution: 151 outdoor_urban, 136 indoor_public, 53 outdoor_nature, 20
+indoor_home, 5 vehicle.
+
+**Calibration is blocked on frames, not on labels.** The 4,690 labelled segments
+do not have their `keyframe_path` persisted, so the frame each label was assigned
+to must be re-derived from `asset_id` + `start_time` before the classifier can be
+scored against them.
+
+**Places365 answers `setting`, not `category`.** Subject — people / animal /
+landscape / object / screen — needs other sources, and ImageNet-1k has no generic
+"person" class. `people` comes from face detection, `screen` from OCR coverage,
+`landscape` from Places365's outdoor-natural scenes with no faces; `animal` and
+`object` are the open gap. Before filling it, check whether anything in the new
+design still reads `category`: its main consumer is `subject_policy.py`, the
+quota system the design abolishes.
+
+Probes and artefacts: `~/.immich-memories-matrix/slice2b-probes-2026-08-27/`.
+
 ### Q2 — "is it technically broken?"
 **Classical CV, and `frame_quality.py` already computes it.**
 
