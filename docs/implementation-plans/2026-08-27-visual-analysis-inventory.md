@@ -32,6 +32,42 @@ coat.
 
 ---
 
+## 1b. The craft drew this line first
+
+This split was not invented for the pipeline. Ming Thein sorts his own reject
+list by **what the display can support** — on the camera back, "Clearly out of
+focus / Incorrectly exposed / Compositional failures… / Clearly meaningless / no
+obvious subject", but "**I'll leave duplicates or near-duplicates of good shots;
+you can't judge fine detail or critical focus off the back of a camera screen**",
+and only at full screen "Not critically sharp / … / Compositionally weaker than
+the rest of the set". Mapping hint 2: *a pass may only ask what its viewing
+conditions can answer.*
+
+| question | Thein's list | instrument | measured |
+|---|---|---|---|
+| Q2 technically broken | camera back | thumbnail + CV | works; found a failure Cull missed |
+| Q3 note or document | camera back | Immich OCR | 78% cleared in 22s |
+| Q4 same thing | **full screen** | 400px tiles, model where pixels cannot decide | answer moves 150→400px, stops above |
+| Q5 / Q6 | the editor, the wall | language | — |
+
+The fidelity measurement and the craft agree without being made to. Q4 was
+measured to need 400px tiles and to stop improving above them; Thein says
+near-duplicate collapse is the one thing the small screen cannot do. Q2 runs on
+a thumbnail; Thein judges exposure and gross focus on a phone.
+
+Three consequences, each stated in the craft and each inverted by the build:
+
+1. **The first pass is meant to be the cheap one.** Hurn marks a whole contact
+   sheet in white in one sitting; Cooke's rule is that anything not clearly bad
+   survives by default. Junk cull is binary, fast, per-item. Giving it to a
+   language model made the craft's cheapest pass the pipeline's most expensive.
+2. **Coverage is not quality** (mapping hint 5: headings get ticked off, an
+   over-covered heading stops competing). "Which tiles make this wall legible"
+   asks what an episode contains — clustering, not a superlative over N.
+3. **A record shot is judged on a different axis** (mapping hint 11: "is this the
+   only one", not "is this good"), so a technical rule may not touch it. Hence
+   the OCR gate on exposure.
+
 ## 2. Where each is asked
 
 ### The #764 editorial path (being built)

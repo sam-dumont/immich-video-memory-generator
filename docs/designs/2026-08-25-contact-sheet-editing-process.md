@@ -117,6 +117,58 @@ indistinguishable pixels is arithmetic — the same category as absorbing two
 frames that share a capture instant — and only a rule about *meaning* needs a
 model.
 
+## The instrument follows the question
+
+**Added 2026-08-27.** The craft research already draws this line, and it lands
+exactly where the measurements did. Ming Thein splits his own reject list by
+**what the display can support**. On the camera back: "Clearly out of focus /
+Incorrectly exposed / Compositional failures… / Clearly meaningless / no obvious
+subject" — but "**I'll leave duplicates or near-duplicates of good shots; you
+can't judge fine detail or critical focus off the back of a camera screen.**"
+Only at full screen does he add "Not critically sharp / … / Compositionally
+weaker than the rest of the set."
+
+So the craft's own rule is mapping hint 2: *a pass may only ask what its viewing
+conditions can answer.* Read forwards, it says which pass gets which instrument.
+
+`docs/implementation-plans/2026-08-27-visual-analysis-inventory.md` sweeps every
+visual analysis in the tree and finds nineteen call sites asking **seven**
+questions. They sort onto Thein's line without being forced:
+
+| | craft | instrument | why |
+|---|---|---|---|
+| **Q2** is it technically broken | camera-back list | thumbnail + CV | Thein judges exposure and gross focus on a phone-sized screen |
+| **Q3** is it a note or a document | camera-back list | Immich OCR | "clearly meaningless / no obvious subject" is a glance |
+| **Q4** are these the same thing | **full-screen** list | 400px tiles, and a model where pixels cannot decide | "you can't judge fine detail off the back of a camera screen" |
+| **Q1** what is in this image | annotation, not a pass | closed labels by classifier; free description only where Q5 needs grounding | |
+| **Q5** what was this day | the editor | language | |
+| **Q6** does this cut work | the wall | language | |
+
+Three consequences the craft states outright and the build had inverted.
+
+**The first pass is supposed to be the cheap one.** Hurn marks a whole contact
+sheet in white in one sitting, and Cooke's rule is "if a photo is not clearly
+bad during your reject pass, it survives by default". Junk cull is *binary,
+fast, per-item*. Handing it to a language model made the cheapest pass in the
+craft the most expensive one in the pipeline. Measured, Q2 and Q3 fall to zero
+model calls.
+
+**Coverage is a different question from quality, and representatives are
+coverage.** Mapping hint 5: headings get ticked off, and an over-covered heading
+stops competing. "Which tiles make this wall legible" asks what the episode
+*contains*, not which frame is best — so it is answered by clustering, not by a
+superlative over N. Measured, the superlative is close to arbitrary: 0.42
+overlap by picture and 0.42 by position against a 0.22 random floor.
+
+**A record shot is judged on a different axis, so a technical rule may not touch
+it.** Mapping hint 11: once-only moments sit in a separate lane, "value is
+relational: the question is 'is this the only one', not 'is this good'". This is
+not a nicety. Measured on one real month, 35 of 37 blown-highlight photographs
+are documents rather than failures, and the most blown frame in the month is a
+designed announcement card. An exposure rule that actuates alone deletes it.
+**Exposure may not actuate without an OCR check; blur may, because 0 of the 20
+softest photographs carry any text.**
+
 ## Goals
 
 1. Emulate a recognisable human editing process instead of producing a score-ranked slideshow.

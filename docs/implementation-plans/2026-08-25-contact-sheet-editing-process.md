@@ -20,6 +20,13 @@ Click, GitHub Actions.
 
 **Spec:** `docs/designs/2026-08-25-contact-sheet-editing-process.md`
 
+**Which instrument answers which question:**
+`docs/implementation-plans/2026-08-27-visual-analysis-inventory.md` is the standing
+inventory — nineteen call sites, seven questions, and what should answer each. Read it
+before adding any pass that looks at pixels. Its line is the craft's own (Thein's
+camera-back list vs his full-screen list, mapping hint 2): a pass may only ask what its
+viewing conditions can answer, and it should use the cheapest instrument that can.
+
 **Why the process looks like this:** `docs/research/2026-08-25-editing-craft-research.md`
 is the sourced research on how photographers and film editors actually cull — this plan
 carries only the quotes that survived into it. Its `## Mapping hints` section ties each
@@ -637,6 +644,22 @@ git commit -m "feat(selection): read the period before making cuts (#764)"
 
 ---
 
+> **Revisited 2026-08-27.** `representative_tiles` is a superlative over N — the shape
+> measured at 0 of 12 following tile position rather than the picture. Probed under
+> cyclic rotation on six real episodes: **0.42 overlap by picture, 0.42 by position,
+> against a 0.22 random floor.** It is close to arbitrary, it ships today, and the
+> period wall — and therefore the thesis — is built on it. n=6 is thin; the finding is
+> "this is not a reasoned choice", not a precise number.
+>
+> It is also the sub-question with the best mechanical answer. Mapping hint 5 makes
+> coverage first-class: headings get ticked off, and an over-covered heading stops
+> competing. "Which tiles make this wall legible" asks what the episode CONTAINS, so it
+> is clustering — deterministic, free, and unable to anchor on position because
+> position is not an input.
+>
+> `visual_summary` stays with the model. It is language, and it scales with episodes
+> (~400 for a year) rather than assets.
+
 ## Task 6: Fuse Cull and the Record-Shot Lane into Episode Scans
 
 **Files:**
@@ -733,6 +756,30 @@ Measured on the first real run, and required of any re-run:
 - Zero `!!` in the trace. Two of the first three runs looked clean by their decision counts alone.
 
 ---
+> **Revisited 2026-08-27 against the inventory.** Cull is the craft's *fast* pass —
+> Hurn marks a whole contact sheet in one sitting, and Cooke's rule is that anything
+> not clearly bad survives by default. Both of its decision buckets are camera-back
+> questions in Thein's sense and neither needs a language model:
+>
+> - `failed` is technical, and `photos/frame_quality.py` already measures sharpness,
+>   contrast and exposure — it is imported only by the legacy photo pipeline. Measured
+>   on the dense month, the softest photograph of 1,725 is genuinely motion-blurred and
+>   **Cull banked it as `ordinary`**, so the zero-`failed` result is the pass
+>   under-firing rather than clean material.
+> - `notes` is a question about text, and Immich has already answered it:
+>   `GET /api/assets/{id}/ocr` returns boxes and strings for every asset. 2,016 assets
+>   in 22 seconds; **78% have zero boxes**, which is a proof of not-a-document rather
+>   than a probability.
+>
+> **Exposure may not actuate on its own.** Of 37 blown-highlight photographs, 35 carry
+> real text and are documents — including a designed card among the most valuable
+> images in the library. Blur is clean: 0 of the 20 softest carry any text. This is
+> mapping hint 11 — a record shot is judged on whether it is the only one, not on
+> whether it is good — and an unguarded exposure rule violates it.
+>
+> `SourceEvidence` already declares `blur`, `exposure` and `similarity` and reaches no
+> candidate. Wiring it is the change, not writing new measurement.
+
 ## Task 7: Reduce Repetition Without Asking the Model to Rank
 
 **Branch:** `feat/764-selects`
@@ -802,6 +849,26 @@ function-local import that papers over the cycle today.
 - [ ] Sheets for this pass declare their own `tile_px`. The answer moved between 150px and 400px in
   4 of 4 moments and stopped moving above 400px, so packing battles to the 120-tile page cap would
   run the pass at 150px — 86% less pixel area on its own decision.
+
+### B2. A cheap band may route the question, and does not yet exist
+
+**Added 2026-08-27.** Q4 is the only visual question that scales badly — roughly
+18,000 calls for a year — so a pixel measure that settles the easy pairs is the whole
+cost story. Two things are measured and one is not.
+
+- **An embedding does not beat a hash here.** On 656 real pairs the perceptual hash's
+  unanimous band is 291 and DINOv2 ViT-S's is 286, against 18 ms/image and an 86.6 MB
+  model. Both cap at 44%, which says the ceiling is the pairs rather than the signal.
+  Do not add the dependency for this question.
+- **The published band does not survive cross-validation.** Recalibrated on `pair-v2`
+  verdicts, the unanimous band collapses to **zero on both months** — there is a pair at
+  hamming distance 0 the model calls different. The 291/291 figure was calibrated
+  against `pair-v1`, the prompt that was then replaced. **Ground truth has a version.**
+- **Untested:** an 8×8 dhash is 64 bits of low-frequency structure and distinct pictures
+  can collide. `compute_thumbnail_hash` takes `hash_size`; 16 is the next probe.
+
+Any band that ACTS must be unanimous on two periods, not correlated on one. A band that
+only ever keeps both frames is safe by construction and needs no such proof.
 
 ### C. Selects marks; it does not reduce to one per moment
 
