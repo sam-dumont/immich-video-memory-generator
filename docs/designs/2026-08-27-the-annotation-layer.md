@@ -199,6 +199,47 @@ The signal's strength varies with the material, and that is correct rather than 
 weakness: the dense month is 58% age-known, the sparse cycling month 9%. It is
 strongest on exactly the months that are about people.
 
+### The people graph exists, and what it does not yet infer
+
+**This is already built.** `src/immich_memories/people/` and
+`immich-memories people scan` read counts, names, birth dates, month curves and
+pairwise co-occurrence out of Immich — *"nothing here looks at a pixel and nothing
+here asks you a question"* — and write a hand-editable companion where
+**confirmed beats inferred**. Run on this library it produced **78 people**:
+13 `inner`, 34 `recurring`, 27 `episodic`, 4 `event`, plus 50 links and an
+inferred owner.
+
+Each person carries an evidence block: `count`, `onset`, `first_month`,
+`last_month`, `active_months`, `span_years`, `concentration`, `continuity`.
+
+**What it does not infer is the relationship itself.** `LinkKind` is
+`tight-dyad | twin | duplicate` — "these two appear together often", never
+*couple*, *parent*, *child*, *sibling* or *grandparent*.
+
+That gap is closable from data the file already holds, with no pixels and no
+model. Demonstrated on this library:
+
+**A person whose `onset` matches their own `birth_date` was born into the
+library.** Of 18 people carrying a birth date, **4 match** — birth years 2013,
+2015, 2022 and 2024 — and those are exactly the children. One near-miss at 11
+months is a child who entered the library after their first year, so the rule
+needs a tolerance rather than an exact match.
+
+From that anchor the rest follows arithmetically:
+
+| relationship | signature, all from the existing evidence block |
+|---|---|
+| **child** | `onset` ≈ own `birth_date` |
+| **parents** | the adults with the highest co-occurrence with that child *from their onset onward*, present *before* it |
+| **couple** | two adults in a tight-dyad, both present before the child's onset, both co-occurring with the child at high rate |
+| **grandparent** | 50–70 year age gap to the child, `episodic` tier, co-occurs with the child |
+| **sibling** | two people whose onsets both match their birth dates, sharing the same high-co-occurrence adults |
+
+**Why it is worth closing.** A relationship is what turns a fact into a story: the
+dense month is not "a cluster aged 0.0 appeared in 588 photographs", it is "their
+child was born". That is the thesis, the title, and the weighting for every
+person-centred memory type — and it is metadata arithmetic, not a model call.
+
 ### What falls out of it with no model at all
 
 - **`failed`** — blur below the library's own floor. Measured: the softest
