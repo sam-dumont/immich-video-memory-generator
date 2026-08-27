@@ -247,9 +247,13 @@ answers the existing pipeline has already banked — no new model calls to valid
 
 ### Open, in priority order
 
-- [ ] **Is `setting` needed at all?** Immich already returns `city`, `state` and
-      `country` per asset (rung 1). Check what `setting` is actually consumed for
-      before evaluating another model to produce it.
+- [x] **Is `setting` needed at all?** **Measured: no, and it needs no model.**
+      Its only consumers store it, parse it, and show it to the review model as
+      *context* — it gates nothing. Immich already returns a **named place** for
+      **80%** of the dense month and 62% of the sparse one (Jette, Etterbeek,
+      Watermael-Boitsfort…), which is richer context than a five-value guess and
+      costs nothing. Grouping is unaffected: it uses GPS coordinates directly,
+      not a category. **Do not evaluate another scene classifier for `setting`.**
 - [ ] **The 23% of `people` faces miss** — someone photographed from behind.
       A person *detector* is the only thing that closes it: `hustvl/yolos-tiny`
       (Apache-2.0) or `onnxmodelzoo/ssd_mobilenet_v1_12` (Apache-2.0, COCO).

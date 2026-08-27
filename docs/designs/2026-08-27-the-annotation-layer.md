@@ -520,6 +520,16 @@ Both are plainly one picture. **On this model, writing the reason is part of how
 the answer is arrived at.** The wire contract is `pair-v3` and it carries the
 field. This was shipped as verdict-only and reverted the same day.
 
+**Do not put a scene classifier behind `setting`.** Places365 was evaluated and
+fails on this material — 60% agreement even in its top confidence bucket, because
+it is a *scene* classifier and a family photograph is a *people* photograph with a
+room behind it; it has no person concept and grasps at whatever furniture remains
+visible (a bedroom read as "hospital_room", a living room as "beauty_salon").
+**More importantly the question should not have been asked at that rung at all:**
+`setting`'s only consumers store it, parse it, and pass it to the review model as
+context, and Immich already returns a named place — Jette, Etterbeek — for 80% of
+a month, free. A real place name is better context than a five-value guess.
+
 **Do not let a distance band absorb a pair with no model call.** Calibrated and
 holdout-tested, it made wrong cuts, and the deeper problem is that a band required
 to be *unanimous* against a noisy oracle can never open: the counterexample that
