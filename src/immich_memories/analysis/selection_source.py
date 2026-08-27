@@ -39,7 +39,7 @@ from immich_memories.analysis.source_filter import (
     not_on_the_timeline,
     not_shot_here,
 )
-from immich_memories.analysis.source_quality import grounded_source_annotations
+from immich_memories.analysis.source_quality import grounded_source_annotations, is_usable_source
 from immich_memories.analysis.visual_atlas import AtlasSource
 from immich_memories.api.models import AssetType, VideoClipInfo
 
@@ -59,6 +59,10 @@ class SourceScope:
     # to judge it. Every other pool builder asks the same question here.
     excluded_filename_patterns: tuple[str, ...] = ()
     stills_need_a_camera: bool = False
+    # A renamed messaging re-encode can evade the filename patterns, especially
+    # for video. Low resolution plus absent camera metadata is the measured
+    # provenance signal; either fact on its own remains insufficient.
+    min_source_short_side: int = 1080
     # Visibility, not provenance: whether Immich shows an asset on the timeline
     # at all. Off by default and hard-coded off at generation, so pointing
     # analysis at the archive on purpose stays possible without a forgotten
@@ -591,12 +595,31 @@ def _source_exclusion_reason(
         return "owner exclusion"
     if asset.id in components:
         return "Live Photo component"
+    # The resolution-aware rule below supersedes the old still-only EXIF veto.
+    # Keeping both made a high-resolution published photo fail before its size
+    # could rescue it. Retain the legacy behaviour only when the new provenance
+    # rule has been explicitly disabled; filename exclusions always remain.
+    legacy_still_exif_veto = (
+        request.scope.stills_need_a_camera and request.scope.min_source_short_side <= 0
+    )
     if not_shot_here(
         asset,
         patterns=request.scope.excluded_filename_patterns,
-        stills_need_a_camera=request.scope.stills_need_a_camera,
+        stills_need_a_camera=legacy_still_exif_veto,
     ):
         return "not shot on this camera"
+    width, height = _source_dimensions(source)
+    if (
+        request.scope.min_source_short_side > 0
+        and not asset.is_favorite
+        and not is_usable_source(
+            width=width,
+            height=height,
+            has_camera_exif=_has_camera_exif(asset),
+            min_short_side=request.scope.min_source_short_side,
+        )
+    ):
+        return "low-resolution source without camera metadata"
     if request.scope.library_ids:
         if dependencies.library_membership is None:
             raise ValueError("library scope requires a library_membership dependency")
@@ -609,6 +632,19 @@ def _source_exclusion_reason(
     ):
         return _scope_exclusion_reason(asset, request.scope)
     return None
+
+
+def _source_dimensions(source: Asset | VideoClipInfo) -> tuple[int, int]:
+    """Use probed motion dimensions when available, then Immich's asset facts."""
+    if isinstance(source, VideoClipInfo) and source.width and source.height:
+        return source.width, source.height
+    asset = _asset(source)
+    return asset.width, asset.height
+
+
+def _has_camera_exif(asset: Asset) -> bool:
+    exif = asset.exif_info
+    return bool(exif and (exif.make or exif.model))
 
 
 def _validate_prepared_source(prepared: PreparedEditorialSource) -> None:

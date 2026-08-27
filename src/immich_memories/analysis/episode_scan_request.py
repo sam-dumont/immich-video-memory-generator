@@ -182,13 +182,13 @@ def _candidate_annotation(
                 tagged_people=len(candidate.source.people or ()),
                 category=category,
             ),
-            *_who_and_where(candidate),
+            *candidate_who_and_where(candidate),
             *candidate.grounded_annotations,
         )
     )
 
 
-def _who_and_where(candidate: EditorialCandidate) -> tuple[str, ...]:
+def candidate_who_and_where(candidate: EditorialCandidate) -> tuple[str, ...]:
     """Place and recognised people — free facts this request was not sending.
 
     `subject-evidence` collapses everyone present into one enum value, so a ride

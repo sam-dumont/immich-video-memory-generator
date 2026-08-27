@@ -189,3 +189,69 @@ new path carries four write-only artifacts. Order of work:
 Every new model call owes a line: *which rung of the ladder answers this
 question, and why 1–4 could not.* If you cannot write that line, you are
 spending calls on meaning the ladder already pays for.
+
+## Later owner-directed prototype: cards → thesis → cut
+
+> **Measured 2026-08-27; pending the owner's visual gate.** This does not yet
+> replace item 6 or authorize a production rewrite. It records a materially
+> different instrument so it is not lost or confused with the dead flat
+> Structure prompts above.
+
+The new shape is two scope-level **text** calls over a complete chronological
+moment wall:
+
+1. build one factual card per production-grouped moment from every banked
+   400px asset description plus deterministic facts (count, media, span,
+   favourites, recognized people, place);
+2. tell the first call what kind of memory is being made and ask what this
+   candidate set is about; give that grounded brief and the same complete wall
+   to the second call, which chooses moments under the duration-derived cap.
+
+No asset is sampled into the wall and no authored subject taxonomy appears in
+either prompt. The thesis has separate evidence lanes for sustained threads
+across dates and one-off, non-redundant turning points. This distinction was
+necessary: the first free-form thesis collapsed the month into the loudest
+named event; a first attempt at a turning-point lane merely named that same
+event twice. The useful formulation says that an ordinary-looking record may
+document a private change whose consequence is not proportional to picture
+count.
+
+**A source-gate bug invalidated the first runs.** The new low-resolution rule
+was correct, but the old still-only missing-EXIF veto ran first. One real
+4000×2666 official race photograph with location and no camera make/model was
+therefore rejected before resolution could rescue it. The corrected rule is:
+known messaging filenames reject; otherwise low resolution **and** missing
+camera metadata reject, for photos and videos alike. June changed from 246 to
+**417** source assets and from 67 to **149** moments. The corrected description
+bank reused 246 lifetime answers and paid for 171 new 400px descriptions.
+
+**Corrected June result, dense Q4 model, temperature 0, no thinking:** a
+60-second recap reserves 3.5 seconds opening + 4 seconds ending and assumes 4
+seconds per final visual, so capacity is `floor(52.5 / 4) = 13`. The final V4
+cut contains 13 moments across 9 dates: five sustained-activity moments (three carrying
+recognized-person/shared-activity evidence), one private turning-point moment,
+two choices tied specifically to the dense named event, and six moments
+containing the restored high-resolution material. The brief names both the
+sustained activity and the private turning point. All four favourite-bearing
+moments ship.
+
+That last property is code, not prompt obedience. V4's first selector omitted
+one favourite despite an explicit MUST. The replayable prototype now admits
+favourite moments deterministically, subtracts them from capacity, asks the
+model for only the remaining nine, and merges the cut chronologically. The
+uncached V4 thesis took 61s; the final nine-slot selection took 59s. Re-running
+the same 149 cards and thesis was an exact local-cache hit.
+
+Replay code: `scripts/probe_description_moment_cut.py`. Private evidence lives
+under `~/.immich-memories-matrix/description-bank-corrected-source-2026-08-27/`
+and
+`~/.immich-memories-matrix/description-moment-cards-metadata-thesis-v4-favourites-q4-2026-08-27/`.
+The earlier description-cut and card directories are deliberately retained as
+pre-source-fix evidence, not current June results.
+
+Why rung 6 is being tested here: metadata and arithmetic provide who, where,
+owner acts, grouping and capacity; they cannot say that a repeated activity and
+a private life change form this particular month's story. The model is not making
+149 independent membership guesses. It sees scarcity, the complete set and the
+memory type in one comparison. Whether that distinction is enough to supersede
+item 6 is the pending human read of the actual 13 moments.

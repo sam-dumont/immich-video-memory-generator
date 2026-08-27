@@ -56,23 +56,22 @@ def test_only_source_scope_and_owner_exclusions_apply_before_pass_zero() -> None
 
 
 def test_source_observations_survive_without_running_legacy_selectors(monkeypatch) -> None:
-    """Observed quality and subject signals inform later passes; they never cull source material."""
-    from immich_memories.analysis import source_filter, source_quality, subject_policy
+    """Eligible source facts survive without invoking the old ranking pipeline."""
+    from immich_memories.analysis import source_filter, subject_policy
     from immich_memories.photos import burst_dedup, moment_suppression
 
     def forbidden(*_args, **_kwargs):
         raise AssertionError("legacy selection must not run before pass 0")
 
     monkeypatch.setattr(source_filter, "not_shot_here", forbidden)
-    monkeypatch.setattr(source_quality, "is_usable_source", forbidden)
     monkeypatch.setattr(subject_policy, "filter_candidates_by_subject", forbidden)
     monkeypatch.setattr(burst_dedup, "drop_burst_duplicates", forbidden)
     monkeypatch.setattr(moment_suppression, "suppress_photos_covered_by_motion", forbidden)
     clip = VideoClipInfo(
         asset=make_asset("evidence", exif_make=None, exif_model=None, duration="0:00:01.250"),
         duration_seconds=1.25,
-        width=640,
-        height=480,
+        width=1920,
+        height=1080,
         live_burst_still_ids=["evidence", "other-burst-member"],
         llm_category="screen",
     )
@@ -83,13 +82,95 @@ def test_source_observations_survive_without_running_legacy_selectors(monkeypatc
 
     assert prepared.candidate_ids == ("evidence",)
     assert prepared.candidates[0].grounded_annotations == (
-        "resolution:640x480",
-        "reencode-suspected",
+        "resolution:1920x1080",
         "duration:1.250s",
         "motion:available",
         "burst-members:2",
         "subject:screen",
     )
+
+
+def test_low_resolution_video_without_camera_metadata_is_source_excluded() -> None:
+    """A renamed messaging re-encode is settled before any editorial pass sees it."""
+    suspect = VideoClipInfo(
+        asset=make_asset(
+            "suspect",
+            original_file_name="renamed-export.mp4",
+            exif_make=None,
+            exif_model=None,
+        ),
+        duration_seconds=1.25,
+        width=352,
+        height=640,
+    )
+    old_camera_original = VideoClipInfo(
+        asset=make_asset("old-camera", exif_make="Nokia", exif_model="N95"),
+        duration_seconds=2.0,
+        width=640,
+        height=480,
+    )
+    full_resolution_without_exif = VideoClipInfo(
+        asset=make_asset("full-resolution", exif_make=None, exif_model=None),
+        duration_seconds=2.0,
+        width=1920,
+        height=1080,
+    )
+
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(
+            source_fetcher=lambda _scope: (
+                suspect,
+                old_camera_original,
+                full_resolution_without_exif,
+            )
+        ),
+    )
+
+    assert set(prepared.candidate_ids) == {"old-camera", "full-resolution"}
+    assert prepared.excluded_ids == ("suspect",)
+    story = prepared.trace.story_of("suspect")
+    assert story.dropped_at == "source-eligibility"
+    assert story.reason == "low-resolution source without camera metadata"
+
+
+def test_high_resolution_still_without_camera_metadata_is_source_eligible() -> None:
+    """A published high-res photo can lose camera EXIF without becoming a re-encode."""
+    official_photo = make_asset(
+        "official-photo",
+        original_file_name="official-photo.jpg",
+        exif_make=None,
+        exif_model=None,
+    ).model_copy(update={"type": AssetType.IMAGE, "width": 4000, "height": 2666})
+
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(
+            scope=SourceScope(stills_need_a_camera=True, min_source_short_side=1080)
+        ),
+        EditorialDependencies(source_fetcher=lambda _scope: (official_photo,)),
+    )
+
+    assert prepared.candidate_ids == ("official-photo",)
+    assert prepared.excluded_ids == ()
+
+
+def test_favourite_overrides_low_resolution_source_inference() -> None:
+    """A star is direct owner evidence even when the file resembles a re-encode."""
+    favourite = make_asset(
+        "favourite",
+        original_file_name="renamed.jpg",
+        exif_make=None,
+        exif_model=None,
+        is_favorite=True,
+    ).model_copy(update={"type": AssetType.IMAGE, "width": 640, "height": 480})
+
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope(min_source_short_side=1080)),
+        EditorialDependencies(source_fetcher=lambda _scope: (favourite,)),
+    )
+
+    assert prepared.candidate_ids == ("favourite",)
+    assert prepared.excluded_ids == ()
 
 
 def test_groups_conserve_candidates_in_canonical_order_with_stable_ids() -> None:
@@ -768,11 +849,11 @@ def test_a_video_no_still_claims_is_footage_and_stays_a_candidate() -> None:
 
 
 def test_material_that_never_came_from_this_camera_is_not_editorial_source() -> None:
-    """Half a real month is forwarded graphics, and none of it is theirs to remember.
+    """Low-res forwarded graphics and named messaging exports are not source.
 
-    Measured on the real library: 282 of 543 June visuals and 350 of 654 in
-    August carry no camera at all. The story built on them was about a festival
-    the owner never attended.
+    Missing camera metadata alone is insufficient: published and official
+    photographs often lose it. The renamed forwarded case is settled by the
+    measured conjunction of low resolution and missing camera metadata.
     """
     when = datetime(2023, 8, 5, 12, tzinfo=UTC)
     theirs = make_asset("theirs", original_file_name="IMG_0776.HEIC", file_created_at=when)
@@ -784,7 +865,7 @@ def test_material_that_never_came_from_this_camera_is_not_editorial_source() -> 
         exif_model=None,
         file_created_at=when,
     )
-    forwarded.type = AssetType.IMAGE
+    forwarded = forwarded.model_copy(update={"type": AssetType.IMAGE, "width": 640, "height": 480})
     messaged = make_asset(
         "messaged",
         original_file_name="img-20230805-wa0007.jpg",

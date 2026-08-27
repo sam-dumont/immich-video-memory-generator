@@ -1529,20 +1529,26 @@ def test_arbitrary_unrelated_topics_share_the_same_production_flow_without_quota
     assert sum(request.actual_calls for request in result.prepared.trace.requests) == 2
 
 
-def test_reencode_reaches_fused_visual_request_with_pixels_and_empty_cull_keeps_it(
+def test_reencode_is_rejected_before_the_fused_visual_request(
     tmp_path: Path,
 ) -> None:
-    """A weak metadata prior remains provider-visible evidence, never a source deletion."""
+    """Known-low resolution without camera evidence never becomes editorial material."""
     from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
     from immich_memories.analysis.llm_query import LLMTransportAttempt
     from immich_memories.analysis.selection_flow import run_editorial_selection
     from immich_memories.api.models import VideoClipInfo
 
-    clip = VideoClipInfo(
+    reencode = VideoClipInfo(
         asset=make_asset("reencode", exif_make=None, exif_model=None, duration="0:00:01.250"),
         duration_seconds=1.25,
         width=640,
         height=480,
+    )
+    camera_original = VideoClipInfo(
+        asset=make_asset("camera-original", duration="0:00:01.250"),
+        duration_seconds=1.25,
+        width=1920,
+        height=1080,
     )
     preview_output = BytesIO()
     Image.new("RGB", (200, 150), "red").save(preview_output, "JPEG")
@@ -1596,7 +1602,7 @@ def test_reencode_reaches_fused_visual_request_with_pixels_and_empty_cull_keeps_
         result = run_editorial_selection(
             EditorialSelectionRequest(scope=SourceScope()),
             EditorialDependencies(
-                source_fetcher=lambda _scope: (clip,),
+                source_fetcher=lambda _scope: (reencode, camera_original),
                 preview_jpeg=lambda _asset: preview_bytes,
             ),
             gateway_factory=gateway_factory,
@@ -1605,16 +1611,19 @@ def test_reencode_reaches_fused_visual_request_with_pixels_and_empty_cull_keeps_
             review_output_dir=tmp_path / "review",
         )
 
-    assert result.prepared.candidate_ids == ("reencode",)
-    assert "reencode-suspected" in result.prepared.candidates[0].grounded_annotations
-    assert _survivor_ids(result.pass_one) == ("reencode",)
+    assert result.prepared.candidate_ids == ("camera-original",)
+    assert result.prepared.excluded_ids == ("reencode",)
+    assert result.prepared.trace.story_of("reencode").reason == (
+        "low-resolution source without camera metadata"
+    )
+    assert _survivor_ids(result.pass_one) == ("camera-original",)
     assert result.pass_one.rejected == ()
     episode_index = next(
         index
         for index, prompt in enumerate(provider_prompts)
         if "chronological episode pack" in prompt
     )
-    assert "reencode-suspected" in provider_prompts[episode_index]
+    assert "reencode-suspected" not in provider_prompts[episode_index]
     assert len(attached_images[episode_index]) == 1
     with Image.open(BytesIO(attached_images[episode_index][0])) as sheet:
         red, _green, blue = sheet.convert("RGB").getpixel((100, 75))
