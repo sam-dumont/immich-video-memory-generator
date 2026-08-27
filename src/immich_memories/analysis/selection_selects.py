@@ -398,7 +398,11 @@ def _ask_one_pair(
                 schema_version=PAIR_SCHEMA_VERSION,
                 pages=(page,),
                 ordered_input_ids=tuple(candidate.asset_id for candidate in pair),
-                ordered_group_ids=(scope_id,),
+                # Pair sameness belongs to these two pictures forever. The
+                # moment id is only where this memory happened to present them;
+                # including it strands the verdict when another scope adds or
+                # removes a neighbouring frame.
+                ordered_group_ids=(),
                 grounded_annotations=(),
                 upstream_material=(),
                 render_version=f"selects/pair/{arrangement}",

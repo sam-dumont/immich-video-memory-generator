@@ -457,6 +457,50 @@ def test_a_first_arrangement_saying_different_settles_it(tmp_path: Path) -> None
     assert len(result.survivors) == 2
 
 
+def test_a_banked_pair_survives_a_change_in_moment_membership(tmp_path: Path) -> None:
+    """A fact about A and B is not invalidated when C joins their moment.
+
+    A year, a month, and a person memory can place the same adjacent pictures
+    in differently shaped moments. Pair sameness depends on the two pictures,
+    not on the temporary group that happened to present them.
+    """
+    pair = (
+        make_asset("frame-a", file_created_at=WHEN),
+        make_asset("frame-b", file_created_at=WHEN + timedelta(seconds=2)),
+    )
+    first_scope = _prepared(*pair)
+    wider_scope = _prepared(
+        *pair,
+        make_asset("frame-c", file_created_at=WHEN + timedelta(seconds=4)),
+    )
+    asks: list[str] = []
+
+    async def _answer(prompt, _config, **kwargs):
+        asks.append(prompt)
+        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
+        return _pair_answer(same=False)
+
+    # WHY: query_llm is the only external provider boundary; both production
+    # scopes, their sheets, the gateway and the durable cache stay real.
+    with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
+        run_selects(
+            first_scope,
+            first_scope.candidates,
+            requester=_gateway(tmp_path, first_scope.trace),
+            sheet_output_dir=tmp_path / "first-scope",
+            frame_cache_dir=tmp_path / "frames",
+        )
+        run_selects(
+            wider_scope,
+            wider_scope.candidates,
+            requester=_gateway(tmp_path, wider_scope.trace),
+            sheet_output_dir=tmp_path / "wider-scope",
+            frame_cache_dir=tmp_path / "frames",
+        )
+
+    assert len(asks) == 2, "A/B is reused; only the new B/C pair reaches the model"
+
+
 def test_an_absorbed_frame_can_be_reopened_from_the_trace(tmp_path: Path) -> None:
     """Murch's rule is met by evidence, not by prose.
 
