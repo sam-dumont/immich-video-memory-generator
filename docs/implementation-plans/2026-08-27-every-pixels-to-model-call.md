@@ -6,12 +6,20 @@ issue: 764
 
 # Every Pixels-to-Model Call
 
-> **Superseded 2026-08-27 by `2026-08-27-visual-analysis-inventory.md`.** This
-> page covered only the #764 editorial path and was assembled one call at a
-> time. The inventory sweeps all of `src/` including the legacy selector and the
-> adjacent subsystems, and finds that nineteen call sites ask **seven** distinct
-> questions. Its §3 also records that the hash band this page treated as ready
-> does not survive cross-validation.
+> # SUPERSEDED — DO NOT ACT ON THIS PAGE
+>
+> Replaced 2026-08-27 by `2026-08-27-visual-analysis-inventory.md`, which sweeps
+> all of `src/` rather than only the #764 editorial path, and finds that nineteen
+> call sites ask **seven** distinct questions.
+>
+> **Its §6 recommendation — "ship the measured hash band, 291/291 unanimity" — is
+> FALSE and must not be followed.** Cross-validated against current verdicts the
+> band collapses to zero on both months, at every hash resolution; the
+> counterexample is a model error rather than a hash collision. The 291/291 was
+> calibrated against a prompt that has since been replaced.
+>
+> Kept only as a record of how the inventory was arrived at. Every conclusion in
+> it that still holds is restated in the inventory, which is the page to read.
 
 > Audited 2026-08-27 against the implementation on `feat/764-selects` and Tasks
 > 0–15 of the implementation plan. The goal set by the owner: carry as much

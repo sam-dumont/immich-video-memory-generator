@@ -10,10 +10,22 @@ supersedes: corpus-wide Selects as built in Tasks 7-9
 > The picture has its own value. The editing says what that value is worth for
 > *this* memory.
 
-Measured 2026-08-27 against the real library. A year of a small child is 12,072
-to 21,458 assets, and Selects as built costs `2 x (frames - moments)` model calls
-over the whole corpus — about **13,600 calls, six hours**, and it pays that again
-for the next question over the same photos. That is the defect this design fixes.
+Measured 2026-08-27 against the real library, and it pays that cost again for the
+next question over the same photos. That is the defect this design fixes.
+
+**The year figure, derived once so it is not quoted three different ways.** Take
+the larger measured year, 21,458 assets. Source eligibility and Cull remove ~4%,
+leaving ~20,600. Stage A absorbs exact-instant twins at the dense month's measured
+38%, leaving **~12,800 frames** across **~3,000 moments**. Adjacent pairs are
+therefore `frames − moments` ≈ **9,800**, and the pass costs **1.39 calls per
+pair** measured (910 for 653, after the short-circuit and the adaptive second
+vote) — about **13,600 calls**.
+
+At the **pair** call cost of ~1.06s that is roughly **four hours of model time**;
+at the ~1.6s per call observed end-to-end in a real gate run, about **six**. Both
+numbers appear in this corpus and they are the same measurement with and without
+per-call overhead. **The sheet call cost of ~12s is a different unit and must not
+be multiplied by a pair count** — earlier drafts did exactly that.
 
 ---
 
@@ -26,8 +38,12 @@ for the next question over the same photos. That is the defect this design fixes
 | a 300-asset month | **~10 clips** |
 | a 2,000-asset year | **~120 clips** |
 
-Three to six percent survives, and transitions, month dividers and animated trip
-maps consume part of even that. Roughly **10 to 15 items per minute of footage**.
+**These are ratios, not a claim about library size.** Three to six percent
+survives, at roughly **10 to 15 items per minute of footage**, and transitions,
+month dividers and animated trip maps consume part of even that. The library
+measured throughout this document is far larger than the table's illustration —
+one month is 2,016 assets and one year is **12,072 to 21,458** — which only makes
+the point sharper: the denominator grows and the numerator does not.
 
 So the job is not to find the best 120. It is to make sure the 120 that ship
 carry the weight — the ones that say "this was great". The corpus is
@@ -42,18 +58,41 @@ favourites for ~120 slots.
 2. **Losing an occasion is not acceptable.** The hospital, the birthday, the trip
    — each must keep at least one frame. This is the invariant, and it is the only
    one of its kind.
+
+   **An occasion is an EPISODE.** The three units, stated once so they are not
+   re-derived: an **episode** is a temporal-and-place block — the party, the race,
+   the hospital day; a **moment** is a content-homogeneous burst inside one; an
+   **occasion** is the human word for an episode and is not a fourth unit. The
+   invariant is therefore *zero episodes with zero survivors*, and it is measured
+   in episodes.
 3. **Emotional weight is the target, not completeness.** Coverage exists so the
    story has its beats, not so every event gets equal airtime.
+
+**What the favourite law becomes at this scale.** One measured year holds 1,791
+favourites and ships ~120 clips, so "every favourite ships" is arithmetically
+impossible and was never the rule. The rule, hoisted here from the superseded
+Pass 2 section because it is the only formulation that scales: **each starred
+episode that ships uses a starred representative.** A favourite still wins its
+moment against a non-favourite, and Structure may still omit a whole episode with
+a named reason — but no pass may ship an episode's non-favourite while that
+episode's favourite sits unused.
 
 ### The gate assertions this implies
 
 Both computable with no model, both cheap enough to assert on every run:
 
-- **zero moments with zero survivors** — measured on the dense month, satisfied by
-  both a model-driven and a hash-only Selects;
+- **zero EPISODES with zero survivors** — the invariant, in its own unit. The
+  earlier draft asserted this over *moments*, which is both the wrong unit and too
+  weak to bite: a hash-only Selects satisfies it while dropping the newborn on the
+  hospital scale and the first bath, because those frames' moments keep a
+  neighbour. Episode-level is the level the invariant is about.
 - **candidates per shipped slot** — the dense month offered 281 for ~45, an
-  over-supply of 6x. A run that falls near 1x has cut too hard somewhere upstream
-  and should say so.
+  over-supply of 6x. A run near 1x has cut too hard upstream and must say so.
+
+**Neither assertion is sufficient on its own, and this is deliberate.** They are
+cheap continuous checks, not a substitute for the owner reading a gate sheet.
+Anything that changes *which frame within an episode* ships passes both and still
+has to be looked at.
 
 **Every threshold in this document is argued against this bar and not against
 "never make a wrong cut".** That earlier framing was the source of several

@@ -92,10 +92,13 @@ is depicted**:
 Anything that can be done **safely** by arithmetic or signal processing must be.
 This is a feasibility constraint, not an aesthetic one. Measured on the real
 library: one month is 2,016 assets, and a year of a small child is 12,072 to
-21,458. The pairwise Selects question costs `2 × (frames − moments)` calls at
-roughly 1.6s each on the owner's local single-stream endpoint, which is about
-eight hours for one yearly recap. An editorial process that only runs on a month
-is not the product.
+21,458. The pairwise Selects question runs over `frames − moments` adjacent pairs
+at a measured 1.39 calls each — about **13,600 calls**, four to six hours on the
+owner's local single-stream endpoint depending on whether per-call overhead is
+counted. The full derivation is in
+`docs/designs/2026-08-27-the-annotation-layer.md` §1 and is the only one that
+should be quoted. An editorial process that only runs on a month is not the
+product.
 
 ### How a model pass is replaced
 
@@ -112,13 +115,25 @@ The order matters, and it is the opposite of the usual one:
 5. State the residual loss out loud. "How much do we lose" is the deliverable,
    and it belongs in the trace as well as the plan.
 
-Worked example, Selects Stage B: 656 real pairs were judged by the model in both
-arrangements, then perceptual hamming distance was computed for the same pairs.
-Below distance 12 the model answered "same" 291 times out of 291 — a clean
-separation, so that band needs no call. The opposite band barely exists
-(unanimous "different" only at distance ≥ 38, 2% of pairs), which is the sort of
-thing intuition gets backwards. See
-`docs/implementation-plans/2026-08-27-what-the-pass-costs.md`.
+Worked example, Selects Stage B — **including how it went wrong, because that is
+the instructive half.** 656 real pairs were judged by the model in both
+arrangements and perceptual hamming distance computed for the same pairs. Below
+distance 12 the model answered "same" 291 times out of 291, which looked like a
+clean separation and was reported as ready to ship.
+
+**It was not.** Cross-validated on a second month against the *current* verdicts,
+the unanimous band collapses to **zero on both months** — and at every hash
+resolution tried (8, 12, 16, 24). The recurring counterexample turned out to be a
+**model error, not a hash collision**, which means a band required to be unanimous
+against a noisy oracle can never open. The 291/291 had been calibrated against a
+prompt version that was then replaced: **ground truth has a version, and a
+threshold derived from it expires when that version does.**
+
+What survived is narrower and exact: the pixels decide only whether the *second*
+arrangement is worth buying, never whether a pair is absorbed. That reproduced 653
+of 653 decisions while removing 30% of the calls. See
+`docs/implementation-plans/2026-08-27-what-the-pass-costs.md` and
+`docs/designs/2026-08-27-the-annotation-layer.md` §6b.
 
 This does not weaken "every pass judges pixels". It says a rule about
 indistinguishable pixels is arithmetic — the same category as absorbing two

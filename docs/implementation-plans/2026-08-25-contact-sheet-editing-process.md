@@ -859,7 +859,7 @@ function-local import that papers over the cycle today.
 ### B2. A cheap band may route the question, and does not yet exist
 
 **Added 2026-08-27.** Q4 is the only visual question that scales badly — roughly
-18,000 calls for a year — so a pixel measure that settles the easy pairs is the whole
+13,600 calls for a year — so a pixel measure that settles the easy pairs is the whole
 cost story. Two things are measured and one is not.
 
 - **An embedding does not beat a hash here.** On 656 real pairs the perceptual hash's

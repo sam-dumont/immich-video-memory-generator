@@ -79,7 +79,7 @@ Three consequences, each stated in the craft and each inverted by the build:
 | `episode_scan_request.py` → `notes` | Q3 | fused, free |
 | `episode_scan_request.py` → `failed` | Q2 | fused, free |
 | `period_insight.py` | Q5 | 1 |
-| `selection_selects.py` (pair) | Q4 | **~18,000** |
+| `selection_selects.py` (pair) | Q4 | **~13,600** (derivation: annotation-layer design §1) |
 | Structure (Task 9) | Q6 | 1–2 |
 | Projection (Task 10) | Q5 | 0–1 |
 | Fine cut (Task 11) | Q6 | 1–2 |
@@ -222,7 +222,7 @@ input.
 
 ### Q5 — "what was this day / episode / period?"
 **Language, irreducibly.** But it scales with *episodes*, not assets — roughly
-400 calls for a year rather than 18,000. Six sites ask it today (episode scan,
+400 calls for a year rather than 13,600. Six sites ask it today (episode scan,
 period insight, moment reading, special day ×2, projection) and they are close
 to the same question asked at different altitudes.
 
@@ -309,7 +309,7 @@ For a year of ~21,500 assets:
 
 | | calls before | calls after |
 |---|---|---|
-| Q4 pairs | ~18,000 | the ambiguous band only — **unknown until the band is recalibrated** |
+| Q4 pairs | ~13,600 | in-cut moments only — **unknown until the tentative cut is specified** |
 | Q2 failed | fused | 0 |
 | Q3 notes | fused | 0 |
 | Q1 closed labels | per-asset in legacy | 0 |
