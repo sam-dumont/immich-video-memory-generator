@@ -94,6 +94,41 @@ on *"is this good"*. A technical rule may not touch one.
 
 ---
 
+## 3b. Sound is the other sense, and it is not free
+
+`analysis/speech_analysis.py` and `analysis/segment_transcription.py` exist and
+are wired into `unified_analyzer.py`. **The #764 editorial path references
+neither**, the same way it never calls `photos/frame_quality.py`. Three separate
+jobs are hiding under "audio", and they do not have the same cost or the same
+home.
+
+| job | cost | belongs |
+|---|---|---|
+| voice activity — where speech IS | cheap | rendering, so a cut never lands mid-sentence |
+| spectrogram alignment | cheap, deterministic | rendering, merging a Live Photo burst |
+| **transcription — what was SAID** | **expensive** | the episode reading, demand-driven |
+
+**Transcription is the only signal in the pipeline that reaches a different
+sense.** A birthday on a contact sheet is people around a table; "happy birthday"
+being sung is a birthday. A name called out, a weight read aloud, a "look at the
+camera" — none of it is visible. So it is not decoration on the visual reading;
+it is the thing that disambiguates a moment the pixels cannot.
+
+It belongs in layer 1 by lifetime — what was said in a video does not depend on
+whether the question was the year or the trip, so it is banked per asset and
+reused by every memory. It is the one annotation field that is **not** free, so
+it is the one field acquired on demand rather than up front:
+
+- gated by voice activity, which is cheap, as the config already does;
+- run for moments in contention or in the cut, on the same rule as Selects;
+- never run to fill the library speculatively.
+
+Two measured rules carried over, so they are not rediscovered: transcribe a **30
+second window** rather than the clip's exact span, because short slices were the
+defect and not the model; and **do not filter on confidence** — the best real
+transcripts measured 0.41 to 0.55, so a confidence gate is a length filter
+pointed the wrong way.
+
 ## 4. Layer 2 — pairwise sameness
 
 A verdict about two pictures. It must be keyed by **the two pictures**.
