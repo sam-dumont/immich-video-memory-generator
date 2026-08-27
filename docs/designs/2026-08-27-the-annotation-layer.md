@@ -291,6 +291,25 @@ overrides. Deterministic, free, and position is not an input so it cannot have t
 measured failure mode. Mapping hint 5 is the craft's version: headings get ticked
 off, and an over-covered heading stops competing.
 
+**Measured, and the margin is not close.** Scoring a representative set by the
+mean distance from every frame in the episode to its nearest representative —
+low means the wall shows you the episode — on real episodes:
+
+| picks | mean distance to nearest representative |
+|---|---|
+| the model's | 4.64 |
+| **farthest-first clustering** | **2.49** |
+| a random k-subset | 4.79 |
+
+**Clustering is 46% better; the model is 3% better than random.** That is the
+second independent probe to reach this verdict — the rotation control found the
+model tracking neither the picture nor the position (0.42 / 0.42 against a 0.22
+floor). Different instruments, same answer.
+
+*n = 5 episodes.* Thin, and it is the effect size rather than the sample that
+makes this actionable: enough to build the clustering version and gate it, not
+enough to declare the matter closed.
+
 With that, the order is specifiable:
 
 | # | stage | cost | unit |
