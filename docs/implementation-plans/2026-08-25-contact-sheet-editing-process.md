@@ -221,6 +221,55 @@ is still one flow: the UI cannot select, score, suppress, or rebuild membership 
 
 ---
 
+## Phase M: Evaluate the instruments before rewriting any pass
+
+**Added 2026-08-27, owner directed: no pass is rewritten until the instrument
+evaluation is finished.** Tasks 4–11 all assume a particular instrument answers a
+particular question. Several of those assumptions have already been measured
+false, and rewriting a pass around an instrument that does not work is more
+expensive than measuring first.
+
+Every entry descends the instrument ladder
+(`docs/designs/2026-08-27-the-annotation-layer.md` §0b) and is calibrated against
+answers the existing pipeline has already banked — no new model calls to validate.
+
+### Settled
+
+| question | instrument | verdict |
+|---|---|---|
+| representatives for the wall | farthest-first clustering | **46% better coverage**; the model is 3% better than random |
+| `failed` | Laplacian variance | **works**; floor is the bottom ~1%, not 10% |
+| documents / `notes` | Immich OCR coverage | **routes it** — 78% cleared as proof; cannot close it (a record shot sits at 18.8%) |
+| `category: people` | Immich face clusters | **98% precision, 77% recall** |
+| pair sameness | perceptual hash alone | **model required** — the hash drops distinct pictures |
+| pair sameness | DINOv2 ViT-S | **ties the hash** (286 v 291); does not earn the dependency |
+| `setting` | Places365 ResNet18 | **fails** — 60% even at high confidence; no person concept, and family photos are people photos |
+
+### Open, in priority order
+
+- [ ] **Is `setting` needed at all?** Immich already returns `city`, `state` and
+      `country` per asset (rung 1). Check what `setting` is actually consumed for
+      before evaluating another model to produce it.
+- [ ] **The 23% of `people` faces miss** — someone photographed from behind.
+      A person *detector* is the only thing that closes it: `hustvl/yolos-tiny`
+      (Apache-2.0) or `onnxmodelzoo/ssd_mobilenet_v1_12` (Apache-2.0, COCO).
+- [ ] **DINOv2 for EVENT clustering** — the job it was never tested on. It tied a
+      hash on near-duplicates, where a hash is strong; "same event, different
+      angle" is where a hash's pixel-layout assumption breaks.
+- [ ] **`animal`** — 6% of labelled segments, and the only `category` value with
+      no free source.
+- [ ] **Relationship inference** from `people.yaml` — child by onset matching
+      birth date, then parents and couples by co-occurrence. Arithmetic, rung 3.
+
+### Rules for this phase
+
+- Calibrate against **banked answers**, never against intuition.
+- A band that **acts** needs unanimity on real data plus a second period; a band
+  that only ever **keeps** is safe by construction.
+- **Look at the pixels** for every counterexample before believing a table.
+- Record negatives with their numbers in §6b of the annotation-layer design. Half
+  of this phase's value is the models we do *not* add.
+
 ## Task 0: Bootstrap CI for the Feature Trunk
 
 **Branch:** `ci/764-feature-trunk`, based on `feature/764-editorial-selection`
