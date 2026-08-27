@@ -63,6 +63,14 @@ asset. If frames 1, 2, 3 are one moment and only 2 is tagged, 1 and 3 belong to
 that moment too. The editorial path fetches a date range rather than a person, so
 these may be genuinely unnecessary — **but that has to be decided, not defaulted.**
 
+**Two of these were listed CARRIED and were not.** Place and named people both
+sat in the CARRIED column while `grep` says the new path never imported either.
+That is the same failure as the three at the top of this page, found the same
+way -- by looking at what the model actually receives rather than at what a
+column says. **A status on this page is a claim, and a claim about a rule is
+worth exactly one grep.** Re-check the CARRIED rows, not just the AT RISK ones:
+AT RISK is honest about being unbuilt, CARRIED is the one that can be wrong.
+
 **On `looks_like_a_photograph`:** its docstring records the cost of getting it
 wrong — a burst carrier sent to the video analyser "fails in milliseconds, is
 marked attempted, and is never looked at again… it ships undescribed."
@@ -179,7 +187,8 @@ rather than correctness.
 |---|---|---|
 | Front camera / selfie, from the EXIF lens name | `selection_review._front_camera` | **AT RISK** |
 | Subject class from Immich face tags + model label | `subject_policy.classify_subject` | **CARRIED** as evidence-only |
-| Place as city/state/country, not a caption | `selection_review._place_for_llm` | **CARRIED** — Task 5 grounding |
+| Who Immich recognised, by name | `Asset.people` | **RESTORED** `278c073b` — `subject-evidence` collapsed everyone present to one enum value, so 39 named face tags on one month reached the model as the word "people" |
+| Place as city/state/country, not a caption | `selection_review._place_for_llm` | **RESTORED** `278c073b` — was listed CARRIED and was not: that helper had no caller on the #764 path, and the episode scan sent resolution and exposure but no place |
 | Which moment a clip belongs to | `selection_review._clips_block` | **CARRIED** |
 
 ---
