@@ -280,10 +280,17 @@ arrangement is worth buying.
 across pack sizes, so the loss is the model's own noise rather than scope
 contamination — but 20% of decisions is not a trade this pass can make.
 
-**Do not swap the perceptual hash for an embedding.** DINOv2 ViT-S was measured
-on the same 656 pairs with the same verdicts: unanimous band 286 against the
-hash's 291. A tie, for 18 ms/image and an 86.6 MB model. Both cap at 44%, which
-says the ceiling is the pairs and not the signal.
+**Do not swap the perceptual hash for an embedding — for PAIR SAMENESS.** DINOv2
+ViT-S was measured on the same 656 pairs with the same verdicts: unanimous band
+286 against the hash's 291. A tie, for 18 ms/image and an 86.6 MB model. Both cap
+at 44%, which says the ceiling is the pairs and not the signal.
+
+**This rule is scoped to near-duplicates and must not be read wider.** A
+perceptual hash encodes coarse pixel LAYOUT, so it collapses precisely where the
+camera moved — and "same event, different angle" is the open question for
+representatives (§6). An embedding is the expected winner there, and DINOv2 was
+relicensed to Apache-2.0 in August 2023, so the licence objection no longer
+holds. Same model, opposite verdicts, because they are different questions.
 
 **Do not shrink the tile below 400px.** 400 to 200 quarters the pixel area and
 buys 11% of the call, while agreement with the 400px answer falls to 28/30. The
