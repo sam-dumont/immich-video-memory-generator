@@ -425,3 +425,44 @@ Nothing here touches Q5 or Q6.
 | `hash_size=16` fixes the band | **unmeasured** |
 | a classifier can do Q1's closed labels | **unmeasured** |
 | clustering beats the model at representatives | **unmeasured** |
+
+
+## One picture, two files: the shape a real library has
+
+Measured 2026-08-27 against a real library, while testing whether Immich's
+duplicate detection could serve as an event-similarity signal. It cannot, but
+the groups describe the corpus, and that turned out to matter more.
+
+`GET /api/duplicates` returns 4,136 groups. **None** are byte-identical --
+Immich rejects those at upload -- so every group is two *different files* the
+embeddings found alike. Split by what they actually are:
+
+| | share of groups |
+|---|---|
+| one shot stored twice at two resolutions | 61% |
+| consecutive shutter presses (burst) | 19% |
+| neither | 20% |
+
+The 61% is the important one, and it is structural rather than accidental. A
+shared album carries no originals, so a library that uses one for curation holds
+the full-size original AND a downscaled copy of the same shot. Both carry the
+same capture instant, so **Stage A already groups them** -- no duplicate API
+needed, and nothing new on the instrument ladder.
+
+Two consequences for selection:
+
+- **Which file survives is a quality decision.** 533 of 2,847 exact-instant
+  groups kept the smaller copy under ID ordering, at 0.26x the pixels of the
+  best available (median). Fixed: pixel count now leads `_keeping_order`.
+- **A star belongs to the picture, not the file.** The star and the resolution
+  can sit on different assets, because the album is both where stars get set and
+  where the small copies come from. Measured here, they coincide -- all 1,099
+  starred groups have the star on the largest file, none on a smaller one -- so
+  this is a closed trap, not a repaired loss. The kept frame now takes the star
+  from any frame absorbed into it, which satisfies the favourite law and lets
+  pixels decide the file.
+
+**The standing check for any future absorbing rule:** when two assets are folded
+together, ask separately which *picture* wins (editorial) and which *file*
+carries it (arithmetic). Conflating them is what put a UUID in charge of
+resolution.
