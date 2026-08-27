@@ -761,7 +761,9 @@ def test_truncated_episode_answer_cannot_select_representatives() -> None:
   `_parse_json_object_text()` from `llm_response_parser.py` because it repairs truncation.
 
 - [ ] RED/GREEN: build chronological episode sheets from every prepared candidate, request short
-  `EpisodeReading`s and reasoned representative IDs, then build the period sheet from every episode
+  `EpisodeReading`s and ~~reasoned representative IDs~~ **(struck: representatives are
+  chosen by clustering, not asked for -- see the revisit note below)**, then build the
+  period sheet from every episode
   reading and its representatives. A representative decision makes the period wall legible; it
   does not cull the episode.
 

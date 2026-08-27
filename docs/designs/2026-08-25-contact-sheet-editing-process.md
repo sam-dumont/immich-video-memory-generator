@@ -345,7 +345,8 @@ The normal uncached budget is therefore expressed as:
 ```text
 episode scan packs (Pass 0 readings + independent Pass 1 decisions)
 + 1 period insight synthesis
-+ packed Pass 2 battle requests
++ Pass 2 pair requests, ONE PAIR PER SHEET (packing measured at 20% of
+  decisions changed -- see the annotation layer 6b; this line said "packed")
 + 1 Structure request
 + 1 combined projection + Fine Cut request
 + conditional Structure continuation, replay, and post-replay Fine Cut only when required

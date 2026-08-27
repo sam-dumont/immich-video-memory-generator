@@ -74,7 +74,7 @@ Three consequences, each stated in the craft and each inverted by the build:
 
 | site | question(s) | calls for a year (~21.5k assets) |
 |---|---|---|
-| `episode_scan_request.py` → `visual_summary` | Q5 | ~400 (per episode) |
+| `episode_scan_request.py` → `visual_summary` | Q5 | **~190** (per PACK, not per episode) |
 | `episode_scan_request.py` → `representative_tiles` | Q4 | fused, free |
 | `episode_scan_request.py` → `notes` | Q3 | fused, free |
 | `episode_scan_request.py` → `failed` | Q2 | fused, free |
@@ -238,7 +238,7 @@ input.
 
 ### Q5 — "what was this day / episode / period?"
 **Language, irreducibly.** But it scales with *episodes*, not assets — roughly
-400 calls for a year rather than 13,600. Six sites ask it today (episode scan,
+~190 calls for a year rather than 13,600 — cost scales with PACKS, and a pack holds 4–14 episodes. Scaled from the measured dense month: 2,016 assets took 16 calls. Six sites ask it today (episode scan,
 period insight, moment reading, special day ×2, projection) and they are close
 to the same question asked at different altitudes.
 
