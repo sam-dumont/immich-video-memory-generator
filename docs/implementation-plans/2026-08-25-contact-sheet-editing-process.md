@@ -317,11 +317,18 @@ a claim to test rather than a fact.
       announcement at 18.8% OCR coverage, which must come back *photo*, and a
       receipt, which must come back *document*. Survey caveat: trained on Italian
       documents and Japanese photos, so it may not transfer.
-- [ ] **Re-price the person detector.** It was declined against
-      `ssd_mobilenet_v1_12` at 29.5 MB and 16 ms. **NanoDet-Plus (Apache-2.0) is
-      claimed at <2 MB INT8 and ~10 ms**, and YOLOX-Nano at ~3.5 MB. At that size
-      the trade that failed at 29.5 MB may pass — the recall gain was real
-      (77% → ~87%), only the price was wrong.
+- [~] **Re-price the person detector — blocked on obtaining the model.** The
+      decline stands at `ssd_mobilenet_v1_12`, 29.5 MB / 16 ms. The survey's
+      NanoDet-Plus claim (<2 MB INT8, ~10 ms, Apache-2.0) is **unverified**: no
+      ready ONNX export exists on Hugging Face under any of the obvious names,
+      so it would have to be exported from the upstream repo. Until then the
+      re-pricing cannot happen and the decline holds.
+      **New landmine, verified:** `Xenova/yolov9-c_all` is **GPL-3.0**. Add YOLOv9
+      to the excluded list alongside Ultralytics.
+      **Scope reminder:** the decline is about `category` (what a picture is
+      mainly *of*). Using a detector for *presence*, to close the 23% of people
+      that face detection misses, is a different question this decline does not
+      cover.
 
 **Three additions worth evaluating.**
 

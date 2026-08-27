@@ -276,7 +276,7 @@ year in about three minutes; a ViT-base at ~200 ms does not clear it at all.
 | **LayoutLMv3** and every RVL-CDIP fine-tune of it | weights CC-BY-**NC**-SA 4.0 |
 | **MobileCLIP / MobileCLIP2** | Apple Sample Code License (`apple-amlr`), non-standard — despite being the right size and speed |
 | **DINOv3** | gated, registration-required |
-| **Ultralytics YOLO** (v5/v8/11) | AGPL-3.0. If detection is ever needed: YOLOX, RT-DETR, RF-DETR, RTMDet — all Apache-2.0 |
+| **Ultralytics YOLO** (v5/v8/11) **and YOLOv9** | AGPL-3.0 and GPL-3.0 respectively (`Xenova/yolov9-c_all` verified GPL-3.0). If detection is ever needed: YOLOX, RT-DETR, RF-DETR, RTMDet — all Apache-2.0 |
 | **`microsoft/dit-base-finetuned-rvlcdip`** | no licence tag on the weights — absent, not merely unread |
 
 ### Usable
