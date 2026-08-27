@@ -344,6 +344,11 @@ def _ask_one_pair(
     except Exception:  # noqa: BLE001 - one failed pair keeps both frames, it never cuts
         return None
     payload = final_json_object(answer.raw_text) or {}
+    # Cache identity already stops a stale BANK being replayed against new
+    # pixels. It cannot stop a live model answering the previous contract, and
+    # answering the wrong question fluently is this model's documented failure.
+    if payload.get("schema_version") != PAIR_SCHEMA_VERSION:
+        return None
     same = payload.get("same")
     return same if isinstance(same, bool) else None
 

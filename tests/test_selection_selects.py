@@ -477,3 +477,36 @@ def test_an_absorbed_frame_can_be_reopened_from_the_trace(tmp_path: Path) -> Non
         request.attached_sheet_hashes == request.provenance.sheet_hashes
         for request in pair_requests
     ), "the sheet that was judged is the sheet that was traced"
+
+
+def test_an_answer_on_the_wrong_wire_contract_is_not_read(tmp_path: Path) -> None:
+    """The version the model echoes is checked, not just the one the cache keys on.
+
+    Cache identity already stops a stale BANK being replayed against new pixels.
+    It cannot stop a live model answering the previous contract -- which is the
+    copying failure this project has already measured once, where an example was
+    reproduced onto unrelated visuals. A verdict returned under a contract that
+    was not asked is fail-open like any other unreadable answer.
+    """
+    prepared = _prepared(
+        make_asset("kept-one", file_created_at=WHEN),
+        make_asset("kept-two", file_created_at=WHEN + timedelta(seconds=4)),
+    )
+
+    async def _answer(_prompt, _config, **kwargs):
+        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
+        return json.dumps({"schema_version": "pair-v1", "same": True})
+
+    # WHY: query_llm is the only external provider boundary; atlas, sheets, gateway and trace stay real.
+    with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
+        result = run_selects(
+            prepared,
+            prepared.candidates,
+            requester=_gateway(tmp_path, prepared.trace),
+            sheet_output_dir=tmp_path / "sheets",
+            frame_cache_dir=tmp_path / "frames",
+        )
+
+    assert len(result.survivors) == 2, "a verdict on the wrong contract cannot absorb"
+    assert result.absorbed == ()
+    assert any(warning.startswith("!!") for warning in result.warnings)
