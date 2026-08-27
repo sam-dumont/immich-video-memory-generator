@@ -270,6 +270,13 @@ answers the existing pipeline has already banked — no new model calls to valid
       angle" is where a hash's pixel-layout assumption breaks. **Lower priority
       than it looks:** hash clustering already beats the model at representatives
       by 46%, so this is "can we do better than good enough", not a blocker.
+      **Benchmark it correctly when it happens:** event-level labels, scored by
+      pairwise average precision and cluster purity or B-cubed F1 — **not** a
+      duplicate-pair benchmark, which is the test DINOv2 already failed and which
+      measures the wrong thing. Baselines to beat, cheapest first: time/GPS
+      blocking alone; then Places365's pooled 512-D feature, which is free if
+      Places365 is already running; then DINOv2. Keep DINOv2 only if it beats
+      those on event metrics, because it costs 86 MB and a second embedding index.
 - [ ] **`animal`** — 6% of labelled segments, and the only `category` value with
       no free source.
 - [~] **Relationship inference** from `people.yaml` — rung 3, arithmetic.
