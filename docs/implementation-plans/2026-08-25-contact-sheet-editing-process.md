@@ -290,7 +290,26 @@ a claim to test rather than a fact.
 
 **Two of this phase's conclusions are overturned and must be re-run.**
 
-- [ ] **Document vs photo — I said nothing off-the-shelf existed. Wrong.**
+- [x] **Document vs photo — measured. Useful as a router; does not close the
+      question.** `vlad-m-dev/mobilenet_v3_small_onnx_photo_doc`, MIT, **6.1 MB
+      (1.7 quantized), 10 ms/image on CPU**, binary. On the dense month:
+
+      | set | called `document` |
+      |---|---|
+      | high OCR coverage (≥15%) | **96%** |
+      | **zero OCR boxes** | **0%** — never misfires on a text-free photo |
+      | photo *containing* text (1–8%) | 32% — genuinely mixed |
+      | the announcement card | **50%** |
+
+      Sharper and cheaper than an OCR-coverage threshold, and it corrects the
+      earlier claim that nothing off-the-shelf existed. **But it does not solve
+      the hard case.** The announcement card splits 50/50 — correctly, because a
+      designed card *is* a document by form. The question that matters was never
+      "is this a document" but "is this document worth keeping", and a receipt and
+      a birth announcement are both documents. That is editorial and no perception
+      model closes it. **Cheap signals route; the model judges the shortlist.**
+
+- [ ] ~~**Document vs photo — I said nothing off-the-shelf existed. Wrong.**~~
       `vlad-m-dev/mobilenet_v3_small_onnx_photo_doc` is **MIT with ONNX already
       exported** (fp32 and quantised), ~10–15 MB, claimed <50 ms. It is a binary
       *document / photo* classifier, which is exactly the distinction OCR
