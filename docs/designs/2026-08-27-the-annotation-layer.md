@@ -102,6 +102,35 @@ while leaving every one of 123 moments represented.
 
 ---
 
+## 0b. The instrument ladder
+
+**Owner doctrine, stated repeatedly and repeatedly under-applied.** Every question
+descends this ladder and stops at the first rung that can answer it safely. A
+lower rung is not reached because it is better; it is reached because everything
+above it has been tried and cannot answer.
+
+| # | instrument | cost | examples |
+|---|---|---|---|
+| 1 | **metadata Immich already holds** | free | EXIF, GPS, capture time, favourite, filename, mime, dimensions |
+| 2 | **what Immich has already derived** | free | face clusters (named or not), OCR text and boxes, person birth dates |
+| 3 | **arithmetic over 1 and 2** | free | episodes and moments, exact-instant twins, appearance distribution, **age at capture**, **relationships**, co-occurrence |
+| 4 | **classical CV on pixels** | ~ms | blur, exposure, perceptual hash |
+| 5 | **a small permissive model** | ~10–30 ms | only where 1–4 cannot answer, and only where measured to work on THIS library |
+| 6 | **the language model** | ~1–12 s | only for meaning, and only where the answer changes the outcome |
+
+**Rung 2 is the one that keeps being skipped.** Immich clusters *every* face in
+the library whether or not anyone has named it — 3,591 clusters here against 156
+names — and it runs OCR over everything. Both were rediscovered late in this
+work after being available all along. **Before proposing anything at rung 5 or 6,
+check rungs 1–3.**
+
+**Rung 3 is larger than it looks.** Arithmetic over free data yields who matters
+(appearance distribution), exactly how old someone is in a given photograph
+(`birth_date` + capture time), who a person was born to (onset matching a birth
+date, then co-occurrence), and which day is a birthday. None of that needs pixels.
+
+---
+
 ## 1. The defect, in one line
 
 **#764 caches per REQUEST. A request contains a sheet, a sheet contains a moment,
@@ -198,6 +227,36 @@ than more instruction. **An age you were handed cannot be hallucinated.**
 The signal's strength varies with the material, and that is correct rather than a
 weakness: the dense month is 58% age-known, the sparse cycling month 9%. It is
 strongest on exactly the months that are about people.
+
+### How `people.yaml` is consumed
+
+The file is written once per library by `immich-memories people scan` and read by
+every stage after it. **It is not an input the user must provide** — it
+auto-populates from Immich and works unedited; the `confirmed:` blocks exist so a
+person *can* correct it, and a refresh copies those through untouched.
+
+| stage | what it reads | what that buys |
+|---|---|---|
+| **1** annotation | cluster ids on the asset, each one's `tier`, and `birth_date` + capture time | every asset stamped with **who is present and how old they were** — no pixels |
+| **2** cheap cull | `tier` | an `inner`-tier face is a reason to keep, never to cut |
+| **3** grouping | co-occurrence | who was there is a moment-boundary signal alongside time and place |
+| **5** episode reading | who, their age, their relationship | the reading is **told** rather than asked to guess. "A person aged 3 days is in 47 of these" replaces a model inferring a newborn from pixels — and removes a measured failure where a prompt fabricated a name, a sex and twins |
+| **7** tentative cut | `tier` + relationship + the memory's subject | **this is the weighting.** A memory about one person weights that person's episodes; a trip weights landscape. Same photo, different worth, no re-analysis |
+| titles | relationship + `birth_date` | "their first year" is derivable; a birthday is `birth_date` matching a capture date |
+| memory types | onset, span, relationship | Then-and-Now needs the same person across years; a birthday memory needs whose |
+
+**Two contracts that must not be broken.**
+
+*Confirmed beats inferred.* A refresh recomputes every `inferred:` block and copies
+every `confirmed:` block through unchanged, and a person somebody annotated is
+never dropped even if they fall off the roster. The inference is allowed to be
+wrong because the user can overrule it permanently.
+
+*Names never leave the machine.* The file holds real names of real people. It is
+local state: never in a commit, an issue, a pull request, a public log, or a
+model request beyond the owner's own endpoint. Where this design quotes the file
+it quotes **structure and counts**, never names — and that is why every example
+here says "a person aged 0.0" rather than who.
 
 ### The people graph exists, and what it does not yet infer
 
@@ -398,7 +457,8 @@ With that, the order is specifiable:
 
 | # | stage | cost | unit |
 |---|---|---|---|
-| 1 | annotation — hash, sharpness/exposure, OCR, **people: cluster ids, appearance rank, age at capture**, EXIF | free | per asset, **forever** |
+| **0** | **the people graph** — clusters, tiers, co-occurrence, birth dates, **relationships** | **free** | **per LIBRARY, refreshed rarely** |
+| 1 | annotation — hash, sharpness/exposure, OCR, **who is present + their age + their tier**, EXIF | free | per asset, **forever** |
 | 2 | source eligibility, then cheap cull: `failed` by CV, documents routed by OCR | free | per asset |
 | 3 | group into episodes and moments | free | time + place |
 | 4 | **one representative per moment by clustering** | **free** | per moment |
@@ -409,6 +469,12 @@ With that, the order is specifiable:
 | 9 | projection, revise the thesis once | 0–1 | per question |
 | 10 | fine cut over the whole cut | 1–2 | per question |
 | 11 | duration fit, then rendering — may not change membership | free | — |
+
+**Stage 0 is per-library, not per-memory.** `immich-memories people scan` already
+builds it and it is the only stage whose unit is the whole library rather than a
+question or an asset. Everything downstream reads it: stage 1 stamps each asset
+with who is present and how old they were, stage 5 tells the reading rather than
+asking it to guess, and the weighting in stage 7 uses tier and relationship.
 
 **Stage 7 is the tentative cut.** It is Structure, unchanged in contract —
 reject-only, named reasons, no ranking, chronology fixed — but it now runs on
