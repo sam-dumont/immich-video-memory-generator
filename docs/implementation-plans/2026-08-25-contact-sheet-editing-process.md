@@ -29,6 +29,13 @@ measured case against the selector being replaced.
 ## Global Constraints
 
 - Run `make dev` before any other Make target in a fresh worktree.
+- **The model is a last resort.** It is asked only where understanding what is
+  depicted is required — Cull, and grouping by kind. Anything that can be done
+  safely by arithmetic or signal processing must be, because a year is 12k–21k
+  assets and a per-pair model question does not survive that. Build the pass
+  with the model first, bank its answers, then calibrate the cheap path against
+  them; a band that CUTS requires unanimity on real data plus cross-validation
+  on a second period. See the design's "The model is a last resort".
 - Use one RED → GREEN → REFACTOR cycle at a time. Tests exercise public behavior; no more than
   three mocked boundaries per test, and every mock carries a `# WHY:` comment.
 - Run focused tests with `make test-one T="..."`, then `make test`, `make critique`, and `make ci`

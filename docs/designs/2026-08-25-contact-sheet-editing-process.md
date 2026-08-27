@@ -67,6 +67,56 @@ byte-identical. The actual failure is the contract around Structure:
 Prompting harder cannot restore evidence that the model never receives. The fix is to make each
 pass see the right sheet and hand its decision to the next one.
 
+## The model is a last resort
+
+**Added 2026-08-27, owner doctrine, after Stage B was measured against a real year.**
+
+Every editorial pass judges pixels, and the pass that judges them need not always
+be a model. The model is reserved for questions that require **understanding what
+is depicted**:
+
+- **Cull** — "is this junk?" cannot be answered without seeing what the thing is.
+  A screen, a document, a record shot and a failed frame are not separable by
+  pixel statistics.
+- **Grouping by kind** — "are these the same kind of image?" is an understanding
+  question.
+
+Anything that can be done **safely** by arithmetic or signal processing must be.
+This is a feasibility constraint, not an aesthetic one. Measured on the real
+library: one month is 2,016 assets, and a year of a small child is 12,072 to
+21,458. The pairwise Selects question costs `2 × (frames − moments)` calls at
+roughly 1.6s each on the owner's local single-stream endpoint, which is about
+eight hours for one yearly recap. An editorial process that only runs on a month
+is not the product.
+
+### How a model pass is replaced
+
+The order matters, and it is the opposite of the usual one:
+
+1. **Build it with the model first** and bank its answers on the real library.
+2. Propose the cheap path and calibrate its thresholds **against those answers**.
+   The model's judgement is the ground truth; an algorithm is never justified by
+   intuition about what pixels ought to mean.
+3. A band that **acts** requires unanimity, not correlation. A band that only
+   ever keeps material is safe by construction; a band that cuts is not.
+4. Cross-validate on a different period before shipping a threshold. Calibrating
+   and validating on one month ships a rule that works in February.
+5. State the residual loss out loud. "How much do we lose" is the deliverable,
+   and it belongs in the trace as well as the plan.
+
+Worked example, Selects Stage B: 656 real pairs were judged by the model in both
+arrangements, then perceptual hamming distance was computed for the same pairs.
+Below distance 12 the model answered "same" 291 times out of 291 — a clean
+separation, so that band needs no call. The opposite band barely exists
+(unanimous "different" only at distance ≥ 38, 2% of pairs), which is the sort of
+thing intuition gets backwards. See
+`docs/implementation-plans/2026-08-27-what-the-pass-costs.md`.
+
+This does not weaken "every pass judges pixels". It says a rule about
+indistinguishable pixels is arithmetic — the same category as absorbing two
+frames that share a capture instant — and only a rule about *meaning* needs a
+model.
+
 ## Goals
 
 1. Emulate a recognisable human editing process instead of producing a score-ranked slideshow.
