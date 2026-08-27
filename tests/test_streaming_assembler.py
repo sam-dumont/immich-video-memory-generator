@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import subprocess
 from pathlib import Path
@@ -1528,3 +1529,65 @@ def test_streaming_encoder_survives_noisy_ffmpeg_stderr(tmp_path: Path) -> None:
         encoder._proc.kill()
     assert not worker.is_alive(), "frame writer deadlocked on an undrained stderr pipe"
     assert output.read_bytes().startswith(b"fake")
+
+
+def _decoder_command(tmp_path, monkeypatch) -> list[str]:
+    """The FFmpeg argv one FrameDecoder would run, without running it."""
+    from types import SimpleNamespace
+
+    import immich_memories.processing.streaming_frame_decoder as sfd
+
+    seen: dict[str, list[str]] = {}
+
+    class _Stub:
+        stdout = io.BytesIO(b"")
+
+        def terminate(self): ...
+        def wait(self, timeout=None): ...
+
+    def fake_popen(cmd, **_kwargs):
+        seen["cmd"] = list(cmd)
+        return _Stub()
+
+    # WHY: Popen is the process boundary; the argv is built before it and is
+    # the whole subject of the assertion.
+    monkeypatch.setattr(sfd.subprocess, "Popen", fake_popen)
+    clip = SimpleNamespace(
+        path=tmp_path / "clip.mov", duration=2.0, is_title_screen=False, rotation_override=None
+    )
+    audio_dir = tmp_path / "audio"
+    audio_dir.mkdir()
+    decoder = sfd.make_decoder(clip, 0, 64, 64, 30, audio_work_dir=audio_dir)
+    list(decoder)
+    return seen["cmd"]
+
+
+def test_the_audio_sidecar_never_stops_to_ask_before_overwriting(tmp_path, monkeypatch) -> None:
+    """Without -y, a leftover sidecar silently costs the whole clip.
+
+    FFmpeg prompts "Overwrite? [y/N]" on a pipe with no stdin, gets nothing,
+    and exits. The decoder then yields ZERO frames, and because stderr is
+    DEVNULL the clip disappears from the assembly with no error anywhere --
+    measured as a two-clip assembly coming out 2.0s instead of 4.0s.
+    """
+    cmd = _decoder_command(tmp_path, monkeypatch)
+
+    assert "-y" in cmd
+
+
+def test_only_the_first_audio_stream_is_taken_from_the_source(tmp_path, monkeypatch) -> None:
+    """An iPhone .mov reports its metadata tracks as audio streams.
+
+    Measured on a 2025 iPhone 16 Pro clip: `ffprobe -select_streams a` returns
+    TWO entries -- aac at index 1, and `unknown` at index 2, which is a Core
+    Media timed-metadata track. `-map 0:a?` asks for both, and FFmpeg refuses
+    the whole command with "Decoding requested, but no decoder found for:
+    none". Zero frames, stderr at DEVNULL, clip gone.
+
+    Recent iPhone video carries these tracks routinely, so this was not an edge
+    case; it silently dropped HDR video clips from mixed assemblies.
+    """
+    cmd = _decoder_command(tmp_path, monkeypatch)
+
+    assert "0:a:0?" in cmd
+    assert "0:a?" not in cmd

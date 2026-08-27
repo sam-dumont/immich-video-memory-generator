@@ -178,8 +178,22 @@ class FrameDecoder:
         audio_args: list[str] = []
         if self._audio_output:
             audio_args = [
+                # WHY: without -y, a sidecar left by an earlier decoder pass makes
+                # FFmpeg prompt "Overwrite? [y/N]" on a pipe with no stdin, exit,
+                # and yield ZERO frames -- and stderr is DEVNULL, so the clip
+                # vanishes from the assembly in silence. Measured: a two-clip
+                # assembly came out 2.0s instead of 4.0s with one clip gone.
+                "-y",
+                # WHY: "0:a?" maps EVERY audio stream, and an iPhone .mov carries
+                # Core Media metadata tracks that FFmpeg reports as audio with
+                # codec "unknown". Asking to decode one fails the whole command --
+                # "Decoding requested, but no decoder found for: none" -- so the
+                # decoder yields ZERO frames and, with stderr at DEVNULL, the clip
+                # vanishes from the assembly in silence. Measured on a 2025 iPhone
+                # 16 Pro clip: two audio-typed streams, aac at index 1 and unknown
+                # at index 2. Taking the first one is the real soundtrack.
                 "-map",
-                "0:a?",
+                "0:a:0?",
                 "-c:a",
                 "pcm_s16le",
                 "-ar",
