@@ -376,6 +376,38 @@ right speed, MobileCLIP, is licence-blocked. So: fixed-taxonomy CNNs on the
 CPU-only tier, and zero-shot only if a GPU tier is ever exposed — where size
 stops mattering entirely.
 
+### Three more surveys, and the four leads they add
+
+Surveyed 2026-08-27 by three independent external models. **Most of it restates
+this section** — the `pyiqa` trap, MobileCLIP, DINOv3, Ultralytics, the missing
+DiT weights licence, AVA-trained aesthetics, the ROCm/MIGraphX correction and the
+Pi-class latencies were all already here, which is worth knowing: three readers
+converged on the conclusions this page already reached, including
+*precompute at ingestion, never at query time*.
+
+**Nothing below is measured, and none of the licences below has been verified
+against a primary source.** They are leads, recorded so they are not re-derived,
+and each names what would have to be true.
+
+| lead | why it is new | verify before adopting |
+|---|---|---|
+| **A binary photo/document classifier** — `vlad-m-dev/mobilenet_v3_small_onnx_photo_doc`, claimed MIT, native ONNX, INT8 <15 MB | attacks the gap this page records as closed to us: *nothing separates a photographed document from a photo containing text*. A binary doc/photo head is a **different shape** to the RVL-CDIP type-classifiers that fail here, and it is small enough for the time bar | the licence; and whether it survives our own counterexample — the birth announcement at 18.8% OCR coverage. Trained on Italian documents and Japanese photos per its own card, so **the transfer is the question** |
+| **SPAQ-trained technical quality** — 11,125 *smartphone* photographs, annotated per attribute (sharpness, brightness, contrast, graininess) | answers the exact objection this page raises against every learned quality model: AVA and TID2013 are contest and synthetic-distortion data. SPAQ is neither. It is the first candidate whose **training domain matches a phone library** | whether a permissively-licensed ONNX checkpoint actually exists — the survey that proposed it said "implementation dependent", which is not a model. Also whether it beats the classical CV already in `photos/frame_quality.py`, which is the only bar that matters |
+| **Intel `open-closed-eye-0001`** — claimed Apache-2.0, **46 KB**, <1 ms on a 32x32 eye crop | eyes-closed is currently listed here as landmarks + eye-aspect-ratio. A dedicated 46 KB head is smaller than the arithmetic it would replace | it ships as OpenVINO IR, so an ONNX conversion is on us. It does **not** remove the landmark step — it needs the crop, so it is an addition to face detection, not a substitute |
+| **SSCD is a trap for event clustering** (MIT, and it looks perfect for the job) | its training objective **repels** distinct originals so copy detection stays precise. Two photographs of one cake from opposite sides are exactly what it is built to push apart | nothing — this is a do-not-propose, in the same class as `/api/duplicates`. Recorded so the next reader does not find it attractive |
+
+**Video shot boundaries are a question this page does not ask.** TransNetV2 (MIT)
+and PySceneDetect (BSD-3) both cut a long video into shots before a frame is
+sampled from it. The seven questions above are all about stills; sampling a
+filmstrip across a cut is a defect none of them names. Out of scope for #764,
+but it belongs on the list.
+
+**One correction that costs nothing to accept.** ImageNet-1k's lack of a person
+class is not an oversight to work around — 2,702 of the `person` synsets were
+**removed** in the 2019-2021 audit, leaving three (`scuba diver`, `bridegroom`,
+`ballplayer`). It will not come back, so no ImageNet-1k head will ever answer
+`category`.
+
 ## 4. What this changes about cost
 
 For a year of ~21,500 assets:

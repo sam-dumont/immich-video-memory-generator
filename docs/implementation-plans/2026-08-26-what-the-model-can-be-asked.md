@@ -82,6 +82,133 @@ current design asks for, which is a scope problem on top of a shape problem. But
 the exemption as written has no support, and **§6C's claim must not be relied on
 until a probe supports it.**
 
+## 1c. Decomposing Structure does not rescue it, and the reason is the anchor
+
+**Measured 2026-08-27**, `slice3-probes-2026-08-27/probe_structure_shape.py`, on
+June's 81 moment representatives, temperature 0.
+
+§1b left one defence open: the failing shape returns a **set** over N, and
+Cull's working shape returns a **verdict per tile** against a definition. So
+Structure was rebuilt in Cull's shape — *for EACH tile, sort it into `carries`,
+`supports` or `outside`* — and run against the same pixels under the same cyclic
+rotation. Both answers were expanded into one verdict per tile so they score
+identically.
+
+| shape | overlap by **picture** | by **position** | chance floor |
+|---|---|---|---|
+| A — reject-only over the wall | 0.72 | 0.70 | **0.67** |
+| B — per-tile sort vs the thesis | 0.90 | 0.89 | **0.88** |
+
+**Both sit on their own chance floor, and B's higher number is the artifact.**
+B scores 0.90 by saying `outside` to about one tile in twelve; a verdict that
+lopsided agrees with itself by luck 88% of the time. A shape that beats its floor
+by 0.02 has measured nothing. Printing the floor beside every number is what
+stopped this being reported as a success.
+
+### The oracle says it is neither the shape nor the scope
+
+The same question was then asked with **one tile per call and no wall at all** —
+no other pictures, no positions, nothing to compare against, every confound
+removed. It answered `carries` for **31 of 36 moments**.
+
+That is the finding. The model is not anchoring on position here and it is not
+losing the set; asked about one photograph in isolation it says the story needs
+it. **A month that must reach ~10 clips from 79 live moments cannot be cut by a
+question that keeps 86% of them.**
+
+### Why: a thesis fitted to the corpus cannot exclude the corpus
+
+June's thesis, synthesised by Pass 0 from this exact material:
+
+> *A period of active cycling training and racing, interspersed with domestic
+> life involving cats, home maintenance, and leisure activities.*
+
+A frying pan is domestic life. A landscape is a leisure activity. **Every moment
+matches by construction**, because the criterion was derived from the moments.
+Pass 0's insight is a *description* of the period, and Structure was specified to
+use it as a *selection criterion*. Those are different objects and the design
+does not distinguish them.
+
+This generalises past Structure: **any pass anchored on an artefact synthesised
+from its own inputs is anchored on nothing.** The anchor has to come from outside
+the material.
+
+### An anchor from outside the material does not rescue it either
+
+The obvious repair is an anchor that is **not** synthesised from the corpus. The
+owner has stated one twice — *"would you show this to someone else? A memory is
+something you show people."* It depends on nothing but the photograph.
+
+Asked one tile per call over the same 36 representatives, with `false` shown as
+the example default so a copied answer would cut rather than keep:
+
+| anchor | keeps |
+|---|---|
+| the thesis, fitted to the corpus | 86% |
+| **shareability, external by construction** | **100%** |
+
+**36 of 36.** Every reason is fluent, specific and correctly grounded in visible
+pixels — and among the pictures it would show someone are **a washing machine**
+and **a Bosch product label**:
+
+> *"The image clearly shows a white front-loading washing machine in what appears
+> to be a laundry room…"*
+> *"The image clearly displays a product label with specific details like the
+> manufacturer (Robert Bosch…)"*
+
+### What this settles
+
+**No per-item question makes this cut, with any anchor.** Three were measured —
+inward-pointing, corpus-fitted, and externally anchored — across two shapes and
+three scopes, and the failure is the same each time.
+
+The reason is that *"should this ship?"* is **inherently comparative and the
+comparison is against scarcity, not against the other tiles**. A month ships ~10
+of 79 moments because there is room for ten, not because 69 photographs are bad.
+One tile cannot show a model how little room there is, so it correctly answers a
+question nobody asked: *is this a real photograph of something?* Yes — including
+the washing machine.
+
+This is a stronger statement than §1b's. §1b said reject-only over N is not a
+shape this model can execute. §1c says **Structure's cut is not a question this
+model can be asked**, and no prompt, anchor, decomposition or scope changes that.
+
+**What it does not settle:** where the cut comes from instead. §0 of
+`docs/designs/2026-08-27-the-annotation-layer.md` states the bar — losing a good
+picture is acceptable, losing an occasion is not — which is a *coverage* claim
+and a *weight* claim, neither of which is a taste judgement. Nothing in the
+corpus specifies the mechanism, and it must not become the old selector's quota
+ladder wearing new words.
+
+### A complete partition does not scale, for a reason Cull avoids by accident
+
+The same shape B was run over a 36-tile wall. One rotation of three returned a
+complete answer; the other two ran into prose — *"Let's go tile by tile"* — and
+truncated at 4,654 and 5,361 characters with no JSON.
+
+| tiles | answer length |
+|---|---|
+| 12 | 101–111 characters |
+| 36 | 4,654–8,555 characters, 2 of 3 truncated |
+
+The schema is identical at both widths, so this is not schema size. **A complete
+partition has no empty default**: every tile must be named, so the model
+enumerates. Cull stays compact over 110 tiles precisely because its normal answer
+is *nothing to report* — empty lists. That property was designed in for honesty
+and turns out to be the reason it is affordable.
+
+So even a working per-tile Structure could not use a 120-tile page. At 36 it
+truncates; at 12 it would cost 250 calls for a year against Structure's specified
+"1–2".
+
+### `ordinary` is not a hidden Structure signal
+
+Checked at the same time, from banked answers, **zero model calls**: Cull's
+discarded `ordinary` bucket names **259 of 261 candidates (99.2%)**, and 77 of 79
+live moments are wholly ordinary. It is the complement bucket — the prompt says
+*"Most tiles are ordinary"* — and it exists to keep `notes` clean, which it does.
+Cutting on it leaves 2 moments of 79 and takes 4 favourites. **Not a free win.**
+
 ## 2. Why, and what it predicts
 
 The four rows differ in one property: whether the question has a referent

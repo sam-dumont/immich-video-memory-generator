@@ -68,16 +68,31 @@ be built:
   eleven-stage order and identifies stage 7 (Structure over clustered
   representatives) as the tentative cut.
 
-## The largest open risk
+## The largest open risk — now measured, and worse than stated
 
-**Structure and Fine Cut may rest on a question shape this project measured and
-rejected.** `what-the-model-can-be-asked.md` lists reject-only over N as failing
-and then exempts Structure by assertion. Probed 2026-08-27 under rotation: 0.12
-overlap by picture anchored to a thesis, 0.29 unanchored, against 0.33–0.35 by
-position, with raw answers that are strides and prefixes. **The exemption has no
-support.** See that document's §1b. Nothing should be built on Structure's
-current contract until this is resolved — it is a shape problem, and the
-3,000-tile work print is a scope problem on top of it.
+**Structure's cut is not a question this model can be asked.** Probed twice.
+
+§1b: reject-only over N fails under rotation — 0.12 picture overlap anchored,
+0.29 unanchored, against 0.33–0.35 by position, raw answers that are strides and
+prefixes.
+
+§1c, 2026-08-27: rebuilding it in **Cull's proven per-tile shape** does not
+rescue it. Both shapes sit on their own chance floor (0.72 vs a 0.67 floor; 0.90
+vs a 0.88 floor). Asked with **one tile per call and no wall at all**, the model
+keeps 86% of moments against a thesis and **100%** against the owner's own
+external anchor — including a washing machine and a product label, with fluent
+correct reasons attached. A complete partition also does not scale: 12 tiles
+answer in 101 characters, 36 tiles run into prose and truncate 2 times in 3.
+
+**So it is not a shape problem, not a scope problem, and not a prompt problem.**
+*"Should this ship?"* is comparative against **scarcity** — a month ships ~10 of
+79 moments because there is room for ten — and one tile cannot show a model how
+little room there is.
+
+**Nothing should be built on Structure's current contract.** Where the cut comes
+from instead is unspecified anywhere in this corpus. `the-annotation-layer.md` §0
+implies it is coverage and weight rather than taste; that is a direction, not a
+mechanism, and it must not become the old selector's quota ladder in new words.
 
 ## Two rules that genuinely conflict, unresolved
 
