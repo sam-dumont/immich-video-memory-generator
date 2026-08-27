@@ -606,3 +606,57 @@ def test_pixels_that_disagree_still_buy_the_second_opinion(tmp_path: Path) -> No
 
     pairs = len(prepared.candidates) - 1
     assert asks == 2 * pairs, "far pixels cannot stand in for the second arrangement"
+
+
+def test_the_same_picture_stored_twice_keeps_the_larger_file() -> None:
+    """One shot imported twice at two resolutions must not be a coin flip.
+
+    Measured against a real library: 2,847 groups of assets share an exact
+    capture instant, and 533 of them (19%) are one picture stored at two
+    resolutions -- a full-size original alongside a downscaled copy that arrived
+    from a shared album or a messaging app. Immich never holds both as one
+    asset, because it rejects byte-identical uploads, so both reach the corpus.
+
+    Ordering on the id alone decided those by UUID, and the copy it kept had
+    0.26x the pixels of the best available at the median. That copy is then
+    upscaled to the output resolution. Choosing the larger file is arithmetic
+    over metadata already fetched, not an editorial judgement.
+    """
+    smaller = make_asset("a-downscaled-copy", file_created_at=WHEN).model_copy(
+        update={"width": 2048, "height": 1536}
+    )
+    larger = make_asset("b-full-size-original", file_created_at=WHEN).model_copy(
+        update={"width": 4032, "height": 3024}
+    )
+
+    result = run_selects_on(_prepared(smaller, larger))
+
+    assert tuple(c.asset_id for c in result.survivors) == ("b-full-size-original",)
+    assert result.absorbed[0].asset_id == "a-downscaled-copy"
+
+
+def test_a_star_on_a_downscaled_copy_keeps_the_original_and_the_star() -> None:
+    """A star belongs to the picture, not to the file it happens to be set on.
+
+    A common library shape stores one shot twice: a full-size original in the
+    shared library, and a downscaled copy in a shared album, because shared
+    albums do not carry originals. The album is where stars get set, so the star
+    and the resolution can land on different assets.
+
+    Ordering the star ahead of pixel count would then keep the small file, and
+    ordering pixel count ahead of the star would drop it -- which the favourite
+    law reads as a moment losing its favourite. Neither is right: the two assets
+    are one picture, so the keeper takes the better file AND the star.
+    """
+    starred_copy = make_asset(
+        "a-shared-album-copy", file_created_at=WHEN, is_favorite=True
+    ).model_copy(update={"width": 2048, "height": 1536})
+    original = make_asset("b-library-original", file_created_at=WHEN).model_copy(
+        update={"width": 4032, "height": 3024}
+    )
+
+    result = run_selects_on(_prepared(starred_copy, original))
+
+    assert tuple(c.asset_id for c in result.survivors) == ("b-library-original",)
+    assert result.survivors[0].favourite is True
+    assert result.absorbed[0].asset_id == "a-shared-album-copy"
