@@ -317,7 +317,24 @@ a claim to test rather than a fact.
       announcement at 18.8% OCR coverage, which must come back *photo*, and a
       receipt, which must come back *document*. Survey caveat: trained on Italian
       documents and Japanese photos, so it may not transfer.
-- [~] **Re-price the person detector — blocked on obtaining the model.** The
+- [x] **Re-price the person detector — UNBLOCKED, and the answer is a different
+      shape.** **OpenCV Zoo ships NanoDet-m-plus-1.5x 416 as official ONNX,
+      Apache-2.0 for every file in the directory, 3.62 MB FP32 / ~1 MB INT8**, with
+      published Raspberry Pi 4 latency of **215 ms** — about 72 minutes for 20,000
+      images. So it is affordable **at ingestion, once per asset**, and not
+      affordable as a query-time pass. That is the re-pricing: the model is fine,
+      the *stage* was wrong.
+
+      **And do not ask it for a subject label.** Aggregate detections into
+      supercategories, weighting each by confidence × box-area share, then combine
+      with signals already held: people from person boxes **plus Immich face count
+      and face area**; animal from COCO animal classes; screen from `tv`/`laptop`/
+      `cell phone` **plus OCR**; object from the remaining salient boxes;
+      landscape from Places365 when object coverage is low. This handles "mainly
+      people" properly and permits mixed images rather than forcing one bucket —
+      and it dissolves the `category`-versus-presence confusion recorded above.
+
+- [x] ~~**Re-price the person detector — blocked on obtaining the model.**~~ The
       decline stands at `ssd_mobilenet_v1_12`, 29.5 MB / 16 ms. The survey's
       NanoDet-Plus claim (<2 MB INT8, ~10 ms, Apache-2.0) is **unverified**: no
       ready ONNX export exists on Hugging Face under any of the obvious names,
@@ -332,7 +349,22 @@ a claim to test rather than a fact.
 
 **Three additions worth evaluating.**
 
-- [ ] **SPAQ for technical quality.** Trained on 11,125 smartphone photographs
+- [x] **Eyes-open — use OpenSeeFace.** BSD-2-Clause for **both code and models**,
+      ships ONNX, 1.8–12.9 MB. Run it only on the face crops Immich already
+      provides, and only on a candidate set — never the library. Treat it
+      probabilistically, as a tie-break between otherwise similar burst frames.
+      The author notes eye-region tracking is the weaker part, so validate on
+      glasses, profiles and children before trusting it.
+
+- [ ] **SPAQ for technical quality.** *Downgraded:* the surveyed learned IQA
+      models are all export-required, 100 MB+, or licence-unclear at the
+      checkpoint (ARNIQA ~107 MB no ONNX; MUSIQ ~108 MB, checkpoint licence not
+      restated; NIMA's circulating weights are third-party reimplementations).
+      **Classical measurement remains the better engineering fit** — with the
+      refinement that sharpness should be computed **inside the face/subject
+      region**, not globally, and paired with directional-gradient anisotropy to
+      separate motion smear from deliberate defocus. That addresses the
+      shallow-depth-of-field false positive without a model. Trained on 11,125 smartphone photographs
       from 66 phones, annotated for brightness, colourfulness, contrast,
       graininess and **sharpness** — not on contest or stock imagery. This
       directly addresses the false-positive class flagged in the blur work:
