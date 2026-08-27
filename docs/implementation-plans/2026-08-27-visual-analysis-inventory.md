@@ -236,6 +236,73 @@ and it is one call — leave it.
 
 ---
 
+## 3c. Licence landmines, and what is actually usable
+
+Surveyed 2026-08-27 against primary sources. **Verify before adopting** — several
+are subtle, and one is the first thing an engineer would reach for.
+
+### The constraint is TIME, not bytes
+
+An earlier draft of this page carried a "<100 MB" target. That was the wrong
+constraint and it would have excluded usable models: the Docker image is already
+several GB, so a 200 MB model is not a problem in itself.
+
+**The real bar is throughput: ~20,000 images in minutes on a weak NAS CPU with no
+GPU.** That means roughly 10–30 ms per image. Size matters only where it predicts
+latency, and as a one-time first-run download. A 46 MB ResNet18 at ~10 ms clears a
+year in about three minutes; a ViT-base at ~200 ms does not clear it at all.
+
+### Excluded
+
+| what | why |
+|---|---|
+| **`pyiqa` / IQA-PyTorch** — MUSIQ, TOPIQ, NIMA, HyperIQA, DBCNN | **PolyForm Noncommercial + NTU S-Lab.** The standard image-quality toolbox and the obvious `pip install` for anything quality-related. **Do not add it.** |
+| **LayoutLMv3** and every RVL-CDIP fine-tune of it | weights CC-BY-**NC**-SA 4.0 |
+| **MobileCLIP / MobileCLIP2** | Apple Sample Code License (`apple-amlr`), non-standard — despite being the right size and speed |
+| **DINOv3** | gated, registration-required |
+| **Ultralytics YOLO** (v5/v8/11) | AGPL-3.0. If detection is ever needed: YOLOX, RT-DETR, RF-DETR, RTMDet — all Apache-2.0 |
+| **`microsoft/dit-base-finetuned-rvlcdip`** | no licence tag on the weights — absent, not merely unread |
+
+### Usable
+
+| job | model | licence | size | fits the time bar? |
+|---|---|---|---|---|
+| scene / `setting` | **Places365 ResNet18** | MIT code, CC-BY weights | ~46 MB | yes |
+| subject / `category` | **Open Images V4 SSD-MobileNetV2** — explicit `Person`/`Human` class | Apache-2.0 code, CC-BY labels | ~20–30 MB | yes |
+| event clustering | **DINOv2 ViT-S** | **Apache-2.0** since Aug 2023 | ~86 MB | ~18 ms measured — yes |
+| eyes-closed / group photo | **MediaPipe / BlazeFace** landmarks + eye-aspect-ratio | Apache-2.0 | <1 MB | yes |
+| richer multi-label subject | **Tencent ML-Images ResNet-101**, 11k labels | BSD-3 code + weights | ~170 MB | **unmeasured** — size is fine, latency is the question |
+
+**ImageNet-21k carries a data-provenance caveat** separate from timm's Apache-2.0
+code licence: image-net.org states the data is for non-commercial research. That
+argues for Open Images over timm-21k for subject classification.
+
+### Two open questions this settles
+
+**No permissively-licensed aesthetic model is trustworthy on family photos.** The
+two that exist — LAION's predictor (MIT) and idealo's NIMA (Apache-2.0) — are
+trained on AVA photo-contest scores or, for LAION, documented as reflecting one
+individual's taste with a measured demographic skew; idealo's own issue tracker
+reports predictions "often totally inadequate" on general images. Independent
+support for the standing rule against a scalar quality score standing in for an
+editor. Classical CV for technical quality; nothing learned for taste.
+
+**Nothing off the shelf separates a photographed DOCUMENT from a photo that
+CONTAINS text.** RVL-CDIP models classify scanned-document *type* from clean
+grayscale scans and do not transfer to a photograph of a receipt on a table. This
+matches the measurement here — the birth announcement sits at 18.8% OCR coverage,
+above any threshold that catches receipts. **OCR coverage routes the question; it
+does not close it.**
+
+### The gap with no answer yet
+
+There is **no small, permissively-licensed, ONNX-native zero-shot classifier**.
+SigLIP 2 is Apache-2.0 and would adapt to any taxonomy without retraining, but is
+ViT-base scale and will not clear the time bar on a NAS CPU. The one model at the
+right speed, MobileCLIP, is licence-blocked. So: fixed-taxonomy CNNs on the
+CPU-only tier, and zero-shot only if a GPU tier is ever exposed — where size
+stops mattering entirely.
+
 ## 4. What this changes about cost
 
 For a year of ~21,500 assets:
