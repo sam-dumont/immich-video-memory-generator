@@ -68,6 +68,17 @@ be built:
   eleven-stage order and identifies stage 7 (Structure over clustered
   representatives) as the tentative cut.
 
+## The largest open risk
+
+**Structure and Fine Cut may rest on a question shape this project measured and
+rejected.** `what-the-model-can-be-asked.md` lists reject-only over N as failing
+and then exempts Structure by assertion. Probed 2026-08-27 under rotation: 0.12
+overlap by picture anchored to a thesis, 0.29 unanchored, against 0.33–0.35 by
+position, with raw answers that are strides and prefixes. **The exemption has no
+support.** See that document's §1b. Nothing should be built on Structure's
+current contract until this is resolved — it is a shape problem, and the
+3,000-tile work print is a scope problem on top of it.
+
 ## Two rules that genuinely conflict, unresolved
 
 **Record marks vs junk culls.** `existing-selection-rules.md` §D says the junk

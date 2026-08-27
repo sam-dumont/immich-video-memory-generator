@@ -46,6 +46,42 @@ baby's most alert and engaged expression — eyes wide". **The answers parse, ca
 grounded-sounding prose, and raise no `!!`.** A Selects pass built on this
 question would ship confident nonsense through every gate the project has.
 
+## 1b. Structure's exemption was tested, and it does not hold
+
+**Measured 2026-08-27.** §1 lists reject-only over N as a failing shape, and §6C
+then exempts Structure: *"Structure is reject-only, the form that measurably works
+on this model."* Those two statements were never reconciled, and Structure and
+Fine Cut — the two passes that do all the cutting — are both reject-only over N.
+
+The plausible defence was that Structure's question has an **external referent**
+(a thesis: *"which moments does this story need"*) while the failing one points
+inward (*"which add nothing the others have"*). Both were probed under cyclic
+rotation on four real episodes, 12 tiles each:
+
+| question | overlap by **picture** | overlap by **position** |
+|---|---|---|
+| anchored to a thesis | **0.12** | 0.33 |
+| unanchored | 0.29 | 0.35 |
+
+**Neither reads the photographs, and the anchor does not rescue it.** The raw
+answers are the finding, not the averages — unanchored produced
+`[1,2,3,4]`, `[2,4,6,8]`, `[1..8]` and `[1..12]`: strides and prefixes, index
+patterns with fluent reasons attached.
+
+Anchoring makes the model **more conservative** — shorter lists, several empty —
+which is fail-safe and therefore easy to mistake for working. It is not more
+accurate.
+
+*n = 4 episodes, 13 comparisons.* Thin, and the raw output is damning independent
+of the sample: `[1,2,3,4,5,6,7,8,9,10,11,12]` is not an editorial decision.
+
+**What this does not settle.** Structure as specified also carries a *thesis*, the
+prior passes' *reasons*, and grounded annotations — this probe gave it only the
+thesis. And a 12-tile episode is not the 3,000-representative work print the
+current design asks for, which is a scope problem on top of a shape problem. But
+the exemption as written has no support, and **§6C's claim must not be relied on
+until a probe supports it.**
+
 ## 2. Why, and what it predicts
 
 The four rows differ in one property: whether the question has a referent
