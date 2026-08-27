@@ -36,6 +36,7 @@ from immich_memories.analysis.selection_trace import Trace
 from immich_memories.analysis.source_filter import (
     is_editorial_source_asset,
     live_photo_component_ids,
+    not_on_the_timeline,
     not_shot_here,
 )
 from immich_memories.analysis.source_quality import grounded_source_annotations
@@ -58,6 +59,11 @@ class SourceScope:
     # to judge it. Every other pool builder asks the same question here.
     excluded_filename_patterns: tuple[str, ...] = ()
     stills_need_a_camera: bool = False
+    # Visibility, not provenance: whether Immich shows an asset on the timeline
+    # at all. Off by default and hard-coded off at generation, so pointing
+    # analysis at the archive on purpose stays possible without a forgotten
+    # setting reaching a video.
+    include_off_timeline: bool = False
 
 
 @dataclass(frozen=True)
@@ -579,6 +585,8 @@ def _source_exclusion_reason(
     components: frozenset[str],
 ) -> str | None:
     asset = _asset(source)
+    if not request.scope.include_off_timeline and not_on_the_timeline(asset):
+        return "not on the timeline"
     if asset.id in owner_exclusions:
         return "owner exclusion"
     if asset.id in components:

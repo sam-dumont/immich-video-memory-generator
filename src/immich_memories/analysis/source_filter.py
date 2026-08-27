@@ -101,6 +101,32 @@ def _a_still_with_no_camera(asset: Any) -> bool:
     return not (exif and getattr(exif, "make", None))
 
 
+def not_on_the_timeline(asset: Any) -> bool:
+    """True for anything Immich does not show on the timeline.
+
+    A privacy gate rather than a provenance one, which is why -- alone among
+    the rules here -- a star does not lift it. `not_shot_here` asks whether
+    anybody wanted this asset, and a favourite answers that directly. This asks
+    whether we may look at the asset at all, which a favourite cannot speak to:
+    a picture in the locked folder is likely to be BOTH starred and flattering
+    to any score, exactly the combination that must never ship.
+
+    The server already refuses `visibility=locked` to an API key with 401
+    "Elevated permission is required", so locked assets do not reach this code
+    today. It is asserted here anyway, because a remote default we do not
+    control is not a gate.
+
+    `hidden` is the live one. The default metadata search returns it unasked --
+    3,303 assets on a real library, all of them Live Photo video components
+    Immich hides so the timeline does not show one shot twice. `isArchived` is
+    false on every one of them, so the older boolean does not cover this.
+    """
+    visibility = getattr(asset, "visibility", None)
+    if visibility is not None and visibility != "timeline":
+        return True
+    return bool(getattr(asset, "is_archived", False))
+
+
 def not_shot_here(
     asset: Any,
     *,
@@ -138,6 +164,23 @@ def from_the_camera_roll(photo_assets: list[Any], config: Any) -> list[Any]:
     analysis = getattr(config, "analysis", None)
     patterns = getattr(analysis, "exclude_filename_patterns", ())
     stills_need_a_camera = getattr(analysis, "exclude_stills_without_camera_exif", False)
+    # Read only to say out loud that it is being ignored. The setting lets
+    # analysis be pointed at the archive on purpose; generation refuses it,
+    # because a gate that depends on remembering a setting is not a gate. A
+    # silent refusal would be worse than no setting at all -- someone would
+    # turn it on and never learn it did nothing here.
+    if getattr(analysis, "include_off_timeline_assets", False):
+        logger.warning(
+            "include_off_timeline_assets is on, and generation ignores it: "
+            "archived, hidden and locked assets stay out of the video."
+        )
+    on_the_timeline = [asset for asset in photo_assets if not not_on_the_timeline(asset)]
+    if len(on_the_timeline) < len(photo_assets):
+        logger.info(
+            "Source filter: %d photo(s) Immich keeps off the timeline",
+            len(photo_assets) - len(on_the_timeline),
+        )
+    photo_assets = on_the_timeline
     if not patterns and not stills_need_a_camera:
         return photo_assets
     kept = [

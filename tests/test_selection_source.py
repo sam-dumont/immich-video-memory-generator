@@ -814,3 +814,39 @@ def test_material_that_never_came_from_this_camera_is_not_editorial_source() -> 
     # The star settles it here as it settles every other hard gate.
     assert set(prepared.candidate_ids) == {"theirs", "starred"}
     assert set(prepared.excluded_ids) == {"forwarded", "messaged"}
+
+
+def test_an_asset_off_the_timeline_never_reaches_a_pass_even_starred() -> None:
+    """Visibility is a privacy gate, so the star does not open it.
+
+    Immich carries four visibilities: timeline, archive, hidden and locked.
+    Only `timeline` belongs in a memory. `locked` is the folder people put
+    intimate pictures in, and the server refuses it to an API key outright --
+    `visibility=locked` answers 401 "Elevated permission is required" -- but
+    relying on the server to keep saying no is not a gate, it is a bet on a
+    remote default we do not control.
+
+    `hidden` is the one that is live today: the default metadata search returns
+    it unasked, 3,303 assets on a real library, every one of them the video
+    component of a Live Photo that Immich hides so the timeline does not show
+    the shot twice.
+
+    Every other source rule here answers "did anyone want this?", and a star
+    answers it directly, so `not_shot_here` lets a favourite through. This rule
+    answers "may we look at this at all?", which a star cannot speak to -- a
+    picture in the locked folder is likely to be starred AND likely to score
+    well, which is precisely the combination that must not ship.
+    """
+    for visibility in ("archive", "hidden", "locked"):
+        starred = make_asset(f"off-timeline-{visibility}", is_favorite=True).model_copy(
+            update={"visibility": visibility}
+        )
+        on_timeline = make_asset("on-timeline").model_copy(update={"visibility": "timeline"})
+
+        prepared = prepare_editorial_source(
+            EditorialSelectionRequest(scope=SourceScope()),
+            EditorialDependencies(source_fetcher=lambda _scope, pair=(starred, on_timeline): pair),
+        )
+
+        assert prepared.candidate_ids == ("on-timeline",)
+        assert prepared.excluded_ids == (f"off-timeline-{visibility}",)

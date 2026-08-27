@@ -24,7 +24,7 @@ from immich_memories.analysis.preview_builder import PreviewBuilder
 from immich_memories.analysis.progress import PipelinePhase, ProgressTracker
 from immich_memories.analysis.selection_coverage import AnalysisCoverage
 from immich_memories.analysis.selection_quality import SelectionQuality
-from immich_memories.analysis.source_filter import not_shot_here
+from immich_memories.analysis.source_filter import not_on_the_timeline, not_shot_here
 from immich_memories.analysis.thumbnail_prefetch import ThumbnailPrefetcher
 from immich_memories.config_presets import resolve_analysis_depth
 
@@ -505,6 +505,14 @@ class SmartPipeline:
             logger.info(
                 f"Duration filter: removed {too_short_count} clips shorter than "
                 f"{min_duration:.1f}s minimum"
+            )
+
+        before_visibility = len(eligible)
+        eligible = [clip for clip in eligible if not not_on_the_timeline(clip.asset)]
+        if len(eligible) < before_visibility:
+            logger.info(
+                "Source filter: removed %d clip(s) Immich keeps off the timeline",
+                before_visibility - len(eligible),
             )
 
         patterns = self._analysis_config.exclude_filename_patterns

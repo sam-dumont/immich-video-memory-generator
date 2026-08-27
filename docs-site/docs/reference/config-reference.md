@@ -107,6 +107,7 @@ analysis:
     - "img-*-wa[0-9][0-9][0-9][0-9]*"
     - "vid-*-wa[0-9][0-9][0-9][0-9]*"
   exclude_stills_without_camera_exif: true   # a photo naming no camera was received, not shot
+  include_off_timeline_assets: false        # archive/hidden/locked stay out; generation forces this off
 
   # Duplicate detection
   duplicate_hash_threshold: 8    # Perceptual hash threshold (0-64)
