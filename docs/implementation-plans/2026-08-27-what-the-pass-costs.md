@@ -38,11 +38,18 @@ argument against it.
 | variant | median call | characters written | agrees with the banked answer |
 |---|---|---|---|
 | verdict + reason, 4000 cap | 1.06s | 484 | 30/30 |
-| **verdict only, 4000 cap** | **0.51s** | **49** | 29/30 |
+| **verdict only, 4000 cap** | **0.51s** | **49** | 29/30 — **but see below** |
 | verdict only, 64 cap | 0.49s | 49 | 18/18 — **12 of 30 calls failed** |
 
-The prose is 484 of 533 characters and half the wall clock. Dropping it halves
-the call and does not move the verdict.
+The prose is 484 of 533 characters and half the wall clock.
+
+**It does move the verdict, and 30 pairs was too small a sample to see it.**
+Re-gated on the full dense month, the same corpus absorbed 502 frames with the
+reason and **388 without** — 23% fewer. Survival went 27% → 35% (sparse, 65% →
+73%). Both months still sit inside the 25–50% band, and the new answer is the
+more conservative one, which is the safe direction under this project's
+asymmetry. But "agrees 29/30" was a statement about a sample, and it was
+reported as though it were a statement about the pass.
 
 The third row is a trap of the kind already catalogued here: it reads as the
 fastest variant because its failures left the sample. A 64-token cap truncates
@@ -89,15 +96,31 @@ removing the only check that the answer is not order-sensitive. Not taken.
 
 Model time only; the rest of a run is pipeline overhead shared with Pass 0.
 
-| | calls | model time |
+| | calls | isolated model time |
 |---|---|---|
 | as first gated | 1312 | 23 min |
 | \+ short-circuit | 1191 | 21 min |
-| \+ verdict only | 1191 | **10 min** |
+| \+ verdict only | 1191 | 10 min |
 
-Both changes shipped. The cost of a month is now roughly `2 × (frames −
-moments)` calls at about half a second each, minus the pairs settled by one
-call.
+**Corrected 2026-08-27 after the second gate ran.** That last row was a
+projection from isolated call timing and the whole-run measurement does not
+support it. Both months re-gated live on `pair-v2`:
+
+| | calls | wall clock |
+|---|---|---|
+| v1, reason + both arrangements | 1660 | 51 min |
+| v2, verdict only + short-circuit | 1381 | **47 min** |
+
+**8% of wall clock for 17% fewer calls.** The per-call time did not measurably
+improve in the real run, though `gateway.ask` measured 1.06s → 0.51s in
+isolation. Either per-call overhead outside the model dominates, or both gate
+runs were contended — test suites and quality gates were run on the same
+machine during each. Not yet separated, and it should be before any further
+cost claim is made from a probe.
+
+**The saving that is real is fewer calls, not faster ones.** Dropping the
+written reason is still right — it removes tokens nothing read — but it is not
+the 2× the isolated timing suggested.
 
 ## 7. Probes
 
