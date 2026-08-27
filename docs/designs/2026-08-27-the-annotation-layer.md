@@ -303,13 +303,44 @@ the single change that unlocks the rest:
 
 From that anchor the rest follows arithmetically:
 
-| relationship | signature, all from the existing evidence block |
+### It infers EVIDENCE, never a relationship
+
+**Inferring relationships is normative, and this design must not be.** Two adults
+who appear with a child from their first month might be their parents, or one
+parent and a partner, or grandparents raising them, or separated co-parents, or
+none of those. Metadata cannot separate those cases and must not pretend to. A
+tool that tells someone their family is shaped a particular way, from a face-count
+histogram, is wrong in a way no accuracy number redeems.
+
+`editor.py` already carries the right instinct: *"What inference can suggest, and
+nothing more. A role the graph cannot propose is a role only the user can name,
+and the free-text field is where they do."*
+
+So the graph writes **observations**, and a person names the relationship:
+
+| what is inferred — an observation | what is NOT inferred |
 |---|---|
-| **child** | `onset` ≈ own `birth_date` |
-| **parents** | the adults with the highest co-occurrence with that child *from their onset onward*, present *before* it |
-| **couple** | two adults in a tight-dyad, both present before the child's onset, both co-occurring with the child at high rate |
-| **grandparent** | 50–70 year age gap to the child, `episodic` tier, co-occurs with the child |
-| **sibling** | two people whose onsets both match their birth dates, sharing the same high-co-occurrence adults |
+| `onset` ≈ own `birth_date` → **"first appears at their own birth"** | "child" |
+| present before that onset, and in N% of that person's photographs | "parent", "mother", "father" |
+| a tight dyad also present before the onset | "couple", "spouse" |
+| a 50–70 year age gap, `episodic` tier, co-occurring | "grandparent" |
+| two people who each first appear at their own birth, sharing the same close adults | "siblings" |
+
+Each observation carries its numbers, so a person reading the file sees *why* it
+was written and can disagree with the reasoning rather than only the label.
+
+**The override contract already exists and must be used, not reinvented.**
+`confirmed:` holds `role` (free text, deliberately not an enum), `links` and
+`notes`; a refresh recomputes every `inferred:` block and copies every
+`confirmed:` block through untouched; a person somebody annotated is never
+dropped. `people/editor.py` and the `settings_people` UI page are the surfaces.
+**Relationship inference must write only into `inferred:`, and every consumer must
+prefer `confirmed:`** — so a wrong guess is corrected once and stays corrected.
+
+A consumer that needs a relationship — a title saying "their first year", a
+person-centred memory — reads `confirmed.role` if present, and otherwise treats
+the observation as what it is: a pattern in the numbers, not a fact about a
+family.
 
 **Why it is worth closing.** A relationship is what turns a fact into a story: the
 dense month is not "a cluster aged 0.0 appeared in 588 photographs", it is "their
