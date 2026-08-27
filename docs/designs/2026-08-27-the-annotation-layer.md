@@ -110,6 +110,52 @@ measurements this session that were correct and irrelevant: a band rejected for
 7 wrong cuts in 550, a hash-only Selects rejected for dropping 30 frames of 719
 while leaving every one of 123 moments represented.
 
+### The invariant and the bar contradict each other. Measured, no model calls.
+
+**2026-08-27, `slice3-probes-2026-08-27/probe_units.py`, two real months.** The
+two statements above were never checked against each other on real grouping:
+
+| | June 2023 | Feb 2024 |
+|---|---|---|
+| candidates | 261 | 1,450 |
+| **episodes** | **58** | **101** |
+| moments | 81 | 202 |
+| active days | 28 | 28 |
+| episodes with **zero** survivors, 60 s film (12 slots) | **46 (79%)** | **89 (88%)** |
+| same, 120 s film (24 slots) | 34 (59%) | 77 (76%) |
+
+**"Zero episodes with zero survivors" is violated by the bar itself, before any
+pass runs.** A month cannot ship 58 episodes in ten clips. The assertion as
+written would fail every correct run, and it cannot be repaired by cutting less.
+
+**The cause is the unit, not the bar.** `an occasion is an EPISODE` is not what
+the grouping produces: **36% of June's episodes hold a single asset**, and the
+median multi-asset episode spans **7 minutes**. That is *a few frames in one
+place*, not *the party*. The rule was written about occasions and is being
+enforced over something an order of magnitude finer — the unit-granularity trap,
+in the one place it had not yet been looked for.
+
+Three ways out, none of them free, and this is the owner's call:
+
+1. **Coarsen the unit.** Build a real occasion above the episode — a day, or a
+   contiguous run of episodes — and assert over that. June has 28 active days,
+   still more than 12 slots, so day is not automatically enough either.
+2. **Narrow the invariant to what the owner marked.** *No starred occasion loses
+   everything* is achievable at this ratio, is already a hard rule, and is the
+   only version of "losing an occasion is not acceptable" that survives the
+   arithmetic.
+3. **Keep it as a diagnostic, not an assertion** — report the uncovered fraction
+   and let a large jump be the signal, the way `!! possible over-cull` works.
+
+**Until this is settled, the assertion must not be written into a gate**, and any
+claim that a run "keeps every occasion" is unsupported.
+
+**And it resizes Structure.** 58 episodes into 12 slots is not *"reject the
+moments the story does not need"* — it is choosing 12 of 58, and a reject-only
+contract would have to name 46 rejections to express it. Structure was specified
+as a light-touch veto over a cut that nearly fits. On real material it is the
+steepest cut in the pipeline.
+
 ---
 
 ## 0b. The instrument ladder
