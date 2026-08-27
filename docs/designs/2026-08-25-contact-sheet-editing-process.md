@@ -34,7 +34,9 @@ Every editorial pass works from pixels on a purpose-built contact sheet. Text is
 annotation, not a substitute for seeing the material. Each pass banks its decision and reasons so
 later passes can use them without inventing the missing context again.
 
-This keeps the editing process described in the craft research: binary passes, a wall of material,
+This keeps the editing process described in the craft research
+(`docs/research/2026-08-25-editing-craft-research.md`, with its
+`editing-craft-selects-supplement`): binary passes, a wall of material,
 selects before assembly, a revisable thesis, explicit sacrifices, and a fine cut that judges the
 whole. It changes the implementation order and contracts, not the underlying editorial method.
 

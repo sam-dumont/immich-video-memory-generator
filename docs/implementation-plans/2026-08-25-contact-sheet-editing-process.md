@@ -20,6 +20,12 @@ Click, GitHub Actions.
 
 **Spec:** `docs/designs/2026-08-25-contact-sheet-editing-process.md`
 
+**Why the process looks like this:** `docs/research/2026-08-25-editing-craft-research.md`
+is the sourced research on how photographers and film editors actually cull — this plan
+carries only the quotes that survived into it. Its `## Mapping hints` section ties each
+craft pass to a pipeline concept. `docs/research/2026-08-25-the-funnel-measured.md` is the
+measured case against the selector being replaced.
+
 ## Global Constraints
 
 - Run `make dev` before any other Make target in a fresh worktree.
