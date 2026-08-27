@@ -276,6 +276,24 @@ answers the existing pipeline has already banked — no new model calls to valid
       measures the wrong thing. Baselines to beat, cheapest first: time/GPS
       blocking alone; then Places365's pooled 512-D feature, which is free if
       Places365 is already running; then DINOv2. Keep DINOv2 only if it beats
+
+- [x] **Immich's own CLIP vectors as an event-similarity baseline — measured, and
+      it is a dead end.** The narrow reuse is legitimate (image↔image cosine, no
+      text query, so not the retrieval use that is banned) but **Immich does not
+      expose the vectors.** What it exposes is `GET /api/duplicates`: 4,136
+      groups, server-computed from embeddings **at a fixed threshold with no
+      knob**. Measured on the 653 model-judged pairs:
+
+      | signal | flagged | model agrees |
+      |---|---|---|
+      | Immich duplicate groups | 50 (8%) | 100% |
+      | perceptual hash ≤ 10 | 275 (42%) | 100% |
+      | **Immich only, hash says far** | **0** | — |
+
+      **A strict subset of the free hash**, ~5× tighter, catching nothing the
+      pixels miss. There is no way to loosen it toward "same event, different
+      angle" without the vectors. Also confirms the shipped corroboration
+      distance: 275/275 at hamming ≤ 10.
       those on event metrics, because it costs 86 MB and a second embedding index.
 - [ ] **`animal`** — 6% of labelled segments, and the only `category` value with
       no free source.
