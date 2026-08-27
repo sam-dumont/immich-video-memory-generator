@@ -321,10 +321,25 @@ So the graph writes **observations**, and a person names the relationship:
 | what is inferred — an observation | what is NOT inferred |
 |---|---|
 | `onset` ≈ own `birth_date` → **"first appears at their own birth"** | "child" |
-| present before that onset, and in N% of that person's photographs | "parent", "mother", "father" |
-| a tight dyad also present before the onset | "couple", "spouse" |
+| present before that onset, and in N% of that person's photographs → **`constant`** | "parent", "mother", "father", "guardian" |
+| a tight dyad, both `constant` for the same person | "couple", "spouse" |
 | a 50–70 year age gap, `episodic` tier, co-occurring | "grandparent" |
-| two people who each first appear at their own birth, sharing the same close adults | "siblings" |
+| two people who each first appear at their own birth, sharing the same `constant` set | "siblings" |
+
+**The inferred term is `constant`, and kinship nouns are forbidden in the inferred
+layer.** Every kinship word encodes a family model: *parent* assumes biological or
+legal parenthood, *guardian* a legal caregiving role, *ancestor* a bloodline. Each
+is wrong for somebody's family, and a tool that writes one down is telling them
+their family is shaped a way it may not be.
+
+`constant` describes a **presence pattern**, which is all that was measured, and it
+sits in the same register as the tiers the graph already speaks in — `inner`,
+`recurring`, `episodic`, `event`. It is true whether the person is a mother, two
+fathers, a grandparent raising a child, a step-parent or a foster carer.
+
+The human word lives in **`confirmed.role`, which is free text and deliberately not
+an enum**: the person types whatever is true for them, in their own language. The
+inference never proposes it and the override survives every refresh.
 
 Each observation carries its numbers, so a person reading the file sees *why* it
 was written and can disagree with the reasoning rather than only the label.

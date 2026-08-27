@@ -247,6 +247,14 @@ answers the existing pipeline has already banked — no new model calls to valid
 
 ### Open, in priority order
 
+- [ ] **Persist the pairwise co-occurrence count in `people.yaml`** — the cheapest
+      open win in the whole phase. `graph.py` already computes it to emit its
+      `tight-dyad` links and then discards the numbers, so a sampled inner-tier
+      person has `links: []`. One count per pair turns 11–12 candidates into 2 and
+      unlocks every other relationship observation. **No model, no pixels, no new
+      API call.** Write it as `constant` — a presence pattern, never a kinship
+      noun — into `inferred:` only, so `confirmed.role` (free text) always wins.
+
 - [x] **Is `setting` needed at all?** **Measured: no, and it needs no model.**
       Its only consumers store it, parse it, and show it to the review model as
       *context* — it gates nothing. Immich already returns a **named place** for
