@@ -568,6 +568,14 @@ Both are plainly one picture. **On this model, writing the reason is part of how
 the answer is arrived at.** The wire contract is `pair-v3` and it carries the
 field. This was shipped as verdict-only and reverted the same day.
 
+**Do not add a person detector for `category`.** Measured: an Apache-2.0 COCO
+SSD-MobileNet (29.5 MB, 16 ms/image) closes 42–67% of the 23% that face detection
+misses, but does not separate `people` from `object` at all (42% v 36%) because an
+object photograph usually contains the hands holding the object. It lifts recall
+from 77% to about 87% on a field that saves no calls and whose main consumer is
+being deleted. **`category` asks what a picture is mainly OF; a detector asks
+whether a person is PRESENT** — do not use one as ground truth for the other.
+
 **Do not put a scene classifier behind `setting`.** Places365 was evaluated and
 fails on this material — 60% agreement even in its top confidence bucket, because
 it is a *scene* classifier and a family photograph is a *people* photograph with a

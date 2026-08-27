@@ -259,7 +259,9 @@ answers the existing pipeline has already banked — no new model calls to valid
       (Apache-2.0) or `onnxmodelzoo/ssd_mobilenet_v1_12` (Apache-2.0, COCO).
 - [ ] **DINOv2 for EVENT clustering** — the job it was never tested on. It tied a
       hash on near-duplicates, where a hash is strong; "same event, different
-      angle" is where a hash's pixel-layout assumption breaks.
+      angle" is where a hash's pixel-layout assumption breaks. **Lower priority
+      than it looks:** hash clustering already beats the model at representatives
+      by 46%, so this is "can we do better than good enough", not a blocker.
 - [ ] **`animal`** — 6% of labelled segments, and the only `category` value with
       no free source.
 - [~] **Relationship inference** from `people.yaml` — rung 3, arithmetic.
