@@ -48,8 +48,8 @@ if TYPE_CHECKING:
 
 SELECTS_PASS_NAME = "pass-2-selects"  # noqa: S105 - public editorial pass identity
 SELECTS_PASS_VERSION = "pass-2-selects-v1"  # noqa: S105 - editorial pass identity
-PAIR_PROMPT_VERSION = "pair-prompt-v1"  # noqa: S105 - wire contract identity
-PAIR_SCHEMA_VERSION = "pair-v1"  # noqa: S105 - wire contract identity
+PAIR_PROMPT_VERSION = "pair-prompt-v2"  # noqa: S105 - wire contract identity
+PAIR_SCHEMA_VERSION = "pair-v2"  # noqa: S105 - wire contract identity
 
 # The answer moved between 150px and 400px in 4 of 4 moments and stopped moving
 # above it, so this pass states the fidelity its own question needs rather than
@@ -64,12 +64,26 @@ SELECTS_TILE_PX = 400
 SELECTS_SURVIVAL_FLOOR = 0.25
 
 _PAIR_SHAPE = json.dumps(
-    {"schema_version": PAIR_SCHEMA_VERSION, "same": False, "reason": "what makes them one or two"},
-    separators=(",", ":"),
+    {"schema_version": PAIR_SCHEMA_VERSION, "same": False}, separators=(",", ":")
 )
-# Verbatim from the probe that measured this question. `same: false` is shown
-# because false is the safe default -- a copied example merges nothing. More
-# prose measurably makes this model worse, so none is added.
+# The question is the probe's, word for word. `same: false` is shown because
+# false is the safe default -- a copied example merges nothing. More prose
+# measurably makes this model worse, so none is added.
+#
+# No written reason is asked for, and that is a cost decision made on numbers.
+# Measured on 30 real pairs against this endpoint: asking for a reason writes
+# 484 characters and takes 1.06s; asking for the verdict alone writes 49 and
+# takes 0.51s, agreeing with the longer answer 29 times in 30. Shrinking the
+# tiles from 400px to 200px, by contrast, bought 11%. On a local single-stream
+# model the bill is tokens written, not pixels read.
+#
+# Murch's rule -- never store a bare verdict, because what is bad today may be
+# what you want in two months -- is met by the trace rather than by prose. Every
+# pair records its exact sheet hash, both arrangements' verdicts and the run it
+# built, so the decision can be reopened by looking at the two tiles that caused
+# it. That is the stronger record here: every failed question shape this project
+# measured returned fluent, specific, grounded-sounding reasons for answers that
+# were following tile position.
 _PAIR_PROMPT = (
     "Two numbered visuals. Are they two attempts at the same picture -- the same "
     "subject, framed the same way, moments apart -- or are they two different pictures? "
@@ -273,12 +287,19 @@ def _one_picture_in_both_orders(
     forward = _ask_one_pair(
         scope_id, "ab", (earlier, later), atlas, requester, sheet_output_dir, limits
     )
+    if forward is None:
+        return False, f"!! Pass 2 unreadable pair answer, both kept: {scope_id}"
+    if not forward:
+        # `forward and backward` cannot become true now, so the second
+        # arrangement changes no outcome. An exact saving, not an estimate:
+        # measured, it removes 121 of 1312 calls on a real dense month.
+        return False, None
     backward = _ask_one_pair(
         scope_id, "ba", (later, earlier), atlas, requester, sheet_output_dir, limits
     )
-    if forward is None or backward is None:
+    if backward is None:
         return False, f"!! Pass 2 unreadable pair answer, both kept: {scope_id}"
-    return forward and backward, None
+    return backward, None
 
 
 def _ask_one_pair(

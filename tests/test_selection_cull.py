@@ -1330,9 +1330,8 @@ def test_public_source_insight_cull_flow_uses_one_trace_and_never_subject_quotas
             pair_asks.append(prompt)
             return json.dumps(
                 {
-                    "schema_version": "pair-v1",
+                    "schema_version": "pair-v2",
                     "same": False,
-                    "reason": "Generated sources are six unrelated subjects.",
                 }
             )
         return json.dumps(
@@ -1396,11 +1395,13 @@ def test_public_source_insight_cull_flow_uses_one_trace_and_never_subject_quotas
         "pass-1-cull",
         "pass-2-selects",
     ]
-    # 1 episode scan + 1 period synthesis + both arrangements of each adjacent pair.
-    # Six candidates in one moment is five neighbouring pairs, and each is asked
-    # twice because only the intersection of two arrangements may absorb anything.
-    assert len(pair_asks) == 10
-    assert len(result.prepared.trace.requests) == 12
+    # 1 episode scan + 1 period synthesis + one call per adjacent pair. Six
+    # candidates in one moment is five neighbouring pairs; each would be asked
+    # in both arrangements, but only the intersection can absorb, so a first
+    # answer of "different" -- which these six unrelated subjects all get --
+    # settles the pair without the second call.
+    assert len(pair_asks) == 5
+    assert len(result.prepared.trace.requests) == 7
     assert episode_asks == 1
     assert result.pass_two.warnings == ()
     assert result.pass_two.absorbed == ()
