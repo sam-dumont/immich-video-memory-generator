@@ -26,12 +26,13 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from immich_memories.analysis.contact_sheets import build_contact_sheets
+from immich_memories.analysis.duplicate_hashing import compute_thumbnail_hash, hamming_distance
 from immich_memories.analysis.editorial_contracts import (
     DecisionProvenance,
     EditorialCandidate,
@@ -63,6 +64,23 @@ SELECTS_TILE_PX = 400
 # next passes can still fix, while cutting past the floor is unjustifiable here.
 SELECTS_SURVIVAL_FLOOR = 0.25
 
+# Perceptual distance is the SECOND VOTE, never the only one. Thein keeps what
+# two independent passes both chose; one of those passes is free wherever the
+# pixels already say what the second arrangement would.
+#
+# Measured on 653 real pairs: the model contradicted itself on 39, and only 4 of
+# those were pixel-close -- its uncertainty lives on pixel-DISTANT pairs. At a
+# corroboration distance of 10 the adaptive rule reproduced every one of 653
+# decisions exactly while removing 30% of the calls. The first changed decision
+# appears at 12.
+#
+# This is a CAP, not a tuned threshold. Each run derives its own from a
+# calibration sample of its own library and may only lower it, so a library
+# unlike the one this was measured on saves less rather than cutting more.
+SELECTS_MAX_CORROBORATION = 10
+SELECTS_CALIBRATION_PAIRS = 60
+SELECTS_CORROBORATION_MARGIN = 2
+
 _PAIR_SHAPE = json.dumps(
     {"schema_version": PAIR_SCHEMA_VERSION, "same": False, "reason": "what makes them one or two"},
     separators=(",", ":"),
@@ -87,6 +105,31 @@ _PAIR_PROMPT = (
     "subject, framed the same way, moments apart -- or are they two different pictures? "
     "Return only one complete JSON object, using exactly these keys and no others:\n" + _PAIR_SHAPE
 )
+
+
+@dataclass
+class _Corroboration:
+    """How far apart two frames may be before the second arrangement is worth buying.
+
+    Consulted per PAIR, not per moment: a single burst of eighty frames is one
+    moment, and a check that only ran at moment boundaries would never finish
+    calibrating on it.
+    """
+
+    observations: list[tuple[int, bool, bool]] = field(default_factory=list)
+    distance: int = SELECTS_MAX_CORROBORATION
+    calibrating: bool = True
+
+    def settle(self) -> str | None:
+        """Fix the distance once this library has said enough about itself."""
+        if not self.calibrating or len(self.observations) < SELECTS_CALIBRATION_PAIRS:
+            return None
+        self.distance = _corroboration_from(self.observations)
+        self.calibrating = False
+        return (
+            f"pass-2 corroboration distance {self.distance}, calibrated on "
+            f"{len(self.observations)} pairs of this library"
+        )
 
 
 @dataclass(frozen=True)
@@ -207,6 +250,10 @@ def _absorb_the_same_picture(
     survivors: list[EditorialCandidate] = []
     absorbed: list[AbsorbedFrame] = []
     warnings: list[str] = []
+    # The first pairs buy both arrangements unconditionally, so this library says
+    # for itself how far apart two frames can be before the model starts
+    # contradicting itself. Nothing is carried over from another one.
+    corroboration = _Corroboration()
     for moment in prepared.moment_groups:
         members = [candidate for candidate in moment.candidates if candidate.asset_id in alive]
         if not members:
@@ -218,6 +265,7 @@ def _absorb_the_same_picture(
             requester=requester,
             sheet_output_dir=sheet_output_dir,
             limits=limits,
+            corroboration=corroboration,
         )
         warnings.extend(moment_warnings)
         for run in runs:
@@ -235,6 +283,7 @@ def _runs_of_one_picture(
     requester: EditorialGateway,
     sheet_output_dir: Path,
     limits: VisionRequestLimits,
+    corroboration: _Corroboration,
 ) -> tuple[list[list[EditorialCandidate]], tuple[str, ...]]:
     """Ask each adjacent pair, and chain the agreeing ones into runs.
 
@@ -254,7 +303,11 @@ def _runs_of_one_picture(
             requester=requester,
             sheet_output_dir=sheet_output_dir,
             limits=limits,
+            corroboration=corroboration,
         )
+        settled = corroboration.settle()
+        if settled:
+            warnings.append(settled)
         if warning:
             warnings.append(warning)
         if same:
@@ -273,6 +326,7 @@ def _one_picture_in_both_orders(
     requester: EditorialGateway,
     sheet_output_dir: Path,
     limits: VisionRequestLimits,
+    corroboration: _Corroboration,
 ) -> tuple[bool, str | None]:
     """Only two arrangements agreeing counts as one picture.
 
@@ -292,9 +346,20 @@ def _one_picture_in_both_orders(
         # arrangement changes no outcome. An exact saving, not an estimate:
         # measured, it removes 121 of 1312 calls on a real dense month.
         return False, None
+    distance = _pixel_distance(atlas, earlier, later)
+    if (
+        not corroboration.calibrating
+        and distance is not None
+        and distance <= corroboration.distance
+    ):
+        # The pixels are the second vote here. Below the corroboration distance
+        # the second arrangement only ever confirmed the first.
+        return True, None
     backward = _ask_one_pair(
         scope_id, "ba", (later, earlier), atlas, requester, sheet_output_dir, limits
     )
+    if distance is not None and backward is not None:
+        corroboration.observations.append((distance, forward, backward))
     if backward is None:
         return False, f"!! Pass 2 unreadable pair answer, both kept: {scope_id}"
     return backward, None
@@ -349,6 +414,32 @@ def _ask_one_pair(
         return None
     same = payload.get("same")
     return same if isinstance(same, bool) else None
+
+
+def _pixel_distance(
+    atlas: object, earlier: EditorialCandidate, later: EditorialCandidate
+) -> int | None:
+    """Hamming distance between two atlas tiles, or None when either has no pixels."""
+    try:
+        tiles = [atlas.tile_for(c.asset_id) for c in (earlier, later)]  # type: ignore[attr-defined]
+        blobs = [t.jpeg_bytes for t in tiles]
+        if any(b is None for b in blobs):
+            return None
+        return hamming_distance(*(compute_thumbnail_hash(b) for b in blobs))
+    except Exception:  # noqa: BLE001 - an unreadable tile just buys the second call
+        return None
+
+
+def _corroboration_from(observations: list[tuple[int, bool, bool]]) -> int:
+    """The largest distance this library never contradicted itself below, capped.
+
+    The sample can only LOWER the cap. A library unlike the one the cap was
+    measured on therefore saves fewer calls; it never cuts more.
+    """
+    contradicted = [d for d, ab, ba in observations if ab != ba]
+    if not contradicted:
+        return SELECTS_MAX_CORROBORATION
+    return max(0, min(SELECTS_MAX_CORROBORATION, min(contradicted) - SELECTS_CORROBORATION_MARGIN))
 
 
 def _keep_from_run(

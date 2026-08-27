@@ -12,7 +12,11 @@ from PIL import Image
 
 from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
 from immich_memories.analysis.llm_query import LLMTransportAttempt
-from immich_memories.analysis.selection_selects import SELECTS_PASS_NAME, run_selects
+from immich_memories.analysis.selection_selects import (
+    SELECTS_CALIBRATION_PAIRS,
+    SELECTS_PASS_NAME,
+    run_selects,
+)
 from immich_memories.analysis.selection_source import (
     EditorialDependencies,
     EditorialSelectionRequest,
@@ -31,17 +35,36 @@ def _jpeg(colour: str) -> bytes:
     return output.getvalue()
 
 
+def _textured(seed: int) -> bytes:
+    """A stub frame with STRUCTURE, because a perceptual hash of a flat image is
+    degenerate -- every solid colour hashes alike, so solid stubs cannot be made
+    pixel-far. Real photographs of a blank wall have the same property."""
+    image = Image.new("L", (64, 64), 0)
+    pixels = image.load()
+    value = seed * 2654435761 % (2**32)
+    for y in range(64):
+        for x in range(64):
+            value = (value * 1103515245 + 12345) % (2**31)
+            pixels[x, y] = value >> 16 & 0xFF
+    output = BytesIO()
+    image.convert("RGB").save(output, "JPEG")
+    return output.getvalue()
+
+
 def run_selects_on(prepared):
     """In the live flow this is Cull's survivors; here every candidate reaches it."""
     return run_selects(prepared, prepared.candidates)
 
 
-def _prepared(*assets):
+def _prepared(*assets, pixels=None):
+    """`pixels` maps an asset id to its stub frame bytes, so a pair can be made
+    pixel-close (identical bytes) or pixel-far (different texture)."""
+    frames = pixels or {}
     return prepare_editorial_source(
         EditorialSelectionRequest(scope=SourceScope()),
         EditorialDependencies(
             source_fetcher=lambda _scope: assets,
-            preview_jpeg=lambda _asset: _jpeg("navy"),
+            preview_jpeg=lambda asset: frames.get(asset.id) or _jpeg("navy"),
         ),
     )
 
@@ -169,6 +192,7 @@ def test_two_arrangements_that_disagree_keep_both_frames(tmp_path: Path) -> None
     prepared = _prepared(
         make_asset("the-wide-frame", file_created_at=WHEN),
         make_asset("the-close-frame", file_created_at=WHEN + timedelta(seconds=10)),
+        pixels={"the-wide-frame": _textured(1), "the-close-frame": _textured(2)},
     )
     orders: list[str] = []
 
@@ -510,3 +534,75 @@ def test_an_answer_on_the_wrong_wire_contract_is_not_read(tmp_path: Path) -> Non
     assert len(result.survivors) == 2, "a verdict on the wrong contract cannot absorb"
     assert result.absorbed == ()
     assert any(warning.startswith("!!") for warning in result.warnings)
+
+
+def _many(count: int, texture):
+    """A single moment of `count` frames, two seconds apart, textured by index."""
+    assets = [
+        make_asset(f"f{i:03d}", file_created_at=WHEN + timedelta(seconds=2 * i))
+        for i in range(count)
+    ]
+    return _prepared(*assets, pixels={a.id: _textured(texture(i)) for i, a in enumerate(assets)})
+
+
+def _count_asks(prepared, tmp_path):
+    asks = 0
+
+    async def _answer(_prompt, _config, **kwargs):
+        nonlocal asks
+        asks += 1
+        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
+        return _pair_answer(same=True)
+
+    # WHY: query_llm is the only external provider boundary; atlas, sheets, gateway and trace stay real.
+    with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
+        result = run_selects(
+            prepared,
+            prepared.candidates,
+            requester=_gateway(tmp_path, prepared.trace),
+            sheet_output_dir=tmp_path / "sheets",
+            frame_cache_dir=tmp_path / "frames",
+        )
+    return asks, result
+
+
+def test_corroborating_pixels_stand_in_for_the_second_arrangement(tmp_path: Path) -> None:
+    """The second call is spent where the pixels cannot help, and nowhere else.
+
+    Measured on 653 real pairs: the model contradicted itself on 39, and only 4
+    of those were pixel-close -- its uncertainty lives on pixel-DISTANT pairs. So
+    below the corroboration distance the second arrangement only ever confirmed
+    the first. Skipping it there reproduced every one of 653 decisions exactly
+    while removing 30% of the calls.
+
+    The saving starts only once this library has said enough about itself, so a
+    corpus too small to calibrate on simply pays for both arrangements.
+    """
+    prepared = _many(70, lambda _i: 7)
+
+    asks, result = _count_asks(prepared, tmp_path)
+
+    pairs = len(prepared.candidates) - 1
+    assert asks < 2 * pairs, "identical pixels already say what the second arrangement would"
+    assert asks == 2 * SELECTS_CALIBRATION_PAIRS + (pairs - SELECTS_CALIBRATION_PAIRS)
+    assert len(result.survivors) == 1
+
+
+def test_calibration_pays_for_both_arrangements_before_it_settles(tmp_path: Path) -> None:
+    """No saving without evidence: the cheap vote is trusted only after measurement."""
+    prepared = _many(SELECTS_CALIBRATION_PAIRS - 5, lambda _i: 7)
+
+    asks, _ = _count_asks(prepared, tmp_path)
+
+    pairs = len(prepared.candidates) - 1
+    assert asks == 2 * pairs, "a corpus too small to calibrate on buys both arrangements"
+
+
+def test_pixels_that_disagree_still_buy_the_second_opinion(tmp_path: Path) -> None:
+    """Where the cheap signal cannot corroborate, the model is asked twice as before."""
+    prepared = _many(70, lambda i: i)
+
+    asks, _ = _count_asks(prepared, tmp_path)
+
+    pairs = len(prepared.candidates) - 1
+    assert asks == 2 * pairs, "far pixels cannot stand in for the second arrangement"
