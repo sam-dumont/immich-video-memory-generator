@@ -182,6 +182,22 @@ Measured 2026-08-27 on the dense month: the softest photograph (Laplacian
 variance 3.2 of 1,725) is a genuinely motion-blurred frame that **Cull banked as
 `ordinary`**. Cull is under-firing, not the material being clean.
 
+**How much it under-fires, precisely, because two documents look like they
+disagree.** They count different things and both are right.
+`2026-08-26-editing-process-as-built.md` reports 19 and 64 removals across the two
+months — that is *every* removal at that stage, including source eligibility and
+subject policy. The banked **model** verdicts are 9 and 8 `notes` and **zero**
+`failed`: that is what Cull itself decided. So Cull removes about eight documents
+a month and no failures at all, while OCR alone finds ~49 document candidates and
+CV finds real motion blur.
+
+**But "under-firing" is a smaller claim than it sounds**, and the earlier draft
+overstated it. The blur floor is tight — a frame is unusable at Laplacian variance
+3.2 and perfectly good at 5.9 — so the true `failed` bucket is the bottom ~1% of
+photographs, roughly a dozen a month, not hundreds. That is what Cooke's rule
+predicts: anything not *clearly* bad survives by default. Cull is missing a dozen
+frames a month, not failing wholesale.
+
 **Exposure must never actuate alone.** Of 37 blown-highlight photographs, **35
 carry real text** — they are documents, not failures, and the most blown frame
 in the month is a designed announcement card that is among the most valuable
