@@ -110,7 +110,10 @@ class Trace:
         recorded = replace(pass_trace, conservation=conservation)
         self.editorial_passes.append(recorded)
         if not conservation.valid:
-            self.warnings.append(f"conservation failure in {pass_trace.name}")
+            # `!!` belongs where the failure is known, not added in bulk by a
+            # later reader: a reader that prefixes everything cannot tell a
+            # failure from a note, and stamped INVALID on warm cache hits.
+            self.warnings.append(f"!! conservation failure in {pass_trace.name}")
 
     def record(
         self,

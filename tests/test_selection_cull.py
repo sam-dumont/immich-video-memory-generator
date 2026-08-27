@@ -734,7 +734,9 @@ def test_owner_banner_uses_conservation_warning_recorded_during_pass_one(
 
     assert result.trace.conservation is not None
     assert result.trace.conservation.valid is False
-    assert "conservation failure in pass-1-cull" in prepared.trace.warnings
+    # `!!` is written where the failure is known, so the trace and the owner
+    # result carry the same string rather than one prefixing the other.
+    assert "!! conservation failure in pass-1-cull" in prepared.trace.warnings
     assert "!! conservation failure in pass-1-cull" in result.warnings
     assert result.review.warnings == result.warnings
     with Image.open(BytesIO(result.review.pages[0].jpeg_bytes)) as review_page:

@@ -236,7 +236,7 @@ def _with_remembered_verdicts(
         )
     )
     warnings = tuple(
-        f"!! remembered verdict culled {decision.asset_id}: {decision.reason}" for decision in added
+        f"remembered verdict culled {decision.asset_id}: {decision.reason}" for decision in added
     )
     return (*rejects, *added), warnings
 
@@ -275,12 +275,16 @@ def _record_new_warnings(
 
 
 def _authoritative_warnings(prepared: PreparedEditorialSource) -> tuple[str, ...]:
-    return _ordered_unique(
-        tuple(
-            warning if warning.startswith("!!") else f"!! {warning}"
-            for warning in prepared.trace.warnings
-        )
-    )
+    """Every note the trace holds, with only the failures carrying `!!`.
+
+    This used to force `!!` onto all of them, which made one meaning do two
+    jobs. `!!` says the sheet is invalid for an owner verdict; a recalled
+    verdict is the durable bank working, and stamping INVALID on a warm run
+    left the only accumulating cache in the engine reporting every success as
+    a defect. Something worth saying out loud is not the same as something
+    that voids the page.
+    """
+    return _ordered_unique(tuple(prepared.trace.warnings))
 
 
 def _record_cull_trace(
@@ -384,8 +388,11 @@ def _render_review(
         )
         for page in pages
     )
-    if warnings:
-        pages = tuple(_add_warning_banner(page, warnings) for page in pages)
+    # Only `!!` voids the page. Everything else is printed in the manifest and
+    # left off the sheet, so a warm run stays judgeable.
+    failures = tuple(warning for warning in warnings if warning.startswith("!!"))
+    if failures:
+        pages = tuple(_add_warning_banner(page, failures) for page in pages)
     manifest_path = output_dir / "pass-0-1-review.json"
     manifest_path.write_text(
         json.dumps(
