@@ -1392,6 +1392,15 @@ def test_public_source_insight_cull_flow_uses_one_trace_and_never_subject_quotas
         "document",
         "pregnancy",
     )
+    assert result.structure_workprint.representative_ids == ("face",)
+    assert (
+        tuple(
+            asset_id
+            for moment in result.structure_workprint.moments
+            for asset_id in moment.candidate_ids
+        )
+        == result.pass_one.trace.kept_ids
+    )
     assert [item.name for item in result.prepared.trace.editorial_passes] == [
         "source-eligibility",
         "pass-0",
@@ -1614,7 +1623,7 @@ def test_reencode_is_rejected_before_the_fused_visual_request(
     assert result.prepared.candidate_ids == ("camera-original",)
     assert result.prepared.excluded_ids == ("reencode",)
     assert result.prepared.trace.story_of("reencode").reason == (
-        "low-resolution source without camera metadata"
+        "likely forwarded source without camera provenance"
     )
     assert _survivor_ids(result.pass_one) == ("camera-original",)
     assert result.pass_one.rejected == ()

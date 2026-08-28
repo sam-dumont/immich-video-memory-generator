@@ -275,6 +275,7 @@ def _pool_and_select(
     dry_run: bool,
     thumbnail_cache,
     content_budget_seconds: float,
+    accept_any_provenance: bool = False,
 ) -> tuple[list, object]:
     """Build the pool, then choose from it, with ONE trace over both.
 
@@ -301,8 +302,13 @@ def _pool_and_select(
             provider_circuit=pipeline.provider_circuit,
             dry_run=dry_run,
             thumbnail_cache=thumbnail_cache,
+            accept_any_provenance=accept_any_provenance,
         )
-        candidates = _drop_reencoded_sources(candidates, config=config)
+        candidates = _drop_reencoded_sources(
+            candidates,
+            config=config,
+            accept_any_provenance=accept_any_provenance,
+        )
         candidates = _apply_subject_policy(
             candidates,
             config=config,
@@ -352,6 +358,7 @@ def run_pipeline_and_generate(
     automation_attempt_id: str | None = None,
     dry_run: bool = False,
     no_render: bool = False,
+    accept_any_provenance: bool = False,
 ) -> tuple[Path, bool, str | None]:
     """Run smart pipeline analysis + video generation.
 
@@ -417,6 +424,7 @@ def run_pipeline_and_generate(
         hdr_only=False,
         prioritize_favorites=True,
         analysis_depth=analysis_depth,
+        accept_any_provenance=accept_any_provenance,
     )
     output_canvas = _configure_output_canvas(
         pipeline_config,
@@ -492,6 +500,7 @@ def run_pipeline_and_generate(
         dry_run=dry_run,
         thumbnail_cache=thumbnail_cache,
         content_budget_seconds=timeline_plan.content_budget,
+        accept_any_provenance=accept_any_provenance,
     )
     _analysis_time = _time.monotonic() - _pipeline_start
     selected_clips = pipeline_result.selected_clips

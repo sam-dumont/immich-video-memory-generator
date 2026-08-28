@@ -12,6 +12,7 @@ Ollama server it met, and the caller read the failure as "not special".
 from __future__ import annotations
 
 import base64
+import json
 import logging
 import time
 from dataclasses import dataclass
@@ -248,10 +249,23 @@ async def query_llm(
 def _cache_key(llm_config: LLMConfig, prompt: str, thinking: bool) -> str:
     from immich_memories.cache.judgment_cache import judgment_key
 
+    effective_thinking = bool(thinking and getattr(llm_config, "thinking", False))
+    thinking_identity = (
+        json.dumps(
+            getattr(llm_config, "thinking_params", {}),
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+            default=str,
+        )
+        if effective_thinking
+        else ""
+    )
     return judgment_key(
         model=getattr(llm_config, "model", None),
         prompt=prompt,
-        thinking=bool(thinking and getattr(llm_config, "thinking", False)),
+        thinking=effective_thinking,
+        thinking_identity=thinking_identity,
     )
 
 
@@ -526,7 +540,13 @@ async def _query_openai(
     }
     if thinking:
         payload.update(config.thinking_params)
-        payload["max_tokens"] = max(max_tokens, THINKING_MIN_MAX_TOKENS)
+        thinking_budget = payload.get("thinking_budget")
+        if isinstance(thinking_budget, int) and not isinstance(thinking_budget, bool):
+            payload["max_tokens"] = max(
+                max_tokens + max(0, thinking_budget), THINKING_MIN_MAX_TOKENS
+            )
+        else:
+            payload["max_tokens"] = max(max_tokens, THINKING_MIN_MAX_TOKENS)
         timeout = max(timeout, THINKING_MIN_TIMEOUT_SECONDS)
     elif config.no_thinking_params:
         # Not asking to think is not the same as asking not to. On a server
@@ -597,7 +617,27 @@ def _openai_completion(
     if truncated and thinking:
         _observe(observer, attempt, "thinking_fallback", status_code)
         return None, True
-    return choice["message"]["content"], False
+    message = choice["message"]
+    if not isinstance(message, dict):
+        raise TypeError("OpenAI response message is not an object")
+    return _openai_answer_content(message), False
+
+
+def _openai_answer_content(message: dict) -> str | None:
+    """Return only the final answer, never the model's private reasoning."""
+    if "content" not in message:
+        raise KeyError("OpenAI response message has no content field")
+    content = message["content"]
+    reasoning = message.get("reasoning_content")
+    if content is not None and not isinstance(content, str):
+        raise TypeError("OpenAI response content is not text")
+    if reasoning is not None and not isinstance(reasoning, str):
+        raise TypeError("OpenAI response reasoning_content is not text")
+    if content and "</think>" in content:
+        # Older compatible servers sometimes inline the reasoning channel.
+        # The final close marker is the boundary; only what follows is an answer.
+        content = content.rsplit("</think>", 1)[1].lstrip()
+    return content
 
 
 def _anthropic_usage(

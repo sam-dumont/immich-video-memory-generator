@@ -16,6 +16,10 @@ from immich_memories.analysis.selection_source import (
     PreparedEditorialSource,
     prepare_editorial_source,
 )
+from immich_memories.analysis.selection_structure import (
+    StructureWorkprint,
+    build_structure_workprint,
+)
 from immich_memories.analysis.selection_trace import Trace
 
 if TYPE_CHECKING:
@@ -27,11 +31,12 @@ __all__ = ["EditorialSelectionResult", "run_editorial_selection"]
 
 @dataclass(frozen=True)
 class EditorialSelectionResult:
-    """The public replacement slice through source, Insight, Cull, and Selects."""
+    """The public replacement path through the current production slices."""
 
     prepared: PreparedEditorialSource
     pass_zero: PassZeroResult
     pass_one: CullPassResult
+    structure_workprint: StructureWorkprint
     pass_two: SelectsPassResult
 
 
@@ -56,6 +61,12 @@ def run_editorial_selection(
         limits=limits,
     )
     pass_one = run_cull(prepared, pass_zero, review_output_dir=review_output_dir)
+    structure_workprint = build_structure_workprint(
+        prepared,
+        pass_one.survivors,
+        atlas=pass_zero.atlas,
+        output_dir=sheet_output_dir / "structure",
+    )
     pass_two = run_selects(
         prepared,
         pass_one.survivors,
@@ -64,4 +75,4 @@ def run_editorial_selection(
         frame_cache_dir=frame_cache_dir,
         limits=limits,
     )
-    return EditorialSelectionResult(prepared, pass_zero, pass_one, pass_two)
+    return EditorialSelectionResult(prepared, pass_zero, pass_one, structure_workprint, pass_two)

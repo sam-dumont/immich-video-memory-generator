@@ -127,6 +127,28 @@ def test_a_different_model_is_judged_again(tmp_path) -> None:
     assert len(calls) == 2, "one model's judgement was served for another's question"
 
 
+def test_a_different_thinking_budget_is_judged_again(tmp_path) -> None:
+    """A cached reasoning answer belongs to the budget/dialect that produced it."""
+    calls: list = []
+
+    async def _answer(prompt, *_args, **_kwargs):
+        calls.append(prompt)
+        return _VERDICT
+
+    low = _config().model_copy(
+        update={"thinking_params": {"enable_thinking": True, "thinking_budget": 256}}
+    )
+    full = _config().model_copy(
+        update={"thinking_params": {"enable_thinking": True, "thinking_budget": 4096}}
+    )
+    # WHY: the model transport is the boundary; changed reasoning settings must miss cache.
+    with patch("immich_memories.analysis.llm_query._dispatch", new=_answer):
+        review_selection(_selection(), low, cache_path=tmp_path / "judgments.db")
+        review_selection(_selection(), full, cache_path=tmp_path / "judgments.db")
+
+    assert len(calls) == 2
+
+
 def test_a_cache_that_cannot_be_opened_costs_calls_not_the_run(tmp_path) -> None:
     """Losing the cache is a cost, never a failure — the project's rule."""
     unwritable = tmp_path / "no-such-dir" / "judgments.db"

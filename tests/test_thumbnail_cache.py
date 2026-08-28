@@ -92,23 +92,25 @@ class TestReadingAThumbnailKeepsItAlive:
 
 
 class TestSelfEvictionIsAnnounced:
-    """A budget smaller than the run's working set degrades selection in
-    silence -- clustering skips, burst dedup skips hashless photos, photo
-    scores fall back to neutral. The run has to say it is happening (#512).
+    """A budget smaller than the run's working set may overflow temporarily;
+    it must not degrade clustering, burst dedup, or photo scoring (#512).
     """
 
     @staticmethod
     def _warnings(caplog):
         return [r for r in caplog.records if r.levelno == logging.WARNING]
 
-    def test_evicting_thumbnails_this_run_fetched_warns_once_per_pass(self, tmp_path, caplog):
+    def test_active_thumbnails_overflow_the_budget_without_self_eviction(self, tmp_path, caplog):
         cache = ThumbnailCache(cache_dir=tmp_path / "thumbnails", max_size_mb=0.001)
-        for i in range(4):  # 2.4 KB against a 1 KB budget: three files have to go
-            cache.put(f"asset-{i}", "preview", b"x" * 600)
+        asset_ids = [f"asset-{i}" for i in range(4)]
+        for asset_id in asset_ids:  # 2.4 KB against a 1 KB budget
+            cache.put(asset_id, "preview", b"x" * 600)
 
         with caplog.at_level(logging.WARNING):
-            cache.enforce_budget()
+            freed = cache.begin_working_set(asset_ids, "preview")
 
+        assert freed == 0
+        assert all(cache.has(asset_id, "preview") for asset_id in asset_ids)
         assert len(self._warnings(caplog)) == 1
 
     def test_reclaiming_an_earlier_run_s_thumbnails_stays_quiet(self, tmp_path, caplog):

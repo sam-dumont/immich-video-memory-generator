@@ -131,7 +131,7 @@ def test_low_resolution_video_without_camera_metadata_is_source_excluded() -> No
     assert prepared.excluded_ids == ("suspect",)
     story = prepared.trace.story_of("suspect")
     assert story.dropped_at == "source-eligibility"
-    assert story.reason == "low-resolution source without camera metadata"
+    assert story.reason == "likely forwarded source without camera provenance"
 
 
 def test_high_resolution_still_without_camera_metadata_is_source_eligible() -> None:
@@ -152,6 +152,84 @@ def test_high_resolution_still_without_camera_metadata_is_source_eligible() -> N
 
     assert prepared.candidate_ids == ("official-photo",)
     assert prepared.excluded_ids == ()
+
+
+def test_a_run_can_accept_any_provenance_without_relaxing_other_scope() -> None:
+    """A family-forward memory opts in at request time, not through global config."""
+    when = datetime(2023, 6, 18, tzinfo=UTC)
+    renamed_forward = make_asset(
+        "renamed-forward",
+        original_file_name="00000000-0000-4000-8000-000000000000.jpg",
+        exif_make=None,
+        exif_model=None,
+        file_created_at=when,
+    ).model_copy(update={"type": AssetType.IMAGE, "width": 2048, "height": 1153})
+    named_forward = make_asset(
+        "named-forward",
+        original_file_name="IMG-20230618-WA0001.jpg",
+        file_created_at=when,
+    ).model_copy(update={"type": AssetType.IMAGE, "width": 1080, "height": 1920})
+    hidden = make_asset("hidden", file_created_at=when).model_copy(
+        update={"type": AssetType.IMAGE, "visibility": "hidden"}
+    )
+
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(
+            scope=SourceScope(
+                excluded_filename_patterns=("img-*-wa[0-9][0-9][0-9][0-9]*",),
+                min_source_short_side=1080,
+                accept_any_provenance=True,
+            )
+        ),
+        EditorialDependencies(
+            source_fetcher=lambda _scope: (renamed_forward, named_forward, hidden)
+        ),
+    )
+
+    assert set(prepared.candidate_ids) == {"renamed-forward", "named-forward"}
+    assert prepared.excluded_ids == ("hidden",)
+    assert prepared.trace.story_of("hidden").reason == "not on the timeline"
+
+
+def test_pre_smartphone_stills_and_videos_bypass_the_modern_reencode_inference() -> None:
+    """The 2003-era source pool is allowed through for the editor to judge."""
+    historical_still = make_asset(
+        "historical-still",
+        exif_make=None,
+        exif_model=None,
+        file_created_at=datetime(2003, 8, 12, tzinfo=UTC),
+    ).model_copy(update={"type": AssetType.IMAGE, "width": 600, "height": 450})
+    historical_video = VideoClipInfo(
+        asset=make_asset(
+            "historical-video",
+            exif_make=None,
+            exif_model=None,
+            file_created_at=datetime(2006, 7, 1, tzinfo=UTC),
+        ),
+        duration_seconds=3.0,
+        width=320,
+        height=240,
+    )
+    modern_reencode = make_asset(
+        "modern-reencode",
+        exif_make=None,
+        exif_model=None,
+        file_created_at=datetime(2025, 7, 1, tzinfo=UTC),
+    ).model_copy(update={"type": AssetType.IMAGE, "width": 600, "height": 450})
+
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope(min_source_short_side=1080)),
+        EditorialDependencies(
+            source_fetcher=lambda _scope: (
+                historical_still,
+                historical_video,
+                modern_reencode,
+            )
+        ),
+    )
+
+    assert set(prepared.candidate_ids) == {"historical-still", "historical-video"}
+    assert prepared.excluded_ids == ("modern-reencode",)
 
 
 def test_favourite_overrides_low_resolution_source_inference() -> None:

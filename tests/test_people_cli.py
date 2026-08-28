@@ -6,6 +6,7 @@ shape of the output, not who is in it.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -13,7 +14,7 @@ from unittest.mock import patch
 
 from click.testing import CliRunner
 
-from immich_memories.people.companion import load_document, people_entries
+from immich_memories.people.companion import add_confirmed_person, load_document, people_entries
 
 
 @dataclass
@@ -106,6 +107,31 @@ class TestScan:
 
         assert _unwrapped(str(out)) in _unwrapped(output)
         assert len(people_entries(load_document(out))) == 3
+
+    def test_it_writes_the_refreshable_evidence_graph_beside_the_people_file(self, tmp_path):
+        out = tmp_path / "people.yaml"
+
+        output = _run(["people", "scan", "--out", str(out)])
+
+        graph_path = tmp_path / "people-graph.json"
+        graph = json.loads(graph_path.read_text())
+        assert _unwrapped(str(graph_path)) in _unwrapped(output)
+        assert len(graph["nodes"]) == 3
+        assert graph["edges"] == []
+
+    def test_it_refreshes_a_confirmed_immich_face_below_the_normal_floor(self, tmp_path):
+        class LibraryWithUncle(_Library):
+            people = [*_Library.people, _Person("p4", "Taylor Sample")]
+            months = {**_Library.months, "p4": [(date(2020, 1, 1), 8)]}
+
+        out = tmp_path / "people.yaml"
+        add_confirmed_person(out, "Taylor Sample", person_id="p4", role="uncle")
+
+        _run(["people", "scan", "--out", str(out)], LibraryWithUncle)
+
+        taylor = next(entry for entry in people_entries(load_document(out)) if "p4" in entry["ids"])
+        assert taylor["inferred"]["evidence"]["count"] == 8
+        assert taylor["confirmed"]["role"] == "uncle"
 
     def test_it_reports_the_tiers_without_reading_out_the_roster(self, tmp_path):
         out = tmp_path / "people.yaml"

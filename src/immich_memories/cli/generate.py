@@ -100,6 +100,7 @@ def register_generate_commands(main: click.Group) -> None:
         llm_title: bool,
         include_live_photos: bool | None,
         include_photos: bool | None,
+        accept_any_provenance: bool,
         photo_duration: float | None,
         refinement_passes: int | None,
         analysis_depth: str | None,
@@ -406,6 +407,7 @@ def register_generate_commands(main: click.Group) -> None:
                             memory_category=memory_category,
                             automation_attempt_id=automation_attempt_id,
                             dry_run=dry_run,
+                            accept_any_provenance=accept_any_provenance,
                         )
                         return
 
@@ -450,6 +452,7 @@ def register_generate_commands(main: click.Group) -> None:
                             memory_category=memory_category,
                             automation_attempt_id=automation_attempt_id,
                             dry_run=dry_run,
+                            accept_any_provenance=accept_any_provenance,
                         )
                         return
 
@@ -599,6 +602,7 @@ def register_generate_commands(main: click.Group) -> None:
                         automation_attempt_id=automation_attempt_id,
                         dry_run=dry_run,
                         no_render=no_render,
+                        accept_any_provenance=accept_any_provenance,
                     )
 
                 _print_generation_result(

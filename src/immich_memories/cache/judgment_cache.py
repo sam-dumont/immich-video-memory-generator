@@ -99,7 +99,9 @@ class VisualJudgmentIdentity:
         return hashlib.sha256(encoded).hexdigest()
 
 
-def judgment_key(*, model: str | None, prompt: str, thinking: bool) -> str:
+def judgment_key(
+    *, model: str | None, prompt: str, thinking: bool, thinking_identity: str = ""
+) -> str:
     """Everything that could change the answer, and nothing that could not.
 
     The prompt text carries the clips, their descriptions and their order, so
@@ -108,9 +110,10 @@ def judgment_key(*, model: str | None, prompt: str, thinking: bool) -> str:
     wording abandons the answers given to the old one — which is the behaviour
     you want and the one that is easiest to forget to implement.
     """
-    material = "\x1f".join(
-        [_ANSWER_VERSION, model or "", "thinking" if thinking else "fast", prompt]
-    )
+    parts = [_ANSWER_VERSION, model or "", "thinking" if thinking else "fast", prompt]
+    if thinking_identity:
+        parts.append(thinking_identity)
+    material = "\x1f".join(parts)
     return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 

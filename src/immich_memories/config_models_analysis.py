@@ -245,8 +245,9 @@ class AnalysisConfig(BaseModel):
         default=1080,
         ge=0,
         description=(
-            "Clips below this short side are dropped unless they carry camera EXIF, "
-            "which is how messaging re-encodes are told from genuinely old footage"
+            "Unknown clips below this short side are dropped; it also enables the "
+            "measured 2048px UUID-JPEG forwarded-media fingerprint. Camera EXIF, a "
+            "favorite, and media captured before 2008 override the inference"
         ),
     )
     subject_policy_enabled: bool = Field(

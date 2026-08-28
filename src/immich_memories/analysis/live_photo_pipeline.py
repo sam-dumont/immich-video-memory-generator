@@ -17,6 +17,8 @@ Shared between CLI and UI — no NiceGUI imports allowed here.
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
+from itertools import starmap
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -100,7 +102,10 @@ def with_burst_neighbours(
     from immich_memories.api.immich import ImmichAPIError
 
     all_live: list[Asset] = []
-    for date_range in date_ranges:
+    for date_range in _neighbour_fetch_ranges(
+        photos,
+        merge_window_seconds=merge_window_seconds,
+    ):
         try:
             all_live.extend(client.get_live_photos_for_date_range(date_range))
         except (ImmichAPIError, OSError, RuntimeError, ValueError) as exc:
@@ -118,3 +123,29 @@ def with_burst_neighbours(
             len(gained),
         )
     return [*photos, *gained]
+
+
+def _neighbour_fetch_ranges(
+    photos: list[Asset],
+    *,
+    merge_window_seconds: float,
+) -> list[Any]:
+    """Query only around tagged Live Photos, even for an all-time person scope."""
+    from immich_memories.timeperiod import DateRange
+
+    radius = timedelta(seconds=max(0.0, merge_window_seconds))
+    intervals = sorted(
+        (
+            photo.file_created_at - radius,
+            photo.file_created_at + radius,
+        )
+        for photo in photos
+        if getattr(photo, "live_photo_video_id", None)
+    )
+    merged: list[tuple[Any, Any]] = []
+    for start, end in intervals:
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return list(starmap(DateRange, merged))

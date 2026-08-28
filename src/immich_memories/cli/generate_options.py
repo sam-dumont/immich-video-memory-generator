@@ -279,6 +279,15 @@ def selection_options(command: FC) -> FC:
             help="Include photos as animated Ken Burns clips (blur background, face-aware pan)",
         ),
         click.option(
+            "--accept-any-provenance",
+            is_flag=True,
+            default=False,
+            help=(
+                "Keep forwarded and re-encoded media for this memory; date, person, "
+                "privacy, and Live Photo boundaries still apply"
+            ),
+        ),
+        click.option(
             "--photo-duration",
             type=float,
             default=None,

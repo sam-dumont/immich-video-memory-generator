@@ -184,6 +184,7 @@ def handle_trip_generation(
     automation_attempt_id: str | None = None,
     orientation: str = "landscape",
     dry_run: bool = False,
+    accept_any_provenance: bool = False,
 ) -> None:
     """Detect trips, select, and generate video for each."""
     from immich_memories.cli._trip_display import (
@@ -314,6 +315,7 @@ def handle_trip_generation(
             memory_category=memory_category,
             automation_attempt_id=automation_attempt_id,
             dry_run=dry_run,
+            accept_any_provenance=accept_any_provenance,
         )
 
         console.print()

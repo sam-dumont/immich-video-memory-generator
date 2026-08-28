@@ -63,6 +63,11 @@ class SourceScope:
     # for video. Low resolution plus absent camera metadata is the measured
     # provenance signal; either fact on its own remains insufficient.
     min_source_short_side: int = 1080
+    # A conscious per-memory override for sources where received media is the
+    # record (for example, a nephew spotlight assembled from family forwards).
+    # This never relaxes date/person/library scope, privacy, owner exclusions,
+    # or Live Photo component handling.
+    accept_any_provenance: bool = False
     # Visibility, not provenance: whether Immich shows an asset on the timeline
     # at all. Off by default and hard-coded off at generation, so pointing
     # analysis at the archive on purpose stays possible without a forgotten
@@ -602,7 +607,7 @@ def _source_exclusion_reason(
     legacy_still_exif_veto = (
         request.scope.stills_need_a_camera and request.scope.min_source_short_side <= 0
     )
-    if not_shot_here(
+    if not request.scope.accept_any_provenance and not_shot_here(
         asset,
         patterns=request.scope.excluded_filename_patterns,
         stills_need_a_camera=legacy_still_exif_veto,
@@ -610,16 +615,19 @@ def _source_exclusion_reason(
         return "not shot on this camera"
     width, height = _source_dimensions(source)
     if (
-        request.scope.min_source_short_side > 0
+        not request.scope.accept_any_provenance
+        and request.scope.min_source_short_side > 0
         and not asset.is_favorite
         and not is_usable_source(
             width=width,
             height=height,
             has_camera_exif=_has_camera_exif(asset),
             min_short_side=request.scope.min_source_short_side,
+            captured_at=asset.file_created_at,
+            original_file_name=asset.original_file_name,
         )
     ):
-        return "low-resolution source without camera metadata"
+        return "likely forwarded source without camera provenance"
     if request.scope.library_ids:
         if dependencies.library_membership is None:
             raise ValueError("library scope requires a library_membership dependency")

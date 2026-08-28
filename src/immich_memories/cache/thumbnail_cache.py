@@ -25,10 +25,7 @@ class ThumbnailCache:
         self.cache_dir = cache_dir
         self.max_size_mb = max_size_mb
         self._puts_since_check = 0
-        # A thumbnail written or read since the cache was opened belongs to the
-        # run holding it; evicting one means the budget cannot hold the working
-        # set, which the run should hear about instead of quietly re-fetching.
-        self._run_started_at = time.time()
+        self._run_started_at: float | None = None
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     def _path(self, asset_id: str, size: str) -> Path:
@@ -60,6 +57,15 @@ class ThumbnailCache:
         """
         return {asset_id for asset_id in asset_ids if self.has(asset_id, size)}
 
+    def begin_working_set(self, asset_ids: set[str] | list[str], size: str) -> int:
+        """Protect this run's thumbnails while reclaiming earlier leftovers."""
+        self._run_started_at = time.time()
+        for asset_id in asset_ids:
+            path = self._path(asset_id, size)
+            with contextlib.suppress(OSError):
+                os.utime(path)
+        return self.enforce_budget()
+
     def put(self, asset_id: str, size: str, data: bytes) -> Path:
         path = self._path(asset_id, size)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -82,6 +88,7 @@ class ThumbnailCache:
     def clear(self) -> int:
         """Remove all cached thumbnails. Returns count of removed files."""
 
+        self._run_started_at = None
         count = 0
         if self.cache_dir.exists():
             for f in self.cache_dir.rglob("*.jpg"):

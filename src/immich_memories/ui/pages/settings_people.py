@@ -16,7 +16,11 @@ from pathlib import Path
 from nicegui import ui
 
 from immich_memories.config import get_config
-from immich_memories.people.companion import default_people_path
+from immich_memories.people.companion import (
+    default_people_path,
+    load_document,
+    retained_immich_ids,
+)
 from immich_memories.people.editor import (
     CONFIRMED,
     REJECTED,
@@ -24,10 +28,14 @@ from immich_memories.people.editor import (
     CurationFlag,
     LinkView,
     PersonView,
+    add_person,
+    add_relationship,
     curation_flags,
     load_people,
+    remove_relationship,
     save_person,
 )
+from immich_memories.people.relationships import RELATIONSHIP_CHOICES, relationship_label
 from immich_memories.ui.components import im_badge, im_button, im_info_card, im_section_header
 from immich_memories.ui.nicegui_compat import io_bound_result
 
@@ -91,6 +99,13 @@ def render_people_page() -> None:
 
     with ui.row().classes("w-full items-center gap-3 mb-2"):
         im_button("Rescan the library", variant="secondary", on_click=rescan, icon="refresh")
+        add_person_dialog = _add_person_dialog(path)
+        im_button(
+            "Add someone not in Immich",
+            variant="ghost",
+            on_click=add_person_dialog.open,
+            icon="person_add",
+        )
         ui.label(str(path)).classes("text-sm self-center").style("color: var(--im-text-secondary)")
 
     ui.timer(0.1, load, once=True)
@@ -104,12 +119,18 @@ def _scan(path: Path) -> int:
     """
     from immich_memories.api.sync_client import SyncImmichClient
     from immich_memories.people.companion import save_graph
+    from immich_memories.people.evidence_graph import (
+        default_evidence_graph_path,
+        save_evidence_graph,
+    )
     from immich_memories.people.graph import build_graph
 
+    retained = retained_immich_ids(load_document(path))
     config = get_config()
     with SyncImmichClient(base_url=config.immich.url, api_key=config.immich.api_key) as client:
-        graph = build_graph(client)
+        graph = build_graph(client, include_person_ids=retained)
     save_graph(path, graph)
+    save_evidence_graph(default_evidence_graph_path(path), graph, load_document(path))
     return len(graph.people)
 
 
@@ -128,6 +149,8 @@ def _fetch_thumbnails(person_ids: list[str]) -> dict[str, str]:
     found: dict[str, str] = {}
     with SyncImmichClient(base_url=config.immich.url, api_key=config.immich.api_key) as client:
         for person_id in person_ids:
+            if person_id.startswith("manual:"):
+                continue
             try:
                 found[person_id] = base64.b64encode(client.get_person_thumbnail(person_id)).decode()
             except Exception as exc:  # noqa: BLE001, PERF203 - a missing face is not the page
@@ -136,6 +159,8 @@ def _fetch_thumbnails(person_ids: list[str]) -> dict[str, str]:
 
 
 def _person_url(person_id: str) -> str | None:
+    if person_id.startswith("manual:"):
+        return None
     base = get_config().immich.url.rstrip("/")
     return f"{base}/people/{person_id}" if base else None
 
@@ -182,12 +207,14 @@ def _draw_roster(
             )
             return {}
         return {
-            person.person_id: _person_card(person, thumbnails.get(person.person_id), path)
+            person.person_id: _person_card(person, people, thumbnails.get(person.person_id), path)
             for person in people
         }
 
 
-def _person_card(person: PersonView, thumbnail: str | None, path: Path) -> ui.element:
+def _person_card(
+    person: PersonView, people: list[PersonView], thumbnail: str | None, path: Path
+) -> ui.element:
     with (
         ui.card()
         .classes("w-full p-4")
@@ -199,7 +226,7 @@ def _person_card(person: PersonView, thumbnail: str | None, path: Path) -> ui.el
                 _headline(person)
                 _facts(person)
                 _confirm_controls(person, path)
-        _links_section(person, path)
+        _links_section(person, people, path)
     return avatar
 
 
@@ -288,13 +315,20 @@ def _confirm_controls(person: PersonView, path: Path) -> None:
         ).props("dense outlined debounce=800").classes("flex-grow")
 
 
-def _links_section(person: PersonView, path: Path) -> None:
-    if not person.links:
-        return
+def _links_section(person: PersonView, people: list[PersonView], path: Path) -> None:
     ui.separator().classes("my-2")
-    ui.label("What they are to other people").classes("text-sm font-medium").style(
-        "color: var(--im-text-secondary)"
-    )
+    with ui.row().classes("w-full items-center gap-2"):
+        ui.label("Relationships").classes("text-sm font-medium").style(
+            "color: var(--im-text-secondary)"
+        )
+        ui.element("div").classes("flex-grow")
+        dialog = _relationship_dialog(person, people, path)
+        ui.button("Add relationship", icon="add", on_click=dialog.open).props(
+            "flat dense no-caps size=sm"
+        ).style("color: var(--im-primary)")
+    if not person.links:
+        ui.label("Nothing recorded yet.").classes("text-xs").style("color: var(--im-text-muted)")
+        return
     for link in person.links:
         _link_row(person, link, path)
 
@@ -309,11 +343,23 @@ def _why(link: LinkView) -> str:
 def _link_row(person: PersonView, link: LinkView, path: Path) -> None:
     with ui.row().classes("w-full items-center gap-2 no-wrap"):
         ui.icon("link").classes("text-sm").style("color: var(--im-text-muted)")
-        ui.label(f"{link.kind} with {link.target_name}").classes("text-sm").style(
+        ui.label(f"{relationship_label(link.kind)} {link.target_name}").classes("text-sm").style(
             "color: var(--im-text)"
         )
         ui.label(_why(link)).classes("text-xs").style("color: var(--im-text-muted)")
         ui.element("div").classes("flex-grow")
+        if not link.inferred:
+            im_badge("confirmed", variant="success")
+
+            def remove() -> None:
+                remove_relationship(path, person.person_id, link.kind, link.target_id)
+                ui.notify("Relationship removed", type="positive")
+                ui.navigate.reload()
+
+            ui.button(icon="delete_outline", on_click=remove).props(
+                "flat dense round size=sm"
+            ).style("color: var(--im-text-muted)").tooltip("Remove this relationship")
+            return
         answered = ui.row().classes("items-center")
 
         def draw_answer() -> None:
@@ -342,3 +388,64 @@ def _link_row(person: PersonView, link: LinkView, path: Path) -> None:
         ui.button(icon="close", on_click=lambda: decide(REJECTED)).props(
             "flat dense round size=sm color=negative"
         ).tooltip("No, they are not")
+
+
+def _add_person_dialog(path: Path) -> ui.dialog:
+    with ui.dialog() as dialog, ui.card().classes("w-full max-w-md p-5 gap-4"):
+        ui.label("Add someone").classes("text-lg font-semibold").style("color: var(--im-text)")
+        ui.label(
+            "Use this for someone who is not face-tagged in Immich. You can connect them "
+            "to the family immediately afterwards."
+        ).classes("text-sm").style("color: var(--im-text-secondary)")
+        name = ui.input(label="Full name").props("outlined autofocus").classes("w-full")
+
+        def create() -> None:
+            try:
+                add_person(path, name.value or "")
+            except ValueError as exc:
+                ui.notify(str(exc), type="negative")
+                return
+            dialog.close()
+            ui.notify(f"Added {name.value}", type="positive")
+            ui.navigate.reload()
+
+        with ui.row().classes("w-full justify-end gap-2"):
+            im_button("Cancel", variant="ghost", on_click=dialog.close)
+            im_button("Add person", on_click=create)
+    return dialog
+
+
+def _relationship_dialog(person: PersonView, people: list[PersonView], path: Path) -> ui.dialog:
+    kinds = {choice.kind: choice.label for choice in RELATIONSHIP_CHOICES}
+    targets = {
+        other.person_id: other.name for other in people if other.person_id != person.person_id
+    }
+    with ui.dialog() as dialog, ui.card().classes("w-full max-w-lg p-5 gap-4"):
+        ui.label("Add a relationship").classes("text-lg font-semibold").style(
+            "color: var(--im-text)"
+        )
+        ui.label(
+            "One answer updates both people. Confirmed relationships are never replaced by a scan."
+        ).classes("text-sm").style("color: var(--im-text-secondary)")
+        with ui.column().classes("w-full gap-2"):
+            ui.label(person.name).classes("font-medium").style("color: var(--im-text)")
+            kind = ui.select(kinds, label="is…").props("outlined options-dense").classes("w-full")
+            target = (
+                ui.select(targets, label="Person", with_input=True)
+                .props("outlined options-dense use-input input-debounce=0")
+                .classes("w-full")
+            )
+
+        def save() -> None:
+            if not kind.value or not target.value:
+                ui.notify("Choose a relationship and a person", type="warning")
+                return
+            add_relationship(path, person.person_id, str(kind.value), str(target.value))
+            dialog.close()
+            ui.notify("Relationship confirmed", type="positive")
+            ui.navigate.reload()
+
+        with ui.row().classes("w-full justify-end gap-2"):
+            im_button("Cancel", variant="ghost", on_click=dialog.close)
+            im_button("Confirm relationship", on_click=save)
+    return dialog

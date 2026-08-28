@@ -13,7 +13,12 @@ from immich_memories.people.companion import (
     default_people_path,
     load_document,
     people_entries,
+    retained_immich_ids,
     save_graph,
+)
+from immich_memories.people.evidence_graph import (
+    default_evidence_graph_path,
+    save_evidence_graph,
 )
 from immich_memories.people.graph import DEFAULT_MIN_ASSETS, PeopleGraph
 from immich_memories.people.signatures import LinkKind
@@ -113,13 +118,22 @@ def _register_scan(people: click.Group) -> None:
         from immich_memories.people.graph import build_graph
 
         path = out or default_people_path()
+        graph_path = default_evidence_graph_path(path)
+        retained = retained_immich_ids(load_document(path))
         config = get_config()
         with SyncImmichClient(base_url=config.immich.url, api_key=config.immich.api_key) as client:
-            graph = build_graph(client, min_assets=min_assets, owner_name=owner)
+            graph = build_graph(
+                client,
+                min_assets=min_assets,
+                owner_name=owner,
+                include_person_ids=retained,
+            )
 
         save_graph(path, graph)
+        save_evidence_graph(graph_path, graph, load_document(path))
         _report(graph)
         print_success(f"{len(graph.people)} people in {path}")
+        print_success(f"{len(graph.cooccurrences)} measured connections in {graph_path}")
 
 
 def _register_show(people: click.Group) -> None:

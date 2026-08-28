@@ -318,9 +318,18 @@ def _render_options_section(state) -> None:
                 "color=primary"
             ).tooltip("Short clips from Live Photos, burst-merged when consecutive")
 
-        # Analysis Depth
+        # Forwarded-media override
         with im_card() as c4:
             c4.classes("p-3")
+            ui.switch("Accept Forwarded Media").bind_value(state, "accept_any_provenance").props(
+                "color=primary"
+            ).tooltip(
+                "For this memory, keep WhatsApp and other received media in the candidate pool"
+            )
+
+        # Analysis Depth
+        with im_card() as c5:
+            c5.classes("p-3")
             ui.select(
                 options={
                     "auto": "Auto (recommended)",

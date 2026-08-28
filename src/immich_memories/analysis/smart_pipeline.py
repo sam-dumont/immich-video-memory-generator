@@ -116,6 +116,11 @@ class PipelineConfig:
     # Analysis depth: auto budgets misses, fast favors speed, thorough analyzes all.
     analysis_depth: str = "auto"
 
+    # A per-run source-scope choice, never loaded from config.yaml. Some
+    # memories (for example a nephew spotlight) are intentionally built from
+    # family forwards rather than only the owner's camera roll.
+    accept_any_provenance: bool = False
+
     @classmethod
     def from_app_config(cls, config: Config, **overrides: object) -> PipelineConfig:
         """Build a pipeline config, taking its dials from user configuration.
@@ -517,7 +522,7 @@ class SmartPipeline:
 
         patterns = self._analysis_config.exclude_filename_patterns
         stills_need_a_camera = self._analysis_config.exclude_stills_without_camera_exif
-        if patterns or stills_need_a_camera:
+        if not self.config.accept_any_provenance and (patterns or stills_need_a_camera):
             before = len(eligible)
             eligible = [
                 clip

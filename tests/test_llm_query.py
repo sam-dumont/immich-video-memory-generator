@@ -122,15 +122,16 @@ class TestQueryLlmOpenAI:
         assert call_payload["model"] == "omlx"
 
 
-def _openai_response(content='{"ok": true}', finish_reason="stop"):
+def _openai_response(content='{"ok": true}', finish_reason="stop", reasoning_content=None):
     # WHY: the LLM server is the external boundary; these tests assert what
     # reaches it and how its answers are handled, through query_llm only.
     mock_response = AsyncMock()
     mock_response.status_code = 200
+    message = {"content": content}
+    if reasoning_content is not None:
+        message["reasoning_content"] = reasoning_content
     mock_response.json = MagicMock(
-        return_value={
-            "choices": [{"message": {"content": content}, "finish_reason": finish_reason}]
-        }
+        return_value={"choices": [{"message": message, "finish_reason": finish_reason}]}
     )
     mock_response.raise_for_status = lambda: None
     return mock_response
@@ -219,6 +220,50 @@ class TestThinkingMode:
             await query_llm("Judge this cut", _thinking_config(), max_tokens=500, thinking=True)
 
         assert mock_post.call_args[1]["json"]["max_tokens"] >= 4000
+
+    @pytest.mark.asyncio
+    async def test_omlx_budget_reserves_room_for_the_final_answer(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = _thinking_config(
+            thinking_params={
+                "chat_template_kwargs": {"enable_thinking": True},
+                "thinking_budget": 4096,
+            }
+        )
+        # WHY: the oMLX wire request is the behavior under test.
+        with patch("httpx.AsyncClient.post", return_value=_openai_response()) as mock_post:
+            await query_llm("Judge this cut", config, max_tokens=900, thinking=True)
+
+        payload = mock_post.call_args[1]["json"]
+        assert payload["thinking_budget"] == 4096
+        assert payload["max_tokens"] == 4996
+
+    @pytest.mark.asyncio
+    async def test_reasoning_content_is_parsed_away_from_the_final_answer(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        response = _openai_response(
+            content='{"keep": ["M131"]}',
+            reasoning_content="private model reasoning",
+        )
+        # WHY: oMLX returns reasoning and answer as sibling message fields.
+        with patch("httpx.AsyncClient.post", return_value=response):
+            answer = await query_llm("Judge this cut", _thinking_config(), thinking=True)
+
+        assert answer == '{"keep": ["M131"]}'
+        assert "private model reasoning" not in answer
+
+    @pytest.mark.asyncio
+    async def test_inlined_think_tags_are_removed_for_older_compatible_servers(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        response = _openai_response(content='<think>private</think>\n{"keep": []}')
+        # WHY: older compatible servers used content for both channels.
+        with patch("httpx.AsyncClient.post", return_value=response):
+            answer = await query_llm("Judge this cut", _thinking_config(), thinking=True)
+
+        assert answer == '{"keep": []}'
 
     @pytest.mark.asyncio
     async def test_truncated_thinking_falls_back_to_a_fast_answer(self):

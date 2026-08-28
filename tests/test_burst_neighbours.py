@@ -59,6 +59,47 @@ class TestATaggedFrameBringsItsBurst:
         assert found == [plain]
         client.get_live_photos_for_date_range.assert_not_called()
 
+    def test_a_sparse_all_time_scope_only_queries_around_tagged_live_photos(self):
+        """A 26-year person memory must not widen two burst lookups to the library."""
+        from immich_memories.timeperiod import DateRange
+
+        first = _live(1)
+        second = _live(2, seconds=60 * 60 * 24 * 365)
+        client = MagicMock()
+        client.get_live_photos_for_date_range.return_value = []
+        all_time = DateRange(NOON.replace(year=2000), NOON.replace(year=2026))
+
+        with_burst_neighbours(
+            client,
+            [first, second],
+            date_ranges=[all_time],
+            merge_window_seconds=10.0,
+        )
+
+        asked = [call.args[0] for call in client.get_live_photos_for_date_range.call_args_list]
+        assert len(asked) == 2
+        assert all((window.end - window.start).total_seconds() == 20 for window in asked)
+
+    def test_a_dense_all_time_scope_never_widens_to_the_whole_library(self):
+        """Request count cannot turn a person scope into a 26-year Live Photo scan."""
+        from immich_memories.timeperiod import DateRange
+
+        tagged = [_live(index, seconds=index * 60 * 60 * 24) for index in range(40)]
+        client = MagicMock()
+        client.get_live_photos_for_date_range.return_value = []
+        all_time = DateRange(NOON.replace(year=2000), NOON.replace(year=2026))
+
+        with_burst_neighbours(
+            client,
+            tagged,
+            date_ranges=[all_time],
+            merge_window_seconds=10.0,
+        )
+
+        asked = [call.args[0] for call in client.get_live_photos_for_date_range.call_args_list]
+        assert len(asked) == 40
+        assert all((window.end - window.start).total_seconds() == 20 for window in asked)
+
 
 class TestThePersonFetchBringsTheBurst:
     """The wiring, through the fetch the CLI actually calls."""

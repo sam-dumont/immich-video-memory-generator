@@ -40,8 +40,9 @@ from immich_memories.analysis.strict_json import bounded_model_text, final_json_
 DEFAULT_MODEL = "scottlowry/Qwen3.8-27B-oQ4e-mtp"
 CARD_SCHEMA = "description-moment-card-v2"
 THESIS_SCHEMA = "description-memory-thesis-v2"
-SELECTION_SCHEMA = "description-moment-selection-v1"
-THESIS_PROMPT_VERSION = "description-memory-thesis-prompt-v4"
+SELECTION_SCHEMA = "description-moment-selection-v2"
+THESIS_PROMPT_VERSION = "description-memory-thesis-prompt-v5"
+SELECTION_PROMPT_VERSION = "description-moment-selection-prompt-v4-audited"
 MAX_CARD_CHARS = 700
 MAX_THESIS_CHARS = 500
 MAX_THREAD_CHARS = 220
@@ -73,6 +74,7 @@ class MomentCard:
     moment: Moment
     summary: str
     answer: ModelAnswer | None
+    people_metadata: tuple[dict[str, Any], ...] = ()
 
 
 def _private_output(path: Path, parser: argparse.ArgumentParser) -> Path:
@@ -99,7 +101,23 @@ def _arguments() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument(
+        "--thinking",
+        action="store_true",
+        help="Use reasoning for the thesis and selection calls; fused/card construction stays fast",
+    )
+    parser.add_argument(
+        "--thinking-budget-tokens",
+        type=int,
+        default=4096,
+        help="oMLX top-level thinking budget for each reasoning call",
+    )
     parser.add_argument("--input-shape", choices=("cards", "raw"), default="cards")
+    parser.add_argument(
+        "--fused-cards",
+        type=Path,
+        help="Private fused-moment-card result.json; skips the old text card calls",
+    )
     parser.add_argument(
         "--cache",
         type=Path,
@@ -121,10 +139,17 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--timeout-seconds", type=int, default=300)
     args = parser.parse_args()
     args.out = _private_output(args.out, parser)
+    if args.fused_cards is not None:
+        args.fused_cards = args.fused_cards.expanduser().resolve()
+        matrix = (Path.home() / ".immich-memories-matrix").resolve()
+        if not args.fused_cards.is_relative_to(matrix):
+            parser.error("--fused-cards must be inside ~/.immich-memories-matrix")
     if args.target_duration_seconds <= 0:
         parser.error("--target-duration-seconds must be positive")
     if args.expected_seconds_per_final_visual <= 0:
         parser.error("--expected-seconds-per-final-visual must be positive")
+    if args.thinking_budget_tokens < 1:
+        parser.error("--thinking-budget-tokens must be positive")
     if not 1 <= args.concurrency <= 8:
         parser.error("--concurrency must be between 1 and 8")
     if not args.memory_type.strip():
@@ -200,6 +225,40 @@ def _moments(prepared: Any, descriptions: tuple[Description, ...]) -> tuple[Mome
     )
 
 
+def _cards_from_fused(path: Path, moments: tuple[Moment, ...]) -> tuple[MomentCard, ...]:
+    payload = json.loads(path.read_text())
+    rows = payload.get("cards")
+    if not isinstance(rows, list):
+        raise ValueError("fused card bank needs a cards list")
+    by_id = {str(row.get("moment_id")): row for row in rows if isinstance(row, dict)}
+    if len(by_id) != len(rows):
+        raise ValueError("fused card bank contains duplicate or malformed moment IDs")
+    expected = {moment.alias for moment in moments}
+    if set(by_id) != expected:
+        raise ValueError(
+            "fused card bank no longer matches the production moment wall: "
+            f"{len(expected - set(by_id))} missing and {len(set(by_id) - expected)} extra"
+        )
+    cards: list[MomentCard] = []
+    for moment in moments:
+        row = by_id[moment.alias]
+        asset_ids = tuple(str(asset_id) for asset_id in row.get("asset_ids") or ())
+        if asset_ids != moment.group.candidate_ids:
+            raise ValueError(f"fused card membership changed for {moment.alias}")
+        summary = bounded_model_text(row.get("fused_summary"), max_chars=MAX_CARD_CHARS)
+        if summary is None or row.get("error") is not None:
+            raise ValueError(f"fused card unavailable for {moment.alias}")
+        raw_people = row.get("people_metadata")
+        if raw_people is None:
+            raw_people = []
+        if not isinstance(raw_people, list) or any(
+            not isinstance(item, dict) for item in raw_people
+        ):
+            raise ValueError(f"fused people metadata malformed for {moment.alias}")
+        cards.append(MomentCard(moment, summary, None, tuple(raw_people)))
+    return tuple(cards)
+
+
 def _summary_prompt(moment: Moment) -> str:
     observations = "\n".join(
         f"V{index:02d} [{_observation_context(candidate)}]: {description.text}"
@@ -250,6 +309,7 @@ async def _ask(
     cache_path: Path,
     max_tokens: int,
     timeout_seconds: int,
+    thinking: bool,
 ) -> ModelAnswer:
     started = time.monotonic()
     raw = await query_llm(
@@ -258,7 +318,7 @@ async def _ask(
         temperature=DEFAULT_TEMPERATURE,
         max_tokens=max_tokens,
         timeout_seconds=timeout_seconds,
-        thinking=False,
+        thinking=thinking,
         cache_path=cache_path,
         require_complete=True,
     )
@@ -308,6 +368,7 @@ async def _build_cards(
                     cache_path=cache_path,
                     max_tokens=900,
                     timeout_seconds=timeout_seconds,
+                    thinking=False,
                 )
             summary = _card_summary(answer.raw)
         card = MomentCard(moment, summary, answer)
@@ -333,10 +394,16 @@ def _card_line(card: MomentCard) -> str:
     span = (candidates[-1].taken_at - candidates[0].taken_at).total_seconds()
     context = _moment_context(card.moment)
     context_field = f" | context {' ; '.join(context)}" if context else ""
+    people_field = (
+        " | people_metadata "
+        + json.dumps(card.people_metadata, ensure_ascii=False, separators=(",", ":"))
+        if card.people_metadata
+        else ""
+    )
     return (
         f"{card.moment.alias} | {candidates[0].taken_at.isoformat()} | "
         f"{len(candidates)} visuals ({media}) | {favourites} favourites | "
-        f"span {_duration_label(span)}{context_field} | {card.summary}"
+        f"span {_duration_label(span)}{context_field}{people_field} | {card.summary}"
     )
 
 
@@ -368,6 +435,10 @@ Read the wall as a whole in two stages before writing the thesis:
 
 1. Identify sustained threads evidenced by moments on separated dates. A dense named event on one
    day is one beat, not a sustained thread, unless the wall shows its preparation or aftermath.
+   Before treating that event as the explanation for a recurring activity, test the chronology. If
+   the same activity continues after the event, or the cards do not state a causal link, describe the
+   activity as the broader thread and the event as one culmination within it. Sequence alone does not
+   turn every earlier scene into preparation.
 2. Inspect every card for a one-off turning point that changes how the period is understood. Its
    importance is not proportional to how many pictures show it. It must add meaning beyond the
    sustained thread: a scheduled highlight or culmination inside that thread is not a separate
@@ -475,6 +546,14 @@ def _selection_prompt(
         {
             "schema_version": SELECTION_SCHEMA,
             "keep": [{"moment_id": "M001", "reason": "why this moment belongs"}],
+            "audit_summary": "concise explicit account of the allocation and its main tradeoff",
+            "comparisons": [
+                {
+                    "kept_moment_id": "M001",
+                    "rejected_moment_id": "M002",
+                    "reason": "why the retained moment has more on-screen value under scarcity",
+                }
+            ],
             "overall_reason": "how the cut expresses this memory",
         },
         separators=(",", ":"),
@@ -497,9 +576,29 @@ specific beats that make the reading credible, not just repeated examples of its
 the sustained thread across separated dates and preserve credible turning points. Do not spend several
 slots on near-equivalent beats from one dense named event while quieter, personal, or separated moments
 carry the same thread more fully.
+Prefer a lived scene showing action, relationship, expression, place, or atmosphere over packaging,
+equipment, metrics, a route, a screen, or setup evidence that merely documents the same thread. An
+object or record earns a slot only when the card establishes a consequential fact that no lived scene
+can carry. Do not treat all objects as junk; apply the distinction to what each moment contributes.
 Clear or distinctive is not enough by itself under scarcity. Do not invent people, relationships,
 causality, or events. Keep moment IDs in chronological order. Reasons must use no double quotes or
 backslashes.
+
+Treat the result as a sequence a person will watch, not an evidence packet that explains the thesis.
+Before answering, audit the non-favourite draft under scarcity. For each retained moment, ask whether
+its value is present on screen or exists mainly in the reason you wrote for it. Compare the weakest
+retained moment with rejected lived moments carrying the same thread. Replace explanatory evidence
+when a rejected moment expresses that thread through human action, relationship, or emotion. A known
+relationship can make a lived moment more specific, but a recognized name alone does not earn a slot.
+Prefer a moment that performs several necessary editorial jobs at once over separate one-purpose
+moments: for example, one lived scene may carry a sustained thread, a relationship, and ordinary
+texture together. Do not infer that combination; every contribution must be stated in its card.
+
+Make the allocation inspectable. In audit_summary, state the main tradeoff you made under scarcity.
+In comparisons, give between one and eight decisive head-to-head choices from the non-favourite pool:
+one moment you kept, the strongest plausible alternative it displaced, and the visible reason the kept
+moment wins. This is a concise evidence-backed rationale, not hidden chain-of-thought. Comparison IDs
+must be different; kept_moment_id must appear in keep and rejected_moment_id must not.
 
 MOMENT WALL
 {wall}
@@ -516,7 +615,7 @@ def _read_selection(
     excluded_ids: frozenset[str] = frozenset(),
 ) -> dict[str, Any]:
     payload = final_json_object(raw)
-    expected = {"schema_version", "keep", "overall_reason"}
+    expected = {"schema_version", "keep", "audit_summary", "comparisons", "overall_reason"}
     if (
         payload is None
         or set(payload) != expected
@@ -546,10 +645,52 @@ def _read_selection(
     expected_order = {card_id: index for index, card_id in enumerate(sorted(valid_ids))}
     if tuple(sorted(keep_ids, key=expected_order.__getitem__)) != keep_ids:
         raise ValueError("moment selection is not chronological")
+    audit_summary = bounded_model_text(payload.get("audit_summary"), max_chars=MAX_THESIS_CHARS)
+    raw_comparisons = payload.get("comparisons")
+    if (
+        audit_summary is None
+        or not isinstance(raw_comparisons, list)
+        or not 1 <= len(raw_comparisons) <= 8
+    ):
+        raise ValueError("moment selection audit has the wrong shape")
+    comparisons: list[dict[str, str]] = []
+    for row in raw_comparisons:
+        if not isinstance(row, dict) or set(row) != {
+            "kept_moment_id",
+            "rejected_moment_id",
+            "reason",
+        }:
+            raise ValueError("moment selection comparison has the wrong shape")
+        kept_id = row.get("kept_moment_id")
+        rejected_id = row.get("rejected_moment_id")
+        comparison_reason = bounded_model_text(row.get("reason"), max_chars=MAX_REASON_CHARS)
+        if (
+            not isinstance(kept_id, str)
+            or kept_id not in keep_ids
+            or not isinstance(rejected_id, str)
+            or rejected_id not in valid_ids
+            or rejected_id in keep_ids
+            or rejected_id in excluded_ids
+            or rejected_id == kept_id
+            or comparison_reason is None
+        ):
+            raise ValueError("moment selection comparison is not grounded")
+        comparisons.append(
+            {
+                "kept_moment_id": kept_id,
+                "rejected_moment_id": rejected_id,
+                "reason": comparison_reason,
+            }
+        )
     overall = bounded_model_text(payload.get("overall_reason"), max_chars=MAX_THESIS_CHARS)
     if overall is None:
         raise ValueError("moment selection overall reason is unsafe")
-    return {"keep": keep, "overall_reason": overall}
+    return {
+        "keep": keep,
+        "audit_summary": audit_summary,
+        "comparisons": comparisons,
+        "overall_reason": overall,
+    }
 
 
 def _admit_favourites(
@@ -574,6 +715,8 @@ def _admit_favourites(
             for card in cards
             if card.moment.alias in selected_by_id
         ],
+        "audit_summary": selection["audit_summary"],
+        "comparisons": selection["comparisons"],
         "overall_reason": selection["overall_reason"],
     }
 
@@ -610,6 +753,7 @@ def _card_record(card: MomentCard) -> dict[str, Any]:
         "visual_count": len(card.moment.group.candidates),
         "favourite_count": sum(candidate.favourite for candidate in card.moment.group.candidates),
         "grounded_context": list(_moment_context(card.moment)),
+        "people_metadata": list(card.people_metadata),
         "summary": card.summary,
         "summary_call": _answer_record(card.answer),
         "card_line": _card_line(card),
@@ -630,14 +774,30 @@ async def _run(
     moments = _moments(prepared, descriptions)
     args.out.mkdir(parents=True, exist_ok=True)
     cache_path = args.cache.expanduser().resolve() if args.cache else args.out / "judgments.db"
-    llm_config = config.llm.model_copy(update={"model": args.model})
-    cards = await _build_cards(
-        moments,
-        input_shape=args.input_shape,
-        llm_config=llm_config,
-        cache_path=cache_path,
-        timeout_seconds=args.timeout_seconds,
-        concurrency=args.concurrency,
+    thinking_params = dict(config.llm.thinking_params)
+    if args.thinking:
+        template_kwargs = dict(thinking_params.get("chat_template_kwargs") or {})
+        template_kwargs["enable_thinking"] = True
+        thinking_params["chat_template_kwargs"] = template_kwargs
+        thinking_params["thinking_budget"] = args.thinking_budget_tokens
+    llm_config = config.llm.model_copy(
+        update={
+            "model": args.model,
+            "thinking": args.thinking,
+            "thinking_params": thinking_params,
+        }
+    )
+    cards = (
+        _cards_from_fused(args.fused_cards, moments)
+        if args.fused_cards is not None
+        else await _build_cards(
+            moments,
+            input_shape=args.input_shape,
+            llm_config=llm_config,
+            cache_path=cache_path,
+            timeout_seconds=args.timeout_seconds,
+            concurrency=args.concurrency,
+        )
     )
     capacity = _capacity(
         config, args.target_duration_seconds, args.expected_seconds_per_final_visual
@@ -653,6 +813,7 @@ async def _run(
         cache_path=cache_path,
         max_tokens=1800,
         timeout_seconds=args.timeout_seconds,
+        thinking=args.thinking,
     )
     thesis = _read_thesis(thesis_answer.raw, aliases)
     print("thesis: complete", flush=True)
@@ -678,6 +839,7 @@ async def _run(
             cache_path=cache_path,
             max_tokens=3000,
             timeout_seconds=args.timeout_seconds,
+            thinking=args.thinking,
         )
         additional = _read_selection(
             selection_answer.raw,
@@ -688,6 +850,8 @@ async def _run(
     else:
         additional = {
             "keep": [],
+            "audit_summary": "No discretionary slots remained after deterministic favourites.",
+            "comparisons": [],
             "overall_reason": "Favourite-bearing moments consume the available capacity.",
         }
     selection = _admit_favourites(additional, required_ids=required_ids, cards=cards)
@@ -703,10 +867,14 @@ async def _run(
             "memory_type": args.memory_type.strip(),
             "model": args.model,
             "temperature": DEFAULT_TEMPERATURE,
-            "thinking": False,
+            "thinking": args.thinking,
+            "thinking_budget_tokens": (args.thinking_budget_tokens if args.thinking else None),
             "card_concurrency": args.concurrency,
-            "input_shape": args.input_shape,
+            "input_shape": (
+                "fused-400px-moment-cards" if args.fused_cards is not None else args.input_shape
+            ),
             "thesis_prompt_version": THESIS_PROMPT_VERSION,
+            "selection_prompt_version": SELECTION_PROMPT_VERSION,
             "cache_path": str(cache_path),
             "capacity": capacity,
             "deterministic_favourite_moments": len(required_ids),

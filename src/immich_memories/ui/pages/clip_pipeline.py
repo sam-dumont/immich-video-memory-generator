@@ -327,7 +327,16 @@ def _run_pipeline_blocking(
                     client=client,
                     work_dir=Path(app_config.cache.cache_path) / "photo_scoring",
                     thumbnail_cache=tc,
+                    accept_any_provenance=state.accept_any_provenance,
                 )
+
+            from immich_memories.cli._candidate_pool import _drop_reencoded_sources
+
+            all_candidates = _drop_reencoded_sources(
+                all_candidates,
+                config=app_config,
+                accept_any_provenance=state.accept_any_provenance,
+            )
 
             result = pipeline.run_selection(all_candidates)
             result.stats.update(
@@ -411,6 +420,7 @@ def _build_pipeline_config(
         analyze_all=config_dict.get("analyze_all", False),
         overnight_bases=overnight_bases,
         analysis_depth=getattr(state, "analysis_depth", "auto"),
+        accept_any_provenance=getattr(state, "accept_any_provenance", False),
     )
 
 

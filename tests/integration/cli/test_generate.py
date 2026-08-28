@@ -776,6 +776,49 @@ class TestCLIGenerate:
             )
         assert result.exit_code in (0, 1), f"Unexpected: {result.output}"
 
+    def test_accept_any_provenance_is_a_per_generation_flag(self, tmp_path) -> None:
+        from click.testing import CliRunner
+
+        from immich_memories.cli import main
+        from immich_memories.config_loader import Config
+
+        config = Config(immich={"url": "http://immich.test", "api_key": "test-key"})
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        asset = MagicMock(duration_seconds=10.0)
+        output = tmp_path / "forwarded-family.mp4"
+
+        # WHY: isolate Immich/rendering so the real parser-to-pipeline flag stays observable.
+        with (
+            patch("immich_memories.cli.get_config", return_value=config),
+            patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
+            patch("immich_memories.cli.generate.fetch_videos", return_value=[asset]),
+            patch(
+                "immich_memories.cli.generate.run_pipeline_and_generate",
+                return_value=(output, False, None),
+            ) as run_pipeline,
+        ):
+            result = CliRunner().invoke(
+                main,
+                [
+                    "generate",
+                    "--start",
+                    "2025-01-01",
+                    "--end",
+                    "2025-01-31",
+                    "--accept-any-provenance",
+                    "--no-music",
+                    "--quiet",
+                    "-O",
+                    str(output),
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert run_pipeline.call_args.kwargs["accept_any_provenance"] is True
+        assert "accept_any_provenance" not in config.analysis.model_fields_set
+
     def test_cli_privacy_mode(self, tmp_path):
         """--privacy-mode is accepted."""
         from click.testing import CliRunner

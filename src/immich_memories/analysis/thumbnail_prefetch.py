@@ -71,6 +71,10 @@ class ThumbnailPrefetcher:
 
     def ensure_cached(self, clips: Sequence[VideoClipInfo]) -> None:
         """Fetch previews that are not cached yet; log (never raise) on failure."""
+        self._thumbnail_cache.begin_working_set(
+            [clip.asset.id for clip in clips],
+            THUMBNAIL_SIZE,
+        )
         missing = [
             clip for clip in clips if not self._thumbnail_cache.has(clip.asset.id, THUMBNAIL_SIZE)
         ]

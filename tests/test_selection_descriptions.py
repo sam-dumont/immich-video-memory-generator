@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import threading
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -154,3 +156,46 @@ def test_an_unreadable_description_never_changes_membership(tmp_path: Path) -> N
     assert prepared.candidate_ids == ("still-a-candidate",)
     assert result.warnings == tuple(prepared.trace.warnings)
     assert result.warnings[0].startswith("!! asset description unreadable")
+
+
+def test_independent_descriptions_overlap_without_reordering_results(tmp_path: Path) -> None:
+    """oMLX concurrency changes wall time, never the source chronology."""
+    from immich_memories.analysis.selection_descriptions import describe_editorial_assets
+
+    when = datetime(2024, 2, 3, 12, tzinfo=UTC)
+    prepared = _prepared(
+        make_asset("first", file_created_at=when),
+        make_asset("second", file_created_at=when + timedelta(seconds=2)),
+    )
+    lock = threading.Lock()
+    active = 0
+    peak = 0
+
+    async def _answer(_prompt, _config, **kwargs):
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        await asyncio.sleep(0.05)
+        with lock:
+            active -= 1
+        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
+        return json.dumps(
+            {
+                "schema_version": "asset-description-v1",
+                "description": "one literal visual",
+            }
+        )
+
+    # WHY: the model is external; the real worker pool is the concurrency behavior under test.
+    with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
+        result = describe_editorial_assets(
+            prepared,
+            requester=_gateway(tmp_path, prepared.trace),
+            output_dir=tmp_path / "descriptions",
+            frame_cache_dir=None,
+            concurrency=2,
+        )
+
+    assert peak == 2
+    assert tuple(item.asset_id for item in result.descriptions) == ("first", "second")

@@ -108,6 +108,7 @@ class AppState:
     max_non_favorite_ratio: float = 0.25
     include_live_photos: bool = False
     include_photos: bool = False
+    accept_any_provenance: bool = False
     photo_assets: list[Any] = field(default_factory=list)
     selected_photo_ids: set[str] = field(default_factory=set)
     photo_duration: float = 4.0
