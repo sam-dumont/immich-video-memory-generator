@@ -33,6 +33,8 @@ class PersonFact:
     first_month: str | None
     onset: str | None
     tier: str | None
+    relationship_current: bool
+    owner_relationship_kinds: tuple[str, ...] = ()
     links: tuple[PersonLink, ...] = ()
 
 
@@ -67,6 +69,11 @@ def load_person_facts(
             str(confirmed.get("role") or "").strip(),
             mine,
         )
+        owner_links = tuple(
+            link
+            for link in mine
+            if link.target_id == owner_id and link.source in {"confirmed", "derived"}
+        )
         name = str(entry.get("name") or "?")
         birth_date = str(entry.get("birth_date")) if entry.get("birth_date") else None
         first_month = str(evidence.get("first_month")) if evidence.get("first_month") else None
@@ -78,6 +85,14 @@ def load_person_facts(
             first_month=_credible_first_month(first_month, birth_date),
             onset=str(evidence.get("onset")) if evidence.get("onset") else None,
             tier=str(inferred.get("tier")) if inferred.get("tier") else None,
+            # The companion is a present-tense graph: a confirmed relationship
+            # remains current until the user removes or rejects it. Derived
+            # owner links here are paths made only from those confirmed edges.
+            relationship_current=(
+                relationship_source in {"confirmed", "derived"}
+                and (bool(owner_links) or bool(str(confirmed.get("role") or "").strip()))
+            ),
+            owner_relationship_kinds=tuple(sorted({link.kind for link in owner_links})),
             links=mine,
         )
     return facts

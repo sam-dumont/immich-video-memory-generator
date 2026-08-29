@@ -53,15 +53,15 @@ them belongs to a pass. They run before Pass 0 or they do not run.
 | A Live Photo's motion component is not a second visual | `live_photo_pipeline.drop_live_photo_components` | **RESTORED** `b8ecc10` |
 | Material that never came off this camera is not source | `source_filter.not_shot_here` | **RESTORED** (this branch) |
 | A star overrides provenance | inside `not_shot_here` | **CARRIED** — the star settles it, as it settles every hard gate |
-| Untagged frames of a fetched burst come too | `live_photo_pipeline.with_burst_neighbours` | **AT RISK** |
-| Untagged Live Photos beside tagged ones come too | `live_photo_pipeline.expand_to_neighbors` | **AT RISK** |
+| Untagged frames of a fetched burst come too | removed 2026-08-29 | **REMOVED** — exact person tags are the source boundary |
+| Untagged Live Photos beside tagged ones come too | removed 2026-08-29 | **REMOVED** — exact person tags are the source boundary |
 | An image with a still goes to the photo scorer, not the video one | `selection_quality.looks_like_a_photograph` | **AT RISK** — Task 8 |
 | A photograph of a screen is a thing, not a moment | `subject_policy.SubjectCategory.SCREEN`, `clip_backfill._is_never_worth_padding` | **RESTORED** `c67d098` |
 
-**On the two burst/neighbour rules:** both exist because a moment is not one
-asset. If frames 1, 2, 3 are one moment and only 2 is tagged, 1 and 3 belong to
-that moment too. The editorial path fetches a date range rather than a person, so
-these may be genuinely unnecessary — **but that has to be decided, not defaulted.**
+**Decision 2026-08-29 on the two burst/neighbour rules:** removed. A person
+memory takes only assets carrying the requested person tag; temporal proximity
+cannot widen that source boundary. Live Photo burst merging still runs later as
+a rendering decision over tagged assets that actually entered the pool.
 
 **Two of these were listed CARRIED and were not.** Place and named people both
 sat in the CARRIED column while `grep` says the new path never imported either.

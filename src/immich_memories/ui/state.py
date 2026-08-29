@@ -193,6 +193,11 @@ class AppState:
             return list(group)
         return [self.selected_person.id] if self.selected_person else []
 
+    @property
+    def person_match(self) -> str:
+        """Whether several selected people are intersected or unioned."""
+        return str(self.memory_preset_params.get("person_match", "and"))
+
     def apply_preset(self, preset: MemoryPreset) -> None:
         """Adopt everything a preset decided: its windows, its length, its people.
 
@@ -210,6 +215,10 @@ class AppState:
             # ~1 min per month, ~8 min per year, for a preset with no opinion.
             self.target_duration = max(1, min(10, round(preset.date_ranges[0].days / 45)))
         self.narrow_to_people(preset.person_filter.person_names)
+        if len(preset.person_filter.person_names) > 1:
+            self.memory_preset_params["person_match"] = (
+                "and" if preset.person_filter.require_co_occurrence else "or"
+            )
 
     def narrow_to_people(self, person_names: list[str]) -> None:
         """Resolve a filter's names to the ids a fetch queries with.

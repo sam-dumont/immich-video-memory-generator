@@ -18,7 +18,11 @@ class PersonFilter:
     require_co_occurrence: bool = False
 
 
-def person_filter_for(person_names: Sequence[str] | None) -> PersonFilter:
+def person_filter_for(
+    person_names: Sequence[str] | None,
+    *,
+    person_match: str = "and",
+) -> PersonFilter:
     """The people a memory is narrowed to, whatever memory type it is.
 
     Several names intersect: the memory is what holds all of them, which is
@@ -31,6 +35,10 @@ def person_filter_for(person_names: Sequence[str] | None) -> PersonFilter:
         return PersonFilter()
     if len(names) == 1:
         return PersonFilter(mode="single", person_names=names)
+    if person_match == "or":
+        return PersonFilter(mode="any", person_names=names, require_co_occurrence=False)
+    if person_match != "and":
+        raise ValueError(f"person_match must be 'and' or 'or', got {person_match!r}")
     return PersonFilter(mode="all_of", person_names=names, require_co_occurrence=True)
 
 

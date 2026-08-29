@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import threading
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -167,6 +169,7 @@ def test_a_pair_the_model_calls_the_same_picture_leaves_one_survivor(tmp_path: P
         return _pair_answer(same=True)
 
     # WHY: query_llm is the only external provider boundary; atlas, sheets, gateway and trace stay real.
+    # WHY: concurrency is measured at the external LLM boundary, without a live server.
     with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
         result = run_selects(
             prepared,
@@ -457,6 +460,40 @@ def test_a_first_arrangement_saying_different_settles_it(tmp_path: Path) -> None
     assert len(result.survivors) == 2
 
 
+def test_independent_forward_arrangements_can_use_the_requested_concurrency(
+    tmp_path: Path,
+) -> None:
+    prepared = _many(8, lambda i: i)
+    active = 0
+    peak = 0
+    lock = threading.Lock()
+
+    async def _answer(_prompt, _config, **kwargs):
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        await asyncio.sleep(0.02)
+        with lock:
+            active -= 1
+        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
+        return _pair_answer(same=False)
+
+    # WHY: concurrency is measured at the external LLM boundary, without a live server.
+    with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
+        result = run_selects(
+            prepared,
+            prepared.candidates,
+            requester=_gateway(tmp_path, prepared.trace),
+            sheet_output_dir=tmp_path / "sheets",
+            frame_cache_dir=tmp_path / "frames",
+            concurrency=4,
+        )
+
+    assert peak > 1
+    assert len(result.survivors) == len(prepared.candidates)
+
+
 def test_a_banked_pair_survives_a_change_in_moment_membership(tmp_path: Path) -> None:
     """A fact about A and B is not invalidated when C joins their moment.
 
@@ -589,7 +626,7 @@ def _many(count: int, texture):
     return _prepared(*assets, pixels={a.id: _textured(texture(i)) for i, a in enumerate(assets)})
 
 
-def _count_asks(prepared, tmp_path):
+def _count_asks(prepared, tmp_path, *, concurrency: int = 1):
     asks = 0
 
     async def _answer(_prompt, _config, **kwargs):
@@ -606,6 +643,7 @@ def _count_asks(prepared, tmp_path):
             requester=_gateway(tmp_path, prepared.trace),
             sheet_output_dir=tmp_path / "sheets",
             frame_cache_dir=tmp_path / "frames",
+            concurrency=concurrency,
         )
     return asks, result
 
@@ -628,6 +666,16 @@ def test_corroborating_pixels_stand_in_for_the_second_arrangement(tmp_path: Path
 
     pairs = len(prepared.candidates) - 1
     assert asks < 2 * pairs, "identical pixels already say what the second arrangement would"
+    assert asks == 2 * SELECTS_CALIBRATION_PAIRS + (pairs - SELECTS_CALIBRATION_PAIRS)
+    assert len(result.survivors) == 1
+
+
+def test_concurrency_preserves_the_adaptive_call_saving(tmp_path: Path) -> None:
+    prepared = _many(70, lambda _i: 7)
+
+    asks, result = _count_asks(prepared, tmp_path, concurrency=8)
+
+    pairs = len(prepared.candidates) - 1
     assert asks == 2 * SELECTS_CALIBRATION_PAIRS + (pairs - SELECTS_CALIBRATION_PAIRS)
     assert len(result.survivors) == 1
 

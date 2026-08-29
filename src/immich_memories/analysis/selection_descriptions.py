@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from dataclasses import dataclass
 from functools import partial
 from hashlib import sha256
@@ -91,8 +92,17 @@ def describe_editorial_assets(
         requester=requester,
         limits=limits or _DEFAULT_LIMITS,
     )
+    # ContextVars do not cross executor boundaries. Capture one independent
+    # context per task so run-level LLM usage collection sees every paid image
+    # call even when descriptions run concurrently.
+    contextual_candidates = tuple((copy_context(), candidate) for candidate in prepared.candidates)
     with ThreadPoolExecutor(max_workers=concurrency) as executor:
-        outcomes = tuple(executor.map(describe, prepared.candidates))
+        outcomes = tuple(
+            executor.map(
+                lambda item: item[0].run(describe, item[1]),
+                contextual_candidates,
+            )
+        )
 
     descriptions: list[AssetDescription] = []
     warnings: list[str] = []

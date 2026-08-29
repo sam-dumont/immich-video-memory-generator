@@ -31,13 +31,23 @@ filename order gives the wrong answer twice. This page is the ledger.
    description of what actually runs today.
 
 **Where the cut comes from.** `implementation-plans/2026-08-27-structure-allocation-steering.md`
-is the accepted direction for the hole §0 leaves open:
-the cut is arithmetic, never a model question. The measured admission tests
-(owner acts + backward firsts) admit, the runtime's clip budget caps, and
-people-family weights break only the overflow, lexicographically.
-Description-novelty over the prefix is the control for single-camera libraries.
-It also carries the landing/cache/privacy fixes from Fable's evening
-consolidation — read it before touching stage 7.
+contains both the historical arithmetic steering and the owner-directed
+replacement measured on 2026-08-29. Read its tombstone first. Current work uses
+arithmetic for eligibility, exact duplicates, duration capacity and confirmed
+lifecycle anchors; a complete moment-card wall produces a thesis and tentative
+moment shortlist, then the shortlisted reservoirs reopen for demand Selects
+and the final asset cut. The failed flat tile prompts remain failed; they are
+not the instrument now being tested. Flat month-sized walls use one thesis call
+and one shortlist call. Larger scopes use chronological chapter readings, one
+global thesis/allocation, bounded chapter shortlists and bounded chapter asset
+cuts; they are not represented by the old “two calls per memory” shorthand.
+
+The broader controls are now measured: four unrelated months, a blind two-year
+span, exact-person AND/OR scopes, a sparse-favourite 21-year person scope and a
+favourite-heavy person year all reached the final asset cut. The shortlist does
+not reserve one final visual per moment. The final cut may retain several assets
+from a rich moment, none from a weaker shortlisted moment, and fewer than the
+duration capacity.
 
 ## Status ledger
 
@@ -54,7 +64,7 @@ consolidation — read it before touching stage 7.
 | `implementation-plans/…every-pixels-to-model-call.md` | **DELETED 2026-08-27** — superseded; in git history | none |
 | `implementation-plans/…editing-process-as-built.md` | current | what runs today |
 | `implementation-plans/…existing-selection-rules.md` | current | rules recovered from the old selector |
-| `implementation-plans/…structure-allocation-steering.md` | **accepted steering, not yet implemented** | the cut's direction; workprint fixes |
+| `implementation-plans/…structure-allocation-steering.md` | **partly superseded 2026-08-29; prototype validated, integration pending** | current card-wall/reservoir shape and historical arithmetic constraints |
 
 ## What is dead, and what still points at it
 
@@ -69,7 +79,14 @@ eleven-stage order — stage 7, Structure over clustered representatives, is the
 tentative cut). The annotation layer's ~4% / 13,600-call cost paragraph now
 carries its measured correction inline (inflated 3–4×).
 
-## The largest open risk — now measured, and worse than stated
+## Historical risk: the original tile-membership question failed
+
+**Scope correction 2026-08-29:** the measurements below remain valid for the
+small model judging tiles independently or as a flat visual partition. They do
+not close the later, materially different instrument: a stronger model reads
+banked factual moment cards, sees the complete scarcity problem, and returns a
+tentative reservoir shortlist. Real controls passed; production integration is
+still pending.
 
 **Structure's cut is not a question this model can be asked.** Probed twice.
 

@@ -442,8 +442,8 @@ Read the wall as a whole in two stages before writing the thesis:
 2. Inspect every card for a one-off turning point that changes how the period is understood. Its
    importance is not proportional to how many pictures show it. It must add meaning beyond the
    sustained thread: a scheduled highlight or culmination inside that thread is not a separate
-   turning point. For a personal chronological recap, an ordinary-looking object, note, or test may
-   document a private life change whose consequence far exceeds its visual spectacle.
+   turning point. For any memory, a visually quiet record may establish a consequential change whose
+   importance far exceeds its spectacle.
 
 Then state, plainly, what makes this candidate set specifically worth remembering. Integrate the
 sustained and turning-point evidence when both exist; do not merely list topics.
@@ -468,8 +468,8 @@ Return only one complete JSON object with exactly these keys:
 {shape}"""
 
 
-def _bounded_list(value: object, *, max_items: int, max_chars: int) -> tuple[str, ...]:
-    if not isinstance(value, list) or len(value) > max_items:
+def _bounded_list(value: object, *, max_chars: int) -> tuple[str, ...]:
+    if not isinstance(value, list):
         raise ValueError("model text list has the wrong shape")
     parsed = tuple(bounded_model_text(item, max_chars=max_chars) for item in value)
     if any(item is None for item in parsed):
@@ -477,7 +477,12 @@ def _bounded_list(value: object, *, max_items: int, max_chars: int) -> tuple[str
     return tuple(item for item in parsed if item is not None)
 
 
-def _read_thesis(raw: str, valid_ids: frozenset[str]) -> dict[str, Any]:
+def _read_thesis(
+    raw: str,
+    valid_ids: frozenset[str],
+    *,
+    require_sustained: bool = True,
+) -> dict[str, Any]:
     payload = final_json_object(raw)
     expected = {
         "schema_version",
@@ -493,16 +498,10 @@ def _read_thesis(raw: str, valid_ids: frozenset[str]) -> dict[str, Any]:
     ):
         raise ValueError("memory thesis answer is not the exact JSON envelope")
     thesis = bounded_model_text(payload.get("thesis"), max_chars=MAX_THESIS_CHARS)
-    sustained = _read_grounded_threads(
-        payload.get("sustained_threads"), valid_ids=valid_ids, max_items=5
-    )
-    turning = _read_grounded_threads(
-        payload.get("turning_points"), valid_ids=valid_ids, max_items=5
-    )
-    texture = _bounded_list(
-        payload.get("ordinary_texture"), max_items=8, max_chars=MAX_THREAD_CHARS
-    )
-    if thesis is None or not sustained:
+    sustained = _read_grounded_threads(payload.get("sustained_threads"), valid_ids=valid_ids)
+    turning = _read_grounded_threads(payload.get("turning_points"), valid_ids=valid_ids)
+    texture = _bounded_list(payload.get("ordinary_texture"), max_chars=MAX_THREAD_CHARS)
+    if thesis is None or (require_sustained and not sustained):
         raise ValueError("memory thesis needs a thesis and at least one sustained thread")
     return {
         "thesis": thesis,
@@ -512,10 +511,8 @@ def _read_thesis(raw: str, valid_ids: frozenset[str]) -> dict[str, Any]:
     }
 
 
-def _read_grounded_threads(
-    value: object, *, valid_ids: frozenset[str], max_items: int
-) -> list[dict[str, Any]]:
-    if not isinstance(value, list) or len(value) > max_items:
+def _read_grounded_threads(value: object, *, valid_ids: frozenset[str]) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
         raise ValueError("grounded thesis list has the wrong shape")
     rows: list[dict[str, Any]] = []
     for row in value:
@@ -576,10 +573,10 @@ specific beats that make the reading credible, not just repeated examples of its
 the sustained thread across separated dates and preserve credible turning points. Do not spend several
 slots on near-equivalent beats from one dense named event while quieter, personal, or separated moments
 carry the same thread more fully.
-Prefer a lived scene showing action, relationship, expression, place, or atmosphere over packaging,
-equipment, metrics, a route, a screen, or setup evidence that merely documents the same thread. An
-object or record earns a slot only when the card establishes a consequential fact that no lived scene
-can carry. Do not treat all objects as junk; apply the distinction to what each moment contributes.
+Prefer a lived scene showing action, relationship, expression, place, or atmosphere over material
+whose value is only to label, measure, summarize, or prove the same thread. An evidentiary record
+earns a slot only when the card establishes a consequential fact that no lived scene can carry. Do
+not treat all records as junk; apply the distinction to what each moment contributes.
 Clear or distinctive is not enough by itself under scarcity. Do not invent people, relationships,
 causality, or events. Keep moment IDs in chronological order. Reasons must use no double quotes or
 backslashes.
@@ -595,10 +592,13 @@ moments: for example, one lived scene may carry a sustained thread, a relationsh
 texture together. Do not infer that combination; every contribution must be stated in its card.
 
 Make the allocation inspectable. In audit_summary, state the main tradeoff you made under scarcity.
-In comparisons, give between one and eight decisive head-to-head choices from the non-favourite pool:
-one moment you kept, the strongest plausible alternative it displaced, and the visible reason the kept
-moment wins. This is a concise evidence-backed rationale, not hidden chain-of-thought. Comparison IDs
-must be different; kept_moment_id must appear in keep and rejected_moment_id must not.
+In comparisons, give up to eight decisive head-to-head choices from the non-favourite pool: one
+moment you kept, the strongest plausible alternative it displaced, and the visible reason the kept
+moment wins. Return an empty comparisons list when no non-favourite moment is retained or when every
+available non-favourite moment earns runtime and therefore none was rejected. This is a concise
+evidence-backed rationale, not hidden chain-of-thought. Comparison IDs must be different;
+kept_moment_id must appear in keep and
+rejected_moment_id must not.
 
 MOMENT WALL
 {wall}
@@ -647,10 +647,12 @@ def _read_selection(
         raise ValueError("moment selection is not chronological")
     audit_summary = bounded_model_text(payload.get("audit_summary"), max_chars=MAX_THESIS_CHARS)
     raw_comparisons = payload.get("comparisons")
+    rejected_ids = (valid_ids - excluded_ids) - set(keep_ids)
     if (
         audit_summary is None
         or not isinstance(raw_comparisons, list)
-        or not 1 <= len(raw_comparisons) <= 8
+        or len(raw_comparisons) > 8
+        or (keep_ids and rejected_ids and not raw_comparisons)
     ):
         raise ValueError("moment selection audit has the wrong shape")
     comparisons: list[dict[str, str]] = []

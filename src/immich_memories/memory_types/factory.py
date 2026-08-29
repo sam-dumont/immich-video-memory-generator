@@ -179,7 +179,7 @@ def _person_spotlight(
         # A spotlight is one person by definition, so extra names name a
         # different memory -- Multi-Person -- rather than narrowing this one.
         person_filter=person_filter_for([name]),
-        default_duration_seconds=120,
+        default_duration_seconds=600,
     )
 
 
@@ -191,24 +191,23 @@ def _person_spotlight(
 def _multi_person(
     year: int,
     person_names: list[str] | None = None,
-    require_co_occurrence: bool = True,
+    person_match: str = "and",
+    require_co_occurrence: bool | None = None,
     **kwargs,  # noqa: ARG001
 ) -> MemoryPreset:
     if not person_names:
         raise ValueError("person_names is required for MULTI_PERSON memory type")
-    joined = " & ".join(person_names)
-    mode = "all_of" if require_co_occurrence else "any"
+    if require_co_occurrence is not None:
+        person_match = "and" if require_co_occurrence else "or"
+    person_filter = person_filter_for(person_names, person_match=person_match)
+    joined = (" & " if person_match == "and" else " or ").join(person_names)
     return MemoryPreset(
         memory_type=MemoryType.MULTI_PERSON,
         name=joined,
         description=f"Moments with {joined} in {year}",
         date_ranges=[calendar_year(year)],
-        person_filter=PersonFilter(
-            mode=mode,
-            person_names=list(person_names),
-            require_co_occurrence=require_co_occurrence,
-        ),
-        default_duration_seconds=300,
+        person_filter=person_filter,
+        default_duration_seconds=600,
     )
 
 

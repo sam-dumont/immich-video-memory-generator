@@ -49,6 +49,7 @@ def _build_params_table(
     memory_type: str | None,
     date_range: DateRange,
     person_names: list[str],
+    person_match: str = "and",
     duration: float | None,
     album_ref: str | None = None,
     orientation: str,
@@ -77,6 +78,8 @@ def _build_params_table(
         table.add_row("Memory Type", memory_type)
     _add_scope_rows(table, album_ref=album_ref, date_range=date_range)
     table.add_row("Person", ", ".join(person_names) if person_names else "All people")
+    if len(person_names) > 1:
+        table.add_row("Person Match", "Everyone (AND)" if person_match == "and" else "Any (OR)")
     table.add_row("Target Duration", _format_target_duration(duration))
     table.add_row("Orientation", orientation)
     table.add_row("Scale Mode", scale_mode or config.defaults.scale_mode)

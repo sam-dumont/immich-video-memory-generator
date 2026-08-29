@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import json
 import re
+import threading
+import time
 from collections import Counter
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -66,6 +69,39 @@ def _episode_pack_answer(prompt: str, *, summary: str = "Visible stages develop.
 # tests exist to prove need a proportionally tighter budget to stay reachable.
 _TIGHT_BUDGET = 1100
 _SINGLE_EPISODE_BUDGET = 250
+
+
+def test_episode_packs_run_concurrently_without_reordering(monkeypatch) -> None:
+    from immich_memories.analysis import period_insight
+
+    active = 0
+    maximum_active = 0
+    lock = threading.Lock()
+
+    def read_one(pack, _requester, _limits):
+        nonlocal active, maximum_active
+        with lock:
+            active += 1
+            maximum_active = max(maximum_active, active)
+        time.sleep(0.01 * (4 - int(pack.pack_id)))
+        with lock:
+            active -= 1
+        return ((pack.pack_id,), None, pack.pack_id)
+
+    monkeypatch.setattr(period_insight, "_read_episode_pack", read_one)
+    packs = tuple(SimpleNamespace(pack_id=str(index)) for index in range(1, 4))
+
+    observations, banked, attempts = period_insight._read_episode_packs(
+        packs,
+        requester=object(),
+        limits=VisionRequestLimits(),
+        concurrency=3,
+    )
+
+    assert maximum_active == 3
+    assert observations == ("1", "2", "3")
+    assert banked == ()
+    assert attempts == ("1", "2", "3")
 
 
 def _maximum_fused_response_for(

@@ -1,12 +1,21 @@
 ---
 date: 2026-08-27
-status: accepted steering — the cut's direction, not yet implemented
+status: partly superseded 2026-08-29 — validated prototype, integration pending
 issue: 764
 audience: Codex, on the branch tonight
 supersedes: the model-chosen Structure cut left open by the-annotation-layer.md
 ---
 
 # Structure: the cut is an allocation, not a model
+
+> **Scope tombstone — 2026-08-29.** The arithmetic source gates, exact duplicate
+> collapse, duration capacity, full reservoirs and confirmed lifecycle anchors
+> below remain authoritative. The conclusion that a model may never propose
+> tentative moment membership is superseded by the owner-directed complete-card-
+> wall prototype at the end. The failed instrument was a small model judging
+> tiles without the complete scarcity problem; the validated instrument is a
+> capable text editor reading every grounded moment card, followed by a separate
+> final asset cut over reopened reservoirs.
 
 Written from two read-only passes over the corpus the same evening (opencode;
 Fable's consolidation, which this adopts wholesale), then corrected in place by
@@ -38,6 +47,11 @@ closed.** The cut is the one place the instrument ladder is free at every rung.
    correct run. Encode the starred-episode form only, and keep it a continuous
    diagnostic, not a hard assertion, until the owner settles the unit
    (decision queue, below).
+
+   > **Superseded 2026-08-29:** a favourite is strong owner evidence, not hard
+   > admission of its whole moment. If a favourite-bearing moment survives the
+   > final asset cut, at least one favourite from that moment must represent it.
+   > Only confirmed lifecycle anchors are hard admissions.
 3. **Admission is the mechanism, not slot-filling.** The measured core is the
    slice-4 admission tests (`handoff-slice3-to-codex.md` §3): **owner acts** —
    star, filed in an album spanning ≤30 shooting days, album cover — and
@@ -79,10 +93,16 @@ closed.** The cut is the one place the instrument ladder is free at every rung.
      the prefix** — bank the 400px description per asset *forever* (layer 1 by
      lifetime, instrument rung 6), significance = the novelty of the description over the
      library's prefix. In a single-camera library nothing else finds the
-     pregnancy test — measured: the floor there loses exactly that.
+     quiet consequential record — measured: the metadata floor loses exactly
+     that kind of visually modest turning point.
      Unmeasured; if you build the allocation, stand this probe beside it as
      its control.
-6. **The model never enters the per-memory membership decision.** The one
+6. **The model never enters the per-memory membership decision.**
+
+   > **Superseded 2026-08-29 by the complete-card-wall prototype below.** Keep
+   > this paragraph only as the tombstone for the old instrument boundary.
+
+   The one
    pre-cut exception is the ingestion-time 400px description probe above: it
    describes an asset once, banks the words forever, and does not actuate.
    Per memory, the model enters only after the cut — as the O(1) *reader* of an
@@ -190,22 +210,30 @@ Every new model call owes a line: *which rung of the ladder answers this
 question, and why 1–4 could not.* If you cannot write that line, you are
 spending calls on meaning the ladder already pays for.
 
-## Later owner-directed prototype: cards → thesis → cut
+## Current owner-directed prototype: cards → thesis → reservoirs → final asset cut
 
-> **Measured 2026-08-27; pending the owner's visual gate.** This does not yet
-> replace item 6 or authorize a production rewrite. It records a materially
-> different instrument so it is not lost or confused with the dead flat
-> Structure prompts above.
+> **Owner-validated 2026-08-29; supersedes item 6 for current branch work.** It
+> remains a prototype until the production selector consumes it. It is not the
+> dead flat Structure prompt: the editor sees the complete grounded text wall,
+> the scarcity, and the memory type before proposing a reservoir shortlist.
 
-The new shape is two scope-level **text** calls over a complete chronological
-moment wall:
+For a wall small enough to compare in one context, the shape is two scope-level
+**text** calls over a complete chronological moment wall:
 
-1. build one factual card per production-grouped moment from every banked
-   400px asset description plus deterministic facts (count, media, span,
+1. build one factual card per production-grouped moment, either from its banked
+   400px asset descriptions or from one fused 400px reading that shows every
+   asset in the moment, plus deterministic facts (count, media, span,
    favourites, recognized people, place);
 2. tell the first call what kind of memory is being made and ask what this
    candidate set is about; give that grounded brief and the same complete wall
    to the second call, which chooses moments under the duration-derived cap.
+
+Large walls use the same prompts and contracts hierarchically rather than
+truncating or sampling: chronological chapter readings, one global thesis and
+duration allocation, bounded chapter shortlists, then bounded chapter final
+asset cuts. Chapter allocations are weights, not trusted totals; code scales
+them to the runtime duration capacity while preserving confirmed lifecycle
+minima. There is no fixed “five per month” or “eight per year” rule.
 
 No asset is sampled into the wall and no authored subject taxonomy appears in
 either prompt. The thesis has separate evidence lanes for sustained threads
@@ -235,12 +263,10 @@ containing the restored high-resolution material. The brief names both the
 sustained activity and the private turning point. All four favourite-bearing
 moments ship.
 
-That last property is code, not prompt obedience. V4's first selector omitted
-one favourite despite an explicit MUST. The replayable prototype now admits
-favourite moments deterministically, subtracts them from capacity, asks the
-model for only the remaining nine, and merges the cut chronologically. The
-uncached V4 thesis took 61s; the final nine-slot selection took 59s. Re-running
-the same 149 cards and thesis was an exact local-cache hit.
+> **Superseded 2026-08-29:** deterministic admission of every favourite-bearing
+> moment was too strong. Favourites now compress the evidence wall and constrain
+> representation only if their moment survives. Confirmed relationship/birth
+> lifecycle onsets remain hard runtime anchors.
 
 Replay code: `scripts/probe_description_moment_cut.py`. Private evidence lives
 under `~/.immich-memories-matrix/description-bank-corrected-source-2026-08-27/`
@@ -250,8 +276,117 @@ The earlier description-cut and card directories are deliberately retained as
 pre-source-fix evidence, not current June results.
 
 Why rung 6 is being tested here: metadata and arithmetic provide who, where,
-owner acts, grouping and capacity; they cannot say that a repeated activity and
-a private life change form this particular month's story. The model is not making
-149 independent membership guesses. It sees scarcity, the complete set and the
-memory type in one comparison. Whether that distinction is enough to supersede
-item 6 is the pending human read of the actual 13 moments.
+owner acts, grouping and capacity; they cannot say what makes one particular
+period worth remembering. The model is not making independent tile-membership
+guesses. It sees scarcity, the complete set and the memory type in one
+comparison.
+
+### Validated shape on 2026-08-29
+
+The current prototype does five things the first V4 did not:
+
+1. favourite-heavy chapters project favourite assets plus relationship and
+   lifecycle repairs into descriptions, while keeping every complete Structure
+   moment as a reservoir; chapters with no favourite signal stay broad;
+2. scopes with no useful favourite compression may build one 400px visual card
+   per complete production moment, showing every asset in that moment and
+   deferring per-asset descriptions until reservoirs are selected;
+3. prompts state only the generic display rule: distinguish lived experience
+   from material whose value is merely to label, measure, summarize or prove it;
+4. the moment cut is tentative. Demand Selects opens every asset in its retained
+   reservoirs, then one duration-bounded text call may take several assets from
+   a rich moment and none from a weaker shortlisted moment;
+5. visual descriptions, moment cards and pair sameness judgments bank at their
+   natural asset/pair/moment lifetimes. Warm thesis and selection experiments do
+   not pay the visual ingestion cost again.
+
+The shortlist count is therefore not a proxy for final density. Hosted editors
+often returned the stated maximum on the old shortlist prompt, while the later
+asset cut still underfilled, dropped weak shortlisted moments and took multiple
+assets from stronger ones. Do not teach the shortlist to fill or underfill a
+particular number; duration and the final comparison own that decision.
+
+### Real controls, not fixtures
+
+Four unrelated month controls reached the final cut with the same generic
+prompt. Their final cuts used 13/13, 11/13, 10/13 and 13/13 possible visuals.
+The 11/13 control kept a visually quiet consequential record, retained
+high-resolution event photographs without camera EXIF, and rejected setup,
+inventory and hallway material. The no-thinking editor remained good enough for
+the default path; thinking stays an explicit opt-in because its local latency
+was roughly four to five times higher.
+
+A blind two-year run exercised the hierarchical path without authored story
+facts: 3,253 exact assets became 381 complete moment cards, 62 retained moment
+reservoirs, 918 unique reservoir assets, 710 assets after demand Selects and 72
+final assets across 44 moments against a 147-slot duration capacity. The final
+cut underfilled naturally. Its successful mixed-cache replay took 618 seconds;
+upstream readings, cards, pair judgments and descriptions were warm while 13 of
+14 final text calls were cold.
+
+Exact-person source controls also passed. A two-person **AND** scope contained
+only assets tagged with both people; a four-person **OR** scope deduplicated the
+union without burst-neighbour widening. Their final cuts used 15/143 and 39/144
+possible assets respectively. Person AND/OR belongs at acquisition, not in a
+later prompt. The provenance override is likewise per generation: strict by
+default, with an explicit “accept any provenance” lane for memories whose valid
+source material is forwarded.
+
+The two heavy controls show why favourite coverage selects a compression mode:
+
+| scope | exact assets | editor wall | retained reservoirs | reopened → after Selects | final / capacity |
+|---|---:|---:|---:|---:|---:|
+| sparse-favourite person span, 21 years | 6,211 | 1,004 fused moment cards | 132 | 942 → 303 | 102 / 138 |
+| favourite-heavy person year | 5,878 | 449 described moment cards | 128 | 1,558 → 531 | 125 / 142 |
+
+The sparse case keeps unstarred chapters broad; the favourite-heavy case projects
+owner evidence plus relationship, first-appearance and resumption repairs. In
+both cases the complete assets inside retained moments reopen before the final
+cut. “Compressed editor wall” must never be misreported as “only these assets
+were considered.”
+
+The favourite-heavy cold build exposed the remaining performance risk. Demand
+Selects made 1,911 pair requests over 3,822 tile placements in 24m41 locally,
+but reduced 1,558 unique reservoir assets to 531. On the successful replay all
+1,911 pair judgments returned in six seconds. Optimise this with banking,
+batching or a proven mechanical duplicate prefilter; do not sample away full
+reservoir membership. The same replay served all 931 evidence descriptions,
+449 moment cards and 531 final descriptions from cache and finished in 364
+seconds while paying for only five new final text calls.
+
+### Hosted cost and local latency are different numbers
+
+A complete cold hosted month—including vision descriptions, cards, thesis,
+shortlist, demand Selects and final asset cut—completed in 296 seconds with 371
+requests, about 216,000 input tokens and 50,000 output tokens. The mixed
+bulk/editor estimate for that measured run was about $0.24. It is not a promise
+for every provider or wall size; it is evidence that public-API use is viable.
+
+The recurring editorial call is much smaller: roughly 20,000 input and 1,500
+output tokens in the measured walls. At the OpenAI standard short-context prices
+published on 2026-08-29, that is about $0.11 on Sol, $0.058 on Terra or $0.0058
+on Luna. See the [official pricing table](https://developers.openai.com/api/docs/pricing).
+Do not remove grounded context to save fractions of a cent. Bank the cold visual
+facts and spend the small text call on the comparison that needs them.
+
+Provider replays over the same frozen month wall completed in 7–36 seconds for
+the non-vision text pass across the tested OpenAI-compatible services. Output
+flavour differed, but all old scarcity prompts chased their stated maximum.
+That is useful provider evidence, not a reason to hard-code a lower shortlist:
+the separate final asset cut owns visual density.
+
+### Context that may help, but is not ground truth
+
+Album membership and an album title may help a model disambiguate an event that
+is visually hard to name. This is an optional **CAN-context** lane: pass only
+albums involving assets in the current wall, label the title as user-authored
+context, and never let it override dates, confirmed people facts or visible
+evidence. The lane remains pending; it is not permission to ingest an entire
+album or treat a title as a fact.
+
+The remaining work is smart-editor product integration, not another
+membership-prompt shape. Production-facing person AND/OR acquisition,
+per-generation provenance override and privacy-safe progress now exist. The
+integrated selector must retain those contracts, keep thinking disabled by
+default, and never persist private cards, prompts or model answers in the
+repository.

@@ -765,9 +765,9 @@ def test_only_source_scope_and_owner_exclusions_apply_before_pass_zero() -> None
   so the account still answers for the whole fetch. `SourceScope` carries the filename patterns and
   the stills-need-a-camera flag; a star still overrides both. Landed `b8ecc10` + this branch.
 
-- [ ] RED/GREEN: decide, do not default, whether `with_burst_neighbours()` and
-  `expand_to_neighbors()` are still needed. The editorial path fetches a date range rather than a
-  person, so they may be genuinely unnecessary — record which, and why, in the rules inventory.
+- [x] RED/GREEN: `with_burst_neighbours()` and `expand_to_neighbors()` were removed 2026-08-29.
+  Exact person tags are the production source boundary; temporal proximity cannot add an untagged
+  asset. Live Photo burst merging remains a later rendering decision over assets already in scope.
 
 - [ ] RED/GREEN: expose pure chronological `build_episode_groups()` and `build_moment_groups()`
   over already-eligible candidates. Stable group IDs derive from ordered asset IDs and grouping

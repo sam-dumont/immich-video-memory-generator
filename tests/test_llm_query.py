@@ -382,6 +382,38 @@ class TestServerParameterDialects:
         assert "max_completion_tokens" in second_call and "max_tokens" not in second_call
 
     @pytest.mark.asyncio
+    async def test_a_sibling_learning_the_dialect_updates_this_inflight_payload(self):
+        from immich_memories.analysis.llm_query import _post_adapted
+
+        adaptations: set[str] = set()
+
+        class RacingClient:
+            calls = 0
+
+            async def post(self, _url, *, json):  # noqa: ANN001, A002
+                self.calls += 1
+                if self.calls == 1:
+                    # Another concurrent request learned this after our
+                    # payload was built but before our 400 arrived.
+                    adaptations.add("max_completion_tokens")
+                    return _openai_400(
+                        "Unsupported parameter: 'max_tokens'. Use 'max_completion_tokens' instead."
+                    )
+                return _openai_response()
+
+        client = RacingClient()
+        payload = {"max_tokens": 900, "temperature": 0.0}
+
+        response = await _post_adapted(
+            client, "https://example.test/chat/completions", payload, adaptations
+        )
+
+        assert response.status_code == 200
+        assert client.calls == 2
+        assert payload["max_completion_tokens"] == 900
+        assert "max_tokens" not in payload
+
+    @pytest.mark.asyncio
     async def test_an_unrelated_400_still_raises(self):
         import httpx
 
@@ -901,10 +933,10 @@ async def test_parseable_malformed_content_keeps_legacy_reply_metrics(
             "look", LLMConfig(provider=provider, base_url="http://localhost/v1", model="vision")
         )
 
-    assert record_reply.call_args.kwargs == {
-        "prompt_tokens": usage[0],
-        "completion_tokens": usage[1],
-    }
+    recorded = record_reply.call_args.kwargs
+    assert recorded["prompt_tokens"] == usage[0]
+    assert recorded["completion_tokens"] == usage[1]
+    assert recorded.get("cached_prompt_tokens", 0) == 0
     assert record_reply.call_count == 1
 
 

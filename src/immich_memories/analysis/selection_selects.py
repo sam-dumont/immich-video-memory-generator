@@ -26,6 +26,8 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
@@ -133,6 +135,50 @@ class _Corroboration:
 
 
 @dataclass(frozen=True)
+class _PendingPair:
+    """One chronological neighbour comparison whose calls can be scheduled."""
+
+    scope_id: str
+    earlier: EditorialCandidate
+    later: EditorialCandidate
+    distance: int | None
+
+
+@dataclass(frozen=True)
+class _PairBatchReader:
+    """Run independent pair arrangements concurrently, preserving result order."""
+
+    tasks: tuple[_PendingPair, ...]
+    atlas: object
+    requester: EditorialGateway
+    sheet_output_dir: Path
+    limits: VisionRequestLimits
+    concurrency: int
+
+    def ask(self, task: _PendingPair, arrangement: str) -> bool | None:
+        pair = (task.earlier, task.later) if arrangement == "ab" else (task.later, task.earlier)
+        return _ask_one_pair(
+            task.scope_id,
+            arrangement,
+            pair,
+            self.atlas,
+            self.requester,
+            self.sheet_output_dir,
+            self.limits,
+        )
+
+    def ask_many(self, indices: Sequence[int], arrangement: str) -> tuple[bool | None, ...]:
+        jobs = tuple((copy_context(), self.tasks[index]) for index in indices)
+        with ThreadPoolExecutor(max_workers=self.concurrency) as executor:
+            return tuple(
+                executor.map(
+                    lambda job: job[0].run(self.ask, job[1], arrangement),
+                    jobs,
+                )
+            )
+
+
+@dataclass(frozen=True)
 class AbsorbedFrame:
     """One frame folded into another that shares its exact capture instant."""
 
@@ -159,6 +205,7 @@ def run_selects(
     sheet_output_dir: Path | None = None,
     frame_cache_dir: Path | None = None,
     limits: VisionRequestLimits | None = None,
+    concurrency: int = 1,
 ) -> SelectsPassResult:
     """Absorb repetition in two stages, and ask the model only what it can answer.
 
@@ -190,6 +237,7 @@ def run_selects(
             sheet_output_dir=sheet_output_dir,
             frame_cache_dir=frame_cache_dir,
             limits=limits or VisionRequestLimits(),
+            concurrency=max(1, concurrency),
         )
         absorbed = [*absorbed, *folded]
     survivors.sort(key=lambda candidate: (candidate.taken_at, candidate.asset_id))
@@ -245,6 +293,7 @@ def _absorb_the_same_picture(
     sheet_output_dir: Path,
     frame_cache_dir: Path | None,
     limits: VisionRequestLimits,
+    concurrency: int,
 ) -> tuple[list[EditorialCandidate], list[AbsorbedFrame], tuple[str, ...]]:
     """Stage B. Chain neighbours the model calls one picture, then keep one of each run."""
     atlas = build_visual_atlas(prepared.visual_sources, frame_cache_dir=frame_cache_dir)
@@ -256,25 +305,219 @@ def _absorb_the_same_picture(
     # for itself how far apart two frames can be before the model starts
     # contradicting itself. Nothing is carried over from another one.
     corroboration = _Corroboration()
-    for moment in prepared.moment_groups:
-        members = [candidate for candidate in moment.candidates if candidate.asset_id in alive]
-        if not members:
-            continue
-        runs, moment_warnings = _runs_of_one_picture(
+    moments = tuple(
+        (
             moment.group_id,
-            members,
+            [candidate for candidate in moment.candidates if candidate.asset_id in alive],
+        )
+        for moment in prepared.moment_groups
+    )
+    pair_decisions: dict[str, tuple[bool, str | None]] | None = None
+    if concurrency > 1:
+        pair_decisions, parallel_warnings = _parallel_pair_decisions(
+            moments,
             atlas=atlas,
             requester=requester,
             sheet_output_dir=sheet_output_dir,
             limits=limits,
             corroboration=corroboration,
+            concurrency=concurrency,
         )
+        warnings.extend(parallel_warnings)
+
+    for group_id, members in moments:
+        if not members:
+            continue
+        if pair_decisions is None:
+            runs, moment_warnings = _runs_of_one_picture(
+                group_id,
+                members,
+                atlas=atlas,
+                requester=requester,
+                sheet_output_dir=sheet_output_dir,
+                limits=limits,
+                corroboration=corroboration,
+            )
+        else:
+            runs, moment_warnings = _runs_from_pair_decisions(
+                group_id,
+                members,
+                pair_decisions,
+            )
         warnings.extend(moment_warnings)
         for run in runs:
             kept, folded = _keep_from_run(run)
             survivors.extend(kept)
             absorbed.extend(folded)
     return survivors, absorbed, tuple(warnings)
+
+
+def _parallel_pair_decisions(
+    moments: Sequence[tuple[str, list[EditorialCandidate]]],
+    *,
+    atlas: object,
+    requester: EditorialGateway,
+    sheet_output_dir: Path,
+    limits: VisionRequestLimits,
+    corroboration: _Corroboration,
+    concurrency: int,
+) -> tuple[dict[str, tuple[bool, str | None]], tuple[str, ...]]:
+    """Judge independent pair arrangements concurrently without reordering calibration."""
+    tasks = tuple(
+        _PendingPair(
+            scope_id=f"{group_id}-{index}",
+            earlier=members[index],
+            later=members[index + 1],
+            distance=_pixel_distance(atlas, members[index], members[index + 1]),
+        )
+        for group_id, members in moments
+        for index in range(len(members) - 1)
+    )
+    if not tasks:
+        return {}, ()
+    reader = _PairBatchReader(
+        tasks,
+        atlas,
+        requester,
+        sheet_output_dir,
+        limits,
+        concurrency,
+    )
+    all_indices = tuple(range(len(tasks)))
+    forwards = reader.ask_many(all_indices, "ab")
+    decisions = _forward_pair_decisions(tasks, forwards)
+    cursor, warnings = _calibrate_parallel_pairs(
+        reader,
+        forwards,
+        decisions,
+        corroboration,
+    )
+    _finish_parallel_pairs(reader, forwards, decisions, corroboration, cursor)
+    return decisions, tuple(warnings)
+
+
+def _forward_pair_decisions(
+    tasks: Sequence[_PendingPair],
+    forwards: Sequence[bool | None],
+) -> dict[str, tuple[bool, str | None]]:
+    decisions: dict[str, tuple[bool, str | None]] = {}
+    for task, forward in zip(tasks, forwards, strict=True):
+        if forward is None:
+            warning = f"!! Pass 2 unreadable pair answer, both kept: {task.scope_id}"
+            decisions[task.scope_id] = (False, warning)
+        elif not forward:
+            decisions[task.scope_id] = (False, None)
+    return decisions
+
+
+def _calibrate_parallel_pairs(
+    reader: _PairBatchReader,
+    forwards: Sequence[bool | None],
+    decisions: dict[str, tuple[bool, str | None]],
+    corroboration: _Corroboration,
+) -> tuple[int, list[str]]:
+    cursor = 0
+    warnings: list[str] = []
+    while corroboration.calibrating and cursor < len(reader.tasks):
+        batch, cursor = _next_calibration_batch(
+            reader.tasks,
+            forwards,
+            cursor,
+            SELECTS_CALIBRATION_PAIRS - len(corroboration.observations),
+        )
+        if not batch:
+            continue
+        backwards = reader.ask_many(batch, "ba")
+        _record_backward_decisions(reader.tasks, batch, backwards, decisions, corroboration)
+        if settled := corroboration.settle():
+            warnings.append(settled)
+    return cursor, warnings
+
+
+def _next_calibration_batch(
+    tasks: Sequence[_PendingPair],
+    forwards: Sequence[bool | None],
+    cursor: int,
+    known_distance_needed: int,
+) -> tuple[list[int], int]:
+    batch: list[int] = []
+    known_distance_scheduled = 0
+    while cursor < len(tasks):
+        index = cursor
+        cursor += 1
+        if forwards[index] is not True:
+            continue
+        batch.append(index)
+        if tasks[index].distance is not None:
+            known_distance_scheduled += 1
+            if known_distance_scheduled >= known_distance_needed:
+                break
+    return batch, cursor
+
+
+def _record_backward_decisions(
+    tasks: Sequence[_PendingPair],
+    indices: Sequence[int],
+    backwards: Sequence[bool | None],
+    decisions: dict[str, tuple[bool, str | None]],
+    corroboration: _Corroboration,
+) -> None:
+    for index, backward in zip(indices, backwards, strict=True):
+        task = tasks[index]
+        if task.distance is not None and backward is not None:
+            corroboration.observations.append((task.distance, True, backward))
+        warning = (
+            f"!! Pass 2 unreadable pair answer, both kept: {task.scope_id}"
+            if backward is None
+            else None
+        )
+        decisions[task.scope_id] = (bool(backward), warning)
+
+
+def _finish_parallel_pairs(
+    reader: _PairBatchReader,
+    forwards: Sequence[bool | None],
+    decisions: dict[str, tuple[bool, str | None]],
+    corroboration: _Corroboration,
+    cursor: int,
+) -> None:
+    remaining_backward: list[int] = []
+    for index in range(cursor, len(reader.tasks)):
+        task = reader.tasks[index]
+        if forwards[index] is not True:
+            continue
+        if task.distance is not None and task.distance <= corroboration.distance:
+            decisions[task.scope_id] = (True, None)
+        else:
+            remaining_backward.append(index)
+    if remaining_backward:
+        backwards = reader.ask_many(remaining_backward, "ba")
+        _record_backward_decisions(
+            reader.tasks,
+            remaining_backward,
+            backwards,
+            decisions,
+            corroboration,
+        )
+
+
+def _runs_from_pair_decisions(
+    group_id: str,
+    members: list[EditorialCandidate],
+    decisions: dict[str, tuple[bool, str | None]],
+) -> tuple[list[list[EditorialCandidate]], tuple[str, ...]]:
+    """Rebuild the chronological runs after concurrent pair reads finish."""
+    runs: list[list[EditorialCandidate]] = [[members[0]]]
+    warnings: list[str] = []
+    for index in range(len(members) - 1):
+        same, warning = decisions[f"{group_id}-{index}"]
+        if warning:
+            warnings.append(warning)
+        if same:
+            runs[-1].append(members[index + 1])
+        else:
+            runs.append([members[index + 1]])
+    return runs, tuple(warnings)
 
 
 def _runs_of_one_picture(

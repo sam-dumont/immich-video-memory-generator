@@ -61,6 +61,16 @@ def scope_options(command: FC) -> FC:
         ),
         click.option("--person", "-p", type=str, multiple=True, help="Person name (repeatable)"),
         click.option(
+            "--person-match",
+            type=click.Choice(["and", "or"]),
+            default="and",
+            show_default=True,
+            help=(
+                "With several --person values, require everyone in each asset "
+                "(and) or accept any named person (or)"
+            ),
+        ),
+        click.option(
             "--memory-type",
             type=click.Choice(
                 [

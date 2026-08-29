@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
@@ -155,8 +157,11 @@ def run_period_insight(
     sheet_output_dir: Path,
     frame_cache_dir: Path | None,
     limits: VisionRequestLimits | None = None,
+    concurrency: int = 1,
 ) -> PassZeroResult:
     """Read every required episode page before attempting a period thesis."""
+    if not 1 <= concurrency <= 8:
+        raise ValueError("episode scan concurrency must be between 1 and 8")
     request_limits = limits or VisionRequestLimits(max_output_tokens=4000, timeout_seconds=120)
     atlas = build_visual_atlas(prepared.visual_sources, frame_cache_dir=frame_cache_dir)
     warnings: list[str] = []
@@ -185,6 +190,7 @@ def run_period_insight(
         episode_packs,
         requester=requester,
         limits=request_limits,
+        concurrency=concurrency,
     )
     readings = _complete_episode_readings(episode_sheets, observations)
     period_pages: tuple[ContactSheetPage, ...] = ()
@@ -666,67 +672,95 @@ def _read_episode_packs(
     *,
     requester: EditorialGateway,
     limits: VisionRequestLimits,
+    concurrency: int = 1,
 ) -> tuple[
     tuple[EpisodePageObservation, ...],
     tuple[BankedEpisodeScan, ...],
     tuple[EpisodeScanAttempt, ...],
 ]:
-    observations: list[EpisodePageObservation] = []
-    banked: list[BankedEpisodeScan] = []
-    attempts: list[EpisodeScanAttempt] = []
-    for pack in packs:
-        scan: BankedEpisodeScan | None = None
-        parsed = None
-        request_trace: RequestTrace | None = None
-        try:
-            answer = requester.ask(build_episode_request(pack, limits=limits))
-        except Exception as exc:  # WHY: optional model failure cannot remove source membership
-            answer = None
-            request_trace = getattr(exc, "request_trace", None)
-            if not isinstance(request_trace, RequestTrace):
-                request_trace = None
-        if answer is not None:
-            scan = BankedEpisodeScan(pack.pack_id, pack.page.sheet_id, answer)
-            banked.append(scan)
-            tile_map = {
-                (scope.episode_alias, scope.page_alias, ref.number): ref.entity_id
-                for scope in pack.scopes
-                for ref in scope.tile_refs
-            }
-            observation_map = {
-                (scope.episode_alias, scope.page_alias): (scope.episode_id, scope.page_id)
-                for scope in pack.scopes
-            }
-            parsed = read_episode_answers(
-                answer.raw_text,
-                pack_alias=1,
-                expected_observations=tuple(
-                    (scope.episode_id, scope.page_id) for scope in pack.scopes
-                ),
-                observation_map=observation_map,
-                tile_map=tile_map,
+    if not 1 <= concurrency <= 8:
+        raise ValueError("episode scan concurrency must be between 1 and 8")
+    if concurrency == 1:
+        outcomes = tuple(_read_episode_pack(pack, requester, limits) for pack in packs)
+    else:
+        contextual_packs = tuple((copy_context(), pack) for pack in packs)
+        with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            outcomes = tuple(
+                executor.map(
+                    lambda item: item[0].run(_read_episode_pack, item[1], requester, limits),
+                    contextual_packs,
+                )
             )
-            request_trace = answer.request_trace
-        attempts.append(EpisodeScanAttempt(pack.pack_id, pack.page.sheet_id, answer, request_trace))
-        by_identity = {
-            (reading.episode_id, reading.page_id): reading
-            for reading in (() if parsed is None else parsed.readings)
-        }
-        invalid_observations = set(() if parsed is None else parsed.invalid_observations)
-        observations.extend(
-            EpisodePageObservation(
-                scope.episode_id,
-                scope.page_id,
-                # Unviewable candidates left before the sheet was built, so a
-                # scope with no tiles is an empty episode rather than a blind one.
-                None
-                if not scope.tile_refs or (scope.episode_id, scope.page_id) in invalid_observations
-                else by_identity.get((scope.episode_id, scope.page_id)),
-                scan,
-            )
+    return (
+        tuple(
+            observation
+            for observations, _scan, _attempt in outcomes
+            for observation in observations
+        ),
+        tuple(scan for _observations, scan, _attempt in outcomes if scan is not None),
+        tuple(attempt for _observations, _scan, attempt in outcomes),
+    )
+
+
+def _read_episode_pack(
+    pack: EpisodeScanPack,
+    requester: EditorialGateway,
+    limits: VisionRequestLimits,
+) -> tuple[
+    tuple[EpisodePageObservation, ...],
+    BankedEpisodeScan | None,
+    EpisodeScanAttempt,
+]:
+    """Read one independent pack; the caller restores chronological pack order."""
+    scan: BankedEpisodeScan | None = None
+    parsed = None
+    request_trace: RequestTrace | None = None
+    try:
+        answer = requester.ask(build_episode_request(pack, limits=limits))
+    except Exception as exc:  # WHY: optional model failure cannot remove source membership
+        answer = None
+        request_trace = getattr(exc, "request_trace", None)
+        if not isinstance(request_trace, RequestTrace):
+            request_trace = None
+    if answer is not None:
+        scan = BankedEpisodeScan(pack.pack_id, pack.page.sheet_id, answer)
+        tile_map = {
+            (scope.episode_alias, scope.page_alias, ref.number): ref.entity_id
             for scope in pack.scopes
+            for ref in scope.tile_refs
+        }
+        observation_map = {
+            (scope.episode_alias, scope.page_alias): (scope.episode_id, scope.page_id)
+            for scope in pack.scopes
+        }
+        parsed = read_episode_answers(
+            answer.raw_text,
+            pack_alias=1,
+            expected_observations=tuple((scope.episode_id, scope.page_id) for scope in pack.scopes),
+            observation_map=observation_map,
+            tile_map=tile_map,
         )
-    return tuple(observations), tuple(banked), tuple(attempts)
+        request_trace = answer.request_trace
+    attempt = EpisodeScanAttempt(pack.pack_id, pack.page.sheet_id, answer, request_trace)
+    by_identity = {
+        (reading.episode_id, reading.page_id): reading
+        for reading in (() if parsed is None else parsed.readings)
+    }
+    invalid_observations = set(() if parsed is None else parsed.invalid_observations)
+    observations = tuple(
+        EpisodePageObservation(
+            scope.episode_id,
+            scope.page_id,
+            # Unviewable candidates left before the sheet was built, so a
+            # scope with no tiles is an empty episode rather than a blind one.
+            None
+            if not scope.tile_refs or (scope.episode_id, scope.page_id) in invalid_observations
+            else by_identity.get((scope.episode_id, scope.page_id)),
+            scan,
+        )
+        for scope in pack.scopes
+    )
+    return observations, scan, attempt
 
 
 def _complete_episode_readings(

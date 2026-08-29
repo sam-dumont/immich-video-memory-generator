@@ -130,6 +130,10 @@ async def _post_adapted(
     transport_observer: Callable[[LLMTransportAttempt], None] | None = None,
 ) -> httpx.Response:
     """POST, negotiating parameter dialects on explicit 400s (one per rule)."""
+    # The shared set can grow while sibling requests are in flight. Track what
+    # this payload has actually received separately: another request learning
+    # an adaptation does not retroactively rewrite our already-built payload.
+    applied_adaptations = adaptations.copy()
     while True:
         try:
             resp = await client.post(url, json=payload)
@@ -146,10 +150,11 @@ async def _post_adapted(
         except (TypeError, ValueError):
             _record_invalid_response(transport_observer, resp.status_code)
             raise
-        if adaptation is None or adaptation in adaptations:
+        if adaptation is None or adaptation in applied_adaptations:
             return resp
         _observe(transport_observer, 1, "dialect_adaptation", resp.status_code, adaptation)
         adaptations.add(adaptation)
+        applied_adaptations.add(adaptation)
         _apply_adaptations(payload, adaptations)
         logger.info("LLM server dialect: adapting request (%s)", adaptation)
 
@@ -451,6 +456,11 @@ async def _query_anthropic(
         payload["thinking"] = {"type": "enabled", "budget_tokens": ANTHROPIC_THINKING_BUDGET_TOKENS}
         payload.pop("temperature")
         timeout = max(timeout, THINKING_MIN_TIMEOUT_SECONDS)
+    elif "thinking" in config.no_thinking_params:
+        # Some Anthropic-compatible gateways reason by default. Only copy the
+        # native field: LLMConfig's generic default contains Qwen's
+        # chat_template_kwargs, which Anthropic itself does not understand.
+        payload["thinking"] = config.no_thinking_params["thinking"]
     async with httpx.AsyncClient(
         timeout=build_llm_timeout(float(timeout)), headers=headers
     ) as client:
@@ -465,8 +475,15 @@ async def _query_anthropic(
             _observe(transport_observer, 1, "http_error", resp.status_code)
             raise
         body, usage = _anthropic_usage(resp, transport_observer)
+        cached_input = usage.get("cache_read_input_tokens", 0) or 0
+        cache_creation_input = usage.get("cache_creation_input_tokens", 0) or 0
         llm_metrics.record_reply(
-            prompt_tokens=usage.get("input_tokens", 0) or 0,
+            # Anthropic-style usage reports uncached, cache-read, and
+            # cache-write input separately. Normalize prompt_tokens to the
+            # same total-input meaning OpenAI reports while retaining the
+            # discounted cache-read subset.
+            prompt_tokens=(usage.get("input_tokens", 0) or 0) + cached_input + cache_creation_input,
+            cached_prompt_tokens=cached_input,
             completion_tokens=usage.get("output_tokens", 0) or 0,
         )
         raw_text = _anthropic_answer(body, resp, transport_observer)
@@ -688,6 +705,8 @@ def _interpret_openai_response(
         raise
     llm_metrics.record_reply(
         prompt_tokens=usage.get("prompt_tokens", 0) or 0,
+        cached_prompt_tokens=(usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0)
+        or 0,
         completion_tokens=usage.get("completion_tokens", 0) or 0,
     )
     try:

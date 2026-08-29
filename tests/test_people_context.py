@@ -71,6 +71,8 @@ def test_owner_relative_kinship_is_derived_at_read_time_without_touching_the_fil
     casey = facts["Casey Example"]
     assert casey.relationship == "niece or nephew of library owner"
     assert casey.relationship_source == "derived"
+    assert casey.relationship_current is True
+    assert casey.owner_relationship_kinds == ("nibling-of",)
     assert path.read_bytes() == before
 
 
@@ -81,6 +83,7 @@ def test_an_explicit_role_beats_the_derived_owner_relative_role(tmp_path):
     casey = load_person_facts(path, include_derived=True)["Casey Example"]
 
     assert (casey.relationship, casey.relationship_source) == ("godchild", "confirmed")
+    assert casey.relationship_current is True
     assert any(
         link.target_id == "alex" and link.kind == "nibling-of" and link.source == "derived"
         for link in casey.links
@@ -94,6 +97,7 @@ def test_the_derived_layer_is_optional_and_off_by_default(tmp_path):
     casey = load_person_facts(path)["Casey Example"]
 
     assert (casey.relationship, casey.relationship_source) == ("unconfirmed", "unconfirmed")
+    assert casey.relationship_current is False
     assert all(link.source != "derived" for link in casey.links)
 
 
