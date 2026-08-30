@@ -55,7 +55,39 @@ class TestQueryLlmOllama:
 
         call_payload = mock_post.call_args[1]["json"]
         assert call_payload["format"] == "json"
-        assert call_payload["options"] == {"temperature": 0.3, "num_ctx": 8192}
+        assert call_payload["options"] == {
+            "temperature": 0.0,
+            "num_ctx": 8192,
+            "num_predict": 500,
+        }
+
+    @pytest.mark.asyncio
+    async def test_max_tokens_reaches_ollama_as_num_predict_beside_existing_options(self):
+        """The provider receives the same output ceiling recorded by the editorial request."""
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(
+            provider="ollama",
+            base_url="http://localhost:11434",
+            model="llava",
+            extra_params={"format": "json", "options": {"num_ctx": 8192, "top_k": 20}},
+        )
+        mock_response = AsyncMock()
+        mock_response.status_code = 200
+        mock_response.json = MagicMock(return_value={"response": "{}"})
+        mock_response.raise_for_status = lambda: None
+
+        # WHY: the LLM server is the external boundary whose exact provider payload matters.
+        with patch("httpx.AsyncClient.post", return_value=mock_response) as mock_post:
+            await query_llm("Read this sheet", config, max_tokens=733)
+
+        payload = mock_post.call_args[1]["json"]
+        assert payload["options"] == {
+            "temperature": 0.0,
+            "num_ctx": 8192,
+            "top_k": 20,
+            "num_predict": 733,
+        }
 
 
 class TestQueryLlmOpenAI:
@@ -89,16 +121,41 @@ class TestQueryLlmOpenAI:
         assert call_payload["messages"][0]["content"] == "Generate a title"
         assert call_payload["model"] == "omlx"
 
+    @pytest.mark.asyncio
+    async def test_a_200_provider_error_is_reported_before_choices_are_read(self):
+        from immich_memories.analysis.llm_query import query_llm
 
-def _openai_response(content='{"ok": true}', finish_reason="stop"):
+        response = AsyncMock(status_code=200)
+        response.json = MagicMock(
+            return_value={
+                "error": {
+                    "code": "1113",
+                    "message": "Insufficient balance or no resource package.",
+                }
+            }
+        )
+        response.raise_for_status = lambda: None
+
+        with (
+            patch("httpx.AsyncClient.post", return_value=response),
+            pytest.raises(ValueError, match="1113.*Insufficient balance"),
+        ):
+            await query_llm(
+                "Generate a title",
+                LLMConfig(provider="openai-compatible", model="hosted"),
+            )
+
+
+def _openai_response(content='{"ok": true}', finish_reason="stop", reasoning_content=None):
     # WHY: the LLM server is the external boundary; these tests assert what
     # reaches it and how its answers are handled, through query_llm only.
     mock_response = AsyncMock()
     mock_response.status_code = 200
+    message = {"content": content}
+    if reasoning_content is not None:
+        message["reasoning_content"] = reasoning_content
     mock_response.json = MagicMock(
-        return_value={
-            "choices": [{"message": {"content": content}, "finish_reason": finish_reason}]
-        }
+        return_value={"choices": [{"message": message, "finish_reason": finish_reason}]}
     )
     mock_response.raise_for_status = lambda: None
     return mock_response
@@ -187,6 +244,50 @@ class TestThinkingMode:
             await query_llm("Judge this cut", _thinking_config(), max_tokens=500, thinking=True)
 
         assert mock_post.call_args[1]["json"]["max_tokens"] >= 4000
+
+    @pytest.mark.asyncio
+    async def test_omlx_budget_reserves_room_for_the_final_answer(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = _thinking_config(
+            thinking_params={
+                "chat_template_kwargs": {"enable_thinking": True},
+                "thinking_budget": 4096,
+            }
+        )
+        # WHY: the oMLX wire request is the behavior under test.
+        with patch("httpx.AsyncClient.post", return_value=_openai_response()) as mock_post:
+            await query_llm("Judge this cut", config, max_tokens=900, thinking=True)
+
+        payload = mock_post.call_args[1]["json"]
+        assert payload["thinking_budget"] == 4096
+        assert payload["max_tokens"] == 4996
+
+    @pytest.mark.asyncio
+    async def test_reasoning_content_is_parsed_away_from_the_final_answer(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        response = _openai_response(
+            content='{"keep": ["M131"]}',
+            reasoning_content="private model reasoning",
+        )
+        # WHY: oMLX returns reasoning and answer as sibling message fields.
+        with patch("httpx.AsyncClient.post", return_value=response):
+            answer = await query_llm("Judge this cut", _thinking_config(), thinking=True)
+
+        assert answer == '{"keep": ["M131"]}'
+        assert "private model reasoning" not in answer
+
+    @pytest.mark.asyncio
+    async def test_inlined_think_tags_are_removed_for_older_compatible_servers(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        response = _openai_response(content='<think>private</think>\n{"keep": []}')
+        # WHY: older compatible servers used content for both channels.
+        with patch("httpx.AsyncClient.post", return_value=response):
+            answer = await query_llm("Judge this cut", _thinking_config(), thinking=True)
+
+        assert answer == '{"keep": []}'
 
     @pytest.mark.asyncio
     async def test_truncated_thinking_falls_back_to_a_fast_answer(self):
@@ -305,6 +406,38 @@ class TestServerParameterDialects:
         assert "max_completion_tokens" in second_call and "max_tokens" not in second_call
 
     @pytest.mark.asyncio
+    async def test_a_sibling_learning_the_dialect_updates_this_inflight_payload(self):
+        from immich_memories.analysis.llm_query import _post_adapted
+
+        adaptations: set[str] = set()
+
+        class RacingClient:
+            calls = 0
+
+            async def post(self, _url, *, json):  # noqa: ANN001, A002
+                self.calls += 1
+                if self.calls == 1:
+                    # Another concurrent request learned this after our
+                    # payload was built but before our 400 arrived.
+                    adaptations.add("max_completion_tokens")
+                    return _openai_400(
+                        "Unsupported parameter: 'max_tokens'. Use 'max_completion_tokens' instead."
+                    )
+                return _openai_response()
+
+        client = RacingClient()
+        payload = {"max_tokens": 900, "temperature": 0.0}
+
+        response = await _post_adapted(
+            client, "https://example.test/chat/completions", payload, adaptations
+        )
+
+        assert response.status_code == 200
+        assert client.calls == 2
+        assert payload["max_completion_tokens"] == 900
+        assert "max_tokens" not in payload
+
+    @pytest.mark.asyncio
     async def test_an_unrelated_400_still_raises(self):
         import httpx
 
@@ -407,6 +540,30 @@ class TestTimeoutShape:
         assert isinstance(timeout, httpx.Timeout)
         assert timeout.connect == CONNECT_TIMEOUT_SECONDS
 
+    @pytest.mark.asyncio
+    async def test_query_timeout_is_also_a_total_wall_clock_deadline(self, monkeypatch):
+        import asyncio
+        import time
+
+        from immich_memories.analysis import llm_query
+
+        async def never_returns(*_args, **_kwargs):
+            await asyncio.Event().wait()
+
+        monkeypatch.setattr(llm_query, "_dispatch", never_returns)
+
+        started = time.monotonic()
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(
+                llm_query.query_llm(
+                    "Judge this cut",
+                    _thinking_config(thinking=False),
+                    timeout_seconds=0.01,
+                ),
+                timeout=0.2,
+            )
+        assert time.monotonic() - started < 0.1
+
 
 class TestQueryLlmWithImages:
     """Pictures go to whichever provider is configured, like the text does."""
@@ -461,6 +618,22 @@ class TestQueryLlmWithImages:
         content = mock_post.call_args[1]["json"]["messages"][0]["content"]
         assert content[0]["text"] == "What is this?"
         assert content[1]["image_url"]["url"].startswith("data:image/jpeg;base64,")
+
+    @pytest.mark.asyncio
+    async def test_zai_vision_uses_its_strict_image_url_shape_and_disables_thinking(self):
+        """Z.AI rejects OpenAI's optional detail property instead of ignoring it."""
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(provider="zai", model="glm-4.6v", api_key="test-key")
+
+        with patch("httpx.AsyncClient.post", return_value=_openai_response()) as mock_post:
+            await query_llm("What is this?", config, images=[b"\xff\xd8jpeg"])
+
+        assert mock_post.call_args[0][0] == "https://api.z.ai/api/paas/v4/chat/completions"
+        payload = mock_post.call_args[1]["json"]
+        image_url = payload["messages"][0]["content"][1]["image_url"]
+        assert set(image_url) == {"url"}
+        assert payload["thinking"] == {"type": "disabled"}
 
 
 class TestBulkCallsDoNotThink:
@@ -530,3 +703,324 @@ class TestBulkCallsDoNotThink:
             await query_llm("Describe this photo", _thinking_config(model="picky"))
 
         assert "chat_template_kwargs" not in mock_post.call_args_list[-1][1]["json"]
+
+
+@pytest.mark.asyncio
+async def test_transport_observer_records_each_null_content_wire_retry() -> None:
+    from immich_memories.analysis.llm_query import query_llm
+
+    attempts = []
+    responses = [_openai_response(content=None), _openai_response(content=None), _openai_response()]
+    # WHY: the LLM server is the external boundary; null-content retries happen at its response.
+    with patch("httpx.AsyncClient.post", side_effect=responses):
+        await query_llm(
+            "Describe this",
+            _thinking_config(thinking=False),
+            transport_observer=attempts.append,
+        )
+
+    assert [(attempt.attempt, attempt.outcome, attempt.status_code) for attempt in attempts] == [
+        (1, "null_content", 200),
+        (2, "null_content", 200),
+        (3, "response", 200),
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["ollama", "anthropic"])
+async def test_transport_observer_records_provider_http_failures(provider: str) -> None:
+    import httpx
+
+    from immich_memories.analysis.llm_query import query_llm
+
+    response = MagicMock(status_code=503)
+    response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "503", request=MagicMock(), response=response
+    )
+    attempts = []
+    config = LLMConfig(provider=provider, base_url="http://localhost/v1", model="vision")
+
+    # WHY: a provider's rejected HTTP response is still one real wire attempt.
+    with (
+        patch("httpx.AsyncClient.post", return_value=response),
+        pytest.raises(httpx.HTTPStatusError),
+    ):
+        await query_llm("look", config, transport_observer=attempts.append)
+
+    assert [(event.attempt, event.outcome, event.status_code) for event in attempts] == [
+        (1, "http_error", 503)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_transport_observer_records_openai_adaptation_and_success() -> None:
+    from immich_memories.analysis.llm_query import query_llm
+
+    rejected = AsyncMock(status_code=400)
+    rejected.json = MagicMock(
+        return_value={"error": {"message": "Unrecognized request argument: chat_template_kwargs"}}
+    )
+    attempts = []
+
+    # WHY: the compatibility retry posts twice, once rejected and once accepted.
+    with (
+        patch("httpx.AsyncClient.post", side_effect=[rejected, _openai_response()]),
+        patch("immich_memories.analysis.llm_query._PARAM_ADAPTATIONS", {}),
+    ):
+        await query_llm("look", _thinking_config(), transport_observer=attempts.append)
+
+    assert [
+        (event.attempt, event.outcome, event.status_code, event.adaptation) for event in attempts
+    ] == [(1, "dialect_adaptation", 400, "no_chat_template_kwargs"), (2, "response", 200, None)]
+
+
+@pytest.mark.asyncio
+async def test_transport_observer_records_connection_errors() -> None:
+    import httpx
+
+    from immich_memories.analysis.llm_query import query_llm
+
+    attempts = []
+    # WHY: no response object exists when the wire connection itself fails.
+    with (
+        patch("httpx.AsyncClient.post", side_effect=httpx.ConnectError("offline")),
+        pytest.raises(httpx.ConnectError),
+    ):
+        await query_llm("look", _thinking_config(), transport_observer=attempts.append)
+
+    assert [(event.attempt, event.outcome, event.status_code) for event in attempts] == [
+        (1, "connection_error", None)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_transport_observer_survives_thinking_fallback() -> None:
+    from immich_memories.analysis.llm_query import query_llm
+
+    attempts = []
+    # WHY: the fallback owns a new request but must retain the original observer.
+    with patch(
+        "httpx.AsyncClient.post",
+        side_effect=[_openai_response(finish_reason="length"), _openai_response()],
+    ):
+        await query_llm(
+            "judge", _thinking_config(), thinking=True, transport_observer=attempts.append
+        )
+
+    assert [(event.attempt, event.outcome, event.status_code) for event in attempts] == [
+        (1, "thinking_fallback", 200),
+        (2, "response", 200),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_transport_observers_are_isolated_across_concurrent_queries() -> None:
+    import asyncio
+
+    from immich_memories.analysis.llm_query import query_llm
+
+    first: list = []
+    second: list = []
+    # WHY: per-query attempt numbers must not leak between concurrent callers.
+    with patch("httpx.AsyncClient.post", return_value=_openai_response()):
+        await asyncio.gather(
+            query_llm("first", _thinking_config(), transport_observer=first.append),
+            query_llm("second", _thinking_config(), transport_observer=second.append),
+        )
+
+    assert [(event.attempt, event.outcome) for event in first] == [(1, "response")]
+    assert [(event.attempt, event.outcome) for event in second] == [(1, "response")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["ollama", "anthropic", "openai-compatible"])
+async def test_each_provider_payload_carries_the_exact_jpeg_bytes(provider: str) -> None:
+    import base64
+
+    from immich_memories.analysis.llm_query import query_llm
+
+    image = b"exact-contact-sheet"
+    config = LLMConfig(provider=provider, base_url="http://localhost/v1", model="vision")
+    response = _openai_response()
+    if provider == "ollama":
+        response.json = MagicMock(return_value={"response": "ok"})
+    elif provider == "anthropic":
+        response.json = MagicMock(return_value={"content": [{"type": "text", "text": "ok"}]})
+
+    # WHY: the provider is the external boundary; this decodes its real dialect payload.
+    with patch("httpx.AsyncClient.post", return_value=response) as post:
+        await query_llm("look", config, images=(image,))
+
+    payload = post.call_args.kwargs["json"]
+    if provider == "ollama":
+        encoded = payload["images"][0]
+    elif provider == "anthropic":
+        encoded = payload["messages"][0]["content"][0]["source"]["data"]
+    else:
+        encoded = payload["messages"][0]["content"][1]["image_url"]["url"].split(",", 1)[1]
+    assert base64.b64decode(encoded) == image
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("provider", "body"),
+    [
+        ("ollama", {"response": "partial", "done_reason": "length"}),
+        (
+            "anthropic",
+            {"content": [{"type": "text", "text": "partial"}], "stop_reason": "max_tokens"},
+        ),
+        (
+            "openai-compatible",
+            {"choices": [{"message": {"content": "partial"}, "finish_reason": "length"}]},
+        ),
+    ],
+)
+async def test_visual_completion_mode_rejects_known_truncation(provider: str, body: dict) -> None:
+    from immich_memories.analysis.llm_query import query_llm
+
+    response = AsyncMock(status_code=200)
+    response.json = MagicMock(return_value=body)
+    response.raise_for_status = lambda: None
+    attempts = []
+    # WHY: the provider response status is the external completion boundary.
+    with patch("httpx.AsyncClient.post", return_value=response), pytest.raises(ValueError):
+        await query_llm(
+            "look",
+            LLMConfig(provider=provider, base_url="http://localhost/v1", model="vision"),
+            images=(b"jpeg",),
+            require_complete=True,
+            transport_observer=attempts.append,
+        )
+    assert [(event.attempt, event.outcome, event.status_code) for event in attempts] == [
+        (1, "incomplete", 200)
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["ollama", "anthropic", "openai-compatible"])
+async def test_transport_observer_records_invalid_json_for_each_provider(provider: str) -> None:
+    from immich_memories.analysis.llm_query import query_llm
+
+    response = MagicMock(status_code=200)
+    response.raise_for_status.return_value = None
+    response.json.side_effect = ValueError("not json")
+    attempts = []
+
+    # WHY: a successful POST with unparseable provider content still costs one call.
+    with (
+        patch("httpx.AsyncClient.post", return_value=response),
+        pytest.raises(ValueError, match="not json"),
+    ):
+        await query_llm(
+            "look",
+            LLMConfig(provider=provider, base_url="http://localhost/v1", model="vision"),
+            transport_observer=attempts.append,
+        )
+
+    assert [(event.attempt, event.outcome, event.status_code) for event in attempts] == [
+        (1, "invalid_response", 200)
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("provider", "body"),
+    [
+        ("ollama", {"response": []}),
+        ("anthropic", {"content": "not blocks"}),
+        ("openai-compatible", {"choices": "not choices"}),
+    ],
+)
+async def test_transport_observer_records_invalid_shape_for_each_provider(
+    provider: str, body: dict
+) -> None:
+    from immich_memories.analysis.llm_query import query_llm
+
+    response = MagicMock(status_code=200)
+    response.raise_for_status.return_value = None
+    response.json.return_value = body
+    attempts = []
+
+    # WHY: a syntactically valid but unusable provider body also spent one wire attempt.
+    with (
+        patch("httpx.AsyncClient.post", return_value=response),
+        pytest.raises((KeyError, TypeError, AttributeError)),
+    ):
+        await query_llm(
+            "look",
+            LLMConfig(provider=provider, base_url="http://localhost/v1", model="vision"),
+            transport_observer=attempts.append,
+        )
+
+    assert [(event.attempt, event.outcome, event.status_code) for event in attempts] == [
+        (1, "invalid_response", 200)
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("provider", "body", "usage"),
+    [
+        ("ollama", {"prompt_eval_count": 3, "eval_count": 5, "response": []}, (3, 5)),
+        (
+            "anthropic",
+            {"usage": {"input_tokens": 3, "output_tokens": 5}, "content": "not blocks"},
+            (3, 5),
+        ),
+        (
+            "openai-compatible",
+            {
+                "usage": {"prompt_tokens": 3, "completion_tokens": 5},
+                "choices": [{"message": {}}],
+            },
+            (3, 5),
+        ),
+    ],
+)
+async def test_parseable_malformed_content_keeps_legacy_reply_metrics(
+    provider: str, body: dict, usage: tuple[int, int]
+) -> None:
+    from immich_memories.analysis.llm_query import query_llm
+
+    response = MagicMock(status_code=200)
+    response.raise_for_status.return_value = None
+    response.json.return_value = body
+
+    # WHY: content may be malformed after the provider has supplied billable usage.
+    with (
+        patch("httpx.AsyncClient.post", return_value=response),
+        patch("immich_memories.analysis.llm_query.llm_metrics.record_reply") as record_reply,
+        pytest.raises((KeyError, TypeError, AttributeError)),
+    ):
+        await query_llm(
+            "look", LLMConfig(provider=provider, base_url="http://localhost/v1", model="vision")
+        )
+
+    recorded = record_reply.call_args.kwargs
+    assert recorded["prompt_tokens"] == usage[0]
+    assert recorded["completion_tokens"] == usage[1]
+    assert recorded.get("cached_prompt_tokens", 0) == 0
+    assert record_reply.call_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["ollama", "anthropic", "openai-compatible"])
+async def test_invalid_json_does_not_create_legacy_reply_metrics(provider: str) -> None:
+    from immich_memories.analysis.llm_query import query_llm
+
+    response = MagicMock(status_code=200)
+    response.raise_for_status.return_value = None
+    response.json.side_effect = ValueError("not json")
+
+    # WHY: a body that cannot be decoded has no trustworthy usage to count.
+    with (
+        patch("httpx.AsyncClient.post", return_value=response),
+        patch("immich_memories.analysis.llm_query.llm_metrics.record_reply") as record_reply,
+        pytest.raises(ValueError, match="not json"),
+    ):
+        await query_llm(
+            "look", LLMConfig(provider=provider, base_url="http://localhost/v1", model="vision")
+        )
+
+    record_reply.assert_not_called()

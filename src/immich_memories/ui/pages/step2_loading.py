@@ -13,7 +13,7 @@ from immich_memories.analysis.cache_projection import (
 )
 from immich_memories.api.immich import SyncImmichClient
 from immich_memories.api.models import VideoClipInfo
-from immich_memories.api.person_scope import stills_person_args, videos_in_window
+from immich_memories.api.person_scope import photos_in_window, videos_in_window
 from immich_memories.operations.phases import OperationalPhase, PhaseEvent
 from immich_memories.processing.clip_probing import probe_video_url
 from immich_memories.security import sanitize_error_message
@@ -101,7 +101,14 @@ def _fetch_assets(state) -> list:
         person_ids = state.person_ids
         assets: list = []
         for date_range in state.date_ranges:
-            assets.extend(videos_in_window(client, person_ids, date_range))
+            assets.extend(
+                videos_in_window(
+                    client,
+                    person_ids,
+                    date_range,
+                    person_match=state.person_match,
+                )
+            )
         return _dedup_by_id(assets)
 
 
@@ -139,7 +146,6 @@ def _build_clips(assets: list) -> tuple[list[VideoClipInfo], int]:
 
 def _fetch_photos(state) -> list:
     """Fetch photo assets (blocking), one query per window."""
-    person_id, group_ids = stills_person_args(state.person_ids)
     with SyncImmichClient(
         base_url=state.immich_url,
         api_key=state.immich_api_key,
@@ -148,24 +154,14 @@ def _fetch_photos(state) -> list:
         photos: list = []
         for date_range in state.date_ranges:
             photos.extend(
-                client.get_photos_for_date_range(
-                    date_range, person_id=person_id, person_ids=group_ids
+                photos_in_window(
+                    client,
+                    state.person_ids,
+                    date_range,
+                    person_match=state.person_match,
                 )
             )
-        photos = _dedup_by_id(photos)
-
-        # Immich tags one frame of a burst, so a person filter returns that
-        # frame alone and the burst has nothing to stitch to.
-        if state.person_ids:
-            from immich_memories.analysis.live_photo_pipeline import with_burst_neighbours
-
-            photos = with_burst_neighbours(
-                client,
-                photos,
-                date_ranges=state.date_ranges,
-                merge_window_seconds=state.config.analysis.live_photo_merge_window_seconds,
-            )
-        return photos
+        return _dedup_by_id(photos)
 
 
 def _set_initial_selection(clips: list[VideoClipInfo], state) -> None:

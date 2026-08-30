@@ -44,12 +44,17 @@ def build_memory_output_path(
     memory_type: str | None,
     date_range: DateRange,
     container: str,
+    person_match: str = "and",
 ) -> Path:
     """The CLI's default file name for a memory: who is in it, what it covers."""
     person_slug = (
         "_".join(n.lower().replace(" ", "_") for n in person_names) if person_names else "all"
     )
+    if len(person_names) > 1 and person_match == "or" and memory_type != "multi_person":
+        person_slug = "_or_".join(n.lower().replace(" ", "_") for n in person_names)
     type_slug = memory_type or "memories"
+    if memory_type == "multi_person" and person_match == "or":
+        type_slug = "multi_person_or"
     if date_range.is_calendar_year:
         date_slug = str(date_range.start.year)
     else:
@@ -114,6 +119,8 @@ def build_title_person_name(
         names = preset_names
         if use_first_name_only:
             names = [n.split()[0] for n in names]
+        if preset_params.get("person_match", "and") == "or":
+            return " or ".join(names)
         if len(names) == 2:
             return f"{names[0]} & {names[1]}"
         return f"{', '.join(names[:-1])} & {names[-1]}"
@@ -225,9 +232,11 @@ def _build_who_part(
     if memory_type == "multi_person":
         names = preset_params.get("person_names", [])
         if names:
+            joiner = "_or_" if preset_params.get("person_match", "and") == "or" else "_"
             if len(names) <= 3:
-                return "_".join(n.lower() for n in names)
-            return "_".join(n.lower() for n in names[:3]) + "_and_others"
+                return joiner.join(n.lower() for n in names)
+            tail = "_or_others" if joiner == "_or_" else "_and_others"
+            return joiner.join(n.lower() for n in names[:3]) + tail
 
     # Trip: use "trip" as the who part
     if memory_type == "trip":

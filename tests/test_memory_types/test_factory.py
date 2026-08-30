@@ -141,6 +141,18 @@ class TestCreatePresetMultiPerson:
         assert preset.person_filter.require_co_occurrence
         assert preset.person_filter.mode == "all_of"
 
+    def test_or_means_any_named_person(self) -> None:
+        preset = create_preset(
+            MemoryType.MULTI_PERSON,
+            year=2024,
+            person_names=["Alice", "Bob"],
+            person_match="or",
+        )
+
+        assert not preset.person_filter.require_co_occurrence
+        assert preset.person_filter.mode == "any"
+        assert preset.name == "Alice or Bob"
+
     def test_requires_multiple_people(self) -> None:
         with pytest.raises((ValueError, TypeError)):
             create_preset(MemoryType.MULTI_PERSON, year=2024)

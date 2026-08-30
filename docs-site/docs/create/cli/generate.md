@@ -32,6 +32,8 @@ immich-memories generate [OPTIONS]
 | `--holiday` | — | text | — | Holiday name or `MM-DD` (with `--memory-type holiday`) |
 | `--from-album` | — | string | — | Generate from an Immich album (name or ID) instead of a date range. See [Album Memories](../memory-types/album-memories). Cannot be combined with any time-period or person flag |
 | `--person` | `-p` | string | — | Person name from Immich face recognition (repeatable: `--person "Alice" --person "Bob"`) |
+| `--person-match` | — | choice | `and` | With repeated `--person`, require everyone in each asset (`and`) or accept any named person (`or`) |
+| `--accept-any-provenance` | — | flag | off | Keep forwarded and low-provenance media for this generation instead of applying the normal messaging/import filter |
 | `--birthday` | `-b` | flag/string | — | Anchor the memory on a birthday. Bare flag reads Immich's birth date; pass `MM-DD` to override |
 | `--season` | — | choice | — | `spring`, `summer`, `fall`, `autumn`, `winter` (use with `--memory-type season`) |
 | `--month` | — | int | — | Month 1-12 (with `--year`, generates that month; selects trip by month) |

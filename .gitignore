@@ -153,3 +153,6 @@ special-days*.json
 
 # people graph: the names of everyone in a real library, never repo data
 people*.yaml
+
+# graphify knowledge-graph cache (local tooling output)
+graphify-out/

@@ -92,6 +92,12 @@ class TestPersonFilterFor:
         assert pf.person_names == ["Alice", "Bob"]
         assert pf.require_co_occurrence
 
+    def test_several_names_can_be_unioned_explicitly(self) -> None:
+        pf = person_filter_for(["Alice", "Bob"], person_match="or")
+
+        assert pf.mode == "any"
+        assert not pf.require_co_occurrence
+
     def test_no_names_narrows_nothing(self) -> None:
         assert not person_filter_for(None).person_names
         assert not person_filter_for([]).person_names

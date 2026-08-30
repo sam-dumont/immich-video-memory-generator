@@ -29,7 +29,7 @@ on:
       - "tests/performance/test_benchmark_contract.py"
       - "Makefile"
   pull_request:
-    branches: [main]
+    branches: [main, feature/764-editorial-selection]
     paths:
       - "src/immich_memories/processing/**"
       - "src/immich_memories/analysis/**"

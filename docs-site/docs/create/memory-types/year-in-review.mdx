@@ -35,7 +35,8 @@ immich-memories generate --memory-type year_in_review --year 2025 --include-phot
 Select the **Year in Review** card in Step 1, pick the year from the dropdown.
 The card's optional **Only with** box narrows the year to one or more people —
 the same thing `--person` does above, and naming several keeps only what holds
-all of them.
+all of them. On the CLI, add `--person-match or` when repeated names should mean
+any named person instead.
 
 <ThemedScreenshot name="type-year-review" alt="Year in Review preset" />
 
@@ -50,4 +51,4 @@ all of them.
 - Works best with **50+ videos** spread across the year. If you only have clips from a summer trip, a [Season](./monthly-person-season.mdx) or [Trip](./trip-memories.mdx) memory will be a better fit.
 - Auto analysis is the default and uses LLM scoring for manageable libraries. Use `--analysis-depth thorough` when you explicitly want every eligible clip analyzed, regardless of library size.
 - The default 10-minute duration works well for most libraries. For smaller collections (under 100 videos), try `--duration 300` for a tighter 5-minute edit.
-- Combining `--person` with Year in Review creates a "Your Year With Alice" style video: only clips containing that person, but still with monthly structure. Naming two people narrows it to the clips holding both.
+- Combining `--person` with Year in Review creates a "Your Year With Alice" style video: only clips containing that person, but still with monthly structure. Naming two people narrows it to the clips holding both unless the CLI explicitly uses `--person-match or`.

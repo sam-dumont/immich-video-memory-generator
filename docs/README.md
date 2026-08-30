@@ -7,6 +7,8 @@
 
 ## For Developers
 
+- **[Selection: read-me-first](README-selection.md)** - the #764 selection rebuild: read order, status ledger, and what is dead
+
 - **[Architecture](../ARCHITECTURE.md)** - Package map, key classes, data flow, composition pattern
 - **[Contributing](../CONTRIBUTING.md)** - How to contribute to the project
 - **[Changelog](../CHANGELOG.md)** - Version history and changes

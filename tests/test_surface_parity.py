@@ -186,11 +186,6 @@ class DocumentedDifference:
 _SPLIT_RECORD = "docs/create/memory-types/monthly-person-season.mdx#ui-and-cli-defaults-disagree"
 DOCUMENTED_DURATION_SPLIT: dict[MemoryType, DocumentedDifference] = {
     MemoryType.SEASON: DocumentedDifference(cli=195.02, ui=135, recorded_at=_SPLIT_RECORD),
-    MemoryType.PERSON_SPOTLIGHT: DocumentedDifference(cli=600.0, ui=120, recorded_at=_SPLIT_RECORD),
-    MemoryType.MULTI_PERSON: DocumentedDifference(cli=600.0, ui=300, recorded_at=_SPLIT_RECORD),
-    MemoryType.MONTHLY_HIGHLIGHTS: DocumentedDifference(
-        cli=62.30, ui=60, recorded_at=_SPLIT_RECORD
-    ),
 }
 
 

@@ -1,9 +1,8 @@
 """Who a memory is about — the wizard's person picking, in one place.
 
-Every card that can be narrowed to people gets the same widget and the same
-meaning: several people is an intersection, the memory being what holds all of
-them. That is what ``--person Alice --person Bob`` has always fetched, and
-until #666 the wizard could only phrase it on two cards.
+Every card that can be narrowed to people gets the same widget. Multi-person
+memories also say whether several names mean everybody together or any named
+person. That choice reaches source discovery rather than an editorial prompt.
 
 The renderers take the state and the "apply" callback rather than reaching for
 either: the card that owns a memory type is what knows when its parameters are
@@ -169,5 +168,18 @@ def render_multi_person_params(state: AppState, apply: ApplyPreset) -> None:
             multiple=True,
         ).props("use-chips").classes("w-64")
 
+        saved_match = state.memory_preset_params.get("person_match", "and")
+
+        def on_match(e) -> None:
+            state.memory_preset_params["person_match"] = e.value
+            apply(MemoryType.MULTI_PERSON)
+
+        ui.toggle(
+            {"and": "Together (AND)", "or": "Any of (OR)"},
+            value=saved_match,
+            on_change=on_match,
+        ).classes("mt-1")
+
     state.memory_preset_params.setdefault("year", saved_year)
+    state.memory_preset_params.setdefault("person_match", saved_match)
     apply(MemoryType.MULTI_PERSON)

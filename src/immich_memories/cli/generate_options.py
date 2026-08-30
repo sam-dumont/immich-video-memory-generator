@@ -61,6 +61,16 @@ def scope_options(command: FC) -> FC:
         ),
         click.option("--person", "-p", type=str, multiple=True, help="Person name (repeatable)"),
         click.option(
+            "--person-match",
+            type=click.Choice(["and", "or"]),
+            default="and",
+            show_default=True,
+            help=(
+                "With several --person values, require everyone in each asset "
+                "(and) or accept any named person (or)"
+            ),
+        ),
+        click.option(
             "--memory-type",
             type=click.Choice(
                 [
@@ -277,6 +287,15 @@ def selection_options(command: FC) -> FC:
             "include_photos",
             default=None,
             help="Include photos as animated Ken Burns clips (blur background, face-aware pan)",
+        ),
+        click.option(
+            "--accept-any-provenance",
+            is_flag=True,
+            default=False,
+            help=(
+                "Keep forwarded and re-encoded media for this memory; date, person, "
+                "privacy, and Live Photo boundaries still apply"
+            ),
         ),
         click.option(
             "--photo-duration",

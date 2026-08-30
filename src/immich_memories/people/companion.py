@@ -12,12 +12,14 @@ from __future__ import annotations
 
 import copy
 import logging
+import uuid
 from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import yaml
 
+from immich_memories.people.relationships import owner_role, reciprocal_kind
 from immich_memories.security import write_secret_file
 
 if TYPE_CHECKING:
@@ -78,6 +80,18 @@ def people_entries(document: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+def retained_immich_ids(document: dict[str, Any]) -> set[str]:
+    """Face ids a user deliberately kept, even if they sit below the scan floor."""
+    retained: set[str] = set()
+    for entry in people_entries(document):
+        if not (_has_content(entry.get("confirmed")) or entry.get("origin") == "immich"):
+            continue
+        retained.update(
+            str(person_id) for person_id in entry["ids"] if not str(person_id).startswith("manual:")
+        )
+    return retained
+
+
 def save_graph(path: Path, graph: PeopleGraph) -> None:
     """Write the graph, preserving every confirmed field already on disk."""
     standing = load_document(path)
@@ -113,9 +127,161 @@ def save_confirmed(path: Path, person_id: str, confirmed: dict[str, Any]) -> Non
     _write(path, document)
 
 
+def add_confirmed_person(
+    path: Path,
+    name: str,
+    *,
+    person_id: str | None = None,
+    role: str | None = None,
+) -> str:
+    """Add somebody the quantitative roster did not retain.
+
+    A real Immich id may be supplied for a below-threshold face. Somebody who
+    has no Immich face record gets a local id and remains a first-class graph
+    node; being off camera is not evidence that a relative does not exist.
+    """
+    document = load_document(path)
+    matches = [entry for entry in people_entries(document) if entry.get("name") == name]
+    if len(matches) > 1:
+        msg = f"More than one person is named {name!r}; use a person id"
+        raise ValueError(msg)
+    if matches:
+        return str(matches[0]["ids"][0])
+
+    local_id = person_id or f"manual:{uuid.uuid4()}"
+    document.setdefault("people", []).append(
+        {
+            "ids": [local_id],
+            "name": name,
+            "birth_date": None,
+            "inferred": {
+                "tier": None,
+                "counts_reliable": False,
+                "evidence": {},
+                "links": [],
+            },
+            "confirmed": {"role": role, "links": [], "notes": None},
+            "origin": "immich" if person_id else "manual",
+        }
+    )
+    _write(path, document)
+    return local_id
+
+
+def save_confirmed_relationship(path: Path, source_id: str, kind: str, target_id: str) -> None:
+    """Write one user relationship and its reciprocal as one file operation."""
+    if source_id == target_id:
+        raise ValueError("A person cannot have a relationship with themselves")
+    document = load_document(path)
+    source = _entry_with_id(document, source_id)
+    target = _entry_with_id(document, target_id)
+    reverse = reciprocal_kind(kind)
+    _upsert_confirmed_link(source, kind, target_id, reverse)
+    _upsert_confirmed_link(target, reverse, source_id, kind)
+    _fill_owner_role(document, source, kind, target_id)
+    _fill_owner_role(document, target, reverse, source_id)
+    _write(path, document)
+
+
+def remove_confirmed_relationship(path: Path, source_id: str, kind: str, target_id: str) -> None:
+    """Remove one confirmed relationship and the reciprocal written with it."""
+    document = load_document(path)
+    source = _entry_with_id(document, source_id)
+    target = _entry_with_id(document, target_id)
+    source_link = _confirmed_link(source, kind, target_id)
+    reverse = (
+        str(source_link.get("reverse"))
+        if source_link and source_link.get("reverse")
+        else reciprocal_kind(kind)
+    )
+    _remove_confirmed_link(source, kind, target_id)
+    _remove_confirmed_link(target, reverse, source_id)
+    _write(path, document)
+
+
 def _write(path: Path, document: dict[str, Any]) -> None:
     body = yaml.dump(document, sort_keys=False, allow_unicode=True, default_flow_style=False)
     write_secret_file(path, _FILE_HEADER + body)
+
+
+def _entry_with_id(document: dict[str, Any], person_id: str) -> dict[str, Any]:
+    matches = [entry for entry in people_entries(document) if person_id in entry["ids"]]
+    if len(matches) != 1:
+        msg = f"Expected one people entry for {person_id!r}, found {len(matches)}"
+        raise ValueError(msg)
+    return matches[0]
+
+
+def _confirmed_block(entry: dict[str, Any]) -> dict[str, Any]:
+    confirmed = entry.get("confirmed")
+    if not isinstance(confirmed, dict):
+        confirmed = _blank_confirmed()
+        entry["confirmed"] = confirmed
+    confirmed.setdefault("role", None)
+    confirmed.setdefault("links", [])
+    confirmed.setdefault("notes", None)
+    return confirmed
+
+
+def _confirmed_link(entry: dict[str, Any], kind: str, target_id: str) -> dict[str, Any] | None:
+    links = _confirmed_block(entry).get("links")
+    if not isinstance(links, list):
+        return None
+    return next(
+        (
+            link
+            for link in links
+            if isinstance(link, dict) and link.get("kind") == kind and link.get("with") == target_id
+        ),
+        None,
+    )
+
+
+def _upsert_confirmed_link(
+    entry: dict[str, Any], kind: str, target_id: str, reverse_kind: str
+) -> None:
+    confirmed = _confirmed_block(entry)
+    links = confirmed["links"]
+    if not isinstance(links, list):
+        links = []
+        confirmed["links"] = links
+    existing = _confirmed_link(entry, kind, target_id)
+    if existing is not None:
+        existing["decision"] = "confirmed"
+        existing["reverse"] = reverse_kind
+        return
+    links.append(
+        {
+            "kind": kind,
+            "with": target_id,
+            "reverse": reverse_kind,
+            "decision": "confirmed",
+        }
+    )
+
+
+def _remove_confirmed_link(entry: dict[str, Any], kind: str, target_id: str) -> None:
+    confirmed = _confirmed_block(entry)
+    links = confirmed.get("links")
+    if not isinstance(links, list):
+        return
+    confirmed["links"] = [
+        link
+        for link in links
+        if not (
+            isinstance(link, dict) and link.get("kind") == kind and link.get("with") == target_id
+        )
+    ]
+
+
+def _fill_owner_role(
+    document: dict[str, Any], entry: dict[str, Any], kind: str, target_id: str
+) -> None:
+    owner = document.get("owner")
+    owner_id = owner.get("person_id") if isinstance(owner, dict) else None
+    confirmed = _confirmed_block(entry)
+    if owner_id == target_id and not confirmed.get("role"):
+        confirmed["role"] = owner_role(kind)
 
 
 def _owner_block(graph: PeopleGraph) -> dict[str, Any] | None:
@@ -203,7 +369,8 @@ def _annotated_strangers(document: dict[str, Any], graph: PeopleGraph) -> list[d
     return [
         entry
         for entry in people_entries(document)
-        if not present.intersection(entry["ids"]) and _has_content(entry.get("confirmed"))
+        if not present.intersection(entry["ids"])
+        and (_has_content(entry.get("confirmed")) or entry.get("origin") == "manual")
     ]
 
 

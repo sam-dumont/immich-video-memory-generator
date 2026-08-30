@@ -7,6 +7,7 @@ clip beside it was turned away.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 from immich_memories.analysis.source_filter import from_an_excluded_source
@@ -73,6 +74,25 @@ def test_the_camera_rule_can_be_turned_off() -> None:
     received.type = AssetType.IMAGE
 
     assert not not_shot_here(received, patterns=(), stills_need_a_camera=False)
+
+
+def test_pre_smartphone_media_is_considered_despite_modern_source_signals() -> None:
+    """An old scan/export is evidence; the editor can decide whether it belongs."""
+    from immich_memories.analysis.source_filter import not_shot_here
+
+    historical = make_asset(
+        "historical",
+        original_file_name="IMG-20030812-WA0001.jpg",
+        exif_make=None,
+        file_created_at=datetime(2003, 8, 12, tzinfo=UTC),
+    )
+    historical.type = AssetType.IMAGE
+
+    assert not not_shot_here(
+        historical,
+        patterns=AnalysisConfig().exclude_filename_patterns,
+        stills_need_a_camera=True,
+    )
 
 
 def test_the_description_survives_scoring_and_the_score_stays_a_number(tmp_path, monkeypatch):
@@ -209,6 +229,43 @@ def test_the_pool_the_cli_and_ui_build_drops_what_the_camera_did_not_shoot(tmp_p
     )
 
     assert [c.clip.asset.id for c in pool] == ["shot"]
+
+
+def test_the_generation_override_keeps_forwarded_photos_in_the_real_pool(tmp_path) -> None:
+    """The override reaches the pre-scoring gate where it can actually save or admit work."""
+    from immich_memories.cli._candidate_pool import _merge_photos_into_pool
+
+    when = datetime(2023, 6, 18, tzinfo=UTC)
+    forwarded = make_asset(
+        "forwarded",
+        original_file_name="00000000-0000-4000-8000-000000000000.jpg",
+        exif_make=None,
+        exif_model=None,
+        file_created_at=when,
+    ).model_copy(update={"type": AssetType.IMAGE, "width": 2048, "height": 1153})
+
+    rejected = _merge_photos_into_pool(
+        [],
+        photo_assets=[forwarded],
+        include_photos=True,
+        config=Config(cache={"directory": str(tmp_path / "rejected")}),
+        client=None,
+        work_dir=tmp_path,
+        dry_run=True,
+    )
+    accepted = _merge_photos_into_pool(
+        [],
+        photo_assets=[forwarded],
+        include_photos=True,
+        config=Config(cache={"directory": str(tmp_path / "accepted")}),
+        client=None,
+        work_dir=tmp_path,
+        dry_run=True,
+        accept_any_provenance=True,
+    )
+
+    assert rejected == []
+    assert [candidate.clip.asset.id for candidate in accepted] == ["forwarded"]
 
 
 def test_the_messaging_glob_does_not_match_a_place_called_wa() -> None:

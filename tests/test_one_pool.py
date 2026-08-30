@@ -57,3 +57,55 @@ class TestNoPhotoCostsAVideo:
         )
 
         assert [c.clip.asset.id for c in result] == ["video-0", "video-1", "video-2"]
+
+
+class TestTheLockedFolderNeverShips:
+    """Visibility is the one gate neither a star nor a config key may open."""
+
+    def _assets(self):
+        timeline = make_asset("on-timeline", is_favorite=True)
+        timeline.type = AssetType.IMAGE
+        locked = make_asset("locked", is_favorite=True).model_copy(update={"visibility": "locked"})
+        locked.type = AssetType.IMAGE
+        archived = make_asset("archived").model_copy(update={"visibility": "archive"})
+        archived.type = AssetType.IMAGE
+        return timeline, locked, archived
+
+    def test_generation_drops_them_even_when_the_config_asks_to_keep_them(self):
+        """The config key exists, and generation refuses to read it.
+
+        Asked for by the owner in exactly those terms: the setting defaults to
+        off, and generation overrides it, so a flag turned on once for an
+        experiment cannot quietly put the locked folder into next month's video.
+        A setting that has to be remembered is not a safety gate.
+        """
+        from immich_memories.analysis.source_filter import from_the_camera_roll
+
+        config = MagicMock()
+        config.analysis.exclude_filename_patterns = []
+        config.analysis.exclude_stills_without_camera_exif = False
+        config.analysis.include_off_timeline_assets = True
+
+        kept = from_the_camera_roll(list(self._assets()), config)
+
+        assert [asset.id for asset in kept] == ["on-timeline"]
+
+    def test_the_config_default_is_off(self):
+        """A fresh install must not need the owner to know this setting exists."""
+        from immich_memories.config_models_analysis import AnalysisConfig
+
+        assert AnalysisConfig().include_off_timeline_assets is False
+
+    def test_it_says_out_loud_that_it_ignored_the_setting(self, caplog):
+        """A silent refusal would leave the owner believing the flag worked."""
+        from immich_memories.analysis.source_filter import from_the_camera_roll
+
+        config = MagicMock()
+        config.analysis.exclude_filename_patterns = []
+        config.analysis.exclude_stills_without_camera_exif = False
+        config.analysis.include_off_timeline_assets = True
+
+        with caplog.at_level("WARNING"):
+            from_the_camera_roll(list(self._assets()), config)
+
+        assert "generation ignores it" in caplog.text

@@ -61,6 +61,7 @@ def handle_album_generation(
     memory_category: str | None = None,
     automation_attempt_id: str | None = None,
     dry_run: bool = False,
+    accept_any_provenance: bool = False,
 ) -> None:
     """Generate one memory from the assets of a single Immich album."""
     import click
@@ -145,6 +146,7 @@ def handle_album_generation(
         memory_category=memory_category,
         automation_attempt_id=automation_attempt_id,
         dry_run=dry_run,
+        accept_any_provenance=accept_any_provenance,
     )
 
     console.print()

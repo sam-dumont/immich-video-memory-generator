@@ -24,7 +24,7 @@ from immich_memories.analysis.preview_builder import PreviewBuilder
 from immich_memories.analysis.progress import PipelinePhase, ProgressTracker
 from immich_memories.analysis.selection_coverage import AnalysisCoverage
 from immich_memories.analysis.selection_quality import SelectionQuality
-from immich_memories.analysis.source_filter import not_shot_here
+from immich_memories.analysis.source_filter import not_on_the_timeline, not_shot_here
 from immich_memories.analysis.thumbnail_prefetch import ThumbnailPrefetcher
 from immich_memories.config_presets import resolve_analysis_depth
 
@@ -115,6 +115,11 @@ class PipelineConfig:
 
     # Analysis depth: auto budgets misses, fast favors speed, thorough analyzes all.
     analysis_depth: str = "auto"
+
+    # A per-run source-scope choice, never loaded from config.yaml. Some
+    # memories (for example a nephew spotlight) are intentionally built from
+    # family forwards rather than only the owner's camera roll.
+    accept_any_provenance: bool = False
 
     @classmethod
     def from_app_config(cls, config: Config, **overrides: object) -> PipelineConfig:
@@ -507,9 +512,17 @@ class SmartPipeline:
                 f"{min_duration:.1f}s minimum"
             )
 
+        before_visibility = len(eligible)
+        eligible = [clip for clip in eligible if not not_on_the_timeline(clip.asset)]
+        if len(eligible) < before_visibility:
+            logger.info(
+                "Source filter: removed %d clip(s) Immich keeps off the timeline",
+                before_visibility - len(eligible),
+            )
+
         patterns = self._analysis_config.exclude_filename_patterns
         stills_need_a_camera = self._analysis_config.exclude_stills_without_camera_exif
-        if patterns or stills_need_a_camera:
+        if not self.config.accept_any_provenance and (patterns or stills_need_a_camera):
             before = len(eligible)
             eligible = [
                 clip

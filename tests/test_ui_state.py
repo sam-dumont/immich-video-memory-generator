@@ -698,6 +698,19 @@ class TestAdoptingAPreset:
         assert state.date_ranges == preset.date_ranges
         assert state.target_duration == 1.0
 
+    def test_yearly_person_memories_use_the_ten_minute_recap_ceiling(self) -> None:
+        state = self._state_with("Alice", "Bob")
+
+        state.apply_preset(
+            create_preset(MemoryType.PERSON_SPOTLIGHT, year=2024, person_names=["Alice"])
+        )
+        assert state.target_duration == 10.0
+
+        state.apply_preset(
+            create_preset(MemoryType.MULTI_PERSON, year=2024, person_names=["Alice", "Bob"])
+        )
+        assert state.target_duration == 10.0
+
 
 class TestChoosingAMemoryType:
     """Switching cards drops what the previous card collected."""

@@ -36,6 +36,7 @@ def _merge_photos_into_pool(
     provider_circuit=None,
     dry_run: bool = False,
     thumbnail_cache=None,
+    accept_any_provenance: bool = False,
 ) -> list:
     """Score photos and merge them as ClipWithSegment into the video pool.
 
@@ -56,7 +57,11 @@ def _merge_photos_into_pool(
     # Before anything is fetched or scored: this is the pool both the CLI and
     # the UI actually build, and the rule used to live only on the path
     # neither of them takes.
-    photo_assets = from_the_camera_roll(photo_assets, config)
+    photo_assets = from_the_camera_roll(
+        photo_assets,
+        config,
+        accept_any_provenance=accept_any_provenance,
+    )
     if not photo_assets:
         return analyzed_videos
 
@@ -131,9 +136,18 @@ def _merge_photos_into_pool(
     return analyzed_videos + photo_candidates
 
 
-def _drop_reencoded_sources(candidates: list, *, config: Config) -> list:
+def _drop_reencoded_sources(
+    candidates: list,
+    *,
+    config: Config,
+    accept_any_provenance: bool = False,
+) -> list:
     """Drop messaging re-encodes: small, and with no camera EXIF to vouch for them."""
     from immich_memories.analysis.source_quality import is_usable_source
+
+    if accept_any_provenance:
+        trace.record("source quality", candidates, candidates)
+        return candidates
 
     floor = config.analysis.min_source_short_side
     if floor <= 0:
@@ -147,12 +161,14 @@ def _drop_reencoded_sources(candidates: list, *, config: Config) -> list:
             height=c.clip.height or c.clip.asset.height or 0,
             has_camera_exif=_has_camera_exif(c.clip.asset),
             min_short_side=floor,
+            captured_at=c.clip.asset.file_created_at,
+            original_file_name=c.clip.asset.original_file_name,
         )
     ]
     trace.record("source quality", candidates, kept)
     if len(kept) < len(candidates):
         logger.info(
-            "Source quality: dropped %d clips under %dp with no camera EXIF",
+            "Source provenance: dropped %d likely forwarded or sub-%dp clip(s)",
             len(candidates) - len(kept),
             floor,
         )

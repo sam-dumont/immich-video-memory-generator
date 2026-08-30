@@ -44,7 +44,7 @@ immich-memories generate --memory-type person_spotlight --person "Alice" --year 
 
 That is a different memory: the year **ending** on the 2025 birthday, plus each of the five previous birthdays as a ±1 day cutaway. It asks for 10 minutes on both surfaces. See [Birthday Compilations](../recipes/birthday-compilations.md).
 
-Default duration for the calendar-year version: the CLI scales it with the date range — about 60 seconds for a single month, 10 minutes for a full year. (The web UI's Person Spotlight card defaults to 2 minutes regardless of range; see [the note below](#ui-and-cli-defaults-disagree).) You can also override the date range entirely with `--start/--end`.
+Default duration: about 60 seconds per month, capped at 10 minutes. A full calendar year therefore asks for 10 minutes on both the CLI and web UI. You can also override the date range entirely with `--start/--end`.
 
 **Best for:** parent-child compilations, partner videos, or any relationship where you want to see just that person's moments. Needs Immich face recognition to be set up and the person tagged.
 
@@ -52,19 +52,32 @@ Default duration for the calendar-year version: the CLI scales it with the date 
 
 ## Multi-Person
 
-Moments featuring multiple people together. A clip, Live Photo, or photo only qualifies when every named person is in it — two people who were never in the same frame produce an empty memory, not two solo reels.
+Moments featuring several people. The default is **Together (AND)**: a clip,
+Live Photo, or photo qualifies only when every named person is tagged in it.
+Two people who were never in the same frame produce an empty memory, not two
+solo reels.
 
 ```bash
 immich-memories generate --memory-type multi_person --person "Alice" --person "Bob" --year 2025
 ```
 
-Default duration: same range-scaled curve as Person Spotlight, so 10 minutes for a full year. (The web UI card says 5 minutes; see [the note below](#ui-and-cli-defaults-disagree).) Title screen shows "Alice & Bob" as the subtitle.
+Use **Any of (OR)** in the web UI—or `--person-match or` on the CLI—to make one
+memory from every tagged appearance of any named person:
+
+```bash
+immich-memories generate --memory-type multi_person --person "Alice" --person "Bob" \
+  --person-match or --year 2025
+```
+
+Default duration: the same one-minute-per-month rule as Person Spotlight, capped
+at 10 minutes. Title screens and default filenames say whether the people are
+joined by AND or OR, so the two runs cannot overwrite one another.
 
 **Best for:** couples, families, friend groups. The co-occurrence filter means you'll get clips where they're actually together, not separate appearances.
 
-The same rule applies wherever you name several people. Repeating `--person` on
-any memory type, or picking more than one in the wizard's **Only with** box,
-keeps what holds all of them:
+The same AND default applies wherever you name several people. Repeating
+`--person` on any CLI memory type can be changed to a union with
+`--person-match or`; the wizard's ordinary **Only with** picker remains AND:
 
 ```bash
 immich-memories generate --memory-type season --season summer --year 2025 --person "Alice" --person "Bob"
@@ -105,25 +118,14 @@ Default duration: 45 seconds. No `--year` needed: it automatically looks back fr
 
 **Best for:** daily nostalgia, "what were we doing last year" moments. Works best if you've been shooting video for 3+ years. Can be combined with the scheduler for an automatic daily memory.
 
-## UI and CLI defaults disagree
+## One UI and CLI default still disagrees
 
-For three of the four types on this page, the number the web UI puts in the duration box is
-not the number the CLI computes for the same request. The CLI runs `default_duration_for_type()`
-in `cli/_date_resolution.py`, which fits a curve through the date range (1 month → 60 s,
-12 months → 600 s). The web UI's preset cards carry a fixed value from
-`memory_types/factory.py` and ignore the range.
+Person Spotlight and Multi-Person now use the same full-year 10-minute default
+on both surfaces. Season retains an older fixed web-card value while the CLI
+uses its date-range curve:
 
 | type | web UI card | CLI |
 |---|---|---|
-| Monthly Highlights | 1 min | ~1 min for the month |
-| Person Spotlight | 2 min | ~1 min for a month, 10 min for a year |
-| Multi-Person | 5 min | ~1 min for a month, 10 min for a year |
 | Season | 2 min 15 | ~3 min 15 for a three-month season |
-| On This Day | 45 s | 45 s |
 
-Monthly Highlights and On This Day agree because their fixed value and their curve value
-land in the same place. The other three do not, and for Person Spotlight the gap is 5x.
-Neither number is wrong for the surface it belongs to — the CLI's is range-aware and the
-UI's is a card default you can edit before you start — but they are not the same product
-decision, and this page documents the CLI unless it says otherwise. Every duration on any
-surface is an editable default, not a cap.
+Every duration is an editable default, not a cap.

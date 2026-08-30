@@ -6,6 +6,7 @@ from datetime import date
 from pathlib import Path
 
 from immich_memories.filename_builder import (
+    build_memory_output_path,
     build_output_filename,
     build_title_person_name,
     get_divider_mode,
@@ -82,6 +83,60 @@ class TestBuildOutputFilename:
             date_end=date(2025, 12, 31),
         )
         assert result == "alice_bob_carol_and_others_2025_memories.mp4"
+
+    def test_multi_person_or_is_part_of_the_filename(self):
+        result = build_output_filename(
+            memory_type="multi_person",
+            preset_params={
+                "person_names": ["alice", "bob", "carol", "dave"],
+                "person_match": "or",
+                "year": 2025,
+            },
+            person_name=None,
+            date_start=date(2025, 1, 1),
+            date_end=date(2025, 12, 31),
+        )
+
+        assert result == "alice_or_bob_or_carol_or_others_2025_memories.mp4"
+
+    def test_cli_or_path_cannot_overwrite_the_default_and_path(self):
+        from immich_memories.timeperiod import calendar_year
+
+        and_path = build_memory_output_path(
+            output_dir=Path("output"),
+            person_names=["alice", "bob"],
+            memory_type="multi_person",
+            date_range=calendar_year(2025),
+            container="mp4",
+        )
+        or_path = build_memory_output_path(
+            output_dir=Path("output"),
+            person_names=["alice", "bob"],
+            memory_type="multi_person",
+            date_range=calendar_year(2025),
+            container="mp4",
+            person_match="or",
+        )
+
+        assert and_path != or_path
+        assert or_path.name == "alice_bob_multi_person_or_2025.mp4"
+
+    def test_raw_multi_person_or_path_cannot_overwrite_and_path(self):
+        from immich_memories.timeperiod import calendar_year
+
+        common = {
+            "output_dir": Path("output"),
+            "person_names": ["alice", "bob"],
+            "memory_type": None,
+            "date_range": calendar_year(2025),
+            "container": "mp4",
+        }
+
+        and_path = build_memory_output_path(**common)
+        or_path = build_memory_output_path(**common, person_match="or")
+
+        assert and_path.name == "alice_bob_memories_2025.mp4"
+        assert or_path.name == "alice_or_bob_memories_2025.mp4"
 
     def test_year_in_review(self):
         """Year in Review preset: person + year."""
@@ -270,6 +325,15 @@ class TestBuildTitlePersonName:
             "multi_person", {"person_names": ["Alice D", "Bob S", "Carol T"]}, None
         )
         assert result == "Alice, Bob & Carol"
+
+    def test_multi_person_or_names_the_union(self):
+        result = build_title_person_name(
+            "multi_person",
+            {"person_names": ["Alice D", "Bob S", "Carol T"], "person_match": "or"},
+            None,
+        )
+
+        assert result == "Alice or Bob or Carol"
 
     def test_multi_person_full_names(self):
         result = build_title_person_name(

@@ -588,4 +588,25 @@ class TestMultiYearDefaultDuration:
         )
         assert isinstance(span, DateRange)
 
-        assert default_duration_for_type("monthly_highlights", span) == pytest.approx(62.3, abs=0.1)
+        assert default_duration_for_type("monthly_highlights", span) == 60.0
+
+    def test_february_is_one_complete_month_not_a_shorter_memory(self):
+        span = resolve_date_range(
+            year=2025,
+            start=None,
+            end=None,
+            period=None,
+            birthday=None,
+            memory_type="monthly_highlights",
+            month=2,
+        )
+        assert isinstance(span, DateRange)
+
+        assert default_duration_for_type("monthly_highlights", span) == 60.0
+
+    def test_ten_months_and_longer_stay_at_the_ten_minute_ceiling(self):
+        ten_months = DateRange(datetime(2025, 1, 1), datetime(2025, 10, 31, 23, 59, 59))
+        lifetime = DateRange(datetime(2000, 1, 1), datetime(2026, 8, 28, 23, 59, 59))
+
+        assert default_duration_for_type("person_spotlight", ten_months) == 600.0
+        assert default_duration_for_type("person_spotlight", lifetime) == 600.0

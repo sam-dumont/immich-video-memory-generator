@@ -46,8 +46,8 @@ that position, of which only 8 bursts were long enough to become clips.
 
 ## How it works
 
-1. **Discovery**: Live Photo stills come back with the photographs; the only second
-   read is the burst-neighbour top-up under a person filter (below)
+1. **Discovery**: Live Photo stills come back with the photographs. Under a person
+   filter, only stills carrying the requested Immich person tag enter the pool
 2. **Video components**: the video half of a Live Photo is dropped from the video pool — it is part of a photograph, not footage somebody shot
 3. **Clustering**: photos taken within a configurable window (default 10.0s) form a burst
 4. **Rendering choice**: a burst that stitches to at least `live_photo_min_clip_seconds` (default 3.5s) renders as motion; anything shorter renders as the photograph it is
@@ -68,12 +68,10 @@ instant twice with a camera shift scored 0.63. Duration is structural and free;
 motion is a signal for later, never a gate.
 
 :::note Person-filtered memories
-Immich tags one frame of a burst with a person, not all of them. A memory
-filtered by person would otherwise get that frame alone — the burst would have
-nothing to stitch to and every one of them would render as a still. So when a
-person filter is active and a Live Photo comes back, the window's Live Photos
-are read once more unfiltered and the untagged frames beside a tagged one are
-pulled in. A person's plain photographs cost no extra request.
+The person tag is the source boundary. An untagged Live Photo does not enter a
+person memory merely because it was shot beside a tagged one. That can leave a
+tagged frame without enough tagged neighbours to render as motion; it remains
+selectable as a photograph instead of widening the memory to unrelated assets.
 :::
 
 ## Burst merging: spectrogram-aligned shutter-centered cuts

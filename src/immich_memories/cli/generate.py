@@ -68,6 +68,7 @@ def register_generate_commands(main: click.Group) -> None:
         period: str | None,
         birthday: str | None,
         person: tuple[str, ...],
+        person_match: str,
         memory_type: str | None,
         holiday: str | None,
         season: str | None,
@@ -100,6 +101,7 @@ def register_generate_commands(main: click.Group) -> None:
         llm_title: bool,
         include_live_photos: bool | None,
         include_photos: bool | None,
+        accept_any_provenance: bool,
         photo_duration: float | None,
         refinement_passes: int | None,
         analysis_depth: str | None,
@@ -270,6 +272,7 @@ def register_generate_commands(main: click.Group) -> None:
                 memory_type=memory_type,
                 date_range=date_range,
                 container=output_selection.container,
+                person_match=person_match,
             )
 
         if not quiet:
@@ -319,6 +322,7 @@ def register_generate_commands(main: click.Group) -> None:
             album_ref=from_album,
             date_range=date_range,
             person_names=person_names,
+            person_match=person_match,
             duration=duration,
             orientation=orientation,
             scale_mode=scale_mode,
@@ -406,6 +410,7 @@ def register_generate_commands(main: click.Group) -> None:
                             memory_category=memory_category,
                             automation_attempt_id=automation_attempt_id,
                             dry_run=dry_run,
+                            accept_any_provenance=accept_any_provenance,
                         )
                         return
 
@@ -450,6 +455,7 @@ def register_generate_commands(main: click.Group) -> None:
                             memory_category=memory_category,
                             automation_attempt_id=automation_attempt_id,
                             dry_run=dry_run,
+                            accept_any_provenance=accept_any_provenance,
                         )
                         return
 
@@ -515,6 +521,7 @@ def register_generate_commands(main: click.Group) -> None:
                                 memory_type=memory_type,
                                 date_range=date_range,
                                 container=output_selection.container,
+                                person_match=person_match,
                             )
 
                     # A birthday memory's flashback windows are single days years
@@ -526,6 +533,7 @@ def register_generate_commands(main: click.Group) -> None:
                         progress=progress,
                         date_ranges=date_ranges,
                         person_ids=person_ids,
+                        person_match=person_match,
                     )
 
                     # Fetch photos (if enabled)
@@ -535,7 +543,7 @@ def register_generate_commands(main: click.Group) -> None:
                             client=client,
                             date_ranges=date_ranges,
                             person_ids=person_ids,
-                            merge_window_seconds=(config.analysis.live_photo_merge_window_seconds),
+                            person_match=person_match,
                         )
                         if fetched_photos:
                             print_info(f"Found {len(fetched_photos)} photos")
@@ -590,6 +598,10 @@ def register_generate_commands(main: click.Group) -> None:
                         llm_title=llm_title,
                         memory_type=memory_type,
                         person_names=person_names,
+                        memory_preset_params={
+                            "person_names": person_names,
+                            "person_match": person_match,
+                        },
                         date_range=date_range,
                         upload_to_immich=upload_to_immich,
                         album=album,
@@ -599,6 +611,7 @@ def register_generate_commands(main: click.Group) -> None:
                         automation_attempt_id=automation_attempt_id,
                         dry_run=dry_run,
                         no_render=no_render,
+                        accept_any_provenance=accept_any_provenance,
                     )
 
                 _print_generation_result(

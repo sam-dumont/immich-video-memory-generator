@@ -110,6 +110,24 @@ class TestRoster:
 
         assert [node.evidence.name for node in graph.people] == ["Alex Example"]
 
+    def test_a_confirmed_face_stays_even_when_it_is_below_the_roster_bound(self):
+        immich = FakeImmich(
+            people=[_Person("p1", "Alex Example"), _Person("p2", "Sasha Example")],
+            months={"p1": _monthly(date(2019, 1, 1), 12, 10), "p2": {date(2020, 5, 1): 8}},
+        )
+
+        graph = build_graph(
+            immich,
+            min_assets=25,
+            include_person_ids={"p2"},
+            today=date(2026, 8, 25),
+        )
+
+        assert [node.evidence.name for node in graph.people] == [
+            "Alex Example",
+            "Sasha Example",
+        ]
+
     def test_epoch_buckets_from_broken_exif_never_reach_the_evidence(self):
         immich = FakeImmich(
             people=[_Person("p1", "Alex Example")],
@@ -173,18 +191,30 @@ class TestLinksOnTheGraph:
             (LinkKind.TIGHT_DYAD, "p2", "curve-pairing")
         ]
 
-    def test_no_pair_query_is_spent_on_a_pair_containing_the_owner(self):
+    def test_an_owner_pair_is_banked_as_evidence_but_not_read_as_a_dyad(self):
         immich = FakeImmich(
             people=[_Person("p1", "Alex Example"), _Person("p2", "Sam Sample")],
             months={
                 "p1": _monthly(date(2010, 1, 1), 190, 20),
                 "p2": _monthly(date(2018, 6, 1), 90, 20),
             },
+            shared={frozenset(("p1", "p2")): 50},
         )
 
-        build_graph(immich, today=date(2026, 8, 25))
+        graph = build_graph(immich, today=date(2026, 8, 25))
 
-        assert immich.pair_queries == 0
+        assert immich.pair_queries == 1
+        assert graph.cooccurrences == (
+            graph.cooccurrences[0].__class__(
+                one_id="p1",
+                other_id="p2",
+                shared_assets=50,
+                one_share=50 / 3800,
+                other_share=50 / 1800,
+            ),
+        )
+        owner_node = next(node for node in graph.people if node.evidence.person_id == "p1")
+        assert all(link.via != "co-occurrence" for link in owner_node.links)
 
     def test_a_twin_is_read_as_the_pair_they_were_split_from(self):
         immich = FakeImmich(
