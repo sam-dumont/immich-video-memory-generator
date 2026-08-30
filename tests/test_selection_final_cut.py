@@ -41,6 +41,7 @@ from probe_selection_final_cut import (
 )
 
 from immich_memories.analysis.selection_final_duplicates import (
+    DOCUMENT_ARTIFACT_WORDS,
     FinalDuplicateNomination,
     FinalDuplicateReview,
 )
@@ -3215,6 +3216,461 @@ def test_person_and_dark_frame_findings_pass_the_visual_pool_grounding() -> None
     assert [group["current_asset_ids"] for group in dark_groups] == [["A001"]]
 
 
+def _document_wall() -> tuple[FineCutCandidate, ...]:
+    assert "newspaper" in DOCUMENT_ARTIFACT_WORDS
+    return (
+        replace(
+            _candidate(1, "M001"),
+            favourite=False,
+            description="A newspaper front page held up to the camera",
+        ),
+        replace(_candidate(2, "M002"), favourite=False),
+        replace(_candidate(3, "M002"), favourite=False),
+    )
+
+
+def test_pool_findings_challenge_a_kept_document_in_a_single_asset_moment() -> None:
+    wall = _document_wall()
+
+    findings = final_cut_contract.runtime_final_pool_findings(
+        wall,
+        current_aliases=("A001", "A002"),
+    )
+
+    documents = [row for row in findings if row["focus_kind"] == "document_artifact"]
+    assert len(documents) == 1
+    assert documents[0]["moment_ids"] == ["M001"]
+    assert documents[0]["asset_ids"] == ["A001"]
+    assert documents[0]["current_asset_ids"] == ["A001"]
+
+
+def test_pool_findings_never_challenge_a_document_with_a_lived_sibling_in_its_moment() -> None:
+    wall = (
+        replace(
+            _candidate(1, "M001"),
+            favourite=False,
+            description="A newspaper front page held up to the camera",
+        ),
+        replace(_candidate(2, "M001"), favourite=False),
+    )
+
+    findings = final_cut_contract.runtime_final_pool_findings(
+        wall,
+        current_aliases=("A001", "A002"),
+    )
+
+    assert [row for row in findings if row["focus_kind"] == "document_artifact"] == []
+
+
+def test_document_artifact_finding_passes_the_visual_pool_grounding() -> None:
+    wall = _document_wall()
+    reading = (
+        {
+            "chapter_id": "C001",
+            "label": "first",
+            "moment_ids": ["M001", "M002"],
+            "thesis": "The whole chapter.",
+        },
+    )
+
+    groups = final_cut_contract.visual_final_pool_groups(
+        wall,
+        current_aliases=("A001", "A002"),
+        chapter_readings=reading,
+        review_focus=final_cut_contract.runtime_final_pool_findings(
+            wall,
+            current_aliases=("A001", "A002"),
+            chapter_readings=reading,
+        ),
+    )
+
+    documents = [group for group in groups if group["focus_kind"] == "document_artifact"]
+    assert len(documents) == 1
+    assert documents[0]["asset_ids"] == ["A001"]
+    assert documents[0]["current_asset_ids"] == ["A001"]
+
+
+def test_pool_findings_never_challenge_a_kept_single_asset_lived_scene() -> None:
+    wall = (
+        replace(_candidate(1, "M001"), favourite=False),
+        replace(_candidate(2, "M002"), favourite=False),
+    )
+
+    findings = final_cut_contract.runtime_final_pool_findings(
+        wall,
+        current_aliases=("A001",),
+    )
+
+    assert [row for row in findings if row["focus_kind"] == "document_artifact"] == []
+
+
+def _people_only_occasion() -> tuple[FineCutCandidate, ...]:
+    # One occasion: people-dense moments the cut keeps, plus a people-free moment of the
+    # same days the moment cut rejected. A rejected moment never opens a reservoir, so its
+    # rows carry the placeholder description rather than a described frame.
+    faces = tuple(
+        replace(
+            _candidate(index, moment),
+            favourite=False,
+            people_context=(_person_row("P01"),),
+            description=description,
+        )
+        for index, moment, description in (
+            (1, "M001", "Two friends laughing across a table"),
+            (2, "M001", "The same pair raising their cups indoors"),
+            (3, "M002", "A child hugging a parent while they wait in a queue"),
+        )
+    )
+    place = tuple(
+        replace(
+            _candidate(index, "M003"),
+            favourite=index == 5,
+            description="[visual description unavailable]",
+            proposed_from_rejected=True,
+        )
+        for index in (4, 5)
+    )
+    return (*faces, *place)
+
+
+# The primary fixture is season-neutral on purpose: the same structural signal has to fire
+# for an open coastline as for a snow-covered hillside, so neither can be what carries it.
+_COASTLINE_CARD = {
+    "moment_id": "M003",
+    "summary": "An empty coastline under mid-day sun, the horizon flat behind the water.",
+    "people": "insufficient evidence",
+    "reason": "The other moments carry the day's relationships more directly.",
+    "asset_ids": ["A004", "A005"],
+}
+_HILLSIDE_CARD = {
+    **_COASTLINE_CARD,
+    "summary": "A snow-covered hillside under grey cloud, seen from above.",
+}
+_UNHEDGED_CARD = {
+    "moment_id": "M003",
+    "summary": "A coastline with the whole group lined up along the horizon.",
+    "people": "the group of four",
+    "asset_ids": ["A004", "A005"],
+}
+
+
+@pytest.mark.parametrize(
+    ("card", "words"),
+    [
+        (_COASTLINE_CARD, ["coastline", "horizon"]),
+        (_HILLSIDE_CARD, ["hillside", "snow-covered"]),
+    ],
+)
+def test_pool_findings_propose_a_rejected_people_free_place_for_a_faces_only_occasion(
+    card: dict[str, Any],
+    words: list[str],
+) -> None:
+    wall = _people_only_occasion()
+
+    findings = final_cut_contract.runtime_final_pool_findings(
+        wall,
+        current_aliases=("A001", "A002", "A003"),
+        rejected_moments=(card,),
+    )
+
+    assert [row["focus_kind"] for row in findings] == ["place_without_landscape"]
+    assert findings[0]["moment_ids"] == ["M003"]
+    assert findings[0]["asset_ids"] == ["A004", "A005"]
+    assert findings[0]["current_asset_ids"] == []
+    assert findings[0]["owner_evidence"]["proposed_asset_id"] == "A005"
+    assert findings[0]["owner_evidence"]["people_dense_wall_assets"] == 3
+    assert findings[0]["owner_evidence"]["people_free_signal"] == "hedged-card-people"
+    assert findings[0]["owner_evidence"]["corroborating_outdoor_words"] == words
+
+
+def test_a_place_finding_can_only_name_rows_marked_as_unkept_proposals() -> None:
+    # The marker is what tells every wall the row is a proposal from a moment the cut
+    # dropped, so a finding may not reach a row that was never built as one.
+    wall = _people_only_occasion()
+    unmarked = (*wall[:3], *(replace(row, proposed_from_rejected=False) for row in wall[3:]))
+
+    with pytest.raises(ValueError, match="rejected moment rows are not grounded"):
+        final_cut_contract.runtime_final_pool_findings(
+            unmarked,
+            current_aliases=("A001", "A002", "A003"),
+            rejected_moments=(_COASTLINE_CARD,),
+        )
+
+
+def test_an_unkept_proposal_row_says_so_on_every_wall_it_reaches() -> None:
+    row = replace(_candidate(4, "M003"), proposed_from_rejected=True)
+
+    assert "proposed-from-unkept-moment" in row.wall_line()
+    assert "proposed-from-unkept-moment" in final_cut_contract.compact_reservoir_wall((row,))
+
+
+def test_a_rejected_card_that_names_people_is_never_a_place_finding() -> None:
+    # The words alone must decide nothing: this card carries two of them.
+    wall = _people_only_occasion()
+
+    findings = final_cut_contract.runtime_final_pool_findings(
+        wall,
+        current_aliases=("A001", "A002", "A003"),
+        rejected_moments=(_UNHEDGED_CARD,),
+    )
+
+    assert findings == ()
+
+
+def test_an_occasion_that_already_shows_its_place_gets_no_place_finding() -> None:
+    wall = _people_only_occasion()
+    with_place = (
+        *wall[:2],
+        replace(wall[2], description="The queue below a mountain ridge in full sun"),
+        *wall[3:],
+    )
+
+    findings = final_cut_contract.runtime_final_pool_findings(
+        with_place,
+        current_aliases=("A001", "A002", "A003"),
+        rejected_moments=(_COASTLINE_CARD,),
+    )
+
+    assert findings == ()
+
+
+def test_the_visual_arm_renders_the_unkept_place_tiles_beside_the_kept_context(
+    tmp_path: Path,
+) -> None:
+    wall = _people_only_occasion()
+    film, offered = wall[:3], wall[3:]
+    requests: list[Any] = []
+
+    class Requester:
+        def ask(self, request):
+            requests.append(request)
+            return SimpleNamespace(
+                raw_text=json.dumps(
+                    {
+                        "schema_version": final_cut_contract
+                        .FINAL_VISUAL_POOL_RECONSIDERATION_SCHEMA,
+                        "verdict": "stable",
+                        "changes": [],
+                        "overall_reason": "The current tiles already carry the chapter.",
+                    }
+                )
+            )
+
+    result = matrix._run_visual_final_pool_reconsideration(
+        film,
+        current_aliases=("A001", "A002", "A003"),
+        required_aliases=(),
+        capacity=6,
+        case=_adoption_case(),
+        thesis={"thesis": "A grounded year."},
+        chapter_readings=(
+            {
+                "chapter_id": "C001",
+                "label": "the first days",
+                "moment_ids": ["M001", "M002", "M003"],
+                "thesis": "Two friends and the place they were in.",
+            },
+        ),
+        requester=Requester(),
+        output_dir=tmp_path / "visual-pool",
+        preview_jpeg=lambda _asset_id: b"not-a-real-jpeg",
+        iteration=1,
+        timeout_seconds=30,
+        adoptable=offered,
+        rejected_moments=(_COASTLINE_CARD,),
+    )
+
+    assert result is not None
+    assert [group["focus_kind"] for group in result["groups"]] == ["place_without_landscape"]
+    assert len(requests) == 1
+    assert list(requests[0].ordered_input_ids) == ["private-4", "private-5"]
+    assert "proposed-from-unkept-moment" in requests[0].prompt
+    # The kept context of the same chapter is what the model compares them against.
+    assert "A001" in requests[0].prompt
+
+
+def _adoption_case() -> Any:
+    return matrix.Case(
+        key="case",
+        label="A memory",
+        product="year_in_review",
+        ranges=(),
+        target_seconds=600.0,
+        brief="Make a truthful memory.",
+    )
+
+
+def test_an_adopted_unkept_proposal_survives_the_merge_into_the_final_keep(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # The visual arm may adopt a row that was never in the wall the text cut worked from.
+    wall = _people_only_occasion()
+    film, offered = wall[:3], wall[3:]
+    cut = {
+        "keep": [
+            {"asset_id": candidate.alias, "reason": "The cut chose this beat."}
+            for candidate in film
+        ],
+        "required_asset_ids": [],
+    }
+    text_prompts: list[str] = []
+
+    async def ask(prompt, *_args, **_kwargs):
+        text_prompts.append(prompt)
+        return matrix.TextCall(
+            prompt,
+            json.dumps(
+                {
+                    "schema_version": final_cut_contract.FINAL_ASSET_AUDIT_SCHEMA,
+                    "verdict": "stable",
+                    "findings": [],
+                    "overall_reason": "The film reads without repetition.",
+                }
+            ),
+            0.1,
+            False,
+            False,
+        )
+
+    def visual_reconsideration(current: tuple[str, ...], iteration: int):
+        if iteration > 1:
+            return None
+        return {
+            "verdict": "revise",
+            "keep": [*current, "A005"],
+            "added": ["A005"],
+            "removed": [],
+            "changes": [
+                {
+                    "add_asset_ids": ["A005"],
+                    "remove_asset_ids": [],
+                    "reason": "The occasion is shown only as faces; this carries its place.",
+                }
+            ],
+            "proposals": [],
+            "decisions": [],
+            "accepted_change_ids": ["C001"],
+            "groups": [],
+            "warnings": [],
+            "failed_focus": [],
+        }
+
+    monkeypatch.setattr(matrix, "_ask_text", ask)
+    reviewed, deliberation = asyncio.run(
+        matrix._iterative_final_asset_review(
+            film,
+            cut,
+            case=_adoption_case(),
+            thesis={"thesis": "A grounded year."},
+            capacity=6,
+            llm_config=SimpleNamespace(),
+            cache_path=tmp_path / "cache.db",
+            timeout_seconds=30,
+            max_iterations=2,
+            visual_reconsideration=visual_reconsideration,
+            adoptable=offered,
+        )
+    )
+
+    assert [row["asset_id"] for row in reviewed["keep"]] == ["A001", "A002", "A003", "A005"]
+    assert deliberation["iterations"][0]["outcome"] == "accepted"
+    reasons = {row["asset_id"]: row["reason"] for row in reviewed["keep"]}
+    assert "place" in reasons["A005"]
+    # Once adopted the row is part of the film, so the text arm can read it -- and it
+    # still says on every wall that it came from a moment the cut dropped.
+    wall_lines = [
+        line for line in text_prompts[-1].splitlines() if line.startswith("A005 ")
+    ]
+    assert len(wall_lines) == 1
+    assert "proposed-from-unkept-moment" in wall_lines[0]
+
+
+def test_landscape_findings_alone_leave_the_text_arm_wall_unchanged(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    wall = _people_only_occasion()
+    film, offered = wall[:3], wall[3:]
+    cut = {
+        "keep": [
+            {"asset_id": candidate.alias, "reason": "The cut chose this beat."}
+            for candidate in film
+        ],
+        "required_asset_ids": [],
+    }
+    prompts: list[str] = []
+
+    async def ask(prompt, *_args, **_kwargs):
+        prompts.append(prompt)
+        return matrix.TextCall(
+            prompt,
+            json.dumps(
+                {
+                    "schema_version": final_cut_contract.FINAL_ASSET_AUDIT_SCHEMA,
+                    "verdict": "stable",
+                    "findings": [],
+                    "overall_reason": "The film reads without repetition.",
+                }
+            ),
+            0.1,
+            False,
+            False,
+        )
+
+    monkeypatch.setattr(matrix, "_ask_text", ask)
+
+    def run(**kwargs: Any) -> list[str]:
+        prompts.clear()
+        asyncio.run(
+            matrix._iterative_final_asset_review(
+                film,
+                cut,
+                case=_adoption_case(),
+                thesis={"thesis": "A grounded year."},
+                capacity=6,
+                llm_config=SimpleNamespace(),
+                cache_path=tmp_path / "cache.db",
+                timeout_seconds=30,
+                max_iterations=1,
+                **kwargs,
+            )
+        )
+        return list(prompts)
+
+    assert run() == run(adoptable=offered, visual_reconsideration=lambda *_args: None)
+
+
+def test_the_place_finding_passes_the_visual_pool_grounding() -> None:
+    wall = _people_only_occasion()
+    reading = (
+        {
+            "chapter_id": "C001",
+            "label": "the first days",
+            "moment_ids": ["M001", "M002", "M003"],
+            "thesis": "Two friends and the place they were in.",
+        },
+    )
+
+    groups = final_cut_contract.visual_final_pool_groups(
+        wall,
+        current_aliases=("A001", "A002", "A003"),
+        chapter_readings=reading,
+        review_focus=final_cut_contract.runtime_final_pool_findings(
+            wall,
+            current_aliases=("A001", "A002", "A003"),
+            chapter_readings=reading,
+            rejected_moments=(_COASTLINE_CARD,),
+        ),
+    )
+
+    assert [group["focus_kind"] for group in groups] == ["place_without_landscape"]
+    assert groups[0]["target_moment_ids"] == ["M003"]
+    assert groups[0]["asset_ids"] == ["A004", "A005"]
+    assert groups[0]["current_asset_ids"] == []
+    assert groups[0]["validation_current_asset_ids"] == ["A001", "A002", "A003"]
+
+
 def test_wall_rows_carry_mean_luminance_beside_the_timestamp() -> None:
     dark = replace(_candidate(1, "M001"), luminance=54)
     unknown = _candidate(2, "M001")
@@ -3328,6 +3784,101 @@ def test_a_closing_pick_at_or_above_its_reservoir_median_is_left_alone() -> None
 
     assert [row["asset_id"] for row in swapped["keep"]] == ["A001", "A003"]
     assert swapped["closer_swap"] is None
+
+
+def _day_cut(*candidates: FineCutCandidate) -> dict[str, Any]:
+    return {
+        "keep": [
+            {"asset_id": candidate.alias, "reason": "The model chose this beat."}
+            for candidate in candidates
+        ],
+        "required_asset_ids": [],
+        "comparisons": [],
+    }
+
+
+def test_a_day_over_the_asset_ceiling_sheds_its_dimmest_non_favourite() -> None:
+    # The party class: two moments of two assets on one evening, legal under every cap.
+    wall = (
+        replace(_candidate(1, "M001"), favourite=False, luminance=120),
+        replace(_candidate(2, "M001"), favourite=False, luminance=40),
+        replace(_candidate(3, "M002"), favourite=False, luminance=200),
+        replace(_candidate(4, "M002"), favourite=False, luminance=90),
+        replace(
+            _candidate(5, "M003"),
+            favourite=False,
+            luminance=150,
+            taken_at=START + timedelta(days=2),
+        ),
+    )
+
+    held = final_cut_contract.apply_final_day_ceiling(wall, _day_cut(*wall))
+
+    assert [row["asset_id"] for row in held["keep"]] == ["A001", "A003", "A004", "A005"]
+    assert held["day_ceiling"]["max_per_day"] == 3
+    assert held["day_ceiling"]["overfull_days"] == 1
+    assert held["day_ceiling"]["removed_asset_ids"] == ["A002"]
+    assert held["day_ceiling"]["removed"][0]["day"] == "2025-01-01"
+    assert "ceiling" in held["day_ceiling"]["removed"][0]["reason"]
+    assert held["day_ceiling"]["favourite_overflow_days"] == []
+
+
+def test_the_day_ceiling_never_drops_a_favourite_but_counts_its_slot() -> None:
+    wall = (
+        replace(_candidate(1, "M001"), favourite=True, luminance=30),
+        replace(_candidate(2, "M001"), favourite=True, luminance=35),
+        replace(_candidate(3, "M002"), favourite=False, luminance=200),
+        replace(_candidate(4, "M002"), favourite=False, luminance=90),
+    )
+
+    held = final_cut_contract.apply_final_day_ceiling(wall, _day_cut(*wall))
+
+    assert [row["asset_id"] for row in held["keep"]] == ["A001", "A002", "A003"]
+    assert held["day_ceiling"]["removed_asset_ids"] == ["A004"]
+
+
+def test_the_closer_is_re_marked_when_the_day_ceiling_drops_it() -> None:
+    wall = final_cut_contract.mark_closing_candidate(
+        (
+            replace(_candidate(1, "M001"), favourite=False, luminance=150),
+            replace(_candidate(2, "M001"), favourite=False, luminance=140),
+            replace(_candidate(3, "M002"), favourite=False, luminance=130),
+            replace(_candidate(4, "M002"), favourite=False, luminance=20),
+        ),
+        kept_aliases=("A001", "A002", "A003", "A004"),
+    )
+    assert [row.alias for row in wall if row.closes_memory] == ["A004"]
+
+    held = final_cut_contract.apply_final_day_ceiling(wall, _day_cut(*wall))
+    kept = tuple(row["asset_id"] for row in held["keep"])
+    remarked = final_cut_contract.mark_closing_candidate(wall, kept_aliases=kept)
+
+    assert kept == ("A001", "A002", "A003")
+    assert [row.alias for row in remarked if row.closes_memory] == ["A003"]
+
+
+def test_the_day_ceiling_runs_before_the_closer_swap_that_reads_the_last_row() -> None:
+    wall = (
+        replace(_candidate(1, "M001"), favourite=False, luminance=150),
+        replace(_candidate(2, "M001"), favourite=False, luminance=140),
+        replace(_candidate(3, "M002"), favourite=False, luminance=40),
+        replace(_candidate(4, "M002"), favourite=False, luminance=20),
+        replace(_candidate(5, "M002"), favourite=False, luminance=200),
+        replace(_candidate(6, "M002"), favourite=False, luminance=210),
+    )
+    cut = _day_cut(*wall[:4])
+
+    capped = final_cut_contract.apply_final_moment_cap(wall, cut, max_per_moment=2)
+    held = final_cut_contract.apply_final_day_ceiling(wall, capped)
+    swapped = final_cut_contract.apply_closer_luminance_swap(wall, held)
+    kept = tuple(row["asset_id"] for row in swapped["keep"])
+    marked = final_cut_contract.mark_closing_candidate(wall, kept_aliases=kept)
+
+    # The ceiling sheds A004, so the swap reads A003 as the closing pick, not A004.
+    assert held["day_ceiling"]["removed_asset_ids"] == ["A004"]
+    assert swapped["closer_swap"]["before"]["asset_id"] == "A003"
+    assert kept == ("A001", "A002", "A006")
+    assert [row.alias for row in marked if row.closes_memory] == ["A006"]
 
 
 def test_reconsideration_cannot_resurrect_a_review_cut_asset_but_may_use_a_sibling(

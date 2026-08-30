@@ -38,9 +38,12 @@ from probe_selection_final_cut import (
     FINAL_VISUAL_ASSET_AUDIT_SCHEMA,
     FINAL_VISUAL_POOL_GLOBAL_VALIDATION_SCHEMA,
     FINAL_VISUAL_POOL_RECONSIDERATION_SCHEMA,
+    PLACE_PROPOSAL_MAX_ASSETS,
+    PLACE_PROPOSAL_MAX_MOMENTS,
     FineCutCandidate,
     apply_closer_luminance_swap,
     apply_final_asset_sequence_review,
+    apply_final_day_ceiling,
     apply_final_moment_cap,
     final_asset_audit_prompt,
     final_asset_cut_prompt,
@@ -49,6 +52,7 @@ from probe_selection_final_cut import (
     final_asset_sequence_review_prompt,
     mark_closing_candidate,
     merge_final_asset_audits,
+    outdoor_setting_words,
     read_final_asset_audit,
     read_final_asset_cut,
     read_final_asset_delta_validation,
@@ -3016,6 +3020,17 @@ async def _text_phase(
             card.moment.group.group_id for card in cards if card.moment.alias in kept
         ],
         "moment_alias_by_group": {card.moment.group.group_id: card.moment.alias for card in cards},
+        # The only material the final cut ever gets about a moment it dropped: no reservoir
+        # opens for one, so its card summary is the whole of what a later pass can read.
+        "rejected_moment_cards": [
+            {
+                "moment_id": card.moment.alias,
+                "group_id": card.moment.group.group_id,
+                "summary": card.summary,
+            }
+            for card in cards
+            if card.moment.alias not in kept
+        ],
         "thesis_calls": [_call_record(call) for call in thesis_calls],
         "selection_calls": [_call_record(call) for call in selection_calls],
     }
@@ -3132,6 +3147,103 @@ def _with_preview_luminance(
     )
 
 
+def _people_name_tokens(candidates: Sequence[Any]) -> dict[str, str]:
+    """One P-token namespace over every row any wall of this run can put in front of a model."""
+    names = sorted(
+        {
+            name
+            for candidate in candidates
+            for person in (candidate.source.people or ())
+            if (name := str(person.name or "").strip())
+        },
+        key=str.casefold,
+    )
+    return {name: f"P{index:02d}" for index, name in enumerate(names, start=1)}
+
+
+def _people_context_rows(
+    candidate: Any,
+    *,
+    token_by_name: dict[str, str],
+    facts: dict[str, PersonFact],
+) -> tuple[str, ...]:
+    rows = []
+    for person in candidate.source.people or ():
+        name = str(person.name or "").strip()
+        if not name or name not in token_by_name:
+            continue
+        fact = facts.get(name)
+        rows.append(
+            f"{token_by_name[name]}:tier={fact.tier or 'unknown'};"
+            f"relationship={fact.relationship};source={fact.relationship_source}"
+            if fact is not None
+            else f"{token_by_name[name]}:tier=unknown;relationship=unconfirmed"
+        )
+    return tuple(dict.fromkeys(rows))
+
+
+def _rejected_place_candidates(
+    reservoirs: tuple[Any, ...],
+    *,
+    cards: Sequence[dict[str, Any]],
+    alias_by_group: dict[str, str],
+    token_by_name: dict[str, str],
+    facts: dict[str, PersonFact],
+) -> tuple[FineCutCandidate, ...]:
+    """Build the unkept rows the visual arm may propose, from what the record still holds.
+
+    A dropped moment never opened a reservoir, so there is no per-asset description for it:
+    the card's own literal inventory stands in for every row, and no motion is claimed.
+    """
+    summary_by_moment = {
+        str(card["moment_id"]): str(card["summary"])
+        for card in cards
+        if isinstance(card, dict)
+        and isinstance(card.get("moment_id"), str)
+        and isinstance(card.get("summary"), str)
+        and outdoor_setting_words(str(card["summary"]))
+    }
+    offered = sorted(
+        (
+            reservoir
+            for reservoir in reservoirs
+            if alias_by_group.get(reservoir.moment_id) in summary_by_moment
+        ),
+        key=lambda reservoir: (
+            -len(reservoir.candidates),
+            min(candidate.taken_at for candidate in reservoir.candidates),
+            reservoir.moment_id,
+        ),
+    )[:PLACE_PROPOSAL_MAX_MOMENTS]
+    rows: list[FineCutCandidate] = []
+    for reservoir in sorted(
+        offered, key=lambda item: min(candidate.taken_at for candidate in item.candidates)
+    ):
+        moment_id = alias_by_group[reservoir.moment_id]
+        members = sorted(reservoir.candidates, key=lambda item: (item.taken_at, item.asset_id))
+        for candidate in members[:PLACE_PROPOSAL_MAX_ASSETS]:
+            rows.append(
+                FineCutCandidate(
+                    alias=f"X{len(rows) + 1:03d}",
+                    asset_id=candidate.asset_id,
+                    moment_id=moment_id,
+                    taken_at=candidate.taken_at,
+                    media_kind="video" if candidate.media_kind == "video" else "photo",
+                    favourite=candidate.favourite,
+                    description=summary_by_moment[moment_id],
+                    context=tuple(candidate.grounded_annotations),
+                    people_context=_people_context_rows(
+                        candidate,
+                        token_by_name=token_by_name,
+                        facts=facts,
+                    ),
+                    source_media_kind=candidate.media_kind,
+                    proposed_from_rejected=True,
+                )
+            )
+    return tuple(rows)
+
+
 def _fine_cut_candidates(
     candidates: tuple[Any, ...],
     *,
@@ -3142,6 +3254,7 @@ def _fine_cut_candidates(
     atlas: Any | None = None,
     motion_contributions: dict[str, str] | None = None,
     motion_reasons: dict[str, str] | None = None,
+    token_by_name: dict[str, str] | None = None,
 ) -> tuple[FineCutCandidate, ...]:
     group_by_asset = {
         candidate.asset_id: reservoir.moment_id
@@ -3150,16 +3263,7 @@ def _fine_cut_candidates(
     }
     alias_by_group = text_result["moment_alias_by_group"]
     ordered = sorted(candidates, key=lambda item: (item.taken_at, item.asset_id))
-    names = sorted(
-        {
-            name
-            for candidate in ordered
-            for person in (candidate.source.people or ())
-            if (name := str(person.name or "").strip())
-        },
-        key=str.casefold,
-    )
-    token_by_name = {name: f"P{index:02d}" for index, name in enumerate(names, start=1)}
+    tokens = token_by_name if token_by_name is not None else _people_name_tokens(ordered)
     episode_by_asset = {
         candidate.asset_id: f"E{index:03d}"
         for index, episode in enumerate(build_episode_groups(ordered), start=1)
@@ -3167,19 +3271,7 @@ def _fine_cut_candidates(
     }
 
     def people_context(candidate: Any) -> tuple[str, ...]:
-        rows = []
-        for person in candidate.source.people or ():
-            name = str(person.name or "").strip()
-            if not name or name not in token_by_name:
-                continue
-            fact = facts.get(name)
-            rows.append(
-                f"{token_by_name[name]}:tier={fact.tier or 'unknown'};"
-                f"relationship={fact.relationship};source={fact.relationship_source}"
-                if fact is not None
-                else f"{token_by_name[name]}:tier=unknown;relationship=unconfirmed"
-            )
-        return tuple(dict.fromkeys(rows))
+        return _people_context_rows(candidate, token_by_name=tokens, facts=facts)
 
     contributions = motion_contributions or {}
     reasons = motion_reasons or {}
@@ -4011,9 +4103,17 @@ def _run_visual_final_pool_reconsideration(
     reviewed_focus_keys: set[tuple[str, tuple[str, ...]]] | None = None,
     failed_focus_keys: set[tuple[str, tuple[str, ...]]] | None = None,
     review_cut_aliases: tuple[str, ...] = (),
+    adoptable: tuple[FineCutCandidate, ...] = (),
+    rejected_moments: tuple[dict[str, Any], ...] = (),
 ) -> dict[str, Any] | None:
-    """Search each reopened chapter visually, then gate its deltas against the whole cut."""
-    by_alias = {candidate.alias: candidate for candidate in wall}
+    """Search each reopened chapter visually, then gate its deltas against the whole cut.
+
+    Only this arm sees `adoptable`: rows of moments the cut dropped, offered back through
+    the place findings the run record grounds in `rejected_moments`. They were never
+    review-cut, so the anti-resurrection guard does not apply to them.
+    """
+    pool = (*wall, *adoptable)
+    by_alias = {candidate.alias: candidate for candidate in pool}
     reviewed = reviewed_focus_keys if reviewed_focus_keys is not None else set()
     failed = failed_focus_keys if failed_focus_keys is not None else set()
 
@@ -4026,10 +4126,11 @@ def _run_visual_final_pool_reconsideration(
     review_focus = tuple(
         focus
         for focus in runtime_final_pool_findings(
-            wall,
+            pool,
             current_aliases=current_aliases,
             cap_removed_aliases=cap_removed_aliases if iteration == 1 else (),
             chapter_readings=chapter_readings,
+            rejected_moments=rejected_moments,
         )
         if focus_key(focus) not in reviewed and focus_key(focus) not in failed
     )
@@ -4037,7 +4138,7 @@ def _run_visual_final_pool_reconsideration(
         return None
     groups = (
         visual_final_pool_groups(
-            wall,
+            pool,
             current_aliases=current_aliases,
             chapter_readings=chapter_readings,
             review_focus=review_focus,
@@ -4051,7 +4152,7 @@ def _run_visual_final_pool_reconsideration(
     proposals: list[dict[str, Any]] = []
     for group in groups:
         aliases = tuple(group["asset_ids"])
-        requests = visual_final_pool_request_groups(wall, group)
+        requests = visual_final_pool_request_groups(pool, group)
         issued = {alias for request in requests for alias in request["asset_ids"]}
         merged: list[dict[str, Any]] = []
         identities: set[tuple[tuple[str, ...], tuple[str, ...]]] = set()
@@ -4060,7 +4161,7 @@ def _run_visual_final_pool_reconsideration(
         for request in requests:
             try:
                 proposal = _ask_visual_final_pool_request(
-                    wall,
+                    pool,
                     request,
                     current_aliases=current_aliases,
                     required_aliases=required_aliases,
@@ -4153,7 +4254,7 @@ def _run_visual_final_pool_reconsideration(
     )
     stable = {**stable, "skipped_review_cut_assets": skipped_review_cut}
     eligible_proposals, near_duplicate_decisions = _filter_lower_priority_near_duplicate_proposals(
-        wall,
+        pool,
         current_aliases=current_aliases,
         proposals=survivors,
         preview_jpeg=preview_jpeg,
@@ -4217,7 +4318,7 @@ def _run_visual_final_pool_reconsideration(
             for reference in page.tile_refs
         )
         prompt = visual_final_pool_global_validation_prompt(
-            wall,
+            pool,
             current_aliases=gate_current_aliases,
             proposals=eligible_proposals,
             tile_mapping=mapping,
@@ -4252,7 +4353,7 @@ def _run_visual_final_pool_reconsideration(
         )
         validation = read_visual_final_pool_global_validation(
             answer.raw_text,
-            wall,
+            pool,
             current_aliases=gate_current_aliases,
             proposals=eligible_proposals,
             required_aliases=gate_required_aliases,
@@ -4271,7 +4372,7 @@ def _run_visual_final_pool_reconsideration(
     global_keep = set(current_aliases) - set(validation["removed"]) | set(validation["added"])
     validation = {
         **validation,
-        "keep": [candidate.alias for candidate in wall if candidate.alias in global_keep],
+        "keep": [candidate.alias for candidate in pool if candidate.alias in global_keep],
     }
     decisions_by_id = {
         row["change_id"]: row for row in (*mechanical_decisions, *validation["decisions"])
@@ -4299,6 +4400,21 @@ def _run_visual_final_pool_reconsideration(
     }
 
 
+def _wall_with_adopted(
+    wall: tuple[FineCutCandidate, ...],
+    adoptable: tuple[FineCutCandidate, ...],
+    current: tuple[str, ...],
+) -> tuple[FineCutCandidate, ...]:
+    """Grow the text arm's wall by the unkept proposals the visual arm actually adopted."""
+    kept = set(current)
+    adopted = [candidate for candidate in adoptable if candidate.alias in kept]
+    if not adopted:
+        return wall
+    return tuple(
+        sorted((*wall, *adopted), key=lambda candidate: (candidate.taken_at, candidate.alias))
+    )
+
+
 async def _iterative_final_asset_review(
     wall: tuple[FineCutCandidate, ...],
     cut: dict[str, Any],
@@ -4313,10 +4429,19 @@ async def _iterative_final_asset_review(
     visual_reconsideration: (Callable[[tuple[str, ...], int], dict[str, Any] | None] | None) = None,
     visual_audit: Callable[[tuple[str, ...], int], dict[str, Any] | None] | None = None,
     review_cut_aliases: tuple[str, ...] = (),
+    adoptable: tuple[FineCutCandidate, ...] = (),
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Run a bounded evidence-gated deliberation over the selected-moment pools."""
+    """Run a bounded evidence-gated deliberation over the selected-moment pools.
+
+    `adoptable` holds rows from moments the cut dropped that only the visual arm may
+    propose. They stay out of the text arm's wall until the visual arm adopts one: an
+    adopted row is part of the film, so every later text pass has to be able to read it.
+    """
     if not 1 <= max_iterations <= 3:
         raise ValueError("final asset deliberation must use one to three iterations")
+    adoptable_by_alias = {candidate.alias: candidate for candidate in adoptable}
+    reachable = {candidate.alias for candidate in wall} | set(adoptable_by_alias)
+    text_wall = wall
     current = tuple(row["asset_id"] for row in cut["keep"])
     if not current:
         deliberation = {
@@ -4359,7 +4484,7 @@ async def _iterative_final_asset_review(
                             or any(not isinstance(alias, str) for alias in proposed_rows)
                             or len(set(proposed_rows)) != len(proposed_rows)
                             or not set(required) <= set(proposed_rows)
-                            or not set(proposed_rows) <= {candidate.alias for candidate in wall}
+                            or not set(proposed_rows) <= reachable
                             or len(proposed_rows) > capacity
                         ):
                             raise ValueError("visual pool returned an invalid final set")
@@ -4393,6 +4518,7 @@ async def _iterative_final_asset_review(
                                     if isinstance(alias, str) and isinstance(reason, str):
                                         reason_by_alias[alias] = reason
                             current = proposed
+                            text_wall = _wall_with_adopted(wall, adoptable, current)
                             seen.add(frozenset(current))
                             iterations.append(
                                 {
@@ -4433,11 +4559,11 @@ async def _iterative_final_asset_review(
                 calls["visual_audit_warning"] = f"visual audit failed: {type(exc).__name__}"
         try:
             runtime_focus = runtime_final_asset_audit_findings(
-                wall,
+                text_wall,
                 current_aliases=current,
             )
             audit_prompt = final_asset_audit_prompt(
-                wall,
+                text_wall,
                 current_aliases=current,
                 editorial_brief=case.brief,
                 thesis=thesis,
@@ -4454,7 +4580,7 @@ async def _iterative_final_asset_review(
             calls["audit"] = _call_record(audit_call)
             text_audit = read_final_asset_audit(
                 audit_call.raw,
-                wall,
+                text_wall,
                 current_aliases=current,
             )
             audit = (
@@ -4501,7 +4627,7 @@ async def _iterative_final_asset_review(
             break
         try:
             proposal_prompt = final_asset_reconsideration_prompt(
-                wall,
+                text_wall,
                 current_aliases=current,
                 required_aliases=required,
                 capacity=capacity,
@@ -4520,7 +4646,7 @@ async def _iterative_final_asset_review(
             calls["reconsideration"] = _call_record(proposal_call)
             proposal = read_final_asset_reconsideration(
                 proposal_call.raw,
-                wall,
+                text_wall,
                 current_aliases=current,
                 required_aliases=required,
                 capacity=capacity,
@@ -4528,7 +4654,7 @@ async def _iterative_final_asset_review(
             )
             proposal, review_cut_guard = _reconsideration_without_review_cuts(
                 proposal,
-                wall=wall,
+                wall=text_wall,
                 current_aliases=current,
                 review_cut_aliases=review_cut_aliases,
             )
@@ -4589,7 +4715,7 @@ async def _iterative_final_asset_review(
             break
         try:
             validation_prompt = final_asset_delta_validation_prompt(
-                wall,
+                text_wall,
                 before_aliases=current,
                 proposal=proposal,
                 audit=audit,
@@ -4674,7 +4800,7 @@ async def _iterative_final_asset_review(
                     candidate.alias, "Admitted by grounded corpus reconsideration."
                 ),
             }
-            for candidate in wall
+            for candidate in text_wall
             if candidate.alias in current_set
         ],
     }
@@ -4745,6 +4871,11 @@ def _sscd_copy_embedder(model_path: Path) -> CopyEmbedder:
         return [float(value) for value in vector[0].tolist()]
 
     return _embed
+
+
+def _resolve_copy_embedder(args: argparse.Namespace) -> CopyEmbedder | None:
+    """The one hop from --sscd-model to a usable embedder, isolated so it can be pinned."""
+    return _sscd_copy_embedder(args.sscd_model) if args.sscd_model else None
 
 
 def _apply_final_duplicate_review(
@@ -4971,6 +5102,22 @@ def _run_final_refinement(
         {description.asset_id: description.text for description in refined_descriptions}
     )
 
+    rejected_reservoirs = tuple(
+        moment for moment in workprint.reservoir_moments if moment.moment_id not in selected_groups
+    )
+    rejected_cards = tuple(text_result.get("rejected_moment_cards", ()))
+    # One P-token namespace across both halves: an unkept proposal and the kept row beside
+    # it on the same sheet must not disagree about who P01 is.
+    people_tokens = _people_name_tokens(
+        (
+            *fine_cut_survivors,
+            *(
+                candidate
+                for reservoir in rejected_reservoirs
+                for candidate in reservoir.candidates
+            ),
+        )
+    )
     wall = _fine_cut_candidates(
         fine_cut_survivors,
         reservoirs=reservoirs,
@@ -4980,11 +5127,40 @@ def _run_final_refinement(
         atlas=final_atlas,
         motion_contributions=motion_contributions,
         motion_reasons=motion_reasons,
+        token_by_name=people_tokens,
     )
-    wall = _with_preview_luminance(
-        wall,
-        preview_jpeg=lambda asset_id: cached_preview_bytes(thumbnail_cache, asset_id),
+    place_proposals = _rejected_place_candidates(
+        rejected_reservoirs,
+        cards=rejected_cards,
+        alias_by_group=text_result["moment_alias_by_group"],
+        token_by_name=people_tokens,
+        facts=facts,
     )
+    summary_by_moment = {
+        str(card["moment_id"]): str(card["summary"])
+        for card in rejected_cards
+        if isinstance(card, dict)
+    }
+    rejection_reason = {
+        str(row["moment_id"]): row.get("reason")
+        for row in text_result.get("selection", {}).get("rejected", ())
+        if isinstance(row, dict) and isinstance(row.get("moment_id"), str)
+    }
+    proposal_cards = tuple(
+        {
+            "moment_id": moment_id,
+            "summary": summary_by_moment[moment_id],
+            "reason": rejection_reason.get(moment_id),
+            "asset_ids": [row.alias for row in place_proposals if row.moment_id == moment_id],
+        }
+        for moment_id in dict.fromkeys(row.moment_id for row in place_proposals)
+    )
+
+    def read_preview(asset_id: str) -> bytes | None:
+        return cached_preview_bytes(thumbnail_cache, asset_id)
+
+    wall = _with_preview_luminance(wall, preview_jpeg=read_preview)
+    place_proposals = _with_preview_luminance(place_proposals, preview_jpeg=read_preview)
     alias_by_asset = {candidate.asset_id: candidate.alias for candidate in wall}
     required_aliases = tuple(alias_by_asset[asset_id] for asset_id in required_assets)
     capacity = int(text_result["configuration"]["capacity"]["moment_capacity"])
@@ -5071,12 +5247,15 @@ def _run_final_refinement(
         )
         selected_aliases = {row["asset_id"] for row in cut["keep"]}
     cut = apply_final_moment_cap(wall, cut, max_per_moment=2)
+    # The day ceiling runs between them: it can drop the chronologically last keep, and the
+    # closer swap has to choose its replacement from whatever the ceiling left standing.
+    cut = apply_final_day_ceiling(wall, cut)
     cut = apply_closer_luminance_swap(wall, cut)
     selected_aliases = {row["asset_id"] for row in cut["keep"]}
     # Every downstream wall reads the memory's closing row from the wall itself.
     wall = mark_closing_candidate(wall, kept_aliases=tuple(sorted(selected_aliases)))
     cut_seconds = time.monotonic() - cut_started
-    copy_embedder = _sscd_copy_embedder(args.sscd_model) if args.sscd_model else None
+    copy_embedder = _resolve_copy_embedder(args)
 
     def review_selected_duplicates(
         aliases: set[str], *, sheet_output_dir: Path
@@ -5224,14 +5403,20 @@ def _run_final_refinement(
                             reviewed_focus_keys=reviewed_pool_focus_keys,
                             failed_focus_keys=failed_pool_focus_keys,
                             review_cut_aliases=review_cut_aliases,
+                            adoptable=place_proposals,
+                            rejected_moments=proposal_cards,
                         )
                     ),
                     review_cut_aliases=review_cut_aliases,
+                    adoptable=place_proposals,
                 )
             )
         finally:
             visual_pool_gateway.close()
         selected_aliases = {row["asset_id"] for row in cut["keep"]}
+        # An adopted proposal is part of the film now, so it joins the wall every stage
+        # after the deliberation reads. The ones nobody took never appear anywhere.
+        wall = _wall_with_adopted(wall, place_proposals, tuple(sorted(selected_aliases)))
     deliberation_seconds = time.monotonic() - deliberation_started
     deliberation_changed = any(
         row.get("outcome") == "accepted" for row in deliberation["iterations"]
@@ -5372,6 +5557,10 @@ def _run_final_refinement(
                 if post_deliberation_duplicate_review is not None
                 else 0
             ),
+            "offered_place_proposals": len(place_proposals),
+            "adopted_place_proposals": len(
+                [row for row in place_proposals if row.alias in selected_aliases]
+            ),
             "selected_assets": len(selected_aliases),
             "represented_moments": len(selected_moments),
             "required_assets": len(required_aliases),
@@ -5429,6 +5618,7 @@ def _run_final_refinement(
                 "motion_observed": candidate.motion_observed,
                 "render_mode": candidate.render_mode,
                 "render_frame_seconds": candidate.render_frame_seconds,
+                "proposed_from_rejected": candidate.proposed_from_rejected,
                 "selected": candidate.alias in selected_aliases,
             }
             for candidate in wall

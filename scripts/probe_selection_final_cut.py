@@ -9,6 +9,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any
 
+from immich_memories.analysis.selection_final_duplicates import DOCUMENT_ARTIFACT_WORDS
 from immich_memories.analysis.strict_json import bounded_model_text, final_json_object
 
 FINAL_ASSET_CUT_SCHEMA = "description-final-asset-cut-v1"
@@ -54,12 +55,76 @@ _PERSON_MIN_RESERVOIR_ASSETS = 5
 _PERSON_MIN_WALL_ASSETS = 2
 _PERSON_COVERAGE_MAX_FINDINGS = 3
 # Two near-black tiles survived to the same wall at mean preview luminance 30-55
-# while their own moments held brighter frames of the same beat. 45 sits above
-# that pair and under a dim-but-legible interior; 1.5x is the smallest gap that
-# reads as a different exposure rather than preview-decode noise.
-_DARK_FRAME_LUMINANCE = 45
+# while their own moments held brighter frames of the same beat; 45 caught that
+# pair, but later walls still carried tiles the owner flagged as dark measuring
+# 50-60. 60 sits above that band and under a dim-but-legible interior; 1.5x is
+# the smallest gap that reads as a different exposure rather than
+# preview-decode noise.
+_DARK_FRAME_LUMINANCE = 60
 _DARK_FRAME_BRIGHTER_RATIO = 1.5
 _DARK_FRAME_MAX_FINDINGS = 4
+# The review's keep/cut verdict on a single-asset memento moment measured nondeterministic
+# across cold runs on the same inputs -- cut in one run, kept in the next. A single-asset
+# moment has no lived sibling to swap in the way a dark frame does, so this finding never
+# proposes an alternative; it only forces the keep to be judged consciously every run
+# instead of by decode luck. Substring match on the card text, like OUTDOOR_SETTING_WORDS.
+_DOCUMENT_ARTIFACT_MAX_FINDINGS = 2
+# One occasion reached the wall as faces only, while the corpus held a people-free open
+# place in a moment the cut rejects run after run. The primary signal is structural: the
+# fused card hedges people away, or no candidate row of the moment carries any people
+# context. A rejected moment never opens a reservoir, so this reads what the run record
+# still has for it -- the card's summary, its hedged people field, and the moment's
+# candidate rows -- and never a preview.
+#
+# The word list only CORROBORATES that the people-free card is an outdoor setting rather
+# than, say, an indoor still life. It is deliberately broad across seasons and terrains,
+# no member is load-bearing, and it decides nothing on its own. Substring match on the
+# card text, like DOCUMENT_ARTIFACT_WORDS.
+OUTDOOR_SETTING_WORDS = (
+    "beach",
+    "cliff",
+    "coastline",
+    "desert",
+    "dune",
+    "field",
+    "forest",
+    "glacier",
+    "harbour",
+    "hillside",
+    "horizon",
+    "island",
+    "lake",
+    "landscape",
+    "meadow",
+    "moorland",
+    "mountain",
+    "panorama",
+    "pasture",
+    "plain",
+    "ridge",
+    "river",
+    "shoreline",
+    "skyline",
+    "snow-covered",
+    "summit",
+    "terrain",
+    "valley",
+    "waterfall",
+    "woodland",
+)
+_CARD_PEOPLE_HEDGE = "insufficient evidence"
+_PLACE_WITHOUT_LANDSCAPE_MAX_FINDINGS = 2
+# What the run may offer back per dropped moment, and how many moments it may open at all.
+# Every offered row costs a preview decode and a tile, and the findings cap is 2 a run, so
+# the pool only has to be wide enough for the ranking to have a real choice.
+PLACE_PROPOSAL_MAX_ASSETS = 4
+PLACE_PROPOSAL_MAX_MOMENTS = 8
+# One October evening reached the wall with four tiles: two moments of two assets each,
+# legal under the per-moment cap and every cap above it. The owner reads a day, not a
+# moment -- "too much pics from the party". A favourite is never dropped, but it still
+# holds one of the day's three slots: the viewer counts what the day shows, not how many
+# of them are starred.
+_FINAL_DAY_ASSET_CEILING = 3
 _STRAY_STRUCTURAL_QUOTE = re.compile(r'(?m)^([ \t]*)"}(,?)[ \t]*$')
 _MEDIA_PRIORITY_GUIDANCE = """When two candidates make the same editorial contribution, prefer
 video, then meaningful live-motion, then photo. This is a weighted tie-breaker, not a quota: never
@@ -106,6 +171,9 @@ class FineCutCandidate:
     render_frame_seconds: float | None = None
     luminance: int | None = None
     closes_memory: bool = False
+    # A row the moment cut dropped, offered back to the visual arm as a proposal. It is
+    # never part of the current film and the text arm never sees it until it is adopted.
+    proposed_from_rejected: bool = False
 
     def taken_at_field(self) -> str:
         """Render the timestamp cell every wall shares, with its optional luminance datum."""
@@ -114,7 +182,11 @@ class FineCutCandidate:
 
     def structural_field(self) -> str:
         """Render the structural markers every wall shares for one row."""
-        return " closes-memory" if self.closes_memory else ""
+        markers = (
+            (self.closes_memory, "closes-memory"),
+            (self.proposed_from_rejected, "proposed-from-unkept-moment"),
+        )
+        return "".join(f" {name}" for flag, name in markers if flag)
 
     def wall_line(self) -> str:
         favourite = " | FAVOURITE" if self.favourite else ""
@@ -502,6 +574,135 @@ def apply_final_moment_cap(
             if isinstance(row, dict) and row.get("kept_asset_id") in survivors
         ]
     return capped
+
+
+def _day_ceiling_reason(
+    candidate: FineCutCandidate,
+    *,
+    day: str,
+    held: int,
+    max_per_day: int,
+) -> str:
+    exposure = (
+        f"mean preview luminance {candidate.luminance}"
+        if candidate.luminance is not None
+        else "no recorded luminance"
+    )
+    return (
+        f"The day {day} held {held} final assets over its {max_per_day}-asset ceiling, and this "
+        f"non-favourite frame ranked weakest on exposure then keep order ({exposure})."
+    )
+
+
+def _day_ceiling_removals(
+    day_rows: Sequence[dict[str, Any]],
+    *,
+    by_alias: dict[str, FineCutCandidate],
+    day: str,
+    max_per_day: int,
+    exempt: set[str],
+) -> tuple[list[dict[str, Any]], bool]:
+    """Choose one day's weakest droppable keeps, and say whether exemptions still overfill it."""
+    overflow = len(day_rows) - max_per_day
+    if overflow <= 0:
+        return [], False
+    order = {row["asset_id"]: index for index, row in enumerate(day_rows)}
+    droppable = sorted(
+        (row for row in day_rows if row["asset_id"] not in exempt),
+        key=lambda row: (
+            by_alias[row["asset_id"]].luminance is None,
+            by_alias[row["asset_id"]].luminance or 0,
+            -order[row["asset_id"]],
+        ),
+    )
+    return [
+        {
+            "asset_id": row["asset_id"],
+            "day": day,
+            "reason": _day_ceiling_reason(
+                by_alias[row["asset_id"]],
+                day=day,
+                held=len(day_rows),
+                max_per_day=max_per_day,
+            ),
+        }
+        for row in droppable[:overflow]
+    ], len(droppable) < overflow
+
+
+def apply_final_day_ceiling(
+    candidates: Sequence[FineCutCandidate],
+    cut: dict[str, Any],
+    *,
+    max_per_day: int = _FINAL_DAY_ASSET_CEILING,
+) -> dict[str, Any]:
+    """Hold each calendar day to a ceiling of final assets, without refilling the freed room.
+
+    Favourites and runtime obligations are never dropped, but they still occupy the day's
+    slots, so a day carrying two favourites keeps exactly one other asset. Freed duration
+    shrinks to the material; nothing is promoted to replace what the ceiling sheds.
+    """
+    if not isinstance(max_per_day, int) or isinstance(max_per_day, bool) or max_per_day < 1:
+        raise ValueError("final day ceiling must be a positive integer")
+    by_alias = {candidate.alias: candidate for candidate in candidates}
+    rows = cut.get("keep")
+    if len(by_alias) != len(candidates) or not isinstance(rows, list):
+        raise ValueError("final day ceiling needs a keep list")
+    aliases = [row.get("asset_id") for row in rows if isinstance(row, dict)]
+    if (
+        len(aliases) != len(rows)
+        or any(not isinstance(alias, str) or alias not in by_alias for alias in aliases)
+        or len(set(aliases)) != len(aliases)
+    ):
+        raise ValueError("final day ceiling keep rows are not grounded")
+    required = set(cut.get("required_asset_ids", ()))
+    if not required <= set(aliases):
+        raise ValueError("final day ceiling required aliases are not selected")
+
+    exempt = required | {alias for alias in aliases if by_alias[alias].favourite}
+    rows_by_day: dict[Any, list[dict[str, Any]]] = {}
+    for row in rows:
+        rows_by_day.setdefault(by_alias[row["asset_id"]].taken_at.date(), []).append(row)
+    removed: list[dict[str, Any]] = []
+    overfull_days = 0
+    favourite_overflow_days: list[str] = []
+    for day in sorted(rows_by_day):
+        if len(rows_by_day[day]) <= max_per_day:
+            continue
+        overfull_days += 1
+        day_removed, still_overfull = _day_ceiling_removals(
+            rows_by_day[day],
+            by_alias=by_alias,
+            day=day.isoformat(),
+            max_per_day=max_per_day,
+            exempt=exempt,
+        )
+        removed.extend(day_removed)
+        if still_overfull:
+            favourite_overflow_days.append(day.isoformat())
+
+    dropped = {row["asset_id"] for row in removed}
+    survivors = [row for row in rows if row["asset_id"] not in dropped]
+    held = {
+        **cut,
+        "keep": survivors,
+        "day_ceiling": {
+            "max_per_day": max_per_day,
+            "overfull_days": overfull_days,
+            "removed_asset_ids": [row["asset_id"] for row in removed],
+            "removed": removed,
+            "favourite_overflow_days": favourite_overflow_days,
+        },
+    }
+    comparisons = cut.get("comparisons")
+    if isinstance(comparisons, list):
+        kept = {row["asset_id"] for row in survivors}
+        held["comparisons"] = [
+            row
+            for row in comparisons
+            if isinstance(row, dict) and row.get("kept_asset_id") in kept
+        ]
+    return held
 
 
 def final_asset_audit_prompt(
@@ -1228,12 +1429,212 @@ def _dark_frame_swap(
     }
 
 
+def _document_artifact_finding(
+    moment: Sequence[FineCutCandidate],
+    *,
+    current_set: set[str],
+) -> dict[str, Any] | None:
+    """Report a kept single-asset moment whose only candidate reads as a document, not a scene.
+
+    Reject-only: a single-asset moment has no lived sibling to offer instead, so unlike
+    dark_frame this never proposes an alternative -- it only asks whether the memento
+    earns its own tile.
+    """
+    if len(moment) != 1:
+        return None
+    candidate = moment[0]
+    if candidate.alias not in current_set:
+        return None
+    lowered = candidate.description.lower()
+    if not any(word in lowered for word in DOCUMENT_ARTIFACT_WORDS):
+        return None
+    return {
+        "focus_kind": "document_artifact",
+        "reject_only": True,
+        "moment_ids": [candidate.moment_id],
+        "asset_ids": [candidate.alias],
+        "current_asset_ids": [candidate.alias],
+        "selection_limit": _FINAL_MOMENT_ASSET_CAP,
+        "owner_evidence": {
+            "favourite_assets": int(candidate.favourite),
+        },
+        "observation": (
+            f"Final asset {candidate.alias} is the only candidate its moment ever held, and "
+            "its card reads as a document or memento rather than a lived scene."
+        ),
+        "review_question": (
+            "Does this memento earn its tile against the rest of the wall, or is it a "
+            "document about the memory rather than a moment of it?"
+        ),
+    }
+
+
+def outdoor_setting_words(text: str) -> tuple[str, ...]:
+    """Name the outdoor-setting words a card or description carries, if any.
+
+    Only a corroborator: it never decides a finding on its own, and the wiring uses it to
+    avoid opening previews for dropped moments no place finding could ever reach.
+    """
+    lowered = text.lower()
+    return tuple(word for word in OUTDOOR_SETTING_WORDS if word in lowered)
+
+
+def _rejected_moment_rows(
+    rejected_moments: Sequence[dict[str, Any]],
+    *,
+    by_alias: dict[str, FineCutCandidate],
+    current_set: set[str],
+) -> dict[str, dict[str, Any]]:
+    """Index the run record's rejected-moment rows against the pool that carries them.
+
+    A rejected moment is not in any reservoir, so the caller supplies what the record
+    still holds for it: the fused card's summary and hedged `people` field, the rejection
+    reason, and the aliases of its candidate rows. Those aliases must be in the reopened
+    pool, or the finding they produce could not be grounded downstream.
+    """
+    rows: dict[str, dict[str, Any]] = {}
+    for row in rejected_moments:
+        moment_id = row.get("moment_id") if isinstance(row, dict) else None
+        aliases = row.get("asset_ids") if isinstance(row, dict) else None
+        if (
+            not isinstance(moment_id, str)
+            or moment_id in rows
+            or not isinstance(row, dict)
+            or not isinstance(row.get("summary"), str)
+            or not isinstance(aliases, list)
+            or not aliases
+            or len(set(aliases)) != len(aliases)
+            or any(not isinstance(alias, str) or alias not in by_alias for alias in aliases)
+            or {by_alias[alias].moment_id for alias in aliases} != {moment_id}
+            or not all(by_alias[alias].proposed_from_rejected for alias in aliases)
+            or set(aliases) & current_set
+        ):
+            raise ValueError("rejected moment rows are not grounded")
+        rows[moment_id] = row
+    return rows
+
+
+def _card_reads_people_free(row: dict[str, Any], members: Sequence[FineCutCandidate]) -> bool:
+    """Whether a rejected moment's card hedges people away, or its rows never carry any."""
+    people = row.get("people")
+    if isinstance(people, str) and people.strip():
+        return people.strip().casefold() == _CARD_PEOPLE_HEDGE
+    return not any(candidate.people_context for candidate in members)
+
+
+def _people_free_signal(row: dict[str, Any]) -> str:
+    """Name which structural reading made the card people-free, for the review record."""
+    people = row.get("people")
+    if isinstance(people, str) and people.strip():
+        return "hedged-card-people"
+    return "no-people-context"
+
+
+def _place_without_landscape_finding(
+    occasion: Sequence[FineCutCandidate],
+    *,
+    current_set: set[str],
+    rejected_rows: dict[str, dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Report a people-only occasion whose rejected material still holds its place."""
+    kept = [candidate for candidate in occasion if candidate.alias in current_set]
+    if (
+        not kept
+        or not all(candidate.people_context for candidate in kept)
+        or any(outdoor_setting_words(candidate.description) for candidate in kept)
+    ):
+        return None
+    members_by_moment: dict[str, list[FineCutCandidate]] = {}
+    for candidate in occasion:
+        members_by_moment.setdefault(candidate.moment_id, []).append(candidate)
+    # Structural first: the card has to be people-free before any word is read. The words
+    # then only corroborate that the people-free moment is an outdoor setting.
+    people_free = [
+        (moment_id, row, members_by_moment[moment_id])
+        for moment_id in members_by_moment
+        if (row := rejected_rows.get(moment_id)) is not None
+        and _card_reads_people_free(row, members_by_moment[moment_id])
+    ]
+    outdoors = [
+        (moment_id, row, words, members)
+        for moment_id, row, members in people_free
+        if (words := outdoor_setting_words(row["summary"]))
+    ]
+    if not outdoors:
+        return None
+    moment_id, row, words, members = outdoors[0]
+    # No reservoir opened for this moment, so the only merits on record are the star and
+    # the media ladder the wall row already carries.
+    best = min(
+        members,
+        key=lambda candidate: (
+            not candidate.favourite,
+            -_media_priority(candidate),
+            candidate.taken_at,
+            candidate.alias,
+        ),
+    )
+    days = sorted({candidate.taken_at.date() for candidate in occasion})
+    return {
+        "focus_kind": "place_without_landscape",
+        "moment_ids": [moment_id],
+        "asset_ids": [candidate.alias for candidate in members],
+        "current_asset_ids": [],
+        "selection_limit": _FINAL_MOMENT_ASSET_CAP,
+        "owner_evidence": {
+            "occasion_days": [day.isoformat() for day in days],
+            "people_dense_wall_assets": len(kept),
+            "proposed_asset_id": best.alias,
+            "people_free_signal": _people_free_signal(row),
+            "corroborating_outdoor_words": list(words),
+            "card_summary": row["summary"],
+            "rejection_reason": row.get("reason"),
+            "favourite_assets": sum(candidate.favourite for candidate in members),
+        },
+        "observation": (
+            f"Every final asset of this occasion shows people, while the moment cut rejected "
+            f"{moment_id} of the same days, whose card reads as open place and names no one."
+        ),
+        "review_question": (
+            "Does this rejected place frame carry the setting of an occasion the cut shows "
+            "only as faces, rather than merely filling unused duration?"
+        ),
+    }
+
+
+def _place_without_landscape(
+    candidates: Sequence[FineCutCandidate],
+    *,
+    chapter_by_moment: dict[str, str],
+    current_set: set[str],
+    rejected_rows: dict[str, dict[str, Any]],
+) -> tuple[tuple[int, datetime, str, dict[str, Any]], ...]:
+    """Rank the occasions the wall reaches only through faces, bounded per run."""
+    findings = [
+        (occasion, finding)
+        for occasion in _occasion_day_runs(candidates, chapter_by_moment=chapter_by_moment)
+        if (
+            finding := _place_without_landscape_finding(
+                occasion,
+                current_set=current_set,
+                rejected_rows=rejected_rows,
+            )
+        )
+        is not None
+    ]
+    return tuple(
+        (2, occasion[0].taken_at, str(finding["moment_ids"][0]), finding)
+        for occasion, finding in findings[:_PLACE_WITHOUT_LANDSCAPE_MAX_FINDINGS]
+    )
+
+
 def _per_asset_pool_findings(
     by_moment: dict[str, list[FineCutCandidate]],
     *,
     current_set: set[str],
 ) -> tuple[tuple[int, datetime, str, dict[str, Any]], ...]:
-    """Rank the two checks the per-moment loop cannot see: dark final frames and absent people."""
+    """Rank the checks the per-moment loop cannot see: dark final frames, absent people, and
+    single-asset moments whose kept frame reads as a document."""
     dark = sorted(
         (
             finding
@@ -1245,9 +1646,19 @@ def _per_asset_pool_findings(
             finding["moment_ids"][0],
         ),
     )
+    documents = sorted(
+        (
+            finding
+            for moment in by_moment.values()
+            if (finding := _document_artifact_finding(moment, current_set=current_set))
+            is not None
+        ),
+        key=lambda finding: finding["moment_ids"][0],
+    )
     findings = (
         *((0, finding) for finding in dark[:_DARK_FRAME_MAX_FINDINGS]),
         *((1, finding) for finding in _person_coverage(by_moment, current_set=current_set)),
+        *((2, finding) for finding in documents[:_DOCUMENT_ARTIFACT_MAX_FINDINGS]),
     )
     return tuple(
         (
@@ -1266,10 +1677,11 @@ def runtime_final_pool_findings(
     current_aliases: Sequence[str],
     cap_removed_aliases: Sequence[str] = (),
     chapter_readings: Sequence[dict[str, Any]] = (),
+    rejected_moments: Sequence[dict[str, Any]] = (),
     max_findings: int = _VISUAL_POOL_MAX_FINDINGS,
 ) -> tuple[dict[str, Any], ...]:
     """Choose bounded pool checks from cap projections, dark moments and trip days, dark
-    final frames, and people the cut never shows."""
+    final frames, people the cut never shows, and occasions it shows only as faces."""
     by_alias = {candidate.alias: candidate for candidate in candidates}
     current = tuple(dict.fromkeys(current_aliases))
     cap_removed = tuple(dict.fromkeys(cap_removed_aliases))
@@ -1285,13 +1697,23 @@ def runtime_final_pool_findings(
         raise ValueError("runtime final pool findings are not grounded")
     current_set = set(current)
     cap_removed_set = set(cap_removed) - current_set
+    rejected_rows = _rejected_moment_rows(
+        rejected_moments,
+        by_alias=by_alias,
+        current_set=current_set,
+    )
+    # Every check below reasons about what the moment cut RETAINED; a rejected moment
+    # only ever reaches the place check, which knows it never opened a reservoir.
+    reservoir = [
+        candidate for candidate in candidates if candidate.moment_id not in rejected_rows
+    ]
     current_episodes = {
         by_alias[alias].episode_id
         for alias in current
         if by_alias[alias].episode_id is not None
     }
     by_moment: dict[str, list[FineCutCandidate]] = {}
-    for candidate in candidates:
+    for candidate in reservoir:
         by_moment.setdefault(candidate.moment_id, []).append(candidate)
 
     ranked: list[tuple[int, datetime, str, dict[str, Any]]] = []
@@ -1362,10 +1784,19 @@ def runtime_final_pool_findings(
         for reading in chapter_readings
         for moment_id in reading.get("moment_ids", ())
     }
-    for occasion in _occasion_day_runs(candidates, chapter_by_moment=chapter_by_moment):
+    for occasion in _occasion_day_runs(reservoir, chapter_by_moment=chapter_by_moment):
         coverage = _occasion_day_coverage(occasion, current_set=current_set)
         if coverage is not None:
             ranked.append((0, occasion[0].taken_at, occasion[0].moment_id, coverage))
+    if rejected_rows:
+        ranked.extend(
+            _place_without_landscape(
+                candidates,
+                chapter_by_moment=chapter_by_moment,
+                current_set=current_set,
+                rejected_rows=rejected_rows,
+            )
+        )
     ranked.extend(_per_asset_pool_findings(by_moment, current_set=current_set))
     ranked.sort(key=lambda row: row[:3])
     return tuple(
@@ -1435,7 +1866,9 @@ def visual_final_pool_groups(
             focus_aliases = [candidate.alias for candidate in candidates if candidate.alias in raw_aliases]
             focus_current = [alias for alias in focus_aliases if alias in current]
             alternatives = [alias for alias in focus_aliases if alias not in current]
-            if not alternatives:
+            # A reject-only focus (document_artifact) has no lived sibling to offer instead --
+            # it challenges a kept asset on its own, so it never needs an alternative to ground.
+            if not alternatives and not focus.get("reject_only"):
                 continue
             readings = {
                 reading_by_moment[moment_id]["chapter_id"]: reading_by_moment[moment_id]

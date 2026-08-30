@@ -182,3 +182,28 @@ def test_final_refinement_motion_falls_back_to_the_known_path_when_both_fetchers
     )
 
     assert path == known
+
+
+def test_sscd_model_flag_threads_into_a_non_none_copy_embedder(monkeypatch) -> None:
+    """--sscd-model has to survive the hop from args into the duplicate-review embedder."""
+    sentinel = object()
+
+    # WHY: torch.jit.load and the checkpoint file are the external boundary;
+    # this test pins the args-to-embedder hop, not the loader itself.
+    monkeypatch.setattr(matrix, "_sscd_copy_embedder", lambda _model_path: sentinel)
+    args = SimpleNamespace(sscd_model=Path("/fake/sscd_disc_mixup.torchscript.pt"))
+
+    assert matrix._resolve_copy_embedder(args) is sentinel
+
+
+def test_missing_sscd_model_flag_resolves_to_none_without_loading(monkeypatch) -> None:
+    """No --sscd-model must mean no attempt to load a checkpoint at all."""
+
+    def _fail(model_path: Path):
+        raise AssertionError("must not build an embedder when --sscd-model is unset")
+
+    # WHY: proves the None short-circuit never reaches the torch.jit.load boundary.
+    monkeypatch.setattr(matrix, "_sscd_copy_embedder", _fail)
+    args = SimpleNamespace(sscd_model=None)
+
+    assert matrix._resolve_copy_embedder(args) is None
