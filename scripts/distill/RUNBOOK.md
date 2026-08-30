@@ -263,7 +263,9 @@ uv run --with pyarrow scripts/distill/teacher_label.py \
 Keys come from environment variables **by name**. Never inline a key, never echo one.
 
 ```bash
-# melious (OpenAI wire) — set MELIOUS_AI_BASE_URL and MELIOUS_AI_KEY in your shell first
+# melious (OpenAI wire) — set MELIOUS_AI_BASE_URL and MELIOUS_AI_KEY in your shell first.
+# They are NOT in the ambient shell: source them from ~/.immich-memories-matrix/.env
+# (`set -a; source ~/.immich-memories-matrix/.env; set +a`) — never print their values.
 uv run --with pyarrow scripts/distill/teacher_label.py \
   --split validation --limit 200 --no-canaries --concurrency 4 \
   --provider melious --model qwen3-vl-235b-a22b-instruct --label-tag melious
