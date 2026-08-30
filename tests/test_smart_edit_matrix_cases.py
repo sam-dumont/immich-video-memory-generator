@@ -12,6 +12,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
+import probe_selection_final_cut as final_cut_contract
 import probe_smart_edit_matrix as matrix
 
 from immich_memories.config_loader import Config
@@ -207,3 +208,265 @@ def test_missing_sscd_model_flag_resolves_to_none_without_loading(monkeypatch) -
     args = SimpleNamespace(sscd_model=None)
 
     assert matrix._resolve_copy_embedder(args) is None
+
+
+def _floor_wall_rows() -> tuple[object, ...]:
+    return tuple(
+        final_cut_contract.FineCutCandidate(
+            alias=f"A{index:03d}",
+            asset_id=f"private-{index}",
+            moment_id=moment,
+            taken_at=datetime(2007, 8, 6, 12, index, tzinfo=UTC),
+            media_kind="photo",
+            favourite=False,
+            description=f"Visible scene {index}",
+        )
+        for index, moment in ((1, "M001"), (2, "M002"), (3, "M002"))
+    )
+
+
+def test_the_floor_waives_the_aliases_a_correctness_pass_removed() -> None:
+    # Both correctness classes at once: a same-picture dedup names production asset ids,
+    # the anti-resurrection guard names wall aliases.
+    wall = _floor_wall_rows()
+    cut = {
+        "keep": [{"asset_id": "A001", "reason": "The model chose this beat."}],
+        "duplicate_review": {"absorbed": [{"asset_id": "private-2", "kept_asset_id": "private-1"}]},
+        "deliberation": {
+            "iterations": [
+                {"calls": {"visual_pool": {"skipped_review_cut_assets": ["A003"]}}},
+                {"calls": {"reconsideration_review_cut": {"skipped_review_cut_assets": ["A003"]}}},
+            ]
+        },
+    }
+
+    assert matrix._correctness_cut_aliases(cut, wall=wall) == ("A002", "A003")
+
+
+def _concert_wall() -> tuple[object, ...]:
+    # Three concerts on three occasions. A004 shares A001's evening; A002 and A003 do not.
+    days = ((1, 7, 12), (2, 9, 26), (3, 10, 11), (4, 7, 12))
+    return tuple(
+        final_cut_contract.FineCutCandidate(
+            alias=f"A{index:03d}",
+            asset_id=f"private-{index}",
+            moment_id=f"M{index:03d}",
+            taken_at=datetime(2007, month, day, 21, index, tzinfo=UTC),
+            media_kind="photo",
+            favourite=False,
+            description="A band on a lit stage",
+        )
+        for index, month, day in days
+    )
+
+
+def test_a_redundancy_cut_against_another_occasion_is_refused() -> None:
+    proposals = [
+        {
+            "change_id": "C001",
+            "add_asset_ids": [],
+            "remove_asset_ids": ["A001"],
+            "reason": "A001 is redundant; A002 already shows the same band on the same stage.",
+        }
+    ]
+
+    eligible, decisions, refused = matrix._filter_cross_occasion_redundancy_proposals(
+        proposals,
+        wall=_concert_wall(),
+    )
+
+    assert eligible == []
+    assert decisions == [
+        {"change_id": "C001", "verdict": "reject", "reason": "cross-occasion-similarity"}
+    ]
+    assert refused == ["A001"]
+
+
+def test_a_redundancy_cut_inside_one_occasion_still_stands() -> None:
+    proposals = [
+        {
+            "change_id": "C001",
+            "add_asset_ids": [],
+            "remove_asset_ids": ["A001"],
+            "reason": "A001 is redundant; A004 already covers this evening, and A002 echoes it.",
+        }
+    ]
+
+    eligible, decisions, refused = matrix._filter_cross_occasion_redundancy_proposals(
+        proposals,
+        wall=_concert_wall(),
+    )
+
+    assert eligible == proposals
+    assert (decisions, refused) == ([], [])
+
+
+def test_a_cut_on_any_ground_other_than_sameness_is_never_refused_for_its_occasion() -> None:
+    proposals = [
+        {
+            "change_id": "C001",
+            "add_asset_ids": [],
+            "remove_asset_ids": ["A001"],
+            "reason": "A001 is out of focus and unreadable next to A002.",
+        }
+    ]
+
+    eligible, _decisions, refused = matrix._filter_cross_occasion_redundancy_proposals(
+        proposals,
+        wall=_concert_wall(),
+    )
+
+    assert (eligible, refused) == (proposals, [])
+
+
+def test_a_redundancy_cut_that_cites_no_counterpart_is_left_for_the_next_pass() -> None:
+    # Nothing is cited, so nothing proves the comparison crossed an occasion.
+    proposals = [
+        {
+            "change_id": "C001",
+            "add_asset_ids": [],
+            "remove_asset_ids": ["A001"],
+            "reason": "Redundant stage view.",
+        }
+    ]
+
+    eligible, _decisions, refused = matrix._filter_cross_occasion_redundancy_proposals(
+        proposals,
+        wall=_concert_wall(),
+    )
+
+    assert (eligible, refused) == (proposals, [])
+
+
+def test_a_classified_redundancy_cut_is_read_from_its_classification_not_its_prose() -> None:
+    proposals = [
+        {
+            "change_id": "C001",
+            "add_asset_ids": [],
+            "remove_asset_ids": ["A001"],
+            "classification": "duplicate-beat",
+            "reason": "A002 carries the stage far better than this frame does.",
+        }
+    ]
+
+    eligible, decisions, refused = matrix._filter_cross_occasion_redundancy_proposals(
+        proposals,
+        wall=_concert_wall(),
+    )
+
+    assert (eligible, refused) == ([], ["A001"])
+    assert decisions[0]["reason"] == "cross-occasion-similarity"
+
+
+def _reservoir(group_id: str, *, asset_id: str, taken_at: datetime) -> SimpleNamespace:
+    return SimpleNamespace(
+        moment_id=group_id,
+        candidates=(
+            SimpleNamespace(
+                asset_id=asset_id,
+                taken_at=taken_at,
+                media_kind="photo",
+                favourite=False,
+                grounded_annotations=(),
+                source=SimpleNamespace(people=()),
+            ),
+        ),
+    )
+
+
+def _kept_face_row(index: int) -> object:
+    return final_cut_contract.FineCutCandidate(
+        alias=f"A{index:03d}",
+        asset_id=f"private-{index}",
+        moment_id="M001",
+        taken_at=datetime(2007, 2, 20, 18, index, tzinfo=UTC),
+        media_kind="photo",
+        favourite=False,
+        description="Two friends laughing across a table",
+        people_context=("P01:tier=inner;relationship=confirmed;source=owner",),
+    )
+
+
+# Exactly the rows the run record holds for a moment the chapter cut dropped: the fused card
+# carries a moment_id, its production group_id and one summary -- and no people field at all.
+_RUN_SHAPED_REJECTED_CARDS = (
+    {
+        "moment_id": "M008",
+        "group_id": "group-8",
+        "summary": (
+            "A rectangular two-layer cleaning sponge with a dark abrasive top layer, "
+            "resting on a plain light-colored surface."
+        ),
+    },
+    {
+        "moment_id": "M009",
+        "group_id": "group-9",
+        "summary": (
+            "An empty snow-covered hillside under grey cloud, and the valley below "
+            "open to the horizon."
+        ),
+    },
+)
+
+
+def _run_shaped_place_offer() -> tuple[tuple[object, ...], tuple[dict[str, object], ...]]:
+    """Rebuild the live offer chain: reservoirs plus record cards, into pool rows and cards."""
+    reservoirs = (
+        _reservoir("group-8", asset_id="private-8", taken_at=datetime(2007, 2, 20, 12, tzinfo=UTC)),
+        _reservoir("group-9", asset_id="private-9", taken_at=datetime(2007, 2, 21, 12, tzinfo=UTC)),
+    )
+    offers = matrix._rejected_place_candidates(
+        reservoirs,
+        cards=_RUN_SHAPED_REJECTED_CARDS,
+        alias_by_group={"group-8": "M008", "group-9": "M009"},
+        token_by_name={},
+        facts={},
+    )
+    summary_by_moment = {card["moment_id"]: card["summary"] for card in _RUN_SHAPED_REJECTED_CARDS}
+    cards = tuple(
+        {
+            "moment_id": moment_id,
+            "summary": summary_by_moment[moment_id],
+            "reason": None,
+            "asset_ids": [row.alias for row in offers if row.moment_id == moment_id],
+        }
+        for moment_id in dict.fromkeys(row.moment_id for row in offers)
+    )
+    return offers, cards
+
+
+def test_the_run_record_shape_offers_its_unkept_place_rows_to_the_review() -> None:
+    offers, cards = _run_shaped_place_offer()
+
+    assert [(row.alias, row.moment_id) for row in offers] == [("X001", "M008"), ("X002", "M009")]
+    assert all(row.proposed_from_rejected for row in offers)
+    assert [card["asset_ids"] for card in cards] == [["X001"], ["X002"]]
+
+
+def test_a_place_finding_offers_the_best_corroborated_moment_not_the_first_of_the_occasion() -> (
+    None
+):
+    # The v31 year offered one tile for the whole memory: a kitchen sponge, whose card said
+    # "a plain light-colored surface" while a snow-covered hillside sat later in the occasion.
+    offers, cards = _run_shaped_place_offer()
+    pool = (_kept_face_row(1), _kept_face_row(2), *offers)
+
+    findings = final_cut_contract.runtime_final_pool_findings(
+        pool,
+        current_aliases=("A001", "A002"),
+        chapter_readings=(
+            {"chapter_id": "C002", "label": "2007-02", "moment_ids": ["M001", "M008", "M009"]},
+        ),
+        rejected_moments=cards,
+    )
+
+    assert [row["focus_kind"] for row in findings] == ["place_without_landscape"]
+    assert findings[0]["moment_ids"] == ["M009"]
+    assert findings[0]["asset_ids"] == ["X002"]
+    assert findings[0]["owner_evidence"]["people_free_signal"] == "no-people-context"
+    assert findings[0]["owner_evidence"]["corroborating_outdoor_words"] == [
+        "hillside",
+        "horizon",
+        "snow-covered",
+        "valley",
+    ]

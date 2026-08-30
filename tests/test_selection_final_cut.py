@@ -3881,6 +3881,141 @@ def test_the_day_ceiling_runs_before_the_closer_swap_that_reads_the_last_row() -
     assert [row.alias for row in marked if row.closes_memory] == ["A006"]
 
 
+def _floor_wall() -> tuple[FineCutCandidate, ...]:
+    # Three moments the chapter cut kept, on one day. The trim stack left only M001 standing.
+    return (
+        replace(_candidate(1, "M001"), favourite=False, luminance=120),
+        replace(_candidate(2, "M002"), favourite=False, luminance=40),
+        replace(_candidate(3, "M002"), favourite=False, luminance=180),
+        replace(_candidate(4, "M003"), favourite=True, luminance=50),
+        replace(_candidate(5, "M003"), favourite=False, luminance=200),
+    )
+
+
+def _floor_cut(*cut_rows: tuple[str, str]) -> dict[str, Any]:
+    return {
+        "keep": [{"asset_id": "A001", "reason": "The model chose this beat."}],
+        "required_asset_ids": [],
+        "initial_global_review": {
+            "status": "approved",
+            "keep": ["A001"],
+            "cut": [{"asset_id": alias, "reason": reason} for alias, reason in cut_rows],
+        },
+    }
+
+
+def test_every_moment_the_chapter_cut_kept_lands_an_asset_on_the_final_wall() -> None:
+    floored = final_cut_contract.apply_kept_moment_floor(
+        _floor_wall(),
+        _floor_cut(("A003", "Redundant with A001."), ("A004", "A minor texture beat.")),
+        kept_moment_ids=("M001", "M002", "M003"),
+    )
+
+    assert [row["asset_id"] for row in floored["keep"]] == ["A001", "A003", "A004"]
+    assert [row["moment_id"] for row in floored["moment_floor"]["restored"]] == ["M002", "M003"]
+    assert floored["moment_floor"]["waived"] == []
+
+
+def test_the_floor_prefers_a_star_then_the_cut_s_own_pick_then_the_brightest_frame() -> None:
+    floored = final_cut_contract.apply_kept_moment_floor(
+        _floor_wall(),
+        _floor_cut(("A003", "Redundant with A001.")),
+        kept_moment_ids=("M001", "M002", "M003"),
+    )
+    basis = {
+        row["moment_id"]: (row["asset_id"], row["basis"])
+        for row in floored["moment_floor"]["restored"]
+    }
+
+    # M002 lost the frame the asset cut had chosen; M003 was never in the cut, so its star wins.
+    assert basis["M002"] == ("A003", "original-pick")
+    assert basis["M003"] == ("A004", "favourite")
+
+
+def test_the_floor_falls_back_to_the_brightest_frame_of_a_moment_no_pass_ever_chose() -> None:
+    wall = tuple(replace(row, favourite=False) for row in _floor_wall())
+
+    floored = final_cut_contract.apply_kept_moment_floor(
+        wall,
+        _floor_cut(),
+        kept_moment_ids=("M001", "M002", "M003"),
+    )
+    basis = {
+        row["moment_id"]: (row["asset_id"], row["basis"])
+        for row in floored["moment_floor"]["restored"]
+    }
+
+    assert basis["M002"] == ("A003", "brightest")
+    assert basis["M003"] == ("A005", "brightest")
+
+
+def test_the_floor_names_the_trim_pass_that_erased_each_moment_it_restores() -> None:
+    wall = _floor_wall()
+    cut = _floor_cut(("A004", "A minor texture beat."))
+    cut["day_ceiling"] = {"max_per_day": 3, "removed_asset_ids": ["A003"], "removed": []}
+
+    floored = final_cut_contract.apply_kept_moment_floor(
+        wall,
+        cut,
+        kept_moment_ids=("M001", "M002", "M003"),
+    )
+    erased = {row["moment_id"]: row["erased_by"] for row in floored["moment_floor"]["restored"]}
+
+    assert erased == {"M002": "day_ceiling", "M003": "initial_global_review"}
+
+
+def test_a_moment_whose_every_asset_a_correctness_pass_removed_stays_erased() -> None:
+    floored = final_cut_contract.apply_kept_moment_floor(
+        _floor_wall(),
+        _floor_cut(("A003", "Redundant with A001.")),
+        kept_moment_ids=("M001", "M002", "M003"),
+        waived_aliases=("A004", "A005"),
+    )
+
+    assert [row["asset_id"] for row in floored["keep"]] == ["A001", "A003"]
+    assert [row["moment_id"] for row in floored["moment_floor"]["restored"]] == ["M002"]
+    assert floored["moment_floor"]["waived"][0]["moment_id"] == "M003"
+    assert floored["moment_floor"]["waived"][0]["asset_ids"] == ["A004", "A005"]
+
+
+def test_the_day_ceiling_yields_to_the_floor_for_one_asset_per_erased_moment() -> None:
+    wall = (*_floor_wall(), replace(_candidate(6, "M001"), favourite=False, luminance=110))
+    cut = _floor_cut(("A003", "Redundant with A001."), ("A004", "A minor texture beat."))
+    cut["keep"].append({"asset_id": "A006", "reason": "The model chose this beat too."})
+
+    floored = final_cut_contract.apply_kept_moment_floor(
+        wall,
+        cut,
+        kept_moment_ids=("M001", "M002", "M003"),
+    )
+    yielded = floored["moment_floor"]["ceiling_yielded"]
+
+    assert [row["asset_id"] for row in floored["keep"]] == ["A001", "A003", "A004", "A006"]
+    assert [(row["moment_id"], row["held"]) for row in yielded] == [("M002", 4), ("M003", 4)]
+    assert {row["day"] for row in yielded} == {"2025-01-01"}
+
+
+def test_the_floor_leaves_a_wall_that_already_represents_every_kept_moment_alone() -> None:
+    wall = _floor_wall()
+    cut = _floor_cut()
+    cut["keep"].extend(
+        [
+            {"asset_id": "A002", "reason": "The model chose this beat."},
+            {"asset_id": "A005", "reason": "The model chose this beat."},
+        ]
+    )
+
+    floored = final_cut_contract.apply_kept_moment_floor(
+        wall,
+        cut,
+        kept_moment_ids=("M001", "M002", "M003"),
+    )
+
+    assert [row["asset_id"] for row in floored["keep"]] == ["A001", "A002", "A005"]
+    assert floored["moment_floor"]["restored"] == []
+    assert floored["moment_floor"]["ceiling_yielded"] == []
+
+
 def test_reconsideration_cannot_resurrect_a_review_cut_asset_but_may_use_a_sibling(
     tmp_path: Path,
 ) -> None:

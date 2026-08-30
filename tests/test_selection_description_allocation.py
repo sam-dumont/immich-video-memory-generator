@@ -13,7 +13,9 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
+import numpy as np
 import probe_description_moment_cut as prototype
+import probe_occasion_facts as occasion_facts
 import probe_smart_edit_matrix as matrix
 from probe_description_allocation import build_description_workprint
 from probe_smart_edit_matrix import (
@@ -1977,3 +1979,280 @@ def test_fused_card_banks_the_prompt_hash_and_version_tags_beside_the_card(
     assert provenance["prompt_sha256"] != matrix._fused_card_provenance(
         replace(seen[0], grounded_annotations=())
     )["prompt_sha256"]
+
+
+def _occasion_candidate(
+    asset_id: str,
+    when: datetime,
+    *,
+    favourite: bool,
+    person: str,
+) -> EditorialCandidate:
+    asset = make_asset(asset_id, file_created_at=when)
+    asset.is_favorite = favourite
+    asset.people = [Person(id=f"person-{person}", name=person)]
+    return EditorialCandidate(
+        asset_id=asset.id,
+        taken_at=when,
+        media_kind="photo",
+        live_photo_stitch_member_ids=(),
+        rendering_family_id=None,
+        favourite=favourite,
+        source=asset,
+        proposed_segment=None,
+        shippable_duration=0.0,
+        grounded_annotations=(),
+    )
+
+
+def _occasion_card(
+    alias: str,
+    candidates: tuple[EditorialCandidate, ...],
+) -> prototype.MomentCard:
+    return prototype.MomentCard(
+        prototype.Moment(alias, EditorialGroup(f"group-{alias}", candidates), ()),
+        f"Lived scene {alias}.",
+        None,
+    )
+
+
+def _scene_chapter() -> tuple[tuple[prototype.MomentCard, ...], dict[str, int]]:
+    """One chapter: ten photographed days of changing scenes, then one dense evening weeks later.
+
+    Both runs hold twenty assets and four favourites, so only span, photographed days,
+    moment count, people breadth, and scene diversity can separate them.
+    """
+    cards: list[prototype.MomentCard] = []
+    scene_by_asset: dict[str, int] = {}
+    names = ("Ada", "Bo", "Cy")
+    for day in range(10):
+        start = datetime(2021, 6, 1, 10, tzinfo=UTC) + timedelta(days=day)
+        members = []
+        for index in range(2):
+            candidate = _occasion_candidate(
+                f"long-{day}-{index}",
+                start + timedelta(minutes=index),
+                favourite=day < 4 and index == 0,
+                person=names[day % len(names)],
+            )
+            scene_by_asset[candidate.asset_id] = day
+            members.append(candidate)
+        cards.append(_occasion_card(f"L{day:03d}", tuple(members)))
+    for slot in range(4):
+        start = datetime(2021, 7, 1, 20, tzinfo=UTC) + timedelta(minutes=20 * slot)
+        members = []
+        for index in range(5):
+            candidate = _occasion_candidate(
+                f"dense-{slot}-{index}",
+                start + timedelta(seconds=10 * index),
+                favourite=index == 0,
+                person="Ada",
+            )
+            scene_by_asset[candidate.asset_id] = 10
+            members.append(candidate)
+        cards.append(_occasion_card(f"D{slot:03d}", tuple(members)))
+    return tuple(cards), scene_by_asset
+
+
+def _bank_scene_embeddings(directory: Path, scene_by_asset: dict[str, int]) -> None:
+    asset_ids = sorted(scene_by_asset)
+    basis = np.eye(max(scene_by_asset.values()) + 1, dtype=np.float32)
+    np.save(directory / "embeddings.npy", np.stack([basis[scene_by_asset[a]] for a in asset_ids]))
+    (directory / "ids.json").write_text(json.dumps(asset_ids))
+
+
+def test_occasion_facts_separate_a_long_varied_run_from_one_equally_dense_day(
+    monkeypatch, tmp_path: Path
+) -> None:
+    cards, scene_by_asset = _scene_chapter()
+    _bank_scene_embeddings(tmp_path, scene_by_asset)
+    monkeypatch.setenv("PAIRHEAD_MATRIX_DIR", str(tmp_path))
+
+    rows = occasion_facts.chapter_occasions(cards)
+
+    assert [row["first_day"] for row in rows] == ["2021-06-01", "2021-07-01"]
+    assert [row["last_day"] for row in rows] == ["2021-06-10", "2021-07-01"]
+    assert [row["span_days"] for row in rows] == [10, 1]
+    assert [row["photographed_days"] for row in rows] == [10, 1]
+    assert [row["moments"] for row in rows] == [10, 4]
+    assert [row["assets"] for row in rows] == [20, 20]
+    assert [row["favourites"] for row in rows] == [4, 4]
+    assert [row["people_breadth"] for row in rows] == [3, 1]
+    assert [row["scene_diversity"] for row in rows] == [
+        "10 clusters/100% embedded",
+        "1 clusters/100% embedded",
+    ]
+
+
+def _occasion_block_rows(prompt: str) -> Any:
+    return json.loads(prompt.split("OCCASION FACTS\n", 1)[1].splitlines()[0])
+
+
+def _plain_reading(thesis_text: str) -> dict[str, Any]:
+    return {
+        "thesis": thesis_text,
+        "sustained_threads": [],
+        "turning_points": [],
+        "ordinary_texture": [],
+    }
+
+
+def test_both_editorial_prompts_carry_the_occasion_rows_and_stay_parseable(
+    monkeypatch, tmp_path: Path
+) -> None:
+    cards, scene_by_asset = _scene_chapter()
+    _bank_scene_embeddings(tmp_path, scene_by_asset)
+    monkeypatch.setenv("PAIRHEAD_MATRIX_DIR", str(tmp_path))
+    chapters = (
+        matrix.Chapter("C001", "C001", cards[:10]),
+        matrix.Chapter("C002", "C002", cards[10:]),
+    )
+    readings = (
+        (chapters[0], _plain_reading("Days of changing ground.")),
+        (chapters[1], _plain_reading("One evening indoors.")),
+    )
+    prompts: list[str] = []
+
+    async def scripted_call(prompt, **_kwargs):
+        prompts.append(prompt)
+        if "Allocate at most" in prompt:
+            return matrix.TextCall(
+                prompt,
+                json.dumps(
+                    {
+                        "schema_version": matrix.ALLOCATION_SCHEMA,
+                        "allocations": [
+                            {"chapter_id": "C001", "slots": 1, "reason": "The run carries most."},
+                            {"chapter_id": "C002", "slots": 1, "reason": "The evening answers it."},
+                        ],
+                        "overall_reason": "Scarcity split across both runs.",
+                    }
+                ),
+                0.1,
+                False,
+                False,
+            )
+        kept, dropped = ("L000", "L001") if "Lived scene L000." in prompt else ("D000", "D001")
+        return matrix.TextCall(
+            prompt,
+            json.dumps(
+                {
+                    "schema_version": prototype.SELECTION_SCHEMA,
+                    "keep": [{"moment_id": kept, "reason": "It carries the beat."}],
+                    "audit_summary": "One moment earns the scarce slot.",
+                    "comparisons": [
+                        {
+                            "kept_moment_id": kept,
+                            "rejected_moment_id": dropped,
+                            "reason": "The kept scene shows the action on screen.",
+                        }
+                    ],
+                    "overall_reason": "The chapter keeps its defining beat.",
+                }
+            ),
+            0.1,
+            False,
+            False,
+        )
+
+    monkeypatch.setattr(matrix, "_ask_text", scripted_call)
+    selection, _allocation, _calls = asyncio.run(
+        matrix._hierarchical_selection(
+            chapters,
+            readings,
+            case=matrix.Case(
+                key="case",
+                label="A year memory",
+                product="year_in_review",
+                ranges=(),
+                target_seconds=600.0,
+                brief="Make the strongest truthful memory.",
+            ),
+            facts={},
+            thesis=_plain_reading("A year of one long run and one dense evening."),
+            capacity=2,
+            llm_config=SimpleNamespace(),
+            cache_path=tmp_path / "cache.db",
+            concurrency=2,
+            timeout_seconds=30,
+            thinking=False,
+        )
+    )
+
+    allocation_prompt = next(p for p in prompts if "Allocate at most" in p)
+    long_prompt = next(p for p in prompts if "Lived scene L000." in p)
+    dense_prompt = next(p for p in prompts if "Lived scene D000." in p)
+    long_row = occasion_facts.chapter_occasions(cards[:10])[0]
+    dense_row = occasion_facts.chapter_occasions(cards[10:])[0]
+
+    assert _occasion_block_rows(allocation_prompt) == [
+        {"chapter_id": "C001", "occasions": [long_row]},
+        {"chapter_id": "C002", "occasions": [dense_row]},
+    ]
+    assert _occasion_block_rows(long_prompt) == [long_row]
+    assert _occasion_block_rows(dense_prompt) == [dense_row]
+    assert long_prompt.count("MOMENT WALL") == 1
+    assert [row["moment_id"] for row in selection["keep"]] == ["L000", "D000"]
+
+
+def test_both_editorial_prompts_state_the_duration_derived_ideal_asset_count(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("PAIRHEAD_MATRIX_DIR", str(tmp_path))
+    cards, _scene_by_asset = _scene_chapter()
+    chapters = (matrix.Chapter("C001", "C001", cards),)
+    thesis = _plain_reading("One long run and one dense evening.")
+    readings = ((chapters[0], thesis),)
+
+    def rendered(target_seconds: float) -> tuple[str, str]:
+        case = matrix.Case(
+            key="case",
+            label="A memory",
+            product="year_in_review",
+            ranges=(),
+            target_seconds=target_seconds,
+            brief="Make the strongest truthful memory.",
+        )
+        return (
+            matrix._allocation_prompt(case, thesis, readings, 40, {}),
+            matrix._selection_prompt(cards, case=case, facts={}, thesis=thesis, capacity=5),
+        )
+
+    ten_minutes = rendered(600.0)
+    five_minutes = rendered(300.0)
+
+    assert all('"ideal_assets":100' in prompt for prompt in ten_minutes)
+    assert all('"ideal_assets":50' in prompt for prompt in five_minutes)
+
+
+def test_an_unreadable_embedding_bank_omits_scene_diversity_without_failing(
+    monkeypatch, tmp_path: Path
+) -> None:
+    cards, _scene_by_asset = _scene_chapter()
+    monkeypatch.setenv("PAIRHEAD_MATRIX_DIR", str(tmp_path / "never-written"))
+
+    rows = occasion_facts.chapter_occasions(cards)
+
+    assert [row["photographed_days"] for row in rows] == [10, 1]
+    assert [row["assets"] for row in rows] == [20, 20]
+    assert all("scene_diversity" not in row for row in rows)
+
+
+def test_assets_outside_the_bank_are_skipped_and_the_coverage_is_stated(
+    monkeypatch, tmp_path: Path
+) -> None:
+    cards, scene_by_asset = _scene_chapter()
+    banked = {
+        asset_id: scene
+        for asset_id, scene in scene_by_asset.items()
+        if asset_id.startswith("dense-") and asset_id.endswith(("-0", "-1"))
+    }
+    _bank_scene_embeddings(tmp_path, {**banked, "unrelated-asset": 10})
+    monkeypatch.setenv("PAIRHEAD_MATRIX_DIR", str(tmp_path))
+
+    rows = occasion_facts.chapter_occasions(cards)
+
+    assert [row["scene_diversity"] for row in rows] == [
+        "0 clusters/0% embedded",
+        "1 clusters/40% embedded",
+    ]

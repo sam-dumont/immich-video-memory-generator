@@ -705,6 +705,219 @@ def apply_final_day_ceiling(
     return held
 
 
+def _record_asset_ids(record: Any, field: str) -> tuple[str, ...]:
+    """Read one trim pass record's asset-id list, whether it holds aliases or reasoned rows."""
+    rows = record.get(field) if isinstance(record, dict) else None
+    if not isinstance(rows, list):
+        return ()
+    aliases = [row.get("asset_id") if isinstance(row, dict) else row for row in rows]
+    return tuple(alias for alias in aliases if isinstance(alias, str))
+
+
+def _deliberation_removed_aliases(record: Any) -> tuple[str, ...]:
+    rows = record.get("iterations") if isinstance(record, dict) else None
+    if not isinstance(rows, list):
+        return ()
+    return tuple(
+        alias
+        for row in rows
+        if isinstance(row, dict) and isinstance(row.get("removed"), list)
+        for alias in row["removed"]
+        if isinstance(alias, str)
+    )
+
+
+def _erasing_trim_pass(cut: dict[str, Any]) -> dict[str, str]:
+    """Name, per alias, the last trim pass whose own record shows it leaving the cut.
+
+    Only the passes that write a removal record can be attributed. An asset the final asset
+    cut never chose is attributed to nothing, which is itself the answer: no pass decided it.
+    """
+    erased: dict[str, str] = {}
+    for name, field in (
+        ("moment_cap", "removed_asset_ids"),
+        ("day_ceiling", "removed_asset_ids"),
+        ("initial_global_review", "cut"),
+        ("global_review", "cut"),
+    ):
+        for alias in _record_asset_ids(cut.get(name), field):
+            erased[alias] = name
+    closer = cut.get("closer_swap")
+    before = closer.get("before") if isinstance(closer, dict) else None
+    if isinstance(before, dict) and isinstance(before.get("asset_id"), str):
+        erased[before["asset_id"]] = "closer_swap"
+    for alias in _deliberation_removed_aliases(cut.get("deliberation")):
+        erased[alias] = "deliberation"
+    return erased
+
+
+def _floor_restoration(
+    pool: Sequence[FineCutCandidate],
+    *,
+    originally_cut: set[str],
+) -> tuple[FineCutCandidate, str]:
+    """Choose a moment's one representative: star, then the cut's own pick, then exposure."""
+
+    def lit(candidate: FineCutCandidate) -> int:
+        recorded = candidate.luminance or 0
+        return recorded if recorded >= _DARK_FRAME_LUMINANCE else 0
+
+    pick = min(
+        pool,
+        key=lambda candidate: (
+            not candidate.favourite,
+            candidate.alias not in originally_cut,
+            -lit(candidate),
+            candidate.taken_at,
+            candidate.alias,
+        ),
+    )
+    if pick.favourite:
+        return pick, "favourite"
+    if pick.alias in originally_cut:
+        return pick, "original-pick"
+    if (pick.luminance or 0) >= _DARK_FRAME_LUMINANCE:
+        return pick, "brightest"
+    return pick, "earliest"
+
+
+def _floor_keep_rows(
+    cut: dict[str, Any],
+    *,
+    by_alias: dict[str, FineCutCandidate],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    rows = cut.get("keep")
+    if len(by_alias) != len(set(by_alias)) or not isinstance(rows, list):
+        raise ValueError("kept moment floor needs a keep list")
+    aliases = [row.get("asset_id") for row in rows if isinstance(row, dict)]
+    if (
+        len(aliases) != len(rows)
+        or any(not isinstance(alias, str) or alias not in by_alias for alias in aliases)
+        or len(set(aliases)) != len(aliases)
+        or any(not isinstance(row.get("reason"), str) for row in rows)
+    ):
+        raise ValueError("kept moment floor keep rows are not grounded")
+    return rows, aliases
+
+
+def _floor_ceiling_conflicts(
+    restored: Sequence[dict[str, Any]],
+    *,
+    kept_aliases: Sequence[str],
+    by_alias: dict[str, FineCutCandidate],
+    max_per_day: int,
+) -> list[dict[str, Any]]:
+    """Say which restorations push their day past the ceiling that already ran above.
+
+    The ceiling yields: it may shed a day's weakest frame, but it may not be the reason a
+    moment the chapter cut kept shows nothing at all. One asset per erased moment stands.
+    """
+    held_by_day: dict[Any, int] = {}
+    for alias in kept_aliases:
+        day = by_alias[alias].taken_at.date()
+        held_by_day[day] = held_by_day.get(day, 0) + 1
+    return [
+        {
+            "moment_id": row["moment_id"],
+            "asset_id": row["asset_id"],
+            "day": by_alias[row["asset_id"]].taken_at.date().isoformat(),
+            "max_per_day": max_per_day,
+            "held": held_by_day[by_alias[row["asset_id"]].taken_at.date()],
+        }
+        for row in restored
+        if held_by_day[by_alias[row["asset_id"]].taken_at.date()] > max_per_day
+    ]
+
+
+def apply_kept_moment_floor(
+    candidates: Sequence[FineCutCandidate],
+    cut: dict[str, Any],
+    *,
+    kept_moment_ids: Sequence[str],
+    waived_aliases: Sequence[str] = (),
+    max_per_day: int = _FINAL_DAY_ASSET_CEILING,
+) -> dict[str, Any]:
+    """Give back one asset to every moment the chapter cut kept and the trim stack erased.
+
+    The chapter cut is the editorial authority over which moments the film contains: a
+    moment it kept may only leave when a pass cuts the MOMENT and records why. The trim
+    stack below it is reject-only and asset-level, so a moment can vanish from the wall
+    with no moment-level decision written anywhere. Restoration is deterministic and
+    bounded to one asset per erased moment. The two correctness cuts -- an anti-resurrection
+    refusal and a same-picture dedup -- are the only ones that may erase a moment silently,
+    and the caller names their aliases here.
+    """
+    if not isinstance(max_per_day, int) or isinstance(max_per_day, bool) or max_per_day < 1:
+        raise ValueError("kept moment floor day ceiling must be a positive integer")
+    by_alias = {candidate.alias: candidate for candidate in candidates}
+    if len(by_alias) != len(candidates):
+        raise ValueError("kept moment floor aliases must be unique")
+    rows, aliases = _floor_keep_rows(cut, by_alias=by_alias)
+    moments = tuple(dict.fromkeys(str(moment_id) for moment_id in kept_moment_ids))
+    waived = set(waived_aliases)
+    represented = {by_alias[alias].moment_id for alias in aliases}
+    erased_by = _erasing_trim_pass(cut)
+    originally_cut = set(aliases) | set(erased_by)
+    by_moment: dict[str, list[FineCutCandidate]] = {}
+    for candidate in candidates:
+        by_moment.setdefault(candidate.moment_id, []).append(candidate)
+
+    reason_by_alias = {row["asset_id"]: row["reason"] for row in rows}
+    restored: list[dict[str, Any]] = []
+    waived_rows: list[dict[str, Any]] = []
+    for moment_id in moments:
+        members = by_moment.get(moment_id, [])
+        if moment_id in represented or not members:
+            continue
+        pool = [candidate for candidate in members if candidate.alias not in waived]
+        cut_here = [candidate.alias for candidate in members if candidate.alias in erased_by]
+        if not pool:
+            waived_rows.append(
+                {
+                    "moment_id": moment_id,
+                    "asset_ids": [candidate.alias for candidate in members],
+                    "reason": (
+                        "Every asset of this moment was removed by a correctness pass -- an "
+                        "anti-resurrection refusal or a same-picture dedup -- which no floor "
+                        "may undo."
+                    ),
+                }
+            )
+            continue
+        pick, basis = _floor_restoration(pool, originally_cut=originally_cut)
+        restored.append(
+            {
+                "moment_id": moment_id,
+                "asset_id": pick.alias,
+                "erased_by": erased_by[cut_here[0]] if cut_here else "never-selected",
+                "basis": basis,
+            }
+        )
+        reason_by_alias[pick.alias] = (
+            f"The chapter cut kept {moment_id} and the trim stack left it with no asset; "
+            f"this is its {basis} frame."
+        )
+
+    kept = set(aliases) | {row["asset_id"] for row in restored}
+    ordered = [candidate.alias for candidate in candidates if candidate.alias in kept]
+    return {
+        **cut,
+        "keep": [{"asset_id": alias, "reason": reason_by_alias[alias]} for alias in ordered],
+        "moment_floor": {
+            "kept_moments": len(moments),
+            "max_per_day": max_per_day,
+            "restored": restored,
+            "waived": waived_rows,
+            "ceiling_yielded": _floor_ceiling_conflicts(
+                restored,
+                kept_aliases=ordered,
+                by_alias=by_alias,
+                max_per_day=max_per_day,
+            ),
+        },
+    }
+
+
 def final_asset_audit_prompt(
     candidates: Sequence[FineCutCandidate],
     *,
@@ -1562,6 +1775,11 @@ def _place_without_landscape_finding(
     ]
     if not outdoors:
         return None
+    # One corroborating word is one word. "Resting on a plain light-colored surface" made a
+    # kitchen sponge the only place row a whole year offered, while a snow-covered hillside
+    # sat one moment later in the same occasion. Rank on how much of the card reads as open
+    # place, then on how much of the moment is on offer; occasion order only breaks ties.
+    outdoors.sort(key=lambda row: (-len(row[2]), -len(row[3]), row[3][0].taken_at, row[0]))
     moment_id, row, words, members = outdoors[0]
     # No reservoir opened for this moment, so the only merits on record are the star and
     # the media ladder the wall row already carries.

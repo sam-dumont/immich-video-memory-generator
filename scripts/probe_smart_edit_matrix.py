@@ -18,6 +18,7 @@ import io
 import json
 import math
 import os
+import re
 import threading
 import time
 from collections import Counter, defaultdict
@@ -32,6 +33,7 @@ from typing import Any
 import probe_description_moment_cut as prototype
 from PIL import Image, ImageStat
 from probe_description_allocation import DescriptionWorkprint, build_description_workprint
+from probe_occasion_facts import chapter_occasions, occasion_facts_block
 from probe_people_context import PersonFact, load_person_facts
 from probe_selection_final_cut import (
     AUDIT_MAX_TILES_PER_REQUEST,
@@ -45,6 +47,7 @@ from probe_selection_final_cut import (
     apply_final_asset_sequence_review,
     apply_final_day_ceiling,
     apply_final_moment_cap,
+    apply_kept_moment_floor,
     final_asset_audit_prompt,
     final_asset_cut_prompt,
     final_asset_delta_validation_prompt,
@@ -156,6 +159,12 @@ EDITORIAL_WALL_MAX_CHARS = 90_000
 # satisfied; the owner's rule is per occasion. A calendar day is the occasion
 # baseline: it is the coarsest unit the moment wall already carries for free.
 OCCASION_MOMENT_CAP = 2
+# Owner, 2026-08-30: the ideal number of assets is the duration divided by six --
+# ten minutes wants about 100, five minutes about 50 -- and the runtime reduces that
+# only when the material runs out. Less-is-more governs redundancy, not depth: an
+# explicit long request expects breadth. The number is stated as a fact beside the
+# scarcity ceiling, which it does not change.
+SECONDS_PER_IDEAL_ASSET = 6.0
 ALLOCATION_SCHEMA = "description-chapter-allocation-v1"
 FUSED_CARD_PASS_VERSION = "fused-moment-card-v2"  # noqa: S105 - wire identity
 FUSED_CARD_PROMPT_VERSION = "fused-moment-card-prompt-v2"
@@ -1871,7 +1880,13 @@ def _selection_prompt(
         "beats none, drop it; if a lived alternative carries the same thread, substitute that "
         "alternative.\n\nMOMENT WALL\n",
     )
-    return _enrich_wall_prompt(prompt, cards, case=case, facts=facts)
+    prompt = _enrich_wall_prompt(prompt, cards, case=case, facts=facts)
+    blocks = "\n".join(
+        block
+        for block in (_runtime_scale_block(case), occasion_facts_block(chapter_occasions(cards)))
+        if block
+    )
+    return prompt.replace("\nMOMENT WALL\n", f"\n{blocks}\nMOMENT WALL\n")
 
 
 def _local_thesis(
@@ -2363,6 +2378,17 @@ def _read_selection_with_comparison_repair(
     return {**parsed, **repairs}
 
 
+def _runtime_scale_block(case: Case) -> str:
+    """State the run's duration scale as facts. `target_seconds` is the same datum
+    `_capacity` hands `plan_timeline` before it derives the moment ceiling."""
+    scale = {
+        "target_seconds": case.target_seconds,
+        "seconds_per_asset": SECONDS_PER_IDEAL_ASSET,
+        "ideal_assets": round(case.target_seconds / SECONDS_PER_IDEAL_ASSET),
+    }
+    return "RUNTIME SCALE\n" + json.dumps(scale, separators=(",", ":")) + "\n"
+
+
 def _allocation_prompt(
     case: Case,
     thesis: dict[str, Any],
@@ -2379,6 +2405,12 @@ def _allocation_prompt(
         }
         for chapter, reading in readings
     ]
+    occasion_rows = [
+        {"chapter_id": chapter.chapter_id, "occasions": rows}
+        for chapter, _reading in readings
+        if (rows := chapter_occasions(chapter.cards))
+    ]
+    occasions = f"\n{occasion_facts_block(occasion_rows)}" if occasion_rows else ""
     shape = {
         "schema_version": ALLOCATION_SCHEMA,
         "allocations": [{"chapter_id": "C001", "slots": 2, "reason": "why"}],
@@ -2393,6 +2425,7 @@ available_moments. Keep chapter IDs chronological and include every chapter exac
 Before returning JSON, add every `slots` value yourself. If their sum exceeds {capacity}, reduce
 the weakest allocation until the verified total is at most {capacity}.
 
+{_runtime_scale_block(case)}
 RUNTIME MINIMUMS
 {json.dumps(minimum_slots, separators=(",", ":"))}
 These minima are already consumed by graph-grounded lifecycle anchors. Every listed chapter must
@@ -2406,7 +2439,7 @@ GLOBAL THESIS
 
 CHAPTERS
 {json.dumps(chapters, ensure_ascii=False, separators=(",", ":"))}
-
+{occasions}
 Return only one complete JSON object with exactly these keys:
 {json.dumps(shape, separators=(",", ":"))}"""
 
@@ -3974,6 +4007,69 @@ def _filter_review_cut_proposals(
     return eligible, decisions, skipped
 
 
+_REDUNDANCY_REASON_WORDS = ("redundant", "similar", "duplicate", "same-as", "echoes")
+_CITED_ALIAS = re.compile(r"\b[A-Z]\d{3}\b")
+
+
+def _redundancy_shaped(proposal: dict[str, Any]) -> bool:
+    """Whether a removal argues sameness rather than any other editorial ground."""
+    classification = proposal.get("classification")
+    text = (
+        classification
+        if isinstance(classification, str) and classification.strip()
+        else str(proposal.get("reason", ""))
+    )
+    lowered = text.casefold()
+    return any(word in lowered for word in _REDUNDANCY_REASON_WORDS)
+
+
+def _filter_cross_occasion_redundancy_proposals(
+    proposals: Sequence[dict[str, Any]],
+    *,
+    wall: Sequence[FineCutCandidate],
+) -> tuple[list[dict[str, Any]], list[dict[str, str]], list[str]]:
+    """Refuse a redundancy cut whose only cited counterpart belongs to another occasion.
+
+    Three concerts on three occasions are three memories however alike the frames look, so
+    visual similarity across occasions is not redundancy. Proof is required to refuse: a
+    cut that cites nobody, or cites a counterpart of its own day, stands. The model may
+    re-cut the same asset next iteration on any ground other than sameness.
+    """
+    day_by_alias = {candidate.alias: candidate.taken_at.date() for candidate in wall}
+    eligible: list[dict[str, Any]] = []
+    decisions: list[dict[str, str]] = []
+    refused: list[str] = []
+    for proposal in proposals:
+        removed = [
+            alias
+            for alias in proposal.get("remove_asset_ids", ())
+            if isinstance(alias, str) and alias in day_by_alias
+        ]
+        cited = [
+            alias
+            for alias in dict.fromkeys(_CITED_ALIAS.findall(str(proposal.get("reason", ""))))
+            if alias in day_by_alias and alias not in removed
+        ]
+        removed_days = {day_by_alias[alias] for alias in removed}
+        if (
+            not removed
+            or not cited
+            or not _redundancy_shaped(proposal)
+            or removed_days & {day_by_alias[alias] for alias in cited}
+        ):
+            eligible.append(proposal)
+            continue
+        refused.extend(alias for alias in removed if alias not in refused)
+        decisions.append(
+            {
+                "change_id": str(proposal.get("change_id", proposal.get("finding_id"))),
+                "verdict": "reject",
+                "reason": "cross-occasion-similarity",
+            }
+        )
+    return eligible, decisions, refused
+
+
 def _reconsideration_without_review_cuts(
     proposal: dict[str, Any],
     *,
@@ -3986,6 +4082,11 @@ def _reconsideration_without_review_cuts(
         proposal["changes"],
         review_cut_aliases=review_cut_aliases,
     )
+    survivors, occasion_decisions, refused = _filter_cross_occasion_redundancy_proposals(
+        survivors,
+        wall=wall,
+    )
+    decisions = [*decisions, *occasion_decisions]
     if not decisions:
         return proposal, None
     added = {alias for change in survivors for alias in change["add_asset_ids"]}
@@ -3999,7 +4100,11 @@ def _reconsideration_without_review_cuts(
         "removed": [alias for alias in ordered if alias in removed],
         "changes": survivors,
     }
-    return guarded, {"skipped_review_cut_assets": skipped, "decisions": decisions}
+    return guarded, {
+        "skipped_review_cut_assets": skipped,
+        "refused_cross_occasion_assets": refused,
+        "decisions": decisions,
+    }
 
 
 def _ask_visual_final_pool_request(
@@ -4244,6 +4349,7 @@ def _run_visual_final_pool_reconsideration(
         "warnings": warnings,
         "failed_focus": failed_focus,
         "skipped_review_cut_assets": [],
+        "refused_cross_occasion_assets": [],
     }
     if not proposals:
         return stable
@@ -4252,14 +4358,25 @@ def _run_visual_final_pool_reconsideration(
         proposals,
         review_cut_aliases=review_cut_aliases,
     )
-    stable = {**stable, "skipped_review_cut_assets": skipped_review_cut}
+    survivors, occasion_decisions, refused_cross_occasion = (
+        _filter_cross_occasion_redundancy_proposals(survivors, wall=pool)
+    )
+    stable = {
+        **stable,
+        "skipped_review_cut_assets": skipped_review_cut,
+        "refused_cross_occasion_assets": refused_cross_occasion,
+    }
     eligible_proposals, near_duplicate_decisions = _filter_lower_priority_near_duplicate_proposals(
         pool,
         current_aliases=current_aliases,
         proposals=survivors,
         preview_jpeg=preview_jpeg,
     )
-    mechanical_decisions = [*review_cut_decisions, *near_duplicate_decisions]
+    mechanical_decisions = [
+        *review_cut_decisions,
+        *occasion_decisions,
+        *near_duplicate_decisions,
+    ]
     if not eligible_proposals:
         return {
             **stable,
@@ -4474,6 +4591,12 @@ async def _iterative_final_asset_review(
                         "overall_reason": visual_pool.get("overall_reason"),
                         "warnings": visual_pool.get("warnings", ()),
                         "failed_focus": visual_pool.get("failed_focus", ()),
+                        "skipped_review_cut_assets": visual_pool.get(
+                            "skipped_review_cut_assets", ()
+                        ),
+                        "refused_cross_occasion_assets": visual_pool.get(
+                            "refused_cross_occasion_assets", ()
+                        ),
                         "global_envelope_repaired": visual_pool.get("repaired_envelope", False),
                     }
                     if visual_pool.get("verdict") == "revise":
@@ -4876,6 +4999,47 @@ def _sscd_copy_embedder(model_path: Path) -> CopyEmbedder:
 def _resolve_copy_embedder(args: argparse.Namespace) -> CopyEmbedder | None:
     """The one hop from --sscd-model to a usable embedder, isolated so it can be pinned."""
     return _sscd_copy_embedder(args.sscd_model) if args.sscd_model else None
+
+
+def _skipped_review_cut_aliases(deliberation: Any) -> tuple[str, ...]:
+    """Read the aliases the anti-resurrection guard refused, from both deliberation arms."""
+    rows = deliberation.get("iterations") if isinstance(deliberation, dict) else None
+    if not isinstance(rows, list):
+        return ()
+    return tuple(
+        alias
+        for row in rows
+        if isinstance(row, dict) and isinstance(row.get("calls"), dict)
+        for arm in ("visual_pool", "reconsideration_review_cut")
+        if isinstance(row["calls"].get(arm), dict)
+        for alias in row["calls"][arm].get("skipped_review_cut_assets", ())
+        if isinstance(alias, str)
+    )
+
+
+def _correctness_cut_aliases(
+    cut: dict[str, Any],
+    *,
+    wall: Sequence[FineCutCandidate],
+) -> tuple[str, ...]:
+    """Name the wall rows the moment floor may never restore.
+
+    Two cuts are about correctness rather than taste: a same-picture dedup folded the row
+    into a frame of the same instant already on the wall, and the anti-resurrection guard
+    refused to re-add a row the whole-sequence review had cut in this run. A moment whose
+    every row is one of these stays erased.
+    """
+    alias_by_asset = {candidate.asset_id: candidate.alias for candidate in wall}
+    absorbed = {
+        alias_by_asset[row["asset_id"]]
+        for key in ("duplicate_review", "post_deliberation_duplicate_review")
+        if isinstance(cut.get(key), dict)
+        for row in cut[key].get("absorbed", ())
+        if isinstance(row, dict) and row.get("asset_id") in alias_by_asset
+    }
+    refused = set(_skipped_review_cut_aliases(cut.get("deliberation")))
+    waived = absorbed | refused
+    return tuple(candidate.alias for candidate in wall if candidate.alias in waived)
 
 
 def _apply_final_duplicate_review(
@@ -5498,6 +5662,22 @@ def _run_final_refinement(
         if review is not None
     )
 
+    # Last of all: the chapter cut is the editorial authority over which moments the film
+    # contains, and every pass above here is reject-only and asset-level. A moment it kept
+    # that reached this line with nothing left was never decided against -- it was subtracted.
+    cut = apply_kept_moment_floor(
+        wall,
+        cut,
+        kept_moment_ids=[
+            str(row["moment_id"])
+            for row in text_result["selection"]["keep"]
+            if isinstance(row, dict) and isinstance(row.get("moment_id"), str)
+        ],
+        waived_aliases=_correctness_cut_aliases(cut, wall=wall),
+    )
+    selected_aliases = {row["asset_id"] for row in cut["keep"]}
+    wall = mark_closing_candidate(wall, kept_aliases=tuple(sorted(selected_aliases)))
+
     selected_moments = {
         candidate.moment_id for candidate in wall if candidate.alias in selected_aliases
     }
@@ -5563,6 +5743,10 @@ def _run_final_refinement(
             ),
             "selected_assets": len(selected_aliases),
             "represented_moments": len(selected_moments),
+            "kept_moments": cut["moment_floor"]["kept_moments"],
+            "moment_floor_restored": len(cut["moment_floor"]["restored"]),
+            "moment_floor_waived": len(cut["moment_floor"]["waived"]),
+            "moment_floor_ceiling_yielded": len(cut["moment_floor"]["ceiling_yielded"]),
             "required_assets": len(required_aliases),
             "description_cache_hits": sum(
                 item.provenance.cache_hit for item in refined_descriptions
