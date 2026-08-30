@@ -395,7 +395,7 @@ _RUN_SHAPED_REJECTED_CARDS = (
         "group_id": "group-8",
         "summary": (
             "A rectangular two-layer cleaning sponge with a dark abrasive top layer, "
-            "resting on a plain light-colored surface."
+            "resting on the counter beside the water tap."
         ),
     },
     {
@@ -415,7 +415,7 @@ def _run_shaped_place_offer() -> tuple[tuple[object, ...], tuple[dict[str, objec
         _reservoir("group-8", asset_id="private-8", taken_at=datetime(2007, 2, 20, 12, tzinfo=UTC)),
         _reservoir("group-9", asset_id="private-9", taken_at=datetime(2007, 2, 21, 12, tzinfo=UTC)),
     )
-    offers = matrix._rejected_place_candidates(
+    offers = matrix._rejected_grounding_candidates(
         reservoirs,
         cards=_RUN_SHAPED_REJECTED_CARDS,
         alias_by_group={"group-8": "M008", "group-9": "M009"},
@@ -443,11 +443,12 @@ def test_the_run_record_shape_offers_its_unkept_place_rows_to_the_review() -> No
     assert [card["asset_ids"] for card in cards] == [["X001"], ["X002"]]
 
 
-def test_a_place_finding_offers_the_best_corroborated_moment_not_the_first_of_the_occasion() -> (
+def test_a_grounding_finding_offers_the_best_corroborated_moment_not_the_first_of_it() -> (
     None
 ):
-    # The v31 year offered one tile for the whole memory: a kitchen sponge, whose card said
-    # "a plain light-colored surface" while a snow-covered hillside sat later in the occasion.
+    # The v31 year offered one tile for the whole memory: a kitchen sponge, whose card named
+    # one incidental thing while a snow-covered hillside sat later in the same occasion. The
+    # richer card wins; a sponge card naming nothing of the activity is never offered at all.
     offers, cards = _run_shaped_place_offer()
     pool = (_kept_face_row(1), _kept_face_row(2), *offers)
 
@@ -460,11 +461,14 @@ def test_a_place_finding_offers_the_best_corroborated_moment_not_the_first_of_th
         rejected_moments=cards,
     )
 
-    assert [row["focus_kind"] for row in findings] == ["place_without_landscape"]
+    assert [row["focus_kind"] for row in findings] == ["occasion_without_grounding"]
     assert findings[0]["moment_ids"] == ["M009"]
     assert findings[0]["asset_ids"] == ["X002"]
-    assert findings[0]["owner_evidence"]["people_free_signal"] == "no-people-context"
-    assert findings[0]["owner_evidence"]["corroborating_outdoor_words"] == [
+    assert findings[0]["owner_evidence"]["qualifying_signals"] == [
+        "people-hedged",
+        "activity-context",
+    ]
+    assert findings[0]["owner_evidence"]["activity_context_words"] == [
         "hillside",
         "horizon",
         "snow-covered",

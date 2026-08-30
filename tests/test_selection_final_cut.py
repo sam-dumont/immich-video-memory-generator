@@ -40,6 +40,7 @@ from probe_selection_final_cut import (
     visual_final_asset_audit_prompt,
 )
 
+from immich_memories.analysis.selection_descriptions import setting_suffix
 from immich_memories.analysis.selection_final_duplicates import (
     DOCUMENT_ARTIFACT_WORDS,
     FinalDuplicateNomination,
@@ -3304,6 +3305,178 @@ def test_pool_findings_never_challenge_a_kept_single_asset_lived_scene() -> None
     assert [row for row in findings if row["focus_kind"] == "document_artifact"] == []
 
 
+def _intimate_wall() -> tuple[FineCutCandidate, ...]:
+    return (
+        replace(
+            _candidate(1, "M001"),
+            favourite=False,
+            description="Two friends kissing on a balcony at night",
+        ),
+        replace(_candidate(2, "M001"), favourite=False, description="The same balcony, empty"),
+        replace(
+            _candidate(3, "M002"),
+            favourite=False,
+            description="A new couple cuddling under a blanket",
+        ),
+        replace(
+            _candidate(4, "M003"),
+            favourite=False,
+            description="Two people embracing in a doorway",
+        ),
+        replace(_candidate(5, "M003"), favourite=False, description="The doorway from the street"),
+    )
+
+
+def test_every_kept_intimate_frame_reaches_the_review_as_one_grouped_focus() -> None:
+    wall = _intimate_wall()
+
+    findings = final_cut_contract.runtime_final_pool_findings(
+        wall,
+        current_aliases=("A001", "A003", "A004"),
+    )
+
+    intimate = [row for row in findings if row["focus_kind"] == "intimate_of_others"]
+    assert len(intimate) == 1
+    assert intimate[0]["asset_ids"] == ["A001", "A003", "A004"]
+    assert intimate[0]["current_asset_ids"] == ["A001", "A003", "A004"]
+    assert intimate[0]["moment_ids"] == ["M001", "M002", "M003"]
+    assert intimate[0]["reject_only"] is True
+    assert intimate[0]["owner_evidence"]["intimate_assets"] == 3
+    assert "3" in intimate[0]["observation"]
+    assert "3" in intimate[0]["review_question"]
+    assert "friends and family" in intimate[0]["review_question"]
+
+
+def test_a_wall_without_an_intimate_frame_raises_no_shareability_focus() -> None:
+    wall = _intimate_wall()
+
+    findings = final_cut_contract.runtime_final_pool_findings(
+        wall,
+        current_aliases=("A002", "A005"),
+    )
+
+    assert [row for row in findings if row["focus_kind"] == "intimate_of_others"] == []
+
+
+def test_a_single_kept_intimate_frame_is_still_judged_consciously() -> None:
+    wall = _intimate_wall()
+
+    findings = final_cut_contract.runtime_final_pool_findings(
+        wall,
+        current_aliases=("A002", "A003", "A005"),
+    )
+
+    intimate = [row for row in findings if row["focus_kind"] == "intimate_of_others"]
+    assert len(intimate) == 1
+    assert intimate[0]["asset_ids"] == ["A003"]
+    assert intimate[0]["owner_evidence"]["intimate_assets"] == 1
+    assert "1 final asset " in intimate[0]["observation"]
+    assert "does 1 such frame belong" in intimate[0]["review_question"]
+
+
+def test_the_grouped_intimate_focus_passes_the_visual_pool_grounding() -> None:
+    wall = _intimate_wall()
+    # The three frames sit in different chapters, which is how a year carries them.
+    readings = (
+        {
+            "chapter_id": "C001",
+            "label": "first",
+            "moment_ids": ["M001", "M002"],
+            "thesis": "The opening chapter.",
+        },
+        {
+            "chapter_id": "C002",
+            "label": "second",
+            "moment_ids": ["M003"],
+            "thesis": "The closing chapter.",
+        },
+    )
+    current = ("A001", "A003", "A004")
+
+    groups = final_cut_contract.visual_final_pool_groups(
+        wall,
+        current_aliases=current,
+        chapter_readings=readings,
+        review_focus=final_cut_contract.runtime_final_pool_findings(
+            wall,
+            current_aliases=current,
+            chapter_readings=readings,
+        ),
+    )
+
+    intimate = [group for group in groups if group["focus_kind"] == "intimate_of_others"]
+    assert len(intimate) == 1
+    assert intimate[0]["asset_ids"] == ["A001", "A003", "A004"]
+    assert intimate[0]["current_asset_ids"] == ["A001", "A003", "A004"]
+    assert intimate[0]["chapter_id"] == "whole-memory"
+    assert intimate[0]["validation_current_asset_ids"] == ["A001", "A003", "A004"]
+
+
+def _partner_row(token: str) -> str:
+    # The real vocabulary: `_primary_relationship` writes "<relationship label> library owner"
+    # from RELATIONSHIP_CHOICES, or a confirmed owner-relative role word.
+    return f"{token}:tier=inner;relationship=partner of library owner;source=confirmed"
+
+
+def _sibling_row(token: str) -> str:
+    return f"{token}:tier=inner;relationship=sister of library owner;source=confirmed"
+
+
+def _stranger_row(token: str) -> str:
+    return f"{token}:tier=event;relationship=unconfirmed"
+
+
+def test_intimacy_with_a_partner_marked_participant_is_not_a_finding() -> None:
+    wall = (
+        replace(
+            _candidate(1, "M001"),
+            favourite=False,
+            description="Two people kissing in the kitchen",
+            people_context=(_partner_row("P01"),),
+        ),
+        replace(_candidate(2, "M002"), favourite=False),
+    )
+
+    findings = final_cut_contract.runtime_final_pool_findings(
+        wall,
+        current_aliases=("A001", "A002"),
+    )
+
+    assert [row for row in findings if row["focus_kind"] == "intimate_of_others"] == []
+
+
+def test_the_grouped_focus_lists_only_the_casual_intimate_frames() -> None:
+    wall = (
+        replace(
+            _candidate(1, "M001"),
+            favourite=False,
+            description="A couple kissing at the table",
+            people_context=(_partner_row("P01"),),
+        ),
+        replace(
+            _candidate(2, "M002"),
+            favourite=False,
+            description="Two friends kissing on a balcony",
+            people_context=(_stranger_row("P02"),),
+        ),
+        replace(
+            _candidate(3, "M003"),
+            favourite=False,
+            description="Two people cuddling on a sofa",
+        ),
+    )
+
+    findings = final_cut_contract.runtime_final_pool_findings(
+        wall,
+        current_aliases=("A001", "A002", "A003"),
+    )
+
+    intimate = [row for row in findings if row["focus_kind"] == "intimate_of_others"]
+    assert len(intimate) == 1
+    assert intimate[0]["asset_ids"] == ["A002", "A003"]
+    assert intimate[0]["owner_evidence"]["intimate_assets"] == 2
+
+
 def _people_only_occasion() -> tuple[FineCutCandidate, ...]:
     # One occasion: people-dense moments the cut keeps, plus a people-free moment of the
     # same days the moment cut rejected. A rejected moment never opens a reservoir, so its
@@ -3333,38 +3506,42 @@ def _people_only_occasion() -> tuple[FineCutCandidate, ...]:
     return (*faces, *place)
 
 
-# The primary fixture is season-neutral on purpose: the same structural signal has to fire
-# for an open coastline as for a snow-covered hillside, so neither can be what carries it.
+# Season-neutral on purpose: the same reading has to fire for an open coastline as for a
+# snow-covered slope, so neither terrain can be what carries it.
 _COASTLINE_CARD = {
     "moment_id": "M003",
-    "summary": "An empty coastline under mid-day sun, the horizon flat behind the water.",
+    "summary": "An empty coastline under mid-day sun, the boats drawn up on the shoreline.",
     "people": "insufficient evidence",
     "reason": "The other moments carry the day's relationships more directly.",
     "asset_ids": ["A004", "A005"],
 }
 _HILLSIDE_CARD = {
     **_COASTLINE_CARD,
-    "summary": "A snow-covered hillside under grey cloud, seen from above.",
+    "summary": "A snow-covered hillside with gear stacked at the foot of the slope.",
 }
-_UNHEDGED_CARD = {
+_PEOPLED_ACTIVITY_CARD = {
     "moment_id": "M003",
-    "summary": "A coastline with the whole group lined up along the horizon.",
-    "people": "the group of four",
+    "summary": "Distant figures spread across the slope, following the track downhill.",
+    "people": "several small figures, too far to identify",
     "asset_ids": ["A004", "A005"],
 }
 
 
 @pytest.mark.parametrize(
-    ("card", "words"),
+    ("card", "words", "signals"),
     [
-        (_COASTLINE_CARD, ["coastline", "horizon"]),
-        (_HILLSIDE_CARD, ["hillside", "snow-covered"]),
+        (_COASTLINE_CARD, ["boat", "coastline", "shoreline"], ["people-hedged", "activity-context"]),
+        (_HILLSIDE_CARD, ["gear", "hillside", "slope", "snow-covered"], ["people-hedged", "activity-context"]),
+        (_PEOPLED_ACTIVITY_CARD, ["slope", "track"], ["activity-context"]),
     ],
 )
-def test_pool_findings_propose_a_rejected_people_free_place_for_a_faces_only_occasion(
+def test_pool_findings_propose_a_rejected_frame_that_grounds_a_faces_only_occasion(
     card: dict[str, Any],
     words: list[str],
+    signals: list[str],
 ) -> None:
+    # The third case is the owner's own: distant figures on a slope show why they were
+    # there, so an activity frame WITH people in it qualifies exactly like a bare one.
     wall = _people_only_occasion()
 
     findings = final_cut_contract.runtime_final_pool_findings(
@@ -3373,17 +3550,35 @@ def test_pool_findings_propose_a_rejected_people_free_place_for_a_faces_only_occ
         rejected_moments=(card,),
     )
 
-    assert [row["focus_kind"] for row in findings] == ["place_without_landscape"]
+    assert [row["focus_kind"] for row in findings] == ["occasion_without_grounding"]
     assert findings[0]["moment_ids"] == ["M003"]
     assert findings[0]["asset_ids"] == ["A004", "A005"]
     assert findings[0]["current_asset_ids"] == []
     assert findings[0]["owner_evidence"]["proposed_asset_id"] == "A005"
-    assert findings[0]["owner_evidence"]["people_dense_wall_assets"] == 3
-    assert findings[0]["owner_evidence"]["people_free_signal"] == "hedged-card-people"
-    assert findings[0]["owner_evidence"]["corroborating_outdoor_words"] == words
+    assert findings[0]["owner_evidence"]["close_people_wall_assets"] == 3
+    assert findings[0]["owner_evidence"]["qualifying_signals"] == signals
+    assert findings[0]["owner_evidence"]["activity_context_words"] == words
+    assert "why" in findings[0]["review_question"]
 
 
-def test_a_place_finding_can_only_name_rows_marked_as_unkept_proposals() -> None:
+def test_a_frame_from_another_occasion_never_grounds_this_one() -> None:
+    # A scenic frame with no relation to the occasion is not the target; the day-run
+    # boundary is the only thing that relates a proposal to what it would ground.
+    wall = _people_only_occasion()
+    elsewhere = tuple(
+        replace(row, taken_at=row.taken_at + timedelta(days=10)) for row in wall[3:]
+    )
+
+    findings = final_cut_contract.runtime_final_pool_findings(
+        (*wall[:3], *elsewhere),
+        current_aliases=("A001", "A002", "A003"),
+        rejected_moments=(_COASTLINE_CARD,),
+    )
+
+    assert findings == ()
+
+
+def test_a_grounding_finding_can_only_name_rows_marked_as_unkept_proposals() -> None:
     # The marker is what tells every wall the row is a proposal from a moment the cut
     # dropped, so a finding may not reach a row that was never built as one.
     wall = _people_only_occasion()
@@ -3404,24 +3599,54 @@ def test_an_unkept_proposal_row_says_so_on_every_wall_it_reaches() -> None:
     assert "proposed-from-unkept-moment" in final_cut_contract.compact_reservoir_wall((row,))
 
 
-def test_a_rejected_card_that_names_people_is_never_a_place_finding() -> None:
-    # The words alone must decide nothing: this card carries two of them.
+def test_an_occasion_that_already_shows_its_activity_gets_no_finding() -> None:
     wall = _people_only_occasion()
+    with_place = (
+        *wall[:2],
+        replace(wall[2], description="The queue at the foot of the slope, gear in hand"),
+        *wall[3:],
+    )
 
     findings = final_cut_contract.runtime_final_pool_findings(
-        wall,
+        with_place,
         current_aliases=("A001", "A002", "A003"),
-        rejected_moments=(_UNHEDGED_CARD,),
+        rejected_moments=(_COASTLINE_CARD,),
     )
 
     assert findings == ()
 
 
-def test_an_occasion_that_already_shows_its_place_gets_no_place_finding() -> None:
+def test_a_cards_setting_alone_can_ground_a_faces_only_occasion() -> None:
+    # The card's setting slot is folded into the card text, so the matcher reads a place
+    # the summary sentence never named. Without it this card carries no qualifying signal.
+    wall = _people_only_occasion()
+    card = {
+        "moment_id": "M003",
+        "summary": "Two adults stand close together, faces lit"
+        + setting_suffix("a snow-covered hillside"),
+        "people": "two adults",
+        "asset_ids": ["A004", "A005"],
+    }
+
+    findings = final_cut_contract.runtime_final_pool_findings(
+        wall,
+        current_aliases=("A001", "A002", "A003"),
+        rejected_moments=(card,),
+    )
+
+    assert [row["focus_kind"] for row in findings] == ["occasion_without_grounding"]
+    assert findings[0]["owner_evidence"]["qualifying_signals"] == ["activity-context"]
+    assert findings[0]["owner_evidence"]["activity_context_words"] == ["hillside", "snow-covered"]
+
+
+def test_a_kept_rows_setting_counts_as_the_occasion_already_showing_its_activity() -> None:
     wall = _people_only_occasion()
     with_place = (
         *wall[:2],
-        replace(wall[2], description="The queue below a mountain ridge in full sun"),
+        replace(
+            wall[2],
+            description="A child hugging a parent" + setting_suffix("the foot of a ski slope"),
+        ),
         *wall[3:],
     )
 
@@ -3481,7 +3706,7 @@ def test_the_visual_arm_renders_the_unkept_place_tiles_beside_the_kept_context(
     )
 
     assert result is not None
-    assert [group["focus_kind"] for group in result["groups"]] == ["place_without_landscape"]
+    assert [group["focus_kind"] for group in result["groups"]] == ["occasion_without_grounding"]
     assert len(requests) == 1
     assert list(requests[0].ordered_input_ids) == ["private-4", "private-5"]
     assert "proposed-from-unkept-moment" in requests[0].prompt
@@ -3641,7 +3866,7 @@ def test_landscape_findings_alone_leave_the_text_arm_wall_unchanged(
     assert run() == run(adoptable=offered, visual_reconsideration=lambda *_args: None)
 
 
-def test_the_place_finding_passes_the_visual_pool_grounding() -> None:
+def test_the_grounding_finding_passes_the_visual_pool_grounding() -> None:
     wall = _people_only_occasion()
     reading = (
         {
@@ -3664,7 +3889,7 @@ def test_the_place_finding_passes_the_visual_pool_grounding() -> None:
         ),
     )
 
-    assert [group["focus_kind"] for group in groups] == ["place_without_landscape"]
+    assert [group["focus_kind"] for group in groups] == ["occasion_without_grounding"]
     assert groups[0]["target_moment_ids"] == ["M003"]
     assert groups[0]["asset_ids"] == ["A004", "A005"]
     assert groups[0]["current_asset_ids"] == []
@@ -3784,6 +4009,94 @@ def test_a_closing_pick_at_or_above_its_reservoir_median_is_left_alone() -> None
 
     assert [row["asset_id"] for row in swapped["keep"]] == ["A001", "A003"]
     assert swapped["closer_swap"] is None
+
+
+def test_the_closer_swap_prefers_a_non_intimate_sibling_of_equal_brightness() -> None:
+    wall = (
+        replace(_candidate(1, "M001"), luminance=120, favourite=False),
+        replace(_candidate(2, "M002"), luminance=40, favourite=False),
+        replace(
+            _candidate(3, "M002"),
+            luminance=90,
+            favourite=False,
+            description="Two friends kissing by the door",
+        ),
+        replace(_candidate(4, "M002"), luminance=90, favourite=False),
+    )
+
+    swapped = final_cut_contract.apply_closer_luminance_swap(wall, _closer_cut("A001", "A002"))
+
+    assert [row["asset_id"] for row in swapped["keep"]] == ["A001", "A004"]
+    assert swapped["closer_swap"]["after"] == {"asset_id": "A004", "luminance": 90}
+
+
+def test_the_moment_cap_survivors_prefer_a_non_intimate_frame_on_equal_merits() -> None:
+    wall = (
+        replace(
+            _candidate(1, "M001"),
+            favourite=False,
+            description="A new couple cuddling on the sofa",
+        ),
+        replace(_candidate(2, "M001"), favourite=False),
+        replace(_candidate(3, "M001"), favourite=False),
+    )
+    cut = {
+        "keep": [
+            {"asset_id": candidate.alias, "reason": "The model selected this beat."}
+            for candidate in wall
+        ],
+        "required_asset_ids": [],
+        "comparisons": [],
+    }
+
+    capped = final_cut_contract.apply_final_moment_cap(wall, cut, max_per_moment=2)
+
+    assert [row["asset_id"] for row in capped["keep"]] == ["A002", "A003"]
+    assert capped["moment_cap"]["removed_asset_ids"] == ["A001"]
+
+
+def test_the_closer_swap_does_not_demote_intimacy_between_family() -> None:
+    wall = (
+        replace(_candidate(1, "M001"), luminance=120, favourite=False),
+        replace(_candidate(2, "M002"), luminance=40, favourite=False),
+        replace(
+            _candidate(3, "M002"),
+            luminance=90,
+            favourite=False,
+            description="Two sisters kissing by the door",
+            people_context=(_sibling_row("P01"),),
+        ),
+        replace(_candidate(4, "M002"), luminance=90, favourite=False),
+    )
+
+    swapped = final_cut_contract.apply_closer_luminance_swap(wall, _closer_cut("A001", "A002"))
+
+    assert swapped["closer_swap"]["after"] == {"asset_id": "A003", "luminance": 90}
+
+
+def test_the_moment_cap_does_not_demote_intimacy_between_family() -> None:
+    wall = (
+        replace(
+            _candidate(1, "M001"),
+            favourite=False,
+            description="A couple cuddling on the sofa",
+            people_context=(_partner_row("P01"),),
+        ),
+        replace(_candidate(2, "M001"), favourite=False),
+        replace(_candidate(3, "M001"), favourite=False),
+    )
+    cut = {
+        "keep": [
+            {"asset_id": candidate.alias, "reason": "The model selected this beat."}
+            for candidate in wall
+        ],
+        "required_asset_ids": [],
+        "comparisons": [],
+    }
+
+    capped = final_cut_contract.apply_final_moment_cap(wall, cut, max_per_moment=2)
+
+    assert [row["asset_id"] for row in capped["keep"]] == ["A001", "A002"]
 
 
 def _day_cut(*candidates: FineCutCandidate) -> dict[str, Any]:

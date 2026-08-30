@@ -40,14 +40,16 @@ from probe_selection_final_cut import (
     FINAL_VISUAL_ASSET_AUDIT_SCHEMA,
     FINAL_VISUAL_POOL_GLOBAL_VALIDATION_SCHEMA,
     FINAL_VISUAL_POOL_RECONSIDERATION_SCHEMA,
-    PLACE_PROPOSAL_MAX_ASSETS,
-    PLACE_PROPOSAL_MAX_MOMENTS,
+    GROUNDING_PROPOSAL_MAX_ASSETS,
+    GROUNDING_PROPOSAL_MAX_MOMENTS,
     FineCutCandidate,
+    activity_context_words,
     apply_closer_luminance_swap,
     apply_final_asset_sequence_review,
     apply_final_day_ceiling,
     apply_final_moment_cap,
     apply_kept_moment_floor,
+    carries_partner_or_family,
     final_asset_audit_prompt,
     final_asset_cut_prompt,
     final_asset_delta_validation_prompt,
@@ -55,7 +57,6 @@ from probe_selection_final_cut import (
     final_asset_sequence_review_prompt,
     mark_closing_candidate,
     merge_final_asset_audits,
-    outdoor_setting_words,
     read_final_asset_audit,
     read_final_asset_cut,
     read_final_asset_delta_validation,
@@ -85,7 +86,11 @@ from immich_memories.analysis.live_photo_pipeline import drop_live_photo_compone
 from immich_memories.analysis.llm_query import query_llm
 from immich_memories.analysis.period_insight import run_period_insight
 from immich_memories.analysis.selection_cull import run_cull
-from immich_memories.analysis.selection_descriptions import describe_editorial_assets
+from immich_memories.analysis.selection_descriptions import (
+    ASSET_SETTING_MAX_CHARS,
+    describe_editorial_assets,
+    setting_suffix,
+)
 from immich_memories.analysis.selection_final_duplicates import (
     CopyEmbedder,
     FinalDuplicateReview,
@@ -166,8 +171,8 @@ OCCASION_MOMENT_CAP = 2
 # scarcity ceiling, which it does not change.
 SECONDS_PER_IDEAL_ASSET = 6.0
 ALLOCATION_SCHEMA = "description-chapter-allocation-v1"
-FUSED_CARD_PASS_VERSION = "fused-moment-card-v2"  # noqa: S105 - wire identity
-FUSED_CARD_PROMPT_VERSION = "fused-moment-card-prompt-v2"
+FUSED_CARD_PASS_VERSION = "fused-moment-card-v3"  # noqa: S105 - wire identity
+FUSED_CARD_PROMPT_VERSION = "fused-moment-card-prompt-v3"
 FUSED_CARD_RENDER_VERSION = "fused-moment-400px-v1"
 # Measured on 30 banked 2007 moments against the 27B: three guessable keys whose
 # placeholder names its own out ("or insufficient evidence") moved people-free
@@ -178,12 +183,20 @@ HEDGED_CARD_SHAPE = {
     "people": "who is visible, or insufficient evidence",
     "relations": "how they are related, or insufficient evidence",
     "activity": "what they are doing, or insufficient evidence",
+    # A ski-station photo reduced to "a man in a red and black jacket" while the mountain
+    # behind him was erased, and only 21% of outdoor cards named any vista. The card had
+    # three people slots and no place slot, so a setting inside a people-photo never
+    # registered. The same hedge keeps a plain indoor scene from inventing one.
+    "setting": "where this takes place, or insufficient evidence",
 }
 HEDGED_CARD_SENTENCE = (
-    "Write exactly insufficient evidence for people, relations, "
-    "or activity the visuals do not show."
+    "Write exactly insufficient evidence for people, relations, activity, "
+    "or setting the visuals do not show."
 )
 COMPACT_CARD_KEYS = frozenset({"schema_version", "summary"})
+# The 6-key card replaced a 5-key one whose answers are still banked upstream. A card
+# without the setting slot is otherwise sound, so the reader takes it and records the gap.
+FIVE_KEY_CARD_KEYS = frozenset(HEDGED_CARD_SHAPE) - {"setting"}
 # Two of thirty answers echoed the retired card schema version that the banked
 # upstream prose still carries. The envelope was otherwise sound, so the reader
 # accepts it and records the echo instead of discarding a usable card.
@@ -1422,23 +1435,29 @@ def _fused_card_provenance(request: Any) -> dict[str, Any]:
 
 
 def _fused_card_summary(raw: str) -> tuple[str, str | None]:
-    """Read a card answer in either the hedged or the compact envelope."""
+    """Read a card answer in the hedged, the setting-free, or the compact envelope."""
     payload = final_json_object(raw)
-    if payload is None or set(payload) not in (set(HEDGED_CARD_SHAPE), set(COMPACT_CARD_KEYS)):
+    envelopes = (set(HEDGED_CARD_SHAPE), set(FIVE_KEY_CARD_KEYS), set(COMPACT_CARD_KEYS))
+    if payload is None or set(payload) not in envelopes:
         raise ValueError("moment card answer is not an exact card envelope")
     version = payload.get("schema_version")
-    warning = None
+    warnings = []
     if version == RETIRED_CARD_SCHEMA:
-        warning = f"card answer echoed the retired schema version {RETIRED_CARD_SCHEMA}"
+        warnings.append(f"card answer echoed the retired schema version {RETIRED_CARD_SCHEMA}")
     elif version != prototype.CARD_SCHEMA:
         raise ValueError("moment card answer has the wrong schema version")
+    if set(payload) == set(FIVE_KEY_CARD_KEYS):
+        warnings.append("card answer used the retired setting-free card envelope")
     summary = bounded_model_text(payload.get("summary"), max_chars=prototype.MAX_CARD_CHARS)
     if summary is None:
         raise ValueError("moment card summary is not safe bounded text")
     for key in sorted(set(payload) - set(COMPACT_CARD_KEYS)):
         if bounded_model_text(payload[key], max_chars=300) is None:
             raise ValueError(f"moment card {key} is not safe bounded text")
-    return summary, warning
+    # The moment wall, the rejected-card record and every word matcher downstream read the
+    # card as one line of text, so the place has to arrive inside it or it arrives nowhere.
+    setting = bounded_model_text(payload.get("setting"), max_chars=ASSET_SETTING_MAX_CHARS)
+    return summary + setting_suffix(setting), "; ".join(warnings) or None
 
 
 def _mechanical_fused_card_repair(raw: str) -> tuple[str, str] | None:
@@ -3215,7 +3234,7 @@ def _people_context_rows(
     return tuple(dict.fromkeys(rows))
 
 
-def _rejected_place_candidates(
+def _rejected_grounding_candidates(
     reservoirs: tuple[Any, ...],
     *,
     cards: Sequence[dict[str, Any]],
@@ -3234,7 +3253,7 @@ def _rejected_place_candidates(
         if isinstance(card, dict)
         and isinstance(card.get("moment_id"), str)
         and isinstance(card.get("summary"), str)
-        and outdoor_setting_words(str(card["summary"]))
+        and activity_context_words(str(card["summary"]))
     }
     offered = sorted(
         (
@@ -3247,14 +3266,14 @@ def _rejected_place_candidates(
             min(candidate.taken_at for candidate in reservoir.candidates),
             reservoir.moment_id,
         ),
-    )[:PLACE_PROPOSAL_MAX_MOMENTS]
+    )[:GROUNDING_PROPOSAL_MAX_MOMENTS]
     rows: list[FineCutCandidate] = []
     for reservoir in sorted(
         offered, key=lambda item: min(candidate.taken_at for candidate in item.candidates)
     ):
         moment_id = alias_by_group[reservoir.moment_id]
         members = sorted(reservoir.candidates, key=lambda item: (item.taken_at, item.asset_id))
-        for candidate in members[:PLACE_PROPOSAL_MAX_ASSETS]:
+        for candidate in members[:GROUNDING_PROPOSAL_MAX_ASSETS]:
             rows.append(
                 FineCutCandidate(
                     alias=f"X{len(rows) + 1:03d}",
@@ -3275,6 +3294,15 @@ def _rejected_place_candidates(
                 )
             )
     return tuple(rows)
+
+
+def _wall_description(description: Any) -> str:
+    """The description cell every wall renders: the literal line, plus the place it shows.
+
+    The single boundary where a banked answer becomes wall text, so appending here is what
+    puts the setting in front of the cut, the card, and every word matcher downstream.
+    """
+    return description.text + setting_suffix(description.setting)
 
 
 def _fine_cut_candidates(
@@ -4214,7 +4242,7 @@ def _run_visual_final_pool_reconsideration(
     """Search each reopened chapter visually, then gate its deltas against the whole cut.
 
     Only this arm sees `adoptable`: rows of moments the cut dropped, offered back through
-    the place findings the run record grounds in `rejected_moments`. They were never
+    the grounding findings the run record supports in `rejected_moments`. They were never
     review-cut, so the anti-resurrection guard does not apply to them.
     """
     pool = (*wall, *adoptable)
@@ -5263,7 +5291,10 @@ def _run_final_refinement(
     )
     description_by_id = {description.asset_id: description.text for description in descriptions}
     description_by_id.update(
-        {description.asset_id: description.text for description in refined_descriptions}
+        {
+            description.asset_id: _wall_description(description)
+            for description in refined_descriptions
+        }
     )
 
     rejected_reservoirs = tuple(
@@ -5293,7 +5324,7 @@ def _run_final_refinement(
         motion_reasons=motion_reasons,
         token_by_name=people_tokens,
     )
-    place_proposals = _rejected_place_candidates(
+    grounding_proposals = _rejected_grounding_candidates(
         rejected_reservoirs,
         cards=rejected_cards,
         alias_by_group=text_result["moment_alias_by_group"],
@@ -5315,16 +5346,16 @@ def _run_final_refinement(
             "moment_id": moment_id,
             "summary": summary_by_moment[moment_id],
             "reason": rejection_reason.get(moment_id),
-            "asset_ids": [row.alias for row in place_proposals if row.moment_id == moment_id],
+            "asset_ids": [row.alias for row in grounding_proposals if row.moment_id == moment_id],
         }
-        for moment_id in dict.fromkeys(row.moment_id for row in place_proposals)
+        for moment_id in dict.fromkeys(row.moment_id for row in grounding_proposals)
     )
 
     def read_preview(asset_id: str) -> bytes | None:
         return cached_preview_bytes(thumbnail_cache, asset_id)
 
     wall = _with_preview_luminance(wall, preview_jpeg=read_preview)
-    place_proposals = _with_preview_luminance(place_proposals, preview_jpeg=read_preview)
+    grounding_proposals = _with_preview_luminance(grounding_proposals, preview_jpeg=read_preview)
     alias_by_asset = {candidate.asset_id: candidate.alias for candidate in wall}
     required_aliases = tuple(alias_by_asset[asset_id] for asset_id in required_assets)
     capacity = int(text_result["configuration"]["capacity"]["moment_capacity"])
@@ -5440,6 +5471,13 @@ def _run_final_refinement(
             for candidate in wall
             if candidate.alias in aliases
         }
+        # Immich has the face, the local people file has the relationship: the exemption can
+        # only be decided here, where the wall rows still carry their person facts.
+        intimacy_exempt = tuple(
+            candidate.asset_id
+            for candidate in wall
+            if candidate.alias in aliases and carries_partner_or_family(candidate)
+        )
         duplicate_gateway = _ProgressGateway(
             VisualEditorialGateway(
                 llm_config=config.llm.model_copy(update={"model": upstream_model}),
@@ -5458,6 +5496,7 @@ def _run_final_refinement(
                 concurrency=args.concurrency,
                 media_priorities=media_priorities,
                 copy_embedder=copy_embedder,
+                intimacy_exempt_asset_ids=intimacy_exempt,
             )
         finally:
             duplicate_gateway.close()
@@ -5567,12 +5606,12 @@ def _run_final_refinement(
                             reviewed_focus_keys=reviewed_pool_focus_keys,
                             failed_focus_keys=failed_pool_focus_keys,
                             review_cut_aliases=review_cut_aliases,
-                            adoptable=place_proposals,
+                            adoptable=grounding_proposals,
                             rejected_moments=proposal_cards,
                         )
                     ),
                     review_cut_aliases=review_cut_aliases,
-                    adoptable=place_proposals,
+                    adoptable=grounding_proposals,
                 )
             )
         finally:
@@ -5580,7 +5619,7 @@ def _run_final_refinement(
         selected_aliases = {row["asset_id"] for row in cut["keep"]}
         # An adopted proposal is part of the film now, so it joins the wall every stage
         # after the deliberation reads. The ones nobody took never appear anywhere.
-        wall = _wall_with_adopted(wall, place_proposals, tuple(sorted(selected_aliases)))
+        wall = _wall_with_adopted(wall, grounding_proposals, tuple(sorted(selected_aliases)))
     deliberation_seconds = time.monotonic() - deliberation_started
     deliberation_changed = any(
         row.get("outcome") == "accepted" for row in deliberation["iterations"]
@@ -5737,9 +5776,9 @@ def _run_final_refinement(
                 if post_deliberation_duplicate_review is not None
                 else 0
             ),
-            "offered_place_proposals": len(place_proposals),
-            "adopted_place_proposals": len(
-                [row for row in place_proposals if row.alias in selected_aliases]
+            "offered_grounding_proposals": len(grounding_proposals),
+            "adopted_grounding_proposals": len(
+                [row for row in grounding_proposals if row.alias in selected_aliases]
             ),
             "selected_assets": len(selected_aliases),
             "represented_moments": len(selected_moments),
@@ -6021,7 +6060,7 @@ def _run_case(
         descriptions = tuple(
             prototype.Description(
                 candidate.asset_id,
-                by_id[candidate.asset_id].text
+                _wall_description(by_id[candidate.asset_id])
                 if candidate.asset_id in by_id
                 else "[visual description unavailable]",
             )

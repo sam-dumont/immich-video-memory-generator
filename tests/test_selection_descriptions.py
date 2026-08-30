@@ -573,3 +573,134 @@ def test_independent_descriptions_overlap_without_reordering_results(tmp_path: P
     assert tuple(item.asset_id for item in result.descriptions) == tuple(
         asset.id for asset in assets
     )
+
+
+def test_every_description_request_offers_a_hedged_setting_field(tmp_path: Path) -> None:
+    """A place inside a people-photo needs its own slot, hedged so a plain scene can decline."""
+    from immich_memories.analysis import selection_descriptions
+
+    prepared = _prepared(make_asset("still", file_created_at=datetime(2024, 2, 3, 12, tzinfo=UTC)))
+    prompts: list[str] = []
+
+    async def _answer(prompt, _config, **kwargs):
+        prompts.append(prompt)
+        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
+        return json.dumps(
+            {
+                "schema_version": "asset-description-v1",
+                "description": "a man in a red and black jacket",
+                "setting": "a snow-covered ski station",
+            }
+        )
+
+    # WHY: query_llm is the sole external boundary; rendering and the cache stay real.
+    with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
+        result = selection_descriptions.describe_editorial_assets(
+            prepared,
+            requester=_gateway(tmp_path, prepared.trace),
+            output_dir=tmp_path / "still",
+            frame_cache_dir=None,
+        )
+
+    assert '"setting":"where this is, in a few words, or insufficient evidence"' in prompts[0]
+    assert result.descriptions[0].setting == "a snow-covered ski station"
+    versions = (
+        selection_descriptions.ASSET_DESCRIPTION_PASS_VERSION,
+        selection_descriptions.ASSET_DESCRIPTION_PROMPT_VERSION,
+    )
+    assert versions == ("asset-description-v2", "asset-description-prompt-v2")
+
+
+def test_a_packed_setting_is_banked_for_the_later_solo_lookup(tmp_path: Path) -> None:
+    """Pack membership churns between runs; the setting must survive the regrouping too."""
+    from immich_memories.analysis.selection_descriptions import describe_editorial_assets
+
+    when = datetime(2024, 2, 3, 12, tzinfo=UTC)
+    assets = [
+        make_asset(f"packed-{index}", file_created_at=when + timedelta(seconds=index))
+        for index in range(4)
+    ]
+    prepared = _prepared(*assets)
+    asks = 0
+
+    async def _answer(_prompt, _config, **kwargs):
+        nonlocal asks
+        asks += 1
+        images = kwargs["images"]
+        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
+        return json.dumps(
+            {
+                "schema_version": "asset-description-packed-v1",
+                "assets": [
+                    {
+                        "asset_id": str(index + 1),
+                        "description": f"packed literal {index}",
+                        "setting": "a snow-covered ski station",
+                    }
+                    for index in range(len(images))
+                ],
+            }
+        )
+
+    gateway = _gateway(tmp_path, prepared.trace)
+    # WHY: query_llm is the sole external boundary; the persistent cache stays real.
+    with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
+        packed = describe_editorial_assets(
+            prepared,
+            requester=gateway,
+            output_dir=tmp_path / "packed",
+            frame_cache_dir=None,
+        )
+        solo = describe_editorial_assets(
+            _prepared(assets[0]),
+            requester=gateway,
+            output_dir=tmp_path / "solo",
+            frame_cache_dir=None,
+        )
+
+    assert asks == 1
+    assert packed.descriptions[0].setting == "a snow-covered ski station"
+    assert solo.descriptions[0].setting == "a snow-covered ski station"
+    assert solo.descriptions[0].provenance.cache_hit is True
+
+
+def test_a_filmstrip_setting_rides_beside_the_motion_verdict(tmp_path: Path) -> None:
+    """Live photos are most of the corpus; a place they show must register there too."""
+    from immich_memories.analysis.selection_descriptions import describe_editorial_assets
+
+    asset = make_asset("clip", file_created_at=datetime(2024, 2, 3, 12, tzinfo=UTC))
+    asset.live_photo_video_id = "clip-component"
+    prepared = _prepared(asset)
+    filmstrip = SimpleNamespace(
+        entity_id="clip",
+        kind="filmstrip",
+        jpeg_bytes=_jpeg("purple"),
+        sha256="clip-filmstrip-hash",
+        frame_count=4,
+        unavailable_reason=None,
+    )
+
+    async def _answer(_prompt, _config, **kwargs):
+        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
+        return json.dumps(
+            {
+                "schema_version": "asset-motion-description-v1",
+                "description": "a child runs downhill",
+                "motion_contribution": "meaningful",
+                "motion_reason": "the run only exists across frames",
+                "setting": "a snow-covered hillside",
+            }
+        )
+
+    # WHY: query_llm is the sole external boundary; the frame extractor stays real.
+    with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
+        result = describe_editorial_assets(
+            prepared,
+            requester=_gateway(tmp_path, prepared.trace),
+            output_dir=tmp_path / "clip",
+            frame_cache_dir=None,
+            atlas=SimpleNamespace(tile_for=lambda _asset_id: filmstrip),
+        )
+
+    assert result.descriptions[0].setting == "a snow-covered hillside"
+    assert result.descriptions[0].motion_contribution == "meaningful"

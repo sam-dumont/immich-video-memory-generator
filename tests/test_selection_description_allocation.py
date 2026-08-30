@@ -1871,21 +1871,22 @@ def test_one_pooled_slot_serves_the_cited_chapter_and_not_the_starved_one(
     assert selection["global_reallocation"]["forfeits"] == []
 
 
-def test_fused_card_prompt_offers_hedged_people_relations_and_activity_fields() -> None:
+def test_fused_card_prompt_offers_hedged_people_relations_activity_and_setting_fields() -> None:
     prompt = matrix._fused_card_prompt(_described_moment(), facts={})
 
     assert '"people":"who is visible, or insufficient evidence"' in prompt
     assert '"relations":"how they are related, or insufficient evidence"' in prompt
     assert '"activity":"what they are doing, or insufficient evidence"' in prompt
+    assert '"setting":"where this takes place, or insufficient evidence"' in prompt
     assert (
-        "Write exactly insufficient evidence for people, relations, "
-        "or activity the visuals do not show." in prompt
+        "Write exactly insufficient evidence for people, relations, activity, "
+        "or setting the visuals do not show." in prompt
     )
-    assert matrix.FUSED_CARD_PASS_VERSION == "fused-moment-card-v2"  # noqa: S105
-    assert matrix.FUSED_CARD_PROMPT_VERSION == "fused-moment-card-prompt-v2"
+    assert matrix.FUSED_CARD_PASS_VERSION == "fused-moment-card-v3"  # noqa: S105
+    assert matrix.FUSED_CARD_PROMPT_VERSION == "fused-moment-card-prompt-v3"
 
 
-def _hedged_answer(schema_version: str) -> str:
+def _hedged_answer(schema_version: str, *, setting: str = "insufficient evidence") -> str:
     return json.dumps(
         {
             "schema_version": schema_version,
@@ -1893,30 +1894,28 @@ def _hedged_answer(schema_version: str) -> str:
             "people": "insufficient evidence",
             "relations": "insufficient evidence",
             "activity": "A cyclist rides past a hedge.",
+            "setting": setting,
         }
     )
 
 
-def test_fused_card_reader_accepts_hedged_answers_in_both_schema_versions(
-    monkeypatch, tmp_path: Path
-) -> None:
-    groups = (
-        EditorialGroup("group-1", _moment(1).candidates),
-        EditorialGroup("group-2", _moment(2).candidates),
+def _fused_cards_for(answers: tuple[str, ...], monkeypatch, tmp_path: Path):
+    """Run the real card builder over one canned answer per moment."""
+    groups = tuple(
+        EditorialGroup(f"group-{index}", _moment(index).candidates)
+        for index in range(1, len(answers) + 1)
     )
-    answers = iter(
-        (_hedged_answer(matrix.prototype.CARD_SCHEMA), _hedged_answer(matrix.RETIRED_CARD_SCHEMA))
-    )
+    replies = iter(answers)
 
     class Requester:
         def ask(self, _request):
             return SimpleNamespace(
-                raw_text=next(answers),
+                raw_text=next(replies),
                 provenance=SimpleNamespace(cache_hit=False),
             )
 
     monkeypatch.setattr(matrix, "build_contact_sheets", _one_fake_page)
-    cards, calls = asyncio.run(
+    return asyncio.run(
         matrix._build_fused_cards(
             groups,
             facts={},
@@ -1930,11 +1929,51 @@ def test_fused_card_reader_accepts_hedged_answers_in_both_schema_versions(
         )
     )
 
+
+def test_fused_card_reader_accepts_hedged_answers_in_both_schema_versions(
+    monkeypatch, tmp_path: Path
+) -> None:
+    cards, calls = _fused_cards_for(
+        (_hedged_answer(matrix.prototype.CARD_SCHEMA), _hedged_answer(matrix.RETIRED_CARD_SCHEMA)),
+        monkeypatch,
+        tmp_path,
+    )
+
     assert [card.summary for card in cards] == ["A compact literal scene."] * 2
     assert calls[0].warning is None
     assert calls[1].warning == (
         "card answer echoed the retired schema version description-moment-card-v1"
     )
+
+
+def test_a_named_card_setting_reaches_the_card_text_the_moment_cut_reads(
+    monkeypatch, tmp_path: Path
+) -> None:
+    answer = _hedged_answer(matrix.prototype.CARD_SCHEMA, setting="a snow-covered ski station")
+
+    cards, calls = _fused_cards_for((answer,), monkeypatch, tmp_path)
+
+    assert cards[0].summary == "A compact literal scene. — setting: a snow-covered ski station"
+    assert calls[0].warning is None
+
+
+def test_a_five_key_card_without_the_setting_slot_is_read_with_a_warning(
+    monkeypatch, tmp_path: Path
+) -> None:
+    retired = json.dumps(
+        {
+            "schema_version": matrix.prototype.CARD_SCHEMA,
+            "summary": "A compact literal scene.",
+            "people": "insufficient evidence",
+            "relations": "insufficient evidence",
+            "activity": "A cyclist rides past a hedge.",
+        }
+    )
+
+    cards, calls = _fused_cards_for((retired,), monkeypatch, tmp_path)
+
+    assert cards[0].summary == "A compact literal scene."
+    assert calls[0].warning == "card answer used the retired setting-free card envelope"
 
 
 def test_fused_card_banks_the_prompt_hash_and_version_tags_beside_the_card(
@@ -2256,3 +2295,26 @@ def test_assets_outside_the_bank_are_skipped_and_the_coverage_is_stated(
         "0 clusters/0% embedded",
         "1 clusters/40% embedded",
     ]
+
+
+def test_a_wall_row_shows_a_named_setting_and_drops_a_hedged_one() -> None:
+    """The place inside a people-photo has to reach the row, or the wall stays all faces."""
+    from probe_selection_final_cut import FineCutCandidate
+
+    def row(setting: str) -> str:
+        return FineCutCandidate(
+            alias="A001",
+            asset_id="private-1",
+            moment_id="M001",
+            taken_at=START,
+            media_kind="photo",
+            favourite=False,
+            description=matrix._wall_description(
+                SimpleNamespace(text="a man in a red and black jacket", setting=setting)
+            ),
+        ).wall_line()
+
+    assert row("a snow-covered ski station").endswith(
+        "| a man in a red and black jacket — setting: a snow-covered ski station"
+    )
+    assert row("insufficient evidence").endswith("| a man in a red and black jacket")

@@ -24,34 +24,57 @@ if TYPE_CHECKING:
     from immich_memories.analysis.editorial_gateway import EditorialGateway
     from immich_memories.analysis.visual_atlas import VisualAtlas
 
-__all__ = ["AssetDescription", "AssetDescriptionResult", "describe_editorial_assets"]
+__all__ = [
+    "AssetDescription",
+    "AssetDescriptionResult",
+    "SETTING_HEDGE",
+    "describe_editorial_assets",
+    "setting_suffix",
+]
 
 ASSET_DESCRIPTION_SCHEMA_VERSION = "asset-description-v1"
-ASSET_DESCRIPTION_PASS_VERSION = "asset-description-v1"  # noqa: S105
-ASSET_DESCRIPTION_PROMPT_VERSION = "asset-description-prompt-v1"
+ASSET_DESCRIPTION_PASS_VERSION = "asset-description-v2"  # noqa: S105
+ASSET_DESCRIPTION_PROMPT_VERSION = "asset-description-prompt-v2"
 ASSET_DESCRIPTION_TILE_PX = 400
 ASSET_DESCRIPTION_MAX_CHARS = 240
 ASSET_MOTION_DESCRIPTION_SCHEMA_VERSION = "asset-motion-description-v1"
-ASSET_MOTION_DESCRIPTION_PASS_VERSION = "asset-motion-description-v1"  # noqa: S105
-ASSET_MOTION_DESCRIPTION_PROMPT_VERSION = "asset-motion-description-prompt-v1"
+ASSET_MOTION_DESCRIPTION_PASS_VERSION = "asset-motion-description-v2"  # noqa: S105
+ASSET_MOTION_DESCRIPTION_PROMPT_VERSION = "asset-motion-description-prompt-v2"
 ASSET_MOTION_REASON_MAX_CHARS = 240
 # Measured safe for descriptions only (~4x fewer requests). NEVER apply packing
 # to pair verdicts -- that variant was measured changing ~20% of decisions.
 DESCRIPTION_PACK_SIZE = 4
 ASSET_DESCRIPTION_PACKED_SCHEMA_VERSION = "asset-description-packed-v1"
-ASSET_DESCRIPTION_PACKED_PASS_VERSION = "asset-description-packed-v1"  # noqa: S105
-ASSET_DESCRIPTION_PACKED_PROMPT_VERSION = "asset-description-packed-prompt-v1"
+ASSET_DESCRIPTION_PACKED_PASS_VERSION = "asset-description-packed-v2"  # noqa: S105
+ASSET_DESCRIPTION_PACKED_PROMPT_VERSION = "asset-description-packed-prompt-v2"
 # Matches probe_motion_description_packing.py's validated SCHEMA constant exactly.
 ASSET_MOTION_DESCRIPTION_PACKED_SCHEMA_VERSION = "asset-motion-description-packed-v1"
-ASSET_MOTION_DESCRIPTION_PACKED_PASS_VERSION = "asset-motion-description-packed-v1"  # noqa: S105
-ASSET_MOTION_DESCRIPTION_PACKED_PROMPT_VERSION = "asset-motion-description-packed-prompt-v1"
+ASSET_MOTION_DESCRIPTION_PACKED_PASS_VERSION = "asset-motion-description-packed-v2"  # noqa: S105
+ASSET_MOTION_DESCRIPTION_PACKED_PROMPT_VERSION = "asset-motion-description-packed-prompt-v2"
 _RENDER_VERSION = "visual-atlas-v1/contact-sheet-v1/asset-400px"
 _MOTION_RENDER_VERSION = "visual-atlas-v1/contact-sheet-v1/asset-motion-400px"
 _DEFAULT_LIMITS = VisionRequestLimits(max_output_tokens=4000, timeout_seconds=120)
+# One 240-char factual line reduced a ski station to "a man in a red and black jacket" and
+# erased the mountain behind him; only 21% of outdoor answers named any vista. The setting
+# gets its own slot so a place inside a people-photo still registers, hedged the same way
+# the card's people slots are so an indoor scene can decline instead of inventing one.
+SETTING_HEDGE = "insufficient evidence"
+ASSET_SETTING_MAX_CHARS = 160
+
+
+def setting_suffix(setting: str | None) -> str:
+    """The compact setting cell a wall row or card appends, empty when the place is hedged."""
+    text = (setting or "").strip().rstrip(".")
+    if not text or text.casefold() == SETTING_HEDGE:
+        return ""
+    return f" — setting: {text}"
+
+
 _SHAPE = json.dumps(
     {
         "schema_version": ASSET_DESCRIPTION_SCHEMA_VERSION,
         "description": "what is visibly shown",
+        "setting": "where this is, in a few words, or insufficient evidence",
     },
     separators=(",", ":"),
 )
@@ -64,6 +87,7 @@ _MOTION_SHAPE = json.dumps(
     {
         "schema_version": ASSET_MOTION_DESCRIPTION_SCHEMA_VERSION,
         "description": "what is visibly shown across the chronological frames",
+        "setting": "where this is, in a few words, or insufficient evidence",
         "motion_contribution": "meaningful or still_sufficient",
         "motion_reason": "what temporal change adds, or why one still carries the same content",
     },
@@ -81,7 +105,13 @@ _MOTION_PROMPT = (
 _PACKED_SHAPE = json.dumps(
     {
         "schema_version": ASSET_DESCRIPTION_PACKED_SCHEMA_VERSION,
-        "assets": [{"asset_id": "ALIAS", "description": "what is visibly shown"}],
+        "assets": [
+            {
+                "asset_id": "ALIAS",
+                "description": "what is visibly shown",
+                "setting": "where this is, in a few words, or insufficient evidence",
+            }
+        ],
     },
     separators=(",", ":"),
 )
@@ -92,6 +122,7 @@ _PACKED_MOTION_SHAPE = json.dumps(
             {
                 "asset_id": "ALIAS",
                 "description": "visible evidence",
+                "setting": "where this is, in a few words, or insufficient evidence",
                 "motion_contribution": "meaningful or still_sufficient",
                 "motion_reason": "temporal contribution",
             }
@@ -131,23 +162,32 @@ def _packed_prompt(aliases: tuple[str, ...], *, motion: bool) -> str:
 def _read_packed_row(item: Any, *, motion: bool) -> dict[str, Any] | None:
     """Validate one packed row; a bad row returns None so only that asset falls back."""
     if motion:
-        allowed = {"asset_id", "description", "motion_contribution", "motion_reason"}
-        required = allowed - {"motion_reason"}
+        allowed = {
+            "asset_id",
+            "description",
+            "setting",
+            "motion_contribution",
+            "motion_reason",
+        }
+        required = allowed - {"motion_reason", "setting"}
     else:
-        allowed = required = {"asset_id", "description"}
+        allowed = {"asset_id", "description", "setting"}
+        required = allowed - {"setting"}
     if not isinstance(item, dict) or not required <= set(item) or not set(item) <= allowed:
         return None
     description = bounded_model_text(item.get("description"), max_chars=ASSET_DESCRIPTION_MAX_CHARS)
     if description is None:
         return None
+    setting = bounded_model_text(item.get("setting"), max_chars=ASSET_SETTING_MAX_CHARS)
     if not motion:
-        return {"description": description}
+        return {"description": description, "setting": setting}
     contribution = item.get("motion_contribution")
     if contribution not in {"meaningful", "still_sufficient"}:
         return None
     reason = bounded_model_text(item.get("motion_reason"), max_chars=ASSET_MOTION_REASON_MAX_CHARS)
     return {
         "description": description,
+        "setting": setting,
         "motion_contribution": contribution,
         "motion_reason": reason,
     }
@@ -193,6 +233,8 @@ def _solo_raw_text(parsed: dict[str, Any], *, motion: bool) -> str:
             "schema_version": ASSET_DESCRIPTION_SCHEMA_VERSION,
             "description": parsed["description"],
         }
+    if parsed.get("setting") is not None:
+        payload["setting"] = parsed["setting"]
     return json.dumps(payload, separators=(",", ":"))
 
 
@@ -205,6 +247,7 @@ class AssetDescription:
     provenance: DecisionProvenance
     motion_contribution: Literal["meaningful", "still_sufficient", "not_observed"] = "not_observed"
     motion_reason: str | None = None
+    setting: str | None = None
 
 
 @dataclass(frozen=True)
@@ -380,6 +423,7 @@ def _describe_packed(
                     provenance,
                     motion_contribution=parsed.get("motion_contribution", "not_observed"),
                     motion_reason=parsed.get("motion_reason"),
+                    setting=parsed.get("setting"),
                 ),
             )
         )
@@ -584,39 +628,53 @@ def _describe_one(
         motion = _read_motion_description(answer.raw_text)
         if motion is None:
             return f"!! asset description unreadable: {asset_id}"
-        text, contribution, reason = motion
+        text, contribution, reason, setting = motion
         return AssetDescription(
             asset_id,
             text,
             answer.provenance,
             motion_contribution=contribution,
             motion_reason=reason,
+            setting=setting,
         )
-    static_text = _read_description(answer.raw_text)
-    if static_text is None:
+    static = _read_description(answer.raw_text)
+    if static is None:
         return f"!! asset description unreadable: {asset_id}"
-    return AssetDescription(asset_id, static_text, answer.provenance)
+    text, setting = static
+    return AssetDescription(asset_id, text, answer.provenance, setting=setting)
 
 
-def _read_description(raw: str) -> str | None:
+def _read_description(raw: str) -> tuple[str, str | None] | None:
     payload = final_json_object(raw)
-    if payload is None or set(payload) != {"schema_version", "description"}:
+    required = {"schema_version", "description"}
+    if (
+        payload is None
+        or not required <= set(payload)
+        or not set(payload) <= {*required, "setting"}
+    ):
         return None
     if payload.get("schema_version") != ASSET_DESCRIPTION_SCHEMA_VERSION:
         return None
-    return bounded_model_text(payload.get("description"), max_chars=ASSET_DESCRIPTION_MAX_CHARS)
+    description = bounded_model_text(
+        payload.get("description"), max_chars=ASSET_DESCRIPTION_MAX_CHARS
+    )
+    if description is None:
+        return None
+    return description, bounded_model_text(
+        payload.get("setting"), max_chars=ASSET_SETTING_MAX_CHARS
+    )
 
 
 def _read_motion_description(
     raw: str,
-) -> tuple[str, Literal["meaningful", "still_sufficient"], str | None] | None:
+) -> tuple[str, Literal["meaningful", "still_sufficient"], str | None, str | None] | None:
     payload = final_json_object(raw)
     required = {
         "schema_version",
         "description",
         "motion_contribution",
     }
-    allowed = {*required, "motion_reason"}
+    allowed = {*required, "motion_reason", "setting"}
     if payload is None or not required <= set(payload) or not set(payload) <= allowed:
         return None
     if payload.get("schema_version") != ASSET_MOTION_DESCRIPTION_SCHEMA_VERSION:
@@ -628,9 +686,10 @@ def _read_motion_description(
     reason = bounded_model_text(
         payload.get("motion_reason"), max_chars=ASSET_MOTION_REASON_MAX_CHARS
     )
+    setting = bounded_model_text(payload.get("setting"), max_chars=ASSET_SETTING_MAX_CHARS)
     if description is None or contribution not in {"meaningful", "still_sufficient"}:
         return None
-    return description, contribution, reason
+    return description, contribution, reason, setting
 
 
 def _scope_id(asset_id: str) -> str:

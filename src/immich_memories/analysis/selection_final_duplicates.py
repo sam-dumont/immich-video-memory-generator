@@ -42,6 +42,27 @@ DOCUMENT_ARTIFACT_WORDS = (
     "printout",
 )
 
+# The v32 wall carried three intimate frames of OTHER people -- kisses and cuddles between
+# new couples, friends teasing each other -- and the owner would show none of them: a memory
+# is something you show people, and a private intimate moment of others fails that test. The
+# model reads the same frames as high-value emotion, the exact inversion. So where two copies
+# are otherwise tied, the intimate one is the worse one to show. Intimacy between a partner
+# or family is exempt, but only the caller holds those facts: see intimacy_exempt_asset_ids.
+# Gesture words only: nothing here names a relationship, an orientation, or who anyone is.
+# Substring match on the card text, like DOCUMENT_ARTIFACT_WORDS.
+INTIMACY_WORDS = (
+    "kiss",
+    "kissing",
+    "kisses",
+    "embrace",
+    "embracing",
+    "cuddle",
+    "cuddling",
+    "nuzzling",
+    "making out",
+    "intimate",
+)
+
 
 class CopyEmbedder(Protocol):
     """Maps preview JPEG bytes to a copy-detection embedding."""
@@ -90,6 +111,7 @@ def review_final_duplicates(
     concurrency: int = 1,
     media_priorities: dict[str, int] | None = None,
     copy_embedder: CopyEmbedder | None = None,
+    intimacy_exempt_asset_ids: Sequence[str] = (),
 ) -> FinalDuplicateReview:
     """Find and confirm copies across the assembled final wall.
 
@@ -99,6 +121,10 @@ def review_final_duplicates(
     same two-order visual agreement as Selects. A full-source checksum is
     already byte-level proof and needs no model opinion; every ambiguous or
     unreadable routed pair keeps both frames.
+
+    Immich carries a face and a name but never a relationship, so the caller -- which holds
+    the local people facts -- names the intimate frames that are exempt from the intimacy
+    demotion because a partner or family member is in them.
     """
     ordered = tuple(sorted(winners, key=lambda item: (item.taken_at, item.asset_id)))
     by_id = {candidate.asset_id: candidate for candidate in ordered}
@@ -113,6 +139,9 @@ def review_final_duplicates(
         for priority in priorities.values()
     ):
         raise ValueError("final duplicate media priorities are invalid")
+    intimacy_exempt = frozenset(intimacy_exempt_asset_ids)
+    if not intimacy_exempt <= set(by_id):
+        raise ValueError("intimacy-exempt final duplicate assets must be winners")
 
     embeddings = _CopyEmbeddings(copy_embedder)
     nominations = _nominate_pairs(
@@ -150,6 +179,7 @@ def review_final_duplicates(
         required=required,
         media_priorities=priorities,
         descriptions=descriptions,
+        intimacy_exempt=intimacy_exempt,
         nomination_warnings=tuple(embeddings.warnings),
     )
 
@@ -360,11 +390,17 @@ def _apply_confirmed_pairs(
     required: frozenset[str],
     media_priorities: dict[str, int],
     descriptions: dict[str, str],
+    intimacy_exempt: frozenset[str] = frozenset(),
     nomination_warnings: tuple[str, ...] = (),
 ) -> FinalDuplicateReview:
     by_id = {candidate.asset_id: candidate for candidate in winners}
     documents = frozenset(
         asset_id for asset_id in by_id if _reads_as_document(descriptions.get(asset_id, ""))
+    )
+    intimate = frozenset(
+        asset_id
+        for asset_id in by_id
+        if asset_id not in intimacy_exempt and _reads_as_intimate(descriptions.get(asset_id, ""))
     )
     survivor_by_id = dict(by_id)
     absorbed: list[AbsorbedFrame] = []
@@ -378,6 +414,7 @@ def _apply_confirmed_pairs(
             required=required,
             media_priorities=media_priorities,
             documents=documents,
+            intimate=intimate,
         )
         survivor_by_id[folded.keeper.asset_id] = folded.keeper
         for frame in folded.absorbed:
@@ -436,6 +473,7 @@ def _fold_component(
     required: frozenset[str],
     media_priorities: dict[str, int],
     documents: frozenset[str],
+    intimate: frozenset[str],
 ) -> _FoldedComponent:
     required_members = [candidate for candidate in members if candidate.asset_id in required]
     if len(required_members) > 1:
@@ -444,11 +482,12 @@ def _fold_component(
             favourite_sources=members,
             media_priorities=media_priorities,
             documents=documents,
+            intimate=intimate,
         )
         return _FoldedComponent(
             keeper,
             tuple(
-                _absorbed_duplicate(candidate, keeper, documents=documents)
+                _absorbed_duplicate(candidate, keeper, documents=documents, intimate=intimate)
                 for candidate in members
                 if candidate.asset_id not in required
             ),
@@ -463,12 +502,13 @@ def _fold_component(
             favourite_sources=members,
             media_priorities=media_priorities,
             documents=documents,
+            intimate=intimate,
         )
     )
     return _FoldedComponent(
         keeper,
         tuple(
-            _absorbed_duplicate(candidate, keeper, documents=documents)
+            _absorbed_duplicate(candidate, keeper, documents=documents, intimate=intimate)
             for candidate in members
             if candidate.asset_id != keeper.asset_id
         ),
@@ -490,18 +530,27 @@ def _reads_as_document(description: str) -> bool:
     return any(word in lowered for word in DOCUMENT_ARTIFACT_WORDS)
 
 
+def _reads_as_intimate(description: str) -> bool:
+    """Whether a card names an intimate gesture, without reading who is in the frame."""
+    lowered = description.lower()
+    return any(word in lowered for word in INTIMACY_WORDS)
+
+
 def _canonical_keeper(
     candidates: Sequence[EditorialCandidate],
     *,
     favourite_sources: Sequence[EditorialCandidate],
     media_priorities: dict[str, int],
     documents: frozenset[str],
+    intimate: frozenset[str],
 ) -> EditorialCandidate:
-    """Prefer the picture over a document of it, then rendering quality, then first."""
+    """Prefer the picture over a document of it, then over an intimate frame of other people,
+    then rendering quality, then first."""
     keeper = max(
         enumerate(candidates),
         key=lambda item: (
             item[1].asset_id not in documents,
+            item[1].asset_id not in intimate,
             media_priorities.get(item[1].asset_id, 0),
             -item[0],
         ),
@@ -516,9 +565,14 @@ def _absorbed_duplicate(
     keeper: EditorialCandidate,
     *,
     documents: frozenset[str],
+    intimate: frozenset[str],
 ) -> AbsorbedFrame:
-    decided_by_document = candidate.asset_id in documents and keeper.asset_id not in documents
-    rule = "non-document" if decided_by_document else "media-priority-then-first-occurrence"
+    if candidate.asset_id in documents and keeper.asset_id not in documents:
+        rule = "non-document"
+    elif candidate.asset_id in intimate and keeper.asset_id not in intimate:
+        rule = "non-intimate"
+    else:
+        rule = "media-priority-then-first-occurrence"
     return AbsorbedFrame(
         asset_id=candidate.asset_id,
         kept_asset_id=keeper.asset_id,

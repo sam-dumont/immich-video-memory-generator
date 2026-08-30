@@ -780,6 +780,72 @@ def test_confirmed_copy_keeps_the_member_that_is_not_a_document(tmp_path: Path) 
     assert "non-document" in result.absorbed[0].reason
 
 
+def test_confirmed_copy_keeps_the_member_that_is_not_an_intimate_frame(tmp_path: Path) -> None:
+    prepared = _prepared(
+        _photo_asset("the-kiss"),
+        _photo_asset("the-pair", when=WHEN + timedelta(days=400)),
+    )
+    atlas = VisualAtlas(
+        (
+            AtlasTile("the-kiss", "photo", b"kiss", "same-tile", 1),
+            AtlasTile("the-pair", "photo", b"pair", "same-tile", 1),
+        )
+    )
+
+    # WHY: replaces the vision gateway that confirms the two frames are one picture.
+    with patch(
+        "immich_memories.analysis.selection_final_duplicates.confirm_same_picture_pairs",
+        return_value=(SamePicturePairDecision("the-kiss", "the-pair", True),),
+    ):
+        result = review_final_duplicates(
+            prepared.candidates,
+            descriptions={
+                "the-kiss": "Two friends kissing on a balcony at night.",
+                "the-pair": "Two friends side by side on a balcony at night.",
+            },
+            atlas=atlas,
+            requester=object(),
+            sheet_output_dir=tmp_path / "sheets",
+        )
+
+    assert tuple(candidate.asset_id for candidate in result.survivors) == ("the-pair",)
+    assert result.absorbed[0].asset_id == "the-kiss"
+    assert "non-intimate" in result.absorbed[0].reason
+
+
+def test_an_exempt_intimate_copy_is_not_demoted_against_its_twin(tmp_path: Path) -> None:
+    prepared = _prepared(
+        _photo_asset("the-kiss"),
+        _photo_asset("the-pair", when=WHEN + timedelta(days=400)),
+    )
+    atlas = VisualAtlas(
+        (
+            AtlasTile("the-kiss", "photo", b"kiss", "same-tile", 1),
+            AtlasTile("the-pair", "photo", b"pair", "same-tile", 1),
+        )
+    )
+
+    # WHY: replaces the vision gateway that confirms the two frames are one picture.
+    with patch(
+        "immich_memories.analysis.selection_final_duplicates.confirm_same_picture_pairs",
+        return_value=(SamePicturePairDecision("the-kiss", "the-pair", True),),
+    ):
+        result = review_final_duplicates(
+            prepared.candidates,
+            descriptions={
+                "the-kiss": "Two friends kissing on a balcony at night.",
+                "the-pair": "Two friends side by side on a balcony at night.",
+            },
+            atlas=atlas,
+            requester=object(),
+            sheet_output_dir=tmp_path / "sheets",
+            intimacy_exempt_asset_ids=("the-kiss",),
+        )
+
+    assert tuple(candidate.asset_id for candidate in result.survivors) == ("the-kiss",)
+    assert "non-intimate" not in result.absorbed[0].reason
+
+
 def test_final_duplicate_pair_carries_its_real_distance_into_the_shortcut(tmp_path: Path) -> None:
     same_pixels = _split_jpeg(vertical=True)
     prepared = _prepared(

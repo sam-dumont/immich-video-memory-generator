@@ -9,7 +9,10 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any
 
-from immich_memories.analysis.selection_final_duplicates import DOCUMENT_ARTIFACT_WORDS
+from immich_memories.analysis.selection_final_duplicates import (
+    DOCUMENT_ARTIFACT_WORDS,
+    INTIMACY_WORDS,
+)
 from immich_memories.analysis.strict_json import bounded_model_text, final_json_object
 
 FINAL_ASSET_CUT_SCHEMA = "description-final-asset-cut-v1"
@@ -69,27 +72,73 @@ _DARK_FRAME_MAX_FINDINGS = 4
 # proposes an alternative; it only forces the keep to be judged consciously every run
 # instead of by decode luck. Substring match on the card text, like OUTDOOR_SETTING_WORDS.
 _DOCUMENT_ARTIFACT_MAX_FINDINGS = 2
-# One occasion reached the wall as faces only, while the corpus held a people-free open
-# place in a moment the cut rejects run after run. The primary signal is structural: the
-# fused card hedges people away, or no candidate row of the moment carries any people
-# context. A rejected moment never opens a reservoir, so this reads what the run record
-# still has for it -- the card's summary, its hedged people field, and the moment's
-# candidate rows -- and never a preview.
+# The owner's refinement to the intimacy finding: intimacy is theirs to keep when a
+# participant is a partner or close family, and a frame the owner is in is not a frame OF
+# others at all. Only casual or unknown-relationship intimacy is the target. Read
+# structurally off the person facts the row already carries -- `Pnn:tier=...;
+# relationship=...;source=...` -- where `relationship` is `unconfirmed`, a confirmed
+# owner-relative role word, or "<label> library owner" built from RELATIONSHIP_CHOICES.
+# Immich itself carries no relationship at all, only a face and a name; every word below
+# comes from the local people companion.
 #
-# The word list only CORROBORATES that the people-free card is an outdoor setting rather
-# than, say, an indoor still life. It is deliberately broad across seasons and terrains,
-# no member is load-bearing, and it decides nothing on its own. Substring match on the
-# card text, like DOCUMENT_ARTIFACT_WORDS.
-OUTDOOR_SETTING_WORDS = (
+# Tokens, not substrings: "parent" must not fire on a longer word, and "library owner" is
+# the tail of every owner-relative label, so the owner is read off the start of the field
+# instead. No occasion words and no wedding case: wedding intimacy is nearly always between
+# people already tagged partner or family, and the review's own judgment covers the rest.
+FAMILY_RELATIONSHIP_MARKERS = frozenset(
+    {
+        "partner",
+        "spouse",
+        "married",
+        "parent",
+        "mother",
+        "father",
+        "child",
+        "son",
+        "daughter",
+        "sibling",
+        "sister",
+        "brother",
+        "twin",
+        "grandparent",
+        "grandchild",
+        "godparent",
+        "godmother",
+        "godfather",
+        "godchild",
+    }
+)
+# The owner's principle is not scenery, it is "show why you were there". An occasion can
+# reach the wall as nothing but close shots of faces while the corpus holds the frame that
+# says what the occasion WAS -- the action, the terrain, the gear, the environment. A
+# dropped moment never opens a reservoir, so this reads what the run record still has for
+# it: the card summary, its hedged people field, and the moment's candidate rows.
+#
+# Two qualifying readings, either one enough: the card hedges people away, or it names the
+# activity's visible context. A frame of the activity WITH people in it -- distant figures
+# on a slope -- grounds the occasion exactly like a bare one, so people are not a
+# disqualifier. What relates a proposal to what it would ground is the occasion boundary
+# itself, never the words: a scenic frame from another occasion is not the target.
+#
+# The list stays generic across seasons, terrains, and activities; no member is
+# load-bearing. It matches at word starts, so plurals count ("slopes", "bikes") while
+# "sympathy", "Europe", "soundtrack" and "contented" do not.
+ACTIVITY_CONTEXT_WORDS = (
     "beach",
+    "bike",
+    "boat",
     "cliff",
     "coastline",
+    "court",
     "desert",
     "dune",
+    "equipment",
     "field",
     "forest",
+    "gear",
     "glacier",
     "harbour",
+    "helmet",
     "hillside",
     "horizon",
     "island",
@@ -100,25 +149,38 @@ OUTDOOR_SETTING_WORDS = (
     "mountain",
     "panorama",
     "pasture",
-    "plain",
+    "path",
+    "pitch",
+    "pool",
     "ridge",
     "river",
+    "rope",
+    "sail",
     "shoreline",
     "skyline",
+    "slope",
     "snow-covered",
+    "stage",
     "summit",
+    "tent",
     "terrain",
+    "track",
+    "trail",
     "valley",
+    "water",
     "waterfall",
     "woodland",
 )
+_ACTIVITY_CONTEXT_PATTERNS = tuple(
+    (word, re.compile(r"\b" + re.escape(word))) for word in ACTIVITY_CONTEXT_WORDS
+)
 _CARD_PEOPLE_HEDGE = "insufficient evidence"
-_PLACE_WITHOUT_LANDSCAPE_MAX_FINDINGS = 2
+_OCCASION_GROUNDING_MAX_FINDINGS = 2
 # What the run may offer back per dropped moment, and how many moments it may open at all.
 # Every offered row costs a preview decode and a tile, and the findings cap is 2 a run, so
 # the pool only has to be wide enough for the ranking to have a real choice.
-PLACE_PROPOSAL_MAX_ASSETS = 4
-PLACE_PROPOSAL_MAX_MOMENTS = 8
+GROUNDING_PROPOSAL_MAX_ASSETS = 4
+GROUNDING_PROPOSAL_MAX_MOMENTS = 8
 # One October evening reached the wall with four tiles: two moments of two assets each,
 # legal under the per-moment cap and every cap above it. The owner reads a day, not a
 # moment -- "too much pics from the party". A favourite is never dropped, but it still
@@ -426,7 +488,17 @@ def _closer_alternative(
         and _media_priority(candidate) >= _media_priority(pick)
         and (candidate.favourite or not pick.favourite)
     ]
-    order = sorted(eligible, key=lambda item: (-(item.luminance or 0), item.taken_at, item.alias))
+    # Intimacy demotes but never cuts: it only decides between siblings the recorded merits
+    # already tie, so a brighter intimate frame still wins on brightness.
+    order = sorted(
+        eligible,
+        key=lambda item: (
+            -(item.luminance or 0),
+            _reads_as_casual_intimacy(item),
+            item.taken_at,
+            item.alias,
+        ),
+    )
     favourites = [candidate for candidate in order if candidate.favourite]
     if favourites:
         return favourites[0], "The closing moment holds a favourite the dark pick passed over."
@@ -543,10 +615,13 @@ def apply_final_moment_cap(
                 required_overflow_moments.append(moment_id)
             continue
         optional_rows = [row for row in moment_rows if row["asset_id"] not in required_set]
+        # Intimacy demotes below the recorded merits, above chronology: among survivors the
+        # cap has no other reason to separate, the non-intimate frame is the one to keep.
         optional_rows.sort(
             key=lambda row: (
                 -_media_priority(by_alias[row["asset_id"]]),
                 -int(by_alias[row["asset_id"]].favourite),
+                _reads_as_casual_intimacy(by_alias[row["asset_id"]]),
                 by_alias[row["asset_id"]].taken_at,
                 row["asset_id"],
             )
@@ -1682,14 +1757,98 @@ def _document_artifact_finding(
     }
 
 
-def outdoor_setting_words(text: str) -> tuple[str, ...]:
-    """Name the outdoor-setting words a card or description carries, if any.
+# The v32 wall carried three intimate frames of OTHER people and the owner would show none
+# of them: a memory is something you show people, and a private intimate moment of others
+# fails that test while the model reads the same frames as high-value emotion. At most one
+# such frame might earn a place, several never, so every kept one goes back as a SINGLE
+# grouped focus naming the count -- the pile is the evidence, and the review judges the set
+# rather than answering the same question N times. Reject-only: it may cut all, some, or
+# none. The cap is structural, one focus a run, so there is no findings constant for it.
+def _row_relationship(row: str) -> str:
+    """Read the `relationship=` field off one `Pnn:tier=...;relationship=...` context row."""
+    for field in row.split(";"):
+        key, _, value = field.partition("=")
+        if key.rpartition(":")[2].strip() == "relationship":
+            return value.strip().casefold()
+    return ""
 
-    Only a corroborator: it never decides a finding on its own, and the wiring uses it to
-    avoid opening previews for dropped moments no place finding could ever reach.
+
+def carries_partner_or_family(candidate: FineCutCandidate) -> bool:
+    """Whether any identified person on this row is the owner, a partner, or close family."""
+    return any(
+        value.startswith("library owner")
+        or not FAMILY_RELATIONSHIP_MARKERS.isdisjoint(re.split(r"[^a-z]+", value))
+        for row in candidate.people_context
+        if (value := _row_relationship(row))
+    )
+
+
+def _reads_as_casual_intimacy(candidate: FineCutCandidate) -> bool:
+    """Whether a card names an intimate gesture between people the facts never name."""
+    lowered = candidate.description.lower()
+    return any(word in lowered for word in INTIMACY_WORDS) and not carries_partner_or_family(
+        candidate
+    )
+
+
+def _intimate_of_others_finding(
+    by_moment: dict[str, list[FineCutCandidate]],
+    *,
+    current_set: set[str],
+) -> dict[str, Any] | None:
+    """Put every kept intimate frame of other people back as one shareability question.
+
+    Reject-only, and deliberately not per frame: one such frame can earn its place and
+    several cannot, which is a judgment about the set. Grouping them keeps that pile in
+    front of the review instead of asking the same question in isolation N times.
+    """
+    intimate = sorted(
+        (
+            candidate
+            for moment in by_moment.values()
+            for candidate in moment
+            if candidate.alias in current_set and _reads_as_casual_intimacy(candidate)
+        ),
+        key=lambda candidate: (candidate.taken_at, candidate.alias),
+    )
+    if not intimate:
+        return None
+    aliases = [candidate.alias for candidate in intimate]
+    kept = "1 final asset" if len(aliases) == 1 else f"{len(aliases)} final assets"
+    frames = "1 such frame" if len(aliases) == 1 else f"{len(aliases)} such frames"
+    verb = "does" if len(aliases) == 1 else "do"
+    return {
+        "focus_kind": "intimate_of_others",
+        "reject_only": True,
+        "moment_ids": list(dict.fromkeys(candidate.moment_id for candidate in intimate)),
+        "asset_ids": aliases,
+        "current_asset_ids": aliases,
+        "selection_limit": _FINAL_MOMENT_ASSET_CAP,
+        "owner_evidence": {
+            "intimate_asset_ids": aliases,
+            "intimate_assets": len(aliases),
+            "favourite_assets": sum(candidate.favourite for candidate in intimate),
+        },
+        "observation": (
+            f"The wall keeps {kept} whose card describes a private intimate moment between "
+            f"other people: {', '.join(aliases)}."
+        ),
+        "review_question": (
+            "This shows a private intimate moment between others; would the owner include it "
+            f"in a memory shown to friends and family, and {verb} {frames} belong on one wall?"
+        ),
+    }
+
+
+def activity_context_words(text: str) -> tuple[str, ...]:
+    """Name the activity-context words a card or description carries, if any.
+
+    Only a corroborator inside an occasion: it never relates a frame to what it would
+    ground, and the wiring uses it to avoid opening previews for dropped moments no
+    grounding finding could reach.
     """
     lowered = text.lower()
-    return tuple(word for word in OUTDOOR_SETTING_WORDS if word in lowered)
+    return tuple(word for word, pattern in _ACTIVITY_CONTEXT_PATTERNS if pattern.search(lowered))
 
 
 def _rejected_moment_rows(
@@ -1735,52 +1894,55 @@ def _card_reads_people_free(row: dict[str, Any], members: Sequence[FineCutCandid
     return not any(candidate.people_context for candidate in members)
 
 
-def _people_free_signal(row: dict[str, Any]) -> str:
-    """Name which structural reading made the card people-free, for the review record."""
-    people = row.get("people")
-    if isinstance(people, str) and people.strip():
-        return "hedged-card-people"
-    return "no-people-context"
+def _qualifying_signals(
+    row: dict[str, Any],
+    members: Sequence[FineCutCandidate],
+    words: Sequence[str],
+) -> tuple[str, ...]:
+    """Name the readings that let a dropped moment ground its occasion, for the record."""
+    signals = []
+    if _card_reads_people_free(row, members):
+        signals.append("people-hedged")
+    if words:
+        signals.append("activity-context")
+    return tuple(signals)
 
 
-def _place_without_landscape_finding(
+def _occasion_grounding_finding(
     occasion: Sequence[FineCutCandidate],
     *,
     current_set: set[str],
     rejected_rows: dict[str, dict[str, Any]],
 ) -> dict[str, Any] | None:
-    """Report a people-only occasion whose rejected material still holds its place."""
+    """Report an occasion the wall shows only as faces, with the frame that says why."""
     kept = [candidate for candidate in occasion if candidate.alias in current_set]
     if (
         not kept
         or not all(candidate.people_context for candidate in kept)
-        or any(outdoor_setting_words(candidate.description) for candidate in kept)
+        or any(activity_context_words(candidate.description) for candidate in kept)
     ):
         return None
     members_by_moment: dict[str, list[FineCutCandidate]] = {}
     for candidate in occasion:
         members_by_moment.setdefault(candidate.moment_id, []).append(candidate)
-    # Structural first: the card has to be people-free before any word is read. The words
-    # then only corroborate that the people-free moment is an outdoor setting.
-    people_free = [
-        (moment_id, row, members_by_moment[moment_id])
+    # Either reading qualifies: a card that hedges people away, or one that names the
+    # activity's visible context. The occasion boundary is what relates it to the keeps.
+    grounding = [
+        (moment_id, row, signals, words, members_by_moment[moment_id])
         for moment_id in members_by_moment
         if (row := rejected_rows.get(moment_id)) is not None
-        and _card_reads_people_free(row, members_by_moment[moment_id])
+        and (words := activity_context_words(row["summary"])) is not None
+        and (signals := _qualifying_signals(row, members_by_moment[moment_id], words))
     ]
-    outdoors = [
-        (moment_id, row, words, members)
-        for moment_id, row, members in people_free
-        if (words := outdoor_setting_words(row["summary"]))
-    ]
-    if not outdoors:
+    if not grounding:
         return None
-    # One corroborating word is one word. "Resting on a plain light-colored surface" made a
-    # kitchen sponge the only place row a whole year offered, while a snow-covered hillside
-    # sat one moment later in the same occasion. Rank on how much of the card reads as open
-    # place, then on how much of the moment is on offer; occasion order only breaks ties.
-    outdoors.sort(key=lambda row: (-len(row[2]), -len(row[3]), row[3][0].taken_at, row[0]))
-    moment_id, row, words, members = outdoors[0]
+    # A people-hedged card alone qualifies, which lets a moment carrying nothing of the
+    # occasion in (a live run offered a kitchen sponge). Rank on how much of the activity
+    # each card actually names, and only then on when it happened.
+    moment_id, row, signals, words, members = min(
+        grounding,
+        key=lambda entry: (-len(entry[3]), entry[4][0].taken_at, entry[0]),
+    )
     # No reservoir opened for this moment, so the only merits on record are the star and
     # the media ladder the wall row already carries.
     best = min(
@@ -1794,33 +1956,34 @@ def _place_without_landscape_finding(
     )
     days = sorted({candidate.taken_at.date() for candidate in occasion})
     return {
-        "focus_kind": "place_without_landscape",
+        "focus_kind": "occasion_without_grounding",
         "moment_ids": [moment_id],
         "asset_ids": [candidate.alias for candidate in members],
         "current_asset_ids": [],
         "selection_limit": _FINAL_MOMENT_ASSET_CAP,
         "owner_evidence": {
             "occasion_days": [day.isoformat() for day in days],
-            "people_dense_wall_assets": len(kept),
+            "close_people_wall_assets": len(kept),
             "proposed_asset_id": best.alias,
-            "people_free_signal": _people_free_signal(row),
-            "corroborating_outdoor_words": list(words),
+            "qualifying_signals": list(signals),
+            "activity_context_words": list(words),
             "card_summary": row["summary"],
             "rejection_reason": row.get("reason"),
             "favourite_assets": sum(candidate.favourite for candidate in members),
         },
         "observation": (
-            f"Every final asset of this occasion shows people, while the moment cut rejected "
-            f"{moment_id} of the same days, whose card reads as open place and names no one."
+            f"Every final asset of this occasion is a close frame of people, while the cut "
+            f"rejected {moment_id} of the same days, whose card carries what they were doing "
+            f"and where."
         ),
         "review_question": (
-            "Does this rejected place frame carry the setting of an occasion the cut shows "
-            "only as faces, rather than merely filling unused duration?"
+            "Does this rejected frame show why they were there -- the action, terrain, gear, "
+            "or environment of this occasion -- which no kept asset of it shows?"
         ),
     }
 
 
-def _place_without_landscape(
+def _occasion_without_grounding(
     candidates: Sequence[FineCutCandidate],
     *,
     chapter_by_moment: dict[str, str],
@@ -1832,7 +1995,7 @@ def _place_without_landscape(
         (occasion, finding)
         for occasion in _occasion_day_runs(candidates, chapter_by_moment=chapter_by_moment)
         if (
-            finding := _place_without_landscape_finding(
+            finding := _occasion_grounding_finding(
                 occasion,
                 current_set=current_set,
                 rejected_rows=rejected_rows,
@@ -1842,7 +2005,7 @@ def _place_without_landscape(
     ]
     return tuple(
         (2, occasion[0].taken_at, str(finding["moment_ids"][0]), finding)
-        for occasion, finding in findings[:_PLACE_WITHOUT_LANDSCAPE_MAX_FINDINGS]
+        for occasion, finding in findings[:_OCCASION_GROUNDING_MAX_FINDINGS]
     )
 
 
@@ -1851,8 +2014,9 @@ def _per_asset_pool_findings(
     *,
     current_set: set[str],
 ) -> tuple[tuple[int, datetime, str, dict[str, Any]], ...]:
-    """Rank the checks the per-moment loop cannot see: dark final frames, absent people, and
-    single-asset moments whose kept frame reads as a document."""
+    """Rank the checks the per-moment loop cannot see: dark final frames, absent people,
+    kept intimate frames of other people, and single-asset moments whose kept frame reads as
+    a document."""
     dark = sorted(
         (
             finding
@@ -1873,8 +2037,10 @@ def _per_asset_pool_findings(
         ),
         key=lambda finding: finding["moment_ids"][0],
     )
+    intimate = _intimate_of_others_finding(by_moment, current_set=current_set)
     findings = (
         *((0, finding) for finding in dark[:_DARK_FRAME_MAX_FINDINGS]),
+        *(((0, intimate),) if intimate is not None else ()),
         *((1, finding) for finding in _person_coverage(by_moment, current_set=current_set)),
         *((2, finding) for finding in documents[:_DOCUMENT_ARTIFACT_MAX_FINDINGS]),
     )
@@ -2008,7 +2174,7 @@ def runtime_final_pool_findings(
             ranked.append((0, occasion[0].taken_at, occasion[0].moment_id, coverage))
     if rejected_rows:
         ranked.extend(
-            _place_without_landscape(
+            _occasion_without_grounding(
                 candidates,
                 chapter_by_moment=chapter_by_moment,
                 current_set=current_set,
@@ -2084,8 +2250,9 @@ def visual_final_pool_groups(
             focus_aliases = [candidate.alias for candidate in candidates if candidate.alias in raw_aliases]
             focus_current = [alias for alias in focus_aliases if alias in current]
             alternatives = [alias for alias in focus_aliases if alias not in current]
-            # A reject-only focus (document_artifact) has no lived sibling to offer instead --
-            # it challenges a kept asset on its own, so it never needs an alternative to ground.
+            # A reject-only focus (document_artifact, intimate_of_others) has no lived sibling
+            # to offer instead -- it challenges kept assets on their own, so it never needs an
+            # alternative to ground.
             if not alternatives and not focus.get("reject_only"):
                 continue
             readings = {
@@ -2093,9 +2260,13 @@ def visual_final_pool_groups(
                 for moment_id in raw_moments
                 if moment_id in reading_by_moment
             }
-            if len(readings) > 1:
+            # A reject-only focus can be a question about the whole wall: the intimate set is
+            # judged as a pile, wherever its frames fall. Crossing chapters makes it a
+            # whole-memory group instead of an error. Every other focus offers an alternative
+            # against one chapter's reading and has to stay inside it.
+            if len(readings) > 1 and not focus.get("reject_only"):
                 raise ValueError("visual final pool focus crosses chapters")
-            reading = next(iter(readings.values()), None)
+            reading = next(iter(readings.values())) if len(readings) == 1 else None
             if reading is None:
                 chapter_id = "whole-memory"
                 label = "whole-memory"
