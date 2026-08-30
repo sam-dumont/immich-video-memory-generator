@@ -283,7 +283,7 @@ comparison.
 
 ### Validated shape on 2026-08-29
 
-The current prototype does five things the first V4 did not:
+The current prototype does six things the first V4 did not:
 
 1. favourite-heavy chapters project favourite assets plus relationship and
    lifecycle repairs into descriptions, while keeping every complete Structure
@@ -299,6 +299,22 @@ The current prototype does five things the first V4 did not:
 5. visual descriptions, moment cards and pair sameness judgments bank at their
    natural asset/pair/moment lifetimes. Warm thesis and selection experiments do
    not pay the visual ingestion cost again.
+6. source medium is provenance, not an editorial bonus. The broad exact-instant
+   collapse defers every group containing video or Live Photo, because equal
+   timestamps do not prove two temporal takes carry the same action.
+   Once the moment cut has bounded the reservoirs, motion-bearing candidates are
+   downloaded, sampled and described locally before demand Selects. Videos and
+   Live Photos use that same description call to say whether visible temporal
+   change adds information that one still loses. Only meaningful motion earns
+   `video` or `live-motion`; static framing, camera movement, pose jitter and
+   repetition fall back to photo-tier evidence. After two candidates have been
+   proved to make the same picture, prefer meaningful video, then meaningful
+   live-motion, then photo. This is a tie-breaker, not a quota and not a way for
+   weak or repeated motion to survive. Owner favourites fail open into the final
+   wall rather than being silently replaced by a better medium. A motion source
+   that falls back to photo-tier records `render_mode=still` (and a representative
+   frame time for video), so production assembly cannot accidentally play motion
+   the editor judged valueless.
 
 The shortlist count is therefore not a proxy for final density. Hosted editors
 often returned the stated maximum on the old shortlist prompt, while the later
@@ -323,6 +339,12 @@ final assets across 44 moments against a 147-slot duration capacity. The final
 cut underfilled naturally. Its successful mixed-cache replay took 618 seconds;
 upstream readings, cards, pair judgments and descriptions were warm while 13 of
 14 final text calls were cold.
+
+> **Evidence limit found 2026-08-29:** the frozen 2022 v4-v7 walls were built
+> from raw Immich assets, so their videos and Live Photos were described from
+> still thumbnails. They remain useful controls for composition, diversity and
+> bounded multipass behaviour. They are not evidence that the model preferred a
+> good moving visual over a photograph. That needs a fresh motion-backed wall.
 
 Exact-person source controls also passed. A two-person **AND** scope contained
 only assets tagged with both people; a four-person **OR** scope deduplicated the

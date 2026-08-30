@@ -11,6 +11,7 @@ Ollama server it met, and the caller read the failure as "not special".
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
@@ -95,7 +96,8 @@ _PROVIDER_PRESETS: dict[str, dict] = {
     "zai": {
         "base_url": "https://api.z.ai/api/paas/v4",
         "thinking_params": {"thinking": {"type": "enabled"}},
-        "no_thinking_params": {},
+        "no_thinking_params": {"thinking": {"type": "disabled"}},
+        "send_image_detail": False,
     },
 }
 
@@ -229,19 +231,24 @@ async def query_llm(
             )
 
     started = time.monotonic()
+    effective_thinking = bool(thinking and llm_config.thinking and not images)
+    total_timeout = float(timeout_seconds)
+    if effective_thinking:
+        total_timeout = max(total_timeout, float(THINKING_MIN_TIMEOUT_SECONDS))
     try:
-        answer = await _dispatch(
-            prompt,
-            llm_config,
-            temperature,
-            max_tokens,
-            timeout_seconds,
-            thinking,
-            images,
-            image_detail,
-            observe,
-            require_complete,
-        )
+        async with asyncio.timeout(total_timeout):
+            answer = await _dispatch(
+                prompt,
+                llm_config,
+                temperature,
+                max_tokens,
+                timeout_seconds,
+                thinking,
+                images,
+                image_detail,
+                observe,
+                require_complete,
+            )
     finally:
         # In `finally` so a failed call still shows the time it burned; a run
         # that spent four minutes on a dead server should not read as free.
@@ -510,7 +517,7 @@ async def _query_anthropic(
 
 
 def _openai_content(
-    prompt: str, images: Sequence[bytes], image_detail: str = "low"
+    prompt: str, images: Sequence[bytes], image_detail: str | None = "low"
 ) -> str | list[dict]:
     """The message body: a bare string without pictures, parts with them."""
     if not images:
@@ -522,10 +529,7 @@ def _openai_content(
                 "type": "image_url",
                 "image_url": {
                     "url": "data:image/jpeg;base64," + base64.b64encode(image).decode("utf-8"),
-                    # Thumbnails, and the question is what a day or a photo was,
-                    # not what is written on a sign in it. Callers with a
-                    # configured preference pass their own.
-                    "detail": image_detail,
+                    **({"detail": image_detail} if image_detail is not None else {}),
                 },
             }
             for image in images
@@ -551,7 +555,16 @@ async def _query_openai(
         headers["Authorization"] = f"Bearer {config.api_key}"
     payload = {
         "model": config.model,
-        "messages": [{"role": "user", "content": _openai_content(prompt, images, image_detail)}],
+        "messages": [
+            {
+                "role": "user",
+                "content": _openai_content(
+                    prompt,
+                    images,
+                    image_detail if config.send_image_detail else None,
+                ),
+            }
+        ],
         "max_tokens": max_tokens,
         "temperature": temperature,
     }
@@ -696,6 +709,11 @@ def _interpret_openai_response(
     """Parse one OpenAI-style reply and preserve its completed-post outcome."""
     try:
         body = _response_body(response)
+        error = body.get("error")
+        if isinstance(error, dict):
+            code = str(error.get("code", "unknown"))[:80]
+            message = str(error.get("message", "provider returned an error"))[:300]
+            raise ValueError(f"LLM provider error {code}: {message}")
         choice = body["choices"][0]
         usage = body.get("usage") or {}
         if not isinstance(choice, dict) or not isinstance(usage, dict):

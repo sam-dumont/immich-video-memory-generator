@@ -25,7 +25,7 @@ gone. Arithmetic gets only the part it can prove.
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextvars import copy_context
 from dataclasses import dataclass, field, replace
@@ -197,6 +197,16 @@ class SelectsPassResult:
     warnings: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class SamePicturePairDecision:
+    """A fail-open two-order verdict for an explicitly nominated picture pair."""
+
+    earlier_asset_id: str
+    later_asset_id: str
+    same: bool
+    warning: str | None = None
+
+
 def run_selects(
     prepared: PreparedEditorialSource,
     admitted: Sequence[EditorialCandidate],
@@ -206,6 +216,8 @@ def run_selects(
     frame_cache_dir: Path | None = None,
     limits: VisionRequestLimits | None = None,
     concurrency: int = 1,
+    atlas: object | None = None,
+    motion_contributions: Mapping[str, str] | None = None,
 ) -> SelectsPassResult:
     """Absorb repetition in two stages, and ask the model only what it can answer.
 
@@ -226,7 +238,11 @@ def run_selects(
     by clock alone invents a day neither of them had.
     """
     still_here = {candidate.asset_id for candidate in admitted}
-    survivors, absorbed = _absorb_exact_instants(prepared, still_here)
+    survivors, absorbed = _absorb_exact_instants(
+        prepared,
+        still_here,
+        motion_contributions=motion_contributions,
+    )
     warnings: tuple[str, ...] = ()
     asked = requester is not None and sheet_output_dir is not None
     if requester is not None and sheet_output_dir is not None:
@@ -238,6 +254,8 @@ def run_selects(
             frame_cache_dir=frame_cache_dir,
             limits=limits or VisionRequestLimits(),
             concurrency=max(1, concurrency),
+            atlas=atlas,
+            motion_contributions=motion_contributions,
         )
         absorbed = [*absorbed, *folded]
     survivors.sort(key=lambda candidate: (candidate.taken_at, candidate.asset_id))
@@ -255,9 +273,119 @@ def run_selects(
     )
 
 
+def confirm_same_picture_pairs(
+    pairs: Sequence[tuple[EditorialCandidate, EditorialCandidate]],
+    *,
+    atlas: object,
+    requester: EditorialGateway,
+    sheet_output_dir: Path,
+    corroborating_distances: Sequence[int | None] | None = None,
+    limits: VisionRequestLimits | None = None,
+    concurrency: int = 1,
+) -> tuple[SamePicturePairDecision, ...]:
+    """Confirm arbitrary candidate pairs with the measured two-order contract.
+
+    Pair nomination belongs to the caller. A supplied distance is an already
+    qualified pixel second vote from final-wall nomination; arbitrary pairs
+    omit it and retain the conservative two-order contract. Disagreement or an
+    unreadable answer never permits removing a picture.
+    """
+    nominated = tuple(pairs)
+    distances = (
+        tuple(corroborating_distances)
+        if corroborating_distances is not None
+        else (None,) * len(nominated)
+    )
+    if len(distances) != len(nominated):
+        raise ValueError("same-picture corroborating distances must align with pairs")
+    pair_keys = tuple(
+        tuple(sorted((earlier.asset_id, later.asset_id))) for earlier, later in nominated
+    )
+    if any(earlier.asset_id == later.asset_id for earlier, later in nominated):
+        raise ValueError("same-picture confirmation needs two different assets")
+    if len(set(pair_keys)) != len(pair_keys):
+        raise ValueError("same-picture confirmation pairs must be unique")
+    if not nominated:
+        return ()
+
+    tasks = tuple(
+        _PendingPair(
+            scope_id=f"final-duplicate-{index:04d}",
+            earlier=earlier,
+            later=later,
+            distance=distance,
+        )
+        for index, ((earlier, later), distance) in enumerate(
+            zip(nominated, distances, strict=True), start=1
+        )
+    )
+    reader = _PairBatchReader(
+        tasks=tasks,
+        atlas=atlas,
+        requester=requester,
+        sheet_output_dir=sheet_output_dir,
+        limits=limits or VisionRequestLimits(),
+        concurrency=max(1, concurrency),
+    )
+    indices = tuple(range(len(tasks)))
+    forwards = reader.ask_many(indices, "ab")
+    backward_indices = tuple(
+        index
+        for index, (task, answer) in enumerate(zip(tasks, forwards, strict=True))
+        if answer is True
+        and (task.distance is None or task.distance > SELECTS_MAX_CORROBORATION)
+    )
+    backwards = dict(zip(backward_indices, reader.ask_many(backward_indices, "ba"), strict=True))
+
+    decisions: list[SamePicturePairDecision] = []
+    for index, (task, forward) in enumerate(zip(tasks, forwards, strict=True)):
+        warning = None
+        same = False
+        if forward is None:
+            warning = f"!! Unreadable final duplicate pair; both kept: {task.scope_id}"
+        elif forward:
+            if task.distance is not None and task.distance <= SELECTS_MAX_CORROBORATION:
+                same = True
+            else:
+                backward = backwards[index]
+                if backward is None:
+                    warning = f"!! Unreadable final duplicate pair; both kept: {task.scope_id}"
+                else:
+                    same = backward
+        decisions.append(
+            SamePicturePairDecision(
+                earlier_asset_id=task.earlier.asset_id,
+                later_asset_id=task.later.asset_id,
+                same=same,
+                warning=warning,
+            )
+        )
+    return tuple(decisions)
+
+
+def choose_same_picture_file(
+    candidates: Sequence[EditorialCandidate],
+    *,
+    motion_contributions: Mapping[str, str] | None = None,
+) -> EditorialCandidate:
+    """Keep the best evidenced medium/file once assets are proved to be one picture."""
+    choices = tuple(candidates)
+    if not choices:
+        raise ValueError("same-picture file choice needs at least one candidate")
+    kept = min(
+        choices,
+        key=lambda candidate: _keeping_order(candidate, motion_contributions),
+    )
+    if not kept.favourite and any(candidate.favourite for candidate in choices):
+        kept = replace(kept, favourite=True)
+    return kept
+
+
 def _absorb_exact_instants(
     prepared: PreparedEditorialSource,
     still_here: set[str],
+    *,
+    motion_contributions: Mapping[str, str] | None,
 ) -> tuple[list[EditorialCandidate], list[AbsorbedFrame]]:
     """Stage A. Two frames of one instant are not distinguishable at a glance."""
     survivors: list[EditorialCandidate] = []
@@ -269,9 +397,13 @@ def _absorb_exact_instants(
                 by_instant.setdefault(candidate.taken_at, []).append(candidate)
         for instant in sorted(by_instant):
             together = by_instant[instant]
-            kept = min(together, key=_keeping_order)
-            if not kept.favourite and any(frame.favourite for frame in together):
-                kept = replace(kept, favourite=True)
+            if _exact_instant_needs_visual_proof(together):
+                survivors.extend(together)
+                continue
+            kept = choose_same_picture_file(
+                together,
+                motion_contributions=motion_contributions,
+            )
             survivors.append(kept)
             absorbed.extend(
                 AbsorbedFrame(
@@ -294,9 +426,11 @@ def _absorb_the_same_picture(
     frame_cache_dir: Path | None,
     limits: VisionRequestLimits,
     concurrency: int,
+    atlas: object | None = None,
+    motion_contributions: Mapping[str, str] | None = None,
 ) -> tuple[list[EditorialCandidate], list[AbsorbedFrame], tuple[str, ...]]:
     """Stage B. Chain neighbours the model calls one picture, then keep one of each run."""
-    atlas = build_visual_atlas(prepared.visual_sources, frame_cache_dir=frame_cache_dir)
+    atlas = atlas or build_visual_atlas(prepared.visual_sources, frame_cache_dir=frame_cache_dir)
     alive = {candidate.asset_id for candidate in standing}
     survivors: list[EditorialCandidate] = []
     absorbed: list[AbsorbedFrame] = []
@@ -346,7 +480,10 @@ def _absorb_the_same_picture(
             )
         warnings.extend(moment_warnings)
         for run in runs:
-            kept, folded = _keep_from_run(run)
+            kept, folded = _keep_from_run(
+                run,
+                motion_contributions=motion_contributions,
+            )
             survivors.extend(kept)
             absorbed.extend(folded)
     return survivors, absorbed, tuple(warnings)
@@ -622,16 +759,18 @@ def _ask_one_pair(
     """One arrangement of one pair. `None` means no usable answer, never "different"."""
     from immich_memories.analysis.editorial_gateway import VisualEditorialRequest
 
-    tiles = tuple(atlas.tile_for(candidate.asset_id) for candidate in pair)  # type: ignore[attr-defined]
-    if any(getattr(tile, "kind", "") == "unavailable" for tile in tiles):
-        return None
-    page = build_contact_sheets(
-        tiles,
-        scope_id=f"{scope_id}-{arrangement}",
-        output_dir=sheet_output_dir,
-        tile_px=SELECTS_TILE_PX,
-    )[0]
     try:
+        tiles = tuple(
+            atlas.tile_for(candidate.asset_id) for candidate in pair  # type: ignore[attr-defined]
+        )
+        if any(getattr(tile, "kind", "") == "unavailable" for tile in tiles):
+            return None
+        page = build_contact_sheets(
+            tiles,
+            scope_id=f"{scope_id}-{arrangement}",
+            output_dir=sheet_output_dir,
+            tile_px=SELECTS_TILE_PX,
+        )[0]
         answer = requester.ask(
             VisualEditorialRequest(
                 pass_name=SELECTS_PASS_NAME,
@@ -693,6 +832,8 @@ def _corroboration_from(observations: list[tuple[int, bool, bool]]) -> int:
 
 def _keep_from_run(
     run: list[EditorialCandidate],
+    *,
+    motion_contributions: Mapping[str, str] | None,
 ) -> tuple[list[EditorialCandidate], list[AbsorbedFrame]]:
     """Every favourite in a run survives; a run with none keeps one by the stated rule.
 
@@ -703,8 +844,23 @@ def _keep_from_run(
     editorial question. It is deliberately not asked, because the measurement
     says the answer would follow tile position.
     """
+    if _has_unresolved_motion(run, motion_contributions):
+        return list(run), []
     starred = [candidate for candidate in run if candidate.favourite]
-    kept = starred or [min(run, key=_keeping_order)]
+    best = min(
+        run,
+        key=lambda candidate: _keeping_order(candidate, motion_contributions),
+    )
+    # A favourite is owner evidence, not permission to throw away an otherwise
+    # equivalent but materially better medium. Keep both for the final wall;
+    # the duration-aware editor can make that trade with the whole film visible.
+    kept = [*starred]
+    if not kept or (
+        best not in kept
+        and _medium_rank(best, motion_contributions)
+        < min(_medium_rank(candidate, motion_contributions) for candidate in kept)
+    ):
+        kept.append(best)
     keeper = kept[0].asset_id
     folded = [
         AbsorbedFrame(
@@ -788,13 +944,16 @@ def _model_asked(prepared: PreparedEditorialSource) -> str:
     return ""
 
 
-def _keeping_order(candidate: EditorialCandidate) -> tuple[object, ...]:
-    """The stated rule, in order: a favourite, then the larger file, then the ID.
+def _keeping_order(
+    candidate: EditorialCandidate,
+    motion_contributions: Mapping[str, str] | None = None,
+) -> tuple[object, ...]:
+    """Prefer earned motion, then the larger source file, then stable metadata.
 
-    Task 7 asks for source evidence between the two, and `EditorialCandidate`
-    does not carry any -- `SourceEvidence` exists in the contracts but reaches
-    no candidate -- so claiming it here would describe a tie-break that never
-    runs.
+    `EditorialCandidate.media_kind` alone never earns the first position. The
+    caller must supply a semantic verdict read from an observed filmstrip; an
+    unresolved motion choice is deferred by `_has_unresolved_motion`
+    before this order runs.
 
     Pixel count is not that evidence and is not an editorial judgement. It only
     settles which FILE to keep once the pictures have been found identical, and
@@ -805,7 +964,7 @@ def _keeping_order(candidate: EditorialCandidate) -> tuple[object, ...]:
     Measured on a real library: 533 of 2,847 exact-instant groups, where ID
     order kept 0.26x the pixels of the best available at the median.
 
-    It sorts AHEAD of the star because a star belongs to the picture rather than
+    Resolution sorts ahead of the star because a star belongs to the picture rather than
     to the file it was set on, and the two can be set on different assets: a
     shared album holds no originals, so it is both where stars get set and where
     the small copies come from. `_absorb_exact_instants` moves the star onto
@@ -821,4 +980,48 @@ def _keeping_order(candidate: EditorialCandidate) -> tuple[object, ...]:
     on every run.
     """
     source = candidate.source
-    return (-(source.width * source.height), not candidate.favourite, candidate.asset_id)
+    return (
+        _medium_rank(candidate, motion_contributions),
+        -(source.width * source.height),
+        not candidate.favourite,
+        candidate.asset_id,
+    )
+
+
+def _medium_rank(
+    candidate: EditorialCandidate,
+    motion_contributions: Mapping[str, str] | None,
+) -> int:
+    """Rank only observed semantic value; an unknown motion source ranks last."""
+    contribution = (motion_contributions or {}).get(candidate.asset_id)
+    if contribution == "meaningful":
+        return 0 if candidate.media_kind == "video" else 1
+    if candidate.media_kind == "photo" or (
+        candidate.media_kind == "live_photo" and contribution == "still_sufficient"
+    ):
+        return 2
+    if candidate.media_kind == "video" and contribution == "still_sufficient":
+        return 3
+    return 4
+
+
+def _exact_instant_needs_visual_proof(
+    candidates: Sequence[EditorialCandidate],
+) -> bool:
+    """Timestamp equality cannot prove two temporal takes show the same picture."""
+    return len(candidates) > 1 and any(
+        candidate.media_kind in {"video", "live_photo"} for candidate in candidates
+    )
+
+
+def _has_unresolved_motion(
+    candidates: Sequence[EditorialCandidate],
+    motion_contributions: Mapping[str, str] | None,
+) -> bool:
+    """Keep a visually proved run open until every motion source was observed."""
+    contributions = motion_contributions or {}
+    return any(
+        candidate.media_kind in {"video", "live_photo"}
+        and contributions.get(candidate.asset_id) not in {"meaningful", "still_sufficient"}
+        for candidate in candidates
+    )

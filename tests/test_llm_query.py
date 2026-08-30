@@ -121,6 +121,30 @@ class TestQueryLlmOpenAI:
         assert call_payload["messages"][0]["content"] == "Generate a title"
         assert call_payload["model"] == "omlx"
 
+    @pytest.mark.asyncio
+    async def test_a_200_provider_error_is_reported_before_choices_are_read(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        response = AsyncMock(status_code=200)
+        response.json = MagicMock(
+            return_value={
+                "error": {
+                    "code": "1113",
+                    "message": "Insufficient balance or no resource package.",
+                }
+            }
+        )
+        response.raise_for_status = lambda: None
+
+        with (
+            patch("httpx.AsyncClient.post", return_value=response),
+            pytest.raises(ValueError, match="1113.*Insufficient balance"),
+        ):
+            await query_llm(
+                "Generate a title",
+                LLMConfig(provider="openai-compatible", model="hosted"),
+            )
+
 
 def _openai_response(content='{"ok": true}', finish_reason="stop", reasoning_content=None):
     # WHY: the LLM server is the external boundary; these tests assert what
@@ -516,6 +540,30 @@ class TestTimeoutShape:
         assert isinstance(timeout, httpx.Timeout)
         assert timeout.connect == CONNECT_TIMEOUT_SECONDS
 
+    @pytest.mark.asyncio
+    async def test_query_timeout_is_also_a_total_wall_clock_deadline(self, monkeypatch):
+        import asyncio
+        import time
+
+        from immich_memories.analysis import llm_query
+
+        async def never_returns(*_args, **_kwargs):
+            await asyncio.Event().wait()
+
+        monkeypatch.setattr(llm_query, "_dispatch", never_returns)
+
+        started = time.monotonic()
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(
+                llm_query.query_llm(
+                    "Judge this cut",
+                    _thinking_config(thinking=False),
+                    timeout_seconds=0.01,
+                ),
+                timeout=0.2,
+            )
+        assert time.monotonic() - started < 0.1
+
 
 class TestQueryLlmWithImages:
     """Pictures go to whichever provider is configured, like the text does."""
@@ -570,6 +618,22 @@ class TestQueryLlmWithImages:
         content = mock_post.call_args[1]["json"]["messages"][0]["content"]
         assert content[0]["text"] == "What is this?"
         assert content[1]["image_url"]["url"].startswith("data:image/jpeg;base64,")
+
+    @pytest.mark.asyncio
+    async def test_zai_vision_uses_its_strict_image_url_shape_and_disables_thinking(self):
+        """Z.AI rejects OpenAI's optional detail property instead of ignoring it."""
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(provider="zai", model="glm-4.6v", api_key="test-key")
+
+        with patch("httpx.AsyncClient.post", return_value=_openai_response()) as mock_post:
+            await query_llm("What is this?", config, images=[b"\xff\xd8jpeg"])
+
+        assert mock_post.call_args[0][0] == "https://api.z.ai/api/paas/v4/chat/completions"
+        payload = mock_post.call_args[1]["json"]
+        image_url = payload["messages"][0]["content"][1]["image_url"]
+        assert set(image_url) == {"url"}
+        assert payload["thinking"] == {"type": "disabled"}
 
 
 class TestBulkCallsDoNotThink:

@@ -8,6 +8,7 @@ import threading
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from PIL import Image
@@ -25,6 +26,7 @@ from immich_memories.analysis.selection_source import (
     SourceScope,
     prepare_editorial_source,
 )
+from immich_memories.api.models import AssetType
 from immich_memories.config_models_llm import LLMConfig
 from tests.conftest import make_asset
 
@@ -58,14 +60,22 @@ def run_selects_on(prepared):
     return run_selects(prepared, prepared.candidates)
 
 
-def _prepared(*assets, pixels=None):
+def _prepared(*assets, pixels=None, preserve_media: bool = False):
     """`pixels` maps an asset id to its stub frame bytes, so a pair can be made
     pixel-close (identical bytes) or pixel-far (different texture)."""
+    sources = (
+        assets
+        if preserve_media
+        else tuple(
+            asset.model_copy(update={"type": AssetType.IMAGE, "live_photo_video_id": None})
+            for asset in assets
+        )
+    )
     frames = pixels or {}
     return prepare_editorial_source(
         EditorialSelectionRequest(scope=SourceScope()),
         EditorialDependencies(
-            source_fetcher=lambda _scope: assets,
+            source_fetcher=lambda _scope: sources,
             preview_jpeg=lambda asset: frames.get(asset.id) or _jpeg("navy"),
         ),
     )
@@ -181,6 +191,46 @@ def test_a_pair_the_model_calls_the_same_picture_leaves_one_survivor(tmp_path: P
 
     assert tuple(candidate.asset_id for candidate in result.survivors) == ("first-try",)
     assert result.absorbed[0].asset_id == "second-try"
+
+
+def test_demand_selects_can_reuse_a_motion_backed_atlas(tmp_path: Path) -> None:
+    prepared = _prepared(
+        make_asset("first-try", file_created_at=WHEN),
+        make_asset("second-try", file_created_at=WHEN + timedelta(seconds=5)),
+    )
+    tiles = {
+        candidate.asset_id: SimpleNamespace(
+            entity_id=candidate.asset_id,
+            kind="filmstrip",
+            jpeg_bytes=_jpeg("teal"),
+            sha256=f"hash-{candidate.asset_id}",
+            frame_count=3,
+            unavailable_reason=None,
+        )
+        for candidate in prepared.candidates
+    }
+    atlas = SimpleNamespace(tile_for=lambda asset_id: tiles[asset_id])
+
+    async def _answer(_prompt, _config, **kwargs):
+        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
+        return _pair_answer(same=False)
+
+    with (
+        patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer),
+        patch(
+            "immich_memories.analysis.selection_selects.build_visual_atlas",
+            side_effect=AssertionError("the supplied atlas must be reused"),
+        ),
+    ):
+        result = run_selects(
+            prepared,
+            prepared.candidates,
+            requester=_gateway(tmp_path, prepared.trace),
+            sheet_output_dir=tmp_path / "sheets",
+            atlas=atlas,
+        )
+
+    assert result.survivors == prepared.candidates
 
 
 def test_two_arrangements_that_disagree_keep_both_frames(tmp_path: Path) -> None:
@@ -725,6 +775,149 @@ def test_the_same_picture_stored_twice_keeps_the_larger_file() -> None:
 
     assert tuple(c.asset_id for c in result.survivors) == ("b-full-size-original",)
     assert result.absorbed[0].asset_id == "a-downscaled-copy"
+
+
+def test_an_unresolved_photo_video_twin_is_deferred_until_motion_is_read() -> None:
+    """The broad exact collapse must not guess whether unseen motion beats the still."""
+    photo = make_asset("large-photo", file_created_at=WHEN).model_copy(
+        update={"type": AssetType.IMAGE, "width": 4032, "height": 3024}
+    )
+    video = make_asset("small-video", file_created_at=WHEN).model_copy(
+        update={"type": AssetType.VIDEO, "width": 1920, "height": 1080}
+    )
+
+    result = run_selects_on(_prepared(photo, video, preserve_media=True))
+
+    assert {candidate.asset_id for candidate in result.survivors} == {
+        "large-photo",
+        "small-video",
+    }
+    assert result.absorbed == ()
+
+
+def test_same_instant_videos_wait_for_visual_comparison() -> None:
+    """Equal start times cannot prove two temporal takes contain the same action."""
+    first = make_asset("first-video", file_created_at=WHEN)
+    second = make_asset("second-video", file_created_at=WHEN)
+
+    result = run_selects_on(_prepared(first, second, preserve_media=True))
+
+    assert {candidate.asset_id for candidate in result.survivors} == {
+        "first-video",
+        "second-video",
+    }
+    assert result.absorbed == ()
+
+
+def test_meaningful_video_beats_its_exact_photo_twin_after_motion_is_read(
+    tmp_path: Path,
+) -> None:
+    """Once equivalence and useful motion are known, medium settles the duplicate."""
+    photo = make_asset("large-photo", file_created_at=WHEN).model_copy(
+        update={"type": AssetType.IMAGE, "width": 4032, "height": 3024}
+    )
+    video = make_asset("small-video", file_created_at=WHEN).model_copy(
+        update={"type": AssetType.VIDEO, "width": 1920, "height": 1080}
+    )
+    prepared = _prepared(photo, video, preserve_media=True)
+
+    async def _answer(_prompt, _config, **kwargs):
+        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
+        return _pair_answer(same=True)
+
+    with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
+        result = run_selects(
+            prepared,
+            prepared.candidates,
+            requester=_gateway(tmp_path, prepared.trace),
+            sheet_output_dir=tmp_path / "sheets",
+            motion_contributions={"small-video": "meaningful"},
+        )
+
+    assert tuple(candidate.asset_id for candidate in result.survivors) == ("small-video",)
+    assert result.absorbed[0].asset_id == "large-photo"
+
+
+def test_motion_without_value_does_not_beat_the_better_photo_twin(tmp_path: Path) -> None:
+    """Source type alone cannot promote static or merely jittery footage."""
+    photo = make_asset("large-photo", file_created_at=WHEN).model_copy(
+        update={"type": AssetType.IMAGE, "width": 4032, "height": 3024}
+    )
+    video = make_asset("small-video", file_created_at=WHEN).model_copy(
+        update={"type": AssetType.VIDEO, "width": 1920, "height": 1080}
+    )
+    prepared = _prepared(photo, video, preserve_media=True)
+
+    async def _answer(_prompt, _config, **kwargs):
+        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
+        return _pair_answer(same=True)
+
+    with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
+        result = run_selects(
+            prepared,
+            prepared.candidates,
+            requester=_gateway(tmp_path, prepared.trace),
+            sheet_output_dir=tmp_path / "sheets",
+            motion_contributions={"small-video": "still_sufficient"},
+        )
+
+    assert tuple(candidate.asset_id for candidate in result.survivors) == ("large-photo",)
+    assert result.absorbed[0].asset_id == "small-video"
+
+
+def test_same_picture_run_prefers_meaningful_live_photo_over_photo(tmp_path: Path) -> None:
+    photo = make_asset("photo", file_created_at=WHEN).model_copy(
+        update={"type": AssetType.IMAGE, "width": 4032, "height": 3024}
+    )
+    live_photo = make_asset("live-photo", file_created_at=WHEN + timedelta(seconds=2)).model_copy(
+        update={
+            "type": AssetType.IMAGE,
+            "live_photo_video_id": "motion-component",
+            "width": 1920,
+            "height": 1080,
+        }
+    )
+    prepared = _prepared(photo, live_photo, preserve_media=True)
+
+    async def _answer(_prompt, _config, **kwargs):
+        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
+        return _pair_answer(same=True)
+
+    with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
+        result = run_selects(
+            prepared,
+            prepared.candidates,
+            requester=_gateway(tmp_path, prepared.trace),
+            sheet_output_dir=tmp_path / "sheets",
+            motion_contributions={"live-photo": "meaningful"},
+        )
+
+    assert tuple(candidate.asset_id for candidate in result.survivors) == ("live-photo",)
+    assert result.absorbed[0].asset_id == "photo"
+
+
+def test_better_motion_does_not_delete_an_equivalent_favourite_still(tmp_path: Path) -> None:
+    favourite = make_asset("favourite", file_created_at=WHEN, is_favorite=True).model_copy(
+        update={"type": AssetType.IMAGE}
+    )
+    video = make_asset("video", file_created_at=WHEN + timedelta(seconds=2))
+    prepared = _prepared(favourite, video, preserve_media=True)
+
+    async def _answer(_prompt, _config, **kwargs):
+        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
+        return _pair_answer(same=True)
+
+    with patch("immich_memories.analysis.editorial_gateway.query_llm", new=_answer):
+        result = run_selects(
+            prepared,
+            prepared.candidates,
+            requester=_gateway(tmp_path, prepared.trace),
+            sheet_output_dir=tmp_path / "sheets",
+            motion_contributions={"video": "meaningful"},
+        )
+
+    assert {candidate.asset_id for candidate in result.survivors} == {"favourite", "video"}
+    assert result.absorbed == ()
 
 
 def test_a_star_on_a_downscaled_copy_keeps_the_original_and_the_star() -> None:

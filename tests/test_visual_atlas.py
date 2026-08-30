@@ -73,6 +73,31 @@ def test_live_photo_motion_is_one_locally_composed_chronological_filmstrip(
     assert tile.frame_count == 3
 
 
+def test_one_decoded_motion_frame_falls_back_to_the_photo_preview(tmp_path: Path) -> None:
+    """One frame is a still, not temporal evidence that can earn a motion preference."""
+    from immich_memories.analysis.visual_atlas import AtlasSource, build_visual_atlas
+
+    frame = _jpeg(tmp_path / "only-frame.jpg", "red")
+    preview = _jpeg(tmp_path / "preview.jpg", "purple").read_bytes()
+    source = AtlasSource(
+        asset=SimpleNamespace(id="short-video", is_video=True),
+        preview_jpeg=preview,
+        motion_path=tmp_path / "short.mp4",
+        proposed_segment=(0.0, 0.2),
+    )
+
+    with patch(
+        "immich_memories.analysis.visual_atlas.sample_segment_frames",
+        return_value=(frame,),
+    ):
+        atlas = build_visual_atlas((source,), frame_cache_dir=tmp_path / "frames")
+
+    tile = atlas.tile_for("short-video")
+    assert tile.kind == "photo"
+    assert tile.frame_count == 1
+    assert tile.jpeg_bytes == preview
+
+
 def test_photo_tile_reuses_a_cached_preview_without_a_requester(tmp_path: Path) -> None:
     """Photo evidence is loaded from the local thumbnail cache, never fetched by the atlas."""
     from immich_memories.analysis.visual_atlas import AtlasSource, build_visual_atlas

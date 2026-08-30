@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import io
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Literal
 
 from immich_memories.analysis.thumbnail_prefetch import cached_preview_bytes
@@ -43,13 +45,19 @@ class VisualAtlas:
     """Chronological tiles that derived contact sheets can reuse without new reads."""
 
     tiles: tuple[AtlasTile, ...]
+    _tiles_by_id: Mapping[str, AtlasTile] = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        # Preserve the historical first-match behavior if a hand-built test atlas
+        # contains a duplicate ID. Production construction rejects duplicates.
+        by_id: dict[str, AtlasTile] = {}
+        for tile in self.tiles:
+            by_id.setdefault(tile.entity_id, tile)
+        object.__setattr__(self, "_tiles_by_id", MappingProxyType(by_id))
 
     def tile_for(self, entity_id: str) -> AtlasTile:
         """Return the tile for one source entity."""
-        for tile in self.tiles:
-            if tile.entity_id == entity_id:
-                return tile
-        raise KeyError(entity_id)
+        return self._tiles_by_id[entity_id]
 
 
 def build_visual_atlas(
@@ -139,7 +147,7 @@ def _filmstrip_for(source: AtlasSource, frame_cache_dir: Path | None) -> tuple[b
     )
     frames = [_open_jpeg(path) for path in frame_paths]
     usable = [frame for frame in frames if frame is not None]
-    if not usable:
+    if len(usable) < 2:
         return None
     return _compose_filmstrip(usable), len(usable)
 

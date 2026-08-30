@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Replay a frozen private moment wall through one hosted editorial model.
+"""Replay a frozen private editorial wall through one hosted model.
 
-Only thesis and final moment admission are called.  The source filter, Cull,
-Structure, descriptions, and cards come from a completed smart-edit result, so
-provider comparisons see byte-identical evidence.  Inputs and outputs are
-restricted to ``~/.immich-memories-matrix`` because they contain private card
-text and model answers.
+The default stage calls only thesis and final moment admission.  The final-cut
+stage calls only the terminal text cut over already-described reservoir assets.
+The source filter, Cull, Structure, visual descriptions, and cards come from a
+completed smart-edit result, so provider comparisons see frozen evidence.
+Inputs and outputs are restricted to ``~/.immich-memories-matrix`` because they
+contain private card text and model answers.
 """
 
 from __future__ import annotations
@@ -15,7 +16,9 @@ import asyncio
 import json
 import os
 import time
+from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import probe_description_moment_cut as prototype
@@ -23,6 +26,7 @@ import probe_smart_edit_matrix as smart
 
 from immich_memories.analysis import llm_metrics
 from immich_memories.analysis.llm_query import query_llm
+from immich_memories.config import get_config
 from immich_memories.config_models_llm import LLMConfig
 
 _OPENAI_PRICES_PER_MILLION = {
@@ -48,6 +52,8 @@ def _required_env(name: str) -> str:
 
 
 def _provider_config(provider: str, model: str) -> LLMConfig:
+    if provider == "configured":
+        return get_config().llm.model_copy(update={"model": model, "thinking": False})
     if provider == "openai":
         return LLMConfig(
             provider="openai",
@@ -67,14 +73,7 @@ def _provider_config(provider: str, model: str) -> LLMConfig:
             no_thinking_params={"thinking": {"type": "disabled"}},
         )
     if provider == "melious":
-        return LLMConfig(
-            provider="openai-compatible",
-            base_url=_required_env("MELIOUS_AI_BASE_URL"),
-            model=model,
-            api_key=_required_env("MELIOUS_AI_KEY"),
-            thinking=False,
-            no_thinking_params={"thinking": {"type": "disabled"}},
-        )
+        return smart._hosted_llm_config("melious", model)
     raise ValueError(f"unsupported provider: {provider}")
 
 
@@ -167,6 +166,17 @@ def _total_metrics(*phases: dict[str, Any]) -> dict[str, Any]:
 
 async def _replay(args: argparse.Namespace) -> dict[str, Any]:
     result = json.loads(args.result.read_text())
+    stage = getattr(args, "stage", "moment")
+    if stage == "final-cut":
+        return await _replay_final_cut(args, result)
+    if stage == "global-review":
+        return await _replay_global_review(args, result)
+    if stage == "deliberation":
+        return await _replay_deliberation(args, result)
+    return await _replay_moment(args, result)
+
+
+async def _replay_moment(args: argparse.Namespace, result: dict[str, Any]) -> dict[str, Any]:
     case_dir = args.result.parent
     cards_payload = json.loads((case_dir / "cards.json").read_text())
     ordered_ids = tuple(card["moment_id"] for card in cards_payload["cards"])
@@ -201,6 +211,7 @@ async def _replay(args: argparse.Namespace) -> dict[str, Any]:
             "selection": edit["selection"],
         },
     }
+
     config = _provider_config(args.provider, args.model)
     thesis_prompt = edit["thesis_calls"][0]["prompt"]
     raw_thesis, thesis_metrics = await _call(
@@ -280,12 +291,347 @@ async def _replay(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def _frozen_effective_media_kind(row: dict[str, Any]) -> str:
+    """Accept a moving label only when frozen temporal evidence earned it."""
+    label = row["media_kind"]
+    source = row.get("source_media_kind", label)
+    moving_labels = {"video", "live_photo", "live-motion", "motion"}
+    if label not in moving_labels:
+        return label
+    if row.get("motion_observed") is not True:
+        return "photo"
+    if row.get("motion_contribution") != "meaningful":
+        return "photo"
+    return "video" if source == "video" else "live-motion"
+
+
+def _fine_cut_candidates(payload: dict[str, Any]) -> tuple[smart.FineCutCandidate, ...]:
+    """Restore the exact chronological text wall without fetching private media."""
+    candidates = tuple(
+        smart.FineCutCandidate(
+            alias=row["alias"],
+            asset_id=row["asset_id"],
+            moment_id=row["moment_id"],
+            taken_at=datetime.fromisoformat(row["taken_at"]),
+            media_kind=(effective_media_kind := _frozen_effective_media_kind(row)),
+            favourite=row["favourite"],
+            description=row["description"],
+            context=tuple(row.get("context", ())),
+            episode_id=row.get("episode_id"),
+            people_context=tuple(row.get("people_context", ())),
+            motion_contribution=row.get("motion_contribution"),
+            motion_reason=row.get("motion_reason"),
+            source_media_kind=row.get("source_media_kind", row.get("media_kind")),
+            motion_observed=row.get("motion_observed") is True,
+            render_mode=(
+                "motion" if effective_media_kind in {"video", "live-motion"} else "still"
+            ),
+            render_frame_seconds=row.get("render_frame_seconds"),
+        )
+        for row in payload["assets"]
+    )
+    if len({candidate.alias for candidate in candidates}) != len(candidates):
+        raise ValueError("frozen final-cut aliases must be unique")
+    expected = payload.get("counts", {}).get("fine_cut_candidates")
+    if expected is not None and expected != len(candidates):
+        raise ValueError("frozen final-cut candidate count changed")
+    return candidates
+
+
+def _frozen_global_wall(
+    args: argparse.Namespace, result: dict[str, Any]
+) -> tuple[
+    dict[str, Any],
+    tuple[smart.FineCutCandidate, ...],
+    dict[str, Any],
+    tuple[str, ...],
+    SimpleNamespace,
+]:
+    """Load the frozen candidate pool and its pre-global chapter winners."""
+    final_path = args.result.parent / "final-cut.json"
+    if not final_path.is_file():
+        raise ValueError("global-review stage requires a sibling final-cut.json")
+    frozen = json.loads(final_path.read_text())
+    candidates = _fine_cut_candidates(frozen)
+    frozen_selection = frozen["selection"]
+    proposed_rows = frozen_selection.get("pre_global_review_keep")
+    if not isinstance(proposed_rows, list) or not proposed_rows:
+        raise ValueError("global-review stage requires frozen pre-global winners")
+    proposed_aliases = tuple(row.get("asset_id") for row in proposed_rows)
+    candidate_aliases = {candidate.alias for candidate in candidates}
+    if (
+        any(not isinstance(alias, str) for alias in proposed_aliases)
+        or len(set(proposed_aliases)) != len(proposed_aliases)
+        or not set(proposed_aliases) <= candidate_aliases
+    ):
+        raise ValueError("frozen pre-global winners are not unique grounded aliases")
+    chapter_selection = {**frozen_selection, "keep": proposed_rows}
+    case_payload = result["case"]
+    case = SimpleNamespace(
+        label=case_payload["label"],
+        product=case_payload["product"],
+        brief=case_payload["brief"],
+    )
+    return frozen, candidates, chapter_selection, proposed_aliases, case
+
+
+async def _replay_global_review(args: argparse.Namespace, result: dict[str, Any]) -> dict[str, Any]:
+    """Replay only the frozen whole-sequence wall assembled by local chapter cuts."""
+    frozen, candidates, chapter_selection, proposed_aliases, case = _frozen_global_wall(
+        args, result
+    )
+    frozen_selection = frozen["selection"]
+    config = _provider_config(args.provider, args.model)
+    started = time.monotonic()
+    with llm_metrics.collecting() as counters:
+        selection, review, call = await smart._global_final_sequence_review(
+            candidates,
+            chapter_selection,
+            case=case,
+            thesis=result["edit"]["thesis"],
+            llm_config=config,
+            cache_path=args.out.with_suffix(".db"),
+            timeout_seconds=args.timeout_seconds,
+        )
+    metrics = counters.as_metrics()
+    metrics["elapsed_seconds"] = round(time.monotonic() - started, 3)
+    estimated = _estimated_openai_cost(config.model, metrics)
+    if estimated is not None:
+        metrics["estimated_cost_usd"] = estimated
+    selected = {row["asset_id"] for row in selection["keep"]}
+    represented = {candidate.moment_id for candidate in candidates if candidate.alias in selected}
+    return {
+        "schema_version": "editorial-global-sequence-provider-replay-v1",
+        "privacy": "private replay artifact; do not commit prompts, answers, names, or IDs",
+        "source_result": str(args.result),
+        "case": result["case"],
+        "provider": args.provider,
+        "model": args.model,
+        "status": "complete",
+        "configuration": {
+            "temperature": 0.0,
+            "thinking": False,
+            "frozen_pre_global_wall": True,
+            "vision_calls": 0,
+            "capacity": int(frozen["configuration"]["capacity"]),
+        },
+        "reference": {
+            "model": result["edit"]["configuration"]["text_model"],
+            "selection": frozen_selection,
+        },
+        "selection": selection,
+        "counts": {
+            "wall_assets": len(proposed_aliases),
+            "selected_assets": len(selected),
+            "represented_moments": len(represented),
+        },
+        "metrics": {"total": metrics},
+        "calls": {"global_review": smart._call_record(call)},
+        "review_status": review["status"],
+    }
+
+
+async def _replay_deliberation(args: argparse.Namespace, result: dict[str, Any]) -> dict[str, Any]:
+    """Replay the bounded text-only corpus audit over every frozen candidate."""
+    frozen, candidates, chapter_selection, proposed_aliases, case = _frozen_global_wall(
+        args, result
+    )
+    capacity = int(frozen["configuration"]["capacity"])
+    max_iterations = getattr(args, "max_iterations", 3)
+    config = _provider_config(args.provider, args.model)
+    started = time.monotonic()
+    with llm_metrics.collecting() as counters:
+        selection, initial_review, initial_call = await smart._global_final_sequence_review(
+            candidates,
+            chapter_selection,
+            case=case,
+            thesis=result["edit"]["thesis"],
+            llm_config=config,
+            cache_path=args.out.with_suffix(".db"),
+            timeout_seconds=args.timeout_seconds,
+        )
+        selection, deliberation = await smart._iterative_final_asset_review(
+            candidates,
+            selection,
+            case=case,
+            thesis=result["edit"]["thesis"],
+            capacity=capacity,
+            llm_config=config,
+            cache_path=args.out.with_suffix(".db"),
+            timeout_seconds=args.timeout_seconds,
+            max_iterations=max_iterations,
+        )
+        changed = any(row.get("outcome") == "accepted" for row in deliberation["iterations"])
+        final_call = None
+        final_review = initial_review
+        if changed:
+            selection, final_review, final_call = await smart._global_final_sequence_review(
+                candidates,
+                selection,
+                case=case,
+                thesis=result["edit"]["thesis"],
+                llm_config=config,
+                cache_path=args.out.with_suffix(".db"),
+                timeout_seconds=args.timeout_seconds,
+            )
+    metrics = counters.as_metrics()
+    metrics["elapsed_seconds"] = round(time.monotonic() - started, 3)
+    estimated = _estimated_openai_cost(config.model, metrics)
+    if estimated is not None:
+        metrics["estimated_cost_usd"] = estimated
+    selected = {row["asset_id"] for row in selection["keep"]}
+    represented = {candidate.moment_id for candidate in candidates if candidate.alias in selected}
+    return {
+        "schema_version": "editorial-final-deliberation-provider-replay-v1",
+        "privacy": "private replay artifact; do not commit prompts, answers, names, or IDs",
+        "source_result": str(args.result),
+        "case": result["case"],
+        "provider": args.provider,
+        "model": args.model,
+        "status": "complete",
+        "configuration": {
+            "temperature": 0.0,
+            "thinking": False,
+            "frozen_candidate_pool": True,
+            "vision_calls": 0,
+            "capacity": capacity,
+            "max_iterations": max_iterations,
+        },
+        "reference": {
+            "model": result["edit"]["configuration"]["text_model"],
+            "selection": frozen["selection"],
+        },
+        "selection": selection,
+        "deliberation": deliberation,
+        "counts": {
+            "wall_assets": len(candidates),
+            "candidate_pool_assets": len(candidates),
+            "initial_wall_assets": len(proposed_aliases),
+            "selected_assets": len(selected),
+            "represented_moments": len(represented),
+            "deliberation_iterations": len(deliberation["iterations"]),
+        },
+        "metrics": {"total": metrics},
+        "calls": {
+            "initial_global_review": smart._call_record(initial_call),
+            "deliberation": [row["calls"] for row in deliberation["iterations"]],
+            "final_global_review": smart._call_record(final_call),
+        },
+        "review_status": final_review["status"],
+    }
+
+
+async def _replay_final_cut(args: argparse.Namespace, result: dict[str, Any]) -> dict[str, Any]:
+    """Replay only the frozen terminal asset walls; perform no visual work."""
+    final_path = args.result.parent / "final-cut.json"
+    if not final_path.is_file():
+        raise ValueError("final-cut stage requires a sibling final-cut.json")
+    frozen = json.loads(final_path.read_text())
+    edit = result["edit"]
+    if edit["configuration"]["shape"] != "hierarchical":
+        raise ValueError("final-cut provider replay currently requires a hierarchical wall")
+
+    candidates = _fine_cut_candidates(frozen)
+    required_aliases = tuple(frozen["selection"].get("required_asset_ids", ()))
+    capacity = int(frozen["configuration"]["capacity"])
+    plans = smart._hierarchical_final_cut_plan(
+        edit,
+        candidates,
+        required_aliases=required_aliases,
+        capacity=capacity,
+    )
+    case_payload = result["case"]
+    case = SimpleNamespace(
+        label=case_payload["label"],
+        product=case_payload["product"],
+        brief=case_payload["brief"],
+    )
+    config = _provider_config(args.provider, args.model)
+    started = time.monotonic()
+    with llm_metrics.collecting() as counters:
+        chapter_selection, calls = await smart._hierarchical_final_asset_cut(
+            plans,
+            case=case,
+            thesis=edit["thesis"],
+            llm_config=config,
+            cache_path=args.out.with_suffix(".db"),
+            concurrency=2,
+            timeout_seconds=args.timeout_seconds,
+        )
+        pre_global_review_assets = len(chapter_selection["keep"])
+        selection, _review, global_review_call = await smart._global_final_sequence_review(
+            candidates,
+            chapter_selection,
+            case=case,
+            thesis=edit["thesis"],
+            llm_config=config,
+            cache_path=args.out.with_suffix(".db"),
+            timeout_seconds=args.timeout_seconds,
+        )
+    metrics = counters.as_metrics()
+    metrics["elapsed_seconds"] = round(time.monotonic() - started, 3)
+    estimated = _estimated_openai_cost(config.model, metrics)
+    if estimated is not None:
+        metrics["estimated_cost_usd"] = estimated
+    selected = {row["asset_id"] for row in selection["keep"]}
+    represented = {candidate.moment_id for candidate in candidates if candidate.alias in selected}
+    return {
+        "schema_version": "editorial-final-asset-provider-replay-v1",
+        "privacy": "private replay artifact; do not commit prompts, answers, names, or IDs",
+        "source_result": str(args.result),
+        "case": result["case"],
+        "provider": args.provider,
+        "model": args.model,
+        "status": "complete",
+        "configuration": {
+            "temperature": 0.0,
+            "thinking": False,
+            "frozen_final_candidates": True,
+            "vision_calls": 0,
+            "global_sequence_review": True,
+            "shape": "hierarchical",
+            "capacity": capacity,
+        },
+        "reference": {
+            "model": edit["configuration"]["text_model"],
+            "selection": frozen["selection"],
+        },
+        "selection": selection,
+        "counts": {
+            "wall_assets": len(candidates),
+            "chapters": len(plans),
+            "pre_global_review_assets": pre_global_review_assets,
+            "selected_assets": len(selected),
+            "represented_moments": len(represented),
+        },
+        "metrics": {"total": metrics},
+        "calls": {
+            "selection": [smart._call_record(call) for call in calls],
+            "global_review": smart._call_record(global_review_call),
+        },
+    }
+
+
 def _arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--result", required=True, type=Path)
     parser.add_argument("--out", required=True, type=Path)
-    parser.add_argument("--provider", required=True, choices=("openai", "zai-anthropic", "melious"))
+    parser.add_argument(
+        "--provider",
+        required=True,
+        choices=("configured", "openai", "zai-anthropic", "melious"),
+    )
     parser.add_argument("--model", required=True)
+    parser.add_argument(
+        "--stage",
+        choices=("moment", "final-cut", "global-review", "deliberation"),
+        default="moment",
+        help=(
+            "replay thesis plus moment admission, the hierarchical terminal asset cut, only "
+            "the frozen pre-global wall, or bounded all-reservoir deliberation"
+        ),
+    )
+    parser.add_argument("--max-iterations", type=int, choices=(1, 2, 3), default=3)
     parser.add_argument("--timeout-seconds", type=int, default=600)
     args = parser.parse_args()
     args.result = _private_path(args.result, parser, "--result")
@@ -294,6 +640,11 @@ def _arguments() -> argparse.Namespace:
         parser.error(f"result does not exist: {args.result}")
     if args.out.exists():
         parser.error(f"output already exists: {args.out}")
+    if (
+        args.stage in {"final-cut", "global-review", "deliberation"}
+        and args.out.with_suffix(".db").exists()
+    ):
+        parser.error("asset replay cache already exists; choose a fresh --out path")
     return args
 
 
@@ -311,11 +662,16 @@ def main() -> int:
             flush=True,
         )
         return 2
+    asset_stage = args.stage in {"final-cut", "global-review", "deliberation"}
+    selected_key = "selected_assets" if asset_stage else "selected_moments"
+    wall_key = "wall_assets" if asset_stage else "wall_moments"
+    wall_seconds = total.get(
+        "elapsed_seconds", total.get("wall_seconds", total.get("llm_wall_seconds", 0))
+    )
     print(
         f"{args.provider}/{args.model}: selected "
-        f"{replay['counts']['selected_moments']}/{replay['counts']['wall_moments']} in "
-        f"{total.get('wall_seconds', 0):.1f}s; "
-        f"tokens {total.get('llm_prompt_tokens', 0)} in / "
+        f"{replay['counts'][selected_key]}/{replay['counts'][wall_key]} in "
+        f"{wall_seconds:.1f}s; tokens {total.get('llm_prompt_tokens', 0)} in / "
         f"{total.get('llm_completion_tokens', 0)} out",
         flush=True,
     )
