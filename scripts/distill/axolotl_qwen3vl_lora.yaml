@@ -1,0 +1,67 @@
+# Axolotl LoRA config for the card-model student.
+#
+# Sources: the Qwen3-VL section of axolotl's docs/multimodal.qmd merged onto
+# examples/qwen2_5-vl/lora-7b.yaml (there is no examples/qwen3-vl/ upstream).
+# Every hyperparameter is docs/research/2026-08-30-card-model-distillation.md §3.2/§3.3.
+#
+#   axolotl train axolotl_qwen3vl_lora.yaml
+
+base_model: Qwen/Qwen3-VL-2B-Instruct
+# Qwen3-VL reuses the qwen2_vl chat template. Do not invent a qwen3_vl value here.
+chat_template: qwen2_vl
+processor_type: AutoProcessor
+
+# Multimodal plumbing. skip_prepare_dataset and remove_unused_columns are both
+# required for image embeddings to survive into the batch; sample_packing is not
+# supported with multimodal at all.
+skip_prepare_dataset: true
+remove_unused_columns: false
+sample_packing: false
+
+datasets:
+  - path: /workspace/data
+    type: chat_template
+    ds_type: json
+    data_files:
+      - /workspace/data/train.jsonl
+    field_messages: messages
+val_set_size: 0.0
+test_datasets:
+  - path: /workspace/data/validation.jsonl
+    ds_type: json
+    type: chat_template
+    split: train
+
+# §6: the teacher labelled at 512px long edge; train at the same scale.
+image_size: 512
+image_resize_algorithm: bilinear
+
+adapter: lora
+lora_r: 8          # §3.2 -- NOT 16. r=16 on repeated-list fields gave duplicate rate 0.080.
+lora_alpha: 16
+lora_dropout: 0.0
+# §3.3: LoRA reaches the language model; the vision tower and projector stay frozen.
+# Freezing both backbones costs 9.2 points, and projector-only is the highest-leaking config.
+lora_target_modules: 'model.language_model.layers.[\d]+.(mlp|cross_attn|self_attn).(up|down|gate|q|k|v|o)_proj'
+freeze_mm_modules: true
+
+sequence_len: 2048
+micro_batch_size: 1
+gradient_accumulation_steps: 8
+num_epochs: 3      # §8: <= 3 is the flat part of the memorisation curve; 5 is the knee.
+learning_rate: 0.0002
+optimizer: adamw_torch
+lr_scheduler: cosine
+warmup_ratio: 0.03
+weight_decay: 0.0
+max_grad_norm: 1.0
+
+bf16: auto
+tf32: true
+gradient_checkpointing: true
+flash_attention: true
+
+logging_steps: 10
+evals_per_epoch: 2
+saves_per_epoch: 1
+output_dir: /workspace/out
