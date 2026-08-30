@@ -23,6 +23,7 @@ sys.path.insert(0, str(DISTILL))
 assemble_blend = pytest.importorskip("assemble_blend")
 distill_common = pytest.importorskip("distill_common")
 eval_gates = pytest.importorskip("eval_gates")
+gap_probe = pytest.importorskip("gap_probe")
 pull_corpus = pytest.importorskip("pull_corpus")
 teacher_label = pytest.importorskip("teacher_label")
 
@@ -145,8 +146,10 @@ class TestProductionPromptReuse:
     def test_the_wire_request_carries_the_schema_and_disables_thinking(self, tmp_path):
         constants = distill_common.production_prompt_constants()
         prompt = teacher_label.build_card_prompt(constants)
-        endpoint = distill_common.LLMEndpoint(
-            base_url="http://localhost:9999/v1", api_key="k", model="test-teacher"
+        endpoint = teacher_label.TeacherEndpoint(
+            provider="omlx", wire="openai", base_url="http://localhost:9999/v1",
+            api_key="k", model="test-teacher",
+            extra={"chat_template_kwargs": {"enable_thinking": False}},
         )
         captured: dict = {}
 
@@ -486,6 +489,269 @@ class TestGateArithmetic:
         assert eval_gates.load_rows(path) == {
             "z9": {"description": "a cat", "setting": "a sofa"}
         }
+
+
+class TestProviderAndWire:
+    """Stage B0 sends the same picture to two teachers that speak different wires."""
+
+    def _args(self, **overrides):
+        base = {"provider": "melious", "wire": None, "base_url": None,
+                "model": "qwen3.8-27b", "label_tag": "", "accept_provider_terms": False}
+        base.update(overrides)
+        return argparse.Namespace(**base)
+
+    def test_melious_is_openai_wire_from_its_env_names(self, monkeypatch):
+        monkeypatch.setenv("MELIOUS_AI_BASE_URL", "https://api.melious.test/v1")
+        monkeypatch.setenv("MELIOUS_AI_KEY", "secret-value")
+        endpoint = teacher_label.resolve_endpoint(self._args())
+        assert endpoint.wire == "openai"
+        assert endpoint.chat_url == "https://api.melious.test/v1/chat/completions"
+
+    def test_zai_credentials_are_anthropic_wire(self, monkeypatch):
+        """The repo's z.ai creds speak /v1/messages, not /chat/completions."""
+        monkeypatch.setenv("ZAI_BASE_URL", "https://api.z.ai/api/anthropic")
+        monkeypatch.setenv("ZAI_API_KEY", "secret-value")
+        endpoint = teacher_label.resolve_endpoint(self._args(provider="zai", model="glm-4.6v", accept_provider_terms=True))
+        assert endpoint.wire == "anthropic"
+        assert endpoint.chat_url == "https://api.z.ai/api/anthropic/v1/messages"
+
+    def test_a_base_url_already_ending_in_v1_is_not_doubled(self, monkeypatch):
+        monkeypatch.setenv("ZAI_BASE_URL", "https://api.z.ai/api/anthropic/v1")
+        monkeypatch.setenv("ZAI_API_KEY", "k")
+        endpoint = teacher_label.resolve_endpoint(
+            self._args(provider="zai", accept_provider_terms=True)
+        )
+        assert endpoint.chat_url.endswith("/v1/messages")
+        assert "/v1/v1/" not in endpoint.chat_url
+
+    def test_wire_can_be_overridden(self, monkeypatch):
+        monkeypatch.setenv("ZAI_BASE_URL", "https://api.z.ai/api/paas/v4")
+        monkeypatch.setenv("ZAI_API_KEY", "k")
+        endpoint = teacher_label.resolve_endpoint(self._args(provider="zai", wire="openai", accept_provider_terms=True))
+        assert endpoint.wire == "openai"
+        assert endpoint.chat_url.endswith("/chat/completions")
+
+    def test_a_missing_key_names_the_variable_and_never_the_value(self, monkeypatch):
+        monkeypatch.setenv("MELIOUS_AI_BASE_URL", "https://api.melious.test/v1")
+        monkeypatch.delenv("MELIOUS_AI_KEY", raising=False)
+        with pytest.raises(SystemExit) as caught:
+            teacher_label.resolve_endpoint(self._args())
+        assert "MELIOUS_AI_KEY" in str(caught.value)
+
+    def test_zai_is_refused_by_default_on_its_own_terms(self, monkeypatch):
+        """III.4(f) blocks outputs feeding a model that gets distributed."""
+        monkeypatch.setenv("ZAI_BASE_URL", "https://api.z.ai/api/anthropic")
+        monkeypatch.setenv("ZAI_API_KEY", "k")
+        with pytest.raises(SystemExit) as caught:
+            teacher_label.resolve_endpoint(self._args(provider="zai"))
+        message = str(caught.value)
+        assert "compete" in message
+        assert "GLM-4.6V" in message, "the refusal must name the clean self-host route"
+
+    def test_zai_proceeds_only_on_an_explicit_override(self, monkeypatch):
+        monkeypatch.setenv("ZAI_BASE_URL", "https://api.z.ai/api/anthropic")
+        monkeypatch.setenv("ZAI_API_KEY", "k")
+        endpoint = teacher_label.resolve_endpoint(
+            self._args(provider="zai", accept_provider_terms=True)
+        )
+        assert endpoint.provider == "zai"
+
+    def test_the_clean_providers_carry_no_block(self):
+        assert "blocked_reason" not in teacher_label.PROVIDERS["melious"]
+        assert "blocked_reason" not in teacher_label.PROVIDERS["omlx"]
+
+    def test_an_unknown_provider_is_refused(self):
+        with pytest.raises(SystemExit):
+            teacher_label.resolve_endpoint(self._args(provider="nope"))
+
+    def _endpoint(self, wire):
+        return teacher_label.TeacherEndpoint(
+            provider="test", wire=wire, base_url="https://h/v1",
+            api_key="secret-value", model="m", extra={},
+        )
+
+    def test_openai_wire_carries_a_data_url_and_a_bearer_header(self):
+        headers, payload = teacher_label.build_request(
+            self._endpoint("openai"), prompt="P", encoded="AAAA", max_tokens=64
+        )
+        assert headers["Authorization"] == "Bearer secret-value"
+        content = payload["messages"][0]["content"]
+        assert content[0]["image_url"]["url"] == "data:image/jpeg;base64,AAAA"
+        assert content[1]["text"] == "P"
+        assert payload["temperature"] == 0.0
+
+    def test_anthropic_wire_carries_a_base64_source_and_an_api_key_header(self):
+        headers, payload = teacher_label.build_request(
+            self._endpoint("anthropic"), prompt="P", encoded="AAAA", max_tokens=64
+        )
+        assert headers["x-api-key"] == "secret-value"
+        assert "anthropic-version" in headers
+        assert "Authorization" not in headers
+        source = payload["messages"][0]["content"][0]["source"]
+        assert source == {"type": "base64", "media_type": "image/jpeg", "data": "AAAA"}
+        assert payload["max_tokens"] == 64
+
+    def test_both_wires_send_the_same_prompt_text(self):
+        texts = {
+            wire: teacher_label.build_request(
+                self._endpoint(wire), prompt="THE PROMPT", encoded="A", max_tokens=8
+            )[1]["messages"][0]["content"][1]["text"]
+            for wire in ("openai", "anthropic")
+        }
+        assert texts["openai"] == texts["anthropic"] == "THE PROMPT"
+
+    def test_provider_extras_reach_the_payload(self, monkeypatch):
+        monkeypatch.setenv("MELIOUS_AI_BASE_URL", "https://h/v1")
+        monkeypatch.setenv("MELIOUS_AI_KEY", "k")
+        endpoint = teacher_label.resolve_endpoint(self._args())
+        _, payload = teacher_label.build_request(
+            endpoint, prompt="P", encoded="A", max_tokens=8
+        )
+        assert payload["reasoning_effort"] == "none"
+
+    def test_the_local_teacher_still_disables_thinking(self):
+        assert teacher_label.PROVIDERS["omlx"]["extra"] == {
+            "chat_template_kwargs": {"enable_thinking": False}
+        }
+
+    def test_answers_are_read_from_each_wires_own_envelope(self):
+        assert teacher_label.read_content(
+            self._endpoint("openai"), {"choices": [{"message": {"content": "X"}}]}
+        ) == "X"
+        assert teacher_label.read_content(
+            self._endpoint("anthropic"), {"content": [{"type": "text", "text": "X"}]}
+        ) == "X"
+
+    def test_a_bare_tag_becomes_a_suffix_argparse_cannot_eat(self):
+        """A literal "-melious" would be parsed as a flag, not a value."""
+        assert gap_probe.tag_suffix("melious") == "-melious"
+        assert gap_probe.tag_suffix("-melious") == "-melious"
+        assert gap_probe.tag_suffix("") == ""
+
+    def test_a_label_suffix_keeps_the_probe_off_the_pinned_run(self, tmp_path):
+        pinned = teacher_label.LabelPaths(root=tmp_path, split="validation")
+        probe = teacher_label.LabelPaths(root=tmp_path, split="validation", suffix="-melious")
+        assert pinned.labels.name == "labels.parquet"
+        assert probe.labels.name == "labels-melious.parquet"
+        assert pinned.wal != probe.wal
+
+    def test_preflight_does_not_pin_a_hosted_catalogue(self):
+        """A hosted provider serves many models; its /models listing proves nothing."""
+        # WHY: replaces the HTTP client. The assertion is that no request is made
+        # at all for a hosted provider, so the transport must be observable.
+        client = AsyncMock()
+        _run(teacher_label.preflight(client, self._endpoint("openai")))
+        client.get.assert_not_called()
+
+
+class TestGapProbe:
+    def _rows(self, texts, model="m"):
+        return {
+            f"img{i}": {"image_id": f"img{i}", "status": "ok", "text": t, "setting": "a park",
+                        "model": model, "latency_s": 1.0, "redactions": 0}
+            for i, t in enumerate(texts)
+        }
+
+    def test_only_successfully_labelled_rows_are_compared(self, tmp_path):
+        rows = [
+            {"image_id": "a", "status": "ok", "text": "a dog"},
+            {"image_id": "b", "status": "error", "text": ""},
+            {"image_id": "c", "status": "ok", "text": ""},
+        ]
+        path = tmp_path / "labels.parquet"
+        distill_common.write_parquet(rows, path, ("image_id", "status", "text"))
+        assert set(gap_probe.load_labels(path)) == {"a"}
+
+    def test_identical_teachers_agree_perfectly(self):
+        rows = self._rows(["a dog on grass", "two children"])
+        truth = {k: gap_probe.fields_of(v) for k, v in rows.items()}
+        tally, _ = eval_gates.score_fields(truth, dict(truth), mode="token", threshold=0.5)
+        assert tally.micro_f1 == pytest.approx(1.0)
+        assert tally.micro_f1 >= gap_probe.NOISE_FLOOR
+
+    def test_disagreeing_teachers_fall_below_the_noise_floor(self):
+        a = {k: gap_probe.fields_of(v) for k, v in self._rows(["a dog on grass"]).items()}
+        b = {k: gap_probe.fields_of(v) for k, v in self._rows(["a lighthouse at dusk"]).items()}
+        tally, _ = eval_gates.score_fields(a, b, mode="token", threshold=0.5)
+        assert tally.micro_f1 < gap_probe.NOISE_FLOOR
+
+    def test_the_noise_floor_is_the_gate_1_ceiling(self):
+        """One number, one meaning: B0 and §7 gate 1 must not drift apart."""
+        assert gap_probe.NOISE_FLOOR == eval_gates.TEACHER_SELF_AGREEMENT
+
+    def test_a_missing_setting_cell_is_simply_absent(self):
+        assert "setting" not in gap_probe.fields_of({"text": "a dog", "setting": ""})
+        assert gap_probe.fields_of({"text": "a dog", "setting": "a park"})["setting"] == "a park"
+
+
+class TestTrainingConfigs:
+    """The venue configs are the recipe in YAML form. A typo here is a wasted night."""
+
+    CONFIGS = ("axolotl_qwen3vl_lora.yaml", "axolotl_smolvlm2_lora.yaml")
+
+    @pytest.fixture(params=CONFIGS)
+    def config(self, request):
+        import yaml
+
+        return yaml.safe_load((DISTILL / request.param).read_text(encoding="utf-8"))
+
+    def test_the_config_parses(self, config):
+        assert isinstance(config, dict) and config["base_model"]
+
+    def test_lora_is_rank_8_alpha_16(self, config):
+        """§3.2: r=16 on repeated-list fields gave duplicate rate 0.080, max run 23."""
+        assert config["adapter"] == "lora"
+        assert config["lora_r"] == 8
+        assert config["lora_alpha"] == 16
+
+    def test_learning_rate_and_epochs_match_the_recipe(self, config):
+        assert config["learning_rate"] == pytest.approx(2e-4)
+        assert config["num_epochs"] <= 3, "§8: epoch 5 is the memorisation knee"
+
+    def test_the_vision_tower_is_frozen(self, config):
+        """§3.3: freezing both backbones costs 9.2 points, so LoRA must reach the LLM."""
+        assert config["freeze_mm_modules"] is True
+        targets = config["lora_target_modules"]
+        flat = " ".join(targets) if isinstance(targets, list) else targets
+        assert "vision" not in flat and "visual" not in flat
+
+    def test_multimodal_plumbing_is_set(self, config):
+        assert config["skip_prepare_dataset"] is True
+        assert config["remove_unused_columns"] is False
+        assert config["sample_packing"] is False, "not supported with multimodal"
+
+    def test_it_trains_at_the_resolution_the_teacher_labelled_at(self, config):
+        assert config["image_size"] == teacher_label.TEACHER_LONG_EDGE
+
+    def test_it_reads_the_assembled_split_filenames(self, config):
+        assert config["datasets"][0]["data_files"] == ["/workspace/data/train.jsonl"]
+        assert config["test_datasets"][0]["path"] == "/workspace/data/validation.jsonl"
+
+    def test_the_two_configs_differ_only_where_the_model_forces_it(self):
+        import yaml
+
+        loaded = [
+            yaml.safe_load((DISTILL / name).read_text(encoding="utf-8")) for name in self.CONFIGS
+        ]
+        differing = {
+            key for key in set(loaded[0]) | set(loaded[1])
+            if loaded[0].get(key) != loaded[1].get(key)
+        }
+        assert differing <= {
+            "base_model", "chat_template", "lora_target_modules", "output_dir",
+            "micro_batch_size", "gradient_accumulation_steps",
+        }, f"the challenger diverges on {differing} — size must be the only variable"
+
+    def test_the_challenger_is_the_pinned_permissive_checkpoint(self):
+        import yaml
+
+        config = yaml.safe_load(
+            (DISTILL / "axolotl_smolvlm2_lora.yaml").read_text(encoding="utf-8")
+        )
+        assert config["base_model"] == "HuggingFaceTB/SmolVLM2-500M-Video-Instruct"
+        # No `smolvlm` value exists in axolotl's ChatTemplate enum; the model's
+        # own template is the content-list shape assemble_blend emits.
+        assert config["chat_template"] == "tokenizer_default"
 
 
 def _run(coroutine):

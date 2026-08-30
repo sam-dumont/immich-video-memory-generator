@@ -23,6 +23,7 @@ import contextlib
 import hashlib
 import io
 import json
+import os
 import random
 import re
 import signal
@@ -59,6 +60,42 @@ CANARY_COUNT = 20
 CANARY_DIGITS = 6
 # §8: inject at 1x, 5x, 20x, 100x; the gate is on the 1x and 5x groups.
 CANARY_REPEATS = (1, 5, 20, 100)
+
+# The two hosted providers the repo already speaks to. Keys arrive by env name
+# only and are never printed. NOTE the wire split: melious is OpenAI-wire, but
+# the repo's z.ai credentials are Anthropic-wire (see
+# scripts/probe_editorial_provider_replay.py _provider_config), so the same
+# picture goes out in two different envelopes depending on --provider.
+PROVIDERS: dict[str, dict[str, Any]] = {
+    "omlx": {
+        "wire": "openai",
+        "base_url_env": "",
+        "key_env": "OMLX_API_KEY",
+        "extra": {"chat_template_kwargs": {"enable_thinking": False}},
+    },
+    "melious": {
+        "wire": "openai",
+        "base_url_env": "MELIOUS_AI_BASE_URL",
+        "key_env": "MELIOUS_AI_KEY",
+        "extra": {"reasoning_effort": "none"},
+    },
+    "zai": {
+        "wire": "anthropic",
+        "base_url_env": "ZAI_BASE_URL",
+        "key_env": "ZAI_API_KEY",
+        "extra": {"thinking": {"type": "disabled"}},
+        # Terms of Use 2026-04-14 III.4(f): "You may not use Z.ai to develop,
+        # train, or enhance any algorithms, models, or technologies that directly
+        # or indirectly compete with us". Too vague to bet a PUBLISHED student on.
+        # The GLM vision weights are MIT, so self-hosting them is the clean route.
+        "blocked_reason": (
+            "z.ai Terms of Use III.4(f) forbids using outputs to develop or train "
+            "models that 'directly or indirectly compete'. That blocks a student "
+            "whose weights get published. The GLM vision weights are MIT -- "
+            "self-host zai-org/GLM-4.6V instead and the restriction never attaches."
+        ),
+    },
+}
 
 LABEL_COLUMNS = (
     "image_id",
@@ -101,9 +138,124 @@ REDACTION = "[name]"
 
 
 @dataclass(frozen=True)
+class TeacherEndpoint:
+    """One teacher, its wire dialect, and the key we never print."""
+
+    provider: str
+    wire: str
+    base_url: str
+    api_key: str
+    model: str
+    extra: dict[str, Any]
+
+    @property
+    def chat_url(self) -> str:
+        base = self.base_url.rstrip("/")
+        if self.wire == "anthropic":
+            return base + ("/messages" if base.endswith("/v1") else "/v1/messages")
+        return base + "/chat/completions"
+
+    @property
+    def models_url(self) -> str:
+        return self.base_url.rstrip("/") + "/models"
+
+
+def resolve_endpoint(args: argparse.Namespace) -> TeacherEndpoint:
+    """Build the endpoint from --provider, with explicit flags overriding it.
+
+    Credentials are read from environment variables by NAME. Nothing here logs,
+    echoes or returns a key, and the missing-key error names the variable only.
+    """
+    spec = PROVIDERS.get(args.provider)
+    if spec is None:
+        raise SystemExit(f"unknown --provider {args.provider}; pick from {sorted(PROVIDERS)}")
+    blocked = spec.get("blocked_reason")
+    if blocked and not getattr(args, "accept_provider_terms", False):
+        raise SystemExit(
+            f"\nREFUSING --provider {args.provider}:\n  {blocked}\n"
+            "  Pass --accept-provider-terms only if the owner has said so in writing.\n"
+        )
+    wire = args.wire or spec["wire"]
+    if args.provider == "omlx":
+        endpoint = load_llm_endpoint(base_url=args.base_url, model=args.model)
+        base_url, api_key = endpoint.base_url, endpoint.api_key
+    else:
+        base_url = args.base_url or os.environ.get(spec["base_url_env"], "").strip()
+        api_key = os.environ.get(spec["key_env"], "").strip()
+        if not base_url:
+            raise SystemExit(f"set ${spec['base_url_env']} (or pass --base-url)")
+        if not api_key:
+            raise SystemExit(f"set ${spec['key_env']} -- the key is read by name, never inline")
+    return TeacherEndpoint(
+        provider=args.provider, wire=wire, base_url=base_url,
+        api_key=api_key, model=args.model, extra=dict(spec["extra"]),
+    )
+
+
+def build_request(
+    endpoint: TeacherEndpoint, *, prompt: str, encoded: str, max_tokens: int
+) -> tuple[dict[str, str], dict[str, Any]]:
+    """The same picture and prompt in whichever envelope the provider speaks."""
+    if endpoint.wire == "anthropic":
+        headers = {
+            "x-api-key": endpoint.api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        }
+        payload: dict[str, Any] = {
+            "model": endpoint.model,
+            "max_tokens": max_tokens,
+            "temperature": 0.0,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/jpeg",
+                                "data": encoded,
+                            },
+                        },
+                        {"type": "text", "text": prompt},
+                    ],
+                }
+            ],
+        }
+        return headers, {**payload, **endpoint.extra}
+    headers = {"Authorization": f"Bearer {endpoint.api_key}"}
+    payload = {
+        "model": endpoint.model,
+        "temperature": 0.0,
+        "max_tokens": max_tokens,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encoded}"}},
+                    {"type": "text", "text": prompt},
+                ],
+            }
+        ],
+    }
+    # The 27B's chat template reasons by default; omitting the switch does not
+    # disable it, it just truncates mid-thought at this token budget.
+    return headers, {**payload, **endpoint.extra}
+
+
+def read_content(endpoint: TeacherEndpoint, data: dict[str, Any]) -> str:
+    if endpoint.wire == "anthropic":
+        parts = data["content"]
+        return "".join(part.get("text", "") for part in parts if isinstance(part, dict))
+    return data["choices"][0]["message"]["content"]
+
+
+@dataclass(frozen=True)
 class LabelPaths:
     root: Path
     split: str
+    suffix: str = ""
 
     @property
     def split_dir(self) -> Path:
@@ -115,11 +267,11 @@ class LabelPaths:
 
     @property
     def wal(self) -> Path:
-        return self.split_dir / "labels.jsonl"
+        return self.split_dir / f"labels{self.suffix}.jsonl"
 
     @property
     def labels(self) -> Path:
-        return self.split_dir / "labels.parquet"
+        return self.split_dir / f"labels{self.suffix}.parquet"
 
 
 def scrub_proper_nouns(text: str) -> tuple[str, int]:
@@ -249,7 +401,14 @@ def read_answer(raw: str, constants: dict[str, Any], task: str) -> tuple[str, st
 
 
 async def preflight(client: httpx.AsyncClient, endpoint: Any) -> None:
-    """Refuse to spend a night labelling with the wrong model loaded."""
+    """Refuse to spend a night labelling with the wrong model loaded.
+
+    Only the pinned local teacher is guarded: a hosted provider serves a whole
+    catalogue, so its /models listing says nothing about a wrong pin.
+    """
+    if getattr(endpoint, "provider", "omlx") != "omlx":
+        print(f"preflight: skipped for hosted provider {endpoint.provider}", flush=True)
+        return
     try:
         response = await client.get(
             endpoint.models_url,
@@ -295,33 +454,14 @@ async def label_one(
         encoded = await asyncio.to_thread(
             encode_image, Path(row["local_path"]), long_edge=TEACHER_LONG_EDGE
         )
+        headers, payload = build_request(
+            endpoint, prompt=prompt, encoded=encoded, max_tokens=max_tokens
+        )
         response = await client.post(
-            endpoint.chat_url,
-            headers={"Authorization": f"Bearer {endpoint.api_key}"},
-            json={
-                "model": endpoint.model,
-                "temperature": 0.0,
-                "max_tokens": max_tokens,
-                # The 27B's chat template reasons by default; omitting this does
-                # not disable it, it just truncates mid-thought at this budget.
-                "chat_template_kwargs": {"enable_thinking": False},
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": f"data:image/jpeg;base64,{encoded}"},
-                            },
-                            {"type": "text", "text": prompt},
-                        ],
-                    }
-                ],
-            },
-            timeout=300.0,
+            endpoint.chat_url, headers=headers, json=payload, timeout=300.0
         )
         response.raise_for_status()
-        raw = response.json()["choices"][0]["message"]["content"]
+        raw = read_content(endpoint, response.json())
         text, setting = read_answer(raw, constants, task)
         scrubbed, redactions = scrub_proper_nouns(text)
         scrubbed_setting, setting_redactions = scrub_proper_nouns(setting)
@@ -359,13 +499,17 @@ def banked(paths: LabelPaths) -> tuple[set[str], list[dict]]:
 
 
 async def run(args: argparse.Namespace) -> int:
-    paths = LabelPaths(root=args.root, split=args.split)
+    paths = LabelPaths(
+        root=args.root, split=args.split,
+        suffix=f"-{args.label_tag}" if args.label_tag else "",
+    )
     if not paths.manifest.exists():
         raise SystemExit(f"no manifest at {paths.manifest} -- run pull_corpus.py first")
     constants = production_prompt_constants()
     prompt = build_prompt(args.task, constants)
     print(f"prompt: {args.task}, {len(prompt)} chars, keys {sorted(constants['card_shape'])}", flush=True)
-    endpoint = load_llm_endpoint(base_url=args.base_url, model=args.model)
+    endpoint = resolve_endpoint(args)
+    print(f"teacher: {endpoint.provider} / {endpoint.model} ({endpoint.wire} wire)", flush=True)
     manifest = read_parquet(paths.manifest)
     done, existing = banked(paths)
 
@@ -451,7 +595,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--split", default="validation")
     parser.add_argument("--task", choices=("card", "description"), default="description")
     parser.add_argument("--model", default=TEACHER_MODEL)
-    parser.add_argument("--base-url", default=None, help="default: llm.base_url from the app config")
+    parser.add_argument("--provider", choices=tuple(PROVIDERS), default="omlx",
+                        help="omlx (pinned local 27B), melious or zai; keys come from env by name")
+    parser.add_argument("--wire", choices=("openai", "anthropic"), default=None,
+                        help="override the provider's default dialect")
+    parser.add_argument("--accept-provider-terms", action="store_true",
+                        help="proceed with a provider whose terms block a published student")
+    parser.add_argument("--base-url", default=None, help="default: the provider's env var")
+    # A literal "-melious" would be swallowed by argparse as a flag; take the
+    # bare tag and add the dash here so the operator cannot hit that at midnight.
+    parser.add_argument("--label-tag", default="",
+                        help="write labels-<tag>.parquet, e.g. --label-tag melious (B0 probe)")
     parser.add_argument("--concurrency", type=int, default=2)
     parser.add_argument("--max-tokens", type=int, default=600)
     parser.add_argument("--limit", type=int, default=0, help="stop after N new labels (smoke runs)")

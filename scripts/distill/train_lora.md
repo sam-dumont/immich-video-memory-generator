@@ -24,6 +24,34 @@ From docs/research §3.2 and §3.3, and these are the numbers to type:
 
 ---
 
+## The challenger student
+
+One overnight queue trains **both** sizes on the identical blend, so size is the only variable.
+
+**Pinned challenger: `HuggingFaceTB/SmolVLM2-500M-Video-Instruct`** — Apache-2.0, ungated,
+1.51M downloads. All facts verified 2026-08-30.
+
+| Requirement | Evidence |
+|---|---|
+| Permissive licence | `license: apache-2.0`, `gated: false` (HF API) |
+| Chat-shaped, not seq2seq | `SmolVLMForConditionalGeneration`, `pipeline_tag: image-text-to-text`; its `chat_template.json` consumes `content` as a list of typed `{"type":"text"}` / `{"type":"image"}` parts — **the exact shape `assemble_blend.py` already emits** |
+| MLX path | mlx-vlm ships the `smolvlm` arch (`mlx_vlm/models/smolvlm/`, `class Model(Idefics3Model)`); weights at `mlx-community/SmolVLM2-500M-Video-Instruct-mlx` (apache-2.0, ungated) |
+| MLX LoRA reaches the LLM | the Idefics3 `Model` exposes `self.language_model` and `self.vision_model`, so `find_all_linear_names(model.language_model)` targets the text stack and leaving `--train-vision` off freezes the tower — §3.3 with no configuration |
+| CUDA path | axolotl's `docs/multimodal.qmd` has a **SmolVLM2** section naming this exact checkpoint |
+
+**Two candidates rejected**, both on the integration-cost filter:
+
+- **`microsoft/Florence-2-base-ft`** — MIT, but `Florence2ForConditionalGeneration` is a
+  **seq2seq encoder-decoder with a task-token prompt grammar**, not a chat model. It has no chat
+  template, so it needs a separate dataset writer and a separate output parser. Dropped.
+- **`LiquidAI/LFM2-VL-450M`** — `license: other` (LFM Open License), not permissive. Dropped on
+  §4.3's policy that the weights must be redistributable.
+
+Because the challenger is chat-shaped and emits the same JSON envelope it is trained on,
+**`eval_gates.py` needs no change** — the same holdout and the same four gates score both students.
+
+---
+
 ## Path (a) — local, MLX, free
 
 ### Status: shipping
@@ -83,6 +111,34 @@ which is the opposite of §3.3). Do not pass `--full-finetune`.
 
 Resume an interrupted run with `--adapter-path <the saved adapters dir>`.
 
+### Challenger, same venue — queue it after the 2B
+
+Identical flags, identical data. Only `--model-path`, `--batch-size` and `--output-path` change:
+
+```bash
+python -m mlx_vlm.lora \
+  --model-path mlx-community/SmolVLM2-500M-Video-Instruct-mlx \
+  --dataset "$DATA" \
+  --split train \
+  --lora-rank 8 \
+  --lora-alpha 16 \
+  --learning-rate 2e-4 \
+  --epochs 3 \
+  --batch-size 8 \
+  --max-seq-length 2048 \
+  --steps-per-report 10 \
+  --steps-per-eval 200 \
+  --steps-per-save 100 \
+  --output-path "$DATA/../adapters-smolvlm2/adapters.safetensors"
+```
+
+Run both back to back in one shell so the queue is unattended:
+
+```bash
+python -m mlx_vlm.lora --model-path mlx-community/Qwen3-VL-2B-Instruct-bf16 … \
+  && python -m mlx_vlm.lora --model-path mlx-community/SmolVLM2-500M-Video-Instruct-mlx …
+```
+
 ### 🔴 The verification that makes or breaks the run
 
 The failure mode this guards against is silent: the run completes, the loss curve looks plausible,
@@ -95,6 +151,12 @@ dropped — stop, do not spend the night, and switch to path (b).
 
 (440 tokens/sample is §6's estimate: a 400px tile is only 144–169 visual tokens on Qwen3-VL —
 `patch_size 16`, `spatial_merge_size 2`, one token per 32×32 px.)
+
+⚠️ **The 440 constant does not transfer to the challenger.** SmolVLM2 pixel-shuffles to far fewer
+visual tokens, so its legitimate figure is lower and a low number is not by itself a fault. Use the
+*relative* form of the check instead, which works for any student: the target JSON plus the request
+is roughly 120–160 text tokens, so **tokens/iter ≈ batch × (text + visual)**. If tokens/iter lands
+at `batch × ~140` — i.e. the visual contribution is zero — images are being dropped.
 
 ### Two doc/source drifts worth knowing
 
@@ -144,6 +206,26 @@ axolotl train /workspace/axolotl_qwen3vl_lora.yaml
 rsync -av pod:/workspace/out/ ~/.immich-memories-distill/adapters/
 ```
 
+**Challenger, same venue:** `axolotl_smolvlm2_lora.yaml`, written beside it with identical
+r=8 / α=16 / lr 2e-4 / 3 epochs. Two differences, both forced by the model rather than chosen:
+
+```bash
+pip3 install num2words==0.5.14          # axolotl's documented SmolVLM2 dependency
+scp scripts/distill/axolotl_smolvlm2_lora.yaml pod:/workspace/
+axolotl train /workspace/axolotl_qwen3vl_lora.yaml \
+  && axolotl train /workspace/axolotl_smolvlm2_lora.yaml
+rsync -av pod:/workspace/out-smolvlm2/ ~/.immich-memories-distill/adapters-smolvlm2/
+```
+
+- `chat_template: tokenizer_default` — there is **no** `smolvlm` value in axolotl's `ChatTemplate`
+  enum (verified against `src/axolotl/utils/schemas/enums.py`), and the model's own
+  `chat_template.json` is the right one anyway.
+- `lora_target_modules` is a **suffix list**, not the 2B's prefix regex. The MLX checkpoint names
+  the text stack `language_model.layers.N.self_attn.*`, but the HF-side prefix for
+  `SmolVLMForConditionalGeneration` is transformers-version-dependent and could not be verified
+  today (`TODO-verify`). A suffix list matches under either prefix, and `freeze_mm_modules: true`
+  is what actually holds the vision tower and connector frozen.
+
 ### b2. LLaMA-Factory (the better-trodden path if axolotl's BETA bites)
 
 Qwen3-VL is in the supported-models table with template **`qwen3_vl`** (and a `qwen3_vl_nothink`
@@ -174,14 +256,21 @@ Set `max_length=None`.
 ## After training
 
 1. Merge or keep the adapter, then generate predictions over
-   `dataset/validation.jsonl` into a JSONL with `image_id` + the model's JSON.
-2. Run stage D:
+   `dataset/validation.jsonl` into a JSONL with `image_id` + the model's JSON. **Do this for both
+   students** — same holdout, same gates.
+2. Run stage D once per student:
 
 ```bash
-uv run --with pyarrow scripts/distill/eval_gates.py \
-  --holdout   ~/.immich-memories-distill/validation/dataset/validation.jsonl \
-  --predictions student_predictions.jsonl \
-  --canaries  ~/.immich-memories-distill/validation/labels.parquet
+for S in qwen3vl2b smolvlm2; do
+  echo "== $S"
+  uv run --with pyarrow scripts/distill/eval_gates.py \
+    --holdout     ~/.immich-memories-distill/validation/dataset/validation.jsonl \
+    --predictions "predictions_$S.jsonl" \
+    --canaries    ~/.immich-memories-distill/validation/labels.parquet
+done
 ```
+
+3. Apply the decision rule in RUNBOOK.md → **The challenger lane**: ship the *smallest* student
+   that passes all four gates within the teacher self-agreement noise floor.
 
 Expect to fail the phantom-fill gate on the first pass and need a DPO round (§5). Budget for it.

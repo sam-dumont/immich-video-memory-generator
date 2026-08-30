@@ -1,0 +1,80 @@
+# Axolotl LoRA config for the CHALLENGER student (SmolVLM2-500M).
+#
+# Same data, same gates, same hyperparameters as axolotl_qwen3vl_lora.yaml --
+# the only variable is model size, so the comparison means something. Read
+# RUNBOOK.md "The challenger lane" for the decision rule.
+#
+# Verified 2026-08-30: axolotl documents SmolVLM2 by name in docs/multimodal.qmd
+# and names this exact checkpoint. Install its extra dep first:
+#   pip3 install num2words==0.5.14
+#
+#   axolotl train axolotl_smolvlm2_lora.yaml
+
+base_model: HuggingFaceTB/SmolVLM2-500M-Video-Instruct
+# There is no `smolvlm` value in axolotl's ChatTemplate enum (verified against
+# src/axolotl/utils/schemas/enums.py). tokenizer_default uses the model's own
+# chat_template.json, which is the content-list shape assemble_blend emits.
+chat_template: tokenizer_default
+processor_type: AutoProcessor
+
+skip_prepare_dataset: true
+remove_unused_columns: false
+sample_packing: false
+
+datasets:
+  - path: /workspace/data
+    type: chat_template
+    ds_type: json
+    data_files:
+      - /workspace/data/train.jsonl
+    field_messages: messages
+val_set_size: 0.0
+test_datasets:
+  - path: /workspace/data/validation.jsonl
+    ds_type: json
+    type: chat_template
+    split: train
+
+image_size: 512
+image_resize_algorithm: bilinear
+
+adapter: lora
+lora_r: 8          # §3.2 -- held identical to the 2B so size is the only variable.
+lora_alpha: 16
+lora_dropout: 0.0
+# Suffix-only targets on purpose. The MLX checkpoint names the text stack
+# `language_model.layers.N.self_attn.*` (verified), but the HF-side prefix for
+# SmolVLMForConditionalGeneration is version-dependent (`model.text_model` vs
+# `model.language_model`) and could not be verified today -- see TODO-verify in
+# RUNBOOK.md. A suffix list matches under either prefix; freeze_mm_modules is
+# what actually holds the vision tower and connector frozen (§3.3).
+lora_target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - gate_proj
+  - up_proj
+  - down_proj
+freeze_mm_modules: true
+
+sequence_len: 2048
+micro_batch_size: 2      # 500M leaves headroom the 2B does not
+gradient_accumulation_steps: 4
+num_epochs: 3            # §8: <= 3 is the flat part of the memorisation curve.
+learning_rate: 0.0002
+optimizer: adamw_torch
+lr_scheduler: cosine
+warmup_ratio: 0.03
+weight_decay: 0.0
+max_grad_norm: 1.0
+
+bf16: auto
+tf32: true
+gradient_checkpointing: true
+flash_attention: true
+
+logging_steps: 10
+evals_per_epoch: 2
+saves_per_epoch: 1
+output_dir: /workspace/out-smolvlm2
