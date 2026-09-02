@@ -1,3 +1,9 @@
+# Hooks without an explicit `stages` run only at pre-commit; the commit-msg stage runs
+# only the hooks that ask for it (commitizen, private-terms-commit-msg). Without this,
+# installing the commit-msg hook type would run every gate twice per commit.
+default_stages: [pre-commit]
+default_install_hook_types: [pre-commit, commit-msg]
+
 repos:
   # ~0.1s — Formatting + linting (Rust, fast)
   - repo: https://github.com/astral-sh/ruff-pre-commit
@@ -37,6 +43,7 @@ repos:
     rev: v4.13.9
     hooks:
       - id: commitizen
+        stages: [commit-msg]
 
 
   # Local hooks using Makefile targets
