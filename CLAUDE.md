@@ -58,6 +58,9 @@ make dead-code
 # Security lint (Bandit)
 make security-lint
 
+# Private terms gate (family names, birth dates, fine GPS; denylist lives outside the repo)
+make privacy-gate
+
 # Cognitive complexity gate (complexipy ≤15)
 make cognitive-complexity
 
@@ -96,7 +99,7 @@ make check
 # Full CI pipeline (all checks + advanced quality gates)
 make ci
 
-# Pre-commit hooks (runs all local hooks: lint, format, mypy, gitleaks, commitizen, file-length, complexity, dead-code, security-lint)
+# Pre-commit hooks (runs all local hooks: lint, format, mypy, gitleaks, commitizen, file-length, complexity, dead-code, security-lint, private terms)
 make pre-commit
 
 # Self-critique check for AI code smells

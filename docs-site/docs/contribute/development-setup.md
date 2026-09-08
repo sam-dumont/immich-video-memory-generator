@@ -81,6 +81,14 @@ make diff-cover-local                # merges them with unit coverage, same as C
 
 If diff-cover still fails after that, the uncovered lines are not reachable from an integration suite and do need unit tests. Subprocess boundaries can be stubbed rather than run for real: `tests/test_ffmpeg_pipe.py` shows the pattern.
 
+## Private terms gate
+
+`make privacy-gate` (and two pre-commit hooks: one on the staged diff, one on the commit message) blocks owner-defined private terms — family names, birth dates, fine-grained GPS coordinates, anything the maintainer doesn't want landing in a diff, commit message, or PR title/body — using `scripts/private_terms_gate.py`.
+
+The denylist itself never lives in this repo. It resolves from, in order: `--terms-file`, an env var named by `--terms-env` (how CI reads it from the `PRIVATE_TERMS` repository secret), `$IMMICH_MEMORIES_PRIVATE_TERMS` (a path), or `~/.config/immich-memories/private-terms.txt`. One term per line; `#` comments and blank lines are ignored; a line starting with `re:` is a regex. If none of those resolve to anything, the gate prints a notice and exits clean — most contributors have no denylist configured, and that isn't a failure.
+
+Every reported match is masked to its first character, so a hit report never contains the term it found. Forks never see the `PRIVATE_TERMS` secret, so the PR-automation job that scans title/body/diff skips there too.
+
 ## Project structure
 
 ```
