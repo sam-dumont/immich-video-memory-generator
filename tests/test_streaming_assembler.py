@@ -974,6 +974,13 @@ class TestFrameDecoderFilterChain:
         assert "hflip" not in vf
 
 
+_GRAPH_FILE_FLAGS = ("-/filter_complex", "-filter_complex_script")
+
+
+def _graph_file_flag(cmd: list[str]) -> str | None:
+    return next((flag for flag in _GRAPH_FILE_FLAGS if flag in cmd), None)
+
+
 def _fake_ffmpeg_run(graphs: list[str], *, returncode: int = 0, stderr: str = ""):
     """Stand in for subprocess.run and record the filter graph FFmpeg was given.
 
@@ -982,8 +989,8 @@ def _fake_ffmpeg_run(graphs: list[str], *, returncode: int = 0, stderr: str = ""
     """
 
     def run(cmd: list[str], **_: object) -> SimpleNamespace:
-        if "-filter_complex_script" in cmd:
-            graphs.append(Path(cmd[cmd.index("-filter_complex_script") + 1]).read_text())
+        if flag := _graph_file_flag(cmd):
+            graphs.append(Path(cmd[cmd.index(flag) + 1]).read_text())
         is_ffmpeg = cmd[0] == "ffmpeg"
         return SimpleNamespace(
             returncode=returncode if is_ffmpeg else 0,
@@ -1121,11 +1128,50 @@ class TestAudioFilterChain:
                 fade_duration=0.5,
             )
 
-        mix = next(c for c in commands if "-filter_complex_script" in c)
+        mix = next(c for c in commands if _graph_file_flag(c))
         assert all(len(arg) < 128 * 1024 for arg in mix)
         assert len(graphs) == 1 and len(graphs[0]) > 128 * 1024
         assert graphs[0].count("acrossfade") == n_clips - 1
         assert not list(tmp_path.glob("*.filter_complex.txt")), "graph file outlived the run"
+
+    @pytest.mark.parametrize(
+        ("major", "flag"),
+        [(9, "-/filter_complex"), (7, "-/filter_complex"), (6, "-filter_complex_script")],
+    )
+    def test_graph_file_option_follows_the_ffmpeg_version(
+        self, tmp_path: Path, major: int, flag: str
+    ) -> None:
+        """Homebrew's FFmpeg 9 removed -filter_complex_script; Ubuntu 24.04's
+        FFmpeg 6 never had -/filter_complex. macOS CI caught the first."""
+        from immich_memories.processing.assembly_config import AssemblyClip
+        from immich_memories.processing.streaming_audio import extract_and_mix_audio
+
+        clips = [
+            AssemblyClip(path=Path("/a.mp4"), duration=3.0),
+            AssemblyClip(path=Path("/b.mp4"), duration=3.0),
+        ]
+        commands: list[list[str]] = []
+        fake = _fake_ffmpeg_run([])
+
+        def run(cmd: list[str], **kwargs: object) -> SimpleNamespace:
+            commands.append(cmd)
+            return fake(cmd, **kwargs)
+
+        # WHY: subprocess.run is the ffmpeg boundary; the version probe is what this test varies
+        with (
+            patch("immich_memories.processing.streaming_audio.subprocess.run", side_effect=run),
+            patch(
+                "immich_memories.processing.ffmpeg_runner.ffmpeg_major_version",
+                return_value=major,
+            ),
+        ):
+            extract_and_mix_audio(
+                clips=clips, transitions=["fade"], output_path=tmp_path / "audio.m4a"
+            )
+
+        mix = next(c for c in commands if _graph_file_flag(c))
+        assert _graph_file_flag(mix) == flag
+        assert "-filter_complex" not in mix
 
     def test_failure_message_names_the_error_not_the_progress(self, tmp_path: Path) -> None:
         """The message carried seven progress lines and no cause (#779)."""
@@ -1140,8 +1186,8 @@ class TestAudioFilterChain:
             f"size={i}KiB time=00:0{i}:00.00 bitrate=1k speed=30x    \r" for i in range(1, 8)
         )
 
+        # WHY: subprocess.run is the FFmpeg/ffprobe process boundary
         with (
-            # WHY: subprocess.run is the FFmpeg/ffprobe process boundary
             patch(
                 "immich_memories.processing.streaming_audio.subprocess.run",
                 side_effect=_fake_ffmpeg_run([], returncode=1, stderr=stderr),

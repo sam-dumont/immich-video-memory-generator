@@ -1,8 +1,13 @@
-"""The FFmpeg failure excerpt keeps the cause, not the progress ticker."""
+"""FFmpeg process helpers: the failure excerpt and the version banner."""
 
 from __future__ import annotations
 
-from immich_memories.processing.ffmpeg_runner import ffmpeg_error_excerpt
+import pytest
+
+from immich_memories.processing.ffmpeg_runner import (
+    _parse_ffmpeg_major,
+    ffmpeg_error_excerpt,
+)
 
 
 def test_progress_ticker_and_deprecation_notice_are_dropped() -> None:
@@ -26,3 +31,18 @@ def test_only_progress_falls_back_to_the_raw_tail() -> None:
 def test_excerpt_keeps_the_last_lines_only() -> None:
     stderr = "\n".join(f"line {i}" for i in range(20))
     assert ffmpeg_error_excerpt(stderr, max_lines=3) == "line 17\nline 18\nline 19"
+
+
+@pytest.mark.parametrize(
+    ("banner", "major"),
+    [
+        ("ffmpeg version 9.0.1 Copyright (c) 2000-2026 the FFmpeg developers", 9),
+        ("ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers", 6),
+        ("ffmpeg version n7.1.1 Copyright (c) 2000-2025 the FFmpeg developers", 7),
+        ("ffmpeg version 4.4.2-0ubuntu0.22.04.1 Copyright (c) 2000-2021", 4),
+        ("ffmpeg version N-118000-g0123abcd Copyright (c) 2000-2025", 99),
+        ("bash: ffmpeg: command not found", 0),
+    ],
+)
+def test_major_version_is_read_from_the_banner(banner: str, major: int) -> None:
+    assert _parse_ffmpeg_major(banner) == major

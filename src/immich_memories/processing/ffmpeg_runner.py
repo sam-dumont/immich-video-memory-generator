@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import contextlib
+import functools
 import logging
 import re
 import subprocess
 import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from pathlib import Path
 from threading import Thread
 from typing import IO
 
@@ -22,6 +24,8 @@ __all__ = [
     "_run_ffmpeg_with_progress",
     "drain_stderr_tail",
     "ffmpeg_error_excerpt",
+    "ffmpeg_major_version",
+    "filter_complex_from_file",
     "write_frames_to_ffmpeg",
 ]
 
@@ -50,6 +54,44 @@ def ffmpeg_error_excerpt(stderr: str, *, max_lines: int = 6) -> str:
     if not kept:
         return stderr.strip()[-500:]
     return "\n".join(kept[-max_lines:])
+
+
+def _parse_ffmpeg_major(banner: str) -> int:
+    """Major version from an ``ffmpeg -version`` banner; 0 when unreadable.
+
+    Distro builds print ``ffmpeg version 6.1.1-3ubuntu5``, static builds
+    ``n7.1``, git snapshots ``N-118000-g...``. A snapshot is newer than any
+    release, so it counts as current.
+    """
+    match = re.match(r"ffmpeg version (N-|n?(\d+))", banner)
+    if match is None:
+        return 0
+    return 99 if match.group(1) == "N-" else int(match.group(2))
+
+
+@functools.cache
+def ffmpeg_major_version() -> int:
+    """Major version of the ffmpeg on PATH, read once; 0 when it cannot be run."""
+    try:
+        result = subprocess.run(  # noqa: S603, S607
+            ["ffmpeg", "-version"], capture_output=True, text=True, timeout=10
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return 0
+    return _parse_ffmpeg_major(result.stdout)
+
+
+def filter_complex_from_file(graph_path: Path) -> list[str]:
+    """The ``-filter_complex`` arguments that read the graph from a file.
+
+    FFmpeg 7 introduced ``-/filter_complex`` and deprecated
+    ``-filter_complex_script``; FFmpeg 9 removed the old spelling, and
+    FFmpeg 6 and older never had the new one. Both are still in the wild:
+    Ubuntu 24.04 ships 6.1, Homebrew ships 9.
+    """
+    if ffmpeg_major_version() >= 7:
+        return ["-/filter_complex", str(graph_path)]
+    return ["-filter_complex_script", str(graph_path)]
 
 
 def drain_stderr_tail(

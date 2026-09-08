@@ -8,7 +8,10 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from immich_memories.processing.ffmpeg_runner import ffmpeg_error_excerpt
+from immich_memories.processing.ffmpeg_runner import (
+    ffmpeg_error_excerpt,
+    filter_complex_from_file,
+)
 
 if TYPE_CHECKING:
     from immich_memories.processing.probe_cache import ProbeCache
@@ -247,8 +250,7 @@ def extract_and_mix_audio(
         "ffmpeg",
         "-y",
         *inputs,
-        "-filter_complex_script",
-        str(graph_path),
+        *filter_complex_from_file(graph_path),
         "-map",
         map_label,
         "-c:a",
