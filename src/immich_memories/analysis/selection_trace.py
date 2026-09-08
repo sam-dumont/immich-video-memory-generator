@@ -41,6 +41,8 @@ class ClipStory:
     survived: tuple[str, ...]
     dropped_at: str | None
     admitted_at: str | None
+    # Why the stage that dropped it did so, when that stage said.
+    reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -58,6 +60,10 @@ class Stage:
     kept_ids: tuple[str, ...] = ()
     lost_ids: tuple[str, ...] = ()
     gained_ids: tuple[str, ...] = ()
+    # Per-clip reasons, where the stage had one to give. `reasons` above is
+    # the stage's own narration; this is what it said about a named clip, and
+    # it is what the account can answer "why is that not in there" with.
+    notes: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -74,6 +80,10 @@ class Trace:
     # the pool passed through. Re-set by each re-selection, so the value that
     # survives is the one the verify passes left behind (#489).
     coverage: AnalysisCoverage | None = None
+    # Things a reader must not miss, printed above the funnel. A pass that
+    # could not run is the one this exists for: "0 dropped" has meant both
+    # "approved" and "never answered" for as long as the review has existed.
+    warnings: list[str] = field(default_factory=list)
 
     def record(
         self,
@@ -81,6 +91,7 @@ class Trace:
         before: Iterable,
         after: Iterable,
         reasons: list[str] | None = None,
+        notes: dict[str, str] | None = None,
     ) -> None:
         """Note that `name` turned `before` into `after`."""
         before_list, after_list = list(before), list(after)
@@ -97,6 +108,7 @@ class Trace:
                 favorites_in=sum(_is_favorite(i) for i in before_list),
                 favorites_out=sum(_is_favorite(i) for i in after_list),
                 reasons=reasons or [],
+                notes=dict(notes or {}),
                 kept_ids=tuple(sorted(after_ids)),
                 lost_ids=tuple(_asset_id(i) for i in lost),
                 gained_ids=tuple(sorted(after_ids - before_ids)),
@@ -120,11 +132,13 @@ class Trace:
         survived: list[str] = []
         dropped_at: str | None = None
         admitted_at: str | None = None
+        reason: str | None = None
         for stage in self.stages:
             if asset_id in stage.gained_ids:
                 admitted_at = stage.name
             if asset_id in stage.lost_ids:
                 dropped_at = stage.name
+                reason = stage.notes.get(asset_id)
                 survived = []
             elif asset_id in stage.kept_ids:
                 survived.append(stage.name)
@@ -136,6 +150,7 @@ class Trace:
             survived=tuple(survived),
             dropped_at=None if shipped else dropped_at,
             admitted_at=admitted_at,
+            reason=None if shipped else reason,
         )
 
     def _favourite_law_lines(self) -> list[str]:
@@ -160,6 +175,7 @@ class Trace:
             return "No selection stages were recorded.\n"
         width = max(len(s.name) for s in self.stages)
         lines = [
+            *self._warning_lines(),
             *self._coverage_lines(),
             *self._favourite_law_lines(),
             f"{'stage'.ljust(width)}  {'kept':>5} {'lost':>5}  {'favorites':>12}",
@@ -201,13 +217,20 @@ class Trace:
         for asset_id in {i for stage in self.stages for i in stage.lost_ids}:
             story = self.story_of(asset_id)
             if not story.shipped and story.dropped_at is not None:
-                by_stage.setdefault(story.dropped_at, []).append(story.facts)
+                said = f"{story.facts}  — {story.reason}" if story.reason else story.facts
+                by_stage.setdefault(story.dropped_at, []).append(said)
         if not by_stage:
             return []
         lines = ["", "and why the rest are not", "-" * 24]
         for stage in (s.name for s in self.stages):
             lines += _dropped_at(stage, sorted(by_stage.pop(stage, [])))
         return lines
+
+    def _warning_lines(self) -> list[str]:
+        """What a reader must see before anything else in the report."""
+        if not self.warnings:
+            return []
+        return [*(f"!! {warning}" for warning in self.warnings), ""]
 
     def _coverage_lines(self) -> list[str]:
         """The pool's coverage, above the funnel — it frames everything below."""
@@ -221,6 +244,7 @@ class Trace:
 
     def as_dict(self) -> dict:
         return {
+            "warnings": self.warnings.copy(),
             "coverage": (
                 None
                 if self.coverage is None
@@ -234,6 +258,7 @@ class Trace:
                     "favorites_in": s.favorites_in,
                     "favorites_out": s.favorites_out,
                     "reasons": s.reasons,
+                    "notes": s.notes,
                     "kept_ids": list(s.kept_ids),
                     "lost_ids": list(s.lost_ids),
                     "gained_ids": list(s.gained_ids),
@@ -325,11 +350,19 @@ def record(
     before: Iterable,
     after: Iterable,
     reasons: list[str] | None = None,
+    notes: dict[str, str] | None = None,
 ) -> None:
     """Record a stage when tracing is on; do nothing when it is not."""
     trace = _active.get()
     if trace is not None:
-        trace.record(name, before, after, reasons)
+        trace.record(name, before, after, reasons, notes)
+
+
+def warn(message: str) -> None:
+    """Put something above the funnel that a reader must not miss."""
+    trace = _active.get()
+    if trace is not None:
+        trace.warnings.append(message)
 
 
 def record_coverage(coverage: AnalysisCoverage) -> None:

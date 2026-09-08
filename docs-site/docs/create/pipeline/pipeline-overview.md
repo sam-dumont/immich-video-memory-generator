@@ -410,9 +410,15 @@ Read that again: on a warm run, the analysis the pipeline is named after costs
 two seconds. Everything else is waiting on someone else's HTTP.
 
 The 11 calls are not per-clip analysis — that is all cached. They are the
-selection loop: each holistic review pass, plus each verify pass that hits a
-clip with no LLM description. `max_refinement_passes` is 10 and every round can
-cost a review call, so that bound is the main dial, and it is one you can turn.
+selection loop: verify passes that hit a clip with no LLM description, and the
+holistic review.
+
+That measurement predates the review answering with the cut. It used to veto a
+finished selection a couple of clips at a time, refill the gap, and run again
+because the refill had never been judged — so `max_refinement_passes` (10)
+bounded a review call per round, and most of those 11 calls were the same
+question asked over and over. The review now makes the cut in one pass. The
+bound still applies to verifying, which is where a cold pool spends its calls.
 
 ### What to actually do about it
 
@@ -426,10 +432,11 @@ If warm runs feel slow:
    server, or a smaller model, cuts the largest single line item without
    touching anything else. This is the highest-leverage change available.
 2. **Ask for fewer rounds.** `--refinement-passes 3`, or
-   `advanced.analysis.max_refinement_passes: 3` in YAML, caps the loop at three
-   rounds instead of ten. That is what `preset: fast` sets, and the flag's own
-   help calls it the biggest dial on warm-run time. The cost is that a late
-   refill may ship less scrutinised than the clips around it.
+   `advanced.analysis.max_refinement_passes: 3` in YAML, caps the verify loop
+   at three rounds instead of ten. That is what `preset: fast` sets. The cost
+   is that a clip admitted late may reach the review undescribed, and the
+   review is told never to judge a clip on missing information — so it ships
+   without ever facing the only quality judgment in the pipeline.
 3. **Turn `content_analysis.enabled` off.** No LLM at all: no per-clip content
    analysis, no reviewer, no verify calls. Selection falls back to vision, audio
    and metadata, which is the default configuration anyway.

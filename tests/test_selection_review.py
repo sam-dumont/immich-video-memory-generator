@@ -31,7 +31,7 @@ class TestReviewSelection:
         # WHY: the LLM is the external boundary; the contract is prompt in, JSON out
         with patch(
             "immich_memories.analysis.selection_review._ask",
-            return_value='{"drop": [{"index": 2, "reason": "duplicate of clip 1"}]}',
+            return_value='{"keep": [1, 3], "cut": [{"index": 2, "reason": "duplicate of 1"}]}',
         ):
             drops = review_selection(_selection(), LLMConfig()).drops
 
@@ -41,7 +41,8 @@ class TestReviewSelection:
         """Raw data to the LLM, not summaries — it finds the patterns."""
         # WHY: the LLM call is the external boundary; we inspect the prompt
         with patch(
-            "immich_memories.analysis.selection_review._ask", return_value='{"drop": []}'
+            "immich_memories.analysis.selection_review._ask",
+            return_value='{"keep": [1, 2, 3], "cut": []}',
         ) as ask:
             review_selection(_selection(), LLMConfig())
 
@@ -64,16 +65,23 @@ class TestReviewSelection:
         ):
             assert review_selection(_selection(), LLMConfig()).drops == []
 
-    def test_the_llm_cannot_gut_the_video(self):
-        """A cap keeps an overeager model from dropping half the memory."""
+    def test_a_cut_that_keeps_nothing_is_not_an_edit(self):
+        """What used to be a 20% cap (#764).
+
+        The cap existed because the pass vetoed a finished cut and an
+        overeager model could gut it two clips at a time. The pass now MAKES
+        the cut, so a cap would be the pipeline overruling the only judgment
+        in it. The one answer still refused is the one that leaves no memory
+        at all.
+        """
         # WHY: the LLM call is the external boundary
         with patch(
             "immich_memories.analysis.selection_review._ask",
-            return_value='{"drop": [{"index": 1}, {"index": 2}, {"index": 3}]}',
+            return_value='{"keep": [], "cut": [{"index": 1}, {"index": 2}, {"index": 3}]}',
         ):
             drops = review_selection(_selection(), LLMConfig()).drops
 
-        assert len(drops) <= 1  # 20% of 3, floored, min 1
+        assert drops == []
 
 
 class TestTheClipLineCarriesRealFields:
@@ -94,7 +102,8 @@ class TestTheClipLineCarriesRealFields:
 
         # WHY: the LLM call is the external boundary; we inspect the prompt
         with patch(
-            "immich_memories.analysis.selection_review._ask", return_value='{"drop": []}'
+            "immich_memories.analysis.selection_review._ask",
+            return_value='{"keep": [1, 2, 3], "cut": []}',
         ) as ask:
             review_selection(selection, LLMConfig())
 
@@ -103,8 +112,10 @@ class TestTheClipLineCarriesRealFields:
         assert "Jette, Belgium" in prompt
 
     def test_a_clip_without_exif_still_renders(self):
+        # WHY: the LLM call is the external boundary; we inspect the prompt
         with patch(
-            "immich_memories.analysis.selection_review._ask", return_value='{"drop": []}'
+            "immich_memories.analysis.selection_review._ask",
+            return_value='{"keep": [1, 2, 3], "cut": []}',
         ) as ask:
             review_selection(_selection(), LLMConfig())
 
@@ -123,7 +134,12 @@ class TestReviewThinksWhenTheServerCan:
         response.status_code = 200
         response.json = MagicMock(
             return_value={
-                "choices": [{"message": {"content": '{"drop": []}'}, "finish_reason": "stop"}]
+                "choices": [
+                    {
+                        "message": {"content": '{"keep": [1, 2, 3], "cut": []}'},
+                        "finish_reason": "stop",
+                    }
+                ]
             }
         )
         response.raise_for_status = lambda: None
@@ -152,7 +168,7 @@ class TestSilenceIsNotApproval:
         with (
             patch(
                 "immich_memories.analysis.selection_review._ask",
-                return_value='{"drop": []}',
+                return_value='{"keep": [1, 2, 3], "cut": []}',
             ),
             caplog.at_level(logging.INFO, logger="immich_memories.analysis.selection_review"),
         ):

@@ -41,11 +41,19 @@ def _clip(asset_id: str, *, minutes: float = 0.0, starred: bool = False) -> Clip
     return ClipWithSegment(clip=clip, start_time=0.0, end_time=4.0, score=0.5)
 
 
-def _verdict(*entries: dict) -> str:
-    return json.dumps({"drop": list(entries)})
+def _verdict(selection: list, *entries: dict) -> str:
+    """The model's answer: which clips belong, and which do not.
+
+    The keep list is derived from the entries a test names, because the parser
+    refuses any answer whose two lists do not account for every clip.
+    """
+    named = {entry["index"] for entry in entries}
+    keep = [n for n in range(1, len(selection) + 1) if n not in named]
+    return json.dumps({"keep": keep, "cut": list(entries)})
 
 
-def _review(selection, raw):
+def _review(selection, *entries: dict):
+    raw = _verdict(selection, *entries)
     # WHY: the model. Everything under test is what we do with its answer.
     with patch("immich_memories.analysis.selection_review._ask", return_value=raw):
         return review_selection(selection, LLMConfig())
@@ -60,7 +68,7 @@ class TestTheStarredBattleIsActuallyFought:
             _clip("elsewhere", minutes=6000),
         ]
 
-        verdict = _review(selection, _verdict({"index": 2, "reason": "same occasion as clip 1"}))
+        verdict = _review(selection, {"index": 2, "reason": "same occasion as clip 1"})
 
         assert verdict.drops == ["star-b"]
 
@@ -79,7 +87,7 @@ class TestTheStarredBattleIsActuallyFought:
             _clip("elsewhere", minutes=6000),
         ]
 
-        verdict = _review(selection, _verdict({"index": 2, "reason": "same occasion as clip 1"}))
+        verdict = _review(selection, {"index": 2, "reason": "same occasion as clip 1"})
 
         assert verdict.drops == []
         assert any("star-b" in fate and "kept" in fate for fate in verdict.fates)
@@ -104,10 +112,8 @@ class TestTheStarredBattleIsActuallyFought:
 
         verdict = _review(
             selection,
-            _verdict(
-                {"index": 1, "reason": "one place for the occasion"},
-                {"index": 2, "reason": "one place for the occasion"},
-            ),
+            {"index": 1, "reason": "one place for the occasion"},
+            {"index": 2, "reason": "one place for the occasion"},
         )
 
         assert verdict.drops == []
@@ -123,7 +129,7 @@ class TestTheStarredBattleIsActuallyFought:
             _clip("elsewhere", minutes=6000),
         ]
 
-        verdict = _review(selection, _verdict({"index": 1, "reason": "not worth showing"}))
+        verdict = _review(selection, {"index": 1, "reason": "not worth showing"})
 
         assert verdict.drops == []
         assert any("only-star" in fate and "kept" in fate for fate in verdict.fates)
@@ -140,10 +146,8 @@ class TestTheLedgerNamesWhatActuallyHappened:
 
         verdict = _review(
             selection,
-            _verdict(
-                {"index": 1, "reason": "vetoed one"},
-                {"index": 2, "reason": "the real drop"},
-            ),
+            {"index": 1, "reason": "vetoed one"},
+            {"index": 2, "reason": "the real drop"},
         )
 
         assert verdict.drops == ["plain"]
@@ -151,22 +155,20 @@ class TestTheLedgerNamesWhatActuallyHappened:
         assert len(applied) == 1
         assert "the real drop" in applied[0]
 
-    def test_an_out_of_range_index_is_reported(self):
+    def test_an_answer_naming_a_clip_that_is_not_there_is_refused_whole(self, caplog):
+        """Not one bad line in a good cut — an answer about some other set.
+
+        Under keep-semantics an index nothing can be placed against breaks the
+        guarantee the pass rests on: that the two lists account for every clip.
+        Carrying out the rest of it would act on part of an answer to a
+        question nobody asked.
+        """
+        import logging
+
         selection = [_clip(f"c{n}", minutes=n * 6000) for n in range(3)]
 
-        verdict = _review(selection, _verdict({"index": 99, "reason": "off the end"}))
+        with caplog.at_level(logging.WARNING, logger="immich_memories.analysis.selection_review"):
+            verdict = _review(selection, {"index": 99, "reason": "off the end"})
 
         assert verdict.drops == []
-        assert any("99" in fate for fate in verdict.fates)
-
-    def test_the_cap_says_when_it_bites(self):
-        """At most a fifth of the cut per round — silently, until now."""
-        selection = [_clip(f"c{n}", minutes=n * 6000) for n in range(5)]
-
-        verdict = _review(
-            selection,
-            _verdict(*[{"index": n, "reason": f"drop {n}"} for n in range(1, 5)]),
-        )
-
-        assert len(verdict.drops) == 1
-        assert any("cap" in fate.lower() for fate in verdict.fates)
+        assert any(record.levelno >= logging.WARNING for record in caplog.records)

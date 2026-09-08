@@ -511,12 +511,13 @@ class TestNothingIsJudgedBlind:
             ),
         )
 
-    def test_the_last_review_sees_every_clip_it_is_asked_to_judge(self, tmp_path: Path) -> None:
-        """The refinement loop stops on its budget with its last refill unjudged.
+    def test_the_review_sees_every_clip_it_is_asked_to_judge(self, tmp_path: Path) -> None:
+        """A clip reaching the pass undescribed is immune to it.
 
-        Those clips arrived at the final review with a bare line — date,
-        place, score and nothing else — and survived on the very rule that
-        protects genuinely unanalysed material.
+        It arrives as a bare line — date, place, score and nothing else — and
+        survives on the very rule that protects genuinely unanalysed material.
+        The pass looks at everything first so the rule never has to protect
+        anything that ships.
         """
         from immich_memories.analysis.smart_pipeline import ClipWithSegment, PipelineResult
 
@@ -545,7 +546,7 @@ class TestNothingIsJudgedBlind:
 
         # WHY: the review is an LLM call; what it is handed is the subject here.
         with patch("immich_memories.analysis.selection_review.review_selection", _capture):
-            pipeline.quality.final_review_drop([member], result)
+            pipeline.quality.cut([member], result)
 
         assert [c.clip.llm_description for c in judged] == [
             "a whiteboard covered in sticky notes"
