@@ -55,6 +55,8 @@ async def test_io_bound_result_preserves_non_cancellation_errors() -> None:
     [
         "The client this element belongs to has been deleted.",
         "The client this outbox belongs to has been deleted.",
+        # WHY: what a task from a torn-down page hits first, on its own slot (#780)
+        "The parent element this slot belongs to has been deleted.",
     ],
 )
 def test_ui_observer_suppresses_only_known_nicegui_disconnects(message: str) -> None:
@@ -74,7 +76,6 @@ def test_ui_observer_suppresses_only_known_nicegui_disconnects(message: str) -> 
     [
         "worker failed",
         "The element this style object belongs to has been deleted.",
-        "The parent element this slot belongs to has been deleted.",
     ],
 )
 def test_ui_observer_preserves_unrelated_runtime_errors(message: str) -> None:

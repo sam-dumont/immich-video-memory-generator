@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from immich_memories.api.compatibility import ApiVersionPolicy
+from immich_memories.api.models import Asset, AssetType, VideoClipInfo
 from immich_memories.config_loader import Config
 from immich_memories.memory_types.factory import create_preset
 from immich_memories.memory_types.registry import MemoryType
@@ -19,6 +21,15 @@ from immich_memories.ui.state import (
     reset_app_state,
 )
 from tests.conftest import make_clip
+
+
+def _photo_clip(asset_id: str, *, day: int) -> VideoClipInfo:
+    """An IMAGE-type entry the way the selection engine returns one."""
+    when = datetime(2025, 6, day, tzinfo=UTC)
+    asset = Asset(
+        id=asset_id, type=AssetType.IMAGE, fileCreatedAt=when, fileModifiedAt=when, updatedAt=when
+    )
+    return VideoClipInfo(asset=asset, duration_seconds=4.0, width=4000, height=3000)
 
 
 class TestAppStateDefaults:
@@ -203,6 +214,30 @@ class TestAppStateGetSelectedClips:
         state = AppState()
         state.selected_clip_ids = {"c1"}
         assert not state.get_selected_clips()
+
+    def test_photos_the_engine_admitted_ride_along_in_date_order(self):
+        """Photos live in pipeline_result, not clips; Step 4 never saw them (#778)."""
+        state = AppState()
+        video = make_clip("v1", file_created_at=datetime(2025, 6, 2, tzinfo=UTC))
+        state.clips = [video]
+        state.include_photos = True
+        state.selected_clip_ids = {"v1", "p1", "p2"}
+        state.selected_photo_ids = {"p1"}  # p2 was unticked after the run
+        state.pipeline_result = {
+            "selected_clips": [video, _photo_clip("p1", day=1), _photo_clip("p2", day=3)]
+        }
+
+        assert [c.asset.id for c in state.get_selected_clips()] == ["p1", "v1"]
+
+    def test_photos_stay_out_when_photos_are_off(self):
+        state = AppState()
+        state.clips = [make_clip("v1")]
+        state.include_photos = False
+        state.selected_clip_ids = {"v1", "p1"}
+        state.selected_photo_ids = {"p1"}
+        state.pipeline_result = {"selected_clips": [_photo_clip("p1", day=1)]}
+
+        assert [c.asset.id for c in state.get_selected_clips()] == ["v1"]
 
 
 class TestAppStateSingleton:

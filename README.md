@@ -8,6 +8,12 @@
 [![License](https://img.shields.io/github/license/sam-dumont/immich-video-memory-generator)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-Docusaurus-blue)](https://sam-dumont.github.io/immich-video-memory-generator/)
 
+> **Beta, under heavy rework, not stable.** The selection engine is being replaced by a
+> story-driven editor, and `main` and the `latest` Docker tag move with that work. Expect runs
+> that fail, photos that go missing, and options that move between releases. Try it on one small
+> album first, not your whole library, and file what breaks. Fixes to the old engine are slow on
+> purpose: the new one replaces it.
+
 **Cuts your [Immich](https://immich.app/) library into edited memory videos: title screens, music, and only the good five seconds of each clip.**
 
 It connects to your self-hosted Immich server and runs a real editor over your library: a vision

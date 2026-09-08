@@ -222,6 +222,19 @@ class TestEncoderProbe:
         # No NVIDIA driver on this machine: the probe must fail even if ffmpeg lists the encoder.
         assert _probe_ffmpeg_encode(["-c:v", "h264_nvenc"]) is False
 
+    def test_probe_frame_is_a_yuv_source_at_a_size_every_encoder_takes(self):
+        """A 64x64 RGB testsrc frame failed NVENC on a working RTX 5060 Ti (#772)."""
+        from immich_memories.processing import hardware
+
+        # WHY: the ffmpeg process boundary; what matters is the source we hand it
+        with patch.object(hardware, "_run_ffmpeg_check", return_value=(True, "")) as run:
+            assert hardware._probe_ffmpeg_encode(["-c:v", "h264_nvenc"]) is True
+
+        args = run.call_args.args[0]
+        source = args[args.index("-i") + 1]
+        assert source.startswith("testsrc2=")
+        assert "64x64" not in source
+
 
 # ---------------------------------------------------------------------------
 # _detect_vaapi

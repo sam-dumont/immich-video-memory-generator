@@ -8,6 +8,8 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from immich_memories.processing.ffmpeg_runner import ffmpeg_error_excerpt
+
 if TYPE_CHECKING:
     from immich_memories.processing.probe_cache import ProbeCache
 
@@ -190,7 +192,7 @@ def extract_and_mix_audio(
         )
         _cleanup_temp_files(reversed_paths)
         if result.returncode != 0:
-            raise RuntimeError(f"Audio extraction failed: {result.stderr[-500:]}")
+            raise RuntimeError(f"Audio extraction failed: {ffmpeg_error_excerpt(result.stderr)}")
         return
 
     # WHY: Build FFmpeg inputs from the best available audio source per clip.
@@ -236,12 +238,17 @@ def extract_and_mix_audio(
     else:
         map_label = "[aout]"
 
+    # WHY: the graph grows by ~250 bytes per clip and Linux caps one argv string
+    # at 128 KB, so past ~500 clips exec fails with "Argument list too long"
+    # before FFmpeg even starts (#780). A script file has no such cap.
+    graph_path = output_path.with_suffix(".filter_complex.txt")
+    graph_path.write_text(filter_complex, encoding="utf-8")
     cmd = [
         "ffmpeg",
         "-y",
         *inputs,
-        "-filter_complex",
-        filter_complex,
+        "-filter_complex_script",
+        str(graph_path),
         "-map",
         map_label,
         "-c:a",
@@ -250,10 +257,13 @@ def extract_and_mix_audio(
         audio_bitrate,
         str(output_path),
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)  # noqa: S603
-    _cleanup_temp_files(reversed_paths)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)  # noqa: S603
+    finally:
+        _cleanup_temp_files(reversed_paths)
+        graph_path.unlink(missing_ok=True)
     if result.returncode != 0:
-        raise RuntimeError(f"Audio mixing failed: {result.stderr[-500:]}")
+        raise RuntimeError(f"Audio mixing failed: {ffmpeg_error_excerpt(result.stderr)}")
 
 
 def _resolve_single_clip_audio(
@@ -339,4 +349,4 @@ def mux_video_audio(
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)  # noqa: S603, S607
     if result.returncode != 0:
-        raise RuntimeError(f"Muxing failed: {result.stderr[-500:]}")
+        raise RuntimeError(f"Muxing failed: {ffmpeg_error_excerpt(result.stderr)}")

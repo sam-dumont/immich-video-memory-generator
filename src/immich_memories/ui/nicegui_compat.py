@@ -14,10 +14,15 @@ R = TypeVar("R")
 
 logger = logging.getLogger(__name__)
 
+# WHY the slot message: once NiceGUI drops a disconnected client it deletes the
+# page tree, and a task started from that page still holds its slot stack. Its
+# first ui.notify() then fails on the slot's parent, not on the client, and that
+# failure replaced the real error in the log (#780).
 _NICEGUI_CLIENT_DISCONNECT_MESSAGES = frozenset(
     {
         "The client this element belongs to has been deleted.",
         "The client this outbox belongs to has been deleted.",
+        "The parent element this slot belongs to has been deleted.",
     }
 )
 

@@ -11,6 +11,13 @@ import Video from '@site/src/components/Video';
 
 Turn your Immich photo library into video memories. Automatically.
 
+:::caution Beta, under heavy rework, not stable
+The selection engine is being replaced by a story-driven editor, and `main` and the `latest`
+Docker tag move with that work. Expect runs that fail, photos that go missing, and options that
+move between releases. Try it on one small album first, not your whole library, and file what
+breaks.
+:::
+
 You point it at your Immich instance, pick a time period (or a person, or a trip), and it does everything: downloads the videos, finds the best scenes, throws out the duplicates, detects where you traveled, generates a title, adds AI music, and renders a final video. No cloud required. No subscription. Your hardware, your data.
 
 <Video src="/demo/demo.mp4" controls autoPlay muted loop width="100%" style={{borderRadius: '12px', marginBottom: '1.5rem'}} />

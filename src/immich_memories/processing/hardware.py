@@ -114,6 +114,12 @@ _PROBE_UPLOAD_ARGS: dict[str, list[str]] = {
 }
 
 
+# WHY: a 64x64 RGB `testsrc` frame is smaller than what some NVENC generations
+# accept, so the probe failed on a working RTX 5060 Ti and every render fell
+# back to the CPU (#772). `testsrc2` is a YUV source, at a size every encoder takes.
+_PROBE_SOURCE = "testsrc2=size=256x256:rate=1"
+
+
 def _probe_ffmpeg_encode(encoder_args: list[str], *, upload: str | None = None) -> bool:
     """Encode one synthetic frame; the only proof a hardware encoder actually has a device.
 
@@ -122,7 +128,7 @@ def _probe_ffmpeg_encode(encoder_args: list[str], *, upload: str | None = None) 
     """
     args = [
         "-hide_banner", "-loglevel", "error", "-nostdin",
-        "-f", "lavfi", "-i", "testsrc=size=64x64:rate=1",
+        "-f", "lavfi", "-i", _PROBE_SOURCE,
         *_PROBE_UPLOAD_ARGS.get(upload or "", []),
         "-frames:v", "1", *encoder_args, "-f", "null", "-",
     ]  # fmt: skip

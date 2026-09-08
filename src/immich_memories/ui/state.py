@@ -277,8 +277,30 @@ class AppState:
             shutil.rmtree(previous, ignore_errors=True)
 
     def get_selected_clips(self) -> list[VideoClipInfo]:
-        """Get the list of currently selected clips."""
-        return [c for c in self.clips if c.asset.id in self.selected_clip_ids]
+        """The videos kept in review, plus the photos the selection engine admitted.
+
+        Photos never sit in ``clips`` (that list is the video review grid). The
+        engine returns them as IMAGE-type entries in ``pipeline_result``, and
+        this used to read only ``clips``, so a photo the user included and the
+        engine kept still never reached the video (#778). ``selected_photo_ids``
+        is the photo checkbox state, so a photo unticked after the run stays out.
+        """
+        from immich_memories.api.models import AssetType
+
+        selected = [c for c in self.clips if c.asset.id in self.selected_clip_ids]
+        if not self.include_photos or not self.pipeline_result:
+            return selected
+        known = {c.asset.id for c in selected}
+        planned = self.pipeline_result.get("selected_clips") or []
+        selected += [
+            c
+            for c in planned
+            if c.asset.type == AssetType.IMAGE
+            and c.asset.id in self.selected_photo_ids
+            and c.asset.id not in known
+        ]
+        selected.sort(key=lambda c: c.asset.file_created_at)
+        return selected
 
     @property
     def target_duration_seconds(self) -> float:

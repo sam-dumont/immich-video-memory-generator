@@ -155,6 +155,11 @@ def _update_duration_summary(clips: list[VideoClipInfo], container: ui.element) 
                 selected_duration += min(c.duration_seconds or avg_clip_sec, avg_clip_sec)
 
     selected_count = len(state.selected_clip_ids)
+    if state.include_photos:
+        # WHY: photos ticked "Include" counted for nothing here, so 59 included
+        # photos read as "Selected Clips: 1" beside the one video (#778).
+        selected_count = len(state.selected_clip_ids | state.selected_photo_ids)
+        selected_duration += len(state.selected_photo_ids) * state.photo_duration
     render_duration_summary(
         selected_duration, state.target_duration * 60, selected_count, container
     )
