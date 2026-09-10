@@ -270,17 +270,10 @@ def resolve_short_form(
     )
 
 
-def _apply_scalar_overrides(
-    config: Config,
-    *,
-    photo_duration: float | None,
-    refinement_passes: int | None,
-) -> None:
-    """Let a flag outrank the config file for the dials that have both."""
+def _apply_photo_duration_override(config: Config, *, photo_duration: float | None) -> None:
+    """Let --photo-duration outrank the configured photos.duration."""
     if photo_duration is not None:
         config.photos.duration = photo_duration
-    if refinement_passes is not None:
-        config.analysis.max_refinement_passes = refinement_passes
 
 
 def resolve_inclusion(flag: bool | None, *, config_enabled: bool) -> bool:

@@ -284,7 +284,7 @@ def run_options(command: FC) -> FC:
 
 
 def selection_options(command: FC) -> FC:
-    """What the candidate pool may hold, and how hard selection works on it."""
+    """What the candidate pool may hold."""
     options = [
         click.option(
             "--include-live-photos/--no-live-photos",
@@ -312,25 +312,6 @@ def selection_options(command: FC) -> FC:
             type=float,
             default=None,
             help="Duration per photo clip in seconds (default: 4.0)",
-        ),
-        click.option(
-            "--refinement-passes",
-            type=click.IntRange(1, 20),
-            default=None,
-            help=(
-                "How many times selection may verify, judge and review before settling "
-                "(default: 10). The biggest dial on warm-run time, and on the bill when "
-                "llm.base_url points at a paid API"
-            ),
-        ),
-        click.option(
-            "--analysis-depth",
-            type=click.Choice(["auto", "fast", "thorough"]),
-            default=None,
-            help=(
-                "Analysis depth: auto (full analysis for manageable pools), "
-                "fast (favorites first), or thorough (every eligible clip)"
-            ),
         ),
     ]
     return _apply(command, options)
