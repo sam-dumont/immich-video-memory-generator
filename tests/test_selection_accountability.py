@@ -65,6 +65,17 @@ class TestEveryClipCanAccountForItself:
         assert story.admitted_at == "duration backfill"
 
 
+class TestLegacyTraceSerialization:
+    def test_the_legacy_adapter_keeps_the_selector_order(self):
+        """The old selector cannot reorder material while it remains supported."""
+        late, early = _clip("late"), _clip("early")
+        trace = Trace()
+
+        trace.record("legacy cull", [late, early], [late, early])
+
+        assert trace.as_dict()["stages"][0]["kept_ids"] == ["late", "early"]
+
+
 class TestTheReportShowsIt:
     def test_the_report_accounts_for_each_clip(self):
         report = _traced().report()

@@ -172,6 +172,92 @@ class SelectionQuality:
             result = self.refiner.phase_refine(list(by_id.values()), self.tracker)
         return result, list(by_id.values())
 
+    def editorial_members_needing_verification(
+        self,
+        analyzed: list[ClipWithSegment],
+        selected_ids: tuple[str, ...],
+    ) -> list[ClipWithSegment]:
+        """Return selected unseen members this quality service has not already tried."""
+        by_id = {member.clip.asset.id: member for member in analyzed}
+        return [
+            by_id[asset_id]
+            for asset_id in selected_ids
+            if asset_id in by_id
+            and asset_id not in self._verify_attempted
+            and self._needs_a_real_look(by_id[asset_id])
+        ]
+
+    def verify_editorial_members(
+        self,
+        analyzed: list[ClipWithSegment],
+        selected_ids: tuple[str, ...],
+    ) -> bool:
+        """Look at selected fallbacks in place without invoking either legacy editor."""
+        unverified = self.editorial_members_needing_verification(analyzed, selected_ids)
+        if not unverified:
+            return False
+        selected = [
+            member for member in analyzed if member.clip.asset.id in frozenset(selected_ids)
+        ]
+        trace.record(
+            "verify: analyze unseen",
+            selected,
+            selected,
+            [f"{len(unverified)} editorial clip(s) analyzed for real before re-planning"],
+        )
+        self._verify_attempted.update(member.clip.asset.id for member in unverified)
+
+        from immich_memories.analysis import photo_look
+
+        stills = [member for member in unverified if looks_like_a_photograph(member.clip.asset)]
+        photo_look.look_at_stills(
+            stills,
+            config=self._app_config,
+            client=self.client,
+            provider_circuit=self.provider_circuit,
+        )
+        footage = [member for member in unverified if member not in stills]
+        if footage:
+            try:
+                verified = self.analyzer.phase_analyze(
+                    [member.clip for member in footage],
+                    self.tracker,
+                )
+            finally:
+                with contextlib.suppress(Exception):
+                    self.analyzer.close()
+            self._absorb_editorial_verified(analyzed, footage, verified)
+        return True
+
+    @staticmethod
+    def _absorb_editorial_verified(
+        analyzed: list[ClipWithSegment],
+        requested: list[ClipWithSegment],
+        verified: list[ClipWithSegment],
+    ) -> None:
+        """Copy successful measurements onto the original wrappers and source objects."""
+        by_id = {member.clip.asset.id: member for member in analyzed}
+        requested_ids = {member.clip.asset.id for member in requested}
+        verified_by_id = {
+            member.clip.asset.id: member
+            for member in verified
+            if member.clip.asset.id in requested_ids
+        }
+        if len(verified_by_id) != len(
+            [member for member in verified if member.clip.asset.id in requested_ids]
+        ):
+            raise ValueError("editorial verification returned duplicate asset IDs")
+        for asset_id, measured in verified_by_id.items():
+            original = by_id[asset_id]
+            if measured.clip is not original.clip:
+                raise ValueError("editorial verification must preserve source clip identity")
+            if not measured.analyzed:
+                continue
+            original.start_time = measured.start_time
+            original.end_time = measured.end_time
+            original.score = measured.score
+            original.analyzed = True
+
     def _absorb_verified(
         self,
         by_id: dict[str, ClipWithSegment],

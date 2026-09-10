@@ -11,6 +11,8 @@ Works for ANY phone/camera — uses audio fingerprint, not Apple metadata.
 from __future__ import annotations
 
 import logging
+import math
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -53,6 +55,18 @@ class LivePhotoCluster:
 
     assets: list[Asset]
     clip_duration: float = DEFAULT_CLIP_DURATION
+    clip_durations: Mapping[str, float] | None = None
+
+    def source_durations(self) -> list[float]:
+        """Actual captured durations when supplied, otherwise the legacy estimate."""
+        if self.clip_durations is None:
+            return [self.clip_duration] * self.count
+        durations = [self.clip_durations[a.id] for a in self.assets]
+        if any(
+            isinstance(value, bool) or not math.isfinite(value) or value <= 0 for value in durations
+        ):
+            raise ValueError("Live source durations must be finite and positive")
+        return durations
 
     @property
     def count(self) -> int:
@@ -79,6 +93,9 @@ class LivePhotoCluster:
         """
         if not self.assets:
             return []
+
+        if self.clip_durations is not None:
+            return self._bounded_trim_points()
 
         n = len(self.assets)
         half_dur = self.clip_duration / 2.0
@@ -111,6 +128,29 @@ class LivePhotoCluster:
 
         return [(starts[i], ends[i]) for i in range(n)]
 
+    def _bounded_trim_points(self) -> list[tuple[float, float]]:
+        """Keep shutter-centered handoffs within each actual source's support.
+
+        Capture metadata has no in-file shutter offset, so the existing midpoint
+        alignment remains an estimate. Duration bounds are actual source facts.
+        If the first clip ends before the next shutter, hand off at its end;
+        cutting the next clip at its shutter would leave a hole in the overlap.
+        """
+        durations = self.source_durations()
+        starts = [0.0] * self.count
+        ends = durations.copy()
+        for index in range(self.count - 1):
+            gap = (
+                self.assets[index + 1].file_created_at - self.assets[index].file_created_at
+            ).total_seconds()
+            current_half, next_half = durations[index] / 2, durations[index + 1] / 2
+            if gap >= current_half + next_half:
+                continue
+            handoff = min(gap, current_half)
+            ends[index] = min(durations[index], current_half + handoff)
+            starts[index + 1] = max(0.0, next_half + handoff - gap)
+        return list(zip(starts, ends, strict=True))
+
     @property
     def estimated_duration(self) -> float:
         """Total estimated duration after trimming overlaps."""
@@ -131,23 +171,31 @@ def split_non_overlapping(cluster: LivePhotoCluster) -> list[LivePhotoCluster]:
     if cluster.count <= 1:
         return [cluster]
 
+    durations = cluster.source_durations()
     sub: list[list[Asset]] = [[cluster.assets[0]]]
     for i in range(1, cluster.count):
         gap = (
             cluster.assets[i].file_created_at - cluster.assets[i - 1].file_created_at
         ).total_seconds()
-        if gap >= cluster.clip_duration:
+        if gap >= (durations[i - 1] + durations[i]) / 2:
             sub.append([cluster.assets[i]])
         else:
             sub[-1].append(cluster.assets[i])
 
-    return [LivePhotoCluster(assets=s, clip_duration=cluster.clip_duration) for s in sub]
+    return [
+        LivePhotoCluster(
+            assets=s, clip_duration=cluster.clip_duration, clip_durations=cluster.clip_durations
+        )
+        for s in sub
+    ]
 
 
 def cluster_live_photos(
     assets: list[Asset],
     merge_window_seconds: float = 10.0,
     clip_duration: float | None = None,
+    *,
+    clip_durations: Mapping[str, float] | None = None,
 ) -> list[LivePhotoCluster]:
     """Group Live Photo assets into temporal clusters.
 
@@ -177,7 +225,7 @@ def cluster_live_photos(
     result: list[LivePhotoCluster] = []
     for c in raw_clusters:
         dur = clip_duration if clip_duration is not None else estimate_clip_duration(c[0])
-        cluster = LivePhotoCluster(assets=c, clip_duration=dur)
+        cluster = LivePhotoCluster(assets=c, clip_duration=dur, clip_durations=clip_durations)
         result.extend(split_non_overlapping(cluster))
 
     return result
@@ -335,8 +383,11 @@ _FALLBACK_BURST_FPS = 30.0
 
 
 def probe_clip_fps(clip_path: Path) -> float | None:
-    """Frames per second of a clip's video stream, or None if unreadable."""
+    """Representative stream fps for metadata; not a VFR preservation guarantee."""
+    import json
     import subprocess
+
+    from immich_memories.processing.probe_cache import _frame_rate
 
     try:
         result = subprocess.run(
@@ -347,33 +398,43 @@ def probe_clip_fps(clip_path: Path) -> float | None:
                 "-select_streams",
                 "v:0",
                 "-show_entries",
-                "stream=r_frame_rate",
+                "stream=avg_frame_rate,r_frame_rate",
                 "-of",
-                "csv=p=0",
+                "json",
                 str(clip_path),
             ],
             capture_output=True,
             text=True,
             timeout=10,
         )
-        num, _, den = result.stdout.strip().partition("/")
-        rate = float(num) / float(den or 1)
-    except (OSError, ValueError, ZeroDivisionError, subprocess.SubprocessError) as e:
+        if result.returncode:
+            return None
+        streams = json.loads(result.stdout).get("streams", [])
+        rate = _frame_rate(streams[0]) if streams else 0.0
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError) as e:
         logging.getLogger(__name__).debug("ffprobe fps check failed: %s", e)
         return None
     return rate if rate > 0 else None
 
 
 def burst_fps(clip_paths: list[Path]) -> float:
-    """The rate to normalise a burst to: the fastest clip in it.
+    """Use verified selected cadence, retaining the legacy unreadable-source fallback.
 
-    Concat needs every input at one rate, and this was pinned to 30 with a
-    comment that iPhone Live Photos always are. This library says otherwise —
-    components at 23.94, 29.97, 120 and 240 fps — so the pin quietly decimated
-    the fast ones. Taking the maximum resamples the slow clips up, which
-    duplicates frames, rather than throwing away frames that exist.
+    Average fps can discard dense VFR sections. Packet spacing establishes the
+    required grid; matching stream rates keep genuine high-rate CFR unchanged.
+    Unreadable sources keep the historical fallback, which cannot guarantee
+    frame preservation. Certified callers require their own verified rate.
+    Single-source legacy merges do not invoke this resampling path.
     """
-    rates = [fps for fps in (probe_clip_fps(p) for p in clip_paths) if fps]
+    from immich_memories.processing.probe_cache import ProbeCache, ProbeError
+
+    probes = ProbeCache()
+    rates = []
+    for path in clip_paths:
+        try:
+            rates.append(probes.render_frame_rate(path)["fps"])
+        except (ProbeError, OSError, ValueError) as exc:
+            logging.getLogger(__name__).debug("Legacy burst cadence unavailable: %s", exc)
     return max(rates) if rates else _FALLBACK_BURST_FPS
 
 
@@ -556,6 +617,8 @@ def build_merge_command(
     *,
     audio_trim_points: list[tuple[float, float]] | None = None,
     hardware_enabled: bool = True,
+    quantize_material: bool = False,
+    render_frame_rate: str | None = None,
 ) -> list[str]:
     """Build an FFmpeg command that trims and merges Live Photo clips.
 
@@ -570,6 +633,15 @@ def build_merge_command(
     metadata; SDR clips use H.264. Which encoder implements that, and at what
     quality, comes from ``burst_encoding_plan`` rather than being hardcoded.
     """
+    if quantize_material and render_frame_rate is None:
+        from fractions import Fraction
+
+        from immich_memories.processing.probe_cache import ProbeCache
+
+        probes = ProbeCache()
+        render_frame_rate = str(
+            max(Fraction(probes.render_frame_rate(path)["rate"]) for path in clip_paths)
+        )
     is_hdr = bool(clip_paths) and _detect_clip_hdr(clip_paths[0])
     has_audio = all(probe_clip_has_audio(p) for p in clip_paths)
     a_trims = audio_trim_points or trim_points
@@ -580,7 +652,12 @@ def build_merge_command(
         cmd.extend(["-i", str(path)])
 
     parts, v_labels, a_labels = _build_trim_filters(
-        trim_points, a_trims, n, has_audio, burst_fps(clip_paths) if n > 1 else 0.0
+        trim_points,
+        a_trims,
+        n,
+        has_audio,
+        render_frame_rate or (burst_fps(clip_paths) if n > 1 or quantize_material else 0.0),
+        quantize_material=quantize_material,
     )
     _build_concat_and_map(cmd, parts, v_labels, a_labels, n, has_audio)
 
@@ -594,7 +671,9 @@ def _build_trim_filters(
     a_trims: list[tuple[float, float]],
     n: int,
     has_audio: bool,
-    target_fps: float,
+    target_fps: float | str,
+    *,
+    quantize_material: bool = False,
 ) -> tuple[list[str], list[str], list[str]]:
     """Build per-clip trim + normalize filter strings."""
     parts: list[str] = []
@@ -604,9 +683,14 @@ def _build_trim_filters(
 
     for i, (v_start, v_end) in enumerate(v_trims):
         normalize = ",normalize=smoothing=20:independence=0:strength=0.4"
-        # Concat needs one rate across every input; the burst's fastest clip
-        # is it, so nothing is decimated on the way in.
-        fps_filter = f",fps={target_fps:g}" if n > 1 else ""
+        # Selected-source cadence supplies a grid fine enough for dense VFR
+        # sections. Average metadata alone does not prove this.
+        rate = target_fps if isinstance(target_fps, str) else f"{target_fps:.17g}"
+        fps_filter = f",fps={rate}" if n > 1 else ""
+        if quantize_material:
+            # EOF must carry the last source frame through resampling. The
+            # certified caller then verifies/pads a subframe duration shortfall.
+            fps_filter = f",fps={rate}:eof_action=pass"
         parts.append(
             f"[{i}:v]trim=start={v_start}:end={v_end},setpts=PTS-STARTPTS{normalize}{fps_filter}[v{i}]"
         )
