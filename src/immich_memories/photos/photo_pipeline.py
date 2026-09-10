@@ -393,6 +393,52 @@ def _select_distributed(
     return selected
 
 
+def _source_photo_path(asset: Asset, work_dir: Path) -> Path:
+    ext = Path(asset.original_file_name).suffix if asset.original_file_name else ".jpg"
+    return work_dir / f"{asset.id}{ext}"
+
+
+def _prepared_photo_pixels(raw_path: Path, target_w: int, target_h: int, work_dir: Path):
+    """Decode the source into normalized float RGB, or report it unreadable."""
+    # Prepare (HEIC decode, gain map extraction for HDR).
+    # WHY 1.5x (#423): the renderer samples at most output x 1.12 max zoom
+    # x 1.26 pan margin = 1.41x, and it holds three float32 copies of
+    # whatever it is given. Measured on a 24.5 MP HEIC at 4K: 2.0x paid
+    # 0.63 s and 0.32 GB per photo for pixels its own resize discarded.
+    prepared = prepare_photo_source(
+        raw_path,
+        work_dir,
+        max_size=(round(target_w * 1.5), round(target_h * 1.5)),
+    )
+
+    # Load image — 16-bit for gain-mapped HDR, 8-bit for SDR
+    img = cv2.imread(str(prepared.path), cv2.IMREAD_UNCHANGED)
+    if img is None:
+        logger.warning(f"Failed to read {prepared.path}")
+        return None
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    if img.dtype == np.uint16:
+        img = img.astype(np.float32) / 65535.0
+    else:
+        img = img.astype(np.float32) / 255.0
+    return prepared, img
+
+
+def _ken_burns_params(asset: Asset, prepared: Any, fps: int, duration: float) -> KenBurnsParams:
+    """Reproducible per-asset move: the same photograph always pans the same way."""
+    face_target = face_aware_pan(asset.people, prepared.width, prepared.height)
+    seed = int(hashlib.sha256(asset.id.encode()).hexdigest()[:8], 16)
+    rng = random.Random(seed)
+    return KenBurnsParams(
+        zoom_start=1.0,
+        zoom_end=1.0 + rng.uniform(0.05, 0.12),
+        pan_start=(rng.uniform(0.3, 0.7), rng.uniform(0.3, 0.7)),
+        pan_end=face_target,
+        fps=fps,
+        duration=duration,
+    )
+
+
 def _render_single_photo(
     asset: Asset,
     config: PhotoConfig,
@@ -401,52 +447,19 @@ def _render_single_photo(
     work_dir: Path,
     download_fn: Any,
     fps: int = 30,
+    *,
+    source_path: Path | None = None,
 ) -> AssemblyClip | None:
     """Download, prepare, render (streaming), and encode a single photo."""
     try:
-        # Download from Immich
-        ext = Path(asset.original_file_name).suffix if asset.original_file_name else ".jpg"
-        raw_path = work_dir / f"{asset.id}{ext}"
-        if not raw_path.exists():
-            download_fn(asset.id, raw_path)
-
-        # Prepare (HEIC decode, gain map extraction for HDR).
-        # WHY 1.5x (#423): the renderer samples at most output x 1.12 max zoom
-        # x 1.26 pan margin = 1.41x, and it holds three float32 copies of
-        # whatever it is given. Measured on a 24.5 MP HEIC at 4K: 2.0x paid
-        # 0.63 s and 0.32 GB per photo for pixels its own resize discarded.
-        prepared = prepare_photo_source(
-            raw_path,
-            work_dir,
-            max_size=(round(target_w * 1.5), round(target_h * 1.5)),
-        )
-
-        # Load image — 16-bit for gain-mapped HDR, 8-bit for SDR
-        img = cv2.imread(str(prepared.path), cv2.IMREAD_UNCHANGED)
-        if img is None:
-            logger.warning(f"Failed to read {prepared.path}")
+        raw_path = _source_photo_path(asset, work_dir) if source_path is None else source_path
+        if source_path is None and not raw_path.exists():
+            download_fn(asset.id, raw_path)  # Download from Immich
+        loaded = _prepared_photo_pixels(raw_path, target_w, target_h, work_dir)
+        if loaded is None:
             return None
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        if img.dtype == np.uint16:
-            img = img.astype(np.float32) / 65535.0
-        else:
-            img = img.astype(np.float32) / 255.0
-
-        # Face-aware pan target
-        face_target = face_aware_pan(asset.people, prepared.width, prepared.height)
-
-        # Reproducible random params from asset ID
-        seed = int(hashlib.sha256(asset.id.encode()).hexdigest()[:8], 16)
-        rng = random.Random(seed)
-
-        params = KenBurnsParams(
-            zoom_start=1.0,
-            zoom_end=1.0 + rng.uniform(0.05, 0.12),
-            pan_start=(rng.uniform(0.3, 0.7), rng.uniform(0.3, 0.7)),
-            pan_end=face_target,
-            fps=fps,
-            duration=config.duration,
-        )
+        prepared, img = loaded
+        params = _ken_burns_params(asset, prepared, fps, config.duration)
 
         # Stream-render to mp4 (O(1) memory — one frame at a time)
         output_path = work_dir / f"{asset.id}_photo.mp4"
@@ -483,6 +496,35 @@ def _render_single_photo(
         return None
 
 
+def _photo_pipe_format(gain_map_hdr: bool, has_zscale: bool, peak_nits: int) -> tuple[str, str]:
+    """Pick the piped pixel format and the color filter the photo is encoded through."""
+    if gain_map_hdr:
+        if has_zscale:
+            return "rgb48le", (
+                f"zscale=t=arib-std-b67:tin=linear"
+                f":p=bt2020:pin=bt709"
+                f":m=bt2020nc:min=bt709"
+                f":npl={peak_nits}"
+                f",format=yuv420p10le"
+            )
+        # WHY: Without zscale, HDR gain map data can't be properly
+        # converted. Fall back to SDR: drop to 8-bit, skip HDR metadata.
+        logger.warning("zscale not available — rendering photo as SDR (HDR gain map ignored)")
+        return "rgb24", "format=yuv420p"
+    if has_zscale:
+        return "rgb24", (
+            "zscale=t=arib-std-b67:tin=iec61966-2-1"
+            ":p=bt2020:pin=bt709"
+            ":m=bt2020nc:min=bt709"
+            ":npl=203"
+            ",format=yuv420p10le"
+        )
+    # WHY: Without zscale, render as plain SDR. Colors are correct
+    # but no HDR metadata — the photo won't match HDR video clips.
+    logger.warning("zscale not available — rendering photo as SDR")
+    return "rgb24", "format=yuv420p"
+
+
 def _stream_render_to_mp4(
     img: np.ndarray,
     params: KenBurnsParams,
@@ -506,38 +548,7 @@ def _stream_render_to_mp4(
 
     has_zscale = check_zscale_available()
     encoder_args = _get_photo_encoder_args() if has_zscale else _get_sdr_encoder_args()
-
-    if gain_map_hdr:
-        pix_fmt = "rgb48le"
-        if has_zscale:
-            vf = (
-                f"zscale=t=arib-std-b67:tin=linear"
-                f":p=bt2020:pin=bt709"
-                f":m=bt2020nc:min=bt709"
-                f":npl={peak_nits}"
-                f",format=yuv420p10le"
-            )
-        else:
-            # WHY: Without zscale, HDR gain map data can't be properly
-            # converted. Fall back to SDR: drop to 8-bit, skip HDR metadata.
-            logger.warning("zscale not available — rendering photo as SDR (HDR gain map ignored)")
-            pix_fmt = "rgb24"
-            vf = "format=yuv420p"
-    else:
-        pix_fmt = "rgb24"
-        if has_zscale:
-            vf = (
-                "zscale=t=arib-std-b67:tin=iec61966-2-1"
-                ":p=bt2020:pin=bt709"
-                ":m=bt2020nc:min=bt709"
-                ":npl=203"
-                ",format=yuv420p10le"
-            )
-        else:
-            # WHY: Without zscale, render as plain SDR. Colors are correct
-            # but no HDR metadata — the photo won't match HDR video clips.
-            logger.warning("zscale not available — rendering photo as SDR")
-            vf = "format=yuv420p"
+    pix_fmt, vf = _photo_pipe_format(gain_map_hdr, has_zscale, peak_nits)
 
     def _frames() -> Iterator[bytes]:
         use_16bit = pix_fmt == "rgb48le"

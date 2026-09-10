@@ -30,11 +30,8 @@ _HDR_COLOR_TRC = {
     "pq": "smpte2084",
 }
 
-# Extensions that FFmpeg can read directly as images
-_FFMPEG_NATIVE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".webp"}
-
-# Extensions that need pillow-heif conversion
-_HEIF_EXTENSIONS = {".heic", ".heif", ".avif"}
+# Pillow format names that FFmpeg can read directly as images.
+_FFMPEG_NATIVE_FORMATS = {"JPEG", "PNG", "BMP", "TIFF", "WEBP"}
 
 
 _DEFAULT_HEADROOM = 2.3
@@ -141,8 +138,8 @@ def prepare_photo_source(
     three float32 copies of the decoded image, so a 24 MP HEIC peaks near 0.9 GB
     and a 48 MP one exceeds a 4 GB container. Ken Burns never samples more than
     about twice the output resolution, so anything beyond that is memory spent
-    on detail the encoder discards. Photos already inside the cap are returned
-    untouched rather than re-encoded.
+    on detail the encoder discards. Photos already inside the cap and requiring
+    no EXIF pixel transform are returned untouched rather than re-encoded.
 
     Extracts HDR gain maps when present:
     - Apple HEIC: gain map via pillow-heif auxiliary image
@@ -152,18 +149,28 @@ def prepare_photo_source(
     Returns PreparedPhoto with the path to the FFmpeg-compatible file,
     plus dimensions and has_gain_map flag.
     """
-    ext = source_path.suffix.lower()
+    from PIL import Image
 
-    if ext in _HEIF_EXTENSIONS:
-        return _convert_heif(source_path, work_dir, max_size=max_size)
+    # Library filenames can retain an old suffix after the image was converted.
+    # Identify the container before invoking a format-specific decoder.
+    try:
+        import pillow_heif  # type: ignore[import-untyped]
+    except ImportError:
+        pass
+    else:
+        if pillow_heif.is_supported(source_path):
+            return _convert_heif(source_path, work_dir, max_size=max_size)
+
+    with Image.open(source_path) as image:
+        image_format = image.format
 
     # Check for UltraHDR JPEG gain map (Android/Pixel/Samsung)
-    if ext in (".jpg", ".jpeg"):
+    if image_format == "JPEG":
         result = _try_ultrahdr_extraction(source_path, work_dir, max_size=max_size)
         if result is not None:
             return result
 
-    if ext in _FFMPEG_NATIVE_EXTENSIONS:
+    if image_format in _FFMPEG_NATIVE_FORMATS:
         return _prepare_native(source_path, work_dir, max_size)
 
     # Unknown format — try Pillow as fallback
@@ -173,18 +180,25 @@ def prepare_photo_source(
 def _prepare_native(
     source_path: Path, work_dir: Path, max_size: tuple[int, int] | None
 ) -> PreparedPhoto:
-    """FFmpeg reads these directly; only re-encode when the cap actually bites."""
-    w, h = _get_image_dimensions(source_path)
-    if max_size is None or (w <= max_size[0] and h <= max_size[1]):
-        return PreparedPhoto(path=source_path, width=w, height=h)
-
-    from PIL import Image
+    """Normalize displayed pixels before the cap and the EXIF-blind array reader."""
+    from PIL import Image, ImageOps
 
     with Image.open(source_path) as opened:
-        opened.draft("RGB", max_size)
-        capped = opened.convert("RGB")
-    capped.thumbnail(max_size, Image.Resampling.LANCZOS)
-    out_path = work_dir / f"{source_path.stem}_capped.jpg"
+        orientation = opened.getexif().get(274, 1)
+        transformed = orientation in range(2, 9)
+        swaps_axes = orientation in (5, 6, 7, 8)
+        w, h = opened.size[::-1] if swaps_axes else opened.size
+        needs_cap = max_size is not None and (w > max_size[0] or h > max_size[1])
+        if not transformed and not needs_cap:
+            return PreparedPhoto(path=source_path, width=w, height=h)
+        if max_size is not None:
+            # JPEG draft operates on stored axes; the cap applies to displayed axes.
+            opened.draft("RGB", max_size[::-1] if swaps_axes else max_size)
+        capped = ImageOps.exif_transpose(opened).convert("RGB")
+    if max_size is not None:
+        capped.thumbnail(max_size, Image.Resampling.LANCZOS)
+    suffix = "capped" if needs_cap else "oriented"
+    out_path = work_dir / f"{source_path.stem}_{suffix}.jpg"
     capped.save(out_path, "JPEG", quality=95)
     return PreparedPhoto(path=out_path, width=capped.width, height=capped.height)
 
@@ -284,7 +298,7 @@ def _convert_heif(
     saves as high-quality JPEG.
     """
     try:
-        import pillow_heif  # type: ignore[import-untyped]
+        import pillow_heif
 
         pillow_heif.register_heif_opener()
     except ImportError:

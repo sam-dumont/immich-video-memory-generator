@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
@@ -90,11 +91,69 @@ def _sample_for_minimum_duration(
     return [clips[index] for index in indices]
 
 
+def _assert_bound_membership(binding: dict, assembly_clips: list[AssemblyClip]) -> None:
+    """Name exactly how a bound selection changed, instead of a bare mismatch."""
+    from collections import Counter
+
+    from immich_memories.processing.editorial_timing import read_editorial_timeline
+
+    read_editorial_timeline(binding)
+    expected = binding["source_ids"]
+    actual = [clip.asset_id for clip in assembly_clips]
+    if actual != expected:
+        missing = [key for key in expected if key not in actual]
+        extra = [key for key in actual if key not in expected]
+        duplicated = [key for key, count in Counter(actual).items() if count > 1]
+        order_changed = not (missing or extra or duplicated)
+        raise ValueError(
+            "Editorial selected content changed before assembly: "
+            f"missing={missing}; extra={extra}; duplicated={duplicated}; "
+            f"order_changed={order_changed}"
+        )
+
+
+def _assert_certified_interval(source, assembly_clips: list[AssemblyClip]) -> None:
+    from immich_memories.processing.editorial_live_render import validate_editorial_live_clip
+
+    asset_id = source.asset.id
+    validate_editorial_live_clip(source)
+    matches = [clip for clip in assembly_clips if clip.asset_id == asset_id]
+    if len(matches) != 1:
+        raise ValueError("Certified editorial Live source was lost or duplicated before assembly")
+    assert source.editorial_live_manifest is not None
+    start, end = source.editorial_live_manifest["selected_interval"]
+    rendered = matches[0]
+    if (
+        isinstance(rendered.duration, bool)
+        or not math.isfinite(rendered.duration)
+        or rendered.duration != end - start
+        or rendered.input_seek != 0.0
+    ):
+        raise ValueError("Certified editorial Live interval changed before assembly")
+
+
+def validate_certified_content(
+    params: GenerationParams, assembly_clips: list[AssemblyClip]
+) -> set[str]:
+    """Preserve bound selection membership and every certified Live interval."""
+    if params.editorial_render_timing is not None:
+        _assert_bound_membership(params.editorial_render_timing, assembly_clips)
+
+    certified = [clip for clip in params.clips if clip.editorial_live_manifest is not None]
+    source_ids = {clip.asset.id for clip in certified}
+    if len(source_ids) != len(certified):
+        raise ValueError("Certified editorial Live source is duplicated in the render request")
+    for source in certified:
+        _assert_certified_interval(source, assembly_clips)
+    return source_ids
+
+
 def apply_final_content_budget(
     params: GenerationParams,
     assembly_clips: list[AssemblyClip],
 ) -> list[AssemblyClip]:
     """Resolve a timeline when needed and trim every clip proportionally to its content budget."""
+    certified = validate_certified_content(params, assembly_clips)
     if params.target_duration_seconds is None or not assembly_clips:
         return assembly_clips
     if params.timeline_plan is None:
@@ -116,6 +175,11 @@ def apply_final_content_budget(
     total = sum(clip.duration for clip in assembly_clips)
     if total <= budget or total <= 0.0:
         return assembly_clips
+    if certified:
+        raise ValueError(
+            "Final timeline budget contradicts certified editorial Live intervals; "
+            "the selection must be planned within the render budget"
+        )
 
     assembly_clips = _sample_for_minimum_duration(assembly_clips, budget)
     total = sum(clip.duration for clip in assembly_clips)

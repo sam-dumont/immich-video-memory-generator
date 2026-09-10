@@ -775,11 +775,11 @@ class TestBuildMemoryKey:
             memory_type="month",
             date_start=date(2025, 7, 1),
             date_end=date(2025, 7, 31),
-            person_name="Alice",
+            person_name="Riley",
         )
         key = _build_memory_key(params)
         assert key is not None
-        assert "alice" in key.lower()
+        assert "riley" in key.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -984,7 +984,7 @@ class TestGenerateMemoryInner:
     def test_privacy_mode_anonymizes_clips(self, tmp_path):
         from immich_memories.generate import _generate_memory_inner
 
-        params = self._make_params(tmp_path, privacy_mode=True, person_name="Alice")
+        params = self._make_params(tmp_path, privacy_mode=True, person_name="Riley")
         patches, result_path, assembly_clip = self._patch_inner_deps(tmp_path)
 
         with contextlib.ExitStack() as stack:
@@ -1005,7 +1005,7 @@ class TestGenerateMemoryInner:
 
         anon_mock.assert_called_once()
         preset_mock.assert_called_once()
-        name_mock.assert_called_once_with("Alice")
+        name_mock.assert_called_once_with("Riley")
 
     def test_upload_called_when_enabled(self, tmp_path):
         from immich_memories.generate import _generate_memory_inner
@@ -1463,7 +1463,7 @@ class TestDownloadClip:
         local_file = tmp_path / "local.mp4"
         local_file.write_bytes(b"data")
 
-        clip = MagicMock()
+        clip = MagicMock(editorial_live_manifest=None)
         clip.local_path = str(local_file)
 
         result = download_clip(MagicMock(), MagicMock(), clip, tmp_path)
@@ -1472,7 +1472,7 @@ class TestDownloadClip:
     def test_local_path_nonexistent_proceeds_to_download(self, tmp_path):
         from immich_memories.generate_downloads import download_clip
 
-        clip = MagicMock()
+        clip = MagicMock(editorial_live_manifest=None)
         clip.local_path = str(tmp_path / "nonexistent.mp4")
         clip.live_burst_video_ids = None
         clip.live_burst_trim_points = None
@@ -1488,7 +1488,7 @@ class TestDownloadClip:
     def test_none_client_returns_none(self, tmp_path):
         from immich_memories.generate_downloads import download_clip
 
-        clip = MagicMock()
+        clip = MagicMock(editorial_live_manifest=None)
         clip.local_path = None
 
         result = download_clip(None, MagicMock(), clip, tmp_path)
@@ -1497,7 +1497,7 @@ class TestDownloadClip:
     def test_live_burst_delegates_to_merge(self, tmp_path):
         from immich_memories.generate_downloads import download_clip
 
-        clip = MagicMock()
+        clip = MagicMock(editorial_live_manifest=None)
         clip.local_path = None
         clip.live_burst_video_ids = ["vid-a", "vid-b"]
         clip.live_burst_trim_points = [(0.0, 1.0), (0.0, 1.5)]
@@ -1518,7 +1518,7 @@ class TestDownloadClip:
     def test_no_local_path_no_burst_uses_cache(self, tmp_path):
         from immich_memories.generate_downloads import download_clip
 
-        clip = MagicMock()
+        clip = MagicMock(editorial_live_manifest=None)
         clip.local_path = None
         clip.live_burst_video_ids = None
         clip.live_burst_trim_points = None
@@ -1535,7 +1535,7 @@ class TestDownloadAndMergeBurst:
     def test_cached_merged_file_returned_immediately(self, tmp_path):
         from immich_memories.generate_downloads import _download_and_merge_burst
 
-        clip = MagicMock()
+        clip = MagicMock(editorial_live_manifest=None)
         clip.asset.id = "asset-1"
         clip.live_burst_video_ids = ["v1", "v2"]
         clip.live_burst_trim_points = [(0.0, 1.0), (0.0, 1.5)]
@@ -1552,7 +1552,7 @@ class TestDownloadAndMergeBurst:
     def test_no_burst_clips_downloaded_falls_back_to_cache(self, tmp_path):
         from immich_memories.generate_downloads import _download_and_merge_burst
 
-        clip = MagicMock()
+        clip = MagicMock(editorial_live_manifest=None)
         clip.asset.id = "asset-1"
         clip.live_burst_video_ids = ["v1"]
         clip.live_burst_trim_points = [(0.0, 1.0)]
@@ -1575,7 +1575,7 @@ class TestDownloadAndMergeBurst:
     def test_partial_downloads_aligns_then_merges(self, tmp_path):
         from immich_memories.generate_downloads import _download_and_merge_burst
 
-        clip = MagicMock()
+        clip = MagicMock(editorial_live_manifest=None)
         clip.asset.id = "asset-1"
         clip.live_burst_video_ids = ["v1", "v2"]
         clip.live_burst_trim_points = [(0.0, 1.0), (0.0, 1.5)]
@@ -1611,7 +1611,7 @@ class TestDownloadAndMergeBurst:
     def test_merge_failure_falls_back_to_cache(self, tmp_path):
         from immich_memories.generate_downloads import _download_and_merge_burst
 
-        clip = MagicMock()
+        clip = MagicMock(editorial_live_manifest=None)
         clip.asset.id = "asset-1"
         clip.live_burst_video_ids = ["v1"]
         clip.live_burst_trim_points = [(0.0, 1.0)]
