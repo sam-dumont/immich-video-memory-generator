@@ -9,7 +9,7 @@ import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
 
 Hit generate and watch it work. The sidebar calls this step **Export**.
 
-<ThemedScreenshot name="step4-preview-export" alt="Step 4 Preview & Export" />
+<ThemedScreenshot name="memory-export" alt="Preview & Export" />
 
 ## Summary
 
@@ -42,8 +42,6 @@ The tool picks the divider style from your date range and memory type:
 
 Click **Generate Video**. A progress bar and status line follow the run: downloading clips and extracting the chosen segments, rendering photos (if any), assembling with transitions and title screens, then "Applying music" or "Music disabled", "Uploading to Immich" or "Delivery not requested", and "Complete". The run folder name is shown as "Output: …". A **Cancel** button stops after the current phase ("Cancelling…").
 
-<ThemedScreenshot name="step4-generating" alt="Video generation in progress" />
-
 ## Live frame preview
 
 During assembly, a preview image updates as frames are rendered, so you can watch the video take shape clip by clip. HDR frames are converted to SDR for display and the preview is throttled to keep the browser responsive.
@@ -51,8 +49,6 @@ During assembly, a preview image updates as frames are rendered, so you can watc
 ## When it finishes
 
 "Your memory video is ready!" with **Saved to: path (size)**, an **Immich delivery: Delivered / Pending / Not Requested** line, and an inline player. There is no download button: open the path shown, or find the video in the Immich album you chose. Revisiting Step 4 later in the same session shows the same result under a **Result** header.
-
-<ThemedScreenshot name="step4-complete" alt="Generation complete with video ready" />
 
 ### If the page loses the run
 

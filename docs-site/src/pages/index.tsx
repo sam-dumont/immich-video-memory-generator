@@ -32,8 +32,8 @@ function HeroSection() {
           </div>
           <div className={styles.heroVisual}>
             <img
-              src={useBaseUrl('/img/screenshots/step2-clip-review.png')}
-              alt="Clip review interface showing scored video segments"
+              src={useBaseUrl('/img/screenshots/memory-story.png')}
+              alt="The story view: thesis, stories in weight order, and the pictures each was granted, with reasons"
               className={styles.heroScreenshot}
               loading="eager"
             />
@@ -122,25 +122,25 @@ const showcaseItems: ShowcaseItem[] = [
   {
     title: '11 memory types',
     description: 'Year in Review, Season, Person Spotlight, Multi-Person, Monthly Highlights, On This Day, Holiday, Then and Now, Trip, Album, and Surprise Me — a day your library says something happened on. Pick a preset and it handles the rest, or take the Custom card and set the date range yourself.',
-    image: '/img/screenshots/step1-preset-cards.png',
-    alt: 'Memory type preset selection cards',
+    image: '/img/screenshots/memory-brief.png',
+    alt: 'The brief: memory type, its parameters and the duration line',
   },
   {
     title: 'A curator, not a filter',
     description: 'A vision model looks at your material and describes what is happening in it. Selection, duplicate judgment, and a final review of the whole cut all work from those descriptions — with real drop reasons, favourites treated as law, and strictly chronological order. The pipeline is the product.',
-    image: '/img/screenshots/step2-refine-moments.png',
-    alt: 'Clip review grid with scored video segments',
+    image: '/img/screenshots/memory-story.png',
+    alt: 'The story the cut produced, with a reason for every picture',
   },
   {
     title: 'Cinematic title screens',
     description: 'Animated gradients, particle systems, satellite trip maps. Three rendering backends (Taichi GPU, PIL, FFmpeg) pick the best your hardware can do.',
-    image: '/img/screenshots/step3-options.png',
+    image: '/img/screenshots/memory-options.png',
     alt: 'Generation options with title and music settings',
   },
   {
     title: 'AI music generation',
     description: 'A vision LLM detects the mood of your clips. ACE-Step or MusicGen creates an original soundtrack. Audio ducking lowers music during speech.',
-    image: '/img/screenshots/step3-options.png',
+    image: '/img/screenshots/memory-options.png',
     alt: 'Music preview and generation options',
   },
 ];

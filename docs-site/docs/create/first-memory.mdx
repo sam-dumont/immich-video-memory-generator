@@ -54,7 +54,7 @@ port with turning on authentication.
 
 Enter your Immich server URL and API key in the **Immich Connection** panel of the Configuration step and click **Test Connection** (it connects on its own if the config already has credentials). On success the panel collapses to "Immich Connection — *you*" and the memory type cards appear.
 
-<ThemedScreenshot name="step1-config-connected" alt="Connected to Immich" />
+<ThemedScreenshot name="memory-brief" alt="The brief, connected to Immich" />
 
 ## Step 3: Pick "Year in Review"
 
@@ -69,7 +69,7 @@ selection continues. New runs use the FAMILY audience.
 
 When it finishes, click **Review & Refine Selected Clips** to see what it picked. Untick a clip to drop it, drag the range slider to change the excerpt, then **Continue to Generation**.
 
-<ThemedScreenshot name="step2-clip-review" alt="Reviewing selected clips" />
+<ThemedScreenshot name="memory-story" alt="The story the cut produced" />
 
 ## Step 5: Set options
 
@@ -85,7 +85,7 @@ You can leave everything at defaults. The only setting worth changing on your fi
 
 Click **Generate Video** in Step 4. The status line walks through the run: downloading clips and extracting segments (cached for next time), assembling with transitions and title screens, "Applying music" (or "Music disabled"), "Uploading to Immich" (or "Delivery not requested"), then "Complete".
 
-<ThemedScreenshot name="step4-generating" alt="Generation in progress" />
+<ThemedScreenshot name="memory-export" alt="Export: output filename and Generate Video" />
 
 Most of the wait is analysis, not encoding. Measured on 4 CPU cores with no GPU and a cold cache, a 14-clip monthly memory took 10 to 16 minutes end to end and most of that was scoring clips: [the table](../deploy/common-setups/nas-only.md#performance-expectations). On Apple Silicon or a GPU the same run is a couple of minutes; 4K roughly doubles the assembly on a GPU and is not recommended on a NAS. Of the assembly that is left, the title screens cost more than the encoder does: at 2 cores, titles were ~263 s of a ~339 s assembly ([CPU-Only Mode](../deploy/hardware/cpu-only.md#title-rendering-is-the-bottleneck-not-encoding)).
 
