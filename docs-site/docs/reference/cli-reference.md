@@ -265,7 +265,7 @@ immich-memories generate [OPTIONS]
 | `--person`, `-p` | text | - | Person name (repeatable) |
 | `--people-expression` | text | - | Grouped people condition, e.g. ("Person A" OR "Person B") AND "Person C". Use exact library names; each asset must match. |
 | `--person-match` | choice: `and` \| `or` | and | With several --person values, require everyone in each asset (and) or accept any named person (or) |
-| `--memory-type` | choice: `year_in_review` \| `season` \| `person_spotlight` \| `multi_person` \| `monthly_highlights` \| `on_this_day` \| `trip` \| `holiday` \| `special_day` | - | Memory type preset |
+| `--memory-type` | choice: `year_in_review` \| `season` \| `person_spotlight` \| `multi_person` \| `monthly_highlights` \| `on_this_day` \| `album` \| `trip` \| `holiday` \| `special_day` | - | Memory type preset (album takes its pool from --from-album) |
 | `--holiday` | text | - | Holiday name or MM-DD (use with --memory-type holiday) |
 | `--season` | choice: `spring` \| `summer` \| `fall` \| `autumn` \| `winter` | - | Season (use with --memory-type season) |
 | `--month` | integer | - | Month 1-12 (with --year, generates that month; selects trip by month) |

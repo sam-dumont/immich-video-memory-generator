@@ -88,13 +88,14 @@ def scope_options(command: FC) -> FC:
                     "multi_person",
                     "monthly_highlights",
                     "on_this_day",
+                    "album",
                     "trip",
                     "holiday",
                     "special_day",
                 ]
             ),
             default=None,
-            help="Memory type preset",
+            help="Memory type preset (album takes its pool from --from-album)",
         ),
         click.option(
             "--holiday",

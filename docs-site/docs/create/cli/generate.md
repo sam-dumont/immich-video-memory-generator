@@ -33,9 +33,9 @@ immich-memories generate [OPTIONS]
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--memory-type` | — | choice | — | `year_in_review`, `season`, `person_spotlight`, `multi_person`, `monthly_highlights`, `on_this_day`, `trip`, `holiday`, `then_and_now`, `special_day` |
+| `--memory-type` | — | choice | — | `year_in_review`, `season`, `person_spotlight`, `multi_person`, `monthly_highlights`, `on_this_day`, `album`, `trip`, `holiday`, `special_day`. `album` needs `--from-album`, which also implies it |
 | `--holiday` | — | text | — | Holiday name or `MM-DD` (with `--memory-type holiday`) |
-| `--from-album` | — | string | — | Generate from an Immich album (name or ID) instead of a date range. See [Album Memories](../memory-types/album-memories). Cannot be combined with any time-period or person flag |
+| `--from-album` | — | string | — | Generate from an Immich album (name or ID) instead of a date range. See [Album Memories](../memory-types/album-memories). Cannot be combined with any time-period or person flag; `--memory-type album` is the one type it accepts |
 | `--person` | `-p` | string | — | Person name from Immich face recognition (repeatable: `--person "Riley" --person "Bob"`) |
 | `--person-match` | — | choice | `and` | With repeated `--person`, require everyone in each asset (`and`) or accept any named person (`or`) |
 | `--people-expression` | — | string | — | Combine quoted full names with `AND`, `OR` and parentheses; evaluated within each picture or video. Use separately from `--person` and `--person-match` |

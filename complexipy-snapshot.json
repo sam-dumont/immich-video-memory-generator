@@ -748,7 +748,7 @@
     "functions": [
       {
         "name": "register_generate_commands",
-        "complexity": 148,
+        "complexity": 146,
         "line_start": 52,
         "line_end": 675,
         "line_complexities": [
@@ -819,10 +819,6 @@
           {
             "line": 185,
             "complexity": 0
-          },
-          {
-            "line": 187,
-            "complexity": 2
           },
           {
             "line": 203,
@@ -1143,7 +1139,7 @@
         ]
       }
     ],
-    "complexity": 148
+    "complexity": 146
   },
   {
     "path": "src/immich_memories/cli/music_cmd.py",

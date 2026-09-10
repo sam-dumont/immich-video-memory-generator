@@ -35,8 +35,8 @@ from immich_memories.cli.generate_options import (
 from immich_memories.cli.generate_resolution import (
     _apply_photo_duration_override,
     _arm_selection_trace,
-    _reject_album_scope_conflicts,
     _resolve_generation_scope,
+    _validate_album_scope,
     name_from_catalogue,
     resolve_inclusion,
     resolve_people_condition,
@@ -184,18 +184,18 @@ def register_generate_commands(main: click.Group) -> None:
             except ValueError as exc:
                 raise click.UsageError(str(exc)) from exc
 
-        if from_album:
-            _reject_album_scope_conflicts(
-                year=year,
-                start=start,
-                end=end,
-                period=period,
-                birthday=birthday,
-                season=season,
-                month=month,
-                memory_type=memory_type,
-                person_names=person_names,
-            )
+        _validate_album_scope(
+            from_album=from_album,
+            year=year,
+            start=start,
+            end=end,
+            period=period,
+            birthday=birthday,
+            season=season,
+            month=month,
+            memory_type=memory_type,
+            person_names=person_names,
+        )
 
         # Read the memory from the date flags when it was not named. Without
         # this --month did nothing unless --memory-type was also given, so
