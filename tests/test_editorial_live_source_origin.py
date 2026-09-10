@@ -97,7 +97,11 @@ def test_rejection_carries_the_measured_numbers():
 def test_container_end_is_accepted_at_either_millisecond_reading(declared_end):
     # Immich publishes whole milliseconds; a floored or a rounded reading of the
     # 2.966667 s container both bind to the final packet, 3.3 ms before it.
-    tail = {"end_seconds": 1778 / 600, "frame_seconds": 27 / 600}
+    tail = {
+        "start_seconds": 1778 / 600 - 27 / 600,
+        "end_seconds": 1778 / 600,
+        "frame_seconds": 27 / 600,
+    }
     probes = Probes(probe(video=1778 / 600, container=2.966667), tail=tail)
     evidence = renderer._source_timing(
         probes, Path("tail.mov"), LiveSourceEntry("s", "v", 0.0, 0.0, declared_end)
@@ -108,9 +112,36 @@ def test_container_end_is_accepted_at_either_millisecond_reading(declared_end):
 
 @pytest.mark.parametrize("declared_end", [2.965, 2.9675, 2.968])
 def test_container_end_more_than_a_millisecond_off_is_not_a_reading(declared_end):
-    tail = {"end_seconds": 1778 / 600, "frame_seconds": 27 / 600}
+    tail = {
+        "start_seconds": 1778 / 600 - 27 / 600,
+        "end_seconds": 1778 / 600,
+        "frame_seconds": 27 / 600,
+    }
     probes = Probes(probe(video=1778 / 600, container=2.966667), tail=tail)
     with pytest.raises(ValueError, match="exceeds actual video source"):
         renderer._source_timing(
             probes, Path("tail.mov"), LiveSourceEntry("s", "v", 0.0, 0.0, declared_end)
+        )
+
+
+def test_container_end_inside_a_final_packet_that_outlives_the_container_is_bound_to_it():
+    # The stream reports its end at the final packet's start (1660 ticks), but that
+    # packet runs 29 ticks further; the millisecond reading of the container end
+    # therefore sits inside the final frame, 48 ms before it ends.
+    tail = {"start_seconds": 1660 / 600, "end_seconds": 1689 / 600, "frame_seconds": 29 / 600}
+    probes = Probes(probe(video=2.766667, container=2.766667), tail=tail)
+    evidence = renderer._source_timing(
+        probes, Path("outlived.mov"), LiveSourceEntry("s", "v", 0.0, 1.0165, 2.767)
+    )
+    assert evidence["boundary"] == "millisecond-container-end-within-final-source-frame"
+    assert evidence["source_tail_seconds"] == pytest.approx(2.767 - 1689 / 600)
+    assert evidence["final_packet"] == tail
+
+
+def test_container_end_before_the_final_packet_starts_is_refused():
+    tail = {"start_seconds": 2.8, "end_seconds": 2.85, "frame_seconds": 0.05}
+    probes = Probes(probe(video=2.766667, container=2.766667), tail=tail)
+    with pytest.raises(ValueError, match="exceeds actual video source"):
+        renderer._source_timing(
+            probes, Path("gap.mov"), LiveSourceEntry("s", "v", 0.0, 1.0165, 2.767)
         )

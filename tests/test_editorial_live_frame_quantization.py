@@ -41,7 +41,11 @@ class SourceProbes:
 
 def test_millisecond_container_end_is_bound_to_actual_last_packet():
     entry = LiveSourceEntry("still", "video", 0.0, 0.0, 2.967)
-    tail = {"end_seconds": 1778 / 600, "frame_seconds": 27 / 600}
+    tail = {
+        "start_seconds": 1778 / 600 - 27 / 600,
+        "end_seconds": 1778 / 600,
+        "frame_seconds": 27 / 600,
+    }
     probes = SourceProbes(source_probe(), tail)
     evidence = renderer._source_timing(probes, Path("original.mov"), entry)
     assert evidence["source_tail_seconds"] == pytest.approx(0.003666666666666707)
@@ -56,7 +60,7 @@ def test_millisecond_container_end_is_bound_to_actual_last_packet():
 def test_tail_is_not_an_arbitrary_epsilon_or_substantial_padding(end, container, video):
     probes = SourceProbes(
         source_probe(video=video, container=container),
-        {"end_seconds": video, "frame_seconds": 27 / 600},
+        {"start_seconds": video - 27 / 600, "end_seconds": video, "frame_seconds": 27 / 600},
     )
     with pytest.raises(ValueError, match="exceeds actual video source"):
         renderer._source_timing(
@@ -65,7 +69,14 @@ def test_tail_is_not_an_arbitrary_epsilon_or_substantial_padding(end, container,
 
 
 def test_interval_cannot_consist_only_of_unavailable_tail():
-    probes = SourceProbes(source_probe(), {"end_seconds": 1778 / 600, "frame_seconds": 27 / 600})
+    probes = SourceProbes(
+        source_probe(),
+        {
+            "start_seconds": 1778 / 600 - 27 / 600,
+            "end_seconds": 1778 / 600,
+            "frame_seconds": 27 / 600,
+        },
+    )
     with pytest.raises(ValueError, match="exceeds actual video source"):
         renderer._source_timing(
             probes, Path("source.mov"), LiveSourceEntry("s", "v", 0.0, 2.965, 2.967)

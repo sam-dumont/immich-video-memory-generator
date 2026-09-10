@@ -127,9 +127,12 @@ def _bind_trailing_frame(probes, path, entry, probe, origin: float, evidence: di
     if not -0.001 < entry.end - probe.duration_seconds <= 0.0005:
         raise _reject(evidence)
     tail = probes.last_video_frame(path)
-    tail_end = tail["end_seconds"] - origin
+    tail_start, tail_end = tail["start_seconds"] - origin, tail["end_seconds"] - origin
+    # The final packet may outlive the container it is counted in; a container end
+    # inside that packet is still covered by its frame, so only an end before the
+    # packet starts, or past its end by more than one frame, escapes the source.
     gap = entry.end - tail_end
-    if entry.start >= tail_end or gap < 0 or gap > tail["frame_seconds"]:
+    if entry.start >= tail_end or entry.end < tail_start or gap > tail["frame_seconds"]:
         raise _reject(evidence | {"final_packet": tail, "source_tail_seconds": gap})
     evidence.update(
         final_packet=tail,
