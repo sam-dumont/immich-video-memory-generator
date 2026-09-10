@@ -100,6 +100,8 @@ class AppState:
     pipeline_result: dict[str, Any] | None = None
     timeline_plan: TimelinePlan | None = None
     editorial_render_timing: dict[str, Any] | None = None
+    # Where the last cut wrote its plan; the story page reads it from there.
+    editorial_attempt_dir: Path | None = None
 
     # Generation settings
     duration_mode: Literal["auto", "manual"] = "auto"
@@ -342,6 +344,7 @@ class AppState:
         self.pipeline_result = None
         self.timeline_plan = None
         self.editorial_render_timing = None
+        self.editorial_attempt_dir = None
         self.review_selected_mode = False
         self.title_suggestion_title = None
         self.title_suggestion_subtitle = None

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from nicegui import run, ui
@@ -219,8 +220,6 @@ def _configure_timeline_for_selection(
     photos: list[Asset],
 ) -> TimelinePlan:
     """Persist one preliminary timeline and apply its content budget."""
-    from pathlib import Path
-
     from immich_memories.generate import GenerationParams
     from immich_memories.generate_settings import _build_title_settings
     from immich_memories.processing.timeline_budget import plan_timeline
@@ -435,6 +434,38 @@ def _build_ui_editorial_context(
     )
 
 
+def _adopt_result(state: Any, result: Any) -> None:
+    """Write one finished cut onto the session: what shipped, where the plan went, how it is timed."""
+    state.pipeline_result = {
+        "selected_clips": result.selected_clips,
+        "editorial_selections": result.editorial_selections,
+        "clip_segments": result.clip_segments,
+        "errors": result.errors,
+        "stats": result.stats,
+        "coverage": result.coverage,
+    }
+    state.pipeline_selected_clips = result.selected_clips
+    attempt_dir = result.stats.get("editorial_attempt_directory")
+    state.editorial_attempt_dir = Path(attempt_dir) if attempt_dir else None
+    state.editorial_render_timing = result.stats.get("editorial_render_timing")
+    if state.editorial_render_timing is not None:
+        from immich_memories.processing.editorial_timing import read_editorial_timeline
+
+        state.timeline_plan = read_editorial_timeline(state.editorial_render_timing)
+    state.editorial_selections = result.editorial_selections
+    state.selected_clip_ids = {c.asset.id for c in result.selected_clips}
+    state.clip_segments = result.clip_segments
+
+    # Photos are now in selected_clips as IMAGE-type assets
+    # Tell Step 4 not to re-add them via the old path
+    if state.include_photos and state.photo_assets:
+        from immich_memories.api.models import AssetType
+
+        state.selected_photo_ids = {
+            c.asset.id for c in result.selected_clips if c.asset.type == AssetType.IMAGE
+        }
+
+
 def _run_pipeline_blocking(
     state: Any,
     config: Any,
@@ -489,33 +520,7 @@ def _run_pipeline_blocking(
                 }
             )
 
-            state.pipeline_result = {
-                "selected_clips": result.selected_clips,
-                "editorial_selections": result.editorial_selections,
-                "clip_segments": result.clip_segments,
-                "errors": result.errors,
-                "stats": result.stats,
-                "coverage": result.coverage,
-            }
-            state.pipeline_selected_clips = result.selected_clips
-            state.editorial_render_timing = result.stats.get("editorial_render_timing")
-            if state.editorial_render_timing is not None:
-                from immich_memories.processing.editorial_timing import read_editorial_timeline
-
-                state.timeline_plan = read_editorial_timeline(state.editorial_render_timing)
-            state.editorial_selections = result.editorial_selections
-            state.selected_clip_ids = {c.asset.id for c in result.selected_clips}
-            state.clip_segments = result.clip_segments
-
-            # Photos are now in selected_clips as IMAGE-type assets
-            # Tell Step 4 not to re-add them via the old path
-            if state.include_photos and state.photo_assets:
-                from immich_memories.api.models import AssetType
-
-                state.selected_photo_ids = {
-                    c.asset.id for c in result.selected_clips if c.asset.type == AssetType.IMAGE
-                }
-
+            _adopt_result(state, result)
             state.pipeline_running = False
             progress_state["done"] = True
     except PipelineCancelled:

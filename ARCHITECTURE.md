@@ -330,6 +330,8 @@ src/immich_memories/
 │       ├── memory.py               # The Memory page router: brief, cut in progress, result
 │       ├── memory_brief.py         # The brief: type select, its params, Advanced, Cut
 │       ├── memory_duration.py      # The duration line: the type's answer or an override
+│       ├── memory_story.py         # The story view: thesis, stories, carriers with reasons
+│       ├── memory_story_data.py    # The only UI reader of plan.private.json -> frozen StoryView
 │       ├── step1_config.py         # Immich connection panel + custom date range
 │       ├── step1_cache.py          # Cache management UI
 │       ├── step1_presets.py        # The parameters each memory type asks for

@@ -46,6 +46,7 @@ def _start_over_selection(state: AppState) -> None:
     state.pipeline_result = None
     state.pipeline_selected_clips = []
     state.editorial_selections = ()
+    state.editorial_attempt_dir = None
     state.review_selected_mode = False
     state.selected_clip_ids = set()
     state.clip_segments = {}

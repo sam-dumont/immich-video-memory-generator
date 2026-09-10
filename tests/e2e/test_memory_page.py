@@ -15,8 +15,9 @@ from tests.e2e.test_launch_smoke import _choose
 
 pytestmark = pytest.mark.e2e
 
-# The fixture's six sources, every one of which the scripted editor keeps.
-_CUT_COMPLETE = re.compile(r"^Pipeline complete! Planned 6 clips from 6 eligible media items\.$")
+# The scripted editor's thesis and its three stories, from the fixture.
+_THESIS = re.compile(r"^A month of short test-pattern captures")
+_STORY_TITLES = ("The first captures", "The midmonth captures", "The closing captures")
 _POOL_FILES = (
     "video-1.mp4",
     "video-2.mp4",
@@ -58,7 +59,7 @@ def test_the_brief_offers_the_cli_memory_types(page: Page, launch_app_url: str) 
     page.keyboard.press("Escape")
 
 
-def test_a_cut_from_the_brief_runs_the_editor_and_offers_export(
+def test_a_cut_from_the_brief_shows_the_story_and_offers_export(
     page: Page, launch_app_url: str, screenshot_dir: Path
 ) -> None:
     _brief_for_june(page, launch_app_url)
@@ -67,7 +68,15 @@ def test_a_cut_from_the_brief_runs_the_editor_and_offers_export(
 
     page.get_by_role("button", name="Cut", exact=True).click()
 
-    expect(page.get_by_text(_CUT_COMPLETE)).to_be_visible(timeout=120_000)
+    expect(page.get_by_text(_THESIS)).to_be_visible(timeout=120_000)
+    # Weight order, not capture order: the dominant story leads, the glimpse closes.
+    titles = page.locator(".q-card .text-base.font-semibold")
+    expect(titles).to_have_text(list(_STORY_TITLES))
+    expect(page.get_by_text("3 stories, 6 pictures", exact=True)).to_be_visible()
+    expect(page.get_by_text("Motion", exact=True)).to_have_count(3)
+    expect(page.get_by_text("Still", exact=True)).to_have_count(3)
+    expect(page.get_by_text(re.compile(r"^\d+ s of pictures and video selected"))).to_be_visible()
+    capture_pair(page, screenshot_dir, "memory-story")
     expect(page.get_by_role("button", name="Export", exact=True)).to_be_visible()
 
 

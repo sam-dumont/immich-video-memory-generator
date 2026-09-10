@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Literal
 
 from nicegui import ui
 
+from immich_memories.analysis.editorial_duration_advisory import editorial_duration_warning
 from immich_memories.security import sanitize_error_message
 from immich_memories.ui.components import im_button, im_separator
 from immich_memories.ui.pages.clip_pipeline import (
@@ -18,6 +19,8 @@ from immich_memories.ui.pages.clip_pipeline import (
     render_pipeline_summary,
 )
 from immich_memories.ui.pages.memory_brief import render_brief
+from immich_memories.ui.pages.memory_story import render_story
+from immich_memories.ui.pages.memory_story_data import StoryView, read_story_view
 from immich_memories.ui.pages.step2_loading import ensure_caches, load_pool
 from immich_memories.ui.pages.step2_review import _start_over_selection
 from immich_memories.ui.state import get_app_state
@@ -91,8 +94,26 @@ def _new_brief(state: AppState) -> None:
     ui.navigate.to("/")
 
 
+def _story_view(state: AppState) -> StoryView | None:
+    """The story the last cut wrote, with the final-cut render modes laid over it."""
+    if state.editorial_attempt_dir is None:
+        return None
+    render_modes = {
+        selection.asset_id: selection.render_mode
+        for selection in state.editorial_selections
+        if selection.render_mode
+    }
+    return read_story_view(state.editorial_attempt_dir, render_modes)
+
+
 def _render_cut_result(state: AppState, result: dict) -> None:
-    render_pipeline_summary(result)
+    view = _story_view(state)
+    if view is None:
+        # A result that left no plan behind still has its counts to show.
+        render_pipeline_summary(result)
+    else:
+        realization = result.get("stats", {}).get("editorial_duration_realization")
+        render_story(view, warning=editorial_duration_warning(realization))
     im_separator()
     with ui.row().classes("w-full gap-4"):
         im_button(

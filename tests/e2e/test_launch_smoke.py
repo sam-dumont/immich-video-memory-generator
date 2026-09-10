@@ -185,14 +185,9 @@ def _drive_to_step4(page: Page, launch_app_url: str) -> None:
     _choose(page, "Month", "June")
     page.get_by_role("button", name="Cut", exact=True).click()
 
-    pipeline_summary = page.get_by_text(
-        re.compile(
-            r"^Pipeline complete! Planned [1-9]\d* clips from "
-            r"[1-9]\d* eligible media items\.$"
-        )
-    )
-    expect(pipeline_summary).to_be_visible(timeout=180_000)
-    page.get_by_role("button", name="Export", exact=True).click()
+    export = page.get_by_role("button", name="Export", exact=True)
+    expect(export).to_be_visible(timeout=180_000)
+    export.click()
     page.wait_for_url("**/step4", timeout=30_000)
     # WHY: the 720p the probe below asserts is chosen on the options page, which Export skips.
     page.get_by_role("button", name="Back to Generation Options").click()
