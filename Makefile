@@ -812,4 +812,4 @@ demo-ui-dev: demo-ui-install  ## Start Remotion Studio for live demo preview
 
 demo-ui: demo-ui-install  ## Render Remotion demo → docs-site/static/demo/demo.mp4
 	@mkdir -p docs-site/static/demo
-	cd docs-site/remotion && npx remotion render src/index.ts DemoVideo ../../static/demo/demo.mp4 --codec h264 --crf 18
+	cd docs-site/remotion && npx remotion render src/index.ts DemoVideo ../static/demo/demo.mp4 --codec h264 --crf 18

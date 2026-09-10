@@ -32,7 +32,7 @@ faking it. How it decides is documented in
   <br/>
   <sub><a href="https://sam-dumont.github.io/immich-video-memory-generator/docs/welcome/overview">▶ Watch the 60-second demo</a> · <a href="https://sam-dumont.github.io/immich-video-memory-generator/docs/create/first-memory">Make your first memory</a></sub>
   <br/>
-  <sub>The GIF predates the new UI — it shows the four-step wizard the Memory page replaced — until the demo is rebuilt.</sub>
+  <sub>The GIF predates the new UI and still shows the four-step wizard; the demo video on the docs site shows the Memory page.</sub>
 </p>
 
 **Why:** you left Google Photos for Immich and lost the year-in-review / trip / "your kid's year" videos. This brings them back: on your hardware, with pictures you can veto and music that isn't canned. AI music and LLM titles are optional extras; the render runs on CPU, and the models the editor reads with can run on the same box.
