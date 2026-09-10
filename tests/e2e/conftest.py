@@ -124,8 +124,14 @@ import immich_memories.config_loader as config_loader
 
 config_path = Path(sys.argv[1])
 state_dir = Path(sys.argv[2])
+workspace_root = Path(sys.argv[4])
 config_loader.Config.get_default_path = classmethod(lambda cls: config_path)
 config_loader.init_config_dir = lambda: state_dir
+
+from tests.e2e.fake_editorial import install_fake_editorial_route, write_attempt_tree
+from tests.e2e.fake_immich import TIMELINE_ASSETS
+
+install_fake_editorial_route(write_attempt_tree(workspace_root, TIMELINE_ASSETS))
 
 from immich_memories.ui.app import main
 
@@ -147,7 +153,7 @@ _PRODUCTION_SHORTCUT_ENV = frozenset(
 )
 
 
-def _build_launch_environment() -> dict[str, str]:
+def _build_launch_environment(home: Path | None = None) -> dict[str, str]:
     """Return a subprocess environment isolated from every provider override."""
     env = {
         key: value
@@ -164,6 +170,12 @@ def _build_launch_environment() -> dict[str, str]:
             "TI_LOG_LEVEL": "error",
         }
     )
+    if home is not None:
+        # Not every path resolves through the config directory: the people
+        # roster is read from `Path.home()` per call, so a launch that keeps
+        # the developer's HOME reads the developer's real family file.
+        env["HOME"] = str(home)
+        env["USERPROFILE"] = str(home)
     return env
 
 
@@ -175,7 +187,7 @@ def launch_app_url(
     """Run the app against only the fake service and disposable local state."""
     port = unused_tcp_port_factory()
     url = f"http://127.0.0.1:{port}"
-    env = _build_launch_environment()
+    env = _build_launch_environment(launch_workspace.root)
 
     venv_python = _REPO_ROOT / ".venv" / "bin" / "python"
     with launch_workspace.log_path.open("w") as log_file:
@@ -187,6 +199,7 @@ def launch_app_url(
                 str(launch_workspace.config_path),
                 str(launch_workspace.root / "state"),
                 str(port),
+                str(launch_workspace.root),
             ],
             stdout=log_file,
             stderr=log_file,

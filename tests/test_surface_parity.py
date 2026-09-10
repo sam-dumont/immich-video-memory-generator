@@ -117,7 +117,7 @@ class MemorySpec:
 
 
 # The people a spec can name, as the wizard would have picked them.
-ALICE = Person(id="person-alice", name="Alice")
+RILEY = Person(id="person-riley", name="Riley")
 BOB = Person(id="person-bob", name="Bob")
 
 # Every memory type that has a preset, with a spec both surfaces can be handed.
@@ -125,8 +125,8 @@ BOB = Person(id="person-bob", name="Bob")
 SPECS: dict[MemoryType, MemorySpec] = {
     MemoryType.YEAR_IN_REVIEW: MemorySpec(year=2024),
     MemoryType.SEASON: MemorySpec(year=2024, season="summer"),
-    MemoryType.PERSON_SPOTLIGHT: MemorySpec(year=2024, people=(ALICE,)),
-    MemoryType.MULTI_PERSON: MemorySpec(year=2024, people=(ALICE, BOB)),
+    MemoryType.PERSON_SPOTLIGHT: MemorySpec(year=2024, people=(RILEY,)),
+    MemoryType.MULTI_PERSON: MemorySpec(year=2024, people=(RILEY, BOB)),
     MemoryType.MONTHLY_HIGHLIGHTS: MemorySpec(year=2024, month=3),
     MemoryType.ON_THIS_DAY: MemorySpec(on_this_day_target=date(2024, 6, 15), years_back=5),
     MemoryType.HOLIDAY: MemorySpec(year=2024, holiday="christmas", years_back=5),
@@ -186,11 +186,6 @@ class DocumentedDifference:
 _SPLIT_RECORD = "docs/create/memory-types/monthly-person-season.mdx#ui-and-cli-defaults-disagree"
 DOCUMENTED_DURATION_SPLIT: dict[MemoryType, DocumentedDifference] = {
     MemoryType.SEASON: DocumentedDifference(cli=195.02, ui=135, recorded_at=_SPLIT_RECORD),
-    MemoryType.PERSON_SPOTLIGHT: DocumentedDifference(cli=600.0, ui=120, recorded_at=_SPLIT_RECORD),
-    MemoryType.MULTI_PERSON: DocumentedDifference(cli=600.0, ui=300, recorded_at=_SPLIT_RECORD),
-    MemoryType.MONTHLY_HIGHLIGHTS: DocumentedDifference(
-        cli=62.30, ui=60, recorded_at=_SPLIT_RECORD
-    ),
 }
 
 
@@ -528,14 +523,14 @@ class FetchScenario:
 # A person filter is not a two-card feature. #666 ruled that the wizard offers
 # one wherever the CLI's --person reaches, and that several names mean the same
 # thing on both surfaces: an intersection, the way a multi-person memory has
-# always meant "both on the picture". So a Year in Review narrowed to Alice and
+# always meant "both on the picture". So a Year in Review narrowed to Riley and
 # Bob is a request both surfaces can now phrase, and both answer identically.
 FETCH_SCENARIOS = (
     FetchScenario(MemoryType.YEAR_IN_REVIEW, ()),
-    FetchScenario(MemoryType.PERSON_SPOTLIGHT, (ALICE,)),
-    FetchScenario(MemoryType.MULTI_PERSON, (ALICE, BOB)),
-    FetchScenario(MemoryType.MULTI_PERSON, (ALICE,)),
-    FetchScenario(MemoryType.YEAR_IN_REVIEW, (ALICE, BOB)),
+    FetchScenario(MemoryType.PERSON_SPOTLIGHT, (RILEY,)),
+    FetchScenario(MemoryType.MULTI_PERSON, (RILEY, BOB)),
+    FetchScenario(MemoryType.MULTI_PERSON, (RILEY,)),
+    FetchScenario(MemoryType.YEAR_IN_REVIEW, (RILEY, BOB)),
 )
 
 

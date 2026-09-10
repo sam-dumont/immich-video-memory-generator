@@ -71,41 +71,6 @@ def test_one_flagged_member_excludes_the_whole_live_photo_burst():
     assert [unit["asset_id"] for unit in excluded] == ["still"]
 
 
-def test_every_selected_carrier_is_checked_even_without_a_flag_or_a_worrying_line():
-    assert share.needs_check("A landscape at sunset.", ()) is True
-    assert share.needs_check(None, ()) is True
-
-
-def test_flags_are_rendered_for_the_reader_with_their_source_and_reason():
-    rows = (
-        share.FlagRow("one", "never_auto", "exposure=partial", "detector"),
-        share.FlagRow("one", "review", "", "owner"),
-    )
-
-    assert share.render_flags(()) == "none"
-    assert share.render_flags(rows) == "never_auto (exposure=partial) [detector]; review [owner]"
-
-
-@pytest.mark.parametrize(
-    "raw,expected",
-    [
-        ('{"why":"Nothing private.","verdict":"share"}', ("share", "Nothing private.")),
-        ('```\n{"why":"A bath.","verdict":"family_only"}', ("family_only", "A bath.")),
-        ('{"verdict":"share"} trailing prose', ("share", "")),
-        ('{"why":"x","verdict":"maybe"}', None),
-        ("no json at all", None),
-    ],
-)
-def test_only_one_of_the_three_words_is_a_verdict(raw, expected):
-    assert share.parse_verdict(raw) == expected
-
-
-def test_a_long_reason_is_kept_to_the_words_the_answer_needs():
-    raw = json.dumps({"why": " ".join(f"word{n}" for n in range(30)), "verdict": "share"})
-
-    assert len(share.parse_verdict(raw)[1].split()) == share.REASON_WORDS
-
-
 def test_the_strictest_verdict_wins_and_nothing_known_means_share():
     assert share.tighten("share", "family_only", None) == "family_only"
     assert share.tighten("family_only", "do_not_show") == "do_not_show"

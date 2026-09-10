@@ -90,42 +90,6 @@ def test_comprehensive_probe_caches_the_average_and_preserves_other_metadata(tmp
     assert len(calls) == 1
 
 
-@pytest.mark.parametrize(
-    ("average", "nominal", "expected"),
-    [
-        ("30000/1001", "240/1", 30000 / 1001),
-        ("120/1", "120/1", 120.0),
-        ("240/1", "240/1", 240.0),
-        ("nan", "30/1", 30.0),
-        ("inf", "30/1", 30.0),
-        ("0", "30/1", 30.0),
-        ("0/0", "30/1", 30.0),
-        ("0/0", "inf", None),
-    ],
-)
-def test_merger_uses_the_same_rates_from_json_with_side_data(
-    tmp_path, monkeypatch, average, nominal, expected
-):
-    source = tmp_path / "source.mov"
-    calls = []
-
-    def run(command, **_kwargs):
-        calls.append(command)
-        return subprocess.CompletedProcess(command, 0, json.dumps(_response(average, nominal)), "")
-
-    monkeypatch.setattr(subprocess, "run", run)
-
-    actual = live_photo_merger.probe_clip_fps(source)
-
-    assert actual is None if expected is None else actual == pytest.approx(expected)
-    assert len(calls) == 1
-    command = calls[0]
-    assert command[command.index("-of") + 1] == "json"
-    fields = command[command.index("-show_entries") + 1]
-    assert "avg_frame_rate" in fields
-    assert "r_frame_rate" in fields
-
-
 def test_burst_retains_true_high_rate_instead_of_a_false_nominal_maximum(monkeypatch):
     # Rendering consumes verified packet cadence, separately from metadata averages.
     rates = {"variable.mov": 30.0, "fast.mov": 120.0}

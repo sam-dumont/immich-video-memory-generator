@@ -300,6 +300,8 @@ src/immich_memories/
 │   ├── _config_errors.py       # Config error formatting
 │   ├── _flags.py               # Shared validation for flags more than one command takes
 │   ├── _pipeline_runner.py     # Run SmartPipeline over the fetched assets + generate
+│   ├── _editorial_context.py   # CLI flags + presets -> one EditorialRunContext
+│   ├── _run_timeline.py        # The run's timeline: selection budget, then the settled plan
 │   ├── _asset_fetch.py         # What a memory asks Immich for: videos, Live Photos, stills
 │   ├── _candidate_pool.py      # One pool: videos + photographs, each carrying its rendering
 │   ├── _album_generation.py    # Album mode: an Immich album is the candidate pool

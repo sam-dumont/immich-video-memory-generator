@@ -39,6 +39,7 @@ from immich_memories.cli.generate_resolution import (
     _resolve_generation_scope,
     name_from_catalogue,
     resolve_inclusion,
+    resolve_people_condition,
     resolve_short_form,
     resolve_special_day,
 )
@@ -68,6 +69,8 @@ def register_generate_commands(main: click.Group) -> None:
         period: str | None,
         birthday: str | None,
         person: tuple[str, ...],
+        person_match: str,
+        person_expression: str | None,
         memory_type: str | None,
         holiday: str | None,
         season: str | None,
@@ -100,6 +103,7 @@ def register_generate_commands(main: click.Group) -> None:
         llm_title: bool,
         include_live_photos: bool | None,
         include_photos: bool | None,
+        accept_any_provenance: bool,
         photo_duration: float | None,
         refinement_passes: int | None,
         analysis_depth: str | None,
@@ -108,6 +112,7 @@ def register_generate_commands(main: click.Group) -> None:
         years_back: int | None,
         near_date: str | None,
         day: date | None,
+        event_id: str | None,
         source: str,
         memory_key: str | None,
         memory_category: str | None,
@@ -120,8 +125,8 @@ def register_generate_commands(main: click.Group) -> None:
         \b
         Memory type presets:
           --memory-type season --season summer --year 2024
-          --memory-type person_spotlight --person "Alice" --year 2024
-          --memory-type multi_person --person "Alice" --person "Bob" --year 2024
+          --memory-type person_spotlight --person "Riley" --year 2024
+          --memory-type multi_person --person "Riley" --person "Bob" --year 2024
           --memory-type monthly_highlights --month 7 --year 2024
           --memory-type on_this_day
 
@@ -148,7 +153,15 @@ def register_generate_commands(main: click.Group) -> None:
             config.output.quality = quality
             config.output.crf = None  # Let quality preset determine CRF
 
-        person_names = list(person) if person else []
+        people_condition, person_names = resolve_people_condition(
+            person_expression,
+            person_names=list(person) if person else [],
+            person_match_typed=ctx.get_parameter_source("person_match")
+            == click.core.ParameterSource.COMMANDLINE,
+            from_album=from_album,
+            memory_type=memory_type,
+            birthday=birthday,
+        )
 
         if not config.immich.url or not config.immich.api_key:
             print_error("Immich not configured. Run 'immich-memories config' first.")
@@ -225,17 +238,15 @@ def register_generate_commands(main: click.Group) -> None:
             not in (
                 "on_this_day",
                 "holiday",
-                "then_and_now",
             )
         ):
             print_error(
-                "--years-back requires --birthday, or --memory-type on_this_day, "
-                "holiday or then_and_now"
+                "--years-back requires --birthday, or --memory-type on_this_day, or holiday"
             )
             sys.exit(1)
 
         # The catalogue, not the command line, knows what the day was called.
-        special_day = resolve_special_day(day, memory_type)
+        special_day = resolve_special_day(day, memory_type, event_id)
         title_override, subtitle_override = name_from_catalogue(
             special_day, title_override, subtitle_override
         )
@@ -270,6 +281,9 @@ def register_generate_commands(main: click.Group) -> None:
                 memory_type=memory_type,
                 date_range=date_range,
                 container=output_selection.container,
+                person_match=person_match,
+                person_expression=people_condition,
+                special_event_id=(special_day or {}).get("event_id"),
             )
 
         if not quiet:
@@ -290,7 +304,13 @@ def register_generate_commands(main: click.Group) -> None:
 
         # Infer memory type from context when not explicitly set
         if memory_type is None and person_names:
-            memory_type = "person_spotlight" if len(person_names) == 1 else "multi_person"
+            # An explicit grouped condition keeps its supported route even
+            # when it contains just one distinct name.
+            memory_type = (
+                "multi_person"
+                if people_condition is not None or len(person_names) > 1
+                else "person_spotlight"
+            )
 
         short = resolve_short_form(
             short_form,
@@ -302,8 +322,8 @@ def register_generate_commands(main: click.Group) -> None:
         duration, orientation = short.duration, short.orientation
 
         # Resolve duration: CLI --duration > memory type default > date-range scaling
-        # Album mode defers to the pipeline, which sizes it from the album's media.
-        if duration is None and not from_album:
+        # Trips and albums defer Auto until discovery supplies their actual media.
+        if duration is None and not from_album and memory_type != "trip":
             duration = default_duration_for_type(
                 memory_type,
                 date_range,
@@ -319,6 +339,8 @@ def register_generate_commands(main: click.Group) -> None:
             album_ref=from_album,
             date_range=date_range,
             person_names=person_names,
+            person_match=person_match,
+            person_expression=people_condition,
             duration=duration,
             orientation=orientation,
             scale_mode=scale_mode,
@@ -406,6 +428,8 @@ def register_generate_commands(main: click.Group) -> None:
                             memory_category=memory_category,
                             automation_attempt_id=automation_attempt_id,
                             dry_run=dry_run,
+                            accept_any_provenance=accept_any_provenance,
+                            no_render=no_render,
                         )
                         return
 
@@ -450,12 +474,23 @@ def register_generate_commands(main: click.Group) -> None:
                             memory_category=memory_category,
                             automation_attempt_id=automation_attempt_id,
                             dry_run=dry_run,
+                            no_render=no_render,
+                            accept_any_provenance=accept_any_provenance,
                         )
                         return
 
                     # Find person(s) if specified
                     person_ids: list[str] = []
-                    if person_names:
+                    id_condition = None
+                    if people_condition is not None:
+                        from immich_memories.analysis.editorial_source import (
+                            resolve_named_expression,
+                        )
+
+                        id_condition = resolve_named_expression(
+                            people_condition, client.get_all_people(with_hidden=True)
+                        )
+                    elif person_names:
                         for pname in person_names:
                             task = progress.add_task(f"Finding person: {pname}...", total=None)
                             found_person = client.get_person_by_name(pname)
@@ -515,6 +550,7 @@ def register_generate_commands(main: click.Group) -> None:
                                 memory_type=memory_type,
                                 date_range=date_range,
                                 container=output_selection.container,
+                                person_match=person_match,
                             )
 
                     # A birthday memory's flashback windows are single days years
@@ -526,6 +562,8 @@ def register_generate_commands(main: click.Group) -> None:
                         progress=progress,
                         date_ranges=date_ranges,
                         person_ids=person_ids,
+                        person_match=person_match,
+                        **({"person_expression": id_condition} if id_condition is not None else {}),
                     )
 
                     # Fetch photos (if enabled)
@@ -535,7 +573,12 @@ def register_generate_commands(main: click.Group) -> None:
                             client=client,
                             date_ranges=date_ranges,
                             person_ids=person_ids,
-                            merge_window_seconds=(config.analysis.live_photo_merge_window_seconds),
+                            person_match=person_match,
+                            **(
+                                {"person_expression": id_condition}
+                                if id_condition is not None
+                                else {}
+                            ),
                         )
                         if fetched_photos:
                             print_info(f"Found {len(fetched_photos)} photos")
@@ -590,7 +633,19 @@ def register_generate_commands(main: click.Group) -> None:
                         llm_title=llm_title,
                         memory_type=memory_type,
                         person_names=person_names,
+                        memory_preset_params={
+                            **(special_day or {}),
+                            "hemisphere": hemisphere,
+                            "person_names": person_names,
+                            "person_match": person_match,
+                            **(
+                                {"person_expression": people_condition.to_dict()}
+                                if people_condition is not None
+                                else {}
+                            ),
+                        },
                         date_range=date_range,
+                        date_ranges=date_ranges,
                         upload_to_immich=upload_to_immich,
                         album=album,
                         source=source,
@@ -599,6 +654,7 @@ def register_generate_commands(main: click.Group) -> None:
                         automation_attempt_id=automation_attempt_id,
                         dry_run=dry_run,
                         no_render=no_render,
+                        accept_any_provenance=accept_any_provenance,
                     )
 
                 _print_generation_result(

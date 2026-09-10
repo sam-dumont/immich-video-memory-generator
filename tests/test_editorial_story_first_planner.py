@@ -19,7 +19,7 @@ from immich_memories.analysis.editorial_moment_wall import (
 from immich_memories.analysis.editorial_people import adapt_editorial_people
 from immich_memories.analysis.editorial_structure_contract import StructurePlanningInput
 from immich_memories.analysis.moment_cards import MomentCard
-from immich_memories.analysis.selection_source import EditorialGroup
+from immich_memories.analysis.selection_source_groups import EditorialGroup
 from immich_memories.api.models import AssetType
 from immich_memories.config_loader import Config
 from immich_memories.timeperiod import DateRange
@@ -75,7 +75,6 @@ def make_source(tmp_path, *, seconds=60, occasions=4, pictures=3):
                 full_asset_ids=group.candidate_ids,
                 selectable_asset_ids=group.candidate_ids,
                 representative_asset_ids=group.candidate_ids[:1],
-                representative_reasons=("Shows the outing.",),
                 text="Walking by the canal",
                 evidence=MomentCardEvidence(
                     episode_meaning="People walk along the canal.",

@@ -7,7 +7,6 @@ from typing import Any
 
 API_MODEL = "smolvlm2-500m-base-public"
 DESCRIPTION_MODEL = f"{API_MODEL}@envelope-v3-compact"
-LEGACY_DESCRIPTION_MODEL = f"{API_MODEL}@envelope-v2"
 SCHEMA_VERSION = "asset-description-v3-compact"
 PROMPT_VERSION = "asset-description-prompt-v3-compact"
 TILE_VERSION = "asset-description-tile-400px-jpeg-q90-v1"

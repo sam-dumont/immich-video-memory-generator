@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import time
 from pathlib import Path
 from typing import Any
 
@@ -177,6 +178,11 @@ def _poll_phase(
     phase_container: ui.element,
     render_phase_indicator_fn: Any,
 ) -> None:
+    if progress_state.get("indeterminate"):
+        # The native editor has no defensible phase count or percentage.
+        phase_container.clear()
+        _rendered_state["phase_number"] = -1
+        return
     if _rendered_state["phase_number"] == progress_state["phase_number"]:
         return
     _rendered_state["phase_number"] = progress_state["phase_number"]
@@ -194,6 +200,21 @@ def _poll_stats(
     stats_eta_label: Any,
     stats_errors_label: Any,
 ) -> None:
+    if progress_state.get("indeterminate"):
+        elapsed = progress_state["elapsed"]
+        started_at = progress_state.get("started_at")
+        if started_at is not None and progress_state.get("status") == "running":
+            elapsed = f"{int(max(0, time.time() - started_at))}s"
+        stats_elapsed_label.set_text(f"Elapsed: {elapsed}")
+        for label in (
+            stats_clips_label,
+            stats_speed_label,
+            stats_avg_label,
+            stats_eta_label,
+            stats_errors_label,
+        ):
+            label.set_text("")
+        return
     idx = progress_state["current_index"]
     total = progress_state["total_items"]
     errors = progress_state["error_count"]

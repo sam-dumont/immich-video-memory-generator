@@ -440,14 +440,6 @@ def _convert_via_pillow(
     return PreparedPhoto(path=out_path, width=w, height=h)
 
 
-def _get_image_dimensions(path: Path) -> tuple[int, int]:
-    """Get image dimensions via Pillow (fast — only reads header)."""
-    from PIL import Image
-
-    with Image.open(path) as img:
-        return img.size
-
-
 def _is_display_p3(icc_profile: bytes) -> bool:
     """Check if an ICC profile is Display P3 (not sRGB)."""
     from io import BytesIO

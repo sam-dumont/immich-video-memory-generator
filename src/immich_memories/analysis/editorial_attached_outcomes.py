@@ -136,19 +136,6 @@ class AttachedOutcomeReplay:
         _validate_complete(record)
         return record
 
-    @classmethod
-    def from_output(cls, output: Path) -> AttachedOutcomeReplay:
-        record = json.loads((output / REFERENCE_NAME).read_text())
-        if (
-            not isinstance(record, dict)
-            or set(record) != {"schema", "path", "sha256"}
-            or record["schema"] != SCHEMA
-        ):
-            raise ValueError("invalid attached outcome reference")
-        reference = cls(Path(record["path"]), record["sha256"])
-        reference.read()
-        return reference
-
     def as_record(self) -> dict[str, str]:
         return {"schema": SCHEMA, "path": str(self.path), "sha256": self.sha256}
 

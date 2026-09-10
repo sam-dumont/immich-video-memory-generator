@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from hashlib import sha256
 
 from immich_memories.analysis.cull_answer import CULL_BUCKETS
@@ -46,7 +46,6 @@ class EpisodeResponseDiagnostic:
     """Content-free evidence for one response that needed conservative handling."""
 
     response_sha256: str
-    embedded_json_envelope: bool = False
     unreadable_or_omitted_pages: int = 0
     discarded_invalid_representative_rows: int = 0
     discarded_invalid_cull_rows: int = 0
@@ -60,10 +59,6 @@ class TextEpisodeReadDiagnostics:
     responses: tuple[EpisodeResponseDiagnostic, ...] = ()
 
     @property
-    def embedded_json_envelopes(self) -> int:
-        return sum(response.embedded_json_envelope for response in self.responses)
-
-    @property
     def discarded_invalid_representative_rows(self) -> int:
         return sum(response.discarded_invalid_representative_rows for response in self.responses)
 
@@ -74,21 +69,6 @@ class TextEpisodeReadDiagnostics:
     @property
     def discarded_conflicting_cull_rows(self) -> int:
         return sum(response.discarded_conflicting_cull_rows for response in self.responses)
-
-
-def episode_diagnostics_record(
-    diagnostics: TextEpisodeReadDiagnostics,
-) -> dict[str, object]:
-    """Serialize only content-free parser evidence for a private run artifact."""
-    return {
-        "embedded_json_envelopes": diagnostics.embedded_json_envelopes,
-        "discarded_invalid_representative_rows": (
-            diagnostics.discarded_invalid_representative_rows
-        ),
-        "discarded_invalid_cull_rows": diagnostics.discarded_invalid_cull_rows,
-        "discarded_conflicting_cull_rows": diagnostics.discarded_conflicting_cull_rows,
-        "responses": [asdict(response) for response in diagnostics.responses],
-    }
 
 
 @dataclass(frozen=True)
@@ -110,7 +90,6 @@ def _unreadable(response_hash: str, scopes, *, embedded: bool = False) -> _Episo
         (),
         EpisodeResponseDiagnostic(
             response_sha256=response_hash,
-            embedded_json_envelope=embedded,
             unreadable_or_omitted_pages=len(scopes),
         ),
     )
@@ -130,7 +109,6 @@ def _response_diagnostic(response_hash, *, embedded, omitted, counts):
         return None
     return EpisodeResponseDiagnostic(
         response_sha256=response_hash,
-        embedded_json_envelope=embedded,
         unreadable_or_omitted_pages=omitted,
         discarded_invalid_representative_rows=invalid_representatives,
         discarded_invalid_cull_rows=invalid_cull,

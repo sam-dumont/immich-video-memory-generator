@@ -36,7 +36,6 @@ class MomentCard:
     full_asset_ids: tuple[str, ...]
     selectable_asset_ids: tuple[str, ...]
     representative_asset_ids: tuple[str, ...]
-    representative_reasons: tuple[str, ...]
     text: str
     evidence: MomentCardEvidence | None = None
 
@@ -118,7 +117,6 @@ def _build_card(
         full_asset_ids=full_asset_ids,
         selectable_asset_ids=projection.scoped_candidate_ids,
         representative_asset_ids=tuple(item.asset_id for item in representatives),
-        representative_reasons=tuple(item.reason for item in representatives),
         text=text,
         evidence=MomentCardEvidence(
             episode_meaning=episode_summary,

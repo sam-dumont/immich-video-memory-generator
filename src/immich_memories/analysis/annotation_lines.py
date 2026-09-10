@@ -117,15 +117,6 @@ class AnnotationLineBatch:
         return {line.asset_id: line for line in self.lines}
 
 
-@dataclass(frozen=True)
-class AnnotationPersonContext:
-    """Owner-reviewed context added to a live Immich person observation."""
-
-    relationship: str | None = None
-    tier: str | None = None
-    birth_date: date | None = None
-
-
 class AnnotationFactReader(Protocol):
     """Read one complete immutable fact snapshot for requested assets."""
 
@@ -133,9 +124,16 @@ class AnnotationFactReader(Protocol):
 
 
 class _PersonContext(Protocol):
-    relationship: str | None
-    tier: str | None
-    birth_date: date | str | None
+    # Read-only members: the renderer only reads them, and a mutable attribute
+    # would force every caller's narrower field type to match exactly.
+    @property
+    def relationship(self) -> str | None: ...
+
+    @property
+    def tier(self) -> str | None: ...
+
+    @property
+    def birth_date(self) -> date | str | None: ...
 
 
 @dataclass(frozen=True)

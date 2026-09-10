@@ -6,10 +6,12 @@ import math
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
+from immich_memories.analysis.editorial_planner import EditorialSelection
 from immich_memories.analysis.selection_coverage import AnalysisCoverage
-from immich_memories.analysis.smart_pipeline import PipelineConfig
+from immich_memories.analysis.smart_pipeline import PipelineConfig, PipelineResult
 from immich_memories.api.models import Asset, AssetType, VideoClipInfo
 from immich_memories.config_loader import Config
+from immich_memories.timeperiod import DateRange
 from immich_memories.ui.pages.clip_pipeline import (
     _build_pipeline_config,
     _configure_timeline_for_selection,
@@ -19,6 +21,17 @@ from immich_memories.ui.pages.clip_pipeline import (
     _run_pipeline_blocking,
 )
 from immich_memories.ui.state import AppState
+
+_WINDOW = DateRange(datetime(2026, 7, 1, tzinfo=UTC), datetime(2026, 7, 31, tzinfo=UTC))
+
+
+def _source_pipeline(result):
+    pipeline = MagicMock()
+    pipeline.last_deep_analysis_count = 0
+    pipeline.run_editorial_source.return_value = (result.selected_clips, result)
+    pipeline.run_analysis.side_effect = AssertionError("UI must use the editorial source route")
+    pipeline.run_selection.side_effect = AssertionError("UI must use the editorial source route")
+    return pipeline
 
 
 def _photo(asset_id: str, *, day: int = 1) -> Asset:
@@ -120,30 +133,33 @@ def test_blocking_pipeline_cannot_reintroduce_unchecked_photos() -> None:
         config=Config(),
         immich_url="http://immich.test",
         immich_api_key="test-key",
+        date_ranges=[_WINDOW],
         include_photos=True,
         photo_assets=[selected_photo, unchecked_photo],
         thumbnail_cache=MagicMock(),
         analysis_cache=MagicMock(),
     )
-    selection_result = MagicMock(
+    selection_result = PipelineResult(
         selected_clips=[],
         clip_segments={},
         errors=[],
         stats={},
     )
-    pipeline = MagicMock()
-    pipeline.last_deep_analysis_count = 0
-    pipeline.run_analysis.return_value = []
-    pipeline.run_selection.return_value = selection_result
+    pipeline = _source_pipeline(selection_result)
     progress_state = {"cancelled": False, "done": False, "error": None}
 
+    # WHY: get_config would read the developer's own config.yaml off disk.
     with (
+        # WHY: Immich is the external boundary the blocking pipeline call reaches.
         patch("immich_memories.ui.pages.clip_pipeline.SyncImmichClient") as client_cls,
-        patch("immich_memories.analysis.smart_pipeline.SmartPipeline", return_value=pipeline),
+        # WHY: the pipeline is a stand-in; the test reads what run_editorial_source got.
+        patch(
+            "immich_memories.analysis.editorial_runtime.build_smart_pipeline", return_value=pipeline
+        ),
         patch("immich_memories.config.get_config", return_value=state.config),
         patch(
             "immich_memories.cli._candidate_pool._merge_photos_into_pool",
-            return_value=[],
+            side_effect=AssertionError("Source selection must not use the legacy photo merge"),
         ) as merge_photos,
     ):
         client_cls.return_value.__enter__.return_value = MagicMock()
@@ -156,57 +172,95 @@ def test_blocking_pipeline_cannot_reintroduce_unchecked_photos() -> None:
         )
 
     assert progress_state["error"] is None
-    assert merge_photos.call_args.kwargs["photo_assets"] == [selected_photo]
+    merge_photos.assert_not_called()
+    assert pipeline.run_editorial_source.call_args.args[0] == [selected_photo]
     assert state.pipeline_result is not None
     assert state.pipeline_result["stats"]["eligible_count"] == 1
     assert state.pipeline_result["stats"]["deeply_analyzed_count"] == 0
     assert state.pipeline_result["stats"]["planned_count"] == 0
 
 
-def test_blocking_pipeline_hands_the_photo_merge_its_thumbnail_cache() -> None:
-    """Burst de-duplication is switched on by the thumbnail cache, not by config.
+def test_blocking_pipeline_retains_exact_ordered_editorial_carriers_and_decisions() -> None:
+    planned_photo = VideoClipInfo(asset=_photo("planned-photo"), duration_seconds=4.0)
+    planned_video = _clip("planned-video")
+    selected_clips = [planned_photo, planned_video]
+    decisions = (
+        EditorialSelection(asset_id="planned-photo", render_mode="still"),
+        EditorialSelection(asset_id="planned-video", render_mode="motion"),
+    )
+    state = AppState(
+        config=Config(),
+        immich_url="http://immich.test",
+        immich_api_key="test-key",
+        date_ranges=[_WINDOW],
+        clips=[_clip("library-only")],
+        thumbnail_cache=MagicMock(),
+        analysis_cache=MagicMock(),
+    )
+    selection_result = PipelineResult(
+        selected_clips=selected_clips,
+        editorial_selections=decisions,
+        clip_segments={"planned-photo": (0.0, 4.0), "planned-video": (0.0, 5.0)},
+        errors=[],
+        stats={},
+        coverage=AnalysisCoverage(analyzed=2, total=2),
+    )
+    pipeline = _source_pipeline(selection_result)
+    progress_state = {"cancelled": False, "done": False, "error": None}
 
-    `_drop_burst_duplicates` returns the pool untouched when the cache is None
-    — unlike its siblings, it has no `thumbnail_fn` fallback — so a merge call
-    that omits the cache silently ships every frame of a held shutter. On a real
-    June pool that was 21% of the photos (`photos/photo_pipeline.py`).
-    """
+    # WHY: get_config would read the developer's own config.yaml off disk.
+    with (
+        # WHY: Immich is the external boundary the blocking pipeline call reaches.
+        patch("immich_memories.ui.pages.clip_pipeline.SyncImmichClient") as client_cls,
+        # WHY: the pipeline is a stand-in; the test checks the carriers it hands back.
+        patch(
+            "immich_memories.analysis.editorial_runtime.build_smart_pipeline", return_value=pipeline
+        ),
+        patch("immich_memories.config.get_config", return_value=state.config),
+    ):
+        client_cls.return_value.__enter__.return_value = MagicMock()
+        _run_pipeline_blocking(state, PipelineConfig(), [], [], progress_state)
+
+    assert progress_state["error"] is None
+    assert state.pipeline_selected_clips is selected_clips
+    assert state.editorial_selections is decisions
+    assert state.get_selected_clips() == selected_clips
+    assert state.get_selected_clips()[0] is planned_photo
+
+
+def test_blocking_pipeline_hands_source_selection_its_thumbnail_cache() -> None:
+    """The production source builder retains the preview cache used by its judgments."""
     photo = _photo("burst-frame")
     state = AppState(
         config=Config(),
         immich_url="http://immich.test",
         immich_api_key="test-key",
+        date_ranges=[_WINDOW],
         include_photos=True,
         photo_assets=[photo],
         thumbnail_cache=MagicMock(),
         analysis_cache=MagicMock(),
     )
-    pipeline = MagicMock()
-    pipeline.last_deep_analysis_count = 0
-    pipeline.run_analysis.return_value = []
-    pipeline.run_selection.return_value = MagicMock(
-        selected_clips=[], clip_segments={}, errors=[], stats={}
-    )
+    selection_result = PipelineResult(selected_clips=[], clip_segments={}, errors=[], stats={})
+    pipeline = _source_pipeline(selection_result)
     progress_state = {"cancelled": False, "done": False, "error": None}
 
     # WHY: get_config would read the developer's own config.yaml off disk.
     with (
         # WHY: Immich is the external boundary — the wizard's library read.
         patch("immich_memories.ui.pages.clip_pipeline.SyncImmichClient") as client_cls,
-        # WHY: the pipeline is not under test here; only what the merge is handed.
-        patch("immich_memories.analysis.smart_pipeline.SmartPipeline", return_value=pipeline),
-        patch("immich_memories.config.get_config", return_value=state.config),
-        # WHY: the seam under inspection — captures the arguments, runs nothing.
+        # WHY: the pipeline is not under test here; only what its builder is handed.
         patch(
-            "immich_memories.cli._candidate_pool._merge_photos_into_pool",
-            return_value=[],
-        ) as merge_photos,
+            "immich_memories.analysis.editorial_runtime.build_smart_pipeline", return_value=pipeline
+        ) as build_pipeline,
+        patch("immich_memories.config.get_config", return_value=state.config),
     ):
         client_cls.return_value.__enter__.return_value = MagicMock()
         _run_pipeline_blocking(state, PipelineConfig(), [], [photo], progress_state)
 
     assert progress_state["error"] is None
-    assert merge_photos.call_args.kwargs.get("thumbnail_cache") is state.thumbnail_cache
+    assert build_pipeline.call_args.kwargs["thumbnail_cache"] is state.thumbnail_cache
+    assert pipeline.run_editorial_source.call_args.args[0] == [photo]
 
 
 def test_blocking_pipeline_hands_the_review_page_its_pool_coverage() -> None:
@@ -219,19 +273,18 @@ def test_blocking_pipeline_hands_the_review_page_its_pool_coverage() -> None:
         config=Config(),
         immich_url="http://immich.test",
         immich_api_key="test-key",
+        date_ranges=[_WINDOW],
         thumbnail_cache=MagicMock(),
         analysis_cache=MagicMock(),
     )
-    pipeline = MagicMock()
-    pipeline.last_deep_analysis_count = 0
-    pipeline.run_analysis.return_value = []
-    pipeline.run_selection.return_value = MagicMock(
+    selection_result = PipelineResult(
         selected_clips=[],
         clip_segments={},
         errors=[],
         stats={},
         coverage=AnalysisCoverage(analyzed=25, total=149),
     )
+    pipeline = _source_pipeline(selection_result)
     progress_state = {"cancelled": False, "done": False, "error": None}
 
     # WHY: get_config would read the developer's own config.yaml off disk.
@@ -239,7 +292,9 @@ def test_blocking_pipeline_hands_the_review_page_its_pool_coverage() -> None:
         # WHY: Immich is the external boundary — the wizard's library read.
         patch("immich_memories.ui.pages.clip_pipeline.SyncImmichClient") as client_cls,
         # WHY: the pipeline is not under test; only what it hands the page.
-        patch("immich_memories.analysis.smart_pipeline.SmartPipeline", return_value=pipeline),
+        patch(
+            "immich_memories.analysis.editorial_runtime.build_smart_pipeline", return_value=pipeline
+        ),
         patch("immich_memories.config.get_config", return_value=state.config),
     ):
         client_cls.return_value.__enter__.return_value = MagicMock()

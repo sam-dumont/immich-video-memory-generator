@@ -254,14 +254,3 @@ def unavailable_for(
                 raise ValueError("caption success/partial rows conflict with unavailable outcome")
             found[asset_id] = row
     return found
-
-
-def outcome_evidence(rows: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
-    ordered = [dict(rows[key]) for key in sorted(rows)]
-    return {
-        "version": VERSION,
-        "count": len(ordered),
-        "rows": ordered,
-        "sha256": digest(json.dumps(ordered, sort_keys=True).encode()),
-        "caption_state": "attempted_but_unavailable; description remains None; full source membership retained",
-    }

@@ -134,9 +134,3 @@ class PictureEvidenceOverlay:
         if len(rows) == 1:
             return rows[0]
         return "\n".join(f"Material picture p{index + 1}: {row}" for index, row in enumerate(rows))
-
-    def displayed_line(self, unit: Mapping[str, Any]) -> str:
-        """Match the still projector without changing full-member audience evidence."""
-        if unit.get("kind") in {"still", "photo", "live-still"}:
-            return self.line({"asset_id": unit["asset_id"]})
-        return self.line(unit)

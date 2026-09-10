@@ -59,6 +59,16 @@ def _set_auto_duration_mode(state, enabled: bool) -> None:
     state.duration_mode = "auto" if enabled else "manual"
 
 
+def _start_over_selection(state: AppState) -> None:
+    """Discard one editorial result while keeping the loaded source library."""
+    state.pipeline_result = None
+    state.pipeline_selected_clips = []
+    state.editorial_selections = ()
+    state.review_selected_mode = False
+    state.selected_clip_ids = set()
+    state.clip_segments = {}
+
+
 def _handle_duration_mode_change(state: AppState, event: Any) -> None:
     """Apply the Auto switch and refresh the controls for the new mode."""
     value = event.value if hasattr(event, "value") else event
@@ -74,6 +84,9 @@ def _render_pool_coverage_notice(pipeline_result: dict) -> None:
     """
     from immich_memories.analysis.selection_coverage import thin_coverage_notice
 
+    if pipeline_result.get("stats", {}).get("selection_route") == "editorial-source":
+        # These zero-score source wrappers were not ranked by legacy analysis.
+        return
     coverage = pipeline_result.get("coverage")
     notice = thin_coverage_notice(coverage) if coverage else None
     if notice:
@@ -152,10 +165,7 @@ def _render_step2_header(state) -> bool:
                 ui.navigate.to("/step2")
 
             def start_over():
-                state.pipeline_result = None
-                state.review_selected_mode = False
-                state.selected_clip_ids = set()
-                state.clip_segments = {}
+                _start_over_selection(state)
                 ui.navigate.to("/step2")
 
             im_button(
@@ -174,7 +184,7 @@ def _render_step2_header(state) -> bool:
 
     # Check if in review mode
     if state.review_selected_mode and state.selected_clip_ids:
-        _render_review_selected_clips(clips)
+        _render_review_selected_clips(state.get_selected_clips())
         return True
 
     return False

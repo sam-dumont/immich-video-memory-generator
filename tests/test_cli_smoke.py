@@ -28,8 +28,11 @@ def _invoke(args: list[str], config: Config | None = None) -> Result:
     """Invoke the CLI with mocked config and init_config_dir."""
     config = config or Config()
     runner = CliRunner()
+    # WHY: init_config_dir and get_config would touch the real $HOME and config file.
     with (
+        # WHY: init_config_dir creates ~/.immich-memories on the real home directory.
         patch("immich_memories.cli.init_config_dir"),
+        # WHY: get_config reads Config.get_default_path() from the real filesystem.
         patch("immich_memories.cli.get_config", return_value=config),
     ):
         return runner.invoke(main, args, catch_exceptions=False)
@@ -47,8 +50,11 @@ def _invoke_planned_generation(args: list[str], config: Config) -> Result:
         birth_date=None,
     )
     asset = MagicMock(duration_seconds=10.0)
+    # WHY: SyncImmichClient and fetch_videos would call the real Immich server.
     with (
+        # WHY: SyncImmichClient is the Immich HTTP client this CLI path would otherwise call.
         patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
+        # WHY: fetch_videos wraps the Immich video-listing call this test must not make.
         patch(
             "immich_memories.cli.generate.fetch_videos",
             return_value=[asset],
@@ -223,20 +229,20 @@ class TestCLIMemoryTypeFlags:
         result = _invoke(["generate", "--help"])
         assert "--person" in result.output
 
-    def test_choices_are_every_memory_type_but_album(self):
-        """The flag's choice list is hand-written; MemoryType is what it must track.
-
-        `album` is the one member left out on purpose: an album is a set of
-        assets rather than a window to resolve, so it is selected by naming it
-        with `--from-album`, and `--memory-type album` would have nothing to
-        compute. Any other member missing here ships unreachable from the CLI.
-        """
+    def test_choices_are_active_date_memory_types(self):
+        """Album has its own flag; retired then-and-now remains readable only."""
         memory_type_option = next(
             param for param in main.commands["generate"].params if param.name == "memory_type"
         )
-        assert set(memory_type_option.type.choices) == {m.value for m in MemoryType} - {"album"}, (
-            "--memory-type's choices in cli/generate_options.py have fallen behind MemoryType"
-        )
+        assert set(memory_type_option.type.choices) == {m.value for m in MemoryType} - {
+            "album",
+            "then_and_now",
+        }, "--memory-type's choices in cli/generate_options.py have fallen behind MemoryType"
+
+    def test_retired_then_and_now_cannot_start_generation(self):
+        result = _invoke(["generate", "--memory-type", "then_and_now", "--year", "2024"])
+        assert result.exit_code == 2
+        assert "Invalid value for '--memory-type'" in result.output
 
 
 class TestCLIMemoryTypeResolve:
@@ -355,6 +361,7 @@ class TestAutoRunOutput:
             action=AutoAction.GENERATION,
         )
 
+        # WHY: AutoRunner drives the real pipeline (Immich, LLM, FFmpeg); replaced here.
         with patch("immich_memories.automation.runner.AutoRunner", return_value=auto_runner) as cls:
             result = CliRunner().invoke(
                 main,
@@ -370,6 +377,7 @@ class TestAutoRunOutput:
         config_path.parent.mkdir()
         Config().save_yaml(config_path)
 
+        # WHY: show_scheduler_config renders the real launchd/systemd/crontab definition text.
         with patch(
             "immich_memories.automation.system_scheduler.show_scheduler_config",
             return_value="scheduler definition",
@@ -419,6 +427,7 @@ class TestAutoRunOutput:
         auto_runner = MagicMock()
         auto_runner.run_one.return_value = auto_result
 
+        # WHY: AutoRunner is the automation entry point; replaced to return a fixed completed run.
         with patch("immich_memories.automation.runner.AutoRunner", return_value=auto_runner):
             result = _invoke(["auto", "run", "--quiet"])
 
@@ -479,6 +488,7 @@ class TestAutoRunOutput:
             output_path=output,
         )
 
+        # WHY: AutoRunner is replaced so run_one returns a fixed completed run, human output path.
         with patch("immich_memories.automation.runner.AutoRunner", return_value=auto_runner):
             result = _invoke(["auto", "run"])
 
@@ -494,6 +504,7 @@ class TestAutoRunOutput:
             action=AutoAction.GENERATION,
         )
 
+        # WHY: AutoRunner is replaced so run_one returns a fixed skipped run.
         with patch("immich_memories.automation.runner.AutoRunner", return_value=auto_runner):
             result = _invoke(["auto", "run", "--quiet"])
 
@@ -522,6 +533,7 @@ class TestAutoRunOutput:
             candidate=_auto_candidate(),
         )
 
+        # WHY: AutoRunner is replaced so run_one returns a fixed dry-run outcome.
         with patch("immich_memories.automation.runner.AutoRunner", return_value=auto_runner):
             result = _invoke(["auto", "run", "--quiet", "--dry-run"])
 
@@ -546,6 +558,7 @@ class TestAutoRunOutput:
             ),
         )
 
+        # WHY: AutoRunner is replaced so run_one returns a fixed rejection, quiet JSON path.
         with patch("immich_memories.automation.runner.AutoRunner", return_value=auto_runner):
             result = _invoke(["auto", "run", "--quiet", "--dry-run"])
 
@@ -586,6 +599,7 @@ class TestAutoRunOutput:
             ),
         )
 
+        # WHY: AutoRunner is replaced so run_one returns the same rejection, human output path.
         with patch("immich_memories.automation.runner.AutoRunner", return_value=auto_runner):
             result = _invoke(["auto", "run", "--dry-run"])
 
@@ -605,6 +619,7 @@ class TestAutoRunOutput:
             error="root cause on stdout",
         )
 
+        # WHY: AutoRunner is replaced so run_one returns a fixed failed-generation run.
         with patch("immich_memories.automation.runner.AutoRunner", return_value=auto_runner):
             result = _invoke(["auto", "run", "--quiet"])
 
@@ -637,6 +652,7 @@ class TestAutoRunOutput:
             error="safe upload error",
         )
 
+        # WHY: AutoRunner is replaced so run_one returns a fixed failed-delivery-retry run.
         with patch("immich_memories.automation.runner.AutoRunner", return_value=auto_runner):
             result = _invoke(["auto", "run", "--quiet"])
 
@@ -660,6 +676,7 @@ class TestAutoRunOutput:
             details="API key rejected: preflight-secret",
         )
 
+        # WHY: check_immich is the real Immich preflight probe; forced to fail before --force runs.
         with patch("immich_memories.preflight.check_immich", return_value=preflight):
             result = _invoke(["auto", "run", "--force", "--quiet"], config=config)
 
@@ -686,6 +703,7 @@ class TestAutoRunOutput:
             details="server unavailable",
         )
 
+        # WHY: check_immich is the real Immich preflight probe; forced to fail before suggest runs.
         with patch("immich_memories.preflight.check_immich", return_value=preflight) as check:
             result = _invoke(["auto", "suggest"], config=config)
 

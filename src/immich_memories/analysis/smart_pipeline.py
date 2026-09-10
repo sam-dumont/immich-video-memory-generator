@@ -281,17 +281,9 @@ class SmartPipeline:
         clips: list[VideoClipInfo],
         progress_callback: Callable[[dict], None] | None = None,
     ) -> PipelineResult:
-        """Run the full pipeline (phases 1-4)."""
-        analyzed = self.run_analysis(clips, progress_callback)
-        result = self.run_selection(analyzed)
+        """Return the final cut from the sole production editorial source route."""
+        _, result = self.run_editorial_source(clips, progress_callback)
         return result
-
-    @property
-    def has_editorial_source_route(self) -> bool:
-        """Whether the configured planner owns canonical evidence and final rendering."""
-        from immich_memories.analysis.editorial_source_route import EditorialSourcePlanner
-
-        return isinstance(self._planner, EditorialSourcePlanner)
 
     def run_editorial_source(
         self,

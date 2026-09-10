@@ -1,0 +1,247 @@
+"""Observed CLI/UI editorial progress without invented completion counts or ETA."""
+
+from io import StringIO
+from unittest.mock import MagicMock, patch
+
+import pytest
+from rich.console import Console
+
+from tests.test_editorial_source_route_surfaces import (
+    _WINDOW,
+    _config,
+    _finished_selection,
+    _source_pipeline,
+)
+
+
+def _status(label="Editing the memory", status="running"):
+    return {
+        "indeterminate": True,
+        "status": status,
+        "phase_label": label,
+        "current_phase": label,
+        "started_at": 100.0,
+        "elapsed_seconds": 8.25,
+        "elapsed": "8s",
+    }
+
+
+@pytest.mark.parametrize("failed", [False, True])
+def test_cli_real_display_enters_indeterminate_then_reports_actual_terminal_stage(tmp_path, failed):
+    from immich_memories.cli._live_display import LiveDisplay
+    from immich_memories.cli._pipeline_runner import run_pipeline_and_generate
+
+    display = LiveDisplay(Console(file=StringIO(), force_terminal=False))
+    result = _finished_selection()
+    pipeline = _source_pipeline(result)
+    observed = []
+
+    def source(_sources, *, progress_callback, **_kwargs):
+        for payload in [
+            _status("Preparing source metadata"),
+            _status(),
+            _status(
+                "Editorial selection failed" if failed else "Editorial selection complete",
+                "failed" if failed else "complete",
+            ),
+        ]:
+            progress_callback(payload)
+            task_id = display._active_task_id
+            task = display._progress.tasks[task_id]
+            observed.append(
+                (payload["status"], display._tasks[task_id].total, task.total, task.description)
+            )
+        if failed:
+            raise RuntimeError("editorial evidence unavailable")
+        return result.selected_clips, result
+
+    pipeline.run_editorial_source.side_effect = source
+    # WHY: stubs the pipeline builder and renderer so this no-render run never reaches FFmpeg.
+    with (
+        # WHY: the collaborator under inspection; run_editorial_source calls are asserted below.
+        patch(
+            "immich_memories.analysis.editorial_runtime.build_smart_pipeline", return_value=pipeline
+        ),
+        patch(
+            "immich_memories.generate.generate_memory",
+            side_effect=AssertionError("no render requested"),
+        ),
+    ):
+
+        def run():
+            return run_pipeline_and_generate(
+                assets=[result.selected_clips[0].asset, result.selected_clips[2].asset],
+                client=MagicMock(),
+                config=_config(tmp_path),
+                progress=display,
+                duration=60.0,
+                transition="cut",
+                music=None,
+                no_music=True,
+                output_path=tmp_path / "memory.mp4",
+                memory_type="monthly_highlights",
+                person_names=[],
+                date_range=_WINDOW,
+                upload_to_immich=False,
+                album=None,
+                no_render=True,
+            )
+
+        if failed:
+            with pytest.raises(RuntimeError, match="editorial evidence unavailable"):
+                run()
+        else:
+            run()
+    # The route is proven by what the runner consumed: the editorial source ran
+    # once over the raw assets, and the result it carried says so. The mock
+    # pipeline raises on run_analysis/run_planning_analysis/run_selection.
+    assert pipeline.run_editorial_source.call_count == 1
+    assert pipeline.run_editorial_source.call_args.args[0] == [
+        result.selected_clips[0].asset,
+        result.selected_clips[2].asset,
+    ]
+    assert result.stats["selection_route"] == "editorial-source"
+    assert observed[:2] == [
+        ("running", None, None, "Preparing source metadata"),
+        ("running", None, None, "Editing the memory"),
+    ]
+    expected = (
+        ("failed", None, None, "Editorial selection failed")
+        if failed
+        else ("complete", 100, 100, "Editorial selection complete")
+    )
+    assert observed[2] == expected
+
+
+@pytest.mark.parametrize("status", ["running", "complete", "failed"])
+def test_ui_retains_stage_and_elapsed_but_hides_counts_rates_eta_and_phase_fraction(status):
+    from immich_memories.ui.pages.clip_pipeline import _make_progress_callback
+    from immich_memories.ui.pages.clip_pipeline_helpers import _poll_phase, _poll_stats
+
+    state = {"cancelled": False}
+    _make_progress_callback(state)(_status(status=status))
+    assert state["phase_label"] == "Editing the memory"
+    assert state["status"] == status and state["indeterminate"] is True
+    assert state["started_at"] == 100.0 and state["elapsed"] == "8s"
+    # Old legacy counters must not leak into this display mode, even if stale.
+    state.update(current_index=999, total_items=999, avg_duration=50, speed_ratio=9, eta="2h")
+    labels = [MagicMock() for _ in range(6)]
+    phase = MagicMock()
+    render_phase = MagicMock()
+    _poll_phase(state, {"phase_number": 2}, phase, render_phase)
+    phase.clear.assert_called_once()
+    render_phase.assert_not_called()
+    # WHY: freezes the wall clock so the elapsed-time label is deterministic.
+    with patch("immich_memories.ui.pages.clip_pipeline_helpers.time.time", return_value=165.0):
+        _poll_stats(state, *labels)
+    labels[1].set_text.assert_called_once_with(
+        "Elapsed: 65s" if status == "running" else "Elapsed: 8s"
+    )
+    for index in (0, 2, 3, 4, 5):
+        labels[index].set_text.assert_called_once_with("")
+
+
+def test_ui_timer_shows_indeterminate_bar_and_exact_stage_without_fake_count():
+    from immich_memories.ui.pages.clip_pipeline import _make_progress_callback, _wire_progress_timer
+
+    state = {"cancelled": False, "done": False, "error": None}
+    callback = _make_progress_callback(state)
+    callback(_status())
+    bar = MagicMock()
+    bar.value = 0.37
+    label = MagicMock()
+    timers = []
+
+    def timer(interval, function, **_kwargs):
+        timers.append((interval, function))
+        return MagicMock()
+
+    # WHY: stubs the NiceGUI timer, the detail-card poller, and the clock together.
+    with (
+        # WHY: replaces NiceGUI's timer so the test can invoke the registered callback directly.
+        patch("immich_memories.ui.pages.clip_pipeline.ui.timer", side_effect=timer),
+        # WHY: silences the per-clip detail poller, which this test's assertions don't cover.
+        patch("immich_memories.ui.pages.clip_pipeline._poll_detail_cards"),
+        # WHY: freezes the wall clock so the elapsed-time math stays deterministic.
+        patch("immich_memories.ui.pages.clip_pipeline_helpers.time.time", return_value=165.0),
+    ):
+        _wire_progress_timer(
+            state,
+            {"phase_number": 2},
+            MagicMock(),
+            MagicMock(),
+            bar,
+            label,
+            MagicMock(),
+            *[MagicMock() for _ in range(6)],
+            [],
+            [],
+            MagicMock(),
+        )
+        poll = next(fn for interval, fn in timers if interval == 1.0)
+        poll()
+        bar.props.assert_called_with("indeterminate")
+        assert bar.value == 0.37  # No fabricated percentage is assigned while planning.
+        label.set_text.assert_called_with("Editing the memory")
+        callback(_status("Editorial selection complete", "complete"))
+        poll()
+        bar.props.assert_called_with(remove="indeterminate")
+        label.set_text.assert_called_with("Editorial selection complete")
+
+
+def test_ui_progress_callback_preserves_explicit_cancellation_contract():
+    from immich_memories.ui.pages.clip_pipeline import PipelineCancelled, _make_progress_callback
+
+    with pytest.raises(PipelineCancelled):
+        _make_progress_callback({"cancelled": True})(_status())
+
+
+def test_cached_asset_checks_do_not_repeat_logs_or_ui_writes_and_still_cancel(caplog):
+    import logging
+
+    from immich_memories.cli._live_display import QuietDisplay
+    from immich_memories.ui.pages.clip_pipeline import PipelineCancelled, _make_progress_callback
+
+    class CountingState(dict):
+        writes = 0
+
+        def __setitem__(self, key, value):
+            self.writes += 1
+            super().__setitem__(key, value)
+
+    state = CountingState(cancelled=False)
+    update_ui = _make_progress_callback(state)
+    display = QuietDisplay()
+    with caplog.at_level(logging.INFO, logger="immich_memories.progress"):
+        task = display.add_task("Preparing cached previews", total=None)
+        update_ui(_status("Preparing cached previews"))
+        initial_writes = state.writes
+        for _ in range(1500):
+            display.update(task, description="Preparing cached previews")
+            update_ui(_status("Preparing cached previews"))
+        assert state.writes == initial_writes
+        assert caplog.messages.count("Preparing cached previews") == 1
+        display.update(task, description="Reading the period")
+        update_ui(_status("Reading the period"))
+        assert state["phase_label"] == "Reading the period"
+        assert caplog.messages.count("Reading the period") == 1
+        update_ui({**_status("Reading the period"), "current_index": 4, "completed_count": 4})
+        assert state["current_index"] == state["completed_count"] == 4
+        update_ui(_status("Reading the period", status="complete"))
+        assert state["status"] == "complete"
+        state["cancelled"] = True
+        with pytest.raises(PipelineCancelled):
+            update_ui(_status("Reading the period"))
+
+
+def test_identical_interactive_description_does_not_refresh_display():
+    from immich_memories.cli._live_display import LiveDisplay
+
+    display = LiveDisplay(Console(file=StringIO(), force_terminal=False))
+    task = display.add_task("Reading the period", total=None)
+    with patch.object(display, "_refresh") as refresh:
+        for _ in range(1500):
+            display.update(task, description="Reading the period")
+        refresh.assert_not_called()
+        display.update(task, description="Editorial selection complete")
+        refresh.assert_called_once()

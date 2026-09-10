@@ -42,16 +42,11 @@ class PreparationResult:
     requested: int
     missing_by_producer: Mapping[str, tuple[str, ...]]
     failures: Mapping[str, str]
-    caption_unavailable_asset_ids: tuple[str, ...] = ()
     produced: Mapping[str, int] = field(default_factory=dict)
 
     @property
     def complete(self) -> bool:
         return not self.missing_by_producer and not self.failures
-
-    @property
-    def caption_unavailable_count(self) -> int:
-        return len(self.caption_unavailable_asset_ids)
 
 
 @dataclass(frozen=True)
@@ -266,11 +261,11 @@ def prepare_editorial_annotations(
             stage, connection, pending(f"description:{description_model}"), description_model
         )
         stage.check()
-        after, unavailable = outstanding()
+        after, _unavailable = outstanding()
         if preview_missing:
             after["preview"] = tuple(preview_missing)
         produced = {key: len(values) - len(after.get(key, ())) for key, values in before.items()}
-        return PreparationResult(len(ids), after, stage.failures, unavailable, produced)
+        return PreparationResult(len(ids), after, stage.failures, produced)
 
 
 def _ensure_sharpness_threshold(connection: sqlite3.Connection, pixel_producer_key: str) -> None:

@@ -23,7 +23,6 @@ from immich_memories.analysis.selection_source import (
 )
 from immich_memories.analysis.selection_source_groups import (
     build_episode_groups,
-    build_moment_groups,
 )
 from immich_memories.analysis.selection_trace import Trace
 from immich_memories.api.models import AssetType, VideoClipInfo
@@ -271,7 +270,7 @@ def test_favourite_overrides_low_resolution_source_inference() -> None:
 
 
 def test_groups_conserve_candidates_in_canonical_order_with_stable_ids() -> None:
-    """Episode and moment walls use time/place grouping without electing a winner."""
+    """The episode wall uses time/place grouping without electing a winner."""
     noon = datetime(2026, 8, 25, 12, 0, tzinfo=UTC)
     assets = (
         make_asset("d", file_created_at=noon + timedelta(hours=3)),
@@ -285,15 +284,13 @@ def test_groups_conserve_candidates_in_canonical_order_with_stable_ids() -> None
     )
 
     episodes = build_episode_groups(prepared.candidates)
-    moments = build_moment_groups(tuple(reversed(prepared.candidates)))
 
     assert prepared.candidate_ids == ("a", "b", "c", "d")
     assert tuple(group.candidate_ids for group in episodes) == (("a", "b", "c"), ("d",))
-    assert tuple(group.candidate_ids for group in moments) == (("a", "b", "c"), ("d",))
     assert tuple(
         group.group_id for group in build_episode_groups(tuple(reversed(prepared.candidates)))
     ) == (tuple(group.group_id for group in episodes))
-    assert tuple(asset_id for group in moments for asset_id in group.candidate_ids) == (
+    assert tuple(asset_id for group in episodes for asset_id in group.candidate_ids) == (
         "a",
         "b",
         "c",

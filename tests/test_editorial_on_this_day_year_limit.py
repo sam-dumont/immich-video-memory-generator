@@ -19,10 +19,9 @@ from immich_memories.analysis.editorial_moment_wall import (
     RepresentativeEvidence,
 )
 from immich_memories.analysis.editorial_people import adapt_editorial_people
-from immich_memories.analysis.editorial_structure_budget import partition_budgets
 from immich_memories.analysis.editorial_structure_contract import StructurePlanningInput
 from immich_memories.analysis.moment_cards import MomentCard
-from immich_memories.analysis.selection_source import EditorialGroup
+from immich_memories.analysis.selection_source_groups import EditorialGroup
 from immich_memories.api.models import AssetType
 from immich_memories.config_loader import Config
 from immich_memories.timeperiod import DateRange
@@ -83,7 +82,6 @@ def make_source(tmp_path, *, years=(2030, 2031, 2032), product="on_this_day"):
                     full_asset_ids=group.candidate_ids,
                     selectable_asset_ids=group.candidate_ids,
                     representative_asset_ids=group.candidate_ids[:1],
-                    representative_reasons=("Shows an occasion.",),
                     text="Playing games",
                     evidence=MomentCardEvidence(
                         episode_meaning="People play games.",
@@ -211,16 +209,6 @@ def test_calendar_year_groups_repeated_windows_and_limits_budget_without_spillin
     assert [p.key for p in policy.partitions] == ["year-2030", "year-2032"]
     assert policy.max_carriers_per_partition == 1
     assert "at most 1 selected carrier per calendar year" in policy.prompt_block()
-    assert partition_budgets(
-        ["year-2030", "year-2031", "year-2032"],
-        {"year-2030": 300, "year-2031": 0, "year-2032": 4},
-        20,
-        max_per_partition=policy.max_carriers_per_partition,
-    ) == {
-        "year-2030": 1,
-        "year-2031": 0,
-        "year-2032": 1,
-    }
 
 
 def test_model_chooses_event_and_picture_before_acquisition_and_warm_is_exact(tmp_path):
@@ -289,4 +277,3 @@ def test_holiday_and_other_products_keep_unlimited_partition_depth():
         policy = build_editorial_intent(product, ranges((2030, 2031)), brief="Original intent")
         assert policy.max_carriers_per_partition is None
         assert "selection limit:" not in policy.prompt_block()
-    assert partition_budgets(["a", "b"], {"a": 300, "b": 4}, 20) == {"a": 16, "b": 4}

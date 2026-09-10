@@ -93,9 +93,11 @@ def _probe() -> OutputProbe:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("editorial_status", [None, "near_target", "editorial_shortfall"])
 async def test_ui_finalizer_validates_exact_plan_and_completes_no_upload_once(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    editorial_status,
 ) -> None:
     """A prepared UI artifact becomes one completed, not-requested run."""
     from immich_memories.ui.pages import _step4_generate as step4_generate
@@ -120,6 +122,11 @@ async def test_ui_finalizer_validates_exact_plan_and_completes_no_upload_once(
         upload_enabled=False,
         upload_album="UI Album",
         phase_callback=phase_events.append,
+    )
+    from tests.test_editorial_duration_advisory import SHORTFALL, WARNING
+
+    params.editorial_duration_realization = (
+        SHORTFALL | {"status": editorial_status} if editorial_status else None
     )
     tracker = RunTracker("ui-finalize", db_path=db_path, capture_system=False)
     tracker.start_run(source="manual")
@@ -163,7 +170,9 @@ async def test_ui_finalizer_validates_exact_plan_and_completes_no_upload_once(
     assert completed.clips_selected == 2
     assert saved is not None
     assert saved.to_dict() == completed.to_dict()
-    assert state.generation_warning is None
+    expected_warning = WARNING if editorial_status == "editorial_shortfall" else None
+    assert state.generation_warning == expected_warning
+    assert saved.warnings == ([expected_warning] if expected_warning else [])
     assert state.delivery_status is DeliveryStatus.NOT_REQUESTED
     assert [event.phase.value for event in phase_events] == ["music", "delivery", "complete"]
     assert saved.last_phase.value == "complete"

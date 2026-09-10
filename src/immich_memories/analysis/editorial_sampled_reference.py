@@ -4,8 +4,6 @@ from copy import deepcopy
 from dataclasses import asdict
 from typing import Any
 
-from immich_memories.analysis.editorial_final_sampled_duplicates import displayed_sample_members
-
 
 def sampled_source_relation(port, *, picture_records):
     """Conserve the same source relation across local reviews and final discovery."""
@@ -43,27 +41,5 @@ def sampled_source_relation(port, *, picture_records):
             "scope": "sampled picture confirmation; material and unseen video are unchanged",
         }
         return deepcopy(outcomes[pair])
-
-    return confirm
-
-
-def sampled_reference_confirmer(
-    port, *, carriers, picture_records, protected_asset_ids=(), source_relation=None
-):
-    """Bind a nomination to single-source material without granting cut authority."""
-    relation = source_relation or sampled_source_relation(port, picture_records=picture_records)
-    if relation is None:
-        return None
-    singleton_ids = {
-        unit["asset_id"]
-        for unit in carriers
-        if set(displayed_sample_members(unit)) == {unit["asset_id"]}
-    }
-    protected = set(protected_asset_ids)
-
-    def confirm(remove, kept):
-        if remove.asset_id in protected or not {remove.asset_id, kept.asset_id} <= singleton_ids:
-            return None
-        return relation(remove.asset_id, kept.asset_id)
 
     return confirm

@@ -1365,7 +1365,9 @@ class TestRunMusicPhase:
             events.append("resolve")
             return MusicSelection(music_file)
 
+        # WHY: resolve_music and apply_music_file would hit disk, FFmpeg, and music APIs.
         with (
+            # WHY: resolve_music can shell out to MusicGen/ACE-Step and read the bundled library.
             patch(
                 "immich_memories.generate_music.resolve_music",
                 side_effect=record_resolve,
@@ -1589,7 +1591,9 @@ class TestDownloadAndMergeBurst:
         mock_cache.cache_dir = tmp_path / "cache"
         merged = tmp_path / ".live_merges" / "asset-1_merged.mp4"
 
+        # WHY: _download_and_merge_burst calls Immich and FFmpeg; both replaced for the align path.
         with (
+            # WHY: _download_burst_clips wraps the Immich asset download this test must not make.
             patch(
                 "immich_memories.generate_downloads._download_burst_clips",
                 return_value=[v1_path],
@@ -1625,7 +1629,9 @@ class TestDownloadAndMergeBurst:
         fallback = tmp_path / "fallback.mp4"
         mock_cache.download_or_get.return_value = fallback
 
+        # WHY: _download_and_merge_burst calls Immich and FFmpeg; replaced for the fallback path.
         with (
+            # WHY: _download_burst_clips wraps Immich download for the fallback-to-cache path.
             patch(
                 "immich_memories.generate_downloads._download_burst_clips",
                 return_value=[v1_path],
@@ -1773,7 +1779,9 @@ class TestTryMergeBurst:
         clip_path.write_bytes(b"video")
         merged_path = tmp_path / "merged.mp4"
 
+        # WHY: _try_merge_burst would probe real clips and shell to FFmpeg; forced to fail here.
         with (
+            # WHY: filter_valid_clips runs ffprobe on real files; this fixture is fake bytes.
             patch(
                 "immich_memories.processing.live_photo_merger.filter_valid_clips",
                 return_value=([clip_path], [(0.0, 1.0)]),
@@ -1802,7 +1810,9 @@ class TestTryMergeBurst:
         c2.write_bytes(b"v2")
         merged_path = tmp_path / "merged.mp4"
 
+        # WHY: _try_merge_burst would probe real clips and shell to FFmpeg; spectrogram path here.
         with (
+            # WHY: filter_valid_clips runs ffprobe on real files; both fixtures are fake bytes.
             patch(
                 "immich_memories.processing.live_photo_merger.filter_valid_clips",
                 return_value=([c1, c2], [(0.0, 1.0), (0.0, 1.5)]),
@@ -1848,7 +1858,9 @@ class TestTryMergeBurst:
         c2.write_bytes(b"v2")
         merged_path = tmp_path / "merged.mp4"
 
+        # WHY: _try_merge_burst would probe real clips and shell to FFmpeg for the fallback path.
         with (
+            # WHY: filter_valid_clips would probe real files; both are fake bytes, fallback path.
             patch(
                 "immich_memories.processing.live_photo_merger.filter_valid_clips",
                 return_value=([c1, c2], [(0.0, 1.0), (0.0, 1.5)]),
@@ -1890,7 +1902,9 @@ class TestTryMergeBurst:
         clip_path.write_bytes(b"video")
         merged_path = tmp_path / "merged.mp4"
 
+        # WHY: _try_merge_burst would probe real clips and shell to FFmpeg before raising.
         with (
+            # WHY: filter_valid_clips would probe a real file; this one is fake bytes, pre-raise.
             patch(
                 "immich_memories.processing.live_photo_merger.filter_valid_clips",
                 return_value=([clip_path], [(0.0, 1.0)]),
@@ -2050,7 +2064,9 @@ class TestAutoGenerateMusic:
         from immich_memories.generate_music import auto_generate_music
 
         config = Config()
+        # WHY: music_config_available and generate_music_for_video would call real config/APIs.
         with (
+            # WHY: music_config_available is forced True so the optional-music branch is taken.
             patch("immich_memories.generate_music.music_config_available", return_value=True),
             # WHY: generate_music_for_video calls external MusicGen/ACE-Step APIs
             patch(

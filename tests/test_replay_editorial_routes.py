@@ -77,6 +77,9 @@ def test_provider_hosts_come_from_every_configured_model_endpoint(harness, tmp_p
         "  editorial:\n    preparation:\n      caption_base_url: http://localhost:8092/v1\n"
     )
     assert harness.provider_hosts(config) == {"localhost:8080", "localhost:8092"}
+    bare = tmp_path / "bare.yaml"
+    bare.write_text("advanced:\n  llm:\n    base_url: http://model.local:9999/v1\n")
+    assert harness.provider_hosts(bare) == {"model.local:9999", "localhost:8092"}
 
 
 def test_bank_rows_counts_only_judgment_tables(harness, tmp_path):
@@ -90,6 +93,13 @@ def test_bank_rows_counts_only_judgment_tables(harness, tmp_path):
         connection.execute("insert into other values ('x')")
     assert harness.bank_rows(tmp_path) == 2
     assert harness.bank_rows(tmp_path / "missing") == 0
+    store = tmp_path / "annotations.sqlite"
+    with sqlite3.connect(store) as connection:
+        connection.execute("create table editorial_period_insights (k text)")
+        connection.execute("insert into editorial_period_insights values ('p')")
+    config = tmp_path / "config.yaml"
+    config.write_text(f"advanced:\n  editorial:\n    annotation_database: {store}\n")
+    assert harness.bank_rows(tmp_path, config) == 3
 
 
 def test_route_argv_strips_the_command_word_output_and_harness_owned_flags(harness):
@@ -112,3 +122,24 @@ def test_route_argv_strips_the_command_word_output_and_harness_owned_flags(harne
         "--month",
         "2",
     ]
+
+
+def test_reference_routes_skip_metadata_and_prefer_the_head_baseline(harness):
+    reference = {
+        "schema_version": 3,
+        "generated_for": "x",
+        "monthly": {
+            "generate_args": ["--year", "2024"],
+            "carrier_asset_ids": ["old"],
+            "accepted_plan_sha256": "a",
+            "head_baseline": {"carrier_asset_ids": ["new"], "plan_sha256": "b"},
+        },
+        "fresh": {"generate_args": ["--years-back", "3"], "head_baseline": None},
+    }
+    routes = harness.reference_routes(reference)
+    assert sorted(routes) == ["fresh", "monthly"]
+    assert harness.baseline_of(routes["monthly"]) == {
+        "carrier_asset_ids": ["new"],
+        "plan_sha256": "b",
+    }
+    assert harness.baseline_of(routes["fresh"]) is None

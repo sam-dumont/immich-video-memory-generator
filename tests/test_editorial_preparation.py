@@ -105,7 +105,6 @@ def test_cold_full_source_then_warm_has_zero_provider_calls(tmp_path):
     calls = []
     first = run(tmp_path, ports=successful_ports(calls), fetch_preview=lambda _: preview())
     assert first.complete and first.requested == 2
-    assert first.caption_unavailable_count == 0
     assert ("captions", ("aa1", "bb2")) in calls
     calls.clear()
     second = run(tmp_path, ports=successful_ports(calls))

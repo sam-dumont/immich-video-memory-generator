@@ -24,7 +24,6 @@ class StructureMoment:
     moment_id: str
     candidates: tuple[EditorialCandidate, ...]
     representative: EditorialCandidate
-    representative_reason: str | None = None
 
     @property
     def candidate_ids(self) -> tuple[str, ...]:
@@ -103,7 +102,6 @@ def _conserved_moments(
                 moment_id=group.group_id,
                 candidates=members,
                 representative=representative,
-                representative_reason=reason,
             )
         )
     moment_ids = tuple(moment.moment_id for moment in moments)

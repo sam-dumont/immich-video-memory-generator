@@ -96,12 +96,6 @@ def build_episode_groups(candidates: Sequence[EditorialCandidate]) -> tuple[Edit
     return _build_groups(candidates, kind="episode", window_minutes=EPISODE_WINDOW_MINUTES)
 
 
-def build_moment_groups(candidates: Sequence[EditorialCandidate]) -> tuple[EditorialGroup, ...]:
-    """Build chronological visual moments nested within canonical episodes."""
-    episodes = build_episode_groups(candidates)
-    return _build_moment_groups_within(candidates, episodes)
-
-
 def _build_moment_groups_within(
     candidates: Sequence[EditorialCandidate],
     episodes: Sequence[EditorialGroup],

@@ -15,11 +15,6 @@ LIVING = re.compile(
     r"\b(man|woman|person|people|child|children|kid|girl|boy|baby|couple|family|friend|friends|group|crowd|cyclist|cyclists|rider|runner|hiker|hikers|walker|player|someone|he|she|they|cat|dog|kitten|kittens|puppy|horse|bird|animal|selfie|portrait|face)\b",
     re.IGNORECASE,
 )
-DOCUMENT_TEXT = re.compile(
-    r"\b(licen[cs]e|registration number|passport|id card|identity card|ticket|receipt|invoice|boarding pass|map of|route from|label that reads|screenshot|qr code|barcode)\b",
-    re.IGNORECASE,
-)
-_SOFT_OR_DARK = re.compile(r"\bSOFT\b|\bDARK\b")
 _FACT_PREFIX = re.compile(
     r"^(20\d\d|LIVE|VIDEO|with |at |activity=|setting|resolution|exposure|duration|location=|children=|STARRED|SOFT|DARK)"
 )
@@ -59,12 +54,6 @@ class UnitLines:
 
     def lone_object(self, u) -> bool:
         return not self.shows_life(u)
-
-    def is_soft_or_dark(self, u) -> bool:
-        return bool(_SOFT_OR_DARK.search(self.line(u)))
-
-    def is_document(self, u) -> bool:
-        return bool(DOCUMENT_TEXT.search(self.line(u)))
 
 
 class AnchorRows:

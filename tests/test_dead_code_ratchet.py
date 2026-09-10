@@ -28,12 +28,27 @@ WHITELIST = Path(__file__).resolve().parent.parent / "vulture-whitelist.py"
 # 306, down from 318: #502 retired the photo animation stack nobody could reach
 # (PhotoAnimator, the FFmpeg filter expressions, the grouper, AnimationMode).
 # Nine entries went with the code they were excusing.
-# 568, up from 306, deliberately and temporarily: the story-first port lands its
-# engine bottom-up (slices 1-8 of feat/story-first-selection), so producers reach
-# main before their consumers. Every added line is tagged "story-first port
-# slice N" and names the slice that wires it; that slice deletes the line and
-# lowers this number. Slice 9 (the route cut) brings it back to 306 or below.
-MAX_WHITELISTED_SYMBOLS = 568
+# 358, up from 306: the story-first selection route arrived with the whole
+# engine behind it, and the temporary "story-first port slice N" lines the
+# bottom-up port used are gone.
+# 332, down from 358: the 28 "public entry points the suite drives directly"
+# were not entry points -- their only callers were their own tests, which makes
+# them dead in the product. Each went, with those tests, and so did the three
+# CLI/UI functions kept alive purely by patches asserting they were never
+# called, and the get_video_metadata reader whose writer went with them.
+# Six lines came back the other way: the legacy selector (SmartPipeline's
+# run_analysis/run_planning_analysis/run_selection and the three _candidate_pool
+# stages) lost its last caller in src/ when those CLI functions went, and is
+# listed rather than deleted because it comes out in one piece, with the tests
+# that still cover it, in the PR that removes it. Those six are the only lines
+# here that should fall next.
+# What remains is one permanent block at the end of the whitelist, in classes
+# vulture cannot see through: pydantic fields and validators built from the
+# schema by name; Protocol parameter names and the attributes onnxruntime's
+# SessionOptions owns; frozen record fields written at construction and read
+# back out of the private artifact JSON; and the attempt reader the phase-2
+# review page consumes.
+MAX_WHITELISTED_SYMBOLS = 332
 
 
 def test_the_dead_code_whitelist_never_grows() -> None:

@@ -144,7 +144,6 @@ def _fixture(
                 (group.candidate_ids[-1],) if scoped_last else group.candidate_ids
             ),
             representative_asset_ids=group.candidate_ids,
-            representative_reasons=("Shows the lived scene.",),
             text=f"legacy summary {index}",
             evidence=MomentCardEvidence(
                 episode_meaning=meanings[index],

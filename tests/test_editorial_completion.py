@@ -2,7 +2,7 @@
 
 import pytest
 
-from immich_memories.analysis.editorial_completion import RetainedMotion, completed_duration
+from immich_memories.analysis.editorial_completion import RetainedMotion
 
 
 def picture(key, seconds, *, moving=False):
@@ -16,52 +16,6 @@ def picture(key, seconds, *, moving=False):
     }
 
 
-@pytest.mark.parametrize("cap", [52.5, 112.5, 172.5])
-def test_fifteen_percent_shortfall_is_accepted_but_larger_gap_keeps_searching(cap):
-    assert completed_duration([picture("a", cap * 0.86)], content_cap=cap)
-    assert completed_duration([picture("a", cap * 0.84)], content_cap=cap) is None
-
-
-@pytest.mark.parametrize("seconds", [170, 172.5, 176])
-def test_duration_does_not_replace_required_partition_coverage(seconds):
-    assert (
-        completed_duration(
-            [picture("a", seconds)],
-            content_cap=172.5,
-            missing_partitions=["required-period"],
-        )
-        is None
-    )
-
-
-@pytest.mark.parametrize("cap", [52.5, 112.5, 292.5])
-def test_optional_funding_gaps_are_reported_inside_the_existing_shortfall_band(cap):
-    missing = ["unrepresented-event"]
-    stop = completed_duration([picture("a", cap * 0.86)], content_cap=cap, missing_events=missing)
-    assert stop["unmet_funded_events"] == missing
-    assert stop["accepted_shortfall_fraction"] == 0.15
-    assert stop["content_budget_seconds"] == cap
-    assert stop["shortfall_seconds"] == round(cap * 0.14, 2)
-    assert (
-        completed_duration([picture("a", cap * 0.84)], content_cap=cap, missing_events=missing)
-        is None
-    )
-
-
-def test_full_duration_stops_unmet_funding_without_hiding_it_or_waiving_contract_coverage():
-    selected = [picture("enough", 294.44)]
-    missing = ["denied-event", "limited-event"]
-    stop = completed_duration(selected, content_cap=292.5, missing_events=missing)
-    assert stop["unmet_funded_events"] == missing
-    assert stop["shortfall_seconds"] == 0
-    assert (
-        completed_duration(
-            selected, content_cap=292.5, missing_events=missing, missing_partitions=["January"]
-        )
-        is None
-    )
-
-
 def test_provisional_motion_near_target_must_be_resolved_before_stopping():
     def resolve(rows):
         return [{**row, "seconds": 4, "kind": "live-still"} for row in rows], {}
@@ -70,7 +24,6 @@ def test_provisional_motion_near_target_must_be_resolved_before_stopping():
     resolved = RetainedMotion(resolve)(provisional)
     assert sum(c["seconds"] for c in provisional) == 150
     assert sum(c["seconds"] for c in resolved) == 100
-    assert completed_duration(resolved, content_cap=172.5) is None
 
 
 def test_only_new_retained_units_are_resolved_and_metrics_count_actual_work():
@@ -132,4 +85,3 @@ def test_missing_motion_port_preserves_captured_duration_and_zero_work():
     selected = [picture("a", 4)]
     assert motion(selected) == selected
     assert motion.metrics["new_motion_downloads"] == 0
-    assert completed_duration([], content_cap=0) is None

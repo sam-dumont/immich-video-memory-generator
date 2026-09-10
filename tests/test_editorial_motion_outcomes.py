@@ -13,8 +13,28 @@ import pytest
 
 from immich_memories.analysis import editorial_motion_facts as motion
 from immich_memories.analysis.editorial_case import Case
-from immich_memories.analysis.editorial_motion_outcomes import MotionOutcomeReplay
+from immich_memories.analysis.editorial_motion_outcomes import (
+    REFERENCE_NAME,
+    SCHEMA,
+    MotionOutcomeReplay,
+)
 from tests.test_editorial_demanded_motion import _assets, _carrier
+
+
+def replay_from_output(output) -> MotionOutcomeReplay:
+    """Read back the reference an attempt wrote.
+
+    The product only writes this file (`as_record`); picking it up again is what
+    a replay does by hand, so the reader lives here with its one caller.
+    """
+    from pathlib import Path
+
+    record = json.loads((Path(output) / REFERENCE_NAME).read_text())
+    assert set(record) == {"schema", "path", "sha256"}
+    assert record["schema"] == SCHEMA
+    replay = MotionOutcomeReplay(Path(record["path"]), record["sha256"])
+    replay.read()
+    return replay
 
 
 @pytest.fixture
@@ -75,7 +95,7 @@ def test_failure_is_exactly_replayed_before_later_global_success_and_fresh_attem
     source, calls, failed = runtime
     carrier = _carrier("still-0", "still-1", "still-2")
     cold, cost = motion.production_motion_resolver(source)([carrier])
-    reference = MotionOutcomeReplay.from_output(source.artifact_dir)
+    reference = replay_from_output(source.artifact_dir)
     original_bytes = reference.path.read_bytes()
     assert calls == ["video-0", "video-1", "video-2"]
     assert cost["new_motion_downloads"] == 2 and cost["unavailable_sources"] == 1
@@ -88,7 +108,7 @@ def test_failure_is_exactly_replayed_before_later_global_success_and_fresh_attem
     assert calls == ["video-0", "video-1", "video-2", "video-2"]
     assert fresh_cost["new_motion_downloads"] == 1 and fresh[0]["motion_evidence"]["available"] == 3
     assert reference.path.read_bytes() == original_bytes  # Never overwrite historical evidence.
-    assert MotionOutcomeReplay.from_output(source.artifact_dir).path != reference.path
+    assert replay_from_output(source.artifact_dir).path != reference.path
 
     # The old attempt remains exact even after this new success populated the shared bank.
     def forbidden(**_kwargs):
@@ -115,7 +135,7 @@ def test_one_factory_preserves_multiple_completion_batches_and_empty_attempts(ru
     two = [_carrier("still-3", "still-4")]
     first, _ = resolve(one)
     second, _ = resolve(two)
-    reference = MotionOutcomeReplay.from_output(source.artifact_dir)
+    reference = replay_from_output(source.artifact_dir)
     assert len(reference.read()["units"]) == 2
     replay = motion.production_motion_resolver(changed(source, motion_outcome_replay=reference))
     count = len(calls)
@@ -124,7 +144,7 @@ def test_one_factory_preserves_multiple_completion_batches_and_empty_attempts(ru
     empty_source = changed(source, artifact_dir=source.artifact_dir / "empty")
     empty = motion.production_motion_resolver(empty_source)
     assert empty([])[0] == []
-    ref = MotionOutcomeReplay.from_output(empty_source.artifact_dir)
+    ref = replay_from_output(empty_source.artifact_dir)
     assert ref.read()["units"] == {}
     assert (
         motion.production_motion_resolver(changed(empty_source, motion_outcome_replay=ref))([])[0]
@@ -136,7 +156,7 @@ def test_one_factory_preserves_multiple_completion_batches_and_empty_attempts(ru
 def test_source_or_scope_change_rejects_replay_before_transport(runtime, mutation):
     source, calls, _ = runtime
     motion.production_motion_resolver(source)([_carrier("still-0", "still-1", "still-2")])
-    reference = MotionOutcomeReplay.from_output(source.artifact_dir)
+    reference = replay_from_output(source.artifact_dir)
     altered = changed(source, motion_outcome_replay=reference)
     if mutation in {"video", "metadata"}:
         altered.assets = dict(source.assets)
@@ -162,7 +182,7 @@ def test_source_or_scope_change_rejects_replay_before_transport(runtime, mutatio
 def test_changed_retained_unit_membership_rejects_replay(runtime):
     source, calls, _ = runtime
     motion.production_motion_resolver(source)([_carrier("still-0", "still-1", "still-2")])
-    ref = MotionOutcomeReplay.from_output(source.artifact_dir)
+    ref = replay_from_output(source.artifact_dir)
     replay = motion.production_motion_resolver(changed(source, motion_outcome_replay=ref))
     count = len(calls)
     with pytest.raises(ValueError, match="retained unit membership"):
@@ -175,7 +195,7 @@ def test_tampered_or_incomplete_snapshot_and_changed_measurement_fail_closed(run
     source, calls, _ = runtime
     carrier = _carrier("still-0", "still-1", "still-2")
     motion.production_motion_resolver(source)([carrier])
-    ref = MotionOutcomeReplay.from_output(source.artifact_dir)
+    ref = replay_from_output(source.artifact_dir)
     record = ref.read()
     count = len(calls)
     if change == "bytes":
@@ -227,7 +247,7 @@ def test_known_wrapped_status_is_preserved_without_inventing_unknown_status(runt
 
     monkeypatch.setattr(sync_client, "SyncImmichClient", UnavailableClient)
     result, cost = motion.production_motion_resolver(source)([_carrier("still-0")])
-    journal = MotionOutcomeReplay.from_output(source.artifact_dir).read()
+    journal = replay_from_output(source.artifact_dir).read()
     outcome = next(iter(next(iter(journal["units"].values()))["outcomes"].values()))
     assert outcome == {
         "status": "unavailable",
@@ -246,7 +266,7 @@ def test_empty_native_sample_set_keeps_the_still_and_is_exactly_replayable(runti
     source.moment_asset_ids = {"F01": ("still-0",)}
     carrier = _carrier("still-0")
     cold, metrics = motion.production_motion_resolver(source)([carrier])
-    reference = MotionOutcomeReplay.from_output(source.artifact_dir)
+    reference = replay_from_output(source.artifact_dir)
     assert len(reference.read()["units"]) == 1
     warm, _ = motion.production_motion_resolver(changed(source, motion_outcome_replay=reference))(
         [carrier]

@@ -23,7 +23,7 @@ from immich_memories.analysis.editorial_structure_contract import (
 )
 from immich_memories.analysis.editorial_structure_planner import plan_structure
 from immich_memories.analysis.moment_cards import MomentCard
-from immich_memories.analysis.selection_source import EditorialGroup
+from immich_memories.analysis.selection_source_groups import EditorialGroup
 from immich_memories.api.models import AssetType
 from immich_memories.config_loader import Config
 from immich_memories.timeperiod import DateRange
@@ -72,7 +72,6 @@ def source(tmp_path, *, seconds, pictures=50, private_opening=False):
         full_asset_ids=group.candidate_ids,
         selectable_asset_ids=group.candidate_ids,
         representative_asset_ids=group.candidate_ids[:1],
-        representative_reasons=("Shows the move unfolding.",),
         text="Moving home",
         evidence=MomentCardEvidence(
             episode_meaning="Packing furniture and moving into a new home.",

@@ -1,9 +1,8 @@
 """Who a memory is about — the wizard's person picking, in one place.
 
-Every card that can be narrowed to people gets the same widget and the same
-meaning: several people is an intersection, the memory being what holds all of
-them. That is what ``--person Alice --person Bob`` has always fetched, and
-until #666 the wizard could only phrase it on two cards.
+Every card that can be narrowed to people gets the same widget. Multi-person
+memories also say whether several names mean everybody together or any named
+person. That choice reaches source discovery rather than an editorial prompt.
 
 The renderers take the state and the "apply" callback rather than reaching for
 either: the card that owns a memory type is what knows when its parameters are
@@ -49,6 +48,73 @@ def _named_people(state: AppState) -> dict[str, Person]:
     return {person.name: person for person in state.people if person.name}
 
 
+def _set_grouped_condition(state: AppState, value: str) -> None:
+    """Commit only a complete condition; an invalid edit blocks source loading."""
+    from immich_memories.api.person_expression import PersonExpression
+
+    if not value.strip():
+        state.clear_person_expression()
+        state.memory_preset_params["person_names"] = []
+        state.narrow_to_people([])
+        return
+    try:
+        state.set_person_expression(PersonExpression.parse(value))
+    except ValueError as exc:
+        state.person_expression_error = str(exc)
+        raise
+
+
+def _render_grouped_condition(
+    state: AppState, memory_type: MemoryType, apply: ApplyPreset
+) -> Callable[[], None]:
+    """Offer nested conditions without turning them into a flat people picker."""
+    from immich_memories.api.person_expression import PersonExpression
+
+    stored = state.memory_preset_params.get("person_expression")
+    saved = PersonExpression.from_dict(stored).display_label if stored is not None else ""
+    syncing = False
+
+    def on_condition(e) -> None:
+        if syncing:
+            return
+        try:
+            _set_grouped_condition(state, e.value or "")
+        except ValueError as exc:
+            message.set_text(str(exc))
+            return
+        expression = state.person_expression
+        message.set_text(
+            f"Active condition: {expression.display_label}" if expression is not None else ""
+        )
+        apply(memory_type)
+
+    field = ui.input(
+        label="Grouped people condition (optional)",
+        value=saved,
+        placeholder='("Person A" OR "Person B") AND "Person C"',
+        on_change=on_condition,
+    ).classes("w-full mt-2")
+    ui.label(
+        "Use quoted names, AND, OR and parentheses. AND requires the people in the same "
+        "photo or video, not separate pictures from the same event. "
+        "Changing the people picker replaces this condition."
+    ).classes("text-xs")
+    message = ui.label(
+        state.person_expression_error or (f"Active condition: {saved}" if saved else "")
+    )
+
+    def clear_field() -> None:
+        nonlocal syncing
+        syncing = True
+        try:
+            field.set_value("")
+            message.set_text("")
+        finally:
+            syncing = False
+
+    return clear_field
+
+
 def render_person_picker(state: AppState, memory_type: MemoryType, apply: ApplyPreset) -> None:
     """An optional person filter, on any memory type that can carry one."""
     by_name = _named_people(state)
@@ -56,8 +122,12 @@ def render_person_picker(state: AppState, memory_type: MemoryType, apply: ApplyP
         return
 
     saved = state.memory_preset_params.get("person_names") or []
+    clear_grouped_display: Callable[[], None] | None = None
 
     def on_people(e) -> None:
+        state.clear_person_expression()
+        if clear_grouped_display is not None:
+            clear_grouped_display()
         chosen = [name for name in (e.value or []) if name in by_name]
         state.memory_preset_params["person_names"] = chosen
         apply(memory_type)
@@ -72,6 +142,7 @@ def render_person_picker(state: AppState, memory_type: MemoryType, apply: ApplyP
         "Narrow this memory to these people. Pick several and only moments "
         "with all of them are used — the same as --person twice on the CLI."
     )
+    clear_grouped_display = _render_grouped_condition(state, memory_type, apply)
 
 
 def render_person_spotlight_params(state: AppState, apply: ApplyPreset) -> None:
@@ -97,6 +168,7 @@ def render_person_spotlight_params(state: AppState, apply: ApplyPreset) -> None:
         current_name = next((name for name, p in by_name.items() if p.id == saved_person_id), None)
 
         def on_person(e) -> None:
+            state.clear_person_expression()
             selected = by_name.get(e.value)
             if selected:
                 state.memory_preset_params["person_id"] = selected.id
@@ -138,6 +210,7 @@ def render_person_spotlight_params(state: AppState, apply: ApplyPreset) -> None:
 def render_multi_person_params(state: AppState, apply: ApplyPreset) -> None:
     """Year (with All Time) + multi-person chips (2+ people)."""
     by_name = _named_people(state)
+    clear_grouped_display: Callable[[], None] | None = None
 
     with ui.row().classes("gap-4 items-end flex-wrap"):
         year_options = state.years or list(range(2024, 2019, -1))
@@ -156,6 +229,9 @@ def render_multi_person_params(state: AppState, apply: ApplyPreset) -> None:
         saved_names = state.memory_preset_params.get("person_names") or []
 
         def on_people(e) -> None:
+            state.clear_person_expression()
+            if clear_grouped_display is not None:
+                clear_grouped_display()
             state.memory_preset_params["person_names"] = [
                 name for name in (e.value or []) if name in by_name
             ]
@@ -169,5 +245,22 @@ def render_multi_person_params(state: AppState, apply: ApplyPreset) -> None:
             multiple=True,
         ).props("use-chips").classes("w-64")
 
+        saved_match = state.memory_preset_params.get("person_match", "and")
+
+        def on_match(e) -> None:
+            state.clear_person_expression()
+            if clear_grouped_display is not None:
+                clear_grouped_display()
+            state.memory_preset_params["person_match"] = e.value
+            apply(MemoryType.MULTI_PERSON)
+
+        ui.toggle(
+            {"and": "Together (AND)", "or": "Any of (OR)"},
+            value=saved_match,
+            on_change=on_match,
+        ).classes("mt-1")
+
     state.memory_preset_params.setdefault("year", saved_year)
+    state.memory_preset_params.setdefault("person_match", saved_match)
+    clear_grouped_display = _render_grouped_condition(state, MemoryType.MULTI_PERSON, apply)
     apply(MemoryType.MULTI_PERSON)

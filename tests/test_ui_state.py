@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from immich_memories.analysis.editorial_planner import EditorialSelection
 from immich_memories.api.compatibility import ApiVersionPolicy
 from immich_memories.api.models import Asset, AssetType, VideoClipInfo
 from immich_memories.config_loader import Config
@@ -102,6 +103,7 @@ class TestAppStateDefaults:
             }
         )
 
+        # WHY: get_config normally reads the user's config file; stubbed to return the test Config
         with patch("immich_memories.config_loader.get_config", return_value=config):
             ensure_config(state)
 
@@ -138,6 +140,16 @@ class TestAppStateResetClips:
         state.pipeline_result = {"some": "data"}
         state.reset_clips()
         assert state.pipeline_result is None
+
+    def test_reset_clears_editorial_carriers_and_decisions(self):
+        state = AppState()
+        state.pipeline_selected_clips = [make_clip("planned")]
+        state.editorial_selections = (EditorialSelection(asset_id="planned", render_mode="motion"),)
+
+        state.reset_clips()
+
+        assert state.pipeline_selected_clips == []
+        assert state.editorial_selections == ()
 
     def test_reset_clears_rotations(self):
         """reset_clips() empties clip_rotations."""
@@ -215,29 +227,46 @@ class TestAppStateGetSelectedClips:
         state.selected_clip_ids = {"c1"}
         assert not state.get_selected_clips()
 
-    def test_photos_the_engine_admitted_ride_along_in_date_order(self):
-        """Photos live in pipeline_result, not clips; Step 4 never saw them (#778)."""
-        state = AppState()
-        video = make_clip("v1", file_created_at=datetime(2025, 6, 2, tzinfo=UTC))
-        state.clips = [video]
-        state.include_photos = True
-        state.selected_clip_ids = {"v1", "p1", "p2"}
-        state.selected_photo_ids = {"p1"}  # p2 was unticked after the run
-        state.pipeline_result = {
-            "selected_clips": [video, _photo_clip("p1", day=1), _photo_clip("p2", day=3)]
-        }
+    def test_planner_order_leads_manual_library_additions_with_exact_carriers(self):
+        """Unified planner carriers survive even when the legacy library lacks them."""
+        manual_first = make_clip("manual-first")
+        stale_planned_copy = make_clip("planned-video")
+        manual_second = make_clip("manual-second")
+        planned_photo = make_clip("planned-photo")
+        planned_photo.asset.type = AssetType.IMAGE
+        planned_video = make_clip("planned-video")
+        state = AppState(
+            clips=[manual_first, stale_planned_copy, manual_second],
+            selected_clip_ids={
+                "manual-first",
+                "manual-second",
+                "planned-photo",
+                "planned-video",
+            },
+        )
+        state.pipeline_selected_clips = [planned_photo, planned_video]
 
-        assert [c.asset.id for c in state.get_selected_clips()] == ["p1", "v1"]
+        selected = state.get_selected_clips()
 
-    def test_photos_stay_out_when_photos_are_off(self):
-        state = AppState()
-        state.clips = [make_clip("v1")]
-        state.include_photos = False
-        state.selected_clip_ids = {"v1", "p1"}
-        state.selected_photo_ids = {"p1"}
-        state.pipeline_result = {"selected_clips": [_photo_clip("p1", day=1)]}
+        assert selected == [planned_photo, planned_video, manual_first, manual_second]
+        assert selected[0] is planned_photo
+        assert selected[1] is planned_video
 
-        assert [c.asset.id for c in state.get_selected_clips()] == ["v1"]
+    def test_planner_order_is_filtered_before_manual_library_order_is_appended(self):
+        planned_first = make_clip("planned-first")
+        planned_second = make_clip("planned-second")
+        manual_first = make_clip("manual-first")
+        manual_second = make_clip("manual-second")
+        state = AppState(
+            clips=[manual_second, planned_first, manual_first],
+            pipeline_selected_clips=[planned_first, planned_second],
+            selected_clip_ids={"planned-second", "manual-first", "manual-second"},
+        )
+
+        selected = state.get_selected_clips()
+
+        assert selected == [planned_second, manual_second, manual_first]
+        assert selected[0] is planned_second
 
 
 class TestAppStateSingleton:
@@ -253,6 +282,7 @@ class TestAppStateSingleton:
         """get_app_state() returns the same instance on repeated calls."""
         mock_app = MagicMock()
         mock_app.storage.user = {}
+        # WHY: get_app_state reads nicegui.app.storage.user; faked so no live server is needed
         with patch("nicegui.app", mock_app):  # WHY: no real NiceGUI server in unit tests
             reset_app_state()
             s1 = get_app_state()
@@ -263,6 +293,7 @@ class TestAppStateSingleton:
         """reset_app_state() creates a fresh AppState."""
         mock_app = MagicMock()
         mock_app.storage.user = {}
+        # WHY: app.storage.user needs a live NiceGUI app; nicegui.app is faked so none is required
         with patch("nicegui.app", mock_app):  # WHY: no real NiceGUI server in unit tests
             s1 = get_app_state()
             s1.step = 3
@@ -388,6 +419,7 @@ def test_generation_factory_passes_state_api_version_to_client(tmp_path) -> None
         immich_api_version=ApiVersionPolicy.V2,
     )
 
+    # WHY: SyncImmichClient is the Immich HTTP client; captured to verify api_version is forwarded
     with patch("immich_memories.api.immich.SyncImmichClient") as client_factory:
         _build_generation_params(state, [], tmp_path / "memory.mp4")
 
@@ -410,10 +442,46 @@ def test_generation_factory_preserves_configured_h265_when_ui_untouched(tmp_path
         immich_api_key="test-api-key",
     )
 
+    # WHY: SyncImmichClient would open a real connection; stubbed since only output_format matters
     with patch("immich_memories.api.immich.SyncImmichClient"):
         params = _build_generation_params(state, [], tmp_path / "memory.mp4")
 
     assert params.output_format is None
+
+
+def test_generation_factory_projects_editorial_decisions_onto_current_selection(
+    tmp_path,
+) -> None:
+    from immich_memories.ui.pages._step4_generate import _build_generation_params
+
+    kept = make_clip("kept-planner-clip")
+    removed = make_clip("removed-planner-clip")
+    manually_added = make_clip("manual-legacy-clip")
+    kept_decision = EditorialSelection(asset_id=kept.asset.id, render_mode="motion")
+    state = AppState(
+        config=Config(),
+        immich_url="https://immich.example.com",
+        immich_api_key="test-api-key",
+        selected_clip_ids={kept.asset.id, manually_added.asset.id},
+        editorial_selections=(
+            kept_decision,
+            EditorialSelection(asset_id=removed.asset.id, render_mode="motion"),
+        ),
+    )
+
+    # WHY: SyncImmichClient is stubbed so building params doesn't require a live Immich server
+    with patch("immich_memories.api.immich.SyncImmichClient"):
+        params = _build_generation_params(
+            state,
+            [kept, manually_added],
+            tmp_path / "memory.mp4",
+        )
+
+    assert params.editorial_selections == (kept_decision,)
+    assert [clip.asset.id for clip in params.clips] == [
+        "kept-planner-clip",
+        "manual-legacy-clip",
+    ]
 
 
 def test_generation_factory_maps_explicit_ui_h265_override(tmp_path) -> None:
@@ -426,6 +494,7 @@ def test_generation_factory_maps_explicit_ui_h265_override(tmp_path) -> None:
         immich_api_key="test-api-key",
     )
 
+    # WHY: SyncImmichClient is stubbed; this test only checks the resolved output_format value
     with patch("immich_memories.api.immich.SyncImmichClient"):
         params = _build_generation_params(state, [], tmp_path / "memory.mp4")
 
@@ -447,6 +516,7 @@ def test_generation_factory_preserves_ui_music_and_delivery_boundaries(
         upload_album_name="Album At Click Time",
     )
 
+    # WHY: SyncImmichClient is stubbed so no real Immich connection is attempted here
     with patch("immich_memories.api.immich.SyncImmichClient"):
         params = _build_generation_params(state, [], tmp_path / "memory.mp4")
 
@@ -467,6 +537,7 @@ def test_config_initialized_ui_label_is_not_an_explicit_override(tmp_path) -> No
         immich_api_key="test-api-key",
     )
 
+    # WHY: SyncImmichClient is patched to keep this test isolated from a real Immich server
     with patch("immich_memories.api.immich.SyncImmichClient"):
         params = _build_generation_params(state, [], tmp_path / "memory.mp4")
 
@@ -637,20 +708,20 @@ class TestPersonScope:
 
         That card writes its picks to memory_preset_params and never touches
         selected_person, so a lone id read as "no people named" turned a memory
-        of Alice into a memory of the whole window.
+        of Riley into a memory of the whole window.
         """
         state = AppState()
-        state.memory_preset_params = {"person_ids": ["person-alice"]}
+        state.memory_preset_params = {"person_ids": ["person-riley"]}
 
-        assert state.person_ids == ["person-alice"]
+        assert state.person_ids == ["person-riley"]
 
     def test_a_single_pick_reads_as_a_list_of_one(self) -> None:
         from immich_memories.api.models import Person
 
         state = AppState()
-        state.selected_person = Person(id="person-alice", name="Alice")
+        state.selected_person = Person(id="person-riley", name="Riley")
 
-        assert state.person_ids == ["person-alice"]
+        assert state.person_ids == ["person-riley"]
 
     def test_a_memory_about_nobody_names_nobody(self) -> None:
         assert AppState().person_ids == []
@@ -673,16 +744,16 @@ class TestAdoptingAPreset:
 
     def test_a_year_in_review_narrows_to_everyone_the_filter_names(self) -> None:
         """The wizard could not phrase this at all before #666."""
-        state = self._state_with("Alice", "Bob")
+        state = self._state_with("Riley", "Bob")
 
         state.apply_preset(
-            create_preset(MemoryType.YEAR_IN_REVIEW, year=2024, person_names=["Alice", "Bob"])
+            create_preset(MemoryType.YEAR_IN_REVIEW, year=2024, person_names=["Riley", "Bob"])
         )
 
-        assert state.person_ids == ["person-alice", "person-bob"]
+        assert state.person_ids == ["person-riley", "person-bob"]
 
     def test_naming_nobody_leaves_the_memory_wide(self) -> None:
-        state = self._state_with("Alice", "Bob")
+        state = self._state_with("Riley", "Bob")
 
         state.apply_preset(create_preset(MemoryType.YEAR_IN_REVIEW, year=2024))
 
@@ -694,38 +765,38 @@ class TestAdoptingAPreset:
         The roster is what Immich returned; a name absent from it has no id to
         query with, so it cannot silently become "everybody".
         """
-        state = self._state_with("Alice")
+        state = self._state_with("Riley")
 
         state.apply_preset(
-            create_preset(MemoryType.YEAR_IN_REVIEW, year=2024, person_names=["Alice", "Mallory"])
+            create_preset(MemoryType.YEAR_IN_REVIEW, year=2024, person_names=["Riley", "Mallory"])
         )
 
-        assert state.person_ids == ["person-alice"]
+        assert state.person_ids == ["person-riley"]
 
     def test_one_person_is_named_for_the_title(self) -> None:
-        state = self._state_with("Alice", "Bob")
+        state = self._state_with("Riley", "Bob")
 
         state.apply_preset(
-            create_preset(MemoryType.PERSON_SPOTLIGHT, year=2024, person_names=["Alice"])
+            create_preset(MemoryType.PERSON_SPOTLIGHT, year=2024, person_names=["Riley"])
         )
 
         assert state.selected_person is not None
-        assert state.selected_person.name == "Alice"
+        assert state.selected_person.name == "Riley"
 
     def test_a_group_has_no_single_name_to_put_on_the_title(self) -> None:
-        state = self._state_with("Alice", "Bob")
+        state = self._state_with("Riley", "Bob")
         state.apply_preset(
-            create_preset(MemoryType.PERSON_SPOTLIGHT, year=2024, person_names=["Alice"])
+            create_preset(MemoryType.PERSON_SPOTLIGHT, year=2024, person_names=["Riley"])
         )
 
         state.apply_preset(
-            create_preset(MemoryType.MULTI_PERSON, year=2024, person_names=["Alice", "Bob"])
+            create_preset(MemoryType.MULTI_PERSON, year=2024, person_names=["Riley", "Bob"])
         )
 
         assert state.selected_person is None
 
     def test_the_preset_also_brings_its_windows_and_its_length(self) -> None:
-        state = self._state_with("Alice")
+        state = self._state_with("Riley")
         preset = create_preset(MemoryType.MONTHLY_HIGHLIGHTS, year=2024, month=3)
 
         state.apply_preset(preset)
@@ -733,12 +804,25 @@ class TestAdoptingAPreset:
         assert state.date_ranges == preset.date_ranges
         assert state.target_duration == 1.0
 
+    def test_yearly_person_memories_use_the_ten_minute_recap_ceiling(self) -> None:
+        state = self._state_with("Riley", "Bob")
+
+        state.apply_preset(
+            create_preset(MemoryType.PERSON_SPOTLIGHT, year=2024, person_names=["Riley"])
+        )
+        assert state.target_duration == 10.0
+
+        state.apply_preset(
+            create_preset(MemoryType.MULTI_PERSON, year=2024, person_names=["Riley", "Bob"])
+        )
+        assert state.target_duration == 10.0
+
 
 class TestChoosingAMemoryType:
     """Switching cards drops what the previous card collected."""
 
     def test_the_person_does_not_follow_you_to_the_next_card(self) -> None:
-        """Alice picked for a Person Spotlight must not narrow a Year in Review.
+        """Riley picked for a Person Spotlight must not narrow a Year in Review.
 
         Every card shows a person widget now, so a person left behind by the
         previous one would filter the new memory with a picker on screen
@@ -747,8 +831,8 @@ class TestChoosingAMemoryType:
         from immich_memories.api.models import Person
 
         state = AppState()
-        state.selected_person = Person(id="person-alice", name="Alice")
-        state.memory_preset_params = {"person_id": "person-alice", "year": 2024}
+        state.selected_person = Person(id="person-riley", name="Riley")
+        state.memory_preset_params = {"person_id": "person-riley", "year": 2024}
 
         state.choose_memory_type("year_in_review")
 

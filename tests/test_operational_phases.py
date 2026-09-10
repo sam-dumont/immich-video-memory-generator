@@ -9,12 +9,14 @@ from pathlib import Path
 import pytest
 
 from immich_memories.analysis.selection_coverage import AnalysisCoverage
+from immich_memories.analysis.smart_pipeline import ClipWithSegment, PipelineResult
 from immich_memories.automation.state_store import AutomationStateStore
 from immich_memories.cache import database as cache_database
 from immich_memories.cache.database import VideoAnalysisCache
 from immich_memories.config_loader import Config
 from immich_memories.operations.phases import OperationalPhase, PhaseEvent
 from immich_memories.tracking.run_tracker import RunTracker
+from tests.conftest import make_clip
 
 
 def test_outer_phases_have_one_stable_monotonic_order() -> None:
@@ -116,7 +118,7 @@ def test_run_phase_update_is_monotonic_and_mirrors_exact_attempt(tmp_path: Path)
     assert persisted_attempt.last_phase is OperationalPhase.RENDER
 
 
-def test_analysis_failure_retains_attempt_phase_without_creating_run(tmp_path: Path) -> None:
+def test_editorial_failure_retains_attempt_phase_without_creating_run(tmp_path: Path) -> None:
     from unittest.mock import MagicMock, patch
 
     from immich_memories.cli._pipeline_runner import run_pipeline_and_generate
@@ -130,17 +132,16 @@ def test_analysis_failure_retains_attempt_phase_without_creating_run(tmp_path: P
     )
     state = AutomationStateStore(config.cache.database_path)
     attempt = state.start_attempt("daily wake")
-    clip = MagicMock()
-    clip.asset.id = "asset-1"
-    clip.width = 1920
-    clip.height = 1080
+    clip = make_clip("asset-1", file_created_at=datetime(2026, 1, 1))
 
+    # WHY: runtime construction owns annotation stores and model clients; fake the outer route.
     with (
-        patch("immich_memories.generate.assets_to_clips", return_value=[clip]),
-        patch("immich_memories.analysis.smart_pipeline.SmartPipeline") as pipeline_type,
-        pytest.raises(RuntimeError, match="analysis exploded"),
+        patch("immich_memories.analysis.editorial_runtime.build_smart_pipeline") as build_pipeline,
+        pytest.raises(RuntimeError, match="editorial selection exploded"),
     ):
-        pipeline_type.return_value.run_analysis.side_effect = RuntimeError("analysis exploded")
+        build_pipeline.return_value.run_editorial_source.side_effect = RuntimeError(
+            "editorial selection exploded"
+        )
         run_pipeline_and_generate(
             assets=[clip.asset],
             client=MagicMock(),
@@ -164,7 +165,8 @@ def test_analysis_failure_retains_attempt_phase_without_creating_run(tmp_path: P
 
     persisted = state.get_last_attempt()
     assert persisted is not None
-    assert persisted.last_phase is OperationalPhase.ANALYSIS
+    assert persisted.last_phase is OperationalPhase.SELECTION
+    build_pipeline.return_value.run_editorial_source.assert_called_once()
     assert RunTracker("unused", db_path=config.cache.database_path).db.list_runs() == []
 
 
@@ -181,7 +183,7 @@ def test_run_continues_when_phase_database_write_fails(tmp_path: Path, monkeypat
     assert tracker.db.get_run(tracker.run_id).status == "running"  # type: ignore[union-attr]
 
 
-def test_analysis_continues_when_attempt_phase_write_fails(tmp_path: Path) -> None:
+def test_editorial_continues_when_attempt_phase_write_fails(tmp_path: Path) -> None:
     from unittest.mock import MagicMock, patch
 
     from immich_memories.cli._pipeline_runner import run_pipeline_and_generate
@@ -195,44 +197,30 @@ def test_analysis_continues_when_attempt_phase_write_fails(tmp_path: Path) -> No
     )
     state = AutomationStateStore(config.cache.database_path)
     attempt = state.start_attempt("daily wake")
-    clip = MagicMock()
-    clip.asset.id = "asset-1"
-    clip.width = 1920
-    clip.height = 1080
-    # WHY: the runner reports pool coverage after selection, so the mocked
-    # result has to carry a real one rather than a bare mock to do sums on.
-    result = MagicMock(
+    clip = make_clip("asset-1", file_created_at=datetime(2026, 1, 1))
+    result = PipelineResult(
         selected_clips=[clip],
-        clip_segments={},
+        clip_segments={clip.asset.id: (0.0, 4.0)},
+        errors=[],
+        stats={"selection_route": "editorial-source"},
         coverage=AnalysisCoverage(analyzed=1, total=1),
     )
     output = tmp_path / "memory.mp4"
 
+    # WHY: runtime construction owns annotation stores and model clients; fake the outer route.
     with (
-        patch("immich_memories.generate.assets_to_clips", return_value=[clip]),
-        patch("immich_memories.analysis.smart_pipeline.SmartPipeline") as pipeline_type,
-        patch("immich_memories.generate.generate_memory", return_value=output),
+        patch("immich_memories.analysis.editorial_runtime.build_smart_pipeline") as build_pipeline,
+        # WHY: generation downloads media and invokes FFmpeg; inspect the handoff only.
+        patch("immich_memories.generate.generate_memory", return_value=output) as generate,
+        # WHY: force the durable telemetry write to fail without changing selection or rendering.
         patch.object(
             AutomationStateStore,
             "update_phase",
             side_effect=sqlite3.OperationalError("database is busy"),
-        ),
+        ) as update_phase,
     ):
-        # WHY: selection now reads clip subject metadata, so an analysed
-        # candidate has to carry a real clip rather than a bare mock.
-        analysed = MagicMock()
-        analysed.clip.asset.id = "asset-1"
-        analysed.clip.asset.people = []
-        analysed.clip.llm_category = None
-        analysed.clip.llm_subjects = None
-        analysed.clip.llm_description = None
-        analysed.score = 0.5
-        analysed.start_time = 0.0
-        analysed.end_time = 4.0
-        analysed.clip.width = 3840
-        analysed.clip.height = 2160
-        pipeline_type.return_value.run_analysis.return_value = [analysed]
-        pipeline_type.return_value.run_selection.return_value = result
+        candidate = ClipWithSegment(clip=clip, start_time=0.0, end_time=4.0, score=0.5)
+        build_pipeline.return_value.run_editorial_source.return_value = ([candidate], result)
         actual, _, _ = run_pipeline_and_generate(
             assets=[clip.asset],
             client=MagicMock(),
@@ -255,3 +243,8 @@ def test_analysis_continues_when_attempt_phase_write_fails(tmp_path: Path) -> No
         )
 
     assert actual == output
+    build_pipeline.return_value.run_editorial_source.assert_called_once()
+    assert update_phase.call_count > 0
+    generate.assert_called_once()
+    assert generate.call_args.args[0].clips == [clip]
+    assert generate.call_args.args[0].completed_operational_phase is OperationalPhase.SELECTION

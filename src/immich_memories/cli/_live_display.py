@@ -44,6 +44,8 @@ class ProgressDisplay(Protocol):
 
     def update(self, task_id: TaskID, **kwargs: Any) -> None: ...
 
+    def reset(self, task_id: TaskID, *, total: float | None = None) -> None: ...
+
     def stop(self) -> None: ...
 
 
@@ -83,12 +85,17 @@ class QuietDisplay:
 
     def update(self, task_id: TaskID, **kwargs: Any) -> None:
         if "description" in kwargs:
-            self._tasks[task_id] = kwargs["description"]
-            self._logger.info(kwargs["description"])
+            description = kwargs["description"]
+            if description != self._tasks.get(task_id):
+                self._tasks[task_id] = description
+                self._logger.info(description)
         if kwargs.get("completed"):
             desc = self._tasks.get(task_id, "")
             if desc and "description" not in kwargs:
                 self._logger.info(f"Done: {desc}")
+
+    def reset(self, task_id: TaskID, *, total: float | None = None) -> None:
+        """No graphical progress state exists in quiet mode."""
 
     def stop(self) -> None:
         pass
@@ -210,6 +217,8 @@ class LiveDisplay:
             return
 
         with self._lock:
+            if kwargs == {"description": state.description}:
+                return
             completed = kwargs.get("completed", _MISSING)
             description = kwargs.get("description", _MISSING)
 
@@ -224,6 +233,19 @@ class LiveDisplay:
             elif description is not _MISSING:
                 self._progress.update(task_id, description=state.description)
 
+            self._refresh()
+
+    def reset(self, task_id: TaskID, *, total: float | None = None) -> None:
+        """Switch an existing task to a genuinely indeterminate or counted stage."""
+        with self._lock:
+            state = self._tasks[int(task_id)]
+            state.total = total
+            state.done = False
+            # Rich treats None as "keep the current total", even in reset().
+            # Set the public task state explicitly before resetting its clock.
+            rich_task = next(task for task in self._progress.tasks if task.id == task_id)
+            rich_task.total = total
+            self._progress.reset(task_id, total=total)
             self._refresh()
 
     def add_log(self, message: str) -> None:

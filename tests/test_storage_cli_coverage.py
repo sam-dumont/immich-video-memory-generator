@@ -91,8 +91,11 @@ def _invoke(args: list[str], config: Config | None = None) -> object:
     """Invoke the CLI with mocked config and init_config_dir."""
     config = config or Config()
     runner = CliRunner()
+    # WHY: CliRunner exercises the real Click tree, but these external calls are stubbed
     with (
+        # WHY: init_config_dir would create real config directories on disk; skipped here
         patch("immich_memories.cli.init_config_dir"),
+        # WHY: get_config would load the user's real config file; replaced with the test Config
         patch("immich_memories.cli.get_config", return_value=config),
         # WHY: runs/stats/config commands import get_config inline from immich_memories.config
         patch("immich_memories.config.get_config", return_value=config),
@@ -112,8 +115,11 @@ def _invoke_planned_generation(args: list[str], config: Config) -> object:
         birth_date=None,
     )
     asset = MagicMock(duration_seconds=10.0)
+    # WHY: exercises generate's argument resolution without touching a real Immich library
     with (
+        # WHY: SyncImmichClient is the Immich HTTP client; replaced so no server connection is made
         patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
+        # WHY: fetch_videos would call Immich for real assets; stubbed to return the test asset
         patch(
             "immich_memories.cli.generate.fetch_videos",
             return_value=[asset],
@@ -131,54 +137,20 @@ def _invoke_planned_generation(args: list[str], config: Config) -> object:
 # =========================================================================
 
 
-class TestVideoMetadataCRUD:
-    """save_video_metadata / get_video_metadata round-trip."""
+def _seed_video_metadata(cache, asset_id: str, codec: str) -> None:
+    """Write a row the way an older install did.
 
-    @pytest.fixture
-    def cache(self, tmp_path):
-        return VideoAnalysisCache(tmp_path / "test.db")
-
-    def test_save_and_retrieve_metadata(self, cache):
-        """Saved metadata can be retrieved with all fields intact."""
-        cache.save_video_metadata(
-            asset_id="v1",
-            checksum="c1",
-            duration_seconds=12.5,
-            width=3840,
-            height=2160,
-            bitrate=20_000_000,
-            fps=60.0,
-            codec="hevc",
-            color_space="bt2020nc",
-            color_transfer="smpte2084",
-            color_primaries="bt2020",
-            bit_depth=10,
-            rotation=90,
+    Nothing writes `video_metadata` any more -- the UI loader lost its ffprobe
+    pass when the editorial source route landed -- so the only rows the batch
+    read will ever see are ones a previous version left behind.
+    """
+    with cache._get_connection() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO video_metadata (asset_id, codec, cached_at) "
+            "VALUES (?, ?, datetime('now'))",
+            (asset_id, codec),
         )
-        meta = cache.get_video_metadata("v1")
-        assert meta is not None
-        assert meta["duration_seconds"] == 12.5
-        assert meta["width"] == 3840
-        assert meta["height"] == 2160
-        assert meta["codec"] == "hevc"
-        assert meta["color_space"] == "bt2020nc"
-        assert meta["bit_depth"] == 10
-        assert isinstance(meta["rotation"], int)
-
-    def test_get_missing_metadata_returns_none(self, cache):
-        """Requesting metadata for an absent asset returns None."""
-        assert cache.get_video_metadata("nonexistent") is None
-
-    def test_save_metadata_overwrites(self, cache):
-        """Saving metadata for the same asset_id replaces the old record."""
-        cache.save_video_metadata(asset_id="v1", codec="h264")
-        cache.save_video_metadata(asset_id="v1", codec="hevc")
-        assert cache.get_video_metadata("v1")["codec"] == "hevc"
-
-    def test_rotation_defaults_to_zero(self, cache):
-        """When rotation is None, it defaults to 0."""
-        cache.save_video_metadata(asset_id="v1", rotation=None)
-        assert cache.get_video_metadata("v1")["rotation"] == 0
+        conn.commit()
 
 
 class TestVideoMetadataBatch:
@@ -190,8 +162,8 @@ class TestVideoMetadataBatch:
 
     def test_batch_returns_only_existing(self, cache):
         """Batch query returns metadata only for assets that exist."""
-        cache.save_video_metadata(asset_id="a", codec="h264")
-        cache.save_video_metadata(asset_id="b", codec="hevc")
+        _seed_video_metadata(cache, "a", "h264")
+        _seed_video_metadata(cache, "b", "hevc")
         result = cache.get_video_metadata_batch(["a", "b", "c"])
         assert set(result.keys()) == {"a", "b"}
         assert result["a"]["codec"] == "h264"
@@ -1008,6 +980,7 @@ class TestConfigShowCommand:
             details="Server: http://photos.test:2283; API: v3",
         )
 
+        # WHY: check_immich would probe a real Immich server; stubbed to control the CheckResult
         with patch("immich_memories.preflight.check_immich", return_value=check_result) as check:
             result = _invoke(["config", "test"], config=config)
 
@@ -1027,6 +1000,7 @@ class TestConfigShowCommand:
             details="Unsupported Immich major version 4",
         )
 
+        # WHY: check_immich would need a live Immich server; stubbed to return an error result
         with patch("immich_memories.preflight.check_immich", return_value=check_result):
             result = _invoke(["config", "test"], config=config)
 

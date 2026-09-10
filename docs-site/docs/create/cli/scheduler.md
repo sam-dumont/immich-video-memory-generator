@@ -48,6 +48,20 @@ Starts the advanced/legacy scheduler daemon. Needs `scheduler.enabled: true` and
 schedule in the config. It is separate from `auto run`; do not run both daily unless you deliberately
 want independent automation paths.
 
+Each generation job has a two-hour deadline by default. It covers preparation,
+selection, rendering and upload. Set `scheduler.job_timeout_minutes` to a positive
+number to change it; an explicit value in an existing config still applies.
+
+This deadline allows a long job to finish; it does not make generation faster.
+A full year can spend over an hour in selection, and the complete job may approach
+two hours once preparation and rendering are included.
+
+On macOS and Linux, a timed-out generation is stopped together with its child
+processes. They get up to five seconds to stop after SIGTERM, followed by SIGKILL
+and a bounded wait of up to five more seconds. Scheduler shutdown uses the same
+cleanup. Captured output remains available to diagnose the failure. `auto run`
+uses the same process cleanup for its generation deadline and interruption.
+
 ## Auto-resolved parameters
 
 When a schedule fires, date parameters get resolved automatically from the fire time:
@@ -69,6 +83,7 @@ Explicit `params` in the schedule config override these auto-resolved values. Se
 scheduler:
   enabled: true
   timezone: "America/New_York"
+  job_timeout_minutes: 120
   schedules:
     - name: "yearly-recap"
       memory_type: "year_in_review"
@@ -84,7 +99,7 @@ scheduler:
     - name: "on-this-day"
       memory_type: "on_this_day"
       cron: "0 9 * * *"           # Every day at 9am
-      person_names: ["Alice"]
+      person_names: ["Riley"]
 
     - name: "summer-2024"
       memory_type: "season"

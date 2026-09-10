@@ -220,12 +220,17 @@ def _render_person_filter(state, update_fn, duration_input_ref: list) -> None:
         )
 
         def on_person_change(e):
+            state.clear_person_expression()
+            state.memory_preset_params["person_ids"] = []
+            state.memory_preset_params["person_names"] = []
             value = e.value if hasattr(e, "value") else e
             if value == "all":
                 state.selected_person = None
                 return
             selected = next((p for p in named_people if p.id == value), None)
             state.selected_person = selected
+            if selected:
+                state.memory_preset_params["person_names"] = [selected.name]
             if selected and selected.birth_date and state.time_period_mode == "year":
                 state.birthday = selected.birth_date.date()
                 state.year_type = "birthday"
@@ -318,9 +323,18 @@ def _render_options_section(state) -> None:
                 "color=primary"
             ).tooltip("Short clips from Live Photos, burst-merged when consecutive")
 
-        # Analysis Depth
+        # Forwarded-media override
         with im_card() as c4:
             c4.classes("p-3")
+            ui.switch("Accept Forwarded Media").bind_value(state, "accept_any_provenance").props(
+                "color=primary"
+            ).tooltip(
+                "For this memory, keep WhatsApp and other received media in the candidate pool"
+            )
+
+        # Analysis Depth
+        with im_card() as c5:
+            c5.classes("p-3")
             ui.select(
                 options={
                     "auto": "Auto (recommended)",

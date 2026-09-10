@@ -372,10 +372,7 @@ def test_oversized_period_prompt_skips_provider_and_stays_cold(tmp_path: Path) -
 
 
 def test_compact_period_transport_keeps_all_512_meanings_under_the_request_limit() -> None:
-    from immich_memories.analysis.text_period_insight import (
-        _PeriodEpisodeFacts,
-        _prompt_for,
-    )
+    from immich_memories.analysis.text_period_insight import _PeriodEpisodeFacts, _prompt_for
 
     start = datetime(2022, 1, 1, 12, tzinfo=UTC)
     facts = tuple(

@@ -11,11 +11,29 @@ import httpx
 import pytest
 
 from immich_memories.analysis.editorial_attached_outcomes import (
+    REFERENCE_NAME,
+    SCHEMA,
     AttachedAttemptOutcomes,
     AttachedOutcomeReplay,
 )
 from immich_memories.processing.live_material import LiveRenderMaterial, LiveSourceEntry
 from tests.test_editorial_attached_samples import Effects, provider, source
+
+
+def replay_from_output(output) -> AttachedOutcomeReplay:
+    """Read back the reference an attempt wrote.
+
+    The product only ever writes this file (`as_record`); picking it up again is
+    something a replay does by hand, so the reader lives with its one caller.
+    """
+    from pathlib import Path
+
+    record = json.loads((Path(output) / REFERENCE_NAME).read_text())
+    assert set(record) == {"schema", "path", "sha256"}
+    assert record["schema"] == SCHEMA
+    replay = AttachedOutcomeReplay(Path(record["path"]), record["sha256"])
+    replay.read()
+    return replay
 
 
 @pytest.fixture(autouse=True)
@@ -53,7 +71,7 @@ def closed_attempt(tmp_path, effects, **kwargs):
     cache.begin_material(materials(), [request()])
     result = cache.acquire(**request())
     cache.finish_material()
-    return cache, journal, result, AttachedOutcomeReplay.from_output(tmp_path / "first")
+    return cache, journal, result, replay_from_output(tmp_path / "first")
 
 
 def forbidden_effects():
@@ -206,7 +224,7 @@ def test_reordering_actual_final_material_is_not_an_exact_replay_even_with_ident
         tmp_path,
         "replay",
         forbidden_effects(),
-        replay=AttachedOutcomeReplay.from_output(tmp_path / "first"),
+        replay=replay_from_output(tmp_path / "first"),
     )
     with pytest.raises(ValueError, match="material or complete request set changed"):
         replay.begin_material(list(reversed(material)), declared)
@@ -230,10 +248,10 @@ def test_all_demands_are_validated_before_effects_and_complete_outcomes_are_requ
     with pytest.raises(ValueError, match="missing demanded outcomes"):
         cache.finish_material()
     with pytest.raises(ValueError, match="complete exact attempt"):
-        AttachedOutcomeReplay.from_output(tmp_path / "partial")
+        replay_from_output(tmp_path / "partial")
     assert cache.acquire(**declared[1]) is not None
     cache.finish_material()
-    assert AttachedOutcomeReplay.from_output(tmp_path / "partial").read()["complete"]
+    assert replay_from_output(tmp_path / "partial").read()["complete"]
     with pytest.raises(ValueError, match="outside the open declared material"):
         cache.acquire(**declared[0])
 
@@ -242,7 +260,7 @@ def test_empty_refusal_or_no_live_material_has_a_public_complete_replay_contract
     journal = AttachedAttemptOutcomes(output=tmp_path / "empty", scope={"case": "refusal"})
     journal.begin({"materials": []}, {})
     journal.finish()
-    reference = AttachedOutcomeReplay.from_output(tmp_path / "empty")
+    reference = replay_from_output(tmp_path / "empty")
     replay = AttachedAttemptOutcomes(
         output=tmp_path / "warm", scope={"case": "refusal"}, replay=reference
     )
@@ -256,7 +274,7 @@ def test_provider_empty_material_and_duplicate_demands_seal_without_extra_effect
     empty, _ = attempt(tmp_path, "empty", forbidden_effects())
     empty.begin_material([], [])
     empty.finish_material()
-    assert AttachedOutcomeReplay.from_output(tmp_path / "empty").read()["complete"]
+    assert replay_from_output(tmp_path / "empty").read()["complete"]
     effects = Effects()
     cache, journal = attempt(tmp_path, "duplicates", effects)
     cache.begin_material(materials(), [request(), request()])

@@ -51,6 +51,7 @@ class TestDownloadClip:
         mock_client = MagicMock()  # WHY: SyncImmichClient requires real server
         mock_cache = MagicMock()  # WHY: VideoDownloadCache needs disk setup
 
+        # WHY: merging a burst downloads every member from Immich and stitches them with FFmpeg.
         with patch("immich_memories.generate_downloads._download_and_merge_burst") as mock_merge:
             mock_merge.return_value = tmp_path / "merged.mp4"
             result = download_clip(

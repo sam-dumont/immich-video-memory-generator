@@ -101,16 +101,6 @@ class MotionOutcomeReplay:
             raise ValueError("motion replay artifact must be an object")
         return record
 
-    @classmethod
-    def from_output(cls, output: Path) -> MotionOutcomeReplay:
-        """Capture this exact reference after the attempt finishes, before replay."""
-        record = json.loads((output / REFERENCE_NAME).read_text())
-        if set(record) != {"schema", "path", "sha256"} or record["schema"] != SCHEMA:
-            raise ValueError("invalid motion outcome reference")
-        reference = cls(Path(record["path"]), record["sha256"])
-        reference.read()
-        return reference
-
     def as_record(self) -> dict:
         return {"schema": SCHEMA, "path": str(self.path), "sha256": self.sha256}
 

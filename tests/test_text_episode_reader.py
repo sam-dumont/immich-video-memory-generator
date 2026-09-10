@@ -618,7 +618,6 @@ def test_one_schema_envelope_remains_usable_when_followed_by_model_prose(
     ).read(projections)
 
     assert result.episodes[0].reading is not None
-    assert result.diagnostics.embedded_json_envelopes == 1
     assert result.diagnostics.discarded_invalid_cull_rows == 0
     assert result.diagnostics.discarded_conflicting_cull_rows == 0
     assert (
@@ -1060,5 +1059,4 @@ def test_text_representatives_drive_structure_without_reducing_the_reservoir(
     )
 
     assert workprint.representative_ids == ("action",)
-    assert workprint.moments[0].representative_reason == "Shows the owner actually running."
     assert workprint.moments[0].candidate_ids == ("average", "action", "portrait")

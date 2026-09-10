@@ -187,7 +187,6 @@ class ProductionMomentWallRenderer:
         self._people, self._person_token_by_id = self._build_people_namespace()
         self._private_fragments = self._collect_private_fragments()
         self._cache: dict[tuple[str, ...], RenderedMomentWall] = {}
-        self._transport_uses: Counter[tuple[str, ...]] = Counter()
 
     def render(self, cards: tuple[EditorCard, ...]) -> RenderedMomentWall:
         aliases = tuple(card.moment.alias for card in cards)
@@ -213,36 +212,6 @@ class ProductionMomentWallRenderer:
         )
         self._cache[aliases] = snapshot
         return snapshot
-
-    def render_for_transport(
-        self,
-        cards: tuple[EditorCard, ...],
-    ) -> RenderedMomentWall:
-        """Render one wall and record that its bytes enter an actual model prompt."""
-        snapshot = self.render(cards)
-        self._transport_uses[snapshot.aliases] += 1
-        return snapshot
-
-    def audit_record(self) -> dict[str, Any]:
-        """Return sanitized content identities, never the private evidence itself."""
-        snapshots = tuple(
-            (self._cache[aliases], uses) for aliases, uses in sorted(self._transport_uses.items())
-        )
-        return {
-            "format_version": self.format_version,
-            "hard_max_row_chars": MAX_PRODUCTION_MOMENT_WALL_ROW_CHARS,
-            "snapshots": [
-                {
-                    "aliases": list(snapshot.aliases),
-                    "sha256": snapshot.sha256,
-                    "characters": len(snapshot.text),
-                    "rows": len(snapshot.text.splitlines()),
-                    "max_row_chars": snapshot.max_row_chars,
-                    "uses": uses,
-                }
-                for snapshot, uses in snapshots
-            ],
-        }
 
     def _resolve_sources(
         self,

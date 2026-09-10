@@ -151,16 +151,6 @@ class LivePhotoCluster:
             starts[index + 1] = max(0.0, next_half + handoff - gap)
         return list(zip(starts, ends, strict=True))
 
-    @property
-    def estimated_duration(self) -> float:
-        """Total estimated duration after trimming overlaps."""
-        return sum(end - start for start, end in self.trim_points())
-
-    @property
-    def video_asset_ids(self) -> list[str]:
-        """Get the live photo video IDs for downloading."""
-        return [a.live_photo_video_id for a in self.assets if a.live_photo_video_id]
-
 
 def split_non_overlapping(cluster: LivePhotoCluster) -> list[LivePhotoCluster]:
     """Break a cluster at gaps where consecutive clips don't temporally overlap.
@@ -380,41 +370,6 @@ def probe_clip_has_audio(clip_path: Path) -> bool:
 
 
 _FALLBACK_BURST_FPS = 30.0
-
-
-def probe_clip_fps(clip_path: Path) -> float | None:
-    """Representative stream fps for metadata; not a VFR preservation guarantee."""
-    import json
-    import subprocess
-
-    from immich_memories.processing.probe_cache import _frame_rate
-
-    try:
-        result = subprocess.run(
-            [
-                "ffprobe",
-                "-v",
-                "error",
-                "-select_streams",
-                "v:0",
-                "-show_entries",
-                "stream=avg_frame_rate,r_frame_rate",
-                "-of",
-                "json",
-                str(clip_path),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if result.returncode:
-            return None
-        streams = json.loads(result.stdout).get("streams", [])
-        rate = _frame_rate(streams[0]) if streams else 0.0
-    except (OSError, ValueError, TypeError, subprocess.SubprocessError) as e:
-        logging.getLogger(__name__).debug("ffprobe fps check failed: %s", e)
-        return None
-    return rate if rate > 0 else None
 
 
 def burst_fps(clip_paths: list[Path]) -> float:

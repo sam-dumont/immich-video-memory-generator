@@ -39,6 +39,7 @@ from immich_memories.automation.status import (
 )
 from immich_memories.automation.variety import VarietyDecision
 from immich_memories.config_loader import Config
+from immich_memories.operations.bounded_process import run_bounded_process
 from immich_memories.security import configured_secret_values, sanitize_error_message
 from immich_memories.tracking.models import RunMetadata
 from immich_memories.tracking.run_database import RunDatabase
@@ -172,10 +173,8 @@ def _safe_tail(value: Any, secrets: tuple[str, ...] = ()) -> str:
 
 def _execute_generate(cmd: list[str]) -> ProcessResult:
     """Run one generation subprocess and capture output for config-aware redaction."""
-    result = subprocess.run(  # noqa: S603
+    result = run_bounded_process(
         cmd,
-        capture_output=True,
-        text=True,
         timeout=_GENERATION_TIMEOUT_SECONDS,
         # WHY: a scheduled run's environment is whatever launchd/systemd handed this
         # process, not the shell's. Passing it explicitly makes what the child sees a

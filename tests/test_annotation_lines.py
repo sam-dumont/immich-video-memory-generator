@@ -3,15 +3,13 @@ The source-preparation variants arrive with the slice that ports `selection_sour
 """
 
 import sqlite3
-from datetime import UTC, datetime
+from dataclasses import dataclass
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
 
-from immich_memories.analysis.annotation_lines import (
-    AnnotationPersonContext,
-    StoredAnnotationLineReader,
-)
+from immich_memories.analysis.annotation_lines import StoredAnnotationLineReader
 from immich_memories.analysis.editorial_contracts import EditorialCandidate
 from immich_memories.api.models import ExifInfo, Person
 from immich_memories.store.asset_annotations import (
@@ -21,6 +19,21 @@ from immich_memories.store.asset_annotations import (
 from tests.conftest import make_asset
 
 CAPTURED = datetime(2026, 8, 25, 12, tzinfo=UTC)
+
+
+@dataclass(frozen=True)
+class OwnerPersonContext:
+    """Stand-in for whatever the caller hands the reader as owner-reviewed context.
+
+    The reader only reads the three attributes off a structural protocol, so the
+    test supplies its own record rather than an exported class nothing in the
+    product constructs.
+    """
+
+    relationship: str | None = None
+    tier: str | None = None
+    birth_date: date | None = None
+
 
 _SCHEMA = """
 CREATE TABLE asset_people (asset_id, person_name, person_id, birth_date);
@@ -121,7 +134,7 @@ def test_a_line_renders_every_available_fact_without_stable_asset_ids(tmp_path: 
         store_path,
         subject,
         people_context={
-            "person-private-001": AnnotationPersonContext(relationship="friend", tier="inner")
+            "person-private-001": OwnerPersonContext(relationship="friend", tier="inner")
         },
     ).lines_for(("asset-private-001",))
 

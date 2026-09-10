@@ -98,9 +98,13 @@ def _run(args: list[str], client: object | None = None) -> str:
 
     # WHY: the CLI group loads the user's real config directory on startup, and
     # the scan would otherwise talk to whatever Immich this machine points at.
+    # WHY: replaces config init, config load, and the Immich client the CLI opens.
     with (
+        # WHY: init_config_dir would create a real config directory in the user's home.
         patch("immich_memories.cli.init_config_dir"),
+        # WHY: get_config would read the developer's own config.yaml off disk.
         patch("immich_memories.cli.get_config", return_value=config),
+        # WHY: SyncImmichClient is the Immich boundary; this swaps in the in-memory client.
         patch("immich_memories.api.sync_client.SyncImmichClient", client or _Library),
     ):
         result = CliRunner().invoke(main, args, catch_exceptions=False)

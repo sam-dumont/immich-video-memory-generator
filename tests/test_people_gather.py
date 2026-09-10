@@ -17,29 +17,6 @@ def test_a_date_only_stamp_is_not_midnight_suspicious() -> None:
     assert suspicious_date(date(2011, 6, 12)) is None
 
 
-def test_day_share_is_a_share_of_the_library_days_inside_the_era() -> None:
-    """Never raw counts: the library's own activity is the denominator, per era."""
-    from immich_memories.people.gather import Era, era_day_share, photographed_days
-
-    era = Era("covid", start=date(2020, 3, 1), end=date(2022, 6, 30))
-    library_days = photographed_days(
-        [datetime(2020, 4, 1 + n, 12, 0, tzinfo=UTC) for n in range(10)]
-        + [datetime(2019, 7, 4, 12, 0, tzinfo=UTC)]  # outside the era, never counted
-        + [datetime(2020, 1, 1, 12, 0, tzinfo=UTC)]  # quarantined, never a photographed day
-    )
-    person_days = photographed_days(
-        [
-            datetime(2020, 4, 2, 9, 0, tzinfo=UTC),
-            datetime(2020, 4, 5, 9, 0, tzinfo=UTC),
-            datetime(2020, 4, 9, 9, 0, tzinfo=UTC),
-        ]
-    )
-
-    assert era_day_share(person_days, library_days, era) == 0.3
-    empty_era = Era("pre-library", start=date(1990, 1, 1), end=date(1999, 12, 31))
-    assert era_day_share(person_days, library_days, empty_era) is None
-
-
 def test_era_day_shares_lists_only_eras_the_library_can_speak_for() -> None:
     """One row per era with data; an era the library never photographed says nothing."""
     from immich_memories.people.gather import COVID_ERA, Era, era_day_shares

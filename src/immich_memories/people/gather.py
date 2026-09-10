@@ -9,7 +9,6 @@ fact until the owner confirms it — the session's measured wrong story was a
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -56,20 +55,6 @@ COVID_ERA = Era(
     end=date(2022, 6, 30),
     read_rule="gaps are circumstance, never distance; the 2021 rebound inflates reunions",
 )
-
-
-def photographed_days(stamps: Iterable[datetime | date]) -> set[date]:
-    """Distinct calendar days behind a set of capture stamps, quarantine applied.
-
-    A quarantined stamp is not evidence of a photographed day: a January-first
-    default would otherwise mint a day the camera never saw.
-    """
-    days: set[date] = set()
-    for stamp in stamps:
-        if suspicious_date(stamp) is not None:
-            continue
-        days.add(stamp.date() if isinstance(stamp, datetime) else stamp)
-    return days
 
 
 def era_day_share(

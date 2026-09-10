@@ -1,8 +1,8 @@
 """Integration tests for the SmartPipeline end-to-end flow.
 
-Tests the pipeline through its public API (run()) by mocking at external
-boundaries (caches, clients) rather than internal methods. Changing
-internal method names or restructuring phases should not break these tests.
+The public run() tests use controlled editorial answers with real source
+normalization and demand. The remaining classes exercise legacy component APIs
+explicitly; they are not the production selection route.
 """
 
 from __future__ import annotations
@@ -10,7 +10,17 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
+import pytest
+
+from immich_memories.analysis.editorial_planner import EditorialPlan, EditorialSelection
+from immich_memories.analysis.editorial_source_route import EditorialSourcePlan, metadata_demand
 from immich_memories.analysis.selection_review import ReviewVerdict
+from immich_memories.analysis.selection_source import (
+    EditorialDependencies,
+    EditorialSelectionRequest,
+    SourceScope,
+    prepare_editorial_source,
+)
 from immich_memories.analysis.smart_pipeline import (
     PipelineConfig,
     PipelineResult,
@@ -41,313 +51,235 @@ def _make_clips(count: int, *, is_favorite: bool = False, hdr: bool = False) -> 
     return clips
 
 
-def _make_cached_analysis(asset_id: str, score: float = 0.5) -> MagicMock:
-    """Build a mock CachedVideoAnalysis with one segment so analysis uses cache."""
-    segment = MagicMock()
-    segment.start_time = 0.0
-    segment.end_time = 5.0
-    segment.total_score = score
-    segment.face_score = 0.3
-    segment.motion_score = 0.2
-    segment.stability_score = 0.4
-    segment.llm_description = None
-    segment.llm_emotion = None
-    segment.audio_categories = None
+class _ControlledSourcePlanner:
+    """Control only the editorial answer; retain real source eligibility and demand."""
 
-    analysis = MagicMock()
-    analysis.asset_id = asset_id
-    analysis.segments = [segment]
-    return analysis
+    def __init__(self, selections=None):
+        self.selections = selections
+        self.calls = []
+        self.demands = []
+
+    def plan_source(
+        self, sources, *, trace, include_live_photos=True, hdr_only=False, on_stage=None
+    ):
+        self.calls.append((sources, include_live_photos, hdr_only))
+        if on_stage:
+            on_stage("Preparing source metadata")
+        prepared = prepare_editorial_source(
+            EditorialSelectionRequest(SourceScope()),
+            EditorialDependencies(source_fetcher=lambda _: sources),
+            trace=trace,
+        )
+        rows = metadata_demand(prepared, sources, photo_seconds=4, hdr_only=hdr_only)
+        self.demands.append(rows)
+        if on_stage:
+            on_stage("Editing the memory")
+        selections = self.selections
+        if selections is None:
+            selections = _selections(row.clip.asset.id for row in rows)
+        return EditorialSourcePlan(rows, EditorialPlan(selections=selections))
 
 
-class TestSmartPipelineIntegration:
-    """End-to-end tests for SmartPipeline through the public run() API."""
+def _selections(ids):
+    return tuple(EditorialSelection(key, 1.25, 4.75) for key in ids)
 
-    def _make_pipeline(
-        self,
-        mock_immich_client,
-        mock_analysis_cache,
-        mock_thumbnail_cache,
-        config: PipelineConfig | None = None,
-    ) -> SmartPipeline:
-        return SmartPipeline(
+
+@pytest.fixture
+def source_pipeline(mock_immich_client, mock_analysis_cache, mock_thumbnail_cache, monkeypatch):
+    def forbidden(*_args, **_kwargs):
+        pytest.fail("production source planning entered legacy analysis or selection")
+
+    def build(*, selections=None, config=None):
+        planner = _ControlledSourcePlanner(selections)
+        pipeline = SmartPipeline(
             client=mock_immich_client,
             analysis_cache=mock_analysis_cache,
             thumbnail_cache=mock_thumbnail_cache,
-            config=config or PipelineConfig(target_clips=10, avg_clip_duration=5.0),
+            config=config or PipelineConfig(target_clips=5),
             analysis_config=AnalysisConfig(),
             app_config=Config(),
+            planner=planner,
         )
+        monkeypatch.setattr(pipeline, "run_analysis", forbidden)
+        monkeypatch.setattr(pipeline, "run_selection", forbidden)
+        monkeypatch.setattr(pipeline.analyzer, "phase_analyze", forbidden)
+        monkeypatch.setattr(pipeline.refiner, "phase_refine", forbidden)
+        monkeypatch.setattr(mock_analysis_cache, "get_analysis", forbidden)
+        return pipeline, planner
 
-    def _setup_cache_for_clips(self, mock_cache: MagicMock, clips: list) -> None:
-        """Configure mock cache to return cached analysis for all clips."""
+    return build
 
-        def get_analysis(asset_id: str, include_segments: bool = True):
-            return _make_cached_analysis(asset_id)
 
-        mock_cache.get_analysis.side_effect = get_analysis
+class TestSmartPipelineIntegration:
+    """Public run() conserves the source planner's final answer without legacy work."""
 
-    def test_full_run_returns_pipeline_result(
-        self,
-        mock_immich_client,
-        mock_analysis_cache,
-        mock_thumbnail_cache,
-        sample_config,
-    ):
-        """Full pipeline run with cached analysis returns a PipelineResult."""
+    def test_full_run_returns_pipeline_result(self, source_pipeline):
         clips = _make_clips(10, is_favorite=True)
-
-        self._setup_cache_for_clips(mock_analysis_cache, clips)
-
-        pipeline = self._make_pipeline(
-            mock_immich_client,
-            mock_analysis_cache,
-            mock_thumbnail_cache,
-            config=PipelineConfig(target_clips=5, avg_clip_duration=5.0, analyze_all=True),
-        )
+        expected = _selections((clips[3].asset.id, clips[0].asset.id))
+        pipeline, planner = source_pipeline(selections=expected)
 
         result = pipeline.run(clips)
 
         assert isinstance(result, PipelineResult)
-        assert result.selected_clips
-        assert len(result.clip_segments) == len(result.selected_clips)
-        assert isinstance(result.stats, dict)
-        assert "selected_count" in result.stats
+        assert planner.calls == [(clips, True, False)]
+        assert planner.calls[0][0] is clips
+        assert result.selected_clips == [clips[3], clips[0]]
+        assert result.editorial_selections == expected
+        assert result.clip_segments == {row.asset_id: (1.25, 4.75) for row in expected}
+        assert result.stats["selected_count"] == 2
 
-    def test_empty_clips_returns_empty_result(
-        self,
-        mock_immich_client,
-        mock_analysis_cache,
-        mock_thumbnail_cache,
-        sample_config,
-    ):
-        """Empty clip list produces empty result with no errors."""
-        pipeline = self._make_pipeline(
-            mock_immich_client,
-            mock_analysis_cache,
-            mock_thumbnail_cache,
-        )
+    def test_empty_clips_returns_empty_result(self, source_pipeline):
+        pipeline, planner = source_pipeline()
 
         result = pipeline.run([])
 
+        assert planner.calls == [([], True, False)]
         assert isinstance(result, PipelineResult)
         assert not result.selected_clips
         assert not result.clip_segments
+        assert not result.editorial_selections
         assert not result.errors
+        assert result.stats["source_candidate_count"] == 0
 
-    def test_hdr_only_filters_sdr_clips(
-        self,
-        mock_immich_client,
-        mock_analysis_cache,
-        mock_thumbnail_cache,
-        sample_config,
+    @pytest.mark.parametrize("favorite", [False, True])
+    def test_hdr_only_filters_sdr_clips(self, source_pipeline, favorite):
+        hdr = _make_clips(3, hdr=True, is_favorite=favorite)
+        sdr = _make_clips(3, hdr=False, is_favorite=favorite)
+        for i, clip in enumerate(sdr):
+            clip.asset.id = f"sdr-{i:03d}"
+        pipeline, planner = source_pipeline(config=PipelineConfig(hdr_only=True))
+
+        result = pipeline.run(hdr + sdr)
+
+        expected = [clip.asset.id for clip in hdr]
+        assert planner.calls[0][2] is True
+        assert [row.clip.asset.id for row in planner.demands[0]] == expected
+        assert [clip.asset.id for clip in result.selected_clips] == expected
+
+    def test_progress_reports_ordered_source_stages(self, source_pipeline, monkeypatch):
+        clock = iter(100.0 + n for n in range(100))
+        monkeypatch.setattr("immich_memories.analysis.progress.time.time", lambda: next(clock))
+        pipeline, _ = source_pipeline()
+        events = []
+
+        pipeline.run(_make_clips(2), progress_callback=events.append)
+
+        assert [event["current_phase"] for event in events] == [
+            "Preparing editorial evidence",
+            "Preparing source metadata",
+            "Editing the memory",
+            "Editorial selection complete",
+        ]
+        assert [event["status"] for event in events] == ["running"] * 3 + ["complete"]
+        elapsed = [event["elapsed_seconds"] for event in events]
+        assert elapsed == sorted(elapsed)
+        assert all(event["indeterminate"] for event in events)
+        assert not any("progress_fraction" in event for event in events)
+
+    @pytest.mark.parametrize("analyze_all", [False, True])
+    def test_all_eligible_sources_reach_editor_without_legacy_analysis(
+        self, source_pipeline, analyze_all
     ):
-        """HDR-only mode keeps only HDR clips in non-favorites."""
-        config = PipelineConfig(target_clips=5, hdr_only=True, analyze_all=False)
-        pipeline = self._make_pipeline(
-            mock_immich_client,
-            mock_analysis_cache,
-            mock_thumbnail_cache,
-            config=config,
+        clips = _make_clips(8)
+        pipeline, planner = source_pipeline(
+            config=PipelineConfig(target_clips=2, analyze_all=analyze_all)
         )
 
-        hdr_clips = _make_clips(3, hdr=True, is_favorite=False)
-        sdr_clips = _make_clips(3, hdr=False, is_favorite=False)
-        for i, c in enumerate(sdr_clips):
-            c.asset.id = f"sdr-{i:03d}"
+        result = pipeline.run(clips)
 
-        all_clips = hdr_clips + sdr_clips
-        self._setup_cache_for_clips(mock_analysis_cache, all_clips)
+        assert [row.clip.asset.id for row in planner.demands[0]] == [c.asset.id for c in clips]
+        assert all(row.analyzed is False and row.score == 0 for row in planner.demands[0])
+        assert result.stats["total_analyzed"] == result.stats["legacy_deep_analysis_count"] == 0
+        assert pipeline.last_deep_analysis_count == 0
 
-        result = pipeline.run(all_clips)
+    def test_favorite_evidence_is_preserved_without_forcing_final_inclusion(self, source_pipeline):
+        clips = _make_clips(4)
+        clips[0].asset.is_favorite = True
+        clips[1].asset.is_favorite = True
+        expected = _selections((clips[3].asset.id,))
+        pipeline, planner = source_pipeline(selections=expected)
 
-        sdr_ids = {c.asset.id for c in sdr_clips}
-        selected_ids = {c.asset.id for c in result.selected_clips}
-        assert sdr_ids.isdisjoint(selected_ids), "SDR clips should not appear in HDR-only results"
+        result = pipeline.run(clips)
 
-    def test_progress_callback_invoked_with_increasing_values(
-        self,
-        mock_immich_client,
-        mock_analysis_cache,
-        mock_thumbnail_cache,
-        sample_config,
-    ):
-        """Progress callback is called with monotonically increasing progress values (0 to 1)."""
-        clips = _make_clips(5, is_favorite=True)
-        self._setup_cache_for_clips(mock_analysis_cache, clips)
+        assert {row.clip.asset.id for row in planner.demands[0] if row.clip.asset.is_favorite} == {
+            clips[0].asset.id,
+            clips[1].asset.id,
+        }
+        assert result.editorial_selections == expected
+        assert [clip.asset.id for clip in result.selected_clips] == [clips[3].asset.id]
 
-        pipeline = self._make_pipeline(
-            mock_immich_client,
-            mock_analysis_cache,
-            mock_thumbnail_cache,
-            config=PipelineConfig(target_clips=5, analyze_all=True),
-        )
-        progress_calls: list = []
-
-        def track_progress(*args, **kwargs):
-            progress_calls.append(args)
-
-        pipeline.run(clips, progress_callback=track_progress)
-
-        # WHY: progress callback is called with varying signatures (float, dict, etc.)
-        # We verify it was actually called, not just "connected"
-        assert len(progress_calls) >= 1, "Progress callback should be called"
-        # Check that numeric progress values (when present) are reasonable
-        float_values = [a[0] for a in progress_calls if isinstance(a[0], (int, float))]
-        if float_values:
-            assert all(0 <= v <= 1.0 for v in float_values), (
-                f"Progress values should be 0-1, got {float_values}"
-            )
-
-    def test_analyze_all_sends_all_clips_to_analysis(
-        self,
-        mock_immich_client,
-        mock_analysis_cache,
-        mock_thumbnail_cache,
-        sample_config,
-    ):
-        """analyze_all mode processes all clips through the pipeline."""
-        clips = _make_clips(8, is_favorite=False)
-        self._setup_cache_for_clips(mock_analysis_cache, clips)
-
-        config = PipelineConfig(target_clips=5, analyze_all=True)
-        pipeline = self._make_pipeline(
-            mock_immich_client,
-            mock_analysis_cache,
-            mock_thumbnail_cache,
-            config=config,
-        )
-
-        pipeline.run(clips)
-
-        # All 8 clips should have been looked up in cache (one call per clip)
-        cache_calls = mock_analysis_cache.get_analysis.call_args_list
-        queried_ids = {call.args[0] for call in cache_calls}
-        clip_ids = {c.asset.id for c in clips}
-        assert clip_ids.issubset(queried_ids), "All clips should have been queried in the cache"
-
-    def test_favorites_always_analyzed(
-        self,
-        mock_immich_client,
-        mock_analysis_cache,
-        mock_thumbnail_cache,
-        sample_config,
-    ):
-        """Favorites are always included regardless of non-favorite filters."""
-        favorites = _make_clips(3, is_favorite=True)
-        non_favorites = _make_clips(5, is_favorite=False)
-        for i, c in enumerate(non_favorites):
-            c.asset.id = f"nonfav-{i:03d}"
-
-        all_clips = favorites + non_favorites
-        self._setup_cache_for_clips(mock_analysis_cache, all_clips)
-
-        pipeline = self._make_pipeline(
-            mock_immich_client,
-            mock_analysis_cache,
-            mock_thumbnail_cache,
-            config=PipelineConfig(target_clips=5, analyze_all=False),
-        )
-
-        result = pipeline.run(all_clips)
-
-        selected_ids = {c.asset.id for c in result.selected_clips}
-        fav_ids = {c.asset.id for c in favorites}
-        assert fav_ids.issubset(selected_ids), "All favorites should be in the final selection"
-
-    def test_single_clip_returns_it(
-        self,
-        mock_immich_client,
-        mock_analysis_cache,
-        mock_thumbnail_cache,
-        sample_config,
-    ):
-        """Single clip input produces a result containing that clip."""
+    @pytest.mark.parametrize("selected", [False, True])
+    def test_single_clip_follows_explicit_editorial_answer(self, source_pipeline, selected):
         clips = _make_clips(1, is_favorite=True)
-        self._setup_cache_for_clips(mock_analysis_cache, clips)
-
-        pipeline = self._make_pipeline(
-            mock_immich_client,
-            mock_analysis_cache,
-            mock_thumbnail_cache,
-            config=PipelineConfig(target_clips=5, analyze_all=True),
-        )
+        expected = _selections((clips[0].asset.id,)) if selected else ()
+        pipeline, _ = source_pipeline(selections=expected)
 
         result = pipeline.run(clips)
-        assert len(result.selected_clips) == 1
-        assert result.selected_clips[0].asset.id == clips[0].asset.id
 
-    def test_duplicate_clip_ids_handled(
-        self,
-        mock_immich_client,
-        mock_analysis_cache,
-        mock_thumbnail_cache,
-        sample_config,
-    ):
-        """Pipeline handles clips with identical IDs gracefully."""
-        clips = _make_clips(3, is_favorite=True)
-        # Duplicate the first clip's ID on the second
+        assert result.editorial_selections == expected
+        assert result.selected_clips == (clips if selected else [])
+        assert result.clip_segments == ({clips[0].asset.id: (1.25, 4.75)} if selected else {})
+
+    def test_identical_duplicate_source_is_coalesced(self, source_pipeline):
+        clips = _make_clips(2)
+        sources = [clips[0], clips[0].model_copy(deep=True), clips[1]]
+        pipeline, planner = source_pipeline()
+
+        result = pipeline.run(sources)
+
+        assert len(planner.calls[0][0]) == 3
+        assert [row.clip.asset.id for row in planner.demands[0]] == [c.asset.id for c in clips]
+        assert [clip.asset.id for clip in result.selected_clips] == [c.asset.id for c in clips]
+
+    def test_conflicting_duplicate_source_is_rejected(self, source_pipeline):
+        clips = _make_clips(3)
         clips[1].asset.id = clips[0].asset.id
-        self._setup_cache_for_clips(mock_analysis_cache, clips)
+        pipeline, planner = source_pipeline()
 
-        pipeline = self._make_pipeline(
-            mock_immich_client,
-            mock_analysis_cache,
-            mock_thumbnail_cache,
-            config=PipelineConfig(target_clips=5, analyze_all=True),
-        )
+        with pytest.raises(
+            ValueError, match="conflicting source representations for asset clip-000"
+        ):
+            pipeline.run(clips)
 
-        result = pipeline.run(clips)
-        # Should not crash, result is valid
-        assert isinstance(result, PipelineResult)
+        assert planner.demands == []
 
-    def test_result_stats_contain_expected_keys(
-        self,
-        mock_immich_client,
-        mock_analysis_cache,
-        mock_thumbnail_cache,
-        sample_config,
-    ):
-        """Pipeline stats dict contains standard diagnostic keys."""
-        clips = _make_clips(5, is_favorite=True)
-        self._setup_cache_for_clips(mock_analysis_cache, clips)
-
-        pipeline = self._make_pipeline(
-            mock_immich_client,
-            mock_analysis_cache,
-            mock_thumbnail_cache,
-            config=PipelineConfig(target_clips=5, analyze_all=True),
-        )
+    def test_result_stats_describe_source_route_without_legacy_analysis(self, source_pipeline):
+        clips = _make_clips(5)
+        pipeline, _ = source_pipeline(selections=_selections((clips[0].asset.id,)))
 
         result = pipeline.run(clips)
-        assert "selected_count" in result.stats
-        assert "total_analyzed" in result.stats
 
-    def test_idempotent_run(
-        self,
-        mock_immich_client,
-        mock_analysis_cache,
-        mock_thumbnail_cache,
-        sample_config,
-    ):
-        """Running twice with same inputs produces same clip count."""
-        clips = _make_clips(8, is_favorite=True)
-        self._setup_cache_for_clips(mock_analysis_cache, clips)
+        assert result.stats["selection_route"] == "editorial-source"
+        assert result.stats["selected_count"] == 1
+        assert result.stats["source_candidate_count"] == 5
+        assert result.stats["total_analyzed"] == result.stats["legacy_deep_analysis_count"] == 0
 
-        config = PipelineConfig(target_clips=5, analyze_all=True)
-        pipeline = self._make_pipeline(
-            mock_immich_client,
-            mock_analysis_cache,
-            mock_thumbnail_cache,
-            config=config,
+    def test_repeated_run_preserves_exact_controlled_answer(self, source_pipeline):
+        clips = _make_clips(8)
+        expected = _selections((clips[6].asset.id, clips[2].asset.id))
+        pipeline, planner = source_pipeline(selections=expected)
+
+        first = pipeline.run(clips)
+        second = pipeline.run(clips)
+
+        assert len(planner.calls) == 2
+        assert first.editorial_selections == second.editorial_selections == expected
+        assert (
+            first.clip_segments
+            == second.clip_segments
+            == {row.asset_id: (1.25, 4.75) for row in expected}
         )
+        assert first.selected_clips == second.selected_clips == [clips[6], clips[2]]
 
-        result1 = pipeline.run(clips)
-        # Reset cache call counts
-        mock_analysis_cache.get_analysis.reset_mock()
-        result2 = pipeline.run(clips)
+    @pytest.mark.parametrize("empty", [False, True])
+    def test_missing_source_planner_is_rejected_without_legacy_fallback(
+        self, source_pipeline, empty
+    ):
+        pipeline, _ = source_pipeline()
+        pipeline._planner = None
 
-        assert len(result1.selected_clips) == len(result2.selected_clips)
+        with pytest.raises(RuntimeError, match="no production editorial source route"):
+            pipeline.run([] if empty else _make_clips(1))
 
 
 class TestVerifyPass:
@@ -559,7 +491,9 @@ class TestHolisticReview:
         # WHY two mocks: the LLM call is one external boundary, and the verify
         # pass now analyzes any selected clip the review would otherwise judge
         # blind — a second boundary this fixture cannot serve.
+        # WHY: see the note above — the review LLM and the verify-pass analyzer are both external.
         with (
+            # WHY: the review verdict comes from the model provider; a fixed drop list stands in.
             patch(
                 "immich_memories.analysis.selection_review.review_selection",
                 return_value=ReviewVerdict(drops=[clips[1].asset.id]),

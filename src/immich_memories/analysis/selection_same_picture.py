@@ -18,13 +18,12 @@ import json
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextvars import copy_context
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from immich_memories.analysis.contact_sheets import build_contact_sheets
-from immich_memories.analysis.duplicate_hashing import compute_thumbnail_hash, hamming_distance
 from immich_memories.analysis.editorial_contracts import EditorialCandidate
 from immich_memories.analysis.strict_json import final_json_object
 from immich_memories.analysis.visual_request_planner import VisionRequestLimits
@@ -57,8 +56,6 @@ SELECTS_TILE_PX = 400
 # calibration sample of its own library and may only lower it, so a library
 # unlike the one this was measured on saves less rather than cutting more.
 SELECTS_MAX_CORROBORATION = 10
-SELECTS_CALIBRATION_PAIRS = 60
-SELECTS_CORROBORATION_MARGIN = 2
 
 _PAIR_SHAPE = json.dumps(
     {"schema_version": PAIR_SCHEMA_VERSION, "same": False, "reason": "what makes them one or two"},
@@ -84,31 +81,6 @@ _PAIR_PROMPT = (
     "subject, framed the same way, moments apart -- or are they two different pictures? "
     "Return only one complete JSON object, using exactly these keys and no others:\n" + _PAIR_SHAPE
 )
-
-
-@dataclass
-class Corroboration:
-    """How far apart two frames may be before the second arrangement is worth buying.
-
-    Consulted per PAIR, not per moment: a single burst of eighty frames is one
-    moment, and a check that only ran at moment boundaries would never finish
-    calibrating on it.
-    """
-
-    observations: list[tuple[int, bool, bool]] = field(default_factory=list)
-    distance: int = SELECTS_MAX_CORROBORATION
-    calibrating: bool = True
-
-    def settle(self) -> str | None:
-        """Fix the distance once this library has said enough about itself."""
-        if not self.calibrating or len(self.observations) < SELECTS_CALIBRATION_PAIRS:
-            return None
-        self.distance = _corroboration_from(self.observations)
-        self.calibrating = False
-        return (
-            f"pass-2 corroboration distance {self.distance}, calibrated on "
-            f"{len(self.observations)} pairs of this library"
-        )
 
 
 @dataclass(frozen=True)
@@ -266,264 +238,6 @@ def _two_order_verdict(
     return backward, None
 
 
-def parallel_pair_decisions(
-    moments: Sequence[tuple[str, list[EditorialCandidate]]],
-    *,
-    atlas: object,
-    requester: EditorialGateway,
-    sheet_output_dir: Path,
-    limits: VisionRequestLimits,
-    corroboration: Corroboration,
-    concurrency: int,
-) -> tuple[dict[str, tuple[bool, str | None]], tuple[str, ...]]:
-    """Judge independent pair arrangements concurrently without reordering calibration."""
-    tasks = tuple(
-        _PendingPair(
-            scope_id=f"{group_id}-{index}",
-            earlier=members[index],
-            later=members[index + 1],
-            distance=_pixel_distance(atlas, members[index], members[index + 1]),
-        )
-        for group_id, members in moments
-        for index in range(len(members) - 1)
-    )
-    if not tasks:
-        return {}, ()
-    reader = _PairBatchReader(
-        tasks,
-        atlas,
-        requester,
-        sheet_output_dir,
-        limits,
-        concurrency,
-    )
-    all_indices = tuple(range(len(tasks)))
-    forwards = reader.ask_many(all_indices, "ab")
-    decisions = _forward_pair_decisions(tasks, forwards)
-    cursor, warnings = _calibrate_parallel_pairs(
-        reader,
-        forwards,
-        decisions,
-        corroboration,
-    )
-    _finish_parallel_pairs(reader, forwards, decisions, corroboration, cursor)
-    return decisions, tuple(warnings)
-
-
-def _forward_pair_decisions(
-    tasks: Sequence[_PendingPair],
-    forwards: Sequence[bool | None],
-) -> dict[str, tuple[bool, str | None]]:
-    decisions: dict[str, tuple[bool, str | None]] = {}
-    for task, forward in zip(tasks, forwards, strict=True):
-        if forward is None:
-            warning = f"!! Pass 2 unreadable pair answer, both kept: {task.scope_id}"
-            decisions[task.scope_id] = (False, warning)
-        elif not forward:
-            decisions[task.scope_id] = (False, None)
-    return decisions
-
-
-def _calibrate_parallel_pairs(
-    reader: _PairBatchReader,
-    forwards: Sequence[bool | None],
-    decisions: dict[str, tuple[bool, str | None]],
-    corroboration: Corroboration,
-) -> tuple[int, list[str]]:
-    cursor = 0
-    warnings: list[str] = []
-    while corroboration.calibrating and cursor < len(reader.tasks):
-        batch, cursor = _next_calibration_batch(
-            reader.tasks,
-            forwards,
-            cursor,
-            SELECTS_CALIBRATION_PAIRS - len(corroboration.observations),
-        )
-        if not batch:
-            continue
-        backwards = reader.ask_many(batch, "ba")
-        _record_backward_decisions(reader.tasks, batch, backwards, decisions, corroboration)
-        if settled := corroboration.settle():
-            warnings.append(settled)
-    return cursor, warnings
-
-
-def _next_calibration_batch(
-    tasks: Sequence[_PendingPair],
-    forwards: Sequence[bool | None],
-    cursor: int,
-    known_distance_needed: int,
-) -> tuple[list[int], int]:
-    batch: list[int] = []
-    known_distance_scheduled = 0
-    while cursor < len(tasks):
-        index = cursor
-        cursor += 1
-        if forwards[index] is not True:
-            continue
-        batch.append(index)
-        if tasks[index].distance is not None:
-            known_distance_scheduled += 1
-            if known_distance_scheduled >= known_distance_needed:
-                break
-    return batch, cursor
-
-
-def _record_backward_decisions(
-    tasks: Sequence[_PendingPair],
-    indices: Sequence[int],
-    backwards: Sequence[bool | None],
-    decisions: dict[str, tuple[bool, str | None]],
-    corroboration: Corroboration,
-) -> None:
-    for index, backward in zip(indices, backwards, strict=True):
-        task = tasks[index]
-        if task.distance is not None and backward is not None:
-            corroboration.observations.append((task.distance, True, backward))
-        warning = (
-            f"!! Pass 2 unreadable pair answer, both kept: {task.scope_id}"
-            if backward is None
-            else None
-        )
-        decisions[task.scope_id] = (bool(backward), warning)
-
-
-def _finish_parallel_pairs(
-    reader: _PairBatchReader,
-    forwards: Sequence[bool | None],
-    decisions: dict[str, tuple[bool, str | None]],
-    corroboration: Corroboration,
-    cursor: int,
-) -> None:
-    remaining_backward: list[int] = []
-    for index in range(cursor, len(reader.tasks)):
-        task = reader.tasks[index]
-        if forwards[index] is not True:
-            continue
-        if task.distance is not None and task.distance <= corroboration.distance:
-            decisions[task.scope_id] = (True, None)
-        else:
-            remaining_backward.append(index)
-    if remaining_backward:
-        backwards = reader.ask_many(remaining_backward, "ba")
-        _record_backward_decisions(
-            reader.tasks,
-            remaining_backward,
-            backwards,
-            decisions,
-            corroboration,
-        )
-
-
-def runs_from_pair_decisions(
-    group_id: str,
-    members: list[EditorialCandidate],
-    decisions: dict[str, tuple[bool, str | None]],
-) -> tuple[list[list[EditorialCandidate]], tuple[str, ...]]:
-    """Rebuild the chronological runs after concurrent pair reads finish."""
-    runs: list[list[EditorialCandidate]] = [[members[0]]]
-    warnings: list[str] = []
-    for index in range(len(members) - 1):
-        same, warning = decisions[f"{group_id}-{index}"]
-        if warning:
-            warnings.append(warning)
-        if same:
-            runs[-1].append(members[index + 1])
-        else:
-            runs.append([members[index + 1]])
-    return runs, tuple(warnings)
-
-
-def runs_of_one_picture(
-    group_id: str,
-    members: list[EditorialCandidate],
-    *,
-    atlas: object,
-    requester: EditorialGateway,
-    sheet_output_dir: Path,
-    limits: VisionRequestLimits,
-    corroboration: Corroboration,
-) -> tuple[list[list[EditorialCandidate]], tuple[str, ...]]:
-    """Ask each adjacent pair, and chain the agreeing ones into runs.
-
-    The partition is never asked for directly -- that question measured at pair
-    Jaccard 0.15. Chaining a symmetric two-tile question rebuilds it, which is
-    also how the craft does it: Gilden marks on a linear sweep from frame 1 to
-    36 and only then looks at what he marked.
-    """
-    runs: list[list[EditorialCandidate]] = [[members[0]]]
-    warnings: list[str] = []
-    for index in range(len(members) - 1):
-        same, warning = _one_picture_in_both_orders(
-            f"{group_id}-{index}",
-            members[index],
-            members[index + 1],
-            atlas=atlas,
-            requester=requester,
-            sheet_output_dir=sheet_output_dir,
-            limits=limits,
-            corroboration=corroboration,
-        )
-        settled = corroboration.settle()
-        if settled:
-            warnings.append(settled)
-        if warning:
-            warnings.append(warning)
-        if same:
-            runs[-1].append(members[index + 1])
-        else:
-            runs.append([members[index + 1]])
-    return runs, tuple(warnings)
-
-
-def _one_picture_in_both_orders(
-    scope_id: str,
-    earlier: EditorialCandidate,
-    later: EditorialCandidate,
-    *,
-    atlas: object,
-    requester: EditorialGateway,
-    sheet_output_dir: Path,
-    limits: VisionRequestLimits,
-    corroboration: Corroboration,
-) -> tuple[bool, str | None]:
-    """Only two arrangements agreeing counts as one picture.
-
-    Thein keeps "those that overlap" between two independent passes. His two are
-    separated in time, to defeat the memory of shooting; these two are separated
-    in order, to defeat the positional habit that ruined every other question
-    tried. Disagreement means keep both -- a wrong keep is fixed by a later pass
-    a person can check, a wrong cut is permanent and invisible.
-    """
-    forward = _ask_one_pair(
-        scope_id, "ab", (earlier, later), atlas, requester, sheet_output_dir, limits
-    )
-    if forward is None:
-        return False, f"!! Pass 2 unreadable pair answer, both kept: {scope_id}"
-    if not forward:
-        # `forward and backward` cannot become true now, so the second
-        # arrangement changes no outcome. An exact saving, not an estimate:
-        # measured, it removes 121 of 1312 calls on a real dense month.
-        return False, None
-    distance = _pixel_distance(atlas, earlier, later)
-    if (
-        not corroboration.calibrating
-        and distance is not None
-        and distance <= corroboration.distance
-    ):
-        # The pixels are the second vote here. Below the corroboration distance
-        # the second arrangement only ever confirmed the first.
-        return True, None
-    backward = _ask_one_pair(
-        scope_id, "ba", (later, earlier), atlas, requester, sheet_output_dir, limits
-    )
-    if distance is not None and backward is not None:
-        corroboration.observations.append((distance, forward, backward))
-    if backward is None:
-        return False, f"!! Pass 2 unreadable pair answer, both kept: {scope_id}"
-    return backward, None
-
-
 def _ask_one_pair(
     scope_id: str,
     arrangement: str,
@@ -587,29 +301,3 @@ def _ask_one_pair(
         return None
     same = payload.get("same")
     return same if isinstance(same, bool) else None
-
-
-def _pixel_distance(
-    atlas: object, earlier: EditorialCandidate, later: EditorialCandidate
-) -> int | None:
-    """Hamming distance between two atlas tiles, or None when either has no pixels."""
-    try:
-        tiles = [atlas.tile_for(c.asset_id) for c in (earlier, later)]  # type: ignore[attr-defined]
-        blobs = [t.jpeg_bytes for t in tiles]
-        if any(b is None for b in blobs):
-            return None
-        return hamming_distance(*(compute_thumbnail_hash(b) for b in blobs))
-    except Exception:  # noqa: BLE001 - an unreadable tile just buys the second call
-        return None
-
-
-def _corroboration_from(observations: list[tuple[int, bool, bool]]) -> int:
-    """The largest distance this library never contradicted itself below, capped.
-
-    The sample can only LOWER the cap. A library unlike the one the cap was
-    measured on therefore saves fewer calls; it never cuts more.
-    """
-    contradicted = [d for d, ab, ba in observations if ab != ba]
-    if not contradicted:
-        return SELECTS_MAX_CORROBORATION
-    return max(0, min(SELECTS_MAX_CORROBORATION, min(contradicted) - SELECTS_CORROBORATION_MARGIN))

@@ -11,7 +11,6 @@ from immich_memories.analysis.editorial_carrier_eligibility import excluded_carr
 from immich_memories.analysis.editorial_intent import build_editorial_intent
 from immich_memories.analysis.editorial_intent_validation import CarrierView, validate_intent
 from immich_memories.analysis.editorial_shareability import partition_units
-from immich_memories.analysis.editorial_structure_budget import partition_budgets
 from immich_memories.timeperiod import DateRange
 
 
@@ -57,20 +56,6 @@ def intent(product="year_in_review", start=(2032, 1, 1), end=(2032, 12, 31)):
         [DateRange(datetime(*start, tzinfo=UTC), datetime(*end, 23, 59, 59, tzinfo=UTC))],
         brief="A truthful memory of the period.",
     )
-
-
-def test_dense_month_cannot_take_the_year_budget_from_other_worthy_months():
-    policy = intent()
-    parts = [p.key for p in policy.required_partitions]
-    capacity = dict.fromkeys(parts, 3)
-    capacity[parts[1]] = 300
-    capacity[parts[4]] = 0
-    budgets = partition_budgets(parts, capacity, 24)
-    assert len(parts) == 12
-    assert budgets[parts[4]] == 0
-    assert all(budgets[p] >= 1 for p in parts if capacity[p])
-    assert sum(budgets.values()) == 24
-    assert budgets[parts[1]] < sum(budgets.values()) / 2
 
 
 def test_missing_worthy_month_is_reported_instead_of_a_successful_year():

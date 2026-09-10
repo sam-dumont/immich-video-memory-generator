@@ -6,11 +6,9 @@ Extracted from the retired post-card moment editor; only the contracts survive h
 from __future__ import annotations
 
 import json
-import time
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
 from immich_memories.analysis.editorial_moment_contract import Moment, MomentCard
 from immich_memories.analysis.llm_query import resolved_llm_config
@@ -69,9 +67,6 @@ class TextCall:
     cache_hit: bool
     thinking: bool
     warning: str | None = None
-    # A vision pass assembles its wire prompt from more than this text, so a banked
-    # card cannot be reproduced from prompt alone. Carry what the rest was.
-    prompt_provenance: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -121,39 +116,6 @@ class TextRequest:
                 else ""
             ),
         )
-
-
-class TextRequester(Protocol):
-    async def request(self, request: TextRequest) -> TextCall: ...
-
-
-class OccasionFactProvider(Protocol):
-    def chapter_rows(self, cards: tuple[MomentCard, ...]) -> list[dict[str, Any]]: ...
-
-    def render_block(self, rows: list[dict[str, Any]]) -> str: ...
-
-
-class RenderedMomentWall(Protocol):
-    aliases: tuple[str, ...]
-    text: str
-
-
-class MomentWallRenderer(Protocol):
-    format_version: str
-
-    def render(self, cards: tuple[MomentCard, ...]) -> RenderedMomentWall: ...
-
-    def render_for_transport(self, cards: tuple[MomentCard, ...]) -> RenderedMomentWall: ...
-
-    def audit_record(self) -> dict[str, Any]: ...
-
-
-@dataclass(frozen=True)
-class MomentEditorDependencies:
-    text: TextRequester
-    occasions: OccasionFactProvider
-    monotonic: Callable[[], float] = time.monotonic
-    moment_wall: MomentWallRenderer | None = None
 
 
 def _adapt_production_cards(

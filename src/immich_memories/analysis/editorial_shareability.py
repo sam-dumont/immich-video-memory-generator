@@ -29,7 +29,6 @@ from immich_memories.analysis.editorial_shareability_audience import (
     _clean,
     _exposure_flag,
     _exposure_members,
-    _first_json_object,
     _parse_exposure_verdict,
     audience_check_prompt,
     audience_exposure_prompt,
@@ -43,8 +42,6 @@ OWNER_SOURCE = "owner"
 OWNER_CLEARED = "cleared"
 VERDICTS = ("share", "family_only", "do_not_show")  # loosest to strictest
 PROMPT_VERSION = "shareability-check-v5-family-milestones-and-private-content"
-CHECK_POLICY_VERSION = "all-selected-carriers-v2"
-REASON_WORDS = 12
 AUDIENCE_PROMPT_VERSION = "audience-evidence-v12-complete-activity-assessment"
 AUDIENCE_CHECK_POLICY_VERSION = "all-captioned-carrier-members-v1"
 _AUDIENCE_HEADS = frozenset(
@@ -559,86 +556,6 @@ def partition_units(
     for unit in units:
         (excluded if any(m in never_auto for m in unit_members(unit)) else kept).append(unit)
     return kept, excluded
-
-
-def needs_check(line: str | None, rows: Sequence[FlagRow]) -> bool:
-    """A missing detector flag is not clearance; every selected carrier needs a verdict.
-
-    The caller reuses exact banked verdicts. This policy applies after selection, not to the wall.
-    Keep the call signature for existing adapters; neither a benign-looking line nor absent flags
-    may bypass the semantic check.
-    """
-    return True
-
-
-def render_flags(rows: Sequence[FlagRow]) -> str:
-    if not rows:
-        return "none"
-    return "; ".join(
-        f"{r.flag} ({r.reason}) [{r.source}]" if r.reason else f"{r.flag} [{r.source}]"
-        for r in rows
-    )
-
-
-def check_key(line: str, rows: Sequence[FlagRow], brief: str) -> str:
-    """Privacy depends on picture facts and flags; brief remains for caller compatibility."""
-    payload = "\x1f".join([PROMPT_VERSION, line, render_flags(rows)])
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
-
-
-def check_prompt(line: str, rows: Sequence[FlagRow], brief: str) -> str:
-    return (
-        "You are the last check before a personal video memory is exported and shared with people "
-        "outside the household. Text only. One picture, described by its annotation line and by the "
-        "flags automatic detectors raised on it (detectors are often wrong on landscapes; the line "
-        "describes what is actually in the picture). This is a family video: catch content the owner "
-        "would really not want to show other people, not ordinary personal history.\n\n"
-        f"picture: {line}\n"
-        f"flags: {render_flags(rows)}\n\n"
-        "Toileting, potty training, diaper changing, bathing and intimate personal care are "
-        "household-only, even when routine or when private body parts are not visible. An empty "
-        "bathroom, unused toilet, toy potty or ordinary fully clothed play does not establish "
-        "intimate care. Judge privacy from the depicted activity. Story importance, developmental "
-        "milestones and the memory brief cannot make intimate care shareable.\n"
-        "Breastfeeding and expressing breast milk are always household-only, including when "
-        "covered or no bare breast is described. Ordinary bottle feeding of a clothed baby does "
-        "not establish breastfeeding. A short caption may omit sensitive content: positive "
-        "exposure or nudity flags on a person need a concrete benign explanation before 'share'; "
-        "silence about clothing or exposed body parts is not that explanation.\n"
-        "Pregnancy tests and pregnancy or birth announcements are allowed family milestone evidence. "
-        "Clothed hospital visits, treatment and recovery pictures are allowed too. A medical setting "
-        "or a visible pregnancy result alone is not a reason for privacy exclusion. These permissions "
-        "do not allow intimate care, nudity, shirtless or underwear pictures, or identifying documents. "
-        "Identity cards, personal contact details, patient identifiers on documents or wristbands, "
-        "and readable private administrative records are household-only. A generic object or logo "
-        "without such details is not a private document.\n"
-        "Can this picture be shown? Answer 'share' when it is fine for people outside the household; "
-        "'family_only' when only the household should see it: a child undressed, in the bath or on the "
-        "changing table, nudity, shirtless or underwear pictures, intimate care, identifying or private "
-        "documents; 'do_not_show' when it should not be in any export. Base exclusion on specific "
-        "private content or unresolved person-exposure flags, not on a vague sense that a life event "
-        "is personal. If no such privacy issue is evidenced, use 'share'.\n"
-        "First state what specific private content, if any, is described, in at most 12 words. "
-        "Then choose the verdict that follows that evidence and the audience rules above. "
-        "An indoor location, a bedroom label, or a child being present alone does not establish intimate activity. "
-        "Haircuts and ordinary clothed play are not intimate personal care. "
-        'Answer with one JSON object only, on one line: {"why":"...","verdict":"..."}'
-    )
-
-
-def parse_verdict(raw: str) -> tuple[str, str] | None:
-    """The reader's verdict, or None when the answer is not one of the three words."""
-    text = raw.strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-    obj = _first_json_object(text)
-    if obj is None:
-        return None
-    verdict = str(obj.get("verdict", "")).strip().lower()
-    if verdict not in VERDICTS:
-        return None
-    why = " ".join(str(obj.get("why", "")).split()[:REASON_WORDS])
-    return verdict, why
 
 
 def tighten(*verdicts: str | None) -> str:

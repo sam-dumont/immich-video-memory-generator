@@ -100,7 +100,9 @@ def provider_hosts(config_path: Path) -> set[str]:
         block = document.get(section) or advanced.get(section) or {}
         candidates.append(block.get("base_url"))
     editorial = document.get("editorial") or advanced.get("editorial") or {}
-    candidates.append((editorial.get("preparation") or {}).get("caption_base_url"))
+    candidates.append(
+        (editorial.get("preparation") or {}).get("caption_base_url") or "http://localhost:8092/v1"
+    )
     hosts = set()
     for url in candidates:
         if url:
@@ -108,20 +110,36 @@ def provider_hosts(config_path: Path) -> set[str]:
     return hosts
 
 
-def bank_rows(cache_root: Path) -> int:
-    path = cache_root / "judgments.db"
-    if not path.exists():
-        return 0
+BANK_TABLE_MARKERS = ("judg", "request", "verdict", "gateway", "reading", "insight", "vote")
+
+
+def _rows_in(path: Path) -> int:
     with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as connection:
-        tables = {
+        tables = [
             row[0]
             for row in connection.execute("select name from sqlite_master where type='table'")
-        }
+            if any(marker in row[0] for marker in BANK_TABLE_MARKERS)
+        ]
         return sum(
             connection.execute(f"select count(*) from {table}").fetchone()[0]  # noqa: S608
-            for table in ("judgments", "visual_judgments")
-            if table in tables
+            for table in tables
         )
+
+
+def bank_rows(cache_root: Path, config_path: Path | None = None) -> int:
+    """Rows in every judgment bank a warm replay must leave untouched."""
+    paths = [cache_root / "judgments.db"]
+    if config_path is not None:
+        import yaml
+
+        document = yaml.safe_load(config_path.read_text()) or {}
+        advanced = document.get("advanced") or {}
+        editorial = document.get("editorial") or advanced.get("editorial") or {}
+        if editorial.get("annotation_database"):
+            paths.append(
+                Path(os.path.expandvars(str(editorial["annotation_database"]))).expanduser()
+            )
+    return sum(_rows_in(path) for path in paths if path.exists())
 
 
 def newest_attempt(cache_root: Path, started_after: float) -> Path | None:
@@ -150,14 +168,37 @@ def decision_sha256(plan: dict) -> str:
     )
 
 
-def compare_plan(plan_path: Path, reference: dict) -> tuple[str, int, bool, str]:
+def baseline_of(route: dict) -> dict | None:
+    """The record a replay must reproduce: the HEAD baseline when banked, else the accepted run."""
+    head = route.get("head_baseline")
+    if isinstance(head, dict) and head.get("carrier_asset_ids"):
+        return head
+    if route.get("carrier_asset_ids"):
+        return {
+            "plan_sha256": route.get("accepted_plan_sha256"),
+            "carrier_asset_ids": route.get("carrier_asset_ids"),
+        }
+    return None
+
+
+def reference_routes(reference: dict) -> dict[str, dict]:
+    """Every entry that carries route arguments; metadata keys in the file are ignored."""
+    routes = reference.get("routes", reference)
+    return {
+        key: value
+        for key, value in routes.items()
+        if isinstance(value, dict) and (value.get("generate_args") or value.get("route_args"))
+    }
+
+
+def compare_plan(plan_path: Path, baseline: dict) -> tuple[str, int, bool, str]:
     raw = plan_path.read_bytes()
     plan = json.loads(raw)
     ids = carrier_ids(plan)
     return (
         sha256_bytes(raw),
         len(ids),
-        ids == list(reference.get("carrier_asset_ids") or []),
+        ids == list(baseline.get("carrier_asset_ids") or []),
         decision_sha256(plan),
     )
 
@@ -190,12 +231,28 @@ def run_route(
 ) -> RouteOutcome:
     config_path = Path(route["config_path"]).expanduser()
     cache_root = Path(route["cache_root"]).expanduser()
+    baseline = baseline_of(route)
+    if baseline is None:
+        return RouteOutcome(
+            key,
+            seed,
+            "no-baseline",
+            0.0,
+            0,
+            0,
+            None,
+            None,
+            None,
+            None,
+            None,
+            "no banked carriers to compare against",
+        )
     hosts = provider_hosts(config_path)
     env = os.environ | {
         "PYTHONHASHSEED": seed,
         "IMMICH_MEMORIES_PARITY_BLOCK_HOSTS": ",".join(sorted(hosts)),
     }
-    rows_before = bank_rows(cache_root)
+    rows_before = bank_rows(cache_root, config_path)
     started = time.time()
     log = out / f"{key}-seed{seed}.log"
     command = [
@@ -219,7 +276,7 @@ def run_route(
     seconds = round(time.time() - started, 1)
     text = log.read_text(errors="replace")
     blocked = text.count("PARITY_BLOCKED_HTTP")
-    added = bank_rows(cache_root) - rows_before
+    added = bank_rows(cache_root, config_path) - rows_before
     attempt = newest_attempt(cache_root, started - 1)
     if blocked:
         return RouteOutcome(
@@ -266,8 +323,8 @@ def run_route(
             None,
             "no editorial attempt written",
         )
-    plan_sha, count, same, decision = compare_plan(attempt / "plan.private.json", route)
-    if plan_sha == route.get("accepted_plan_sha256"):
+    plan_sha, count, same, decision = compare_plan(attempt / "plan.private.json", baseline)
+    if plan_sha == baseline.get("plan_sha256"):
         status = "identical"
     elif same:
         status = "same-carriers"
@@ -300,7 +357,7 @@ def main() -> int:
     args = parser.parse_args()
 
     reference = json.loads(args.reference.expanduser().read_text())
-    routes = reference.get("routes", reference)
+    routes = reference_routes(reference)
     wanted = [key for key in args.routes.split(",") if key] or list(routes)
     args.out.mkdir(parents=True, exist_ok=True, mode=0o700)
     outcomes: list[RouteOutcome] = []
@@ -316,7 +373,9 @@ def main() -> int:
     report = args.out / f"report-{time.strftime('%Y%m%dT%H%M%S')}.private.json"
     report.write_text(json.dumps([asdict(o) for o in outcomes], indent=2) + "\n")
     report.chmod(0o600)
-    accepted = {"identical", "same-carriers"} | ({"no-attempt"} if args.allow_no_attempt else set())
+    accepted = {"identical", "same-carriers", "no-baseline"} | (
+        {"no-attempt"} if args.allow_no_attempt else set()
+    )
     failures = [o for o in outcomes if o.status not in accepted]
     print(f"parity: {len(outcomes) - len(failures)}/{len(outcomes)} accepted; report {report}")
     return 1 if failures else 0

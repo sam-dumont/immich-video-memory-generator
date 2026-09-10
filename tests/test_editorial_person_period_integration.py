@@ -23,7 +23,7 @@ from immich_memories.analysis.editorial_person_period_facts import (
 )
 from immich_memories.analysis.editorial_wall_rows import _table_rows
 from immich_memories.analysis.moment_cards import MomentCard
-from immich_memories.analysis.selection_source import EditorialGroup
+from immich_memories.analysis.selection_source_groups import EditorialGroup
 from immich_memories.api.models import Person
 from immich_memories.people.context import PersonPromptContext
 from tests.editorial_story_fixtures import ControlledStoryJudge
@@ -71,7 +71,6 @@ def period_source(tmp_path):
             full_asset_ids=group.candidate_ids,
             selectable_asset_ids=group.candidate_ids,
             representative_asset_ids=group.candidate_ids[:1],
-            representative_reasons=("Shows a grounded part of the activity.",),
             text=f"Moving scene {index}",
             evidence=MomentCardEvidence(
                 episode_meaning="Packing furniture and settling into a new home.",
