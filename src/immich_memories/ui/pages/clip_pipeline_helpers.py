@@ -172,25 +172,6 @@ def _render_last_analyzed_card(
         _render_audio_categories(progress_state["last_completed_audio_categories"])
 
 
-def _poll_phase(
-    progress_state: dict[str, Any],
-    _rendered_state: dict[str, Any],
-    phase_container: ui.element,
-    render_phase_indicator_fn: Any,
-) -> None:
-    if progress_state.get("indeterminate"):
-        # The native editor has no defensible phase count or percentage.
-        phase_container.clear()
-        _rendered_state["phase_number"] = -1
-        return
-    if _rendered_state["phase_number"] == progress_state["phase_number"]:
-        return
-    _rendered_state["phase_number"] = progress_state["phase_number"]
-    phase_container.clear()
-    with phase_container:
-        render_phase_indicator_fn(progress_state["phase_number"], progress_state["total_phases"])
-
-
 def _poll_stats(
     progress_state: dict[str, Any],
     stats_clips_label: Any,

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from immich_memories.api.models import Asset, AssetType, VideoClipInfo
-from immich_memories.ui.pages.clip_grid import grid_item_date, grid_item_id
+from immich_memories.ui.pages.clip_grid import grid_item_date
 from immich_memories.ui.state import AppState
 
 
@@ -57,7 +57,7 @@ class TestPhotoSelectionState:
 
 
 class TestGridItemHelpers:
-    """Test grid_item_date and grid_item_id with both types."""
+    """Test grid_item_date with both types."""
 
     def test_grid_item_date_for_clip(self):
         from tests.conftest import make_clip
@@ -70,16 +70,6 @@ class TestGridItemHelpers:
         dt = datetime(2024, 6, 15, tzinfo=UTC)
         photo = make_photo_asset("p1", file_created_at=dt)
         assert grid_item_date(photo) == dt
-
-    def test_grid_item_id_for_clip(self):
-        from tests.conftest import make_clip
-
-        clip = make_clip("v1")
-        assert grid_item_id(clip) == "v1"
-
-    def test_grid_item_id_for_photo(self):
-        photo = make_photo_asset("p1")
-        assert grid_item_id(photo) == "p1"
 
 
 class TestPhotoGridItemSorting:

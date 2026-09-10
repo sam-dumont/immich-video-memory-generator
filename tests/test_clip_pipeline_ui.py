@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
@@ -99,8 +98,7 @@ def test_selection_uses_the_persisted_timeline_content_budget() -> None:
         memory_type="trip",
         duration_mode="manual",
         target_duration=2.5,
-        avg_clip_duration=5,
-        pipeline_config={"avg_clip_duration": 5.0},
+        hdr_only=True,
     )
 
     plan = _configure_timeline_for_selection(state, clips, photos)
@@ -109,7 +107,8 @@ def test_selection_uses_the_persisted_timeline_content_budget() -> None:
     assert plan.target_duration == 150.0
     assert state.timeline_plan is plan
     assert pipeline_config.target_duration_seconds == plan.content_budget
-    assert pipeline_config.target_clips == math.ceil(plan.content_budget / 5.0)
+    # The one pool switch the editorial route still reads travels with the plan.
+    assert pipeline_config.hdr_only is True
 
 
 def test_pipeline_summary_distinguishes_eligible_deep_and_planned_counts() -> None:

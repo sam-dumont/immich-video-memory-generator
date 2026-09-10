@@ -116,7 +116,7 @@ def test_cli_real_display_enters_indeterminate_then_reports_actual_terminal_stag
 @pytest.mark.parametrize("status", ["running", "complete", "failed"])
 def test_ui_retains_stage_and_elapsed_but_hides_counts_rates_eta_and_phase_fraction(status):
     from immich_memories.ui.pages.clip_pipeline import _make_progress_callback
-    from immich_memories.ui.pages.clip_pipeline_helpers import _poll_phase, _poll_stats
+    from immich_memories.ui.pages.clip_pipeline_helpers import _poll_stats
 
     state = {"cancelled": False}
     _make_progress_callback(state)(_status(status=status))
@@ -126,11 +126,6 @@ def test_ui_retains_stage_and_elapsed_but_hides_counts_rates_eta_and_phase_fract
     # Old legacy counters must not leak into this display mode, even if stale.
     state.update(current_index=999, total_items=999, avg_duration=50, speed_ratio=9, eta="2h")
     labels = [MagicMock() for _ in range(6)]
-    phase = MagicMock()
-    render_phase = MagicMock()
-    _poll_phase(state, {"phase_number": 2}, phase, render_phase)
-    phase.clear.assert_called_once()
-    render_phase.assert_not_called()
     # WHY: freezes the wall clock so the elapsed-time label is deterministic.
     with patch("immich_memories.ui.pages.clip_pipeline_helpers.time.time", return_value=165.0):
         _poll_stats(state, *labels)
@@ -167,8 +162,7 @@ def test_ui_timer_shows_indeterminate_bar_and_exact_stage_without_fake_count():
     ):
         _wire_progress_timer(
             state,
-            {"phase_number": 2},
-            MagicMock(),
+            {},
             MagicMock(),
             bar,
             label,

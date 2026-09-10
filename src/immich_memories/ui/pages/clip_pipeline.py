@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import math
 from typing import TYPE_CHECKING, Any, Literal
 
 from nicegui import run, ui
@@ -18,7 +17,6 @@ from immich_memories.planning.auto_duration import (
 )
 from immich_memories.ui.pages.clip_pipeline_helpers import (
     _poll_detail_cards,
-    _poll_phase,
     _poll_stats,
 )
 from immich_memories.ui.state import get_app_state
@@ -28,6 +26,11 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from immich_memories.processing.timeline_budget import TimelinePlan
 
+# The scorer's "average seconds per clip" dial, now a fixed planning estimate: the
+# editor decides every carrier's seconds, so the preliminary timeline only needs a
+# plausible density to size its content budget.
+_EXPECTED_CLIP_SECONDS = 5.0
+
 
 def _pipeline_summary_counts(result: dict) -> tuple[int, int, int]:
     """Return reviewed, expensive-analysis, and final-plan counts."""
@@ -36,25 +39,6 @@ def _pipeline_summary_counts(result: dict) -> tuple[int, int, int]:
     deep = int(stats.get("deeply_analyzed_count", stats.get("total_analyzed", 0)))
     planned = int(stats.get("planned_count", stats.get("selected_count", 0)))
     return eligible, deep, planned
-
-
-def render_phase_indicator(current_phase: int, total_phases: int = 4) -> None:
-    """Render pipeline phase indicator."""
-    phase_labels = ["Clustering", "Filtering", "Analyzing", "Refining"]
-
-    with ui.row().classes("w-full gap-4 justify-center mb-4"):
-        for i in range(total_phases):
-            phase_num = i + 1
-            label = phase_labels[i] if i < len(phase_labels) else f"Phase {phase_num}"
-
-            if phase_num < current_phase:
-                ui.label(f"{phase_num}. {label}").style("color: var(--im-success)")
-            elif phase_num == current_phase:
-                ui.label(f"{phase_num}. {label}").classes("font-bold").style(
-                    "color: var(--im-info)"
-                )
-            else:
-                ui.label(f"{phase_num}. {label}").style("color: var(--im-text-muted)")
 
 
 def render_pipeline_summary(result: dict) -> None:
@@ -132,8 +116,6 @@ _PROGRESS_STATUS_KEYS = [
     "indeterminate",
     "status",
     "started_at",
-    "phase_number",
-    "total_phases",
     "phase_label",
     "progress_fraction",
     "current_item",
@@ -160,8 +142,6 @@ _PROGRESS_DEFAULTS: dict[str, Any] = {
     "indeterminate": False,
     "status": "running",
     "started_at": None,
-    "phase_number": 1,
-    "total_phases": 4,
     "phase_label": "Processing",
     "progress_fraction": 0,
     "current_item": "",
@@ -224,17 +204,12 @@ def _resolve_auto_duration_for_selection(
     result = resolve_trip_auto_duration(
         clips,
         photos,
-        avg_clip_duration=float(state.avg_clip_duration),
+        avg_clip_duration=_EXPECTED_CLIP_SECONDS,
         photo_duration=state.photo_duration,
         title_duration=title_duration,
         ending_duration=ending_duration,
     )
     state.target_duration = result.total_seconds / 60.0
-    if result.total_seconds > 0:
-        state.pipeline_config["target_clips"] = max(
-            1,
-            math.ceil(result.total_seconds / state.avg_clip_duration),
-        )
     return result
 
 
@@ -268,19 +243,16 @@ def _configure_timeline_for_selection(
         memory_preset_params=state.memory_preset_params,
     )
     title_settings = _build_title_settings(planning_params, config, [])
-    average = float(state.pipeline_config.get("avg_clip_duration", state.avg_clip_duration))
     plan = plan_timeline(
         [*clips, *photos],
         title_settings,
         state.target_duration_seconds,
         state.memory_type,
-        expected_clip_duration=average,
+        expected_clip_duration=_EXPECTED_CLIP_SECONDS,
         transition_mode="smart",
         transition_duration=config.defaults.transition_duration,
     )
     state.timeline_plan = plan
-    state.pipeline_config["target_duration_seconds"] = plan.content_budget
-    state.pipeline_config["target_clips"] = max(1, math.ceil(plan.content_budget / average))
     return plan
 
 
@@ -579,25 +551,18 @@ def _build_pipeline_config(
     state: Any,
     clips: list[VideoClipInfo] | None = None,
 ) -> Any:
-    """Build PipelineConfig from app state."""
+    """Build PipelineConfig from app state: the pool switches the route reads, no dials."""
     from immich_memories.analysis.smart_pipeline import PipelineConfig
     from immich_memories.config_loader import Config
 
-    config_dict = state.pipeline_config
-    overnight_bases = _detect_overnight_bases(state, clips)
-    # Defaults stand in only before the wizard has loaded a config; the dials
-    # this reads are the user's, not the caller's.
+    plan = state.timeline_plan
+    # Defaults stand in only before the wizard has loaded a config.
     return PipelineConfig.from_app_config(
         state.config or Config(),
-        target_clips=config_dict.get("target_clips", 120),
-        avg_clip_duration=config_dict.get("avg_clip_duration", 5.0),
-        target_duration_seconds=config_dict.get("target_duration_seconds"),
-        hdr_only=config_dict.get("hdr_only", False),
-        prioritize_favorites=config_dict.get("prioritize_favorites", True),
-        max_non_favorite_ratio=config_dict.get("max_non_favorite_ratio", 0.25),
-        analyze_all=config_dict.get("analyze_all", False),
-        overnight_bases=overnight_bases,
-        accept_any_provenance=getattr(state, "accept_any_provenance", False),
+        target_duration_seconds=plan.content_budget if plan is not None else None,
+        hdr_only=state.hdr_only,
+        overnight_bases=_detect_overnight_bases(state, clips),
+        accept_any_provenance=state.accept_any_provenance,
     )
 
 
@@ -605,7 +570,6 @@ def _wire_progress_timer(
     progress_state: dict[str, Any],
     _rendered_state: dict[str, Any],
     state: Any,
-    phase_container: ui.element,
     progress_bar: Any,
     status_label: Any,
     detail_container: ui.element,
@@ -623,7 +587,6 @@ def _wire_progress_timer(
     """Wire up the poll timer and background pipeline runner."""
 
     def poll_progress() -> None:
-        _poll_phase(progress_state, _rendered_state, phase_container, render_phase_indicator)
         running_editorial = (
             progress_state.get("indeterminate") and progress_state.get("status") == "running"
         )
@@ -671,8 +634,6 @@ def _render_pipeline_progress_ui(
 
     ui.label("Generating Memories...").classes("text-2xl font-bold mb-4")
 
-    # Progress UI elements
-    phase_container = ui.column().classes("w-full mb-4")
     progress_bar = ui.linear_progress(value=0, show_value=False).classes("w-full")
 
     # Stats row: persistent labels updated via set_text (avoids clear/rebuild churn)
@@ -696,8 +657,6 @@ def _render_pipeline_progress_ui(
     # Shared progress state — written by background thread, read by UI timer.
     # Simple dict assignments are thread-safe in CPython (GIL).
     progress_state: dict[str, Any] = {
-        "phase_number": 0,
-        "total_phases": 4,
         "phase_label": "Starting",
         "progress_fraction": 0.0,
         "current_item": "",
@@ -728,7 +687,6 @@ def _render_pipeline_progress_ui(
     _rendered_state: dict[str, Any] = {
         "current_asset_id": None,
         "last_completed_asset_id": None,
-        "phase_number": -1,
     }
 
     cancel_btn = (
@@ -748,7 +706,6 @@ def _render_pipeline_progress_ui(
         progress_state,
         _rendered_state,
         state,
-        phase_container,
         progress_bar,
         status_label,
         detail_container,

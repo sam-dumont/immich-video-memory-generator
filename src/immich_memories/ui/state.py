@@ -98,19 +98,13 @@ class AppState:
     review_selected_mode: bool = False
     pipeline_running: bool = False
     pipeline_result: dict[str, Any] | None = None
-    pipeline_config: dict[str, Any] = field(default_factory=dict)
     timeline_plan: TimelinePlan | None = None
     editorial_render_timing: dict[str, Any] | None = None
 
     # Generation settings
     duration_mode: Literal["auto", "manual"] = "auto"
     target_duration: float = 10.0  # minutes; fractional values preserve exact seconds
-    avg_clip_duration: int = 5  # seconds per clip
     hdr_only: bool = False
-    prioritize_favorites: bool = True
-    analyze_all: bool = False
-    max_non_favorite_pct: int = 25
-    max_non_favorite_ratio: float = 0.25
     include_live_photos: bool = False
     include_photos: bool = False
     accept_any_provenance: bool = False
@@ -149,18 +143,11 @@ class AppState:
     # Step 2 view mode: "list" (detailed cards) or "grid" (compact thumbnails)
     clip_view_mode: str = "list"
 
-    # Duplicate tracking
-    _duplicates_processed: bool = False
-
     # Session tracking
     last_accessed: datetime | None = None
 
     # Caches (initialized at runtime)
     thumbnail_cache: ThumbnailCache | None = None
-    # Perceptual hashes keyed by asset id. Duplicate detection re-runs on
-    # every Step 2 render, and a thumbnail's hash cannot change while the
-    # file does not.
-    thumbnail_hashes: dict[str, str] = field(default_factory=dict)
     analysis_cache: Any = None  # AnalysisCache
 
     @property
@@ -356,11 +343,9 @@ class AppState:
         self.timeline_plan = None
         self.editorial_render_timing = None
         self.review_selected_mode = False
-        self._duplicates_processed = False
         self.title_suggestion_title = None
         self.title_suggestion_subtitle = None
         self.cancel_requested = False
-        self.thumbnail_hashes = {}
         self.discard_music_preview()
 
     def discard_music_preview(self) -> None:

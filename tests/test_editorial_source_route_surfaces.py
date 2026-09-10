@@ -352,22 +352,16 @@ def test_ui_loading_always_retains_raw_short_and_unknown_sources():
 
 
 @pytest.mark.asyncio
-async def test_ui_loading_uses_cached_metadata_without_editorial_all_pool_probes(
-    tmp_path,
-):
-    from immich_memories.ui.pages.step2_loading import _load_thumbnails_and_metadata_async
+async def test_ui_loading_fetches_only_uncached_thumbnails_and_never_probes(tmp_path):
+    from immich_memories.ui.pages.step2_loading import _load_thumbnails_async
 
     config = _config(tmp_path)
-    cached = make_clip("cached-metadata", file_created_at=_WHEN)
-    missing = make_clip("missing-metadata", file_created_at=_WHEN)
+    cached = make_clip("cached-thumbnail", file_created_at=_WHEN)
+    missing = make_clip("missing-thumbnail", file_created_at=_WHEN)
     clips = [cached, missing]
-    analysis_cache = MagicMock()
-    analysis_cache.get_video_metadata_batch.return_value = {
-        cached.asset.id: {"width": 640, "height": 480, "duration_seconds": 6.125}
-    }
     thumbnails = MagicMock()
     thumbnails.cached_ids.return_value = {cached.asset.id}
-    state = AppState(config=config, analysis_cache=analysis_cache, thumbnail_cache=thumbnails)
+    state = AppState(config=config, thumbnail_cache=thumbnails)
     # WHY: stubs the page's app-state lookup and the batched thumbnail fetch together.
     with (
         # WHY: replaces the module-level state accessor with this test's mocked AppState.
@@ -379,14 +373,11 @@ async def test_ui_loading_uses_cached_metadata_without_editorial_all_pool_probes
             return_value=1,
         ) as fetch_thumbnails,
     ):
-        await _load_thumbnails_and_metadata_async(clips, MagicMock())
+        await _load_thumbnails_async(clips, MagicMock())
 
-    assert (cached.width, cached.height, cached.duration_seconds) == (640, 480, 6.125)
-    # The loader has no metadata-probe path left: a clip the cache does not know
-    # keeps its declared duration and never reaches ffprobe or a cache write.
-    assert missing.duration_seconds == 5.0
-    assert (missing.width, missing.height) == (1920, 1080)
-    analysis_cache.save_video_metadata.assert_not_called()
+    # The loader has no probe path left: a clip keeps the duration and size Immich
+    # declared, and only the thumbnail the cache lacks is fetched.
+    assert (missing.width, missing.height, missing.duration_seconds) == (1920, 1080, 5.0)
     assert fetch_thumbnails.await_args.args[0] == [missing]
 
 
