@@ -8,6 +8,9 @@ from collections.abc import Callable, Mapping, Sequence
 from immich_memories.analysis.editorial_story_weight_audit import weight_reply_audit
 
 WEIGHING_CONTRACT_VERSION = "complete-story-weights-v1"
+REPAIR_ROUNDS = 2
+# The first repair keeps its historical stage name so banked repairs stay warm.
+_REPAIR_SUFFIXES = ("", "-repair", "-repair-2")
 NONCENTRAL_WEIGHTS = {"major", "minor", "glimpse", "none"}
 
 
@@ -163,15 +166,18 @@ def ask_complete_weights(
     parse: Callable[[str], object],
     record: Callable[[dict], None],
 ) -> tuple[dict, dict]:
-    """Validate cached and fresh answers identically; repair at most once.
+    """Validate cached and fresh answers identically; repair at most twice.
 
-    The repair prompt includes the failure so it has its own exact judgment key.
-    Neither an invalid initial reply nor an invalid repair can reach allocation.
+    Each repair prompt carries every rejection so far, so it has its own exact
+    judgment key. Neither an invalid initial reply nor an invalid repair can reach
+    allocation. Two repairs, not one: on a sixty-row table the first repair has come
+    back as a half-table sample after an unoffered "about", and a second corrected ask
+    with both rejections is cheaper than losing the route.
     """
     request_prompt = prompt
     budget = max(1200, 300 + 24 * len(story_keys))
-    for attempt in range(2):
-        raw = judge.ask(stage + ("-repair" if attempt else ""), request_prompt, max_tokens=budget)
+    for attempt in range(REPAIR_ROUNDS + 1):
+        raw = judge.ask(stage + _REPAIR_SUFFIXES[attempt], request_prompt, max_tokens=budget)
         parse_failed = False
         try:
             value = parse(raw)
@@ -194,9 +200,9 @@ def ask_complete_weights(
                     "judgment_audit": exc.audit,
                 }
             )
-            if attempt:
+            if attempt == REPAIR_ROUNDS:
                 raise
-            request_prompt = prompt + (
+            request_prompt = request_prompt + (
                 "\n\nPREVIOUS ANSWER REJECTED: "
                 + str(exc)
                 + "\n"
