@@ -54,6 +54,7 @@ class VideoProbe:
     average_frame_rate: str | None = None
     nominal_frame_rate: str | None = None
     video_time_base: str | None = None
+    container_start_seconds: float = 0.0
 
     @property
     def resolution(self) -> tuple[int, int] | None:
@@ -152,7 +153,20 @@ def _parse_video_probe(data: dict[str, Any]) -> VideoProbe:
         average_frame_rate=video.get("avg_frame_rate"),
         nominal_frame_rate=video.get("r_frame_rate"),
         video_time_base=video.get("time_base"),
+        container_start_seconds=_number(format_data.get("start_time")),
     )
+
+
+def _microseconds(seconds: float) -> int:
+    """Parse a trim option the way av_parse_time does: six fractional digits, truncated."""
+    whole, _, fraction = f"{abs(seconds):.9f}".partition(".")
+    magnitude = int(whole) * 1_000_000 + int(fraction[:6])
+    return -magnitude if seconds < 0 else magnitude
+
+
+def _trim_ticks(seconds: float, clock: Fraction) -> int:
+    """Rescale microseconds onto the packet clock, rounding half away like av_rescale_q."""
+    return math.floor(Fraction(_microseconds(seconds), 1_000_000) / clock + Fraction(1, 2))
 
 
 class ProbeCache:
@@ -282,6 +296,43 @@ class ProbeCache:
             "frame_seconds": float(ticks * clock),
         }
 
+    def quantized_segment(
+        self, path: Path | str, start: float, end: float, rate: Fraction
+    ) -> dict[str, float | int | str]:
+        """Frames the certified trim/fps graph emits for a declared interval of this source.
+
+        ffmpeg re-bases every packet by the container start, keeps the packets whose
+        timestamp lies in ``[start, end)``, ends the segment at the first packet at or
+        past ``end`` (or the last packet's end), and ``fps=...:eof_action=pass`` rounds
+        that endpoint UP to the output grid. A cut inside an irregular source can
+        therefore carry a whole source interval, not one output frame.
+        """
+        data = self._video_packets(path)
+        clock, packets = data["clock"], data["packets"]
+        origin = _trim_ticks(self.get(path).container_start_seconds, clock)
+        first_tick, end_tick = _trim_ticks(start, clock) + origin, _trim_ticks(end, clock) + origin
+        kept = [p["pts"] for p in packets if first_tick <= p["pts"] < end_tick]
+        if not kept:
+            raise ProbeError("Declared interval holds no source frame")
+        later = [p["pts"] for p in packets if p["pts"] >= end_tick]
+        tail = packets[-1]
+        if later:
+            eof = later[0]
+        elif type(tail.get("duration")) is int and tail["duration"] > 0:
+            eof = tail["pts"] + tail["duration"]
+        else:
+            raise ProbeError("Source has no verified final presentation frame")
+        frames = math.ceil((eof - kept[0]) * clock * rate)
+        return {
+            "time_base": str(clock),
+            "origin_pts": origin,
+            "first_pts": kept[0],
+            "eof_pts": eof,
+            "kept_packets": len(kept),
+            "frames": frames,
+            "seconds": float(Fraction(frames) / rate),
+        }
+
     @staticmethod
     def _probe(path: Path) -> VideoProbe:
         command = [
@@ -293,7 +344,7 @@ class ProbeCache:
                 "stream=index,codec_type,codec_name,width,height,r_frame_rate,avg_frame_rate,"
                 "bit_rate,duration,start_time,time_base,color_space,color_transfer,color_primaries,"
                 "bits_per_raw_sample,sample_rate,channels:stream_side_data=rotation:"
-                "format=duration,size,bit_rate"
+                "format=duration,size,bit_rate,start_time"
             ),
             "-of",
             "json",

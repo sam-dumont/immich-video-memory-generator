@@ -69,6 +69,10 @@ def probes(monkeypatch):
         def render_frame_rate(self, _path):
             return {"basis": "matching-stream-rates", "rate": str(int(state.fps)), "fps": state.fps}
 
+        def quantized_segment(self, _path, start, end, rate):
+            frames = round((end - start) * rate)
+            return {"frames": frames, "seconds": float(frames / rate)}
+
         def get(self, path):
             state.calls.append(path)
             duration = (
@@ -118,7 +122,9 @@ def test_positive_segments_keep_alias_lineage_and_exact_warm_skips_probe_and_mer
     assert material.still_ids == ("still-a", "still-b", "still-c")
     record = json.loads(first.with_suffix(".json").read_text())
     assert record["declared_duration_seconds"] == record["encoded_duration_seconds"] == 2.0
-    assert record["frame_rounding_bound_seconds"] == pytest.approx(2 / 25)
+    assert record["predicted_duration_seconds"] == 2.0
+    assert [row["quantized_segment"]["frames"] for row in record["frame_quantization"]["sources"]]
+    assert record["frame_quantization"]["contract"] == certified.FRAME_QUANTIZATION
     assert record["identity"]["certificate"] == clip.editorial_live_manifest
 
 

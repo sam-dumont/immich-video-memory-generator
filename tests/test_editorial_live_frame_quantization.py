@@ -9,7 +9,7 @@ import pytest
 
 from immich_memories.processing import editorial_live_render as renderer
 from immich_memories.processing import live_photo_merger as merger
-from immich_memories.processing.live_material import LiveSourceEntry
+from immich_memories.processing.live_material import LiveRenderMaterial, LiveSourceEntry
 from immich_memories.processing.probe_cache import ProbeCache, ProbeError
 
 
@@ -163,7 +163,7 @@ def test_substantial_encoded_shortfall_fails_before_encoder(tmp_path, monkeypatc
         pytest.fail("an unbounded shortfall must not launch an encoder")
 
     monkeypatch.setattr("subprocess.run", forbidden)
-    with pytest.raises(ValueError, match="exceeds one output frame"):
+    with pytest.raises(ValueError, match="exceeds its certified allowance"):
         renderer._hold_last_frame(
             tmp_path / "encoded.mp4", 3.0, source_probe(video=2.8, fps=30), hardware_enabled=False
         )
@@ -197,3 +197,59 @@ def test_certified_command_does_not_use_legacy_unknown_cadence_fallback(monkeypa
         merger.build_merge_command(
             [Path("missing.mov")], [(0, 1)], Path("out.mp4"), quantize_material=True
         )
+
+
+class EncodeProbes:
+    def __init__(self, probe):
+        self.probe, self.invalidated = probe, []
+
+    def get(self, _path):
+        return self.probe
+
+    def invalidate(self, path):
+        self.invalidated.append(path)
+
+
+TWO_CUTS = LiveRenderMaterial(
+    (LiveSourceEntry("a", "va", 0.0, 0.0, 2.94), LiveSourceEntry("b", "vb", 1.0, 0.4855, 2.94))
+)
+
+
+def test_concat_of_two_quantized_segments_certifies_at_its_predicted_length(tmp_path):
+    # Each cut rounds its own segment up: 89 + 74 frames at 30 fps, 38.8 ms past the material.
+    probes = EncodeProbes(source_probe(video=163 / 30, container=163 / 30, fps=30))
+    duration, hold, fps = renderer._quantized_encode(
+        probes, tmp_path / "merge.mp4", TWO_CUTS, 163 / 30, hardware_enabled=False
+    )
+    assert (duration, hold, fps) == (163 / 30, None, 30)
+    assert duration - TWO_CUTS.duration_seconds > 1 / 30
+
+
+def test_encode_that_departs_from_its_packet_prediction_is_refused(tmp_path):
+    probes = EncodeProbes(source_probe(video=165 / 30, container=165 / 30, fps=30))
+    with pytest.raises(ValueError, match="changed its certified duration"):
+        renderer._quantized_encode(
+            probes, tmp_path / "merge.mp4", TWO_CUTS, 163 / 30, hardware_enabled=False
+        )
+
+
+def test_source_frame_shortfall_is_held_within_its_certified_allowance(tmp_path, monkeypatch):
+    # A start cut inside an irregular source loses one source interval (60 ms), more than
+    # one output frame; the hold receives exactly that certified shortfall plus one frame.
+    predicted = TWO_CUTS.duration_seconds - 0.06
+    held = []
+
+    def hold(path, nominal, probe, *, hardware_enabled, allowance):
+        held.append((nominal, allowance))
+        probes.probe = source_probe(video=nominal, container=nominal, fps=30)
+        return {"held": True}
+
+    monkeypatch.setattr(renderer, "_hold_last_frame", hold)
+    probes = EncodeProbes(source_probe(video=predicted, container=predicted, fps=30))
+    duration, evidence, _ = renderer._quantized_encode(
+        probes, tmp_path / "merge.mp4", TWO_CUTS, predicted, hardware_enabled=False
+    )
+    assert evidence == {"held": True}
+    assert duration == TWO_CUTS.duration_seconds
+    assert held == [(TWO_CUTS.duration_seconds, pytest.approx(0.06 + 1 / 30))]
+    assert probes.invalidated == [tmp_path / "merge.mp4"]

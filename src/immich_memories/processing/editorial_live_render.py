@@ -15,7 +15,7 @@ from immich_memories.processing.probe_cache import ProbeCache
 from immich_memories.security import write_secret_file
 
 RENDER_VERSION = "editorial-live-render-v1"
-FRAME_QUANTIZATION = "source-packet-cadence-tail-and-output-frame-hold-v2"
+FRAME_QUANTIZATION = "source-packet-segment-quantization-and-frame-hold-v3"
 
 
 def validate_editorial_live_clip(clip: Any) -> LiveRenderMaterial:
@@ -106,8 +106,15 @@ def _source_timing(probes, path, entry) -> dict:
     return evidence
 
 
-def _hold_last_frame(path: Path, nominal: float, probe, *, hardware_enabled: bool) -> dict:
-    """Represent a measured subframe shortfall, preserving every encoded frame."""
+def _hold_last_frame(
+    path: Path, nominal: float, probe, *, hardware_enabled: bool, allowance: float | None = None
+) -> dict:
+    """Represent a measured shortfall by holding the last frame, preserving every encoded frame.
+
+    Without an explicit allowance only a subframe shortfall qualifies. A certified
+    merge passes the shortfall its source packets predicted, which a cut inside an
+    irregular source can grow to one source interval.
+    """
     from immich_memories.processing.live_photo_merger import (
         _append_encoding_args,
         burst_encoding_plan,
@@ -115,9 +122,16 @@ def _hold_last_frame(path: Path, nominal: float, probe, *, hardware_enabled: boo
 
     fps = probe.fps
     duration = _output_duration(probe)
-    if not math.isfinite(fps) or fps <= 0 or not 0 < nominal - duration <= 1 / fps:
-        raise ValueError("Editorial Live encoded shortfall exceeds one output frame")
+    if not math.isfinite(fps) or fps <= 0:
+        raise ValueError("Editorial Live encoded output has no verified frame rate")
+    bound = 1 / fps if allowance is None else allowance
+    if not 0 < nominal - duration <= bound + 1e-6:
+        raise ValueError(
+            "Editorial Live encoded shortfall exceeds its certified allowance: "
+            f"encoded {duration:.6f}s, nominal {nominal:.6f}s, allowance {bound:.6f}s"
+        )
     frames = math.ceil(nominal * fps)
+    clones = frames - math.floor(duration * fps + 1e-6) + 1
     target = path.with_name(path.stem + ".frame-hold.mp4")
     if target.exists():
         raise ValueError("Editorial Live frame-hold attempt already exists")
@@ -131,7 +145,7 @@ def _hold_last_frame(path: Path, nominal: float, probe, *, hardware_enabled: boo
         "-map",
         "0:a?",
         "-vf",
-        f"tpad=stop_mode=clone:stop_duration={2 / fps:.17g},"
+        f"tpad=stop_mode=clone:stop_duration={clones / fps:.17g},"
         f"fps={fps:.17g},trim=end_frame={frames},setpts=PTS-STARTPTS",
     ]
     plan = burst_encoding_plan(
@@ -175,44 +189,61 @@ def _reused_merge(target: Path, record_path: Path, identity: dict) -> Path | Non
     raise ValueError("Cached editorial Live merge changed its conserved identity")
 
 
-def _source_timings(probes, paths, material) -> tuple[list[dict], float]:
-    rounding = 0.0
+def _source_timings(probes, paths, material) -> list[dict]:
     source_timing = []
     for path, entry in zip(paths, material.segments, strict=True):
         evidence = _source_timing(probes, path, entry)
         evidence["render_cadence"] = probes.render_frame_rate(path)
         source_timing.append(evidence)
-        rounding += evidence["frame_seconds"]
-    return source_timing, rounding
+    return source_timing
+
+
+def _predicted_encode(probes, paths, material, render_rate: Fraction, source_timing) -> float:
+    """The length the concatenation of grid-quantized segments must encode to.
+
+    Each segment is quantized on its own before ``concat`` joins them, so the
+    merge carries every cut's rounding, not one output frame in total.
+    """
+    frames = 0
+    for path, entry, evidence in zip(paths, material.segments, source_timing, strict=True):
+        segment = probes.quantized_segment(path, entry.start, entry.end, render_rate)
+        evidence["quantized_segment"] = segment
+        frames += segment["frames"]
+    return float(Fraction(frames) / render_rate)
 
 
 def _quantized_encode(
-    probes, target: Path, material, rounding: float, *, hardware_enabled: bool
+    probes, target: Path, material, predicted: float, *, hardware_enabled: bool
 ) -> tuple[float, dict | None, float]:
-    """Accept the encode only within its measured rounding, holding a subframe shortfall."""
+    """Accept only the encode its source packets predict, holding the certified shortfall."""
     actual = probes.get(target)
     actual_duration = _output_duration(actual)
     if (
         not actual.has_video
         or not math.isfinite(actual_duration)
         or actual_duration <= 0
-        or (abs(actual_duration - material.duration_seconds) > rounding + 1e-6)
+        or not math.isfinite(actual.fps)
+        or actual.fps <= 0
     ):
-        raise ValueError("Editorial Live merge changed its certified duration")
+        raise ValueError("Editorial Live merge has no verified video duration")
+    frame = 1 / actual.fps
+    if abs(actual_duration - predicted) > frame + 1e-6:
+        raise ValueError(
+            "Editorial Live merge changed its certified duration: "
+            f"encoded {actual_duration:.6f}s, source packets predict {predicted:.6f}s"
+        )
     hold = None
     if actual_duration < material.duration_seconds:
         hold = _hold_last_frame(
-            target, material.duration_seconds, actual, hardware_enabled=hardware_enabled
+            target,
+            material.duration_seconds,
+            actual,
+            hardware_enabled=hardware_enabled,
+            allowance=material.duration_seconds - predicted + frame,
         )
         probes.invalidate(target)
         actual = probes.get(target)
         actual_duration = _output_duration(actual)
-    if (
-        not math.isfinite(actual.fps)
-        or actual.fps <= 0
-        or actual_duration > material.duration_seconds + 1 / actual.fps + 1e-6
-    ):
-        raise ValueError("Editorial Live merge exceeds one rendered frame of quantization")
     return actual_duration, hold, actual.fps
 
 
@@ -242,8 +273,9 @@ def render_certified_live(clip, paths, output_dir, *, merge, hardware_enabled=Tr
     if reused is not None:
         return reused
     probes = ProbeCache()
-    source_timing, rounding = _source_timings(probes, paths, material)
+    source_timing = _source_timings(probes, paths, material)
     render_rate = max(Fraction(row["render_cadence"]["rate"]) for row in source_timing)
+    predicted = _predicted_encode(probes, paths, material, render_rate, source_timing)
     result = merge(
         list(paths),
         list(material.trim_points),
@@ -256,7 +288,7 @@ def render_certified_live(clip, paths, output_dir, *, merge, hardware_enabled=Tr
     if result != target or not target.is_file():
         raise ValueError("Editorial Live merge failed; material fallback is forbidden")
     actual_duration, hold, fps = _quantized_encode(
-        probes, target, material, rounding, hardware_enabled=hardware_enabled
+        probes, target, material, predicted, hardware_enabled=hardware_enabled
     )
     if clip.editorial_live_manifest["selected_interval"][1] > actual_duration:
         raise ValueError("Editorial Live selected interval exceeds the encoded material")
@@ -268,7 +300,7 @@ def render_certified_live(clip, paths, output_dir, *, merge, hardware_enabled=Tr
                 "output_sha256": _sha(target),
                 "declared_duration_seconds": material.duration_seconds,
                 "encoded_duration_seconds": actual_duration,
-                "frame_rounding_bound_seconds": rounding,
+                "predicted_duration_seconds": predicted,
                 "frame_quantization": {
                     "contract": FRAME_QUANTIZATION,
                     "sources": source_timing,
