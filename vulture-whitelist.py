@@ -399,3 +399,19 @@ expand_paths  # unused method (src/immich_memories/config_models_editorial_prepa
 validate_endpoint  # unused method (src/immich_memories/config_models_editorial_preparation.py:32) -- story-first port slice 1; wired by a later engine slice, remove when it lands
 head_bundle_path  # unused property (src/immich_memories/config_models_editorial_preparation.py:41) -- story-first port slice 1; wired by a later engine slice, remove when it lands
 encoder_path  # unused property (src/immich_memories/config_models_triage.py:34) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+retained_immich_ids  # unused function (src/immich_memories/people/companion.py:83) -- story-first port slice 2; wired by the runtime/UI slices, remove when it lands
+add_confirmed_person  # unused function (src/immich_memories/people/companion.py:130) -- story-first port slice 2; wired by the runtime/UI slices, remove when it lands
+save_confirmed_relationship  # unused function (src/immich_memories/people/companion.py:171) -- story-first port slice 2; wired by the runtime/UI slices, remove when it lands
+remove_confirmed_relationship  # unused function (src/immich_memories/people/companion.py:186) -- story-first port slice 2; wired by the runtime/UI slices, remove when it lands
+relationship_current  # unused variable (src/immich_memories/people/context.py:40) -- story-first port slice 2; wired by the runtime/UI slices, remove when it lands
+owner_relationship_kinds  # unused variable (src/immich_memories/people/context.py:41) -- story-first port slice 2; wired by the runtime/UI slices, remove when it lands
+load_people_prompt_context  # unused function (src/immich_memories/people/context.py:45) -- story-first port slice 2; wired by the runtime/UI slices, remove when it lands
+read_rule  # unused variable (src/immich_memories/people/gather.py:43) -- story-first port slice 2; wired by the runtime/UI slices, remove when it lands
+photographed_days  # unused function (src/immich_memories/people/gather.py:61) -- story-first port slice 2; wired by the runtime/UI slices, remove when it lands
+shared_assets  # unused variable (src/immich_memories/people/graph.py:80) -- story-first port slice 2; wired by the runtime/UI slices, remove when it lands
+one_share  # unused variable (src/immich_memories/people/graph.py:81) -- story-first port slice 2; wired by the runtime/UI slices, remove when it lands
+other_share  # unused variable (src/immich_memories/people/graph.py:82) -- story-first port slice 2; wired by the runtime/UI slices, remove when it lands
+cooccurrences  # unused variable (src/immich_memories/people/graph.py:92) -- story-first port slice 2; wired by the runtime/UI slices, remove when it lands
+add_person  # unused function (src/immich_memories/people/editor.py:158) -- story-first port slice 2; wired by the settings page in the route slice, remove when it lands
+add_relationship  # unused function (src/immich_memories/people/editor.py:166) -- story-first port slice 2; wired by the settings page in the route slice, remove when it lands
+remove_relationship  # unused function (src/immich_memories/people/editor.py:174) -- story-first port slice 2; wired by the settings page in the route slice, remove when it lands

@@ -13,7 +13,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from immich_memories.people.companion import load_document, people_entries, save_confirmed
+from immich_memories.people.companion import (
+    add_confirmed_person,
+    load_document,
+    people_entries,
+    remove_confirmed_relationship,
+    save_confirmed,
+    save_confirmed_relationship,
+)
+from immich_memories.people.relationships import RELATIONSHIP_CHOICES
 from immich_memories.people.signatures import Tier, pair_key
 
 # What inference can suggest, and nothing more. A role the graph cannot propose
@@ -68,6 +76,7 @@ class LinkView:
     via: str
     inferred: bool
     decision: str | None = None
+    reverse_kind: str | None = None
 
     @property
     def prompt(self) -> str:
@@ -129,14 +138,42 @@ def save_person(path: Path, person: PersonView) -> None:
         person.person_id,
         {
             "role": _cleaned(person.role),
-            "links": [
-                {"kind": link.kind, "with": link.target_id, "decision": link.decision}
-                for link in person.links
-                if link.decision
-            ],
+            "links": [_confirmed_link_block(link) for link in person.links if link.decision],
             "notes": _cleaned(person.notes),
         },
     )
+
+
+def _confirmed_link_block(link: LinkView) -> dict[str, str]:
+    block = {
+        "kind": link.kind,
+        "with": link.target_id,
+        "decision": str(link.decision),
+    }
+    if link.reverse_kind:
+        block["reverse"] = link.reverse_kind
+    return block
+
+
+def add_person(path: Path, name: str) -> str:
+    """Add an off-camera or not-yet-tagged person from the settings page."""
+    cleaned = name.strip()
+    if not cleaned:
+        raise ValueError("A person needs a name")
+    return add_confirmed_person(path, cleaned)
+
+
+def add_relationship(path: Path, source_id: str, kind: str, target_id: str) -> None:
+    """Save one human answer; the file writer maintains its reciprocal."""
+    valid = {choice.kind for choice in RELATIONSHIP_CHOICES}
+    if kind not in valid:
+        raise ValueError(f"Unknown relationship kind: {kind}")
+    save_confirmed_relationship(path, source_id, kind, target_id)
+
+
+def remove_relationship(path: Path, source_id: str, kind: str, target_id: str) -> None:
+    """Remove one relationship created by the user and its reciprocal."""
+    remove_confirmed_relationship(path, source_id, kind, target_id)
 
 
 def curation_flags(people: list[PersonView]) -> list[CurationFlag]:
@@ -213,25 +250,29 @@ def _links(
         for link in _mappings(inferred.get("links"))
         if link.get("with")
     ]
-    known = {view.target_id for view in views}
+    known = {(view.kind, view.target_id) for view in views}
     views.extend(
         _hand_written_link(link, names)
         for link in _mappings(confirmed.get("links"))
-        if link.get("with") and str(link["with"]) not in known
+        if link.get("with") and (str(link.get("kind") or "link"), str(link["with"])) not in known
     )
     return views
 
 
-def _link_view(raw: dict[str, Any], names: dict[str, str], decisions: dict[str, str]) -> LinkView:
+def _link_view(
+    raw: dict[str, Any], names: dict[str, str], decisions: dict[tuple[str, str], str]
+) -> LinkView:
     target_id = str(raw["with"])
+    kind = str(raw.get("kind") or "link")
     return LinkView(
-        kind=str(raw.get("kind") or "link"),
+        kind=kind,
         target_id=target_id,
         target_name=names.get(target_id, _GONE),
         confidence=float(raw.get("confidence") or 0.0),
         via=str(raw.get("via") or ""),
         inferred=True,
-        decision=decisions.get(target_id),
+        decision=decisions.get((kind, target_id)),
+        reverse_kind=None,
     )
 
 
@@ -246,17 +287,18 @@ def _hand_written_link(raw: dict[str, Any], names: dict[str, str]) -> LinkView:
         via="you",
         inferred=False,
         decision=str(raw.get("decision") or CONFIRMED),
+        reverse_kind=_text(raw.get("reverse")),
     )
 
 
-def _decisions(confirmed: dict[str, Any]) -> dict[str, str]:
-    """What the user has already said about each edge, by the person it points at.
+def _decisions(confirmed: dict[str, Any]) -> dict[tuple[str, str], str]:
+    """What the user said about each relationship kind and person pair.
 
     A link written by hand carries no `decision:` — the documented shape is
     just kind and target — and writing it down at all is the confirmation.
     """
     return {
-        str(link["with"]): str(link.get("decision") or CONFIRMED)
+        (str(link.get("kind") or "link"), str(link["with"])): str(link.get("decision") or CONFIRMED)
         for link in _mappings(confirmed.get("links"))
         if link.get("with")
     }

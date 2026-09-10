@@ -39,17 +39,23 @@ class FakeImmich:
     # touches. Everything else under test is arithmetic on its answers.
     """
 
-    def __init__(self, people, months, shared=None, account="Alex Example"):
+    def __init__(self, people, months, shared=None, account="Alex Example", days=None):
         self._people = people
         self._months = months
         self._shared = shared or {}
         self._account = account
+        self._days = days or {}
         self.pair_queries = 0
 
     def get_all_people(self, with_hidden: bool = False):
         return self._people
 
     def get_time_buckets(self, **kwargs):
+        if kwargs.get("size") == "DAY":
+            day_map = self._days.get(kwargs.get("person_id"), {})
+            return [
+                _Bucket(f"{day:%Y-%m-%d}T00:00:00.000Z", count) for day, count in day_map.items()
+            ]
         person_id = kwargs["person_id"]
         return [
             _Bucket(f"{month:%Y-%m-%d}T00:00:00.000Z", count)
@@ -109,6 +115,24 @@ class TestRoster:
         graph = build_graph(immich, min_assets=25, today=date(2026, 8, 25))
 
         assert [node.evidence.name for node in graph.people] == ["Alex Example"]
+
+    def test_a_confirmed_face_stays_even_when_it_is_below_the_roster_bound(self):
+        immich = FakeImmich(
+            people=[_Person("p1", "Alex Example"), _Person("p2", "Sasha Example")],
+            months={"p1": _monthly(date(2019, 1, 1), 12, 10), "p2": {date(2020, 5, 1): 8}},
+        )
+
+        graph = build_graph(
+            immich,
+            min_assets=25,
+            include_person_ids={"p2"},
+            today=date(2026, 8, 25),
+        )
+
+        assert [node.evidence.name for node in graph.people] == [
+            "Alex Example",
+            "Sasha Example",
+        ]
 
     def test_epoch_buckets_from_broken_exif_never_reach_the_evidence(self):
         immich = FakeImmich(
@@ -173,18 +197,30 @@ class TestLinksOnTheGraph:
             (LinkKind.TIGHT_DYAD, "p2", "curve-pairing")
         ]
 
-    def test_no_pair_query_is_spent_on_a_pair_containing_the_owner(self):
+    def test_an_owner_pair_is_banked_as_evidence_but_not_read_as_a_dyad(self):
         immich = FakeImmich(
             people=[_Person("p1", "Alex Example"), _Person("p2", "Sam Sample")],
             months={
                 "p1": _monthly(date(2010, 1, 1), 190, 20),
                 "p2": _monthly(date(2018, 6, 1), 90, 20),
             },
+            shared={frozenset(("p1", "p2")): 50},
         )
 
-        build_graph(immich, today=date(2026, 8, 25))
+        graph = build_graph(immich, today=date(2026, 8, 25))
 
-        assert immich.pair_queries == 0
+        assert immich.pair_queries == 1
+        assert graph.cooccurrences == (
+            graph.cooccurrences[0].__class__(
+                one_id="p1",
+                other_id="p2",
+                shared_assets=50,
+                one_share=50 / 3800,
+                other_share=50 / 1800,
+            ),
+        )
+        owner_node = next(node for node in graph.people if node.evidence.person_id == "p1")
+        assert all(link.via != "co-occurrence" for link in owner_node.links)
 
     def test_a_twin_is_read_as_the_pair_they_were_split_from(self):
         immich = FakeImmich(
@@ -240,3 +276,37 @@ class TestGraphMetadata:
         graph = build_graph(immich, today=date(2026, 8, 25))
 
         assert isinstance(graph.built_at, datetime)
+
+
+class TestEraDayShares:
+    def test_covid_day_share_reaches_the_evidence_with_default_days_quarantined(self):
+        """Presence is a share of the library's own covid days; a Jan-1 default day is neither."""
+        library_days = {date(2020, 4, day): 5 for day in range(1, 11)}
+        library_days[date(2020, 1, 1)] = 9
+        immich = FakeImmich(
+            people=[_Person("p1", "Alex Example")],
+            months={"p1": _monthly(date(2020, 1, 1), 12, 10)},
+            days={
+                None: library_days,
+                "p1": {
+                    date(2020, 4, 2): 2,
+                    date(2020, 4, 5): 1,
+                    date(2020, 4, 9): 1,
+                    date(2020, 1, 1): 3,
+                },
+            },
+        )
+
+        graph = build_graph(immich, today=date(2026, 8, 25))
+
+        assert graph.people[0].evidence.era_day_shares == (("covid", 0.3),)
+
+    def test_a_library_that_answers_no_day_buckets_reads_as_no_era_evidence(self):
+        immich = FakeImmich(
+            people=[_Person("p1", "Alex Example")],
+            months={"p1": _monthly(date(2019, 1, 1), 12, 10)},
+        )
+
+        graph = build_graph(immich, today=date(2026, 8, 25))
+
+        assert graph.people[0].evidence.era_day_shares == ()
