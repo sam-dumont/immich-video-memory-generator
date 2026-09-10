@@ -65,6 +65,7 @@ const sidebars: SidebarsConfig = {
             'create/recipes/automated-generation',
             'create/recipes/trigger-endpoint',
             'create/recipes/tips-and-best-practices',
+            'create/recipes/matrix-routes',
           ],
         },
         {
