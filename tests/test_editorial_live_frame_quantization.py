@@ -24,11 +24,15 @@ def source_probe(*, video=1778 / 600, container=2.966667, fps=1830 / 89, start=0
 
 
 class SourceProbes:
-    def __init__(self, probe, tail):
-        self.probe, self.tail, self.packet_reads = probe, tail, 0
+    def __init__(self, probe, tail, head=None):
+        self.probe, self.tail, self.head, self.packet_reads = probe, tail, head, 0
 
     def get(self, _path):
         return self.probe
+
+    def first_video_frame(self, _path):
+        self.packet_reads += 1
+        return self.head
 
     def last_video_frame(self, _path):
         self.packet_reads += 1
@@ -102,7 +106,7 @@ def test_packet_tail_uses_presentation_order_and_exact_timebase(tmp_path, monkey
     tail = cache.last_video_frame(path)
     assert tail == {
         "time_base": "1/600",
-        "last_pts": 1751,
+        "pts": 1751,
         "duration_ticks": 27,
         "start_seconds": 1751 / 600,
         "end_seconds": 1778 / 600,
@@ -170,7 +174,8 @@ def test_substantial_encoded_shortfall_fails_before_encoder(tmp_path, monkeypatc
 
 
 def test_source_interval_before_nonzero_video_start_is_rejected():
-    probes = SourceProbes(source_probe(video=2.0, container=3.0, start=1.0), None)
+    head = {"start_seconds": 1.0, "end_seconds": 1.0 + 1 / 30, "frame_seconds": 1 / 30}
+    probes = SourceProbes(source_probe(video=2.0, container=3.0, start=1.0), None, head)
     with pytest.raises(ValueError, match="exceeds actual video source"):
         renderer._source_timing(
             probes, Path("source.mov"), LiveSourceEntry("s", "v", 0.0, 0.0, 0.5)

@@ -1,0 +1,93 @@
+"""A declared interval is read where ffmpeg reads it: re-based to the container start."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from immich_memories.processing import editorial_live_render as renderer
+from immich_memories.processing.live_material import LiveSourceEntry
+
+FRAME = 20 / 600
+
+
+def probe(*, video_start=0.0, container_start=0.0, video=2.966667, container=2.966667):
+    return SimpleNamespace(
+        has_video=True,
+        video_duration_seconds=video,
+        duration_seconds=container,
+        fps=30.0,
+        video_start_seconds=video_start,
+        container_start_seconds=container_start,
+    )
+
+
+class Probes:
+    def __init__(self, probe, *, head=None, tail=None):
+        self.probe, self.head, self.tail, self.packet_reads = probe, head, tail, 0
+
+    def get(self, _path):
+        return self.probe
+
+    def first_video_frame(self, _path):
+        self.packet_reads += 1
+        return self.head
+
+    def last_video_frame(self, _path):
+        self.packet_reads += 1
+        return self.tail
+
+
+def test_video_starting_with_its_container_is_at_zero_for_ffmpeg():
+    # A video-only source whose stream and container both start late renders from 0.
+    probes = Probes(probe(video_start=0.05, container_start=0.05))
+    evidence = renderer._source_timing(
+        probes, Path("late.mov"), LiveSourceEntry("s", "v", 0.0, 0.0, 2.9)
+    )
+    assert evidence["video_start_seconds"] == pytest.approx(0.0)
+    assert evidence["video_end_seconds"] == pytest.approx(2.966667)
+    assert evidence["container_start_seconds"] == 0.05
+    assert probes.packet_reads == 0
+
+
+def test_video_lead_within_its_first_frame_is_bound_to_that_packet():
+    # Audio starts 28 ms in, video 50 ms in: ffmpeg shows the first frame 22 ms late.
+    head = {"start_seconds": 0.05, "end_seconds": 0.05 + FRAME, "frame_seconds": FRAME}
+    probes = Probes(probe(video_start=0.05, container_start=0.028), head=head)
+    evidence = renderer._source_timing(
+        probes, Path("lead.mov"), LiveSourceEntry("s", "v", 0.0, 0.0, 2.9667)
+    )
+    assert evidence["source_lead_seconds"] == pytest.approx(0.022)
+    assert evidence["initial_packet"] == head
+    assert evidence["lead_boundary"] == "video-start-within-first-source-frame"
+    assert probes.packet_reads == 1
+
+
+@pytest.mark.parametrize("video_start", [0.028 + FRAME + 0.001, 0.2])
+def test_video_lead_beyond_one_source_frame_is_refused(video_start):
+    head = {
+        "start_seconds": video_start,
+        "end_seconds": video_start + FRAME,
+        "frame_seconds": FRAME,
+    }
+    probes = Probes(probe(video_start=video_start, container_start=0.028), head=head)
+    with pytest.raises(ValueError, match="exceeds actual video source"):
+        renderer._source_timing(
+            probes, Path("gap.mov"), LiveSourceEntry("s", "v", 0.0, 0.0, 2.9667)
+        )
+
+
+def test_interval_cannot_consist_only_of_the_missing_lead():
+    head = {"start_seconds": 0.05, "end_seconds": 0.05 + FRAME, "frame_seconds": FRAME}
+    probes = Probes(probe(video_start=0.05, container_start=0.028), head=head)
+    with pytest.raises(ValueError, match="exceeds actual video source"):
+        renderer._source_timing(probes, Path("lead.mov"), LiveSourceEntry("s", "v", 0.0, 0.0, 0.02))
+
+
+def test_rejection_carries_the_measured_numbers():
+    probes = Probes(probe(video=2.0, container=2.0))
+    with pytest.raises(ValueError, match=r'"video_end_seconds": 2\.0') as caught:
+        renderer._source_timing(probes, Path("short.mov"), LiveSourceEntry("s", "v", 0.0, 0.0, 3.5))
+    assert '"declared_end_seconds": 3.5' in str(caught.value)

@@ -68,42 +68,73 @@ def _output_duration(probe) -> float:
     return probe.video_duration_seconds or probe.duration_seconds
 
 
+def _reject(evidence: dict) -> ValueError:
+    return ValueError(
+        "Editorial Live interval exceeds actual video source: "
+        + json.dumps(evidence, sort_keys=True, default=str)
+    )
+
+
 def _source_timing(probes, path, entry) -> dict:
+    """Check the declared interval in the timeline ffmpeg renders, not absolute stream time.
+
+    ffmpeg subtracts the container start from every input timestamp, so a video
+    track that begins later than another track enters the trim graph at
+    (video start - container start).
+    """
     probe = probes.get(path)
-    end = _video_end(probe)
-    start = getattr(probe, "video_start_seconds", 0.0)
-    if (
-        not probe.has_video
-        or not math.isfinite(end)
-        or end <= 0
-        or not math.isfinite(start)
-        or entry.start < start
-    ):
-        raise ValueError("Editorial Live interval exceeds actual video source")
-    if not math.isfinite(probe.fps) or probe.fps <= 0:
-        raise ValueError("Editorial Live source has no verified frame rate")
+    origin = getattr(probe, "container_start_seconds", 0.0)
+    start = getattr(probe, "video_start_seconds", 0.0) - origin
+    end = _video_end(probe) - origin
     evidence = {
+        "declared_start_seconds": entry.start,
         "declared_end_seconds": entry.end,
+        "container_start_seconds": origin,
         "video_start_seconds": start,
         "video_end_seconds": end,
         "container_seconds": probe.duration_seconds,
-        "frame_seconds": 1 / probe.fps,
     }
+    if not probe.has_video or not math.isfinite(end) or end <= 0 or not math.isfinite(start):
+        raise _reject(evidence)
+    if not math.isfinite(probe.fps) or probe.fps <= 0:
+        raise ValueError("Editorial Live source has no verified frame rate")
+    evidence["frame_seconds"] = 1 / probe.fps
+    if entry.start < start:
+        _bind_leading_frame(probes, path, entry, origin, evidence)
     if entry.end > end:
-        # Immich's whole-source duration has millisecond precision and follows
-        # the container. It can extend just beyond the final video packet.
-        if entry.end != round(probe.duration_seconds, 3):
-            raise ValueError("Editorial Live interval exceeds actual video source")
-        tail = probes.last_video_frame(path)
-        gap = entry.end - tail["end_seconds"]
-        if entry.start >= tail["end_seconds"] or gap < 0 or gap > tail["frame_seconds"]:
-            raise ValueError("Editorial Live interval exceeds actual video source")
-        evidence.update(
-            final_packet=tail,
-            source_tail_seconds=gap,
-            boundary="millisecond-container-end-within-final-source-frame",
-        )
+        _bind_trailing_frame(probes, path, entry, probe, origin, evidence)
     return evidence
+
+
+def _bind_leading_frame(probes, path, entry, origin: float, evidence: dict) -> None:
+    """A video that begins within one frame after the declared start starts on that frame."""
+    head = probes.first_video_frame(path)
+    first = head["start_seconds"] - origin
+    lead = first - entry.start
+    if entry.end <= first or lead < 0 or lead > head["frame_seconds"]:
+        raise _reject(evidence | {"initial_packet": head, "source_lead_seconds": lead})
+    evidence.update(
+        initial_packet=head,
+        source_lead_seconds=lead,
+        lead_boundary="video-start-within-first-source-frame",
+    )
+
+
+def _bind_trailing_frame(probes, path, entry, probe, origin: float, evidence: dict) -> None:
+    # Immich's whole-source duration has millisecond precision and follows
+    # the container. It can extend just beyond the final video packet.
+    if entry.end != round(probe.duration_seconds, 3):
+        raise _reject(evidence)
+    tail = probes.last_video_frame(path)
+    tail_end = tail["end_seconds"] - origin
+    gap = entry.end - tail_end
+    if entry.start >= tail_end or gap < 0 or gap > tail["frame_seconds"]:
+        raise _reject(evidence | {"final_packet": tail, "source_tail_seconds": gap})
+    evidence.update(
+        final_packet=tail,
+        source_tail_seconds=gap,
+        boundary="millisecond-container-end-within-final-source-frame",
+    )
 
 
 def _hold_last_frame(

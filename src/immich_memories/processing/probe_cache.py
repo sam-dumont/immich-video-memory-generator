@@ -280,19 +280,26 @@ class ProbeCache:
             "min_spacing_ticks": spacing,
         }
 
+    def first_video_frame(self, path: Path | str) -> dict[str, float | int | str]:
+        """Bind a declared start to the actual first presentation packet."""
+        return self._video_frame(path, 0, "initial")
+
     def last_video_frame(self, path: Path | str) -> dict[str, float | int | str]:
         """Bind a rounded source endpoint to its actual final presentation packet."""
+        return self._video_frame(path, -1, "final")
+
+    def _video_frame(self, path: Path | str, index: int, label: str) -> dict:
         data = self._video_packets(path)
-        clock, tail = data["clock"], data["packets"][-1]
-        ticks = tail.get("duration")
+        clock, packet = data["clock"], data["packets"][index]
+        ticks = packet.get("duration")
         if type(ticks) is not int or ticks <= 0:
-            raise ProbeError("Source has no verified final presentation frame")
+            raise ProbeError(f"Source has no verified {label} presentation frame")
         return {
             "time_base": str(clock),
-            "last_pts": tail["pts"],
+            "pts": packet["pts"],
             "duration_ticks": ticks,
-            "start_seconds": float(tail["pts"] * clock),
-            "end_seconds": float((tail["pts"] + ticks) * clock),
+            "start_seconds": float(packet["pts"] * clock),
+            "end_seconds": float((packet["pts"] + ticks) * clock),
             "frame_seconds": float(ticks * clock),
         }
 

@@ -101,3 +101,21 @@ def test_negative_container_start_shifts_packets_forward(tmp_path, monkeypatch):
     assert segment["origin_pts"] == -12
     assert segment["first_pts"] == 0
     assert segment["frames"] == 30
+
+
+def test_first_and_last_frames_share_the_packet_probe(tmp_path, monkeypatch):
+    _fake_probe(monkeypatch, [(30, 20), (50, 20), (70, 27)])
+    cache = ProbeCache()
+    head, tail = (
+        cache.first_video_frame(_source(tmp_path)),
+        cache.last_video_frame(_source(tmp_path)),
+    )
+    assert head == {
+        "time_base": "1/600",
+        "pts": 30,
+        "duration_ticks": 20,
+        "start_seconds": 0.05,
+        "end_seconds": pytest.approx(50 / 600),
+        "frame_seconds": pytest.approx(20 / 600),
+    }
+    assert (tail["pts"], tail["duration_ticks"]) == (70, 27)
