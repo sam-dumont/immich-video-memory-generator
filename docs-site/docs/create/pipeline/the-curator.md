@@ -95,7 +95,11 @@ material stays in chronological order.
 
 ## The mechanics
 
-The arithmetic that serves these judgments — budgets, weights, and caps — is
-documented in [Clip Selection & Scoring](clip-selection-scoring), and the
-runtime cost of every stage in the
-[Pipeline Overview](pipeline-overview).
+The shipped design — the source model, the annotation store and its banks, the
+six stages, the two readings, the structure and story planners, carriers and
+durable attempts — is written up in
+[Story-first selection: the shipped design](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/docs/designs/2026-09-10-story-first-selection.md)
+in the repository. The runtime cost of every stage is in the
+[Pipeline Overview](pipeline-overview); the scoring tables the old selector
+used are kept as a [legacy reference](clip-selection-scoring) until they are
+removed.
