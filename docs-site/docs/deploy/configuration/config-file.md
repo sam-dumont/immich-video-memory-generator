@@ -12,6 +12,9 @@ with `immich-memories config`. Permissions are set to `600` (owner read/write on
 contains API keys. Sections are grouped in two tiers: everyday options at the top level, and the
 rest under `advanced:` (see [Tiers](#tiers) below).
 
+A complete annotated example lives in the repository at
+[`examples/config.example.yaml`](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/examples/config.example.yaml).
+
 ## Quick start config
 
 Most users only need these options:

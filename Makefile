@@ -300,7 +300,7 @@ e2e-full:  ## Run ALL E2E tests including full generation pipeline (~10min)
 		--junitxml=tests/e2e-junit.xml
 
 contact-sheets:  ## Render contact sheets for a sweep of memories (SPEC=path OUT=dir)
-	@test -n "$(SPEC)" || (echo "SPEC=path/to/spec.json required — see scripts/sweep-spec.example.json"; exit 1)
+	@test -n "$(SPEC)" || (echo "SPEC=path/to/spec.json required — see examples/sweep-spec.example.json"; exit 1)
 	uv run python scripts/sweep_contact_sheets.py --spec "$(SPEC)" --out "$(or $(OUT),output/contact-sheets)"
 
 screenshots:  ## Capture UI screenshots in light + dark mode (coverage from server subprocess)
