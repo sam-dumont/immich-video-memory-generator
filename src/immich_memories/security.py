@@ -31,8 +31,8 @@ def write_secret_file(path: Path, text: str) -> None:
     means a crash mid-write cannot leave a truncated secret behind.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, stat.S_IRUSR | stat.S_IWUSR)
+    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    tmp = Path(temp_name)
     try:
         with os.fdopen(fd, "w") as handle:
             handle.write(text)
@@ -73,6 +73,16 @@ def private_temp_dir(name: str) -> Path:
     return target
 
 
+def _collect_model_secrets(value: BaseModel, secrets: set[str], pending: list[object]) -> None:
+    for field_name in type(value).model_fields:
+        field_value = getattr(value, field_name)
+        if field_name in CREDENTIAL_FIELD_NAMES:
+            if isinstance(field_value, str) and field_value:
+                secrets.add(field_value)
+        else:
+            pending.append(field_value)
+
+
 def configured_secret_values(config: BaseModel) -> tuple[str, ...]:
     """Return configured credentials and secret-bearing notification URLs."""
     secrets: set[str] = set()
@@ -80,13 +90,7 @@ def configured_secret_values(config: BaseModel) -> tuple[str, ...]:
     while pending:
         value = pending.pop()
         if isinstance(value, BaseModel):
-            for field_name in type(value).model_fields:
-                field_value = getattr(value, field_name)
-                if field_name in CREDENTIAL_FIELD_NAMES:
-                    if isinstance(field_value, str) and field_value:
-                        secrets.add(field_value)
-                else:
-                    pending.append(field_value)
+            _collect_model_secrets(value, secrets, pending)
         elif isinstance(value, dict):
             pending.extend(value.values())
         elif isinstance(value, (list, tuple, set, frozenset)):

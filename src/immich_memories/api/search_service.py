@@ -20,6 +20,8 @@ RequestFn = Callable[..., Any]
 
 # Immich caps search page size at 1000; album fetches are bounded by asset count, not pages.
 _ALBUM_PAGE_SIZE = 1000
+# Complete date-range reads use the same supported metadata page size.
+_DATE_RANGE_PAGE_SIZE = 1000
 
 
 def _api_datetime(value: date | datetime, *, inclusive_end: bool = False) -> str:
@@ -233,7 +235,7 @@ class SearchService:
                 taken_after=date_range.start,
                 taken_before=date_range.end,
                 page=page,
-                size=100,
+                size=_DATE_RANGE_PAGE_SIZE,
             )
 
             assets = result.all_assets
@@ -267,7 +269,7 @@ class SearchService:
                 taken_after=date_range.start,
                 taken_before=date_range.end,
                 page=page,
-                size=100,
+                size=_DATE_RANGE_PAGE_SIZE,
             )
 
             assets = result.all_assets
@@ -392,7 +394,7 @@ class SearchService:
                 taken_after=date_range.start,
                 taken_before=date_range.end,
                 page=page,
-                size=100,
+                size=_DATE_RANGE_PAGE_SIZE,
             )
             all_assets.extend(result.all_assets)
             if progress_callback:

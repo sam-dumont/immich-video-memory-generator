@@ -88,6 +88,19 @@ def test_a_caller_that_does_not_track_a_run_gets_no_self_eviction_warning(tmp_pa
     assert [r for r in caplog.records if r.levelno == logging.WARNING] == []
 
 
+def test_an_active_working_set_overflows_instead_of_being_deleted(tmp_path: Path, caplog):
+    started_at = 1_000_000.0
+    first = _file(tmp_path, "first.bin", 4000, age_seconds=-10)
+    second = _file(tmp_path, "second.bin", 4000, age_seconds=-20)
+
+    with caplog.at_level(logging.WARNING):
+        freed = evict_to_budget(tmp_path, max_bytes=4000, run_started_at=started_at)
+
+    assert freed == 0
+    assert first.exists() and second.exists()
+    assert "remain available for this analysis" in caplog.text
+
+
 def test_nested_files_count_toward_the_budget(tmp_path: Path):
     """Caches shard into subdirectories; a per-directory view would miss most."""
     _file(tmp_path / "ab", "old.jpg", 4000, age_seconds=300)

@@ -298,3 +298,104 @@ upload_result  # unused variable (src/immich_memories/ui/state.py:128)
 _.photo_budget_result  # unused attribute (src/immich_memories/ui/state.py:162)
 discover_days  # unused function (src/immich_memories/cli/special_days_cmd.py:17)
 days_due  # unused function (src/immich_memories/cli/special_days_cmd.py:88)
+EpisodeReadingStore  # unused class (src/immich_memories/store/episode_readings.py:159) -- story-first port slice 1; the readers land in slice 5 and remove this line
+readings_for  # unused method (src/immich_memories/store/episode_readings.py:185) -- story-first port slice 1; wired by slice 5
+PeriodInsightProducer  # unused class (src/immich_memories/store/period_insights.py:32) -- story-first port slice 1; wired by slice 5
+PeriodInsightStore  # unused class (src/immich_memories/store/period_insights.py:170) -- story-first port slice 1; wired by slice 5
+insight_for  # unused method (src/immich_memories/store/period_insights.py:193) -- story-first port slice 1; wired by slice 5
+from_annotations  # unused method (src/immich_memories/store/episode_readings.py:86) -- story-first port slice 1; wired by slice 5
+EpisodeReadingProducer  # unused class (src/immich_memories/store/episode_readings.py:32) -- story-first port slice 1; wired by slice 5
+video_start_seconds  # unused variable (src/immich_memories/processing/probe_cache.py:52) -- story-first port slice 1; read by the editorial timing/live render in slice 7
+video_time_base  # unused variable (src/immich_memories/processing/probe_cache.py:55) -- story-first port slice 1; read by the editorial timing/live render in slice 7
+render_frame_rate  # unused method (src/immich_memories/processing/probe_cache.py:235) -- story-first port slice 1; called by the live render in slice 7
+last_video_frame  # unused method (src/immich_memories/processing/probe_cache.py:265) -- story-first port slice 1; called by the live render in slice 7
+read_editorial_attempt  # unused function (src/immich_memories/operations/editorial_attempt.py:98) -- story-first port slice 1; the UI run-survival page reads it in phase 2
+selected_interval  # unused method (src/immich_memories/processing/live_material.py:163) -- story-first port slice 1; called by the live render in slice 7
+cancellation_scope  # unused function (src/immich_memories/operations/cancellation.py:21) -- story-first port slice 1; the pipeline route installs it in slice 4
+bundle_path  # unused property (src/immich_memories/config_models_triage.py:38) -- story-first port slice 1; the triage engine reads it in slice 3
+contract  # unused variable (src/immich_memories/analysis/annotation_lines.py:91) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+records_by_id  # unused method (src/immich_memories/analysis/annotation_lines.py:115) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+AnnotationPersonContext  # unused class (src/immich_memories/analysis/annotation_lines.py:120) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+StoredAnnotationLineReader  # unused class (src/immich_memories/analysis/annotation_lines.py:148) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+contract  # unused property (src/immich_memories/analysis/annotation_lines.py:187) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+lines_for  # unused method (src/immich_memories/analysis/annotation_lines.py:192) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+RetainedMotion  # unused class (src/immich_memories/analysis/editorial_completion.py:12) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+completed_duration  # unused function (src/immich_memories/analysis/editorial_completion.py:69) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+proposed_segment  # unused variable (src/immich_memories/analysis/editorial_contracts.py:31) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+SourceEvidence  # unused class (src/immich_memories/analysis/editorial_contracts.py:171) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+similarity  # unused variable (src/immich_memories/analysis/editorial_contracts.py:177) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+PeriodInsight  # unused class (src/immich_memories/analysis/editorial_contracts.py:197) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+model_identity  # unused variable (src/immich_memories/analysis/editorial_contracts.py:229) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+input_ids  # unused variable (src/immich_memories/analysis/editorial_contracts.py:230) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+sheet_hashes  # unused variable (src/immich_memories/analysis/editorial_contracts.py:231) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+request_key  # unused variable (src/immich_memories/analysis/editorial_contracts.py:232) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+unexpected_ids  # unused variable (src/immich_memories/analysis/editorial_contracts.py:251) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+PassTrace  # unused class (src/immich_memories/analysis/editorial_contracts.py:254) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+input_ids  # unused variable (src/immich_memories/analysis/editorial_contracts.py:259) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+unresolved  # unused variable (src/immich_memories/analysis/editorial_contracts.py:262) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+duration_before  # unused variable (src/immich_memories/analysis/editorial_contracts.py:263) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+duration_after  # unused variable (src/immich_memories/analysis/editorial_contracts.py:264) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+request_traces  # unused variable (src/immich_memories/analysis/editorial_contracts.py:266) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+conservation  # unused variable (src/immich_memories/analysis/editorial_contracts.py:267) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+attached_sheet_hashes  # unused variable (src/immich_memories/analysis/editorial_contracts.py:275) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+planned_calls  # unused variable (src/immich_memories/analysis/editorial_contracts.py:276) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+actual_calls  # unused variable (src/immich_memories/analysis/editorial_contracts.py:277) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+tile_count  # unused variable (src/immich_memories/analysis/editorial_contracts.py:279) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+LEGACY_DESCRIPTION_MODEL  # unused variable (src/immich_memories/analysis/editorial_description_contract.py:10) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+PROMPT_VERSION  # unused variable (src/immich_memories/analysis/editorial_description_contract.py:12) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+TILE_VERSION  # unused variable (src/immich_memories/analysis/editorial_description_contract.py:13) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+DESCRIPTION_SOURCE  # unused variable (src/immich_memories/analysis/editorial_description_contract.py:14) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+MAX_OUTPUT_TOKENS  # unused variable (src/immich_memories/analysis/editorial_description_contract.py:17) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+REPETITION_PENALTY  # unused variable (src/immich_memories/analysis/editorial_description_contract.py:18) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+PROMPT  # unused variable (src/immich_memories/analysis/editorial_description_contract.py:21) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+RESPONSE_SCHEMA  # unused variable (src/immich_memories/analysis/editorial_description_contract.py:27) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+validate_envelope  # unused function (src/immich_memories/analysis/editorial_description_contract.py:46) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+JSON_RECOVERY_POLICY  # unused variable (src/immich_memories/analysis/editorial_json_completion.py:7) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+JSON_FIELDS_POLICY  # unused variable (src/immich_memories/analysis/editorial_json_completion.py:8) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+JSON_EMPTY_ARRAY_POLICY  # unused variable (src/immich_memories/analysis/editorial_json_completion.py:9) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+JSONDecisionError  # unused class (src/immich_memories/analysis/editorial_json_completion.py:12) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+json_format_repair_prompt  # unused function (src/immich_memories/analysis/editorial_json_completion.py:20) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+complete_final_json  # unused function (src/immich_memories/analysis/editorial_json_completion.py:56) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+attest_public_text_model  # unused function (src/immich_memories/analysis/editorial_model_attestation.py:169) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+TextCompletionFailure  # unused class (src/immich_memories/analysis/editorial_text_failures.py:6) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+as_record  # unused method (src/immich_memories/analysis/editorial_text_failures.py:14) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+from_record  # unused method (src/immich_memories/analysis/editorial_text_failures.py:17) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+resolved_llm_config  # unused function (src/immich_memories/analysis/llm_query.py:129) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+COMPLETE_RETRY_POLICY  # unused variable (src/immich_memories/analysis/llm_text_identity.py:10) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+bounded_model_text  # unused function (src/immich_memories/analysis/strict_json.py:38) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+final_json_object  # unused function (src/immich_memories/analysis/strict_json.py:53) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+subject_evidence  # unused function (src/immich_memories/analysis/subject_policy.py:59) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+visibility  # unused variable (src/immich_memories/api/models.py:202) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+live_burst_material  # unused variable (src/immich_memories/api/models.py:400) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+editorial_live_manifest  # unused variable (src/immich_memories/api/models.py:402) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+map_leaves  # unused method (src/immich_memories/api/person_expression.py:89) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+photos_in_window  # unused function (src/immich_memories/api/person_scope.py:113) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+EditorialVerdicts  # unused class (src/immich_memories/cache/editorial_verdicts.py:40) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+recall  # unused method (src/immich_memories/cache/editorial_verdicts.py:67) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+VisualJudgmentIdentity  # unused class (src/immich_memories/cache/judgment_cache.py:72) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+judgment_key  # unused function (src/immich_memories/cache/judgment_cache.py:120) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+completion_failure_for  # unused method (src/immich_memories/cache/judgment_cache.py:184) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+remember_completion_failure  # unused method (src/immich_memories/cache/judgment_cache.py:197) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+VisualJudgmentCache  # unused class (src/immich_memories/cache/judgment_cache.py:210) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+completion_failure_for  # unused method (src/immich_memories/cache/judgment_cache.py:251) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+remember_completion_failure  # unused method (src/immich_memories/cache/judgment_cache.py:264) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+begin_working_set  # unused method (src/immich_memories/cache/thumbnail_cache.py:60) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+description_llm  # unused variable (src/immich_memories/config_loader.py:242) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+triage  # unused variable (src/immich_memories/config_loader.py:262) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+editorial  # unused variable (src/immich_memories/config_loader.py:263) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+include_off_timeline_assets  # unused variable (src/immich_memories/config_models_analysis.py:86) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+preparation  # unused variable (src/immich_memories/config_models_editorial.py:35) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+expand_database_environment  # unused method (src/immich_memories/config_models_editorial.py:56) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+require_scalar_producer  # unused method (src/immich_memories/config_models_editorial.py:62) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+require_head_producers  # unused method (src/immich_memories/config_models_editorial.py:70) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+resolve_annotation_database  # unused method (src/immich_memories/config_models_editorial.py:86) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+caption_base_url  # unused variable (src/immich_memories/config_models_editorial_preparation.py:14) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+caption_timeout_seconds  # unused variable (src/immich_memories/config_models_editorial_preparation.py:15) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+caption_concurrency  # unused variable (src/immich_memories/config_models_editorial_preparation.py:16) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+detector_python  # unused variable (src/immich_memories/config_models_editorial_preparation.py:21) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+detector_cache_dir  # unused variable (src/immich_memories/config_models_editorial_preparation.py:24) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+allow_model_downloads  # unused variable (src/immich_memories/config_models_editorial_preparation.py:25) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+expand_paths  # unused method (src/immich_memories/config_models_editorial_preparation.py:27) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+validate_endpoint  # unused method (src/immich_memories/config_models_editorial_preparation.py:32) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+head_bundle_path  # unused property (src/immich_memories/config_models_editorial_preparation.py:41) -- story-first port slice 1; wired by a later engine slice, remove when it lands
+encoder_path  # unused property (src/immich_memories/config_models_triage.py:34) -- story-first port slice 1; wired by a later engine slice, remove when it lands

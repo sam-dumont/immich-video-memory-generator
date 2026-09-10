@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -12,6 +11,15 @@ import httpx
 from immich_memories.api.models import Asset
 
 RequestFn = Callable[..., Any]
+DEFAULT_DOWNLOAD_LIMIT = 25 * 1024**3
+
+
+def large_original_size(asset: Asset) -> int | None:
+    """Bound an oversized original by its metadata, never by a Live Photo's still size."""
+    if asset.live_photo_video_id:
+        return None
+    size = getattr(getattr(asset, "exif_info", None), "file_size_in_byte", None)
+    return size if type(size) is int and size > DEFAULT_DOWNLOAD_LIMIT else None
 
 
 class AssetService:
@@ -53,41 +61,83 @@ class AssetService:
         self,
         asset_id: str,
         output_path: Path,
-        max_size_bytes: int = 25 * 1024**3,
+        max_size_bytes: int = DEFAULT_DOWNLOAD_LIMIT,
+        *,
+        expected_size_bytes: int | None = None,
     ) -> Path:
-        """Download an asset's original file.
+        """Download an original, bounded by its known size or the fallback limit.
+
+        A caller with original-file metadata may supply an exact size above the
+        fallback limit. Both oversized and incomplete transfers then fail.
 
         Raises:
-            ValueError: If download exceeds size limit.
+            ValueError: If download exceeds its bound or differs from the expected size.
         """
+        max_size_bytes = _download_bound(max_size_bytes, expected_size_bytes)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        bytes_downloaded = 0
 
         async with self._get_client().stream(
             "GET",
             f"/api/assets/{asset_id}/original",
         ) as response:
             response.raise_for_status()
-
-            content_length = response.headers.get("content-length")
-            if content_length:
-                with contextlib.suppress(ValueError, OverflowError):
-                    if int(content_length) > max_size_bytes:
-                        raise ValueError(
-                            f"Asset {asset_id} size ({int(content_length)} bytes) "
-                            f"exceeds limit ({max_size_bytes} bytes)"
-                        )
-
-            with output_path.open("wb") as f:
-                async for chunk in response.aiter_bytes(chunk_size=8192):
-                    bytes_downloaded += len(chunk)
-                    if bytes_downloaded > max_size_bytes:
-                        f.close()
-                        output_path.unlink(missing_ok=True)
-                        raise ValueError(
-                            f"Download for asset {asset_id} exceeded size limit "
-                            f"({max_size_bytes} bytes)"
-                        )
-                    f.write(chunk)
+            _check_content_length(
+                response.headers.get("content-length", ""),
+                asset_id,
+                max_size_bytes,
+                expected_size_bytes,
+            )
+            complete = False
+            try:
+                await _write_bounded(
+                    response, output_path, asset_id, max_size_bytes, expected_size_bytes
+                )
+                complete = True
+            finally:
+                if not complete:
+                    output_path.unlink(missing_ok=True)
 
         return output_path
+
+
+def _download_bound(max_size_bytes: int, expected_size_bytes: int | None) -> int:
+    if expected_size_bytes is None:
+        return max_size_bytes
+    if type(expected_size_bytes) is not int or expected_size_bytes <= 0:
+        raise ValueError("Expected original size must be a positive integer")
+    return expected_size_bytes
+
+
+def _check_content_length(
+    header: str, asset_id: str, max_size_bytes: int, expected_size_bytes: int | None
+) -> None:
+    try:
+        content_length = int(header)
+    except (ValueError, OverflowError):
+        return
+    if content_length > max_size_bytes:
+        raise ValueError(
+            f"Asset {asset_id} size ({content_length} bytes) exceeds limit ({max_size_bytes} bytes)"
+        )
+    if expected_size_bytes is not None and content_length != expected_size_bytes:
+        raise ValueError(f"Asset {asset_id} header differs from its expected size")
+
+
+async def _write_bounded(
+    response: httpx.Response,
+    output_path: Path,
+    asset_id: str,
+    max_size_bytes: int,
+    expected_size_bytes: int | None,
+) -> None:
+    bytes_downloaded = 0
+    with output_path.open("wb") as f:
+        async for chunk in response.aiter_bytes(chunk_size=1024**2):
+            bytes_downloaded += len(chunk)
+            if bytes_downloaded > max_size_bytes:
+                raise ValueError(
+                    f"Download for asset {asset_id} exceeded size limit ({max_size_bytes} bytes)"
+                )
+            f.write(chunk)
+    if expected_size_bytes is not None and bytes_downloaded != expected_size_bytes:
+        raise ValueError(f"Download for asset {asset_id} differs from its expected size")

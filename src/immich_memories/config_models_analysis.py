@@ -83,6 +83,13 @@ class AnalysisConfig(BaseModel):
         "library 1532 of 1541 such stills were received or downloaded. Turn "
         "off for a library of exported originals. Videos are exempt.",
     )
+    include_off_timeline_assets: bool = Field(
+        default=False,
+        description="Let assets Immich keeps off the timeline (archive, hidden, "
+        "locked) into analysis. Generation overrides this to false whatever it "
+        "says, so a flag left on after an experiment cannot put the locked "
+        "folder into a video. Off by default.",
+    )
     scene_threshold: float = Field(default=27.0, ge=1.0, le=100.0)
     min_scene_duration: float = Field(default=1.0, ge=0.5, le=10.0)
     duplicate_hash_threshold: int = Field(default=8, ge=0, le=64)
@@ -238,8 +245,9 @@ class AnalysisConfig(BaseModel):
         default=1080,
         ge=0,
         description=(
-            "Clips below this short side are dropped unless they carry camera EXIF, "
-            "which is how messaging re-encodes are told from genuinely old footage"
+            "Unknown clips below this short side are dropped; it also enables the "
+            "measured 2048px UUID-JPEG forwarded-media fingerprint. Camera EXIF, a "
+            "favorite, and media captured before 2008 override the inference"
         ),
     )
     subject_policy_enabled: bool = Field(

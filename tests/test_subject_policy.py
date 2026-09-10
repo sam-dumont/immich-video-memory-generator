@@ -231,6 +231,15 @@ def test_a_junk_label_is_unknown_not_a_guess() -> None:
     )
 
 
+def test_new_editorial_path_exposes_subject_as_evidence_without_a_keep_decision() -> None:
+    """The fused scan receives a closed-set observation, not a quota outcome."""
+    from immich_memories.analysis.subject_policy import subject_evidence
+
+    assert subject_evidence(tagged_people=2, category="screen") == "subject-evidence:people"
+    assert subject_evidence(tagged_people=0, category="screen") == "subject-evidence:screen"
+    assert subject_evidence(tagged_people=0, category=None) == "subject-evidence:unknown"
+
+
 def test_the_bar_ignores_candidates_that_were_never_semantically_scored() -> None:
     """ClipWithSegment.score is not one scale. An analysed clip carries its
     segment's semantic score; a clip that was only pre-filtered carries
