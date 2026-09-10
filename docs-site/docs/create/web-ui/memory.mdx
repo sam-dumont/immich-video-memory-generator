@@ -25,7 +25,9 @@ The brief appears once Immich has answered. With credentials in `config.yaml` or
 
 **Cut** loads the pool for the brief, then runs the story-first selection over it. There is no review step in between: everything the brief found is eligible, and the editor decides. To keep something out first, open the media pool from Advanced, untick it, and start the run from that page's own **Generate Memories** button.
 
-While it runs the page shows the current stage, the elapsed time and a **Cancel Pipeline** button.
+While it runs the page shows one row per phase — Finding media, Loading thumbnails, Reading the pictures, Editing, Done — with the run's own stage under the active row ("Reading the period account", "Editing the memory"), the elapsed time, and **Cancel**, which stops after the current stage.
+
+The run belongs to the session, not the tab. Reload the page mid-cut and it lands on the same rows: the page polls the attempt the run writes under the cache directory (`editorial-runs/<key>/latest-attempt.private.json`), and when the run finishes the story appears without a second run. A cut that was cancelled, failed, or interrupted — the process that ran it is gone, which the attempt's released lease tells apart from a slow live run — is reported on the page with **Cut again**. A cut that finished while the session held no result for it is read back from the attempt, and **Re-load media to export** fetches the pool again and rebuilds the selection from the attempt's projection so Export works.
 
 ## What the cut produced
 

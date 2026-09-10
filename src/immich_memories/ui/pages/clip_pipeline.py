@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from nicegui import run, ui
+from nicegui import ui
 
 from immich_memories.api.immich import SyncImmichClient
 from immich_memories.api.models import Asset, VideoClipInfo
@@ -16,11 +16,6 @@ from immich_memories.planning.auto_duration import (
     AutoDurationResult,
     resolve_trip_auto_duration,
 )
-from immich_memories.ui.pages.clip_pipeline_helpers import (
-    _poll_detail_cards,
-    _poll_stats,
-)
-from immich_memories.ui.state import get_app_state
 
 logger = logging.getLogger(__name__)
 
@@ -90,29 +85,6 @@ def render_pipeline_summary(result: dict) -> None:
                     ui.label(f"{clip_id}: {error_msg}").style("color: var(--im-warning)")
 
 
-def _handle_pipeline_completion(
-    progress_state: dict[str, Any],
-    progress_timer: ui.timer,
-    state: Any,
-    return_route: str,
-) -> None:
-    """Handle pipeline done/error/cancel states."""
-    progress_timer.deactivate()
-    if progress_state.get("cancelled"):
-        ui.notify("Pipeline cancelled", type="warning")
-        state.pipeline_running = False
-        ui.navigate.to(return_route)
-    elif progress_state["error"]:
-        ui.notify(f"Pipeline failed: {progress_state['error']}", type="negative")
-        state.pipeline_running = False
-    else:
-        state.pipeline_running = False
-        from immich_memories.ui.pages.pipeline_title import generate_title_after_pipeline
-
-        asyncio.ensure_future(generate_title_after_pipeline(state))
-        ui.navigate.to(return_route)
-
-
 _PROGRESS_STATUS_KEYS = [
     "indeterminate",
     "status",
@@ -157,11 +129,17 @@ _PROGRESS_DEFAULTS: dict[str, Any] = {
 }
 
 
-def _make_progress_callback(progress_state: dict[str, Any]) -> Any:
-    """Return a progress callback that writes into the shared progress_state dict."""
+def _make_progress_callback(
+    progress_state: dict[str, Any], cancelled: Callable[[], bool] = bool
+) -> Any:
+    """Return a progress callback that writes into the shared progress_state dict.
+
+    `cancelled` is asked on every report; a True answer stops the run at the
+    next request boundary through the planner's own cancellation scope.
+    """
 
     def on_progress(status: dict) -> None:
-        if progress_state["cancelled"]:
+        if cancelled():
             raise PipelineCancelled("Cancelled by user")
         for key in _PROGRESS_STATUS_KEYS:
             value = status.get(key, _PROGRESS_DEFAULTS.get(key))
@@ -367,6 +345,21 @@ def _ui_editorial_key(
     return f"{product}-{digest}"
 
 
+def _cut_identity(state: Any) -> tuple[str, tuple[Any, ...], tuple[str, ...], tuple[Any, ...]]:
+    """The four facts a cut's key and context are built from: product, windows, people, sources."""
+    product = str(state.memory_type or "custom")
+    date_ranges = () if product == "album" else tuple(state.date_ranges)
+    return product, date_ranges, _ui_editorial_people(state), (*state.clips, *state.photo_assets)
+
+
+def ui_cut_key(state: Any) -> str:
+    """The cache identity of the cut the session would run now, before its worker starts."""
+    product, date_ranges, people, full_sources = _cut_identity(state)
+    return _ui_editorial_key(
+        state, product=product, date_ranges=date_ranges, people=people, full_sources=full_sources
+    )
+
+
 def _build_ui_editorial_context(
     state: Any,
     app_config: Any,
@@ -377,10 +370,7 @@ def _build_ui_editorial_context(
     from immich_memories.analysis.editorial_runtime import EditorialRunContext
     from immich_memories.analysis.special_event_scope import read_special_event_admission
 
-    product = str(state.memory_type or "custom")
-    date_ranges = () if product == "album" else tuple(state.date_ranges)
-    people = _ui_editorial_people(state)
-    full_sources = (*state.clips, *state.photo_assets)
+    product, date_ranges, people, full_sources = _cut_identity(state)
     reviewed_ids = {
         *(clip.asset.id for clip in clips),
         *(photo.id for photo in photos),
@@ -390,13 +380,7 @@ def _build_ui_editorial_context(
         for source in full_sources
         if _editorial_source_id(source) not in reviewed_ids
     )
-    key = _ui_editorial_key(
-        state,
-        product=product,
-        date_ranges=date_ranges,
-        people=people,
-        full_sources=full_sources,
-    )
+    key = ui_cut_key(state)
     person_match: Literal["and", "or"] = "or" if state.person_match == "or" else "and"
     return EditorialRunContext(
         key=key,
@@ -507,7 +491,9 @@ def _run_pipeline_blocking(
             source_photos = photos if state.include_photos else []
             all_candidates, result = pipeline.run_editorial_source(
                 [*clips, *source_photos],
-                progress_callback=_make_progress_callback(progress_state),
+                progress_callback=_make_progress_callback(
+                    progress_state, lambda: state.cancel_requested
+                ),
                 include_live_photos=(
                     state.include_live_photos and app_config.analysis.include_live_photos
                 ),
@@ -568,160 +554,4 @@ def _build_pipeline_config(
         hdr_only=state.hdr_only,
         overnight_bases=_detect_overnight_bases(state, clips),
         accept_any_provenance=state.accept_any_provenance,
-    )
-
-
-def _wire_progress_timer(
-    progress_state: dict[str, Any],
-    _rendered_state: dict[str, Any],
-    state: Any,
-    progress_bar: Any,
-    status_label: Any,
-    detail_container: ui.element,
-    stats_clips_label: Any,
-    stats_elapsed_label: Any,
-    stats_speed_label: Any,
-    stats_avg_label: Any,
-    stats_eta_label: Any,
-    stats_errors_label: Any,
-    clips: list[VideoClipInfo],
-    photos: list[Asset],
-    config: Any,
-    return_route: str,
-) -> None:
-    """Wire up the poll timer and background pipeline runner."""
-
-    def poll_progress() -> None:
-        running_editorial = (
-            progress_state.get("indeterminate") and progress_state.get("status") == "running"
-        )
-        if running_editorial:
-            progress_bar.props("indeterminate")
-        else:
-            progress_bar.props(remove="indeterminate")
-            progress_bar.value = progress_state["progress_fraction"]
-        _poll_stats(
-            progress_state,
-            stats_clips_label,
-            stats_elapsed_label,
-            stats_speed_label,
-            stats_avg_label,
-            stats_eta_label,
-            stats_errors_label,
-        )
-        if not progress_state["cancelled"]:
-            status_label.set_text(
-                progress_state["phase_label"]
-                if progress_state.get("indeterminate")
-                else f"{progress_state['phase_label']}: {progress_state['current_item'] or '...'}"
-            )
-        _poll_detail_cards(progress_state, _rendered_state, detail_container)
-        if progress_state["done"]:
-            _handle_pipeline_completion(progress_state, progress_timer, state, return_route)
-
-    progress_timer = ui.timer(1.0, poll_progress)
-
-    async def start_pipeline() -> None:
-        await run.io_bound(_run_pipeline_blocking, state, config, clips, photos, progress_state)
-
-    ui.timer(0.1, start_pipeline, once=True)
-
-
-def _render_pipeline_progress_ui(
-    clips: list[VideoClipInfo], *, return_route: str = "/step2"
-) -> None:
-    """Render pipeline progress UI; when the run ends the page moves to `return_route`."""
-    state = get_app_state()
-    eligible_clips, eligible_photos = _eligible_pipeline_media(state, clips)
-    _resolve_auto_duration_for_selection(state, eligible_clips, eligible_photos)
-    _configure_timeline_for_selection(state, eligible_clips, eligible_photos)
-    config = _build_pipeline_config(state, eligible_clips)
-
-    ui.label("Generating Memories...").classes("text-2xl font-bold mb-4")
-
-    progress_bar = ui.linear_progress(value=0, show_value=False).classes("w-full")
-
-    # Stats row: persistent labels updated via set_text (avoids clear/rebuild churn)
-    with (
-        ui.row()
-        .classes("w-full justify-between items-center text-sm mt-1")
-        .style("color: var(--im-text-secondary)")
-    ):
-        stats_clips_label = ui.label("0/0 clips").classes("font-medium")
-        stats_elapsed_label = ui.label("Elapsed: 0s")
-        stats_speed_label = ui.label("")
-        stats_avg_label = ui.label("")
-        stats_eta_label = ui.label("ETA: --").classes("font-medium")
-        stats_errors_label = ui.label("").style("color: var(--im-warning)")
-
-    status_label = ui.label("Starting pipeline...")
-
-    # Current clip + last analyzed side by side
-    detail_container = ui.row().classes("w-full gap-6 mt-4")
-
-    # Shared progress state — written by background thread, read by UI timer.
-    # Simple dict assignments are thread-safe in CPython (GIL).
-    progress_state: dict[str, Any] = {
-        "phase_label": "Starting",
-        "progress_fraction": 0.0,
-        "current_item": "",
-        "current_asset_id": None,
-        "current_index": 0,
-        "total_items": 0,
-        "elapsed": "0s",
-        "eta": "--",
-        "avg_duration": 0.0,
-        "speed_ratio": 0.0,
-        "completed_count": 0,
-        "error_count": 0,
-        "last_completed_asset_id": None,
-        "last_completed_segment": None,
-        "last_completed_score": None,
-        "last_completed_video_path": None,
-        "last_completed_llm_description": None,
-        "last_completed_llm_emotion": None,
-        "last_completed_llm_interestingness": None,
-        "last_completed_llm_quality": None,
-        "last_completed_audio_categories": None,
-        "done": False,
-        "error": None,
-        "cancelled": False,
-    }
-
-    # Track what's currently rendered so we only rebuild on actual changes
-    _rendered_state: dict[str, Any] = {
-        "current_asset_id": None,
-        "last_completed_asset_id": None,
-    }
-
-    cancel_btn = (
-        ui.button("Cancel Pipeline", icon="stop")
-        .props("outline")
-        .style("color: var(--im-error); border-color: var(--im-error)")
-    )
-
-    def cancel_pipeline() -> None:
-        progress_state["cancelled"] = True
-        status_label.set_text("Cancelling... (waiting for current clip to finish)")
-        cancel_btn.set_enabled(False)
-
-    cancel_btn.on("click", cancel_pipeline)
-
-    _wire_progress_timer(
-        progress_state,
-        _rendered_state,
-        state,
-        progress_bar,
-        status_label,
-        detail_container,
-        stats_clips_label,
-        stats_elapsed_label,
-        stats_speed_label,
-        stats_avg_label,
-        stats_eta_label,
-        stats_errors_label,
-        eligible_clips,
-        eligible_photos,
-        config,
-        return_route,
     )

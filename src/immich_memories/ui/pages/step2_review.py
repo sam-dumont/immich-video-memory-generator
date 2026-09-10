@@ -25,12 +25,10 @@ from immich_memories.ui.pages.clip_grid import (
     _update_duration_summary,
     grid_item_date,
 )
-from immich_memories.ui.pages.clip_pipeline import (
-    _render_pipeline_progress_ui,
-    render_pipeline_summary,
-)
+from immich_memories.ui.pages.clip_pipeline import render_pipeline_summary
 from immich_memories.ui.pages.clip_review import _render_review_selected_clips
 from immich_memories.ui.pages.memory_duration import duration_label, set_auto, set_manual_minutes
+from immich_memories.ui.pages.memory_run import arm_cut
 from immich_memories.ui.pages.step2_loading import _load_clips, ensure_caches
 from immich_memories.ui.state import AppState, get_app_state
 
@@ -118,9 +116,9 @@ def _render_step2_header(state) -> bool:
         im_button("Back to the brief", variant="secondary", on_click=go_back, icon="arrow_back")
         return True
 
-    # Check pipeline state
+    # A running cut lives on the Memory page, whatever page armed it.
     if state.pipeline_running:
-        _render_pipeline_progress_ui(clips)
+        ui.navigate.to("/")
         return True
 
     if state.pipeline_result:
@@ -228,8 +226,8 @@ def _render_step2_controls(state, clips: list[VideoClipInfo]) -> None:
             )
 
         def start_generate():
-            state.pipeline_running = True
-            ui.navigate.to("/step2")
+            arm_cut(state)
+            ui.navigate.to("/")
 
         im_button(
             "Generate Memories",

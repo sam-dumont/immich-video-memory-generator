@@ -19,7 +19,7 @@ from immich_memories.analysis.editorial_story_replies import WEIGHTS
 PLAN_FILE = "plan.private.json"
 
 # Carrier kinds the planner writes for moving pictures; anything else is held as a still.
-_MOTION_KINDS = frozenset({"video", "live-motion", "motion"})
+MOTION_KINDS = frozenset({"video", "live-motion", "motion"})
 
 
 @dataclass(frozen=True)
@@ -84,7 +84,7 @@ def _reason(why: object, title: str) -> str:
 def _carrier(row: Mapping[str, Any], title: str, render_modes: Mapping[str, str]) -> CarrierView:
     asset_id = str(row.get("asset_id", ""))
     mode = render_modes.get(asset_id)
-    motion = mode == "motion" if mode else str(row.get("kind", "")) in _MOTION_KINDS
+    motion = mode == "motion" if mode else str(row.get("kind", "")) in MOTION_KINDS
     return CarrierView(
         asset_id=asset_id,
         seconds=float(row.get("seconds") or 0.0),

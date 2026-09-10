@@ -330,6 +330,7 @@ src/immich_memories/
 │       ├── memory.py               # The Memory page router: brief, cut in progress, result
 │       ├── memory_brief.py         # The brief: type select, its params, Advanced, Cut
 │       ├── memory_duration.py      # The duration line: the type's answer or an override
+│       ├── memory_run.py           # The cut that outlives its page: arm, poll the attempt, cancel, recover
 │       ├── memory_story.py         # The story view: thesis, stories, carriers with reasons
 │       ├── memory_story_data.py    # The only UI reader of plan.private.json -> frozen StoryView
 │       ├── step1_config.py         # Immich connection panel + custom date range
@@ -341,8 +342,7 @@ src/immich_memories/
 │       ├── step2_helpers.py        # Shared step2 utilities
 │       ├── clip_grid.py            # Clip card grid display
 │       ├── clip_review.py          # Clip refinement controls
-│       ├── clip_pipeline.py        # Pipeline execution UI
-│       ├── clip_pipeline_helpers.py # Pipeline helper functions
+│       ├── clip_pipeline.py        # The blocking cut worker and its editorial context
 │       ├── pipeline_title.py       # Pipeline title display
 │       ├── step3_options.py        # Assembly options
 │       ├── _step3_music_preview.py # Music preview controls

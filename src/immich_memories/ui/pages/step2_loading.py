@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+from collections.abc import Callable
 
 from nicegui import run, ui
 
@@ -23,9 +24,14 @@ from immich_memories.ui.state import get_app_state
 logger = logging.getLogger(__name__)
 
 
-def _set_phase_status(status_label, event: PhaseEvent) -> None:
+PhaseHook = Callable[[OperationalPhase], None] | None
+
+
+def _set_phase_status(status_label, event: PhaseEvent, on_phase: PhaseHook = None) -> None:
     """Render the shared operational message without persisting UI-only discovery."""
     status_label.set_text(event.message)
+    if on_phase is not None:
+        on_phase(event.phase)
 
 
 def _ui_phase(
@@ -199,7 +205,9 @@ def _set_initial_selection(clips: list[VideoClipInfo], state) -> None:
     state.selected_clip_ids = {c.asset.id for c in clips}
 
 
-async def _finish_load(state, clips, photo_assets, status_label, progress_bar) -> None:
+async def _finish_load(
+    state, clips, photo_assets, status_label, progress_bar, on_phase: PhaseHook = None
+) -> None:
     """Shared tail of both loading paths: commit the pools, then fetch thumbnails."""
     state.clips = clips
     _set_initial_selection(clips, state)
@@ -213,6 +221,7 @@ async def _finish_load(state, clips, photo_assets, status_label, progress_bar) -
     _set_phase_status(
         status_label,
         _ui_phase(OperationalPhase.DOWNLOAD, f"{total}{where}. Loading thumbnails..."),
+        on_phase,
     )
     if progress_bar is not None:
         progress_bar.value = 0.1
@@ -222,7 +231,7 @@ async def _finish_load(state, clips, photo_assets, status_label, progress_bar) -
         await _load_photo_thumbnails_async(photo_assets, status_label)
 
 
-async def _collect_date_range_media(state, status_label, progress_bar):
+async def _collect_date_range_media(state, status_label, progress_bar, on_phase: PhaseHook = None):
     """Discover the clip and photo pools for a date-range memory."""
     if not state.date_ranges:
         raise ValueError("No date range configured")
@@ -236,8 +245,10 @@ async def _collect_date_range_media(state, status_label, progress_bar):
             current=len(assets),
             total=len(assets),
         ),
+        on_phase,
     )
-    progress_bar.value = 0.05
+    if progress_bar is not None:
+        progress_bar.value = 0.05
 
     clips, _ = _build_clips(assets)
 
@@ -278,22 +289,28 @@ def ensure_caches(state) -> None:
         )
 
 
-async def load_pool(state, status_label, progress_bar) -> None:
+async def load_pool(state, status_label, progress_bar, on_phase: PhaseHook = None) -> None:
     """Discover the brief's media and commit it as the session's pool.
 
     An album brief takes the album whole; every other brief fetches each of its
     windows. Either way the pool lands on the state with everything eligible.
+    `on_phase` hears each operational phase the load enters; `progress_bar`
+    may be None for a surface that has no bar to move.
     """
     _set_phase_status(
         status_label,
         _ui_phase(OperationalPhase.DISCOVERY, "Fetching videos from Immich..."),
+        on_phase,
     )
-    progress_bar.value = 0.02
+    if progress_bar is not None:
+        progress_bar.value = 0.02
     if state.album_id:
         clips, photo_assets = await io_bound_result(_fetch_album, state)
     else:
-        clips, photo_assets = await _collect_date_range_media(state, status_label, progress_bar)
-    await _finish_load(state, clips, photo_assets, status_label, progress_bar)
+        clips, photo_assets = await _collect_date_range_media(
+            state, status_label, progress_bar, on_phase
+        )
+    await _finish_load(state, clips, photo_assets, status_label, progress_bar, on_phase)
 
 
 def _load_clips() -> None:

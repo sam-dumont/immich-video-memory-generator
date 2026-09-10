@@ -102,6 +102,12 @@ class AppState:
     editorial_render_timing: dict[str, Any] | None = None
     # Where the last cut wrote its plan; the story page reads it from there.
     editorial_attempt_dir: Path | None = None
+    # The armed cut's identity, set before its worker starts. A reload polls the
+    # attempt tree under this key instead of starting a second run. Sessions that
+    # cut the same brief share a key, so only attempts started after the arming
+    # count as this cut's.
+    active_cut_key: str | None = None
+    cut_armed_at: datetime | None = None
 
     # Generation settings
     duration_mode: Literal["auto", "manual"] = "auto"
@@ -345,6 +351,8 @@ class AppState:
         self.timeline_plan = None
         self.editorial_render_timing = None
         self.editorial_attempt_dir = None
+        self.active_cut_key = None
+        self.cut_armed_at = None
         self.review_selected_mode = False
         self.title_suggestion_title = None
         self.title_suggestion_subtitle = None

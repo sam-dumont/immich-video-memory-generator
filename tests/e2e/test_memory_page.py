@@ -10,6 +10,7 @@ from playwright.sync_api import Page, expect
 
 from immich_memories.ui.pages.memory_brief import MEMORY_TYPE_LABELS
 from tests.e2e.conftest import enable_demo_mode, set_theme
+from tests.e2e.fake_editorial import STAGES
 from tests.e2e.redaction import redact_page
 from tests.e2e.test_launch_smoke import _choose
 
@@ -26,6 +27,15 @@ _POOL_FILES = (
     "photo-2.jpg",
     "photo-3.jpg",
 )
+
+
+# One of the fixture's editing stages, exactly as the active row reports it once the
+# attempt exists (the row titles alone never match, so this waits for the real run).
+_EDITING_STAGE = re.compile("^(" + "|".join(re.escape(stage) for stage in STAGES[1:]) + ")$")
+
+
+def _attempts_written(launch_workspace) -> int:
+    return len(list(launch_workspace.cache_dir.glob("editorial-runs/*/attempts/*")))
 
 
 def _open_brief(page: Page, launch_app_url: str) -> None:
@@ -78,6 +88,36 @@ def test_a_cut_from_the_brief_shows_the_story_and_offers_export(
     expect(page.get_by_text(re.compile(r"^\d+ s of pictures and video selected"))).to_be_visible()
     capture_pair(page, screenshot_dir, "memory-story")
     expect(page.get_by_role("button", name="Export", exact=True)).to_be_visible()
+
+
+def test_a_reload_mid_cut_joins_the_running_cut_instead_of_starting_another(
+    page: Page, launch_app_url: str, launch_workspace
+) -> None:
+    _brief_for_june(page, launch_app_url)
+    page.get_by_role("button", name="Cut", exact=True).click()
+    expect(page.get_by_text(_EDITING_STAGE)).to_be_visible(timeout=60_000)
+    attempts_before = _attempts_written(launch_workspace)
+
+    # WHY: a reload is what a user does when a run seems stuck; it deletes the NiceGUI
+    # client, so the new page must find the cut through the attempt tree, not the old timer.
+    page.reload(wait_until="domcontentloaded", timeout=30_000)
+
+    expect(page.get_by_text("Cutting the memory...", exact=True)).to_be_visible(timeout=30_000)
+    expect(page.get_by_text(_THESIS)).to_be_visible(timeout=120_000)
+    assert _attempts_written(launch_workspace) == attempts_before
+
+
+def test_cancel_ends_the_cut_and_offers_to_cut_again(page: Page, launch_app_url: str) -> None:
+    _brief_for_june(page, launch_app_url)
+    page.get_by_role("button", name="Cut", exact=True).click()
+    expect(page.get_by_text(_EDITING_STAGE)).to_be_visible(timeout=60_000)
+
+    page.get_by_role("button", name="Cancel", exact=True).click()
+
+    expect(page.get_by_text(re.compile(r"cancelled before it finished"))).to_be_visible(
+        timeout=60_000
+    )
+    expect(page.get_by_role("button", name="Cut again")).to_be_visible()
 
 
 def test_the_media_pool_stays_reachable_from_advanced(page: Page, launch_app_url: str) -> None:
