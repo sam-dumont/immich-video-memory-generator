@@ -5,6 +5,7 @@ from __future__ import annotations
 from immich_memories.cli import main as cli
 from immich_memories.timeperiod import calendar_year
 from immich_memories.ui.pages.memory_brief import MEMORY_TYPE_LABELS, begin_cut
+from immich_memories.ui.pages.memory_run import CUT_ALREADY_RUNNING
 from immich_memories.ui.pages.step1_presets import CUSTOM_RANGE
 from immich_memories.ui.state import AppState
 from tests.conftest import make_asset, make_clip
@@ -39,6 +40,18 @@ def test_an_album_brief_without_an_album_names_what_is_missing() -> None:
     state = AppState(memory_type="album")
 
     assert "album" in (begin_cut(state) or "").lower()
+
+
+def test_a_cut_is_refused_while_one_runs_and_keeps_that_run_s_pool() -> None:
+    state = AppState(
+        memory_type="monthly_highlights",
+        date_ranges=[calendar_year(2024)],
+        clips=[make_clip("in-flight")],
+        pipeline_running=True,
+    )
+
+    assert begin_cut(state) == CUT_ALREADY_RUNNING
+    assert [clip.asset.id for clip in state.clips] == ["in-flight"]
 
 
 def test_a_cut_drops_the_previous_pool_and_arms_the_run() -> None:

@@ -19,7 +19,7 @@ from immich_memories.ui.components import (
     im_separator,
 )
 from immich_memories.ui.pages.memory_duration import render_duration_line
-from immich_memories.ui.pages.memory_run import arm_cut
+from immich_memories.ui.pages.memory_run import CUT_ALREADY_RUNNING, arm_cut
 from immich_memories.ui.pages.step1_config import render_immich_connection
 from immich_memories.ui.pages.step1_presets import CUSTOM_RANGE, render_type_params
 
@@ -74,8 +74,8 @@ def begin_cut(state: AppState) -> str | None:
         if state.memory_type == MemoryType.ALBUM:
             return "Pick an album first"
         return "Pick a memory type and a valid period first"
-    state.reset_clips()
-    arm_cut(state)
+    if not arm_cut(state, before=state.reset_clips):
+        return CUT_ALREADY_RUNNING
     return None
 
 

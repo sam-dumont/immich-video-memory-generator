@@ -19,6 +19,7 @@ from immich_memories.ui.components import im_button, im_info_card, im_separator
 from immich_memories.ui.pages.clip_pipeline import render_pipeline_summary
 from immich_memories.ui.pages.memory_brief import render_brief
 from immich_memories.ui.pages.memory_run import (
+    CUT_ALREADY_RUNNING,
     arm_cut,
     latest_attempt_of,
     render_cutting,
@@ -55,8 +56,9 @@ def render_memory() -> None:
 
 def _recut(state: AppState) -> None:
     """Run the editor again over the same pool."""
-    _start_over_selection(state)
-    arm_cut(state)
+    if not arm_cut(state, before=lambda: _start_over_selection(state)):
+        ui.notify(CUT_ALREADY_RUNNING, type="warning")
+        return
     ui.navigate.to("/")
 
 

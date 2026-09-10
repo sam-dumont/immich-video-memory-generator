@@ -28,7 +28,7 @@ from immich_memories.ui.pages.clip_grid import (
 from immich_memories.ui.pages.clip_pipeline import render_pipeline_summary
 from immich_memories.ui.pages.clip_review import _render_review_selected_clips
 from immich_memories.ui.pages.memory_duration import duration_label, set_auto, set_manual_minutes
-from immich_memories.ui.pages.memory_run import arm_cut
+from immich_memories.ui.pages.memory_run import CUT_ALREADY_RUNNING, arm_cut
 from immich_memories.ui.pages.step2_loading import _load_clips, ensure_caches
 from immich_memories.ui.state import AppState, get_app_state
 
@@ -226,7 +226,9 @@ def _render_step2_controls(state, clips: list[VideoClipInfo]) -> None:
             )
 
         def start_generate():
-            arm_cut(state)
+            if not arm_cut(state):
+                ui.notify(CUT_ALREADY_RUNNING, type="warning")
+                return
             ui.navigate.to("/")
 
         im_button(

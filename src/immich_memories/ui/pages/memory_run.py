@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -71,13 +71,27 @@ class CutStatus:
     detail: str
 
 
-def arm_cut(state: AppState) -> None:
-    """Mark the session as cutting; the Memory page launches the worker on its next render."""
-    state.active_cut_key = None
-    # Attempt records carry whole seconds; an attempt started in this same second is ours.
-    state.cut_armed_at = datetime.now(UTC).replace(microsecond=0)
-    state.cancel_requested = False
-    state.pipeline_running = True
+def arm_cut(state: AppState, before: Callable[[], None] | None = None) -> bool:
+    """Mark the session as cutting, unless a cut is already running.
+
+    Returns False and changes nothing when one is. `before` runs under the same
+    lock once the cut is admitted, for the reset that must precede the arming.
+    The Memory page launches the worker on its next render.
+    """
+    with state.lock:
+        if state.pipeline_running:
+            return False
+        if before is not None:
+            before()
+        state.active_cut_key = None
+        # Attempt records carry whole seconds; an attempt started in this same second is ours.
+        state.cut_armed_at = datetime.now(UTC).replace(microsecond=0)
+        state.cancel_requested = False
+        state.pipeline_running = True
+    return True
+
+
+CUT_ALREADY_RUNNING = "A cut is already running; wait for it, or cancel it first"
 
 
 def _cache_path(state: AppState) -> Path:

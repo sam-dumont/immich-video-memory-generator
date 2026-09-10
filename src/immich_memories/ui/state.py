@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+import threading
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -153,6 +154,12 @@ class AppState:
 
     # Session tracking
     last_accessed: datetime | None = None
+
+    # One session, one cut at a time: the worker writes its result back under
+    # this lock, and arming a second cut while one runs is refused under it.
+    # Every tab of a browser still shares this object; per-tab state is not
+    # attempted here.
+    lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
     # Caches (initialized at runtime)
     thumbnail_cache: ThumbnailCache | None = None

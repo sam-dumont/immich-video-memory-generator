@@ -23,10 +23,20 @@ from immich_memories.ui.state import AppState
 from tests.conftest import make_asset, make_clip
 
 
+def test_a_second_cut_is_refused_while_one_runs_and_its_reset_never_runs() -> None:
+    state = AppState(pipeline_running=True, active_cut_key="running-key")
+    resets: list[str] = []
+
+    assert arm_cut(state, before=lambda: resets.append("reset")) is False
+
+    assert resets == []
+    assert state.active_cut_key == "running-key"
+
+
 def test_arming_a_cut_forgets_the_previous_key_and_any_cancel() -> None:
     state = AppState(active_cut_key="old-key", cancel_requested=True)
 
-    arm_cut(state)
+    assert arm_cut(state) is True
 
     assert state.pipeline_running is True
     assert state.active_cut_key is None

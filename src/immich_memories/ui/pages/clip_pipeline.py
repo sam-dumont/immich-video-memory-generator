@@ -506,16 +506,19 @@ def _run_pipeline_blocking(
                 }
             )
 
-            _adopt_result(state, result)
-            state.pipeline_running = False
+            with state.lock:
+                _adopt_result(state, result)
+                state.pipeline_running = False
             progress_state["done"] = True
     except PipelineCancelled:
         logger.info("Pipeline cancelled by user")
-        state.pipeline_running = False
+        with state.lock:
+            state.pipeline_running = False
         progress_state["done"] = True
     except Exception as e:  # WHY: UI graceful degradation
         logger.exception("Pipeline error")
-        state.pipeline_running = False
+        with state.lock:
+            state.pipeline_running = False
         progress_state["error"] = str(e)
         progress_state["done"] = True
 
