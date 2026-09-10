@@ -260,6 +260,42 @@ async def _collect_date_range_media(state, status_label, progress_bar):
     return clips, photo_assets
 
 
+def ensure_caches(state) -> None:
+    """Open the analysis and thumbnail caches once per session, on first need."""
+    from immich_memories.config import get_config
+
+    if state.analysis_cache is None:
+        from immich_memories.cache import VideoAnalysisCache
+
+        state.analysis_cache = VideoAnalysisCache(db_path=get_config().cache.database_path)
+    if state.thumbnail_cache is None:
+        from immich_memories.cache.thumbnail_cache import ThumbnailCache
+
+        config = get_config()
+        state.thumbnail_cache = ThumbnailCache(
+            cache_dir=config.cache.cache_path / "thumbnails",
+            max_size_mb=config.cache.thumbnail_cache_max_size_mb,
+        )
+
+
+async def load_pool(state, status_label, progress_bar) -> None:
+    """Discover the brief's media and commit it as the session's pool.
+
+    An album brief takes the album whole; every other brief fetches each of its
+    windows. Either way the pool lands on the state with everything eligible.
+    """
+    _set_phase_status(
+        status_label,
+        _ui_phase(OperationalPhase.DISCOVERY, "Fetching videos from Immich..."),
+    )
+    progress_bar.value = 0.02
+    if state.album_id:
+        clips, photo_assets = await io_bound_result(_fetch_album, state)
+    else:
+        clips, photo_assets = await _collect_date_range_media(state, status_label, progress_bar)
+    await _finish_load(state, clips, photo_assets, status_label, progress_bar)
+
+
 def _load_clips() -> None:
     """Load clips from Immich API - triggers async loading."""
     state = get_app_state()
@@ -280,19 +316,7 @@ def _load_clips() -> None:
 
     async def do_load():
         try:
-            _set_phase_status(
-                status_label,
-                _ui_phase(OperationalPhase.DISCOVERY, "Fetching videos from Immich..."),
-            )
-            progress_bar.value = 0.02
-
-            if state.album_id:
-                clips, photo_assets = await io_bound_result(_fetch_album, state)
-            else:
-                clips, photo_assets = await _collect_date_range_media(
-                    state, status_label, progress_bar
-                )
-            await _finish_load(state, clips, photo_assets, status_label, progress_bar)
+            await load_pool(state, status_label, progress_bar)
 
             loading_dialog.close()
             ui.navigate.to("/step2")

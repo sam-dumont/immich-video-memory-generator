@@ -1,0 +1,41 @@
+---
+sidebar_position: 0
+title: "Memory"
+---
+
+import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
+
+# The Memory page
+
+`/` is one page with three states: the **brief**, the **cut** in progress, and what the cut produced. It reads like `immich-memories generate`: one memory type, that type's parameters, one duration, one button. The sidebar calls it **Memory**.
+
+<ThemedScreenshot name="memory-brief" alt="The brief: memory type, its parameters and the duration line" />
+
+## The brief
+
+**Memory type** offers exactly what `generate --memory-type` accepts, in the same order — Year in Review, Season, Person Spotlight, Multi-Person, Monthly Highlights, On This Day, Album, Trip, Holiday, Surprise me — plus **Custom date range**, which the CLI spells as `--start`/`--end`. Picking a type shows only that type's parameters; they are listed under [Memory types and their parameters](./step1-configuration.mdx).
+
+**Duration** is one line. With **Auto duration** on it shows the type's own answer ("Auto · 1m 00s" for a month) and where the number comes from; Trip and Album measure theirs from the media once it is loaded. Turn the switch off to type an exact **Target duration (min)**; fractional minutes keep their seconds.
+
+**Advanced** holds the Immich connection panel (URL, API key, Test Connection, Save Config — see [Settings](./settings.mdx#saving-config-from-the-memory-page-and-what-it-costs-you)), the pool switches the selection route reads (Include Photos, Include Live Photos, Accept Forwarded Media, HDR clips only) and **Open the media pool**, which goes to the [media pool and excerpt editor](./step2-clip-review.mdx).
+
+The brief appears once Immich has answered. With credentials in `config.yaml` or the environment the page connects on its own; otherwise only the connection panel shows until **Test Connection** succeeds.
+
+## Cut
+
+**Cut** loads the pool for the brief, then runs the story-first selection over it. There is no review step in between: everything the brief found is eligible, and the editor decides. To keep something out first, open the media pool from Advanced, untick it, and start the run from that page's own **Generate Memories** button.
+
+While it runs the page shows the current stage, the elapsed time and a **Cancel Pipeline** button.
+
+## What the cut produced
+
+When the cut finishes the page reports how many clips were planned from how many eligible media items, any duration shortfall the editor recorded, and four buttons:
+
+- **Export** — straight to [Preview & Export](./step4-preview-export.mdx). The [options page](./step3-generation-options.mdx) is one click away from there with **Back to Generation Options**.
+- **Review the pool** — the media pool with the cut's picks, and the excerpt editor.
+- **Cut again** — the editor runs again over the same pool.
+- **Change the brief** — back to an empty brief.
+
+:::note
+The screenshots on the other Web UI pages and the demo video still show the four-step wizard this page replaces; they are being redone.
+:::

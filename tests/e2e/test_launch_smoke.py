@@ -178,29 +178,13 @@ def _choose(page: Page, label: str, option: str) -> None:
 
 
 def _drive_to_step4(page: Page, launch_app_url: str) -> None:
-    """Walk the default v3 monthly flow up to the Step 4 'Generate Video' button."""
+    """Walk the default v3 monthly brief through a cut to the Step 4 'Generate Video' button."""
     page.goto(launch_app_url, wait_until="domcontentloaded", timeout=30_000)
-    expect(page.get_by_text("Immich Connection — Fake Immich User", exact=True)).to_be_visible(
-        timeout=30_000
-    )
-    page.get_by_text("Monthly Highlights", exact=True).click()
+    expect(page.get_by_role("combobox", name="Memory type")).to_be_visible(timeout=30_000)
+    _choose(page, "Memory type", "Monthly Highlights")
     _choose(page, "Month", "June")
-    include_photos = page.locator(".q-toggle").filter(has_text="Include Photos")
-    expect(include_photos).to_have_attribute("aria-checked", "true")
-    page.get_by_role("button", name="Next: Review Clips").click()
+    page.get_by_role("button", name="Cut", exact=True).click()
 
-    expect(page.get_by_text("3 Videos, 3 Photos Found", exact=True)).to_be_visible(timeout=60_000)
-    for filename in (
-        "video-1.mp4",
-        "video-2.mp4",
-        "video-3.mp4",
-        "photo-1.jpg",
-        "photo-2.jpg",
-        "photo-3.jpg",
-    ):
-        expect(page.get_by_text(filename, exact=True).first).to_be_visible()
-
-    page.get_by_role("button", name="Generate Memories", exact=True).click()
     pipeline_summary = page.get_by_text(
         re.compile(
             r"^Pipeline complete! Planned [1-9]\d* clips from "
@@ -208,9 +192,11 @@ def _drive_to_step4(page: Page, launch_app_url: str) -> None:
         )
     )
     expect(pipeline_summary).to_be_visible(timeout=180_000)
-    page.get_by_role("button", name="Review & Refine Selected Clips").click()
-    expect(page.get_by_text(re.compile(r"^Final Duration: (?!0:00)\d+:[0-5]\d$"))).to_be_visible()
-    page.get_by_role("button", name="Continue to Generation").click()
+    page.get_by_role("button", name="Export", exact=True).click()
+    page.wait_for_url("**/step4", timeout=30_000)
+    # WHY: the 720p the probe below asserts is chosen on the options page, which Export skips.
+    page.get_by_role("button", name="Back to Generation Options").click()
+    page.wait_for_url("**/step3", timeout=30_000)
 
     _choose(page, "Resolution", "720p")
     _choose(page, "Output Format", "MP4 (H.264)")

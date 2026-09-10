@@ -282,7 +282,6 @@ _.upload_result  # unused attribute (src/immich_memories/ui/pages/_step4_upload.
 grid_item_id  # unused function (src/immich_memories/ui/pages/clip_grid.py:32)
 _.photo_budget_result  # unused attribute (src/immich_memories/ui/pages/clip_pipeline.py:357)
 _.config_saved  # unused attribute (src/immich_memories/ui/pages/step1_config.py:138)
-_year_options_with_all  # unused function (src/immich_memories/ui/pages/step1_presets.py:127)
 _.detected_trips  # unused attribute (src/immich_memories/ui/pages/step1_presets.py:404)
 _.detected_trips  # unused attribute (src/immich_memories/ui/pages/step1_presets.py:454)
 _render_cached_analysis_summary  # unused function (src/immich_memories/ui/pages/step2_loading.py:465)

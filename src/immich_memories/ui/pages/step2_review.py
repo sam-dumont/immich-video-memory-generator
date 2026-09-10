@@ -31,7 +31,8 @@ from immich_memories.ui.pages.clip_pipeline import (
     render_pipeline_summary,
 )
 from immich_memories.ui.pages.clip_review import _render_review_selected_clips
-from immich_memories.ui.pages.step2_loading import _load_clips
+from immich_memories.ui.pages.memory_duration import duration_label, set_auto, set_manual_minutes
+from immich_memories.ui.pages.step2_loading import _load_clips, ensure_caches
 from immich_memories.ui.state import AppState, get_app_state
 
 logger = logging.getLogger(__name__)
@@ -39,24 +40,6 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 # Main Step 2 Render Function
 # ============================================================================
-
-
-def _duration_mode_label(state) -> str:
-    """Return compact copy for the currently resolved duration mode."""
-    total_seconds = round(state.target_duration_seconds)
-    minutes, seconds = divmod(total_seconds, 60)
-    return f"Auto · {minutes}m {seconds:02d}s"
-
-
-def _set_manual_target_minutes(state, value: float) -> None:
-    """Apply an exact manual duration from the Step 2 number input."""
-    state.target_duration = value
-    state.duration_mode = "manual"
-
-
-def _set_auto_duration_mode(state, enabled: bool) -> None:
-    """Toggle Auto mode without changing its last resolved value."""
-    state.duration_mode = "auto" if enabled else "manual"
 
 
 def _start_over_selection(state: AppState) -> None:
@@ -72,7 +55,10 @@ def _start_over_selection(state: AppState) -> None:
 def _handle_duration_mode_change(state: AppState, event: Any) -> None:
     """Apply the Auto switch and refresh the controls for the new mode."""
     value = event.value if hasattr(event, "value") else event
-    _set_auto_duration_mode(state, bool(value))
+    if value:
+        set_auto(state)
+    else:
+        set_manual_minutes(state, state.target_duration)
     ui.navigate.to("/step2")
 
 
@@ -106,30 +92,14 @@ def _render_step2_header(state) -> bool:
             variant="warning",
         )
         im_button(
-            "Back to Configuration",
+            "Back to the brief",
             variant="secondary",
             on_click=lambda: ui.navigate.to("/"),
             icon="arrow_back",
         )
         return True
 
-    # Initialize caches if not done
-    if state.analysis_cache is None:
-        from immich_memories.cache import VideoAnalysisCache
-        from immich_memories.config import get_config
-
-        _cfg = get_config()
-        state.analysis_cache = VideoAnalysisCache(db_path=_cfg.cache.database_path)
-
-    if state.thumbnail_cache is None:
-        from immich_memories.cache.thumbnail_cache import ThumbnailCache
-        from immich_memories.config import get_config
-
-        _cfg = get_config()
-        state.thumbnail_cache = ThumbnailCache(
-            cache_dir=_cfg.cache.cache_path / "thumbnails",
-            max_size_mb=_cfg.cache.thumbnail_cache_max_size_mb,
-        )
+    ensure_caches(state)
 
     # Load clips if not already loaded
     if not state.clips:
@@ -145,7 +115,7 @@ def _render_step2_header(state) -> bool:
             state.step = 1
             ui.navigate.to("/")
 
-        im_button("Back to Configuration", variant="secondary", on_click=go_back, icon="arrow_back")
+        im_button("Back to the brief", variant="secondary", on_click=go_back, icon="arrow_back")
         return True
 
     # Check pipeline state
@@ -232,7 +202,7 @@ def _render_step2_controls(state, clips: list[VideoClipInfo]) -> None:
                 "and shortens sparse memories automatically"
             )
             if state.duration_mode == "auto":
-                ui.label(_duration_mode_label(state)).classes("text-base font-semibold mb-2")
+                ui.label(duration_label(state)).classes("text-base font-semibold mb-2")
             else:
                 ui.number(
                     "Target duration (min)",
@@ -241,7 +211,7 @@ def _render_step2_controls(state, clips: list[VideoClipInfo]) -> None:
                     max=60,
                     step=0.25,
                 ).classes("w-40").on_value_change(
-                    lambda e: _set_manual_target_minutes(
+                    lambda e: set_manual_minutes(
                         state,
                         e.value if hasattr(e, "value") else e,
                     )
@@ -558,7 +528,7 @@ def _render_step2_nav(state) -> None:
             else:
                 ui.notify("Please select at least one clip or photo", type="warning")
 
-        im_button("Back to Configuration", variant="secondary", on_click=go_back, icon="arrow_back")
+        im_button("Back to the brief", variant="secondary", on_click=go_back, icon="arrow_back")
         im_button("Next: Refine Moments", variant="primary", on_click=go_next, icon="arrow_forward")
 
 

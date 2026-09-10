@@ -118,9 +118,6 @@ class AppState:
     selected_photo_ids: set[str] = field(default_factory=set)
     photo_duration: float = 4.0
 
-    # Analysis depth (auto, fast, or thorough)
-    analysis_depth: str = "auto"
-
     # Connection
     connected_user: str | None = None
 
@@ -347,6 +344,7 @@ class AppState:
     def reset_clips(self) -> None:
         """Reset clip-related state when changing configuration."""
         self.clips = []
+        self.photo_assets = []
         self.pipeline_selected_clips = []
         self.editorial_selections = ()
         self.selected_clip_ids = set()

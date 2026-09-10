@@ -327,9 +327,12 @@ src/immich_memories/
 │   ├── nicegui_compat.py       # Compatibility helpers for NiceGUI background work
 │   └── pages/
 │       ├── login.py                # Login page (basic form + OIDC SSO button)
-│       ├── step1_config.py         # Connection & time period config
+│       ├── memory.py               # The Memory page router: brief, cut in progress, result
+│       ├── memory_brief.py         # The brief: type select, its params, Advanced, Cut
+│       ├── memory_duration.py      # The duration line: the type's answer or an override
+│       ├── step1_config.py         # Immich connection panel + custom date range
 │       ├── step1_cache.py          # Cache management UI
-│       ├── step1_presets.py        # Memory preset selection
+│       ├── step1_presets.py        # The parameters each memory type asks for
 │       ├── step1_tabs.py           # Step 1 tab layout
 │       ├── step2_review.py         # Clip review orchestration
 │       ├── step2_loading.py        # Loading state UI

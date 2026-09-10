@@ -177,6 +177,7 @@ def test_ui_timer_shows_indeterminate_bar_and_exact_stage_without_fake_count():
             [],
             [],
             MagicMock(),
+            "/step2",
         )
         poll = next(fn for interval, fn in timers if interval == 1.0)
         poll()

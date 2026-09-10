@@ -1,4 +1,4 @@
-"""Memory type preset selector for Step 1."""
+"""The parameters each memory type asks for, rendered under the brief's type select."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from immich_memories.memory_types.factory import create_preset
 from immich_memories.memory_types.registry import MemoryType
 from immich_memories.ui.components import im_card
 from immich_memories.ui.nicegui_compat import io_bound_result
+from immich_memories.ui.pages.step1_config import render_custom_range
 from immich_memories.ui.pages.step1_people import (
     PERSON_FILTERABLE,
     render_multi_person_params,
@@ -29,93 +30,17 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Preset card metadata: (key, icon, title, description)
-# key is either a MemoryType value or "custom"
-_PRESET_CARDS: list[tuple[str, str, str, str]] = [
-    (MemoryType.YEAR_IN_REVIEW, "calendar_today", "Year in Review", "Your year, one video"),
-    (MemoryType.SEASON, "wb_sunny", "Season", "Best moments of the season"),
-    (MemoryType.PERSON_SPOTLIGHT, "person", "Person Spotlight", "A year through their eyes"),
-    (MemoryType.MULTI_PERSON, "group", "Multi-Person", "Together moments"),
-    (MemoryType.MONTHLY_HIGHLIGHTS, "event_note", "Monthly Highlights", "One month, distilled"),
-    (MemoryType.ON_THIS_DAY, "history", "On This Day", "This day through the years"),
-    (MemoryType.HOLIDAY, "celebration", "Holiday", "The same holiday, across the years"),
-    (MemoryType.TRIP, "flight_takeoff", "Trip", "Auto-detect trips from GPS data"),
-    (MemoryType.ALBUM, "photo_album", "Album", "Everything from one Immich album"),
-    (
-        MemoryType.SPECIAL_DAY,
-        "auto_awesome",
-        "Surprise me",
-        "A day your library says something happened on",
-    ),
-    ("custom", "tune", "Custom", "Full control over date range"),
-]
+# The one scope the CLI spells as --start/--end rather than as a memory type.
+CUSTOM_RANGE = "custom"
 
 _SEASONS = ["spring", "summer", "autumn", "winter"]
 _MONTHS = {i: cal.month_name[i] for i in range(1, 13)}
 
 
-def _build_preset_grid(grid_container: ui.element, state, select_preset_fn) -> None:
-    """Populate the preset card grid."""
-    grid_container.clear()
-    with (
-        grid_container,
-        ui.element("div")
-        .classes("grid gap-3")
-        .style("grid-template-columns: repeat(auto-fill, minmax(160px, 1fr))"),
-    ):
-        for key, icon, title, desc in _PRESET_CARDS:
-            is_selected = state.memory_type == key
-            with im_card(interactive=True) as card:
-                card.classes("p-3").style("display:flex;align-items:center;justify-content:center")
-                if is_selected:
-                    card.classes("im-preset-selected")
-                card.on("click", lambda _e, k=key: select_preset_fn(k))
-                with ui.column().classes("items-center gap-1 py-1 w-full"):
-                    ui.icon(icon).classes("text-2xl").style("color: var(--im-primary)")
-                    ui.label(title).classes("text-sm font-semibold text-center").style(
-                        "color: var(--im-text)"
-                    )
-                    ui.label(desc).classes("text-xs text-center").style(
-                        "color: var(--im-text-secondary)"
-                    )
-
-
-def render_preset_selector(on_custom_selected=None) -> None:
-    """Render the memory type preset selection grid and parameter panel.
-
-    Args:
-        on_custom_selected: Callback(container) called when "Custom" preset is selected.
-            Receives a ui.column container to render the custom date range UI into.
-    """
-    state = get_app_state()
-    grid_container = ui.element("div").classes("w-full")
-    params_container = ui.column().classes("w-full")
-
-    def _fill_params(key: str) -> None:
-        with params_container:
-            _render_params(key)
-            if key == "custom" and on_custom_selected:
-                on_custom_selected(params_container)
-
-    def select_preset(key: str) -> None:
-        state.choose_memory_type(key)
-        params_container.clear()
-        _fill_params(key)
-        _build_preset_grid(grid_container, state, select_preset)
-
-    _build_preset_grid(grid_container, state, select_preset)
-
-    if state.memory_type:
-        _fill_params(state.memory_type)
-
-
-def _render_params(key: str) -> None:
-    """Render conditional parameter fields based on selected preset."""
-    if key == "custom":
-        # Custom mode — no params here, the advanced date range section handles it
-        ui.label("Configure your date range below.").style(
-            "color: var(--im-text-secondary)"
-        ).classes("text-sm italic mt-2")
+def render_type_params(key: str) -> None:
+    """Render what one memory type asks for: its own widgets, or the custom range tabs."""
+    if key == CUSTOM_RANGE:
+        render_custom_range(get_app_state())
         return
 
     try:
@@ -190,13 +115,6 @@ def _render_holiday_params(state: AppState) -> None:
     state.memory_preset_params.setdefault("year", current_year)
     state.memory_preset_params.setdefault("years_back", current_back)
     _apply_preset_to_state(MemoryType.HOLIDAY)
-
-
-def _year_options_with_all() -> list:
-    """Return year options including 'All Time'."""
-    state = get_app_state()
-    years = state.years or list(range(2024, 2019, -1))
-    return [("all", "All Time")] + [(y, str(y)) for y in years]
 
 
 def _render_year_picker(state: AppState) -> None:
@@ -640,10 +558,9 @@ def _apply_preset_to_state(memory_type: MemoryType) -> None:
         logger.debug("Preset not ready yet: %s", exc)
 
 
-# Which widgets a card puts inside its panel. Every memory type the wizard
-# offers a card for appears, so a type added to _PRESET_CARDS and not here
-# fails loudly on click rather than rendering an empty card. Retired
-# then-and-now is the one registry type with neither.
+# Which widgets a type puts under the brief's select. Every offered type
+# appears, so a type added to OFFERED_MEMORY_TYPES and not here fails loudly on
+# selection rather than rendering nothing. Retired then-and-now has neither.
 _CARD_RENDERERS: dict[MemoryType, Callable[[AppState], None]] = {
     MemoryType.YEAR_IN_REVIEW: _render_year_picker,
     MemoryType.SEASON: _render_season_params,

@@ -3,8 +3,8 @@
 HOLIDAY and THEN_AND_NOW shipped as CLI-only. Both build more than one date
 range, which is why they needed the multi-range wizard state before either
 could be offered at all. Then-and-now has since been withdrawn from both
-surfaces — no --memory-type choice, no card, no params renderer — while its
-title branch stays until the type itself is retired.
+surfaces — no --memory-type choice, no row in the brief's type select, no
+params renderer — while its title branch stays until the type itself is retired.
 """
 
 from __future__ import annotations
@@ -12,12 +12,12 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from immich_memories.memory_types.registry import MemoryType
-from immich_memories.ui.pages.step1_presets import _PRESET_CARDS
+from immich_memories.ui.pages.memory_brief import MEMORY_TYPE_LABELS
 from immich_memories.ui.state import AppState
 
 
 def test_holiday_is_offered_and_retired_then_and_now_is_not() -> None:
-    keys = [card[0] for card in _PRESET_CARDS]
+    keys = list(MEMORY_TYPE_LABELS)
 
     assert MemoryType.HOLIDAY in keys
     assert MemoryType.THEN_AND_NOW not in keys
@@ -36,7 +36,7 @@ def _render(key: str, **params) -> AppState:
         patch.object(step1_presets, "ui", MagicMock()),
         patch.object(step1_presets, "im_card", MagicMock()),
     ):
-        step1_presets._render_params(key)
+        step1_presets.render_type_params(key)
     return state
 
 

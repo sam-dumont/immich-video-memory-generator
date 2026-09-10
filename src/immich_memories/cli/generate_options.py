@@ -16,6 +16,7 @@ import click
 
 from immich_memories.cli._flags import calendar_day, output_path
 from immich_memories.cli.generate_resolution import SHORT_FORM_SECONDS
+from immich_memories.memory_types.registry import OFFERED_MEMORY_TYPES
 
 FC = TypeVar("FC", bound=Callable[..., Any])
 
@@ -80,20 +81,7 @@ def scope_options(command: FC) -> FC:
         ),
         click.option(
             "--memory-type",
-            type=click.Choice(
-                [
-                    "year_in_review",
-                    "season",
-                    "person_spotlight",
-                    "multi_person",
-                    "monthly_highlights",
-                    "on_this_day",
-                    "album",
-                    "trip",
-                    "holiday",
-                    "special_day",
-                ]
-            ),
+            type=click.Choice([memory_type.value for memory_type in OFFERED_MEMORY_TYPES]),
             default=None,
             help="Memory type preset (album takes its pool from --from-album)",
         ),

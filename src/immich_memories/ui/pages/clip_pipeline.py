@@ -109,13 +109,14 @@ def _handle_pipeline_completion(
     progress_state: dict[str, Any],
     progress_timer: ui.timer,
     state: Any,
+    return_route: str,
 ) -> None:
     """Handle pipeline done/error/cancel states."""
     progress_timer.deactivate()
     if progress_state.get("cancelled"):
         ui.notify("Pipeline cancelled", type="warning")
         state.pipeline_running = False
-        ui.navigate.to("/step2")
+        ui.navigate.to(return_route)
     elif progress_state["error"]:
         ui.notify(f"Pipeline failed: {progress_state['error']}", type="negative")
         state.pipeline_running = False
@@ -124,7 +125,7 @@ def _handle_pipeline_completion(
         from immich_memories.ui.pages.pipeline_title import generate_title_after_pipeline
 
         asyncio.ensure_future(generate_title_after_pipeline(state))
-        ui.navigate.to("/step2")
+        ui.navigate.to(return_route)
 
 
 _PROGRESS_STATUS_KEYS = [
@@ -596,7 +597,6 @@ def _build_pipeline_config(
         max_non_favorite_ratio=config_dict.get("max_non_favorite_ratio", 0.25),
         analyze_all=config_dict.get("analyze_all", False),
         overnight_bases=overnight_bases,
-        analysis_depth=getattr(state, "analysis_depth", "auto"),
         accept_any_provenance=getattr(state, "accept_any_provenance", False),
     )
 
@@ -618,6 +618,7 @@ def _wire_progress_timer(
     clips: list[VideoClipInfo],
     photos: list[Asset],
     config: Any,
+    return_route: str,
 ) -> None:
     """Wire up the poll timer and background pipeline runner."""
 
@@ -648,7 +649,7 @@ def _wire_progress_timer(
             )
         _poll_detail_cards(progress_state, _rendered_state, detail_container)
         if progress_state["done"]:
-            _handle_pipeline_completion(progress_state, progress_timer, state)
+            _handle_pipeline_completion(progress_state, progress_timer, state, return_route)
 
     progress_timer = ui.timer(1.0, poll_progress)
 
@@ -658,8 +659,10 @@ def _wire_progress_timer(
     ui.timer(0.1, start_pipeline, once=True)
 
 
-def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
-    """Render pipeline progress UI."""
+def _render_pipeline_progress_ui(
+    clips: list[VideoClipInfo], *, return_route: str = "/step2"
+) -> None:
+    """Render pipeline progress UI; when the run ends the page moves to `return_route`."""
     state = get_app_state()
     eligible_clips, eligible_photos = _eligible_pipeline_media(state, clips)
     _resolve_auto_duration_for_selection(state, eligible_clips, eligible_photos)
@@ -758,4 +761,5 @@ def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
         eligible_clips,
         eligible_photos,
         config,
+        return_route,
     )

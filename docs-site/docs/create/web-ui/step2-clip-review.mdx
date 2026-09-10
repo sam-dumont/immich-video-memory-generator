@@ -7,13 +7,13 @@ import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
 
 # Step 2: Clip Review
 
-This step has three screens in sequence: the media list (pick the pool), the analysis run, and **Review & Refine** (trim the clips the pipeline chose). The sidebar calls it **Clip Review**.
+This page is the media pool and the excerpt editor. It is reached from the [Memory page](./memory.mdx): **Advanced → Open the media pool** before a cut, or **Review the pool** after one. It has three screens in sequence: the media list (pick the pool), the analysis run, and **Review & Refine** (trim the clips the pipeline chose). The sidebar calls it **Clip Review**.
 
 <ThemedScreenshot name="step2-clip-review" alt="Step 2: Clip Review" />
 
 ## Loading
 
-When you arrive from Step 1, a "Loading videos…" dialog fetches the videos, Live Photos and (if enabled) photos for your date range and person filter, plus thumbnails. Nothing is analyzed yet. Media that already has a cached analysis from the current model is tagged **Current analysis** on its card and is not re-sent to the LLM.
+When you arrive from the Memory page, a "Loading videos…" dialog fetches the videos, Live Photos and (if enabled) photos for your date range and person filter, plus thumbnails. Nothing is analyzed yet. Media that already has a cached analysis from the current model is tagged **Current analysis** on its card and is not re-sent to the LLM.
 
 ## The media list
 
@@ -64,7 +64,7 @@ The **Final Duration** updates as you edit. Navigation: **Back to Selection**, *
 
 ## Photos in the list
 
-When photo support is enabled (config or the Step 1 switch), photos appear alongside video clips, merged into the same chronological list, with a camera badge and their own Include checkbox. Photos are auto-selected at generation time from the checked pool; see [Photo Support](../pipeline/photo-support.md).
+When photo support is enabled (config or the **Include Photos** switch under Advanced on the Memory page), photos appear alongside video clips, merged into the same chronological list, with a camera badge and their own Include checkbox. Photos are auto-selected at generation time from the checked pool; see [Photo Support](../pipeline/photo-support.md).
 
 ## Cache
 

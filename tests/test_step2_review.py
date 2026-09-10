@@ -1,4 +1,4 @@
-"""Behavior tests for Step 2 Auto/manual duration controls."""
+"""Behavior tests for the Step 2 review page."""
 
 from __future__ import annotations
 
@@ -7,29 +7,11 @@ from unittest.mock import MagicMock, patch
 from immich_memories.analysis.editorial_planner import EditorialSelection
 from immich_memories.api.models import AssetType
 from immich_memories.ui.pages.step2_review import (
-    _duration_mode_label,
     _render_step2_header,
-    _set_manual_target_minutes,
     _start_over_selection,
 )
 from immich_memories.ui.state import AppState
 from tests.conftest import make_clip
-
-
-def test_auto_duration_label_shows_the_resolved_runtime() -> None:
-    state = AppState(duration_mode="auto", target_duration=2.5)
-
-    assert _duration_mode_label(state) == "Auto · 2m 30s"
-
-
-def test_editing_duration_switches_to_manual_without_rounding() -> None:
-    state = AppState(duration_mode="auto", target_duration=2.5)
-
-    _set_manual_target_minutes(state, 3.25)
-
-    assert state.duration_mode == "manual"
-    assert state.target_duration == 3.25
-    assert state.target_duration_seconds == 195.0
 
 
 def test_start_over_clears_editorial_snapshot_but_keeps_loaded_library() -> None:

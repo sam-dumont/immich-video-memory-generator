@@ -23,6 +23,7 @@ const sidebars: SidebarsConfig = {
           type: 'category',
           label: 'Using the Web UI',
           items: [
+            'create/web-ui/memory',
             'create/web-ui/step1-configuration',
             'create/web-ui/step2-clip-review',
             'create/web-ui/step3-generation-options',

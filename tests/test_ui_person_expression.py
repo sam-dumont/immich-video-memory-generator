@@ -277,7 +277,7 @@ def test_legacy_single_picker_explicitly_replaces_a_grouped_condition():
     value = state()
     step1_people._set_grouped_condition(value, EXPRESSION)
     with patch.object(step1_config, "ui", MagicMock()) as ui:
-        step1_config._render_person_filter(value, MagicMock(), [None])
+        step1_config._render_person_filter(value, MagicMock())
         select = ui.select.return_value.classes.return_value
         callback = select.on_value_change.call_args.args[0]
         callback(SimpleNamespace(value="face-c"))
