@@ -1,0 +1,698 @@
+"""Shared production structure planning over conserved factual inputs.
+
+The algorithm is extracted intact from the validated matrix planner. File acquisition,
+model transports, and lineage belong to adapters; this module owns editorial decisions.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import math
+import re
+from collections import ChainMap
+from dataclasses import dataclass, field
+from datetime import datetime
+from operator import itemgetter
+from typing import Any
+
+from immich_memories.analysis import editorial_shareability as _share
+from immich_memories.analysis import llm_metrics
+from immich_memories.analysis.editorial_block_votes import judge_worthiness, worth_criterion_v44
+from immich_memories.analysis.editorial_completion import RetainedMotion
+from immich_memories.analysis.editorial_episode_documents import factual_moment_rows
+from immich_memories.analysis.editorial_final_attached import AttachedMaterialEvidence
+from immich_memories.analysis.editorial_final_sampled_duplicates import (
+    displayed_sample_members,
+    reduce_final_sampled_duplicates,
+)
+from immich_memories.analysis.editorial_picture_evidence import PictureEvidenceOverlay
+from immich_memories.analysis.editorial_picture_ladders import depth_cap
+from immich_memories.analysis.editorial_sampled_reference import sampled_source_relation
+from immich_memories.analysis.editorial_story_planner import (
+    alternatives_pool,
+    select_story_first,
+    trim_to_timing_budget,
+)
+from immich_memories.analysis.editorial_structure_audience import (
+    AudienceGate,
+    close_share_log,
+    open_share_log,
+    tighten_with_attached_samples,
+)
+from immich_memories.analysis.editorial_structure_budget import (
+    CONTENT_RESERVE_SECONDS,
+    MIN_CARRIER_SECONDS,
+    NOMINAL_STILL_SECONDS,
+)
+from immich_memories.analysis.editorial_structure_contract import (
+    StructurePlannerPorts,
+    StructurePlanningInput,
+    StructurePlanningResult,
+)
+from immich_memories.analysis.editorial_structure_material import (
+    Material,
+    Wall,
+    anchor_line,
+    build_material,
+    read_wall,
+)
+from immich_memories.analysis.editorial_structure_record import (
+    PlanFacts,
+    PlanOutcome,
+    build_result,
+    contract_texts,
+    merged_threads_log,
+    provider_metrics,
+    shave_content_duration,
+)
+from immich_memories.processing.editorial_timing import bind_editorial_timeline
+from immich_memories.security import write_secret_file
+
+SECONDS_PER_SLOT = NOMINAL_STILL_SECONDS
+STORY_RANK = {"central": 0, "supporting": 1}
+FLAGGED_LINE = re.compile(r"nsfw=yes|exposure=(partial|nude)")
+
+
+def _near_home_test(source: StructurePlanningInput, wall: Wall):
+    home = (source.config.trips.homebase_latitude, source.config.trips.homebase_longitude)
+
+    def near_home(f):
+        pts: list[tuple[float, Any]] = []
+        for a in wall.event_assets.get(f, []):
+            asset = source.assets.get(a)
+            exif = asset.exif_info if asset is not None else None
+            if not exif or exif.latitude is None:
+                continue
+            pts.append((exif.latitude, exif.longitude))
+        if not pts or home[0] is None or home[1] is None:
+            return None
+        la, lo = sum(x[0] for x in pts) / len(pts), sum(x[1] for x in pts) / len(pts)
+        la1, lo1, la2, lo2 = map(math.radians, (home[0], home[1], la, lo))
+        h = (
+            math.sin((la2 - la1) / 2) ** 2
+            + math.cos(la1) * math.cos(la2) * math.sin((lo2 - lo1) / 2) ** 2
+        )
+        return 2 * 6371.0 * math.asin(math.sqrt(h)) <= 10.0
+
+    return near_home
+
+
+@dataclass
+class _SubjectPool:
+    """A subject memory reads only the happenings the gate read as concerning the subject."""
+
+    units: dict[str, list[dict]]
+    moment_assets: dict[str, list[str]]
+    rows_fn: Any
+    record: dict | None = None
+
+
+def _subject_pool(marker, gate_tier, wall, material) -> _SubjectPool:
+    """The candidate pool comes first; the story is built on it alone. Every other product
+    reads the whole period."""
+    if not marker:
+        return _SubjectPool(material.units, material.moment_assets, factual_moment_rows)
+    pool = {f for f, t in gate_tier.items() if t <= 1}
+    pool_moments = {m for m, f in wall.family_of_moment.items() if f in pool}
+
+    def pool_rows(tables_, aliases_):
+        return [
+            row
+            for row in factual_moment_rows(tables_, aliases_)
+            if row.get("moment_id") in pool_moments
+        ]
+
+    return _SubjectPool(
+        {f: units for f, units in material.units.items() if f in pool},
+        {m: ids for m, ids in material.moment_assets.items() if m in pool_moments},
+        pool_rows,
+        {
+            "criterion_marker": marker,
+            "families_in_pool": len(pool),
+            "families_total": len(gate_tier),
+            "moments_in_pool": len(pool_moments),
+        },
+    )
+
+
+def _chapters_of(selection, carriers, anchor_label) -> list[dict]:
+    """Chapters are the chosen episodes in the module's own order, so a carrier's
+    1-based `chapter` indexes this list exactly as the default path's beats do."""
+    episode_of = {e.key: e for e in selection.story.episodes}
+    chapter_families: dict[str, list[str]] = {}
+    for carrier in carriers:
+        known = chapter_families.setdefault(carrier["story_episode"], [])
+        if carrier["event"] not in known:
+            known.append(carrier["event"])
+    return [
+        {
+            "chapter": f"S{number:02d}",
+            "beat": row["title"],
+            "anchors": [anchor_label[f] for f in chapter_families.get(row["episode"], [])],
+            "share": 0.0,
+            "show": (episode_of[row["episode"]].significance or row["title"])
+            if row["episode"] in episode_of
+            else row["title"],
+            "budget": row["granted"],
+            "capacity": row["depicted_moments"],
+            "families": list(chapter_families.get(row["episode"], [])),
+        }
+        for number, row in enumerate(selection.episodes, 1)
+    ]
+
+
+def _story_worthiness(selection, wall: Wall, tier: dict, worth_reason: dict) -> None:
+    """Worthiness comes from the story's own hierarchy, not a separate ballot."""
+    for episode in selection.story.episodes:
+        rank = STORY_RANK.get(episode.role, 2)
+        for moment_alias in episode.moments:
+            f = wall.family_of_moment.get(moment_alias)
+            if f is not None and rank < tier.get(f, 3):
+                tier[f] = rank
+                worth_reason[f] = episode.title
+    for f in wall.fam_ids:
+        tier.setdefault(f, 2)
+
+
+def _evidence_partitions(intent, wall: Wall, tier: dict) -> set[str]:
+    parts = set()
+    for f in wall.fam_ids:
+        if tier[f] > 1:
+            continue
+        day = datetime.fromisoformat(wall.moments[wall.families[f][0]]["taken"]).date()
+        part = intent.partition_for(day)
+        if part is not None:
+            parts.add(part.key)
+    return parts
+
+
+@dataclass
+class _Run:
+    """The mutable result of one planning run, before it is written down."""
+
+    carriers: list[dict] = field(default_factory=list)
+    cut_carriers: list[dict] = field(default_factory=list)
+    selection_stages: dict = field(default_factory=dict)
+    shaved: int = 0
+    render_timeline: Any = None
+    final_content_cap: float = 0.0
+    motion_metrics: dict = field(default_factory=dict)
+    attached_audience: dict = field(default_factory=dict)
+    final_duplicates: dict = field(
+        default_factory=lambda: {
+            "status": "unavailable",
+            "reason": "sampled comparison ports absent",
+        }
+    )
+
+
+def _resolve_motion_and_timing(
+    run: _Run, source: StructurePlanningInput, ports: StructurePlannerPorts
+) -> None:
+    # Reviews must see the rendering that ordinary motion measurement resolved.
+    # Completion reuses this instance for survivors and newly retained additions.
+    retained_motion = RetainedMotion(ports.resolve_motion)
+    run.carriers = retained_motion(run.carriers)
+    run.selection_stages["before_picture_review"] = len(run.carriers)
+    # Audience-eligible funded pictures and completion additions reuse prior results.
+    run.carriers = retained_motion(run.carriers)
+    run.motion_metrics = retained_motion.metrics
+    timing = source.render_timing
+    if timing is None or not any(c["kind"] == "live-motion" for c in run.carriers):
+        return
+    if (
+        timing.target_seconds != source.case.target_seconds
+        or timing.memory_type != source.case.product
+    ):
+        raise ValueError("Editorial render timing disagrees with the requested memory")
+    run.render_timeline = timing.resolve(run.carriers, source.assets)
+    run.final_content_cap = min(run.final_content_cap, run.render_timeline.content_budget)
+    run.shaved += shave_content_duration(run.carriers, run.final_content_cap)
+    if sum(c["seconds"] for c in run.carriers) > run.final_content_cap:
+        raise ValueError("Editorial minimum content cannot fit the production title budget")
+
+
+def _observe_attached(
+    run: _Run,
+    ports: StructurePlannerPorts,
+    gate: AudienceGate,
+    picture_evidence: PictureEvidenceOverlay,
+    relation_records: dict,
+    share_log: dict,
+) -> tuple[AttachedMaterialEvidence, bool]:
+    attached = AttachedMaterialEvidence()
+    if ports.observe_attached_material is None or not any(
+        carrier["kind"] == "live-motion" for carrier in run.carriers
+    ):
+        return attached, False
+    # Samples and the strict renderer must agree on the final selected interval.
+    if run.render_timeline is None:
+        run.shaved += shave_content_duration(run.carriers, run.final_content_cap)
+    attached = ports.observe_attached_material(run.carriers)
+    if set(attached.records) & picture_evidence.records.keys():
+        raise ValueError("attached sample identity collides with primary picture evidence")
+    relation_records.update({key: dict(record) for key, record in attached.records.items()})
+    run.carriers = tighten_with_attached_samples(
+        run.carriers,
+        gate=gate,
+        attached_evidence=attached,
+        attached_audience=run.attached_audience,
+        share_log=share_log,
+        cut_carriers=run.cut_carriers,
+    )
+    return attached, True
+
+
+def _final_duplicate_review(
+    run: _Run,
+    ports: StructurePlannerPorts,
+    *,
+    source_relation,
+    picture_records,
+    attached: AttachedMaterialEvidence,
+    prior,
+    prior_assets: set[str],
+    quality,
+    pixel_facts,
+) -> None:
+    """Audit the completed film, including later contributions and the actual
+    resolved render kinds. Nothing may refill a removed duplicate afterward."""
+    if source_relation is None or ports.sampled_preview_hashes is None:
+        return
+    final_records = {**picture_records, **attached.records}
+    carried = {carrier["asset_id"] for carrier in run.carriers}
+    final_members = {
+        key: members for key, members in attached.displayed_members.items() if key in carried
+    }
+    displayed_ids = tuple(
+        sorted(
+            {
+                member
+                for carrier in run.carriers
+                for member in final_members.get(
+                    carrier["asset_id"], displayed_sample_members(carrier)
+                )
+            }
+        )
+    )
+    before_duplicates = run.carriers.copy()
+    run.carriers, run.final_duplicates = reduce_final_sampled_duplicates(
+        run.carriers,
+        picture_records=final_records,
+        preview_hashes=ports.sampled_preview_hashes(displayed_ids, final_records),
+        confirm_relation=source_relation,
+        bound_sample_members=final_members,
+        protected_asset_ids=sorted(prior_assets - set(prior.get("review_proposed_assets", [])))
+        if prior
+        else [],
+        objective_quality={
+            c["asset_id"]: quality(c["asset_id"])
+            for c in run.carriers
+            if c["asset_id"] in pixel_facts
+        },
+    )
+    run.final_duplicates["status"] = (
+        "incomplete" if run.final_duplicates["incomplete"] else "complete"
+    )
+    removed = {row["asset_id"]: row for row in run.final_duplicates["removals"]}
+    run.cut_carriers.extend(
+        carrier
+        | {
+            "reason": "Final visual duplicate of retained source "
+            + removed[carrier["asset_id"]]["keeper"],
+            "review_stage": "final-duplicates",
+        }
+        for carrier in before_duplicates
+        if carrier["asset_id"] in removed
+    )
+
+
+def _check_empty_attached(ports: StructurePlannerPorts, observed: bool) -> None:
+    if ports.observe_attached_material is None or observed:
+        return
+    empty_attached = ports.observe_attached_material([])
+    if any(
+        (
+            empty_attached.records,
+            empty_attached.displayed_members,
+            empty_attached.observed_members,
+            empty_attached.gaps,
+        )
+    ):
+        raise ValueError("empty attached material produced nonempty evidence")
+
+
+def _partition_cap(intent, target_seconds: float, prior) -> tuple[int, int, int | None]:
+    """Slots, the per-anchor depth cap and the product's partition carrier limit."""
+    slots_total = int(target_seconds // SECONDS_PER_SLOT)
+    cap = depth_cap(target_seconds)
+    limit = intent.max_carriers_per_partition
+    if limit is not None:
+        cap = min(cap, limit)
+    if limit is not None and prior:
+        prior_counts: dict[str, int] = {}
+        for c in prior["carriers"]:
+            part = intent.partition_for(datetime.fromisoformat(c["taken"]).date())
+            if part is not None:
+                prior_counts[part.key] = prior_counts.get(part.key, 0) + 1
+        if any(n > limit for n in prior_counts.values()):
+            raise ValueError(
+                "prior plan exceeds the product's partition carrier limit; replan without the incompatible prior"
+            )
+    return slots_total, cap, limit
+
+
+def plan_structure(
+    source: StructurePlanningInput, ports: StructurePlannerPorts
+) -> StructurePlanningResult:
+    """Run the shared editorial algorithm on an already captured production wall."""
+    source.bank_dir.mkdir(parents=True, mode=0o700, exist_ok=True)
+    source.artifact_dir.mkdir(parents=True, mode=0o700, exist_ok=True)
+    audit_dir = source.artifact_dir / "derived-decisions"
+    audit_dir.mkdir(mode=0o700, exist_ok=True)
+    # Only the exact text gateway can reuse semantic answers across runs. These parsed
+    # dictionaries memoize within this run and are written solely for audit/restart evidence.
+    contract, contract_key, admission, admission_key = contract_texts(source.case, source.intent)
+    wall = read_wall(source)
+    material = build_material(source, ports, wall)
+    slots_total, cap, partition_limit = _partition_cap(
+        source.intent, source.case.target_seconds, source.prior_plan
+    )
+    prior_assets = (
+        {c["asset_id"] for c in source.prior_plan["carriers"]} if source.prior_plan else set()
+    )
+    run = _Run(final_content_cap=source.case.target_seconds - CONTENT_RESERVE_SECONDS)
+    with llm_metrics.collecting() as counters:
+        outcome = _select(
+            source,
+            ports,
+            wall,
+            material,
+            run,
+            audit_dir=audit_dir,
+            contract=contract,
+            admission=admission,
+            admission_key=admission_key,
+            partition_limit=partition_limit,
+            prior_assets=prior_assets,
+        )
+    metrics = provider_metrics(counters)
+    if run.render_timeline is None:
+        run.shaved += shave_content_duration(run.carriers, run.final_content_cap)
+    elif sum(c["seconds"] for c in run.carriers) > run.final_content_cap:
+        raise ValueError("Certified editorial content grew after its timing was fixed")
+    outcome.metrics = metrics
+    outcome.shaved = run.shaved
+    outcome.content_cap = run.final_content_cap
+    outcome.timing_binding = _timing_binding(source, run)
+    facts = PlanFacts(
+        label=source.case.label,
+        target_seconds=source.case.target_seconds,
+        contract_key=contract_key,
+        wall_sha256=hashlib.sha256(source.wall_bytes).hexdigest(),
+        slots_total=slots_total,
+        cap=cap,
+        source_assets=len(source.assets),
+        fam_ids=wall.fam_ids,
+        anchor_label=wall.anchor_label,
+        period_people=wall.period_people,
+        merge_log=wall.merge_log,
+        document_sources=material.document_sources,
+        document_excluded=material.builder.document_excluded,
+        ineligible=material.ineligible,
+        prior=source.prior_plan,
+        prior_assets=prior_assets,
+        prior_plan_ref=source.prior_plan_ref,
+    )
+    return build_result(source, ports, facts, outcome)
+
+
+def _timing_binding(source: StructurePlanningInput, run: _Run) -> dict:
+    if run.render_timeline is None:
+        return {}
+    if source.render_timing is None:
+        raise ValueError("Certified timeline lacks its source timing policy")
+    return {
+        "render_timing": bind_editorial_timeline(
+            source.render_timing,
+            run.render_timeline,
+            [c["asset_id"] for c in run.carriers],
+        )
+    }
+
+
+def _select(
+    source: StructurePlanningInput,
+    ports: StructurePlannerPorts,
+    wall: Wall,
+    material: Material,
+    run: _Run,
+    *,
+    audit_dir,
+    contract: str,
+    admission: str,
+    admission_key: str,
+    partition_limit: int | None,
+    prior_assets: set[str],
+) -> PlanOutcome:
+    """The whole selection under one metrics collector: gate, story, audience, duplicates."""
+
+    def record_story(name: str, payload) -> None:
+        write_secret_file(
+            audit_dir / f"{name}.private.json",
+            json.dumps(payload, ensure_ascii=False, indent=1, default=str),
+        )
+
+    gate = AudienceGate(
+        ports.judge,
+        audience=source.audience,
+        picture_evidence=material.picture_evidence,
+        flag_rows=source.shareability_flags,
+        lines=source.annotations,
+        bank_path=audit_dir / "shareability.private.json",
+    )
+    attached_relation_records: dict[str, dict[str, Any]] = {}
+    relation_records = ChainMap(attached_relation_records, material.picture_evidence.records)
+    tier, worth_reason, marker = _worthiness_gate(
+        source,
+        ports,
+        wall,
+        material,
+        admission=admission,
+        admission_key=admission_key,
+        record=record_story,
+    )
+    pool = _subject_pool(marker, tier, wall, material)
+    if pool.record is not None:
+        record_story("subject-pool", pool.record)
+    selection = _story_selection(
+        source,
+        ports,
+        wall,
+        material,
+        pool,
+        gate,
+        contract=contract,
+        tier=tier,
+        marker=marker,
+        record=record_story,
+        partition_limit=partition_limit,
+    )
+    run.carriers = list(selection.carriers)
+    _trim_to_timing(run, source, record_story)
+    chapters = _chapters_of(selection, run.carriers, wall.anchor_label)
+    beats = [row["beat"] for row in chapters]
+    _story_worthiness(selection, wall, tier, worth_reason)
+    evidence_partitions = _evidence_partitions(source.intent, wall, tier)
+    carriers_at_selection = len(run.carriers)
+    # The final sampled-duplicate review still runs, so it needs its relation.
+    source_relation = sampled_source_relation(
+        ports.confirm_sampled_pairs, picture_records=relation_records
+    )
+    run.carriers.sort(key=itemgetter("taken"))
+    run.selection_stages = {
+        "funded_picture_requests": 0,
+        "after_funded_acquisition": len(run.carriers),
+        "before_shareability": len(run.carriers),
+    }
+    share_log = _apply_audience_gate(run, gate, selection, material, wall)
+    _resolve_motion_and_timing(run, source, ports)
+    attached, observed = _observe_attached(
+        run, ports, gate, material.picture_evidence, attached_relation_records, share_log
+    )
+    _final_duplicate_review(
+        run,
+        ports,
+        source_relation=source_relation,
+        picture_records=material.picture_evidence.records,
+        attached=attached,
+        prior=source.prior_plan,
+        prior_assets=prior_assets,
+        quality=material.builder.quality,
+        pixel_facts=source.pixel_facts,
+    )
+    run.selection_stages["after_final_duplicate_review"] = len(run.carriers)
+    _check_empty_attached(ports, observed)
+    return PlanOutcome(
+        contract=contract,
+        carriers=run.carriers,
+        cut_carriers=run.cut_carriers,
+        selection=selection,
+        chapters=chapters,
+        beats=beats,
+        threads=merged_threads_log(beats, selection.story.thesis),
+        tier=tier,
+        worth_reason=worth_reason,
+        share_log=share_log,
+        final_duplicates=run.final_duplicates,
+        motion_metrics=run.motion_metrics,
+        selection_stages=run.selection_stages,
+        evidence_partitions=evidence_partitions,
+        attached_evidence=attached,
+        attached_audience=run.attached_audience,
+        picture_facts=material.picture_evidence.records,
+        calls=ports.judge.calls,
+        ladder_reads=selection.calls["inventory_pages"],
+        carriers_at_selection=carriers_at_selection,
+    )
+
+
+def _worthiness_gate(
+    source, ports, wall: Wall, material: Material, *, admission, admission_key, record
+):
+    """THE FIRST JUDGEMENT, as litigated: memory-worthy or background, per happening, the v44
+    gate verbatim (twelve-row blocks, two orders, the near-home marker from GPS). Its reading
+    goes to the synthesis as evidence and weighs whatever the synthesis leaves unplaced."""
+    bank_path = source.bank_dir / "memory-worthy.private.json"
+    bank = json.loads(bank_path.read_text()) if bank_path.exists() else {}
+    criterion, marker = worth_criterion_v44(source.case.product, source.intent.subject)
+    gate_tier, gate_reason = judge_worthiness(
+        ports.judge,
+        happenings=wall.fam_ids,
+        label_of=wall.anchor_label,
+        text_of=lambda f: anchor_line(wall, material, f).split(": ", 1)[-1],
+        near_home=_near_home_test(source, wall),
+        contract=admission,
+        contract_key=admission_key,
+        criterion=criterion,
+        marker=marker,
+        period_label=source.case.label,
+        bank=bank,
+        save=lambda: write_secret_file(bank_path, json.dumps(bank, indent=1)),
+    )
+    record(
+        "memory-worthy-gate",
+        {
+            "version": "memory-worthy-v2-contract",
+            "counts": {
+                "remarkable": sum(1 for t in gate_tier.values() if t == 0),
+                "maybe": sum(1 for t in gate_tier.values() if t == 1),
+                "background": sum(1 for t in gate_tier.values() if t == 2),
+            },
+            "tiers": {wall.anchor_label[f]: t for f, t in gate_tier.items()},
+            "reasons": {wall.anchor_label[f]: r for f, r in gate_reason.items()},
+        },
+    )
+    return gate_tier.copy(), gate_reason.copy(), marker
+
+
+def _story_selection(
+    source,
+    ports,
+    wall: Wall,
+    material: Material,
+    pool: _SubjectPool,
+    gate: AudienceGate,
+    *,
+    contract: str,
+    tier: dict,
+    marker: str,
+    record,
+    partition_limit: int | None,
+):
+    bank_path = source.bank_dir / "picture-stands.private.json"
+    bank = json.loads(bank_path.read_text()) if bank_path.exists() else {}
+    unit_of = {u["asset_id"]: u for units in material.units.values() for u in units}
+    return select_story_first(
+        judge=ports.judge,
+        tables=wall.tables,
+        aliases=wall.aliases,
+        factual_rows_fn=pool.rows_fn,
+        moment_assets=pool.moment_assets,
+        lines=material.story_lines,
+        flagged=lambda asset_id: bool(FLAGGED_LINE.search(source.annotations.get(asset_id, ""))),
+        life=lambda asset_id: _shows_life(material, unit_of, asset_id),
+        shareable=gate.shareable_rung,
+        full_lines=source.annotations,
+        contract=contract + "\n\n" + source.intent.story_prompt_block(),
+        event_units=pool.units,
+        family_of_moment=wall.family_of_moment,
+        anchor_label=wall.anchor_label,
+        label_line=material.text.label,
+        quality=material.builder.quality,
+        picture_line=gate.proposed_picture_line if ports.observe_picture is not None else None,
+        motion_line=ports.observe_story_motion,
+        target_seconds=source.case.target_seconds,
+        seconds_per_slot=SECONDS_PER_SLOT,
+        record=record,
+        family_tier=tier,
+        period_label=source.case.label,
+        standing_bank=bank,
+        standing_save=lambda: write_secret_file(bank_path, json.dumps(bank, indent=1)),
+        excluded=material.document_sources,
+        allow_story_gaps=bool(marker),  # a subject memory's stages span weeks with gaps
+        journey=source.case.product == "trip",
+        partition_limit=partition_limit,
+        partition_of=lambda taken: (
+            part.key
+            if (part := source.intent.partition_for(datetime.fromisoformat(taken).date()))
+            else None
+        ),
+    )
+
+
+def _shows_life(material: Material, unit_of, asset_id: str) -> bool:
+    u = unit_of.get(asset_id)
+    return bool(u) and material.text.shows_life(u) and not material.text.lone_object(u)
+
+
+def _trim_to_timing(run: _Run, source, record) -> None:
+    """The production title budget depends on what was selected (a divider per month shown):
+    a memory across ten years holds ten dividers. Fit the minimum content to that budget now,
+    dropping from the least weighed stories, rather than dying in the tail's guard."""
+    if source.render_timing is None:
+        return
+    run.carriers, dropped = trim_to_timing_budget(
+        run.carriers,
+        lambda cs: source.render_timing.resolve(cs, source.assets).content_budget,
+        MIN_CARRIER_SECONDS,
+    )
+    record("timing-trim", {"dropped": [c["asset_id"] for c in dropped], "kept": len(run.carriers)})
+
+
+def _apply_audience_gate(
+    run: _Run, gate: AudienceGate, selection, material: Material, wall: Wall
+) -> dict:
+    before_privacy = run.carriers.copy()
+    run.carriers, share_log = _share.apply_gate(
+        # Same temporal family does not establish editorial equivalence. Let the
+        # existing bounded assembly decision judge a new contribution after privacy.
+        run.carriers,
+        verdict_of=gate.verdict_of,
+        # Story-first has no ladder to fall back on: the moment's own other pictures are
+        # the only replacements a held carrier can have.
+        pool_for=alternatives_pool(selection, material.units),
+        audience=gate.audience,
+    )
+    open_share_log(share_log, gate, funded_acquisition={})
+    run.selection_stages["after_shareability"] = len(run.carriers)
+    close_share_log(
+        share_log,
+        gate,
+        never_auto_excluded=material.builder.never_auto_excluded,
+        anchor_label=wall.anchor_label,
+        ineligible=material.ineligible,
+    )
+    gate.exclude_refused_members(before_privacy)
+    return share_log

@@ -1,0 +1,172 @@
+"""A vote bank must replay the same model question, including its positional labels."""
+
+import hashlib
+import json
+import re
+from types import SimpleNamespace
+
+import pytest
+
+from immich_memories.analysis.editorial_block_votes import (
+    STANDING_PROMPT_VERSION,
+    judge_standing,
+    judge_worthiness,
+)
+from immich_memories.config_models_llm import LLMConfig
+
+
+class VoteJudge:
+    def __init__(self, **settings):
+        self.config = SimpleNamespace(llm=LLMConfig(model="model-a", **settings))
+        self.calls = []
+
+    def ask(self, stage, prompt, **_kwargs):
+        self.calls.append((stage, prompt))
+        if stage.startswith("standing"):
+            weak = re.findall(r"^(P\d+): .*weak object", prompt, re.MULTILINE)
+            return json.dumps({"weak": dict.fromkeys(weak, "an object")})
+        labels = re.findall(r"^(F\d+)(?: \(near home\))?:", prompt, re.MULTILINE)
+        return json.dumps({"worthy": dict.fromkeys(labels, "an occasion")})
+
+
+def standing(judge, bank, *, pictures=("a",), contract="contract", period="period"):
+    return judge_standing(
+        judge,
+        pictures=pictures,
+        line_of=lambda asset: "weak object" if asset == "a" else f"people at {asset}",
+        contract=contract,
+        period_label=period,
+        bank=bank,
+    )
+
+
+def test_standing_relabels_a_cached_block_without_losing_its_rejection():
+    judge, bank = VoteJudge(), {}
+    assert standing(judge, bank)["a"][0] == 0
+    assert standing(judge, bank)["a"][0] == 0
+    assert len(judge.calls) == 2
+
+    shifted = (*[f"b{i}" for i in range(12)], "a")
+    assert standing(judge, bank, pictures=shifted)["a"][0] == 0
+    assert len(judge.calls) == 6, "P13 cannot reuse a response naming P01"
+
+
+@pytest.mark.parametrize(
+    "change", ["contract", "period", "model", "endpoint", "provider", "dialect"]
+)
+def test_standing_bank_includes_the_full_question_and_model_settings(change):
+    judge, bank = VoteJudge(), {}
+    contract, period = "same opening " * 8 + "old instructions", "period"
+    standing(judge, bank, contract=contract, period=period)
+    if change == "contract":
+        contract = "same opening " * 8 + "new instructions"
+    elif change == "period":
+        period = "another period"
+    else:
+        settings = {
+            "model": {"model": "model-b"},
+            "endpoint": {"base_url": "https://other.example/v1"},
+            "provider": {"provider": "ollama"},
+            "dialect": {"extra_params": {"top_k": 20}},
+        }[change]
+        judge.config.llm = judge.config.llm.model_copy(update=settings)
+    standing(judge, bank, contract=contract, period=period)
+    assert len(judge.calls) == 4
+
+
+def test_unidentified_judge_does_not_reuse_or_populate_a_persistent_bank():
+    judge, bank = VoteJudge(), {}
+    del judge.config
+    standing(judge, bank)
+    standing(judge, bank)
+    assert len(judge.calls) == 4
+    assert bank == {}
+
+
+def test_an_adapter_can_supply_its_model_identity_explicitly():
+    judge, bank = VoteJudge(), {}
+    del judge.config
+    kwargs = {
+        "pictures": ["a"],
+        "line_of": lambda _: "weak object",
+        "contract": "contract",
+        "period_label": "period",
+        "bank": bank,
+        "model_identity": "adapter/model-a/settings-v1",
+    }
+    judge_standing(judge, **kwargs)
+    judge_standing(judge, **kwargs)
+    assert len(judge.calls) == 2
+    kwargs["model_identity"] = "adapter/model-b/settings-v1"
+    judge_standing(judge, **kwargs)
+    assert len(judge.calls) == 4
+
+
+def test_legacy_bank_is_ignored_without_changing_the_established_hashed_order():
+    judge = VoteJudge()
+    pictures = ("a", "b", "c")
+    lines = {"a": "weak object", "b": "people at b", "c": "people at c"}
+    seed = hashlib.sha256(
+        (STANDING_PROMPT_VERSION + "|contract|" + "|".join(lines[a] for a in pictures)).encode()
+    ).hexdigest()
+    bank = {seed: {"source": {}, "hashed": {}}}
+    assert standing(judge, bank, pictures=pictures)["a"][0] == 0
+    order = sorted(pictures, key=lambda asset: hashlib.sha256((asset + seed).encode()).hexdigest())
+    expected = [f"P{pictures.index(asset) + 1:02d}" for asset in order]
+    assert re.findall(r"^(P\d+):", judge.calls[1][1], re.MULTILINE) == expected
+
+
+@pytest.mark.parametrize("change", ["near_home", "period", "criterion", "model"])
+def test_worthiness_bank_includes_effective_context_and_model(change):
+    judge, bank = VoteJudge(), {}
+    kwargs = {
+        "happenings": ["a"],
+        "label_of": {"a": "F01"},
+        "text_of": lambda _: "A family outing",
+        "near_home": lambda _: False,
+        "contract": "contract",
+        "contract_key": "contract hash",
+        "criterion": "Pick occasions",
+        "marker": "",
+        "period_label": "period",
+        "bank": bank,
+    }
+    judge_worthiness(judge, **kwargs)
+    judge_worthiness(judge, **kwargs)
+    assert len(judge.calls) == 2
+    if change == "near_home":
+        kwargs["near_home"] = lambda _: True
+    elif change == "period":
+        kwargs["period_label"] = "another period"
+    elif change == "criterion":
+        kwargs["criterion"] = "Pick subject stages"
+    else:
+        judge.config.llm = judge.config.llm.model_copy(update={"model": "model-b"})
+    judge_worthiness(judge, **kwargs)
+    assert len(judge.calls) == 4
+
+
+@pytest.mark.parametrize("labels", [("F03", "F07", "F08"), ("F13", "F17", "F18")])
+def test_worthiness_answer_instructions_do_not_nominate_real_or_foreign_choices(labels):
+    judge = VoteJudge()
+    happenings = ("visit", "home", "outing")
+    judge_worthiness(
+        judge,
+        happenings=happenings,
+        label_of=dict(zip(happenings, labels, strict=True)),
+        text_of=lambda key: f"People at {key}",
+        near_home=lambda _: None,
+        contract="Keep distinct occasions",
+        contract_key="test",
+        criterion="Judge each happening",
+        marker="",
+        period_label="one month",
+    )
+    assert len(judge.calls) == 2
+    for _, prompt in judge.calls:
+        instructions = prompt.rsplit("\n\n", 1)[1]
+        assert not re.search(r"F\d+", instructions), (
+            "A format example must not suggest any candidates"
+        )
+        assert set(re.findall(r"^(F\d+):", prompt, re.MULTILINE)) == set(labels)
+        assert "empty mapping" in instructions
