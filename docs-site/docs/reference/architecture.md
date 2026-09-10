@@ -11,16 +11,18 @@ How the code is organized, why it's built this way, and where to make changes.
 
 The codebase used to split large classes into mixins. That worked for a while, but mixins create implicit coupling: you can't understand a mixin without knowing what `self` looks like on the host class. When `VideoAssembler` hit 11 mixins, it was time to refactor.
 
-Now the four main orchestrators compose smaller service objects via constructor injection. Above them, `generate_memory()` in `generate.py` is the top-level entry that runs the whole lifecycle (discovery → download → analysis → selection → render → music → delivery):
+Now the four main orchestrators compose smaller service objects via constructor injection. Above them, `generate_memory()` in `generate.py` is the top-level entry that runs the whole lifecycle (discovery → download → analysis → selection → render → music → delivery), and selection itself is the story-first editorial route: `generate` (or the Memory page's Cut) → `build_smart_pipeline(editorial_context)` in `analysis/editorial_runtime.py` → `SmartPipeline.run_editorial_source()` → `RuntimeEditorialPlanner.plan_source()`, which runs preparation, the two readings, the structure planner and the story planner, and certifies the timing.
 
 | Orchestrator | Services | What it does |
 |---|---|---|
 | **VideoAssembler** | FFmpegProber, FilterBuilder, ClipEncoder, AssemblyEngine, AudioMixerService, TitleInserter | Assembles clips into final video |
-| **SmartPipeline** | ClipAnalyzer, PreviewBuilder, ClipRefiner, ClipScaler, SelectionQuality | Analyzes and selects the best clips |
+| **SmartPipeline** | RuntimeEditorialPlanner (from `build_smart_pipeline`), PreviewBuilder; the legacy ClipAnalyzer, ClipRefiner, ClipScaler and SelectionQuality stay composed for the unreached `run_selection()` until the removal phase | Runs the story-first selection and projects its plan into a `PipelineResult` |
 | **ImmichClient** | SearchService, AllAssetsService, AssetService, PersonService, AlbumService | Talks to the Immich API |
 | **TitleScreenGenerator** | RenderingService, EndingService, TripService | Creates title/ending screens |
 
 Each service is a standalone class you can test in isolation. The orchestrator wires them together in `__init__` and delegates work.
+
+The editorial route has its own seams rather than services: `EditorialRuntimePorts` (the production providers and the people loader), `ProductionPostCardBackend` (the structure planner behind the text orchestration), `StructurePlannerPorts` (the judges, banks and audience gate the structure planner needs), and `EditorialAttempt` in `operations/` (the durable attempt tree with its OS lease). Every attempt lives under `<cache>/editorial-runs/<key>/attempts/<id>/`; the annotation store is `<cache>/annotations.sqlite`.
 
 ## CI Pipeline Structure
 
@@ -80,7 +82,7 @@ A PR passes 20 gates: 15 static checks in the quality job and 5 security scans i
 | Security | Bandit + Semgrep | Common vulnerability patterns |
 | Secrets | Gitleaks | Accidentally committed API keys |
 | Dependencies | pip-audit + deptry | Known CVEs; unused, missing or transitive imports |
-| Architecture | import-linter | Two forbidden-import contracts: `analysis`/`processing`/`titles` must not import `ui`, and those three plus `audio` must not import `cli`. The dependency runs one way — UI and CLI import core, never the reverse |
+| Architecture | import-linter | Forbidden-import contracts: the core packages (`analysis`, `processing`, `titles`, `store`, `operations`, `triage`) must not import `ui`, and they plus `audio` must not import `cli`. The dependency runs one way — UI and CLI import core, never the reverse |
 | Commits | commitizen | Non-conventional commit messages |
 | Tests | pytest | 5,600+ tests: 5,000+ unit in CI, 600+ integration/E2E locally and on the GPU runner |
 
@@ -106,7 +108,7 @@ A PR passes 20 gates: 15 static checks in the quality job and 5 security scans i
 1. Add the value to the `MemoryType` enum in `memory_types/registry.py`
 2. Write a factory function in `memory_types/factory.py` and decorate it with `@register_preset` — the decorator *is* the registration, there is no second list to edit there
 3. Add date builder logic if the type needs its own, in `memory_types/date_builders.py`
-4. Add the string to the `--memory-type` choice list in `cli/generate_options.py`. That list is hand-written, not derived from the enum, so a type you skip here exists everywhere except the CLI
+4. Add it to `OFFERED_MEMORY_TYPES` in `memory_types/registry.py` — `--memory-type` and the Memory page's select both read that tuple, in that order
 5. Add a page under `docs-site/docs/create/memory-types/`
 
 ### Adding a new CLI command

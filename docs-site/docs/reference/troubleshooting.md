@@ -59,12 +59,12 @@ relevant Immich server logs. API keys are redacted.
 
 ## Slow Analysis
 
-First-run analysis takes roughly 1-2 minutes per clip on a CPU-only box, about 1 minute per 10 clips on Apple Silicon or a GPU. Downscaling to 480p is already on by default (`analysis.enable_downscaling`, `analysis.analysis_resolution`), so the levers left are:
+The first cut over a period is the slow one: every eligible picture gets its caption, context heads and detector facts prepared once, then the text model reads the period. The levers:
 
-- **Analyze fewer clips**: `--analysis-depth fast` (or the "Analysis Depth" selector in Step 1) does two things — it shortlists candidates by density instead of taking every eligible clip, and it runs the LLM pass on favorites only, leaving the rest to metadata scoring. `auto` (the default) takes every eligible clip while 60 or fewer of them still need work under the active model, and shortlists past that. It never drops to favorites-only unless you also set `preset: fast`.
+- **Put the caption server on the fast box**: captions are one HTTP request per picture (`editorial.preparation.caption_base_url`, `caption_concurrency`), and the encoder and detectors run where the app runs. A missing producer does not slow the run down, it stops it with a count — see [Editorial annotation setup](../deploy/configuration/editorial-preparation.md).
 - **Narrow the period**: a month or a person filter is analyzed in minutes; a whole year of a busy library is an overnight job on a NAS.
-- **Let the cache work**: results are stored per asset in `~/.immich-memories/cache.db`, so the second run over the same clips skips analysis. Do not clear the cache between runs.
-- **Turn off the LLM pass**: it is off by default, but with `content_analysis.enabled: true` every candidate waits on the model server and a slow Ollama box dominates the run.
+- **Let the store work**: facts are stored per picture and producer in `annotations.sqlite` inside the cache directory, and every reading is banked by its exact request, so the second cut over the same period skips both. Do not clear the cache between runs.
+- **Check the text model**: every reading waits on it, so a slow model server dominates the run. The run summary prints the model's call count and time.
 
 ## Out of Memory (OOM)
 

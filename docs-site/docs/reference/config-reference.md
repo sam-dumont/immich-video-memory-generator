@@ -43,16 +43,16 @@ preset: null                       # null | fast
 `fast` sets, unless you set them yourself: `output.resolution: 1080p`, `output.codec: h264`,
 `output.quality: medium`, `hardware.encoder_preset: fast`, `speech.enabled: false` (no per-clip
 voice-activity pass), `title_screens.animated_background: false` (static title backgrounds),
-`photos.max_ratio: 0.25`, `analysis.max_refinement_passes: 3` (three refinement rounds rather
-than ten); and an analysis depth of `auto` runs as `fast` (favorites first).
-The heavy optional features (LLM scoring, music generation, audio-content tagging, transcription)
-are already off by default and stay wherever you put them.
+`photos.max_ratio: 0.25`, and two settings of the old selector that story-first selection does not
+read (`analysis.max_refinement_passes: 3`, analysis depth `fast`).
+The heavy optional features (the legacy LLM scorer, music generation, audio-content tagging,
+transcription) are already off by default and stay wherever you put them.
 
 Env: `IMMICH_MEMORIES_PRESET=fast`. One-off on the CLI: `immich-memories --preset fast generate …`
-(root option, before the subcommand). The settings page names the active preset; Step 3 defaults
+(root option, before the subcommand). The settings page names the active preset; the options page defaults
 its resolution to the preset's and says so.
 
-Caveat: **Step 1's "Save Config"** writes every value to `config.yaml`, not just the connection
+Caveat: **the Memory page's "Save Config"** (under Advanced) writes every value to `config.yaml`, not just the connection
 fields it appears to be about — after which they all count as "set by you", and the preset has
 nothing left to fill in. Remove the keys you want the preset to own again. (`server.host` is the
 single exception; see [Server (UI)](#server-ui).) The `/settings/config` page is read-only and
@@ -121,7 +121,7 @@ analysis:
   max_album_assets: 10000        # Most assets read from one album, per media type (min 1)
 
   # Performance
-  max_refinement_passes: 10      # Verify/judge/review rounds before selection settles (1-20)
+  max_refinement_passes: 10      # Legacy scorer rounds; not read by story-first selection (1-20)
   download_workers: 3            # Parallel download clients for video and thumbnail prefetching (1-8)
   enable_downscaling: true       # Downscale for analysis (~3-5x faster)
   analysis_resolution: 480       # Target height for analysis (240-1080)
@@ -245,7 +245,7 @@ Background music needs `ace_step.enabled` or `musicgen.enabled`. With neither, t
 to build rather than running silent. With both on, ACE-Step generates, and MusicGen is both the
 fallback generator and the stem separator used for ducking. With MusicGen off, stems come from a
 local Demucs install if there is one. Per run you can still override that: `--music PATH` uses your
-own file, `--no-music` skips music, and Step 3 in the UI offers None / Upload file / AI Generated,
+own file, `--no-music` skips music, and the options page in the UI offers None / Upload file / AI Generated,
 plus Bundled when the `music` extra is installed. Music volume is a per-run setting too
 (`--music-volume` or the UI slider); ducking under speech and the 2 s / 3 s fades are fixed.
 

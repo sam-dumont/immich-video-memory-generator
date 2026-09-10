@@ -44,7 +44,7 @@ immich-memories generate [OPTIONS]
 | `--season` | — | choice | — | `spring`, `summer`, `fall`, `autumn`, `winter` (use with `--memory-type season`) |
 | `--month` | — | int | — | Month 1-12 (with `--year`, generates that month; selects trip by month) |
 | `--hemisphere` | — | choice | `north` | `north` or `south` (for season date calculation) |
-| `--years-back` | — | int | per type | Years to look back. Omitted: all years for `on_this_day` (30-year max), 5 for `holiday`, 10 for `then_and_now` |
+| `--years-back` | — | int | per type | Years to look back. Omitted: all years for `on_this_day` (30-year max), 5 for `holiday` |
 
 ### Output
 
@@ -274,20 +274,6 @@ span between the first and last date, which for five Christmases is five years �
 a length meant for one continuous stretch, not a handful of days repeated. The
 number of years does not change the target; pass `--duration` for a longer cut.
 
-### Then and now
-
-Two whole years, far apart, in one video:
-
-```bash
-immich-memories generate --memory-type then_and_now --year 2025 --years-back 10
-```
-
-That covers 2015 and 2025. Whole years rather than narrow windows, because the
-contrast is the point and a two-day window a decade ago is usually empty.
-
-Without `--duration` this runs 45 seconds — two years side by side, not the ten
-that separate them.
-
 ### A day the catalogue found
 
 [`discover-days`](./discover-days) walks the library and writes down the days
@@ -345,7 +331,7 @@ immich-memories generate --year 2024 --include-photos --photo-duration 5.0
 | Single month | `--year 2024 --month 7` | Jul 1 to Jul 31 2024 |
 | Custom range | `--start 2024-06-01 --end 2024-08-31` | Exact start and end dates |
 | Period from start | `--start 2024-01-01 --period 6m` | 6 months from the start date |
-| Override preset | `--memory-type season --season summer --start 2024-07-01 --end 2024-07-31` | Custom dates with preset scoring |
+| Override preset | `--memory-type season --season summer --start 2024-07-01 --end 2024-07-31` | Custom dates with the preset's title and structure |
 
 Dates are RFC 3339: `YYYY-MM-DD`, always. `--birthday` also takes the year-less `MM-DD` short form — same order, no year. Slashed and day-first forms are rejected with an error naming the format, never guessed.
 
@@ -433,7 +419,7 @@ immich-memories generate --year 2025 --llm-title
 
 Three things worth knowing:
 
-- **It is off by default, deliberately.** The wizard turns LLM titles on whenever
+- **It is off by default, deliberately.** The web UI turns LLM titles on whenever
   a model is configured; the CLI does not, because a default that starts
   inventing titles makes runs before and after it incomparable. If you are
   comparing outputs across a sweep, leave it off or set it for every run.
@@ -499,32 +485,35 @@ temporal dedup           21    17      38 -> 21
 scale to duration         9    12      21 ->  0  <-- all favorites lost here
 ```
 
-Selection passes a pool through a dozen filters, caps, scalers and LLM judgements. Reading the log
-and inferring which one ate your clips is slow and wrong often enough to matter — a real February
-started with 38 favourites and shipped none, and finding the stage responsible took several rounds
-of guessing. This answers it directly.
+Selection passes a pool through the source gates, the cull, the memory-worthy gate, the story
+weighing and the standing gate before a picture carries. Reading the log and inferring which one
+ate your clips is slow and wrong often enough to matter — a real February started with 38
+favourites and shipped none, and finding the stage responsible took several rounds of guessing.
+This answers it directly. The stage names above are the old selector's; the funnel prints
+whichever passes the current route ran.
 
 :::warning Do not combine this with `--dry-run`
-`--dry-run` skips work, and some of the work it skips is selection. Photo scoring falls back to
-metadata only — the VLM scorer never runs — so a trace taken under `--dry-run` describes a
-different, cheaper pipeline than the one that makes your videos. Trace a real run —
-`--no-render` gives you one without the encode. See below.
+`--dry-run` runs no selection — it discovers inputs and reports preparation needs — so there is
+nothing to trace. Trace a real run: `--no-render` gives you one without the encode. See below.
 :::
 
 ### Two ways to skip the video
 
 They are not the same, and the difference decides which one you want.
 
-`--dry-run` is the cheap preview. It analyses nothing it has not already
-cached and skips the verify pass, so the clips it lists are an approximation
-of the real selection. Use it to check that your criteria match the assets you
-expect.
+`--dry-run` is the cheap preview. It discovers the inputs and reports what
+preparation the period still needs — which producers are missing, how many
+pictures have no facts yet — without selecting or generating anything. Use it
+to check that your criteria match the assets you expect and that the
+[annotation producers](../../deploy/configuration/editorial-preparation.md)
+are reachable.
 
-`--no-render` runs the pipeline for real — full analysis, the verify pass, the
-judge and the review — and stops at the encode. The clips it lists are the
-clips it would have shipped. Use it when you care about the selection itself:
-tuning scoring, comparing settings, or measuring how long selection takes
-without paying several minutes to encode a file you are going to delete.
+`--no-render` runs the story-first selection for real — preparation, the
+readings, the planners, the audience and media checks — and stops at the
+encode. The pictures it lists are the pictures it would have shipped, and the
+attempt is written under `editorial-runs/` like any other. Use it when you care
+about the selection itself: comparing settings, or measuring how long selection
+takes without paying several minutes to encode a file you are going to delete.
 
 Use `--dry-run` to see how many videos match your criteria without actually generating anything:
 

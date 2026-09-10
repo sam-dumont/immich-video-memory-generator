@@ -7,9 +7,9 @@ import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
 
 # Your First Memory
 
-This walks you through creating a video from start to finish. Set up the annotation providers
-before the first run. Cold preparation takes longer than a rerun because the app reads and
-describes the source period; complete facts are cached.
+This walks you through one video from start to finish. Set up the annotation producers before
+the first run: a cold cut reads and describes every picture in the period, which is the slow part,
+and everything it reads is kept.
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@ Before you start:
 - **~2 GB free disk** for the video cache (downloaded clips get cached locally)
 - Photos, Live Photos or videos in the period you want
 - [Editorial annotation setup](../deploy/configuration/editorial-preparation.md): the pinned
-  encoder and detector weights, compact-caption endpoint, and configured story model
+  encoder and detector weights, the compact-caption endpoint, and a configured text model
 
 ## Step 1: Launch
 
@@ -52,59 +52,82 @@ port with turning on authentication.
 
 ## Step 2: Connect to Immich
 
-Enter your Immich server URL and API key in the **Immich Connection** panel of the Configuration step and click **Test Connection** (it connects on its own if the config already has credentials). On success the panel collapses to "Immich Connection — *you*" and the memory type cards appear.
+With credentials in the config or the environment the page connects on its own and shows the
+brief. Otherwise it shows only the **Immich Connection** panel: enter the server URL and API key
+and click **Test Connection**. On success the panel collapses to "Immich Connection — *you*" and
+the brief appears.
 
 <ThemedScreenshot name="memory-brief" alt="The brief, connected to Immich" />
 
-## Step 3: Pick "Year in Review"
+## Step 3: Pick a month
 
-Select the **Year in Review** preset card. Pick the year you want (the one with the most videos works best for a first try). This preset covers an entire calendar year and creates monthly title dividers in the output.
+Choose **Monthly Highlights** as the memory type and pick a month with a fair number of pictures
+in it. A month is the right first cut: one minute of output, and the reading is over in minutes
+rather than the hour a whole year can take on a cold library. Leave **Auto duration** on.
 
-## Step 4: Review clips
+## Step 4: Cut
 
-Click **Next: Review Clips** and review the source material, then click **Generate Memories**.
-The planner prepares missing facts, reads the period's stories and distinct moments, and chooses
-what to include before allocating duration. Missing required providers are reported before
-selection continues. New runs use the FAMILY audience.
+Press **Cut**. The page loads the pool for the brief and shows one row per phase — finding media,
+loading thumbnails, reading the pictures, editing, done — with the editor's own stage beside the
+active row. The first cut prepares a caption and facts for every picture in the month, then reads
+the month's episodes and account, weighs its stories, and picks the moments. A missing producer
+stops the run here and says which one.
 
-When it finishes, click **Review & Refine Selected Clips** to see what it picked. Untick a clip to drop it, drag the range slider to change the excerpt, then **Continue to Generation**.
+Reloading the page mid-cut is fine: it lands on the same rows.
+
+<ThemedScreenshot name="memory-cutting" alt="The cut in progress" />
+
+## Step 5: Read the story
+
+When it finishes the page shows what the editor made of the month: a one-paragraph thesis, a
+duration line, and the stories heaviest first — each with its purpose and, under it, every
+picture it was granted with a **Still** or **Motion** badge, the seconds it holds, and the reason
+it is there.
 
 <ThemedScreenshot name="memory-story" alt="The story the cut produced" />
 
-## Step 5: Set options
+If a picture should not be in it, **Review the pool** opens the media pool with the cut's picks,
+where you untick it and trim excerpts. **Cut again** runs the editor once more over the same
+pool; **Change the brief** starts over.
 
-Move to Step 3 (Generation Options). The defaults work well for a first video:
+## Step 6: Export
 
-- **Resolution:** Auto (match clips) — the default
-- **Transition:** "Smart (mix of fades & cuts)" — the default; it picks per cut point
-- **Background music:** **AI Generated** is the default when a music backend is configured; otherwise **None**. Pick **Upload file** for your own MP3/M4A/WAV
+Press **Export**. The Preview & Export page shows the summary and the output filename; the
+defaults work for a first video. Music, title and resolution live one click away under **Back to
+Generation Options** — the only one worth changing on a first run is **Background music**, if you
+have a specific track you want.
 
-You can leave everything at defaults. The only setting worth changing on your first run: if you have a specific MP3 you want as background music, upload it here.
-
-## Step 6: Generate
-
-Click **Generate Video** in Step 4. The status line walks through the run: downloading clips and extracting segments (cached for next time), assembling with transitions and title screens, "Applying music" (or "Music disabled"), "Uploading to Immich" (or "Delivery not requested"), then "Complete".
+Click **Generate Video**. The status line walks through the run: downloading clips and extracting
+segments, assembling with transitions and title screens, "Applying music" (or "Music disabled"),
+"Uploading to Immich" (or "Delivery not requested"), then "Complete".
 
 <ThemedScreenshot name="memory-export" alt="Export: output filename and Generate Video" />
 
-Most of the wait is analysis, not encoding. Measured on 4 CPU cores with no GPU and a cold cache, a 14-clip monthly memory took 10 to 16 minutes end to end and most of that was scoring clips: [the table](../deploy/common-setups/nas-only.md#performance-expectations). On Apple Silicon or a GPU the same run is a couple of minutes; 4K roughly doubles the assembly on a GPU and is not recommended on a NAS. Of the assembly that is left, the title screens cost more than the encoder does: at 2 cores, titles were ~263 s of a ~339 s assembly ([CPU-Only Mode](../deploy/hardware/cpu-only.md#title-rendering-is-the-bottleneck-not-encoding)).
+Most of the wait on a first run is the cut, not the encode; on the second cut over the same
+month the reading is already banked. Of the render that is left, the title screens cost more
+than the encoder: at 2 cores, titles were ~263 s of a ~339 s assembly
+([CPU-Only Mode](../deploy/hardware/cpu-only.md#title-rendering-is-the-bottleneck-not-encoding)).
 
 ## Step 7: Watch
 
-When it's done, the built-in player shows your result and "Saved to:" gives the file path (a per-run folder under `~/Videos/Memories` by default). If you turned on **Upload after generation**, it is also in the Immich album you named.
+When it's done, the built-in player shows your result and "Saved to:" gives the file path (a
+per-run folder under `~/Videos/Memories` by default). If you turned on **Upload after
+generation**, it is also in the Immich album you named.
 
 ## What just happened?
 
-The app fetched the period's source metadata and previews, prepared missing descriptions and
-image facts, and read the stories those pictures show. It chose distinct moments, allocated the
-requested duration, then assembled the selected material with FFmpeg, titles and music.
+The app fetched the month's source metadata and previews, prepared a description and facts for
+every eligible picture, and read the stories those pictures show. It weighed the stories against
+the month's account, gave each the pictures its weight earned, and assembled them in
+chronological order with FFmpeg, titles and music. Every attempt is kept under the cache
+directory, with the plan and the reason for every picture.
 
-Facts and editorial decisions are cached by their producer and input. A later run reuses matching
+Facts and readings are cached by their producer and exact input. A later cut reuses matching
 results; changed or missing evidence requires fresh work.
 
 ## Next steps
 
 - Try other memory types: [Trip Memories](./memory-types/trip-memories.mdx) (needs GPS data), [Person Spotlight](./memory-types/monthly-person-season.mdx) (needs face recognition in Immich)
-- Review the [editorial annotation setup](../deploy/configuration/editorial-preparation.md) if a provider is missing
+- Read how the editor decides: [The Curator](./pipeline/the-curator.md)
 - Automate it: schedule one daily [`auto run`](./cli/auto.md) — see [Automated Generation](./recipes/automated-generation.md)
 - Explore [all CLI options](./cli/generate.md) for fine-grained control

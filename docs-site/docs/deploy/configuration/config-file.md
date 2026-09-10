@@ -7,7 +7,7 @@ title: Config File
 
 Location: `~/.immich-memories/config.yaml`
 
-The file is written the first time you save the connection settings — from Step 1 of the web UI or
+The file is written the first time you save the connection settings — from Advanced on the web UI's Memory page or
 with `immich-memories config`. Permissions are set to `600` (owner read/write only) since it
 contains API keys. Sections are grouped in two tiers: everyday options at the top level, and the
 rest under `advanced:` (see [Tiers](#tiers) below).
