@@ -297,10 +297,19 @@ def build(routes_path: Path, private_path: Path, manifest_path: Path, cli: str) 
 
 
 def single_film(directory: Path) -> Path:
-    """The one finished film in a case's own directory."""
-    films = sorted(p for p in directory.glob("*.mp4") if not p.name.startswith("."))
+    """The one finished film under a case's own directory.
+
+    `generate` treats `--output` as a location: it writes a run directory beside
+    it and puts the film inside, and its Live merges leave intermediates in a
+    hidden `.live_segments` directory. Hidden paths are never the film.
+    """
+    films = sorted(
+        p
+        for p in directory.rglob("*.mp4")
+        if not any(part.startswith(".") for part in p.relative_to(directory).parts)
+    )
     if len(films) != 1:
-        raise RuntimeError(f"Expected one film in {directory}, found {len(films)}")
+        raise RuntimeError(f"Expected one film under {directory}, found {len(films)}")
     return films[0]
 
 
