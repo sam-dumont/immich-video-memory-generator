@@ -28,12 +28,12 @@ WHITELIST = Path(__file__).resolve().parent.parent / "vulture-whitelist.py"
 # 306, down from 318: #502 retired the photo animation stack nobody could reach
 # (PhotoAnimator, the FFmpeg filter expressions, the grouper, AnimationMode).
 # Nine entries went with the code they were excusing.
-# 518, up from 306, deliberately and temporarily: the story-first port lands its
+# 536, up from 306, deliberately and temporarily: the story-first port lands its
 # engine bottom-up (slices 1-8 of feat/story-first-selection), so producers reach
 # main before their consumers. Every added line is tagged "story-first port
 # slice N" and names the slice that wires it; that slice deletes the line and
 # lowers this number. Slice 9 (the route cut) brings it back to 306 or below.
-MAX_WHITELISTED_SYMBOLS = 518
+MAX_WHITELISTED_SYMBOLS = 536
 
 
 def test_the_dead_code_whitelist_never_grows() -> None:

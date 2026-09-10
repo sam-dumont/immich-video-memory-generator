@@ -202,6 +202,40 @@ class TestReadingAMoment:
         assert reading.about == ""
         assert reading.keep == ()
 
+    def test_legacy_reading_attaches_the_exact_page_bytes_it_records(self, tmp_path) -> None:
+        """The model sees precisely the local JPEG whose trace can later reproduce it."""
+        from datetime import UTC, datetime
+        from hashlib import sha256
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock, patch
+
+        from PIL import Image
+
+        from immich_memories.analysis.moment_reading import read_moment
+        from immich_memories.config_models_llm import LLMConfig
+
+        asset = SimpleNamespace(
+            id="asset-1", people=[], file_created_at=datetime(2020, 1, 1, tzinfo=UTC)
+        )
+        pages = []
+        # WHY: the model is external; this test checks its request evidence.
+        with patch(
+            "immich_memories.analysis.llm_query.query_llm",
+            new=AsyncMock(return_value='{"about": "a walk", "subjects": [], "best": [1]}'),
+        ) as asked:
+            read_moment(
+                [asset],
+                {asset.id: Image.new("RGB", (24, 24), "red")},
+                LLMConfig(model="m"),
+                sheet_output_dir=tmp_path,
+                sheet_recorder=pages.append,
+            )
+
+        assert len(pages) == 1
+        assert pages[0].path.read_bytes() == pages[0].jpeg_bytes
+        assert sha256(pages[0].jpeg_bytes).hexdigest() == pages[0].sha256
+        assert asked.await_args.kwargs["images"] == [pages[0].jpeg_bytes]
+
 
 class TestASheetIsLaidOutWide:
     """One image for a whole moment, and wide rather than tall.

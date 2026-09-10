@@ -1,7 +1,4 @@
-"""A text episode reader reuses full-corpus meaning across request scopes.
-
-The cull-evidence and representatives tests return with the cull and structure modules (slice 6).
-"""
+"""A text episode reader reuses full-corpus meaning across request scopes."""
 
 from __future__ import annotations
 
@@ -16,6 +13,7 @@ from immich_memories.analysis.annotation_lines import (
     AnnotationLineBatch,
     AssetAnnotationLine,
 )
+from immich_memories.analysis.editorial_contracts import DecisionProvenance
 from immich_memories.analysis.selection_source import (
     EditorialDependencies,
     EditorialSelectionRequest,
@@ -922,3 +920,145 @@ def test_an_episode_with_incomplete_annotations_is_retained_without_being_sent(
     )
     assert result.episodes[0].reading is None
     assert "annotation" in (result.episodes[0].unavailable_reason or "")
+
+
+def test_text_cull_evidence_uses_the_existing_favourite_and_trace_policy(
+    tmp_path: Path,
+) -> None:
+    from immich_memories.analysis.selection_cull import run_cull_decisions
+    from immich_memories.analysis.text_episode_reader import CachedTextEpisodeReader
+
+    noon = datetime(2026, 8, 25, 12, tzinfo=UTC)
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(
+            source_fetcher=lambda _scope: (
+                make_asset("receipt", file_created_at=noon),
+                make_asset(
+                    "starred-screen",
+                    file_created_at=noon + timedelta(minutes=1),
+                    is_favorite=True,
+                ),
+                make_asset("keeper", file_created_at=noon + timedelta(minutes=2)),
+            )
+        ),
+    )
+    projections = project_episode_groups(prepared, prepared.candidate_ids)
+    producer = EpisodeReadingProducer(
+        model_id="qwen3-vl-30b",
+        prompt_version="episode-prompt-v1",
+        schema_version="episode-schema-v1",
+        annotation_renderer_version="annotation-line-v1",
+        annotation_versions=("description:student-v1",),
+    )
+    episode_result = CachedTextEpisodeReader(
+        store=EpisodeReadingStore(tmp_path / "annotations.sqlite"),
+        producer=producer,
+        annotations=_AnnotationLines(
+            {
+                "receipt": "a photographed receipt",
+                "starred-screen": "a starred photograph of a television",
+                "keeper": "family gathered in the room",
+            }
+        ),
+        requester=lambda _prompt: (
+            """{
+          "schema_version": "episode-reading-text-v1",
+          "episodes": [{
+            "episode": 1,
+            "what_happened": "A family gathering includes two record shots.",
+            "representatives": [{"asset": 3, "reason": "Shows the family gathering."}],
+            "cull": [
+              {"asset": 1, "bucket": "notes"},
+              {"asset": 2, "bucket": "notes"}
+            ]
+          }]
+        }"""
+        ),
+    ).read(projections)
+
+    culled = run_cull_decisions(
+        prepared,
+        episode_result.cull_decisions,
+        provenance=DecisionProvenance(
+            pass_name="pass-1-cull",  # noqa: S106 -- editorial pass label, not a credential.
+            pass_version="pass-1-v1",  # noqa: S106 -- provenance version, not a credential.
+            schema_version="episode-reading-text-v1",
+            model_identity=producer.model_id,
+            input_ids=prepared.candidate_ids,
+            sheet_hashes=(),
+            request_key="text-pass-zero",
+            cache_hit=False,
+        ),
+        warnings=episode_result.warnings,
+        actual_calls=episode_result.actual_calls,
+    )
+
+    assert tuple(candidate.asset_id for candidate in culled.survivors) == (
+        "starred-screen",
+        "keeper",
+    )
+    assert tuple(decision.asset_id for decision in culled.rejected) == ("receipt",)
+    assert any("protected favourite" in warning for warning in culled.warnings)
+    assert culled.trace.conservation.valid is True
+
+
+def test_text_representatives_drive_structure_without_reducing_the_reservoir(
+    tmp_path: Path,
+) -> None:
+    from immich_memories.analysis.selection_structure import build_structure_workprint
+    from immich_memories.analysis.text_episode_reader import CachedTextEpisodeReader
+
+    noon = datetime(2026, 8, 25, 12, tzinfo=UTC)
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(
+            source_fetcher=lambda _scope: tuple(
+                make_asset(asset_id, file_created_at=noon + timedelta(minutes=index))
+                for index, asset_id in enumerate(("average", "action", "portrait"))
+            )
+        ),
+    )
+    projections = project_episode_groups(prepared, ("portrait",))
+    producer = EpisodeReadingProducer(
+        model_id="qwen3-vl-30b",
+        prompt_version="episode-prompt-v1",
+        schema_version="episode-schema-v1",
+        annotation_renderer_version="annotation-line-v1",
+        annotation_versions=("description:student-v1",),
+    )
+    episode_result = CachedTextEpisodeReader(
+        store=EpisodeReadingStore(tmp_path / "annotations.sqlite"),
+        producer=producer,
+        annotations=_AnnotationLines(
+            {
+                "average": "people waiting beside a race course",
+                "action": "the owner running through the race",
+                "portrait": "a friend cheering beside the course",
+            }
+        ),
+        requester=lambda _prompt: (
+            """{
+          "schema_version": "episode-reading-text-v1",
+          "episodes": [{
+            "episode": 1,
+            "what_happened": "The owner runs a race while a friend cheers.",
+            "representatives": [
+              {"asset": 2, "reason": "Shows the owner actually running."},
+              {"asset": 3, "reason": "Shows the friend cheering."}
+            ],
+            "cull": []
+          }]
+        }"""
+        ),
+    ).read(projections)
+
+    workprint = build_structure_workprint(
+        prepared,
+        prepared.candidates,
+        representative_resolver=episode_result.representative_for,
+    )
+
+    assert workprint.representative_ids == ("action",)
+    assert workprint.moments[0].representative_reason == "Shows the owner actually running."
+    assert workprint.moments[0].candidate_ids == ("average", "action", "portrait")
