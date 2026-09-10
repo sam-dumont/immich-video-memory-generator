@@ -50,6 +50,9 @@ uv sync --extra audio
 # Semantic audio labels (PANNs + Torch: laughter, speech, babies, music)
 uv sync --extra audio-ml
 
+# Public context heads and detectors for editorial annotation preparation
+uv sync --extra editorial
+
 # OIDC / SSO login (authlib)
 uv sync --extra auth
 
@@ -128,6 +131,9 @@ pip install "immich-memories[audio]"
 # Semantic audio labels (PANNs + Torch)
 pip install "immich-memories[audio-ml]"
 
+# Public context heads and detectors for editorial annotation preparation
+pip install "immich-memories[editorial]"
+
 # Speech boundaries (FireRedVAD, no Torch)
 pip install "immich-memories[speech]"
 
@@ -153,6 +159,11 @@ pip install "immich-memories[all-mac]"
 The `audio-ml` extra is optional because Torch and PANNs are large. Without it, audio-content
 analysis uses an energy-only fallback: it still finds loud/quiet structure, but it cannot reliably
 label laughter, babies, speech, or music.
+
+The `editorial` extra supplies the runtimes for preparing missing public context and detector
+facts. Its pinned encoder, detector weights and compact-caption endpoint require separate
+[editorial annotation setup](../configuration/editorial-preparation.md). Complete cached facts
+skip these providers; missing required facts stop selection with an explicit setup error.
 
 The `speech` extra adds onnxruntime and kaldi-native-fbank (~15 MB, no Torch). The FireRedVAD
 weights ship inside the package, so nothing is downloaded at runtime. Without the extra, clip

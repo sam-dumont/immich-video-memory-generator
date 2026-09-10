@@ -415,3 +415,46 @@ cooccurrences  # unused variable (src/immich_memories/people/graph.py:92) -- sto
 add_person  # unused function (src/immich_memories/people/editor.py:158) -- story-first port slice 2; wired by the settings page in the route slice, remove when it lands
 add_relationship  # unused function (src/immich_memories/people/editor.py:166) -- story-first port slice 2; wired by the settings page in the route slice, remove when it lands
 remove_relationship  # unused function (src/immich_memories/people/editor.py:174) -- story-first port slice 2; wired by the settings page in the route slice, remove when it lands
+attached_link_digest  # unused function (src/immich_memories/analysis/editorial_bound_sample.py:20) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+outcome_evidence  # unused function (src/immich_memories/analysis/editorial_description_outcomes.py:259) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+PictureEvidenceOverlay  # unused class (src/immich_memories/analysis/editorial_picture_evidence.py:15) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+enrich  # unused method (src/immich_memories/analysis/editorial_picture_evidence.py:35) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+displayed_line  # unused method (src/immich_memories/analysis/editorial_picture_evidence.py:138) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+PictureFactsProvider  # unused class (src/immich_memories/analysis/editorial_picture_facts.py:182) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+observe_sample  # unused method (src/immich_memories/analysis/editorial_picture_facts.py:224) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+caption_unavailable_count  # unused property (src/immich_memories/analysis/editorial_preparation.py:52) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+prepare_editorial_annotations  # unused function (src/immich_memories/analysis/editorial_preparation.py:192) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+intra_op_num_threads  # unused attribute (src/immich_memories/analysis/editorial_preparation_detectors.py:116) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+REVIEW  # unused variable (src/immich_memories/analysis/editorial_shareability.py:41) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+CHECK_POLICY_VERSION  # unused variable (src/immich_memories/analysis/editorial_shareability.py:46) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+load_flags  # unused function (src/immich_memories/analysis/editorial_shareability.py:63) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+never_auto_ids  # unused function (src/immich_memories/analysis/editorial_shareability.py:92) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+evidence_for_unit  # unused function (src/immich_memories/analysis/editorial_shareability.py:148) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+terminal_body_hold  # unused function (src/immich_memories/analysis/editorial_shareability.py:305) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+audience_check_key  # unused function (src/immich_memories/analysis/editorial_shareability.py:358) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+check_audience  # unused function (src/immich_memories/analysis/editorial_shareability.py:429) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+partition_units  # unused function (src/immich_memories/analysis/editorial_shareability.py:553) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+needs_check  # unused function (src/immich_memories/analysis/editorial_shareability.py:564) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+check_key  # unused function (src/immich_memories/analysis/editorial_shareability.py:583) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+brief  # unused variable (src/immich_memories/analysis/editorial_shareability.py:583) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+check_prompt  # unused function (src/immich_memories/analysis/editorial_shareability.py:589) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+brief  # unused variable (src/immich_memories/analysis/editorial_shareability.py:589) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+parse_verdict  # unused function (src/immich_memories/analysis/editorial_shareability.py:629) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+tighten  # unused function (src/immich_memories/analysis/editorial_shareability.py:644) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+apply_gate  # unused function (src/immich_memories/analysis/editorial_shareability.py:679) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+CachedThumbnailHasher  # unused class (src/immich_memories/analysis/editorial_thumbnail_hashes.py:22) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+earlier_asset_id  # unused variable (src/immich_memories/analysis/selection_same_picture.py:162) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+later_asset_id  # unused variable (src/immich_memories/analysis/selection_same_picture.py:163) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+confirm_same_picture_pairs  # unused function (src/immich_memories/analysis/selection_same_picture.py:168) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+parallel_pair_decisions  # unused function (src/immich_memories/analysis/selection_same_picture.py:269) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+runs_from_pair_decisions  # unused function (src/immich_memories/analysis/selection_same_picture.py:418) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+runs_of_one_picture  # unused function (src/immich_memories/analysis/selection_same_picture.py:437) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+build_visual_atlas  # unused function (src/immich_memories/analysis/visual_atlas.py:63) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+extract_frame_at  # unused function (src/immich_memories/processing/frame_sampling.py:94) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+PreviewTriage  # unused class (src/immich_memories/triage/contracts.py:23) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+PACK_DIM  # unused variable (src/immich_memories/triage/encoder.py:23) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+input_feed  # unused variable (src/immich_memories/triage/encoder.py:33) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+output_names  # unused variable (src/immich_memories/triage/encoder.py:33) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+intra_op_num_threads  # unused attribute (src/immich_memories/triage/encoder.py:125) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+inter_op_num_threads  # unused attribute (src/immich_memories/triage/encoder.py:126) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands
+graph_optimization_level  # unused attribute (src/immich_memories/triage/encoder.py:127) -- story-first port slice 3; wired by the planner/runtime slices, remove when it lands

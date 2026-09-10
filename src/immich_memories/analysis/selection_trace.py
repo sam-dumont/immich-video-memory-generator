@@ -15,10 +15,17 @@ from __future__ import annotations
 
 import json
 from contextvars import ContextVar, Token
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from immich_memories.analysis.editorial_contracts import (
+    ConservationCheck,
+    DecisionProvenance,
+    PassTrace,
+    RequestTrace,
+    TraceDecision,
+)
 from immich_memories.analysis.selection_coverage import AnalysisCoverage
 
 if TYPE_CHECKING:
@@ -29,6 +36,10 @@ _active: ContextVar[Trace | None] = ContextVar("selection_trace", default=None)
 
 # How many dropped clips to name per stage before summarising the rest.
 _ACCOUNT_LIMIT = 12
+
+
+# A trace is complete in JSON. Markdown names a useful sample and points to it.
+_EDITORIAL_DECISION_LIMIT = 12
 
 
 @dataclass(frozen=True)
@@ -43,6 +54,7 @@ class ClipStory:
     admitted_at: str | None
     # Why the stage that dropped it did so, when that stage said.
     reason: str | None = None
+    first_pass: str | None = None
 
 
 @dataclass(frozen=True)
@@ -84,6 +96,24 @@ class Trace:
     # could not run is the one this exists for: "0 dropped" has meant both
     # "approved" and "never answered" for as long as the review has existed.
     warnings: list[str] = field(default_factory=list)
+    # New editorial passes sit beside the legacy stage adapter until Task 14.
+    editorial_passes: list[PassTrace] = field(default_factory=list)
+    requests: list[RequestTrace] = field(default_factory=list)
+
+    def record_request(self, request_trace: RequestTrace) -> None:
+        """Record one planned visual request and every wire outcome it caused."""
+        self.requests.append(request_trace)
+
+    def record_editorial_pass(self, pass_trace: PassTrace) -> None:
+        """Record one immutable editorial pass and its conservation result."""
+        conservation = _check_conservation(pass_trace)
+        recorded = replace(pass_trace, conservation=conservation)
+        self.editorial_passes.append(recorded)
+        if not conservation.valid:
+            # `!!` belongs where the failure is known, not added in bulk by a
+            # later reader: a reader that prefixes everything cannot tell a
+            # failure from a note, and stamped INVALID on warm cache hits.
+            self.warnings.append(f"!! conservation failure in {pass_trace.name}")
 
     def record(
         self,
@@ -96,8 +126,9 @@ class Trace:
         """Note that `name` turned `before` into `after`."""
         before_list, after_list = list(before), list(after)
         before_ids = {_asset_id(item) for item in before_list}
-        after_ids = {_asset_id(item) for item in after_list}
-        lost = [item for item in before_list if _asset_id(item) not in after_ids]
+        kept_ids = tuple(_asset_id(item) for item in after_list)
+        after_id_set = set(kept_ids)
+        lost = [item for item in before_list if _asset_id(item) not in after_id_set]
         self._remember(before_list)
         self._remember(after_list)
         self.stages.append(
@@ -109,9 +140,9 @@ class Trace:
                 favorites_out=sum(_is_favorite(i) for i in after_list),
                 reasons=reasons or [],
                 notes=dict(notes or {}),
-                kept_ids=tuple(sorted(after_ids)),
+                kept_ids=kept_ids,
                 lost_ids=tuple(_asset_id(i) for i in lost),
-                gained_ids=tuple(sorted(after_ids - before_ids)),
+                gained_ids=tuple(asset_id for asset_id in kept_ids if asset_id not in before_ids),
             )
         )
 
@@ -133,6 +164,25 @@ class Trace:
         dropped_at: str | None = None
         admitted_at: str | None = None
         reason: str | None = None
+        first_pass = next(
+            (
+                pass_trace.name
+                for pass_trace in self.editorial_passes
+                if pass_trace.name != "source-eligibility" and asset_id in pass_trace.input_ids
+            ),
+            None,
+        )
+        for pass_trace in self.editorial_passes:
+            rejected = next(
+                (decision for decision in pass_trace.rejected if decision.asset_id == asset_id),
+                None,
+            )
+            if rejected is not None:
+                dropped_at = pass_trace.name
+                reason = rejected.reason
+                survived = []
+            elif asset_id in pass_trace.kept_ids:
+                admitted_at = pass_trace.name
         for stage in self.stages:
             if asset_id in stage.gained_ids:
                 admitted_at = stage.name
@@ -151,6 +201,7 @@ class Trace:
             dropped_at=None if shipped else dropped_at,
             admitted_at=admitted_at,
             reason=None if shipped else reason,
+            first_pass=first_pass,
         )
 
     def _favourite_law_lines(self) -> list[str]:
@@ -171,9 +222,9 @@ class Trace:
 
     def report(self) -> str:
         """The funnel, as text — widest column is where the pool went."""
-        if not self.stages:
+        if not self.stages and not self.editorial_passes:
             return "No selection stages were recorded.\n"
-        width = max(len(s.name) for s in self.stages)
+        width = max((len(s.name) for s in self.stages), default=len("stage"))
         lines = [
             *self._warning_lines(),
             *self._coverage_lines(),
@@ -193,7 +244,28 @@ class Trace:
                 f"{favorites:>12}{marker}"
             )
             lines.extend(f"{' ' * width}    - {reason}" for reason in stage.reasons)
-        return "\n".join([*lines, *self._account_lines()]) + "\n"
+        return "\n".join([*lines, *self._editorial_pass_lines(), *self._account_lines()]) + "\n"
+
+    def _editorial_pass_lines(self) -> list[str]:
+        if not self.editorial_passes:
+            return []
+        lines = ["", "editorial passes", "-" * 16]
+        for pass_trace in self.editorial_passes:
+            decisions = [*pass_trace.rejected, *pass_trace.unresolved]
+            lines.append(
+                f"  {pass_trace.name}: {len(pass_trace.kept_ids)} kept, "
+                f"{len(pass_trace.rejected)} rejected, {len(pass_trace.unresolved)} unresolved"
+            )
+            lines.extend(
+                f"      {decision.asset_id} — {decision.reason}"
+                for decision in decisions[:_EDITORIAL_DECISION_LIMIT]
+            )
+            if len(decisions) > _EDITORIAL_DECISION_LIMIT:
+                lines.append(
+                    f"      showing {_EDITORIAL_DECISION_LIMIT} of {len(decisions)}; "
+                    "full list in JSON"
+                )
+        return lines
 
     def _account_lines(self) -> list[str]:
         """Why each clip is in the cut, and why the rest are not."""
@@ -230,7 +302,13 @@ class Trace:
         """What a reader must see before anything else in the report."""
         if not self.warnings:
             return []
-        return [*(f"!! {warning}" for warning in self.warnings), ""]
+        return [
+            *(
+                warning if warning.startswith("!! ") else f"!! {warning}"
+                for warning in self.warnings
+            ),
+            "",
+        ]
 
     def _coverage_lines(self) -> list[str]:
         """The pool's coverage, above the funnel — it frames everything below."""
@@ -265,8 +343,110 @@ class Trace:
                 }
                 for s in self.stages
             ],
+            "editorial_passes": [
+                _editorial_pass_dict(pass_trace) for pass_trace in self.editorial_passes
+            ],
+            "requests": [_request_dict(request) for request in self.requests],
             "clips": self.clips,
         }
+
+
+def _check_conservation(pass_trace: PassTrace) -> ConservationCheck:
+    fates = (
+        *pass_trace.kept_ids,
+        *(decision.asset_id for decision in pass_trace.rejected),
+        *(decision.asset_id for decision in pass_trace.unresolved),
+    )
+    fate_counts: dict[str, int] = {}
+    for asset_id in fates:
+        fate_counts[asset_id] = fate_counts.get(asset_id, 0) + 1
+    input_ids = _unique_ids(pass_trace.input_ids)
+    missing_ids = tuple(asset_id for asset_id in input_ids if asset_id not in fate_counts)
+    duplicate_ids = tuple(asset_id for asset_id in input_ids if fate_counts.get(asset_id, 0) > 1)
+    unexpected_ids = tuple(
+        asset_id for asset_id in _unique_ids(fates) if asset_id not in set(input_ids)
+    )
+    return ConservationCheck(
+        valid=not missing_ids and not duplicate_ids and not unexpected_ids,
+        missing_ids=missing_ids,
+        duplicate_ids=duplicate_ids,
+        unexpected_ids=unexpected_ids,
+    )
+
+
+def _unique_ids(asset_ids: tuple[str, ...]) -> tuple[str, ...]:
+    seen: set[str] = set()
+    unique: list[str] = []
+    for asset_id in asset_ids:
+        if asset_id not in seen:
+            unique.append(asset_id)
+            seen.add(asset_id)
+    return tuple(unique)
+
+
+def _editorial_pass_dict(pass_trace: PassTrace) -> dict:
+    conservation = pass_trace.conservation or _check_conservation(pass_trace)
+    return {
+        "name": pass_trace.name,
+        "input_ids": list(pass_trace.input_ids),
+        "kept_ids": list(pass_trace.kept_ids),
+        "rejected": [_decision_dict(decision) for decision in pass_trace.rejected],
+        "unresolved": [_decision_dict(decision) for decision in pass_trace.unresolved],
+        "duration_before": pass_trace.duration_before,
+        "duration_after": pass_trace.duration_after,
+        "provenance": _provenance_dict(pass_trace.provenance),
+        "request_traces": [_request_dict(request) for request in pass_trace.request_traces],
+        "conservation": {
+            "valid": conservation.valid,
+            "missing_ids": list(conservation.missing_ids),
+            "duplicate_ids": list(conservation.duplicate_ids),
+            "unexpected_ids": list(conservation.unexpected_ids),
+        },
+    }
+
+
+def _decision_dict(decision: TraceDecision) -> dict:
+    return {"asset_id": decision.asset_id, "reason": decision.reason}
+
+
+def _request_dict(request: RequestTrace) -> dict:
+    return {
+        "provenance": _provenance_dict(request.provenance),
+        "attached_sheet_hashes": list(request.attached_sheet_hashes),
+        "planned_calls": request.planned_calls,
+        "actual_calls": request.actual_calls,
+        "cache_hit": request.cache_hit,
+        "tile_count": request.tile_count,
+        "provider": request.provider,
+        "model": request.model,
+        "attempts": [
+            {
+                "attempt": attempt.attempt,
+                "outcome": attempt.outcome,
+                "status_code": attempt.status_code,
+                "adaptation": attempt.adaptation,
+            }
+            for attempt in request.attempts
+        ],
+        "original_provenance": (
+            None
+            if request.original_provenance is None
+            else _provenance_dict(request.original_provenance)
+        ),
+    }
+
+
+def _provenance_dict(provenance: DecisionProvenance) -> dict:
+    return {
+        "pass_name": provenance.pass_name,
+        "pass_version": provenance.pass_version,
+        "schema_version": provenance.schema_version,
+        "model_identity": provenance.model_identity,
+        "input_ids": list(provenance.input_ids),
+        "sheet_hashes": list(provenance.sheet_hashes),
+        "request_key": provenance.request_key,
+        "cache_hit": provenance.cache_hit,
+    }
 
 
 def _asset_id(item: object) -> str:
@@ -346,16 +526,22 @@ def active() -> Trace | None:
 
 
 def record(
-    name: str,
-    before: Iterable,
-    after: Iterable,
+    name: str | PassTrace,
+    before: Iterable | None = None,
+    after: Iterable | None = None,
     reasons: list[str] | None = None,
     notes: dict[str, str] | None = None,
 ) -> None:
-    """Record a stage when tracing is on; do nothing when it is not."""
+    """Record a legacy stage or editorial pass when tracing is on."""
     trace = _active.get()
-    if trace is not None:
-        trace.record(name, before, after, reasons, notes)
+    if trace is None:
+        return
+    if isinstance(name, PassTrace):
+        trace.record_editorial_pass(name)
+        return
+    if before is None or after is None:
+        raise TypeError("legacy selection stages require both before and after candidates")
+    trace.record(name, before, after, reasons, notes)
 
 
 def warn(message: str) -> None:

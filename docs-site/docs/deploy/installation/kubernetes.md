@@ -92,7 +92,10 @@ commented examples for LLM clip analysis and the in-pod daily automation. Settin
 UI go to `config.yaml` on the PVC; env vars override them.
 
 The NetworkPolicy allows egress to DNS, 80/443, Immich on 2283 and an optional local LLM on 11434.
-Edit it if your Immich listens elsewhere.
+Edit it for the actual Immich, caption and story endpoints. The default compact-caption port
+is 8092, which this policy does not currently allow. Follow
+[editorial annotation setup](../configuration/editorial-preparation.md), mount the pinned
+encoder and detector cache, and make the required model services reachable before generating.
 
 ## GPU
 

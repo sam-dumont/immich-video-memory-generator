@@ -48,6 +48,10 @@ Framework and Taichi paths described below.
 
 Open [http://localhost:8080](http://localhost:8080).
 
+Also complete [editorial annotation setup](../configuration/editorial-preparation.md): the
+public context encoder, detector weights and compact-caption service are separate from the
+general model connection below. New runs use story-first selection and the FAMILY audience.
+
 ## Set up a local vision model
 
 This is developed and tested against **Qwen3.6-27B** and **Qwen3.6-35B-A3B**, served by
@@ -159,8 +163,10 @@ Stopping the LLM server before a music-heavy run buys all of it back.
 
 ## Tips
 
-- **Start the LLM server before Immich Memories.** If it isn't running, content analysis silently falls back to metadata-only scoring. You'll still get results, just without the LLM content understanding.
+- **Start the required model services before generating.** Missing annotation or story providers
+  stop an uncached editorial run with an incomplete result. Matching cached facts are reused.
 - **Take 8-bit if the memory is there, 4-bit if it isn't.** 4-bit roughly halves the resident weights (16.1 GB against 29.5 GB for the 27B) and costs accuracy. On a 32 GB Mac the 4-bit 27B is the one that leaves room for anything else.
 - **Smaller Qwen3.x sizes exist** for tighter machines, and they are not part of the tested pair — treat them as your own experiment rather than a supported configuration.
 - **Ollama works too.** `ollama pull qwen3.6:27b` (17 GB), then set `provider: ollama`, `base_url: http://localhost:11434` and `model: qwen3.6:27b` in config.
-- **The default `--analysis-depth auto` is usually right.** It analyzes every eligible clip when at most 60 need fresh work, then shortlists larger libraries. Use `thorough` to force every eligible clip through LLM analysis, or `fast` to reserve LLM calls for favorites. Exact current-model cache hits are reused; stale model results restart.
+- **Preparation covers the whole source period.** Clip-analysis depth does not shortlist the
+  material used to understand its stories. Exact producer/input cache hits are reused.
