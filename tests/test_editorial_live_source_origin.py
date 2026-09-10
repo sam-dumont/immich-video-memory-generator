@@ -91,3 +91,26 @@ def test_rejection_carries_the_measured_numbers():
     with pytest.raises(ValueError, match=r'"video_end_seconds": 2\.0') as caught:
         renderer._source_timing(probes, Path("short.mov"), LiveSourceEntry("s", "v", 0.0, 0.0, 3.5))
     assert '"declared_end_seconds": 3.5' in str(caught.value)
+
+
+@pytest.mark.parametrize("declared_end", [2.966, 2.967])
+def test_container_end_is_accepted_at_either_millisecond_reading(declared_end):
+    # Immich publishes whole milliseconds; a floored or a rounded reading of the
+    # 2.966667 s container both bind to the final packet, 3.3 ms before it.
+    tail = {"end_seconds": 1778 / 600, "frame_seconds": 27 / 600}
+    probes = Probes(probe(video=1778 / 600, container=2.966667), tail=tail)
+    evidence = renderer._source_timing(
+        probes, Path("tail.mov"), LiveSourceEntry("s", "v", 0.0, 0.0, declared_end)
+    )
+    assert evidence["boundary"] == "millisecond-container-end-within-final-source-frame"
+    assert evidence["source_tail_seconds"] == pytest.approx(declared_end - 1778 / 600)
+
+
+@pytest.mark.parametrize("declared_end", [2.965, 2.9675, 2.968])
+def test_container_end_more_than_a_millisecond_off_is_not_a_reading(declared_end):
+    tail = {"end_seconds": 1778 / 600, "frame_seconds": 27 / 600}
+    probes = Probes(probe(video=1778 / 600, container=2.966667), tail=tail)
+    with pytest.raises(ValueError, match="exceeds actual video source"):
+        renderer._source_timing(
+            probes, Path("tail.mov"), LiveSourceEntry("s", "v", 0.0, 0.0, declared_end)
+        )

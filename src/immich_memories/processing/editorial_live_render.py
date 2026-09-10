@@ -121,9 +121,10 @@ def _bind_leading_frame(probes, path, entry, origin: float, evidence: dict) -> N
 
 
 def _bind_trailing_frame(probes, path, entry, probe, origin: float, evidence: dict) -> None:
-    # Immich's whole-source duration has millisecond precision and follows
-    # the container. It can extend just beyond the final video packet.
-    if entry.end != round(probe.duration_seconds, 3):
+    # Immich publishes the container duration in whole milliseconds, floored or
+    # rounded depending on its formatter; either reading can extend just beyond
+    # the final video packet.
+    if not -0.001 < entry.end - probe.duration_seconds <= 0.0005:
         raise _reject(evidence)
     tail = probes.last_video_frame(path)
     tail_end = tail["end_seconds"] - origin
