@@ -192,47 +192,6 @@ def _render_holiday_params(state: AppState) -> None:
     _apply_preset_to_state(MemoryType.HOLIDAY)
 
 
-def _render_then_and_now_params(state: AppState) -> None:
-    """The recent year, and how far back the other one sits."""
-
-    with ui.row().classes("gap-4 items-end flex-wrap"):
-        year_options = state.years or list(range(2024, 2019, -1))
-        current_year = state.memory_preset_params.get(
-            "year", year_options[0] if year_options else 2024
-        )
-
-        def on_year(e):
-            state.memory_preset_params["year"] = e.value
-            _apply_preset_to_state(MemoryType.THEN_AND_NOW)
-
-        ui.select(options=year_options, label="Now", value=current_year, on_change=on_year).classes(
-            "w-40"
-        )
-
-        current_back = state.memory_preset_params.get("years_back", 10)
-
-        def on_years_back(e):
-            state.memory_preset_params["years_back"] = int(e.value)
-            _apply_preset_to_state(MemoryType.THEN_AND_NOW)
-
-        # The contrast is the point, so there is no zero here: a then-and-now
-        # with no distance between its two years is just a now.
-        ui.select(
-            options=list(range(1, 21)),
-            label="Years back",
-            value=current_back,
-            on_change=on_years_back,
-        ).classes("w-40")
-
-    ui.label("Two years, far apart on purpose — the gap is the story.").style(
-        "color: var(--im-text-secondary)"
-    ).classes("text-sm italic mt-2")
-
-    state.memory_preset_params.setdefault("year", current_year)
-    state.memory_preset_params.setdefault("years_back", current_back)
-    _apply_preset_to_state(MemoryType.THEN_AND_NOW)
-
-
 def _year_options_with_all() -> list:
     """Return year options including 'All Time'."""
     state = get_app_state()
@@ -681,9 +640,10 @@ def _apply_preset_to_state(memory_type: MemoryType) -> None:
         logger.debug("Preset not ready yet: %s", exc)
 
 
-# Which widgets a card puts inside its panel. Every memory type appears, so a
-# type added to the registry and not here fails loudly on click rather than
-# rendering an empty card.
+# Which widgets a card puts inside its panel. Every memory type the wizard
+# offers a card for appears, so a type added to _PRESET_CARDS and not here
+# fails loudly on click rather than rendering an empty card. Retired
+# then-and-now is the one registry type with neither.
 _CARD_RENDERERS: dict[MemoryType, Callable[[AppState], None]] = {
     MemoryType.YEAR_IN_REVIEW: _render_year_picker,
     MemoryType.SEASON: _render_season_params,
@@ -696,7 +656,6 @@ _CARD_RENDERERS: dict[MemoryType, Callable[[AppState], None]] = {
     MemoryType.MONTHLY_HIGHLIGHTS: _render_monthly_params,
     MemoryType.ON_THIS_DAY: _render_on_this_day_params,
     MemoryType.HOLIDAY: _render_holiday_params,
-    MemoryType.THEN_AND_NOW: _render_then_and_now_params,
     MemoryType.TRIP: _render_trip_params,
     MemoryType.ALBUM: _render_album_picker,
     MemoryType.SPECIAL_DAY: _render_special_day_params,

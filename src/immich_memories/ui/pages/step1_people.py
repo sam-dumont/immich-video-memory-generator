@@ -38,7 +38,6 @@ PERSON_FILTERABLE = frozenset(
         MemoryType.MONTHLY_HIGHLIGHTS,
         MemoryType.ON_THIS_DAY,
         MemoryType.HOLIDAY,
-        MemoryType.THEN_AND_NOW,
     }
 )
 

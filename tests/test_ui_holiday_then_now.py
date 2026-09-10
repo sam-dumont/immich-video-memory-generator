@@ -1,8 +1,10 @@
-"""The wizard can reach the two memory types #443 built for the CLI.
+"""What the wizard offers of the two memory types #443 built for the CLI.
 
 HOLIDAY and THEN_AND_NOW shipped as CLI-only. Both build more than one date
-range, which is why they needed the multi-range wizard state before they could
-be offered at all.
+range, which is why they needed the multi-range wizard state before either
+could be offered at all. Then-and-now has since been withdrawn from both
+surfaces — no --memory-type choice, no card, no params renderer — while its
+title branch stays until the type itself is retired.
 """
 
 from __future__ import annotations
@@ -10,16 +12,8 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from immich_memories.memory_types.registry import MemoryType
-from immich_memories.ui.pages.step1_presets import _PRESET_CARDS, _apply_preset_to_state
+from immich_memories.ui.pages.step1_presets import _PRESET_CARDS
 from immich_memories.ui.state import AppState
-
-
-def _apply(memory_type: MemoryType, **params) -> AppState:
-    state = AppState(memory_preset_params=dict(params))
-    # WHY: the wizard reads its state through a per-session accessor.
-    with patch("immich_memories.ui.pages.step1_presets.get_app_state", return_value=state):
-        _apply_preset_to_state(memory_type)
-    return state
 
 
 def test_holiday_is_offered_and_retired_then_and_now_is_not() -> None:
@@ -55,13 +49,6 @@ def test_choosing_holiday_gives_the_wizard_a_scope() -> None:
     state = _render(MemoryType.HOLIDAY, holiday="christmas", year=2026, years_back=5)
 
     assert len(state.date_ranges) == 5
-    assert state.scope_is_selected
-
-
-def test_choosing_then_and_now_gives_the_wizard_both_years() -> None:
-    state = _render(MemoryType.THEN_AND_NOW, year=2026, years_back=10)
-
-    assert [r.start.year for r in state.date_ranges] == [2026, 2016]
     assert state.scope_is_selected
 
 
