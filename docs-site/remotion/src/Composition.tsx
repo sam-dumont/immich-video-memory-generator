@@ -82,7 +82,7 @@ export const DemoVideo: React.FC = () => {
           timing={linearTiming({ durationInFrames: FADE })}
         />
 
-        {/* 4. Story — the thesis, its stories, the pictures each was granted */}
+        {/* 4. Story — the thesis, its stories, the pictures each one holds */}
         <TransitionSeries.Sequence durationInFrames={D.story}>
           <StoryScene bassIntensity={bass} />
         </TransitionSeries.Sequence>
