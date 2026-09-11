@@ -33,12 +33,10 @@ This keeps classes under the 800-line soft limit (1000 hard) while maintaining a
 
 The four core orchestrators and their composed services:
 
-**VideoAssembler** (processing/video_assembler.py) composes 6 services:
+**VideoAssembler** (processing/video_assembler.py) composes 5 services:
 - `FFmpegProber` (ffmpeg_prober.py): duration/resolution probing via ffprobe
-- `FilterBuilder` (filter_builder.py): FFmpeg filter graph construction
 - `ClipEncoder` (clip_encoder.py): per-clip trimming and re-encoding
 - `AssemblyEngine` (assembly_engine.py): strategy-based multi-clip assembly
-  - internally composes `ConcatService` (ffmpeg_filter_graph.py)
 - `AudioMixerService` (audio_mixer_service.py): background music mixing
 - `TitleInserter` (title_inserter.py): title screen concatenation
   - composes `TitleBackgroundRenderer` (title_background_renderer.py) for the pre-rendered
@@ -153,15 +151,13 @@ src/immich_memories/
 │
 ├── processing/                 # Video processing & assembly
 │   ├── video_assembler.py      # VideoAssembler (composes 6 services)
-│   ├── assembly_engine.py      # AssemblyEngine (composes ConcatService)
-│   ├── ffmpeg_filter_graph.py  # ConcatService: batch merge/direct assembly
+│   ├── assembly_engine.py      # AssemblyEngine: strategy-based multi-clip assembly
 │   ├── assembly_config.py      # Dataclasses: AssemblySettings, AssemblyClip, etc.
 │   ├── streaming_assembler.py  # StreamingEncoder + assemble_streaming(): low-memory 4K assembly
 │   ├── streaming_frame_decoder.py # FrameDecoder / make_decoder(): clip -> normalized raw frames
 │   ├── streaming_frame_blender.py # FrameBlender: frames -> sink, crossfades, progress/preview
 │   ├── streaming_audio.py      # Streaming audio processing helpers
 │   ├── ffmpeg_prober.py        # FFmpegProber: ffprobe-based duration/resolution
-│   ├── filter_builder.py       # FilterBuilder: FFmpeg filter graph construction
 │   ├── clip_encoder.py         # ClipEncoder: per-clip trimming/re-encoding
 │   ├── clip_probing.py         # Clip probing helpers
 │   ├── clip_transitions.py     # Clip transition helpers
@@ -181,7 +177,6 @@ src/immich_memories/
 │   ├── clip_caption.py         # The per-clip date/place caption: text and geometry, no decoding
 │   ├── frame_sampling.py       # One cached still-frame sampler for mood, title colours and previews
 │   ├── frame_preview.py        # Frame extraction for previews
-│   ├── downscaler.py           # Resolution downscaling
 │   ├── hdr_utilities.py        # HDR detection & conversion filters
 │   ├── scaling_utilities.py    # Resolution, aspect ratio, smart crop
 │   ├── ffmpeg_runner.py        # FFmpeg execution with progress
@@ -189,9 +184,6 @@ src/immich_memories/
 │   ├── hardware_detection.py   # Hardware detection backends
 │   ├── hardware_encode.py      # VAAPI/QSV device init + hwupload for built commands
 │   ├── rate_control.py         # CRF -> per-encoder constant-quality flags
-│   ├── transforms.py           # Video transforms (rotate, scale)
-│   ├── transforms_ffmpeg.py    # FFmpeg transform filters
-│   ├── transforms_smart_crop.py # Smart crop transforms
 │   └── live_photo_merger.py    # Live Photo merging
 │
 ├── audio/                      # Audio processing
@@ -283,8 +275,7 @@ src/immich_memories/
 │   ├── _trip_display.py        # Trip table formatting & selection logic
 │   ├── _date_resolution.py     # Date range resolution for memory types
 │   ├── _generate_display.py    # Params table + result printing for `generate`
-│   ├── _live_display.py        # Rich Live interactive progress display
-│   └── _progress.py            # Progress tracking helpers
+│   └── _live_display.py        # Rich Live interactive progress display
 │
 ├── ui/                         # NiceGUI web interface
 │   ├── app.py                  # App setup & routing
@@ -451,11 +442,8 @@ generate / Memory page Cut
 
 ```
 VideoAssembler.assemble()
-  ├── AssemblyEngine picks strategy (cuts / crossfade / smart transitions)
-  ├── For each clip:
-  │   ├── FilterBuilder.build_clip_video_filter() → scale, HDR, rotation
-  │   └── FilterBuilder.build_audio_prep_filters() → normalize audio
-  └── AssemblyEngine → ConcatService → FFmpeg execution
+  ├── AssemblyEngine resolves target resolution and transitions
+  └── AssemblyEngine → streaming assembly → FFmpeg execution
 
 VideoAssembler.assemble_with_titles()
   ├── TitleScreenGenerator → title/month/ending screens

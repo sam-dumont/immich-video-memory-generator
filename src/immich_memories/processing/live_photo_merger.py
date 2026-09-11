@@ -74,11 +74,6 @@ class LivePhotoCluster:
         return len(self.assets)
 
     @property
-    def is_burst(self) -> bool:
-        """A cluster with 2+ photos is considered a burst (pairs are common for quick reactions)."""
-        return self.count >= 2
-
-    @property
     def is_favorite(self) -> bool:
         """Cluster is favorite if ANY photo in it is marked as favorite."""
         return any(a.is_favorite for a in self.assets)

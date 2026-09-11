@@ -1,8 +1,7 @@
-"""Real FFmpeg integration tests for downscaler and scaling utilities.
+"""Real FFmpeg integration tests for scaling utilities.
 
-Tests downscale_video, needs_downscaling, get_video_height, _get_video_duration,
-_detect_face_center_in_video, and aggregate_mood_from_clips against actual
-FFmpeg on synthetic clips.
+Tests _get_video_duration, _detect_face_center_in_video, and
+aggregate_mood_from_clips against actual FFmpeg on synthetic clips.
 """
 
 from __future__ import annotations
@@ -12,94 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.integration.conftest import ffprobe_json
-
 pytestmark = [pytest.mark.integration, pytest.mark.xdist_group("ffmpeg")]
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _get_height(probe: dict) -> int:
-    for s in probe.get("streams", []):
-        if s.get("codec_type") == "video":
-            return int(s["height"])
-    raise ValueError("No video stream found")
-
-
-# ---------------------------------------------------------------------------
-# get_video_height
-# ---------------------------------------------------------------------------
-
-
-class TestGetVideoHeight:
-    def test_returns_720_for_720p(self, test_clip_720p: Path):
-        from immich_memories.processing.downscaler import get_video_height
-
-        assert get_video_height(test_clip_720p) == 720
-
-    def test_returns_1280_for_portrait(self, portrait_clip: Path):
-        from immich_memories.processing.downscaler import get_video_height
-
-        assert get_video_height(portrait_clip) == 1280
-
-
-# ---------------------------------------------------------------------------
-# needs_downscaling
-# ---------------------------------------------------------------------------
-
-
-class TestNeedsDownscaling:
-    def test_true_when_much_larger(self, test_clip_720p: Path):
-        """720p is well above 240p * 1.5 = 360p, so needs downscaling."""
-        from immich_memories.processing.downscaler import needs_downscaling
-
-        assert needs_downscaling(test_clip_720p, target_height=240) is True
-
-    def test_false_at_same_height(self, test_clip_720p: Path):
-        """720p is not > 720 * 1.5 = 1080, so no downscaling needed."""
-        from immich_memories.processing.downscaler import needs_downscaling
-
-        assert needs_downscaling(test_clip_720p, target_height=720) is False
-
-    def test_false_slightly_above(self, test_clip_720p: Path):
-        """720p is not > 480 * 1.5 = 720, so no downscaling at 480p target."""
-        from immich_memories.processing.downscaler import needs_downscaling
-
-        assert needs_downscaling(test_clip_720p, target_height=480) is False
-
-
-# ---------------------------------------------------------------------------
-# downscale_video
-# ---------------------------------------------------------------------------
-
-
-class TestDownscaleVideo:
-    def test_produces_output_at_target_height(self, test_clip_720p: Path, tmp_path: Path):
-        from immich_memories.processing.downscaler import downscale_video
-
-        target_h = 240
-        out = tmp_path / "downscaled_240p.mp4"
-        result = downscale_video(test_clip_720p, target_height=target_h, output_path=out)
-
-        assert result == out
-        assert out.exists()
-        probe = ffprobe_json(out)
-        h = _get_height(probe)
-        assert h == target_h
-
-    def test_returns_original_when_no_downscale_needed(self, short_clip: Path, tmp_path: Path):
-        """480p clip at 480p target -- under the 1.5x threshold, returns original."""
-        from immich_memories.processing.downscaler import downscale_video
-
-        out = tmp_path / "should_not_exist.mp4"
-        result = downscale_video(short_clip, target_height=480, output_path=out)
-
-        # Short clip is 480p which is not > 480 * 1.5 = 720
-        assert result == short_clip
-        assert not out.exists()
 
 
 # ---------------------------------------------------------------------------

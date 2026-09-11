@@ -1,7 +1,7 @@
 """Full pipeline integration tests — maximum feature coverage in minimal tests.
 
 Each test enables MANY features simultaneously to exercise hundreds of lines
-across assembly_engine, filter_builder, title_inserter, renderer_pil,
+across assembly_engine, title_inserter, renderer_pil,
 clip_encoder, text_builder, audio_mixer, and more.
 
 Real FFmpeg, real title rendering. No mocks.
@@ -268,7 +268,7 @@ class TestFullPipelineWithTitles:
 
         Exercises: generate_memory, _build_assembly_settings, _build_title_settings,
         VideoAssembler.assemble_with_titles, TitleInserter, TitleScreenGenerator,
-        RenderingService, renderer_pil, text_builder, AssemblyEngine, FilterBuilder,
+        RenderingService, renderer_pil, text_builder, AssemblyEngine,
         ClipEncoder, clip_encoder, assembly_context_builder.
         """
         from immich_memories.generate import GenerationParams, generate_memory
@@ -755,8 +755,7 @@ class TestCutTransitionPipeline:
     def test_cut_transition_no_overlap(self, short_clip_a, short_clip_b, tmp_path):
         """Cut transitions produce output = sum of clip durations.
 
-        Exercises: TransitionType.CUT path in AssemblyEngine,
-        ConcatService concat-only strategy.
+        Exercises: TransitionType.CUT path in AssemblyEngine.
         """
         from immich_memories.config_loader import Config
         from immich_memories.generate import GenerationParams, generate_memory

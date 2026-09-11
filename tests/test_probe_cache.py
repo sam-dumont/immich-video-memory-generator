@@ -214,7 +214,6 @@ def test_source_probe_helpers_share_one_caller_owned_cache(tmp_path: Path, monke
     assert prober.probe_framerate(source) == pytest.approx(59.94, abs=0.01)
     assert prober.probe_duration(source, "audio") == 5.08
     assert prober.has_audio_stream(source) is True
-    assert prober.has_video_stream(source) is True
     assert detect_dominant_hdr_transfer([clip], probe_cache=cache) is HdrTransfer.HLG
     assert calls == 1
 

@@ -15,7 +15,7 @@ Now the four main orchestrators compose smaller service objects via constructor 
 
 | Orchestrator | Services | What it does |
 |---|---|---|
-| **VideoAssembler** | FFmpegProber, FilterBuilder, ClipEncoder, AssemblyEngine, AudioMixerService, TitleInserter | Assembles clips into final video |
+| **VideoAssembler** | FFmpegProber, ClipEncoder, AssemblyEngine, AudioMixerService, TitleInserter | Assembles clips into final video |
 | **SmartPipeline** | RuntimeEditorialPlanner (from `build_smart_pipeline`) | Runs the story-first selection and projects its plan into a `PipelineResult` |
 | **ImmichClient** | SearchService, AllAssetsService, AssetService, PersonService, AlbumService | Talks to the Immich API |
 | **TitleScreenGenerator** | RenderingService, EndingService, TripService | Creates title/ending screens |

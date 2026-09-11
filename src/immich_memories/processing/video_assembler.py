@@ -19,7 +19,6 @@ from immich_memories.processing.assembly_engine import AssemblyEngine
 from immich_memories.processing.audio_mixer_service import AudioMixerService
 from immich_memories.processing.clip_encoder import ClipEncoder
 from immich_memories.processing.ffmpeg_prober import FFmpegProber
-from immich_memories.processing.filter_builder import FilterBuilder
 from immich_memories.processing.scaling_utilities import (
     _detect_face_center_in_video,
 )
@@ -42,7 +41,7 @@ class VideoAssembler:
     """Assemble multiple clips into a final video.
 
     Composes 6 services via constructor injection:
-    - FFmpegProber, FilterBuilder, ClipEncoder, AssemblyEngine
+    - FFmpegProber, ClipEncoder, AssemblyEngine
     - AudioMixerService, TitleInserter
 
     Attributes:
@@ -73,7 +72,6 @@ class VideoAssembler:
 
         # Wire composed services
         self.prober = FFmpegProber(self.settings, probe_cache=probe_cache)
-        self.filter_builder = FilterBuilder(self.settings, self.prober, self._get_face_center)
         self.encoder = ClipEncoder(
             self.settings,
             self.prober,
@@ -84,7 +82,6 @@ class VideoAssembler:
             self.settings,
             self.prober,
             self.encoder,
-            self.filter_builder,
         )
         self.audio_mixer = AudioMixerService(self.settings)
         self.title_inserter = TitleInserter(self.settings, self.prober)

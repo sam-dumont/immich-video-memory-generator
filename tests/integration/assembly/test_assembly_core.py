@@ -1,4 +1,4 @@
-"""Integration tests for the assembly core: engine, encoder, filter_builder, title_inserter, hdr.
+"""Integration tests for the assembly core: engine, encoder, title_inserter, hdr.
 
 All tests use REAL FFmpeg with small synthetic clips. No mocks.
 Run with: make test-integration-assembly
@@ -137,13 +137,11 @@ class TestAssemblyEngineScalable:
         """Two clips with crossfade produce valid output with duration < sum of inputs."""
         from immich_memories.processing.assembly_engine import AssemblyEngine
         from immich_memories.processing.clip_encoder import ClipEncoder
-        from immich_memories.processing.filter_builder import FilterBuilder
 
         settings = _make_settings()
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb)
+        engine = AssemblyEngine(settings, prober, encoder)
 
         output = tmp_path / "two_clips.mp4"
         clips = [_make_clip(test_clip_720p), _make_clip(test_clip_720p_b)]
@@ -161,13 +159,11 @@ class TestAssemblyEngineScalable:
         """Single clip should be copied through (passthrough)."""
         from immich_memories.processing.assembly_engine import AssemblyEngine
         from immich_memories.processing.clip_encoder import ClipEncoder
-        from immich_memories.processing.filter_builder import FilterBuilder
 
         settings = _make_settings()
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb)
+        engine = AssemblyEngine(settings, prober, encoder)
 
         output = tmp_path / "single.mp4"
         clips = [_make_clip(test_clip_720p)]
@@ -183,13 +179,11 @@ class TestAssemblyEngineScalable:
         """Setting target_resolution=720p produces 720p output."""
         from immich_memories.processing.assembly_engine import AssemblyEngine
         from immich_memories.processing.clip_encoder import ClipEncoder
-        from immich_memories.processing.filter_builder import FilterBuilder
 
         settings = _make_settings(target_resolution=(1280, 720))
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb)
+        engine = AssemblyEngine(settings, prober, encoder)
 
         output = tmp_path / "res_override.mp4"
         clips = [_make_clip(test_clip_720p), _make_clip(test_clip_720p_b)]
@@ -205,13 +199,11 @@ class TestAssemblyEngineScalable:
         """Empty clip list raises ValueError."""
         from immich_memories.processing.assembly_engine import AssemblyEngine
         from immich_memories.processing.clip_encoder import ClipEncoder
-        from immich_memories.processing.filter_builder import FilterBuilder
 
         settings = _make_settings()
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb)
+        engine = AssemblyEngine(settings, prober, encoder)
 
         with pytest.raises(ValueError, match="No clips"):
             engine.assemble_scalable([], Path("/tmp/out.mp4"))
@@ -221,7 +213,6 @@ class TestAssemblyEngineScalable:
         from immich_memories.processing.assembly_config import TransitionType
         from immich_memories.processing.assembly_engine import AssemblyEngine
         from immich_memories.processing.clip_encoder import ClipEncoder
-        from immich_memories.processing.filter_builder import FilterBuilder
 
         settings = _make_settings(
             transition=TransitionType.CUT,
@@ -229,8 +220,7 @@ class TestAssemblyEngineScalable:
         )
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb)
+        engine = AssemblyEngine(settings, prober, encoder)
 
         output = tmp_path / "cuts.mp4"
         clips = [_make_clip(test_clip_720p), _make_clip(test_clip_720p_b)]
@@ -327,180 +317,6 @@ class TestClipEncoder:
         w, h = _get_resolution(probe)
         assert w == 1280
         assert h == 720
-
-    def test_trim_segment_copy(self, test_clip_720p, tmp_path):
-        """Trim a segment using stream copy."""
-        from immich_memories.processing.clip_encoder import ClipEncoder
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        encoder = ClipEncoder(settings, prober, _noop_face_center)
-
-        output = tmp_path / "trimmed.mp4"
-        encoder.trim_segment_copy(test_clip_720p, output, start=0.5, duration=1.5)
-
-        assert output.exists()
-        probe = ffprobe_json(output)
-        assert has_stream(probe, "video")
-        duration = get_duration(probe)
-        # Stream copy trim is not frame-accurate, but should be roughly correct
-        assert 0.5 < duration < 3.0
-
-
-# ===================================================================
-# filter_builder.py
-# ===================================================================
-
-
-class TestFilterBuilder:
-    """Tests for FilterBuilder: building filter chains that FFmpeg can parse."""
-
-    def test_build_clip_video_filter(self, test_clip_720p):
-        """build_clip_video_filter produces a parseable filter string."""
-        from immich_memories.processing.ffmpeg_runner import AssemblyContext
-        from immich_memories.processing.filter_builder import FilterBuilder
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
-
-        ctx = AssemblyContext(
-            target_w=1280,
-            target_h=720,
-            pix_fmt="yuv420p",
-            hdr_type="hlg",
-            clip_hdr_types=[None],
-            clip_primaries=[None],
-            colorspace_filter="",
-            target_fps=30,
-            fade_duration=0.3,
-        )
-        clip = _make_clip(test_clip_720p)
-        result = fb.build_clip_video_filter(0, clip, ctx)
-
-        assert "[0:v]" in result
-        assert "scale=1280:720" in result
-        assert "[v0scaled]" in result
-
-    def test_build_xfade_chain(self, test_clip_720p, test_clip_720p_b):
-        """build_xfade_chain for 2 clips produces xfade filter parts."""
-        from immich_memories.processing.ffmpeg_runner import AssemblyContext
-        from immich_memories.processing.filter_builder import FilterBuilder
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
-
-        ctx = AssemblyContext(
-            target_w=1280,
-            target_h=720,
-            pix_fmt="yuv420p",
-            hdr_type="hlg",
-            clip_hdr_types=[None, None],
-            clip_primaries=[None, None],
-            colorspace_filter="",
-            target_fps=30,
-            fade_duration=0.3,
-        )
-        clips = [_make_clip(test_clip_720p), _make_clip(test_clip_720p_b)]
-        audio_labels = ["[a0prep]", "[a1prep]"]
-
-        parts, final_video, final_audio, total_dur = fb.build_xfade_chain(clips, ctx, audio_labels)
-
-        assert len(parts) > 0
-        xfade_found = any("xfade" in p for p in parts)
-        assert xfade_found, f"Expected xfade in filter parts: {parts}"
-        assert final_video  # non-empty label
-        assert final_audio  # non-empty label
-
-    def test_build_audio_prep_filters(self, test_clip_720p, test_clip_720p_b):
-        """build_audio_prep_filters produces filter parts and labels for each clip."""
-        from immich_memories.processing.filter_builder import FilterBuilder
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
-
-        clips = [_make_clip(test_clip_720p), _make_clip(test_clip_720p_b)]
-        parts, labels = fb.build_audio_prep_filters(clips)
-
-        assert len(labels) == 2
-        assert labels[0] == "[a0prep]"
-        assert labels[1] == "[a1prep]"
-        assert len(parts) == 2
-
-    def test_build_smart_transition_chain(self, test_clip_720p, test_clip_720p_b):
-        """build_smart_transition_chain with mixed transitions produces valid filter."""
-        from immich_memories.processing.ffmpeg_runner import AssemblyContext
-        from immich_memories.processing.filter_builder import FilterBuilder
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
-
-        ctx = AssemblyContext(
-            target_w=1280,
-            target_h=720,
-            pix_fmt="yuv420p",
-            hdr_type="hlg",
-            clip_hdr_types=[None, None],
-            clip_primaries=[None, None],
-            colorspace_filter="",
-            target_fps=30,
-            fade_duration=0.3,
-        )
-        clips = [_make_clip(test_clip_720p), _make_clip(test_clip_720p_b)]
-        audio_labels = ["[a0prep]", "[a1prep]"]
-        transitions = ["fade"]
-
-        parts, final_video, final_audio = fb.build_smart_transition_chain(
-            clips, transitions, ctx, audio_labels
-        )
-
-        assert len(parts) > 0
-        assert final_video
-        assert final_audio
-
-    def test_xfade_chain_runs_through_ffmpeg(self, test_clip_720p, test_clip_720p_b, tmp_path):
-        """End-to-end: filter chain from FilterBuilder actually works in FFmpeg."""
-        from immich_memories.processing.assembly_engine import create_assembly_context
-        from immich_memories.processing.clip_encoder import ClipEncoder
-        from immich_memories.processing.filter_builder import FilterBuilder
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
-        encoder = ClipEncoder(settings, prober, _noop_face_center)
-
-        clips = [_make_clip(test_clip_720p), _make_clip(test_clip_720p_b)]
-        ctx = create_assembly_context(settings, prober, clips, 1280, 720)
-
-        inputs: list[str] = []
-        for clip in clips:
-            inputs.extend(["-i", str(clip.path)])
-
-        filter_parts = [fb.build_clip_video_filter(i, clip, ctx) for i, clip in enumerate(clips)]
-        audio_parts, audio_labels = fb.build_audio_prep_filters(clips)
-        filter_parts.extend(audio_parts)
-        xfade_parts, final_video, final_audio, _ = fb.build_xfade_chain(clips, ctx, audio_labels)
-        filter_parts.extend(xfade_parts)
-
-        output = tmp_path / "filter_e2e.mp4"
-        result = encoder.run_ffmpeg_assembly(
-            inputs,
-            ";".join(filter_parts),
-            final_video,
-            final_audio,
-            output,
-            clips,
-            ctx,
-        )
-
-        assert result.returncode == 0, f"FFmpeg failed: {result.stderr[-500:]}"
-        assert output.exists()
-        probe = ffprobe_json(output)
-        assert has_stream(probe, "video")
-        assert has_stream(probe, "audio")
 
 
 # ===================================================================
@@ -603,35 +419,6 @@ class TestTitleInserter:
         assert result[2].is_title_screen  # Mar divider
         assert not result[3].is_title_screen  # Mar clip
 
-    def test_get_orientation_from_clips(self, test_clip_720p, test_clip_portrait):
-        """get_orientation_from_clips detects landscape vs portrait majority."""
-        from immich_memories.processing.title_inserter import TitleInserter
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        ti = TitleInserter(settings, prober)
-
-        # Majority landscape
-        landscape_clips = [_make_clip(test_clip_720p)] * 3
-        assert ti.get_orientation_from_clips(landscape_clips) == "landscape"
-
-        # Majority portrait
-        portrait_clips = [_make_clip(test_clip_portrait)] * 3
-        assert ti.get_orientation_from_clips(portrait_clips) == "portrait"
-
-    def test_get_resolution_tier(self, test_clip_720p):
-        """get_resolution_tier returns correct tier for 1280x720 clips."""
-        from immich_memories.processing.title_inserter import TitleInserter
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        ti = TitleInserter(settings, prober)
-
-        clips = [_make_clip(test_clip_720p)]
-        tier = ti.get_resolution_tier(clips)
-        # 1280x720 -> max_dim=1280 >= 1080 -> classified as 1080p tier
-        assert tier == "1080p"
-
 
 # ===================================================================
 # hdr_utilities.py
@@ -688,13 +475,6 @@ class TestHDRUtilities:
         result = _get_clip_hdr_types(clips)
         assert len(result) == 2
         assert all(t is None for t in result)
-
-    def test_has_any_hdr_clip_false_for_sdr(self, test_clip_720p):
-        """SDR-only clips return False for has_any_hdr_clip."""
-        from immich_memories.processing.hdr_utilities import has_any_hdr_clip
-
-        clips = [_make_clip(test_clip_720p)]
-        assert has_any_hdr_clip(clips) is False
 
     def test_get_hdr_conversion_filter_same_type(self):
         """Same source and target HDR type returns empty string."""
@@ -777,20 +557,18 @@ class TestAssemblyContext:
 
 
 class TestTransitionDecisions:
-    """Tests for get_transition_types and decide_transitions."""
+    """Tests for get_transition_types."""
 
     def test_get_transition_types_crossfade(self, test_clip_720p, test_clip_720p_b):
         """CROSSFADE setting produces all fade transitions."""
         from immich_memories.processing.assembly_config import TransitionType
         from immich_memories.processing.assembly_engine import AssemblyEngine
         from immich_memories.processing.clip_encoder import ClipEncoder
-        from immich_memories.processing.filter_builder import FilterBuilder
 
         settings = _make_settings(transition=TransitionType.CROSSFADE)
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb)
+        engine = AssemblyEngine(settings, prober, encoder)
 
         clips = [_make_clip(test_clip_720p), _make_clip(test_clip_720p_b)]
         transitions = engine.get_transition_types(clips)
@@ -802,13 +580,11 @@ class TestTransitionDecisions:
         from immich_memories.processing.assembly_config import TransitionType
         from immich_memories.processing.assembly_engine import AssemblyEngine
         from immich_memories.processing.clip_encoder import ClipEncoder
-        from immich_memories.processing.filter_builder import FilterBuilder
 
         settings = _make_settings(transition=TransitionType.CUT)
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb)
+        engine = AssemblyEngine(settings, prober, encoder)
 
         clips = [_make_clip(test_clip_720p), _make_clip(test_clip_720p_b)]
         transitions = engine.get_transition_types(clips)
@@ -820,13 +596,11 @@ class TestTransitionDecisions:
         from immich_memories.processing.assembly_config import TransitionType
         from immich_memories.processing.assembly_engine import AssemblyEngine
         from immich_memories.processing.clip_encoder import ClipEncoder
-        from immich_memories.processing.filter_builder import FilterBuilder
 
         settings = _make_settings(transition=TransitionType.CUT)
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb)
+        engine = AssemblyEngine(settings, prober, encoder)
 
         clips = [
             _make_clip(test_clip_720p, is_title_screen=True),
@@ -840,13 +614,11 @@ class TestTransitionDecisions:
         """Short clips get downgraded from fade to cut."""
         from immich_memories.processing.assembly_engine import AssemblyEngine
         from immich_memories.processing.clip_encoder import ClipEncoder
-        from immich_memories.processing.filter_builder import FilterBuilder
 
         settings = _make_settings(transition_duration=0.5)
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb)
+        engine = AssemblyEngine(settings, prober, encoder)
 
         transitions = ["fade"]
         # Clip durations too short for 0.5s fade (min = 1.0s needed)
@@ -855,49 +627,15 @@ class TestTransitionDecisions:
         result = engine._validate_fade_transitions(transitions, clip_durations, 0.5)
         assert result == ["cut"]
 
-    def test_decide_transitions_two_clips(self, test_clip_720p, test_clip_720p_b):
-        """decide_transitions returns a list for 2 clips."""
-        from immich_memories.processing.assembly_engine import AssemblyEngine
-        from immich_memories.processing.clip_encoder import ClipEncoder
-        from immich_memories.processing.filter_builder import FilterBuilder
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        encoder = ClipEncoder(settings, prober, _noop_face_center)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb)
-
-        clips = [_make_clip(test_clip_720p), _make_clip(test_clip_720p_b)]
-        transitions = engine.decide_transitions(clips)
-
-        assert len(transitions) == 1
-        assert transitions[0] in ("fade", "cut")
-
-    def test_decide_transitions_empty(self):
-        """decide_transitions with <2 clips returns empty."""
-        from immich_memories.processing.assembly_engine import AssemblyEngine
-        from immich_memories.processing.clip_encoder import ClipEncoder
-        from immich_memories.processing.filter_builder import FilterBuilder
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        encoder = ClipEncoder(settings, prober, _noop_face_center)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb)
-
-        assert engine.decide_transitions([]) == []
-
     def test_predecided_transitions_override(self, test_clip_720p, test_clip_720p_b):
         """Predecided transitions are used when set in settings."""
         from immich_memories.processing.assembly_engine import AssemblyEngine
         from immich_memories.processing.clip_encoder import ClipEncoder
-        from immich_memories.processing.filter_builder import FilterBuilder
 
         settings = _make_settings(predecided_transitions=["cut"])
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb)
+        engine = AssemblyEngine(settings, prober, encoder)
 
         clips = [_make_clip(test_clip_720p), _make_clip(test_clip_720p_b)]
         transitions = engine.get_transition_types(clips)
@@ -906,124 +644,22 @@ class TestTransitionDecisions:
 
 
 # ===================================================================
-# assembly_engine.py — assemble_with_cuts, assemble_with_crossfade
+# assembly_engine.py — progress reporting
 # ===================================================================
 
 
 class TestAssemblyEngineMethods:
-    """Tests for alternative assembly methods on AssemblyEngine."""
-
-    def test_assemble_with_cuts(self, test_clip_720p, test_clip_720p_b, tmp_path):
-        """assemble_with_cuts produces output with no crossfade overlap."""
-        from immich_memories.processing.assembly_config import TransitionType
-        from immich_memories.processing.assembly_engine import AssemblyEngine
-        from immich_memories.processing.clip_encoder import ClipEncoder
-        from immich_memories.processing.filter_builder import FilterBuilder
-
-        settings = _make_settings(transition=TransitionType.CUT)
-        prober = _make_prober(settings)
-        encoder = ClipEncoder(settings, prober, _noop_face_center)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb)
-
-        output = tmp_path / "cuts.mp4"
-        clips = [_make_clip(test_clip_720p), _make_clip(test_clip_720p_b)]
-        result = engine.assemble_with_cuts(clips, output)
-
-        assert result.exists()
-        probe = ffprobe_json(result)
-        assert has_stream(probe, "video")
-        assert has_stream(probe, "audio")
-        duration = get_duration(probe)
-        # Cuts = no overlap, so ~6s
-        assert 5.0 < duration < 7.5
-
-    def test_assemble_with_crossfade(self, test_clip_720p, test_clip_720p_b, tmp_path):
-        """assemble_with_crossfade produces output shorter than sum of inputs."""
-        from immich_memories.processing.assembly_engine import AssemblyEngine
-        from immich_memories.processing.clip_encoder import ClipEncoder
-        from immich_memories.processing.filter_builder import FilterBuilder
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        encoder = ClipEncoder(settings, prober, _noop_face_center)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb)
-
-        output = tmp_path / "xfade.mp4"
-        clips = [_make_clip(test_clip_720p), _make_clip(test_clip_720p_b)]
-        result = engine.assemble_with_crossfade(clips, output)
-
-        assert result.exists()
-        probe = ffprobe_json(result)
-        assert has_stream(probe, "video")
-        duration = get_duration(probe)
-        # Two 3s clips with 0.3s crossfade -> ~5.7s
-        assert 4.5 < duration < 7.0
-
-    def test_assemble_with_smart_transitions(self, test_clip_720p, test_clip_720p_b, tmp_path):
-        """assemble_with_smart_transitions produces valid output."""
-        from immich_memories.processing.assembly_config import TransitionType
-        from immich_memories.processing.assembly_engine import AssemblyEngine
-        from immich_memories.processing.clip_encoder import ClipEncoder
-        from immich_memories.processing.filter_builder import FilterBuilder
-
-        settings = _make_settings(transition=TransitionType.SMART)
-        prober = _make_prober(settings)
-        encoder = ClipEncoder(settings, prober, _noop_face_center)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb)
-
-        output = tmp_path / "smart.mp4"
-        clips = [_make_clip(test_clip_720p), _make_clip(test_clip_720p_b)]
-        result = engine.assemble_with_smart_transitions(clips, output)
-
-        assert result.exists()
-        probe = ffprobe_json(result)
-        assert has_stream(probe, "video")
-        assert has_stream(probe, "audio")
-
-    def test_assemble_with_cuts_empty_raises(self):
-        """assemble_with_cuts with empty clips raises ValueError."""
-        from immich_memories.processing.assembly_engine import AssemblyEngine
-        from immich_memories.processing.clip_encoder import ClipEncoder
-        from immich_memories.processing.filter_builder import FilterBuilder
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        encoder = ClipEncoder(settings, prober, _noop_face_center)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb)
-
-        with pytest.raises(ValueError, match="No clips"):
-            engine.assemble_with_cuts([], Path("/tmp/out.mp4"))
-
-    def test_assemble_with_crossfade_one_clip_raises(self, test_clip_720p):
-        """assemble_with_crossfade with 1 clip raises ValueError."""
-        from immich_memories.processing.assembly_engine import AssemblyEngine
-        from immich_memories.processing.clip_encoder import ClipEncoder
-        from immich_memories.processing.filter_builder import FilterBuilder
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        encoder = ClipEncoder(settings, prober, _noop_face_center)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb)
-
-        with pytest.raises(ValueError, match="at least 2"):
-            engine.assemble_with_crossfade([_make_clip(test_clip_720p)], Path("/tmp/out.mp4"))
+    """Tests for assembly progress reporting on AssemblyEngine."""
 
     def test_assemble_with_progress_callback(self, test_clip_720p, test_clip_720p_b, tmp_path):
         """Progress callback is invoked during scalable assembly."""
         from immich_memories.processing.assembly_engine import AssemblyEngine
         from immich_memories.processing.clip_encoder import ClipEncoder
-        from immich_memories.processing.filter_builder import FilterBuilder
 
         settings = _make_settings()
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb)
+        engine = AssemblyEngine(settings, prober, encoder)
 
         progress_calls = []
 
@@ -1065,32 +701,6 @@ class TestClipEncoderExtra:
         probe = ffprobe_json(output)
         assert has_stream(probe, "video")
         assert has_stream(probe, "audio")
-
-    def test_log_ffmpeg_error_parses_stderr(self):
-        """log_ffmpeg_error extracts error lines from stderr."""
-        from immich_memories.processing.clip_encoder import log_ffmpeg_error
-
-        result = subprocess.CompletedProcess(
-            args=[],
-            returncode=1,
-            stdout="",
-            stderr="line1\nError: something went wrong\nline3\ninvalid option\n",
-        )
-        error_msg = log_ffmpeg_error(result)
-        assert "Error" in error_msg or "invalid" in error_msg
-
-    def test_log_ffmpeg_error_truncates_long_stderr(self):
-        """log_ffmpeg_error truncates very long stderr."""
-        from immich_memories.processing.clip_encoder import log_ffmpeg_error
-
-        result = subprocess.CompletedProcess(
-            args=[],
-            returncode=1,
-            stdout="",
-            stderr="x" * 5000,
-        )
-        error_msg = log_ffmpeg_error(result)
-        assert len(error_msg) <= 2000
 
     def test_resolve_encode_resolution_explicit(self):
         """resolve_encode_resolution uses explicit target when provided."""
@@ -1141,105 +751,19 @@ class TestClipEncoderExtra:
         assert "zscale" in colorspace
         assert "setparams" in colorspace
 
-    def test_trim_segment_reencode(self, test_clip_720p, tmp_path):
-        """Re-encode trim produces valid output with audio."""
-        from immich_memories.processing.clip_encoder import ClipEncoder
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        encoder = ClipEncoder(settings, prober, _noop_face_center)
-
-        output = tmp_path / "reencode_trim.mp4"
-        encoder.trim_segment_reencode(test_clip_720p, output, start=0.5, duration=1.5)
-
-        assert output.exists()
-        probe = ffprobe_json(output)
-        assert has_stream(probe, "video")
-        assert has_stream(probe, "audio")
-        duration = get_duration(probe)
-        assert 0.5 < duration < 3.0
-
 
 # ===================================================================
-# filter_builder.py — more coverage
+# hdr per-clip resolution — more coverage
 # ===================================================================
 
 
-class TestFilterBuilderExtra:
-    """Additional FilterBuilder tests for uncovered paths."""
+class TestClipHdrResolutionExtra:
+    """Per-clip HDR resolution from an AssemblyContext."""
 
-    def test_build_clip_video_filter_with_rotation(self, test_clip_720p):
-        """build_clip_video_filter with rotation_override includes transpose."""
+    def test_matching_transfer_needs_no_conversion(self, test_clip_720p):
+        """A clip already in the target transfer gets an empty conversion filter."""
         from immich_memories.processing.ffmpeg_runner import AssemblyContext
-        from immich_memories.processing.filter_builder import FilterBuilder
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
-
-        ctx = AssemblyContext(
-            target_w=1280,
-            target_h=720,
-            pix_fmt="yuv420p",
-            hdr_type="hlg",
-            clip_hdr_types=[None],
-            clip_primaries=[None],
-            colorspace_filter="",
-            target_fps=30,
-            fade_duration=0.3,
-        )
-        clip = _make_clip(test_clip_720p, rotation_override=90)
-        result = fb.build_clip_video_filter(0, clip, ctx)
-
-        assert "transpose=1" in result
-
-    def test_build_clip_video_filter_privacy_mode(self, test_clip_720p):
-        """Privacy mode adds gblur to non-title clips."""
-        from immich_memories.processing.ffmpeg_runner import AssemblyContext
-        from immich_memories.processing.filter_builder import FilterBuilder
-
-        settings = _make_settings(privacy_mode=True)
-        prober = _make_prober(settings)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
-
-        ctx = AssemblyContext(
-            target_w=1280,
-            target_h=720,
-            pix_fmt="yuv420p",
-            hdr_type="hlg",
-            clip_hdr_types=[None],
-            clip_primaries=[None],
-            colorspace_filter="",
-            target_fps=30,
-            fade_duration=0.3,
-        )
-        clip = _make_clip(test_clip_720p)
-        result = fb.build_clip_video_filter(0, clip, ctx)
-
-        assert "gblur" in result
-
-    def test_build_audio_prep_title_screen_uses_silence(self, test_clip_720p):
-        """Title screen clips get silent audio (anullsrc)."""
-        from immich_memories.processing.filter_builder import FilterBuilder
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
-
-        clips = [_make_clip(test_clip_720p, is_title_screen=True)]
-        parts, labels = fb.build_audio_prep_filters(clips)
-
-        assert len(labels) == 1
-        assert "anullsrc" in parts[0]
-
-    def test_get_clip_hdr_conversion_same_type(self, test_clip_720p):
-        """get_clip_hdr_conversion returns empty string when types match."""
-        from immich_memories.processing.ffmpeg_runner import AssemblyContext
-        from immich_memories.processing.filter_builder import FilterBuilder
-
-        settings = _make_settings(encoding_plan=_hlg_plan())
-        prober = _make_prober(settings)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
+        from immich_memories.processing.hdr_utilities import _resolve_clip_hdr
 
         ctx = AssemblyContext(
             target_w=1280,
@@ -1252,67 +776,8 @@ class TestFilterBuilderExtra:
             target_fps=30,
             fade_duration=0.3,
         )
-        result = fb.get_clip_hdr_conversion(0, ctx)
-        assert result == ""
-
-    def test_get_clip_hdr_conversion_no_hdr(self, test_clip_720p):
-        """An SDR plan does not convert an SDR clip just because context is malformed."""
-        from immich_memories.processing.ffmpeg_runner import AssemblyContext
-        from immich_memories.processing.filter_builder import FilterBuilder
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
-
-        ctx = AssemblyContext(
-            target_w=1280,
-            target_h=720,
-            pix_fmt="yuv420p",
-            hdr_type="hlg",
-            clip_hdr_types=[None],
-            clip_primaries=[None],
-            colorspace_filter="",
-            target_fps=30,
-            fade_duration=0.3,
-        )
-        result = fb.get_clip_hdr_conversion(0, ctx)
-        assert result == ""
-
-    def test_build_probed_audio_filters(self, test_clip_720p, test_clip_720p_b):
-        """build_probed_audio_filters returns filters with probed durations."""
-        from immich_memories.processing.filter_builder import FilterBuilder
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
-
-        batches = [_make_clip(test_clip_720p), _make_clip(test_clip_720p_b)]
-        audio_durations = [3.0, 3.0]
-
-        parts, labels = fb.build_probed_audio_filters(batches, audio_durations)
-        assert len(labels) == 2
-        assert len(parts) == 2
-        assert "[a0prep]" in labels[0]
-
-    def test_build_probed_xfade_chain(self, test_clip_720p, test_clip_720p_b):
-        """build_probed_xfade_chain returns filter parts with offsets from probed durations."""
-        from immich_memories.processing.filter_builder import FilterBuilder
-
-        settings = _make_settings()
-        prober = _make_prober(settings)
-        fb = FilterBuilder(settings, prober, _noop_face_center)
-
-        batches = [_make_clip(test_clip_720p), _make_clip(test_clip_720p_b)]
-        video_durations = [3.0, 3.0]
-        audio_labels = ["[a0prep]", "[a1prep]"]
-
-        parts, fv, fa, offset = fb.build_probed_xfade_chain(
-            batches, video_durations, 0.3, 30, audio_labels
-        )
-        assert len(parts) > 0
-        assert any("xfade" in p for p in parts)
-        assert fv  # final video label
-        assert fa  # final audio label
+        conversion, *_ = _resolve_clip_hdr(0, ctx, ctx.hdr_type)
+        assert conversion == ""
 
 
 # ===================================================================
