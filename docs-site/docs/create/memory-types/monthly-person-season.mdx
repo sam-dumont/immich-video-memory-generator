@@ -6,7 +6,7 @@ import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
 
 # Monthly, Person, Season & On This Day
 
-Four memory types that share a similar structure: pick a time range, optionally filter by person, generate. They differ in scope and scoring emphasis.
+Four memory types that share a similar structure: pick a time range, optionally filter by person, generate. They differ in scope.
 
 ## Monthly Highlights
 
@@ -20,11 +20,11 @@ Default duration: 60 seconds. The title screen shows the month and year (e.g., "
 
 **Best for:** months with 10+ videos. If you shot a lot in one month (vacation, birthday party, holiday), this gives you a tight one-minute highlight.
 
-<ThemedScreenshot name="type-monthly" alt="Monthly Highlights preset" />
+<ThemedScreenshot name="memory-brief" alt="Monthly Highlights on the Memory page" />
 
 ## Person Spotlight
 
-A year focused on one person. Filters clips to only those containing the named person (requires face recognition enabled in Immich). Every memory type is scored the same way — see [Clip Selection & Scoring](../pipeline/clip-selection-scoring.md); what makes this one a spotlight is the filter, not a different set of weights.
+A year focused on one person. Filters the pool to what contains the named person (requires face recognition enabled in Immich). Every memory type is edited the same way — see [The Curator](../pipeline/the-curator.md); what makes this one a spotlight is the filter, not a different editor.
 
 ```bash
 immich-memories generate --memory-type person_spotlight --person "Riley" --year 2025
@@ -47,8 +47,6 @@ That is a different memory: the year **ending** on the 2025 birthday, plus each 
 Default duration: about 60 seconds per month, capped at 10 minutes. A full calendar year therefore asks for 10 minutes on both the CLI and web UI. You can also override the date range entirely with `--start/--end`.
 
 **Best for:** parent-child compilations, partner videos, or any relationship where you want to see just that person's moments. Needs Immich face recognition to be set up and the person tagged.
-
-<ThemedScreenshot name="type-person" alt="Person Spotlight preset" />
 
 ## Multi-Person
 
@@ -77,7 +75,7 @@ joined by AND or OR, so the two runs cannot overwrite one another.
 
 The same AND default applies wherever you name several people. Repeating
 `--person` on any CLI memory type can be changed to a union with
-`--person-match or`; the wizard's ordinary **Only with** picker remains AND:
+`--person-match or`; the Memory page's ordinary **Only with** picker remains AND:
 
 ```bash
 immich-memories generate --memory-type season --season summer --year 2025 --person "Riley" --person "Bob"
@@ -91,7 +89,7 @@ Highlights from a specific season (spring, summer, fall, winter).
 immich-memories generate --memory-type season --season summer --year 2025
 ```
 
-Default duration: the range curve again, so about 3 minutes 15 seconds for a three-month season. (The web UI card says 2 minutes 15; see [the note below](#one-ui-and-cli-default-still-disagrees).) The hemisphere flag controls which calendar months map to which season:
+Default duration: the range curve again, so about 3 minutes 15 seconds for a three-month season. (The web UI says 2 minutes 15; see [the note below](#one-ui-and-cli-default-still-disagrees).) The hemisphere flag controls which calendar months map to which season:
 
 ```bash
 # Southern hemisphere: summer = December-February
@@ -121,10 +119,10 @@ Default duration: 45 seconds. No `--year` needed: it automatically looks back fr
 ## One UI and CLI default still disagrees
 
 Person Spotlight and Multi-Person now use the same full-year 10-minute default
-on both surfaces. Season retains an older fixed web-card value while the CLI
+on both surfaces. Season retains an older fixed web UI value while the CLI
 uses its date-range curve:
 
-| type | web UI card | CLI |
+| type | web UI | CLI |
 |---|---|---|
 | Season | 2 min 15 | ~3 min 15 for a three-month season |
 

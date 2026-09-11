@@ -121,31 +121,9 @@ explicit incomplete result. There is no model-free alternate selector.
 Add `IMMICH_MEMORIES_PRESET=fast` to the compose `environment:` (or `preset: fast` at the top of
 `config.yaml`) and the CPU-only profile is on: 1080p H.264 with the fast encoder preset and
 medium quality, static title backgrounds instead of animated ones, no per-clip speech analysis,
-photos capped at a quarter of the cut, three refinement passes instead of ten, and analysis depth
-`auto` running as `fast` (favorites first). Every value you set explicitly still wins, and the web
-UI's Step 3 shows a banner when the preset is active. `immich-memories --preset fast generate …`
+and photos capped at a quarter of the cut. Every value you set explicitly still wins, and the web
+UI's options page shows a banner when the preset is active. `immich-memories --preset fast generate …`
 does the same for one CLI run.
-
-### `max_refinement_passes` is a bill, not just a clock
-
-Selection verifies, judges and reviews in a loop, up to `analysis.max_refinement_passes` times
-(default 10). Three loops share that budget, and each round that changes the cut sends the
-descriptions back to the model. On a NAS that is time. If `llm.base_url` points at a hosted API
-rather than a box you own, it is money, and it is the largest single multiplier on what a run
-costs you.
-
-`preset: fast` sets it to 3. Set it yourself to override that either way:
-
-```yaml
-advanced:
-  analysis:
-    max_refinement_passes: 3     # or 1 to stop after the first pass
-```
-
-or per run: `immich-memories generate --refinement-passes 3 …`
-
-Lower is cheaper and faster. The cost of lowering it is that a clip admitted by the last refill
-may ship with less scrutiny than the ones before it.
 
 ```yaml
     environment:
@@ -166,9 +144,9 @@ linux/arm64 image):
 | `preset: fast` | 10 min 08 s | 7.4 min | 2.7 min | 30 MB |
 | default | 15 min 42 s | 10.1 min | 5.6 min | 87 MB |
 
-Analysis (downloading, downscaling, scoring every candidate clip) is where the time goes, not
-encoding, and it is cached: a second run of the same month reuses the scores and takes roughly a
-third as long. A Celeron-class NAS core is a good deal slower than an M5 core, so budget 2–3× these
+That run used the old per-clip scorer; on the story-first route the analysis column is
+preparation — a caption, context heads and detector facts per picture — plus the text model's
+readings, all of it cached, so a second cut of the same month is mostly the render. A Celeron-class NAS core is a good deal slower than an M5 core, so budget 2–3× these
 numbers there.
 
 If the render column is what you want to shrink, start with the title screens rather than the

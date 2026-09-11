@@ -5,6 +5,13 @@ title: LLM Content Analysis
 
 # LLM Content Analysis
 
+:::note Legacy
+Story-first selection does not read these scores. Its descriptions come from the compact-caption
+producer configured under [Editorial annotation setup](../../deploy/configuration/editorial-preparation.md)
+and its readings from the configured text model. This page documents the old per-clip scorer,
+whose `content_analysis` keys still parse until a later release removes them.
+:::
+
 Optional feature that uses a vision LLM to understand *what's actually happening* in your clips. A birthday party scores differently than a parking lot. Face detection can tell you someone's there; an LLM can tell you they're blowing out candles.
 
 ## Any OpenAI-compatible API

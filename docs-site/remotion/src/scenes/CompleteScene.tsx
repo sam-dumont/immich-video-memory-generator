@@ -12,6 +12,7 @@ import { COLORS } from "../theme";
 import { fontFamily } from "../fonts";
 import { WindowFrame } from "../components/WindowFrame";
 import { Sidebar } from "../components/Sidebar";
+import { PageHeader } from "../components/PageHeader";
 import { ImButton } from "../components/ImButton";
 import { MaterialIcon } from "../components/MaterialIcon";
 
@@ -43,28 +44,18 @@ export const CompleteScene: React.FC<Props> = ({ bassIntensity }) => {
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.bg }}>
       <WindowFrame bassIntensity={bassIntensity}>
-        <Sidebar activeStep={4} completedSteps={[1, 2, 3]} />
+        <Sidebar activeStep={4} completedSteps={[1, 2]} />
         <div
           style={{
             flex: 1,
-            padding: "20px 28px",
+            padding: "20px 32px",
             fontFamily,
             overflow: "hidden",
             display: "flex",
             flexDirection: "column",
           }}
         >
-          {/* Page title */}
-          <div
-            style={{
-              fontSize: 20,
-              fontWeight: 600,
-              color: COLORS.text,
-              marginBottom: 18,
-            }}
-          >
-            Preview & Export
-          </div>
+          <PageHeader title="Preview & Export" />
 
           {/* Success banner */}
           <div
@@ -106,7 +97,7 @@ export const CompleteScene: React.FC<Props> = ({ bassIntensity }) => {
                   marginTop: 4,
                 }}
               >
-                Saved to: ~/Videos/Memories/alice_2025_memories.mp4 (42 MB)
+                Saved to: /home/user/Videos/Memories/year_2025_memories.mp4 (42 MB)
               </div>
             </div>
           </div>
@@ -171,12 +162,12 @@ export const CompleteScene: React.FC<Props> = ({ bassIntensity }) => {
             }}
           >
             <ImButton
-              text="BACK TO GENERATION OPTIONS"
+              text="Back to Generation Options"
               variant="secondary"
               icon="arrow_back"
             />
             <ImButton
-              text="START NEW PROJECT"
+              text="Start new project"
               variant="ghost"
               icon="refresh"
             />

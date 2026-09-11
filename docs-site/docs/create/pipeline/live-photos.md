@@ -134,7 +134,7 @@ analysis:
 Two Live Photos inside that window are already a burst — pairs are common for quick
 reactions, and there is no minimum-count key to raise.
 
-In the UI wizard, there's a toggle in the Options section on Step 1. Via CLI:
+In the web UI it is the **Include Live Photos** switch under Advanced on the Memory page. Via CLI:
 
 ```bash
 immich-memories generate --include-live-photos --year 2024

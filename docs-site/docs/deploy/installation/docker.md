@@ -267,7 +267,7 @@ Export to JSON before migrating. The JSON format is portable across SQLite versi
 
 ## Custom music
 
-In the web UI, pick **Upload file** in Step 3 and the browser uploads the track — no mount needed.
+In the web UI, pick **Upload file** on the options page and the browser uploads the track — no mount needed.
 For CLI runs inside the container, bind-mount a directory and point `--music` at it:
 
 ```yaml
