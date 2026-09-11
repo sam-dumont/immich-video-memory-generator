@@ -83,10 +83,12 @@ completed batch. It does not upload images to Hugging Face.
 | `Marqo/nsfw-image-detection-384` | `0c26ec22111b83f106d72a55f611ec35962bcb65` | `config.json`, `model.safetensors` |
 | `docling-project/DocumentFigureClassifier-v2.0` | `2a12e02668b98ca40216eab41cdf19530577cba4` | `model.onnx` |
 
-By default these files must already be in the Hugging Face Hub cache. Set
-`detector_cache_dir` to its cache root if it lives elsewhere. Setting
-`allow_model_downloads: true` allows the worker to acquire the pinned files when needed.
-It does not download the DINO encoder or start a caption server.
+By default these files must already be in the Hugging Face Hub cache. `immich-memories models
+fetch` puts them there — it warms every file in the table at its pinned revision, into
+`detector_cache_dir` when that is set, so `allow_model_downloads` can stay `false` and mean what
+it says. `--no-detectors` fetches only the encoder. Setting `allow_model_downloads: true` instead
+allows the worker itself to acquire the pinned files when needed. Neither starts a caption
+server.
 
 A separate `detector_python` needs `timm`, `torch`, `huggingface-hub`, `onnxruntime`, `numpy`
 and `Pillow`. The worker ships with the main package and runs without importing the app's UI

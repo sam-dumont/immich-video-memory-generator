@@ -324,7 +324,7 @@ immich-memories models [OPTIONS]
 
 ### `models fetch`
 
-Download the pinned DINOv2 encoder export to the configured path.
+Download the pinned encoder export and warm the pinned detector snapshots.
 
 ```bash
 immich-memories models fetch [OPTIONS]
@@ -333,6 +333,7 @@ immich-memories models fetch [OPTIONS]
 | Flag | Type | Default | Description |
 | --- | --- | --- | --- |
 | `--force` | boolean | false | Re-download even when the file is already right |
+| `--detectors` | boolean | true | Also warm the two pinned Hugging Face detector snapshots |
 
 ## `music`
 

@@ -4,14 +4,22 @@ from __future__ import annotations
 
 import hashlib
 import http.server
+import sys
 import threading
 from collections.abc import Iterator
 from pathlib import Path
+from types import ModuleType
 from unittest.mock import patch
 
 import pytest
 from click.testing import CliRunner, Result
 
+from immich_memories.analysis.editorial_preparation_detectors import (
+    DOCLING_REPO,
+    DOCLING_REVISION,
+    MARQO_REPO,
+    MARQO_REVISION,
+)
 from immich_memories.cli import main, models_cmd
 from immich_memories.cli.models_cmd import fetch_encoder
 from immich_memories.config_loader import Config
@@ -156,3 +164,52 @@ def test_models_fetch_refuses_an_export_that_is_not_the_pinned_one(
     assert result.exit_code == 1
     assert not destination.exists()
     assert "not the pinned" in result.output
+
+
+def _recording_hub(calls: list[tuple[str, str, str]]) -> ModuleType:
+    module = ModuleType("huggingface_hub")
+
+    def hf_hub_download(repo_id: str, filename: str, *, revision: str, **kwargs: object) -> str:
+        calls.append((repo_id, revision, filename))
+        return f"/cache/{repo_id}/{filename}"
+
+    module.hf_hub_download = hf_hub_download  # type: ignore[attr-defined]
+    return module
+
+
+def test_models_fetch_warms_every_pinned_detector_file(
+    served: _Fixture, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple[str, str, str]] = []
+    # WHY: hf_hub_download reaches Hugging Face, and huggingface-hub is an
+    # `editorial`-extra dependency the unit environment does not install.
+    monkeypatch.setitem(sys.modules, "huggingface_hub", _recording_hub(calls))
+    # WHY: the pinned 88 MB export cannot live in the repo.
+    monkeypatch.setattr(models_cmd, "DINOV2_SMALL_ONNX_SHA256", EXPORT_SHA256)
+    config = Config(
+        triage={"encoder": str(tmp_path / "dinov2.onnx"), "encoder_url": served.url},
+    )
+
+    result = _invoke(["models", "fetch"], config)
+
+    assert result.exit_code == 0
+    assert calls == [
+        (MARQO_REPO, MARQO_REVISION, "config.json"),
+        (MARQO_REPO, MARQO_REVISION, "model.safetensors"),
+        (DOCLING_REPO, DOCLING_REVISION, "model.onnx"),
+    ]
+
+
+def test_no_detectors_leaves_the_snapshots_alone(
+    served: _Fixture, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple[str, str, str]] = []
+    # WHY: the same two boundaries as above — the Hub and the optional extra.
+    monkeypatch.setitem(sys.modules, "huggingface_hub", _recording_hub(calls))
+    monkeypatch.setattr(models_cmd, "DINOV2_SMALL_ONNX_SHA256", EXPORT_SHA256)
+    config = Config(triage={"encoder": str(tmp_path / "dinov2.onnx"), "encoder_url": served.url})
+
+    result = _invoke(["models", "fetch", "--no-detectors"], config)
+
+    assert result.exit_code == 0
+    assert calls == []

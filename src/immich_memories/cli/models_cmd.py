@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 import click
 
+from immich_memories.analysis.editorial_preparation_detectors import DETECTOR_SNAPSHOTS
 from immich_memories.triage.encoder import DINOV2_SMALL_ONNX_SHA256
 
 # The pinned export is 88 MB; the cap only exists so a wrong URL cannot fill a disk.
@@ -27,9 +28,14 @@ def register_models_commands(cli_group: click.Group) -> None:
 
     @models.command()
     @click.option("--force", is_flag=True, help="Re-download even when the file is already right")
+    @click.option(
+        "--detectors/--no-detectors",
+        default=True,
+        help="Also warm the two pinned Hugging Face detector snapshots",
+    )
     @click.pass_context
-    def fetch(ctx: click.Context, force: bool) -> None:
-        """Download the pinned DINOv2 encoder export to the configured path."""
+    def fetch(ctx: click.Context, force: bool, detectors: bool) -> None:
+        """Download the pinned encoder export and warm the pinned detector snapshots."""
         config = ctx.obj["config"]
         destination = config.triage.encoder_path
         try:
@@ -44,6 +50,37 @@ def register_models_commands(cli_group: click.Group) -> None:
             raise SystemExit(1) from exc
         verb = "already present at" if outcome == "present" else "downloaded to"
         click.echo(f"encoder: {verb} {destination}")
+        if not detectors:
+            return
+        try:
+            for repo in warm_detectors(config.editorial.preparation.detector_cache_dir):
+                click.echo(f"detector: cached {repo}")
+        except (ImportError, OSError, ValueError) as exc:
+            click.echo(f"detectors: {exc}")
+            raise SystemExit(1) from exc
+
+
+def warm_detectors(cache_dir: str) -> list[str]:
+    """Pull every pinned detector file into the cache the worker reads offline.
+
+    Returns one ``repo@revision`` label per warmed snapshot. The worker runs with
+    ``HF_HUB_OFFLINE=1`` unless `allow_model_downloads` is on, so this is what
+    makes that default honest on a cold install.
+    """
+    try:
+        from huggingface_hub import hf_hub_download
+    except ImportError as exc:
+        raise ImportError(
+            "the detectors need the editorial extra: pip install 'immich-memories[editorial]'"
+        ) from exc
+
+    resolved = str(Path(cache_dir).expanduser()) if cache_dir.strip() else None
+    warmed = []
+    for repo, revision, filenames in DETECTOR_SNAPSHOTS:
+        for filename in filenames:
+            hf_hub_download(repo, filename, revision=revision, cache_dir=resolved)
+        warmed.append(f"{repo}@{revision[:8]}")
+    return warmed
 
 
 def fetch_encoder(
