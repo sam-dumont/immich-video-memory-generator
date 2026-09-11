@@ -23,6 +23,11 @@ from immich_memories.processing.ffmpeg_runner import (
     AssemblyContext,
     _run_ffmpeg_with_progress,
 )
+from immich_memories.processing.hardware_encode import (
+    HardwareChainUnavailable,
+    apply_hardware_encode,
+    encoder_backend,
+)
 from immich_memories.processing.hdr_utilities import (
     _detect_hdr_type,
     _get_colorspace_filter,
@@ -37,7 +42,12 @@ logger = logging.getLogger(__name__)
 
 def encoder_args_for_plan(plan: EncodingPlan) -> list[str]:
     """Build FFmpeg arguments from a resolved plan without selecting again."""
-    args = ["-c:v", plan.encoder, *plan.encoder_args, "-pix_fmt", plan.pixel_format]
+    args = ["-c:v", plan.encoder, *plan.encoder_args]
+    # A VAAPI/QSV encoder reads hardware surfaces; naming a software pixel
+    # format here asks it to encode frames it cannot see. The plan's format
+    # reaches the encode through the upload filter instead.
+    if encoder_backend(plan.encoder) is None:
+        args.extend(["-pix_fmt", plan.pixel_format])
     if plan.codec.value == "h265" and plan.container == "mp4":
         args.extend(["-tag:v", "hvc1"])
     if plan.hdr:
@@ -64,6 +74,32 @@ def encoder_args_for_plan(plan: EncodingPlan) -> list[str]:
             ]
         )
     return args
+
+
+def hardware_command_for_plan(
+    build: Callable[[EncodingPlan], list[str]],
+    plan: EncodingPlan,
+    *,
+    video_label: str | None = None,
+) -> tuple[EncodingPlan, list[str]]:
+    """Build a command on the device, or deliberately build a software one instead.
+
+    Returns the plan that the returned command actually encodes with, so the
+    caller reports the encoder that ran rather than the one it asked for.
+    """
+    try:
+        return plan, apply_hardware_encode(
+            build(plan), pixel_format=plan.pixel_format, video_label=video_label
+        )
+    except HardwareChainUnavailable as exc:
+        fallback = software_fallback_plan(plan)
+        logger.warning(
+            "No %s device chain for this command (%s); encoding with %s instead",
+            plan.encoder,
+            exc,
+            fallback.encoder,
+        )
+        return fallback, build(fallback)
 
 
 def log_ffmpeg_error(result: subprocess.CompletedProcess) -> str:
@@ -192,7 +228,9 @@ class ClipEncoder:
                 str(output_path),
             ]
 
-        plan = self.settings.encoding_plan
+        plan, command = hardware_command_for_plan(
+            build_command, self.settings.encoding_plan, video_label="[vout]"
+        )
 
         def retry_in_software() -> tuple[subprocess.CompletedProcess, EncodingPlan]:
             fallback_plan = software_fallback_plan(plan)
@@ -209,9 +247,7 @@ class ClipEncoder:
             )
 
         try:
-            result = subprocess.run(
-                build_command(plan), capture_output=True, text=True, timeout=1800
-            )
+            result = subprocess.run(command, capture_output=True, text=True, timeout=1800)
             effective_plan = plan
         except (OSError, subprocess.TimeoutExpired):
             if not uses_hardware_encoder(plan):
@@ -325,7 +361,6 @@ class ClipEncoder:
         validate_video_path(input_path, must_exist=True)
 
         plan = self.settings.encoding_plan
-        video_codec_args = encoder_args_for_plan(plan)
         _, color_filter = self.resolve_encode_hdr(AssemblyClip(path=input_path, duration=duration))
         video_filter = f"{color_filter},format={plan.pixel_format}"
 
@@ -342,26 +377,32 @@ class ClipEncoder:
             f"atrim=0:{duration},asetpts=PTS-STARTPTS[aout]"
         )
 
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-i",
-            str(input_path),
-            "-filter_complex",
-            filter_complex,
-            "-map",
-            "[vout]",
-            "-map",
-            "[aout]",
-            *video_codec_args,
-            "-c:a",
-            "aac",
-            "-b:a",
-            "128k",
-            "-movflags",
-            "+faststart",
-            str(output_path),
-        ]
+        def build(graph: str) -> Callable[[EncodingPlan], list[str]]:
+            def build_for(active: EncodingPlan) -> list[str]:
+                return [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(input_path),
+                    "-filter_complex",
+                    graph,
+                    "-map",
+                    "[vout]",
+                    "-map",
+                    "[aout]",
+                    *encoder_args_for_plan(active),
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    "128k",
+                    "-movflags",
+                    "+faststart",
+                    str(output_path),
+                ]
+
+            return build_for
+
+        plan, cmd = hardware_command_for_plan(build(filter_complex), plan, video_label="[vout]")
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
 
@@ -375,26 +416,9 @@ class ClipEncoder:
                 f"asetpts=PTS-STARTPTS[aout]"
             )
 
-            cmd_silent = [
-                "ffmpeg",
-                "-y",
-                "-i",
-                str(input_path),
-                "-filter_complex",
-                filter_complex_silent,
-                "-map",
-                "[vout]",
-                "-map",
-                "[aout]",
-                *video_codec_args,
-                "-c:a",
-                "aac",
-                "-b:a",
-                "128k",
-                "-movflags",
-                "+faststart",
-                str(output_path),
-            ]
+            _, cmd_silent = hardware_command_for_plan(
+                build(filter_complex_silent), plan, video_label="[vout]"
+            )
 
             result = subprocess.run(cmd_silent, capture_output=True, text=True, timeout=1800)
             if result.returncode != 0:
@@ -411,42 +435,45 @@ class ClipEncoder:
         ctx: AssemblyContext,
         progress_callback: Callable[[float, str], None] | None = None,
     ) -> subprocess.CompletedProcess:
-        video_codec_args = encoder_args_for_plan(self.settings.encoding_plan)
-        logger.info(
-            "Encoding final output with %s (%s)",
-            self.settings.encoding_plan.encoder,
-            "HDR" if self.settings.encoding_plan.hdr else "SDR",
-        )
-
         framerate_args = ["-r", str(ctx.target_fps)]
         logger.info(f"Output frame rate: {ctx.target_fps}fps")
 
-        cmd = [
-            "ffmpeg",
-            "-y",
-            *inputs,
-            "-filter_complex",
-            filter_complex,
-            "-map",
-            video_label,
-            "-map",
-            audio_label,
-            *video_codec_args,
-            *framerate_args,
-            "-c:a",
-            "aac",
-            "-b:a",
-            "128k",
-            "-threads",
-            "4",
-            "-filter_complex_threads",
-            "1",
-            "-max_muxing_queue_size",
-            "1024",
-            "-movflags",
-            "+faststart",
-            str(output_path),
-        ]
+        def build(plan: EncodingPlan) -> list[str]:
+            return [
+                "ffmpeg",
+                "-y",
+                *inputs,
+                "-filter_complex",
+                filter_complex,
+                "-map",
+                video_label,
+                "-map",
+                audio_label,
+                *encoder_args_for_plan(plan),
+                *framerate_args,
+                "-c:a",
+                "aac",
+                "-b:a",
+                "128k",
+                "-threads",
+                "4",
+                "-filter_complex_threads",
+                "1",
+                "-max_muxing_queue_size",
+                "1024",
+                "-movflags",
+                "+faststart",
+                str(output_path),
+            ]
+
+        plan, cmd = hardware_command_for_plan(
+            build, self.settings.encoding_plan, video_label=video_label
+        )
+        logger.info(
+            "Encoding final output with %s (%s)",
+            plan.encoder,
+            "HDR" if plan.hdr else "SDR",
+        )
 
         total_duration = self.prober.estimate_duration(clips)
         logger.debug(f"Running assembly: {' '.join(cmd)}")

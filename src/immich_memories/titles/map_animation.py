@@ -16,6 +16,7 @@ from PIL import Image, ImageDraw
 from staticmap import CircleMarker, StaticMap
 
 from immich_memories.processing.encoding_plan import EncodingPlan
+from immich_memories.processing.hardware_encode import apply_hardware_encode
 from immich_memories.titles.ffmpeg_pipe import StderrDrain
 
 from .colors import ceil_rgb_for_hdr
@@ -433,6 +434,8 @@ def _pipe_frames(
         "+faststart",
         str(output_path),
     ]
+
+    cmd = apply_hardware_encode(cmd, pixel_format=plan.pixel_format)
 
     proc = subprocess.Popen(  # noqa: S603
         cmd,

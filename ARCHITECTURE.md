@@ -204,6 +204,7 @@ src/immich_memories/
 │   ├── ffmpeg_runner.py        # FFmpeg execution with progress
 │   ├── hardware.py             # Hardware detection (GPU, encoders)
 │   ├── hardware_detection.py   # Hardware detection backends
+│   ├── hardware_encode.py      # VAAPI/QSV device init + hwupload for built commands
 │   ├── transforms.py           # Video transforms (rotate, scale)
 │   ├── transforms_ffmpeg.py    # FFmpeg transform filters
 │   ├── transforms_smart_crop.py # Smart crop transforms

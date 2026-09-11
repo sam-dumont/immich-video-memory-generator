@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from immich_memories.processing.encoding_plan import EncodingPlan
+from immich_memories.processing.hardware_encode import apply_hardware_encode
 from immich_memories.titles.ffmpeg_pipe import StderrDrain
 
 from .animations import get_animation_preset, reverse_preset
@@ -191,8 +192,10 @@ def create_title_video(
     renderer = TitleRenderer(style, settings, background_image=background_image)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    encoder_args, video_filter = _get_best_encoder(encoding_plan)
+    plan = encoding_plan or standalone_title_encoding_plan()
+    encoder_args, video_filter = _get_best_encoder(plan)
     cmd = _build_ffmpeg_cmd(width, height, fps, duration, encoder_args, video_filter, output_path)
+    cmd = apply_hardware_encode(cmd, pixel_format=plan.pixel_format)
 
     # Use a queue to pass frames between threads
     frame_queue: queue.Queue = queue.Queue(maxsize=10)

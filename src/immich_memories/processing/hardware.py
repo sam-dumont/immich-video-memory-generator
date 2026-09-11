@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Literal
 
+from immich_memories.processing.hardware_encode import device_args, upload_filter
+
 logger = logging.getLogger(__name__)
 
 
@@ -93,24 +95,12 @@ def _check_ffmpeg_encoder(encoder: str) -> bool:
     return success and encoder in output
 
 
-# Extra input-side args a hardware encoder needs to accept a software frame in a probe.
+# The probe has to set up exactly what a render sets up, or it proves nothing
+# about the render — which is how VAAPI and QSV came to pass detection on any
+# box with /dev/dri while every real encode failed.
 _PROBE_UPLOAD_ARGS: dict[str, list[str]] = {
-    "vaapi": [
-        "-init_hw_device",
-        "vaapi=va",
-        "-filter_hw_device",
-        "va",
-        "-vf",
-        "format=nv12,hwupload",
-    ],
-    "qsv": [
-        "-init_hw_device",
-        "qsv=hw",
-        "-filter_hw_device",
-        "hw",
-        "-vf",
-        "hwupload=extra_hw_frames=8,format=qsv",
-    ],
+    backend: [*device_args(backend), "-vf", upload_filter(backend, "yuv420p")]
+    for backend in ("vaapi", "qsv")
 }
 
 
@@ -287,6 +277,13 @@ def get_ffmpeg_encoder(
             args = [preset_flag, preset_val]
             args.extend(_EXTRA_ARGS.get(capabilities.backend, []))
             return encoder, args
+        # A backend can encode one codec and not the other — Gemini Lake VAAPI
+        # advertises H.264 encode and no HEVC, and h265 is the default output.
+        logger.info(
+            "%s cannot encode %s on this device; encoding it in software",
+            capabilities.backend.value,
+            codec,
+        )
 
     # Fallback to software encoding
     sw_preset = _PRESET_VALUES["software"][preset]

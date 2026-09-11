@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 from immich_memories.cache.disk_budget import evict_to_budget
 from immich_memories.processing.hardware import fast_encoder_args
+from immich_memories.processing.hardware_encode import apply_hardware_encode
 from immich_memories.security import sanitize_filename
 
 if TYPE_CHECKING:
@@ -361,6 +362,7 @@ class PreviewBuilder:
             "error",
             preview_path,
         ]
+        cmd = apply_hardware_encode(cmd)
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
 

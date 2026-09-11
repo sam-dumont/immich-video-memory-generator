@@ -10,6 +10,7 @@ import logging
 from pathlib import Path
 
 from immich_memories.processing.encoding_plan import EncodingPlan
+from immich_memories.processing.hardware_encode import apply_hardware_encode
 from immich_memories.titles.ffmpeg_pipe import StderrDrain
 
 from .encoding import title_color_filter, title_encoder_args
@@ -92,6 +93,8 @@ class EndingService:
             "+faststart",
             str(output_path),
         ]
+
+        cmd = apply_hardware_encode(cmd, pixel_format=encoding_plan.pixel_format)
 
         # Create base background (same as title but no text)
         base_bg = create_background_for_style(

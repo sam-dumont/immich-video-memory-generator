@@ -25,6 +25,7 @@ from immich_memories.processing.hardware import (
     get_ffmpeg_encoder,
     get_ffmpeg_hwaccel_args,
 )
+from immich_memories.processing.hardware_encode import apply_hardware_encode
 from immich_memories.security import private_temp_dir, validate_video_path
 
 logger = logging.getLogger(__name__)
@@ -321,7 +322,7 @@ class ClipExtractor:
         cmd.extend(["-movflags", "+faststart"])
         cmd.append(str(output_path))
 
-        return cmd
+        return apply_hardware_encode(cmd)
 
     def _append_encoder_args(
         self,
@@ -381,8 +382,11 @@ class ClipExtractor:
         progress_callback: Callable[[float], None],
         hw_caps: HWAccelCapabilities | None,
     ) -> None:
-        if hw_caps and hw_caps.has_encoding and "nvenc" in stderr.lower():
-            logger.warning("Hardware encoding failed, falling back to software")
+        if hw_caps and hw_caps.has_encoding:
+            logger.warning(
+                "Hardware encoding failed (%s); falling back to software",
+                stderr.strip()[-200:],
+            )
             self._extract_with_reencode(segment, output_path, progress_callback, use_hw_accel=False)
             return
         raise RuntimeError(f"Failed to extract clip: {stderr}")

@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from immich_memories.processing.encoding_plan import EncodingPlan
+from immich_memories.processing.hardware_encode import apply_hardware_encode
 
 from .encoding import standalone_title_encoding_plan, title_color_filter, title_encoder_args
 
@@ -213,6 +214,8 @@ def create_title_ffmpeg(
         str(output_path),
     ]
 
+    cmd = apply_hardware_encode(cmd, pixel_format=plan.pixel_format)
+
     logger.info(f"Generating title with FFmpeg: {title}")
     logger.debug(f"FFmpeg command: {' '.join(cmd)}")
 
@@ -376,6 +379,8 @@ def create_title_with_effects(
         "+faststart",
         str(output_path),
     ]
+
+    cmd = apply_hardware_encode(cmd, pixel_format=plan.pixel_format, video_label="[encoded]")
 
     logger.info(f"Generating title: {title}")
     logger.debug(f"Filter: {filter_complex}")

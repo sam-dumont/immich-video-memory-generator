@@ -19,6 +19,10 @@ from immich_memories.processing.hardware import (
     get_ffmpeg_encoder,
     get_ffmpeg_hwaccel_args,
 )
+from immich_memories.processing.hardware_encode import (
+    HardwareChainUnavailable,
+    apply_hardware_encode,
+)
 from immich_memories.security import validate_video_path
 
 logger = logging.getLogger(__name__)
@@ -168,6 +172,12 @@ def transform_fit(
     cmd.extend(encode_args)
     cmd.append(str(output_path))
 
+    try:
+        cmd = apply_hardware_encode(cmd)
+    except HardwareChainUnavailable as exc:
+        logger.info("Fit has no device chain (%s); transforming in software", exc)
+        return _transform_fit_software(input_path, output_path, target_resolution, output_crf)
+
     logger.debug(f"Running: {' '.join(cmd)}")
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
 
@@ -270,6 +280,7 @@ def transform_fill(
     encode_args = _build_encode_args(hw_caps, hardware_config, output_crf)
     cmd.extend(encode_args)
     cmd.append(str(output_path))
+    cmd = apply_hardware_encode(cmd)
 
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
 
@@ -359,6 +370,7 @@ def apply_crop_transform(
     encode_args = _build_encode_args(hw_caps, hardware_config, output_crf)
     cmd.extend(encode_args)
     cmd.append(str(output_path))
+    cmd = apply_hardware_encode(cmd)
 
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
 

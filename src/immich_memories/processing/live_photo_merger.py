@@ -28,6 +28,7 @@ from immich_memories.processing.encoding_plan import (
 )
 from immich_memories.processing.hardware import HWAccelCapabilities
 from immich_memories.processing.hardware_detection import detect_hardware_acceleration
+from immich_memories.processing.hardware_encode import apply_hardware_encode
 
 # Default Live Photo clip duration (1.5s before + 1.5s after shutter)
 DEFAULT_CLIP_DURATION = 3.0
@@ -582,11 +583,11 @@ def build_merge_command(
     parts, v_labels, a_labels = _build_trim_filters(
         trim_points, a_trims, n, has_audio, burst_fps(clip_paths) if n > 1 else 0.0
     )
-    _build_concat_and_map(cmd, parts, v_labels, a_labels, n, has_audio)
+    video_label = _build_concat_and_map(cmd, parts, v_labels, a_labels, n, has_audio)
 
     plan = burst_encoding_plan(is_hdr=is_hdr, hardware_enabled=hardware_enabled)
     _append_encoding_args(cmd, plan, has_audio, output)
-    return cmd
+    return apply_hardware_encode(cmd, pixel_format=plan.pixel_format, video_label=video_label)
 
 
 def _build_trim_filters(
@@ -634,8 +635,8 @@ def _build_concat_and_map(
     a_labels: list[str],
     n: int,
     has_audio: bool,
-) -> None:
-    """Append concat filter and stream mapping to FFmpeg command."""
+) -> str:
+    """Append concat filter and stream mapping; return the mapped video label."""
     if n > 1:
         v_concat = "".join(v_labels)
         parts.append(f"{v_concat}concat=n={n}:v=1:a=0[outv]")
@@ -645,14 +646,11 @@ def _build_concat_and_map(
 
     cmd.extend(["-filter_complex", ";\n".join(parts)])
 
-    if n > 1:
-        cmd.extend(["-map", "[outv]"])
-        if has_audio:
-            cmd.extend(["-map", "[outa]"])
-    else:
-        cmd.extend(["-map", f"[{v_labels[0].strip('[]')}]"])
-        if has_audio:
-            cmd.extend(["-map", f"[{a_labels[0].strip('[]')}]"])
+    video_label = "[outv]" if n > 1 else f"[{v_labels[0].strip('[]')}]"
+    cmd.extend(["-map", video_label])
+    if has_audio:
+        cmd.extend(["-map", "[outa]" if n > 1 else f"[{a_labels[0].strip('[]')}]"])
+    return video_label
 
 
 def burst_encoding_plan(*, is_hdr: bool, hardware_enabled: bool = True) -> EncodingPlan:
