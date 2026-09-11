@@ -405,9 +405,11 @@ _QUALITY_CRF = {
 _DEFAULT_QUALITY_CRF = _QUALITY_CRF["balanced"]
 
 # `output.quality: fast` means the balanced picture as quickly as the backend
-# can produce it, so it drives the encoder effort preset too.
+# can produce it, so it drives the encoder effort preset too. A table rather
+# than a branch, to match `_QUALITY_CRF` beside it: both answer "what does this
+# tier imply", and a tier with no opinion is simply absent.
 EncoderPreset = Literal["fast", "balanced", "quality"]
-_FAST_QUALITY_PRESET: EncoderPreset = "fast"
+_QUALITY_ENCODER_PRESET: dict[str, EncoderPreset] = {"fast": "fast"}
 
 
 def quality_encoder_preset(quality: str, configured_preset: EncoderPreset) -> EncoderPreset:
@@ -416,7 +418,7 @@ def quality_encoder_preset(quality: str, configured_preset: EncoderPreset) -> En
     Only `fast` has an opinion: it is the one tier defined by speed rather than
     by a point on the quality curve, so it overrides the configured preset.
     """
-    return _FAST_QUALITY_PRESET if quality == "fast" else configured_preset
+    return _QUALITY_ENCODER_PRESET.get(quality, configured_preset)
 
 
 def quality_to_crf(quality: str) -> int:

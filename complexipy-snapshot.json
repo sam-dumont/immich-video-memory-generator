@@ -2537,7 +2537,7 @@
         ]
       }
     ],
-    "complexity": 84
+    "complexity": 83
   },
   {
     "path": "src/immich_memories/processing/probe_cache.py",
