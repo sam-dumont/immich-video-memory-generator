@@ -160,12 +160,18 @@ that decides whether a second machine is worth it, and it says yes.
 fill a GPU; the batch is too small and the kernel launches dominate. So "put the encoder on a GPU"
 is not a plan, it is a rounding error, and §5.1's single-image `/facts` shape is why.
 
-**One trap, worth a line because it will bite the service.** The captioner's *first* request cost
-**31.3 s** — indistinguishable from the Celeron — while every later one cost 0.94 s. That is CUDA
-PTX compilation for an architecture the shipped binary has no cubin for, and the JIT cache dies
-with the container. A service that unloads on idle (§3, copied from immich-ml) pays that 31 s on
-every reload, so the `cuda` variant needs either a build carrying SM 7.5 or a persistent
-`CUDA_CACHE_PATH` volume. Unmeasured which; named so it is not discovered in production.
+**One trap, and it is now diagnosed rather than suspected.** The captioner's *first* request cost
+**31.3 s** — indistinguishable from the Celeron — while every later one cost 0.94 s. `cuobjdump`
+on the stock image's `libggml-cuda.so` says exactly why:
+
+| | architectures shipped | what a card of that class does |
+|---|---|---|
+| **cubins** (ready to run) | `sm_86`, `sm_89`, `sm_120a` | runs immediately |
+| **PTX only** (must be JIT-compiled) | `sm_50`, `sm_61`, `sm_70`, `sm_75`, `sm_80`, `sm_90` | compiles 143 modules at first use |
+
+143 cubins per architecture, 858 PTX modules. The T1000 is `sm_75` — **PTX only** — so the first
+request compiled the lot, and the driver's JIT cache lives in the container and dies with it. The
+fix is §5.2c.
 
 Two shapes hide in that table, and they are the whole story:
 
@@ -179,6 +185,37 @@ Two shapes hide in that table, and they are the whole story:
    against 0.171 s is `llama.cpp` Q8\_0 on a no-AVX CPU against MLX 4-bit on Apple silicon —
    different runtime, different quantisation, different silicon. What is safe to say is the
    absolute number, and it is 30.9 s.
+
+### 1.3c Topology 3 end to end: they serialise, and it still wins
+
+`prepare_editorial_annotations` runs its stages **strictly in sequence** — previews, pixels, public
+heads, detectors, captions — each a complete pass over the whole scope. The only concurrency
+anywhere in preparation is the caption stage's `ThreadPoolExecutor`, which parallelises within that
+one stage. There is no pipelining between stages, so **the totals add; they do not overlap.**
+
+That settles the DS423+ question, and the answer depends on *how much* is offloaded:
+
+| what runs where | s/picture | 10,793 pictures |
+|---|---:|---:|
+| Topology 2 — NAS alone, no captions | 1.2315 | 3 h 41 min |
+| Topology 2 — NAS alone, with captions | 32.1 | **96 h** |
+| **Topology 3a — only the captioner offloaded**, NAS keeps encoder, heads and detectors | 2.168 | **6 h 30 min** |
+| **Topology 3b — the whole ML service offloaded** (what §5.1 specifies) | 1.127 | **3 h 23 min** |
+
+Two things fall out that are worth saying plainly.
+
+**Offloading the whole ML service beats offloading only the captioner by three hours.** 3a is the
+tempting shortcut — the captioner is the expensive seat, so move just that — but it leaves the
+Celeron doing 1.23 s of encoder and detector work it is 20–55× too slow for. Move the service, not
+the seat.
+
+**Topology 3 with captions is faster than topology 2 without them** — 3 h 23 against 3 h 41. A NAS
+owner who attaches a GPU box does not trade time for descriptions; they get the descriptions and a
+shorter run. That is the single most useful sentence in this section.
+
+What remains on the NAS in 3b is 0.165 s/picture of decode, resize, hash and tile — **29 minutes**
+of the 3 h 23. The other 83 % is the captioner on the GPU, which is where any further effort
+belongs (§9 names the untried lever).
 
 ### 1.4 What one library costs
 
@@ -497,6 +534,63 @@ re-derives no fact. It is a one-line default change that gives back 6–8× of e
 `CUDAExecutionProvider`, and the same picture yields the same `encoder_key` and the same six head
 labels on both.
 
+### 5.2c The CUDA JIT fix, concretely
+
+§1.3b measured a 31.3 s first request on a T1000 against 0.94 s for every one after, and
+`cuobjdump` named the cause: the stock `llama.cpp:server-cuda` fatbin carries cubins for only
+`sm_86`, `sm_89` and `sm_120a`, and ships everything else — including `sm_75` — as PTX the driver
+must compile at first use. A service that unloads on idle (§3) pays it again on every reload.
+
+**Two fixes. Ship both: one is ours to control, the other covers the cards we did not think of.**
+
+**Fix A — prebuild the cubins in our own `-cuda` image (W5).** We own that Dockerfile, so this is
+a build flag:
+
+```
+CMAKE_CUDA_ARCHITECTURES="61-real;75-real;86-real;89-real;120-real;\
+                          50-virtual;70-virtual;80-virtual;90-virtual;120-virtual"
+```
+
+| entry | cards | why it is on the list |
+|---|---|---|
+| `61` | GTX 10-series, Tesla P4/P40 | the commonest *old* card in a home server; P40s are bought for cheap VRAM |
+| `75` | GTX 16-series, RTX 20-series, T4, T1000/T600 | **the owner's own card**, and T4 is the commonest cheap cloud GPU |
+| `86` | RTX 30-series, A2000/A4000, A10 | the commonest current home GPU |
+| `89` | RTX 40-series, L4, L40S | current generation |
+| `120` | RTX 50-series | newest consumer, and already in the stock image |
+| `50/70/80/90` virtual | Maxwell, V100, A100, H100 | PTX only: datacentre parts a self-hoster does not own, and old cards where one JIT is acceptable |
+
+**What it costs, measured**: each *real* architecture adds ~112 MB of cubin before the fatbin is
+compressed (`sm_86` 112.5 MB, `sm_89` 112.2 MB, `sm_120a` 153.9 MB, 143 modules each), against
+1.31 GB of PTX for the six virtual ones. The whole library is 173 MB on disk today. Adding `61`
+and `75` is the price of never JIT-compiling on the two commonest self-hosted cards.
+
+**What a user with an unlisted card gets**: exactly today's behaviour — the virtual entries keep
+PTX in the image, so any card CUDA supports still runs, paying one JIT per process. Nothing is
+excluded; the list only decides who pays.
+
+**Fix B — persist the JIT cache, for those unlisted cards.** Two environment variables on the
+inference container, so the driver's cache outlives the container:
+
+| | value | where |
+|---|---|---|
+| `CUDA_CACHE_PATH` | `/cache/cuda-jit` | the existing model-cache volume (§5.3), not a new one |
+| `CUDA_CACHE_MAXSIZE` | `536870912` (512 MB) | bounded on purpose — an unbounded cache on a NAS or a shared node is how you cause a disk-pressure eviction |
+
+It goes on the model cache volume because that volume already exists, is already per-deployment,
+and is already the thing a user is told to give space to. **Default: set on the `cuda` variant
+only** — it is inert on `cpu`, and harmful nowhere.
+
+**Honesty about what is measured here.** Fix A's architecture list is evidence-backed:
+`cuobjdump` on the shipped library, quoted above. **Fix B is not measured.** The image needed to
+measure it was garbage-collected off the GPU node between runs, and re-pulling 4.35 GB onto a node
+sitting at 21 GB free — after a disk-pressure eviction this work already caused once — was not a
+trade worth making for a number whose direction is not in doubt. The one adjacent measurement that
+*was* taken says something useful anyway: the ONNX seats on the same card, same driver, wrote
+**0.0 MB** of JIT cache and had a 0.42 s first inference, so **this is a `llama.cpp` packaging
+problem, not a CUDA one**, which is exactly why Fix A is the real fix and Fix B only the safety
+net.
+
 ### 5.3 Model delivery
 
 **Recommendation: bake what is ours and tiny, fetch what is large, verify everything.**
@@ -696,7 +790,7 @@ Reordered so that the items §1 showed to be bugs come before the items §1 show
 | **W3** | Split the `editorial` extra by device: CPU torch index for `cpu`, CUDA wheels only for `cuda`. | S | `docker buildx build --platform linux/amd64` produces a `cpu` image with zero `nvidia-*` wheels. Measured target: the non-torch base is 700 MB and the full CPU image 1.62 GB (§5.2). |
 | **W3b** | **Export the Marqo detector to ONNX and drop the torch family.** `scripts/export_marqo_onnx.py` already does it: a 22.5 MB single-file graph, every label agreeing with torch across the fixtures (max probability delta 1.19e-7 with timm's transform, 1.01e-3 with the torch-free numpy transform in the same script). | M | Label agreement on a held-out sample; the `nsfw_marqo` fact version bumps and re-derives. **Justified by size and dependency hygiene, not speed** — §1.6 measured ONNX at 0.469 s vs torch at 0.440 s on the NAS. What it buys is 920 MB, 11 s of start-up, and W0's whole class of bug. |
 | **W4** | The service: `services/inference/` with `/ping`, `/health`, `/facts`, pydantic-settings under `IMMICH_MEMORIES_INFERENCE_`, a thread pool in front of ORT, idle unload without idle suicide. | M | `/facts` on a fixed picture returns **the same labels and versions** as today's in-process path, and the same `encoder_key`. (Not byte-identical confidences — §4 explains why that test cannot be passed across providers.) |
-| **W5** | `docker/Dockerfile.inference` with `ARG DEVICE`, `builder-${DEVICE}` / `prod-${DEVICE}`, CUDA runtime base for `cuda`. | M | Both variants build; `:X.Y.Z` and `:X.Y.Z-cuda` publish; the cuda image loads a CUDA EP session. |
+| **W5** | `docker/Dockerfile.inference` with `ARG DEVICE`, `builder-${DEVICE}` / `prod-${DEVICE}`, CUDA runtime base for `cuda`. **Carries §5.2c's `CMAKE_CUDA_ARCHITECTURES` list and its two `CUDA_CACHE_*` variables.** | M | Both variants build; `:X.Y.Z` and `:X.Y.Z-cuda` publish; the cuda image loads a CUDA EP session; and on a Turing card the captioner's first request is under a second rather than 31 s. |
 | **W6** | `docker/hwaccel.inference.yml` (`cpu: {}`, `cuda:` reservation) and an inference service in `docker-compose.yml`. | S | `docker compose up` on a GPU host with the `cuda` extends block gives a service whose `/health` names a CUDA provider. |
 | **W7** | Model cache + runtime fetch inside the service: encoder digest-verified, detector snapshots at pinned revisions, optional boot preload. Share the module with `models fetch`. | M | Cold container, empty volume, one `docker compose up`: `/health` reports every producer loaded and the encoder digest matches. Closes launch-readiness 4.1 and 4.2. |
 | **W8** | Client side: `inference.facts_base_url`, blank = in-process. Store the `encoder_key` and versions the service returned, verbatim. | M | The same library prepared in-process and via the service produces the same labels in the same bank rows. |
@@ -851,8 +945,13 @@ seven have nothing to do with a NAS at all.
   resize, hash and tile still have to run somewhere in topology 3, and on that node they were not
   timed — it has 16 cores, so they should land between machines A and B, but "should" is not a
   measurement.
-- **Whether the 31 s first-request CUDA JIT can be removed** (§1.3b). It is diagnosed, not fixed:
-  nobody has tried a build carrying SM 7.5 cubins or a persistent JIT cache.
+- **Fix B of §5.2c — the persistent JIT cache — end to end.** Diagnosed, designed and bounded, but
+  the cold/warm/steady numbers were not taken: the image was GC'd off the node and re-pulling
+  4.35 GB onto 21 GB of free disk was not worth it. Fix A needs no such measurement; its evidence
+  is the `cuobjdump` listing.
+- **Caption concurrency on a GPU.** `--parallel 1` was measured. On the CPU, concurrency 4 *hurt*
+  (§1.6), but that was a single-slot server on four cores; a T1000 with `--parallel 4` may be the
+  one remaining lever on topology 3's 83 % caption share (§1.3c). Untried.
 - **W5's exit test proper.** Topology 3 was measured with one-shot Pods running stock upstream
   images, not with our own `-cuda` image, which does not exist yet.
 - **The DS423+ render.** §5.B still rests on judgement. `/dev/dri/renderD128` exists on that box,
