@@ -6,73 +6,8 @@ using average hash (aHash) algorithm, plus Hamming distance calculation.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import cv2
 import numpy as np
-
-
-def compute_video_hash(
-    video_path: str | Path,
-    num_frames: int = 8,
-    hash_size: int = 8,
-) -> str:
-    """Compute a perceptual hash for a video.
-
-    Uses average hash (aHash) on multiple frames sampled throughout the video.
-
-    Args:
-        video_path: Path to the video file.
-        num_frames: Number of frames to sample.
-        hash_size: Size of the hash (hash_size x hash_size bits).
-
-    Returns:
-        Hexadecimal hash string.
-    """
-    video_path = Path(video_path)
-    cap = cv2.VideoCapture(str(video_path))
-    try:
-        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        if frame_count <= 0:
-            return ""
-
-        # Sample frames evenly throughout the video
-        frame_indices = np.linspace(0, frame_count - 1, num_frames, dtype=int)
-
-        frame_hashes = []
-        for idx in frame_indices:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
-            ret, frame = cap.read()
-            if not ret:
-                continue
-
-            # Compute average hash for this frame
-            frame_hash = _compute_frame_hash(frame, hash_size)
-            frame_hashes.append(frame_hash)
-    finally:
-        cap.release()
-
-    if not frame_hashes:
-        return ""
-
-    # Combine frame hashes
-    # Convert each hash to binary, then combine
-    combined_bits = []
-    for h in frame_hashes:
-        # Convert hex to binary
-        bin_str = f"{int(h, 16):b}".zfill(hash_size * hash_size)
-        combined_bits.extend([int(b) for b in bin_str])
-
-    # Create final hash by taking majority vote across frames
-    final_bits = []
-    chunk_size = len(combined_bits) // len(frame_hashes)
-    for i in range(chunk_size):
-        votes = [combined_bits[j * chunk_size + i] for j in range(len(frame_hashes))]
-        final_bits.append(1 if sum(votes) > len(votes) / 2 else 0)
-
-    # Convert to hex
-    final_hash = f"{int(''.join(map(str, final_bits)), 2):x}".zfill(hash_size * hash_size // 4)
-    return final_hash
 
 
 def _compute_frame_hash(frame: np.ndarray, hash_size: int = 8) -> str:

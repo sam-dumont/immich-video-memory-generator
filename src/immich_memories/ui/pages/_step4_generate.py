@@ -196,13 +196,6 @@ def normalize_ui_output_path(state, output_path: Path) -> Path:
     return normalize_output_path(output_path, selection.container)
 
 
-def _filter_selected_photos(state) -> list | None:
-    """Return only photo assets whose IDs are in the selected set."""
-    if not state.include_photos or not state.photo_assets:
-        return None
-    return [p for p in state.photo_assets if p.id in state.selected_photo_ids]
-
-
 def _build_generation_params(state, selected_clips, output_path):
     """Build GenerationParams from UI AppState."""
     from immich_memories.api.immich import SyncImmichClient

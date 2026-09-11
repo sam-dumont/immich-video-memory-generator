@@ -11,10 +11,43 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 
-from immich_memories.analysis.clip_scaler import describes_the_same_thing
 from immich_memories.analysis.duplicate_hashing import hamming_distance
 from immich_memories.analysis.editorial_picture_evidence import PictureEvidenceOverlay
 from immich_memories.analysis.selection_same_picture import SELECTS_MAX_CORROBORATION
+
+# Jaccard over description tokens, at the knee of the measured curve. On
+# 1,124,250 real pairs from the cache: 0.60 collapses 33, 0.55 collapses 74,
+# 0.50 collapses 135 — the count triples per step below this, which is where
+# genuinely different shots start merging. Above it, real duplicates survive:
+# the same child in the same hallway scored 0.70 differing only on a t-shirt.
+_SAME_THING_THRESHOLD = 0.60
+
+# Short words carry setting, not subject. "in the kitchen" should not make a
+# birthday and the washing-up look alike.
+_MEANINGFUL_WORD = 4
+
+
+def _describing_words(clip: object) -> frozenset[str]:
+    """What a clip is said to show, as comparable tokens."""
+    described = getattr(clip, "llm_description", None)
+    subjects = getattr(clip, "llm_subjects", None) or []
+    text = " ".join([str(described or ""), *(str(s) for s in subjects)])
+    return frozenset(re.findall(rf"[a-z]{{{_MEANINGFUL_WORD},}}", text.lower()))
+
+
+def describes_the_same_thing(first: object, second: object) -> bool:
+    """Whether two clips are photographs of one thing rather than two.
+
+    Asks what the clips are OF, using descriptions already banked -- no model
+    call. A clip nothing has described is never merged: treating "unknown" as
+    "similar" would quietly collapse the undescribed majority into each other.
+    """
+    left = _describing_words(getattr(first, "clip", first))
+    right = _describing_words(getattr(second, "clip", second))
+    if not left or not right:
+        return False
+    overlap = len(left & right) / len(left | right)
+    return overlap >= _SAME_THING_THRESHOLD
 
 
 def displayed_sample_members(unit: Mapping[str, Any]) -> tuple[str, ...]:

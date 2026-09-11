@@ -12,7 +12,7 @@ Apple Silicon Macs (M1, M2, M3, M4, M5) are probably the best platform for this 
 - **VideoToolbox encoding**: uses the dedicated media engine on the chip instead of the CPU cores.
 - **Vision Framework face detection**: runs on the Neural Engine. More accurate than the OpenCV CPU fallback, especially with small or partially occluded faces.
 - **Unified memory**: no CPU/GPU transfer overhead. Frames stay in the same memory pool whether the CPU, GPU, or Neural Engine is working on them.
-- **mlx-vlm for local LLMs**: run vision models locally with Metal acceleration for [LLM content analysis](../../create/pipeline/llm-content-analysis.md). No API costs, no data leaving your machine.
+- **mlx-vlm for local LLMs**: run the editor's model locally with Metal acceleration ([LLM titles and mood](../../create/pipeline/llm-content-analysis.md), [Editorial annotation setup](../configuration/editorial-preparation.md)). No API costs, no data leaving your machine.
 
 ## Installation
 

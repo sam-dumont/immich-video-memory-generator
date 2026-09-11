@@ -13,9 +13,7 @@ import pytest
 
 from immich_memories.api.models import AssetType
 from immich_memories.config_loader import Config
-from immich_memories.config_models_render import PhotoConfig
 from immich_memories.photos.animator import detect_photo_hdr_type
-from immich_memories.photos.scoring import score_photo
 from immich_memories.timeperiod import DateRange
 from tests.integration.conftest import requires_ffmpeg
 
@@ -101,22 +99,6 @@ class TestImmichPhotoFetch:
         assert len(has_exif) >= 1
 
 
-class TestImmichPhotoScoring:
-    """Tests that verify photo scoring works on real Immich data."""
-
-    def test_scoring_produces_valid_scores(self, immich_photos):
-        """score_photo returns valid scores for real photos."""
-        photos, _config, _client = immich_photos
-
-        config = PhotoConfig()
-        scores = [score_photo(p, config) for p in photos[:20]]
-
-        assert all(0.0 <= s <= 1.0 for s in scores)
-        # At least some variance in scores
-        if len(scores) >= 3:
-            assert len(set(scores)) >= 2, "All photos scored identically — scoring may be broken"
-
-
 class TestImmichPhotoHdrDetection:
     """Tests that verify HDR detection against real Immich photos."""
 
@@ -155,20 +137,3 @@ class TestImmichPhotoWithPeople:
             logger.info(
                 f"Photo {first.id} has {len(first.people)} people: {[p.name for p in first.people]}"
             )
-
-    def test_face_data_available_for_scoring(self, immich_photos):
-        """Photos with faces score higher than those without."""
-        photos, _config, _client = immich_photos
-
-        with_people = [p for p in photos if p.people]
-        without_people = [p for p in photos if not p.people]
-
-        if not with_people or not without_people:
-            pytest.skip("Need both photos with and without people for comparison")
-
-        config = PhotoConfig()
-        score_with = score_photo(with_people[0], config)
-        score_without = score_photo(without_people[0], config)
-
-        logger.info(f"Score with faces: {score_with:.3f}, without: {score_without:.3f}")
-        assert score_with > score_without

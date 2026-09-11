@@ -153,17 +153,3 @@ def downscale_video(
     except (OSError, subprocess.SubprocessError) as e:
         logger.warning(f"Downscaling error: {e}")
         return source_path
-
-
-def cleanup_downscaled(
-    video_path: Path,
-    target_height: int = DEFAULT_ANALYSIS_HEIGHT,
-) -> None:
-    """Remove downscaled version if it exists."""
-    downscaled = get_downscaled_path(video_path, target_height)
-    if downscaled.exists() and downscaled != video_path:
-        try:
-            downscaled.unlink()
-            logger.debug(f"Cleaned up downscaled video: {downscaled}")
-        except OSError as e:
-            logger.warning(f"Failed to cleanup downscaled video: {e}")

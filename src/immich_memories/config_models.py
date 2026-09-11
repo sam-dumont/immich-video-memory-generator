@@ -94,11 +94,6 @@ class HardwareAccelConfig(BaseModel):
         default="balanced", description="Encoder speed/quality tradeoff"
     )
 
-    # Use GPU for frame analysis (OpenCV CUDA, etc.)
-    gpu_analysis: bool = Field(
-        default=True, description="Use GPU for video analysis when available"
-    )
-
     # Decode on GPU (can speed up processing significantly)
     gpu_decode: bool = Field(default=True, description="Use hardware video decoding")
 

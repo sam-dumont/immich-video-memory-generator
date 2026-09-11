@@ -100,6 +100,4 @@ six stages, the two readings, the structure and story planners, carriers and
 durable attempts — is written up in
 [Story-first selection: the shipped design](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/docs/designs/2026-09-10-story-first-selection.md)
 in the repository. The runtime cost of every stage is in the
-[Pipeline Overview](pipeline-overview); the scoring tables the old selector
-used are kept as a [legacy reference](clip-selection-scoring) until they are
-removed.
+[Pipeline Overview](pipeline-overview).

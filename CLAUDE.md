@@ -28,7 +28,7 @@ make dev
 # Run tests
 make test
 
-# Run only what the torch-family extras unlock (face/audio-ml/demucs)
+# Run only what the torch-family extras unlock (demucs/editorial)
 make test-extras
 
 # Lint (ruff check)
@@ -230,7 +230,7 @@ tests/integration/
 **Config:**
 - New config options MUST have a sane default
 - User-facing options go in Tier 1 (top-level YAML). Everything else in Tier 2 (`advanced:`)
-- Tier 2 sections (`_TIER2_SECTIONS` in `config_loader.py`): analysis, hardware, llm, musicgen, ace_step, content_analysis, audio_content, speech, transcription, server, auth, automation, notifications
+- Tier 2 sections (`_TIER2_SECTIONS` in `config_loader.py`): analysis, hardware, llm, musicgen, ace_step, server, auth, automation, notifications, triage, editorial
 - At runtime, all sections are flat on Config (`config.analysis`, not `config.advanced.analysis`)
 - Do NOT add migration/compat shims for renamed fields — deprecate, document, remove
 

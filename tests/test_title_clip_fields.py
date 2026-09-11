@@ -25,7 +25,6 @@ def _rich_clip() -> AssemblyClip:
         latitude=50.8,
         longitude=4.3,
         location_name="Jette",
-        has_speech=True,
         outgoing_transition="fade",
         is_photo=True,
         has_music=True,

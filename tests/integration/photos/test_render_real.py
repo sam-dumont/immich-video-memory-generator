@@ -14,7 +14,7 @@ import pytest
 
 from immich_memories.config_loader import Config
 from immich_memories.config_models_render import PhotoConfig
-from immich_memories.photos.photo_pipeline import _render_single_photo, score_photos
+from immich_memories.photos.photo_pipeline import _render_single_photo
 from immich_memories.timeperiod import DateRange
 from tests.integration.conftest import ffprobe_json, get_duration, has_stream, requires_ffmpeg
 
@@ -63,29 +63,6 @@ def immich_photo_assets():
 
     logger.info(f"Found {len(photos)} photos in Immich")
     return photos, config, client
-
-
-class TestScorePhotosRealImmich:
-    def test_score_photos_returns_valid_scores(self, immich_photo_assets, tmp_path):
-        """score_photos with real assets should return (asset, score) tuples in [0, 1]."""
-        photos, config, client = immich_photo_assets
-        photo_config = PhotoConfig()
-
-        scored = score_photos(
-            assets=photos[:10],
-            config=photo_config,
-            video_clip_count=20,
-            work_dir=tmp_path / "score_work",
-            download_fn=client.download_asset,
-            thumbnail_fn=client.get_asset_thumbnail,
-        )
-
-        assert len(scored) > 0
-        for _asset, score in scored:
-            assert 0.0 <= score <= 1.0
-        logger.info(
-            f"Scored {len(scored)} photos, range [{scored[0][1]:.3f} - {scored[-1][1]:.3f}]"
-        )
 
 
 class TestRenderSinglePhotoRealImmich:

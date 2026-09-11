@@ -106,9 +106,9 @@ def test_run_context_sorts_exact_windows_without_collapsing_the_gaps(
     earlier = _window(2015, 8, 20)
 
     context = EditorialRunContext(
-        key="then-and-now",
-        label="Then and now",
-        product="then_and_now",
+        key="on-this-day",
+        label="On this day",
+        product="on_this_day",
         date_ranges=(later, earlier),
         target_seconds=90,
         artifact_dir=tmp_path,
@@ -235,29 +235,15 @@ def test_smart_pipeline_factory_preserves_the_existing_constructor_seam(tmp_path
     ):
         actual = build_smart_pipeline(
             client="client",
-            analysis_cache="analysis-cache",
             thumbnail_cache="thumbnail-cache",
             config="pipeline-config",
-            run_id="run-1",
-            analysis_config=config.analysis,
             app_config=config,
             editorial_context=context,
             dry_run=False,
-            triage="triage",
         )
 
     assert actual is expected
-    smart_pipeline.assert_called_once_with(
-        client="client",
-        analysis_cache="analysis-cache",
-        thumbnail_cache="thumbnail-cache",
-        config="pipeline-config",
-        run_id="run-1",
-        analysis_config=config.analysis,
-        app_config=config,
-        planner=planner,
-        triage="triage",
-    )
+    smart_pipeline.assert_called_once_with(config="pipeline-config", planner=planner)
 
 
 def test_default_store_is_initialized_in_the_library_cache(tmp_path):
@@ -340,9 +326,9 @@ def test_runtime_acquires_each_exact_window_through_the_real_text_lane(tmp_path)
     earlier = _window(2015, 8, 20)
     later = _window(2025, 8, 20)
     context = EditorialRunContext(
-        key="then-and-now",
-        label="Then and now",
-        product="then_and_now",
+        key="on-this-day",
+        label="On this day",
+        product="on_this_day",
         date_ranges=(later, earlier),
         target_seconds=90,
         artifact_dir=tmp_path / "artifacts",

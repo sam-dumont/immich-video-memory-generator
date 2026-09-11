@@ -16,7 +16,7 @@ Now the four main orchestrators compose smaller service objects via constructor 
 | Orchestrator | Services | What it does |
 |---|---|---|
 | **VideoAssembler** | FFmpegProber, FilterBuilder, ClipEncoder, AssemblyEngine, AudioMixerService, TitleInserter | Assembles clips into final video |
-| **SmartPipeline** | RuntimeEditorialPlanner (from `build_smart_pipeline`), PreviewBuilder; the legacy ClipAnalyzer, ClipRefiner, ClipScaler and SelectionQuality stay composed for the unreached `run_selection()` until the removal phase | Runs the story-first selection and projects its plan into a `PipelineResult` |
+| **SmartPipeline** | RuntimeEditorialPlanner (from `build_smart_pipeline`) | Runs the story-first selection and projects its plan into a `PipelineResult` |
 | **ImmichClient** | SearchService, AllAssetsService, AssetService, PersonService, AlbumService | Talks to the Immich API |
 | **TitleScreenGenerator** | RenderingService, EndingService, TripService | Creates title/ending screens |
 
@@ -56,7 +56,7 @@ so the first failure doesn't hide the ones behind it and you get the whole list 
 **Tier 3: Tests** (runs after both Tier 1 and Tier 2 pass):
 - Full test suite (Ubuntu on 3.11/3.12/3.13; macOS on 3.13 for a pull request, all three on main)
 - `make test-extras`: only the tests marked `extras`, which are what the torch family
-  (audio-ml/demucs) unlocks
+  (demucs/editorial) unlocks
 
 **Tier 4: Build + Docker** (runs after tests pass):
 - Package build verification

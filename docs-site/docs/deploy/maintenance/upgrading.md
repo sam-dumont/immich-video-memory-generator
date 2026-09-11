@@ -69,13 +69,15 @@ a video, create an album, or upload anything. A successful result includes the r
 
 ## Config compatibility
 
-There is no automatic config migration, and a removed field will not tell you it is gone: unknown keys **inside** a known section are silently ignored, so a renamed field simply stops doing anything. (Unknown *top-level* keys and invalid values do fail at startup.) Renames are documented in the release notes — check them when a setting seems to have stopped taking effect.
+There is no automatic config migration. Unknown keys **inside** a known section are silently ignored, so a renamed field simply stops doing anything; unknown *top-level* keys and invalid values fail at startup. Renames are documented in the release notes — check them when a setting seems to have stopped taking effect.
+
+The one family of keys that is refused rather than ignored is the removed clip scorer's: `content_analysis`, `audio_content`, `speech`, `transcription`, `analysis.max_refinement_passes`, `analysis.scene_threshold` and the other pacing and detection dials, `photos.max_ratio`, `photos.read_moments`, `photos.moment_gap_seconds`, `photos.moment_hash_threshold` and `hardware.gpu_analysis`. A file that still names one stops the app at startup with a message listing them; delete them and start again. The `audio-ml`, `speech` and `transcribe` extras went with the code.
 
 In practice, most config fields have been stable since v0.1. Breaking config changes are rare and always called out in the release notes.
 
 ## Data compatibility
 
-**Analysis cache** (`cache.db`): forward-compatible. The SQLite database has schema migrations that run automatically on startup. Upgrading never loses your analysis scores.
+**Analysis database** (`cache.db`, `annotations.sqlite`): forward-compatible. Both have schema migrations that run automatically on startup. Upgrading never loses the run history or the editor's banks.
 
 **Video cache** (downloaded clips): can be cleared safely at any time. If a new version changes the download format or caching structure, the old cache files are still valid but you can clear them without loss by deleting `~/.immich-memories/cache/video-cache` (or via the UI Cache page).
 
@@ -105,4 +107,4 @@ uv tool install immich-memories==0.59.2
 pip install immich-memories==0.59.2
 ```
 
-Your analysis cache and config are preserved across version changes. The only thing that might need attention is config field names if the version you're rolling back to used different names.
+Your caches and config are preserved across version changes. The only thing that might need attention is config field names if the version you're rolling back to used different names.

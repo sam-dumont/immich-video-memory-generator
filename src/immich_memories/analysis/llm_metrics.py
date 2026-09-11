@@ -19,7 +19,6 @@ script pays nothing.
 
 from __future__ import annotations
 
-import functools
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
@@ -34,7 +33,6 @@ _active: ContextVar[LLMCounters | None] = ContextVar("llm_counters", default=Non
 __all__ = [
     "LLMCounters",
     "collecting",
-    "collects",
     "record_cache_hit",
     "record_reply",
     "record_wall",
@@ -156,19 +154,3 @@ def collecting() -> Iterator[LLMCounters]:
         yield counters
     finally:
         _active.reset(token)
-
-
-def collects(func):
-    """Run `func` with collection switched on, and read it back with `active()`.
-
-    A decorator rather than a `with` around the body: the functions worth
-    wrapping are long and sit at the complexity ceiling, and re-indenting one
-    to add an instrument is a worse diff than the instrument is worth.
-    """
-
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        with collecting():
-            return func(*args, **kwargs)
-
-    return wrapper

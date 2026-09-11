@@ -1,10 +1,7 @@
-"""What the wizard offers of the two memory types #443 built for the CLI.
+"""What the wizard offers of the holiday memory #443 built for the CLI.
 
-HOLIDAY and THEN_AND_NOW shipped as CLI-only. Both build more than one date
-range, which is why they needed the multi-range wizard state before either
-could be offered at all. Then-and-now has since been withdrawn from both
-surfaces — no --memory-type choice, no row in the brief's type select, no
-params renderer — while its title branch stays until the type itself is retired.
+HOLIDAY shipped as CLI-only. It builds more than one date range, which is why
+it needed the multi-range wizard state before it could be offered at all.
 """
 
 from __future__ import annotations
@@ -16,11 +13,8 @@ from immich_memories.ui.pages.memory_brief import MEMORY_TYPE_LABELS
 from immich_memories.ui.state import AppState
 
 
-def test_holiday_is_offered_and_retired_then_and_now_is_not() -> None:
-    keys = list(MEMORY_TYPE_LABELS)
-
-    assert MemoryType.HOLIDAY in keys
-    assert MemoryType.THEN_AND_NOW not in keys
+def test_holiday_is_offered() -> None:
+    assert MemoryType.HOLIDAY in list(MEMORY_TYPE_LABELS)
 
 
 def _render(key: str, **params) -> AppState:
@@ -50,24 +44,6 @@ def test_choosing_holiday_gives_the_wizard_a_scope() -> None:
 
     assert len(state.date_ranges) == 5
     assert state.scope_is_selected
-
-
-def test_then_and_now_titles_name_both_years() -> None:
-    """The span reaches the template as its two ends, which is the whole point.
-
-    Without a branch this falls through to the generic long-span fallback and
-    becomes "Memories 2016" — the older year alone, which is the one thing a
-    then-and-now must not be called.
-    """
-    from immich_memories.ui.pages.pipeline_title import generate_template_title
-
-    title, subtitle = generate_template_title(
-        memory_type="then_and_now", start_date="2016-01-01", end_date="2026-12-31"
-    )
-
-    assert "2016" in title
-    assert "2026" in title
-    assert subtitle == "Then and Now"
 
 
 def test_holiday_titles_name_the_holiday_not_the_span() -> None:

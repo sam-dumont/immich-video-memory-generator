@@ -28,13 +28,12 @@ if TYPE_CHECKING:
 _EXPECTED_CLIP_SECONDS = 5.0
 
 
-def _pipeline_summary_counts(result: dict) -> tuple[int, int, int]:
-    """Return reviewed, expensive-analysis, and final-plan counts."""
+def _pipeline_summary_counts(result: dict) -> tuple[int, int]:
+    """Return the eligible-media and final-plan counts."""
     stats = result.get("stats", {})
     eligible = int(stats.get("eligible_count", stats.get("total_analyzed", 0)))
-    deep = int(stats.get("deeply_analyzed_count", stats.get("total_analyzed", 0)))
     planned = int(stats.get("planned_count", stats.get("selected_count", 0)))
-    return eligible, deep, planned
+    return eligible, planned
 
 
 def render_pipeline_summary(result: dict) -> None:
@@ -44,7 +43,7 @@ def render_pipeline_summary(result: dict) -> None:
     stats = result.get("stats", {})
     errors = result.get("errors", [])
 
-    eligible_count, deeply_analyzed_count, planned_count = _pipeline_summary_counts(result)
+    eligible_count, planned_count = _pipeline_summary_counts(result)
     error_count = stats.get("error_count", 0)
     elapsed = stats.get("elapsed_seconds", 0)
 
@@ -62,11 +61,6 @@ def render_pipeline_summary(result: dict) -> None:
                     "color: var(--im-text-secondary)"
                 )
                 ui.label(str(eligible_count)).classes("text-2xl font-bold")
-            with ui.column().classes("items-center"):
-                ui.label("Videos Deeply Analyzed").classes("text-sm").style(
-                    "color: var(--im-text-secondary)"
-                )
-                ui.label(str(deeply_analyzed_count)).classes("text-2xl font-bold")
             with ui.column().classes("items-center"):
                 ui.label("Clips Planned").classes("text-sm").style(
                     "color: var(--im-text-secondary)"
@@ -101,15 +95,6 @@ _PROGRESS_STATUS_KEYS = [
     "speed_ratio",
     "completed_count",
     "error_count",
-    "last_completed_asset_id",
-    "last_completed_segment",
-    "last_completed_score",
-    "last_completed_video_path",
-    "last_completed_llm_description",
-    "last_completed_llm_emotion",
-    "last_completed_llm_interestingness",
-    "last_completed_llm_quality",
-    "last_completed_audio_categories",
 ]
 _PROGRESS_DEFAULTS: dict[str, Any] = {
     "indeterminate": False,
@@ -426,7 +411,6 @@ def _adopt_result(state: Any, result: Any) -> None:
         "clip_segments": result.clip_segments,
         "errors": result.errors,
         "stats": result.stats,
-        "coverage": result.coverage,
     }
     state.pipeline_selected_clips = result.selected_clips
     attempt_dir = result.stats.get("editorial_attempt_directory")
@@ -473,10 +457,8 @@ def _run_pipeline_blocking(
             app_config = get_config()
             pipeline = build_smart_pipeline(
                 client=client,
-                analysis_cache=state.analysis_cache,
                 thumbnail_cache=tc,
                 config=config,
-                analysis_config=app_config.analysis,
                 app_config=app_config,
                 editorial_context=_build_ui_editorial_context(
                     state,
@@ -485,7 +467,6 @@ def _run_pipeline_blocking(
                     photos,
                 ),
                 dry_run=False,
-                triage=None,
             )
 
             source_photos = photos if state.include_photos else []
@@ -501,7 +482,6 @@ def _run_pipeline_blocking(
             result.stats.update(
                 {
                     "eligible_count": len(clips) + len(photos),
-                    "deeply_analyzed_count": pipeline.last_deep_analysis_count,
                     "planned_count": len(result.selected_clips),
                 }
             )
@@ -523,38 +503,8 @@ def _run_pipeline_blocking(
         progress_state["done"] = True
 
 
-def _detect_overnight_bases(
-    state: Any,
-    clips: list[VideoClipInfo] | None = None,
-) -> list | None:
-    """Detect overnight stop bases for trip memories."""
-    source_clips = state.clips if clips is None else clips
-    if not (state.memory_type == "trip" and source_clips):
-        return None
-    try:
-        from immich_memories.analysis.trip_detection import detect_overnight_stops
-
-        trip_assets = [c.asset for c in source_clips]
-        return detect_overnight_stops(trip_assets) or None
-    except Exception:  # WHY: UI graceful degradation
-        logger.debug("Trip segment detection failed", exc_info=True)
-        return None
-
-
-def _build_pipeline_config(
-    state: Any,
-    clips: list[VideoClipInfo] | None = None,
-) -> Any:
-    """Build PipelineConfig from app state: the pool switches the route reads, no dials."""
+def _build_pipeline_config(state: Any) -> Any:
+    """The pool switches the route reads, from app state: no dials."""
     from immich_memories.analysis.smart_pipeline import PipelineConfig
-    from immich_memories.config_loader import Config
 
-    plan = state.timeline_plan
-    # Defaults stand in only before the wizard has loaded a config.
-    return PipelineConfig.from_app_config(
-        state.config or Config(),
-        target_duration_seconds=plan.content_budget if plan is not None else None,
-        hdr_only=state.hdr_only,
-        overnight_bases=_detect_overnight_bases(state, clips),
-        accept_any_provenance=state.accept_any_provenance,
-    )
+    return PipelineConfig(hdr_only=state.hdr_only)

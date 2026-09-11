@@ -137,11 +137,6 @@ _PRODUCT_FLAVORS = {
         "coherence is the thesis. Honor why these belong together; edit within "
         "the owner's intent, never against it."
     ),
-    "then_and_now": (
-        "THIS PRODUCT'S TEXTURE: the comparison is the product -- the same "
-        "person, place or ritual at two distant times. A frame earns its place "
-        "by having a counterpart across the gap."
-    ),
 }
 
 

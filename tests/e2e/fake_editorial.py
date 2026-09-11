@@ -242,7 +242,6 @@ class _FakeEditorialPipeline:
         self._stage_seconds = stage_seconds
         self.tracker = ProgressTracker()
         # Nothing was downloaded or looked at, and the pool page says so out loud.
-        self.last_deep_analysis_count = 0
 
     def _request(self, sources: Sequence[Any], include_live_photos: bool) -> dict[str, Any]:
         context = self._context
@@ -311,7 +310,6 @@ class _FakeEditorialPipeline:
 
     def _result(self, candidates: tuple[Any, ...], attempt_directory: Path) -> Any:
         from immich_memories.analysis.editorial_planner import EditorialSelection
-        from immich_memories.analysis.selection_coverage import coverage_of
         from immich_memories.analysis.smart_pipeline import PipelineResult
         from immich_memories.api.models import AssetType
 
@@ -344,7 +342,6 @@ class _FakeEditorialPipeline:
             clip_segments=segments,
             errors=[],
             stats=stats,
-            coverage=coverage_of(candidates),
             editorial_selections=selections,
         )
 
@@ -393,16 +390,12 @@ def install_fake_editorial_route(stage_seconds: float = DEFAULT_STAGE_SECONDS) -
 
     def build_smart_pipeline(
         client: Any,
-        analysis_cache: Any,
         thumbnail_cache: Any,
         config: Any = None,
-        run_id: str | None = None,
         *,
-        analysis_config: Any,
         app_config: Any,
         editorial_context: Any,
         dry_run: bool = False,
-        triage: Any = None,
         editorial_ports: Any = None,
     ) -> _FakeEditorialPipeline:
         return _FakeEditorialPipeline(

@@ -174,57 +174,6 @@ To disable music, choose **None** in the UI or pass `--no-music` on the CLI. Wit
 
 For a local library, `immich-memories music search` and `music add` read `audio.local_music_dir` (default `~/Music/Memories`); see the [music command](../cli/music.md). Generation itself does not pick from that directory.
 
-## Semantic Audio Events (Optional PANNs)
-
-Audio-content analysis is separate from music generation and ducking. With PANNs installed, the
-selector can label laughter, babies, speech, music, cheering, engines, and other AudioSet events.
-Those labels help protect a laugh or spoken moment from a bad cut.
-
-Install the optional backend with either package workflow:
-
-```bash
-uv sync --extra audio-ml
-pip install 'immich-memories[audio-ml]'
-```
-
-Then enable it:
-
-```yaml
-audio_content:
-  enabled: true
-  use_panns: true
-```
-
-If Torch or PANNs is unavailable, generation does not fail. It uses the energy-only analyzer,
-which can find loud and quiet structure but cannot reliably distinguish laughter from speech,
-music, babies, or background noise. `immich-memories preflight` reports which backend is active.
-
-## Speech boundaries
-
-Cuts should land in the gaps between utterances, not through the middle of a word. That is what
-the voice activity detector is for, and it is on by default.
-
-**Why voice activity rather than the event labels.** PANNs merges contiguous same-class frames
-into a single span, so a noisy clip becomes one protected range covering everything. Boundary
-adjustment then has nowhere to move and the clip ships at full duration — protection so broad it
-protects nothing. Voice activity keeps the pauses *between* utterances, which is exactly the
-material a cut needs.
-
-**It does not need `audio_content`.** Voice activity needs only the audio track and the bundled
-FireRedVAD weights, so cut placement works on a default install. Enabling `audio_content` adds
-event *scoring* on top. The two degrade independently — you can have good cut placement with no
-semantic labels, or labels with the detector off.
-
-**What still needs PANNs.** Laughter, singing, cheering and applause protection comes from the
-event labels, not the voice detector, which does not fire on them. If you want a laugh protected
-from a cut, `audio_content` has to be on.
-
-Requires the `speech` extra (`uv sync --extra speech`, included in `all` and `all-mac`). Nothing
-is downloaded at runtime — the weights ship inside the package.
-
-Settings live under `speech:` in the
-[configuration reference](../../reference/config-reference.md#speech-boundaries).
-
 ## Audio Ducking
 
 When background music plays over your clips, it should get quieter when someone's talking or when there's an interesting sound in the original audio. The music automatically dips to let the original audio through, then comes back up.

@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 """Render a contact sheet of the clips a memory would use, without rendering it.
 
-Runs the real pipeline and stops the moment selection is final, so what the
-sheet shows is what the video would contain. Deliberately NOT --dry-run: that
-flag disables the VLM photo scorer and the whole verify/judge/review loop, so
-a dry-run sheet audits a pipeline nobody ships.
+Runs the real editorial route and stops the moment the cut is final, so what
+the sheet shows is what the video would contain.
 
     scripts/contact_sheet.py --label 2019-12 --out sheets -- \
         --memory-type monthly_highlights --year 2019 --month 12 --duration 60
@@ -33,15 +31,13 @@ class _SelectionIsFinal(Exception):
 
 
 def _collect(rows: list[dict]):
-    original = SmartPipeline.run_selection
+    original = SmartPipeline.run_editorial_source
 
-    def spy(self, analyzed, progress_callback=None, *, verify=True):
-        # verify=True always: the point of the sheet is to see the quality
-        # passes, and the caller may not know they can be switched off.
-        result = original(self, analyzed, progress_callback, verify=True)
-        by_id = {c.clip.asset.id: c for c in analyzed}
+    def spy(self, sources, progress_callback=None, *, include_live_photos=True):
+        _candidates, result = original(
+            self, sources, progress_callback, include_live_photos=include_live_photos
+        )
         for clip in result.selected_clips:
-            member = by_id.get(clip.asset.id)
             start, end = result.clip_segments.get(clip.asset.id, (0.0, 0.0))
             short_side = min(clip.width or 0, clip.height or 0)
             taken = clip.asset.file_created_at
@@ -61,7 +57,6 @@ def _collect(rows: list[dict]):
                         else "VID"
                     ),
                     "city": (clip.asset.exif_info.city if clip.asset.exif_info else None) or "",
-                    "score": round(member.score, 2) if member else 0.0,
                     "secs": round(end - start, 1),
                     "res": short_side,
                     "fav": bool(getattr(clip.asset, "is_favorite", False)),
@@ -69,7 +64,7 @@ def _collect(rows: list[dict]):
             )
         raise _SelectionIsFinal
 
-    SmartPipeline.run_selection = spy
+    SmartPipeline.run_editorial_source = spy
 
 
 def _mean_luma(image) -> int | str:
@@ -248,7 +243,7 @@ def _draw(rows: list[dict], label: str, subtitle: str, out: Path) -> Path:
             res = f"{row['res']}p" if row["res"] else "?"
             draw.text(
                 (x + 2, y + THUMB_H + 20),
-                f"    {res}  score {row['score']}  lum {row.get('lum', '?')}  {row['city'][:12]}",
+                f"    {res}  lum {row.get('lum', '?')}  {row['city'][:12]}",
                 (230, 120, 110) if row["res"] and row["res"] < 1080 else (140, 140, 148),
                 font=font,
             )

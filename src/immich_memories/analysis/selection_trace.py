@@ -26,7 +26,6 @@ from immich_memories.analysis.editorial_contracts import (
     RequestTrace,
     TraceDecision,
 )
-from immich_memories.analysis.selection_coverage import AnalysisCoverage
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -88,10 +87,6 @@ class Trace:
     lost_favourites: list | None = None
     # What each clip was, keyed by asset id, so a story can name it.
     clips: dict[str, str] = field(default_factory=dict)
-    # Not a stage: it describes the pool every stage worked on, not a step
-    # the pool passed through. Re-set by each re-selection, so the value that
-    # survives is the one the verify passes left behind (#489).
-    coverage: AnalysisCoverage | None = None
     # Things a reader must not miss, printed above the funnel. A pass that
     # could not run is the one this exists for: "0 dropped" has meant both
     # "approved" and "never answered" for as long as the review has existed.
@@ -227,7 +222,6 @@ class Trace:
         width = max((len(s.name) for s in self.stages), default=len("stage"))
         lines = [
             *self._warning_lines(),
-            *self._coverage_lines(),
             *self._favourite_law_lines(),
             f"{'stage'.ljust(width)}  {'kept':>5} {'lost':>5}  {'favorites':>12}",
             "",
@@ -310,24 +304,9 @@ class Trace:
             "",
         ]
 
-    def _coverage_lines(self) -> list[str]:
-        """The pool's coverage, above the funnel — it frames everything below."""
-        if self.coverage is None:
-            return []
-        return [
-            f"pool coverage: {self.coverage.analyzed} of {self.coverage.total} "
-            f"candidates ({self.coverage.percent}%) were visually analyzed",
-            "",
-        ]
-
     def as_dict(self) -> dict:
         return {
             "warnings": self.warnings.copy(),
-            "coverage": (
-                None
-                if self.coverage is None
-                else {"analyzed": self.coverage.analyzed, "total": self.coverage.total}
-            ),
             "stages": [
                 {
                     "name": s.name,
@@ -542,20 +521,6 @@ def record(
     if before is None or after is None:
         raise TypeError("legacy selection stages require both before and after candidates")
     trace.record(name, before, after, reasons, notes)
-
-
-def warn(message: str) -> None:
-    """Put something above the funnel that a reader must not miss."""
-    trace = _active.get()
-    if trace is not None:
-        trace.warnings.append(message)
-
-
-def record_coverage(coverage: AnalysisCoverage) -> None:
-    """Note how much of the pool a real look scored, when tracing is on."""
-    trace = _active.get()
-    if trace is not None:
-        trace.coverage = coverage
 
 
 def record_favourite_law(pool: Iterable, selected: Iterable) -> None:

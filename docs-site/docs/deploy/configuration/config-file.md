@@ -37,18 +37,15 @@ defaults:
   scale_mode: "blur"             # blur background, or fit for black bars
   transition: "smart"            # cut, crossfade, smart, none
 
-# ── AI analysis (any OpenAI-compatible vision model) ──────
-# Both sections are needed: `llm` says where the model is,
-# `content_analysis.enabled` turns scoring with it on.
+# ── The editor's model (OpenAI-compatible, must take images) ─
 # The reader is graded on Qwen3-VL-30B-A3B-Instruct-4bit (oMLX).
-# It is sent pictures, so a text-only model cannot take this seat.
+# It is sent pictures, so a text-only model cannot take this
+# seat. What it reads is prepared per Configuration →
+# Editorial annotation setup.
 llm:
   provider: "openai-compatible"
   base_url: "http://localhost:8000/v1"
   model: "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"
-
-content_analysis:
-  enabled: true
 
 # ── AI background music (optional) ───────────────────────
 # Music is on when one generator is enabled. Per run you can
@@ -74,7 +71,7 @@ it: the memory type preset supplies one.
 
 ## Tiers
 
-`llm`, `content_analysis`, `ace_step` and the other tuning sections are Tier 2. When the app writes
+`llm`, `ace_step` and the other tuning sections are Tier 2. When the app writes
 the file it groups them under `advanced:`; when reading, both placements work, and if the same key
 appears in both the top-level value wins.
 
@@ -82,18 +79,21 @@ appears in both the top-level value wins.
 advanced:
   llm:
     base_url: "http://localhost:8080/v1"
-  content_analysis:
-    enabled: true
+  hardware:
+    encoder_preset: quality
 ```
 
-Tier 2 sections: `analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `content_analysis`,
-`audio_content`, `speech`, `transcription`, `server`, `auth`, `automation`, `notifications`,
-`triage`. Everything else (`immich`, `defaults`, `output`, `audio`, `title_screens`, `title_llm`, `cache`,
-`upload`, `trips`, `photos`, `scheduler`) stays at the top level.
+Tier 2 sections: `analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `server`, `auth`,
+`automation`, `notifications`, `triage`, `editorial`. Everything else (`immich`, `defaults`,
+`output`, `audio`, `title_screens`, `title_llm`, `cache`, `upload`, `trips`, `photos`,
+`scheduler`) stays at the top level.
 
 Unknown keys inside a section are silently ignored — a typo does not fail the load, it just does
-nothing. Unknown top-level keys and invalid values (`codec: av1`, `llm.provider: gemini`) do fail
-with a validation error at startup.
+nothing — with one exception: the keys of the removed clip scorer (`content_analysis`,
+`audio_content`, `speech`, `transcription`, `analysis.max_refinement_passes`, `photos.max_ratio`
+and the rest of that family) are refused at startup with a message naming them, so an old file
+cannot keep loading while its settings do nothing. Unknown top-level keys and invalid values
+(`codec: av1`, `llm.provider: gemini`) also fail with a validation error at startup.
 
 ## Footage the camera roll did not shoot
 
@@ -182,25 +182,6 @@ What it does promise is that an unknown major fails immediately and says so, rat
 requests of the wrong shape and failing somewhere less obvious. If yours breaks, that is a bug
 worth an issue.
 
-## Clip pacing
-
-Control how clips are cut with a single option:
-
-```yaml
-analysis:
-  clip_style: "balanced"    # fast-cuts | balanced | long-cuts
-```
-
-| Style | Feel | Clip duration | Extraction ratio |
-|-------|------|---------------|-----------------|
-| *(unset)* | Default: natural pacing, conservative extraction | 5-10s | 15% |
-| `fast-cuts` | Energetic, music-video style | 3-6s | 30% |
-| `balanced` | Same durations as the default, pulls more footage per source | 5-10s | 40% |
-| `long-cuts` | Cinematic, slow | 8-15s | 50% |
-
-A preset only fills in the five duration parameters you have not set yourself; explicit values win.
-See the [Config Reference](../../reference/config-reference.md#video-analysis) for the individual knobs.
-
 ## Environment variable substitution
 
 A handful of secret-bearing fields expand `${VAR_NAME}` at load time:
@@ -254,4 +235,4 @@ upload:
 
 ## All options
 
-For the full list of options (analysis tuning, hardware acceleration, speech and transcription, title screens, scheduler, notifications, etc.), see the [Config Reference](../../reference/config-reference.md).
+For the full list of options (source admission, hardware acceleration, title screens, scheduler, notifications, etc.), see the [Config Reference](../../reference/config-reference.md).

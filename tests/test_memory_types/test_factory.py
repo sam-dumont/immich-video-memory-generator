@@ -47,7 +47,6 @@ class TestPersonFilterOnEveryType:
             (MemoryType.MONTHLY_HIGHLIGHTS, {"year": 2024, "month": 3}),
             (MemoryType.ON_THIS_DAY, {"target_date": date(2024, 6, 15)}),
             (MemoryType.HOLIDAY, {"year": 2024, "holiday": "christmas"}),
-            (MemoryType.THEN_AND_NOW, {"year": 2024}),
         ],
         ids=str,
     )
@@ -222,9 +221,6 @@ class TestListMemoryTypes:
             assert "type" in t
             assert "name" in t
             assert "description" in t
-
-    def test_retired_then_and_now_is_not_a_creation_choice(self) -> None:
-        assert "then_and_now" not in {t["type"] for t in list_memory_types()}
 
 
 class TestCreatePresetTrip:

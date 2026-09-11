@@ -15,7 +15,7 @@ Note the **double underscore** between section and field. Case does not matter, 
 the convention. `<SECTION>` is always the flat runtime name (`LLM`, `AUTH`, `SPEECH`…) — never
 `ADVANCED__LLM`, even for sections that live under `advanced:` in the YAML file.
 
-List-valued fields (`auth.trusted_proxies`, `notifications.urls`, `transcription.languages`,
+List-valued fields (`auth.trusted_proxies`, `notifications.urls`,
 `scheduler.schedules`) must be given as JSON:
 
 ```bash

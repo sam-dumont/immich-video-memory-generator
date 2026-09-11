@@ -69,52 +69,6 @@ class TestHeadFactStore:
         assert store.facts_for(["asset-1"], head="location", version="v2") == {}
 
 
-class TestOpenTriage:
-    """Triage never blocks a run: no engine when it is off or its weights are absent."""
-
-    def test_fails_open_when_disabled_or_encoder_missing(self, tmp_path, caplog) -> None:
-        from immich_memories.config_models_triage import TriageConfig
-        from immich_memories.triage.runtime import open_triage
-
-        off = TriageConfig(enabled=False, encoder=str(tmp_path / "absent.onnx"))
-        assert open_triage(off, store_path=tmp_path / "triage.db") is None
-
-        on = TriageConfig(enabled=True, encoder=str(tmp_path / "absent.onnx"))
-        with caplog.at_level("WARNING"):
-            assert open_triage(on, store_path=tmp_path / "triage.db") is None
-        assert "absent.onnx" in caplog.text
-        assert not (tmp_path / "triage.db").exists()
-
-    def test_refuses_a_foreign_bundle_without_raising(self, tmp_path, caplog) -> None:
-        from immich_memories.config_models_triage import TriageConfig
-        from immich_memories.triage.runtime import open_triage
-
-        encoder = TriageConfig().encoder_path
-        if not encoder.is_file():
-            pytest.skip("pinned DINOv2 export not on this machine")
-        foreign = tmp_path / "foreign.npz"
-        _tiny_bundle().save(foreign)  # encoder_key "kkk…" ≠ the real encoder's
-        config = TriageConfig(enabled=True, bundle=str(foreign))
-
-        with caplog.at_level("WARNING"):
-            assert open_triage(config, store_path=tmp_path / "triage.db") is None
-        assert "another encoder" in caplog.text
-
-    def test_opens_the_shipped_public_bundle_on_the_pinned_encoder(self, tmp_path) -> None:
-        from immich_memories.config_models_triage import TriageConfig
-        from immich_memories.triage.runtime import open_triage
-
-        config = TriageConfig(enabled=True)
-        if not config.encoder_path.is_file():
-            pytest.skip("pinned DINOv2 export not on this machine")
-
-        engine = open_triage(config, store_path=tmp_path / "triage.db")
-
-        assert engine is not None
-        run = engine.run(["bright", "dark"], {"bright": _jpeg(250), "dark": _jpeg(5)}.get)
-        assert (run.decided, run.missing) == (2, 0)
-
-
 def _jpeg(shade: int) -> bytes:
     buffer = io.BytesIO()
     Image.new("RGB", (64, 48), (shade, shade, shade)).save(buffer, format="JPEG")

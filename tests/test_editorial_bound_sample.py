@@ -5,9 +5,13 @@ from dataclasses import replace
 
 import pytest
 
-from immich_memories.analysis.editorial_bound_sample import BoundVideoSample
+from immich_memories.analysis.editorial_bound_sample import (
+    BoundVideoSample,
+    source_metadata_digest,
+)
 from immich_memories.analysis.editorial_picture_facts import PROMPT
 from immich_memories.analysis.selection_trace import Trace
+from immich_memories.api.models import Asset
 from tests.test_editorial_picture_facts import fake_transport, preview, provider
 
 
@@ -130,3 +134,46 @@ def test_sample_and_primary_observations_are_separate_but_primary_keys_stay_exac
         assert len(calls) == 3
     finally:
         reader.close()
+
+
+# Immich sends every one of these for an ordinary photo. The sample digest binds the
+# whole asset payload, so a wire field the model stops parsing makes two genuinely
+# different sources one evidence key -- and silently re-keys every banked observation
+# of the assets that carry it, for every user, on upgrade.
+IMMICH_EXIF = {
+    "make": ("Apple", "Canon"),
+    "model": ("iPhone 13 Pro", "EOS R6"),
+    "exposureTime": ("1/120", "1/60"),
+    "fNumber": (1.5, 2.8),
+    "iso": (250, 400),
+    "focalLength": (5.7, 35.0),
+    "latitude": (50.85, 48.85),
+    "longitude": (4.35, 2.35),
+    "city": ("Brussels", "Paris"),
+    "state": ("Brussels", "Grand Est"),
+    "country": ("Belgium", "France"),
+    "dateTimeOriginal": ("2026-06-01T10:00:00+00:00", "2026-06-01T11:00:00+00:00"),
+    "lensModel": ("back dual wide camera", "RF24-105mm"),
+    "fileSizeInByte": (2_500_000, 3_100_000),
+}
+
+
+def _asset_with(exif):
+    return Asset.model_validate(
+        {
+            "id": "admitted-still",
+            "type": "IMAGE",
+            "fileCreatedAt": "2026-06-01T10:00:00+00:00",
+            "fileModifiedAt": "2026-06-01T10:00:00+00:00",
+            "updatedAt": "2026-06-01T10:00:00+00:00",
+            "exifInfo": exif,
+        }
+    )
+
+
+@pytest.mark.parametrize("field", sorted(IMMICH_EXIF))
+def test_assets_immich_reports_differently_are_different_evidence(field):
+    base = {key: values[0] for key, values in IMMICH_EXIF.items()}
+    assert source_metadata_digest(_asset_with(base)) != source_metadata_digest(
+        _asset_with(base | {field: IMMICH_EXIF[field][1]})
+    )

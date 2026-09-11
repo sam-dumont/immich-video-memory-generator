@@ -162,23 +162,8 @@ def test_full_runtime_story_first_and_exact_warm_without_legacy_calls(
 
     def run():
         planner = build()
-        pipeline = SmartPipeline(
-            client=mock_immich_client,
-            analysis_cache=mock_analysis_cache,
-            thumbnail_cache=mock_thumbnail_cache,
-            config=PipelineConfig(),
-            analysis_config=config.analysis,
-            app_config=config,
-            planner=planner,
-        )
+        pipeline = SmartPipeline(config=PipelineConfig(), planner=planner)
 
-        def forbidden(*_args, **_kwargs):
-            pytest.fail("editorial route entered a legacy acquisition or verification stage")
-
-        monkeypatch.setattr(pipeline, "run_analysis", forbidden)
-        monkeypatch.setattr(pipeline.analyzer, "phase_analyze", forbidden)
-        monkeypatch.setattr(pipeline.quality, "editorial_members_needing_verification", forbidden)
-        monkeypatch.setattr(pipeline.refiner, "phase_refine", forbidden)
         candidates, result = pipeline.run_editorial_source(sources)
         native_plans.append(planner._backend.last_structure_result.plan)
         return candidates, result

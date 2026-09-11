@@ -480,17 +480,16 @@ The report looks like this, and the marker is the point:
 
 ```
 stage                  kept  lost     favorites
-favorites first          38     0      38 -> 38
-temporal dedup           21    17      38 -> 21
-scale to duration         9    12      21 ->  0  <-- all favorites lost here
+source gates             38     0      38 -> 38
+cull                     21    17      38 -> 21
+editorial final cut       9    12      21 ->  0  <-- all favorites lost here
 ```
 
 Selection passes a pool through the source gates, the cull, the memory-worthy gate, the story
 weighing and the standing gate before a picture carries. Reading the log and inferring which one
 ate your clips is slow and wrong often enough to matter — a real February started with 38
 favourites and shipped none, and finding the stage responsible took several rounds of guessing.
-This answers it directly. The stage names above are the old selector's; the funnel prints
-whichever passes the current route ran.
+This answers it directly; the funnel prints whichever passes the route ran, under their own names.
 
 :::warning Do not combine this with `--dry-run`
 `--dry-run` runs no selection — it discovers inputs and reports preparation needs — so there is

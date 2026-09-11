@@ -20,10 +20,10 @@ from immich_memories.timeperiod import DateRange
 def era_of(when: datetime, ranges: Sequence[DateRange]) -> int | None:
     """The index of the range holding this moment, or None if none do.
 
-    Ranges are inclusive at both ends, and the first match wins: a then-and-now's
-    two windows are disjoint, but holiday and on-this-day windows can touch at
-    the edges, where a shared day counted twice would inflate whichever era it
-    fell in. The memory's own ordering breaks the tie.
+    Ranges are inclusive at both ends, and the first match wins: holiday and
+    on-this-day windows can touch at the edges, where a shared day counted twice
+    would inflate whichever era it fell in. The memory's own ordering breaks the
+    tie.
     """
     for index, date_range in enumerate(ranges):
         if date_range.contains(when):
@@ -36,7 +36,7 @@ def count_by_era(moments: Sequence[datetime], ranges: Sequence[DateRange]) -> li
 
     Always returns one entry per range, so an era that contributed nothing reads
     as a zero rather than disappearing from the report — which is the whole
-    point, since a then-and-now with an empty half still renders and would
+    point, since a holiday whose oldest year is empty still renders and would
     otherwise look like a clean run.
     """
     counts = [0] * len(ranges)

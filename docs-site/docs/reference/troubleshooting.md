@@ -72,10 +72,8 @@ The first cut over a period is the slow one: every eligible picture gets its cap
 CUDA out of memory
 ```
 
-- Reduce `analysis.analysis_resolution` to `360` or `240` (the floor is 240).
 - If you turned the ACE-Step language model on (`ace_step.use_lm`, off by default), set
   `ace_step.lm_model_size: "0.6B"` or switch it back off.
-- If using LLM content analysis, set `content_analysis.frame_max_height: 240`.
 
 ## FFmpeg Not Found
 

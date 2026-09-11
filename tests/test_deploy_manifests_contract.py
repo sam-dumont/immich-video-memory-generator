@@ -225,6 +225,7 @@ def test_no_stale_config_keys_or_paths_survive_in_deploy_files() -> None:
         "ollama_url",
         "ollama_model",
         "content_analysis.provider",
+        "CONTENT_ANALYSIS__ENABLED",
         'provider = "auto"',
         "hardware_backend",
         "target_duration_seconds",

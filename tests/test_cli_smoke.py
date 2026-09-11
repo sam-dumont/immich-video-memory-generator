@@ -229,14 +229,14 @@ class TestCLIMemoryTypeFlags:
         result = _invoke(["generate", "--help"])
         assert "--person" in result.output
 
-    def test_choices_are_every_type_the_product_still_offers(self):
-        """Only retired then-and-now is missing; album is nameable as well as implied."""
+    def test_choices_are_every_type_the_product_offers(self):
+        """Album is nameable as well as implied."""
         memory_type_option = next(
             param for param in main.commands["generate"].params if param.name == "memory_type"
         )
-        assert set(memory_type_option.type.choices) == {m.value for m in MemoryType} - {
-            "then_and_now"
-        }, "--memory-type's choices in cli/generate_options.py have fallen behind MemoryType"
+        assert set(memory_type_option.type.choices) == {m.value for m in MemoryType}, (
+            "--memory-type's choices in cli/generate_options.py have fallen behind MemoryType"
+        )
 
     def test_the_album_type_says_what_it_needs(self):
         """An album memory has no window of its own to fall back on."""
@@ -265,11 +265,6 @@ class TestCLIMemoryTypeFlags:
 
         assert result.exit_code == 0, result.output
         assert album_generation.called
-
-    def test_retired_then_and_now_cannot_start_generation(self):
-        result = _invoke(["generate", "--memory-type", "then_and_now", "--year", "2024"])
-        assert result.exit_code == 2
-        assert "Invalid value for '--memory-type'" in result.output
 
 
 class TestCLIMemoryTypeResolve:

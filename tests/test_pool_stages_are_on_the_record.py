@@ -45,49 +45,6 @@ class TestOneTracePerRun:
         assert not inner.exists()
 
 
-class TestThePoolStagesSayWhatTheyTook:
-    def test_the_source_quality_drop_names_what_it_dropped(self, tmp_path):
-        """A messaging re-encode leaves the pool before selection starts."""
-        from immich_memories.cli._candidate_pool import _drop_reencoded_sources
-        from immich_memories.config import Config
-
-        kept = _candidate("from-the-camera")
-        forwarded = _candidate("forwarded", width=640, height=480, exif_make=None, exif_model=None)
-        report_path = tmp_path / "trace.md"
-
-        with trace.tracing(report_path):
-            survivors = _drop_reencoded_sources([kept, forwarded], config=Config())
-
-        assert [c.clip.asset.id for c in survivors] == ["from-the-camera"]
-        report = report_path.read_text()
-        assert "source quality" in report
-        assert "forwarded.MOV" in report
-
-    def test_the_subject_policy_names_what_it_dropped(self, tmp_path):
-        """The stage a life-event photograph died in, four renders running."""
-        from immich_memories.cli._candidate_pool import _apply_subject_policy
-        from immich_memories.config import Config
-
-        pool = [_candidate(f"person-{n}") for n in range(3)]
-        for member in pool:
-            member.clip.llm_category = "people"
-            member.score = 0.8
-        screen = _candidate("a-screenshot")
-        screen.clip.llm_category = "screen"
-        screen.score = 0.5
-        report_path = tmp_path / "trace.md"
-
-        with trace.tracing(report_path):
-            survivors = _apply_subject_policy(
-                [*pool, screen], config=Config(), content_budget_seconds=60.0
-            )
-
-        assert "a-screenshot" not in {c.clip.asset.id for c in survivors}
-        report = report_path.read_text()
-        assert "subject policy" in report
-        assert "a-screenshot.MOV" in report
-
-
 class TestTheTraceNeverTakesTheRunDown:
     def test_a_candidate_it_cannot_describe_is_still_recorded(self, tmp_path):
         """Diagnostics may describe something badly; they may not raise.

@@ -17,15 +17,13 @@ class MemoryType(StrEnum):
     # Phase 2 (placeholders)
     HOLIDAY = "holiday"
     TRIP = "trip"
-    THEN_AND_NOW = "then_and_now"
     # Discovered, not typed: its scope comes from a catalogue entry the library
     # produced, not from flags a user chose.
     SPECIAL_DAY = "special_day"
 
 
 # What `generate --memory-type` accepts and the brief page offers, in the CLI's
-# order. THEN_AND_NOW stays in the enum for its title branch and is offered on
-# neither surface.
+# order.
 OFFERED_MEMORY_TYPES: tuple[MemoryType, ...] = (
     MemoryType.YEAR_IN_REVIEW,
     MemoryType.SEASON,

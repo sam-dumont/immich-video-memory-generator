@@ -125,17 +125,6 @@ def test_profile_harness_requires_an_isolated_explicit_output_directory(tmp_path
             "transition": "crossfade",
             "transition_duration_seconds": 0.3,
         },
-        "analysis": {
-            "audio_boundaries": True,
-            "adaptive_scene_detector": True,
-            "extract_keyframes": False,
-            "llm_clients_constructed": False,
-            "scene_detector": "SceneDetector",
-            "silence_threshold_db": -40.0,
-            "min_silence_duration_seconds": 0.3,
-            "min_scene_duration_seconds": 1.0,
-            "scene_threshold": 27.0,
-        },
         "frame_rate": 30,
         "resolution": "1280x720",
     }
@@ -148,26 +137,20 @@ def test_profile_harness_requires_an_isolated_explicit_output_directory(tmp_path
         "python_version",
     }
     assert metadata["environment"]["cpu"] == perf_utils._cpu_fingerprint()
-    assert metadata["stage_wall_seconds"].keys() == {"analysis", "assembly"}
-    assert metadata["warmup_stage_wall_seconds"].keys() == {"analysis", "assembly"}
-    assert all(
-        len(metadata["stage_wall_seconds"][stage]) == 3 for stage in ("analysis", "assembly")
-    )
-    assert all(
-        metadata["warmup_stage_wall_seconds"][stage] > 0 for stage in ("analysis", "assembly")
-    )
+    assert metadata["stage_wall_seconds"].keys() == {"assembly"}
+    assert metadata["warmup_stage_wall_seconds"].keys() == {"assembly"}
+    assert all(len(metadata["stage_wall_seconds"][stage]) == 3 for stage in ("assembly",))
+    assert all(metadata["warmup_stage_wall_seconds"][stage] > 0 for stage in ("assembly",))
     assert "estimate" in metadata["subprocess_wait_note"]
     assert all(
         metadata["subprocess_wait_estimate_seconds"][stage][0]
         <= metadata["stage_wall_seconds"][stage][0] + 0.01
-        for stage in ("analysis", "assembly")
+        for stage in ("assembly",)
     )
     for index in range(1, 4):
         assert (output_dir / f"controlled-tiny-{index}-assembly.prof").is_file()
         assert (output_dir / f"controlled-tiny-{index}-assembly-cumulative.txt").is_file()
         assert (output_dir / f"controlled-tiny-{index}-assembly-self.txt").is_file()
-        assert (output_dir / f"controlled-tiny-{index}-analysis.prof").is_file()
-        assert (output_dir / f"controlled-tiny-{index}-analysis-self.txt").is_file()
     assert not user_state.exists()
     assert list(forbidden_temp.iterdir()) == []
 

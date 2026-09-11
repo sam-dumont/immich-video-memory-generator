@@ -37,13 +37,3 @@ def test_bench_pairwise_hamming_10(benchmark):
                 hamming_distance(hashes[i], hashes[j])
 
     benchmark(compare_all)
-
-
-def test_bench_quality_score_100_clips(benchmark):
-    """Benchmark quality_score for 100 clips."""
-    clips = _make_100_clips()
-
-    def score_all():
-        return [c.quality_score for c in clips]
-
-    benchmark(score_all)

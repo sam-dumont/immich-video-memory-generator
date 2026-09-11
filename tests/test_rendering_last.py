@@ -120,34 +120,6 @@ def _pool(tmp_path, photos):
     )
 
 
-class TestRenderingIsChosenAfterRanking:
-    """One candidate per photograph, carrying the motion it could show."""
-
-    def test_a_burst_worth_merging_carries_its_motion(self, tmp_path):
-        """A burst that stitches past the threshold ships as motion.
-
-        The candidate is the photograph either way; what it carries decides how
-        it is rendered, so it can neither ship twice nor ship as neither.
-        """
-        burst = [_live_still(i, seconds=i * 2.0) for i in range(3)]
-
-        pool = _pool(tmp_path, burst)
-
-        assert pool
-        winner = pool[0]
-        assert winner.clip.live_burst_video_ids
-        assert winner.end_time - winner.start_time >= 4.0
-
-    def test_a_lone_live_photo_ships_as_a_photograph(self, tmp_path):
-        """It stitches to exactly the raw 3.0s, which is not worth a still."""
-        pool = _pool(tmp_path, [_live_still(1)])
-
-        assert pool
-        candidate = pool[0]
-        assert not candidate.clip.live_burst_video_ids
-        assert candidate.end_time - candidate.start_time == 4.0
-
-
 class TestTheRendererAsksWhatTheCandidateCarries:
     """Not what kind of asset it is: a Live Photo still is a photograph."""
 
@@ -191,35 +163,3 @@ class TestTheRendererAsksWhatTheCandidateCarries:
 
         render_photo.assert_called_once()
         download.assert_not_called()
-
-    def test_the_rest_of_a_burst_stay_photographs(self, tmp_path):
-        """Exactly one photograph of a burst carries the motion.
-
-        Keyed by every still, a burst would render once per still that won, so
-        one moment could ship several times. Attaching it to one carrier makes
-        that impossible rather than filtered out afterwards -- and the siblings
-        are still offered, as the photographs they are, which is what the old
-        suppression pass removed them from being.
-        """
-        burst = [_live_still(i, seconds=i * 2.0) for i in range(3)]
-
-        pool = _pool(tmp_path, burst)
-
-        assert len(pool) == 3
-        carriers = [c for c in pool if c.clip.live_burst_video_ids]
-        assert len(carriers) == 1
-        assert all(c.end_time - c.start_time == 4.0 for c in pool if c not in carriers)
-
-    def test_the_owners_mark_carries_its_bursts_motion(self, tmp_path):
-        """Which photograph of a burst shows the motion is the favourites law.
-
-        A burst the owner starred shows its motion against the frame they
-        starred, not against whichever came back from the API first.
-        """
-        burst = [_live_still(i, seconds=i * 2.0) for i in range(3)]
-        burst[2].is_favorite = True
-
-        pool = _pool(tmp_path, burst)
-
-        carriers = [c for c in pool if c.clip.live_burst_video_ids]
-        assert [c.clip.asset.id for c in carriers] == ["still-2"]

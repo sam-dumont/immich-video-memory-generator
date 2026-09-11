@@ -24,40 +24,24 @@ def stop():
     raise PipelineCancelled("Cancelled by user")
 
 
-@pytest.mark.parametrize("stop_at", ["source-stage", "tracker-start"])
-def test_cancelled_before_planning_cleans_up_without_false_completion(
-    mock_immich_client, mock_analysis_cache, mock_thumbnail_cache, stop_at
-):
+def test_cancelled_before_planning_cleans_up_without_false_completion():
     def must_not_plan(*_args, **_kwargs):
         pytest.fail("A cancelled job started planning")
 
-    pipeline = pipeline_for(
-        SimpleNamespace(plan_source=must_not_plan),
-        mock_immich_client,
-        mock_analysis_cache,
-        mock_thumbnail_cache,
-    )
+    pipeline = pipeline_for(SimpleNamespace(plan_source=must_not_plan))
     cancellation = PipelineCancelled("original cancellation")
 
     def cancelled_display(_event):
         raise cancellation
 
-    if stop_at == "tracker-start":
-        pipeline.tracker.add_callback(cancelled_display)
-
-    # WHY: observe native resource release and completion without replacing the stop callback.
+    # WHY: observe completion without replacing the stop callback.
     with (
         patch.object(pipeline.tracker, "finish", wraps=pipeline.tracker.finish) as finish,
-        patch.object(pipeline.analyzer, "close") as close_analyzer,
-        patch.object(pipeline.previewer, "close") as close_previewer,
         pytest.raises(PipelineCancelled) as caught,
     ):
         pipeline.run_editorial_source([photo("one")], cancelled_display)
     assert caught.value is cancellation
     finish.assert_not_called()
-    close_analyzer.assert_called_once()
-    close_previewer.assert_called_once()
-    assert pipeline.tracker.progress.operational_event is None
 
 
 @pytest.mark.asyncio

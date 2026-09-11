@@ -51,31 +51,3 @@ def get_main_video_stream_map(video_path: Path, *, probe_cache: ProbeCache | Non
             )
             return f"0:{probe.video_stream_index}"
     return "0:v:0"
-
-
-def get_video_info(video_path: Path, *, probe_cache: ProbeCache | None = None) -> dict:
-    """Probes all video streams and picks the highest-resolution one
-    (avoids iPhone depth maps in Live Photo videos).
-    """
-    from immich_memories.processing.probe_cache import ProbeError
-
-    try:
-        probe = _source_probe(video_path, probe_cache)
-        return {
-            "width": probe.width,
-            "height": probe.height,
-            "fps": probe.fps,
-            "codec": probe.codec,
-            "bitrate": probe.bitrate,
-            "duration": probe.duration_seconds,
-            "size": probe.size_bytes,
-            "color_space": probe.color_space,
-            "color_transfer": probe.color_transfer,
-            "color_primaries": probe.color_primaries,
-            "bit_depth": probe.bit_depth,
-            "rotation": probe.rotation,
-            "video_stream_index": probe.video_stream_index,
-        }
-    except (OSError, ProbeError, ValueError) as e:
-        logger.error(f"Failed to parse video info: {e}")
-        return {}
