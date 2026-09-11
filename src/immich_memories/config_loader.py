@@ -114,10 +114,6 @@ _REMOVED_CONFIG_KEYS: dict[str, str] = {
 }
 
 
-class RemovedConfigKeyError(ValueError):
-    """The config file names a key that no longer exists; the message says which."""
-
-
 def _names_removed_key(data: dict, key: str) -> bool:
     section, _, field = key.partition(".")
     if not field:
@@ -126,16 +122,29 @@ def _names_removed_key(data: dict, key: str) -> bool:
     return isinstance(block, dict) and field in block
 
 
-def _refuse_removed_keys(data: dict, path: Path) -> None:
-    named = [
-        f"  {key}: {reason}"
-        for key, reason in _REMOVED_CONFIG_KEYS.items()
-        if _names_removed_key(data, key)
-    ]
+def _drop_removed_keys(data: dict, path: Path) -> None:
+    """Ignore keys whose feature is gone, and name every one of them once.
+
+    The value is dead either way. Refusing to start locked an upgrade out of
+    its own app over a line that no longer means anything, and the operator
+    still had to edit the file to learn that. Warning says the same thing and
+    lets the run continue; retired sections have always been handled this way.
+    """
+    named = []
+    for key, reason in _REMOVED_CONFIG_KEYS.items():
+        if not _names_removed_key(data, key):
+            continue
+        section, _, field = key.partition(".")
+        if field:
+            data[section].pop(field)
+        else:
+            data.pop(section)
+        named.append(f"  {key}: {reason}")
     if named:
-        raise RemovedConfigKeyError(
-            f"{path} sets config keys that no longer exist; delete them and retry:\n"
-            + "\n".join(named)
+        logging.getLogger(__name__).warning(
+            "Ignoring config keys that no longer exist in %s; delete them to silence this:\n%s",
+            path,
+            "\n".join(named),
         )
 
 
@@ -180,7 +189,7 @@ def _load_yaml_data(path: Path) -> dict:
             logging.getLogger(__name__).warning(
                 "Ignoring config section '%s' (%s); delete it from %s", key, reason, path
             )
-    _refuse_removed_keys(data, path)
+    _drop_removed_keys(data, path)
     return data
 
 

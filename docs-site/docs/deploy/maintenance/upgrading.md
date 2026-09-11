@@ -71,7 +71,7 @@ a video, create an album, or upload anything. A successful result includes the r
 
 There is no automatic config migration. Unknown keys **inside** a known section are silently ignored, so a renamed field simply stops doing anything; unknown *top-level* keys and invalid values fail at startup. Renames are documented in the release notes — check them when a setting seems to have stopped taking effect.
 
-The one family of keys that is refused rather than ignored is the removed clip scorer's: `content_analysis`, `audio_content`, `speech`, `transcription`, `analysis.max_refinement_passes`, `analysis.scene_threshold` and the other pacing and detection dials, `photos.max_ratio`, `photos.read_moments`, `photos.moment_gap_seconds`, `photos.moment_hash_threshold` and `hardware.gpu_analysis`. A file that still names one stops the app at startup with a message listing them; delete them and start again. The `audio-ml`, `speech` and `transcribe` extras went with the code.
+The removed clip scorer's keys are named rather than merely ignored: `content_analysis`, `audio_content`, `speech`, `transcription`, `analysis.max_refinement_passes`, `analysis.scene_threshold` and the other pacing and detection dials, `photos.max_ratio`, `photos.read_moments`, `photos.moment_gap_seconds`, `photos.moment_hash_threshold` and `hardware.gpu_analysis`. A file that still names one starts normally and logs a warning listing every one it found, with what each used to do. Delete them to silence it; leaving them changes nothing, because the code that read them is gone. The `audio-ml`, `speech` and `transcribe` extras went with it.
 
 In practice, most config fields have been stable since v0.1. Breaking config changes are rare and always called out in the release notes.
 
