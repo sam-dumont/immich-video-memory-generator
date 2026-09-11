@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import io
+import logging
+import os
 import sqlite3
 import stat
+import time
 from datetime import UTC, datetime
 
 import numpy as np
@@ -25,6 +28,7 @@ from immich_memories.analysis.editorial_preparation_captions import _remember_ca
 from immich_memories.analysis.editorial_preparation_detectors import decide, docling_pixels
 from immich_memories.analysis.editorial_preparation_pixels import pixel_facts
 from immich_memories.api.models import Asset, Person
+from immich_memories.cache.thumbnail_cache import ThumbnailCache
 from immich_memories.config_models_editorial import EditorialConfig
 from immich_memories.config_models_editorial_preparation import EditorialPreparationConfig
 from immich_memories.config_models_triage import TriageConfig
@@ -93,7 +97,7 @@ def run(tmp_path, **kwargs):
     return prepare_editorial_annotations(
         assets=kwargs.pop("assets", [asset("aa1"), asset("bb2")]),
         store_path=tmp_path / "annotations.sqlite",
-        thumbnail_cache=tmp_path / "previews",
+        thumbnail_cache=kwargs.pop("thumbnail_cache", tmp_path / "previews"),
         preparation_config=EditorialPreparationConfig(),
         triage_config=TriageConfig(),
         head_versions=kwargs.pop("head_versions", EditorialConfig().head_versions),
@@ -358,3 +362,60 @@ def test_det_v1_rules_and_docling_preprocessing_are_preserved():
         np.array([0.515, 0.544, 0.594]) / np.array([0.47853944, 0.4732864, 0.47434163]),
         rtol=1e-6,
     )
+
+
+class TestTheThumbnailBudgetMeetsThePreparedScope:
+    """Preparation annotates every candidate in scope, so the thumbnail cache is
+    sized by the library, not by the cut. Measured on a real library: 12,159
+    previews averaging 315 KB = 3.92 GB, against a 500 MB default, and one run
+    logged `Evicted 17436.0 MB from thumbnails (budget 500.0 MB)` mid-analysis.
+
+    Preparation writes previews straight into the cache layout rather than
+    through `put`, so neither the budget nor its periodic check ever saw them.
+    """
+
+    @staticmethod
+    def _earlier_run(tmp_path):
+        """Prepare a scope that does not fit, then age it into a previous run."""
+        cache = ThumbnailCache(cache_dir=tmp_path / "previews", max_size_mb=0.001)
+        cache.begin_run()
+        assert run(
+            tmp_path,
+            ports=successful_ports([]),
+            fetch_preview=lambda _: preview(),
+            thumbnail_cache=cache,
+        ).complete
+        previews = sorted(cache.cache_dir.rglob("*_preview.jpg"))
+        aged = time.time() - 3600
+        for path in previews:
+            os.utime(path, (aged, aged))
+        return cache, previews
+
+    def test_a_preview_this_run_reuses_survives_a_budget_it_does_not_fit(self, tmp_path):
+        """An earlier run downloaded it; this run reads it back for pixels, heads,
+        contact sheets and the caption. Reuse is use -- dropped between those
+        stages it becomes a missing fact, not a refetch.
+        """
+        cache, previews = self._earlier_run(tmp_path)
+
+        cache.begin_run()
+        second = run(tmp_path, ports=successful_ports([]), thumbnail_cache=cache)
+
+        assert second.complete
+        assert all(path.exists() for path in previews)
+
+    def test_each_overflowing_run_says_so_once_and_names_the_setting(self, tmp_path, caplog):
+        """Once per run, not once per eviction pass: the thing the user has to
+        change is a line in their config file, and repeating it per pass buries
+        it in the run log it is trying to explain.
+        """
+        caplog.set_level(logging.WARNING)
+        cache, _ = self._earlier_run(tmp_path)
+        assert len(caplog.records) == 1
+        caplog.clear()
+
+        cache.begin_run()
+        run(tmp_path, ports=successful_ports([]), thumbnail_cache=cache)
+
+        assert len(caplog.records) == 1
+        assert "thumbnail_cache_max_size_mb" in caplog.records[0].getMessage()

@@ -106,30 +106,40 @@ cache:
   video_cache_enabled: true
   video_cache_max_size_gb: 10.0     # Max disk usage for downloaded videos
   video_cache_max_age_days: 7       # Evict videos older than this
-  thumbnail_cache_max_size_mb: 500  # Max disk for Immich thumbnails
-  preview_cache_max_size_mb: 2000   # Max disk for clip previews
+  thumbnail_cache_max_size_mb: 10000  # Max disk for Immich previews
+  preview_cache_max_size_mb: 2000     # Max disk for clip previews
 ```
 
-### Thumbnails and previews
+### Thumbnails: the budget that scales with your library
 
-Thumbnails (`thumbnails/`) and clip previews (`preview-cache/`, `previews/`) are
-derived from your library rather than downloaded from it, so they are cheap to
-rebuild and get smaller budgets than the video cache. Each is evicted
-least-recently-used once it goes over its limit — for thumbnails, reading one
-counts as using it, so a thumbnail the current run keeps coming back to is not
-the one thrown away.
+`thumbnails/` holds one Immich preview per candidate asset a memory's scope can
+reach — not per clip in the finished cut. Generating a memory reads each of
+those previews back several times: sharpness and exposure, the DINOv2 heads, the
+contact sheets, the caption. Measured on a real library, a preview is about
+**315 KB**, so a 10,793-candidate scope wants roughly 3.4 GB and a real cache
+held 12,159 previews for 3.92 GB.
 
-If a run's working set does not fit the thumbnail budget at all, the cache ends
-up deleting thumbnails that run is still using and fetching them again. You will
-see a `WARNING` per eviction pass saying how many files this run is still using
-went, which is your cue to raise `thumbnail_cache_max_size_mb` — a yearly memory
-over a large library can want several GB. Left alone it degrades selection
-quietly: burst dedup and the picture readings skip assets whose thumbnail
-vanished.
+Size it by your library:
+
+```
+thumbnail_cache_max_size_mb ≈ 0.35 × (assets a memory's scope can reach)
+```
+
+The 10 GB default holds about 31,000 previews. Previews this run is still using
+are never evicted, so a run whose working set does not fit overflows the limit
+rather than losing facts halfway through. What you pay instead is on the *next*
+run, which reclaims them: the next overlapping memory re-downloads every preview
+and re-captions the assets whose banked caption failure no longer matches the
+bytes it was recorded against. That is model work, not just bandwidth, which is
+why one `WARNING` per run says how far over you are and names the setting.
+
+Clip previews (`preview-cache/`, `previews/`) are different: their working set is
+one cut's clips — tens of files per run however big your library is — so 2 GB
+stays a plain cap and needs no rule of thumb. The video cache is the same shape.
 
 Before these limits existed neither directory had a cap or an expiry, so both
-grew for as long as the app ran — on one real library, 5.2 GB of previews and
-3.5 GB of thumbnails.
+grew for as long as the app ran — on one real library, 5.2 GB of clip previews
+and 3.5 GB of thumbnails.
 
 The `max_age_days` at the top level controls the analysis database cache (SQLite), not the video file cache. The `video_cache_*` fields control the file-based video cache.
 

@@ -8,7 +8,6 @@ enforced.
 
 from __future__ import annotations
 
-import logging
 import os
 from pathlib import Path
 
@@ -27,9 +26,9 @@ def _file(directory: Path, name: str, size: int, age_seconds: float) -> Path:
 def test_a_directory_inside_its_budget_is_left_alone(tmp_path: Path):
     kept = _file(tmp_path, "a.bin", 1000, age_seconds=100)
 
-    freed = evict_to_budget(tmp_path, max_bytes=10_000)
+    eviction = evict_to_budget(tmp_path, max_bytes=10_000)
 
-    assert freed == 0
+    assert eviction.freed_bytes == 0
     assert kept.exists()
 
 
@@ -58,11 +57,11 @@ def test_it_reports_what_it_freed(tmp_path: Path):
     _file(tmp_path, "old.bin", 4000, age_seconds=300)
     _file(tmp_path, "new.bin", 1000, age_seconds=100)
 
-    assert evict_to_budget(tmp_path, max_bytes=1000) == 4000
+    assert evict_to_budget(tmp_path, max_bytes=1000).freed_bytes == 4000
 
 
 def test_a_missing_directory_is_not_an_error(tmp_path: Path):
-    assert evict_to_budget(tmp_path / "never-created", max_bytes=1000) == 0
+    assert evict_to_budget(tmp_path / "never-created", max_bytes=1000).freed_bytes == 0
 
 
 def test_only_matching_files_are_considered(tmp_path: Path):
@@ -75,30 +74,29 @@ def test_only_matching_files_are_considered(tmp_path: Path):
     assert manifest.exists()
 
 
-def test_a_caller_that_does_not_track_a_run_gets_no_self_eviction_warning(tmp_path: Path, caplog):
+def test_a_caller_that_does_not_track_a_run_reports_no_overflow(tmp_path: Path):
     """The preview directories evict on their own schedule with no run to
-    speak of, so the warning is opt-in rather than "anything recent".
+    speak of, so protection is opt-in rather than "anything recent".
     """
     for name in ("a.bin", "b.bin"):
         (tmp_path / name).write_bytes(b"x" * 4000)  # written now, so mtime is now
 
-    with caplog.at_level(logging.WARNING):
-        evict_to_budget(tmp_path, max_bytes=4000)
+    eviction = evict_to_budget(tmp_path, max_bytes=4000)
 
-    assert [r for r in caplog.records if r.levelno == logging.WARNING] == []
+    assert not eviction.overflowed
+    assert eviction.freed_bytes == 4000
 
 
-def test_an_active_working_set_overflows_instead_of_being_deleted(tmp_path: Path, caplog):
+def test_an_active_working_set_overflows_instead_of_being_deleted(tmp_path: Path):
     started_at = 1_000_000.0
     first = _file(tmp_path, "first.bin", 4000, age_seconds=-10)
     second = _file(tmp_path, "second.bin", 4000, age_seconds=-20)
 
-    with caplog.at_level(logging.WARNING):
-        freed = evict_to_budget(tmp_path, max_bytes=4000, run_started_at=started_at)
+    eviction = evict_to_budget(tmp_path, max_bytes=4000, run_started_at=started_at)
 
-    assert freed == 0
+    assert eviction.freed_bytes == 0
     assert first.exists() and second.exists()
-    assert "remain available for this analysis" in caplog.text
+    assert (eviction.active_files, eviction.overflow_bytes) == (2, 4000)
 
 
 def test_nested_files_count_toward_the_budget(tmp_path: Path):
@@ -106,9 +104,9 @@ def test_nested_files_count_toward_the_budget(tmp_path: Path):
     _file(tmp_path / "ab", "old.jpg", 4000, age_seconds=300)
     newest = _file(tmp_path / "cd", "new.jpg", 1000, age_seconds=100)
 
-    freed = evict_to_budget(tmp_path, max_bytes=1000, pattern="*.jpg")
+    eviction = evict_to_budget(tmp_path, max_bytes=1000, pattern="*.jpg")
 
-    assert freed == 4000
+    assert eviction.freed_bytes == 4000
     assert newest.exists()
 
 
