@@ -130,7 +130,6 @@ SPECS: dict[MemoryType, MemorySpec] = {
     MemoryType.MONTHLY_HIGHLIGHTS: MemorySpec(year=2024, month=3),
     MemoryType.ON_THIS_DAY: MemorySpec(on_this_day_target=date(2024, 6, 15), years_back=5),
     MemoryType.HOLIDAY: MemorySpec(year=2024, holiday="christmas", years_back=5),
-    MemoryType.THEN_AND_NOW: MemorySpec(year=2024, years_back=10),
     MemoryType.TRIP: MemorySpec(
         year=2024,
         trip_start=date(2024, 7, 1),
@@ -308,11 +307,9 @@ class TestRegistryCoverage:
             "name the type as a documented exception."
         )
 
-    def test_the_flag_offers_every_type_but_the_retired_one(self) -> None:
-        """Album is offered with no preset; then-and-now keeps a preset nobody can ask for."""
-        offered = ({str(memory_type) for memory_type in SPECS} | {str(ALBUM_HAS_NO_PRESET)}) - {
-            "then_and_now"
-        }
+    def test_the_flag_offers_every_type(self) -> None:
+        """Album is offered with no preset."""
+        offered = {str(memory_type) for memory_type in SPECS} | {str(ALBUM_HAS_NO_PRESET)}
 
         assert offered == CLI_MEMORY_TYPE_CHOICES
 

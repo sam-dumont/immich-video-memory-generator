@@ -1,9 +1,9 @@
 """Which era a moment belongs to, and how much material each era holds.
 
-A then-and-now queries two windows and then loses them: fetch concatenates the
-results and everything after sees one flat list. The era is recoverable from
-the clip's own date, so nothing has to be carried through selection to get it
-back.
+A multi-window memory queries its windows and then loses them: fetch
+concatenates the results and everything after sees one flat list. The era is
+recoverable from the clip's own date, so nothing has to be carried through
+selection to get it back.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ import pytest
 from immich_memories.memory_types.eras import era_of
 from immich_memories.timeperiod import DateRange
 
-# A then-and-now as the builder returns it: most recent first.
+# Two windows a decade apart, most recent first, as the builders order them.
 NOW = DateRange(start=datetime(2026, 1, 1), end=datetime(2026, 12, 31, 23, 59, 59))
 THEN = DateRange(start=datetime(2016, 1, 1), end=datetime(2016, 12, 31, 23, 59, 59))
 ERAS = [NOW, THEN]
@@ -27,7 +27,7 @@ def test_a_moment_resolves_to_the_era_holding_it() -> None:
 
 
 def test_a_moment_in_no_era_belongs_to_none() -> None:
-    """The decade a then-and-now skips is not an era, and never a third one."""
+    """The years between two windows are not an era, and never a third one."""
     assert era_of(datetime(2021, 6, 1), ERAS) is None
 
 

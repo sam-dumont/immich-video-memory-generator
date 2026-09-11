@@ -57,7 +57,7 @@ class AppState:
     custom_start: date | None = None
     custom_end: date | None = None
     # Every window the memory covers. On This Day and Holiday build one per
-    # year, Then and Now builds two far apart; the rest build exactly one.
+    # year; the rest build exactly one.
     date_ranges: list[DateRange] = field(default_factory=list)
 
     # Person selection
@@ -169,9 +169,8 @@ class AppState:
     def date_range(self) -> DateRange | None:
         """The whole period the memory covers — for titles, filenames and labels.
 
-        Anything that *fetches* must use `date_ranges` instead. The span of a
-        Then and Now is a decade it has no interest in, and the span of an On
-        This Day is years it wants three days out of.
+        Anything that *fetches* must use `date_ranges` instead: the span of an
+        On This Day is years it wants three days out of.
         """
         if not self.date_ranges:
             return None

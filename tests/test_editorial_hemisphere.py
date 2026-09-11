@@ -86,7 +86,6 @@ def test_southern_season_states_the_corresponding_months_only():
         "year_in_review",
         "on_this_day",
         "custom",
-        "then_and_now",
     ],
 )
 def test_hemisphere_does_not_change_any_other_product_question(product):

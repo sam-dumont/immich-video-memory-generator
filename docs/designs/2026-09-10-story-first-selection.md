@@ -207,8 +207,8 @@ stage boundary and is recorded as such.
 
 Ten types are offered on both surfaces, in the CLI's order: year in review, season, person
 spotlight, multi-person, monthly highlights, on this day, album (`--memory-type album` with
-`--from-album`), trip, holiday, surprise me (`special_day`). `then_and_now` stays in the enum
-for its title branch and is offered on neither surface; its engine goes in the removal phase.
+`--from-album`), trip, holiday, surprise me (`special_day`). `then_and_now`, offered on neither
+surface since the cutover, was retired with the legacy selector.
 
 ## Where this came from
 

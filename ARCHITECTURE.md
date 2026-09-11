@@ -126,7 +126,7 @@ src/immich_memories/
 │   ├── registry.py             # MemoryType enum
 │   ├── presets.py              # ScoringProfile, PersonFilter, MemoryPreset
 │   ├── date_builders.py        # build_season(), build_month(), build_on_this_day()
-│   └── factory.py              # Registry + 9 preset factories; Album is handled by cli/_album_generation.py
+│   └── factory.py              # Registry + preset factories; Album is handled by cli/_album_generation.py
 │
 ├── analysis/                   # Selection: the story-first editorial route (and the legacy scorer until removal)
 │   ├── smart_pipeline.py       # SmartPipeline: run_editorial_source() is the production entry

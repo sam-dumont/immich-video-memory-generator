@@ -19,7 +19,6 @@ __all__ = ["CarrierView", "IntentReport", "Violation", "validate_intent"]
 
 MIN_CARRIERS = 3
 MIN_CONTENT_SHARE = 0.20
-DOMINANCE_SHARE = 0.80
 
 
 @dataclass(frozen=True)
@@ -89,34 +88,16 @@ def _uncovered(
     intent: EditorialIntent,
     coverage: dict[str, int],
     evidence_partitions: Collection[str],
-    *,
-    two_sided: bool,
 ) -> list[Violation]:
     return [
         Violation(
             code="uncovered_partition",
-            severity="structural" if two_sided else "coverage",
+            severity="coverage",
             partition=part.key,
             detail=f"{part.label} holds worthy evidence and carries nothing",
         )
         for part in intent.required_partitions
         if part.key in evidence_partitions and coverage[part.key] == 0
-    ]
-
-
-def _one_sided(coverage: dict[str, int], carriers: Sequence[CarrierView]) -> list[Violation]:
-    if not carriers:
-        return []
-    top = max(coverage.values())
-    if top / len(carriers) <= DOMINANCE_SHARE:
-        return []
-    return [
-        Violation(
-            "one_sided_comparison",
-            "structural",
-            None,
-            f"{top} of {len(carriers)} carriers fall on one side of the gap",
-        )
     ]
 
 
@@ -174,11 +155,9 @@ def validate_intent(
     """Judge the plan's shape against the contract. Sparse material is reported, never padded."""
     usable = float(sum(c.seconds for c in carriers))
     coverage = _coverage(intent, carriers)
-    two_sided = intent.product == "then_and_now"
     violations = [
         *_over_limit(intent, coverage),
-        *_uncovered(intent, coverage, evidence_partitions, two_sided=two_sided),
-        *(_one_sided(coverage, carriers) if two_sided else []),
+        *_uncovered(intent, coverage, evidence_partitions),
         *(
             _latest_year_cluster(intent, coverage, evidence_partitions)
             if intent.product in ("on_this_day", "holiday") and carriers

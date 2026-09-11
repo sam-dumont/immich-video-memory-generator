@@ -76,10 +76,6 @@ def _occasion_title(
         holiday = (preset_params or {}).get("holiday", "christmas")
         return holiday_label(holiday, end.year), "Through the Years"
 
-    if memory_type == "then_and_now":
-        # Both ends, in the order the memory plays them.
-        return f"{start.year} & {end.year}", "Then and Now"
-
     if memory_type == "special_day":
         # The catalogue named this day from the day's own photos, months before
         # anybody asked for a video of it.

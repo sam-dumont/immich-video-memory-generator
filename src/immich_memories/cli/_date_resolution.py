@@ -365,7 +365,7 @@ def _recap_duration_from_date_range(date_range: DateRange) -> float:
 # one-day span it evaluates negative too, so a special day would render as 30
 # seconds however much happened on it. Their presets already state the length
 # they want, so the CLI reads that instead.
-_PRESET_DURATION_TYPES = ("holiday", "then_and_now", "special_day")
+_PRESET_DURATION_TYPES = ("holiday", "special_day")
 
 
 def _preset_duration(memory_type: str, preset_params: dict | None = None) -> float | None:
@@ -440,10 +440,7 @@ def _multi_year_ranges(
     three each need their own defaults, and inlining them pushed the caller's
     cognitive complexity past the gate.
     """
-    from immich_memories.memory_types.date_builders import (
-        build_on_this_day,
-        build_then_and_now,
-    )
+    from immich_memories.memory_types.date_builders import build_on_this_day
 
     if memory_type == "on_this_day":
         return build_on_this_day(on_this_day_target or date.today(), years_back=years_back)
@@ -455,10 +452,5 @@ def _multi_year_ranges(
         # must skip a holiday that has not happened yet belongs to whoever
         # defaults the year, and the wizard defaults it there too.
         return _holiday_ranges(holiday, year, years_back)
-
-    if memory_type == "then_and_now":
-        # WHY the `or 10`: --years-back defaults to None here, and 0 is read as
-        # unset rather than as an error. The builder owns everything else.
-        return build_then_and_now(year or date.today().year, years_back or 10)
 
     return None

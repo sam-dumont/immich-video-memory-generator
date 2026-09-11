@@ -55,7 +55,7 @@ WHITELIST = Path(__file__).resolve().parent.parent / "vulture-whitelist.py"
 # SessionOptions owns; frozen record fields written at construction and read
 # back out of the private artifact JSON; and the attempt reader the phase-2
 # review page consumes.
-MAX_WHITELISTED_SYMBOLS = 279
+MAX_WHITELISTED_SYMBOLS = 278
 
 
 def test_the_dead_code_whitelist_never_grows() -> None:

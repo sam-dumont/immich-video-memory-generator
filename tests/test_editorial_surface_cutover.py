@@ -63,25 +63,25 @@ def test_cli_runtime_keeps_exact_windows_and_total_duration_for_story_selection(
             duration=90.0,
             transition="cut",
             music=None,
-            output_path=tmp_path / "then-and-now.mp4",
-            memory_type="then_and_now",
+            output_path=tmp_path / "on-this-day.mp4",
+            memory_type="on_this_day",
             person_names=["Riley", "Bob"],
             date_range=display_span,
             date_ranges=(earlier, later),
-            title_override="Then and now",
+            title_override="On this day",
             memory_preset_params={"person_match": "or"},
             upload_to_immich=False,
             album=None,
             source="auto",
-            memory_key="candidate:then-and-now",
+            memory_key="candidate:on-this-day",
             no_render=True,
             accept_any_provenance=True,
         )
 
     context = build_pipeline.call_args.kwargs["editorial_context"]
-    assert context.key == "candidate:then-and-now"
-    assert context.label == "Then and now"
-    assert context.product == "then_and_now"
+    assert context.key == "candidate:on-this-day"
+    assert context.label == "On this day"
+    assert context.product == "on_this_day"
     assert context.date_ranges == (earlier, later)
     assert context.target_seconds == 90.0
     assert context.artifact_dir == tmp_path / "cache" / "editorial-runs" / context.key
@@ -244,7 +244,7 @@ def test_ui_runtime_uses_exact_state_windows_and_total_duration(tmp_path) -> Non
         config=app_config,
         immich_url="http://immich.test",
         immich_api_key="test-key",
-        memory_type="then_and_now",
+        memory_type="on_this_day",
         date_ranges=[earlier, later],
         clips=[clip],
         selected_clip_ids={clip.asset.id},
@@ -285,7 +285,7 @@ def test_ui_runtime_uses_exact_state_windows_and_total_duration(tmp_path) -> Non
 
     assert progress_state["error"] is None
     context = build_pipeline.call_args.kwargs["editorial_context"]
-    assert context.product == "then_and_now"
+    assert context.product == "on_this_day"
     assert context.date_ranges == (earlier, later)
     assert context.label == f"{earlier.description}; {later.description}"
     assert context.target_seconds == 90.0

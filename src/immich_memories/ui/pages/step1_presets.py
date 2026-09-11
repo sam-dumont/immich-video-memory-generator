@@ -560,7 +560,7 @@ def _apply_preset_to_state(memory_type: MemoryType) -> None:
 
 # Which widgets a type puts under the brief's select. Every offered type
 # appears, so a type added to OFFERED_MEMORY_TYPES and not here fails loudly on
-# selection rather than rendering nothing. Retired then-and-now has neither.
+# selection rather than rendering nothing.
 _CARD_RENDERERS: dict[MemoryType, Callable[[AppState], None]] = {
     MemoryType.YEAR_IN_REVIEW: _render_year_picker,
     MemoryType.SEASON: _render_season_params,

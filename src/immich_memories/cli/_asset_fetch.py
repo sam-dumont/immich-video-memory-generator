@@ -76,8 +76,8 @@ def _report_per_window(
     """Say what each window contributed, and shout when one contributed nothing.
 
     A combined total hides the failure that matters on a multi-window memory: a
-    then-and-now whose older half is empty still renders, as a memory of the
-    recent half alone, and without this it looks like a clean run.
+    holiday whose oldest year is empty still renders, as a memory of the other
+    years alone, and without this it looks like a clean run.
 
     ``history_from`` marks where a memory's expected-sparse tail begins. A
     birthday memory looks at the same single day in several earlier years, and

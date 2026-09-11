@@ -76,7 +76,6 @@ def test_real_planner_changed_observed_evidence_changes_admission_requests(tmp_p
 
 def test_other_products_keep_their_exact_full_admission_contract():
     for product in (
-        "then_and_now",
         "holiday",
         "person_spotlight",
         "person_lifetime",
