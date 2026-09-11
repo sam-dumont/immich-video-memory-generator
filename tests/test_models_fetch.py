@@ -146,7 +146,10 @@ def test_models_fetch_lands_the_configured_path_from_the_configured_url(
     monkeypatch.setattr(models_cmd, "DINOV2_SMALL_ONNX_SHA256", EXPORT_SHA256)
     config = Config(triage={"encoder": str(destination), "encoder_url": served.url})
 
-    result = _invoke(["models", "fetch"], config)
+    # WHY: --no-detectors keeps this test on the encoder. Warming the detectors
+    # needs huggingface-hub, which the editorial extra carries and CI does not
+    # install, so the default path would exit 1 before the encoder is checked.
+    result = _invoke(["models", "fetch", "--no-detectors"], config)
 
     assert result.exit_code == 0
     assert destination.read_bytes() == EXPORT
