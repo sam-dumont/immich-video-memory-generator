@@ -169,7 +169,7 @@ class TestProbeBatchDurations:
 
 
 # ---------------------------------------------------------------------------
-# clip_probing: get_video_duration, get_video_info, get_main_video_stream_map
+# clip_probing: get_video_duration, get_main_video_stream_map; ProbeCache
 # ---------------------------------------------------------------------------
 
 
@@ -180,22 +180,20 @@ class TestClipProbing:
         dur = get_video_duration(test_clip_720p)
         assert 2.5 < dur < 3.5, f"Expected ~3s, got {dur}"
 
-    def test_get_video_info_has_expected_keys(self, test_clip_720p: Path):
-        from immich_memories.processing.clip_probing import get_video_info
+    def test_the_probe_reads_a_real_file_s_shape(self, test_clip_720p: Path):
+        from immich_memories.processing.probe_cache import ProbeCache
 
-        info = get_video_info(test_clip_720p)
-        assert info["width"] == 1280
-        assert info["height"] == 720
-        assert abs(info["fps"] - 30.0) < 1.0
-        assert info["codec"] == "h264"
-        assert info["duration"] > 0
+        probe = ProbeCache().get(test_clip_720p)
+        assert (probe.width, probe.height) == (1280, 720)
+        assert abs(probe.fps - 30.0) < 1.0
+        assert probe.codec == "h264"
+        assert probe.duration_seconds > 0
 
-    def test_get_video_info_portrait(self, portrait_clip: Path):
-        from immich_memories.processing.clip_probing import get_video_info
+    def test_the_probe_reads_a_portrait_file_s_shape(self, portrait_clip: Path):
+        from immich_memories.processing.probe_cache import ProbeCache
 
-        info = get_video_info(portrait_clip)
-        assert info["width"] == 720
-        assert info["height"] == 1280
+        probe = ProbeCache().get(portrait_clip)
+        assert (probe.width, probe.height) == (720, 1280)
 
     def test_get_main_video_stream_map(self, test_clip_720p: Path):
         from immich_memories.processing.clip_probing import get_main_video_stream_map
@@ -204,13 +202,12 @@ class TestClipProbing:
         # Single-stream file should return default
         assert stream_map == "0:v:0"
 
-    def test_get_video_info_short_clip(self, short_clip: Path):
-        from immich_memories.processing.clip_probing import get_video_info
+    def test_the_probe_reads_a_short_file_s_shape(self, short_clip: Path):
+        from immich_memories.processing.probe_cache import ProbeCache
 
-        info = get_video_info(short_clip)
-        assert info["width"] == 640
-        assert info["height"] == 480
-        assert abs(info["fps"] - 24.0) < 1.0
+        probe = ProbeCache().get(short_clip)
+        assert (probe.width, probe.height) == (640, 480)
+        assert abs(probe.fps - 24.0) < 1.0
 
 
 # ---------------------------------------------------------------------------
