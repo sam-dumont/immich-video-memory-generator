@@ -21,6 +21,16 @@ PLAN_FILE = "plan.private.json"
 # Carrier kinds the planner writes for moving pictures; anything else is held as a still.
 MOTION_KINDS = frozenset({"video", "live-motion", "motion"})
 
+# The editor answers in its own vocabulary; readers get these words instead. Display only —
+# `StoryEntry.weight` keeps the stored word for the Details disclosure. A weight with no
+# reader word (`none`, or anything a later schema adds) gets no badge rather than a raw one.
+WEIGHT_LABELS = {
+    "dominant": "Main story",
+    "major": "Important",
+    "minor": "Supporting",
+    "glimpse": "Small moment",
+}
+
 
 @dataclass(frozen=True)
 class CarrierView:
@@ -45,6 +55,14 @@ class StoryEntry:
     granted: int
     day: str
     carriers: tuple[CarrierView, ...]
+
+    @property
+    def weight_label(self) -> str:
+        return WEIGHT_LABELS.get(self.weight, "")
+
+    @property
+    def granted_label(self) -> str:
+        return f"{self.granted} picture{'' if self.granted == 1 else 's'}"
 
 
 @dataclass(frozen=True)

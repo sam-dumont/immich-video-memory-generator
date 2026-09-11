@@ -30,6 +30,9 @@ _POOL_FILES = (
 # attempt exists (the row titles alone never match, so this waits for the real run).
 _EDITING_STAGE = re.compile("^(" + "|".join(re.escape(stage) for stage in STAGES[1:]) + ")$")
 
+# The reading the editor gave a picture — a badge only the Details disclosure shows.
+_STANDINGS = re.compile(r"^(remarkable|maybe)$")
+
 
 def _attempts_written(launch_workspace) -> int:
     return len(list(launch_workspace.cache_dir.glob("editorial-runs/*/attempts/*")))
@@ -64,7 +67,7 @@ def test_a_cut_from_the_brief_shows_the_story_and_offers_export(
     page.get_by_role("button", name="Cut", exact=True).click()
 
     expect(page.get_by_text(_THESIS)).to_be_visible(timeout=120_000)
-    # Weight order, not capture order: the dominant story leads, the glimpse closes.
+    # Weight order, not capture order: the heaviest story leads, the lightest closes.
     titles = page.locator(".q-card .text-base.font-semibold")
     expect(titles).to_have_text(list(_STORY_TITLES))
     expect(page.get_by_text("3 stories, 6 pictures", exact=True)).to_be_visible()
@@ -115,3 +118,23 @@ def test_the_media_pool_stays_reachable_from_advanced(page: Page, launch_app_url
     expect(page.get_by_text("3 Videos, 3 Photos Found", exact=True)).to_be_visible(timeout=60_000)
     for filename in _POOL_FILES:
         expect(page.get_by_text(filename, exact=True).first).to_be_visible()
+
+
+def test_the_story_reads_in_reader_words_and_hides_the_answer_schema_behind_details(
+    page: Page, launch_app_url: str
+) -> None:
+    _brief_for_june(page, launch_app_url)
+    page.get_by_role("button", name="Cut", exact=True).click()
+    expect(page.get_by_text(_THESIS)).to_be_visible(timeout=120_000)
+
+    for badge in ("Main story", "Important", "Small moment"):
+        expect(page.get_by_text(badge, exact=True)).to_be_visible()
+    expect(page.get_by_text("2 pictures", exact=True)).to_have_count(3)
+    for machine_word in ("dominant", "remarkable", "maybe"):
+        expect(page.get_by_text(machine_word, exact=True).first).to_be_hidden()
+
+    lead = page.locator(".q-card").filter(has_text=_STORY_TITLES[0]).first
+    lead.get_by_text("Details", exact=True).click()
+
+    expect(lead.get_by_text("dominant", exact=True)).to_be_visible()
+    expect(lead.get_by_text(_STANDINGS).first).to_be_visible()

@@ -47,12 +47,32 @@ def _render_carrier(carrier: CarrierView) -> None:
                 ui.label(_when(carrier.taken)).classes("text-xs").style(
                     "color: var(--im-text-secondary)"
                 )
-                if carrier.standing:
-                    im_badge(
-                        carrier.standing, variant=_STANDING_VARIANT.get(carrier.standing, "info")
-                    )
             if carrier.reason:
                 ui.label(carrier.reason).classes("text-sm").style("color: var(--im-text)")
+
+
+def _labelled_badge(label: str, word: str, variant: str) -> None:
+    with ui.row().classes("items-center gap-2"):
+        ui.label(label).classes("text-xs").style("color: var(--im-text-secondary)")
+        im_badge(word, variant=variant)
+
+
+def _render_details(story: StoryEntry) -> None:
+    """The editor's own words for this story, one click away instead of in every reader's face."""
+    standings = [carrier for carrier in story.carriers if carrier.standing]
+    if not story.weight and not standings:
+        return
+    with ui.expansion("Details").classes("w-full mt-2 text-xs"):
+        if story.weight:
+            _labelled_badge(
+                "Story weight", story.weight, _WEIGHT_VARIANT.get(story.weight, "warning")
+            )
+        for carrier in standings:
+            _labelled_badge(
+                _when(carrier.taken),
+                carrier.standing,
+                _STANDING_VARIANT.get(carrier.standing, "info"),
+            )
 
 
 def _render_story(story: StoryEntry) -> None:
@@ -60,9 +80,9 @@ def _render_story(story: StoryEntry) -> None:
         card.classes("p-4")
         with ui.row().classes("items-center gap-2 flex-wrap"):
             ui.label(story.title).classes("text-base font-semibold").style("color: var(--im-text)")
-            if story.weight:
-                im_badge(story.weight, variant=_WEIGHT_VARIANT.get(story.weight, "warning"))
-            ui.label(f"{story.granted} granted").classes("text-xs").style(
+            if story.weight_label:
+                im_badge(story.weight_label, variant=_WEIGHT_VARIANT.get(story.weight, "warning"))
+            ui.label(story.granted_label).classes("text-xs").style(
                 "color: var(--im-text-secondary)"
             )
             if story.day:
@@ -73,6 +93,7 @@ def _render_story(story: StoryEntry) -> None:
             )
         for carrier in story.carriers:
             _render_carrier(carrier)
+        _render_details(story)
 
 
 def render_story(view: StoryView, warning: str | None = None) -> None:
