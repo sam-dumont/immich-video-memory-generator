@@ -11,7 +11,7 @@ Intel Quick Sync Video (QSV) is built into most Intel CPUs with integrated graph
 
 - **QSV encoding**: h264_qsv, hevc_qsv. Hardware-accelerated encoding on the integrated GPU.
 - **QSV scaling**: `scale_qsv` resizes frames on the GPU.
-- **Face detection**: falls back to CPU (OpenCV Haar cascades). Intel GPUs don't have a dedicated neural accelerator exposed for this.
+- **Face detection**: not a thing this app does. Photo pans use Immich's own face boxes.
 
 ## Requirements
 

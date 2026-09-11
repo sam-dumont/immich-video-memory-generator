@@ -64,10 +64,12 @@ always SDR. If you select `codec: h264`, detected HDR is tone-mapped to SDR even
 `hdr_mode: auto` is set. Use H.264 when broad playback compatibility matters more than HDR.
 
 The target duration you pick per run (UI slider or `--duration`) applies to the complete result,
-including titles and the time removed by overlapping fades. When eligible material exists, the
-optimizer backfills unused clips before accepting a short result. The encoded duration may differ by
-less than one transition because cuts land on video frame boundaries. There is no config default for
-it: the memory type preset supplies one.
+including titles and the time removed by overlapping fades. There is no backfill pass: the editor
+grants seconds to the stories it weighed, and if that adds up short the run says so — "Selected
+41.2s of pictures and video for a 60.0s memory" — rather than padding with material it had already
+decided against. The encoded duration may differ by less than one transition because cuts land on
+video frame boundaries. There is no config default for the target: the memory type preset supplies
+one.
 
 ## Tiers
 
@@ -89,8 +91,8 @@ Tier 2 sections: `analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `server`
 `scheduler`) stays at the top level.
 
 Unknown keys inside a section are silently ignored — a typo does not fail the load, it just does
-nothing — with one exception: the keys of the removed clip scorer (`content_analysis`,
-`audio_content`, `speech`, `transcription`, `analysis.max_refinement_passes`, `photos.max_ratio`
+nothing — with one exception: the thirty keys of the removed clip scorer (`content_analysis`,
+`audio_content`, `speech`, `transcription`, `description_llm`, `analysis.max_refinement_passes`, `photos.max_ratio`
 and the rest of that family) are refused at startup with a message naming them, so an old file
 cannot keep loading while its settings do nothing. Unknown top-level keys and invalid values
 (`codec: av1`, `llm.provider: gemini`) also fail with a validation error at startup.
@@ -139,10 +141,10 @@ Both rules run before anything is analysed, which is also what keeps this materi
 the analysis budget, and `discover-days` applies the same rules before it counts a day's
 photographs — a day should not clear the bar on pictures nobody in the library took.
 
-This runs before analysis, so an excluded file costs nothing to skip, and it works with no
-LLM configured at all. With one configured, the holistic review is a second line of defence:
-it drops footage nobody chose to shoot whatever the picture quality, which covers the
-cameras whose filenames give nothing away.
+Both rules are pure metadata, so an excluded file costs nothing to skip and never reaches a
+model. The camera whose filename gives nothing away is caught later and differently: the
+memory-worthy gate is asked whether each happening is remarkable, background, or a maybe, and a
+doorbell's afternoon is background.
 
 ## Immich API compatibility
 
@@ -191,8 +193,10 @@ A handful of secret-bearing fields expand `${VAR_NAME}` at load time:
 | `immich` | `url`, `api_key` |
 | `llm` / `title_llm` | `api_key` |
 | `musicgen` | `base_url`, `api_key` |
-| `ace_step` | `api_url` (not `api_key`) |
+| `ace_step` | `api_url`, `api_key` |
 | `auth` | `password`, `client_secret`, `issuer_url`, `client_id` |
+| `editorial` | `annotation_database` |
+| `editorial.preparation` | `head_bundle`, `detector_python`, `detector_cache_dir` |
 
 Only the braced form expands. A bare `$VAR_NAME` is left exactly as written,
 because these fields hold passwords and API keys and a `$` in a secret is

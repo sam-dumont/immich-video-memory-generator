@@ -186,7 +186,7 @@ Inside Immich's own compose stack, `immich-server` listens on **2283** (every Im
 | `IMMICH_MEMORIES_AUTOMATION__ENABLED` | No | `true` to run the daily `auto run` decision inside the container. Off by default. See [Daily automation](#daily-automation). |
 | `IMMICH_MEMORIES_AUTOMATION__DAILY_AT` | No | Wall-clock time for that run, `HH:MM` in the container's `TZ` (default `09:00`). |
 
-All config options can also be set via env vars with the `IMMICH_MEMORIES_` prefix. Double underscores for nesting: `IMMICH_MEMORIES_ANALYSIS__SCENE_THRESHOLD=25`.
+All config options can also be set via env vars with the `IMMICH_MEMORIES_` prefix. Double underscores for nesting: `IMMICH_MEMORIES_ANALYSIS__DOWNLOAD_WORKERS=3`.
 
 ## Security hardening
 
@@ -211,14 +211,11 @@ services:
       - /tmp:size=2G
       - /home/immich/.cache:size=1G
 
-    deploy:
-      resources:
-        limits:
-          memory: 8G
-          cpus: "4"
 ```
 
-The root `docker-compose.yml` has these options as a commented section: uncomment to enable.
+The root `docker-compose.yml` carries exactly that block commented out (`security_opt`,
+`cap_drop`, `read_only`, `tmpfs`) — uncomment to enable. Its resource limits are live, not
+commented: `memory: 4G` and `cpus: "4"`. Raise the memory yourself if you render 4K.
 
 Nothing else needs a writable root. The web UI keeps its session storage under
 `/home/immich/.immich-memories/.nicegui` on the config volume (the image sets

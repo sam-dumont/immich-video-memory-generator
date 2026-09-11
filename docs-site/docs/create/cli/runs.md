@@ -65,7 +65,7 @@ Aggregate statistics across all your runs:
 immich-memories runs stats
 ```
 
-Shows total runs, completion rate, total video generated, total processing time, average clips per run, etc.
+Shows total runs, completed and failed as raw counts, total video generated, total and average processing time, and average and total clips processed. No completion rate — divide it yourself if you want one.
 
 ## runs delete
 

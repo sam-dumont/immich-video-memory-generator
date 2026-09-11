@@ -107,7 +107,7 @@ image with `--cpus=4 --memory=4g` and no GPU took **10 min with `preset: fast`**
 the default profile (4 M5 Max cores; a Celeron-class NAS is 2-3× slower). `preset: fast` swaps in
 1080p H.264, a fast encoder and static titles; explicit settings still win over it. The
 [NAS-only guide](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/common-setups/nas-only)
-has the Celeron-class table. Field reports from Synology, Unraid, Proxmox and Raspberry Pi are
+has the measurement in full. Field reports from Synology, Unraid, Proxmox and Raspberry Pi are
 welcome: [open an issue](https://github.com/sam-dumont/immich-video-memory-generator/issues).
 
 ## Without Docker
@@ -234,7 +234,7 @@ graph LR
 
 *One example, not a requirement. The music generator is optional: without it you get your own
 music, or silence. The text model and the caption server are not — the editor reads with them —
-but they speak any OpenAI-compatible endpoint, local ([omlx](https://github.com/nicepkg/omlx)) or not.*
+but they speak any OpenAI-compatible endpoint, local ([oMLX](https://github.com/jundot/omlx)) or not.*
 
 ## Development
 
@@ -244,8 +244,8 @@ Guidelines in [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Built with AI
 
 > This entire codebase was written with AI (Claude) as an experiment in building complex
-> software cleanly with AI assistance. 8,700+ tests (600+ of them integration/E2E),
-> 20 static analysis gates in CI (15 quality, 5 security), 490+ source modules.
+> software cleanly with AI assistance. 7,461 tests (623 of them integration/E2E),
+> 20 static analysis gates in CI (15 quality, 5 security), 454 source modules.
 > See [DISCLAIMER.md](DISCLAIMER.md) for the full story.
 
 ## License

@@ -4,7 +4,7 @@ sidebar_label: "Linux + NVIDIA"
 
 # Linux + NVIDIA GPU Setup
 
-For Linux servers with NVIDIA GPUs. Docker with nvidia-container-toolkit for NVENC encoding, CUDA scene analysis, GPU title rendering, and optional AI music generation.
+For Linux servers with NVIDIA GPUs. Docker with nvidia-container-toolkit for NVENC encoding, CUDA scaling, GPU title rendering, and optional AI music generation.
 
 Complete [editorial annotation setup](../configuration/editorial-preparation.md) before the
 first uncached generation. The pinned public context encoder, detector weights, compact-caption

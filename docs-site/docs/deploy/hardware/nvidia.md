@@ -69,4 +69,4 @@ See [Linux + NVIDIA](../common-setups/linux-nvidia.md) for a full compose file.
 
 NVENC quality is slightly below software libx264 at the same bitrate, but for memory videos the difference is invisible, so take the speed.
 
-Just don't buy the card for the encode. Encoding is the smaller half of a CPU-only run: title rendering was ~263 s of a ~339 s assembly at `--cpus=2`, and analysis was 7.4 of 10.1 minutes end to end. The bigger wins from this GPU are Taichi title rendering and CUDA scene analysis. See [CPU-Only Mode](./cpu-only.md#title-rendering-is-the-bottleneck-not-encoding) for the measured split.
+Just don't buy the card for the encode. Encoding is the smaller half of a CPU-only run: title rendering was ~263 s of a ~339 s assembly at `--cpus=2`, and the analysis phase was 7.4 minutes of a 10 min 08 s run end to end. The bigger win from this GPU is Taichi title rendering. It does not run the editor's models — see the [self-hosting guide](../self-hosting.md#one-machine-or-two) for where those go. See [CPU-Only Mode](./cpu-only.md#title-rendering-is-the-bottleneck-not-encoding) for the measured split.

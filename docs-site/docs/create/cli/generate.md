@@ -110,10 +110,11 @@ draw down the right-hand side sits across the middle of the frame — exactly
 where a centred title lands. The text shrinks to fit rather than sliding, so it
 stays centred and out from under the buttons.
 
-With `--orientation portrait` the caption is inset further from the bottom —
-about a sixth of the frame height — to clear the captions, handle and action
-rail that Reels, Shorts and Stories draw over the lower part of a 9:16 video.
-Landscape output keeps the tighter inset, having no chrome to dodge.
+Captions are the exception: their inset is 5.5% of the short side in both
+orientations, so a portrait render puts the date in the same corner a landscape
+one does. The captions, handle and action rail that Reels, Shorts and Stories
+draw over the lower part of a 9:16 video will sit across it. If that matters,
+drop `--add-date`.
 
 When `--resolution` is omitted, the command uses `output.resolution` from the config (1080p by
 default). Pass `--resolution auto` explicitly when you want the source clips to choose the output
@@ -124,17 +125,17 @@ Apple VideoToolbox; other hardware backends retain their existing quality polici
 ### Preset (root option)
 
 `--preset fast` is a root option — it goes before `generate`: `immich-memories --preset fast generate --month 6`.
-It applies the CPU-only/NAS profile for this run (1080p H.264, fast encoder, medium quality,
-static title backgrounds, no speech pass, photos ≤25 %, favorites-first analysis) to every knob you
-have not set explicitly; the flags below still win. Persistent form: `preset: fast` in
+It applies the CPU-only/NAS profile for this run — 1080p, H.264, medium quality, the fast
+encoder preset, static title backgrounds — to every knob you have not set explicitly; the flags
+below still win. Five keys in three sections, and none of them changes what the editor reads. Persistent form: `preset: fast` in
 `config.yaml` or `IMMICH_MEMORIES_PRESET=fast` — see the [config reference](../../reference/config-reference.md#preset).
 
 ### Photos
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--include-photos` | — | flag | — | Include photos alongside videos |
-| `--photo-duration` | — | float | `4.0` | Seconds per photo clip (use with `--include-photos`) |
+| `--include-photos` / `--no-photos` | — | flag pair | on | Photos alongside videos. `photos.enabled` is already `true`, so the useful half is `--no-photos` |
+| `--photo-duration` | — | float | `4.0` | Seconds per photo clip (from `photos.duration`) |
 
 ### Music
 
@@ -150,8 +151,8 @@ have not set explicitly; the flags below still win. Persistent form: `preset: fa
 |------|-------|------|---------|-------------|
 | `--dry-run` | — | flag | — | Cheap preview: cached analysis only, verify pass skipped, no video |
 | `--no-render` | — | flag | — | The real selection — analysis, verify, judge, review — stopping before the encode |
-| `--privacy-mode` | — | flag | — | Blur all video and mute speech |
-| `--include-live-photos` | — | flag | — | Include Live Photo video clips (merged when burst-captured) |
+| `--privacy-mode` | — | flag | — | Demo mode: blur every frame, scramble the audio, fake the names |
+| `--include-live-photos` / `--no-live-photos` | — | flag pair | on | Live Photo clips, merged when burst-captured. `analysis.include_live_photos` is already `true` |
 | `--keep-intermediates` | — | flag | — | Keep intermediate files for debugging |
 | `--quiet` | — | flag | — | Suppress interactive progress, emit log lines only |
 | `--trace-selection` | — | path | — | Write a stage-by-stage report of how the clips were chosen |
@@ -192,7 +193,7 @@ immich-memories generate --year 2025 --birthday --person "Emma" --duration 900
 
 `--year` names the birthday being celebrated. The memory is the year **ending** on it — 22 July 2024 to 21 July 2025 for a 21 July birthday — plus the five previous birthdays as ±1 day windows. `--years-back` changes how many.
 
-If the person has no birth date in Immich the run stops and says where to add one. Override for a single run with `--birthday 07-21`; slashes work too and read day-first, like every other date flag — `--birthday 07/02` is 7 February. `MM-DD` is the form that cannot be misread.
+If the person has no birth date in Immich the run stops and says where to add one. Override for a single run with `--birthday 07-21`. Slashed forms are rejected outright, never guessed — `MM-DD` and `YYYY-MM-DD` are the two the parser takes.
 
 ### Person spotlight for a single month
 
@@ -404,9 +405,7 @@ trips:
   max_gap_days: 2                # Max gap between videos before splitting trips
 ```
 
-## Dry run
-
-### Letting the LLM name the memory
+## Letting the LLM name the memory
 
 By default the CLI titles a memory from a template — "Year in Review 2025",
 "March 2025", "On This Day — July 4". `--llm-title` asks the configured model
@@ -431,6 +430,8 @@ Three things worth knowing:
 It uses `title_llm` if you have configured one, otherwise `llm` — the same
 resolution the rest of the pipeline uses.
 
+## Understanding a run
+
 ### What a run reports about itself
 
 Every generation ends with a short block:
@@ -439,7 +440,7 @@ Every generation ends with a short block:
 Memory generated in 6m 27s
 
   measured this run
-    analysis + selection     3m 49s   28 of 312 deeply analyzed, 14 planned
+    selection                3m 49s   14 planned from 312 candidates
     generation               2m 38s
 
   LLM   11 calls · 4 answered from the judgment cache · 47.2k prompt / 3.1k completion · 2m 18s
@@ -496,7 +497,7 @@ This answers it directly; the funnel prints whichever passes the route ran, unde
 nothing to trace. Trace a real run: `--no-render` gives you one without the encode. See below.
 :::
 
-### Two ways to skip the video
+## Two ways to skip the video
 
 They are not the same, and the difference decides which one you want.
 

@@ -91,7 +91,7 @@ If Immich runs on the same Docker network, use the container name (`immich-serve
 
 ## What works
 
-- **Clip scoring**: motion analysis, face detection (CPU-based), favorites boost, audio signals
+- **The whole editor**: captions, context heads, detectors and pixel facts all run on CPU. What they cost you is time, not correctness — the cut is the same cut a GPU box would make
 - **Title screens**: PIL-based renderer (works everywhere, no GPU needed)
 - **Custom music**: upload your own MP3/WAV in Step 3
 - **All memory types**: year in review, monthly, person spotlight, trips (if GPS data exists)
@@ -120,8 +120,8 @@ explicit incomplete result. There is no model-free alternate selector.
 
 Add `IMMICH_MEMORIES_PRESET=fast` to the compose `environment:` (or `preset: fast` at the top of
 `config.yaml`) and the CPU-only profile is on: 1080p H.264 with the fast encoder preset and
-medium quality, static title backgrounds instead of animated ones, 
-and photos capped at a quarter of the cut. Every value you set explicitly still wins, and the web
+medium quality, and static title backgrounds instead of animated ones. That is the whole of it —
+three sections, five keys, nothing about what the editor reads. Every value you set explicitly still wins, and the web
 UI's options page shows a banner when the preset is active. `immich-memories --preset fast generate …`
 does the same for one CLI run.
 

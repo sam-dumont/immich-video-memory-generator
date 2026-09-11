@@ -13,16 +13,14 @@ title: CPU-Only Mode
 |---------|----------|-------------|--------|
 | Title screens | Animated GPU-rendered (Taichi: bokeh particles, gradient animation, SDF text) | Static PIL-rendered (gradient background, text overlay) | Simpler visuals, same text — and the dominant cost of a run (see below) |
 | Video encoding | NVENC / VideoToolbox / VAAPI / QSV | libx264 / libx265 (software) | Slower encoding — the smaller half of a run |
-| Face detection (macOS) | Apple Vision (Neural Engine) | OpenCV Haar cascades (CPU) | Slightly less accurate |
 | SDF text rendering | Taichi GPU kernels + FreeType atlas | PIL text drawing | No SDF glow/shadow effects |
 | Video scaling | GPU-accelerated (scale_cuda, scale_vaapi) | FFmpeg swscale (CPU) | Slower for resolution changes |
 
 **Core pipeline features that work identically on CPU:**
 - Clip discovery from Immich and story-first selection
-- Duplicate detection (perceptual hashing)
+- Burst and near-duplicate collapsing
 - The editor's readings, against any OpenAI-compatible endpoint
 - Audio ducking and music mixing
-- Clip ordering
 - All CLI and UI functionality
 
 ## Configuration
@@ -55,11 +53,12 @@ image) the `gpu` extra skips Taichi altogether — titles are always PIL-rendere
 ## Performance expectations
 
 The one end-to-end measurement is in the [NAS-only guide](../common-setups/nas-only.md#performance-expectations):
-a 14-clip monthly, 62 s of 1080p out, cold cache, 4 cores and no GPU took 10 min with
-`preset: fast` and 15.7 min on the default profile. Analysis was 7.4 of those 10 minutes.
+a 14-clip monthly, 62 s of 1080p out, cold cache, 4 cores and no GPU took 10 min 08 s with
+`preset: fast` and 15 min 42 s on the default profile. The analysis phase was 7.4 of those
+10 minutes.
 
-Two things follow. Analysis is CPU-bound whether or not you have a GPU, and it is cached — a
-second run over the same period is much cheaper. Title rendering is the part a GPU would
+Two things follow. Preparation is CPU-bound whether or not you have a GPU, and it is cached — a
+second cut over the same period is much cheaper. Title rendering is the part a GPU would
 actually take off your hands.
 
 ### Title rendering is the bottleneck, not encoding

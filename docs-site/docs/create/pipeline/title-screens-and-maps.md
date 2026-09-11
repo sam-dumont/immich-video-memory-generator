@@ -14,26 +14,29 @@ Title screens are the structural connective tissue: animated intro cards, month 
 Depending on the memory type, title screens include some or all of:
 
 - **Intro card**: content-backed background (blurred + darkened frame from your footage), white title text with entrance animation, optional subtitle (person name, date range). 3.5 seconds.
-- **Month dividers**: for yearly memories, each month section gets a divider card. Keeps the viewer oriented in a 10-minute video.
+- **Month dividers**: for yearly memories, a divider card in front of each month that clears `month_divider_threshold` clips (default 2). The first month's divider is skipped — the intro card already said it. Keeps the viewer oriented in a 10-minute video.
 - **Trip map animation**: satellite fly-over from home to destination using Van Wijk zoom. Replaces the generic intro for trip memories. The further apart the two points, the further the camera pulls out mid-flight.
 - **Location cards**: city name + map thumbnail between trip segments.
 - **Ending sequence**: fade-to-white with year or closing text.
 
-## Three rendering backends
-
-The system picks the best renderer available on your hardware:
+## Two rendering backends
 
 | Backend | When it's used | What it does well |
 |---------|---------------|------------------|
-| **Taichi GPU** | Apple Silicon or CUDA GPU detected | Particle systems, animated gradients, SDF text. Full cinematic quality. |
-| **PIL** | No GPU, or `--no-animated-background` | Static gradients, clean text rendering. Still looks good, just no animation. |
-| **FFmpeg** | Fallback for minimal environments | Text overlay via drawtext filter. Basic but functional. |
+| **Taichi** | Taichi imports and initialises — Metal, CUDA or Vulkan; it will also run on its own CPU backend and say so in the log | Particle systems, animated gradients, SDF text. Full cinematic quality. |
+| **PIL** | Taichi is not installed, or fails to initialise | Static gradients, clean text rendering. Still looks good, just no animation. |
 
-The renderer selection is automatic. You don't need to configure anything: if you have a GPU, you get particles and animations. If you don't, you get clean static cards. Both look intentional.
+The choice is automatic and there is nothing to configure. `--no-animated-background` is a
+different switch: it stays on whichever backend you have and turns off the gradient rotation,
+colour pulse and vignette pulse. It does not send you to PIL.
+
+There is a third renderer in the tree, `titles/renderer_ffmpeg.py`, that draws titles with
+`drawtext`. Nothing in the product imports it — only an integration test does. Treat it as
+unwired.
 
 ## Content-backed backgrounds
 
-By default, title screens use a frame from your actual footage as the background. The system extracts a frame at the 1/3 mark of the first clip, applies a heavy blur (40px) and darkens it (45%), then renders white text on top. This means every title screen looks like it belongs to the video it introduces, rather than using a generic gradient.
+By default, title screens use a frame from your actual footage as the background. The system extracts a frame at the 1/3 mark of the first clip, applies a heavy blur (40 px) and multiplies its brightness by 0.45 — darkening it by 55% — then renders white text on top. This means every title screen looks like it belongs to the video it introduces, rather than using a generic gradient.
 
 An optional slow-motion background effect uses Catmull-Rom interpolation with cubic ease-in timing to animate the blurred background during the title card. Falls back to a static blurred frame when disabled.
 
@@ -47,7 +50,7 @@ All styles use dark cinematic palettes with white text. No pastel or bright back
 | `elegant_minimal` | Deep navy/black | Clean, medium weight. Cyan accents. |
 | `vintage_charm` | Warm charcoal | Nostalgic feel. Amber/gold accents. |
 | `playful_bright` | Deep teal | Energetic, semibold. Teal accents. |
-| `soft_romantic` | Warm stone/zinc | Gentle fades. Warm amber accents. |
+| `soft_romantic` | Dark amber-tinted | Gentle scale-in. Warm amber accents. |
 
 ### Mood-based selection (default)
 
@@ -74,7 +77,7 @@ Trip memories start with an animated satellite fly-over from your home location 
 
 ### What it does
 
-The animation starts at city-level zoom on your home location, flies out and across to the destination(s), then settles at a zoom level that shows all the destination pins. Duration is configurable (default 5 seconds).
+The animation starts at city-level zoom on your home location, flies out and across to the destination(s), then settles at a zoom level that shows all the destination pins. It runs 5 seconds; that is a function default in `titles/map_animation.py`, not a config key.
 
 Each endpoint gets a pin (red circle with white outline) and a city label. The title text fades in over the satellite imagery, sitting in the lower third so it doesn't block the map.
 
@@ -83,7 +86,7 @@ Each endpoint gets a pin (red circle with white outline) and a city label. The t
 Two animation modes get picked automatically based on how far apart departure and destination are:
 
 - **Van Wijk zoom**: for long distances. Zooms out to show the route, then zooms back in. The math is the d3 `interpolateZoom` algorithm: it picks the smoothest path through zoom-space rather than just linearly interpolating.
-- **Linear pan**: for short hops. When the destination is close enough that the mid-transit zoom would stay above zoom level 10 (roughly city-block level), it just pans at fixed zoom instead of zooming out unnecessarily.
+- **Linear pan**: for short hops. When the destination is close enough that the mid-transit zoom would stay above zoom level 10 (metro scale), it just pans at fixed zoom instead of zooming out unnecessarily.
 
 ### Tile source
 

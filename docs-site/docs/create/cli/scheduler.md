@@ -70,12 +70,28 @@ When a schedule fires, date parameters get resolved automatically from the fire 
 |-------------|---------------------|
 | `year_in_review` | `year` = previous year |
 | `monthly_highlights` | `year` + `month` = previous month |
+| `season` | `year` = fire year |
 | `on_this_day` | `target_date` = fire date |
-| `trip` | `year` = previous year (scans GPS data, generates all trips) |
+| `trip` | `year` = previous year |
+| anything else | `year` = fire year |
 
 So a `year_in_review` firing on Jan 15 2025 generates for 2024. A `monthly_highlights` firing on Aug 1 generates for July. You get the idea.
 
 Explicit `params` in the schedule config override these auto-resolved values. Setting `params: { year: 2020 }` on a `year_in_review` schedule always generates for 2020 no matter when it fires.
+
+:::danger Three of these do not currently work
+Verified against the code on this branch, not inferred:
+
+- **`on_this_day` fails every time.** The daemon passes `--target-date`, which `generate` does not
+  accept. The job exits on a Click usage error.
+- **`trip` generates nothing.** The daemon never passes `--all-trips`, and `generate
+  --memory-type trip --year N` without it is discovery mode: it prints a table of trips and stops.
+- **`duration_minutes` is seconds.** It is handed straight to `--duration`, which takes seconds, so
+  `duration_minutes: 3` asks for a three-second film.
+
+Until these are fixed, drive `on_this_day` and `trip` from your host's own scheduler
+(`auto run`, cron, launchd) and write `duration_minutes` as the number of seconds you want.
+:::
 
 ## Example config
 

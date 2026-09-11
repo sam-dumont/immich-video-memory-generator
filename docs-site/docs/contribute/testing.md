@@ -4,7 +4,7 @@ title: Testing Guide
 
 # Testing Guide
 
-Immich Memories has 5,600+ tests: 5,000+ fast unit tests that run everywhere, and 600+ integration and E2E tests that need real services (FFmpeg, Immich, a browser).
+Immich Memories has 7,461 tests: 6,838 fast unit tests that run everywhere, and 623 integration and E2E tests that need real services (FFmpeg, Immich, a browser).
 
 ## Testing Tiers
 
@@ -16,10 +16,10 @@ Immich Memories has 5,600+ tests: 5,000+ fast unit tests that run everywhere, an
 
 ### Unit tests
 
-Cover pure logic: scoring math, config parsing, data models, assembly settings, helper functions. No FFmpeg, no Immich, no network.
+Cover pure logic: selection rules, config parsing, data models, assembly settings, helper functions. No FFmpeg, no Immich, no network.
 
 ```bash
-make test          # Run all unit tests (~60s)
+make test          # Run all unit tests (~2 min)
 make test-fast     # Skip slow tests
 ```
 
@@ -28,11 +28,11 @@ make test-fast     # Skip slow tests
 Cover the real pipeline: download from Immich, FFmpeg assembly, video output validation, music mixing. They **read** from Immich (no writes) and skip gracefully if services aren't available.
 
 ```bash
-make test-integration            # Every suite except cli (~15 min)
+make test-integration            # Every suite except cli, audio and automation
 make test-integration-assembly   # One suite: assembly, audio, audio-mixing, auth, cli, live-photos, photos, pipeline, processing, titles
 ```
 
-Each suite is a folder under `tests/integration/`, and most have their own `make test-integration-<suite>` target with a rough runtime (see the table in `CLAUDE.md`). `automation` has no dedicated target yet; it runs as part of `make test-integration`. `cli` is the other exception: it re-runs the full pipeline (~15 min) and is not part of `make test-integration`.
+Each suite is a folder under `tests/integration/`, and most have their own `make test-integration-<suite>` target with a rough runtime (see the table in `CLAUDE.md`). Three are not in the aggregate target: `cli`, because it re-runs the full pipeline that `pipeline` already covers (~41 min); `audio`, because it wants the demucs and ACE-Step packages; and `automation`, which has no target at all — run it with `pytest tests/integration/automation` until one exists.
 
 **What's tested:**
 - Real FFmpeg assembly (single clip, crossfade, smart transitions)
@@ -42,7 +42,7 @@ Each suite is a folder under `tests/integration/`, and most have their own `make
 - Clip segment trimming (custom start/end times)
 - Upload-back to Immich (mocked write, real everything else)
 - CLI `generate` command with real Immich
-- Scoring engine with real video frames
+- Selection over real video frames
 
 **What's needed:**
 - FFmpeg installed (`brew install ffmpeg` or `apt install ffmpeg`)

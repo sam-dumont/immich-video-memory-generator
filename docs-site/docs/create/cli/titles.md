@@ -66,3 +66,5 @@ immich-memories titles fonts --clear
 ```
 
 You do not have to run any of this. Titles render correctly on a fresh install with no network, because `get_font_path()` checks the bundled copies before the cache and the bundle already carries every weight the renderer asks for. `--download` mirrors the same files from the CDN into `~/.immich-memories/fonts/`; it is there for inspecting or replacing what ships, not for making titles work.
+
+The listing reads the cache directory only, so on a fresh install it says **Not downloaded** for all five while titles render perfectly from the bundle. Read that column as "is there a local override", not as "will this work".

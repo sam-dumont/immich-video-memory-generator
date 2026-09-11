@@ -82,9 +82,11 @@ there is no other source for the encoder, and preparation stops at the heads sta
 ## 3. Serve the reader
 
 Any OpenAI-compatible `/chat/completions` endpoint that takes images, honours
-`response_format: json_schema` and has **at least a 32k-token context**. Requests are paged at
-32,000 characters, so ~35 kB bodies are normal; the call that weighs the whole period against
-itself is the one that is not paged.
+`response_format: json_schema` and has **at least a 32k-token context**. Every request is bounded
+before it is sent: episode reads at 24,000 characters and 90 assets a page, story synthesis at
+32,000, and the period account — the call that weighs the whole period against itself — at 96,000
+characters, split into leaf pages and merged when one page cannot hold it. So ~35 kB bodies are
+normal and ~96 kB is the ceiling.
 
 The graded configuration — the one whose output has actually been approved — is
 `mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit` on [oMLX](https://github.com/jundot/omlx), Apple
@@ -152,12 +154,12 @@ Every key has an environment variable: `IMMICH_MEMORIES_LLM__BASE_URL`,
 
 ```bash
 immich-memories config test      # credentials and the detected Immich contract
-immich-memories preflight        # Immich, the reader endpoint, audio, titles, hardware
+immich-memories preflight        # Immich, the reader, titles, the encoder digest,
+                                 # the caption alias, notifications, hardware
 ```
 
-`preflight` does **not** check the caption alias, the encoder digest or the detector snapshots.
-The first cut does, and it stops with a count per missing producer rather than quietly cutting a
-worse film.
+`preflight` does **not** check the detector snapshots. The first cut does, and it stops with a
+count per missing producer rather than quietly cutting a worse film.
 
 ## 7. The first cut
 
@@ -185,8 +187,9 @@ per-clip scorer and only tells you about the render.
 
 Two things bite people on the split layout: `localhost` inside a container means the container, so
 `caption_base_url` and `llm.base_url` need real hostnames; and the shipped Kubernetes
-NetworkPolicy allows egress to 80, 443, 2283 and 11434 but **not 8092** — see the
-[Kubernetes page](./installation/kubernetes.md).
+NetworkPolicy opens egress to DNS, 80, 443, 2283, 11434 and 8092 — 11434 being Ollama's port, not
+oMLX's 8000. Serve the reader anywhere else and you edit
+[`deploy/kubernetes/base/networkpolicy.yaml`](./installation/kubernetes.md) first.
 
 **VAAPI, Quick Sync and NVENC are media accelerators.** They decode, scale and encode. They do not
 run inference, and no amount of them removes the reader.

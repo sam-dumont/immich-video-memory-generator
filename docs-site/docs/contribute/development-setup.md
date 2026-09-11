@@ -21,16 +21,16 @@ cd immich-video-memory-generator
 make dev-test
 ```
 
-`make dev-test` installs the dev tools (pytest, ruff, mypy and the other CI gates) plus the `gpu` and `speech` extras — the same set the CI test jobs use. It is the fast path: no torch, no CUDA. Run it before any other make target.
+`make dev-test` installs the dev tools (pytest, ruff, mypy and the other CI gates) plus the `gpu` extra — the same set the CI test jobs use. It is the fast path: no torch, no CUDA. Run it before any other make target.
 
 Other install targets, when you need them:
 
 | Target | Installs | When |
 |--------|----------|------|
 | `make dev-ci` | dev tools only | Lint/typecheck-only work |
-| `make dev-test` | dev + `gpu` + `speech` | Default for contributors (what CI tests with) |
-| `make dev-mac` | dev + `all-mac` (Apple Vision, Metal, ACE-Step MLX) | Apple Silicon, full feature set |
-| `make dev` | every extra (torch, ACE-Step, demucs — slow) | Only if you work across all optional backends |
+| `make dev-test` | dev + `gpu` | Default for contributors (what CI tests with) |
+| `make dev-mac` | dev + `all-mac` (Apple Vision, Metal, Taichi, the editorial stack) | Apple Silicon, full feature set |
+| `make dev` | every declared extra (torch, demucs, editorial — slow) | Only if you work across all optional backends |
 
 ## Verify everything works
 
@@ -38,7 +38,7 @@ Other install targets, when you need them:
 make check
 ```
 
-This runs lint, format check, type check, file length gate, complexity gate, and all unit tests. If it passes, your setup is correct.
+This runs lint, format check, type check, file length gate, complexity gate, and all unit tests. It is the fast subset: it skips cognitive complexity, dead code, refurb, dep-check, arch-check, critique, the drift gates and every security scan. `make ci` runs those. If `make check` passes, your setup is correct.
 
 ## Key commands
 
@@ -70,7 +70,7 @@ If `make ci` passes locally, CI will pass too. Use [conventional commit](https:/
 
 ### If diff-cover fails on your PR
 
-Every PR needs 80% coverage on the lines it changes. Before checking that, CI runs the FFmpeg-only integration suites covering the paths your diff touches, and only those, then merges their coverage into the diff-cover run. So code reachable only through FFmpeg is covered for you: you do not need to write unit tests for it.
+A PR needs 80% coverage on the lines it changes — unless the diff is under 10 source lines or over 1000, where the gate skips itself with a warning rather than pretend a threshold means anything. `analysis/apple_vision*.py` is excluded outright. Before checking, CI runs the FFmpeg-only integration suites covering the paths your diff touches, and only those, then merges their coverage into the diff-cover run. So code reachable only through FFmpeg is covered for you: you do not need to write unit tests for it.
 
 To reproduce locally exactly what CI will see:
 

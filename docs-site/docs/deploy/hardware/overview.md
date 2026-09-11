@@ -5,26 +5,28 @@ title: Hardware Acceleration Overview
 
 # Hardware Acceleration Overview
 
-A GPU buys three things here: animated title screens, faster encoding, and (on Apple Silicon) face detection on the Neural Engine. **Every feature has a CPU fallback**, so it works on any machine. See [CPU-Only Mode](./cpu-only.md) for details on running without a GPU.
+A GPU buys two things here: animated title screens, and faster encoding. **Both have a CPU fallback**, so it works on any machine. See [CPU-Only Mode](./cpu-only.md) for details on running without a GPU.
 
 What a media accelerator does **not** buy is the editor's models. NVENC, Quick Sync and VAAPI decode, scale and encode; they do not run inference. The reader (~17 GB resident) and the caption server (1-2 GB) are separate services with their own hardware needs — see the [self-hosting guide](../self-hosting.md#one-machine-or-two).
 
 Encoding video in software (libx264) works everywhere but it's slow. A hardware encoder is faster; how much faster depends on your card, codec and preset, and this project has not measured it. The pipeline auto-detects your hardware and picks the best available backend; NVENC, Quick Sync and VAAPI are only selected after a one-frame test encode succeeds, so an FFmpeg build that merely lists them (Debian's does, including inside the Docker image) doesn't send a GPU-less box down the hardware path.
 
-The encode is not where a run spends its time, though. Analysis and title rendering are — measured at `--cpus=2`, title rendering was ~263 s of a ~339 s assembly ([CPU-Only Mode](./cpu-only.md#title-rendering-is-the-bottleneck-not-encoding)), and in a measured end-to-end run analysis was 7.4 of 10.1 minutes ([NAS-Only](../common-setups/nas-only.md#performance-expectations)). Hardware acceleration shortens the last phase; a GPU earns its keep first on titles.
+The encode is not where a run spends its time, though. Preparation and title rendering are — measured at `--cpus=2`, title rendering was ~263 s of a ~339 s assembly ([CPU-Only Mode](./cpu-only.md#title-rendering-is-the-bottleneck-not-encoding)), and in a measured end-to-end run the analysis phase was 7.4 minutes of a 10 min 08 s run ([NAS-Only](../common-setups/nas-only.md#performance-expectations)). Hardware acceleration shortens the last phase; a GPU earns its keep first on titles.
 
 ## Supported backends
 
-| Backend | Platform | Encode | Decode | GPU Scaling | Face Detection |
-|---------|----------|--------|--------|-------------|----------------|
-| **NVIDIA NVENC** | Linux (Windows untested) | h264_nvenc, hevc_nvenc | NVDEC | scale_cuda | CPU (OpenCV Haar cascades) |
-| **Apple VideoToolbox** | macOS | h264_videotoolbox, hevc_videotoolbox | VideoToolbox | - | Vision Framework (Neural Engine) |
-| **Intel QSV** | Linux (Windows untested) | h264_qsv, hevc_qsv | QSV | scale_qsv | CPU (OpenCV Haar cascades) |
-| **AMD VAAPI** | Linux | h264_vaapi, hevc_vaapi | VAAPI | scale_vaapi | CPU (OpenCV Haar cascades) |
-| **Software** | Everywhere | libx264, libx265 | FFmpeg | swscale | CPU (OpenCV Haar cascades) |
+| Backend | Platform | Encode | Decode | GPU Scaling |
+|---------|----------|--------|--------|-------------|
+| **NVIDIA NVENC** | Linux (Windows untested) | h264_nvenc, hevc_nvenc | NVDEC | scale_cuda |
+| **Apple VideoToolbox** | macOS | h264_videotoolbox, hevc_videotoolbox | VideoToolbox | - |
+| **Intel QSV** | Linux (Windows untested) | h264_qsv, hevc_qsv | QSV | scale_qsv |
+| **AMD VAAPI** | Linux | h264_vaapi, hevc_vaapi | VAAPI | scale_vaapi |
+| **Software** | Everywhere | libx264, libx265 | FFmpeg | swscale |
 
-Face detection (for smart crops) runs on the GPU only on Apple Silicon (Vision Framework).
-Everywhere else it is OpenCV Haar cascades on the CPU.
+No row has a face-detection column any more. The clip scorer that counted faces is gone, and the
+detection backends behind it sit in the tree unreachable — see
+[Face-Aware Framing](../../create/pipeline/face-aware-cropping.md). Photo pans use the face boxes
+Immich already has.
 
 ## Configuration
 
@@ -105,8 +107,8 @@ This prints what backends are available, which one would be selected, and the sp
 
 ## Per-backend details
 
-- [NVIDIA](./nvidia.md): NVENC/NVDEC, CUDA scaling and scene analysis
-- [Apple Silicon](./apple-silicon.md): VideoToolbox, Vision Framework, mlx-vlm
+- [NVIDIA](./nvidia.md): NVENC/NVDEC and CUDA scaling
+- [Apple Silicon](./apple-silicon.md): VideoToolbox, Taichi on Metal, and the models on the same box
 - [Intel Quick Sync](./intel-qsv.md): QSV encoding and scaling
 - [AMD VAAPI](./amd-vaapi.md): VAAPI encoding and scaling (Linux only)
 - [CPU-Only Mode](./cpu-only.md): Running without any GPU

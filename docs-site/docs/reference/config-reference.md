@@ -25,11 +25,11 @@ Everything else stays at the top level: `immich`, `defaults`, `output`, `audio`,
 `cache`, `upload`, `trips`, `photos`, `preset`, and the two the loader calls internal rather than
 Tier 1, `scheduler` and `title_llm`. The rule is mechanical — anything outside the Tier 2 set is
 left where it is.
-Unknown keys *inside* a section are silently ignored, with one exception: the keys of the removed
-clip scorer (`analysis.max_refinement_passes`, `photos.max_ratio`, the whole `content_analysis`,
-`audio_content`, `speech` and `transcription` sections, and the rest of that family). A file that
-still sets one is refused at startup with a message naming the key, because a setting that loads
-and does nothing is worse than one that fails. Unknown top-level keys and invalid values fail
+Unknown keys *inside* a section are silently ignored, with one exception: the thirty keys of the
+removed clip scorer (`analysis.max_refinement_passes`, `photos.max_ratio`, `description_llm`, the
+whole `content_analysis`, `audio_content`, `speech` and `transcription` sections, and the rest of
+that family). A file that still sets one is refused at startup with a message naming the key,
+because a setting that loads and does nothing is worse than one that fails. Unknown top-level keys and invalid values fail
 validation at startup.
 :::
 
@@ -134,8 +134,8 @@ default for either. The target duration describes the finished video, not just t
 clips. The planner budgets opening/title/ending cards, then adds back the time the fades overlap
 away — so the content budget ends up larger than the timeline left over, not smaller. Month
 dividers use an all-or-none policy, and trip location cards are counted only after the final media
-selection. If filtering leaves usable time on the table, the optimizer backfills eligible leftovers
-and can relax the preferred photo ratio; hard eligibility and deduplication rules remain enforced.
+selection. There is no backfill: if the stories the editor funded do not fill the budget, the run
+reports the shortfall instead of padding it with material it had already decided against.
 Treat the target as a target: frame and transition boundaries mean the encoded file lands near the
 requested duration, not exactly on it.
 
@@ -281,14 +281,13 @@ provider's URL and reasoning dialect pre-filled — set `provider: openai`,
 `model: gpt-5.6-terra` and an API key, and thinking works with nothing else
 to configure. Explicit `base_url`/`thinking_params` always win over a preset.
 
-`thinking: true` runs the model in reasoning mode for the judgement calls
-only — the holistic selection review, title generation, and the special-day
-question in `discover-days`. Measured on the live endpoint, a thinking call
-ran 30-134 s where the same model answered in 4-7 s without it, and it needs
-a 4000-token ceiling to finish reasoning — which matters on a paid API. Bulk
-work (per-clip content analysis, photo scoring) always runs in fast mode:
-reasoning over multiple images is unreliable on current models, and the volume
-would make it unaffordable anyway.
+`thinking: true` runs the model in reasoning mode for two calls: title
+generation, and the special-day question in `discover-days`. Measured on the
+live endpoint, a thinking call ran 30-134 s where the same model answered in
+4-7 s without it, and it needs a 4000-token ceiling to finish reasoning — which
+matters on a paid API. Everything else runs fast, and the switch is refused
+outright alongside images: reasoning over multiple pictures is a measured
+runaway, so the editor's picture passes never see it whatever this is set to.
 
 `thinking_params` is merged verbatim into a thinking request, so the switch
 matches your server's dialect: the default is Qwen's
@@ -369,8 +368,10 @@ triage:
 Editorial preparation uses `triage.encoder` with the public six-head bundle configured under
 `editorial.preparation.head_bundle`. Install the `editorial` extra and provide the pinned
 DINOv2-small ONNX export. Its digest is checked on load. Missing required head facts stop
-selection; `triage.enabled: false` does not bypass preparation. The separate legacy triage
-hook still uses `triage.bundle` and `triage.db`.
+selection; `triage.enabled: false` does not bypass preparation.
+
+Only `encoder` and `encoder_url` are read. `enabled` and `bundle` are left over from the
+standalone triage hook and nothing looks at them — they load, they validate, they do nothing.
 
 The public heads provide context. They do not train on your library or independently decide
 whether a picture is suitable for the audience.
@@ -512,8 +513,10 @@ of the section is config-only.
 `trigger_token` turns on the HTTP trigger — one POST that runs whatever `auto run` would have
 decided, so an Immich workflow (or a cron, or a phone shortcut) can start a memory. See
 [Trigger from Immich or anything else](../create/recipes/trigger-endpoint.md). Keep it out of
-`config.yaml` with `IMMICH_MEMORIES_SERVER__TRIGGER_TOKEN` or a `${VAR}` reference; either way it
-is redacted from `/health`, the config viewer, and the logs. Log redaction is armed at config
+`config.yaml` with `IMMICH_MEMORIES_SERVER__TRIGGER_TOKEN` — `server` is not one of the sections
+that expand a `${VAR}` reference, so writing one here stores the six literal characters `${VAR}`
+as your token. Either way the value is redacted from `/health`, the config viewer, and the logs.
+Log redaction is armed at config
 load, so the handful of lines printed before the config exists — startup, a config file that
 fails to parse — cannot be covered by it.
 

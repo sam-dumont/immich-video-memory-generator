@@ -11,7 +11,7 @@ VAAPI (Video Acceleration API) provides hardware-accelerated video encoding on A
 
 - **VAAPI encoding**: h264_vaapi, hevc_vaapi. Hardware-accelerated encoding.
 - **VAAPI scaling**: `scale_vaapi` resizes frames on the GPU.
-- **Face detection**: falls back to CPU (OpenCV Haar cascades). AMD doesn't expose a GPU-accelerated face detection path.
+- **Face detection**: not a thing this app does. Photo pans use Immich's own face boxes.
 
 ## Requirements
 
@@ -78,7 +78,7 @@ docker compose exec immich-memories vainfo
 ## Limitations
 
 - **Linux only**: VAAPI isn't available on macOS or Windows
-- **No GPU face detection**: face-aware cropping uses CPU OpenCV, which is slower but still functional
+- **No face detection at all**: nothing here runs a detector; photo pans read Immich's boxes
 - Encoding quality varies by GPU generation. Newer RDNA chips produce better output than older GCN cards at the same bitrate.
 - A backend that encodes H.264 but not HEVC falls back to libx265 for the H.265 half only, and
   says so in the log. `vainfo` tells you which profiles have an encode entrypoint.

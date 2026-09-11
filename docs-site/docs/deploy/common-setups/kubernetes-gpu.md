@@ -27,7 +27,7 @@ You run a Kubernetes cluster with NVIDIA GPU nodes (on-prem, cloud, or hybrid). 
 │  │  └────────────┘  └────────────┘              │   │
 │  │                                               │   │
 │  │  Secret: IMMICH_URL, IMMICH_API_KEY           │   │
-│  │  PVCs: cache (20Gi), output (50Gi)            │   │
+│  │  PVCs: cache 20Gi, output 50Gi, models 5Gi    │   │
 │  └──────────────────────────────────────────────┘   │
 │                                                     │
 │  ┌─────────────────┐                                │
@@ -76,10 +76,10 @@ kubectl apply -k overlays/gpu
 ```
 
 `kubectl kustomize overlays/gpu` shows the rendered result. `base/kustomization.yaml` pins the
-image tag (no `v` prefix: release `vX.Y.Z` is tag `X.Y.Z`). The checked-in pin trails the current
-release — check it against the
-[releases page](https://github.com/sam-dumont/immich-video-memory-generator/releases) and bump it
-when you upgrade.
+image tag (no `v` prefix: release `vX.Y.Z` is tag `X.Y.Z`). The checked-in pin is only current as
+of whenever someone last bumped it — check it against the
+[releases page](https://github.com/sam-dumont/immich-video-memory-generator/releases) before you
+apply.
 
 ## Access the UI
 
@@ -142,6 +142,7 @@ Default PVC sizes:
 |-----|------|---------|
 | Cache PVC | 20Gi | mounted at `/home/immich/.immich-memories`: `config.yaml`, `cache.db` (analysis scores), video cache, projects, automation history |
 | Output PVC | 50Gi | mounted at `/app/output`: generated videos |
+| Models PVC | 5Gi | mounted at `/models`: the pinned DINOv2 export and the detector Hugging Face cache, both written by `immich-memories models fetch`. Every pod binds it — skip it and nothing starts |
 
 There is no ConfigMap — connection details come from the Secret, everything else from
 `IMMICH_MEMORIES_*` env vars or the UI settings page (which writes `config.yaml` on the PVC).
@@ -191,10 +192,11 @@ Same as the [Linux + NVIDIA](./linux-nvidia.md) setup: NVENC encoding, CUDA scen
 Same as bare-metal Linux + NVIDIA. Kubernetes overhead is negligible for this workload.
 
 Do not size the cluster around the encoder. Once NVENC is doing the encode, the encode is not what
-you wait for: the run is dominated by analysis and selection, meaning downloading every candidate
-clip from Immich, scoring it, and the LLM passes if you enabled them. In the one run measured end
-to end ([NAS-Only](./nas-only.md#performance-expectations)) analysis was 7.4 minutes of 10.1, and a
-GPU only shrinks the other 2.7. Immich API throughput and LLM latency are the numbers to watch.
+you wait for: the run is dominated by preparation and the editor's readings — a caption, six heads
+and two detectors per picture, then the text model over the period. In the one run measured end to
+end ([NAS-Only](./nas-only.md#performance-expectations)) that column was 7.4 minutes of a 10 min 08 s
+run, and a GPU only shrinks the other 2.7. Immich API throughput and reader latency are the numbers
+to watch.
 
 ## Further reading
 

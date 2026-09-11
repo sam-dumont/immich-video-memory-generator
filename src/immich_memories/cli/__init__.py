@@ -52,8 +52,9 @@ def _warn_about_unauthenticated_external_bind(config: Config, host: str) -> None
     "--preset",
     type=click.Choice(["fast"]),
     default=None,
-    help="Config preset for this run: fast = CPU-only/NAS profile (1080p h264, fast encoder, "
-    "no speech analysis, static titles, fewer photos, favorites-first analysis)",
+    help="Config preset for this run: fast = CPU-only/NAS profile (1080p h264, medium quality, "
+    "fast encoder preset, static title backgrounds). It changes nothing about what the editor "
+    "reads. Anything you set explicitly wins",
 )
 @click.pass_context
 def main(ctx: click.Context, config: str | None, preset: str | None) -> None:

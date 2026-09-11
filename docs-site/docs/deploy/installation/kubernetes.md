@@ -12,8 +12,8 @@ GPU scheduling is an overlay.
 Docker Compose is the primary self-hosting path. What the test suite pins on every run is the
 manifests' contract: Secret applied, writable state volume, `/health/live` + `/health/ready`
 probes, no GPU requirement in the base. A separate test renders base and GPU overlay with
-`kubectl kustomize`, but it skips wherever `kubectl` is not installed — which includes CI — and
-nothing is applied to a live cluster. Read the rendered output before you apply it, and open an
+`kubectl kustomize`, but it skips wherever `kubectl` is not installed — the macOS CI cells, and
+any laptop without it — and nothing is applied to a live cluster. Read the rendered output before you apply it, and open an
 issue if something does not boot.
 :::
 
@@ -51,9 +51,10 @@ kubectl apply -k overlays/gpu
 
 `kubectl kustomize base` shows what will be applied. `base/kustomization.yaml` pins the image tag
 (`images: newTag`). Published tags carry no `v` prefix — release `vX.Y.Z` is image tag `X.Y.Z` —
-plus `latest`. The checked-in pin trails the current release, so check it against the
+plus `latest`. The checked-in pin is only current as of whenever someone last bumped it, so check
+it against the
 [releases page](https://github.com/sam-dumont/immich-video-memory-generator/releases) before you
-apply, and bump it when you upgrade.
+apply.
 
 ## Access the UI
 
@@ -76,7 +77,7 @@ Once auth is on (basic-auth keys in the Secret, or [OIDC](../configuration/authe
 
 The image runs as user `immich`, UID/GID 1000, `HOME=/home/immich` — the manifests set
 `runAsUser`/`fsGroup` 1000, drop all capabilities, use the `RuntimeDefault` seccomp profile and
-mount the root filesystem read-only. The three mounts below are the only writable paths.
+mount the root filesystem read-only. The four mounts below are the only writable paths.
 
 | Mount | Backed by | Holds |
 |-------|-----------|-------|
@@ -119,7 +120,8 @@ kubectl logs -n immich-memories -f job/immich-memories-generate
 kubectl exec -n immich-memories deployment/immich-memories -- ls -la /app/output/
 ```
 
-`--duration` is seconds. The jobs mount the same two PVCs as the Deployment; with
+`--duration` is seconds. The jobs mount the same three PVCs and the same `/tmp` emptyDir as the
+Deployment; with
 `ReadWriteOnce` storage the job pod has to land on the node that holds them, so use
 `ReadWriteMany` storage or scale the Deployment to 0 first. If you only want scheduled memories,
 `IMMICH_MEMORIES_AUTOMATION__ENABLED=true` on the Deployment does that in-process — no job needed.

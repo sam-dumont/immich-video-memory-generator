@@ -20,7 +20,7 @@ You have a Mac with Apple Silicon (M1/M2/M3/M4) and enough unified memory to hol
 │  │  oMLX        │  │   Immich Memories         │  │
 │  │  reader model│←─│   (native Python)         │  │
 │  │  port 8000   │  │   VideoToolbox encoding   │  │
-│  │              │  │   Vision face detection   │  │
+│  │              │  │   Taichi titles on Metal  │  │
 │  └──────────────┘  └──────────────────────────┘  │
 │                             │                     │
 │                    ┌────────┴─────────┐           │
@@ -35,16 +35,17 @@ You have a Mac with Apple Silicon (M1/M2/M3/M4) and enough unified memory to hol
 ## Install
 
 ```bash
-# Install Immich Memories with the Mac extras (Vision face detection, Taichi GPU titles, ...)
+# Install Immich Memories with the Mac extras (Taichi GPU titles, the editorial stack, ...)
 uv tool install "immich-memories[all-mac]"
 
 # Start the UI
 immich-memories ui
 ```
 
-The bare `immich-memories` package works too, but face detection then falls back to CPU Haar
-cascades and title screens are PIL-rendered — the `all-mac` extra is what enables the Vision
-Framework and Taichi paths described below.
+The bare `immich-memories` package works too, but title screens are then PIL-rendered and the
+context heads and detectors have no runtime — `all-mac` is what installs Taichi and the editorial
+stack described below. Note it does not include the `auth` extra; add that separately if you want
+OIDC login.
 
 Open [http://localhost:8080](http://localhost:8080).
 
@@ -117,7 +118,6 @@ so check it covers whatever you load before you count on it.
 
 - **A local editor**: the model reads the period's pictures and edits the memory on your machine; nothing leaves it.
 - **VideoToolbox encoding**: H.264/H.265 encoding on the chip's media engine instead of the CPU cores.
-- **Vision framework face detection**: uses macOS native Vision framework for face detection. More accurate than the CPU fallback, no additional model downloads needed.
 - **Taichi GPU title renderer**: particle effects and gradient backgrounds rendered on Apple GPU.
 - **AI music generation**: ACE-Step runs in-process on Apple Silicon via MLX, no server involved. A 60 s track takes ~17 s with `use_lm: false`, or ~45 s with thinking mode on. What it costs is memory, not time: see below.
 - **All memory types and features**: everything works natively on Mac.
@@ -133,7 +133,10 @@ ACE-Step's weights have to stay resident for the model to run at all, so memory 
 | 2B + 1.7B planner | ~11 GB |
 | 2B, `use_lm: false` | ~7 GB |
 
-A 16 GB Mac runs the 2B profiles. XL wants 20 GB of unified memory free, and that is free memory, not installed. If the profile does not fit, `lib` mode says so before loading anything and the run falls back to a bundled track rather than being killed mid-render.
+A 16 GB Mac runs the 2B profiles. The numbers above are the check: 21 GB free for XL without the
+planner, 29 GB with it — and that is free memory, not installed. If the profile does not fit,
+`lib` mode says so before loading anything and the run falls back to a bundled track rather than
+being killed mid-render.
 
 The config, the pinned install commands and the full memory notes are in [Fully Local Setup](../../create/pipeline/audio-and-music.md#fully-local-setup-no-servers).
 
@@ -172,5 +175,6 @@ Stopping the model servers before a music-heavy run buys all of it back.
 - **The graded reader is the 4-bit one.** A higher-precision build of the same model will run if the memory is there; it is not what the approved sheets came from.
 - **Smaller vision models will run** on tighter machines. None of them has been graded on this route — treat the output as your own experiment rather than a supported configuration.
 - **Ollama speaks the same contract**, so it works as a transport. Nothing on this route has been run on it, and whatever you serve there still has to accept images.
-- **Preparation covers the whole source period.** Clip-analysis depth does not shortlist the
-  material used to understand its stories. Exact producer/input cache hits are reused.
+- **Preparation covers the whole source period.** There is no depth knob and no shortlist: every
+  eligible picture is read once, because one the editor never saw is one it cannot weigh. Exact
+  producer/input cache hits are reused.

@@ -58,9 +58,13 @@ dwell — never when.
 **Favourites win their moment.** Where you have flagged a photo, the pipeline
 does not overrule you with a score.
 
-**The audience is FAMILY.** Ordinary family baby care, including a shirtless
-baby, breastfeeding or baby bath time, can be included. Graphic medical procedures,
-sexual content, exposed adult changing and identifying records remain excluded.
+**The audience is FAMILY.** A shirtless baby is ordinary family content and can be
+included. Eight findings are not, at any audience, and a carrier that draws one is
+replaced rather than shown: breastfeeding or expressing milk, bathing, toileting or
+changing, intimate hygiene, graphic medical procedures, identifying records, sexual
+content, and adult changing. The model is told that newborn care is ordinary family
+content — that keeps it from filing a bath as something worse — and the code still
+holds the last four *and* the first four out of the cut.
 
 **Titles claim only what the evidence shows.** A title is generated from what
 the model actually saw and is not allowed to invent specifics. If the material

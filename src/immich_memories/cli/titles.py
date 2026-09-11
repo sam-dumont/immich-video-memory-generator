@@ -319,12 +319,13 @@ def register_titles_commands(main: click.Group) -> None:
     @titles.command("fonts")
     @click.option("--download", "-d", is_flag=True, help="Download all fonts")
     @click.option("--clear", is_flag=True, help="Clear font cache")
-    @click.option("--list", "list_fonts", is_flag=True, help="List cached fonts")
+    @click.option("--list", "_list_fonts", is_flag=True, help="List cached fonts (the default)")
     def titles_fonts(download: bool, clear: bool, _list_fonts: bool) -> None:
         """Manage title screen fonts.
 
-        Downloads OFL-licensed fonts from Google Fonts and caches
-        them locally in ~/.immich-memories/fonts/.
+        Five OFL-1.1 families ship inside the wheel. Anything else is fetched
+        from the Fontsource CDN into ~/.immich-memories/fonts/, which is also
+        where you can drop your own TTFs.
         """
         from immich_memories.titles import (
             FONT_DEFINITIONS,

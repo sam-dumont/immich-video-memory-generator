@@ -51,7 +51,7 @@ phase row, the CLI prints them — and what each costs.
 | --- | --- | --- |
 | **Preparing source metadata** | The source model: every eligible source with its provenance, duration, Live companion and exclusion reason, fetched whole per window (`selection_source.py`). Then preparation, which reports `Preparing captions: n/N`, `public_heads`, `detectors` as it goes: one caption request per picture that has none, one encoder pass for the six context heads, the two detectors in their own interpreter, pixel facts. Complete facts are never re-produced. | `network` for previews; captions `remotable`; heads, detectors and pixel facts `local-only` (CPU) |
 | **Reading event evidence** | Paged episode reading over the annotation lines (`text_episode_reader.py`), with the cull asked inside each episode's scope. Banked per group, producer and evidence key. | `remotable` (text model), `cheap` when banked |
-| **Reading the period account** | The period read as an account with a thesis (`period_insight.py`), one bounded repair if the answer is malformed. Banked. | `remotable`, `cheap` when banked |
+| **Reading the period account** | The period read as an account with a thesis (`text_period_insight.py`), one bounded repair if the answer is malformed. Banked. | `remotable`, `cheap` when banked |
 | **Building editorial cards** | One card per moment over the banked facts, rendered into the moment wall the planner reads (`moment_cards.py`, `editorial_moment_wall.py`). | `cheap` |
 | **Editing the memory** | The structure planner and the story planner: the memory-worthy gate, the story weighing, the moment picks, the standing gate, the audience checks — each a text-model question banked by its exact request, and the gates asked in two orders. Motion is measured for the Live carriers that were chosen. | `remotable`; motion facts `local-only` |
 | **Validating selected source timing** | The chosen intervals bound to their sources and the duration realised: requested seconds, content budget, selected, shortfall (`processing/editorial_timing.py`). | `cheap` |
@@ -111,20 +111,21 @@ point needed more than previews. Then:
   (`DownloadCoordinator` fetches in parallel; `analysis.download_workers` defaults to 3). Segment
   extraction *can* use hardware decode. A Live Photo chosen for its motion plays its video
   component; one chosen as a still is held.
-- **Renders selected photos** frame by frame in Python. Ken Burns and the blurred background are
-  two `cv2.warpAffine` calls per frame, 30 fps for the seconds the editor granted — 120 frames
-  per photo at 4 s. HEIC decode and Apple gain-map HDR reconstruction happen here too, and the
-  source is capped at 1.5× the output size because a 24 MP HEIC otherwise costs about 0.63 s and
-  0.32 GB per photo for pixels that get thrown away.
+- **Renders selected photos** frame by frame in Python. Ken Burns is one `cv2.warpAffine` per
+  frame, two when the shot needs a blurred background behind it, at 30 fps for the seconds the
+  editor granted — 120 frames per photo at 4 s. HEIC decode and Apple gain-map HDR reconstruction
+  happen here too, and the source is capped at 1.5× the output size: at 4K, measured on a 24.5 MP
+  HEIC, a 2.0× cap paid 0.63 s and 0.32 GB per photo for pixels its own resize then discarded.
 - **Generates title screens**, using the Taichi renderer when Taichi initialises and PIL
   otherwise. Both encode with the same encoder the final video uses.
-- **Assembles and encodes.** Two or more clips always go through `StreamingAssembler`: one
-  FFmpeg decode process per clip at a time, crossfades blended with `cv2.addWeighted` into a
-  single preallocated buffer, raw frames piped into one FFmpeg encode process. Memory stays flat
-  regardless of clip count, which is what makes 4K output possible.
+- **Assembles and encodes.** Two or more clips always go through the streaming assembler
+  (`processing/streaming_assembler.py`): one FFmpeg decode process per clip at a time, crossfades
+  blended with `cv2.addWeighted` into a single preallocated buffer, raw frames piped into one
+  FFmpeg encode process. Memory stays flat regardless of clip count, which is what makes 4K output
+  possible.
 
 Encoder selection is a real probe, not a capability listing: NVIDIA, then Apple, then QSV, then
-VAAPI, and each candidate has to successfully encode one 64×64 frame before it is used. If a
+VAAPI, and each candidate has to successfully encode one 256×256 frame before it is used. If a
 hardware encoder fails mid-run the whole encode is retried once in software with the same codec.
 
 One thing to be clear about, because it changes what hardware helps: **assembly does
@@ -147,10 +148,10 @@ ACE-Step has two modes, and which one you pick decides the cost class:
 | `api` (default) | HTTP POST to an ACE-Step server, poll every 3s. `remotable`. |
 | `lib` | The model runs in-process on this machine — MLX on Apple Silicon, CUDA on NVIDIA, PyTorch CPU otherwise. `local-only`. |
 
-`lib` silently downgrades to `api` when the `acestep` package is not importable. MusicGen is
-HTTP-only. The code puts CPU-only generation at "8+ hours per song"; disabling the ACE-Step
-language model (`use_lm`, off by default) is documented in-code as taking a 60 s track from
-roughly 45 s to 17 s.
+`lib` falls back to `api` when the `acestep` package is not importable, and logs a line saying so.
+MusicGen is HTTP-only. The code puts CPU-only generation at "8+ hours per song"; disabling the
+ACE-Step language model (`use_lm`, off by default) is documented in-code as taking a 60 s track
+from roughly 45 s to 17 s.
 
 Mixing, ducking, mastering and muxing are FFmpeg, so `local-only`.
 
@@ -200,8 +201,8 @@ logged.
 | Structure banks | `~/.immich-memories/cache/structure-banks/` | The memory-worthy and standing votes, thumbnail hashes, demanded motion |
 | Attempts | `~/.immich-memories/cache/editorial-runs/` | One directory per cut, see above |
 | Downloaded videos | `~/.immich-memories/cache/video-cache` | 10 GB, 7 days |
-| Thumbnails | `~/.immich-memories/cache/thumbnails` | 500 MB |
-| Clip previews | `~/.immich-memories/cache/previews` | 2 GB |
+| Immich previews | `~/.immich-memories/cache/thumbnails` | 10 GB |
+| Clip previews | `~/.immich-memories/cache/preview-cache` | 2 GB |
 | Run database | `~/.immich-memories/cache.db` | Run history; the old scorer's analysis rows until they are removed |
 
 Facts are keyed by producer version (`editorial.description_model`, `editorial.head_versions`,

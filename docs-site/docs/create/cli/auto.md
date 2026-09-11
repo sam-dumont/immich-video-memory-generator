@@ -14,14 +14,22 @@ The system runs 9 detectors against your library, applies hard rotation rules, t
 A suggestion list can look like this:
 
 ```
- #  Type                 Period                  Score  Reason
- 1  monthly_highlights   Jul 2026                0.776  683 assets, latest completed month
- 2  person_spotlight     2025 (Lucas)            0.700  Completed birthday year, 16464 assets
- 3  year_in_review       2025                    0.672  13151 assets, never generated
- 4  multi_person         2025 (Lucas & Alex)     0.514  ~2564 shared moments
- 5  trip                 Jul 26 - Aug 10 2025    0.449  16-day trip, 960 assets
- 6  on_this_day          Aug 11                  0.349  Memories across 20 years
+ #  Type                 Category          Date Range                 Score  Reason                                        Assets
+ 1  monthly_highlights   monthly_review    2026-07-01 to 2026-07-31   0.776  683 assets, most recent month                    683
+ 2  person_spotlight     birthday          2025-03-04 to 2026-03-03   0.700  Birthday (7 years old), 16464 assets           16464
+    (a name)
+ 3  year_in_review       year_in_review    2025-01-01 to 2025-12-31   0.672  13151 assets across the year, never generated  13151
+ 4  multi_person         multi_person      2025-01-01 to 2025-12-31   0.514  A & B together, ~2564 shared moments            2564
+    (two names)
+ 5  trip                 trip              2025-07-26 to 2025-08-10   0.449  16-day trip to (a place), 960 assets             960
+ 6  on_this_day          on_this_day       2006-08-11 to 2025-08-11   0.349  Memories from this date across 20 years
+                                                                             (2006-2025)                                    4210
 ```
+
+Seven columns, not six: `Category` is the detector that proposed the row, which is not always the
+memory type — `person_spotlight` arrives from either the birthday detector or the spotlight one,
+and the rotation rules key on the category. A candidate that came from somewhere other than the
+calendar gets a second reason line, `via <source>`.
 
 Monthly review is deliberately boring in one specific way: it proposes only the latest completed month. It does not dump six old reviews into the queue, and it does not fall back to an older month when the latest one is already generated or blocked by rotation.
 
@@ -120,7 +128,7 @@ the streak immediately.
 mistaken for an empty library:
 
 ```
-Backing off monthly_highlights:2026-06 — failed 3x, retrying after 3d
+Backing off monthly_highlights:2026-06-01:2026-06-30: — failed 3x, retrying after 3d
 ```
 
 ### Detectors
@@ -133,12 +141,12 @@ the floor is what the detector's own admission rules allow through.
 |----------|---------------|-------|-----------|
 | **YearlyDetector** | Past years with content (only after Jan 15) | 0.24-0.72 | recency, 10% per year, floored at 0.3 |
 | **BirthdayDetector** | People whose birthday was 2-60 days ago | 0.75 | nothing — fixed |
-| **MonthlyDetector** | Latest completed month, if not already generated | 0.21-0.7 | recency, 10% per month back, floored at 0.3 |
+| **MonthlyDetector** | Latest completed month, if not already generated | 0.7 | nothing — it only ever looks one month back, so the decay never fires |
 | **ActivityBurstDetector** | Months with >2x the rolling average (last 12 months) | 0.7 | nothing — a month that clears the threshold gets the full score |
 | **TripDetector** | GPS-detected trips from the past year | up to 0.75 | trip length up to 14 days × asset count up to 200 |
 | **PersonSpotlightDetector** | Top 5 people by asset count | 0.12-0.6 | that person's share of the top person's asset count, floored at 0.2 |
 | **MultiPersonDetector** | Pairs who appear together frequently | 0.06-0.55 | estimated shared assets up to 500 (50 minimum to qualify) |
-| **OnThisDayDetector** | Dates with content across 5+ years | 0.18-0.35 | how many years the date has content in, up to 10 |
+| **OnThisDayDetector** | Dates with content across 5+ years | 0.175-0.35 | how many years the date has content in, up to 10 |
 | **SpecialDayDetector** | Catalogued days whose anniversary is within 3 days | 0.48-0.8 | roundness of the anniversary (decade / half-decade / other) |
 
 ### The anniversary that would otherwise score lowest

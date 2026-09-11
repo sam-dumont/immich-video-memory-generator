@@ -74,9 +74,11 @@ LLM-written titles.
   written from.
 - `immich-memories preflight` sends one small test completion to verify the endpoint.
 
-**Destination:** whatever `llm.base_url` points to. With a local model (mlx-vlm/omlx, Ollama,
-vLLM) nothing leaves your network. The `openai-compatible` provider defaults to
-`https://api.openai.com/v1` if you set a key but no `base_url` — set `base_url` explicitly.
+**Destination:** whatever `llm.base_url` points to. With a local model (mlx-vlm/oMLX, Ollama,
+vLLM) nothing leaves your network. `openai-compatible` defaults to `http://localhost:8080/v1`,
+which is the app's own port — set it. Two provider names fill in a vendor's URL instead when you
+leave `base_url` at that default: `openai` → `https://api.openai.com/v1`, `zai` →
+`https://api.z.ai/api/paas/v4`.
 
 **Opt out:** don't configure `llm`, or point it at a local server.
 
@@ -110,7 +112,8 @@ turning that on.
 ## Privacy mode
 
 Privacy mode (`--privacy-mode` / `server.enable_demo_mode: true`) is a **demo/screenshot**
-feature: it blurs faces, muffles speech and shifts your *home base* to a fake city so the map
+feature: it blurs every frame of every clip (not faces — the whole picture), makes all clip audio
+unintelligible, replaces person names, and shifts your *home base* to a fake city so the map
 fly-in does not start at your house. It does **not** fake the destination coordinates — trip
 detection and titles still geocode and render the real place, because that is the point of a
 trip memory. See [Privacy Mode](../../create/pipeline/privacy-mode.md).

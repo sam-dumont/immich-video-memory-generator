@@ -17,7 +17,7 @@ Before you start:
 
 - **Immich v2 or newer** with an API key (Account Settings > API Keys > New API Key — grant **All**, or at least read access to assets/people/albums/timeline/search plus asset upload + album create/update if you want upload-back)
 - **Docker** or **Python 3.11+** installed
-- **~2 GB free disk** for the video cache (downloaded clips get cached locally)
+- **Disk for the caches.** The shipped budgets are 10 GB of downloaded video (evicted after 7 days), 10 GB of Immich previews and 2 GB of clip previews — so plan for about 22 GB if you leave them alone, less if you lower them
 - Photos, Live Photos or videos in the period you want
 - The three services and two model files the editor reads with: the
   [self-hosting guide](../deploy/self-hosting.md) stands them up in order (the pins and digests

@@ -11,7 +11,7 @@ How the code is organized, why it's built this way, and where to make changes.
 
 The codebase used to split large classes into mixins. That worked for a while, but mixins create implicit coupling: you can't understand a mixin without knowing what `self` looks like on the host class. When `VideoAssembler` hit 11 mixins, it was time to refactor.
 
-Now the four main orchestrators compose smaller service objects via constructor injection. Above them, `generate_memory()` in `generate.py` is the top-level entry that runs the whole lifecycle (discovery → download → analysis → selection → render → music → delivery), and selection itself is the story-first editorial route: `generate` (or the Memory page's Cut) → `build_smart_pipeline(editorial_context)` in `analysis/editorial_runtime.py` → `SmartPipeline.run_editorial_source()` → `RuntimeEditorialPlanner.plan_source()`, which runs preparation, the two readings, the structure planner and the story planner, and certifies the timing.
+Now the four main orchestrators compose smaller service objects via constructor injection. The lifecycle a run reports is the `OperationalPhase` enum in `operations/phases.py` — discovery → download → analysis → selection → render → music → delivery → complete — and it spans two entry points, not one. Selection runs first, as the story-first editorial route: `generate` (or the Memory page's Cut) → `build_smart_pipeline(editorial_context)` in `analysis/editorial_runtime.py` → `SmartPipeline.run_editorial_source()` → `RuntimeEditorialPlanner.plan_source()`, which runs preparation, the two readings, the structure planner and the story planner, and certifies the timing. `generate_memory()` in `generate.py` takes over from there and does extract → assemble → music → upload; hand it no clips and it raises rather than going to find some.
 
 | Orchestrator | Services | What it does |
 |---|---|---|
@@ -22,7 +22,7 @@ Now the four main orchestrators compose smaller service objects via constructor 
 
 Each service is a standalone class you can test in isolation. The orchestrator wires them together in `__init__` and delegates work.
 
-The editorial route has its own seams rather than services: `EditorialRuntimePorts` (the production providers and the people loader), `ProductionPostCardBackend` (the structure planner behind the text orchestration), `StructurePlannerPorts` (the judges, banks and audience gate the structure planner needs), and `EditorialAttempt` in `operations/` (the durable attempt tree with its OS lease). Every attempt lives under `<cache>/editorial-runs/<key>/attempts/<id>/`; the annotation store is `<cache>/annotations.sqlite`.
+The editorial route has its own seams rather than services: `EditorialRuntimePorts` (the production providers and the people loader), `ProductionPostCardBackend` (the structure planner behind the text orchestration), `StructurePlannerPorts` (the judges the structure planner calls out to; the bank directory and the audience come in on `StructurePlanningInput` beside it), and `EditorialAttempt` in `operations/` (the durable attempt tree with its OS lease). Every attempt lives under `<cache>/editorial-runs/<key>/attempts/<id>/`; the annotation store is `<cache>/annotations.sqlite`.
 
 ## CI Pipeline Structure
 
@@ -82,9 +82,9 @@ A PR passes 20 gates: 15 static checks in the quality job and 5 security scans i
 | Security | Bandit + Semgrep | Common vulnerability patterns |
 | Secrets | Gitleaks | Accidentally committed API keys |
 | Dependencies | pip-audit + deptry | Known CVEs; unused, missing or transitive imports |
-| Architecture | import-linter | Forbidden-import contracts: the core packages (`analysis`, `processing`, `titles`, `store`, `operations`, `triage`) must not import `ui`, and they plus `audio` must not import `cli`. The dependency runs one way — UI and CLI import core, never the reverse |
+| Architecture | import-linter | Forbidden-import contracts: the core packages (`analysis`, `processing`, `titles`, `people`, `store`, `triage`, `operations`) must not import `ui`, and they plus `audio` must not import `cli`. The dependency runs one way — UI and CLI import core, never the reverse |
 | Commits | commitizen | Non-conventional commit messages |
-| Tests | pytest | 5,600+ tests: 5,000+ unit in CI, 600+ integration/E2E locally and on the GPU runner |
+| Tests | pytest | 7,461 tests: 6,838 unit in CI, 623 integration/E2E locally and on the GPU runner |
 
 ## How to Add a New Feature
 
@@ -94,7 +94,7 @@ A PR passes 20 gates: 15 static checks in the quality job and 5 security scans i
 2. Keep it under 800 lines (soft limit; 1000 is the hard CI failure). If it needs more, split into a service + helpers file
 3. Inject it into the orchestrator's `__init__` in `video_assembler.py`
 4. Add tests in `tests/test_my_service.py`
-5. Run `make ci` before committing — `make check` is the fast subset and skips the drift, security and duplication gates
+5. Run `make ci` before committing — `make check` is the fast subset (lint, format, typecheck, file length, complexity, tests) and skips everything else: cognitive complexity, dead code, refurb, dep-check, arch-check, critique, duplication, the drift gates and every security scan
 
 ### Adding a new API endpoint
 

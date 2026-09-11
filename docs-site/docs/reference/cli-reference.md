@@ -290,7 +290,7 @@ immich-memories generate [OPTIONS]
 | `--add-date` | boolean | false | Caption each clip with its date |
 | `--add-place` | boolean | false | Caption each clip with its place |
 | `--keep-intermediates` | boolean | false | Keep intermediate files for debugging |
-| `--privacy-mode` | boolean | false | Blur faces and mute speech |
+| `--privacy-mode` | boolean | false | Demo mode: blur every clip frame, scramble the audio, fake the person names |
 | `--title` | text | - | Override video title text |
 | `--llm-title` | boolean | false | Ask the LLM for the title instead of using a template (--title still wins) |
 | `--subtitle` | text | - | Override video subtitle text |
@@ -615,8 +615,9 @@ immich-memories titles [OPTIONS]
 
 Manage title screen fonts.
 
-Downloads OFL-licensed fonts from Google Fonts and caches
-them locally in ~/.immich-memories/fonts/.
+Five OFL-1.1 families ship inside the wheel. Anything else is fetched
+from the Fontsource CDN into ~/.immich-memories/fonts/, which is also
+where you can drop your own TTFs.
 
 ```bash
 immich-memories titles fonts [OPTIONS]
@@ -626,7 +627,7 @@ immich-memories titles fonts [OPTIONS]
 | --- | --- | --- | --- |
 | `--download`, `-d` | boolean | false | Download all fonts |
 | `--clear` | boolean | false | Clear font cache |
-| `--list` | boolean | false | List cached fonts |
+| `--list` | boolean | false | List cached fonts (the default) |
 
 ### `titles test`
 

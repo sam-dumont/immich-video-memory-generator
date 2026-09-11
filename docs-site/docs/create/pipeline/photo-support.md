@@ -11,7 +11,7 @@ Include photos alongside videos in your memory compilations. Photos are converte
 
 Photos compete in the same selection pool as videos and live photos. There's no separate "photo pipeline" — everything goes through unified selection.
 
-1. **Fetch**: Photos (IMAGE assets, excluding live photos) are fetched from Immich
+1. **Fetch**: every IMAGE asset in range is fetched from Immich, Live Photo stills included — a Live Photo's still is a photograph, and whether its burst is worth showing as motion is a rendering question asked later, about an asset that already won its place
 2. **Read**: each photo gets its caption, context heads, detector facts and pixel facts prepared once — see [Editorial annotation setup](../../deploy/configuration/editorial-preparation.md)
 3. **Edit**: photos and videos are one pool; the editor weighs the period's stories and grants pictures by weight, and a still is held for the seconds it earns
 4. **Render**: selected photos are animated as Ken Burns clips at assembly time
@@ -80,25 +80,6 @@ no cached thumbnail is always kept — redundancy is measured, never assumed. Se
 
 Because this runs before the LLM shortlist, every photo it removes is also an LLM call
 saved.
-
-## Photos a video already shows
-
-A still shot seconds before a video of the same thing puts that instant on screen
-twice — once as motion, once as a Ken Burns pan. Before scoring, photos are grouped
-with the video clips by capture time and dropped when a clip already covers them:
-
-- **Same scene.** A photo within `moment_gap_seconds` of a clip whose thumbnail is
-  within `moment_hash_threshold` bits of it is dropped as redundant. On a 5,128-photo
-  year, 802 photos fell inside a clip's window and 101 of them were dropped.
-- **Same asset.** A Live Photo's still and its motion clip are one asset, so a still
-  that reaches the photo pool by ID — including every still merged into a burst — is
-  removed outright. Immich normally keeps Live Photo stills out of the photo pool on
-  its own; this is a guard for when it doesn't.
-
-A photo with no cached thumbnail is always kept — redundancy is measured, never
-assumed. Thumbnails are only fetched for photos that fall inside a clip's window, so
-photos nowhere near a video cost nothing. Set `moment_gap_seconds: 0` to leave
-everything but the exact-asset case alone.
 
 ## CLI Flags
 

@@ -12,13 +12,21 @@ titles below, and the mood detection the music pipeline uses. This page covers t
 
 ## Any OpenAI-compatible API
 
-This works with anything that speaks the OpenAI chat completions API:
+Five provider values, three code paths. `ollama` speaks Ollama's native API, `anthropic` speaks
+`/v1/messages`, and `openai-compatible`, `openai` and `zai` all speak `/v1/chat/completions` —
+so anything that serves that endpoint works: mlx-vlm, [oMLX](https://github.com/jundot/omlx),
+vLLM, Ollama's compatibility layer, Groq, OpenAI itself.
 
-- **[mlx-vlm](https://github.com/Blaizzy/mlx-vlm)**: local on Apple Silicon, no API costs
-- **[Ollama](https://ollama.ai)**: local, supports vision models like LLaVA
-- **[vLLM](https://vllm.ai)**: self-hosted, great for NVIDIA GPUs
-- **[Groq](https://groq.com)**: cloud, fast inference
-- **Any other provider** with an OpenAI-compatible endpoint
+`openai` and `zai` are the same code path with the vendor's base URL and reasoning dialect filled
+in, and only where you left the field at its default. `openai-compatible` fills in nothing: its
+`base_url` stays `http://localhost:8080/v1`, which is the app's own port, so set it.
+
+:::warning The reader needs eyes
+The model named in `llm` is sent pictures — 800 px JPEG tiles of the candidates whose facts the
+edit demands, plus contact sheets. A text-only model will not do the picture pass, and the run
+does not degrade politely into one that can. See
+[the self-hosting guide](../../deploy/self-hosting.md#what-has-actually-been-tested).
+:::
 
 ## LLM Title Generation
 
@@ -37,18 +45,32 @@ After the analysis phase completes, the LLM receives daily GPS clusters: how man
 
 You see everything in Step 3 of the UI and can edit before rendering. Hit the regenerate button to try again with the same GPS data.
 
-### Model recommendations
+### Thinking mode has to be off
 
-**Qwen3.5-9B-MLX-4bit with thinking disabled** is what you want for titles. 5.5GB, 7-17 seconds per title on Apple Silicon, 100% JSON reliability, and genuinely creative multilingual output.
+On a server whose chat template reasons by default, a bulk call reasons at its small token budget,
+truncates mid-thought and returns nothing parseable. That is what `llm.no_thinking_params` is for,
+and its default is already the Qwen dialect:
 
-One catch: you MUST disable thinking mode in the omlx admin panel (`/admin`). Set `chat_template_kwargs` to `{"enable_thinking": false}` for the Qwen3.5 model. With thinking enabled, the model burns 2000-8000 tokens on chain-of-thought before it even starts the JSON, and most requests time out.
+```yaml
+llm:
+  thinking: false                 # default
+  no_thinking_params:             # merged into every non-thinking call
+    chat_template_kwargs:
+      enable_thinking: false
+```
 
-| Model | Size | Speed | Quality | Reliability | Notes |
-|-------|------|-------|---------|-------------|-------|
-| **Qwen3.5-9B (no think)** | 5.5GB | 7-17s | Great | 100% | Best overall |
-| Qwen3.5-4B (no think) | 2.9GB | ~10s | Good | ~90% | Lighter alternative |
-| Qwen2.5-VL-7B | 4.5GB | 4-5s | OK | T=0.1 only | Vision model doing text: works but generic |
-| Qwen3.5-9B (thinking ON) | 5.5GB | 300s+ | Great | ~30% | Don't. Disable thinking. |
+A server that reasons only when asked wants `no_thinking_params: {}` instead. Turning `thinking:
+true` back on runs two calls in reasoning mode — title generation and the special-day question in
+`discover-days` — while everything else stays fast, and it is refused outright alongside images; `thinking_params` carries the fields those calls send, defaulting to the
+same Qwen dialect. OpenAI's reasoning models want `{"reasoning_effort": "medium"}` there, which
+`provider: openai` fills in for you.
+
+### Which model
+
+The only configuration whose output has been graded is
+`mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit` on oMLX. Everything else is expected to work and
+ungraded — there is no per-model speed or reliability table here, because nobody has measured one
+on this route and inventing one would be worse than saying so.
 
 ## Mood Detection for Music
 
@@ -77,22 +99,31 @@ ollama serve
 One section names the model; the editor, titles and mood detection all read it.
 
 ```yaml
-# Which LLM to use (shared by the editor, title generation and mood detection)
-# Graded on Qwen3-VL-30B-A3B-Instruct-4bit
-llm:
-  base_url: "http://localhost:8000/v1"
-  model: "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"
-  api_key: "not-needed"        # for local models
-  provider: "openai-compatible"  # or "ollama"
-  timeout_seconds: 300
+advanced:
+  llm:
+    base_url: "http://localhost:8000/v1"   # example: oMLX. The default is 8080, the app's own port
+    model: "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"
+    api_key: ""                            # local servers ignore it
+    provider: "openai-compatible"          # or ollama | openai | zai | anthropic
+    timeout_seconds: 300                   # the default
 ```
 
-A separate `title_llm` section can override these for trip title generation (useful if you want a different model for titles than for the editor):
+`model` has to be the string the server reports at `GET /v1/models`, not the name you typed
+somewhere else.
+
+A separate `title_llm` section can point trip titles at a different model:
 
 ```yaml
-title_llm:
-  base_url: "http://localhost:11434/v1"
-  model: "llama3.2"
+advanced:
+  title_llm:
+    provider: "openai-compatible"
+    base_url: "http://localhost:11434/v1"
+    model: "llama3.2"
+    timeout_seconds: 300
 ```
 
-Any field not set in `title_llm` falls back to the `llm` values.
+**Fields do not fall back to `llm`.** The switch is all-or-nothing on `title_llm.model`: set it
+and the whole `title_llm` block is used, with every field you left out taking its *built-in*
+default — `provider: openai-compatible`, `base_url: http://localhost:8080/v1`, empty `api_key`.
+Leave `title_llm.model` empty and `llm` is used instead. Write out every field you care about, or
+the two-line version above silently resets five others.

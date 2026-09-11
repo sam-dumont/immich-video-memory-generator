@@ -4,7 +4,7 @@ sidebar_label: "Settings"
 
 # Settings
 
-Two pages sit outside the memory flow, reachable from the sidebar at any time: **Config** (`/settings/config`) and **Cache** (`/settings/cache`).
+Three pages sit outside the memory flow, reachable from the sidebar at any time: **Config** (`/settings/config`), **People** (`/settings/people`) and **Cache** (`/settings/cache`). People is documented with [`immich-memories people`](../cli/people.md), which writes the same file.
 
 ## Config — what is actually running
 
@@ -16,7 +16,7 @@ If a preset is active, the page names it and says it is filling the values you h
 
 ### Secrets are masked
 
-Any key named `api_key`, `api_keys`, `client_secret`, `password`, `secret`, `token` or `urls` renders as `***` — a full mask, not a partial one. An earlier version showed the first and last few characters of every secret, `auth.password` included, which is a preview of a password rather than a redaction.
+Any key named `api_key`, `api_keys`, `client_secret`, `password`, `secret`, `token`, `trigger_token` or `urls` renders as `***` — a full mask, not a partial one. An earlier version showed the first and last few characters of every secret, `auth.password` included, which is a preview of a password rather than a redaction.
 
 This matters if you screenshot the page for a bug report: the masking is server-side, so what you see is all there is to leak.
 

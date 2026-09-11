@@ -12,9 +12,10 @@ Story-first selection prepares descriptions, context labels and pixel measuremen
 whole source period. It reuses complete facts from the annotation database. Missing previews,
 unavailable providers and incomplete facts stop selection with a count for each missing producer.
 
-This is the default route for UI, CLI and scheduled runs. New runs use the FAMILY audience:
-ordinary family baby care is eligible; graphic procedures, sexual content, exposed adult
-changing and identifying records remain excluded.
+This is the default route for UI, CLI and scheduled runs. New runs use the FAMILY audience.
+A shirtless baby is ordinary family content. Eight findings are held out of the cut at every
+audience: breastfeeding or expressing milk, bathing, toileting or changing, intimate hygiene,
+graphic medical procedures, identifying records, sexual content, and adult changing.
 
 Install the inference dependencies:
 

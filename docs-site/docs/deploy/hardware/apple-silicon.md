@@ -5,12 +5,11 @@ title: Apple Silicon
 
 # Apple Silicon
 
-Apple Silicon Macs (M1, M2, M3, M4, M5) are probably the best platform for this tool. Everything accelerates: video encoding, face detection, and even local LLM inference. Unified memory means no copying data between CPU and GPU.
+Apple Silicon Macs (M1, M2, M3, M4, M5) are probably the best platform for this tool: video encoding, Taichi title rendering and local model inference all accelerate, and unified memory means the reader's 17 GB of weights and the render share one pool instead of copying between two.
 
 ## What you get
 
 - **VideoToolbox encoding**: uses the dedicated media engine on the chip instead of the CPU cores.
-- **Vision Framework face detection**: runs on the Neural Engine. More accurate than the OpenCV CPU fallback, especially with small or partially occluded faces.
 - **Unified memory**: no CPU/GPU transfer overhead. Frames stay in the same memory pool whether the CPU, GPU, or Neural Engine is working on them.
 - **mlx-vlm for local LLMs**: run the editor's model locally with Metal acceleration ([LLM titles and mood](../../create/pipeline/llm-content-analysis.md), [Editorial annotation setup](../configuration/editorial-preparation.md)). No API costs, no data leaving your machine.
 
@@ -20,7 +19,7 @@ Apple Silicon Macs (M1, M2, M3, M4, M5) are probably the best platform for this 
 uv sync --extra mac
 ```
 
-The `mac` extra installs the Apple-specific dependencies (pyobjc bindings for Vision Framework, etc.).
+The `mac` extra installs the Apple-specific dependencies (pyobjc bindings for Quartz, Metal and Vision).
 
 ## Configuration
 
@@ -30,7 +29,7 @@ hardware:
   encoder_preset: "balanced"   # fast turns on VideoToolbox's speed-priority mode
 ```
 
-Nothing to select: VideoToolbox and the Vision Framework are found automatically on macOS.
+Nothing to select: VideoToolbox is found automatically on macOS.
 
 ## Supported chips
 

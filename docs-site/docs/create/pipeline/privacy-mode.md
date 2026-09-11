@@ -5,7 +5,7 @@ title: Privacy Mode
 
 # Privacy Mode
 
-Privacy mode (also called demo mode) blurs all video content, muffles audio, and anonymizes locations and names in the final output. It's for situations where you want to demo the app or share a screen recording without showing your actual footage.
+Privacy mode (also called demo mode) blurs every frame of every clip, makes the audio unintelligible, and replaces person names with fake ones. It's for situations where you want to demo the app or share a screen recording without showing your actual footage.
 
 This feature is how all the demo videos on this site were made. I would never have been able to record shareable demos without it: building a privacy mode specifically for this purpose was one of those things where having AI write the code made it feasible. Without it, I'd have had to either skip demos entirely or manually edit out personal content from every recording.
 
@@ -36,12 +36,16 @@ server:
 
 | Data | How it's handled |
 |------|-----------------|
-| Video content | Heavy Gaussian blur, applied via FFmpeg before assembly |
+| Video content | Whole-frame Gaussian blur plus a noise texture — frosted glass, not pixelation — applied via FFmpeg before assembly. Not face detection: every pixel of every clip goes |
 | Audio | Segment reversal (200 ms) + 300 Hz lowpass on all clip audio, not just detected speech — you hear people talking but cannot make out words |
-| GPS coordinates | Relocated to a fake city, cluster shape preserved |
-| Person names | Replaced with deterministic fake names |
-| Title screen text | Uses fake names and locations |
-| Map animation | Shows fake destination, same visual style |
+| Person names | Replaced with one of twelve fake names, picked by SHA-256 of the real one, so the same person is the same alias every run |
+| Home base | Shifted to one of eight European cities, offset so the fly-in route stays visible |
+| Title screen text | Uses the fake person name |
+
+**What it does not anonymize: the destination.** Clip GPS, place names, location cards and the
+trip map all show the real place. That is deliberate — a trip memory with a fake destination is
+not a demo of a trip memory. If the place itself is the thing you cannot show, privacy mode is
+the wrong tool.
 
 ## What stays unblurred
 

@@ -12,15 +12,15 @@ IMMICH_MEMORIES_<SECTION>__<FIELD>
 ```
 
 Note the **double underscore** between section and field. Case does not matter, but uppercase is
-the convention. `<SECTION>` is always the flat runtime name (`LLM`, `AUTH`, `SPEECH`…) — never
+the convention. `<SECTION>` is always the flat runtime name (`LLM`, `AUTH`, `EDITORIAL`…) — never
 `ADVANCED__LLM`, even for sections that live under `advanced:` in the YAML file.
 
-List-valued fields (`auth.trusted_proxies`, `notifications.urls`,
-`scheduler.schedules`) must be given as JSON:
+List-valued fields (`auth.trusted_proxies`, `notifications.urls`, `scheduler.schedules`,
+`analysis.exclude_filename_patterns`) must be given as JSON:
 
 ```bash
 export IMMICH_MEMORIES_AUTH__TRUSTED_PROXIES='["10.0.0.0/8"]'
-export IMMICH_MEMORIES_TRANSCRIPTION__LANGUAGES='["fr", "en"]'
+export IMMICH_MEMORIES_ANALYSIS__EXCLUDE_FILENAME_PATTERNS='["RingVideo_*", "Screenshot*"]'
 ```
 
 ## Examples
@@ -37,13 +37,17 @@ export IMMICH_MEMORIES_IMMICH__API_VERSION="auto"
 See [Immich API compatibility](./config-file.md#immich-api-compatibility) for what is supported and
 what is tested. `immich-memories config test` is read-only and prints the resolved API version.
 
-### Analysis settings
+### Source admission
 
 ```bash
-export IMMICH_MEMORIES_ANALYSIS__SCENE_THRESHOLD="30.0"
-export IMMICH_MEMORIES_ANALYSIS__MIN_SCENE_DURATION="1.5"
-export IMMICH_MEMORIES_ANALYSIS__ANALYSIS_RESOLUTION="720"
+export IMMICH_MEMORIES_ANALYSIS__DOWNLOAD_WORKERS="3"
+export IMMICH_MEMORIES_ANALYSIS__MIN_SOURCE_SHORT_SIDE="1080"
+export IMMICH_MEMORIES_ANALYSIS__EXCLUDE_STILLS_WITHOUT_CAMERA_EXIF="true"
 ```
+
+The scene-detection and segment-length knobs that used to live here went with the clip scorer.
+A config file that still names one is refused at startup; the environment-variable form is
+ignored in silence instead, so delete both.
 
 ### LLM provider
 
@@ -52,7 +56,6 @@ export IMMICH_MEMORIES_LLM__PROVIDER="openai-compatible"
 export IMMICH_MEMORIES_LLM__BASE_URL="https://api.openai.com/v1"
 export IMMICH_MEMORIES_LLM__MODEL="gpt-4.1-nano"
 export IMMICH_MEMORIES_LLM__API_KEY="sk-..."
-export IMMICH_MEMORIES_CONTENT_ANALYSIS__ENABLED="true"   # controls optional clip-content scoring, not editorial selection
 ```
 
 ### Editorial annotation preparation
