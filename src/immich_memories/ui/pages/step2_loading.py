@@ -267,13 +267,9 @@ async def _collect_date_range_media(state, status_label, progress_bar, on_phase:
 
 
 def ensure_caches(state) -> None:
-    """Open the analysis and thumbnail caches once per session, on first need."""
+    """Open the thumbnail cache once per session, on first need."""
     from immich_memories.config import get_config
 
-    if state.analysis_cache is None:
-        from immich_memories.cache import VideoAnalysisCache
-
-        state.analysis_cache = VideoAnalysisCache(db_path=get_config().cache.database_path)
     if state.thumbnail_cache is None:
         from immich_memories.cache.thumbnail_cache import ThumbnailCache
 

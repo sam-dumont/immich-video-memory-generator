@@ -49,7 +49,6 @@ def test_review_refine_receives_retained_planner_carrier() -> None:
         pipeline_selected_clips=[planned_photo],
         selected_clip_ids={planned_photo.asset.id},
         review_selected_mode=True,
-        analysis_cache=MagicMock(),
         thumbnail_cache=MagicMock(),
     )
 

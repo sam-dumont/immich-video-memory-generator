@@ -149,21 +149,6 @@ class _TripContext:
     country: str | None = None
 
 
-def _collect_clip_descriptions(state: AppState) -> list[str]:
-    """Extract LLM descriptions from analysis cache for selected clips."""
-    if not state.analysis_cache or not state.selected_clip_ids:
-        return []
-
-    descriptions: list[str] = []
-    for asset_id in state.selected_clip_ids:
-        analysis = state.analysis_cache.get_analysis(asset_id)
-        if analysis and analysis.segments:
-            best = analysis.get_best_segment()
-            if best and best.llm_description:
-                descriptions.append(best.llm_description)
-    return descriptions
-
-
 def _gather_person_names(state: AppState) -> list[str]:
     """Get person names from selected person or preset params."""
     if state.selected_person and state.selected_person.name:
@@ -325,7 +310,10 @@ async def generate_title_after_pipeline(state: AppState) -> None:
             daily_locations=trip.daily_locations,
             country=trip.country,
             person_names=person_names,
-            clip_descriptions=_collect_clip_descriptions(state) or None,
+            clip_descriptions=[
+                d for c in state.get_selected_clips() if (d := getattr(c, "llm_description", None))
+            ]
+            or None,
             llm_config=llm_cfg,
         )
     except Exception:  # WHY: UI graceful degradation

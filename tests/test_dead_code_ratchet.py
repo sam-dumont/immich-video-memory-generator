@@ -40,7 +40,7 @@ WHITELIST = Path(__file__).resolve().parent.parent / "vulture-whitelist.py"
 # run_analysis/run_planning_analysis/run_selection and the three _candidate_pool
 # stages) lost its last caller in src/ when those CLI functions went, and was
 # listed rather than deleted until the PR that removed it.
-# 279, down from 332: the legacy selector went, with every module only it
+# 267, down from 332: the legacy selector went, with every module only it
 # reached (the clip analyzers, the scorers, speech, the photo scorer, the
 # density budget) and the config dials only they read. Fifty lines left: the
 # six above, the whitelisted parts of the deleted modules, and the lines that
@@ -55,7 +55,7 @@ WHITELIST = Path(__file__).resolve().parent.parent / "vulture-whitelist.py"
 # SessionOptions owns; frozen record fields written at construction and read
 # back out of the private artifact JSON; and the attempt reader the phase-2
 # review page consumes.
-MAX_WHITELISTED_SYMBOLS = 278
+MAX_WHITELISTED_SYMBOLS = 267
 
 
 def test_the_dead_code_whitelist_never_grows() -> None:

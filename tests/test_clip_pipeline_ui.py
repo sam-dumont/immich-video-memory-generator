@@ -133,7 +133,6 @@ def test_blocking_pipeline_cannot_reintroduce_unchecked_photos() -> None:
         include_photos=True,
         photo_assets=[selected_photo, unchecked_photo],
         thumbnail_cache=MagicMock(),
-        analysis_cache=MagicMock(),
     )
     selection_result = PipelineResult(
         selected_clips=[],
@@ -185,7 +184,6 @@ def test_blocking_pipeline_retains_exact_ordered_editorial_carriers_and_decision
         date_ranges=[_WINDOW],
         clips=[_clip("library-only")],
         thumbnail_cache=MagicMock(),
-        analysis_cache=MagicMock(),
     )
     selection_result = PipelineResult(
         selected_clips=selected_clips,
@@ -228,7 +226,6 @@ def test_blocking_pipeline_hands_source_selection_its_thumbnail_cache() -> None:
         include_photos=True,
         photo_assets=[photo],
         thumbnail_cache=MagicMock(),
-        analysis_cache=MagicMock(),
     )
     selection_result = PipelineResult(selected_clips=[], clip_segments={}, errors=[], stats={})
     pipeline = _source_pipeline(selection_result)
@@ -272,7 +269,6 @@ def test_blocking_pipeline_writes_its_result_back_under_the_session_lock() -> No
         immich_api_key="test-key",
         date_ranges=[_WINDOW],
         thumbnail_cache=MagicMock(),
-        analysis_cache=MagicMock(),
     )
     lock = _RecordingLock()
     state.lock = lock  # type: ignore[assignment]
@@ -307,7 +303,6 @@ def test_blocking_pipeline_remembers_where_the_cut_wrote_its_plan(tmp_path) -> N
         immich_api_key="test-key",
         date_ranges=[_WINDOW],
         thumbnail_cache=MagicMock(),
-        analysis_cache=MagicMock(),
     )
     selection_result = PipelineResult(
         selected_clips=[],

@@ -251,7 +251,6 @@ def test_ui_runtime_uses_exact_state_windows_and_total_duration(tmp_path) -> Non
         target_duration=1.5,
         accept_any_provenance=True,
         thumbnail_cache=MagicMock(),
-        analysis_cache=MagicMock(),
     )
     pipeline = MagicMock()
     pipeline.last_deep_analysis_count = 0
@@ -335,7 +334,6 @@ def test_ui_album_runtime_keeps_full_corpus_and_owner_review_exclusions(tmp_path
         selected_photo_ids={kept_photo.id},
         target_duration=2.0,
         thumbnail_cache=MagicMock(),
-        analysis_cache=MagicMock(),
     )
     pipeline = MagicMock()
     pipeline.last_deep_analysis_count = 0

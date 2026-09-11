@@ -71,7 +71,6 @@ class AppState:
     editorial_selections: tuple[EditorialSelection, ...] = ()
     selected_clip_ids: set[str] = field(default_factory=set)
     clip_segments: dict[str, tuple[float, float]] = field(default_factory=dict)
-    cached_analysis_ids: set[str] = field(default_factory=set)
     clip_rotations: dict[str, int | None] = field(default_factory=dict)
 
     # Generation options
@@ -95,7 +94,6 @@ class AppState:
     cancel_requested: bool = False
 
     # Pipeline state
-    auto_analyze_pending: bool = False
     review_selected_mode: bool = False
     pipeline_running: bool = False
     pipeline_result: dict[str, Any] | None = None
@@ -163,7 +161,6 @@ class AppState:
 
     # Caches (initialized at runtime)
     thumbnail_cache: ThumbnailCache | None = None
-    analysis_cache: Any = None  # AnalysisCache
 
     @property
     def date_range(self) -> DateRange | None:
@@ -351,7 +348,6 @@ class AppState:
         self.selected_clip_ids = set()
         self.selected_photo_ids = set()
         self.clip_segments = {}
-        self.cached_analysis_ids = set()
         self.clip_rotations = {}
         self.pipeline_result = None
         self.timeline_plan = None

@@ -8,8 +8,6 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from immich_memories.cache.database_models import CachedSegment, CachedVideoAnalysis
-from immich_memories.cache.database_rows import row_to_analysis, row_to_segment
 from immich_memories.cache.schema_migrator import SchemaMigrator
 from immich_memories.cache.versions import SCHEMA_VERSION
 
@@ -57,38 +55,6 @@ class VideoAnalysisCache:
     # =========================================================================
     # Query Methods (from DatabaseQueryMixin)
     # =========================================================================
-
-    def get_analysis(
-        self,
-        asset_id: str,
-        include_segments: bool = True,
-    ) -> CachedVideoAnalysis | None:
-        with self._get_connection() as conn:
-            row = conn.execute(
-                "SELECT * FROM video_analysis WHERE asset_id = ?", (asset_id,)
-            ).fetchone()
-
-            if not row:
-                return None
-
-            analysis = row_to_analysis(row)
-
-            if include_segments:
-                analysis.segments = self._load_segments(conn, asset_id)
-
-            return analysis
-
-    def _load_segments(self, conn: sqlite3.Connection, asset_id: str) -> list[CachedSegment]:
-        rows = conn.execute(
-            """
-            SELECT * FROM video_segments
-            WHERE asset_id = ?
-            ORDER BY segment_index
-        """,
-            (asset_id,),
-        ).fetchall()
-
-        return [row_to_segment(row) for row in rows]
 
     def get_stats(self) -> dict:
         with self._get_connection() as conn:

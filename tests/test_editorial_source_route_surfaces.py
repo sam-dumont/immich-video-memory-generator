@@ -231,7 +231,6 @@ def test_ui_source_route_retains_reviewed_demand_and_exact_selection(
         include_live_photos=include_live,
         target_duration=1.0,
         thumbnail_cache=MagicMock(),
-        analysis_cache=MagicMock(),
         pipeline_running=True,
     )
     if not include_photos:
@@ -290,7 +289,6 @@ def test_ui_unavailable_source_reports_failure_without_legacy_reentry(tmp_path):
         clips=[clip],
         target_duration=1.0,
         thumbnail_cache=MagicMock(),
-        analysis_cache=MagicMock(),
         pipeline_running=True,
     )
     pipeline = _source_pipeline(_finished_selection())

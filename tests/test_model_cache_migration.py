@@ -25,18 +25,19 @@ def test_v16_marks_existing_video_analysis_as_unversioned(tmp_path: Path, monkey
         conn.commit()
 
     monkeypatch.setattr(cache_database, "SCHEMA_VERSION", 16)
-    cache = VideoAnalysisCache(db_path)
-    cache = VideoAnalysisCache(db_path)
+    VideoAnalysisCache(db_path)
+    VideoAnalysisCache(db_path)
 
-    analysis = cache.get_analysis("existing-video", include_segments=False)
     with sqlite3.connect(db_path) as conn:
         columns = {row[1] for row in conn.execute("PRAGMA table_info(video_analysis)")}
         version = conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
+        model_version = conn.execute(
+            "SELECT model_version FROM video_analysis WHERE asset_id = ?", ("existing-video",)
+        ).fetchone()[0]
 
     assert "model_version" in columns
     assert version == 16
-    assert analysis is not None
-    assert analysis.model_version is None
+    assert model_version is None
 
 
 def test_v22_carries_every_banked_row_onto_the_version_key(tmp_path: Path, monkeypatch) -> None:

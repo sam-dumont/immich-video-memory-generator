@@ -95,15 +95,6 @@ _PROGRESS_STATUS_KEYS = [
     "speed_ratio",
     "completed_count",
     "error_count",
-    "last_completed_asset_id",
-    "last_completed_segment",
-    "last_completed_score",
-    "last_completed_video_path",
-    "last_completed_llm_description",
-    "last_completed_llm_emotion",
-    "last_completed_llm_interestingness",
-    "last_completed_llm_quality",
-    "last_completed_audio_categories",
 ]
 _PROGRESS_DEFAULTS: dict[str, Any] = {
     "indeterminate": False,
