@@ -10,13 +10,24 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
 from immich_memories.analysis.editorial_story_replies import WEIGHTS
 
 PLAN_FILE = "plan.private.json"
+PREPARATION_FILE = "preparation.private.json"
+
+# What a reduced preparation tier changed about this cut, in the reader's terms. The
+# full tier says nothing: there is nothing to warn a reader about.
+PREPARATION_NOTES = {
+    "no_captions": "Edited without descriptions — picture content was classified, not read.",
+    "metadata_only": (
+        "Edited from metadata only — picture content was neither classified nor read, "
+        "so every picture is held to family viewing."
+    ),
+}
 
 # Carrier kinds the planner writes for moving pictures; anything else is held as a still.
 MOTION_KINDS = frozenset({"video", "live-motion", "motion"})
@@ -87,6 +98,7 @@ class StoryView:
     thesis: str
     stories: tuple[StoryEntry, ...]
     duration: DurationView | None
+    preparation: str = ""
 
     @property
     def carrier_count(self) -> int:
@@ -173,6 +185,18 @@ def story_view_from_plan(
     )
 
 
+def preparation_note(attempt_dir: Path) -> str:
+    """The line this cut owes its reader when a reduced tier produced it."""
+    path = Path(attempt_dir) / PREPARATION_FILE
+    if not path.is_file():
+        return ""
+    try:
+        tier = str(json.loads(path.read_text()).get("tier") or "")
+    except (OSError, ValueError):
+        return ""
+    return PREPARATION_NOTES.get(tier, "")
+
+
 def read_story_view(
     attempt_dir: Path, render_modes: Mapping[str, str] | None = None
 ) -> StoryView | None:
@@ -180,4 +204,5 @@ def read_story_view(
     plan_path = Path(attempt_dir) / PLAN_FILE
     if not plan_path.is_file():
         return None
-    return story_view_from_plan(json.loads(plan_path.read_text()), render_modes)
+    view = story_view_from_plan(json.loads(plan_path.read_text()), render_modes)
+    return replace(view, preparation=preparation_note(attempt_dir))

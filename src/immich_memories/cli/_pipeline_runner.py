@@ -598,6 +598,7 @@ def run_pipeline_and_generate(
             eligible=len(all_candidates),
             planned=len(selected_clips),
             counters=llm_metrics.active(),
+            preparation_tier=config.editorial.preparation.tier,
         )
     )
 

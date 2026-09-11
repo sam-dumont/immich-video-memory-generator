@@ -63,6 +63,22 @@ def _llm_lines(counters: LLMCounters) -> list[str]:
     return lines
 
 
+_TIER_LINES = {
+    "no_captions": "no_captions — every producer but the caption; reasons are facts, not sentences",
+    "metadata_only": "metadata_only — no ONNX, no captions; every picture held to family viewing",
+}
+
+
+def _tier_lines(tier: str) -> list[str]:
+    """What a reduced preparation tier changed about this cut, or nothing on the full one.
+
+    The default tier prints no line for the same reason a run with no model prints
+    no model line: a normal run should read as normal, not as one missing a section.
+    """
+    described = _TIER_LINES.get(tier)
+    return ["", "  TIER  " + described] if described else []
+
+
 def render_run_summary(
     *,
     total_seconds: float,
@@ -71,6 +87,7 @@ def render_run_summary(
     eligible: int,
     planned: int,
     counters: LLMCounters | None,
+    preparation_tier: str = "full",
 ) -> str:
     """The end-of-run block, as printable text.
 
@@ -87,6 +104,7 @@ def render_run_summary(
         f"{planned} planned from {eligible} candidates",
         f"    generation             {_clock(generation_seconds):>8}",
     ]
+    lines.extend(_tier_lines(preparation_tier))
     lines.extend(_llm_lines(counters))
     return "\n".join(lines)
 
