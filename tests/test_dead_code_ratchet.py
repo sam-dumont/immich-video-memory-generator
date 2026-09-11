@@ -55,7 +55,12 @@ WHITELIST = Path(__file__).resolve().parent.parent / "vulture-whitelist.py"
 # SessionOptions owns; frozen record fields written at construction and read
 # back out of the private artifact JSON; and the attempt reader the phase-2
 # review page consumes.
-MAX_WHITELISTED_SYMBOLS = 267
+# 268, up from 267: ExifInfo.iso came back. It has no reader, but the sample and
+# motion evidence digests hash the whole Immich asset payload, so dropping it made
+# two assets Immich reports differently one evidence key and re-keyed every banked
+# observation of them. It belongs with file_modified_at above: an Immich wire field
+# the loader fills, kept because the digest binds it, not because code reads it.
+MAX_WHITELISTED_SYMBOLS = 268
 
 
 def test_the_dead_code_whitelist_never_grows() -> None:

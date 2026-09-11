@@ -10,6 +10,7 @@ location_diversity_bonus  # unused function (src/immich_memories/analysis/trip_d
 AUDIO  # unused variable (src/immich_memories/api/models.py:50)
 exposure_time  # unused variable (src/immich_memories/api/models.py:59)
 f_number  # unused variable (src/immich_memories/api/models.py:60)
+iso  # unused variable (src/immich_memories/api/models.py:61)
 focal_length  # unused variable (src/immich_memories/api/models.py:62)
 date_time_original  # unused variable (src/immich_memories/api/models.py:68)
 lens_model  # unused variable (src/immich_memories/api/models.py:69)

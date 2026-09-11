@@ -58,6 +58,7 @@ class ExifInfo(BaseModel):
     model: str | None = None
     exposure_time: str | None = Field(default=None, alias="exposureTime")
     f_number: float | None = Field(default=None, alias="fNumber")
+    iso: int | None = None
     focal_length: float | None = Field(default=None, alias="focalLength")
     latitude: float | None = None
     longitude: float | None = None
