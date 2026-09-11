@@ -23,7 +23,7 @@ Error: Connection failed: <what the server or the socket returned>
 process at all.
 
 - Double-check your URL. Include the protocol (`https://`). Don't include a trailing slash.
-- Verify your API key is correct: **Immich > Account Settings > API Keys**. A `403 Forbidden` means the key exists but lacks permissions — recreate it with **All** permissions (or the read + upload + album scopes described in the quick start).
+- Verify your API key is correct: **Immich > Account Settings > API Keys**. A `403 Forbidden` means the key exists but lacks permissions: recreate it with **All** permissions (or the read + upload + album scopes described in the quick start).
 - Immich must be **v2 or newer**; Immich 1.x is rejected at connect time (`Unsupported Immich major version 1`).
 - Make sure Immich is actually reachable from wherever you're running this tool. If you're in Docker, `localhost` means the container, not your host machine: use the host's IP or Docker network hostname.
 
@@ -61,7 +61,7 @@ relevant Immich server logs. API keys are redacted.
 
 The first cut over a period is the slow one: every eligible picture gets its caption, context heads and detector facts prepared once, then the text model reads the period. The levers:
 
-- **Put the caption server on the fast box**: captions are one HTTP request per picture (`editorial.preparation.caption_base_url`, `caption_concurrency`), and the encoder and detectors run where the app runs. A missing producer does not slow the run down, it stops it with a count — see [Editorial annotation setup](../deploy/configuration/editorial-preparation.md).
+- **Put the caption server on the fast box**: captions are one HTTP request per picture (`editorial.preparation.caption_base_url`, `caption_concurrency`), and the encoder and detectors run where the app runs. A missing producer does not slow the run down: it stops it with a count. See [Editorial annotation setup](../deploy/configuration/editorial-preparation.md).
 - **Narrow the period**: a month or a person filter is analyzed in minutes; a whole year of a busy library is an overnight job on a NAS.
 - **Let the store work**: facts are stored per picture and producer in `annotations.sqlite` inside the cache directory, and every reading is banked by its exact request, so the second cut over the same period skips both. Do not clear the cache between runs.
 - **Check the text model**: every reading waits on it, so a slow model server dominates the run. The run summary prints the model's call count and time.
@@ -110,7 +110,7 @@ and `immich-memories preflight` reports `Hardware: No GPU acceleration`.
 - Check the music API server is running and reachable. Both backends default to
   `http://localhost:8000`.
 - For ACE-Step: hit `http://your-server:8000/health` in a browser. The backend treats the server as
-  up only when the body is `{"data": {"status": "ok"}}` — anything else is logged as unhealthy.
+  up only when the body is `{"data": {"status": "ok"}}`: anything else is logged as unhealthy.
 - For MusicGen: the same `/health` route, but it only has to return HTTP 200. The body is read for
   device and status, not gated on.
 - If generation times out, raise `timeout_seconds` in the backend's config section

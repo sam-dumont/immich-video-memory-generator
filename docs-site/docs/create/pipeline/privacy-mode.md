@@ -36,14 +36,14 @@ server:
 
 | Data | How it's handled |
 |------|-----------------|
-| Video content | Whole-frame Gaussian blur plus a noise texture — frosted glass, not pixelation — applied via FFmpeg before assembly. Not face detection: every pixel of every clip goes |
-| Audio | Segment reversal (200 ms) + 300 Hz lowpass on all clip audio, not just detected speech — you hear people talking but cannot make out words |
+| Video content | Whole-frame Gaussian blur plus a noise texture (frosted glass, not pixelation) applied via FFmpeg before assembly. Not face detection: every pixel of every clip goes |
+| Audio | Segment reversal (200 ms) + 300 Hz lowpass on all clip audio, not just detected speech: you hear people talking but cannot make out words |
 | Person names | Replaced with one of twelve fake names, picked by SHA-256 of the real one, so the same person is the same alias every run |
 | Home base | Shifted to one of eight European cities, offset so the fly-in route stays visible |
 | Title screen text | Uses the fake person name |
 
 **What it does not anonymize: the destination.** Clip GPS, place names, location cards and the
-trip map all show the real place. That is deliberate — a trip memory with a fake destination is
+trip map all show the real place. That is deliberate: a trip memory with a fake destination is
 not a demo of a trip memory. If the place itself is the thing you cannot show, privacy mode is
 the wrong tool.
 

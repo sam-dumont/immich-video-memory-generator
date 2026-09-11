@@ -7,11 +7,11 @@ title: Hardware Acceleration Overview
 
 A GPU buys two things here: animated title screens, and faster encoding. **Both have a CPU fallback**, so it works on any machine. See [CPU-Only Mode](./cpu-only.md) for details on running without a GPU.
 
-What a media accelerator does **not** buy is the editor's models. NVENC, Quick Sync and VAAPI decode, scale and encode; they do not run inference. The reader (~17 GB resident) and the caption server (1-2 GB) are separate services with their own hardware needs — see the [self-hosting guide](../self-hosting.md#one-machine-or-two).
+What a media accelerator does **not** buy is the editor's models. NVENC, Quick Sync and VAAPI decode, scale and encode; they do not run inference. The reader (~17 GB resident) and the caption server (1-2 GB) are separate services with their own hardware needs: see the [self-hosting guide](../self-hosting.md#one-machine-or-two).
 
 Encoding video in software (libx264) works everywhere but it's slow. A hardware encoder is faster; how much faster depends on your card, codec and preset, and this project has not measured it. The pipeline auto-detects your hardware and picks the best available backend; NVENC, Quick Sync and VAAPI are only selected after a one-frame test encode succeeds, so an FFmpeg build that merely lists them (Debian's does, including inside the Docker image) doesn't send a GPU-less box down the hardware path.
 
-The encode is not where a run spends its time, though. Preparation and title rendering are — measured at `--cpus=2`, title rendering was ~263 s of a ~339 s assembly ([CPU-Only Mode](./cpu-only.md#title-rendering-is-the-bottleneck-not-encoding)), and in a measured end-to-end run the analysis phase was 7.4 minutes of a 10 min 08 s run ([NAS-Only](../common-setups/nas-only.md#performance-expectations)). Hardware acceleration shortens the last phase; a GPU earns its keep first on titles.
+The encode is not where a run spends its time, though. Preparation and title rendering are. Measured at `--cpus=2`, title rendering was ~263 s of a ~339 s assembly ([CPU-Only Mode](./cpu-only.md#title-rendering-is-the-bottleneck-not-encoding)), and in a measured end-to-end run the analysis phase was 7.4 minutes of a 10 min 08 s run ([NAS-Only](../common-setups/nas-only.md#performance-expectations)). Hardware acceleration shortens the last phase; a GPU earns its keep first on titles.
 
 ## Supported backends
 
@@ -24,7 +24,7 @@ The encode is not where a run spends its time, though. Preparation and title ren
 | **Software** | Everywhere | libx264, libx265 | FFmpeg | swscale |
 
 No row has a face-detection column any more. The clip scorer that counted faces is gone, and the
-detection backends behind it sit in the tree unreachable — see
+detection backends behind it sit in the tree unreachable: see
 [Face-Aware Framing](../../create/pipeline/face-aware-cropping.md). Photo pans use the face boxes
 Immich already has.
 
@@ -61,7 +61,7 @@ neither was:
 ## Quality: what CRF means on each backend
 
 `output.quality` (or an explicit `output.crf`) is one dial, but only libx264/libx265 take a CRF.
-Each backend gets that dial translated into its own constant-quality control — VAAPI `-rc_mode CQP
+Each backend gets that dial translated into its own constant-quality control: VAAPI `-rc_mode CQP
 -qp`, QSV `-global_quality`, NVENC `-rc constqp -qp`, VideoToolbox `-q:v`. Before 0.76.1 the three
 hardware backends got **no rate-control flag at all** and the driver's default decided quality, and
 VideoToolbox got a mapping that had never been checked against an output.
@@ -86,12 +86,12 @@ Matching CRF 18 quality costs QP 20 and about **2.2x the bits**. At equal file s
 clearly worse than x264. That is the trade a hardware encoder makes: it buys speed, not quality per
 byte. The CRF mapping is anchored on this table, so `crf: 18` asks VAAPI for QP 20.
 
-VideoToolbox was the other way round — its old mapping sent CRF 18 to `-q:v 75`, which on the same
+VideoToolbox was the other way round: its old mapping sent CRF 18 to `-q:v 75`, which on the same
 kind of source is 37.3 Mbps against libx265's 4.6 Mbps at CRF 18. That is where oversized exports
 came from; the default `quality: high` is CRF 12, which the old line sent all the way to `-q:v 87`.
 
 :::note NVENC is provisional
-The NVENC offset has not been measured on real hardware yet — it starts at the VAAPI offset because
+The NVENC offset has not been measured on real hardware yet; it starts at the VAAPI offset because
 both use the same 0-51 quantiser scale. If you have an NVIDIA card, a sweep of
 `h264_nvenc -rc constqp -qp {18,20,22,24}` against `libx264 -crf 18` on the same clip would replace
 the assumption with a number.

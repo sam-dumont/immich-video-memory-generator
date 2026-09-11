@@ -15,7 +15,7 @@ are usable, or `status: degraded` with HTTP `503` when configuration is missing 
 be reached. `GET /health` always returns HTTP `200` for compatibility; it rewrites a ready payload
 to `ok` and leaves a degraded payload as `degraded`. Do not use `/health` as a readiness probe.
 
-`/health/ready` returns JSON with the current system status (abridged — the real payload also
+`/health/ready` returns JSON with the current system status (abridged; the real payload also
 carries automation, pending-delivery, scheduler and Immich blocks):
 
 ```json
@@ -77,7 +77,7 @@ addition to stdout (same format as chosen above). In Docker, point it at a mount
 
 ### Log level
 
-`INFO`. There is no user-facing switch for the log level yet — no env var, no CLI flag. If you
+`INFO`. There is no user-facing switch for the log level yet, no env var, no CLI flag. If you
 need `DEBUG` output for a bug report, run from a checkout and call
 `configure_logging(level="DEBUG")` in code.
 
@@ -94,7 +94,7 @@ The cache uses a two-level directory structure: `{id[:2]}/{id}{ext}`. When you r
 Two eviction strategies run automatically:
 
 1. **Age-based eviction**: removes files older than `video_cache_max_age_days` (default: 7 days). Runs at the start of every generation.
-2. **Size-based eviction**: removes oldest files (by modification time, LRU) until the cache is under `video_cache_max_size_gb` (default: 10 GB). Runs after each download during a run — files the current run already handed out are spared until it finishes, so a large prefetch can temporarily exceed the cap — and once more at the end of the run.
+2. **Size-based eviction**: removes oldest files (by modification time, LRU) until the cache is under `video_cache_max_size_gb` (default: 10 GB). Runs after each download during a run (files the current run already handed out are spared until it finishes, so a large prefetch can temporarily exceed the cap), and once more at the end of the run.
 
 ### Configuration
 
@@ -113,7 +113,7 @@ cache:
 ### Thumbnails: the budget that scales with your library
 
 `thumbnails/` holds one Immich preview per candidate asset a memory's scope can
-reach — not per clip in the finished cut. Generating a memory reads each of
+reach, not per clip in the finished cut. Generating a memory reads each of
 those previews back several times: sharpness and exposure, the DINOv2 heads, the
 contact sheets, the caption. Measured on a real library, a preview is about
 **315 KB**, so a 10,793-candidate scope wants roughly 3.4 GB and a real cache
@@ -134,11 +134,11 @@ bytes it was recorded against. That is model work, not just bandwidth, which is
 why one `WARNING` per run says how far over you are and names the setting.
 
 Clip previews (`preview-cache/`, `previews/`) are different: their working set is
-one cut's clips — tens of files per run however big your library is — so 2 GB
+one cut's clips (tens of files per run however big your library is), so 2 GB
 stays a plain cap and needs no rule of thumb. The video cache is the same shape.
 
 Before these limits existed neither directory had a cap or an expiry, so both
-grew for as long as the app ran — on one real library, 5.2 GB of clip previews
+grew for as long as the app ran: on one real library, 5.2 GB of clip previews
 and 3.5 GB of thumbnails.
 
 The `max_age_days` at the top level controls the analysis database cache (SQLite), not the video file cache. The `video_cache_*` fields control the file-based video cache.
@@ -176,8 +176,8 @@ The CLI has no `clear` command. To clear caches:
 ### Analysis database
 
 Separate from the video cache. `cache.db` holds the run history, the automation state and the
-tables the legacy scorer used to fill. What the editor learned about your library — captions,
-head facts, readings and banked answers — is in `annotations.sqlite`, which persists across video
+tables the legacy scorer used to fill. What the editor learned about your library (captions,
+head facts, readings and banked answers) is in `annotations.sqlite`, which persists across video
 cache evictions. You can safely clear the video cache without losing any of it.
 
 ### Disk space planning

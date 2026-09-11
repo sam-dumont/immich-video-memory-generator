@@ -12,7 +12,7 @@ endpoint and story model are separate requirements from NVENC and the music back
 
 ## Who this is for
 
-You have a Linux server (Ubuntu, Debian, Fedora) with an NVIDIA GPU (GTX 1050 or newer — Pascal is where NVENC starts). You want hardware-accelerated encoding and optionally want to run MusicGen or ACE-Step for AI-generated background music.
+You have a Linux server (Ubuntu, Debian, Fedora) with an NVIDIA GPU (GTX 1050 or newer: Pascal is where NVENC starts). You want hardware-accelerated encoding and optionally want to run MusicGen or ACE-Step for AI-generated background music.
 
 ## Architecture
 
@@ -66,7 +66,7 @@ services:
     image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
     container_name: immich-memories
     ports:
-      - "127.0.0.1:8080:8080"        # loopback only — see below to reach it remotely
+      - "127.0.0.1:8080:8080"        # loopback only: see below to reach it remotely
     volumes:
       - immich-memories-config:/home/immich/.immich-memories
       - ./output:/app/output          # mkdir + chown to the container UID first, see below
@@ -91,8 +91,8 @@ volumes:
 
 The port is published on loopback only. A GPU box is usually headless, so either tunnel
 (`ssh -L 8080:localhost:8080 your-server`) or publish it properly: enable
-[authentication](../configuration/authentication) first — the app holds an Immich API key to your
-whole photo library — then change the mapping to `"8080:8080"`.
+[authentication](../configuration/authentication) first (the app holds an Immich API key to your
+whole photo library), then change the mapping to `"8080:8080"`.
 
 One thing the compose file cannot do for you:
 
@@ -110,14 +110,14 @@ IMMICH_API_KEY=your-api-key-here
 
 ## What works
 
-- **NVENC encoding**: hardware-accelerated H.264/H.265 encoding. NVIDIA is probed first, so NVENC is used automatically — nothing to configure.
+- **NVENC encoding**: hardware-accelerated H.264/H.265 encoding. NVIDIA is probed first, so NVENC is used automatically: nothing to configure.
 - **Taichi GPU title renderer**: full particle effects and gradient backgrounds using the NVIDIA GPU.
 - **AI music generation**: if you run a MusicGen or ACE-Step server alongside, configure it in the `musicgen` or `ace_step` config sections.
 - **All memory types and features**: everything works with GPU acceleration.
 
 ## What doesn't work
 
-- **The reader on a small card**: the graded reader is ~17 GB of 4-bit weights and they stay resident for as long as the server is up. A 12 GB card offloads the rest to system RAM and runs slowly; 24 GB (3090, 4090) holds it. Below that, point `llm.base_url` at a box that can — there is no cut without a reader.
+- **The reader on a small card**: the graded reader is ~17 GB of 4-bit weights and they stay resident for as long as the server is up. A 12 GB card offloads the rest to system RAM and runs slowly; 24 GB (3090, 4090) holds it. Below that, point `llm.base_url` at a box that can: there is no cut without a reader.
 - **A graded NVIDIA configuration**: there isn't one. The approved matrix ran on Apple Silicon MLX, for both the reader and the captions. Any OpenAI-compatible vision model with a 32k context is expected to work here; nobody has compared its output to the graded run.
 
 ## Performance expectations
@@ -127,7 +127,7 @@ measured run is CPU-only ([NAS-only](./nas-only.md#performance-expectations)): 1
 14-clip monthly, of which analysis was 7.4.
 
 That shape is what to plan around. Render was 2.7 of those ten minutes and the encode is only part
-of it — the titles are the rest, and a CUDA Taichi backend is what shortens those. The other 7.4
+of it: the titles are the rest, and a CUDA Taichi backend is what shortens those. The other 7.4
 minutes are analysis and selection: downloading each candidate clip from Immich, scoring it, and
 the LLM passes if you turned them on. Those are bounded by your Immich server and your LLM, not by
 the card. Analysis is cached, so a second run of the same period is much cheaper than the first.
@@ -137,8 +137,8 @@ with the numbers is welcome.
 
 ## Pointing the reader at this box
 
-The reader groups the period's days into stories, weighs them and picks the pictures — and it is
-sent an 800 px tile of the candidates whose facts the edit demands — a few dozen per memory — so
+The reader groups the period's days into stories, weighs them and picks the pictures, and it is
+sent an 800 px tile of the candidates whose facts the edit demands, a few dozen per memory, so
 this seat needs vision and at least a 32k context. The
 one graded configuration is `mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit` on oMLX, which is
 Apple Silicon only. On NVIDIA, serve an equivalent vision model with vLLM or Ollama and treat the

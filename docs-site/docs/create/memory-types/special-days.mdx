@@ -22,8 +22,8 @@ photos and skips the one with 413 pictures of a street performer.
 
 **It gets found.** `immich-memories discover-days` writes what it finds to
 `~/.immich-memories/special-days.json`: the date, a title derived from that day's own
-pictures, how many hours the day put pictures in, and — when the day *contained* an event
-rather than being one — the hours that event ran.
+pictures, how many hours the day put pictures in, and (when the day *contained* an event
+rather than being one) the hours that event ran.
 
 **It waits.** Nothing happens next. `immich-memories days-due` prints the entries whose
 anniversary falls within three days of today, roundest first.
@@ -42,7 +42,7 @@ proposes a day only on its anniversary, and scores it by how round that annivers
 For a 200-photo day never generated before, that lands at **0.893** for a decade,
 **0.759** for a half-decade and **0.536** for anything else: a decade goes ahead of every
 other detector, and a seventh anniversary competes with the monthly review rather than
-pre-empting it. At most one special day per run — the per-type cap is 1, because a queue
+pre-empting it. At most one special day per run: the per-type cap is 1, because a queue
 of surprises is not a surprise.
 
 The Memory page is the loose one. You picked the type, so it lists everything in the
@@ -72,7 +72,7 @@ a day that should not be rendered, so four cases error instead:
 
 - `--memory-type special_day` with no `--day`
 - `--day` with any other memory type
-- a `--day` the catalogue has never heard of — the error names the file it read
+- a `--day` the catalogue has never heard of: the error names the file it read
 - a catalogued entry with neither a title nor a description of what the day was
 
 The web UI refuses the same way: with no catalogue, **Surprise me** prints the
@@ -81,8 +81,7 @@ not fall back to a random day.
 
 ## A day can come back
 
-Automation keys its proposal by the anniversary as well as the date —
-`special_day:2016-06-12:2016-06-12:10y` — so a day that got its memory at ten years can
+Automation keys its proposal by the anniversary as well as the date (`special_day:2016-06-12:2016-06-12:10y`), so a day that got its memory at ten years can
 get another at fifteen. It is a different cut: five more years of library have been
 analysed since, and the round number is the reason it is worth interrupting you again.
 
@@ -96,7 +95,7 @@ full by the automation runner and is readable in `ps` and in launchd's logs. `--
 and `--subtitle` still override the catalogue when *you* type them.
 
 **No names in run history.** A special-day candidate carries an empty person list, so no
-recognised name reaches the run database — and a wedding memory does not spend the person
+recognised name reaches the run database, and a wedding memory does not spend the person
 rotation, so a spotlight of someone who was there is still free to run the next night.
 
 What automation does say out loud is evidence rather than the title:
@@ -122,5 +121,5 @@ immich-memories days-due
 immich-memories generate --memory-type special_day --day 2016-06-12
 ```
 
-It needs an LLM configured under `llm:`, and a vision model is worth having — see
+It needs an LLM configured under `llm:`, and a vision model is worth having: see
 [`discover-days`](../cli/discover-days.md#what-you-need).

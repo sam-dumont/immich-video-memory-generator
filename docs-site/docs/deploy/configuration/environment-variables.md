@@ -12,7 +12,7 @@ IMMICH_MEMORIES_<SECTION>__<FIELD>
 ```
 
 Note the **double underscore** between section and field. Case does not matter, but uppercase is
-the convention. `<SECTION>` is always the flat runtime name (`LLM`, `AUTH`, `EDITORIAL`…) — never
+the convention. `<SECTION>` is always the flat runtime name (`LLM`, `AUTH`, `EDITORIAL`…), never
 `ADVANCED__LLM`, even for sections that live under `advanced:` in the YAML file.
 
 List-valued fields (`auth.trusted_proxies`, `notifications.urls`, `scheduler.schedules`,
@@ -94,7 +94,7 @@ export IMMICH_MEMORIES_OUTPUT__CRF="20"
 ```
 
 `DIRECTORY` defaults to `~/Videos/Memories`. The Docker image overrides it to `/app/output` in the
-Dockerfile, so you only set it in a container to write somewhere else — and because it is an
+Dockerfile, so you only set it in a container to write somewhere else, and because it is an
 environment variable it beats `output.directory` in `config.yaml`.
 
 ### Music generation
@@ -130,7 +130,7 @@ A few common variables are also supported without the full prefix, for convenien
 :::caution Shorthand vars are skipped with an explicit config path
 The shorthand table is applied only when the app loads its default config path
 (`~/.immich-memories/config.yaml`). `immich-memories --config PATH …` and a scheduler daemon
-started with an explicit config file ignore every row above — including the basic-auth shortcut.
+started with an explicit config file ignore every row above, including the basic-auth shortcut.
 The `IMMICH_MEMORIES_<SECTION>__<FIELD>` form always works.
 :::
 
@@ -147,7 +147,7 @@ Not config fields, but read by the app:
 | `ACESTEP_CHECKPOINTS_DIR` | ACE-Step `lib` mode: where model checkpoints are downloaded (default `~/.cache/ace-step/checkpoints`). |
 | `ACESTEP_MLX_VAE_CHUNK` | ACE-Step `lib` mode on Apple Silicon: VAE decode chunk size in latent frames (minimum 192). Lower it if MLX runs out of memory. |
 | `IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32` | ACE-Step `lib` mode on Apple Silicon: `1` keeps the MLX decoder in fp32 instead of casting to bf16 (roughly doubles decoder memory). |
-| `FORWARDED_ALLOW_IPS` | uvicorn: proxies whose `X-Forwarded-*` headers are trusted. Wins over `auth.trusted_proxies` when set — see [Authentication](authentication.mdx). |
+| `FORWARDED_ALLOW_IPS` | uvicorn: proxies whose `X-Forwarded-*` headers are trusted. Wins over `auth.trusted_proxies` when set. See [Authentication](authentication.mdx). |
 
 There is no environment variable for the log *level*.
 
@@ -155,7 +155,7 @@ There is no environment variable for the log *level*.
 A launchd or cron job starts from a login-less environment, so nothing you `export` interactively
 reaches it. `auto install` copies `PATH`, `ACESTEP_CHECKPOINTS_DIR`, `ACESTEP_MLX_VAE_CHUNK`,
 `IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32`, and `PYTORCH_MPS_HIGH_WATERMARK_RATIO` from the shell you
-install from into the plist or unit — and nothing else, since `IMMICH_MEMORIES_*` also holds
+install from into the plist or unit, and nothing else, since `IMMICH_MEMORIES_*` also holds
 credentials. Change one of them and re-run `auto install`. See
 [`auto install`](../../create/cli/auto.md#what-environment-the-scheduled-job-sees).
 :::
@@ -165,7 +165,7 @@ credentials. Change one of them and re-run `auto install`. See
 Highest wins:
 
 1. CLI flags (`--duration`, `--output`, …) for the options they cover
-2. Shorthand environment variables (`IMMICH_URL`, `OPENAI_API_KEY`, `MUSICGEN_*`, `ACE_STEP_*`, the auth pair) — applied last, on top of everything below
+2. Shorthand environment variables (`IMMICH_URL`, `OPENAI_API_KEY`, `MUSICGEN_*`, `ACE_STEP_*`, the auth pair), applied last, on top of everything below
 3. `IMMICH_MEMORIES_<SECTION>__<FIELD>` environment variables
 4. Config file (`~/.immich-memories/config.yaml`)
 5. Built-in defaults

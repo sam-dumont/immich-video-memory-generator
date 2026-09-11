@@ -11,8 +11,8 @@ title: CPU-Only Mode
 
 | Feature | With GPU | Without GPU | Impact |
 |---------|----------|-------------|--------|
-| Title screens | Animated GPU-rendered (Taichi: bokeh particles, gradient animation, SDF text) | Static PIL-rendered (gradient background, text overlay) | Simpler visuals, same text — and the dominant cost of a run (see below) |
-| Video encoding | NVENC / VideoToolbox / VAAPI / QSV | libx264 / libx265 (software) | Slower encoding — the smaller half of a run |
+| Title screens | Animated GPU-rendered (Taichi: bokeh particles, gradient animation, SDF text) | Static PIL-rendered (gradient background, text overlay) | Simpler visuals, same text. And the dominant cost of a run (see below) |
+| Video encoding | NVENC / VideoToolbox / VAAPI / QSV | libx264 / libx265 (software) | Slower encoding: the smaller half of a run |
 | SDF text rendering | Taichi GPU kernels + FreeType atlas | PIL text drawing | No SDF glow/shadow effects |
 | Video scaling | GPU-accelerated (scale_cuda, scale_vaapi) | FFmpeg swscale (CPU) | Slower for resolution changes |
 
@@ -48,7 +48,7 @@ When Taichi is not installed, title screens are rendered with PIL (static gradie
 
 Taichi also has a CPU backend. To keep Taichi but force it off the GPU (a broken driver, or
 comparing timings), set `IMMICH_FORCE_CPU=1`. On `linux/arm64` (Raspberry Pi, the arm64 Docker
-image) the `gpu` extra skips Taichi altogether — titles are always PIL-rendered there.
+image) the `gpu` extra skips Taichi altogether: titles are always PIL-rendered there.
 
 ## Performance expectations
 
@@ -57,7 +57,7 @@ a 14-clip monthly, 62 s of 1080p out, cold cache, 4 cores and no GPU took 10 min
 `preset: fast` and 15 min 42 s on the default profile. The analysis phase was 7.4 of those
 10 minutes.
 
-Two things follow. Preparation is CPU-bound whether or not you have a GPU, and it is cached — a
+Two things follow. Preparation is CPU-bound whether or not you have a GPU, and it is cached: a
 second cut over the same period is much cheaper. Title rendering is the part a GPU would
 actually take off your hands.
 
@@ -75,7 +75,7 @@ The practical consequences:
 
 - A **shorter or simpler title** is the cheapest large win available on a CPU-only box.
 - Rendering cost scales with title **duration and resolution**, not with how many clips the
-  memory has — a 12-clip memory and a 40-clip memory pay nearly the same title bill.
+  memory has: a 12-clip memory and a 40-clip memory pay nearly the same title bill.
 - Hardware encoding helps the encode, which is the smaller half. Buy a GPU for the titles
   before you buy one for the encoder.
 

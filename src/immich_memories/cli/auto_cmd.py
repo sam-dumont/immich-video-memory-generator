@@ -195,7 +195,7 @@ def suggest(ctx: click.Context, as_json: bool, limit: int, memory_type: str | No
 
     if not as_json:
         for key, reason in sorted(runner.last_backoff_skips.items()):
-            print_info(f"Backing off {key} — {reason}")
+            print_info(f"Backing off {key} ({reason})")
 
     if memory_type:
         candidates = [c for c in candidates if c.memory_type == memory_type]

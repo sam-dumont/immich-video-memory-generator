@@ -107,7 +107,7 @@ def _register_scan(people: click.Group) -> None:
 
         Reads every named person's count and month curve, then asks about each
         remaining pair to find who appears with whom. Nothing here looks at a
-        pixel and nothing here asks you a question — the library's own
+        pixel and nothing here asks you a question: the library's own
         distribution is the whole input.
 
         Safe to re-run: everything under `confirmed:` in the file is copied

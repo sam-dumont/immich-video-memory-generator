@@ -18,7 +18,7 @@ move between releases. Try it on one small album first, not your whole library, 
 breaks.
 :::
 
-You point it at your Immich instance, pick a memory type — a month, a year, a person, a trip —
+You point it at your Immich instance, pick a memory type (a month, a year, a person, a trip),
 and it does the rest: reads every picture in the period, weighs the stories it finds, picks the
 moments that tell them, detects where you travelled, writes a title, adds music, and renders a
 video. No cloud required. No subscription. Your hardware, your data.
@@ -31,7 +31,7 @@ A memory video with:
 
 - **Cuts with a reason**: a small vision model captions every picture once, a text model reads
   the period as a story, and every picture in the cut carries the one line that says why it is
-  there — see [The Curator](create/pipeline/the-curator) for how it decides
+  there; see [The Curator](create/pipeline/the-curator) for how it decides
 - **Animated satellite map** flying from home to your destination (for trip memories)
 - **AI-generated title** that describes the trip, and is not allowed to invent what the
   material can't support
@@ -45,7 +45,7 @@ A memory video with:
 Your self-hosted [Immich](https://immich.app) server. That's it. No Google, no Apple, no telemetry, no account. Everything can run locally:
 
 - Hardware-accelerated encoding (NVIDIA NVENC, Apple VideoToolbox, Intel QSV, AMD VAAPI); the picture encoder and detectors on CPU
-- The caption model and the text model on any OpenAI-compatible server (mlx-vlm, vLLM, Ollama — or a hosted API if you choose); see [Editorial annotation setup](../deploy/configuration/editorial-preparation.md)
+- The caption model and the text model on any OpenAI-compatible server (mlx-vlm, vLLM, Ollama, or a hosted API if you choose); see [Editorial annotation setup](../deploy/configuration/editorial-preparation.md)
 - Music generation via ACE-Step or MusicGen (local or API)
 
 The only outbound calls that are not your Immich server are the ones you configure (caption server, text model, music server) plus map tiles and geocoding for trip maps. See [Network & Privacy](../deploy/configuration/network-and-privacy.md).
@@ -54,16 +54,16 @@ The only outbound calls that are not your Immich server are the ones you configu
 
 | Type | What it does | Example |
 |------|-------------|---------|
-| **Year in review** | The stories of a full year, every month keeping its share | "2024: A Year to Remember" |
+| **Year in review** | The stories of a full year, every month keeping its share | "2024 Memories" |
 | **Season** | Three months' worth | "Summer 2024" |
-| **Person spotlight** | A year of one person | "Riley Through the Years" |
-| **Multi-person** | Moments with several people together | "Riley & Bob, 2025" |
+| **Person spotlight** | A year of one person | "Your Year with Riley", or "Riley's Year" anchored on a birthday |
+| **Multi-person** | Moments with several people together | "Riley & Bob" |
 | **Monthly highlights** | One month, one minute | "August 2024" |
-| **On This Day** | Today's date across previous years | "June 12 — Through the Years" |
+| **On This Day** | Today's date across previous years | "June 12 Through the Years" |
 | **Album** | One Immich album, nothing else | "Wedding" |
 | **Trip memory** | GPS-detected trip with map animation | "Lisbon, July 2024" |
 | **Holiday** | The same holiday across several years | "Christmas Through the Years" |
-| **Surprise me** | A day the library itself flagged, found by `discover-days` | "10 years ago — A long evening out" |
+| **Surprise me** | A day the library itself flagged, found by `discover-days` | "10 years ago: A long evening out" |
 
 <ThemedScreenshot name="memory-brief" alt="The brief: memory type, its parameters and the duration line" />
 
@@ -73,7 +73,7 @@ The web UI is one page:
 
 1. **Brief**: a memory type, that type's parameters, one duration
 2. **Cut**: the editor prepares a description and facts for every picture, reads the period,
-   weighs its stories and picks the moments — one row per phase while it runs
+   weighs its stories and picks the moments, with one row per phase while it runs
 3. **Story**: the thesis, the stories heaviest first, every picture with its reason. Exclude or
    trim from the pool page, cut again, or move on
 4. **Export**: title, music and output settings one click away; **Generate Video** renders with

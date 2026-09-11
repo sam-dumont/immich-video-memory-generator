@@ -5,7 +5,7 @@ title: NVIDIA
 
 # NVIDIA
 
-NVIDIA GPUs with NVENC move video encoding off the CPU and onto dedicated silicon. If you have a GTX 1050 or newer, you've got NVENC. The encode is not the phase that dominates a run, though — see [Encoding quality](#encoding-quality) for what the card actually buys you.
+NVIDIA GPUs with NVENC move video encoding off the CPU and onto dedicated silicon. If you have a GTX 1050 or newer, you've got NVENC. The encode is not the phase that dominates a run, though: see [Encoding quality](#encoding-quality) for what the card actually buys you.
 
 ## What you get
 
@@ -14,7 +14,7 @@ NVIDIA GPUs with NVENC move video encoding off the CPU and onto dedicated silico
 - **CUDA scaling**: `scale_cuda` resizes frames on the GPU instead of pulling them back to CPU.
 - **Taichi title rendering**: with the `gpu` extra installed, Taichi picks the CUDA backend (Vulkan second) for animated title screens. This is the phase that costs the most on a CPU-only box.
 
-What the card does *not* get you: the Docker image installs the CPU build of PyTorch on purpose, on both published architectures. The two annotation detectors are CPU-only by construction and no shipped path runs GPU inference, so the CUDA wheels are pure weight — on arm64 they cost 3.3 GB of `nvidia` libraries plus 818 MB of triton, and the CUDA torch they come with still reports `cuda_available: False` inside the container. If you want torch on the GPU, install from source (`pip install "immich-memories[editorial]"`) on the host instead of using the image.
+What the card does *not* get you: the Docker image installs the CPU build of PyTorch on purpose, on both published architectures. The two annotation detectors are CPU-only by construction and no shipped path runs GPU inference, so the CUDA wheels are pure weight: on arm64 they cost 3.3 GB of `nvidia` libraries plus 818 MB of triton, and the CUDA torch they come with still reports `cuda_available: False` inside the container. If you want torch on the GPU, install from source (`pip install "immich-memories[editorial]"`) on the host instead of using the image.
 
 ## Requirements
 
@@ -40,7 +40,7 @@ hardware:
 ```
 
 Nothing to select: NVIDIA is probed first, so if NVENC works it is used. On a multi-GPU host pick
-the card with `CUDA_VISIBLE_DEVICES` / `NVIDIA_VISIBLE_DEVICES` — there is no `device_index` in
+the card with `CUDA_VISIBLE_DEVICES` / `NVIDIA_VISIBLE_DEVICES`: there is no `device_index` in
 the config.
 
 ## In Docker
@@ -69,4 +69,4 @@ See [Linux + NVIDIA](../common-setups/linux-nvidia.md) for a full compose file.
 
 NVENC quality is slightly below software libx264 at the same bitrate, but for memory videos the difference is invisible, so take the speed.
 
-Just don't buy the card for the encode. Encoding is the smaller half of a CPU-only run: title rendering was ~263 s of a ~339 s assembly at `--cpus=2`, and the analysis phase was 7.4 minutes of a 10 min 08 s run end to end. The bigger win from this GPU is Taichi title rendering. It does not run the editor's models — see the [self-hosting guide](../self-hosting.md#one-machine-or-two) for where those go. See [CPU-Only Mode](./cpu-only.md#title-rendering-is-the-bottleneck-not-encoding) for the measured split.
+Just don't buy the card for the encode. Encoding is the smaller half of a CPU-only run: title rendering was ~263 s of a ~339 s assembly at `--cpus=2`, and the analysis phase was 7.4 minutes of a 10 min 08 s run end to end. The bigger win from this GPU is Taichi title rendering. It does not run the editor's models: see the [self-hosting guide](../self-hosting.md#one-machine-or-two) for where those go. See [CPU-Only Mode](./cpu-only.md#title-rendering-is-the-bottleneck-not-encoding) for the measured split.

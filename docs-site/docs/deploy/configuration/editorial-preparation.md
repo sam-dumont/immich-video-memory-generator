@@ -88,7 +88,7 @@ completed batch. It does not upload images to Hugging Face.
 | `docling-project/DocumentFigureClassifier-v2.0` | `2a12e02668b98ca40216eab41cdf19530577cba4` | `model.onnx` |
 
 By default these files must already be in the Hugging Face Hub cache. `immich-memories models
-fetch` puts them there — it warms every file in the table at its pinned revision, into
+fetch` puts them there: it warms every file in the table at its pinned revision, into
 `detector_cache_dir` when that is set, so `allow_model_downloads` can stay `false` and mean what
 it says. `--no-detectors` fetches only the encoder. Setting `allow_model_downloads: true` instead
 allows the worker itself to acquire the pinned files when needed. Neither starts a caption

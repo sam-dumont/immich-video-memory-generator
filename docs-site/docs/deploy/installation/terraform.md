@@ -35,14 +35,14 @@ These three mounts are the only writable paths:
 |-------|-----------|-------|
 | `/home/immich/.immich-memories` | cache PVC (writable) | `config.yaml`, `cache.db` (analysis scores), video cache, projects, automation history |
 | `/app/output` | output PVC | generated videos (`IMMICH_MEMORIES_OUTPUT__DIRECTORY=/app/output`) |
-| `/tmp` | emptyDir (`tmp_size`, 4Gi) | FFmpeg intermediates — 8Gi for 4K |
+| `/tmp` | emptyDir (`tmp_size`, 4Gi) | FFmpeg intermediates: 8Gi for 4K |
 
 There is no ConfigMap. `immich_url` / `immich_api_key` (plus `llm_api_key`, `musicgen_api_key` and
 anything in `secret_env`) land in the Secret and reach the pod through `envFrom`; every other
 setting is an `IMMICH_MEMORIES_<SECTION>__<KEY>` env var (`env`). Settings saved from the UI go to
 `config.yaml` on the PVC; env vars override them.
 
-Probes: `/health/live` (liveness) and `/health/ready` (readiness — `503` until config is present
+Probes: `/health/live` (liveness) and `/health/ready` (readiness: `503` until config is present
 and Immich answers, which keeps the pod out of the Service while Immich is down).
 
 ## Prerequisites
@@ -121,8 +121,8 @@ requires both preparation and story providers.
 | `namespace` | Kubernetes namespace | `string` | `"immich-memories"` |
 | `create_namespace` | Create the namespace | `bool` | `true` |
 | `image_repository` | Container image | `string` | `"ghcr.io/sam-dumont/immich-video-memory-generator"` |
-| `image_tag` | Image tag — no `v` prefix, so release `vX.Y.Z` is tag `X.Y.Z` | `string` | `"latest"` |
-| `replicas` | Replica count — keep at 1, the UI is single-replica | `number` | `1` |
+| `image_tag` | Image tag, no `v` prefix, so release `vX.Y.Z` is tag `X.Y.Z` | `string` | `"latest"` |
+| `replicas` | Replica count: keep at 1; the UI is single-replica | `number` | `1` |
 | `resources` | Requests/limits object (`requests.memory/cpu`, `limits.memory/cpu`) | `object` | `2Gi/1000m` – `8Gi/4000m` |
 | `tmp_size` | `/tmp` emptyDir for FFmpeg intermediates (8Gi for 4K) | `string` | `"4Gi"` |
 | `env` | Extra env vars, typically `IMMICH_MEMORIES_<SECTION>__<KEY>` (plain names like `TZ` work too) | `map(string)` | `{}` |
@@ -190,7 +190,7 @@ requires both preparation and story providers.
 kubectl describe pod -n immich-memories -l app.kubernetes.io/name=immich-memories
 kubectl get pvc -n immich-memories
 
-# Readiness stays 503 until Immich answers — check the payload
+# Readiness stays 503 until Immich answers: check the payload
 kubectl port-forward -n immich-memories svc/immich-memories 8080:80
 curl -s localhost:8080/health/ready
 

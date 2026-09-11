@@ -6,11 +6,11 @@ title: Trigger from Immich or Anything Else
 # Trigger from Immich or Anything Else
 
 The server accepts one POST that starts a memory. It takes no parameters: it runs exactly the
-decision `immich-memories auto run` would have made — same detectors, same variety rules, same
+decision `immich-memories auto run` would have made: same detectors, same variety rules, same
 cooldown, same history. You are choosing *when*, not *what*.
 
 That makes it the piece Immich Workflows was missing. A workflow that fires when an album fills
-up, a cron on another box, a phone shortcut, a Home Assistant automation — anything that can make
+up, a cron on another box, a phone shortcut, a Home Assistant automation: anything that can make
 an HTTP request can now start a memory.
 
 ## Turn it on
@@ -20,7 +20,7 @@ holds your Immich API key, so an anonymous request that could spend it is not a 
 
 | `auth.enabled` | `server.trigger_token` | `POST /api/trigger` |
 |---|---|---|
-| off | unset | **404** — the route is not enabled |
+| off | unset | **404**: the route is not enabled |
 | off | set | token required |
 | on | unset | logged-in session required (browsers only) |
 | on | set | token **or** session |
@@ -40,13 +40,13 @@ advanced:
     trigger_token: "0f3c…"
 ```
 
-but `server` is not one of the sections that expand a `${VAR}` reference — put `"${SOMETHING}"`
+but `server` is not one of the sections that expand a `${VAR}` reference: put `"${SOMETHING}"`
 there and the token is those literal characters. Either way the value is compared in constant
 time and redacted from logs, `/health`, and the config viewer like every other secret.
 
 The token is a shared secret over whatever transport your server already uses. If the UI is
 reachable from outside your LAN, put it behind the same HTTPS reverse proxy you use for the web
-interface — a token sent over plain HTTP is a token you have published.
+interface: a token sent over plain HTTP is a token you have published.
 
 ## Start a run
 
@@ -63,7 +63,7 @@ curl -X POST https://memories.example.com/api/trigger \
 }
 ```
 
-`202 Accepted`, not `200 OK` — a generation takes minutes to hours, so the call returns the moment
+`202 Accepted`, not `200 OK`: a generation takes minutes to hours, so the call returns the moment
 the run is booked. `Authorization: Bearer <token>` works in place of `x-api-key` if your caller
 prefers it.
 
@@ -119,7 +119,7 @@ Two things worth knowing before you wire it up:
 - **The cooldown still applies.** A workflow that fires on every upload will mostly get `skipped`
   back, which is the system working. Pick a trigger that fires about as often as you want videos.
 - **The server picks the memory.** A workflow that fires on a trip album does not generate *that*
-  album — it asks for the best candidate right now, which may be something else entirely. If you
+  album: it asks for the best candidate right now, which may be something else entirely. If you
   want a specific memory, use the CLI or the web UI.
 
 ## Turning it off

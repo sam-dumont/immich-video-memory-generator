@@ -43,7 +43,7 @@ services:
     image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
     container_name: immich-memories
     ports:
-      - "127.0.0.1:8080:8080"        # loopback only — see "Reaching the UI" below
+      - "127.0.0.1:8080:8080"        # loopback only: see "Reaching the UI" below
     volumes:
       - immich-memories-config:/home/immich/.immich-memories
       - ./output:/app/output          # create it first and chown to the container UID, see below
@@ -64,12 +64,12 @@ volumes:
 ### Reaching the UI
 
 The mapping above is loopback-only, so on a headless NAS nothing reaches the UI until you do one
-of two things. The cheap one is an SSH tunnel — `ssh -L 8080:localhost:8080 your-nas`, then open
+of two things. The cheap one is an SSH tunnel: `ssh -L 8080:localhost:8080 your-nas`, then open
 `http://localhost:8080` on your desktop. Nothing is published and there is nothing to secure.
 
 To publish it on the LAN instead, do both halves: turn on
-[authentication](../configuration/authentication) first — the app holds an Immich API key to your
-whole photo library — then change the mapping to `"8080:8080"`.
+[authentication](../configuration/authentication) first (the app holds an Immich API key to your
+whole photo library), then change the mapping to `"8080:8080"`.
 
 One more thing to get right before the first run:
 
@@ -78,7 +78,7 @@ One more thing to get right before the first run:
   (`mkdir -p output`) so Docker doesn't create it as root; if your NAS user isn't 1000,
   `chown 1000:1000 output`.
   On Synology/QNAP where that is awkward, use a named volume (`immich-memories-output:/app/output`)
-  and `docker cp` the finished video out — or turn on upload-back to Immich and fetch it there.
+  and `docker cp` the finished video out, or turn on upload-back to Immich and fetch it there.
 
 ## .env file
 
@@ -91,11 +91,11 @@ If Immich runs on the same Docker network, use the container name (`immich-serve
 
 ## What works
 
-- **The whole editor**: captions, context heads, detectors and pixel facts all run on CPU. What they cost you is time, not correctness — the cut is the same cut a GPU box would make
+- **The whole editor**: captions, context heads, detectors and pixel facts all run on CPU. What they cost you is time, not correctness: the cut is the same cut a GPU box would make
 - **Title screens**: PIL-based renderer (works everywhere, no GPU needed)
 - **Custom music**: upload your own MP3/WAV in Step 3
 - **All memory types**: year in review, monthly, person spotlight, trips (if GPS data exists)
-- **Scheduling**: set `IMMICH_MEMORIES_AUTOMATION__ENABLED=true` and `IMMICH_MEMORIES_AUTOMATION__DAILY_AT=09:00` (plus `TZ`) in the compose `environment:` — the UI process runs the daily decision itself, so there is no cron to install. `immich-memories auto install` is for host installs and cannot write a cron job inside the container; if you would rather drive it from the NAS host's scheduler, use `docker exec immich-memories immich-memories auto run --quiet --cooldown 24` and leave the built-in timer off. See [Daily automation](../installation/docker.md#daily-automation)
+- **Scheduling**: set `IMMICH_MEMORIES_AUTOMATION__ENABLED=true` and `IMMICH_MEMORIES_AUTOMATION__DAILY_AT=09:00` (plus `TZ`) in the compose `environment:`. The UI process runs the daily decision itself, so there is no cron to install. `immich-memories auto install` is for host installs and cannot write a cron job inside the container; if you would rather drive it from the NAS host's scheduler, use `docker exec immich-memories immich-memories auto run --quiet --cooldown 24` and leave the built-in timer off. See [Daily automation](../installation/docker.md#daily-automation)
 - **Photo support**: Ken Burns animations, face-aware pan, blur backgrounds
 
 ### Editorial work on a NAS
@@ -120,7 +120,7 @@ explicit incomplete result. There is no model-free alternate selector.
 
 Add `IMMICH_MEMORIES_PRESET=fast` to the compose `environment:` (or `preset: fast` at the top of
 `config.yaml`) and the CPU-only profile is on: 1080p H.264 with the fast encoder preset and
-medium quality, and static title backgrounds instead of animated ones. That is the whole of it —
+medium quality, and static title backgrounds instead of animated ones. That is the whole of it:
 three sections, five keys, nothing about what the editor reads. Every value you set explicitly still wins, and the web
 UI's options page shows a banner when the preset is active. `immich-memories --preset fast generate …`
 does the same for one CLI run.
@@ -145,7 +145,7 @@ linux/arm64 image):
 | default | 15 min 42 s | 10.1 min | 5.6 min | 87 MB |
 
 That run used the old per-clip scorer; on the story-first route the analysis column is
-preparation — a caption, context heads and detector facts per picture — plus the text model's
+preparation (a caption, context heads and detector facts per picture) plus the text model's
 readings, all of it cached, so a second cut of the same month is mostly the render. A Celeron-class NAS core is a good deal slower than an M5 core, so budget 2–3× these
 numbers there.
 
@@ -163,4 +163,4 @@ The streaming assembler keeps memory constant regardless of clip count: it proce
 - **TrueNAS SCALE**: use the built-in Apps system or deploy via custom Docker compose.
 - **QNAP**: use Container Station with the compose file.
 - Keep the video cache enabled (default). It caches downloaded Immich clips locally, so repeat runs skip the download phase. Default cache limit: 10 GB, evicts files older than 7 days.
-- **Budget disk for the preview cache by library size, not by taste.** `thumbnail_cache_max_size_mb` holds one Immich preview per candidate asset a memory can reach — about 315 KB each, measured — so a 10,793-candidate scope wants around 3.4 GB. Rule of thumb: `0.35 × assets in scope`, in MB. The 10 GB default covers roughly 31,000 previews. Set it too low and the next overlapping memory re-downloads every preview over your LAN and re-captions the assets whose banked caption failure no longer matches, which on NAS-class hardware is the slow part. A run that does not fit logs one `WARNING` naming the setting.
+- **Budget disk for the preview cache by library size, not by taste.** `thumbnail_cache_max_size_mb` holds one Immich preview per candidate asset a memory can reach (about 315 KB each, measured), so a 10,793-candidate scope wants around 3.4 GB. Rule of thumb: `0.35 × assets in scope`, in MB. The 10 GB default covers roughly 31,000 previews. Set it too low and the next overlapping memory re-downloads every preview over your LAN and re-captions the assets whose banked caption failure no longer matches, which on NAS-class hardware is the slow part. A run that does not fit logs one `WARNING` naming the setting.

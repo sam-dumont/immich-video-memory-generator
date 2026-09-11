@@ -10,7 +10,7 @@ The most-used memory type. Covers an entire calendar year and creates a video wi
 
 ## What it does
 
-Covers a calendar year and reads it as a story: the editor prepares a description and facts for every eligible picture in the year, weighs the year's stories against each other in words, and grants each the pictures its weight earns — capped by the moments it actually holds, and reserved per month so no month is crowded out. The default target duration is 10 minutes.
+Covers a calendar year and reads it as a story: the editor prepares a description and facts for every eligible picture in the year, weighs the year's stories against each other in words, and grants each the pictures its weight earns, capped by the moments it actually holds, and reserved per month so no month is crowded out. The default target duration is 10 minutes.
 
 ## CLI
 
@@ -33,7 +33,7 @@ immich-memories generate --memory-type year_in_review --year 2025 --include-phot
 ## Web UI
 
 Pick **Year in Review** on the [Memory page](../web-ui/memory.mdx) and the year from the dropdown.
-Its optional **Only with** box narrows the year to one or more people —
+Its optional **Only with** box narrows the year to one or more people:
 the same thing `--person` does above, and naming several keeps only what holds
 all of them. On the CLI, add `--person-match or` when repeated names should mean
 any named person instead.
@@ -47,6 +47,6 @@ any named person instead.
 ## Tips
 
 - Works best with **50+ videos** spread across the year. If you only have clips from a summer trip, a [Season](./monthly-person-season.mdx) or [Trip](./trip-memories.mdx) memory will be a better fit.
-- The first cut over a year is the slow one: every eligible picture gets its description and facts prepared once. The second cut reuses them — see [Editorial annotation setup](../../deploy/configuration/editorial-preparation.md).
+- The first cut over a year is the slow one: every eligible picture gets its description and facts prepared once. The second cut reuses them: see [Editorial annotation setup](../../deploy/configuration/editorial-preparation.md).
 - The default 10-minute duration works well for most libraries. For smaller collections (under 100 videos), try `--duration 300` for a tighter 5-minute edit.
 - Combining `--person` with Year in Review creates a "Your Year With Riley" style video: only clips containing that person, but still with monthly structure. Naming two people narrows it to the clips holding both unless the CLI explicitly uses `--person-match or`.

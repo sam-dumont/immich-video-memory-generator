@@ -148,7 +148,7 @@ def output_options(command: FC) -> FC:
             "-t",
             type=click.Choice(["smart", "cut", "crossfade", "none"]),
             default="smart",
-            help="Transition style (default: smart — mix of fades & cuts)",
+            help="Transition style (default: smart, a mix of fades and cuts)",
         ),
         click.option(
             "--resolution",

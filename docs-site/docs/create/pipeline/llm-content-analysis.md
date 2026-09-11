@@ -13,7 +13,7 @@ titles below, and the mood detection the music pipeline uses. This page covers t
 ## Any OpenAI-compatible API
 
 Five provider values, three code paths. `ollama` speaks Ollama's native API, `anthropic` speaks
-`/v1/messages`, and `openai-compatible`, `openai` and `zai` all speak `/v1/chat/completions` —
+`/v1/messages`, and `openai-compatible`, `openai` and `zai` all speak `/v1/chat/completions`,
 so anything that serves that endpoint works: mlx-vlm, [oMLX](https://github.com/jundot/omlx),
 vLLM, Ollama's compatibility layer, Groq, OpenAI itself.
 
@@ -22,7 +22,7 @@ in, and only where you left the field at its default. `openai-compatible` fills 
 `base_url` stays `http://localhost:8080/v1`, which is the app's own port, so set it.
 
 :::warning The reader needs eyes
-The model named in `llm` is sent pictures — 800 px JPEG tiles of the candidates whose facts the
+The model named in `llm` is sent pictures: 800 px JPEG tiles of the candidates whose facts the
 edit demands, plus contact sheets. A text-only model will not do the picture pass, and the run
 does not degrade politely into one that can. See
 [the self-hosting guide](../../deploy/self-hosting.md#what-has-actually-been-tested).
@@ -60,8 +60,8 @@ llm:
 ```
 
 A server that reasons only when asked wants `no_thinking_params: {}` instead. Turning `thinking:
-true` back on runs two calls in reasoning mode — title generation and the special-day question in
-`discover-days` — while everything else stays fast, and it is refused outright alongside images; `thinking_params` carries the fields those calls send, defaulting to the
+true` back on runs two calls in reasoning mode (title generation and the special-day question in
+`discover-days`), while everything else stays fast, and it is refused outright alongside images; `thinking_params` carries the fields those calls send, defaulting to the
 same Qwen dialect. OpenAI's reasoning models want `{"reasoning_effort": "medium"}` there, which
 `provider: openai` fills in for you.
 
@@ -69,7 +69,7 @@ same Qwen dialect. OpenAI's reasoning models want `{"reasoning_effort": "medium"
 
 The only configuration whose output has been graded is
 `mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit` on oMLX. Everything else is expected to work and
-ungraded — there is no per-model speed or reliability table here, because nobody has measured one
+ungraded: there is no per-model speed or reliability table here, because nobody has measured one
 on this route and inventing one would be worse than saying so.
 
 ## Mood Detection for Music
@@ -124,6 +124,6 @@ advanced:
 
 **Fields do not fall back to `llm`.** The switch is all-or-nothing on `title_llm.model`: set it
 and the whole `title_llm` block is used, with every field you left out taking its *built-in*
-default — `provider: openai-compatible`, `base_url: http://localhost:8080/v1`, empty `api_key`.
+default; `provider: openai-compatible`, `base_url: http://localhost:8080/v1`, empty `api_key`.
 Leave `title_llm.model` empty and `llm` is used instead. Write out every field you care about, or
 the two-line version above silently resets five others.

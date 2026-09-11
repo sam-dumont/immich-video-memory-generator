@@ -10,7 +10,7 @@ The music pipeline has four stages:
 1. **Mood detection**: A vision LLM looks at keyframes from your video and outputs a structured mood analysis (happy, calm, energetic, etc. plus genre and tempo suggestions).
 2. **Music generation**: The pipeline takes that mood and sends it to the configured music backend. ACE-Step can run directly in the app or through its REST API. MusicGen is the alternative generator when ACE-Step is disabled.
 3. **Audio ducking**: When background music plays over your clips, it automatically gets quieter when someone's talking or when there's an interesting sound in the original audio.
-4. **Music steps aside for music**: when a clip's own audio *is* music — a concert, someone playing piano, a party — the added soundtrack drops to near-silence for that clip instead of playing two songs at once. Detection uses the audio-content analysis (PANNs) `music`/`singing` labels, so it needs the `audio-ml` extra.
+4. **Music steps aside for music**: when a clip's own audio *is* music (a concert, someone playing piano, a party), the added soundtrack drops to near-silence for that clip instead of playing two songs at once. Detection uses the audio-content analysis (PANNs) `music`/`singing` labels, so it needs the `audio-ml` extra.
 
 ## No GPU? Start here
 
@@ -29,11 +29,11 @@ Tracks cover five moods (calm, energetic, happy, nostalgic, tender) in acoustic
 and electronic styles, roughly 30 seconds each, and are repeated with a crossfade
 to fill longer videos. Selection follows the memory's detected mood: the per-clip
 emotions the vision LLM reported are aggregated into a dominant mood, and near
-neighbours share a folder — playful draws from happy, peaceful from calm,
+neighbours share a folder: playful draws from happy, peaceful from calm,
 romantic from tender. A mood that maps to no folder at all, and a memory with no
 emotions at all, draw from the whole library rather than falling to silence.
 
-They were generated locally with ACE-Step 1.5 — nothing sampled from or derived
+They were generated locally with ACE-Step 1.5: nothing sampled from or derived
 from third-party recordings, so there is no attribution requirement. The models,
 settings and per-track tempo, key and seed are recorded in `LICENSE-MUSIC` inside
 the package.
@@ -103,7 +103,7 @@ The rate is the interval between visible cuts, not the photo's length. A
 crossfade starts the next clip before the current one ends, so at the default
 4 s photo duration and 0.5 s crossfade the cuts arrive every 3.5 s. Aligning to
 4 s instead put the pulse 0.21 beats away from the cut on average across the ten
-mood/style combinations, and 0.375 beats away at worst — most of a beat every
+mood/style combinations, and 0.375 beats away at worst: most of a beat every
 few photos. Against the real 3.5 s interval that drops to 0.03 average, 0.2
 worst. Only 120 bpm divides 3.5 s exactly (the requested tempo is a whole
 number), so most combinations now land near-aligned rather than exactly aligned;
@@ -111,18 +111,18 @@ near-aligned against the true interval beats exactly-aligned against the wrong
 one. With `transition: cut` there is no overlap and the cadence is the full
 photo duration.
 
-The nudge stays inside the genre's own tempo range — drum and bass at 70 bpm is
-not a thing — and within 15% of the mood's own tempo, so a run of short photos
+The nudge stays inside the genre's own tempo range (drum and bass at 70 bpm is
+not a thing), and within 15% of the mood's own tempo, so a run of short photos
 cannot drag a serene track up to dance tempo. Where neither holds, the mood wins
 and nothing changes. Videos are never re-timed: they carry speech and laughter
 the pipeline protects, so only photo cadence drives this.
 
 Measured on the 28 bundled tracks, ACE-Step honours a requested tempo to within
-0.4% (median), so asking for an aligned tempo is worth doing — but that residual
+0.4% (median), so asking for an aligned tempo is worth doing, but that residual
 is also why cuts are aligned in *rate*, not yet locked to the beat.
 
 A bundled track cannot be asked for a tempo; its own is already fixed. So the
-choice runs the other way — the tracks are measured, the ones whose beat lands
+choice runs the other way: the tracks are measured, the ones whose beat lands
 within 0.2 beats of the photo cadence become the candidates, and one of those is
 picked at random. Alignment narrows the field; it does not name a winner, or the
 same memory would get the same song every time it was regenerated. When nothing
@@ -136,7 +136,7 @@ A tighter window would throw away tracks that fit and measure only the noise.
 
 Tempo is measured with an onset envelope and autocorrelation over an FFmpeg
 decode, using numpy alone. librosa would be a line, but it is not a dependency
-of this project — it only arrives transitively with the torch extras — and a
+of this project (it only arrives transitively with the torch extras), and a
 plain install with the `music` extra has to work without them.
 
 ### MusicGen
@@ -170,7 +170,7 @@ separation rather than paying for a Demucs run it would discard.
 
 You don't have to use AI-generated music. In the web UI, on the options page (**Back to Generation Options** from Export), choose **Upload file** under **Background music** (MP3, M4A or WAV) and set the **Music volume** slider. On the CLI, pass `--music /path/to/track.mp3` (and `--music-volume 0.0-1.0`, default 0.5).
 
-To disable music, choose **None** in the UI or pass `--no-music` on the CLI. Without `--music`, the CLI generates an AI track when `ace_step.enabled` or `musicgen.enabled` is set. With no generator configured — or with one that failed — it falls back to a bundled track, and only renders with the clips' own audio when the `music` extra isn't installed and there is nothing bundled to fall back to.
+To disable music, choose **None** in the UI or pass `--no-music` on the CLI. Without `--music`, the CLI generates an AI track when `ace_step.enabled` or `musicgen.enabled` is set. With no generator configured (or with one that failed) it falls back to a bundled track, and only renders with the clips' own audio when the `music` extra isn't installed and there is nothing bundled to fall back to.
 
 For a local library, `immich-memories music search` and `music add` read `audio.local_music_dir` (default `~/Music/Memories`); see the [music command](../cli/music.md). Generation itself does not pick from that directory.
 
@@ -211,7 +211,7 @@ musicgen:
 
 Off by default. When on, ACE-Step's 5Hz language model rewrites your caption and
 invents its own genre metadata before the audio model ever sees the prompt, which
-pulls instrumental briefs off-target. It also dominates generation time — a 60 s
+pulls instrumental briefs off-target. It also dominates generation time: a 60 s
 track took ~45 s with it on and ~17 s with it off.
 
 Turn it on only if you want the model to elaborate a vague brief. The music
@@ -235,7 +235,7 @@ make install-acestep
 ```
 
 `make install-acestep` runs the pinned commands below and then imports the backend to
-prove the install actually works — a mismatched `torchvision` fails only at model load,
+prove the install actually works: a mismatched `torchvision` fails only at model load,
 several minutes into a generation, with `operator torchvision::nms does not exist`.
 
 <details>
@@ -265,13 +265,13 @@ A bare `uv sync` is exact and removes packages this project does not declare, so
 In `lib` mode the app caps ACE-Step's MLX memory before loading models: the VAE decodes audio in
 ~10 s chunks (`ACESTEP_MLX_VAE_CHUNK=256`) and the MLX buffer cache is limited to 4 GiB. Without
 this, ACE-Step's own heuristic picks an 82 s decode chunk on Macs with more than 64 GB and the
-process footprint grows by roughly 0.8 GiB per second of audio in that chunk — a 216 s track hit
+process footprint grows by roughly 0.8 GiB per second of audio in that chunk: a 216 s track hit
 108 GB and macOS killed the UI. With the cap the same track peaks around 53 GB for the XL/4B profile
 (most of that is model weights) at a ~20% slower VAE decode. Set `ACESTEP_MLX_VAE_CHUNK` yourself
 to override the chunk size; ACE-Step's `ACESTEP_SAVE_MEMORY` and `MAX_MPS_VRAM` do not bound this
 allocation.
 
-The MLX DiT copy runs in bf16 — the same precision ACE-Step uses on CUDA — instead of the fp32
+The MLX DiT copy runs in bf16 (the same precision ACE-Step uses on CUDA) instead of the fp32
 ACE-Step converts it from on macOS (7.8 GB instead of 15.5 GB for the XL model). Set
 `IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32=1` to keep fp32. Once a music batch finishes, the models are
 dropped and both torch's and MLX's caches are released, so the process falls back to ~1 GB between
@@ -292,7 +292,7 @@ serving a local LLM that can take the whole session down with it.
 | 2B + 1.7B planner | ~11 GB |
 | 2B, `use_lm: false` | ~7 GB |
 
-These are the checkpoint sizes from [Model Cache & Disk Usage](#model-cache--disk-usage) — a
+These are the checkpoint sizes from [Model Cache & Disk Usage](#model-cache--disk-usage): a
 floor, not the ~53 GB peak a full XL/4B render reaches. Most of that peak is cache the OS
 reclaims under pressure; the weights are not, so below the floor the render is not slow, it is
 dead. A machine with 40 GB free still renders XL/4B exactly as before.

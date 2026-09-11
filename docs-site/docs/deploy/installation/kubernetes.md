@@ -12,8 +12,8 @@ GPU scheduling is an overlay.
 Docker Compose is the primary self-hosting path. What the test suite pins on every run is the
 manifests' contract: Secret applied, writable state volume, `/health/live` + `/health/ready`
 probes, no GPU requirement in the base. A separate test renders base and GPU overlay with
-`kubectl kustomize`, but it skips wherever `kubectl` is not installed — the macOS CI cells, and
-any laptop without it — and nothing is applied to a live cluster. Read the rendered output before you apply it, and open an
+`kubectl kustomize`, but it skips wherever `kubectl` is not installed (the macOS CI cells, and
+any laptop without it), and nothing is applied to a live cluster. Read the rendered output before you apply it, and open an
 issue if something does not boot.
 :::
 
@@ -21,14 +21,14 @@ issue if something does not boot.
 deploy/kubernetes/
 ├── base/                    Namespace, Secret, PVCs, Deployment, Service, NetworkPolicy
 │   ├── job.yaml             optional CLI Job + CronJobs (commented out in kustomization.yaml)
-│   └── ingress.yaml.example optional Ingress — only after enabling authentication
+│   └── ingress.yaml.example optional Ingress: only after enabling authentication
 └── overlays/gpu/            + runtimeClassName nvidia, nvidia.com/gpu, node selector, tolerations
 ```
 
 ## Prerequisites
 
 1. A storage class for three `ReadWriteOnce` PVCs (cache/state 20Gi, output 50Gi, models 5Gi)
-2. Immich reachable from the cluster — in-cluster (`http://immich-server.<ns>.svc.cluster.local:2283`)
+2. Immich reachable from the cluster: in-cluster (`http://immich-server.<ns>.svc.cluster.local:2283`)
    or external
 3. GPU overlay only: the [NVIDIA GPU Operator](https://github.com/NVIDIA/gpu-operator), which
    provides the `nvidia` RuntimeClass, `nvidia.com/gpu` resources and the
@@ -50,8 +50,7 @@ kubectl apply -k overlays/gpu
 ```
 
 `kubectl kustomize base` shows what will be applied. `base/kustomization.yaml` pins the image tag
-(`images: newTag`). Published tags carry no `v` prefix — release `vX.Y.Z` is image tag `X.Y.Z` —
-plus `latest`. The checked-in pin is only current as of whenever someone last bumped it, so check
+(`images: newTag`). Published tags carry no `v` prefix: release `vX.Y.Z` is image tag `X.Y.Z`, plus `latest`. The checked-in pin is only current as of whenever someone last bumped it, so check
 it against the
 [releases page](https://github.com/sam-dumont/immich-video-memory-generator/releases) before you
 apply.
@@ -75,7 +74,7 @@ Once auth is on (basic-auth keys in the Secret, or [OIDC](../configuration/authe
 
 ## How the pod is wired
 
-The image runs as user `immich`, UID/GID 1000, `HOME=/home/immich` — the manifests set
+The image runs as user `immich`, UID/GID 1000, `HOME=/home/immich`; the manifests set
 `runAsUser`/`fsGroup` 1000, drop all capabilities, use the `RuntimeDefault` seccomp profile and
 mount the root filesystem read-only. The four mounts below are the only writable paths.
 
@@ -84,17 +83,17 @@ mount the root filesystem read-only. The four mounts below are the only writable
 | `/home/immich/.immich-memories` | PVC `immich-memories-cache` (writable) | `config.yaml`, `cache.db` (analysis scores), video cache, projects, automation history |
 | `/app/output` | PVC `immich-memories-output` | generated videos (`IMMICH_MEMORIES_OUTPUT__DIRECTORY=/app/output`) |
 | `/models` | PVC `immich-memories-models` | the pinned DINOv2 export (`IMMICH_MEMORIES_TRIAGE__ENCODER`) and the detector Hugging Face cache, both written by `immich-memories models fetch` |
-| `/tmp` | emptyDir 4Gi | FFmpeg intermediates — 8Gi for 4K |
+| `/tmp` | emptyDir 4Gi | FFmpeg intermediates: 8Gi for 4K |
 
 There is no ConfigMap. `IMMICH_URL` / `IMMICH_API_KEY` come from the Secret (`envFrom`), so any
-secret setting — `IMMICH_MEMORIES_LLM__API_KEY`, `IMMICH_MEMORIES_STORAGE_SECRET`,
-`IMMICH_MEMORIES_AUTH_PASSWORD` — can live there too. Everything else is an
+secret setting (`IMMICH_MEMORIES_LLM__API_KEY`, `IMMICH_MEMORIES_STORAGE_SECRET`,
+`IMMICH_MEMORIES_AUTH_PASSWORD`) can live there too. Everything else is an
 `IMMICH_MEMORIES_<SECTION>__<KEY>` env var on the Deployment; `base/deployment.yaml` carries
 commented examples for LLM clip analysis and the in-pod daily automation. Settings saved from the
 UI go to `config.yaml` on the PVC; env vars override them.
 
 The NetworkPolicy allows egress to DNS, 80/443, Immich on 2283, a local reader model on 11434 and
-the caption server on 8092 — the two model services selection needs. Edit the ports if yours differ.
+the caption server on 8092 (the two model services selection needs). Edit the ports if yours differ.
 The root filesystem is read-only, so the artifacts those services do not provide live on the
 `/models` volume: run `immich-memories models fetch` once (a one-off Job, or `kubectl exec` into the
 pod) before generating, and see
@@ -124,7 +123,7 @@ kubectl exec -n immich-memories deployment/immich-memories -- ls -la /app/output
 Deployment; with
 `ReadWriteOnce` storage the job pod has to land on the node that holds them, so use
 `ReadWriteMany` storage or scale the Deployment to 0 first. If you only want scheduled memories,
-`IMMICH_MEMORIES_AUTOMATION__ENABLED=true` on the Deployment does that in-process — no job needed.
+`IMMICH_MEMORIES_AUTOMATION__ENABLED=true` on the Deployment does that in-process; no job needed.
 CPU by default; copy the fields from the GPU patch into the pod spec to run them on GPU nodes.
 
 ## Storage and backups
@@ -157,10 +156,10 @@ kubectl apply -f base/sealed-secret.yaml
 
 Three endpoints on port 8080:
 
-- `/health/live` — process is up; always `200`. The liveness probe.
-- `/health/ready` — `200` only when config is present and Immich is reachable, else `503`. The
+- `/health/live`: process is up; always `200`. The liveness probe.
+- `/health/ready`: `200` only when config is present and Immich is reachable, else `503`. The
   readiness probe (every 15s), which also keeps the pod out of the Service while Immich is down.
-- `/health` — the same JSON as `/health/ready` (`status`, `immich_reachable`, `last_successful_run`,
+- `/health`: the same JSON as `/health/ready` (`status`, `immich_reachable`, `last_successful_run`,
   `version`, automation state) but always HTTP `200`. Compatibility endpoint; not used as a probe.
 
 For monitoring tools like Uptime Kuma, use `/health/ready`.

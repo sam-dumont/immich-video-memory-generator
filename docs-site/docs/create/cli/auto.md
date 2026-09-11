@@ -27,7 +27,7 @@ A suggestion list can look like this:
 ```
 
 Seven columns, not six: `Category` is the detector that proposed the row, which is not always the
-memory type — `person_spotlight` arrives from either the birthday detector or the spotlight one,
+memory type; `person_spotlight` arrives from either the birthday detector or the spotlight one,
 and the rotation rules key on the category. A candidate that came from somewhere other than the
 calendar gets a second reason line, `via <source>`.
 
@@ -103,21 +103,21 @@ Connects to Immich, fetches library stats + people + GPS assets, runs all detect
 ### Uploads that keep failing
 
 A pending Immich upload is retried before anything else on each wake, and that
-retry ends the invocation. An upload that can never succeed — an API key without
-upload scope, an album that no longer accepts writes — would therefore consume
+retry ends the invocation. An upload that can never succeed (an API key without
+upload scope, an album that no longer accepts writes) would therefore consume
 every night and generate nothing.
 
 After `max_delivery_attempts` failures (default 5) the upload is abandoned: the
 run is marked `abandoned` rather than `pending`, a notification is sent with the
 original error, and the next wake goes back to making memories. The video itself
-is untouched and still on disk — only its delivery gave up.
+is untouched and still on disk: only its delivery gave up.
 
 ### Candidates that keep failing
 
 A candidate that fails twice in a row is held back for a while instead of being
 proposed again the next night, so one memory that cannot render stops consuming
-every nightly run. The wait grows with the streak — 24 hours after two failures,
-3 days after three, capped at 7 days — and always expires, so a memory broken by
+every nightly run. The wait grows with the streak (24 hours after two failures,
+3 days after three, capped at 7 days), and always expires, so a memory broken by
 something temporary (a server that was down, an asset that gets re-uploaded)
 comes back on its own.
 
@@ -128,7 +128,7 @@ the streak immediately.
 mistaken for an empty library:
 
 ```
-Backing off monthly_highlights:2026-06-01:2026-06-30: — failed 3x, retrying after 3d
+Backing off monthly_highlights:2026-06-01:2026-06-30: (failed 3x, retrying after 3d)
 ```
 
 ### Detectors
@@ -140,9 +140,9 @@ the floor is what the detector's own admission rules allow through.
 | Detector | What it finds | Score | Scaled by |
 |----------|---------------|-------|-----------|
 | **YearlyDetector** | Past years with content (only after Jan 15) | 0.24-0.72 | recency, 10% per year, floored at 0.3 |
-| **BirthdayDetector** | People whose birthday was 2-60 days ago | 0.75 | nothing — fixed |
-| **MonthlyDetector** | Latest completed month, if not already generated | 0.7 | nothing — it only ever looks one month back, so the decay never fires |
-| **ActivityBurstDetector** | Months with >2x the rolling average (last 12 months) | 0.7 | nothing — a month that clears the threshold gets the full score |
+| **BirthdayDetector** | People whose birthday was 2-60 days ago | 0.75 | nothing: fixed |
+| **MonthlyDetector** | Latest completed month, if not already generated | 0.7 | nothing: it only ever looks one month back, so the decay never fires |
+| **ActivityBurstDetector** | Months with >2x the rolling average (last 12 months) | 0.7 | nothing: a month that clears the threshold gets the full score |
 | **TripDetector** | GPS-detected trips from the past year | up to 0.75 | trip length up to 14 days × asset count up to 200 |
 | **PersonSpotlightDetector** | Top 5 people by asset count | 0.12-0.6 | that person's share of the top person's asset count, floored at 0.2 |
 | **MultiPersonDetector** | Pairs who appear together frequently | 0.06-0.55 | estimated shared assets up to 500 (50 minimum to qualify) |
@@ -161,7 +161,7 @@ The scoring adjustments then land it where the ladder wants it. For a 200-photo 
 | 5, 15, 25 years | 0.85 | 0.68 | **0.759** (`0.68 × 1.2 × 1.0 × 0.930`) |
 | anything else | 0.60 | 0.48 | **0.536** (`0.48 × 1.2 × 1.0 × 0.930`) |
 
-Against the rest of the ladder — monthly 0.776, birthday 0.700, yearly 0.672, multi-person 0.514, trip 0.449, on-this-day 0.349 — a decade goes first, a half-decade sits between monthly and birthday, and a seventh anniversary competes rather than pre-empts.
+Against the rest of the ladder (monthly 0.776, birthday 0.700, yearly 0.672, multi-person 0.514, trip 0.449, on-this-day 0.349), a decade goes first, a half-decade sits between monthly and birthday, and a seventh anniversary competes rather than pre-empts.
 
 Recency is the reason this detector needs a rule of its own. The scorer decays a candidate from the end of what it covers, so a ten-year-old day would take the 0.5 floor: the memory most worth arriving would be punished hardest by a rule meant to prefer fresh content. `OnThisDayDetector` avoids that by reporting today as its date range and putting the real years in its reason, which makes `auto suggest` print a period the memory does not cover. A special day instead reports its real date and tells the scorer separately when it is timely, so what you see in the table is what gets generated.
 
@@ -240,7 +240,7 @@ immich-memories auto install [OPTIONS]
 Sets up your OS scheduler. Detects the platform and generates the right config file.
 
 Running in Docker (or wanting the web UI process to do it)? Skip this command and set
-`automation.enabled: true` + `automation.daily_at` instead — the UI process then runs `auto run`
+`automation.enabled: true` + `automation.daily_at` instead: the UI process then runs `auto run`
 once a day itself. See [automated generation](../recipes/automated-generation.md#docker-and-the-web-ui-built-in-daily-timer).
 
 | Flag | Type | Default | Description |
@@ -275,22 +275,22 @@ nightly job picks it up; no reinstall of the scheduler is needed.
 Nothing updates a checkout on your behalf, and a scheduled job re-runs whatever that checkout holds
 every night while the logs look completely normal. `auto install` refuses two cases:
 
-- **A linked git worktree** (`git worktree add`) — its root holds a `.git` *file* rather than a
+- **A linked git worktree** (`git worktree add`): its root holds a `.git` *file* rather than a
   directory. A worktree stays frozen on the commit it was left at, or gets pruned.
-- **A checkout already behind its tracking branch** — measured with `git rev-list HEAD..@{upstream}`
+- **A checkout already behind its tracking branch**: measured with `git rev-list HEAD..@{upstream}`
   against refs you have already fetched. `auto install` never fetches, so this only sees drift your
   own `git pull` or `git fetch` recorded.
 
 Both name the offending path and the drift. Update the checkout and re-run, or pass `--force` to
 schedule it as it is.
 
-Every `auto run` also states which code it is executing, and `auto status` shows the same thing —
+Every `auto run` also states which code it is executing, and `auto status` shows the same thing:
 see [auto status](#auto-status).
 
 ### What environment the scheduled job sees
 
 A scheduled job does **not** inherit your interactive shell. launchd and cron start it from a
-login-less environment, so anything you `export` in `.zshrc` is absent at 03:00 — which is how a
+login-less environment, so anything you `export` in `.zshrc` is absent at 03:00, which is how a
 scheduled ACE-Step render ends up tuned differently from the one you tested by hand.
 
 `auto install` captures these variables from the shell you install from and writes them into the
@@ -305,7 +305,7 @@ plist or unit alongside `PATH`:
 | `PYTORCH_MPS_HIGH_WATERMARK_RATIO` | torch MPS allocator ceiling |
 
 Nothing else is copied. `IMMICH_MEMORIES_*` also holds the Immich API key and the UI password, and
-a plist in `~/Library` is not a secret store — put credentials in your config file or a `.env` the
+a plist in `~/Library` is not a secret store: put credentials in your config file or a `.env` the
 app reads, not in the scheduler. Change any of these and re-run `auto install` to update the job.
 
 Crontab entries carry no environment; set what you need in the crontab itself.

@@ -121,13 +121,13 @@ type ShowcaseItem = {
 const showcaseItems: ShowcaseItem[] = [
   {
     title: '10 memory types',
-    description: 'Year in Review, Season, Person Spotlight, Multi-Person, Monthly Highlights, On This Day, Album, Trip, Holiday, and Surprise Me — a day your library says something happened on. Pick a type and it handles the rest, or take Custom date range and set the dates yourself.',
+    description: 'Year in Review, Season, Person Spotlight, Multi-Person, Monthly Highlights, On This Day, Album, Trip, Holiday, and Surprise Me (a day your library says something happened on). Pick a type and it handles the rest, or take Custom date range and set the dates yourself.',
     image: '/img/screenshots/memory-brief.png',
     alt: 'The brief: memory type, its parameters and the duration line',
   },
   {
     title: 'A curator, not a filter',
-    description: 'A small vision model captions every picture once. A text model then reads the period as a story, weighs its stories in words and grants each the pictures it earns — with a written reason for every one, favourites as indicators, and strictly chronological order. The editor is the product.',
+    description: 'A small vision model captions every picture once. A text model then reads the period as a story, weighs its stories in words and grants each the pictures it earns, with a written reason for every one, favourites as indicators, and strictly chronological order. The editor is the product.',
     image: '/img/screenshots/memory-story.png',
     alt: 'The story the cut produced, with a reason for every picture',
   },

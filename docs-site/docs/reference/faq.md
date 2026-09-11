@@ -30,7 +30,7 @@ The codebase is AI-written (on purpose, as an experiment) with 7,461 tests (6,83
 
 **Can I generate for multiple people at once?**
 
-Yes. Use `--person "Alice" --person "Bob"` with `--memory-type multi_person`. By default it finds videos where both people appear together. See the [generate CLI docs](../create/cli/generate.md) for all memory type options.
+Yes. Use `--person "Riley" --person "Bob"` with `--memory-type multi_person`. By default it finds videos where both people appear together. See the [generate CLI docs](../create/cli/generate.md) for all memory type options.
 
 **How much disk space does it need?**
 

@@ -33,7 +33,7 @@ def render_immich_connection(state) -> None:
     """The connection as a collapsible panel: open until connected, one line after."""
     is_connected = bool(state.connected_user)
     header_text = (
-        f"Immich Connection — {state.connected_user}" if is_connected else "Immich Connection"
+        f"Immich Connection: {state.connected_user}" if is_connected else "Immich Connection"
     )
 
     with ui.expansion(header_text, icon="cloud", value=not is_connected).classes("w-full"):

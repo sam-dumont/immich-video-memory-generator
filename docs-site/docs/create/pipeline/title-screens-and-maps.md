@@ -14,7 +14,7 @@ Title screens are the structural connective tissue: animated intro cards, month 
 Depending on the memory type, title screens include some or all of:
 
 - **Intro card**: content-backed background (blurred + darkened frame from your footage), white title text with entrance animation, optional subtitle (person name, date range). 3.5 seconds.
-- **Month dividers**: for yearly memories, a divider card in front of each month that clears `month_divider_threshold` clips (default 2). The first month's divider is skipped — the intro card already said it. Keeps the viewer oriented in a 10-minute video.
+- **Month dividers**: for yearly memories, a divider card in front of each month that clears `month_divider_threshold` clips (default 2). The first month's divider is skipped: the intro card already said it. Keeps the viewer oriented in a 10-minute video.
 - **Trip map animation**: satellite fly-over from home to destination using Van Wijk zoom. Replaces the generic intro for trip memories. The further apart the two points, the further the camera pulls out mid-flight.
 - **Location cards**: city name + map thumbnail between trip segments.
 - **Ending sequence**: fade-to-white with year or closing text.
@@ -23,7 +23,7 @@ Depending on the memory type, title screens include some or all of:
 
 | Backend | When it's used | What it does well |
 |---------|---------------|------------------|
-| **Taichi** | Taichi imports and initialises — Metal, CUDA or Vulkan; it will also run on its own CPU backend and say so in the log | Particle systems, animated gradients, SDF text. Full cinematic quality. |
+| **Taichi** | Taichi imports and initialises: Metal, CUDA or Vulkan; it will also run on its own CPU backend and say so in the log | Particle systems, animated gradients, SDF text. Full cinematic quality. |
 | **PIL** | Taichi is not installed, or fails to initialise | Static gradients, clean text rendering. Still looks good, just no animation. |
 
 The choice is automatic and there is nothing to configure. `--no-animated-background` is a
@@ -31,12 +31,12 @@ different switch: it stays on whichever backend you have and turns off the gradi
 colour pulse and vignette pulse. It does not send you to PIL.
 
 There is a third renderer in the tree, `titles/renderer_ffmpeg.py`, that draws titles with
-`drawtext`. Nothing in the product imports it — only an integration test does. Treat it as
+`drawtext`. Nothing in the product imports it: only an integration test does. Treat it as
 unwired.
 
 ## Content-backed backgrounds
 
-By default, title screens use a frame from your actual footage as the background. The system extracts a frame at the 1/3 mark of the first clip, applies a heavy blur (40 px) and multiplies its brightness by 0.45 — darkening it by 55% — then renders white text on top. This means every title screen looks like it belongs to the video it introduces, rather than using a generic gradient.
+By default, title screens use a frame from your actual footage as the background. The system extracts a frame at the 1/3 mark of the first clip, applies a heavy blur (40 px) and multiplies its brightness by 0.45 (darkening it by 55%), then renders white text on top. This means every title screen looks like it belongs to the video it introduces, rather than using a generic gradient.
 
 An optional slow-motion background effect uses Catmull-Rom interpolation with cubic ease-in timing to animate the blurred background during the title card. Falls back to a static blurred frame when disabled.
 
@@ -127,7 +127,7 @@ title_screens:
   locale: auto                  # auto, en, or fr
   show_decorative_lines: false  # subtle line accents
   show_month_dividers: true     # month dividers in yearly memories
-  use_first_name_only: true     # "Alice" instead of "Alice Martin"
+  use_first_name_only: true     # "Riley" instead of "Riley Martin"
 ```
 
 Map coordinates for trip memories come from the `trips` config section:

@@ -131,7 +131,7 @@ def register_generate_commands(main: click.Group) -> None:
         \b
         Manual time period options:
           --year 2024                    Calendar year
-          --year 2024 --birthday 02/07   Birthday-based year
+          --year 2024 --birthday 02-07   Birthday-based year
           --start 2024-01-01 --end 2024-06-30   Custom range
           --start 2024-01-01 --period 6m        Period from start
         """

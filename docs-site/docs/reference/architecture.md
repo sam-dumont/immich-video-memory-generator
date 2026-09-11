@@ -11,7 +11,7 @@ How the code is organized, why it's built this way, and where to make changes.
 
 The codebase used to split large classes into mixins. That worked for a while, but mixins create implicit coupling: you can't understand a mixin without knowing what `self` looks like on the host class. When `VideoAssembler` hit 11 mixins, it was time to refactor.
 
-Now the four main orchestrators compose smaller service objects via constructor injection. The lifecycle a run reports is the `OperationalPhase` enum in `operations/phases.py` — discovery → download → analysis → selection → render → music → delivery → complete — and it spans two entry points, not one. Selection runs first, as the story-first editorial route: `generate` (or the Memory page's Cut) → `build_smart_pipeline(editorial_context)` in `analysis/editorial_runtime.py` → `SmartPipeline.run_editorial_source()` → `RuntimeEditorialPlanner.plan_source()`, which runs preparation, the two readings, the structure planner and the story planner, and certifies the timing. `generate_memory()` in `generate.py` takes over from there and does extract → assemble → music → upload; hand it no clips and it raises rather than going to find some.
+Now the four main orchestrators compose smaller service objects via constructor injection. The lifecycle a run reports is the `OperationalPhase` enum in `operations/phases.py` (discovery → download → analysis → selection → render → music → delivery → complete), and it spans two entry points, not one. Selection runs first, as the story-first editorial route: `generate` (or the Memory page's Cut) → `build_smart_pipeline(editorial_context)` in `analysis/editorial_runtime.py` → `SmartPipeline.run_editorial_source()` → `RuntimeEditorialPlanner.plan_source()`, which runs preparation, the two readings, the structure planner and the story planner, and certifies the timing. `generate_memory()` in `generate.py` takes over from there and does extract → assemble → music → upload. Hand it no clips and it raises rather than going to find some.
 
 | Orchestrator | Services | What it does |
 |---|---|---|
@@ -30,7 +30,7 @@ CI runs in tiers, cheap to expensive. If lint fails in 10 seconds, there's no po
 
 **Tier 0: Cache setup** (every job that installs the project waits on it; the docs build doesn't)
 
-**Tier 1: Cheap quality gates** — one job, run as steps in order. Each carries `if: !cancelled()`,
+**Tier 1: Cheap quality gates**; one job, run as steps in order. Each carries `if: !cancelled()`,
 so the first failure doesn't hide the ones behind it and you get the whole list from one run:
 - Commit message linting (Conventional Commits)
 - Ruff lint + format check
@@ -82,7 +82,7 @@ A PR passes 20 gates: 15 static checks in the quality job and 5 security scans i
 | Security | Bandit + Semgrep | Common vulnerability patterns |
 | Secrets | Gitleaks | Accidentally committed API keys |
 | Dependencies | pip-audit + deptry | Known CVEs; unused, missing or transitive imports |
-| Architecture | import-linter | Forbidden-import contracts: the core packages (`analysis`, `processing`, `titles`, `people`, `store`, `triage`, `operations`) must not import `ui`, and they plus `audio` must not import `cli`. The dependency runs one way — UI and CLI import core, never the reverse |
+| Architecture | import-linter | Forbidden-import contracts: the core packages (`analysis`, `processing`, `titles`, `people`, `store`, `triage`, `operations`) must not import `ui`, and they plus `audio` must not import `cli`. The dependency runs one way: UI and CLI import core, never the reverse |
 | Commits | commitizen | Non-conventional commit messages |
 | Tests | pytest | 7,461 tests: 6,838 unit in CI, 623 integration/E2E locally and on the GPU runner |
 
@@ -94,7 +94,7 @@ A PR passes 20 gates: 15 static checks in the quality job and 5 security scans i
 2. Keep it under 800 lines (soft limit; 1000 is the hard CI failure). If it needs more, split into a service + helpers file
 3. Inject it into the orchestrator's `__init__` in `video_assembler.py`
 4. Add tests in `tests/test_my_service.py`
-5. Run `make ci` before committing — `make check` is the fast subset (lint, format, typecheck, file length, complexity, tests) and skips everything else: cognitive complexity, dead code, refurb, dep-check, arch-check, critique, duplication, the drift gates and every security scan
+5. Run `make ci` before committing; `make check` is the fast subset (lint, format, typecheck, file length, complexity, tests) and skips everything else: cognitive complexity, dead code, refurb, dep-check, arch-check, critique, duplication, the drift gates and every security scan
 
 ### Adding a new API endpoint
 
@@ -106,9 +106,9 @@ A PR passes 20 gates: 15 static checks in the quality job and 5 security scans i
 ### Adding a new memory type
 
 1. Add the value to the `MemoryType` enum in `memory_types/registry.py`
-2. Write a factory function in `memory_types/factory.py` and decorate it with `@register_preset` — the decorator *is* the registration, there is no second list to edit there
+2. Write a factory function in `memory_types/factory.py` and decorate it with `@register_preset`: the decorator *is* the registration, there is no second list to edit there
 3. Add date builder logic if the type needs its own, in `memory_types/date_builders.py`
-4. Add it to `OFFERED_MEMORY_TYPES` in `memory_types/registry.py` — `--memory-type` and the Memory page's select both read that tuple, in that order
+4. Add it to `OFFERED_MEMORY_TYPES` in `memory_types/registry.py`: `--memory-type` and the Memory page's select both read that tuple, in that order
 5. Add a page under `docs-site/docs/create/memory-types/`
 
 ### Adding a new CLI command
@@ -125,7 +125,7 @@ A PR passes 20 gates: 15 static checks in the quality job and 5 security scans i
 
 ## File Naming Conventions
 
-- `_prefixed.py`: private helpers, meant for their own package. Nothing enforces that — import-linter only guards the core/UI and core/CLI directions — and a couple of cross-package imports have leaked in
+- `_prefixed.py`: private helpers, meant for their own package. Nothing enforces that (import-linter only guards the core/UI and core/CLI directions), and a couple of cross-package imports have leaked in
 - `*_service.py`: composed service classes
 - `*_models.py`: data models (Pydantic or dataclass)
 - `*_helpers.py`: standalone helper functions

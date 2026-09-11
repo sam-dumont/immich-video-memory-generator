@@ -16,8 +16,8 @@ immich-memories runs list [OPTIONS]
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
 | `--limit` | `-n` | int | `20` | Number of runs to show |
-| `--person` | `-p` | string | — | Filter by person name |
-| `--status` | `-s` | choice | — | `completed`, `failed`, `running`, `cancelled`, `interrupted` |
+| `--person` | `-p` | string | n/a | Filter by person name |
+| `--status` | `-s` | choice | n/a | `completed`, `failed`, `running`, `cancelled`, `interrupted` |
 
 Examples:
 
@@ -48,7 +48,7 @@ immich-memories runs show 20260105_1430
 
 ### Model spend
 
-`runs show` reports what the run spent on the LLM — calls, judgment-cache hits,
+`runs show` reports what the run spent on the LLM: calls, judgment-cache hits,
 tokens, wall time, and any thinking calls truncated at the token budget.
 
 It is reported **per run, not per phase**, and the phase table is labelled
@@ -65,7 +65,7 @@ Aggregate statistics across all your runs:
 immich-memories runs stats
 ```
 
-Shows total runs, completed and failed as raw counts, total video generated, total and average processing time, and average and total clips processed. No completion rate — divide it yourself if you want one.
+Shows total runs, completed and failed as raw counts, total video generated, total and average processing time, and average and total clips processed. No completion rate: divide it yourself if you want one.
 
 ## runs delete
 

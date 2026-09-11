@@ -17,10 +17,10 @@ immich-memories music search [OPTIONS]
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--mood` | `-m` | string | — | Mood filter (`happy`, `calm`, `energetic`, etc.) |
-| `--genre` | `-g` | string | — | Genre filter (`acoustic`, `electronic`, `cinematic`, etc.) |
-| `--tempo` | `-t` | choice | — | `slow`, `medium`, or `fast` |
-| `--min-duration` | — | float | `60` | Minimum track duration in seconds |
+| `--mood` | `-m` | string | n/a | Mood filter (`happy`, `calm`, `energetic`, etc.) |
+| `--genre` | `-g` | string | n/a | Genre filter (`acoustic`, `electronic`, `cinematic`, etc.) |
+| `--tempo` | `-t` | choice | n/a | `slow`, `medium`, or `fast` |
+| `--min-duration` | n/a | float | `60` | Minimum track duration in seconds |
 | `--limit` | `-n` | int | `10` | Number of results to return |
 
 Example:
@@ -63,11 +63,11 @@ immich-memories music add VIDEO_PATH OUTPUT_PATH [OPTIONS]
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
 | `--music` | `-m` | path | auto-select | Music file to use |
-| `--mood` | — | string | — | Override mood for auto music selection |
-| `--genre` | `-g` | string | — | Override genre for auto music selection |
+| `--mood` | n/a | string | n/a | Override mood for auto music selection |
+| `--genre` | `-g` | string | n/a | Override genre for auto music selection |
 | `--volume` | `-v` | float | `-6.0` | Music volume in dB |
-| `--fade-in` | — | float | `2.0` | Fade in duration in seconds |
-| `--fade-out` | — | float | `3.0` | Fade out duration in seconds |
+| `--fade-in` | n/a | float | `2.0` | Fade in duration in seconds |
+| `--fade-out` | n/a | float | `3.0` | Fade out duration in seconds |
 
 If you don't provide `--music`, it auto-selects a track based on the video's mood.
 

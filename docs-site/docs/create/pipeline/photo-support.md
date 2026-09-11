@@ -9,10 +9,10 @@ Include photos alongside videos in your memory compilations. Photos are converte
 
 ## How It Works
 
-Photos compete in the same selection pool as videos and live photos. There's no separate "photo pipeline" — everything goes through unified selection.
+Photos compete in the same selection pool as videos and live photos. There's no separate "photo pipeline": everything goes through unified selection.
 
-1. **Fetch**: every IMAGE asset in range is fetched from Immich, Live Photo stills included — a Live Photo's still is a photograph, and whether its burst is worth showing as motion is a rendering question asked later, about an asset that already won its place
-2. **Read**: each photo gets its caption, context heads, detector facts and pixel facts prepared once — see [Editorial annotation setup](../../deploy/configuration/editorial-preparation.md)
+1. **Fetch**: every IMAGE asset in range is fetched from Immich, Live Photo stills included; a Live Photo's still is a photograph, and whether its burst is worth showing as motion is a rendering question asked later, about an asset that already won its place
+2. **Read**: each photo gets its caption, context heads, detector facts and pixel facts prepared once; see [Editorial annotation setup](../../deploy/configuration/editorial-preparation.md)
 3. **Edit**: photos and videos are one pool; the editor weighs the period's stories and grants pictures by weight, and a still is held for the seconds it earns
 4. **Render**: selected photos are animated as Ken Burns clips at assembly time
 
@@ -70,12 +70,12 @@ Older configs may still contain `collage_duration`, `animation_mode`, `enable_co
 A held shutter produces near-identical frames seconds apart. Before scoring, photos
 within `burst_window_seconds` of each other whose thumbnails are within
 `burst_hash_threshold` bits are treated as one burst, and only the best-scored frame
-survives. On a real June library that removed **64 of 303 photos — 21% of the pool**,
+survives. On a real June library that removed **64 of 303 photos, 21% of the pool**,
 in groups of up to five.
 
 Both conditions are required. Time alone would collapse a busy minute at a party;
 similarity alone would merge the same kitchen photographed a month apart. A photo with
-no cached thumbnail is always kept — redundancy is measured, never assumed. Set
+no cached thumbnail is always kept: redundancy is measured, never assumed. Set
 `burst_window_seconds: 0` to turn it off.
 
 Because this runs before the LLM shortlist, every photo it removes is also an LLM call

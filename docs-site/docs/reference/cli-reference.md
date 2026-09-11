@@ -192,8 +192,8 @@ immich-memories days-due [OPTIONS]
 Find days something happened on, and remember them for later.
 
 Meant to run occasionally rather than per generation: the point of a
-catalogue is a memory nobody asked for — five years to the day since
-the wedding — and that needs the days found in advance.
+catalogue is a memory nobody asked for (five years to the day since
+the wedding), and that needs the days found in advance.
 
 Days inside a trip are skipped, since a trip memory already tells that
 story, and so are holidays, which have their own.
@@ -245,7 +245,7 @@ Memory type presets:
 ```text
 Manual time period options:
   --year 2024                    Calendar year
-  --year 2024 --birthday 02/07   Birthday-based year
+  --year 2024 --birthday 02-07   Birthday-based year
   --start 2024-01-01 --end 2024-06-30   Custom range
   --start 2024-01-01 --period 6m        Period from start
 ```
@@ -274,7 +274,7 @@ immich-memories generate [OPTIONS]
 | `--short-form` | choice: `15` \| `30` \| `60` \| `90` | - | Short-form preset: sets the duration and makes the video vertical |
 | `--orientation` | choice: `landscape` \| `portrait` \| `square` | landscape | Output orientation |
 | `--scale-mode`, `-s` | choice: `fit` \| `blur` | - | How to fill an aspect mismatch: blurred background or black bars (default: from config, else blur) |
-| `--transition`, `-t` | choice: `smart` \| `cut` \| `crossfade` \| `none` | smart | Transition style (default: smart — mix of fades & cuts) |
+| `--transition`, `-t` | choice: `smart` \| `cut` \| `crossfade` \| `none` | smart | Transition style (default: smart, a mix of fades and cuts) |
 | `--resolution`, `-r` | choice: `auto` \| `4k` \| `1080p` \| `720p` | - | Output resolution (default: config value, 'auto' to match source clips) |
 | `--music-volume` | float | 0.5 | Music volume 0.0-1.0 (default: 0.5) |
 | `--format` | choice: `mp4` \| `h265` \| `prores` | - | Output format override (default: config value) |
@@ -416,7 +416,7 @@ Build or refresh the people file from Immich.
 
 Reads every named person's count and month curve, then asks about each
 remaining pair to find who appears with whom. Nothing here looks at a
-pixel and nothing here asks you a question — the library's own
+pixel and nothing here asks you a question: the library's own
 distribution is the whole input.
 
 Safe to re-run: everything under `confirmed:` in the file is copied

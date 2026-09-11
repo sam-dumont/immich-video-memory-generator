@@ -21,7 +21,7 @@ cd immich-video-memory-generator
 make dev-test
 ```
 
-`make dev-test` installs the dev tools (pytest, ruff, mypy and the other CI gates) plus the `gpu` extra — the same set the CI test jobs use. It is the fast path: no torch, no CUDA. Run it before any other make target.
+`make dev-test` installs the dev tools (pytest, ruff, mypy and the other CI gates) plus the `gpu` extra: the same set the CI test jobs use. It is the fast path: no torch, no CUDA. Run it before any other make target.
 
 Other install targets, when you need them:
 
@@ -30,7 +30,7 @@ Other install targets, when you need them:
 | `make dev-ci` | dev tools only | Lint/typecheck-only work |
 | `make dev-test` | dev + `gpu` | Default for contributors (what CI tests with) |
 | `make dev-mac` | dev + `all-mac` (Apple Vision, Metal, Taichi, the editorial stack) | Apple Silicon, full feature set |
-| `make dev` | every declared extra (torch, demucs, editorial — slow) | Only if you work across all optional backends |
+| `make dev` | every declared extra (torch, demucs, editorial), slow | Only if you work across all optional backends |
 
 ## Verify everything works
 
@@ -66,11 +66,11 @@ If `make ci` passes locally, CI will pass too. Use [conventional commit](https:/
 
 **Unit tests** (`make test`): pure logic, no external dependencies. Run in CI on every PR.
 
-**Integration tests** (`make test-integration`, or one suite such as `make test-integration-assembly`): real FFmpeg assembly, real Immich API reads. They live in per-suite folders under `tests/integration/` (`assembly`, `audio`, `audio_mixing`, `auth`, `automation`, `cli`, `live_photos`, `photos`, `pipeline`, `processing`, `titles`) and skip gracefully if a service isn't available. They run locally and on a self-hosted Linux GPU runner, which uploads its coverage to Codecov under the `integration-linux` flag. The per-suite coverage XMLs they write under `tests/` are gitignored — do not try to commit them.
+**Integration tests** (`make test-integration`, or one suite such as `make test-integration-assembly`): real FFmpeg assembly, real Immich API reads. They live in per-suite folders under `tests/integration/` (`assembly`, `audio`, `audio_mixing`, `auth`, `automation`, `cli`, `live_photos`, `photos`, `pipeline`, `processing`, `titles`) and skip gracefully if a service isn't available. They run locally and on a self-hosted Linux GPU runner, which uploads its coverage to Codecov under the `integration-linux` flag. The per-suite coverage XMLs they write under `tests/` are gitignored: do not try to commit them.
 
 ### If diff-cover fails on your PR
 
-A PR needs 80% coverage on the lines it changes — unless the diff is under 10 source lines or over 1000, where the gate skips itself with a warning rather than pretend a threshold means anything. `analysis/apple_vision*.py` is excluded outright. Before checking, CI runs the FFmpeg-only integration suites covering the paths your diff touches, and only those, then merges their coverage into the diff-cover run. So code reachable only through FFmpeg is covered for you: you do not need to write unit tests for it.
+A PR needs 80% coverage on the lines it changes, unless the diff is under 10 source lines or over 1000, where the gate skips itself with a warning rather than pretend a threshold means anything. `analysis/apple_vision*.py` is excluded outright. Before checking, CI runs the FFmpeg-only integration suites covering the paths your diff touches, and only those, then merges their coverage into the diff-cover run. So code reachable only through FFmpeg is covered for you: you do not need to write unit tests for it.
 
 To reproduce locally exactly what CI will see:
 
@@ -83,9 +83,9 @@ If diff-cover still fails after that, the uncovered lines are not reachable from
 
 ## Private terms gate
 
-`make privacy-gate` (and two pre-commit hooks: one on the staged diff, one on the commit message) blocks owner-defined private terms — family names, birth dates, fine-grained GPS coordinates, anything the maintainer doesn't want landing in a diff, commit message, or PR title/body — using `scripts/private_terms_gate.py`.
+`make privacy-gate` (and two pre-commit hooks: one on the staged diff, one on the commit message) blocks owner-defined private terms (family names, birth dates, fine-grained GPS coordinates, anything the maintainer doesn't want landing in a diff, commit message, or PR title/body) using `scripts/private_terms_gate.py`.
 
-The denylist itself never lives in this repo. It resolves from, in order: `--terms-file`, an env var named by `--terms-env` (how CI reads it from the `PRIVATE_TERMS` repository secret), `$IMMICH_MEMORIES_PRIVATE_TERMS` (a path), or `~/.config/immich-memories/private-terms.txt`. One term per line; `#` comments and blank lines are ignored; a line starting with `re:` is a regex. If none of those resolve to anything, the gate prints a notice and exits clean — most contributors have no denylist configured, and that isn't a failure.
+The denylist itself never lives in this repo. It resolves from, in order: `--terms-file`, an env var named by `--terms-env` (how CI reads it from the `PRIVATE_TERMS` repository secret), `$IMMICH_MEMORIES_PRIVATE_TERMS` (a path), or `~/.config/immich-memories/private-terms.txt`. One term per line; `#` comments and blank lines are ignored; a line starting with `re:` is a regex. If none of those resolve to anything, the gate prints a notice and exits clean: most contributors have no denylist configured, and that isn't a failure.
 
 Every reported match is masked to its first character, so a hit report never contains the term it found. Forks never see the `PRIVATE_TERMS` secret, so the PR-automation job that scans title/body/diff skips there too.
 

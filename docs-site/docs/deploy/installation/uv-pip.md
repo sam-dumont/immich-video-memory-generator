@@ -27,7 +27,7 @@ uvx immich-memories --help
 git clone https://github.com/sam-dumont/immich-video-memory-generator.git
 cd immich-video-memory-generator
 uv sync
-uv run immich-memories ui      # `uv sync` installs into .venv — the command is not on your PATH
+uv run immich-memories ui      # `uv sync` installs into .venv, so the command is not on your PATH
 ```
 
 To get a plain `immich-memories` command instead, install it as a tool: `uv tool install "immich-memories[all]"`
@@ -67,7 +67,7 @@ uv sync --extra all-mac
 ```
 
 The `music` extra is the bundled royalty-free track library (in both `all` and `all-mac`). AI music
-generation (ACE-Step, MusicGen) is a different thing and is not a pip extra — it talks to a server
+generation (ACE-Step, MusicGen) is a different thing and is not a pip extra: it talks to a server
 or an in-process ACE-Step install; see
 [Audio and music](../../create/pipeline/audio-and-music.md).
 
@@ -106,7 +106,7 @@ pip install -e .
 
 ### Extras
 
-Quote the package spec — zsh (the macOS default shell) treats `[...]` as a glob and fails with
+Quote the package spec: zsh (the macOS default shell) treats `[...]` as a glob and fails with
 `no matches found` otherwise.
 
 ```bash
