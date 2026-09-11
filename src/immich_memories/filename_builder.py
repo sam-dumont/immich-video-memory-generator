@@ -26,11 +26,6 @@ _RECIPE_HASH_SUFFIX = re.compile(rf"_[0-9a-f]{{{_RECIPE_HASH_CHARS}}}$")
 _BOUNDARY_PRECISION = 2
 
 
-def build_music_output_path(video_path: Path) -> Path:
-    """Return a sibling music-mix path while preserving the video container."""
-    return video_path.with_name(f"{video_path.stem}.with_music{video_path.suffix}")
-
-
 def normalize_output_path(path: Path, container: Literal["mp4", "mov"]) -> Path:
     """Return an output path whose suffix matches the resolved container."""
     expected_suffix = f".{container}"
@@ -169,43 +164,6 @@ def build_title_person_name(
     if use_first_name_only:
         return name.split()[0]
     return name
-
-
-def should_show_month_dividers(
-    memory_type: str | None,
-    date_start: date | None,
-    date_end: date | None,
-) -> bool:
-    """Decide whether to show month dividers based on memory type context.
-
-    Rules:
-    - Single month range: no dividers (nothing to divide)
-    - Short ranges (<=3 months): no dividers (too choppy)
-    - Monthly highlights / On This Day: no dividers
-    - Everything else: respect config setting
-
-    Args:
-        memory_type: Memory type key or None.
-        date_start: Start date of the range.
-        date_end: End date of the range.
-
-    Returns:
-        True if month dividers should be shown.
-    """
-    # Memory type overrides
-    if memory_type == "monthly_highlights":
-        return False
-    if memory_type == "on_this_day":
-        return False
-
-    if not date_start or not date_end:
-        return True
-
-    # Count distinct months in range
-    month_span = (date_end.year - date_start.year) * 12 + (date_end.month - date_start.month) + 1
-
-    # Single month or very short range: skip dividers
-    return month_span > 3
 
 
 def get_divider_mode(

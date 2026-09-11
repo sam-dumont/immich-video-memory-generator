@@ -368,55 +368,12 @@ class TestRunDatabaseAggregateStats:
         assert stats["avg_clips"] == 7.5
 
 
-class TestRunDatabasePeopleWithRuns:
-    """get_people_with_runs behavior."""
-
-    @pytest.fixture
-    def db(self, tmp_path):
-        return RunDatabase(tmp_path / "runs.db")
-
-    def test_returns_distinct_names(self, db):
-        """Returns sorted list of unique person names."""
-        db.save_run(_make_run(run_id="r1", person_name="Bob"))
-        db.save_run(_make_run(run_id="r2", person_name="Alice"))
-        db.save_run(_make_run(run_id="r3", person_name="Bob"))
-        db.save_run(_make_run(run_id="r4", person_name=None))
-        people = db.get_people_with_runs()
-        assert people == ["Alice", "Bob"]
-
-
 class TestRunDatabaseDedup:
     """Memory deduplication queries."""
 
     @pytest.fixture
     def db(self, tmp_path):
         return RunDatabase(tmp_path / "runs.db")
-
-    def test_has_memory_been_generated_true(self, db):
-        """Returns True when a completed run exists with the key."""
-        db.save_run(
-            _make_run(
-                run_id="r1",
-                status="completed",
-                memory_key="year_review:2025",
-            )
-        )
-        assert db.has_memory_been_generated("year_review:2025")
-
-    def test_has_memory_been_generated_false_when_failed(self, db):
-        """Returns False when the only run with the key is failed."""
-        db.save_run(
-            _make_run(
-                run_id="r1",
-                status="failed",
-                memory_key="year_review:2025",
-            )
-        )
-        assert not db.has_memory_been_generated("year_review:2025")
-
-    def test_has_memory_empty_key(self, db):
-        """Empty key always returns False."""
-        assert not db.has_memory_been_generated("")
 
     def test_get_last_run_of_type(self, db):
         """Returns the most recent completed run of a given type."""
@@ -561,27 +518,6 @@ class TestRunTrackerCompleteRun:
         assert metadata_file.exists()
         data = json.loads(metadata_file.read_text())
         assert data["run_id"] == run.run_id
-
-
-class TestRunTrackerUpdatePhaseProgress:
-    """update_phase_progress logging behavior."""
-
-    # WHY: RunDatabase opens a SQLite connection
-    @patch("immich_memories.tracking.run_tracker.RunDatabase")
-    def test_update_phase_progress_no_crash(self, mock_db_cls):
-        """update_phase_progress logs but does not crash."""
-        tracker = RunTracker(db_path=Path("/tmp/t.db"))
-        tracker.start_run()
-        tracker.start_phase("analysis", total_items=10)
-        tracker.update_phase_progress(5)  # should not raise
-
-    # WHY: RunDatabase opens a SQLite connection
-    @patch("immich_memories.tracking.run_tracker.RunDatabase")
-    def test_update_phase_progress_noop_without_phase(self, mock_db_cls):
-        """update_phase_progress is a no-op when no phase is active."""
-        tracker = RunTracker(db_path=Path("/tmp/t.db"))
-        tracker.start_run()
-        tracker.update_phase_progress(5)  # should not raise
 
 
 class TestRunTrackerCancelWithPhase:

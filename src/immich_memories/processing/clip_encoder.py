@@ -102,18 +102,6 @@ def hardware_command_for_plan(
         return fallback, build(fallback)
 
 
-def log_ffmpeg_error(result: subprocess.CompletedProcess) -> str:
-    stderr_lines = result.stderr.split("\n")
-    error_lines = [
-        line
-        for line in stderr_lines
-        if "error" in line.lower() or "Error" in line or "invalid" in line.lower()
-    ]
-    if error_lines:
-        return "\n".join(error_lines[-10:])
-    return result.stderr[-2000:] if len(result.stderr) > 2000 else result.stderr
-
-
 class ClipEncoder:
     """Encodes individual clips and runs FFmpeg assembly commands."""
 
@@ -322,107 +310,6 @@ class ClipEncoder:
             f"{common_suffix}"
         )
         return f"[0:v]{video_filter}[vout];{audio_filter}"
-
-    def trim_segment_copy(
-        self,
-        input_path: Path,
-        output_path: Path,
-        start: float,
-        duration: float,
-    ) -> None:
-        validate_video_path(input_path, must_exist=True)
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-ss",
-            str(start),
-            "-i",
-            str(input_path),
-            "-t",
-            str(duration),
-            "-c",
-            "copy",
-            "-movflags",
-            "+faststart",
-            str(output_path),
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
-        if result.returncode != 0:
-            raise RuntimeError(f"Failed to trim segment: {result.stderr[-500:]}")
-
-    def trim_segment_reencode(
-        self,
-        input_path: Path,
-        output_path: Path,
-        start: float,
-        duration: float,
-    ) -> None:
-        """Re-encodes for frame-accurate trim boundaries (stream copy can't do this)."""
-        validate_video_path(input_path, must_exist=True)
-
-        plan = self.settings.encoding_plan
-        _, color_filter = self.resolve_encode_hdr(AssemblyClip(path=input_path, duration=duration))
-        video_filter = f"{color_filter},format={plan.pixel_format}"
-
-        audio_format = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
-        loudnorm = ",loudnorm=I=-16:TP=-1.5:LRA=11" if self.settings.normalize_clip_audio else ""
-
-        filter_complex = (
-            f"[0:v]trim=start={start}:duration={duration},setpts=PTS-STARTPTS"
-            f"{video_filter}[vout];"
-            f"anullsrc=r=48000:cl=stereo,atrim=0:{duration}[silence];"
-            f"[0:a]atrim=start={start}:duration={duration},{audio_format},"
-            f"asetpts=PTS-STARTPTS{loudnorm},apad=whole_dur={duration}[asrc];"
-            f"[silence][asrc]amix=inputs=2:duration=longest:weights='0.001 1',"
-            f"atrim=0:{duration},asetpts=PTS-STARTPTS[aout]"
-        )
-
-        def build(graph: str) -> Callable[[EncodingPlan], list[str]]:
-            def build_for(active: EncodingPlan) -> list[str]:
-                return [
-                    "ffmpeg",
-                    "-y",
-                    "-i",
-                    str(input_path),
-                    "-filter_complex",
-                    graph,
-                    "-map",
-                    "[vout]",
-                    "-map",
-                    "[aout]",
-                    *encoder_args_for_plan(active),
-                    "-c:a",
-                    "aac",
-                    "-b:a",
-                    "128k",
-                    "-movflags",
-                    "+faststart",
-                    str(output_path),
-                ]
-
-            return build_for
-
-        plan, cmd = hardware_command_for_plan(build(filter_complex), plan, video_label="[vout]")
-
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
-
-        if result.returncode != 0:
-            logger.warning(f"Trim with audio failed, using silence: {result.stderr[-200:]}")
-
-            filter_complex_silent = (
-                f"[0:v]trim=start={start}:duration={duration},setpts=PTS-STARTPTS"
-                f"{video_filter}[vout];"
-                f"anullsrc=r=48000:cl=stereo,atrim=0:{duration},{audio_format},"
-                f"asetpts=PTS-STARTPTS[aout]"
-            )
-
-            _, cmd_silent = hardware_command_for_plan(
-                build(filter_complex_silent), plan, video_label="[vout]"
-            )
-
-            result = subprocess.run(cmd_silent, capture_output=True, text=True, timeout=1800)
-            if result.returncode != 0:
-                raise RuntimeError(f"Failed to trim segment (reencode): {result.stderr[-500:]}")
 
     def run_ffmpeg_assembly(
         self,

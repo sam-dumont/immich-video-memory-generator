@@ -116,7 +116,6 @@ class MusicPipeline:
 
             versions.append(
                 GeneratedMusic(
-                    version_id=i,
                     full_mix=result.audio_path,
                     stems=stems,
                     duration=float(total_duration),

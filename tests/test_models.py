@@ -134,17 +134,6 @@ class TestAsset:
 class TestAssetFace:
     """Tests for AssetFace model."""
 
-    def test_bounding_box(self):
-        """Test bounding box property."""
-        face = AssetFace(
-            id="face-123",
-            boundingBoxX1=100,
-            boundingBoxY1=200,
-            boundingBoxX2=300,
-            boundingBoxY2=400,
-        )
-        assert face.bounding_box == (100, 200, 300, 400)
-
     def test_center(self):
         """Test center calculation."""
         face = AssetFace(
@@ -171,22 +160,6 @@ class TestAssetFace:
 class TestVideoClipInfo:
     """Tests for VideoClipInfo model."""
 
-    def test_aspect_ratio(self):
-        """Test aspect ratio calculation."""
-        asset = Asset(
-            id="123",
-            type=AssetType.VIDEO,
-            fileCreatedAt=datetime.now(),
-            fileModifiedAt=datetime.now(),
-            updatedAt=datetime.now(),
-        )
-        clip = VideoClipInfo(
-            asset=asset,
-            width=1920,
-            height=1080,
-        )
-        assert clip.aspect_ratio == pytest.approx(16 / 9, rel=0.01)
-
     def test_is_portrait(self):
         """Test portrait detection."""
         asset = Asset(
@@ -202,7 +175,6 @@ class TestVideoClipInfo:
             height=1920,
         )
         assert clip.is_portrait
-        assert not clip.is_landscape
 
     def test_is_hdr_with_hdr10(self):
         """Test HDR10 detection."""
@@ -289,16 +261,10 @@ class TestVideoClipInfoEdgeCases:
             updatedAt=datetime.now(),
         )
 
-    def test_square_video_not_portrait_or_landscape(self):
-        """Square video (1:1) is neither portrait nor landscape."""
+    def test_square_video_is_not_portrait(self):
+        """Square video (1:1) is not portrait."""
         clip = VideoClipInfo(asset=self._make_asset(), width=1080, height=1080)
         assert not clip.is_portrait
-        assert not clip.is_landscape
-
-    def test_aspect_ratio_portrait(self):
-        """Portrait video has aspect ratio < 1."""
-        clip = VideoClipInfo(asset=self._make_asset(), width=1080, height=1920)
-        assert clip.aspect_ratio < 1.0
 
     def test_duration_zero_seconds(self):
         """Asset with zero duration parses correctly."""

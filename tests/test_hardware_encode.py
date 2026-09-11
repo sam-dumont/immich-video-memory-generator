@@ -276,25 +276,6 @@ def test_streaming_encoder_runs_on_the_device(tmp_path) -> None:
     assert_uploads_to_device(popen.call_args.args[0], "qsv")
 
 
-@pytest.mark.parametrize(
-    "render",
-    ["create_title_ffmpeg", "create_title_with_effects"],
-)
-def test_title_render_runs_on_the_device(tmp_path, render: str) -> None:
-    from unittest.mock import MagicMock, patch
-
-    from immich_memories.titles import renderer_ffmpeg
-
-    # WHY: FFmpeg draws the title; the command is what is under test.
-    with patch.object(renderer_ffmpeg.subprocess, "run") as run:
-        run.return_value = MagicMock(returncode=0, stderr="")
-        getattr(renderer_ffmpeg, render)(
-            "Title", "Subtitle", tmp_path / "title.mp4", encoding_plan=_vaapi_plan()
-        )
-
-    assert_uploads_to_device(run.call_args.args[0], "vaapi")
-
-
 def test_the_probe_sets_up_what_a_render_sets_up() -> None:
     """Detection only proves anything if it builds the chain a render builds."""
     from unittest.mock import patch
@@ -330,28 +311,6 @@ def test_burst_merge_runs_on_the_device(tmp_path) -> None:
 
     assert_uploads_to_device(cmd, "vaapi")
     assert "[outa]" in cmd
-
-
-def test_analysis_downscale_runs_on_the_device(tmp_path) -> None:
-    from unittest.mock import MagicMock, patch
-
-    from immich_memories.processing import downscaler
-
-    source = tmp_path / "source.mp4"
-    source.write_bytes(b"\x00" * 32)
-
-    # WHY: this Mac reports VideoToolbox; the Linux answer is what is under test.
-    with (
-        patch.object(downscaler, "needs_downscaling", return_value=True),
-        patch.object(
-            downscaler, "fast_encoder_args", return_value=["-c:v", "h264_vaapi", "-qp", "28"]
-        ),
-        patch.object(downscaler.subprocess, "run") as run,
-    ):
-        run.return_value = MagicMock(returncode=1, stderr="")
-        downscaler.downscale_video(source, 720, tmp_path / "small.mp4")
-
-    assert_uploads_to_device(run.call_args.args[0], "vaapi")
 
 
 def test_clip_extraction_runs_on_the_device(tmp_path) -> None:

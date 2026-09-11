@@ -61,7 +61,6 @@ async def _generate_music(
     """Generate a single music track using the multi-provider pipeline."""
     config = state.config
 
-    state.music_generating = True
     progress_bar.set_visibility(True)
     status_label.set_visibility(True)
     status_label.set_text("Building mood timeline...")
@@ -117,8 +116,6 @@ async def _generate_music(
             f"Music generation failed: {sanitize_error_message(str(e))}",
             type="negative",
         )
-    finally:
-        state.music_generating = False
 
 
 def _render_player(state, container):

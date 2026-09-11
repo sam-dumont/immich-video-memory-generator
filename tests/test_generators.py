@@ -11,7 +11,6 @@ import pytest
 from immich_memories.audio.generators.ace_step_backend import (
     ACEStepBackend,
     ACEStepConfig,
-    _mood_to_ace_prompt,
 )
 from immich_memories.audio.generators.ace_step_runtime import is_ace_step_importable
 from immich_memories.audio.generators.base import (
@@ -112,14 +111,6 @@ class TestMusicGeneratorABC:
         assert gen.name == "Dummy"
 
     @pytest.mark.asyncio
-    async def test_default_generate_with_stems_returns_none_stems(self):
-        """Default generate_with_stems should return None for stems."""
-        gen = _DummyGenerator()
-        result, stems = await gen.generate_with_stems(GenerationRequest())
-        assert result.audio_path == Path("/tmp/dummy.wav")
-        assert stems is None
-
-    @pytest.mark.asyncio
     async def test_default_health_check(self):
         """Default health_check should return backend name and availability."""
         gen = _DummyGenerator()
@@ -183,7 +174,6 @@ class TestVideoTimeline:
             timeline.total_duration
             == timeline.title_duration + timeline.ending_duration + timeline.fade_buffer
         )
-        assert timeline.content_start == timeline.title_duration
 
     def test_content_duration_no_transitions(self):
         timeline = VideoTimeline(
@@ -659,15 +649,15 @@ class TestMusicDataModels:
             full_mix = Path(tmpdir) / "mix.wav"
             full_mix.write_bytes(b"mix")
 
-            music = GeneratedMusic(version_id=0, full_mix=full_mix)
+            music = GeneratedMusic(full_mix=full_mix)
             music.cleanup()
             assert not full_mix.exists()
 
     def test_music_generation_result_selected(self):
         versions = [
-            GeneratedMusic(version_id=0, full_mix=Path("/tmp/v0.wav")),
-            GeneratedMusic(version_id=1, full_mix=Path("/tmp/v1.wav")),
-            GeneratedMusic(version_id=2, full_mix=Path("/tmp/v2.wav")),
+            GeneratedMusic(full_mix=Path("/tmp/v0.wav")),
+            GeneratedMusic(full_mix=Path("/tmp/v1.wav")),
+            GeneratedMusic(full_mix=Path("/tmp/v2.wav")),
         ]
         result = MusicGenerationResult(
             versions=versions,
@@ -679,7 +669,7 @@ class TestMusicDataModels:
 
     def test_music_generation_result_none_selected(self):
         result = MusicGenerationResult(
-            versions=[GeneratedMusic(version_id=0, full_mix=Path("/tmp/v0.wav"))],
+            versions=[GeneratedMusic(full_mix=Path("/tmp/v0.wav"))],
             timeline=VideoTimeline(),
             mood="happy",
         )
@@ -693,7 +683,7 @@ class TestMusicDataModels:
                 f = Path(tmpdir) / f"v{i}.wav"
                 f.write_bytes(b"data")
                 files.append(f)
-                versions.append(GeneratedMusic(version_id=i, full_mix=f))
+                versions.append(GeneratedMusic(full_mix=f))
 
             result = MusicGenerationResult(
                 versions=versions,
@@ -737,76 +727,6 @@ class TestPromptGeneration:
             assert any(kw in lower for kw in ("no vocal", "no singing", "instrumental")), (
                 f"Prompt missing instrumental indicator: {prompt}"
             )
-
-
-# =============================================================================
-# ACE-Step mood conversion tests
-# =============================================================================
-
-
-class TestACEStepMoodConversion:
-    """Mood phrases resolve to a caption the audio model can act on.
-
-    These assert the shape the mood x style matrix guarantees — a mood word, a
-    genre anchor, instruments and a BPM — rather than specific vocabulary, so a
-    retuned style table does not break them.
-    """
-
-    def test_a_mood_phrase_resolves_to_its_profile(self):
-        tags, lyrics = _mood_to_ace_prompt("happy cheerful")
-
-        assert "joyful" in tags
-        assert "bpm" in tags
-        assert lyrics.lower() == "[instrumental]"
-
-    def test_tempo_tracks_the_mood(self):
-        """Only for genres that are not themselves a tempo — see the style matrix."""
-        from immich_memories.audio.generators.ace_step_captions import (
-            build_ace_caption_structured,
-        )
-
-        energetic = build_ace_caption_structured("energetic", style="acoustic").bpm
-        calm = build_ace_caption_structured("calm", style="acoustic").bpm
-
-        assert energetic > calm
-
-    def test_an_unknown_mood_still_yields_a_usable_caption(self):
-        tags, lyrics = _mood_to_ace_prompt("xyzzy")
-
-        assert "bpm" in tags
-        assert lyrics.lower() == "[instrumental]"
-
-    def test_seasonal_modifier_reaches_the_caption(self):
-        tags, _ = _mood_to_ace_prompt("winter holiday happy")
-
-        assert "cozy" in tags or "warm" in tags or "festive" in tags
-
-    def test_every_mood_names_instruments_and_stays_instrumental(self):
-        """A caption of adjectives alone gives the model nothing to render."""
-        instruments = (
-            "guitar",
-            "piano",
-            "bass",
-            "drums",
-            "strings",
-            "horn",
-            "harp",
-            "trumpet",
-            "organ",
-            "celeste",
-            "glockenspiel",
-            "vibraphone",
-            "clavinet",
-            "congas",
-            "timpani",
-            "tambourine",
-        )
-
-        for mood in ("happy", "sad", "energetic", "calm", "dramatic", "playful", "unknown"):
-            tags, lyrics = _mood_to_ace_prompt(mood)
-
-            assert any(i in tags.lower() for i in instruments), tags
-            assert lyrics.lower() == "[instrumental]"
 
 
 # =============================================================================
@@ -963,26 +883,6 @@ class TestMusicGenBackend:
             result = await backend.generate(request)
             assert result.audio_path == Path("/tmp/soundtrack.wav")
             mock_client.generate_soundtrack.assert_called_once()
-
-    async def test_generate_with_stems(self):
-        """Test generation + stem separation through backend."""
-        backend = MusicGenBackend()
-
-        mock_client = AsyncMock()
-        mock_client.generate_music = AsyncMock(return_value=Path("/tmp/result.wav"))
-        mock_stems = MusicStems(vocals=Path("/tmp/vocals.wav"), accompaniment=Path("/tmp/acc.wav"))
-        mock_client.separate_stems = AsyncMock(return_value=mock_stems)
-        backend._client = mock_client
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            request = GenerationRequest(
-                prompt="test",
-                duration_seconds=30,
-                output_dir=Path(tmpdir),
-            )
-            result, stems = await backend.generate_with_stems(request)
-            assert result.audio_path == Path("/tmp/result.wav")
-            assert stems.vocals == Path("/tmp/vocals.wav")
 
 
 # =============================================================================

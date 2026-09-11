@@ -101,11 +101,10 @@ async def upload_to_immich(
     try:
         from immich_memories.generate_delivery import deliver_completed_artifact
 
-        result = await io_bound_result(deliver_completed_artifact, params, video_path, run_tracker)
+        await io_bound_result(deliver_completed_artifact, params, video_path, run_tracker)
         completed = _authoritative_delivery_run(run_tracker)
         if completed is None:  # pragma: no cover - delivery requires an owned completed run
             raise RuntimeError("Run disappeared after Immich delivery")
-        state.upload_result = result
         state.delivery_status = completed.delivery_status
         try:
             ui.notify(
@@ -121,7 +120,6 @@ async def upload_to_immich(
         current = _authoritative_delivery_run(run_tracker)
         if current is None:
             raise
-        state.upload_result = None
         state.delivery_status = current.delivery_status
         logger.warning("Upload to Immich remains pending")
         try:

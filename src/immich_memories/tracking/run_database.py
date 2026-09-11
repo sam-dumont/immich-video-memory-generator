@@ -622,32 +622,9 @@ class RunDatabase:
                 "total_clips": total_clips,
             }
 
-    def get_people_with_runs(self) -> list[str]:
-        """Get list of distinct person names with runs."""
-        with self._get_connection() as conn:
-            rows = conn.execute(
-                """
-                SELECT DISTINCT person_name FROM pipeline_runs
-                WHERE person_name IS NOT NULL
-                ORDER BY person_name
-                """
-            ).fetchall()
-            return [row["person_name"] for row in rows]
-
     # =========================================================================
     # Deduplication Queries (for automation)
     # =========================================================================
-
-    def has_memory_been_generated(self, memory_key: str) -> bool:
-        """Check if a memory with this key has been successfully generated."""
-        if not memory_key:
-            return False
-        with self._get_connection() as conn:
-            row = conn.execute(
-                "SELECT 1 FROM pipeline_runs WHERE memory_key = ? AND status = 'completed' LIMIT 1",
-                (memory_key,),
-            ).fetchone()
-            return row is not None
 
     def get_last_run_of_type(
         self,
@@ -681,28 +658,6 @@ class RunDatabase:
                 """
             ).fetchall()
             return {row["memory_key"] for row in rows}
-
-    def get_completed_run_by_identity(
-        self,
-        memory_key: str,
-        source: str,
-        created_after: datetime,
-    ) -> RunMetadata | None:
-        """Find a completed run created after an automation attempt started."""
-        with self._get_connection() as conn:
-            row = conn.execute(
-                """
-                SELECT * FROM pipeline_runs
-                WHERE memory_key = ?
-                  AND source = ?
-                  AND status = 'completed'
-                  AND created_at > ?
-                ORDER BY created_at DESC
-                LIMIT 1
-                """,
-                (memory_key, source, created_after.isoformat()),
-            ).fetchone()
-        return row_to_run(row) if row else None
 
     def get_completed_run_by_automation_attempt(
         self,

@@ -52,10 +52,6 @@ class AudioMixerService:
         # Fallback to simple mixing
         return self._add_music_simple(video_path, output_path)
 
-    def add_music_to_clip(self, clip_path: Path, output_path: Path) -> Path:
-        """Add music to a single clip."""
-        return self.add_music(clip_path, output_path)
-
     def _volume_db(self) -> float:
         """Convert volume (0.0-1.0) to dB."""
         return 20 * math.log10(max(0.01, self.settings.music_volume))

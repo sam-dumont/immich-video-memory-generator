@@ -41,11 +41,6 @@ class TestAppStateDefaults:
         state = AppState()
         assert state.step == 1
 
-    def test_default_config_not_saved(self):
-        """Config is not saved by default."""
-        state = AppState()
-        assert not state.config_saved
-
     def test_default_empty_clips(self):
         """Clips list is empty by default."""
         state = AppState()
@@ -55,11 +50,6 @@ class TestAppStateDefaults:
         """Selected clip IDs is empty by default."""
         state = AppState()
         assert not state.selected_clip_ids
-
-    def test_default_not_processing(self):
-        """Not processing by default."""
-        state = AppState()
-        assert not state.processing
 
     def test_default_pipeline_not_running(self):
         """Pipeline not running by default."""
@@ -629,13 +619,6 @@ class TestAppStateTransitions:
         state = AppState()
         state.step = 3
         assert state.step == 3
-
-    def test_config_saved_flag(self):
-        """config_saved flag can be toggled."""
-        state = AppState()
-        assert not state.config_saved
-        state.config_saved = True
-        assert state.config_saved
 
     def test_pipeline_running_flag(self):
         """pipeline_running flag tracks pipeline state."""

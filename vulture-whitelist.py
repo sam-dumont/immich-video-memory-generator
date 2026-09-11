@@ -1,283 +1,115 @@
-left_eye  # unused variable (src/immich_memories/analysis/apple_vision.py:39)
-right_eye  # unused variable (src/immich_memories/analysis/apple_vision.py:40)
-mouth  # unused variable (src/immich_memories/analysis/apple_vision.py:42)
-_.center_vision  # unused property (src/immich_memories/analysis/apple_vision.py:52)
-_._handler  # unused attribute (src/immich_memories/analysis/apple_vision.py:122)
-_.left_eye  # unused attribute (src/immich_memories/analysis/apple_vision.py:228)
-_.right_eye  # unused attribute (src/immich_memories/analysis/apple_vision.py:235)
-_.mouth  # unused attribute (src/immich_memories/analysis/apple_vision.py:249)
-location_diversity_bonus  # unused function (src/immich_memories/analysis/trip_detection.py:517)
-AUDIO  # unused variable (src/immich_memories/api/models.py:50)
-exposure_time  # unused variable (src/immich_memories/api/models.py:59)
+# Read by Asset.model_dump in source_metadata_digest (analysis/
+# editorial_bound_sample.py:15), which hashes the whole model to bind the source
+# metadata Immich reported. Every field on Asset and on the models it nests is
+# read there, and a field removed is a difference the evidence stops noticing.
+# Nothing names them on the reading side, so vulture cannot see any of it.
 f_number  # unused variable (src/immich_memories/api/models.py:60)
 iso  # unused variable (src/immich_memories/api/models.py:61)
 focal_length  # unused variable (src/immich_memories/api/models.py:62)
-date_time_original  # unused variable (src/immich_memories/api/models.py:68)
 lens_model  # unused variable (src/immich_memories/api/models.py:69)
-model_config  # unused variable (src/immich_memories/api/models.py:72)
-VideoInfo  # unused class (src/immich_memories/api/models.py:75)
-model_config  # unused variable (src/immich_memories/api/models.py:86)
-_.megapixels  # unused property (src/immich_memories/api/models.py:95)
-PersonThumbnail  # unused class (src/immich_memories/api/models.py:103)
-model_config  # unused variable (src/immich_memories/api/models.py:108)
-is_hidden  # unused variable (src/immich_memories/api/models.py:118)
-updated_at  # unused variable (src/immich_memories/api/models.py:119)
-model_config  # unused variable (src/immich_memories/api/models.py:123)
-_.display_name  # unused property (src/immich_memories/api/models.py:125)
-model_config  # unused variable (src/immich_memories/api/models.py:144)
-_.bounding_box  # unused property (src/immich_memories/api/models.py:146)
-objects  # unused variable (src/immich_memories/api/models.py:176)
-device_asset_id  # unused variable (src/immich_memories/api/models.py:183)
-owner_id  # unused variable (src/immich_memories/api/models.py:184)
-device_id  # unused variable (src/immich_memories/api/models.py:185)
-original_mime_type  # unused variable (src/immich_memories/api/models.py:189)
-thumbhash  # unused variable (src/immich_memories/api/models.py:190)
-file_modified_at  # unused variable (src/immich_memories/api/models.py:190)
-updated_at  # unused variable (src/immich_memories/api/models.py:194)
-is_archived  # unused variable (src/immich_memories/api/models.py:196)
-is_trashed  # unused variable (src/immich_memories/api/models.py:197)
-smart_info  # unused variable (src/immich_memories/api/models.py:208)
-model_config  # unused variable (src/immich_memories/api/models.py:210)
-_.coerce_null_dimensions  # unused method (src/immich_memories/api/models.py:218)
-_.parse_type  # unused method (src/immich_memories/api/models.py:226)
-_.is_video  # unused property (src/immich_memories/api/models.py:239)
-_.normalize_wire_duration  # unused method (src/immich_memories/api/models.py:244)
-_.file_size_mb  # unused property (src/immich_memories/api/models.py:264)
-model_config  # unused variable (src/immich_memories/api/models.py:279)
-model_config  # unused variable (src/immich_memories/api/models.py:296)
-model_config  # unused variable (src/immich_memories/api/models.py:306)
-is_admin  # unused variable (src/immich_memories/api/models.py:320)
-avatar_color  # unused variable (src/immich_memories/api/models.py:321)
-profile_image_path  # unused variable (src/immich_memories/api/models.py:322)
-model_config  # unused variable (src/immich_memories/api/models.py:324)
-SmartSearchResult  # unused class (src/immich_memories/api/models.py:327)
-model_config  # unused variable (src/immich_memories/api/models.py:333)
-model_config  # unused variable (src/immich_memories/api/models.py:344)
-model_config  # unused variable (src/immich_memories/api/models.py:352)
-_.has_llm_analysis  # unused property (src/immich_memories/api/models.py:415)
-_.aspect_ratio  # unused property (src/immich_memories/api/models.py:425)
-_.is_landscape  # unused property (src/immich_memories/api/models.py:451)
-__getattr__  # unused function (src/immich_memories/audio/__init__.py:84)
-__getattr__  # unused function (src/immich_memories/audio/generators/__init__.py:29)
-_validate_torchcodec  # unused function (src/immich_memories/audio/generators/ace_step_runtime.py:135)
-_mood_to_ace_prompt  # unused function (src/immich_memories/audio/generators/ace_step_backend.py:80)
-_.generate_with_stems  # unused method (src/immich_memories/audio/generators/base.py:96)
-_.generate_with_stems  # unused method (src/immich_memories/audio/generators/musicgen_backend.py:115)
-_.to_search_params  # unused method (src/immich_memories/audio/mood_analyzer.py:80)
-get_mood_analyzer_from_config  # unused function (src/immich_memories/audio/mood_analyzer_backends.py:261)
-_.content_start  # unused property (src/immich_memories/audio/music_generator_models.py:94)
-_.build_acestep_lyrics  # unused method (src/immich_memories/audio/music_generator_models.py:159)
-_.has_full_stems  # unused property (src/immich_memories/audio/music_generator_models.py:321)
-version_id  # unused variable (src/immich_memories/audio/music_generator_models.py:337)
-duck_vocals  # unused variable (src/immich_memories/audio/music_generator_models.py:380)
-duck_amount_db  # unused variable (src/immich_memories/audio/music_generator_models.py:381)
-crossfade_ms  # unused variable (src/immich_memories/audio/music_generator_models.py:384)
-license  # unused variable (src/immich_memories/audio/music_sources.py:29)
-_.cache_filename  # unused property (src/immich_memories/audio/music_sources.py:33)
-extra_params  # unused variable (src/immich_memories/automation/candidates.py:37)
-_.row_factory  # unused attribute (src/immich_memories/automation/notification_state.py:103)
-_.row_factory  # unused attribute (src/immich_memories/automation/state_store.py:55)
-_.row_factory  # unused attribute (src/immich_memories/cache/asset_score_cache.py:32)
-_.get_asset_score  # unused method (src/immich_memories/cache/asset_score_cache.py:38)
-_.row_factory  # unused attribute (src/immich_memories/cache/database.py:57)
-_.finished  # unused property (src/immich_memories/cache/video_cache.py:81)
-_.invalidate_manifest  # unused method (src/immich_memories/cache/video_cache.py:101)
-_.evict_old  # unused method (src/immich_memories/cache/video_cache.py:535)
-_.evict_if_over_limit  # unused method (src/immich_memories/cache/video_cache.py:548)
-export_project  # unused function (src/immich_memories/cli/_analyze_export.py:65)
-get_active_display  # unused function (src/immich_memories/cli/_helpers.py:38)
-_.render_final  # unused method (src/immich_memories/cli/_live_display.py:321)
-make_quiet_progress_callback  # unused function (src/immich_memories/cli/_progress.py:14)
-run_cmd  # unused function (src/immich_memories/cli/auto_cmd.py:175)
-history  # unused function (src/immich_memories/cli/auto_cmd.py:227)
-install  # unused function (src/immich_memories/cli/auto_cmd.py:321)
-test_notification  # unused function (src/immich_memories/cli/auto_cmd.py:373)
-export  # unused function (src/immich_memories/cli/cache_cmd.py:45)
-import_scores  # unused function (src/immich_memories/cli/cache_cmd.py:60)
-hardware_info  # unused function (src/immich_memories/cli/hardware_cmd.py:14)
-music_search  # unused function (src/immich_memories/cli/music_cmd.py:23)
-music_analyze  # unused function (src/immich_memories/cli/music_cmd.py:85)
-music_add  # unused function (src/immich_memories/cli/music_cmd.py:154)
-scan  # unused function (src/immich_memories/cli/people_cmd.py:39)
-runs_list  # unused function (src/immich_memories/cli/runs.py:172)
-runs_show  # unused function (src/immich_memories/cli/runs.py:242)
-runs_stats  # unused function (src/immich_memories/cli/runs.py:282)
-runs_storage  # unused function (src/immich_memories/cli/runs.py:311)
-runs_delete  # unused function (src/immich_memories/cli/runs.py:317)
-list_schedules  # unused function (src/immich_memories/cli/scheduler_cmd.py:28)
-titles_test  # unused function (src/immich_memories/cli/titles.py:122)
-titles_fonts  # unused function (src/immich_memories/cli/titles.py:312)
-_.get_field_value  # unused method (src/immich_memories/config_loader.py:104)
-model_config  # unused variable (src/immich_memories/config_loader.py:127)
-_._apply_preset  # unused method (src/immich_memories/config_loader.py:166)
-_.settings_customise_sources  # unused method (src/immich_memories/config_loader.py:186)
-_.serialize_api_version  # unused method (src/immich_memories/config_models.py:73)
-_.expand_env  # unused method (src/immich_memories/config_models.py:79)
-_.expand_env  # unused method (src/immich_memories/config_models_auth.py:66)
-_.validate_provider_requirements  # unused method (src/immich_memories/config_models_auth.py:72)
-_._normalize_daily_at  # unused method (src/immich_memories/config_models_automation.py:64)
-_.expand_env  # unused method (src/immich_memories/config_models_llm.py:81)
-_.map_legacy_scale_mode  # unused method (src/immich_memories/config_models_render.py:54)
-_.serialize_hdr_mode  # unused method (src/immich_memories/config_models_render.py:71)
-_.expand_env  # unused method (src/immich_memories/config_models_soundtrack.py:68)
-_.expand_env  # unused method (src/immich_memories/config_models_soundtrack.py:137)
-build_music_output_path  # unused function (src/immich_memories/filename_builder.py:24)
-should_show_month_dividers  # unused function (src/immich_memories/filename_builder.py:111)
-get_short_month_name  # unused function (src/immich_memories/i18n.py:182)
-detect_system_locale  # unused function (src/immich_memories/i18n.py:226)
-format_year_title  # unused function (src/immich_memories/i18n.py:290)
-format_birthday_title  # unused function (src/immich_memories/i18n.py:303)
-Translator  # unused class (src/immich_memories/i18n.py:324)
-get_current_run_id  # unused function (src/immich_memories/logging_config.py:39)
-_.lastResort  # unused attribute (src/immich_memories/logging_config.py:130)
-_.lastResort  # unused attribute (src/immich_memories/logging_config.py:142)
-HOLIDAY  # unused variable (src/immich_memories/memory_types/registry.py:17)
-_.row_factory  # unused attribute (src/immich_memories/operations/storage_report.py:36)
-__getattr__  # unused function (src/immich_memories/processing/__init__.py:48)
-preserve_framerate  # unused variable (src/immich_memories/processing/assembly_config.py:124)
-original_segment  # unused variable (src/immich_memories/processing/assembly_config.py:157)
-_.concat  # unused attribute (src/immich_memories/processing/assembly_engine.py:180)
-_.assemble_with_smart_transitions  # unused method (src/immich_memories/processing/assembly_engine.py:372)
-_.add_music_to_clip  # unused method (src/immich_memories/processing/audio_mixer_service.py:55)
-_.trim_segment_copy  # unused method (src/immich_memories/processing/clip_encoder.py:290)
-_.trim_segment_reencode  # unused method (src/immich_memories/processing/clip_encoder.py:317)
-plan_transitions  # unused function (src/immich_memories/processing/clip_transitions.py:114)
-_.batch_extract  # unused method (src/immich_memories/processing/clips.py:227)
-downscale_video  # unused function (src/immich_memories/processing/downscaler.py:69)
-SDR  # unused variable (src/immich_memories/processing/encoding_plan.py:24)
-_.merge_intermediate_batches  # unused method (src/immich_memories/processing/ffmpeg_filter_graph.py:44)
-_.assemble_batch_direct  # unused method (src/immich_memories/processing/ffmpeg_filter_graph.py:118)
-_.parse_resolution_from_stream  # unused method (src/immich_memories/processing/ffmpeg_prober.py:34)
-_.has_video_stream  # unused method (src/immich_memories/processing/ffmpeg_prober.py:171)
-_.detect_hdr_type  # unused method (src/immich_memories/processing/ffmpeg_prober.py:178)
-_.detect_color_primaries  # unused method (src/immich_memories/processing/ffmpeg_prober.py:186)
-_.parse_fps_str  # unused method (src/immich_memories/processing/ffmpeg_prober.py:237)
-AMF  # unused variable (src/immich_memories/processing/hardware.py:23)
-VULKAN  # unused variable (src/immich_memories/processing/hardware.py:24)
-has_any_hdr_clip  # unused function (src/immich_memories/processing/hdr_utilities.py:187)
-_.is_burst  # unused property (src/immich_memories/processing/live_photo_merger.py:46)
-mtime_ns  # unused variable (src/immich_memories/processing/probe_cache.py:24)
-_.invalidate  # unused method (src/immich_memories/processing/probe_cache.py:162)
-_.get_orientation_from_clips  # unused method (src/immich_memories/processing/title_inserter.py:185)
-_.get_resolution_tier  # unused method (src/immich_memories/processing/title_inserter.py:201)
-_.get_target_size  # unused method (src/immich_memories/processing/transforms.py:136)
-_._get_video_dimensions  # unused method (src/immich_memories/processing/transforms.py:201)
-_._transform_fit  # unused method (src/immich_memories/processing/transforms.py:205)
-_._transform_fill  # unused method (src/immich_memories/processing/transforms.py:223)
-_._transform_smart_crop  # unused method (src/immich_memories/processing/transforms.py:241)
-_._detect_faces_in_video  # unused method (src/immich_memories/processing/transforms.py:259)
-_._calculate_smart_crop  # unused method (src/immich_memories/processing/transforms.py:272)
-_._apply_crop_transform  # unused method (src/immich_memories/processing/transforms.py:280)
-_.to_ffmpeg_filter  # unused method (src/immich_memories/processing/transforms_ffmpeg.py:97)
-validate_image_path  # unused function (src/immich_memories/security.py:117)
-_.contains  # unused method (src/immich_memories/timeperiod.py:60)
-FFMPEG_EASING_EXPRESSIONS  # unused variable (src/immich_memories/titles/animations.py:101)
-SOLID  # unused variable (src/immich_memories/titles/backgrounds.py:58)
-CONTENT_BACKED  # unused variable (src/immich_memories/titles/backgrounds.py:59)
-GradientStop  # unused class (src/immich_memories/titles/backgrounds.py:62)
-interpolate_color  # unused function (src/immich_memories/titles/backgrounds.py:97)
-create_background_array  # unused function (src/immich_memories/titles/backgrounds.py:372)
-create_color_fade_frames  # unused function (src/immich_memories/titles/colors.py:363)
-extract_content_background  # unused function (src/immich_memories/titles/content_background.py:136)
-_.ensure_fonts  # unused method (src/immich_memories/titles/fonts.py:360)
-_.get_font  # unused method (src/immich_memories/titles/fonts.py:379)
-_.list_cached  # unused method (src/immich_memories/titles/fonts.py:395)
-use_image_rendering  # unused variable (src/immich_memories/titles/generator.py:66)
-_.generate_all_screens  # unused method (src/immich_memories/titles/generator.py:526)
-map_mode_reason  # unused variable (src/immich_memories/titles/llm_titles.py:57)
-render_trip_map_frame  # unused function (src/immich_memories/titles/map_renderer.py:38)
-_get_encoder_args  # unused function (src/immich_memories/titles/renderer_ffmpeg.py:27)
-create_title_ffmpeg  # unused function (src/immich_memories/titles/renderer_ffmpeg.py:90)
-create_title_with_effects  # unused function (src/immich_memories/titles/renderer_ffmpeg.py:229)
-ascent  # unused variable (src/immich_memories/titles/renderer_pil.py:49)
-descent  # unused variable (src/immich_memories/titles/renderer_pil.py:50)
-animation_duration  # unused variable (src/immich_memories/titles/renderer_pil.py:61)
-_._title_font  # unused attribute (src/immich_memories/titles/renderer_pil.py:92)
-_._subtitle_font  # unused attribute (src/immich_memories/titles/renderer_pil.py:93)
-_.render_all_frames_parallel  # unused method (src/immich_memories/titles/renderer_pil.py:265)
-birthday_particle_count  # unused variable (src/immich_memories/titles/renderer_taichi.py:82)
-fireworks_fade_speed  # unused variable (src/immich_memories/titles/renderer_taichi.py:90)
-split_title_lines  # unused function (src/immich_memories/titles/taichi_text.py:69)
-render_text_sdf  # unused function (src/immich_memories/titles/sdf_font_rendering.py:199)
-measure_text  # unused function (src/immich_memories/titles/sdf_font_rendering.py:248)
-letter_spacing  # unused variable (src/immich_memories/titles/styles.py:27)
-text_blend_mode  # unused variable (src/immich_memories/titles/styles.py:33)
-calculate_birthday_age  # unused function (src/immich_memories/titles/text_builder.py:406)
-_.row_factory  # unused attribute (src/immich_memories/tracking/run_database.py:180)
-_.get_people_with_runs  # unused method (src/immich_memories/tracking/run_database.py:688)
-_.has_memory_been_generated  # unused method (src/immich_memories/tracking/run_database.py:704)
-_.get_completed_run_by_identity  # unused method (src/immich_memories/tracking/run_database.py:748)
-_.update_phase_progress  # unused method (src/immich_memories/tracking/run_tracker.py:195)
-_.complete_run  # unused method (src/immich_memories/tracking/run_tracker.py:222)
-_.cancel_run  # unused method (src/immich_memories/tracking/run_tracker.py:383)
-__getattr__  # unused function (src/immich_memories/ui/__init__.py:11)
-index_page  # unused function (src/immich_memories/ui/app.py:240)
-step2_page  # unused function (src/immich_memories/ui/app.py:252)
-step3_page  # unused function (src/immich_memories/ui/app.py:264)
-step4_page  # unused function (src/immich_memories/ui/app.py:276)
-config_page  # unused function (src/immich_memories/ui/app.py:288)
-people_page  # unused function (src/immich_memories/ui/app.py:305)
-cache_page  # unused function (src/immich_memories/ui/app.py:322)
-_auth_middleware  # unused function (src/immich_memories/ui/app.py:599)
-login_page_route  # unused function (src/immich_memories/ui/app.py:634)
-reset_rate_limiter  # unused function (src/immich_memories/ui/auth.py:63)
-reset_oidc_client  # unused function (src/immich_memories/ui/auth_oidc.py:113)
-im_input  # unused function (src/immich_memories/ui/components.py:79)
-im_select  # unused function (src/immich_memories/ui/components.py:84)
-_.music_generating  # unused attribute (src/immich_memories/ui/pages/_step3_music_preview.py:79)
-_.music_generating  # unused attribute (src/immich_memories/ui/pages/_step3_music_preview.py:132)
-_.upload_result  # unused attribute (src/immich_memories/ui/pages/_step4_generate.py:313)
-_.upload_result  # unused attribute (src/immich_memories/ui/pages/_step4_upload.py:108)
-_.upload_result  # unused attribute (src/immich_memories/ui/pages/_step4_upload.py:124)
-_.config_saved  # unused attribute (src/immich_memories/ui/pages/step1_config.py:138)
-_.detected_trips  # unused attribute (src/immich_memories/ui/pages/step1_presets.py:404)
-_.detected_trips  # unused attribute (src/immich_memories/ui/pages/step1_presets.py:454)
-config_saved  # unused variable (src/immich_memories/ui/state.py:35)
-pending_birthday  # unused variable (src/immich_memories/ui/state.py:45)
-processing  # unused variable (src/immich_memories/ui/state.py:66)
-music_generating  # unused variable (src/immich_memories/ui/state.py:76)
-detected_trips  # unused variable (src/immich_memories/ui/state.py:123)
-upload_result  # unused variable (src/immich_memories/ui/state.py:128)
-discover_days  # unused function (src/immich_memories/cli/special_days_cmd.py:17)
-days_due  # unused function (src/immich_memories/cli/special_days_cmd.py:88)
+is_hidden  # unused variable (src/immich_memories/api/models.py:82)
+updated_at  # unused variable (src/immich_memories/api/models.py:83)
+objects  # unused variable (src/immich_memories/api/models.py:130)
+device_id  # unused variable (src/immich_memories/api/models.py:139)
+thumbhash  # unused variable (src/immich_memories/api/models.py:144)
+file_modified_at  # unused variable (src/immich_memories/api/models.py:146)
+updated_at  # unused variable (src/immich_memories/api/models.py:148)
+is_trashed  # unused variable (src/immich_memories/api/models.py:157)
+smart_info  # unused variable (src/immich_memories/api/models.py:168)
 
-# --- story-first selection route (permanent) --------------------------------
-# Everything below is reached, but not by a name vulture can follow. Nothing
-# here is parked. The block of public entry points that used to sit at the end
-# of this section -- 28 symbols whose only callers were their own tests -- is
-# gone: each was deleted along with the tests that existed to exercise it.
+# An enum member resolved from the wire value rather than by name: parse_type
+# does AssetType(v.upper()), so an Immich asset typed AUDIO round-trips as
+# itself instead of collapsing into OTHER.
+AUDIO  # unused variable (src/immich_memories/api/models.py:50)
 
-# Pydantic builds fields and runs validators from the schema, never by name.
-_.expand_database_environment  # unused method (src/immich_memories/config_models_editorial.py:56)
-_.require_scalar_producer  # unused method (src/immich_memories/config_models_editorial.py:62)
-_.require_head_producers  # unused method (src/immich_memories/config_models_editorial.py:70)
-_.expand_paths  # unused method (src/immich_memories/config_models_editorial_preparation.py:27)
-_.validate_endpoint  # unused method (src/immich_memories/config_models_editorial_preparation.py:32)
-
-# Protocol parameter names, and attributes onnxruntime's SessionOptions owns.
-input_feed  # unused variable (src/immich_memories/triage/encoder.py:33)
-output_names  # unused variable (src/immich_memories/triage/encoder.py:33)
-_.intra_op_num_threads  # unused attribute (src/immich_memories/triage/encoder.py:125)
-_.inter_op_num_threads  # unused attribute (src/immich_memories/triage/encoder.py:126)
-_.graph_optimization_level  # unused attribute (src/immich_memories/triage/encoder.py:127)
-_.intra_op_num_threads  # unused attribute (src/immich_memories/analysis/editorial_preparation_detectors.py:116)
-
-# Frozen record fields written at construction and read back out of the private
-# artifact JSON, so no source line ever names them on the reading side.
-source_index  # unused variable (src/immich_memories/analysis/editorial_episode_documents.py:18)
-taken_start  # unused variable (src/immich_memories/analysis/editorial_episode_documents.py:20)
-taken_end  # unused variable (src/immich_memories/analysis/editorial_episode_documents.py:21)
+# Rendered into the prompt the editorial model reads.
+# render_person_period_facts does json.dumps(asdict(fact)) and that string is
+# spliced into the judge line at editorial_structure_lines.py:118 via
+# with_person_context. The model is the reader; no source line names the keys,
+# and dropping one would silently change the cut.
 person_token  # unused variable (src/immich_memories/analysis/editorial_person_period_facts.py:18)
 current_relationship  # unused variable (src/immich_memories/analysis/editorial_person_period_facts.py:20)
 first_library_month  # unused variable (src/immich_memories/analysis/editorial_person_period_facts.py:23)
 sustained_onset_month  # unused variable (src/immich_memories/analysis/editorial_person_period_facts.py:24)
 grounding_moment_ids  # unused variable (src/immich_memories/analysis/editorial_person_period_facts.py:25)
-period_reading  # unused variable (src/immich_memories/analysis/editorial_structure_contract.py:122)
-reranker_identity  # unused variable (src/immich_memories/analysis/editorial_structure_contract.py:159)
-response_sha256  # unused variable (src/immich_memories/analysis/text_episode_answers.py:48)
-unreadable_or_omitted_pages  # unused variable (src/immich_memories/analysis/text_episode_answers.py:50)
-read_rule  # unused variable (src/immich_memories/people/gather.py:43)
-PACK_DIM  # unused variable (src/immich_memories/triage/encoder.py:23)
 
-# The attempt record the phase-2 review page reads (its status, its plan).
-read_editorial_attempt  # unused function (src/immich_memories/operations/editorial_attempt.py:98)
+# onnxruntime SessionOptions attributes: set on the options object, then read
+# by the C++ runtime when InferenceSession is constructed a line or two later.
+_.intra_op_num_threads  # unused attribute (src/immich_memories/analysis/editorial_preparation_detectors.py:123)
+_.intra_op_num_threads  # unused attribute (src/immich_memories/triage/encoder.py:125)
+_.inter_op_num_threads  # unused attribute (src/immich_memories/triage/encoder.py:126)
+_.graph_optimization_level  # unused attribute (src/immich_memories/triage/encoder.py:127)
+
+# Protocol method parameter names on a stub whose body is `...`. A Protocol
+# never references its own parameters, which is what trips vulture's
+# unused-variable check. The shape mirrors onnxruntime's
+# InferenceSession.run(output_names, input_feed), called positionally at :88.
+input_feed  # unused variable (src/immich_memories/triage/encoder.py:33)
+output_names  # unused variable (src/immich_memories/triage/encoder.py:33)
+
+# conn.row_factory = sqlite3.Row -- an sqlite3.Connection attribute the stdlib
+# C module reads when it materialises rows.
+_.row_factory  # unused attribute (src/immich_memories/automation/notification_state.py:103)
+_.row_factory  # unused attribute (src/immich_memories/automation/state_store.py:64)
+_.row_factory  # unused attribute (src/immich_memories/cache/asset_score_cache.py:32)
+_.row_factory  # unused attribute (src/immich_memories/cache/database.py:36)
+_.row_factory  # unused attribute (src/immich_memories/operations/storage_report.py:36)
+_.row_factory  # unused attribute (src/immich_memories/tracking/run_database.py:72)
+
+# logging.lastResort, the stdlib module attribute callHandlers falls back to.
+# Disabled while LiveDisplayLogHandler owns the terminal, restored afterwards.
+_.lastResort  # unused attribute (src/immich_memories/logging_config.py:203)
+_.lastResort  # unused attribute (src/immich_memories/logging_config.py:215)
+
+# A field of a frozen dataclass, read through the generated __eq__ rather than
+# by name: probe_cache.py:182 and :199 compare a freshly built ProbeKey against
+# the cached one, which is what makes a changed mtime invalidate the entry.
+mtime_ns  # unused variable (src/immich_memories/processing/probe_cache.py:27)
+
+# pydantic-settings contract methods, called by the library and never by us.
+# get_field_value is abstract on PydanticBaseSettingsSource, so without it the
+# source cannot even be instantiated; settings_customise_sources is the hook
+# BaseSettings.__init__ calls on every Config() to splice the YAML source in.
+_.get_field_value  # unused method (src/immich_memories/config_loader.py:197)
+_.settings_customise_sources  # unused method (src/immich_memories/config_loader.py:341)
+
+# Reached only from checked-in developer scripts, which vulture does not scan:
+# scripts/preview_trip_titles.py and scripts/demo_maps.py for the map frame,
+# scripts/validate_local_audio.py for the stem check, and
+# scripts/verify_hardware_encode.py for the assembly runner.
+_.has_full_stems  # unused property (src/immich_memories/audio/music_generator_models.py:269)
+_.run_ffmpeg_assembly  # unused method (src/immich_memories/processing/clip_encoder.py:314)
+render_trip_map_frame  # unused function (src/immich_memories/titles/map_renderer.py:38)
+
+# Reported to the owner rather than deleted. Each is either a seam only the
+# tests use, or a wiring gap where the missing caller is the defect and removing
+# the callee would cement it:
+#   complete_run     the only writer of a successful run's LLM spend; the
+#                    complete_artifact that replaced it never passes llm_metrics
+#   cancel_run       the only writer of status "cancelled", which the CLI filter
+#                    and the recovery page still expect to exist
+#   validate_image_path  its video/audio twins are used in ~14 places while image
+#                    paths are opened unvalidated; a gap, not dead weight
+#   reranker_identity    provenance written at editorial_runtime_backend.py:204
+#                    and recorded nowhere
+#   response_sha256, unreadable_or_omitted_pages
+#                    feed episode_diagnostics_sink, an optional callback that
+#                    defaults to None and that only tests ever supply
+#   get_active_display, render_final
+#                    the public reads of state production reaches directly; the
+#                    tests use them as the window onto it
+#   reset_rate_limiter, reset_oidc_client
+#                    clear module-global state so tests do not leak into each
+#                    other; production never resets either
+#   PACK_DIM         one consumer, tests/test_triage_engine.py:15
+reranker_identity  # unused variable (src/immich_memories/analysis/editorial_structure_contract.py:158)
+response_sha256  # unused variable (src/immich_memories/analysis/text_episode_answers.py:48)
+unreadable_or_omitted_pages  # unused variable (src/immich_memories/analysis/text_episode_answers.py:49)
+get_active_display  # unused function (src/immich_memories/cli/_helpers.py:38)
+_.render_final  # unused method (src/immich_memories/cli/_live_display.py:343)
+validate_image_path  # unused function (src/immich_memories/security.py:178)
+_.complete_run  # unused method (src/immich_memories/tracking/run_tracker.py:212)
+_.cancel_run  # unused method (src/immich_memories/tracking/run_tracker.py:378)
+PACK_DIM  # unused variable (src/immich_memories/triage/encoder.py:23)
+reset_rate_limiter  # unused function (src/immich_memories/ui/auth.py:63)
+reset_oidc_client  # unused function (src/immich_memories/ui/auth_oidc.py:144)

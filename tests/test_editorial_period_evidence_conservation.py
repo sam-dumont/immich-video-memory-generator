@@ -49,7 +49,6 @@ def test_citations_survive_without_changing_requests_or_eligible_carriers(tmp_pa
 
     assert with_evidence.assets == captured.assets
     assert with_evidence.moment_asset_ids == captured.moment_asset_ids
-    assert with_evidence.period_reading == captured.period_reading
     assert with_evidence.lineage == captured.lineage
     assert baseline.plan["period_evidence"] == []
     assert revised.plan["period_evidence"] == [asdict(row) for row in evidence]

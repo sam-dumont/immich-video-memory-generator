@@ -37,7 +37,6 @@ class AppState:
 
     # Configuration
     config: Config | None = None
-    config_saved: bool = False
     immich_url: str = ""
     immich_api_key: str = ""
     # What the user typed into the API key field. Separate from the stored
@@ -51,7 +50,6 @@ class AppState:
     selected_year: int | None = None
     year_type: str = "calendar"  # "calendar" or "birthday"
     birthday: date | None = None
-    pending_birthday: date | None = None
     period_value: int = 1
     period_unit: str = "years"  # "months" or "years"
     custom_start: date | None = None
@@ -75,7 +73,6 @@ class AppState:
 
     # Generation options
     generation_options: dict[str, Any] = field(default_factory=dict)
-    processing: bool = False
     output_path: Path | None = None
     # WHY: survives a page reload (state is cookie-keyed) so Step 4 can find a run
     # that finished, or is still running, while the browser page was gone.
@@ -88,7 +85,6 @@ class AppState:
     # Kept so the previous preview's stems can be removed when a new one is
     # generated: a full mix plus four stems is 50-300 MB per click.
     music_preview_dir: Path | None = None
-    music_generating: bool = False
 
     # Cancel support
     cancel_requested: bool = False
@@ -140,13 +136,9 @@ class AppState:
     title_suggestion_trip_type: str | None = None
     title_suggestion_map_mode: str | None = None
 
-    # Trip detection results (populated dynamically in Step 1 for trip preset)
-    detected_trips: list[Any] = field(default_factory=list)
-
     # Upload-back-to-Immich settings
     upload_enabled: bool = False
     upload_album_name: str = "Memories"
-    upload_result: dict[str, Any] | None = None
 
     # Demo/privacy mode: blur thumbnails + video, mute speech
     demo_mode: bool = False

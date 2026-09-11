@@ -122,7 +122,6 @@ def make_source(tmp_path, *, years=(2030, 2031, 2032), product="on_this_day"):
         pixel_facts={},
         shareability_flags={},
         motion_residuals={},
-        period_reading={"thesis": "Different occasions across the years"},
         lineage={},
         bank_dir=tmp_path / "banks",
         artifact_dir=tmp_path / "plan",

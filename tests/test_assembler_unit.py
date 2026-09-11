@@ -72,18 +72,6 @@ def _software_h265_hdr_plan() -> EncodingPlan:
     )
 
 
-def _software_h265_pq_plan() -> EncodingPlan:
-    return EncodingPlan(
-        codec=OutputCodec.H265,
-        encoder="libx265",
-        encoder_args=("-preset", "medium", "-crf", "18"),
-        target_transfer=HdrTransfer.PQ,
-        tone_map_to_sdr=False,
-        pixel_format="yuv420p10le",
-        container="mp4",
-    )
-
-
 def _software_prores_plan() -> EncodingPlan:
     return EncodingPlan(
         codec=OutputCodec.PRORES,
@@ -470,100 +458,6 @@ def test_single_clip_software_process_exception_propagates_after_one_retry(tmp_p
     ]
 
 
-def test_frame_accurate_trim_uses_the_same_software_h264_plan(tmp_path: Path) -> None:
-    """A re-encoded trim must remain concat-compatible with every other clip."""
-    from immich_memories.processing.clip_encoder import ClipEncoder
-
-    settings = AssemblySettings(encoding_plan=_software_h264_plan())
-    encoder = ClipEncoder(settings, MagicMock(), lambda _path: None)
-    clip = _make_assembly_clip(tmp_path)
-
-    with (
-        patch("immich_memories.processing.clip_encoder._detect_hdr_type", return_value=None),
-        patch("immich_memories.processing.clip_encoder.subprocess.run") as run,
-    ):
-        run.return_value = MagicMock(returncode=0, stderr="")
-        encoder.trim_segment_reencode(clip.path, tmp_path / "trimmed.mp4", 1.0, 2.0)
-
-    command = run.call_args.args[0]
-    assert command[command.index("-c:v") + 1] == "libx264"
-    assert "hevc_videotoolbox" not in command
-    assert "libx265" not in command
-
-
-@pytest.mark.parametrize(
-    ("source_transfer", "plan", "expected_conversion"),
-    [
-        (None, _software_h265_hdr_plan(), "zscale=tin=bt709:t=arib-std-b67"),
-        (None, _software_h265_pq_plan(), "zscale=tin=bt709:t=smpte2084"),
-        ("hlg", _software_h265_pq_plan(), "zscale=tin=arib-std-b67:t=smpte2084"),
-        ("pq", _software_h265_hdr_plan(), "zscale=tin=smpte2084:t=arib-std-b67"),
-        ("hlg", _tone_map_h264_plan(), "zscale=t=linear:tin=arib-std-b67"),
-    ],
-)
-def test_frame_accurate_trim_converts_source_transfer_to_the_plan(
-    tmp_path: Path,
-    source_transfer: str | None,
-    plan: EncodingPlan,
-    expected_conversion: str,
-) -> None:
-    """Frame-accurate trims must transform pixels before applying target tags."""
-    from immich_memories.processing.clip_encoder import ClipEncoder
-
-    encoder = ClipEncoder(AssemblySettings(encoding_plan=plan), MagicMock(), lambda _path: None)
-    clip = _make_assembly_clip(tmp_path)
-
-    with (
-        patch(
-            "immich_memories.processing.clip_encoder._detect_hdr_type",
-            return_value=source_transfer,
-        ),
-        patch(
-            "immich_memories.processing.hdr_utilities._check_zscale_available",
-            return_value=True,
-        ),
-        patch("immich_memories.processing.clip_encoder.subprocess.run") as run,
-    ):
-        run.return_value = MagicMock(returncode=0, stderr="")
-        encoder.trim_segment_reencode(clip.path, tmp_path / f"trimmed.{plan.container}", 1.0, 2.0)
-
-    command = run.call_args.args[0]
-    filter_graph = command[command.index("-filter_complex") + 1]
-    assert expected_conversion in filter_graph
-
-
-def test_frame_accurate_trim_silence_fallback_keeps_transfer_conversion(
-    tmp_path: Path,
-) -> None:
-    """Losing the source audio cannot also lose the video transfer transform."""
-    from immich_memories.processing.clip_encoder import ClipEncoder
-
-    plan = _software_h265_pq_plan()
-    encoder = ClipEncoder(AssemblySettings(encoding_plan=plan), MagicMock(), lambda _path: None)
-    clip = _make_assembly_clip(tmp_path)
-
-    with (
-        patch(
-            "immich_memories.processing.clip_encoder._detect_hdr_type",
-            return_value="hlg",
-        ),
-        patch(
-            "immich_memories.processing.hdr_utilities._check_zscale_available",
-            return_value=True,
-        ),
-        patch("immich_memories.processing.clip_encoder.subprocess.run") as run,
-    ):
-        run.side_effect = [
-            MagicMock(returncode=1, stderr="missing audio"),
-            MagicMock(returncode=0, stderr=""),
-        ]
-        encoder.trim_segment_reencode(clip.path, tmp_path / "trimmed.mp4", 1.0, 2.0)
-
-    fallback = run.call_args_list[1].args[0]
-    filter_graph = fallback[fallback.index("-filter_complex") + 1]
-    assert "zscale=tin=arib-std-b67:t=smpte2084" in filter_graph
-
-
 def test_streaming_assembly_uses_the_same_software_h264_plan(tmp_path: Path) -> None:
     """The scalable path must pass the resolved plan to its FFmpeg encoder."""
     from immich_memories.processing.assembly_engine import AssemblyEngine
@@ -580,7 +474,7 @@ def test_streaming_assembly_uses_the_same_software_h264_plan(tmp_path: Path) -> 
         _make_assembly_clip(tmp_path, "one.mp4"),
         _make_assembly_clip(tmp_path, "two.mp4"),
     ]
-    engine = AssemblyEngine(settings, prober, MagicMock(), MagicMock())
+    engine = AssemblyEngine(settings, prober, MagicMock())
 
     with patch("immich_memories.processing.assembly_engine.streaming_assemble_full") as assemble:
         engine.assemble_scalable(clips, tmp_path / "memory.mp4")
@@ -606,7 +500,7 @@ def test_streaming_assembly_records_the_plan_that_actually_encoded(tmp_path: Pat
         _make_assembly_clip(tmp_path, "one.mp4"),
         _make_assembly_clip(tmp_path, "two.mp4"),
     ]
-    engine = AssemblyEngine(settings, prober, MagicMock(), MagicMock())
+    engine = AssemblyEngine(settings, prober, MagicMock())
 
     def assemble_with_fallback(**kwargs: object) -> None:
         callback = kwargs["effective_plan_callback"]
@@ -636,7 +530,7 @@ def test_explicit_hdr_plan_converts_all_sdr_streaming_input(tmp_path: Path) -> N
         _make_assembly_clip(tmp_path, "one.mp4"),
         _make_assembly_clip(tmp_path, "two.mp4"),
     ]
-    engine = AssemblyEngine(settings, prober, MagicMock(), MagicMock())
+    engine = AssemblyEngine(settings, prober, MagicMock())
 
     with (
         patch(

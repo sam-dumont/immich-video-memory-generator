@@ -76,16 +76,6 @@ def im_info_card(
     return container
 
 
-def im_input(label: str, **kwargs) -> ui.input:
-    """Themed text input."""
-    return ui.input(label, **kwargs).classes("w-full")
-
-
-def im_select(label: str, **kwargs) -> ui.select:
-    """Themed select dropdown."""
-    return ui.select(label=label, **kwargs).classes("w-full")
-
-
 def im_badge(text: str, variant: str = "info", icon: str | None = None) -> ui.element:
     """Themed badge with semantic color variants."""
     css_class = f"im-badge im-badge-{variant}"

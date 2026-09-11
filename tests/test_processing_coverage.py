@@ -32,7 +32,6 @@ from immich_memories.processing.hdr_utilities import (
     _get_hdr_conversion_filter,
     _get_hdr_to_hdr_filter,
     _get_sdr_to_hdr_filter,
-    has_any_hdr_clip,
     quality_to_crf,
 )
 
@@ -842,59 +841,6 @@ class TestGetPhotoEncoderArgs:
 # ============================================================================
 
 
-class TestParseResolutionFromStream:
-    """Pure parsing logic — no subprocess needed."""
-
-    def setup_method(self):
-        self.prober = FFmpegProber(
-            settings=AssemblySettings(encoding_plan=standalone_assembly_encoding_plan())
-        )
-
-    def test_landscape_no_rotation(self):
-        stream = {"width": 1920, "height": 1080}
-        assert self.prober.parse_resolution_from_stream(stream) == (1920, 1080)
-
-    def test_swaps_for_90_degree_rotation(self):
-        stream = {"width": 1920, "height": 1080, "side_data_list": [{"rotation": -90}]}
-        assert self.prober.parse_resolution_from_stream(stream) == (1080, 1920)
-
-    def test_swaps_for_270_degree_rotation(self):
-        stream = {"width": 3840, "height": 2160, "side_data_list": [{"rotation": 270}]}
-        assert self.prober.parse_resolution_from_stream(stream) == (2160, 3840)
-
-    def test_no_swap_for_180(self):
-        stream = {"width": 1920, "height": 1080, "side_data_list": [{"rotation": 180}]}
-        assert self.prober.parse_resolution_from_stream(stream) == (1920, 1080)
-
-    def test_returns_none_for_zero_dimensions(self):
-        stream = {"width": 0, "height": 0}
-        assert self.prober.parse_resolution_from_stream(stream) is None
-
-    def test_returns_none_for_missing_dimensions(self):
-        stream = {}
-        assert self.prober.parse_resolution_from_stream(stream) is None
-
-
-class TestParseFpsStr:
-    """Pure string parsing — no subprocess."""
-
-    def test_fraction(self):
-        assert FFmpegProber.parse_fps_str("30/1") == 30.0
-
-    def test_ntsc_fraction(self):
-        result = FFmpegProber.parse_fps_str("60000/1001")
-        assert result == pytest.approx(59.94, abs=0.01)
-
-    def test_plain_number(self):
-        assert FFmpegProber.parse_fps_str("60") == 60.0
-
-    def test_empty_string(self):
-        assert FFmpegProber.parse_fps_str("") is None
-
-    def test_zero_denominator(self):
-        assert FFmpegProber.parse_fps_str("30/0") is None
-
-
 class TestPickResolutionTier:
     """Pure logic — resolution tier selection from counts."""
 
@@ -1082,34 +1028,6 @@ class TestGetDominantHdrType:
             return_value=None,
         ):
             assert _get_dominant_hdr_type(clips) == "hlg"
-
-
-class TestHasAnyHdrClip:
-    def test_returns_true_when_hdr_present(self, tmp_path):
-        @dataclass
-        class FakeClip:
-            path: Path
-
-        clips = [FakeClip(path=tmp_path / "a.mp4"), FakeClip(path=tmp_path / "b.mp4")]
-
-        with patch(
-            "immich_memories.processing.hdr_utilities._detect_hdr_type",
-            side_effect=[None, "hlg"],
-        ):
-            assert has_any_hdr_clip(clips) is True
-
-    def test_returns_false_when_all_sdr(self, tmp_path):
-        @dataclass
-        class FakeClip:
-            path: Path
-
-        clips = [FakeClip(path=tmp_path / "a.mp4")]
-
-        with patch(
-            "immich_memories.processing.hdr_utilities._detect_hdr_type",
-            return_value=None,
-        ):
-            assert has_any_hdr_clip(clips) is False
 
 
 class TestSdrToHdrFilter:

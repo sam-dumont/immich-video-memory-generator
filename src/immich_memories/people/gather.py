@@ -34,12 +34,11 @@ def suspicious_date(taken_at: datetime | date) -> str | None:
 
 @dataclass(frozen=True)
 class Era:
-    """A declared span with its own read rule for interpreting presence and absence."""
+    """A declared span over which presence and absence are read together."""
 
     name: str
     start: date | None = None
     end: date | None = None
-    read_rule: str = ""
 
     def contains(self, day: date) -> bool:
         if self.start is not None and day < self.start:
@@ -49,11 +48,12 @@ class Era:
 
 # The one era every library shares, bounds from the spec. Pre-smartphone and
 # parenthood spans are library-specific and arrive owner-declared or detected.
+# How to read it: gaps are circumstance, never distance; the 2021 rebound
+# inflates reunions.
 COVID_ERA = Era(
     "covid",
     start=date(2020, 3, 1),
     end=date(2022, 6, 30),
-    read_rule="gaps are circumstance, never distance; the 2021 rebound inflates reunions",
 )
 
 

@@ -72,7 +72,7 @@ class FrameDecoder:
         self._caption_font = caption_font
 
     def _build_vf(self) -> str:
-        """Build the -vf filter chain matching filter_builder.build_clip_video_filter."""
+        """Build the -vf filter chain applied to every decoded clip."""
         parts: list[str] = []
 
         # Rotation (transpose/hflip) — must come before scale

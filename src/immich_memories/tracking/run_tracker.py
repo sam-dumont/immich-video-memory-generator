@@ -195,19 +195,6 @@ class RunTracker:
         self._phase_items_total = 0
         self._phase_llm_mark = None
 
-    def update_phase_progress(self, items_processed: int) -> None:
-        """Update progress within current phase.
-
-        Args:
-            items_processed: Number of items processed so far.
-        """
-        self._require_started()
-        # This is for logging/debugging - actual stats saved on complete
-        if self._current_phase:
-            logger.debug(
-                f"Phase {self._current_phase}: {items_processed}/{self._phase_items_total}"
-            )
-
     def record_phase_event(self, event: PhaseEvent) -> bool:
         """Record one public phase without letting stale telemetry move backwards."""
         self._require_started()

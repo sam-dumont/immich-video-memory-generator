@@ -56,7 +56,6 @@ class TitleSuggestion:
     subtitle: str | None = None
     trip_type: TripType | None = None
     map_mode: MapMode | None = None
-    map_mode_reason: str | None = None
 
 
 def parse_title_response(raw: str) -> TitleSuggestion | None:
@@ -101,14 +100,12 @@ def parse_title_response(raw: str) -> TitleSuggestion | None:
     subtitle = _sanitize(str(data["subtitle"]), _MAX_SUBTITLE_LEN) if data.get("subtitle") else None
     trip_type = data.get("trip_type") if data.get("trip_type") in _VALID_TRIP_TYPES else None
     map_mode = data.get("map_mode") if data.get("map_mode") in _VALID_MAP_MODES else None
-    reason = str(data["map_mode_reason"])[:200] if data.get("map_mode_reason") else None
 
     return TitleSuggestion(
         title=title,
         subtitle=subtitle,
         trip_type=trip_type,
         map_mode=map_mode,
-        map_mode_reason=reason,
     )
 
 

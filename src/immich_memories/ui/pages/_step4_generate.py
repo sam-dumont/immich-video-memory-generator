@@ -354,7 +354,6 @@ async def run_generation(
     from immich_memories.tracking import DeliveryStatus
 
     state.delivery_status = DeliveryStatus.NOT_REQUESTED
-    state.upload_result = None
     state.output_path = None
     run_tracker = None
     # Mutable ref so the lambda closure can access the button after creation

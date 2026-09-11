@@ -16,7 +16,6 @@ from immich_memories.audio.generators.ace_step_backend import (
     ACEStepBackend,
     ACEStepConfig,
     _detect_season,
-    _mood_to_ace_prompt,
     _mood_to_structured_prompt,
 )
 from immich_memories.audio.generators.base import GenerationRequest
@@ -56,27 +55,6 @@ class TestDetectSeason:
     )
     def test_detects_season_from_mood(self, mood, expected):
         assert _detect_season(mood) == expected
-
-
-# ---------------------------------------------------------------------------
-# _mood_to_ace_prompt
-# ---------------------------------------------------------------------------
-
-
-class TestMoodToAcePrompt:
-    def test_returns_tags_and_lyrics(self):
-        tags, lyrics = _mood_to_ace_prompt("happy")
-        assert isinstance(tags, str)
-        assert isinstance(lyrics, str)
-        assert len(tags) > 5
-
-    def test_instrumental_in_lyrics(self):
-        _, lyrics = _mood_to_ace_prompt("energetic")
-        assert "[Instrumental]" in lyrics
-
-    def test_with_custom_prompt(self):
-        tags, lyrics = _mood_to_ace_prompt("calm", prompt="gentle piano")
-        assert isinstance(tags, str)
 
 
 # ---------------------------------------------------------------------------
