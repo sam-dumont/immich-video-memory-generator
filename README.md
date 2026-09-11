@@ -124,8 +124,9 @@ run on your own hardware:
 - a **text model** on any OpenAI-compatible chat endpoint — it reads the period, weighs its
   stories and picks the moments. Developed and tested against Qwen3.6-27B and Qwen3.6-35B-A3B.
 
-A cut with one of them missing stops and says which. The pinned versions, digests and the
-caption server contract are on
+A cut with one of them missing stops and says which. The whole setup, in order, is the
+[self-hosting guide](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/self-hosting);
+the pinned versions, digests and the caption server contract are on
 [Editorial annotation setup](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/configuration/editorial-preparation).
 
 ```yaml

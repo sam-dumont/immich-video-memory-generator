@@ -89,6 +89,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Deploy & Operate',
       items: [
+        'deploy/self-hosting',
         {
           type: 'category',
           label: 'Installation',

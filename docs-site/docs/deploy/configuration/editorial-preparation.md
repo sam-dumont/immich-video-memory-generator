@@ -5,6 +5,9 @@ title: Editorial annotation setup
 
 # Editorial annotation setup
 
+This page is the reference: every pin, digest and contract. If you are setting the stack up for
+the first time, the [self-hosting guide](../self-hosting.md) puts the same pieces in order.
+
 Story-first selection prepares descriptions, context labels and pixel measurements for the
 whole source period. It reuses complete facts from the annotation database. Missing previews,
 unavailable providers and incomplete facts stop selection with a count for each missing producer.
