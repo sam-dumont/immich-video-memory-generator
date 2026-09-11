@@ -13,7 +13,7 @@
 > Expect runs that fail, photos that go missing, and options that move between releases. Try it
 > on one small album first, not your whole library, and file what breaks.
 
-**Cuts your [Immich](https://immich.app/) library into edited memory videos: title screens, music, and only the good five seconds of each clip.**
+**Cuts your [Immich](https://immich.app/) library into edited memory videos: it reads the period as a story and argues for every picture it keeps.**
 
 It connects to your self-hosted Immich server and runs a real editor over your library: a small
 vision model captions every picture once, a text model reads the period as a story and weighs its
