@@ -28,7 +28,11 @@ WHITELIST = Path(__file__).resolve().parent.parent / "vulture-whitelist.py"
 # 306, down from 318: #502 retired the photo animation stack nobody could reach
 # (PhotoAnimator, the FFmpeg filter expressions, the grouper, AnimationMode).
 # Nine entries went with the code they were excusing.
-MAX_WHITELISTED_SYMBOLS = 306
+# 288, down from 306: pydantic's validators and serializers are the same false
+# positive as @register_preset above -- the schema calls them, never a name
+# vulture can follow -- and they had been accumulating one method at a time.
+# `make dead-code` now names those decorators too, so thirteen entries went.
+MAX_WHITELISTED_SYMBOLS = 288
 
 
 def test_the_dead_code_whitelist_never_grows() -> None:
