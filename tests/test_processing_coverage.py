@@ -1186,12 +1186,11 @@ class TestGetHdrConversionFilter:
 
 class TestQualityToCrf:
     def test_known_presets(self):
-        assert quality_to_crf("high") == 12
-        assert quality_to_crf("medium") == 18
-        assert quality_to_crf("low") == 28
+        assert quality_to_crf("high") < quality_to_crf("balanced")
+        assert quality_to_crf("fast") == quality_to_crf("balanced")
 
-    def test_unknown_defaults_to_12(self):
-        assert quality_to_crf("ultra") == 12
+    def test_unknown_defaults_to_balanced(self):
+        assert quality_to_crf("ultra") == quality_to_crf("balanced")
 
 
 class TestCheckZscaleAvailable:

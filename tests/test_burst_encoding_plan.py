@@ -68,8 +68,13 @@ def test_the_burst_is_encoded_at_a_stated_quality() -> None:
     the run uses and is not written down anywhere."""
     cmd = _merge_command()
 
+    from immich_memories.processing.live_photo_merger import BURST_CRF
+    from immich_memories.processing.rate_control import quality_args
+
     assert "-crf" in cmd
-    assert cmd[cmd.index("-crf") + 1] == "18"
+    # libx264 needs two steps below the libx265 reference to match its picture,
+    # so the stated quality is BURST_CRF translated, not BURST_CRF copied.
+    assert cmd[cmd.index("-crf") + 1] == quality_args("libx264", BURST_CRF)[-1]
 
 
 def test_a_hardware_machine_encodes_the_burst_in_hardware() -> None:

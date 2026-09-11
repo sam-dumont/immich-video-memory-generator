@@ -1,8 +1,9 @@
 """Named config presets — one switch that fills several knobs at once.
 
 `preset: fast` is the CPU-only / NAS profile: static title backgrounds, the fast
-software encoder preset, medium quality at 1080p. Anything the user has set
-explicitly (config file key, env var, CLI flag) wins over the preset.
+software encoder preset, the balanced picture at 1080p. Anything the user has
+set explicitly (config file key, env var, CLI flag) wins over the preset, like
+`clip_style`.
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ PresetName = Literal["fast"]
 
 PRESETS: dict[str, dict[str, dict[str, Any]]] = {
     "fast": {
-        "output": {"resolution": "1080p", "codec": "h264", "quality": "medium"},
+        "output": {"resolution": "1080p", "codec": "h264", "quality": "fast"},
         "hardware": {"encoder_preset": "fast"},
         "title_screens": {"animated_background": False},
     },

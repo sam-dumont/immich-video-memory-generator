@@ -126,7 +126,41 @@ def _probe_ffmpeg_encode(encoder_args: list[str], *, upload: str | None = None) 
     success, output = _run_ffmpeg_check(args)
     if not success:
         logger.info("Hardware encoder probe failed for %s: %s", encoder_args, output.strip()[-200:])
+        advice = _probe_failure_advice(output)
+        if advice:
+            logger.warning("Hardware encoding is unavailable: %s", advice)
     return success
+
+
+# Probe failures that have a known cause and a known fix. Everything else is
+# reported verbatim; these three otherwise read as "could not open encoder",
+# which tells a user nothing about what to change. All three were hit for real
+# on the owner's hardware.
+_PROBE_FAILURE_ADVICE: tuple[tuple[str, str], ...] = (
+    (
+        "minimum required nvidia driver",
+        "this FFmpeg was built against a newer NVENC SDK than your driver provides. "
+        "Update the NVIDIA driver, or use an image built against an older SDK",
+    ),
+    (
+        "libnvidia-encode",
+        "the NVENC library is missing. Requesting the GPU is not enough: `--gpus all` "
+        "grants compute and utility only, so add the `video` driver capability "
+        "(NVIDIA_DRIVER_CAPABILITIES=compute,video,utility)",
+    ),
+    (
+        "device creation failed",
+        "libva could not open a device. Check that /dev/dri is passed into the "
+        "container and that the container user is in the render group",
+    ),
+)
+
+
+def _probe_failure_advice(output: str) -> str | None:
+    lowered = output.lower()
+    return next(
+        (advice for signature, advice in _PROBE_FAILURE_ADVICE if signature in lowered), None
+    )
 
 
 def _check_ffmpeg_decoder(decoder: str) -> bool:

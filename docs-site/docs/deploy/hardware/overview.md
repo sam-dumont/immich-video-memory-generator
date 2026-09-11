@@ -58,42 +58,105 @@ neither was:
 
 ## Quality: what CRF means on each backend
 
-`output.quality` (or an explicit `output.crf`) is one dial, but only libx264/libx265 take a CRF.
-Each backend gets that dial translated into its own constant-quality control — VAAPI `-rc_mode CQP
--qp`, QSV `-global_quality`, NVENC `-rc constqp -qp`, VideoToolbox `-q:v`. Before 0.76.1 the three
-hardware backends got **no rate-control flag at all** and the driver's default decided quality, and
-VideoToolbox got a mapping that had never been checked against an output.
+`output.quality` (or an explicit `output.crf`) is one dial, and the number is on **libx265's CRF
+scale** — the reference, because libx265 is the only encoder present on every machine. Every other
+family is calibrated to reproduce *that picture*, measured by SSIM on real 1080p60 film, rather than
+to copy that integer. Before 0.76.1 the three hardware backends got **no rate-control flag at all**
+and the driver's default decided quality, while VideoToolbox got a mapping never checked against an
+output.
 
-Constant-quality modes are used throughout rather than bitrate targets, so a still frame and a fast
-pan each cost what they need.
+Constant-quality modes throughout, never bitrate targets, so a still frame and a fast pan each cost
+what they need.
 
-### Hardware encoding is not free quality
+### The preset ladder
 
-Measured on a Synology J4125 (Gemini Lake), 20 s of 1080p60 film, SSIM against the same source,
-with software on the same box as the reference:
+Two quality points, measured on 1080p60 film and — for `balanced` — judged by eye on gradients:
 
-| Encode | Size | SSIM |
+| `quality` | reference CRF | SSIM | software bitrate | per minute |
+|---|---|---|---|---|
+| `high` | 18 | 0.99169 | 4.6 Mbps | ~35 MB |
+| `balanced` (default) | 24 | 0.98451 | 1.6 Mbps | ~12 MB |
+| `fast` | 24 | 0.98451 | 1.6 Mbps | ~12 MB, encoded as fast as the backend can |
+
+`high` used to mean CRF 12. SSIM is already past 0.999 by CRF 18, so CRF 12 bought nothing visible
+while asking VideoToolbox for 76 Mbps — which is where 645 MB two-minute exports came from. A
+memory film is watched, not archived for remastering.
+
+There is deliberately **no tier below balanced**. The obvious candidate, around 0.980, bands on
+gradients on real content, and a preset that visibly breaks up a sky is not worth shipping to save
+a few megabytes. `fast` therefore keeps the balanced picture and buys its speed from the encoder
+effort preset instead — which is what the name promises and the only thing it can honestly trade.
+Setting `quality: fast` overrides `hardware.encoder_preset`.
+
+`medium` and `low` are retired names that still load, resolving to `balanced` and `fast`.
+
+### What each preset asks of each encoder
+
+The same picture needs a different number on every scale, so each family is pinned by two measured
+anchors rather than a shared offset — the five slopes are +1.00, +0.67, +0.33, +0.67 and -1.67 per
+reference CRF step:
+
+| | `high` | `balanced` |
 |---|---|---|
-| `libx264 -crf 18` | 17.4 MB | 0.99011 |
-| `h264_vaapi -qp 20` | 38.2 MB | 0.98946 |
-| `h264_vaapi -qp 22` | 19.8 MB | 0.98468 |
-| `h264_vaapi -qp 24` | 14.7 MB | 0.98079 |
-| `h264_vaapi -qp 26` | 10.4 MB | 0.97561 |
+| `libx265` (the reference) | CRF 18 | CRF 24 |
+| `libx264` | CRF 18 | CRF 22 |
+| `h264_vaapi` | QP 20 | QP 22 |
+| `h264_nvenc` | QP 20 | QP 24 |
+| `hevc_videotoolbox` | `-q:v` 65 | `-q:v` 55 |
 
-Matching CRF 18 quality costs QP 20 and about **2.2x the bits**. At equal file size VAAPI is
-clearly worse than x264. That is the trade a hardware encoder makes: it buys speed, not quality per
-byte. The CRF mapping is anchored on this table, so `crf: 18` asks VAAPI for QP 20.
+### What hardware encoding actually costs
 
-VideoToolbox was the other way round — its old mapping sent CRF 18 to `-q:v 75`, which on the same
-kind of source is 37.3 Mbps against libx265's 4.6 Mbps at CRF 18. That is where oversized exports
-came from; the default `quality: high` is CRF 12, which the old line sent all the way to `-q:v 87`.
+Every backend was measured against software on the same clip, at matched SSIM:
 
-:::note NVENC is provisional
-The NVENC offset has not been measured on real hardware yet — it starts at the VAAPI offset because
-both use the same 0-51 quantiser scale. If you have an NVIDIA card, a sweep of
-`h264_nvenc -rc constqp -qp {18,20,22,24}` against `libx264 -crf 18` on the same clip would replace
-the assumption with a number.
-:::
+| Backend | Matching software costs | Tax |
+|---|---|---|
+| **NVENC** (T1000, Turing) | 8.5 Mbps vs libx264's 7.0 | **1.2x** |
+| **VAAPI** (J4125, Gemini Lake) | 15.3 Mbps vs libx264's 7.0 | **2.2x** |
+| **VideoToolbox** (Apple Silicon) | 13.2 Mbps vs libx265's 4.6 | **2.9x** |
+
+Hardware buys speed, not quality per byte — and how much it costs varies a lot by chip. Turing's
+NVENC is nearly free; Apple's costs roughly three times the bits for the same picture. It is still
+usually worth taking: on an M-series Mac, libx265 `-preset medium` runs at 2.6x realtime against
+VideoToolbox's 8.2x.
+
+Full tables, with the clip, hardware and method behind every anchor, are in
+`src/immich_memories/processing/rate_control.py`.
+
+A note on method: SSIM fixes the rough level but barely punishes **banding**, and banding on sky,
+walls and skin is the first thing a viewer notices. The balanced anchor was therefore confirmed by
+eye on gradients, not by the score alone. If a backend bands on your content, raise `quality` to
+`high` — and say so, because the anchor should move.
+
+## When your hardware cannot encode the codec you asked for
+
+A backend is chosen per codec, not once. Intel Gemini Lake advertises an H.264 encode entrypoint
+and no HEVC one at all, so asking it for H.265 means the CPU encodes the whole film.
+
+`output.codec_policy: prefer_hardware` (the default) uses the codec the machine can actually
+encode, and says so in the log and the run record:
+
+```
+This device has no hardware h265 encoder but does have h264; encoding h264
+instead of giving the whole film to the CPU (set output.codec_policy: strict to keep h265)
+```
+
+The result is a bigger file that plays on more things, produced far faster. Set
+`output.codec_policy: strict` to always honour `output.codec` and accept the CPU cost. The
+substitution never applies to ProRes, and never to an HDR output — H.264 carries no HDR, so trading
+the codec there would trade away the dynamic range with it.
+
+## NVIDIA: two things that fail after detection looks fine
+
+**The `video` driver capability is not granted by default.** `--gpus all` grants compute and
+utility only, and without `video` the NVENC library is simply absent. In Docker set
+`NVIDIA_DRIVER_CAPABILITIES=compute,video,utility`; in Kubernetes set the same environment variable
+alongside `runtimeClassName: nvidia` and the GPU limit.
+
+**An image can be built against a newer NVENC SDK than your driver provides.** A third-party FFmpeg
+built against SDK 13.1 refuses to open the encoder on a 570 driver (which provides 13.0), reporting
+that it needs driver 610 or newer. This project's own image is fine on 570. Either way the one-frame
+probe catches it and the run falls back to software, naming the cause rather than just "could not
+open encoder".
 
 ## Checking your hardware
 

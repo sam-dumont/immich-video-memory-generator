@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 
 import pytest
 
@@ -417,7 +417,11 @@ def test_software_encoder_args_include_requested_crf() -> None:
         input_has_hdr=False,
     )
 
-    assert plan.encoder_args == ("-preset", "medium", "-crf", "21")
+    from immich_memories.processing.rate_control import quality_args
+
+    # libx264 is calibrated against the libx265 reference rather than copying its
+    # number, so the requested CRF arrives translated onto x264's own scale.
+    assert plan.encoder_args == ("-preset", "medium", *quality_args("libx264", 21))
 
 
 def test_standalone_assembly_plan_records_its_effective_crf() -> None:
@@ -474,10 +478,12 @@ def test_crf_boundary_values_are_preserved(crf: int) -> None:
         input_has_hdr=False,
     )
 
-    assert plan.encoder_args[-2:] == ("-crf", str(crf))
+    from immich_memories.processing.rate_control import quality_args
+
+    assert plan.encoder_args[-2:] == ("-crf", quality_args("libx264", crf)[-1])
 
 
-def test_unsupported_hardware_encoder_falls_back_within_requested_codec() -> None:
+def test_unsupported_hardware_encoder_keeps_the_codec_under_a_strict_policy() -> None:
     capabilities = HWAccelCapabilities(
         backend=HWAccelBackend.APPLE,
         supports_h264_encode=True,
@@ -485,7 +491,7 @@ def test_unsupported_hardware_encoder_falls_back_within_requested_codec() -> Non
     )
 
     plan = resolve_encoding_plan(
-        _request(OutputCodec.H265, hardware_enabled=True),
+        replace(_request(OutputCodec.H265, hardware_enabled=True), codec_policy="strict"),
         capabilities,
         input_has_hdr=False,
     )

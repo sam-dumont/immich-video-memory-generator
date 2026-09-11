@@ -63,14 +63,26 @@ class OutputConfig(BaseModel):
     format: Literal["mp4", "mov"] = "mp4"
     resolution: Literal["720p", "1080p", "4k"] = "1080p"
     codec: Literal["h264", "h265", "prores"] = "h264"
+    codec_policy: Literal["prefer_hardware", "strict"] = "prefer_hardware"
     hdr_mode: HdrMode = HdrMode.AUTO
-    quality: Literal["high", "medium", "low"] = "high"
+    quality: Literal["high", "balanced", "fast"] = "balanced"
     crf: int | None = Field(default=None, ge=0, le=51)
 
     @field_serializer("hdr_mode")
     def serialize_hdr_mode(self, value: HdrMode) -> str:
         """Serialize the HDR policy as a portable YAML/JSON string."""
         return value.value
+
+    @field_validator("quality", mode="before")
+    @classmethod
+    def map_legacy_quality(cls, v: str) -> str:
+        """Keep configs written against the retired quality names loading.
+
+        `medium` was simply the old name for balanced. `low` was a genuinely
+        lower target that banded on gradients; it resolves to `fast`, which
+        keeps the balanced picture and buys its speed from the encoder preset.
+        """
+        return {"medium": "balanced", "low": "fast"}.get(v, v)
 
     @property
     def effective_crf(self) -> int:

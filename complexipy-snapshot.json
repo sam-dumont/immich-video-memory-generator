@@ -1822,165 +1822,42 @@
     "complexity": 51
   },
   {
-    "path": "src/immich_memories/processing/encoding_plan.py",
-    "file_name": "encoding_plan.py",
-    "functions": [
-      {
-        "name": "resolve_encoding_plan",
-        "complexity": 20,
-        "line_start": 206,
-        "line_end": 270,
-        "line_complexities": [
-          {
-            "line": 214,
-            "complexity": 0
-          },
-          {
-            "line": 215,
-            "complexity": 0
-          },
-          {
-            "line": 216,
-            "complexity": 0
-          },
-          {
-            "line": 217,
-            "complexity": 1
-          },
-          {
-            "line": 218,
-            "complexity": 0
-          },
-          {
-            "line": 219,
-            "complexity": 2
-          },
-          {
-            "line": 220,
-            "complexity": 1
-          },
-          {
-            "line": 222,
-            "complexity": 0
-          },
-          {
-            "line": 223,
-            "complexity": 1
-          },
-          {
-            "line": 224,
-            "complexity": 0
-          },
-          {
-            "line": 227,
-            "complexity": 0
-          },
-          {
-            "line": 228,
-            "complexity": 3
-          },
-          {
-            "line": 232,
-            "complexity": 0
-          },
-          {
-            "line": 238,
-            "complexity": 1
-          },
-          {
-            "line": 239,
-            "complexity": 0
-          },
-          {
-            "line": 246,
-            "complexity": 3
-          },
-          {
-            "line": 249,
-            "complexity": 0
-          },
-          {
-            "line": 250,
-            "complexity": 1
-          },
-          {
-            "line": 251,
-            "complexity": 2
-          },
-          {
-            "line": 254,
-            "complexity": 1
-          },
-          {
-            "line": 255,
-            "complexity": 0
-          },
-          {
-            "line": 256,
-            "complexity": 1
-          },
-          {
-            "line": 257,
-            "complexity": 2
-          },
-          {
-            "line": 258,
-            "complexity": 1
-          },
-          {
-            "line": 259,
-            "complexity": 0
-          },
-          {
-            "line": 261,
-            "complexity": 0
-          }
-        ]
-      }
-    ],
-    "complexity": 41
-  },
-  {
     "path": "src/immich_memories/processing/hdr_utilities.py",
     "file_name": "hdr_utilities.py",
     "functions": [
       {
         "name": "_detect_hdr_type",
         "complexity": 17,
-        "line_start": 36,
-        "line_end": 96,
+        "line_start": 37,
+        "line_end": 97,
         "line_complexities": [
           {
-            "line": 48,
-            "complexity": 0
-          },
-          {
             "line": 49,
-            "complexity": 1
+            "complexity": 0
           },
           {
-            "line": 53,
-            "complexity": 0
+            "line": 50,
+            "complexity": 1
           },
           {
             "line": 54,
+            "complexity": 0
+          },
+          {
+            "line": 55,
             "complexity": 1
           },
           {
-            "line": 56,
+            "line": 57,
             "complexity": 0
           },
           {
-            "line": 58,
+            "line": 59,
             "complexity": 0
           },
           {
-            "line": 75,
+            "line": 76,
             "complexity": 2
-          },
-          {
-            "line": 78,
-            "complexity": 0
           },
           {
             "line": 79,
@@ -1988,46 +1865,50 @@
           },
           {
             "line": 80,
-            "complexity": 3
+            "complexity": 0
           },
           {
             "line": 81,
-            "complexity": 0
+            "complexity": 3
           },
           {
             "line": 82,
             "complexity": 0
           },
           {
-            "line": 87,
-            "complexity": 4
+            "line": 83,
+            "complexity": 0
           },
           {
             "line": 88,
-            "complexity": 0
-          },
-          {
-            "line": 90,
             "complexity": 4
           },
           {
-            "line": 91,
+            "line": 89,
             "complexity": 0
+          },
+          {
+            "line": 91,
+            "complexity": 4
           },
           {
             "line": 92,
-            "complexity": 1
-          },
-          {
-            "line": 93,
             "complexity": 0
           },
           {
-            "line": 94,
+            "line": 93,
             "complexity": 1
           },
           {
-            "line": 96,
+            "line": 94,
+            "complexity": 0
+          },
+          {
+            "line": 95,
+            "complexity": 1
+          },
+          {
+            "line": 97,
             "complexity": 0
           }
         ]

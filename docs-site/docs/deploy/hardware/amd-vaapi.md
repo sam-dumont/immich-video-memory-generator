@@ -91,4 +91,4 @@ selected, which is why this needs both flags. Before 0.76.1 neither was emitted 
 default decided quality.
 
 Reaching software quality costs roughly 2.2x the bits — see
-[the measured table](./overview.md#hardware-encoding-is-not-free-quality).
+[the measured table](./overview.md#what-hardware-encoding-actually-costs).

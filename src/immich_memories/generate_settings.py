@@ -28,7 +28,10 @@ from immich_memories.processing.hardware import (
     HWAccelCapabilities,
     detect_hardware_acceleration,
 )
-from immich_memories.processing.hdr_utilities import detect_dominant_hdr_transfer
+from immich_memories.processing.hdr_utilities import (
+    detect_dominant_hdr_transfer,
+    quality_encoder_preset,
+)
 
 if TYPE_CHECKING:
     from immich_memories.api.immich import SyncImmichClient
@@ -97,9 +100,10 @@ def _build_assembly_settings(
             codec=output_selection.codec,
             hdr_mode=config.output.hdr_mode,
             hardware_enabled=config.hardware.enabled,
-            preset=config.hardware.encoder_preset,
+            preset=quality_encoder_preset(config.output.quality, config.hardware.encoder_preset),
             crf=output_crf,
             container=output_selection.container,
+            codec_policy=config.output.codec_policy,
         ),
         capabilities,
         input_transfer=detect_dominant_hdr_transfer(
