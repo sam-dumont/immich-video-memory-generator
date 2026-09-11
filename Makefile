@@ -95,17 +95,18 @@ install-acestep:  ## Install the tested ACE-Step 1.5 inference stack (music gene
 	  'vector-quantize-pytorch>=1.27.15'
 	@uv run python -c "from immich_memories.audio.generators.ace_step_backend import ACEStepBackend; import torch, torchvision.ops as o; o.nms(torch.zeros((0,4)), torch.zeros((0,)), 0.5); print('ACE-Step stack OK')"
 
-# Install dev tools only (no GPU/CUDA/audio-ml/face deps — for CI quality gates).
+# Install dev tools only (no GPU/CUDA/editorial deps — for CI quality gates).
 # --locked: CI must install exactly what uv.lock pins, since that is what
 # `make pip-audit` audits. Without it a fresh resolve can install something
 # the audit never saw.
 dev-ci:
 	uv sync --extra dev --locked
 
-# Install dev + GPU + speech extras for CI test jobs (taichi/freetype/onnxruntime,
-# no torch/nvidia -- FireRedVAD is the only speech engine and needs neither)
+# Install dev + GPU extras for CI test jobs (taichi/freetype). The editorial
+# extra stays out: onnxruntime and torch are imported inside the functions that
+# need them, so the unit suite runs without either.
 dev-test:
-	uv sync --extra dev --extra gpu --extra speech --locked
+	uv sync --extra dev --extra gpu --locked
 
 # Install with macOS-specific extras (Apple Vision, Metal GPU, etc.)
 dev-mac:
@@ -813,3 +814,14 @@ demo-ui-dev: demo-ui-install  ## Start Remotion Studio for live demo preview
 demo-ui: demo-ui-install  ## Render Remotion demo → docs-site/static/demo/demo.mp4
 	@mkdir -p docs-site/static/demo
 	cd docs-site/remotion && npx remotion render src/index.ts DemoVideo ../static/demo/demo.mp4 --codec h264 --crf 18
+
+# The README hero is the brief → cut → story stretch of the Remotion demo (seconds
+# 2.6 to 20.6 of the composition), 800 px wide at 12 fps with a two-pass palette so
+# the UI's flat colours stay crisp. Re-run after `make demo-ui`.
+demo-hero:  ## Cut the README hero GIF from docs-site/static/demo/demo.mp4
+	ffmpeg -y -loglevel error -ss 2.6 -t 18 -i docs-site/static/demo/demo.mp4 \
+	  -vf "fps=12,scale=800:-1:flags=lanczos,palettegen=stats_mode=diff" docs-site/static/demo/hero-palette.png
+	ffmpeg -y -loglevel error -ss 2.6 -t 18 -i docs-site/static/demo/demo.mp4 -i docs-site/static/demo/hero-palette.png \
+	  -lavfi "fps=12,scale=800:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle" \
+	  docs-site/static/img/demo-hero.gif
+	@rm -f docs-site/static/demo/hero-palette.png
