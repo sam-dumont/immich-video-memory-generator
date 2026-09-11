@@ -21,6 +21,11 @@ MONTHLY = {
 }
 ALBUM = {"id": "album", "memory_type": "album", "scope": {"album": "@album"}}
 PEOPLE = {"id": "people", "memory_type": "multi_person", "scope": {"person": "@person"}}
+PINNED_DAY = {
+    "id": "on-this-day",
+    "memory_type": "on_this_day",
+    "scope": {"years_back": 20, "target_date": "@day"},
+}
 
 
 def args_for(route, values, **overrides):
@@ -62,6 +67,28 @@ def test_a_dated_route_renders_its_scope_and_the_fixed_flags():
     assert args[args.index("--format") + 1] == "h265"
     assert args[args.index("--output") + 1] == "/out/film.mp4"
     assert "--upload-to-immich" not in args
+
+
+def test_a_pinned_day_carries_the_whole_automation_identity():
+    """`generate` trusts a chosen date only from the automation runner, and only
+    when the key and category agree with it, so the pin is four flags or none."""
+    args = args_for(PINNED_DAY, {"day": "2024-07-15"})
+
+    assert args[args.index("--automation-target-date") + 1] == "2024-07-15"
+    assert args[args.index("--source") + 1] == "auto"
+    assert args[args.index("--memory-category") + 1] == "on_this_day"
+    assert args[args.index("--memory-key") + 1] == "on_this_day:2024-07-15:2024-07-15:"
+
+
+def test_a_pinned_day_on_another_memory_type_is_a_hard_error():
+    route = {"id": "season", "memory_type": "season", "scope": {"target_date": "2024-07-15"}}
+    with pytest.raises(RuntimeError, match="on_this_day"):
+        args_for(route, {})
+
+
+def test_a_pinned_day_that_is_not_a_date_is_a_hard_error():
+    with pytest.raises(ValueError, match="2024"):
+        args_for(PINNED_DAY, {"day": "2024-07"})
 
 
 def test_an_album_route_uses_from_album_and_no_memory_type():

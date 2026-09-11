@@ -70,6 +70,14 @@ SCOPE_OPTIONS = {
     "album": "--from-album",
 }
 
+# `on_this_day` is scoped to whatever today is, so it is the one route that can
+# never replay: every run asks a different question and needs live calls. A route
+# may pin it to a fixed day instead, which makes the case reproducible and lets it
+# replay off the bank like the other ten. `generate` accepts that date only from
+# the automation runner, and only with the whole identity that runner carries, so
+# the pin expands into all four flags rather than one.
+ON_THIS_DAY_DATE = "target_date"
+
 # The shape every route shares, so the only thing that varies between films is the
 # route: same captions, same resolution, same codec, same silence about progress.
 FIXED_FLAGS = ("--include-photos", "--include-live-photos", "--add-date", "--add-place", "--quiet")
@@ -136,7 +144,7 @@ def resolve_scope(route: Mapping[str, Any], values: Mapping[str, Any]) -> dict[s
     """
     resolved: dict[str, Any] = {}
     for key, raw in (route.get("scope") or {}).items():
-        if key not in SCOPE_OPTIONS:
+        if key not in SCOPE_OPTIONS and key != ON_THIS_DAY_DATE:
             raise RuntimeError(f"{route['id']}: unknown scope key {key!r}")
         if not (isinstance(raw, str) and raw.startswith("@")):
             resolved[key] = raw
@@ -146,6 +154,28 @@ def resolve_scope(route: Mapping[str, Any], values: Mapping[str, Any]) -> dict[s
             raise RuntimeError(f"{route['id']}: private overlay has no value for {raw}")
         resolved[key] = values[name]
     return resolved
+
+
+def _pinned_day_args(route: Mapping[str, Any], day: str) -> list[str]:
+    """The four flags that pin `on_this_day` to a chosen date.
+
+    The memory key is the one `automation/candidates.make_memory_key` builds for
+    that day, because `generate` only trusts the date when the rest of the
+    automation identity agrees with it.
+    """
+    if route["memory_type"] != "on_this_day":
+        raise RuntimeError(f"{route['id']}: {ON_THIS_DAY_DATE} only applies to on_this_day")
+    datetime.strptime(day, "%Y-%m-%d")  # noqa: DTZ007 - a date, not a moment
+    return [
+        "--source",
+        "auto",
+        "--memory-category",
+        "on_this_day",
+        "--memory-key",
+        f"on_this_day:{day}:{day}:",
+        "--automation-target-date",
+        day,
+    ]
 
 
 def generate_args(
@@ -164,6 +194,9 @@ def generate_args(
     elif "album" not in scope:
         raise RuntimeError(f"{route['id']}: album routes need an `album` scope value")
     for key, value in scope.items():
+        if key == ON_THIS_DAY_DATE:
+            args += _pinned_day_args(route, str(value))
+            continue
         option = SCOPE_OPTIONS[key]
         for item in value if isinstance(value, list) else [value]:
             args += [option, str(item)]
