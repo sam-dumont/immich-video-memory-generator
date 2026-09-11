@@ -64,6 +64,13 @@ uv run python scripts/benchmark_preparation.py --stages nsfw_marqo nsfw_marqo_on
 - **The NAS is a shared box.** Its other containers push the load average to 5–7, and an
   identical measurement taken under load and quiesced differed by up to 2×. Every NAS number here
   is from a quiesced run (load average ≤ 2.3 at start); the numbers that moved are called out.
+- **The two numbers the tiers turn on were re-taken hours later, and reproduced.** Machine A's
+  producer table came back within 3 % overall, no stage off by more than 10 %. The NAS captioner,
+  re-measured on a quiesced box after restarting the server to clear its cache, came back at
+  **30.93 s/picture** against 30.9. The CoreML penalty in §1.6 was measured twice on purpose.
+  The one figure not re-taken is the MLX caption: its endpoint was no longer running, and it is
+  the owner's own service to start. It was measured in the same window as the producer table
+  that did reproduce.
 
 ### 1.2 The two machines
 
@@ -177,7 +184,7 @@ difference is exactly what W11's grading has to judge — it is a behaviour chan
 
 | knob | effect | verdict |
 |---|---|---|
-| **ORT provider on macOS** (`auto` → CoreML, today's default) | DINOv2 embed **0.0110 s on the CPU EP vs 0.0885 s on CoreML** — 8× worse — and session load 0.08 s vs 0.76 s. CoreML claimed 274 of 513 nodes and got slower at every batch size (1 → 0.068, 16 → 0.094 s) while the CPU EP got faster (1 → 0.020, 16 → 0.012 s). Head labels identical either way. | **Fix it.** This is a live pessimisation on every Mac today. |
+| **ORT provider on macOS** (`auto` → CoreML, today's default) | DINOv2 embed **0.0110 s on the CPU EP vs 0.0885 s on CoreML**, and **0.0121 vs 0.0766** on a second run hours later: **6–8× worse**, both times. Session load 0.08 s vs 0.68–0.76 s. CoreML claimed 274 of 513 nodes and got slower at every batch size (1 → 0.068, 16 → 0.094 s) while the CPU EP got faster (1 → 0.020, 16 → 0.012 s). Head labels identical either way. | **Fix it.** This is a live pessimisation on every Mac today, and the only finding here measured twice on purpose. |
 | caption concurrency, machine A (MLX) | 1 → 0.173, 2 → 0.127, 4 → 0.117 s/picture | The config default of 4 is right here: 1.5×. |
 | caption concurrency, machine B (`llama-server`) | 1 → 30.9, 4 → **34.2** s/picture, p90 41 s | **Harmful.** `llama-server` runs one slot by default, so concurrency only queues, then pays for the queueing. The default of 4 must become a per-endpoint setting. |
 | caption quantisation, machine B | Q8\_0 **30.9 s**, Q4\_K\_M **61.5 s**, f16 562 s for a single request | **Q4 is twice as slow as Q8, and worse text.** Without AVX2/F16C the K-quant unpack costs more than it saves, while `REPACK` favours Q8\_0. Q4 also degraded the output ("a simple, yet effective, way to create a grid of circles in a single line of code"). Smaller is not faster here. |
@@ -232,7 +239,7 @@ One JPEG decode to RGB costs **0.0036 s** on machine A and **0.0192 s** on machi
 decodes each preview **six times**: pixel facts, thumbnail hash, caption tile, DINOv2 preprocess,
 and once per detector inside the worker process (`_open_previews` re-opens the file per head).
 
-Hoisting five of those six saves 0.018 s/picture on machine A — **29 % of the non-caption
+Hoisting five of those six saves 0.017 s/picture on machine A — **27 % of the non-caption
 producer cost** — and 0.096 s on machine B, which is 8 % of its non-caption cost and invisible
 next to its captioner. The direction is the opposite of intuition: *shared decoding is a fast
 machine's optimisation.* On a slow machine the models swamp it.
@@ -569,7 +576,7 @@ Reordered so that the items §1 showed to be bugs come before the items §1 show
 | # | Item | Size | Exit test |
 |---|---|---|---|
 | **W0** | **Declare `torchvision` in the `editorial` extra, from the same index as torch.** §5.2: without it `nsfw_marqo` dies with `torchvision::nms does not exist` on the documented Linux install. | XS | A clean `linux/amd64` container installing the extra from the CPU index loads `Marqo` and decides a picture. |
-| **W1** | **Provider selection by measurement, not by name.** `triage/encoder.py` `_create_session` picks CoreML whenever it is available; §1.6 measures CoreML at 8× the CPU EP for this graph. Add a `provider` field to `TriageConfig` (it has none), default to the CPU EP on macOS, resolve CUDA from `ort.get_available_providers()` where present. | S | On a Mac the default session is `CPUExecutionProvider`; on a CUDA host, `CUDAExecutionProvider`; same input → same `encoder_key` and the same head labels on all three. |
+| **W1** | **Provider selection by measurement, not by name.** `triage/encoder.py` `_create_session` picks CoreML whenever it is available; §1.6 measures CoreML at 6–8× the CPU EP for this graph, twice. Add a `provider` field to `TriageConfig` (it has none), default to the CPU EP on macOS, resolve CUDA from `ort.get_available_providers()` where present. | S | On a Mac the default session is `CPUExecutionProvider`; on a CUDA host, `CUDAExecutionProvider`; same input → same `encoder_key` and the same head labels on all three. |
 | **W2** | **Thread counts stop being constants.** `torch.set_num_threads(6)`, `intra_op_num_threads = 6` and `OMP_NUM_THREADS=6` are hardcoded for a machine nobody has, while `_create_session` derives its own from `os.cpu_count()`. One setting, honoured by every seat. **Honest ranking: §1.8 found no win on either machine measured** — 6 is harmless on 4 cores and the encoder's derived 3 is already optimal. This is hygiene and a lever for hosts nobody has tried, not a speed-up. | S | Setting it changes what the sweep in §1.8 measures; leaving it unset reproduces today's numbers. |
 | **W3** | Split the `editorial` extra by device: CPU torch index for `cpu`, CUDA wheels only for `cuda`. | S | `docker buildx build --platform linux/amd64` produces a `cpu` image with zero `nvidia-*` wheels. Measured target: the non-torch base is 700 MB and the full CPU image 1.62 GB (§5.2). |
 | **W3b** | **Export the Marqo detector to ONNX and drop the torch family.** `scripts/export_marqo_onnx.py` already does it: a 22.5 MB single-file graph, every label agreeing with torch across the fixtures (max probability delta 1.19e-7 with timm's transform, 1.01e-3 with the torch-free numpy transform in the same script). | M | Label agreement on a held-out sample; the `nsfw_marqo` fact version bumps and re-derives. **Justified by size and dependency hygiene, not speed** — §1.6 measured ONNX at 0.469 s vs torch at 0.440 s on the NAS. What it buys is 920 MB, 11 s of start-up, and W0's whole class of bug. |
@@ -584,7 +591,7 @@ Reordered so that the items §1 showed to be bugs come before the items §1 show
 | **W12** | `immich-memories prepare --scope <period>`: run preparation, print seconds per picture per producer, stop. | S | On a cold scope it prepares and exits 0 without rendering; its numbers agree with §1.3. |
 | **W13** | Consent gate for off-box destinations: per-host opt-in naming the seats and their payloads; record host, seats, asset count, consent version. | M | Pointing the reader at a remote host without consent refuses with a message naming what would be sent. The record contains no names, ids or album titles. |
 | **W14** | **The reduced tiers** (§5.A): tolerate every absent producer; the no-captions tier keeps the normal audience gate, the metadata-only tier defaults to `family_only` and refuses `sendable`; fact-shaped reasons; the Memory-page line; captions offered as a rate-stated background backfill. | M | With no captions, a cut completes and no unit loses its gate evidence. With no encoder, no detectors and no captions either, a cut still completes; every approved occasion from the graded routes keeps at least one picture; no unit is marked `share`. |
-| **W15** | **One decode per picture.** Hoist the JPEG decode out of the six producers that each repeat it (§1.9) and pass the decoded image down. | M | The producers' facts are unchanged; the non-caption per-picture cost drops by about a quarter on machine A. Worth doing *after* W0–W3b, because it saves nothing a slow box would notice. |
+| **W15** | **One decode per picture.** Hoist the JPEG decode out of the six producers that each repeat it (§1.9) and pass the decoded image down. | M | The producers' facts are unchanged; the non-caption per-picture cost drops by 27 % on machine A. Worth doing *after* W0–W3b, because it saves nothing a slow box would notice. |
 | **W16** | **GPU encoder service** (§5.B): plan in, film out, own FFmpeg, `/health` reports its major; local fallback on absence or failure. | L | Same plan rendered locally and remotely gives films of the same duration, structure and titles; killing the service mid-render still produces a film locally. |
 
 Order: W0, W1, W2 → W3, W3b → W4, W5, W6 → W7 → W8 → W9 → W10 → W11 → W12, W13 → W14 → W15 → W16.
@@ -664,7 +671,7 @@ The owner's framing was that anything learned on the NAS applies to the main pro
 seven have nothing to do with a NAS at all.
 
 1. **The Mac's default execution provider is the slowest one available.** `provider="auto"` picks
-   CoreML, which is 8× slower than the CPU EP for DINOv2-small and takes 10× longer to load, on the
+   CoreML, which is 6–8× slower than the CPU EP for DINOv2-small and takes 9× longer to load, on the
    only graded configuration the product has. Every Mac user pays it today. It is W1 and it is the
    single largest measured win in this document for existing users.
 2. **Hardware accelerators are a measurement, not a ranking.** CoreML lost. A CUDA EP might win.
@@ -679,8 +686,9 @@ seven have nothing to do with a NAS at all.
    recording precisely because it demotes W2 below W0 and W1. Make it a setting because nobody
    chose the number, not because it is slow.
 5. **The bottleneck moves with the machine, and so should the optimisation.** On an M5 Max the
-   Python/Pillow half is 78 % of the non-caption cost, so hoisting the six redundant JPEG decodes
-   (W15) is worth a quarter of it. On a J4125 the models are 85 % and the same change is noise.
+   Python-and-Pillow work is **51 %** of the non-caption cost and the models are 49 %, so hoisting
+   the six redundant JPEG decodes (W15) takes 27 % off it. On a J4125 that split is **13 % against
+   87 %**, and the same change is worth 8 %.
    Optimising for the slow box would have meant doing the wrong work on the fast one.
 6. **Smaller quantisation is not faster.** Q4\_K\_M is 2× slower than Q8\_0 on a CPU without AVX2,
    and worse at the task. Int8 weights made the encoder slower on Apple Silicon. Quantisation is a
