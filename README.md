@@ -36,6 +36,24 @@ faking it. How it decides is documented in
 
 **Why:** you left Google Photos for Immich and lost the year-in-review / trip / "your kid's year" videos. This brings them back: on your hardware, with pictures you can veto and music that isn't canned. AI music and LLM titles are optional extras; the render runs on CPU, and the models the editor reads with can run on the same box.
 
+## What it takes to run
+
+This is heavy machinery. The editor reads with two models you host yourself: a **reader** — vision
+and text, ~17 GB resident at 4-bit — that groups the period into stories and looks at every
+candidate, and a **caption server** — 500M, 1-2 GB — that describes each picture once. On the app's
+disk, an 88 MB encoder and ~400 MB of CPU detectors. The app itself is cheap: 2-4 GB and a CPU
+render. It will not cut anything without the models.
+
+The two configurations that work:
+
+- **One Apple Silicon Mac, 32 GB or more.** App, both models, render, all on it. This is the one
+  that has actually been graded.
+- **The app anywhere — NAS, mini-PC, Kubernetes — plus one box that can hold the models.** Two
+  machines. There is no version of this with one small machine.
+
+A NAS on its own, with no second machine, is not a supported setup. The whole stand-up, in order,
+is the [self-hosting guide](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/self-hosting).
+
 ---
 
 ## Docker (recommended for self-hosters)

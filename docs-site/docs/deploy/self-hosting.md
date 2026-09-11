@@ -9,6 +9,11 @@ sidebar_label: "Self-hosting: start here"
 Everything you have to stand up, in the order you have to stand it up, on one page. All of it
 runs on your own hardware; none of it calls a cloud API.
 
+**It is heavy machinery.** Two of the three services are models, one of them wants 17 GB of memory
+to itself, and the app refuses to cut rather than guess without them. The cheapest thing that works
+is one Apple Silicon Mac with 32 GB; the next cheapest is the app wherever you like plus one box
+that can hold the models. Nothing here runs on a NAS alone.
+
 ## What you are standing up
 
 Three services and two files on disk.

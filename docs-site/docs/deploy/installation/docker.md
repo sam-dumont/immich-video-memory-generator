@@ -5,7 +5,24 @@ title: Docker
 
 # Install with Docker
 
-No Python environment to manage. Pull the image, set two env vars, done.
+No Python environment to manage. Pull the image, set two env vars, done — for the app.
+
+## What it takes to run
+
+The editor's models are not in this image and will not be: the image's job is the app and the
+render. A cut needs two services you host, and they are the expensive half.
+
+| | What it is | Resident |
+|---|---|---|
+| **Reader** | Vision + text. Groups the period into stories, weighs them, and is sent an 800 px tile of every candidate | ~17 GB at 4-bit |
+| **Caption server** | 500M vision model. One description per picture, once, then banked | 1-2 GB |
+
+Plus an 88 MB encoder and ~400 MB of CPU detectors on the app's disk. The container itself wants
+2-4 GB. So the cheapest things that work are one Apple Silicon Mac with 32 GB+ running everything,
+or this container anywhere plus one box that can hold the models — and remember that `localhost`
+inside a container is the container, so those endpoints need real hostnames.
+
+The [self-hosting guide](../self-hosting.md) stands all of it up in order.
 
 ## Quick start
 
