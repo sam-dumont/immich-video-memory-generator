@@ -129,7 +129,6 @@ def render_immich_connection(state) -> None:
                 config_path = Config.get_default_path()
                 config.save_yaml(config_path)
                 set_config(config)
-                state.config_saved = True
                 ui.notify("Configuration saved!", type="positive")
 
             im_button("Test Connection", variant="secondary", on_click=test_connection, icon="wifi")
