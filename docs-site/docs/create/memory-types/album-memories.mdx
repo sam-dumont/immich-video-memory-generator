@@ -13,18 +13,18 @@ a single trip, a school year.
 
 ## Web UI
 
-Pick **Album** on step 1 and choose from the dropdown. It lists every album that
+Pick **Album** on the [Memory page](../web-ui/memory.mdx) and choose from the dropdown. It lists every album that
 has assets in it, largest first, with the item count beside each name — real
 libraries carry several albums with the same name, so the count tells them apart
 and the selection is stored by ID rather than by name.
 
 No date range is chosen: the album's own assets define the span, and the target
 duration is scaled to how much is in the album (roughly 4 seconds an item,
-capped at 10 minutes). Turn off **Auto** on step 2 to set your own.
+capped at 10 minutes). Turn off **Auto duration** to set your own.
 
 The title defaults to the album's name, same as the CLI — the LLM title
 suggestion is skipped, since a name you typed yourself beats one it invents.
-Edit it on step 3 if you want something else.
+Edit it on the options page if you want something else.
 
 ## CLI
 
@@ -53,9 +53,9 @@ works as usual.
 
 | Asset in the album | How it is used |
 |---|---|
-| Video | Analyzed and cut like any other clip |
+| Video | Read and cut like any other source |
 | Live Photo | Bursts merged into one moving clip (as everywhere else) |
-| Photo | Animated still, subject to the usual photo share of the runtime |
+| Photo | Animated still, held for the seconds the editor grants it |
 | A Live Photo's video component | Ignored — it is already part of the merged clip |
 
 With Live Photo merging turned off, a Live Photo is used as a still rather than being
@@ -67,7 +67,7 @@ An album someone shared with you works exactly like one of your own — Immich l
 shared albums alongside yours, so pass the name or ID as usual:
 
 ```bash
-immich-memories generate --from-album "Paris-Roubaix Challenge 2026"
+immich-memories generate --from-album "Summer 2025"
 ```
 
 ## Duration

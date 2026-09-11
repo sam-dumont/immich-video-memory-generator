@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 import pytest
 from playwright.sync_api import Page, expect
 
 from immich_memories.ui.pages.memory_brief import MEMORY_TYPE_LABELS
-from tests.e2e.conftest import enable_demo_mode, set_theme
 from tests.e2e.fake_editorial import STAGES
-from tests.e2e.redaction import redact_page
 from tests.e2e.test_launch_smoke import _choose
 
 pytestmark = pytest.mark.e2e
@@ -49,17 +46,6 @@ def _brief_for_june(page: Page, launch_app_url: str) -> None:
     _choose(page, "Month", "June")
 
 
-def capture_pair(page: Page, screenshot_dir: Path, name: str) -> None:
-    """One light and one dark screenshot for the docs, from synthetic data only."""
-    for theme in ("light", "dark"):
-        set_theme(page, theme)
-        enable_demo_mode(page)
-        redact_page(page)
-        prefix = "dark-" if theme == "dark" else ""
-        page.screenshot(path=str(screenshot_dir / f"{prefix}{name}.png"))
-    set_theme(page, "light")
-
-
 def test_the_brief_offers_the_cli_memory_types(page: Page, launch_app_url: str) -> None:
     _open_brief(page, launch_app_url)
 
@@ -70,11 +56,10 @@ def test_the_brief_offers_the_cli_memory_types(page: Page, launch_app_url: str) 
 
 
 def test_a_cut_from_the_brief_shows_the_story_and_offers_export(
-    page: Page, launch_app_url: str, screenshot_dir: Path
+    page: Page, launch_app_url: str
 ) -> None:
     _brief_for_june(page, launch_app_url)
     expect(page.get_by_text("Auto · 1m 00s", exact=True)).to_be_visible()
-    capture_pair(page, screenshot_dir, "memory-brief")
 
     page.get_by_role("button", name="Cut", exact=True).click()
 
@@ -86,7 +71,6 @@ def test_a_cut_from_the_brief_shows_the_story_and_offers_export(
     expect(page.get_by_text("Motion", exact=True)).to_have_count(3)
     expect(page.get_by_text("Still", exact=True)).to_have_count(3)
     expect(page.get_by_text(re.compile(r"^\d+ s of pictures and video selected"))).to_be_visible()
-    capture_pair(page, screenshot_dir, "memory-story")
     expect(page.get_by_role("button", name="Export", exact=True)).to_be_visible()
 
 

@@ -172,10 +172,9 @@ becomes a video three ways:
   other detector and puts a due day in the queue, scored by how round the anniversary is,
   one per run at most. It passes a date and nothing else — the title stays in the file.
   See [auto](./auto.md#the-anniversary-that-would-otherwise-score-lowest).
-- **The wizard's Surprise me card offers all of them.** Due anniversaries first, then
+- **The Memory page's Surprise me type offers all of them.** Due anniversaries first, then
   every other day the catalogue holds, because you asked for it rather than being
-  interrupted. See
-  [Step 1: Configuration](../web-ui/step1-configuration.mdx#surprise-me).
+  interrupted. See [the Memory page](../web-ui/memory.mdx#memory-types-and-their-parameters).
 - **You name one yourself**:
   `immich-memories generate --memory-type special_day --day 2016-06-12`.
 

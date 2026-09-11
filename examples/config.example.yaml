@@ -1,0 +1,68 @@
+# Immich Memories — example configuration
+#
+# Copy to ~/.immich-memories/config.yaml. Every key has a default; the ones
+# below are the ones people actually set. The full reference, with every key
+# and its default, is docs-site/docs/reference/config-reference.md.
+#
+# Top-level sections are the everyday knobs. Everything under `advanced:` is
+# tier 2: the models the editor reads with, hardware, auth, automation.
+
+immich:
+  url: "https://photos.example.com"
+  api_key: "your-api-key-here"     # or IMMICH_API_KEY in the environment
+  api_version: auto                # auto | v2 | v3
+
+output:
+  directory: "~/Videos/Memories"   # one timestamped folder per run inside it
+  format: mp4                      # mp4 | mov
+  codec: h264                      # h264 | h265 | prores
+  resolution: auto                 # auto | 4k | 1080p | 720p
+  quality: high                    # high | medium | low
+
+cache:
+  directory: "~/.immich-memories/cache"   # previews, the annotation store, every cut's attempt tree
+
+photos:
+  enabled: true                    # stills join the pool the editor cuts from
+  duration: 4.0                    # seconds a still is held when the editor grants it one slot
+
+upload:
+  enabled: false                   # upload-back is opt-in; nothing in the library is ever modified
+  album_name: "Memories"
+
+trips:                             # needed for --memory-type trip only
+  homebase_latitude: 48.8566
+  homebase_longitude: 2.3522
+  min_distance_km: 50
+  min_duration_days: 2
+  max_gap_days: 2
+
+advanced:
+  # The text model: reads the period, weighs its stories, picks the moments.
+  # Any OpenAI-compatible chat endpoint.
+  llm:
+    provider: "openai-compatible"
+    base_url: "http://localhost:8000/v1"
+    model: "mlx-community/Qwen3.6-27B-8bit"
+    timeout_seconds: 120
+
+  # The facts the editor reads: a compact caption, six public context heads,
+  # two detectors and pixel facts per picture, produced once and kept in the
+  # annotation store. Pinned versions, digests and the caption server contract:
+  # docs-site/docs/deploy/configuration/editorial-preparation.md
+  editorial:
+    annotation_database: ""        # blank = annotations.sqlite inside cache.directory
+    preparation:
+      caption_base_url: "http://localhost:8092/v1"   # the compact-caption server
+      caption_timeout_seconds: 90
+      caption_concurrency: 4
+      batch_size: 32
+      head_bundle: ""              # blank = the packaged public six-head bundle
+      detector_python: ""          # blank = this interpreter; or a separate detector env
+      detector_cache_dir: ""       # blank = the Hugging Face cache
+      allow_model_downloads: false # the pinned detector files must already be present
+
+  # The frozen DINOv2-small encoder the context heads run on: a pinned ONNX
+  # export whose digest is verified against the head bundle.
+  triage:
+    encoder: "~/.immich-memories/models/triage/dinov2-small.onnx"

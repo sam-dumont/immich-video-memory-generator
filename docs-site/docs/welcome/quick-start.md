@@ -5,7 +5,8 @@ title: Quick Start
 
 # Quick Start
 
-Three steps. Should take about 2 minutes.
+Three steps to a running app. Should take about 2 minutes; the first cut takes longer, because
+the editor has to read your pictures before it can cut them.
 
 ## 1. Install
 
@@ -20,7 +21,7 @@ Or clone and install:
 ```bash
 git clone https://github.com/sam-dumont/immich-video-memory-generator.git
 cd immich-video-memory-generator
-uv sync
+uv sync --extra editorial
 ```
 
 See [Installation](../deploy/installation/uv-pip.md) for pip, Docker, and Kubernetes options.
@@ -44,6 +45,10 @@ immich:
 
 Get your API key from Immich: **Account Settings > API Keys > New API Key**. When Immich asks which permissions to grant, pick **All** — or, for a minimal key: read access to assets, people, albums, timeline and search, plus **asset upload** and **album create/update** if you turn on upload-back to Immich. This tool never deletes or modifies existing assets.
 
+Then set up the three things the editor reads with — a caption endpoint, the pinned encoder, two
+detectors — following [Editorial annotation setup](../deploy/configuration/editorial-preparation.md).
+A cut with one of them missing stops and says which.
+
 ## 3. Launch
 
 **Web UI** (recommended for first run):
@@ -53,14 +58,18 @@ immich-memories ui
 # Opens at http://localhost:8080
 ```
 
+The page that opens is the brief: pick a memory type, leave the duration on Auto, press **Cut**.
+When the story appears, press **Export**.
+
 **CLI** (for scripts and automation):
 
 ```bash
-# 30 days starting Jan 1 2024, 5-minute video (duration is in seconds)
-immich-memories generate --start 2024-01-01 --period 30d --duration 300
+# One month, the type's own one-minute default
+immich-memories generate --memory-type monthly_highlights --year 2024 --month 6
 
 # Or just a full year
 immich-memories generate --year 2024
 ```
 
-That's it. The UI will walk you through the rest: picking people, time ranges, music, and output settings.
+That's it. Everything after the cut — title, music, output settings — has a sane default and a
+page to change it on.

@@ -9,7 +9,7 @@ A birthday compilation is the year of someone's life that **ends** on the birthd
 
 ## Set the birth date in Immich
 
-Immich is where the date lives. Open **People**, pick the person, edit, and fill in the birth date. Every birthday memory then anchors on it — the CLI, the wizard and the nightly automation alike — and you never type it again.
+Immich is where the date lives. Open **People**, pick the person, edit, and fill in the birth date. Every birthday memory then anchors on it — the CLI, the Memory page and the nightly automation alike — and you never type it again.
 
 Without one, a birthday memory refuses rather than guessing a date and quietly rendering the wrong twelve months.
 
@@ -54,16 +54,16 @@ Give the date as `MM-DD` — month first, matching every other date in the proje
 
 ## UI
 
-There is no "Birthday" card. Two paths get you a birthday-anchored range:
+There is no "Birthday" memory type. Two paths get you a birthday-anchored range:
 
-- **Person Spotlight** card: pick the person, then tick **Birthday to birthday**. If Immich
+- **Person Spotlight**: pick the person, then tick **Birthday to birthday**. If Immich
   has a birth date on that person the checkbox turns itself on when you select them; without
   one it stays greyed out and says so.
-- **Custom** card → **Year** tab → **From Birthday**, which gives you a Birthday date field
+- **Custom date range** → **Year** tab → **From Birthday**, which gives you a Birthday date field
   and computes the rolling year from it. This one is the year only — no earlier-birthday
   cutaways.
 
-See [Step 1: Configuration](../web-ui/step1-configuration.mdx).
+See [the Memory page](../web-ui/memory.mdx#memory-types-and-their-parameters).
 
 ## Tips
 

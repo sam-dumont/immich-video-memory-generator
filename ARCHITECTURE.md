@@ -8,8 +8,15 @@
 Immich Memories generates video compilations from an Immich photo library.
 The public lifecycle of one run (`operations/phases.py`, `OperationalPhase`):
 **discovery -> download -> analysis -> selection -> render -> music -> delivery**.
-Inside the analysis step, `SmartPipeline` reports its own sub-phases
-(`analysis/progress.py`, `PipelinePhase`): **clustering -> filtering -> analyzing -> refining**.
+Selection is the story-first editorial route, the only one: `generate` (or the Memory page's
+Cut) -> `build_smart_pipeline(editorial_context)` (`analysis/editorial_runtime.py`) ->
+`SmartPipeline.run_editorial_source()` -> `RuntimeEditorialPlanner.plan_source()`, which reports
+six stages: **Preparing source metadata -> Reading event evidence -> Reading the period account
+-> Building editorial cards -> Editing the memory -> Validating selected source timing**. Every
+attempt is durable under `<cache>/editorial-runs/<key>/attempts/<id>/`
+(`operations/editorial_attempt.py`, an OS lease tells interrupted from slow); the facts and banks
+it reads live in `<cache>/annotations.sqlite` (`store/`). The design is summarised in
+`docs/designs/2026-09-10-story-first-selection.md`.
 
 ## Build System
 
@@ -38,17 +45,20 @@ The four core orchestrators and their composed services:
     clip a title deblurs out of, and builds one `TitleDividerPlanner`
     (title_divider_planner.py) per memory to place month/year/location cards
 
-**SmartPipeline** (analysis/smart_pipeline.py) composes 5 services:
-- `ClipAnalyzer` (clip_analyzer.py): download, analyze, and score clips
-- `PreviewBuilder` (preview_builder.py): extract preview segments
-- `ClipRefiner` (clip_refiner.py): select and distribute final clips
-- `ClipScaler` (clip_scaler.py): scale to target duration, deduplicate
-- `SelectionQuality` (selection_quality.py): verify, judge, and make the cut
+**SmartPipeline** (analysis/smart_pipeline.py) is the pipeline surface the CLI and the UI
+drive. On the production route `build_smart_pipeline(editorial_context)` (editorial_runtime.py)
+hands it a `RuntimeEditorialPlanner`, and `run_editorial_source()` runs preparation, the two
+readings, the structure and story planners and the timing certification, then projects the plan
+into a `PipelineResult` (editorial_projection.py). The route's seams are Protocol-typed ports
+rather than services: `EditorialRuntimePorts` (editorial_runtime_ports.py: providers, people
+loader), `ProductionPostCardBackend` (editorial_runtime_backend.py), `StructurePlannerPorts`
+(editorial_structure_contract.py: judges, banks, audience gate).
 
-It also owns a `ProviderCircuit` (provider_health.py, LLM provider circuit breaker) and an
-optional `VideoDownloadCache`. The density-proportional asset budget is a plain function,
-`compute_density_budget()` (density_budget.py), called from `_phase_filter()` — not an
-injected service.
+The legacy services (`ClipAnalyzer`, `PreviewBuilder`, `ClipRefiner`, `ClipScaler`,
+`SelectionQuality`) stay composed for `run()`/`run_selection()`, which nothing reaches; they and
+`compute_density_budget()` go in the removal phase. `SmartPipeline` also owns a
+`ProviderCircuit` (provider_health.py, LLM provider circuit breaker) and an optional
+`VideoDownloadCache`.
 
 **ImmichClient** (api/immich.py) composes 5 services:
 - `SearchService` (search_service.py): video search and time bucket queries
@@ -118,8 +128,16 @@ src/immich_memories/
 │   ├── date_builders.py        # build_season(), build_month(), build_on_this_day()
 │   └── factory.py              # Registry + 9 preset factories; Album is handled by cli/_album_generation.py
 │
-├── analysis/                   # Video analysis & clip selection
-│   ├── smart_pipeline.py       # SmartPipeline (composes 5 services)
+├── analysis/                   # Selection: the story-first editorial route (and the legacy scorer until removal)
+│   ├── smart_pipeline.py       # SmartPipeline: run_editorial_source() is the production entry
+│   ├── editorial_runtime.py    # RuntimeEditorialPlanner + build_smart_pipeline(); _ports.py, _backend.py beside it
+│   ├── editorial_orchestration.py  # TextEditorialPlanner: episodes -> period account -> cards -> edit
+│   ├── editorial_preparation*.py   # Annotation preparation: captions, public heads, detectors, pixel facts
+│   ├── selection_source*.py    # The canonical source model: admission, provenance, groups, invariants
+│   ├── text_episode_reader.py  # Reading event evidence (paged, banked); period_insight*.py = the account
+│   ├── editorial_story_*.py    # Story reading, weighing, slots, shortlist, carriers: the story planner
+│   ├── editorial_structure_*.py    # The structure planner: wall, memory-worthy + standing gates, audience, record
+│   ├── editorial_projection.py # Plan -> PipelineResult, and the stage reporter
 │   ├── provider_health.py      # ProviderCircuit: bounded, credential-safe LLM provider health
 │   ├── cache_projection.py     # Project compatible cached analysis back onto in-memory clips
 │   ├── clip_analyzer.py        # ClipAnalyzer: download + analyze + score
@@ -452,9 +470,29 @@ src/immich_memories/
 
 ## Key Classes & Their Relationships
 
-### Pipeline Flow (Unified Selection)
+### Pipeline Flow (story-first)
 
-Videos and photos compete in a single selection pool:
+Videos and photos are one pool, and the editor cuts from it:
+
+```
+generate / Memory page Cut
+  └── build_smart_pipeline(editorial_context)           (editorial_runtime.py)
+        └── SmartPipeline.run_editorial_source()        (smart_pipeline.py)
+              └── RuntimeEditorialPlanner.plan_source()
+                    ├── EditorialAttempt: lease + status.private.json   (operations/editorial_attempt.py)
+                    ├── source model: fetch_full_window_source -> prepare_editorial_source
+                    ├── "Preparing source metadata": prepare_editorial_annotations
+                    ├── TextEditorialPlanner.plan_prepared             (editorial_orchestration.py)
+                    │     ├── "Reading event evidence": episode reader + cull
+                    │     ├── "Reading the period account": the thesis
+                    │     ├── "Building editorial cards": build_moment_cards -> moment wall
+                    │     └── "Editing the memory": plan_structure -> select_story_first
+                    ├── "Validating selected source timing": bind_editorial_timeline
+                    └── project_source_rendering -> render-projection.private.json
+              └── PipelineResult with editorial_selections  (editorial_projection.py)
+```
+
+### Legacy flow (unreached, removal phase)
 
 ```
 SmartPipeline.run_analysis()           (Phases 1-3: videos only)
@@ -514,8 +552,8 @@ VideoAssembler.assemble_with_titles()
 
 ```
 Immich API → Asset models → ClipExtractor → VideoClipInfo
-  → SmartPipeline → ClipWithSegment (clip + best segment)
-  → VideoAssembler → final .mp4
+  → SmartPipeline.run_editorial_source → EditorialSelection (asset, interval, render mode)
+  → ClipWithSegment → VideoAssembler → final .mp4
 ```
 
 ## Configuration Tiers
@@ -523,7 +561,7 @@ Immich API → Asset models → ClipExtractor → VideoClipInfo
 Config is organized in 3 tiers (see `config_loader.py`):
 
 - **Tier 1** (top-level YAML): `immich`, `defaults`, `output`, `audio`, `title_screens`, `cache`, `upload`, `trips`, `photos`
-- **Tier 2** (under `advanced:` in YAML, `_TIER2_SECTIONS`): `analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `content_analysis`, `audio_content`, `speech`, `transcription`, `server`, `auth`, `automation`, `notifications`
+- **Tier 2** (under `advanced:` in YAML, `_TIER2_SECTIONS`): `analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `content_analysis`, `audio_content`, `speech`, `transcription`, `server`, `auth`, `automation`, `notifications`, `triage`, `editorial`
 - **Tier 3** (internal): `scheduler`, `title_llm`
 - Not in any tier list (top-level field on `Config`): `scoring_priority`
 

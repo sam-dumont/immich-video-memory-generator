@@ -18,12 +18,7 @@ Yes. Skip the `--person` flag and it'll pull everything eligible from the select
 
 **How long does analysis take?**
 
-Depends mostly on whether analysis runs on Apple Silicon / a GPU or on a CPU-only box. First-run analysis is roughly:
-
-- Apple Silicon or GPU: ~1 minute per 10 clips
-- CPU-only (4-core NAS class): ~1-2 minutes per clip
-
-Analysis already downscales to 480p by default, so the resolution knob is not the one to reach for. What is left is `--analysis-depth fast`, which restricts the LLM pass to favorites, and `preset: fast`, the whole CPU-only profile. Results are cached, so a library only pays this once; re-runs over the same period are quick. The [README resource table](https://github.com/sam-dumont/immich-video-memory-generator#resource-requirements) has RAM and encoding numbers, and the [NAS-only guide](../deploy/common-setups/nas-only.md) has a Celeron-class table.
+Depends on how much of the period has already been prepared, and on where the caption server and the text model run. The first cut over a period captions and measures every eligible picture once and reads the period with the text model; both are cached per producer and per exact request, so a library only pays this once and re-runs over the same period are mostly the render. `preset: fast` is the CPU-only render profile; it does not change what the editor reads. The [README resource table](https://github.com/sam-dumont/immich-video-memory-generator#resource-requirements) has RAM and encoding numbers, and the [NAS-only guide](../deploy/common-setups/nas-only.md) has a Celeron-class table.
 
 **Can I run it headless?**
 

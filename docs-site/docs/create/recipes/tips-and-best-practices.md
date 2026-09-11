@@ -52,31 +52,16 @@ Your first video should be 3-5 minutes, not 30. Shorter durations mean:
 
 Once you're happy with the results, scale up.
 
-## Review Clips Before Generating
+## Exclude Before You Cut
 
-Step 2 exists for a reason. Spend 2 minutes deselecting clips that don't belong: that shaky hallway video, the accidental recording of your pocket, the 45-second clip of a wall. The tool's scoring is good but not perfect.
+The media pool (**Advanced → Open the media pool** on the Memory page) exists for a reason. Spend 2 minutes unticking what may never be used: the accidental recording of your pocket, the 45-second clip of a wall. The editor judges twins and bursts itself; what it cannot know is what you would never show.
 
-## Enable LLM Analysis for Large Libraries
+## Set Up the Annotation Producers First
 
-For libraries with hundreds of videos, LLM content analysis makes a real difference in clip selection. It adds a few seconds per video to analysis time but catches things that motion/face detection misses: a quiet but meaningful conversation, a funny reaction shot, etc.
+The story-first route needs its caption endpoint, the pinned encoder and the two detectors before its first cut; a missing producer stops the run with a count rather than quietly narrowing what the editor sees. Do the [Editorial annotation setup](../../deploy/configuration/editorial-preparation.md) once, then forget about it.
 
-```yaml
-content_analysis:
-  enabled: true
-  weight: 0.35
-```
+## Nothing Reads the 4K Source Until the Render
 
-## Downscaling for Analysis
-
-Already on. `enable_downscaling` defaults to `true` and `analysis_resolution` to 480, so
-every run already scores clips off a 480p proxy rather than the 4K source — the tool does
-not need full-resolution frames to detect scenes or rank clips.
-
-```yaml
-analysis:
-  enable_downscaling: true   # default
-  analysis_resolution: 480   # default
-```
-
-The only reason to touch these is to go the other way: raise `analysis_resolution` if you
-think scoring is missing small faces in wide shots, and accept the slower analysis.
+Captions are read from 400 px tiles and pixel facts from one fixed JPEG recipe; the editor
+never needs full-resolution frames to know what a picture shows. The originals are downloaded
+once, for the clips that made the cut, at render time.

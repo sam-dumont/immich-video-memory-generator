@@ -12,13 +12,9 @@ Include photos alongside videos in your memory compilations. Photos are converte
 Photos compete in the same selection pool as videos and live photos. There's no separate "photo pipeline" — everything goes through unified selection.
 
 1. **Fetch**: Photos (IMAGE assets, excluding live photos) are fetched from Immich
-2. **Score**: Metadata scoring (favorites, faces, camera) + optional LLM visual analysis on thumbnails
-3. **Merge**: Scored photos are converted to clip candidates and merged with analyzed video clips
-4. **Select**: Unified Phase 4 picks from the combined pool — temporal dedup, duration scaling, and coverage guarantees apply to photos AND videos equally
-5. **Render**: Selected photos are animated as Ken Burns clips at assembly time
-6. **Interleave**: No more than 2 consecutive clips of the same type (photo or video)
-
-Photos are capped at 50% of the final video when videos are plentiful. Scarcity is measured against the target, not against the selection: when the video candidates available cannot fill even half the target duration, the cap is bypassed and photos fill the rest.
+2. **Read**: each photo gets its caption, context heads, detector facts and pixel facts prepared once — see [Editorial annotation setup](../../deploy/configuration/editorial-preparation.md)
+3. **Edit**: photos and videos are one pool; the editor weighs the period's stories and grants pictures by weight, and a still is held for the seconds it earns
+4. **Render**: selected photos are animated as Ken Burns clips at assembly time
 
 ## Animation Effects
 

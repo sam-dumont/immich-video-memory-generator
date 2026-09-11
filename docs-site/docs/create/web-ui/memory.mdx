@@ -7,29 +7,79 @@ import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
 
 # The Memory page
 
-`/` is one page with three states: the **brief**, the **cut** in progress, and what the cut produced. It reads like `immich-memories generate`: one memory type, that type's parameters, one duration, one button. The sidebar calls it **Memory**.
+`/` is one page with three states: the **brief**, the **cut** in progress, and the **story** the cut produced. It reads like `immich-memories generate`: one memory type, that type's parameters, one duration, one button. The sidebar calls it **Memory**; the three pages after it — Clip Review, Options, Export — are where a cut goes when you send it there.
 
 <ThemedScreenshot name="memory-brief" alt="The brief: memory type, its parameters and the duration line" />
 
 ## The brief
 
-**Memory type** offers exactly what `generate --memory-type` accepts, in the same order — Year in Review, Season, Person Spotlight, Multi-Person, Monthly Highlights, On This Day, Album, Trip, Holiday, Surprise me — plus **Custom date range**, which the CLI spells as `--start`/`--end`. Picking a type shows only that type's parameters; they are listed under [Memory types and their parameters](./step1-configuration.mdx).
+**Memory type** offers exactly what `generate --memory-type` accepts, in the same order — Year in Review, Season, Person Spotlight, Multi-Person, Monthly Highlights, On This Day, Album, Trip, Holiday, Surprise me — plus **Custom date range**, which the CLI spells as `--start`/`--end`. Picking a type shows only that type's parameters.
 
-**Duration** is one line. With **Auto duration** on it shows the type's own answer ("Auto · 1m 00s" for a month) and where the number comes from; Trip and Album measure theirs from the media once it is loaded. Turn the switch off to type an exact **Target duration (min)**; fractional minutes keep their seconds.
-
-**Advanced** holds the Immich connection panel (URL, API key, Test Connection, Save Config — see [Settings](./settings.mdx#saving-config-from-the-memory-page-and-what-it-costs-you)), the pool switches the selection route reads (Include Photos, Include Live Photos, Accept Forwarded Media, HDR clips only) and **Open the media pool**, which goes to the [media pool and excerpt editor](./step2-clip-review.mdx).
+**Duration** is one line. With **Auto duration** on it shows the type's own answer ("Auto · 1m 00s" for a month) and where the number comes from; Trip and Album measure theirs from the media once it is loaded. Turn the switch off to type an exact **Target duration (min)**; fractional minutes keep their seconds. The target is the complete video, titles and transition overlap included.
 
 The brief appears once Immich has answered. With credentials in `config.yaml` or the environment the page connects on its own; otherwise only the connection panel shows until **Test Connection** succeeds.
 
+### Memory types and their parameters
+
+| Type | Parameters shown | Default target |
+|------|------------------|----------------|
+| Year in Review | Year, Only with | 10 min |
+| Season | Year, Season (spring/summer/autumn/winter), Hemisphere (north/south), Only with | 2 min 15 s |
+| Person Spotlight | Year (or "All Time"), Person, checkbox "Birthday to birthday" | 10 min |
+| Multi-Person | Year, People (select 2+), Together (AND) / Any of (OR) | 10 min |
+| Monthly Highlights | Year, Month, Only with | 1 min |
+| On This Day | Only with (otherwise uses today's date across previous years) | 45 s |
+| Album | "Album" from your Immich albums | auto: 4 s per item in the album, bounded 30 s–10 min |
+| Trip | Year, then "Select a trip" from the trips detected in your GPS data | auto: 30 s + 10 s per active day, bounded 60–300 s |
+| Holiday | Holiday, Most recent year, Years to span (2–10), Only with | 1 min |
+| Surprise me | "Pick a day" from the days [`discover-days`](../cli/discover-days.md) found | auto: 30 s + 6 s per active hour, bounded 60–180 s |
+| Custom date range | date range tabs and person filter (below) | about 10 min per year of range |
+
+**On This Day** and **Holiday** do not cover one continuous period. Each builds a separate window per year and the page fetches every one of them, so a Holiday memory spanning five years queries five windows around that holiday rather than the five years between them. Holiday takes any of the ten holidays the pipeline resolves — New Year, Valentine's Day, Easter, Mother's Day, Father's Day, Halloween, Thanksgiving, Christmas Eve, Christmas, New Year's Eve — plus the most recent year to include and how many years to reach back.
+
+**Album** is its own pool: the album decides what is in the memory, so it carries no person filter, and the title defaults to the album's name (the title model is not asked for a second opinion).
+
+**Surprise me** asks the library rather than you. `immich-memories discover-days` walks the years a month at a time and asks the local model which days stand out on their own, and writes what it found to `~/.immich-memories/special-days.json`. The type offers those days and nothing else, anniversaries first, labelled *"10 years ago — A long evening out"*, then every other catalogued day by how round its anniversary is and how recent it is. Choosing a day scopes the memory to the hours it happened in when the scan recorded a window, and the day's own title carries through. If there is no catalogue yet, the page says which file it looked for and which command builds one; it will not offer a random day.
+
+### People
+
+Every person picker is populated from Immich's face recognition data, so only named faces are offered.
+
+Two types are *about* people: **Person Spotlight** takes one person, **Multi-Person** takes 2 or more, with a **Together (AND) / Any of (OR)** toggle — Together requires every chosen person in each asset. Every other type that covers a period carries an optional **Only with** picker: leave it empty and the memory covers everyone; name several and only moments with **all** of them are used, which is what repeating `--person` does on the CLI. A **Grouped people condition** field under the picker takes quoted names with AND, OR and parentheses when the picker cannot say it (`--people-expression` on the CLI).
+
+Three types carry no person filter: **Album** (the album decides), **Trip** (its window is taken whole; on the CLI `--person` narrows trip *detection*, not the finished video) and **Surprise me** (the occasion, not its guest list). **Custom date range** keeps its own single-person **Person** filter, defaulting to **All people**.
+
+### Custom date range
+
+Three tabs: **Year** (a year, then **Calendar Year** or **From Birthday** — a birthday-to-birthday range), **Duration** (1–24 months or years from a **Starting from** date), **Custom Range** (start and end dates). The resulting range and its length in days show under the tabs; with Auto duration on, the target follows the range at roughly 10 minutes per year.
+
+## Advanced
+
+<ThemedScreenshot name="memory-brief-advanced" alt="Advanced: the Immich connection panel, the pool switches and the media pool button" />
+
+**Advanced** holds three things:
+
+- the **Immich connection** panel (URL, API key, Test Connection, Save Config — read [Settings](./settings.mdx#saving-config-from-the-memory-page-and-what-it-costs-you) before pressing Save);
+- the **pool switches** the selection route reads: **Include Photos**, **Include Live Photos** (the editor may play a Live Photo's motion when it earns it), **Accept Forwarded Media** (keep WhatsApp and other received media in the pool), **HDR clips only**;
+- **Open the media pool**, which goes to the Clip Review page.
+
+### The media pool page
+
+The pool is everything the brief found: videos, Live Photos and, with the switch on, photos, grouped by month with an **Include** checkbox each. Everything starts checked. Checked media is what the editor cuts from, so untick what may never be used — the accidental pocket recording, the screenshot you forwarded. Twins and bursts are the editor's to judge; nothing here pre-deselects them.
+
+The page has its own **Generate Memories** button, which cuts from the checked pool with the same duration line as the brief, and after a cut a **Review & Refine** screen: one expansion per selected clip with an **Include in compilation** checkbox, a **Select range** slider for the excerpt (plus **First 5s**, **Middle 5s**, **Last 5s**, **Full clip**, **Preview**) and a **Rotation** select. Your edits are projected back onto the cut; the final duration updates as you trim.
+
 ## Cut
 
-**Cut** loads the pool for the brief, then runs the story-first selection over it. There is no review step in between: everything the brief found is eligible, and the editor decides. To keep something out first, open the media pool from Advanced, untick it, and start the run from that page's own **Generate Memories** button.
+**Cut** loads the pool for the brief, then runs the story-first selection over it. There is no review step in between: everything the brief found is eligible, and the editor decides. To keep something out first, open the media pool from Advanced, untick it, and start the run from that page.
 
-While it runs the page shows one row per phase — Finding media, Loading thumbnails, Reading the pictures, Editing, Done — with the run's own stage under the active row ("Reading the period account", "Editing the memory"), the elapsed time, and **Cancel**, which stops after the current stage.
+<ThemedScreenshot name="memory-cutting" alt="The cut in progress: one row per phase, the editor's current stage under the active one" />
+
+While it runs the page shows one row per phase — **Finding media**, **Loading thumbnails**, **Reading the pictures**, **Editing**, **Done** — with the run's own stage beside the active row, the elapsed time, and **Cancel**, which stops after the current stage. The stages a run reports, in order: *Preparing source metadata* (annotation preparation; on a library that has never been read this is the slow one), then *Reading event evidence*, *Reading the period account*, *Building editorial cards*, *Editing the memory* and *Validating selected source timing*. What each does is in [The Curator](../pipeline/the-curator.md).
 
 One session runs one cut at a time: **Cut**, **Cut again** and the pool page's **Generate Memories** are refused while a cut is running. The run belongs to the session, not the tab. Reload the page mid-cut and it lands on the same rows: the page polls the attempt the run writes under the cache directory (`editorial-runs/<key>/latest-attempt.private.json`), and when the run finishes the story appears without a second run. A cut that was cancelled, failed, or interrupted — the process that ran it is gone, which the attempt's released lease tells apart from a slow live run — is reported on the page with **Cut again**. A cut that finished while the session held no result for it is read back from the attempt, and **Re-load media to export** fetches the pool again and rebuilds the selection from the attempt's projection so Export works.
 
-## What the cut produced
+## The story
 
 When the cut finishes the page shows the story the editor told, read from the plan the run wrote:
 
@@ -42,11 +92,30 @@ When the cut finishes the page shows the story the editor told, read from the pl
 
 A cut that left no plan behind shows its counts instead. Below the story, four buttons:
 
-- **Export** — straight to [Preview & Export](./step4-preview-export.mdx). The [options page](./step3-generation-options.mdx) is one click away from there with **Back to Generation Options**.
+- **Export** — straight to Preview & Export, below.
 - **Review the pool** — the media pool with the cut's picks, and the excerpt editor.
 - **Cut again** — the editor runs again over the same pool.
 - **Change the brief** — back to an empty brief.
 
-:::note
-The screenshots on the other Web UI pages and the demo video still show the four-step wizard this page replaces; they are being redone.
-:::
+## Export
+
+<ThemedScreenshot name="memory-export" alt="Export: summary, output filename, upload switch" />
+
+**Preview & Export** opens with stat cards (Clips, Photo Pool, Duration, Format) and the **Output** card: the **Output filename** (built from the type, the people and the range — `everyone_jan-apr_2025_memories.mp4`), the "Will be saved to" line (`output.directory`, `~/Videos/Memories` by default; the file lands in a per-run subfolder there, `<name>_<YYYYMMDD_HHMMSS_xxxx>/`), and **Upload after generation** with an **Album name** — off by default; nothing in your library is modified either way.
+
+**Generate Video** starts the render. A progress bar and status line follow the run — downloading and trimming the chosen segments, rendering photos, assembling with transitions and title screens, then "Applying music" or "Music disabled", "Uploading to Immich" or "Delivery not requested", "Complete" — and during assembly a preview frame updates as the video takes shape. **Cancel** stops after the current phase. When it finishes: "Your memory video is ready!", **Saved to: path (size)**, an **Immich delivery** line and an inline player. There is no download button: open the path shown, or find the video in the album you chose.
+
+The render keeps going on the server if the tab is reloaded or its connection drops. Reload the page and you get either "A generation started at HH:MM is still running (run …)", which re-checks every few seconds and switches to the result on its own; the **Result** header with the finished video; or a warning that the last run failed, with a pointer to the server log. Generating again is always allowed. **Start New Project** clears the session and returns to the brief.
+
+### Generation options
+
+<ThemedScreenshot name="memory-options" alt="Generation Options: output settings, title, music" />
+
+**Back to Generation Options** on the Export page opens the Options page; **Next: Preview & Export** brings you back. Nothing here changes the cut, only how it is rendered:
+
+- **Resolution** — **Auto (match clips)** (default), 4K, 1080p, 720p — and **Output Format** (MP4 or MOV, H.264, H.265 or ProRes), defaulting to `output.codec` and `output.format`.
+- **Advanced options**: **Orientation** (Auto, landscape, portrait, square; clips are never cropped — the leftover space is filled, see [face-aware framing](../pipeline/face-aware-cropping.md)), **Scaling Mode** (blur background or letterbox), **Transition Style** (**Smart** picks per cut point: crossfade for slow scenes, hard cut for fast action), the date and place captions (`--add-date`, `--add-place`), **Keep intermediate files**, and the **Photo duration** when photos are in the pool.
+- **Title** and **Subtitle**, pre-filled with the pipeline's suggestion, a **Language** select and **Regenerate**. Trip memories also show the detected trip and map mode. See [Title Screens & Maps](../pipeline/title-screens-and-maps.md).
+- **Background music**: **None**, **Upload file** (`.mp3`, `.m4a`, `.wav`, with a volume slider), **Bundled** (a royalty-free track matched to the memory's mood, listed only when the music package is installed) or **AI Generated** (listed, and the default, only when `ace_step` or `musicgen` is enabled; **Generate Music** lets you hear the track before rendering). See [Audio & Music](../pipeline/audio-and-music.md).
+
+Hardware acceleration is not shown here; it is auto-detected at encode time. `immich-memories hardware` and `immich-memories preflight` say what your machine offers.

@@ -24,10 +24,6 @@ const sidebars: SidebarsConfig = {
           label: 'Using the Web UI',
           items: [
             'create/web-ui/memory',
-            'create/web-ui/step1-configuration',
-            'create/web-ui/step2-clip-review',
-            'create/web-ui/step3-generation-options',
-            'create/web-ui/step4-preview-export',
             'create/web-ui/settings',
           ],
         },
@@ -52,7 +48,7 @@ const sidebars: SidebarsConfig = {
           items: [
             'create/memory-types/year-in-review',
             'create/memory-types/monthly-person-season',
-            'create/memory-types/holiday-then-and-now',
+            'create/memory-types/holiday',
             'create/memory-types/trip-memories',
             'create/memory-types/album-memories',
             'create/memory-types/special-days',
@@ -74,6 +70,7 @@ const sidebars: SidebarsConfig = {
           label: 'Understanding the Pipeline',
           items: [
             'create/pipeline/pipeline-overview',
+            'create/pipeline/the-curator',
             'create/pipeline/clip-selection-scoring',
             'create/pipeline/face-aware-cropping',
             'create/pipeline/scene-detection',
@@ -111,6 +108,7 @@ const sidebars: SidebarsConfig = {
             'deploy/configuration/environment-variables',
             'deploy/configuration/authentication',
             'deploy/configuration/network-and-privacy',
+            'deploy/configuration/editorial-preparation',
           ],
         },
         {

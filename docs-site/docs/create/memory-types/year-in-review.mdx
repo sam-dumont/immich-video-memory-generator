@@ -10,7 +10,7 @@ The most-used memory type. Covers an entire calendar year and creates a video wi
 
 ## What it does
 
-Fetches all videos (and optionally photos) from a calendar year, scores every clip using motion analysis, face detection, favorites, and optionally LLM content analysis, then selects the best segments distributed proportionally across months. Months with more content get more clips. The default target duration is 10 minutes (~50 seconds per month).
+Covers a calendar year and reads it as a story: the editor prepares a description and facts for every eligible picture in the year, weighs the year's stories against each other in words, and grants each the pictures its weight earns — capped by the moments it actually holds, and reserved per month so no month is crowded out. The default target duration is 10 minutes.
 
 ## CLI
 
@@ -32,23 +32,21 @@ immich-memories generate --memory-type year_in_review --year 2025 --include-phot
 
 ## Web UI
 
-Select the **Year in Review** card in Step 1, pick the year from the dropdown.
-The card's optional **Only with** box narrows the year to one or more people —
+Pick **Year in Review** on the [Memory page](../web-ui/memory.mdx) and the year from the dropdown.
+Its optional **Only with** box narrows the year to one or more people —
 the same thing `--person` does above, and naming several keeps only what holds
 all of them. On the CLI, add `--person-match or` when repeated names should mean
 any named person instead.
 
-<ThemedScreenshot name="type-year-review" alt="Year in Review preset" />
-
 ## What makes it special
 
 - **Monthly title dividers**: a divider screen (e.g., "January", "February") is inserted wherever the month changes between clips, so the video is split into sections. Dividers only appear when the range spans four or more months: `get_divider_mode()` returns "none" for anything shorter, so a February-to-March video has no dividers at all.
-- **Density-based clip budget**: months with 50 videos get more clips than months with 5. The algorithm distributes clips proportionally to content density.
+- **Every month keeps a share**: a year is partitioned by month and the slots a story earns are reserved inside its months, so a dense summer cannot take the whole film and a quiet February with one real occasion still shows it.
 - **Full year coverage**: the date range is exactly January 1 through December 31. Birthday-based years are supported too: `--birthday` auto-detects from Immich, or `--birthday 02/07` for manual override. You can also narrow to a single month with `--month` or override the date range entirely with `--start/--end`.
 
 ## Tips
 
 - Works best with **50+ videos** spread across the year. If you only have clips from a summer trip, a [Season](./monthly-person-season.mdx) or [Trip](./trip-memories.mdx) memory will be a better fit.
-- Auto analysis is the default and uses LLM scoring for manageable libraries. Use `--analysis-depth thorough` when you explicitly want every eligible clip analyzed, regardless of library size.
+- The first cut over a year is the slow one: every eligible picture gets its description and facts prepared once. The second cut reuses them — see [Editorial annotation setup](../../deploy/configuration/editorial-preparation.md).
 - The default 10-minute duration works well for most libraries. For smaller collections (under 100 videos), try `--duration 300` for a tighter 5-minute edit.
 - Combining `--person` with Year in Review creates a "Your Year With Riley" style video: only clips containing that person, but still with monthly structure. Naming two people narrows it to the clips holding both unless the CLI explicitly uses `--person-match or`.

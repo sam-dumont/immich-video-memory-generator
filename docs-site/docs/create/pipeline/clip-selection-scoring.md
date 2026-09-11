@@ -1,9 +1,9 @@
 ---
 sidebar_position: 1
-title: Clip Selection & Scoring
+title: Legacy scoring reference
 ---
 
-# Clip Selection & Scoring
+# Legacy scoring reference (removed in a later release)
 
 Production selection uses the story-first route described in [The Curator](the-curator):
 prepare the whole source, understand stories and distinct moments, then allocate duration.
@@ -11,7 +11,9 @@ Pixel scores and source volume do not choose the period's stories in advance.
 
 The scoring tables and density-budget algorithm below document the earlier selector and
 underlying clip measurements. They are retained as a technical reference, not as controls for
-the current story-first selection policy.
+the current story-first selection policy. Its config keys (`analysis.max_refinement_passes`,
+`content_analysis.*`) still parse and change nothing; the flags `--refinement-passes` and
+`--analysis-depth` are gone. Everything on this page is scheduled for removal.
 
 ## Legacy density budget
 
@@ -205,11 +207,9 @@ at all. It can drop at most 20% of the selection in one pass, never a favourite,
 or unparseable answer drops nothing. It is **optional by construction** — with no LLM configured
 it returns no drops and the selection is unchanged.
 
-`analysis.max_refinement_passes` (default 10) bounds each of these loops. It is the single
-largest multiplier on what a warm run costs, because each review pass is an uncached LLM call —
-the per-clip analysis is cached, but the review reads the current selection, which changes every
-round, so there is nothing to key a cache on. Lower it with
-`advanced.analysis.max_refinement_passes` or `--refinement-passes`; `preset: fast` uses 3.
+`analysis.max_refinement_passes` (default 10) bounded each of these loops, and was the single
+largest multiplier on what a warm run cost, because each review pass was an uncached LLM call.
+The key still parses and does nothing.
 
 If the review is still dropping clips when the budget runs out, one final review runs that drops
 without refilling — a cut four seconds short beats a cut that ends on a photo of a shelf.
@@ -268,7 +268,7 @@ How much analysis effort to spend:
 | **Fast** | Full analysis + LLM | Local scoring/cached metadata | Quick |
 | **Thorough** | Full analysis + LLM | Full analysis + LLM | Slowest, exhaustive |
 
-CLI: `--analysis-depth auto|fast|thorough`
+The `--analysis-depth` flag that chose between these is gone.
 
 Cache reuse is model-aware. Results from the exact configured model are loaded automatically and
 shown in review; they skip another LLM request. Results with no model identity or from a different
@@ -293,8 +293,8 @@ needed it. The count is always in `--trace-selection` output, thin or not.
 Treat it as a signal about where your attention is worth spending, not an error. A low number
 usually means an uncurated period with no favorites to seed from and a pool the analysis budget
 never reached. The clips are fine; the *ranking* between them is close to arbitrary, so the review
-step is doing more work than usual. Run `--analysis-depth thorough` if you'd rather the machine
-decide, or just spend the extra minute in review.
+step is doing more work than usual. This warning belonged to the old selector: the story-first route prepares facts for every
+eligible source, so there is no partially-looked-at pool.
 
 ## Performance: 480p Downscaling
 

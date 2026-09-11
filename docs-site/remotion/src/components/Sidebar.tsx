@@ -11,7 +11,7 @@ type Props = {
 };
 
 const NAV_STEPS = [
-  { icon: "settings", label: "Configuration" },
+  { icon: "auto_awesome", label: "Memory" },
   { icon: "video_library", label: "Clip Review" },
   { icon: "tune", label: "Options" },
   { icon: "download", label: "Export" },
@@ -19,6 +19,7 @@ const NAV_STEPS = [
 
 const BOTTOM_NAV = [
   { icon: "description", label: "Config" },
+  { icon: "groups", label: "People" },
   { icon: "cached", label: "Cache" },
 ];
 

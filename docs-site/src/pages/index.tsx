@@ -32,8 +32,8 @@ function HeroSection() {
           </div>
           <div className={styles.heroVisual}>
             <img
-              src={useBaseUrl('/img/screenshots/step2-clip-review.png')}
-              alt="Clip review interface showing scored video segments"
+              src={useBaseUrl('/img/screenshots/memory-story.png')}
+              alt="The story view: thesis, stories in weight order, and the pictures each was granted, with reasons"
               className={styles.heroScreenshot}
               loading="eager"
             />
@@ -79,22 +79,22 @@ docker compose up -d
             <div className={styles.step}>
               <span className={styles.stepNumber}>1</span>
               <div>
-                <strong>Configuration</strong>
-                <p>Pick memory type, time period, person</p>
+                <strong>Brief</strong>
+                <p>Pick a memory type, its period or person, one duration</p>
               </div>
             </div>
             <div className={styles.step}>
               <span className={styles.stepNumber}>2</span>
               <div>
-                <strong>Clip Review</strong>
-                <p>Scores and ranks your best moments; you refine the picks</p>
+                <strong>Cut</strong>
+                <p>The editor reads the period and weighs its stories</p>
               </div>
             </div>
             <div className={styles.step}>
               <span className={styles.stepNumber}>3</span>
               <div>
-                <strong>Options</strong>
-                <p>Edit title, pick music, adjust settings</p>
+                <strong>Story</strong>
+                <p>Read what it chose and why; trim or exclude if you like</p>
               </div>
             </div>
             <div className={styles.step}>
@@ -120,27 +120,27 @@ type ShowcaseItem = {
 
 const showcaseItems: ShowcaseItem[] = [
   {
-    title: '11 memory types',
-    description: 'Year in Review, Season, Person Spotlight, Multi-Person, Monthly Highlights, On This Day, Holiday, Then and Now, Trip, Album, and Surprise Me — a day your library says something happened on. Pick a preset and it handles the rest, or take the Custom card and set the date range yourself.',
-    image: '/img/screenshots/step1-preset-cards.png',
-    alt: 'Memory type preset selection cards',
+    title: '10 memory types',
+    description: 'Year in Review, Season, Person Spotlight, Multi-Person, Monthly Highlights, On This Day, Album, Trip, Holiday, and Surprise Me — a day your library says something happened on. Pick a type and it handles the rest, or take Custom date range and set the dates yourself.',
+    image: '/img/screenshots/memory-brief.png',
+    alt: 'The brief: memory type, its parameters and the duration line',
   },
   {
     title: 'A curator, not a filter',
-    description: 'A vision model looks at your material and describes what is happening in it. Selection, duplicate judgment, and a final review of the whole cut all work from those descriptions — with real drop reasons, favourites treated as law, and strictly chronological order. The pipeline is the product.',
-    image: '/img/screenshots/step2-refine-moments.png',
-    alt: 'Clip review grid with scored video segments',
+    description: 'A small vision model captions every picture once. A text model then reads the period as a story, weighs its stories in words and grants each the pictures it earns — with a written reason for every one, favourites as indicators, and strictly chronological order. The editor is the product.',
+    image: '/img/screenshots/memory-story.png',
+    alt: 'The story the cut produced, with a reason for every picture',
   },
   {
     title: 'Cinematic title screens',
     description: 'Animated gradients, particle systems, satellite trip maps. Three rendering backends (Taichi GPU, PIL, FFmpeg) pick the best your hardware can do.',
-    image: '/img/screenshots/step3-options.png',
+    image: '/img/screenshots/memory-options.png',
     alt: 'Generation options with title and music settings',
   },
   {
     title: 'AI music generation',
     description: 'A vision LLM detects the mood of your clips. ACE-Step or MusicGen creates an original soundtrack. Audio ducking lowers music during speech.',
-    image: '/img/screenshots/step3-options.png',
+    image: '/img/screenshots/memory-options.png',
     alt: 'Music preview and generation options',
   },
 ];

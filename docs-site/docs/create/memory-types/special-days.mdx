@@ -4,10 +4,10 @@ sidebar_label: "Special Days"
 
 # Special Days
 
-The other ten memory types cover something you named: a year, a month, a person, a
+The other nine memory types cover something you named: a year, a month, a person, a
 trip, an album. A special day is the one you did not name. It is a day out of your own
 library that a scan flagged as an occasion, wrote down, and offers back years later when
-its anniversary comes round. In the web UI the card is called **Surprise me**; on the
+its anniversary comes round. In the web UI the type is called **Surprise me**; on the
 CLI the type is `special_day`.
 
 Nothing searches for it. There is no query, no "find me the wedding".
@@ -33,7 +33,7 @@ anniversary falls within three days of today, roundest first.
 | Route | Which days it offers | When |
 |---|---|---|
 | `auto run` | anniversaries within 3 days | unasked, at whatever hour you scheduled |
-| **Surprise me** card in Step 1 | the whole catalogue, anniversaries first | when you click it |
+| **Surprise me** on the Memory page | the whole catalogue, anniversaries first | when you pick it |
 | `generate --memory-type special_day --day` | any day the catalogue holds | when you ask for it |
 
 Automation is the strict one, because it interrupts you.
@@ -45,9 +45,9 @@ other detector, and a seventh anniversary competes with the monthly review rathe
 pre-empting it. At most one special day per run — the per-type cap is 1, because a queue
 of surprises is not a surprise.
 
-The wizard is the loose one. You clicked the card, so it lists everything in the
+The Memory page is the loose one. You picked the type, so it lists everything in the
 catalogue, due or not. See
-[Step 1: Configuration](../web-ui/step1-configuration.mdx#surprise-me).
+[the Memory page](../web-ui/memory.mdx#memory-types-and-their-parameters).
 
 ## What it covers and how long it runs
 
@@ -61,7 +61,7 @@ widening back out to the rest of the day.
 Length comes from the same evidence the scan already measured: **30 seconds plus 6
 seconds per active hour, held between 60 and 180 seconds**. Anything under five active
 hours takes the 60-second floor; 25 hours or more takes the 180-second ceiling. Pass
-`--duration`, or turn off **Auto duration** in Step 2, to set it yourself.
+`--duration`, or turn off **Auto duration** on the Memory page, to set it yourself.
 
 One occasion means one opening card. Special days get no month dividers.
 
@@ -75,8 +75,8 @@ a day that should not be rendered, so four cases error instead:
 - a `--day` the catalogue has never heard of — the error names the file it read
 - a catalogued entry with neither a title nor a description of what the day was
 
-The web UI refuses the same way: with no catalogue, the **Surprise me** card prints the
-path it looked for and the command that builds one, and Step 1 stays incomplete. It does
+The web UI refuses the same way: with no catalogue, **Surprise me** prints the
+path it looked for and the command that builds one, and the brief stays incomplete. It does
 not fall back to a random day.
 
 ## A day can come back
