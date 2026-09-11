@@ -60,11 +60,32 @@ WHITELIST = Path(__file__).resolve().parent.parent / "vulture-whitelist.py"
 # two assets Immich reports differently one evidence key and re-keyed every banked
 # observation of them. It belongs with file_modified_at above: an Immich wire field
 # the loader fills, kept because the digest binds it, not because code reads it.
-# 253, down from 268: pydantic's validators and serializers are the same false
-# positive as @register_preset above -- the schema calls them, never a name vulture
-# can follow -- and they had been accumulating one method at a time. `make dead-code`
-# now names those decorators too, so 16 entries went.
-MAX_WHITELISTED_SYMBOLS = 253
+# 50, down from 268: the backlog was read symbol by symbol rather than
+# regenerated, and what it had been hiding came out three different ways.
+#   Deleted, because nothing consumed them. The Apple Vision landmark path (both
+#   call sites asked for no landmarks), the AspectRatioTransformer stack and its
+#   two sibling modules, ConcatService, FilterBuilder, the orphaned downscaler,
+#   plan_transitions, six write-only UI state fields, three Immich response
+#   models nothing imported -- then four further layers of helpers that only the
+#   layer above had been keeping alive, which is how FilterBuilder ended up
+#   going and VideoAssembler dropped from six composed services to five. About
+#   8,000 lines, each with the tests that existed only to exercise it.
+#   Stated once as a mechanism instead of as a line each. Click callbacks,
+#   NiceGUI routes, Starlette middleware, pydantic validators and model_config
+#   are put where they are used by a decorator or a metaclass, so no source line
+#   names them; `make dead-code` now says that once. It is the same move as the
+#   @register_preset note above, applied to the rest of the family, and it means
+#   a new command or validator no longer owes a whitelist line.
+#   Kept, and only these 50. Every entry now sits under a heading naming the
+#   mechanism vulture cannot see -- the evidence digest that hashes a whole
+#   Immich model (which is the iso and file_modified_at reasoning above,
+#   generalised to the family), the prompt the editorial model reads, sqlite3's
+#   row_factory, onnxruntime's SessionOptions, pydantic-settings' ABC contract, a
+#   frozen dataclass's generated __eq__, and the checked-in scripts vulture does
+#   not scan. The last block is different in kind: symbols reported to the owner
+#   rather than deleted, where the missing caller is the defect and removing the
+#   callee would cement it.
+MAX_WHITELISTED_SYMBOLS = 50
 
 
 def test_the_dead_code_whitelist_never_grows() -> None:

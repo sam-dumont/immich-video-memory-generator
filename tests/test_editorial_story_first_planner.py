@@ -115,7 +115,6 @@ def make_source(tmp_path, *, seconds=60, occasions=4, pictures=3):
         pixel_facts={},
         shareability_flags={},
         motion_residuals={},
-        period_reading={"thesis": "Walking by the canal"},
         lineage={},
         bank_dir=tmp_path / "banks",
         artifact_dir=tmp_path / "plan",

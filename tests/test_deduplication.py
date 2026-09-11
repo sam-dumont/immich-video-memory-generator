@@ -56,22 +56,6 @@ class TestMigrationV9:
         assert loaded.memory_key is None
 
 
-class TestHasMemoryBeenGenerated:
-    def test_returns_true_for_completed_run(self, db):
-        db.save_run(_make_run(status="completed"))
-        assert db.has_memory_been_generated("year_in_review:2025-01-01:2025-12-31:") is True
-
-    def test_returns_false_for_failed_run(self, db):
-        db.save_run(_make_run(status="failed"))
-        assert db.has_memory_been_generated("year_in_review:2025-01-01:2025-12-31:") is False
-
-    def test_returns_false_for_unknown_key(self, db):
-        assert db.has_memory_been_generated("unknown:2025-01-01:2025-12-31:") is False
-
-    def test_returns_false_for_null_key(self, db):
-        assert db.has_memory_been_generated("") is False
-
-
 class TestGetLastRunOfType:
     def test_returns_most_recent_completed(self, db):
         db.save_run(_make_run(run_id="r1", memory_type="monthly_highlights"))

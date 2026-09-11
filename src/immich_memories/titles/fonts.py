@@ -350,13 +350,7 @@ def clear_font_cache(fonts_dir: Path | None = None) -> None:
 
 
 class FontManager:
-    """High-level font management for title screens.
-
-    Usage:
-        manager = FontManager()
-        manager.ensure_fonts()  # Downloads missing fonts
-        font_path = manager.get_font("Outfit", "Medium")
-    """
+    """High-level font management for title screens."""
 
     def __init__(self, fonts_dir: Path | None = None):
         """Initialize font manager.
@@ -365,49 +359,6 @@ class FontManager:
             fonts_dir: Override fonts directory.
         """
         self.fonts_dir = fonts_dir or get_fonts_cache_dir()
-
-    def ensure_fonts(self, fonts: list[str] | None = None) -> bool:
-        """Ensure specified fonts are available.
-
-        Args:
-            fonts: List of font families to ensure. If None, ensures all.
-
-        Returns:
-            True if all fonts are available.
-        """
-        if fonts is None:
-            fonts = list(FONT_DEFINITIONS.keys())
-
-        all_ok = True
-        for font in fonts:
-            if not ensure_font_available(font, self.fonts_dir):
-                all_ok = False
-
-        return all_ok
-
-    def get_font(
-        self,
-        font_family: str,
-        weight: Literal["Light", "Regular", "Medium", "SemiBold"] = "Regular",
-    ) -> Path | None:
-        """Get path to a font file.
-
-        Args:
-            font_family: Font family name.
-            weight: Font weight.
-
-        Returns:
-            Path to font file, or None.
-        """
-        return get_font_path(font_family, weight, self.fonts_dir)
-
-    def list_cached(self) -> list[str]:
-        """List cached font families.
-
-        Returns:
-            List of cached font family names.
-        """
-        return get_available_fonts(self.fonts_dir)
 
     def clear_cache(self) -> None:
         """Clear all cached fonts."""

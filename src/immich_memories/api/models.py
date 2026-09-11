@@ -72,41 +72,6 @@ class ExifInfo(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
-class VideoInfo(BaseModel):
-    """Video-specific information."""
-
-    duration_seconds: float | None = Field(default=None, alias="durationSeconds")
-    bitrate: int | None = None
-    width: int | None = None
-    height: int | None = None
-    codec: str | None = None
-    audio_codec: str | None = Field(default=None, alias="audioCodec")
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    @property
-    def resolution(self) -> tuple[int, int] | None:
-        """Get resolution as (width, height) tuple."""
-        if self.width and self.height:
-            return (self.width, self.height)
-        return None
-
-    @property
-    def megapixels(self) -> float | None:
-        """Calculate megapixels."""
-        if self.width and self.height:
-            return (self.width * self.height) / 1_000_000
-        return None
-
-
-class PersonThumbnail(BaseModel):
-    """Thumbnail info for a person."""
-
-    asset_id: str = Field(alias="assetId")
-
-    model_config = ConfigDict(populate_by_name=True)
-
-
 class Person(BaseModel):
     """Person identified in Immich."""
 
@@ -141,16 +106,6 @@ class AssetFace(BaseModel):
     image_height: int = Field(default=0, alias="imageHeight")
 
     model_config = ConfigDict(populate_by_name=True)
-
-    @property
-    def bounding_box(self) -> tuple[int, int, int, int]:
-        """Get bounding box as (x1, y1, x2, y2) tuple."""
-        return (
-            self.bounding_box_x1,
-            self.bounding_box_y1,
-            self.bounding_box_x2,
-            self.bounding_box_y2,
-        )
 
     @property
     def center(self) -> tuple[float, float]:
@@ -266,13 +221,6 @@ class Asset(BaseModel):
         """Get the month this asset was created."""
         return self.file_created_at.month
 
-    @property
-    def file_size_mb(self) -> float | None:
-        """Get file size in megabytes."""
-        if self.exif_info and self.exif_info.file_size_in_byte:
-            return self.exif_info.file_size_in_byte / (1024 * 1024)
-        return None
-
 
 class SearchResult(BaseModel):
     """Search result from Immich API."""
@@ -322,19 +270,6 @@ class UserInfo(BaseModel):
     id: str
     email: str
     name: str = ""
-    is_admin: bool = Field(default=False, alias="isAdmin")
-    avatar_color: str | None = Field(default=None, alias="avatarColor")
-    profile_image_path: str = Field(default="", alias="profileImagePath")
-
-    model_config = ConfigDict(populate_by_name=True)
-
-
-class SmartSearchResult(BaseModel):
-    """Result from smart/semantic search."""
-
-    assets: dict[str, list[Asset]] = Field(default_factory=dict)
-    next_page: str | None = Field(default=None, alias="nextPage")
-
     model_config = ConfigDict(populate_by_name=True)
 
 
@@ -420,21 +355,9 @@ class VideoClipInfo(BaseModel):
         return self.asset.live_photo_video_id or self.asset.id
 
     @property
-    def has_llm_analysis(self) -> bool:
-        """Check if LLM analysis results are available."""
-        return self.llm_description is not None or self.llm_emotion is not None
-
-    @property
     def resolution(self) -> tuple[int, int]:
         """Get resolution as (width, height) tuple."""
         return (self.width, self.height)
-
-    @property
-    def aspect_ratio(self) -> float:
-        """Calculate aspect ratio."""
-        if self.height == 0:
-            return 0
-        return self.width / self.height
 
     @property
     def displayed_width(self) -> int:
@@ -454,11 +377,6 @@ class VideoClipInfo(BaseModel):
     def is_portrait(self) -> bool:
         """Check if video is portrait orientation (accounting for rotation)."""
         return self.displayed_height > self.displayed_width
-
-    @property
-    def is_landscape(self) -> bool:
-        """Check if video is landscape orientation (accounting for rotation)."""
-        return self.displayed_width > self.displayed_height
 
     @property
     def is_hdr(self) -> bool:

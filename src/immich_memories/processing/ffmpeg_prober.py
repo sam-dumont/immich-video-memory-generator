@@ -31,21 +31,6 @@ class FFmpegProber:
         self.settings = settings
         self.probe_cache = probe_cache or ProbeCache()
 
-    def parse_resolution_from_stream(self, stream: dict) -> tuple[int, int] | None:
-        """Swaps width/height when rotation is 90 or 270 degrees."""
-        width = stream.get("width", 0)
-        height = stream.get("height", 0)
-        rotation = 0
-        for side_data in stream.get("side_data_list", []):
-            if "rotation" in side_data:
-                rotation = abs(int(side_data["rotation"]))
-                break
-        if rotation in (90, 270):
-            width, height = height, width
-        if width and height:
-            return width, height
-        return None
-
     def get_video_resolution(self, video_path: Path) -> tuple[int, int] | None:
         """Get resolution accounting for rotation (iPhones store portrait as rotated landscape)."""
         try:
@@ -168,29 +153,6 @@ class FFmpegProber:
             logger.warning(f"Error checking audio stream for {path.name}: {e}")
             return False
 
-    def has_video_stream(self, path: Path) -> bool:
-        try:
-            return self.probe_cache.get(path).has_video
-        except (OSError, ProbeError, ValueError) as e:
-            logger.warning(f"Error checking video stream for {path.name}: {e}")
-            return False
-
-    def detect_hdr_type(self, path: Path) -> str | None:
-        """Return the normalized source transfer from the shared probe."""
-        try:
-            return self.probe_cache.get(path).hdr_type
-        except (OSError, ProbeError, ValueError) as exc:
-            logger.debug("Failed to detect HDR type for %s: %s", path, exc)
-            return None
-
-    def detect_color_primaries(self, path: Path) -> str | None:
-        """Return source color primaries from the shared probe."""
-        try:
-            return self.probe_cache.get(path).color_primaries
-        except (OSError, ProbeError, ValueError) as exc:
-            logger.debug("Failed to detect color primaries for %s: %s", path, exc)
-            return None
-
     def audio_bitrate(self, path: Path) -> int:
         """Return the first audio stream bitrate, or zero when unavailable."""
         try:
@@ -198,52 +160,6 @@ class FFmpegProber:
         except (OSError, ProbeError, ValueError) as exc:
             logger.debug("Failed to detect audio bitrate for %s: %s", path, exc)
             return 0
-
-    def probe_batch_durations(
-        self,
-        batches: list[AssemblyClip],
-    ) -> tuple[list[float], list[float]]:
-        audio_durations: list[float] = []
-        video_durations: list[float] = []
-        for batch in batches:
-            audio_dur = self.probe_duration(batch.path, stream_type="audio")
-            video_dur = self.probe_duration(batch.path, stream_type="video")
-
-            if audio_dur <= 0:
-                logger.warning(
-                    f"Could not probe audio duration of {batch.path}, using declared {batch.duration}"
-                )
-                audio_dur = batch.duration
-            if video_dur <= 0:
-                logger.warning(
-                    f"Could not probe video duration of {batch.path}, using declared {batch.duration}"
-                )
-                video_dur = batch.duration
-
-            if abs(audio_dur - video_dur) > 0.05:
-                logger.warning(
-                    f"A/V duration mismatch in {batch.path.name}: audio={audio_dur:.3f}s, video={video_dur:.3f}s"
-                )
-            if abs(audio_dur - batch.duration) > 0.1:
-                logger.info(
-                    f"Audio duration mismatch for {batch.path.name}: declared={batch.duration:.3f}s, actual={audio_dur:.3f}s"
-                )
-
-            audio_durations.append(audio_dur)
-            video_durations.append(video_dur)
-
-        return audio_durations, video_durations
-
-    @staticmethod
-    def parse_fps_str(fps_str: str) -> float | None:
-        """Parse an FFmpeg frame rate fraction string like '60/1' or '60000/1001'."""
-        if "/" in fps_str:
-            num, den = fps_str.split("/")
-            if float(den) > 0:
-                return float(num) / float(den)
-        elif fps_str:
-            return float(fps_str)
-        return None
 
     def detect_framerate(self, video_path: Path) -> float | None:
         try:

@@ -148,7 +148,6 @@ def generate_month_divider(
 
 
 def generate_ending_screen(
-    video_clips: list[Path] | None = None,
     _dominant_color: tuple[int, int, int] | None = None,
     style: TitleStyle | None = None,
     output_path: Path | None = None,
@@ -160,7 +159,6 @@ def generate_ending_screen(
     """Generate an ending screen with fade to white.
 
     Args:
-        video_clips: Unused, kept for API compatibility.
         _dominant_color: Unused, always fades to white.
         style: Visual style for background.
         output_path: Output path.

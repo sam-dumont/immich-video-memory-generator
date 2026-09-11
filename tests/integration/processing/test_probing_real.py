@@ -106,7 +106,7 @@ class TestProbeFramerate:
 
 
 # ---------------------------------------------------------------------------
-# FFmpegProber.has_audio_stream / has_video_stream
+# FFmpegProber.has_audio_stream
 # ---------------------------------------------------------------------------
 
 
@@ -118,14 +118,6 @@ class TestStreamDetection:
     def test_has_audio_false(self, no_audio_clip: Path):
         prober = _make_prober()
         assert prober.has_audio_stream(no_audio_clip) is False
-
-    def test_has_video_true(self, test_clip_720p: Path):
-        prober = _make_prober()
-        assert prober.has_video_stream(test_clip_720p) is True
-
-    def test_has_video_on_no_audio_clip(self, no_audio_clip: Path):
-        prober = _make_prober()
-        assert prober.has_video_stream(no_audio_clip) is True
 
 
 # ---------------------------------------------------------------------------
@@ -150,22 +142,6 @@ class TestDetectBestResolution:
         prober = _make_prober()
         res = prober.detect_best_resolution([])
         assert res == (1920, 1080)
-
-
-# ---------------------------------------------------------------------------
-# FFmpegProber.probe_batch_durations
-# ---------------------------------------------------------------------------
-
-
-class TestProbeBatchDurations:
-    def test_two_clips(self, test_clip_720p: Path, test_clip_720p_b: Path):
-        prober = _make_prober()
-        clips = [_make_clip(test_clip_720p), _make_clip(test_clip_720p_b)]
-        audio_durs, video_durs = prober.probe_batch_durations(clips)
-        assert len(audio_durs) == 2
-        assert len(video_durs) == 2
-        for dur in audio_durs + video_durs:
-            assert dur > 0, "All durations should be positive"
 
 
 # ---------------------------------------------------------------------------
@@ -263,30 +239,3 @@ class TestEstimateDuration:
         est = prober.estimate_duration(clips)
         # 3 + 3 - 0.5 = 5.5
         assert est == pytest.approx(5.5)
-
-
-# ---------------------------------------------------------------------------
-# FFmpegProber.parse_fps_str (static)
-# ---------------------------------------------------------------------------
-
-
-class TestParseFpsStr:
-    def test_fraction(self):
-        from immich_memories.processing.ffmpeg_prober import FFmpegProber
-
-        assert FFmpegProber.parse_fps_str("30/1") == pytest.approx(30.0)
-
-    def test_ntsc(self):
-        from immich_memories.processing.ffmpeg_prober import FFmpegProber
-
-        assert FFmpegProber.parse_fps_str("60000/1001") == pytest.approx(59.94, abs=0.01)
-
-    def test_plain_number(self):
-        from immich_memories.processing.ffmpeg_prober import FFmpegProber
-
-        assert FFmpegProber.parse_fps_str("24") == pytest.approx(24.0)
-
-    def test_empty(self):
-        from immich_memories.processing.ffmpeg_prober import FFmpegProber
-
-        assert FFmpegProber.parse_fps_str("") is None

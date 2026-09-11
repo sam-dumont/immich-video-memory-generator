@@ -68,43 +68,6 @@ def _split_text_for_rendering(draw, text: str, font, max_width: float) -> list[s
     return lines or [text]
 
 
-def split_title_lines(text: str, max_chars: int) -> list[str]:
-    """Split title text into lines, preferring comma boundaries.
-
-    Args:
-        text: Title text to split.
-        max_chars: Approximate max characters per line.
-
-    Returns:
-        List of lines.
-    """
-    if len(text) <= max_chars:
-        return [text]
-
-    # Prefer splitting at comma
-    if "," in text:
-        parts = [p.strip() for p in text.split(",", 1)]
-        # Keep comma on first part for visual continuity
-        parts[0] += ","
-        if all(len(p) <= max_chars for p in parts):
-            return parts
-
-    # Word-wrap fallback
-    words = text.split()
-    lines: list[str] = []
-    current = ""
-    for word in words:
-        test = f"{current} {word}".strip()
-        if len(test) > max_chars and current:
-            lines.append(current)
-            current = word
-        else:
-            current = test
-    if current:
-        lines.append(current)
-    return lines or [text]
-
-
 class TextConfig(Protocol):
     """Title config fields the text renderer reads."""
 

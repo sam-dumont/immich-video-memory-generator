@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import random
 from abc import ABC, abstractmethod
@@ -25,19 +24,8 @@ class MusicTrack:
     mood: str | None = None
     genre: str | None = None
     tempo: str | None = None  # "slow", "medium", "fast"
-    license: str = "royalty-free"
     source: str = "unknown"
     local_path: Path | None = None
-
-    @property
-    def cache_filename(self) -> str:
-        """Generate a cache filename based on track ID."""
-        hash_id = hashlib.md5(  # noqa: S324
-            f"{self.source}:{self.id}".encode(),
-            usedforsecurity=False,
-        ).hexdigest()[:12]
-        safe_title = "".join(c if c.isalnum() else "_" for c in self.title)[:30]
-        return f"{safe_title}_{hash_id}.mp3"
 
 
 class MusicSource(ABC):
@@ -184,7 +172,6 @@ class LocalMusicSource(MusicSource):
                     duration_seconds=duration,
                     url=f"file://{path}",
                     tags=tags,
-                    license="local",
                     source="local",
                     local_path=path,
                 )
@@ -245,24 +232,3 @@ class LocalMusicSource(MusicSource):
         if track.local_path and track.local_path.exists():
             return track.local_path
         raise ValueError(f"Local track not found: {track.id}")
-
-
-def get_music_source(
-    source_type: str = "local",
-    music_dir: Path | None = None,
-) -> MusicSource:
-    """Get a music source by type.
-
-    Args:
-        source_type: "local"
-        music_dir: Directory for local music
-
-    Returns:
-        MusicSource instance
-    """
-    if source_type == "local":
-        if not music_dir:
-            raise ValueError("music_dir required for local source")
-        return LocalMusicSource(music_dir=music_dir)
-    else:
-        raise ValueError(f"Unknown music source type: {source_type}")

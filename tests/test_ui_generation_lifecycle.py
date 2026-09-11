@@ -422,11 +422,10 @@ async def test_ui_successful_upload_uses_completed_pending_row_and_same_tracker(
     assert completed.immich_asset_id == "ui-asset"
     assert completed.delivery_album == "Original UI Album"
     assert state.delivery_status is DeliveryStatus.DELIVERED
-    assert state.upload_result == {"asset_id": "ui-asset", "album_id": "ui-album"}
 
 
 @pytest.mark.asyncio
-async def test_ui_success_toast_failure_preserves_delivered_state_and_upload_result(
+async def test_ui_success_toast_failure_preserves_delivered_state(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
@@ -483,7 +482,6 @@ async def test_ui_success_toast_failure_preserves_delivered_state_and_upload_res
     assert completed.delivery_status is DeliveryStatus.DELIVERED
     assert saved.delivery_status is DeliveryStatus.DELIVERED
     assert state.delivery_status is DeliveryStatus.DELIVERED
-    assert state.upload_result == upload_result
     assert notifications == ["Uploaded to Immich! Album: Delivered Album"]
     assert "remains pending" not in caplog.text
 
@@ -557,7 +555,6 @@ async def test_ui_reloads_delivered_truth_when_mark_delivered_commits_then_raise
     assert tracker.current_run is not None
     assert tracker.current_run.delivery_status is DeliveryStatus.PENDING
     assert state.delivery_status is DeliveryStatus.DELIVERED
-    assert state.upload_result == upload_result
     assert notifications == ["Uploaded to Immich! Album: Committed Album"]
     assert "remains pending" not in caplog.text
     assert writes == 1
@@ -663,7 +660,6 @@ async def test_run_generation_does_not_restore_stale_pending_delivery_after_ambi
     assert saved is not None
     assert saved.delivery_status is DeliveryStatus.DELIVERED
     assert state.delivery_status is DeliveryStatus.DELIVERED
-    assert state.upload_result == upload_result
     assert shown_statuses == [DeliveryStatus.DELIVERED]
     assert writes == 1
 

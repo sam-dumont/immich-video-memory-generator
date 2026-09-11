@@ -353,7 +353,6 @@ def _render_trip_params(state: AppState) -> None:
                 )
 
             detected = await io_bound_result(do_detect)
-            state.detected_trips = detected
         except Exception as exc:  # WHY: UI graceful degradation
             logger.warning("Trip detection failed: %s", exc)
             trip_container.clear()
@@ -403,7 +402,6 @@ def _render_trip_params(state: AppState) -> None:
         state.memory_preset_params["year"] = e.value
         for k in ("trip_index", "trip_start", "trip_end", "location_name"):
             state.memory_preset_params.pop(k, None)
-        state.detected_trips = []
         state.date_ranges = []
         await _detect_trips_for_year(e.value)
 

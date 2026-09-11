@@ -26,7 +26,7 @@ _Quartz = None
 
 @dataclass
 class FaceDetection:
-    """A detected face with bounding box and landmarks."""
+    """A detected face with its bounding box."""
 
     # Bounding box (normalized 0-1 coordinates, origin bottom-left in Vision)
     x: float
@@ -35,12 +35,6 @@ class FaceDetection:
     height: float
     confidence: float = 1.0
 
-    # Optional landmarks
-    left_eye: tuple[float, float] | None = None
-    right_eye: tuple[float, float] | None = None
-    nose: tuple[float, float] | None = None
-    mouth: tuple[float, float] | None = None
-
     @property
     def center(self) -> tuple[float, float]:
         """Get center point (normalized, origin top-left for compatibility)."""
@@ -48,11 +42,6 @@ class FaceDetection:
         center_x = self.x + self.width / 2
         center_y = 1.0 - (self.y + self.height / 2)  # Flip Y
         return (center_x, center_y)
-
-    @property
-    def center_vision(self) -> tuple[float, float]:
-        """Get center point in Vision coordinates (bottom-left origin)."""
-        return (self.x + self.width / 2, self.y + self.height / 2)
 
     @property
     def area(self) -> float:
@@ -105,21 +94,12 @@ class VisionFaceDetector:
     """Face detector using Apple Vision framework.
 
     Uses the Neural Engine on Apple Silicon for fast, GPU-accelerated
-    face detection with optional landmark detection.
+    face detection.
     """
 
-    def __init__(self, detect_landmarks: bool = False):
-        """Initialize the Vision face detector.
-
-        Args:
-            detect_landmarks: Whether to detect facial landmarks.
-        """
+    def __init__(self) -> None:
         if not is_vision_available():
             raise RuntimeError("Apple Vision framework not available")
-
-        self.detect_landmarks = detect_landmarks
-        self._request = None
-        self._handler = None
 
     def detect_faces(
         self,
@@ -147,10 +127,7 @@ class VisionFaceDetector:
         handler = Vision.VNImageRequestHandler.alloc().initWithCGImage_options_(cg_image, None)
 
         # Create face detection request
-        if self.detect_landmarks:
-            request = Vision.VNDetectFaceLandmarksRequest.alloc().init()
-        else:
-            request = Vision.VNDetectFaceRectanglesRequest.alloc().init()
+        request = Vision.VNDetectFaceRectanglesRequest.alloc().init()
 
         # Perform detection
         success, error = handler.performRequests_error_([request], None)
@@ -189,12 +166,6 @@ class VisionFaceDetector:
                 confidence=confidence,
             )
 
-            # Extract landmarks if available
-            if self.detect_landmarks and hasattr(observation, "landmarks"):
-                landmarks = observation.landmarks()
-                if landmarks:
-                    face = self._extract_landmarks(face, landmarks)
-
             faces.append(face)
 
         # Explicit cleanup of Vision framework objects to prevent memory leaks
@@ -204,67 +175,3 @@ class VisionFaceDetector:
         del cg_image
 
         return faces
-
-    def _extract_landmarks(
-        self,
-        face: FaceDetection,
-        landmarks,
-    ) -> FaceDetection:
-        """Extract landmark positions from Vision landmarks.
-
-        Args:
-            face: Face detection to update.
-            landmarks: VNFaceLandmarks2D object.
-
-        Returns:
-            Updated face detection with landmarks.
-        """
-        # Left eye
-        if landmarks.leftEye():
-            points = landmarks.leftEye().normalizedPoints()
-            if points:
-                # Get center of eye region
-                center = self._get_landmark_center(points)
-                face.left_eye = center
-
-        # Right eye
-        if landmarks.rightEye():
-            points = landmarks.rightEye().normalizedPoints()
-            if points:
-                center = self._get_landmark_center(points)
-                face.right_eye = center
-
-        # Nose
-        if landmarks.nose():
-            points = landmarks.nose().normalizedPoints()
-            if points:
-                center = self._get_landmark_center(points)
-                face.nose = center
-
-        # Mouth (outer lips)
-        if landmarks.outerLips():
-            points = landmarks.outerLips().normalizedPoints()
-            if points:
-                center = self._get_landmark_center(points)
-                face.mouth = center
-
-        return face
-
-    def _get_landmark_center(self, points) -> tuple[float, float]:
-        """Get center point of landmark region.
-
-        Args:
-            points: Array of CGPoint objects.
-
-        Returns:
-            Center (x, y) normalized coordinates.
-        """
-        if not points:
-            return (0.5, 0.5)
-
-        # Points is a tuple of CGPoint
-        x_sum = sum(p.x for p in points)
-        y_sum = sum(p.y for p in points)
-        count = len(points)
-
-        return (x_sum / count, y_sum / count)

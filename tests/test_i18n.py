@@ -8,15 +8,10 @@ from unittest.mock import patch
 import pytest
 
 from immich_memories.i18n import (
-    Translator,
     _,
     detect_system_locale,
-    format_birthday_title,
-    format_date_range,
-    format_year_title,
     get_month_name,
     get_ordinal,
-    get_short_month_name,
     ngettext,
 )
 
@@ -44,28 +39,6 @@ class TestGetMonthName:
 
     def test_unsupported_locale_falls_back_to_english(self):
         assert get_month_name(3, "de") == "March"
-
-
-# ---------------------------------------------------------------------------
-# get_short_month_name
-# ---------------------------------------------------------------------------
-
-
-class TestGetShortMonthName:
-    def test_english_short(self):
-        assert get_short_month_name(1, "en") == "Jan"
-        assert get_short_month_name(9, "en") == "Sep"
-
-    def test_french_short(self):
-        assert get_short_month_name(2, "fr") == "Fév"
-        assert get_short_month_name(7, "fr") == "Juil"
-
-    def test_invalid_month_raises(self):
-        with pytest.raises(ValueError):
-            get_short_month_name(0, "en")
-
-    def test_unsupported_locale_falls_back(self):
-        assert get_short_month_name(5, "de") == "May"
 
 
 # ---------------------------------------------------------------------------
@@ -99,63 +72,6 @@ class TestGetOrdinal:
 
 
 # ---------------------------------------------------------------------------
-# format_date_range
-# ---------------------------------------------------------------------------
-
-
-class TestFormatDateRange:
-    def test_same_month_same_year(self):
-        assert format_date_range(6, 2024, 6, 2024, "en") == "June 2024"
-
-    def test_different_months_same_year_en(self):
-        assert format_date_range(3, 2024, 8, 2024, "en") == "March to August 2024"
-
-    def test_different_months_same_year_fr(self):
-        assert format_date_range(3, 2024, 8, 2024, "fr") == "Mars à Août 2024"
-
-    def test_different_years_en(self):
-        result = format_date_range(11, 2023, 2, 2024, "en")
-        assert result == "November 2023 to February 2024"
-
-    def test_different_years_fr(self):
-        result = format_date_range(11, 2023, 2, 2024, "fr")
-        assert result == "Novembre 2023 à Février 2024"
-
-
-# ---------------------------------------------------------------------------
-# format_year_title
-# ---------------------------------------------------------------------------
-
-
-class TestFormatYearTitle:
-    def test_returns_year_string(self):
-        assert format_year_title(2024) == "2024"
-        assert format_year_title(1999, "fr") == "1999"
-
-
-# ---------------------------------------------------------------------------
-# format_birthday_title
-# ---------------------------------------------------------------------------
-
-
-class TestFormatBirthdayTitle:
-    def test_english_birthday(self):
-        title, subtitle = format_birthday_title(1, "Alice", "en")
-        assert title == "1st Year"
-        assert subtitle == "Alice"
-
-    def test_french_birthday(self):
-        title, subtitle = format_birthday_title(1, "Alice", "fr")
-        assert title == "1ère Année"
-        assert subtitle == "Alice"
-
-    def test_no_name(self):
-        title, subtitle = format_birthday_title(3, None, "en")
-        assert title == "3rd Year"
-        assert subtitle is None
-
-
-# ---------------------------------------------------------------------------
 # detect_system_locale
 # ---------------------------------------------------------------------------
 
@@ -179,34 +95,6 @@ class TestDetectSystemLocale:
             patch("immich_memories.i18n.locale.getdefaultlocale", return_value=(None, None)),
         ):
             assert detect_system_locale() == "en"
-
-
-# ---------------------------------------------------------------------------
-# Translator class
-# ---------------------------------------------------------------------------
-
-
-class TestTranslator:
-    def test_month_delegation(self):
-        t = Translator("en")
-        assert t.month(1) == "January"
-
-    def test_ordinal_delegation(self):
-        t = Translator("en")
-        assert t.ordinal(2) == "2nd"
-
-    def test_date_range_delegation(self):
-        t = Translator("en")
-        assert t.date_range(1, 2024, 3, 2024) == "January to March 2024"
-
-    def test_unsupported_locale_falls_back(self):
-        t = Translator("zz")
-        assert t.locale == "en"
-
-    def test_callable_translates(self):
-        t = Translator("en")
-        # NullTranslations returns the original string
-        assert t("hello") == "hello"
 
 
 # ---------------------------------------------------------------------------

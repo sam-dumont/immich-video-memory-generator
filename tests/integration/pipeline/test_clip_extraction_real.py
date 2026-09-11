@@ -11,7 +11,7 @@ import logging
 
 import pytest
 
-from immich_memories.processing.clips import ClipExtractor, extract_clip
+from immich_memories.processing.clips import extract_clip
 from tests.integration.conftest import ffprobe_json, get_duration, has_stream, requires_ffmpeg
 from tests.integration.immich_fixtures import requires_immich
 
@@ -79,42 +79,3 @@ class TestExtractClipRealData:
         probe = ffprobe_json(result)
         assert has_stream(probe, "video")
         assert get_duration(probe) > 0.5
-
-    def test_batch_extract_multiple_segments(self, downloaded_clip, tmp_path):
-        """Batch extraction should produce one file per segment."""
-        video_path, clip, config = downloaded_clip
-        dur = clip.duration_seconds or 5.0
-
-        from immich_memories.processing.clips import ClipSegment
-
-        segments = [
-            ClipSegment(
-                asset_id=clip.asset.id,
-                source_path=video_path,
-                start_time=0.0,
-                end_time=min(dur * 0.5, 3.0),
-            ),
-            ClipSegment(
-                asset_id=clip.asset.id,
-                source_path=video_path,
-                start_time=max(0, dur * 0.5),
-                end_time=min(dur, dur * 0.5 + 3.0),
-            ),
-        ]
-
-        extractor = ClipExtractor(output_dir=tmp_path / "clips", config=config)
-        progress_calls: list[tuple] = []
-
-        results = extractor.batch_extract(
-            segments,
-            progress_callback=lambda current, total: progress_calls.append((current, total)),
-        )
-
-        assert len(results) >= 1
-        for r in results:
-            assert r.exists()
-            assert get_duration(ffprobe_json(r)) > 0.3
-        assert len(progress_calls) > 0
-        logger.info(
-            f"Batch extracted {len(results)} segments, {len(progress_calls)} progress calls"
-        )

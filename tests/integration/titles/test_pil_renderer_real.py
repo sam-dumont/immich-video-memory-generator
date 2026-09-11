@@ -57,28 +57,6 @@ class TestRenderSingleFrame:
         assert frame.size == (320, 180)
 
 
-class TestRenderAllFrames:
-    def test_correct_count(self):
-        renderer = TitleRenderer(_STYLE, _SMALL)
-        frames = renderer.render_all_frames("Frame Count", fade_out_duration=0.3)
-        expected = int(1.0 * 10.0)
-        assert len(frames) == expected
-
-    def test_mid_and_last_differ(self):
-        """A fully-visible mid frame and the faded-out last frame should differ."""
-        settings = RenderSettings(
-            width=320, height=180, fps=10.0, duration=2.0, animated_background=False
-        )
-        renderer = TitleRenderer(_STYLE, settings)
-        frames = renderer.render_all_frames("Animated", fade_out_duration=1.0)
-        # WHY: mid-sequence has fully opaque text; the last frame has text
-        # faded out. Comparing these avoids the subtle first-frame issue
-        # where fade-up starts almost invisible on dark backgrounds.
-        mid = np.array(frames[len(frames) // 2])
-        last = np.array(frames[-1])
-        assert not np.array_equal(mid, last), "Mid and last frames are identical"
-
-
 class TestLongTitle:
     def test_long_title_no_crash(self):
         """Very long titles get auto-shrunk — should not raise."""

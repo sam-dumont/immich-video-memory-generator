@@ -23,6 +23,17 @@ def cache(tmp_path: Path) -> AssetScoreCache:
     return AssetScoreCache(db_path)
 
 
+def _read_row(cache: AssetScoreCache, asset_id: str) -> dict | None:
+    """Read a banked row back the way `cache export` does — a raw SELECT."""
+    with cache._get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM asset_scores WHERE asset_id = ?"
+            " ORDER BY analyzed_at DESC, rowid DESC LIMIT 1",
+            (asset_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
 class TestAssetScoreCache:
     def test_save_and_get(self, cache: AssetScoreCache):
         cache.save_asset_score(
@@ -32,14 +43,14 @@ class TestAssetScoreCache:
             combined_score=0.85,
             llm_interest=0.9,
         )
-        result = cache.get_asset_score("abc")
+        result = _read_row(cache, "abc")
         assert result is not None
         assert result["asset_id"] == "abc"
         assert result["combined_score"] == 0.85
         assert result["llm_interest"] == 0.9
 
     def test_get_missing_returns_none(self, cache: AssetScoreCache):
-        assert cache.get_asset_score("nonexistent") is None
+        assert _read_row(cache, "nonexistent") is None
 
     def test_cache_stats(self, cache: AssetScoreCache):
         cache.save_asset_score("v1", "VIDEO", 0.5, 0.6)
@@ -71,6 +82,6 @@ class TestAssetScoreCache:
         cache.save_asset_score("abc", "VIDEO", 0.5, 0.6)
         cache.save_asset_score("abc", "VIDEO", 0.9, 0.95)
 
-        result = cache.get_asset_score("abc")
+        result = _read_row(cache, "abc")
         assert result is not None
         assert result["combined_score"] == 0.95

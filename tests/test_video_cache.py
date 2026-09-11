@@ -285,17 +285,6 @@ class TestCacheBatch:
             assert batch.download_or_get(mock_client, mock_asset) is not None
 
         assert scans == 1
-        assert batch.finished
-
-    def test_download_or_get_does_not_call_legacy_global_eviction(
-        self, cache, mock_client, mock_asset, monkeypatch
-    ):
-        evict = MagicMock()
-        monkeypatch.setattr(cache, "evict_if_over_limit", evict)
-
-        cache.download_or_get(mock_client, mock_asset)
-
-        evict.assert_not_called()
 
     def test_nested_batches_are_rejected_and_finished_batches_cannot_download(
         self, cache, mock_client, mock_asset
@@ -305,21 +294,6 @@ class TestCacheBatch:
 
         with pytest.raises(RuntimeError, match="finished"):
             batch.download_or_get(mock_client, mock_asset)
-
-    def test_invalidated_manifest_scans_once_more_at_finish(self, cache, monkeypatch):
-        scans = 0
-        original_scan = cache._scan_manifest
-
-        def count_scan():
-            nonlocal scans
-            scans += 1
-            return original_scan()
-
-        monkeypatch.setattr(cache, "_scan_manifest", count_scan)
-        with cache.begin_batch() as batch:
-            batch.invalidate_manifest()
-
-        assert scans == 2
 
     def test_failed_finish_releases_the_cache_for_a_new_batch(self, cache, monkeypatch):
         batch = cache.begin_batch()
@@ -333,10 +307,13 @@ class TestCacheBatch:
         with pytest.raises(OSError, match="disk failure"):
             batch.finish()
 
-        assert batch.finished
+        # The failed attempt still closed the batch, so finishing again is a no-op.
+        assert batch.finish() == 0
+
         monkeypatch.setattr(cache, "_evict_manifest", original_evict)
-        with cache.begin_batch() as next_batch:
-            assert not next_batch.finished
+        # begin_batch raises "already active" unless the failed finish released the cache.
+        with cache.begin_batch():
+            pass
 
     def test_downscaled_derivative_is_recorded_in_the_active_manifest(
         self, cache, mock_client, mock_asset, monkeypatch
@@ -559,71 +536,11 @@ class TestFindCachedExcludesDownscaled:
         assert result is None
 
 
-class TestEvictOld:
-    """Tests for age-based eviction."""
-
-    def test_evicts_files_older_than_max_age(self, cache_dir):
-        """Files older than max_age_days are removed."""
-        import os
-
-        cache = VideoDownloadCache(cache_dir=cache_dir, max_age_days=1)
-        subdir = cache_dir / "ab"
-        subdir.mkdir(parents=True, exist_ok=True)
-
-        old_file = subdir / "ab_old_video.mp4"
-        old_file.write_bytes(b"old-data" * 100)
-        # WHY: set mtime to 3 days ago so it exceeds max_age_days=1
-        old_mtime = time.time() - (3 * 86400)
-        os.utime(old_file, (old_mtime, old_mtime))
-
-        new_file = subdir / "ab_new_video.mp4"
-        new_file.write_bytes(b"new-data" * 100)
-
-        count = cache.evict_old()
-        assert count == 1
-        assert not old_file.exists()
-        assert new_file.exists()
-
-
-class TestEvictIfOverLimit:
+class TestSizeEviction:
     """Tests for size-based eviction."""
 
-    def test_evicts_oldest_files_when_over_limit(self, cache_dir):
-        """When cache exceeds max_size_gb, oldest files are removed first."""
-        import os
-
-        # 1 KB limit so test data triggers eviction
-        cache = VideoDownloadCache(cache_dir=cache_dir, max_size_gb=0.000001)
-        subdir = cache_dir / "ab"
-        subdir.mkdir(parents=True, exist_ok=True)
-
-        old_file = subdir / "ab_oldest.mp4"
-        old_file.write_bytes(b"x" * 1000)
-        # WHY: force oldest mtime so this file is evicted first
-        os.utime(old_file, (1000, 1000))
-
-        new_file = subdir / "ab_newest.mp4"
-        new_file.write_bytes(b"y" * 500)
-
-        count = cache.evict_if_over_limit()
-        assert count >= 1
-        assert not old_file.exists()
-
-    def test_no_eviction_when_under_limit(self, cache_dir):
-        """No files removed when cache is within size limit."""
-        cache = VideoDownloadCache(cache_dir=cache_dir, max_size_gb=10.0)
-        subdir = cache_dir / "ab"
-        subdir.mkdir(parents=True, exist_ok=True)
-
-        f = subdir / "ab_small.mp4"
-        f.write_bytes(b"small" * 10)
-
-        count = cache.evict_if_over_limit()
-        assert count == 0
-        assert f.exists()
-
     def test_download_or_get_triggers_size_eviction(self, cache_dir):
-        """download_or_get calls evict_if_over_limit after downloading."""
+        """A download that pushes the cache over its size limit evicts the oldest file."""
         import os
 
         # Tiny limit to force eviction

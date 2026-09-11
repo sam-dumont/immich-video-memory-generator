@@ -79,7 +79,6 @@ class TaichiTitleConfig:
 
     # Birthday celebration mode with fireworks
     is_birthday: bool = False
-    birthday_particle_count: int = 40
     birthday_colors: list = None  # Will use defaults if None
 
     # Fireworks settings (used when is_birthday=True)
@@ -87,7 +86,6 @@ class TaichiTitleConfig:
     fireworks_particles_per_burst: int = 100  # Particles per burst
     fireworks_gravity: float = 0.25  # Gravity strength (pixels per frame^2)
     fireworks_friction: float = 0.985  # Velocity decay per frame
-    fireworks_fade_speed: float = 0.3  # How fast particles fade (per second)
 
     blur_radius: int = 20
 

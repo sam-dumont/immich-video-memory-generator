@@ -23,8 +23,6 @@ class HWAccelBackend(StrEnum):
     APPLE = "apple"  # VideoToolbox (Metal)
     VAAPI = "vaapi"  # Video Acceleration API (Linux)
     QSV = "qsv"  # Intel Quick Sync Video
-    AMF = "amf"  # AMD AMF
-    VULKAN = "vulkan"  # Vulkan Video (cross-platform)
 
 
 @dataclass

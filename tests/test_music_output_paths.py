@@ -134,13 +134,12 @@ def test_music_publication_requires_positive_decoded_audio_frames(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A staged mix is publishable only after one decoded-audio frame count."""
-    from immich_memories.filename_builder import build_music_output_path
     from immich_memories.generate_music import publish_music_mix
     from immich_memories.processing.output_contract import OutputProbe
 
     video = tmp_path / "memory.mp4"
     video.write_bytes(b"validated-base")
-    build_music_output_path(video).write_bytes(b"staged-mix")
+    (tmp_path / "memory.with_music.mp4").write_bytes(b"staged-mix")
     commands: list[list[str]] = []
     probe_kwargs: list[dict[str, object]] = []
 
@@ -208,13 +207,12 @@ def test_music_publication_rejects_unproven_audio_decode(
     stderr: str,
 ) -> None:
     """Missing, malformed, or errored audio decode evidence never publishes."""
-    from immich_memories.filename_builder import build_music_output_path
     from immich_memories.generate_music import publish_music_mix
     from immich_memories.processing.output_contract import InvalidOutputArtifact
 
     video = tmp_path / "memory.mp4"
     video.write_bytes(b"validated-base")
-    build_music_output_path(video).write_bytes(b"staged-mix")
+    (tmp_path / "memory.with_music.mp4").write_bytes(b"staged-mix")
     monkeypatch.setattr(
         "immich_memories.generate_music.subprocess.run",
         lambda command, **_kwargs: subprocess.CompletedProcess(

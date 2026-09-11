@@ -15,10 +15,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class EpisodeCandidate:
     episode_id: str
-    source_index: int
     moment_ids: tuple[str, ...]
-    taken_start: str
-    taken_end: str
     document: str
 
 
@@ -146,7 +143,7 @@ def episode_candidates_any_order(tables, aliases):
             members[e] = []
         members[e].append(alias)
     out = []
-    for i, e in enumerate(order):
+    for e in order:
         ms = tuple(members[e])
         rows = [rows_by_id[m] for m in ms]
         taken = [r["taken"] for r in rows]
@@ -155,10 +152,7 @@ def episode_candidates_any_order(tables, aliases):
         out.append(
             EpisodeCandidate(
                 episode_id=e,
-                source_index=i,
                 moment_ids=ms,
-                taken_start=min(taken),
-                taken_end=max(taken),
                 document=f"occasion={min(taken)[:10]} | context={context} | member_count={len(ms)} | facts={facts}",
             )
         )

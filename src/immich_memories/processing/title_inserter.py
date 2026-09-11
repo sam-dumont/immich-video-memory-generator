@@ -224,39 +224,6 @@ class TitleInserter:
         logger.info(f"Generated ending screen: {ending_screen.path}")
 
     # ------------------------------------------------------------------
-    # Orientation / resolution detection
-    # ------------------------------------------------------------------
-
-    def get_orientation_from_clips(self, clips: list[AssemblyClip]) -> str:
-        """Detect dominant video orientation from first 10 clips."""
-        portrait_count = 0
-        landscape_count = 0
-        for clip in clips[:10]:
-            res = self.prober.get_video_resolution(clip.path)
-            if res:
-                w, h = res
-                if h > w:
-                    portrait_count += 1
-                elif w > h:
-                    landscape_count += 1
-        if portrait_count > landscape_count:
-            return "portrait"
-        return "landscape"
-
-    def get_resolution_tier(self, clips: list[AssemblyClip]) -> str:
-        """Detect resolution tier from first 10 clips."""
-        max_height = 0
-        for clip in clips[:10]:
-            res = self.prober.get_video_resolution(clip.path)
-            if res:
-                max_height = max(max_height, max(res))
-        if max_height >= 2160:
-            return "4k"
-        elif max_height >= 1080:
-            return "1080p"
-        return "720p"
-
-    # ------------------------------------------------------------------
     # Main entry point
     # ------------------------------------------------------------------
 

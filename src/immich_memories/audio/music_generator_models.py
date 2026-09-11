@@ -91,11 +91,6 @@ class VideoTimeline:
         """Total music duration needed."""
         return self.title_duration + self.content_duration + self.ending_duration + self.fade_buffer
 
-    @property
-    def content_start(self) -> float:
-        """When main content starts (after title)."""
-        return self.title_duration
-
     def build_scenes(self, hemisphere: str = "north") -> list[dict]:
         """Build scene list for MusicGen soundtrack API.
 
@@ -155,53 +150,6 @@ class VideoTimeline:
             )
 
         return scenes
-
-    def build_acestep_lyrics(self) -> str:
-        """Build ACE-Step section-tagged lyrics from video timeline.
-
-        Maps video scenes to proportional section tags so ACE-Step generates
-        music that follows the video's emotional arc. ACE-Step doesn't support
-        explicit timestamps — sections are proportional to the overall structure.
-
-        Mood-to-section mapping:
-        - First clip (short, calm) -> [Intro]
-        - Energetic/happy clips -> [Chorus]
-        - Medium/neutral clips -> [Verse]
-        - Clips with transition_after -> [Bridge]
-        - Last clip (calm/ending) -> [Outro]
-
-        Returns:
-            Lyrics string with section tags, e.g.:
-            "[Intro]\\n[Instrumental]\\n\\n[Verse]\\n[Instrumental]"
-        """
-        if not self.clips:
-            return "[Instrumental]"
-
-        sections = []
-        num_clips = len(self.clips)
-
-        for i, clip in enumerate(self.clips):
-            mood_lower = clip.mood.lower()
-            is_first = i == 0
-            is_last = i == num_clips - 1
-
-            # Determine section tag
-            if is_first and num_clips > 1 and clip.duration < 20:
-                section = "Intro"
-            elif is_last and num_clips > 1:
-                section = "Outro"
-            elif clip.has_transition_after:
-                section = "Bridge"
-            elif any(
-                w in mood_lower for w in ("energetic", "upbeat", "happy", "fun", "joyful", "bright")
-            ):
-                section = "Chorus"
-            else:
-                section = "Verse"
-
-            sections.append(f"[{section}]\n[Instrumental]")
-
-        return "\n\n".join(sections)
 
     @classmethod
     def from_clips(
@@ -334,7 +282,6 @@ class MusicStems:
 class GeneratedMusic:
     """A single generated music version."""
 
-    version_id: int
     full_mix: Path
     stems: MusicStems | None = None
     duration: float = 0.0
@@ -370,19 +317,3 @@ class MusicGenerationResult:
         for i, version in enumerate(self.versions):
             if i != self.selected_version:
                 version.cleanup()
-
-
-@dataclass
-class StemDuckingConfig:
-    """Configuration for stem-aware audio ducking."""
-
-    # During speech: keep accompaniment (drums+bass), lower vocals/melody
-    duck_vocals: bool = True
-    duck_amount_db: float = -12.0
-
-    # Crossfade duration for ducking transitions
-    crossfade_ms: float = 100.0
-
-    # Fade settings
-    fade_in_seconds: float = 2.0
-    fade_out_seconds: float = 3.0

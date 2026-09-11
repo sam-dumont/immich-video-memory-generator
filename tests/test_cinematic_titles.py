@@ -12,7 +12,6 @@ import numpy as np
 import pytest
 
 from immich_memories.titles.backgrounds import (
-    BackgroundType,
     create_background_for_style,
     hex_to_rgb,
 )
@@ -186,11 +185,6 @@ class TestTypographyDefaults:
         style = TitleStyle()
         assert style.font_weight == "semibold"
 
-    def test_default_blend_mode_is_normal(self):
-        """Default blend mode should be 'normal' (multiply is invisible on dark)."""
-        style = TitleStyle()
-        assert style.text_blend_mode == "normal"
-
     def test_default_no_line_accent(self):
         """Default style should not use decorative line accents."""
         style = TitleStyle()
@@ -248,10 +242,6 @@ class TestBackgroundGeneration:
         assert edge_brightness < 0.15, (
             f"Vignette edge brightness {edge_brightness:.3f} should be < 0.15 (dark)"
         )
-
-    def test_content_backed_in_background_type_enum(self):
-        """BackgroundType enum should include CONTENT_BACKED."""
-        assert hasattr(BackgroundType, "CONTENT_BACKED")
 
 
 class TestTitleConfigDefaults:

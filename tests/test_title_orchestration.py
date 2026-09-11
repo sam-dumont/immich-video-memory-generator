@@ -385,65 +385,6 @@ class TestGenerateEndingScreen:
         assert result.path.name == "ending_screen.mp4"
 
 
-class TestGenerateAllScreens:
-    """Tests for the batch screen generation orchestrator."""
-
-    def test_always_produces_title_and_ending(
-        self, tmp_output, mock_rendering, mock_ending, mock_trip
-    ):
-        gen = _make_generator(tmp_output, mock_rendering, mock_ending, mock_trip)
-        screens = gen.generate_all_screens(year=2024)
-
-        assert "title" in screens
-        assert "ending" in screens
-        assert screens["title"].screen_type == "title"
-        assert screens["ending"].screen_type == "ending"
-
-    def test_multiple_months_produce_dividers(
-        self, tmp_output, mock_rendering, mock_ending, mock_trip
-    ):
-        gen = _make_generator(tmp_output, mock_rendering, mock_ending, mock_trip)
-        screens = gen.generate_all_screens(
-            year=2024,
-            months_in_video=[1, 3, 6],
-        )
-
-        assert "month_01" in screens
-        assert "month_03" in screens
-        assert "month_06" in screens
-        assert len(screens) == 5  # title + 3 dividers + ending
-
-    def test_single_month_no_dividers(self, tmp_output, mock_rendering, mock_ending, mock_trip):
-        gen = _make_generator(tmp_output, mock_rendering, mock_ending, mock_trip)
-        screens = gen.generate_all_screens(
-            year=2024,
-            months_in_video=[6],
-        )
-
-        assert len(screens) == 2  # title + ending only
-
-    def test_dividers_disabled(self, tmp_output, mock_rendering, mock_ending, mock_trip):
-        gen = _make_generator(
-            tmp_output,
-            mock_rendering,
-            mock_ending,
-            mock_trip,
-            show_month_dividers=False,
-        )
-        screens = gen.generate_all_screens(
-            year=2024,
-            months_in_video=[1, 3, 6],
-        )
-
-        assert len(screens) == 2  # title + ending only
-
-    def test_no_months_list_no_dividers(self, tmp_output, mock_rendering, mock_ending, mock_trip):
-        gen = _make_generator(tmp_output, mock_rendering, mock_ending, mock_trip)
-        screens = gen.generate_all_screens(year=2024, months_in_video=None)
-
-        assert len(screens) == 2  # title + ending only
-
-
 class TestStyleSelection:
     """Tests that style selection works correctly for all modes."""
 

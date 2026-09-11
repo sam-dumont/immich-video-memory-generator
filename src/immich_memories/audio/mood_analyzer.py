@@ -78,14 +78,6 @@ class VideoMood:
     description: str = ""
     confidence: float = 0.8
 
-    def to_search_params(self) -> dict:
-        """Convert mood to music search parameters."""
-        return {
-            "mood": self.primary_mood,
-            "genre": self.genre_suggestions[0] if self.genre_suggestions else None,
-            "tempo": self.tempo_suggestion,
-        }
-
 
 MOOD_ANALYSIS_PROMPT = """Analyze these video keyframes and describe the overall mood and feel.
 

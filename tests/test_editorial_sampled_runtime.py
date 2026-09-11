@@ -114,7 +114,6 @@ def matrix_run(monkeypatch, tmp_path, value, store, planner, previews):
         matrix.provenance,
         "sealed_period_insight",
         lambda *_: SimpleNamespace(
-            prompt_payload=lambda: value.period_reading,
             lineage=lambda: {},
             structure_evidence=lambda: value.period_evidence,
         ),

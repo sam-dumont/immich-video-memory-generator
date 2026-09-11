@@ -111,12 +111,6 @@ def capture_structure_input(
         pixel_facts=read_pixel_facts(store_path, config.editorial.pixel_producer_key),
         shareability_flags=load_flags(store_path, {*assets, *companions}),
         motion_residuals={},
-        period_reading={
-            "thesis": insight.thesis,
-            "recurring_threads": list(insight.recurring_threads),
-            "tensions": list(insight.tensions),
-            "evidence": [row.observation for row in insight.evidence],
-        },
         period_evidence=insight.evidence,
         lineage={
             "period_insight": {

@@ -175,55 +175,9 @@ class TestExtractColorsFromImage:
         assert len(colors_q10) >= 1
 
 
-class TestCreateColorFadeFrames:
-    """Test color fade frame generation."""
-
-    def test_single_frame(self):
-        from immich_memories.titles.colors import create_color_fade_frames
-
-        frames = create_color_fade_frames((0, 0, 0), (255, 255, 255), 1, 10, 10)
-        assert len(frames) == 1
-        assert frames[0].size == (10, 10)
-
-    def test_fade_interpolates(self):
-        from immich_memories.titles.colors import create_color_fade_frames
-
-        frames = create_color_fade_frames((0, 0, 0), (255, 255, 255), 3, 5, 5)
-        assert len(frames) == 3
-        # First should be black, last should be white
-        first_pixel = frames[0].getpixel((0, 0))
-        last_pixel = frames[2].getpixel((0, 0))
-        assert first_pixel == (0, 0, 0)
-        assert last_pixel == (255, 255, 255)
-
-    def test_mid_frame_is_intermediate(self):
-        from immich_memories.titles.colors import create_color_fade_frames
-
-        frames = create_color_fade_frames((0, 0, 0), (200, 200, 200), 5, 5, 5)
-        mid_pixel = frames[2].getpixel((0, 0))
-        assert 80 < mid_pixel[0] < 120
-
-
 # ---------------------------------------------------------------------------
 # Module 1: Titles — backgrounds.py
 # ---------------------------------------------------------------------------
-
-
-class TestBackgroundsInterpolation:
-    """Test color interpolation used in gradients."""
-
-    def test_interpolate_midpoint(self):
-        from immich_memories.titles.backgrounds import interpolate_color
-
-        result = interpolate_color((0, 0, 0), (100, 200, 100), 0.5)
-        assert result == (50, 100, 50)
-
-    def test_interpolate_endpoints(self):
-        from immich_memories.titles.backgrounds import interpolate_color
-
-        c1, c2 = (10, 20, 30), (200, 100, 50)
-        assert interpolate_color(c1, c2, 0.0) == c1
-        assert interpolate_color(c1, c2, 1.0) == c2
 
 
 class TestBackgroundCreation:
@@ -347,17 +301,6 @@ class TestCreateBackgroundForStyle:
         assert tuple(pixel) == (255, 255, 255)
 
 
-class TestCreateBackgroundArray:
-    """Test numpy array background creation."""
-
-    def test_returns_numpy_array(self):
-        from immich_memories.titles.backgrounds import create_background_array
-
-        arr = create_background_array(50, 50, "solid_gradient", ["#FF0000", "#0000FF"])
-        assert isinstance(arr, np.ndarray)
-        assert arr.shape == (50, 50, 3)
-
-
 class TestCoordGridCaching:
     """Test that coordinate grids are cached for performance."""
 
@@ -460,24 +403,6 @@ class TestFontDiscovery:
 class TestFontManager:
     """Test the FontManager high-level API."""
 
-    def test_list_cached_empty(self):
-        from immich_memories.titles.fonts import FontManager
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            mgr = FontManager(Path(tmpdir))
-            assert mgr.list_cached() == []
-
-    def test_get_font_delegates(self):
-        """get_font returns None for unknown font families when download fails."""
-        from immich_memories.titles.fonts import FontManager
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            mgr = FontManager(Path(tmpdir))
-            # Use a name not in FONT_DEFINITIONS so bundled fonts won't match
-            with patch("immich_memories.titles.fonts.ensure_font_available", return_value=False):
-                result = mgr.get_font("UnknownFont", "Regular")
-                assert result is None
-
     def test_clear_cache_delegates(self):
         from immich_memories.titles.fonts import FontManager
 
@@ -488,43 +413,6 @@ class TestFontManager:
             (font_dir / "test.ttf").write_bytes(b"data")
             mgr.clear_cache()
             assert not font_dir.exists()
-
-    def test_ensure_fonts_all(self):
-        """ensure_fonts(None) attempts all known fonts."""
-        from immich_memories.titles.fonts import FONT_DEFINITIONS, FontManager
-
-        with (
-            tempfile.TemporaryDirectory() as tmpdir,
-            patch(
-                "immich_memories.titles.fonts.ensure_font_available", return_value=True
-            ) as mock_ensure,
-        ):
-            mgr = FontManager(Path(tmpdir))
-            result = mgr.ensure_fonts()
-            assert result is True
-            assert mock_ensure.call_count == len(FONT_DEFINITIONS)
-
-    def test_ensure_fonts_subset(self):
-        from immich_memories.titles.fonts import FontManager
-
-        with (
-            tempfile.TemporaryDirectory() as tmpdir,
-            patch("immich_memories.titles.fonts.ensure_font_available", return_value=True),
-        ):
-            mgr = FontManager(Path(tmpdir))
-            result = mgr.ensure_fonts(["Outfit"])
-            assert result is True
-
-    def test_ensure_fonts_partial_failure(self):
-        from immich_memories.titles.fonts import FontManager
-
-        with (
-            tempfile.TemporaryDirectory() as tmpdir,
-            patch("immich_memories.titles.fonts.ensure_font_available", side_effect=[True, False]),
-        ):
-            mgr = FontManager(Path(tmpdir))
-            result = mgr.ensure_fonts(["Outfit", "Raleway"])
-            assert result is False
 
 
 class TestDownloadAllFonts:
@@ -730,67 +618,6 @@ class TestGenerateEndingScreen:
                 call_kwargs = mock_rendering.create_title_video.call_args
                 assert call_kwargs.kwargs["is_ending"] is True
                 assert call_kwargs.kwargs["fade_to_white"] is True
-
-
-class TestGenerateAllScreens:
-    """Test the generate_all_screens orchestrator."""
-
-    def test_generates_title_and_ending(self):
-        from immich_memories.titles.generator import TitleScreenConfig, TitleScreenGenerator
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config = TitleScreenConfig(show_month_dividers=False)
-            mock_rendering = MagicMock()
-            mock_ending = MagicMock()
-            with (
-                patch(
-                    "immich_memories.titles.generator.RenderingService", return_value=mock_rendering
-                ),
-                patch("immich_memories.titles.generator.EndingService", return_value=mock_ending),
-            ):
-                gen = TitleScreenGenerator(config=config, output_dir=Path(tmpdir))
-                screens = gen.generate_all_screens(year=2024)
-
-                assert "title" in screens
-                assert "ending" in screens
-
-    def test_generates_month_dividers_when_multiple(self):
-        from immich_memories.titles.generator import TitleScreenConfig, TitleScreenGenerator
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config = TitleScreenConfig(show_month_dividers=True)
-            mock_rendering = MagicMock()
-            mock_ending = MagicMock()
-            with (
-                patch(
-                    "immich_memories.titles.generator.RenderingService", return_value=mock_rendering
-                ),
-                patch("immich_memories.titles.generator.EndingService", return_value=mock_ending),
-            ):
-                gen = TitleScreenGenerator(config=config, output_dir=Path(tmpdir))
-                screens = gen.generate_all_screens(year=2024, months_in_video=[1, 3, 6])
-
-                assert "month_01" in screens
-                assert "month_03" in screens
-                assert "month_06" in screens
-
-    def test_skips_dividers_for_single_month(self):
-        from immich_memories.titles.generator import TitleScreenConfig, TitleScreenGenerator
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config = TitleScreenConfig(show_month_dividers=True)
-            mock_rendering = MagicMock()
-            mock_ending = MagicMock()
-            with (
-                patch(
-                    "immich_memories.titles.generator.RenderingService", return_value=mock_rendering
-                ),
-                patch("immich_memories.titles.generator.EndingService", return_value=mock_ending),
-            ):
-                gen = TitleScreenGenerator(config=config, output_dir=Path(tmpdir))
-                screens = gen.generate_all_screens(year=2024, months_in_video=[6])
-
-                assert "month_06" not in screens
 
 
 # ---------------------------------------------------------------------------
@@ -1314,24 +1141,6 @@ class TestGetMoodAnalyzer:
             await get_mood_analyzer(provider="deepseek")
 
 
-class TestGetMoodAnalyzerFromConfig:
-    """Test config-based mood analyzer factory."""
-
-    @pytest.mark.asyncio
-    async def test_delegates_to_get_mood_analyzer(self):
-        from immich_memories.audio.mood_analyzer_backends import get_mood_analyzer_from_config
-        from immich_memories.config_models_llm import LLMConfig
-
-        config = LLMConfig(
-            provider="openai-compatible",
-            base_url="http://test:8080/v1",
-            model="test",
-            api_key="key",
-        )
-        analyzer = await get_mood_analyzer_from_config(config)
-        assert analyzer.model == "test"
-
-
 # ---------------------------------------------------------------------------
 # Module 3: Misc — filename_builder.py
 # ---------------------------------------------------------------------------
@@ -1580,35 +1389,6 @@ class TestBuildTitlePersonName:
 
         result = build_title_person_name(None, {}, None)
         assert result is None
-
-
-class TestShouldShowMonthDividers:
-    """Test month divider visibility logic."""
-
-    def test_monthly_highlights_always_false(self):
-        from immich_memories.filename_builder import should_show_month_dividers
-
-        assert not should_show_month_dividers("monthly_highlights", None, None)
-
-    def test_on_this_day_always_false(self):
-        from immich_memories.filename_builder import should_show_month_dividers
-
-        assert not should_show_month_dividers("on_this_day", None, None)
-
-    def test_no_dates_returns_true(self):
-        from immich_memories.filename_builder import should_show_month_dividers
-
-        assert should_show_month_dividers("year_in_review", None, None)
-
-    def test_short_range_returns_false(self):
-        from immich_memories.filename_builder import should_show_month_dividers
-
-        assert not should_show_month_dividers("custom", date(2025, 1, 1), date(2025, 3, 31))
-
-    def test_long_range_returns_true(self):
-        from immich_memories.filename_builder import should_show_month_dividers
-
-        assert should_show_month_dividers("custom", date(2025, 1, 1), date(2025, 12, 31))
 
 
 class TestGetDividerMode:

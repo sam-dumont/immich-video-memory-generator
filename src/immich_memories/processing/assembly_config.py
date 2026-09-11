@@ -11,7 +11,6 @@ from datetime import date
 from enum import StrEnum
 from pathlib import Path
 
-from immich_memories.processing.clips import ClipSegment
 from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
 
 __all__ = [
@@ -123,8 +122,6 @@ class AssemblySettings:
     music_other_path: Path | None = None  # Other instruments stem
     add_date_overlay: bool = False
     add_place_overlay: bool = False
-    preserve_framerate: bool = True  # Keep original frame rate (e.g., 60fps)
-    target_framerate: int | None = None  # Force specific frame rate (None = auto)
     # Resolution settings
     auto_resolution: bool = True  # Auto-detect resolution from clips
     target_resolution: tuple[int, int] | None = None  # Override resolution (width, height)
@@ -134,7 +131,6 @@ class AssemblySettings:
     # included): timeline windows where a clip's own audio is music, so the
     # music phase can step the soundtrack aside (#466).
     music_mute_windows: list[tuple[float, float]] | None = None
-    # Pre-decided transitions (from clips.plan_transitions)
     # If provided, these override the automatic transition decisions
     # Format: list of "fade" or "cut" for each transition between clips
     predecided_transitions: list[str] | None = None
@@ -166,7 +162,6 @@ class AssemblyClip:
     duration: float
     date: str | None = None
     asset_id: str = ""
-    original_segment: ClipSegment | None = None
     # Rotation override: None = auto-detect, 0/90/180/270 = force rotation
     rotation_override: int | None = None
     # LLM analysis results for mood detection
@@ -178,7 +173,6 @@ class AssemblyClip:
     longitude: float | None = None
     location_name: str | None = None
     # Audio analysis results for targeted ducking
-    # Pre-decided outgoing transition (from clips.plan_transitions)
     # "fade" = crossfade to next clip, "cut" = hard cut to next clip
     # None = let assembler decide (title screens always use fade)
     outgoing_transition: str | None = None

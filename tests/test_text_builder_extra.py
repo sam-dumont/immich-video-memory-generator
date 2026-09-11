@@ -9,54 +9,12 @@ import pytest
 from immich_memories.titles.text_builder import (
     SelectionType,
     _generate_date_range_title,
-    calculate_birthday_age,
     generate_title,
     get_month_name,
     get_ordinal,
     get_season_name,
     infer_selection_type,
 )
-
-
-class TestCalculateBirthdayAge:
-    """Tests for birthday age calculation."""
-
-    def test_birthday_already_passed(self):
-        """Age increments when birthday has passed in the video year."""
-        assert calculate_birthday_age(date(2000, 3, 1), date(2025, 6, 15)) == 25
-
-    def test_birthday_not_yet_passed(self):
-        """Age does not increment before birthday in the video year."""
-        assert calculate_birthday_age(date(2000, 9, 15), date(2025, 6, 15)) == 24
-
-    def test_birthday_same_day(self):
-        """Age increments on the exact birthday."""
-        assert calculate_birthday_age(date(2000, 6, 15), date(2025, 6, 15)) == 25
-
-    def test_birthday_day_before(self):
-        """Day before birthday gives previous year's age."""
-        assert calculate_birthday_age(date(2000, 6, 15), date(2025, 6, 14)) == 24
-
-    def test_newborn(self):
-        """Same year, before birthday, gives 0."""
-        assert calculate_birthday_age(date(2025, 12, 1), date(2025, 6, 1)) == 0
-
-    def test_same_date(self):
-        """Birth date equals video date gives 0."""
-        assert calculate_birthday_age(date(2025, 6, 15), date(2025, 6, 15)) == 0
-
-    def test_negative_clamped_to_zero(self):
-        """Video date before birth date returns 0 (clamped)."""
-        assert calculate_birthday_age(date(2025, 6, 15), date(2020, 1, 1)) == 0
-
-    def test_leap_year_birthday(self):
-        """Feb 29 birthday evaluated on non-leap year."""
-        # Born Feb 29 2000, video date March 1 2025 (not a leap year)
-        assert calculate_birthday_age(date(2000, 2, 29), date(2025, 3, 1)) == 25
-
-    def test_leap_year_birthday_before(self):
-        """Feb 29 birthday, video date Feb 28 non-leap year."""
-        assert calculate_birthday_age(date(2000, 2, 29), date(2025, 2, 28)) == 24
 
 
 class TestGenerateDateRangeTitle:
