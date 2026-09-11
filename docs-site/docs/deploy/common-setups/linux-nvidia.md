@@ -139,7 +139,8 @@ with the numbers is welcome.
 ## Pointing the reader at this box
 
 The reader groups the period's days into stories, weighs them and picks the pictures — and it is
-sent an 800 px tile of every candidate, so this seat needs vision and at least a 32k context. The
+sent an 800 px tile of the candidates whose facts the edit demands — a few dozen per memory — so
+this seat needs vision and at least a 32k context. The
 one graded configuration is `mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit` on oMLX, which is
 Apple Silicon only. On NVIDIA, serve an equivalent vision model with vLLM or Ollama and treat the
 quality as your own measurement. The older Qwen3.6 pair was exercised against the retired per-clip

@@ -21,7 +21,7 @@ Three services and two files on disk.
 | Piece | What it does | Listens on | Resident memory |
 |---|---|---|---|
 | **The app** | Talks to Immich, prepares facts, renders the video, serves the web UI | `8080` | 2–4 GB |
-| **The reader** | Groups the period's days into stories, weighs them, picks the pictures — and *looks* at them: it is sent an 800 px tile of every candidate | wherever you serve it (oMLX defaults to `8000`) | ~17 GB at 4-bit |
+| **The reader** | Groups the period's days into stories, weighs them, picks the pictures — and *looks* at some of them: it is sent an 800 px tile of the candidates whose facts the edit demands, a few dozen per memory | wherever you serve it (oMLX defaults to `8000`) | ~17 GB at 4-bit |
 | **The caption server** | One 140-token description and setting per picture, once, then it is banked forever | `8092` by default | 1–2 GB |
 
 On the app's disk: the pinned **DINOv2-small ONNX export** (88 MB) behind the six context heads,
@@ -29,7 +29,8 @@ and two **CPU detector** snapshots (~400 MB). One command fetches both. The head
 in the wheel.
 
 The reader is one model doing two jobs. It needs vision — a text-only model cannot do the picture
-pass, and the run will not degrade politely into one that can.
+pass, and the run will not degrade politely into one that can. The pictures are a small share of
+its traffic: the graded matrix runs made 31–37 picture requests per route.
 
 ## Before you start
 

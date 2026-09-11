@@ -14,7 +14,7 @@ render. A cut needs two services you host, and they are the expensive half.
 
 | | What it is | Resident |
 |---|---|---|
-| **Reader** | Vision + text. Groups the period into stories, weighs them, and is sent an 800 px tile of every candidate | ~17 GB at 4-bit |
+| **Reader** | Vision + text. Groups the period into stories, weighs them, and is sent an 800 px tile of the candidates whose facts the edit demands — a few dozen per memory | ~17 GB at 4-bit |
 | **Caption server** | 500M vision model. One description per picture, once, then banked | 1-2 GB |
 
 Plus an 88 MB encoder and ~400 MB of CPU detectors on the app's disk. The container itself wants

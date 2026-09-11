@@ -4,7 +4,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
   title: 'Immich Memories',
-  tagline: 'Create beautiful video compilations from your Immich photo library',
+  tagline: 'Reads a period of your Immich library as a story and cuts it into a memory video',
   favicon: 'img/favicon.png',
 
   future: {

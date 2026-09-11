@@ -39,8 +39,9 @@ faking it. How it decides is documented in
 ## What it takes to run
 
 This is heavy machinery. The editor reads with two models you host yourself: a **reader** — vision
-and text, ~17 GB resident at 4-bit — that groups the period into stories and looks at every
-candidate, and a **caption server** — 500M, 1-2 GB — that describes each picture once. On the app's
+and text, ~17 GB resident at 4-bit — that groups the period into stories and looks at the
+candidates whose facts the edit demands, a few dozen per memory, and a **caption server** — 500M,
+1-2 GB — that describes each picture once. On the app's
 disk, an 88 MB encoder and ~400 MB of CPU detectors. The app itself is cheap: 2-4 GB and a CPU
 render. It will not cut anything without the models.
 
@@ -152,8 +153,8 @@ run on your own hardware:
 - the pinned **DINOv2-small encoder** and two CPU **detectors** — `pip install "immich-memories[editorial]"`
   plus the pinned weights;
 - a **reader** on any OpenAI-compatible chat endpoint — it reads the period, weighs its stories
-  and picks the moments, and it is sent an 800 px tile of every candidate, so it needs vision and
-  a 32k context. Graded on `Qwen3-VL-30B-A3B-Instruct-4bit` on oMLX (Apple Silicon);
+  and picks the moments, and it is sent an 800 px tile of the candidates whose facts the edit
+  demands — a few dozen per memory — so it needs vision and a 32k context. Graded on `Qwen3-VL-30B-A3B-Instruct-4bit` on oMLX (Apple Silicon);
   other vision models should work, text-only ones cannot.
 
 A cut with one of them missing stops and says which. The whole setup, in order, is the

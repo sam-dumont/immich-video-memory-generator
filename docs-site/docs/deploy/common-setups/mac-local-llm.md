@@ -55,8 +55,9 @@ general model connection below. New runs use story-first selection and the FAMIL
 ## Set up the reader
 
 The reader groups the period's days into stories, weighs them and picks the pictures — and it is
-what *looks* at them: every candidate reaches this endpoint as an 800 px tile. So the seat needs
-vision and at least a 32k context, and a text-only model cannot take it.
+what *looks* at some of them: the candidates whose facts the edit demands, a few dozen per
+memory, reach this endpoint as 800 px tiles. So the seat needs vision and at least a 32k context,
+and a text-only model cannot take it.
 
 The graded configuration, the one whose cuts have been approved, is
 **`mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit`** served by
