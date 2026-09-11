@@ -93,7 +93,8 @@
       "duration_seconds": 45,
       "music": "nostalgic/nostalgic_acoustic_1.opus",
       "scope": {
-        "years_back": "@years_back"
+        "years_back": "@years_back",
+        "target_date": "@on_this_day_date"
       }
     },
     {
