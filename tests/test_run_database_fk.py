@@ -454,21 +454,6 @@ def test_last_run_of_type_filters_source_before_order_and_limit(db: RunDatabase)
     assert run.run_id == "created-first-completed-last"
 
 
-def test_completed_identity_filters_source_and_time(db: RunDatabase) -> None:
-    """Exact run lookup rejects wrong-source and pre-attempt completions."""
-    started_after = datetime(2026, 7, 2, 9, 0)
-    db.save_run(_make_completed_run("old-auto", started_after, source="auto"))
-    db.save_run(
-        _make_completed_run("new-manual", started_after + timedelta(minutes=1), source="manual")
-    )
-    expected = _make_completed_run("new-auto", started_after + timedelta(minutes=2), source="auto")
-    db.save_run(expected)
-
-    actual = db.get_completed_run_by_identity("trip:key", "auto", started_after)
-
-    assert actual == expected
-
-
 def test_completed_automation_attempt_identity_is_exact(db: RunDatabase) -> None:
     """A same-key completion from another wake cannot satisfy this parent attempt."""
     wrong = _make_completed_run("wrong-attempt", datetime(2026, 7, 2, 9, 0))

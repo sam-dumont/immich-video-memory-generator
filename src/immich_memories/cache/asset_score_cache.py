@@ -35,23 +35,6 @@ class AssetScoreCache:
         finally:
             conn.close()
 
-    def get_asset_score(self, asset_id: str) -> dict | None:
-        """The most recent look banked for an asset, whichever version wrote it.
-
-        An asset now holds a row per model+prompt version, so this answers with
-        the newest of them. Callers that need the answer a *particular* version
-        gave must ask for it by version through ``get_asset_scores_batch``.
-        """
-        with self._get_connection() as conn:
-            row = conn.execute(
-                "SELECT * FROM asset_scores WHERE asset_id = ?"
-                " ORDER BY analyzed_at DESC, rowid DESC LIMIT 1",
-                (asset_id,),
-            ).fetchone()
-            if row:
-                return dict(row)
-        return None
-
     def save_asset_score(
         self,
         asset_id: str,

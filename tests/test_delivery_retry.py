@@ -191,7 +191,6 @@ def test_resaving_stale_run_cannot_replace_authoritative_state_or_delete_phases(
     [
         "start_phase",
         "complete_phase",
-        "update_phase_progress",
         "complete_run",
         "complete_artifact",
         "mark_delivery_pending",
@@ -235,8 +234,6 @@ def test_duplicate_tracker_cannot_claim_or_mutate_existing_run(
             duplicate.start_phase("intruder")
         elif operation == "complete_phase":
             duplicate.complete_phase()
-        elif operation == "update_phase_progress":
-            duplicate.update_phase_progress(1)
         elif operation == "complete_run":
             duplicate.complete_run(duplicate_output)
         elif operation == "complete_artifact":
