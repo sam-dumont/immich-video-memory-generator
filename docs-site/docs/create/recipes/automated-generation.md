@@ -10,7 +10,7 @@ decision; the scheduler daemon and hand-written cron are advanced/legacy alterna
 
 ## Automation (Recommended)
 
-The `auto` system scans your library, detects what's worth turning into a memory video, and generates the best candidate. It runs 8 detectors (monthly, yearly, trips, person spotlights, birthdays, activity bursts, on-this-day, multi-person pairs) and picks the highest-scoring one.
+The `auto` system scans your library, detects what's worth turning into a memory video, and generates one candidate a day. It runs nine detectors (monthly, yearly, trips, person spotlights, birthdays, activity bursts, on-this-day, multi-person pairs, and the special-days catalogue), five of which are behind toggles. The highest scorer wins, but only after variety rules have rejected repeats and per-type caps have applied.
 
 ```bash
 # See what it would generate
@@ -36,7 +36,7 @@ See [auto CLI docs](../cli/auto.md) for the full reference including detector de
 
 `auto install` needs a host scheduler and the binary on the host. In Docker the container's only
 process is the web UI, so the timer lives there instead: one config toggle makes the UI process
-run the same `auto run` decision once a day — same lease, history, delivery retry, and
+run the same `auto run` decision once a day, with the same lease, history, delivery retry and
 notifications as the CLI.
 
 ```yaml
@@ -57,17 +57,17 @@ appears on schedule, uploads if `upload_to_immich` is on, and notifies if notifi
   `skipped` rather than overlapping it.
 - `/health/ready` shows the timer under `in_process_scheduler` (`enabled`, `daily_at`, `next_run`,
   `running`, `last_fired_at`, `last_outcome`, `last_reason`).
-- The timer never runs when `enabled` is `false` (the default) — `auto install` stays the route
+- The timer never runs when `enabled` is `false` (the default): `auto install` stays the route
   for bare-metal installs.
 
-To fire the same decision on demand instead of on a clock — from an Immich workflow, a cron on
-another machine, a phone shortcut — see
+To fire the same decision on demand instead of on a clock (from an Immich workflow, a cron on
+another machine, a phone shortcut), see
 [Trigger from Immich or Anything Else](./trigger-endpoint.md).
 
 ## Scheduler daemon (advanced/legacy)
 
 :::tip Use the `auto` system instead
-Most users should use the `auto` system above — it figures out what to generate automatically. The scheduler below is for Docker/K8s deployments or when you need exact control over what generates when (specific memory types on specific dates).
+Most users should use the `auto` system above; it figures out what to generate automatically. The scheduler below is for Docker/K8s deployments or when you need exact control over what generates when (specific memory types on specific dates).
 :::
 
 The advanced/legacy scheduler daemon runs inside immich-memories and handles timezone-aware cron,
@@ -123,7 +123,7 @@ immich-memories generate \
 
 ## Cron Job (Legacy)
 
-Old-school but works. Consider `auto install` instead — it generates the right cron/launchd/systemd config for you. Generate a yearly memory video every January 1st:
+Old-school but works. Consider `auto install` instead: it generates the right cron/launchd/systemd config for you. Generate a yearly memory video every January 1st:
 
 ```bash
 # crontab -e

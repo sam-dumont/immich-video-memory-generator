@@ -97,7 +97,7 @@ def _build_params_table(
     if keep_intermediates:
         table.add_row("Keep Intermediates", "Enabled")
     if privacy_mode:
-        table.add_row("Privacy Mode", "Enabled (blur faces, mute speech)")
+        table.add_row("Privacy Mode", "Enabled (every frame blurred, audio scrambled)")
     if title_override:
         table.add_row("Title Override", title_override)
     if subtitle_override:

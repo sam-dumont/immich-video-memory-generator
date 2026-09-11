@@ -10,7 +10,7 @@ The human half is architecture decisions, code review, and spotting when the AI 
 
 The AI writes code. I make sure it's good. Every line goes through:
 
-- 5,600+ tests (5,000 unit, 600+ integration/E2E, plus benchmarks)
+- 7,461 tests (6,838 unit, 623 integration/E2E); `uv run pytest tests/ --collect-only -q` prints the split
 - Ruff linting and formatting on every PR
 - mypy static type checking
 - Cyclomatic complexity gates (Xenon grade C max, cognitive complexity checks)
@@ -52,7 +52,7 @@ IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMA
 - Accesses your Immich server via API: keep your API key secure
 - Downloads videos temporarily: make sure you have disk space
 - Uses significant CPU/GPU resources during processing
-- Can optionally use external AI services (Ollama, OpenAI) for content analysis: review their privacy policies if you enable this
+- Needs two model endpoints to cut at all (a vision reader and a caption server). Both speak the OpenAI-compatible API and both are meant to be yours; point them at a third party and your pictures go there
 - Music generation/fetching may involve external sources: check licensing for your use case
 
 ### Questions?
@@ -61,4 +61,4 @@ Open a GitHub Discussion.
 
 ---
 
-*Last updated: 2026-08-24*
+*Last updated: 2026-09-11*

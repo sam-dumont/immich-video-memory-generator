@@ -256,7 +256,7 @@ test-integration:  ## Run ALL integration tests per-suite (requires FFmpeg/Immic
 	$(MAKE) test-integration-photos
 	$(MAKE) test-integration-pipeline
 	$(MAKE) test-integration-live-photos
-	@# CLI tests excluded — they re-run the full pipeline (~41 min) which is
+	@# CLI tests excluded — they re-run the full pipeline, which is
 	@# already covered by test-integration-pipeline. Run separately: make test-integration-cli
 	@# Merge per-suite JUnit XMLs into one (no re-run needed)
 	@python3 scripts/merge_junit_xml.py tests/integration-junit.xml \

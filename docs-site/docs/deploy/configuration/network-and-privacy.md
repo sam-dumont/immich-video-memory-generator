@@ -8,7 +8,7 @@ title: Network & Privacy
 Immich Memories runs locally and talks to your Immich server over your LAN. There is no
 telemetry, no update check and no analytics. Some features do make outbound requests, though.
 This page lists every one of them, what is sent, and how to turn it off. It is written from a sweep
-of the source code and maintained by hand — no gate checks it, so if you find an outbound call that
+of the source code and maintained by hand; no gate checks it, so if you find an outbound call that
 is not listed here, [open an issue](https://github.com/sam-dumont/immich-video-memory-generator/issues).
 
 ## Summary table
@@ -19,9 +19,10 @@ is not listed here, [open an issue](https://github.com/sam-dumont/immich-video-m
 | `nominatim.openstreetmap.org` | trip detection and trip titles | real GPS of trip clusters (lat/lon → place name) | no (runs when trips are detected) | don't use the Trip type; see below |
 | `server.arcgisonline.com` (World Imagery) | satellite map title screens | tile x/y/z requests for the trip area and your home base | no | `title_screens.enabled: false` |
 | `cdn.jsdelivr.net` (Fontsource) | first map / GPU title render **only if** the configured font is not bundled or cached | nothing personal (a font file is downloaded) | n/a | keep the default bundled font (Montserrat); pre-place TTFs in `~/.immich-memories/fonts/` |
+| `editorial.preparation.caption_base_url` | the first cut over a period | **a 400 px JPEG of every eligible picture in the period**, plus a `/models` probe | no: selection requires it | point it at a server on your own network (the default is `localhost:8092`) |
 | `llm.base_url` | the editor's readings, mood detection, LLM titles | frame thumbnails, photos, and for titles: **person names, place names, dates, clip descriptions** | **yes** | leave `llm` unconfigured, or point it at a local model |
 | `ace_step.api_url` / `musicgen.base_url` | AI music via a remote API | mood/genre/tempo text; a generated WAV for stem separation (MusicGen path) | **yes** | in-process ACE-Step (`ace_step.mode: lib`), your own file with `--music`, or `--no-music` |
-| Hugging Face / torch hub | first use of ACE-Step, Demucs, the `editorial` extra's detectors | nothing personal (model weights are downloaded once) | features are opt-in | pre-download models; air-gapped installs should disable those features |
+| Hugging Face / torch hub, and `github.com` for the pinned encoder | `models fetch`, and first use of ACE-Step or Demucs | nothing personal (model weights are downloaded once) | features are opt-in | pre-download models; air-gapped installs should disable those features |
 | Your Apprise / ntfy targets | notifications | memory type, status, duration, output path, error tail; a JPEG frame if `attach_thumbnail: true` | **yes** | `notifications.enabled: false` (default) |
 | Your OIDC provider | login | standard OIDC flow (client id, PKCE, tokens) | **yes** | basic auth or trusted-header auth |
 
@@ -51,8 +52,8 @@ today; the OSM/OpenTopo styles in the renderer are not reachable from the config
 ### Fonts (jsdelivr / Fontsource)
 
 **When:** a map or GPU-rendered title needs a font family that is neither bundled in the wheel nor
-already present under `~/.immich-memories/fonts/`. Five families ship in the wheel — Josefin Sans,
-Montserrat, Outfit, Quicksand and Raleway — which covers every built-in theme, so this only fires
+already present under `~/.immich-memories/fonts/`. Five families ship in the wheel (Josefin Sans,
+Montserrat, Outfit, Quicksand and Raleway), which covers every built-in theme, so this only fires
 if you configure a family of your own. Then a `latin-<weight>` TTF is fetched from
 `cdn.jsdelivr.net/fontsource/fonts/<family>@latest`.
 
@@ -74,9 +75,11 @@ LLM-written titles.
   written from.
 - `immich-memories preflight` sends one small test completion to verify the endpoint.
 
-**Destination:** whatever `llm.base_url` points to. With a local model (mlx-vlm/omlx, Ollama,
-vLLM) nothing leaves your network. The `openai-compatible` provider defaults to
-`https://api.openai.com/v1` if you set a key but no `base_url` — set `base_url` explicitly.
+**Destination:** whatever `llm.base_url` points to. With a local model (mlx-vlm/oMLX, Ollama,
+vLLM) nothing leaves your network. `openai-compatible` defaults to `http://localhost:8080/v1`,
+which is the app's own port. Set it. Two provider names fill in a vendor's URL instead when you
+leave `base_url` at that default: `openai` → `https://api.openai.com/v1`, `zai` →
+`https://api.z.ai/api/paas/v4`.
 
 **Opt out:** don't configure `llm`, or point it at a local server.
 
@@ -104,14 +107,15 @@ pre-seed those caches or leave the features off.
 
 **What's sent:** memory type, outcome, duration, the absolute output path and a redacted error
 tail. With `notifications.attach_thumbnail: true`, a JPEG frame from the finished video is
-attached — think about who runs your notification service (ntfy.sh, Discord, Telegram…) before
+attached. Think about who runs your notification service (ntfy.sh, Discord, Telegram…) before
 turning that on.
 
 ## Privacy mode
 
 Privacy mode (`--privacy-mode` / `server.enable_demo_mode: true`) is a **demo/screenshot**
-feature: it blurs faces, muffles speech and shifts your *home base* to a fake city so the map
-fly-in does not start at your house. It does **not** fake the destination coordinates — trip
+feature: it blurs every frame of every clip (not faces, the whole picture), makes all clip audio
+unintelligible, replaces person names, and shifts your *home base* to a fake city so the map
+fly-in does not start at your house. It does **not** fake the destination coordinates: trip
 detection and titles still geocode and render the real place, because that is the point of a
 trip memory. See [Privacy Mode](../../create/pipeline/privacy-mode.md).
 

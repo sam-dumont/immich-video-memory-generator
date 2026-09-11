@@ -5,9 +5,9 @@ title: generate
 
 # generate
 
-The main event. `immich-memories generate` pulls videos from your Immich library, analyzes scenes, picks the best moments, and assembles them into a compilation.
+The main event. `immich-memories generate` pulls pictures and video from your Immich library, reads them, weighs the stories the period holds, and assembles a cut.
 
-Generation uses story-first selection and the FAMILY audience by default. It prepares missing
+Generation uses story-first selection, and the audience is FAMILY: it is a fixed literal in the request, not a setting. It prepares missing
 facts for the whole source period before choosing stories and distinct moments, then allocates
 duration. Complete [editorial annotation setup](../../deploy/configuration/editorial-preparation.md)
 before an uncached run; there is no editorial opt-in switch or alternate selector to enable.
@@ -24,46 +24,46 @@ immich-memories generate [OPTIONS]
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--year` | `-y` | int | — | Year to generate (calendar year by default) |
-| `--start` | — | string | — | Start date (`YYYY-MM-DD`). Overrides memory type date range when combined with `--end` |
-| `--end` | — | string | — | End date (use with `--start`) |
-| `--period` | — | string | — | Period from start date (e.g., `6m`, `1y`, `2w`, `30d`) |
+| `--year` | `-y` | int | n/a | Year to generate (calendar year by default) |
+| `--start` | n/a | string | n/a | Start date (`YYYY-MM-DD`). Overrides memory type date range when combined with `--end` |
+| `--end` | n/a | string | n/a | End date (use with `--start`) |
+| `--period` | n/a | string | n/a | Period from start date (e.g., `6m`, `1y`, `2w`, `30d`) |
 
 ### Memory type
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--memory-type` | — | choice | — | `year_in_review`, `season`, `person_spotlight`, `multi_person`, `monthly_highlights`, `on_this_day`, `album`, `trip`, `holiday`, `special_day`. `album` needs `--from-album`, which also implies it |
-| `--holiday` | — | text | — | Holiday name or `MM-DD` (with `--memory-type holiday`) |
-| `--from-album` | — | string | — | Generate from an Immich album (name or ID) instead of a date range. See [Album Memories](../memory-types/album-memories). Cannot be combined with any time-period or person flag; `--memory-type album` is the one type it accepts |
-| `--person` | `-p` | string | — | Person name from Immich face recognition (repeatable: `--person "Riley" --person "Bob"`) |
-| `--person-match` | — | choice | `and` | With repeated `--person`, require everyone in each asset (`and`) or accept any named person (`or`) |
-| `--people-expression` | — | string | — | Combine quoted full names with `AND`, `OR` and parentheses; evaluated within each picture or video. Use separately from `--person` and `--person-match` |
-| `--accept-any-provenance` | — | flag | off | Keep forwarded and low-provenance media for this generation instead of applying the normal messaging/import filter |
-| `--birthday` | `-b` | flag/string | — | Anchor the memory on a birthday. Bare flag reads Immich's birth date; pass `MM-DD` to override |
-| `--season` | — | choice | — | `spring`, `summer`, `fall`, `autumn`, `winter` (use with `--memory-type season`) |
-| `--month` | — | int | — | Month 1-12 (with `--year`, generates that month; selects trip by month) |
-| `--hemisphere` | — | choice | `north` | `north` or `south` (for season date calculation) |
-| `--years-back` | — | int | per type | Years to look back. Omitted: all years for `on_this_day` (30-year max), 5 for `holiday` |
+| `--memory-type` | n/a | choice | n/a | `year_in_review`, `season`, `person_spotlight`, `multi_person`, `monthly_highlights`, `on_this_day`, `album`, `trip`, `holiday`, `special_day`. `album` needs `--from-album`, which also implies it |
+| `--holiday` | n/a | text | n/a | Holiday name or `MM-DD` (with `--memory-type holiday`) |
+| `--from-album` | n/a | string | n/a | Generate from an Immich album (name or ID) instead of a date range. See [Album Memories](../memory-types/album-memories). Cannot be combined with any time-period or person flag; `--memory-type album` is the one type it accepts |
+| `--person` | `-p` | string | n/a | Person name from Immich face recognition (repeatable: `--person "Riley" --person "Bob"`) |
+| `--person-match` | n/a | choice | `and` | With repeated `--person`, require everyone in each asset (`and`) or accept any named person (`or`) |
+| `--people-expression` | n/a | string | n/a | Combine quoted full names with `AND`, `OR` and parentheses; evaluated within each picture or video. Use separately from `--person` and `--person-match` |
+| `--accept-any-provenance` | n/a | flag | off | Keep forwarded and low-provenance media for this generation instead of applying the normal messaging/import filter |
+| `--birthday` | `-b` | flag/string | n/a | Anchor the memory on a birthday. Bare flag reads Immich's birth date; pass `MM-DD` to override |
+| `--season` | n/a | choice | n/a | `spring`, `summer`, `fall`, `autumn`, `winter` (use with `--memory-type season`) |
+| `--month` | n/a | int | n/a | Month 1-12 (with `--year`, generates that month; selects trip by month) |
+| `--hemisphere` | n/a | choice | `north` | `north` or `south` (for season date calculation) |
+| `--years-back` | n/a | int | per type | Years to look back. Omitted: all years for `on_this_day` (30-year max), 5 for `holiday` |
 
 ### Output
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--duration` | `-d` | int | — | Target duration in seconds |
-| `--short-form` | — | choice | — | `15`, `30`, `60`, or `90` — sets the duration and goes vertical |
-| `--orientation` | — | choice | `landscape` | `landscape`, `portrait`, or `square` |
+| `--duration` | `-d` | int | n/a | Target duration in seconds |
+| `--short-form` | n/a | choice | n/a | `15`, `30`, `60`, or `90`: sets the duration and goes vertical |
+| `--orientation` | n/a | choice | `landscape` | `landscape`, `portrait`, or `square` |
 | `--resolution` | `-r` | choice | config value; `auto` matches source clips | `auto`, `4k`, `1080p`, or `720p` |
 | `--scale-mode` | `-s` | choice | config/`blur` | `blur` (blurred background) or `fit` (black bars) |
 | `--transition` | `-t` | choice | `smart` | `smart`, `cut`, `crossfade`, or `none` |
 | `--quality` | `-q` | choice | config value | `high`, `medium`, or `low` |
-| `--format` | — | choice | config value | `mp4`, `h265`, or `prores` |
-| `--output` | `-o`, `-O` | path | auto | Where to write — see [Output](#output); the file lands in a per-run folder beside it |
-| `--title` | — | string | — | Override title screen text |
-| `--llm-title` | — | flag | off | Ask the LLM for the title instead of using a template |
-| `--subtitle` | — | string | — | Override subtitle text |
-| `--add-date` | — | flag | — | Caption each clip with its capture date |
-| `--add-place` | — | flag | — | Caption each clip with where it was taken |
+| `--format` | n/a | choice | config value | `mp4`, `h265`, or `prores` |
+| `--output` | `-o`, `-O` | path | auto | Where to write: see [Output](#output); the file lands in a per-run folder beside it |
+| `--title` | n/a | string | n/a | Override title screen text |
+| `--llm-title` | n/a | flag | off | Ask the LLM for the title instead of using a template |
+| `--subtitle` | n/a | string | n/a | Override subtitle text |
+| `--add-date` | n/a | flag | n/a | Caption each clip with its capture date |
+| `--add-place` | n/a | flag | n/a | Caption each clip with where it was taken |
 
 `--add-date` writes the clip's own capture date in the bottom-right corner,
 in bold uppercase using the same Outfit face as the title screens, worded
@@ -71,8 +71,8 @@ relative to the memory's span: inside a single-month memory the month is the
 video's own premise, so the caption reads `SUNDAY 10`; a memory spanning
 months within one year reads `10 AUGUST`; only a multi-year memory spells out
 `10 AUGUST 2025`. Day and month names follow the configured locale
-(`title_screens.locale`; `auto` follows the host machine's language — deployed
-next to Immich, that is the server's locale): a French library says
+(`title_screens.locale`; `auto` follows the host machine's language, which deployed
+next to Immich is the server's locale): a French library says
 `DIMANCHE 10`. Size and corner insets scale with the frame and are identical
 in portrait and landscape. A dark outline keeps white text readable over
 bright content; on HDR output the caption is drawn at HLG graphics white
@@ -80,15 +80,14 @@ rather than full white, which would otherwise glare above the picture's own
 diffuse white. Title cards and clips without a date are left alone.
 
 `--add-place` adds the location Immich recorded for the clip, as
-`CITY, COUNTRY`, in the top-left corner — the date keeps the bottom right.
+`CITY, COUNTRY`, in the top-left corner; the date keeps the bottom right.
 The place is shown when it *changes*: the first clip in `Nice, France` is
 captioned, the clips that stay there are not, and coming home captions the
 first clip back. A clip without a location does not reset the run, so EXIF
 gaps inside one event stay quiet.
 
 Place names bring characters FFmpeg's text renderer treats as syntax. A colon
-would break the filter outright, and an ASCII apostrophe is silently *dropped* —
-`L'Aquila` rendered as `LAquila` — so apostrophes are written as the typographic
+would break the filter outright, and an ASCII apostrophe is silently *dropped* (`L'Aquila` rendered as `LAquila`), so apostrophes are written as the typographic
 `’`, which is the correct mark anyway.
 
 ### Short-form
@@ -101,76 +100,77 @@ immich-memories generate --year 2025 --month 8 --short-form 30
 ```
 
 The preset fills gaps rather than overruling you. An explicit `--duration` wins,
-and so does an explicit `--orientation` — square short-form is a real format, so
+and so does an explicit `--orientation`: square short-form is a real format, so
 `--short-form 30 --orientation square` gives you 30 seconds in a square frame.
 
 Titles keep more clearance on a vertical render: 16% of the width on each side
 instead of 10%. A title is centred, and the column of action buttons those apps
-draw down the right-hand side sits across the middle of the frame — exactly
+draw down the right-hand side sits across the middle of the frame: exactly
 where a centred title lands. The text shrinks to fit rather than sliding, so it
 stays centred and out from under the buttons.
 
-With `--orientation portrait` the caption is inset further from the bottom —
-about a sixth of the frame height — to clear the captions, handle and action
-rail that Reels, Shorts and Stories draw over the lower part of a 9:16 video.
-Landscape output keeps the tighter inset, having no chrome to dodge.
+Captions are the exception: their inset is 5.5% of the short side in both
+orientations, so a portrait render puts the date in the same corner a landscape
+one does. The captions, handle and action rail that Reels, Shorts and Stories
+draw over the lower part of a 9:16 video will sit across it. If that matters,
+drop `--add-date`.
 
 When `--resolution` is omitted, the command uses `output.resolution` from the config (1080p by
 default). Pass `--resolution auto` explicitly when you want the source clips to choose the output
 tier. `--quality` changes the effective CRF preset; an explicit `output.crf` in config remains the
-more precise control. The app passes it directly to software H.264/H.265 and translates it for
-Apple VideoToolbox; other hardware backends retain their existing quality policies.
+more precise control. The app passes it directly to software H.264/H.265 and maps it onto each hardware backend's own
+quantiser scale, with a measured offset per backend (VAAPI, QSV and NVENC each take +2).
 
 ### Preset (root option)
 
-`--preset fast` is a root option — it goes before `generate`: `immich-memories --preset fast generate --month 6`.
-It applies the CPU-only/NAS profile for this run (1080p H.264, fast encoder, medium quality,
-static title backgrounds, no speech pass, photos ≤25 %, favorites-first analysis) to every knob you
-have not set explicitly; the flags below still win. Persistent form: `preset: fast` in
-`config.yaml` or `IMMICH_MEMORIES_PRESET=fast` — see the [config reference](../../reference/config-reference.md#preset).
+`--preset fast` is a root option: it goes before `generate`, as in `immich-memories --preset fast
+generate --month 6`. It applies the CPU-only/NAS profile for this run (1080p, H.264, medium
+quality, the fast encoder preset, static title backgrounds) to every knob you have not set
+explicitly; the flags below still win. Five keys in three sections, and none of them changes what the editor reads. Persistent form: `preset: fast` in
+`config.yaml` or `IMMICH_MEMORIES_PRESET=fast`; see the [config reference](../../reference/config-reference.md#preset).
 
 ### Photos
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--include-photos` | — | flag | — | Include photos alongside videos |
-| `--photo-duration` | — | float | `4.0` | Seconds per photo clip (use with `--include-photos`) |
+| `--include-photos` / `--no-photos` | n/a | flag pair | on | Photos alongside videos. `photos.enabled` is already `true`, so the useful half is `--no-photos` |
+| `--photo-duration` | n/a | float | `4.0` | Seconds per photo clip (from `photos.duration`) |
 
 ### Music
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--music` | `-m` | string | — | Path to audio file, or `auto` to generate from config |
-| `--no-music` | — | flag | — | Disable all music (skip files and AI generation) |
-| `--music-volume` | — | float | `0.5` | Music volume 0.0-1.0 |
+| `--music` | `-m` | string | n/a | Path to audio file, or `auto` to generate from config |
+| `--no-music` | n/a | flag | n/a | Disable all music (skip files and AI generation) |
+| `--music-volume` | n/a | float | `0.5` | Music volume 0.0-1.0 |
 
 ### Modes
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--dry-run` | — | flag | — | Cheap preview: cached analysis only, verify pass skipped, no video |
-| `--no-render` | — | flag | — | The real selection — analysis, verify, judge, review — stopping before the encode |
-| `--privacy-mode` | — | flag | — | Blur all video and mute speech |
-| `--include-live-photos` | — | flag | — | Include Live Photo video clips (merged when burst-captured) |
-| `--keep-intermediates` | — | flag | — | Keep intermediate files for debugging |
-| `--quiet` | — | flag | — | Suppress interactive progress, emit log lines only |
-| `--trace-selection` | — | path | — | Write a stage-by-stage report of how the clips were chosen |
+| `--dry-run` | n/a | flag | n/a | Discover inputs and report preparation needs. No selection, no video |
+| `--no-render` | n/a | flag | n/a | Story-first selection and its audience and media checks, stopping before the encode |
+| `--privacy-mode` | n/a | flag | n/a | Demo mode: blur every frame, scramble the audio, fake the names |
+| `--include-live-photos` / `--no-live-photos` | n/a | flag pair | on | Live Photo clips, merged when burst-captured. `analysis.include_live_photos` is already `true` |
+| `--keep-intermediates` | n/a | flag | n/a | Keep intermediate files for debugging |
+| `--quiet` | n/a | flag | n/a | Suppress interactive progress, emit log lines only |
+| `--trace-selection` | n/a | path | n/a | Write a stage-by-stage report of how the clips were chosen |
 
 ### Upload
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--upload-to-immich` | — | flag | — | Upload generated video back to Immich |
-| `--album` | — | string | — | Album name for uploaded video (created if missing) |
+| `--upload-to-immich` | n/a | flag | n/a | Upload generated video back to Immich |
+| `--album` | n/a | string | n/a | Album name for uploaded video (created if missing) |
 
 ### Trip-specific
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--trip-index` | — | int | — | Select a specific trip by index (use with `--memory-type trip`) |
-| `--all-trips` | — | flag | — | Generate a video for every detected trip (use with `--memory-type trip`) |
-| `--near-date` | — | string | — | Select trip closest to this date (`YYYY-MM-DD`, use with `--memory-type trip`) |
-| `--day` | — | datetime | — | The catalogued day to generate (`YYYY-MM-DD`, use with `--memory-type special_day`) |
+| `--trip-index` | n/a | int | n/a | Select a specific trip by index (use with `--memory-type trip`) |
+| `--all-trips` | n/a | flag | n/a | Generate a video for every detected trip (use with `--memory-type trip`) |
+| `--near-date` | n/a | string | n/a | Select trip closest to this date (`YYYY-MM-DD`, use with `--memory-type trip`) |
+| `--day` | n/a | datetime | n/a | The catalogued day to generate (`YYYY-MM-DD`, use with `--memory-type special_day`) |
 
 ## Examples
 
@@ -190,9 +190,9 @@ Reads the birth date off the Immich person when `--birthday` is used as a bare f
 immich-memories generate --year 2025 --birthday --person "Emma" --duration 900
 ```
 
-`--year` names the birthday being celebrated. The memory is the year **ending** on it — 22 July 2024 to 21 July 2025 for a 21 July birthday — plus the five previous birthdays as ±1 day windows. `--years-back` changes how many.
+`--year` names the birthday being celebrated. The memory is the year **ending** on it (22 July 2024 to 21 July 2025 for a 21 July birthday), plus the five previous birthdays as ±1 day windows. `--years-back` changes how many.
 
-If the person has no birth date in Immich the run stops and says where to add one. Override for a single run with `--birthday 07-21`; slashes work too and read day-first, like every other date flag — `--birthday 07/02` is 7 February. `MM-DD` is the form that cannot be misread.
+If the person has no birth date in Immich the run stops and says where to add one. Override for a single run with `--birthday 07-21`. Slashed forms are rejected outright, never guessed: `MM-DD` and `YYYY-MM-DD` are the two the parser takes.
 
 ### Person spotlight for a single month
 
@@ -240,7 +240,7 @@ Six months from a start date:
 immich-memories generate --start 2024-01-01 --period 6m
 ```
 
-### On This Day — all years
+### On This Day: all years
 
 Look back across all years with data (not just the last 5):
 
@@ -261,7 +261,7 @@ immich-memories generate --memory-type holiday --holiday christmas --years-back 
 
 Known names: `new_year`, `valentines`, `easter`, `mothers_day`, `fathers_day`,
 `halloween`, `thanksgiving`, `christmas_eve`, `christmas`, `new_years_eve`.
-Anything else can be given as a date — `--holiday 07-04` — so a household's own
+Anything else can be given as a date (`--holiday 07-04`), so a household's own
 occasion works without being on the list.
 
 Moving holidays are computed, not looked up in a table: Easter, Thanksgiving,
@@ -270,7 +270,7 @@ nobody has thought about yet. The window is the holiday ±2 days by default, so
 Christmas Eve and Boxing Day belong to Christmas.
 
 Without `--duration` this runs 60 seconds. The usual duration scaling reads the
-span between the first and last date, which for five Christmases is five years —
+span between the first and last date, which for five Christmases is five years:
 a length meant for one continuous stretch, not a handful of days repeated. The
 number of years does not change the target; pass `--duration` for a longer cut.
 
@@ -284,14 +284,14 @@ immich-memories generate --memory-type special_day --day 2016-06-12
 ```
 
 The flag carries a **date, not a title**. The title and subtitle come from the
-catalogue, which this command re-reads — because argv is logged by the automation
+catalogue, which this command re-reads, because argv is logged by the automation
 runner and is readable in `ps` and in launchd's logs, and the catalogue's titles
 name real people and places. `immich-memories days-due` lists what it holds.
 
 Three things are refused rather than faked:
 
 - `--memory-type special_day` with no `--day`
-- a `--day` the catalogue has never heard of — the error names the file it read
+- a `--day` the catalogue has never heard of: the error names the file it read
 - a catalogued day with neither a title nor a description of what it was
 
 There is no generic "Memories from 12 June 2016" card. A day the model could not
@@ -302,8 +302,8 @@ Scope is the window the catalogue recorded for the day, when it recorded one:
 of the day, so it means "the memory starts at the circuit, not at the cat on the
 balcony that morning". A day with no window covers the whole calendar day.
 
-Without `--duration` the length comes from how long the day stayed awake —
-roughly a minute plus six seconds an hour, held between 60 and 180 seconds.
+Without `--duration` the length comes from how long the day stayed awake:
+thirty seconds plus six an active hour, held between 60 and 180 seconds.
 `--title` and `--subtitle` still override the catalogue's naming.
 
 ### Trip closest to a date
@@ -333,7 +333,7 @@ immich-memories generate --year 2024 --include-photos --photo-duration 5.0
 | Period from start | `--start 2024-01-01 --period 6m` | 6 months from the start date |
 | Override preset | `--memory-type season --season summer --start 2024-07-01 --end 2024-07-31` | Custom dates with the preset's title and structure |
 
-Dates are RFC 3339: `YYYY-MM-DD`, always. `--birthday` also takes the year-less `MM-DD` short form — same order, no year. Slashed and day-first forms are rejected with an error naming the format, never guessed.
+Dates are RFC 3339: `YYYY-MM-DD`, always. `--birthday` also takes the year-less `MM-DD` short form: same order, no year. Slashed and day-first forms are rejected with an error naming the format, never guessed.
 
 Period format: number + unit (`d` days, `w` weeks, `m` months, `y` years). Examples: `90d`, `2w`, `6m`, `1y`.
 
@@ -356,7 +356,7 @@ where you pointed. Album runs name the file after the album rather than after
 Nothing prunes those folders, so reruns accumulate. `immich-memories runs delete`
 removes a run's output along with its record.
 
-If you don't pass `--output`, the file lands in your configured output directory (default `~/Videos/Memories/`), inside a per-run folder, with an auto-generated name of the form `{person}_{memory-type}_{date}.mp4` — for example `all_memories_2024.mp4`, `riley_year_in_review_2024.mp4` or `riley_memories_20240207-20250206.mp4`. (The web UI names its files differently, e.g. `riley_2024_memories.mp4`.)
+If you don't pass `--output`, the file lands in your configured output directory (default `~/Videos/Memories/`), inside a per-run folder, with an auto-generated name of the form `{person}_{memory-type}_{date}.mp4`: for example `all_memories_2024.mp4`, `riley_year_in_review_2024.mp4` or `riley_memories_20240207-20250206.mp4`. (The web UI names its files differently, e.g. `riley_2024_memories.mp4`.)
 
 ## Upload to Immich
 
@@ -378,7 +378,7 @@ upload:
 
 ## Trip Detection
 
-Automatically find trips in your library based on GPS data. Set your home coordinates in config, and the tool finds clusters of videos taken far from home over 2+ days.
+Automatically find trips in your library based on GPS data. Set your home coordinates in config, and the tool finds clusters of GPS-tagged assets taken far from home and spanning at least `min_duration_days` nights (2 by default, so three calendar days).
 
 ```bash
 # Discover trips from 2024 (shows a table, doesn't generate)
@@ -391,7 +391,7 @@ immich-memories generate --memory-type trip --year 2024 --trip-index 2
 immich-memories generate --memory-type trip --year 2024 --all-trips
 ```
 
-Without `--trip-index` or `--all-trips`, the command runs in discovery mode: it scans all GPS-tagged videos for the year, filters to those 50+ km from your homebase, groups them by temporal proximity, and shows you what it found. Cross-year trips (like a New Year's trip spanning Dec to Jan) are detected as a single trip.
+Without `--trip-index` or `--all-trips`, the command runs in discovery mode: it scans every GPS-tagged asset for the year, filters to those 50+ km from your homebase, groups them by temporal proximity, and shows you what it found. Cross-year trips (like a New Year's trip spanning Dec to Jan) are detected as a single trip.
 
 First, set your home coordinates in `config.yaml`:
 
@@ -404,12 +404,10 @@ trips:
   max_gap_days: 2                # Max gap between videos before splitting trips
 ```
 
-## Dry run
+## Letting the LLM name the memory
 
-### Letting the LLM name the memory
-
-By default the CLI titles a memory from a template — "Year in Review 2025",
-"March 2025", "On This Day — July 4". `--llm-title` asks the configured model
+By default the CLI titles a memory from a template: "Year in Review 2025",
+"March 2025", "On This Day: July 4". `--llm-title` asks the configured model
 instead, using the same prompt the web UI uses: the dates, the people, and what
 the analyzer said about each selected clip.
 
@@ -428,8 +426,10 @@ Three things worth knowing:
 - **It fails soft.** No model configured, a failed call, or an empty answer all
   fall back to the template. The video is never lost over a title.
 
-It uses `title_llm` if you have configured one, otherwise `llm` — the same
+It uses `title_llm` if you have configured one, otherwise `llm`: the same
 resolution the rest of the pipeline uses.
+
+## Understanding a run
 
 ### What a run reports about itself
 
@@ -439,7 +439,7 @@ Every generation ends with a short block:
 Memory generated in 6m 27s
 
   measured this run
-    analysis + selection     3m 49s   28 of 312 deeply analyzed, 14 planned
+    selection                3m 49s   14 planned from 312 candidates
     generation               2m 38s
 
   LLM   11 calls · 4 answered from the judgment cache · 47.2k prompt / 3.1k completion · 2m 18s
@@ -448,13 +448,13 @@ Memory generated in 6m 27s
 
 **"Measured this run" means what it says.** Those two timings are wall-clock
 taken around the calls as they happen. They are *not* in the run database:
-`runs show` reports the phases the run tracker records — clip extraction,
-assembly and music — which do not include analysis or selection. Both surfaces
+`runs show` reports the phases the run tracker records (clip extraction,
+assembly and music), which do not include analysis or selection. Both surfaces
 report the same **model** totals, because those are stored per run; only the
 phase breakdown differs, and each says which it is showing.
 
-The cache mentioned is the **judgment cache** — repeated questions to the same
-model about the same memory — not the video, photo or analysis caches.
+The cache mentioned is the **judgment cache** (repeated questions to the same
+model about the same memory), not the video, photo or analysis caches.
 
 **The truncation line only appears when it happened**, and it is the reason the
 block exists: a thinking call that overruns its token budget is retried without
@@ -466,49 +466,60 @@ A run with no LLM configured prints no model line at all.
 
 ### Why did selection drop that clip?
 
-`--trace-selection` writes a funnel: every stage of selection, what it received, what it let
-through, and how many **favourites** survived each step.
+`--trace-selection` writes a funnel: what each recorded stage received, what it let through, and
+what happened to the **favourites** in it.
 
 ```bash
 immich-memories generate --year 2024 --trace-selection ~/selection.txt
 ```
 
-It writes **two** files — the readable funnel at the path you gave, and the same data as JSON at
-the same path with a `.json` suffix, for scripting.
+It writes **two** files: the readable funnel at the path you gave, and the same data as JSON with
+that path's extension replaced by `.json` (so `~/selection.txt` gives you `~/selection.json`, not
+`~/selection.txt.json`).
 
-The report looks like this, and the marker is the point:
+The report has two blocks. The favourites table carries one row per recorded stage, and on the
+story-first route that is a single row, `editorial final cut`, with the marker that matters:
 
 ```
 stage                  kept  lost     favorites
-source gates             38     0      38 -> 38
-cull                     21    17      38 -> 21
 editorial final cut       9    12      21 ->  0  <-- all favorites lost here
 ```
 
-Selection passes a pool through the source gates, the cull, the memory-worthy gate, the story
-weighing and the standing gate before a picture carries. Reading the log and inferring which one
-ate your clips is slow and wrong often enough to matter — a real February started with 38
-favourites and shipped none, and finding the stage responsible took several rounds of guessing.
-This answers it directly; the funnel prints whichever passes the route ran, under their own names.
+Underneath it, the editorial passes, with their own decisions and reasons, and no favourites
+column:
+
+```
+editorial passes
+----------------
+  source-eligibility: 38 kept, 0 rejected, 0 unresolved
+  pass-1-cull: 21 kept, 17 rejected, 0 unresolved
+      <asset-id> — <the reason it was rejected>
+```
+
+Those two are what the route records. The later editorial work, the memory-worthy gate, the story
+weighing and the standing gate, does not write passes here; to see what it did, read the plan and
+the reason on every carrier. The point of the funnel is the question it answers directly: a real
+February started with 38 favourites and shipped none, and finding the stage responsible took
+several rounds of guessing at the log.
 
 :::warning Do not combine this with `--dry-run`
-`--dry-run` runs no selection — it discovers inputs and reports preparation needs — so there is
+`--dry-run` runs no selection (it discovers inputs and reports preparation needs), so there is
 nothing to trace. Trace a real run: `--no-render` gives you one without the encode. See below.
 :::
 
-### Two ways to skip the video
+## Two ways to skip the video
 
 They are not the same, and the difference decides which one you want.
 
 `--dry-run` is the cheap preview. It discovers the inputs and reports what
-preparation the period still needs — which producers are missing, how many
-pictures have no facts yet — without selecting or generating anything. Use it
+preparation the period still needs (which producers are missing, how many
+pictures have no facts yet) without selecting or generating anything. Use it
 to check that your criteria match the assets you expect and that the
 [annotation producers](../../deploy/configuration/editorial-preparation.md)
 are reachable.
 
-`--no-render` runs the story-first selection for real — preparation, the
-readings, the planners, the audience and media checks — and stops at the
+`--no-render` runs the story-first selection for real (preparation, the
+readings, the planners, the audience and media checks), and stops at the
 encode. The pictures it lists are the pictures it would have shipped, and the
 attempt is written under `editorial-runs/` like any other. Use it when you care
 about the selection itself: comparing settings, or measuring how long selection

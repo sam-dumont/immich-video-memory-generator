@@ -8,7 +8,7 @@ For Mac users running everything locally: the reader, the caption server, Apple 
 
 ## Who this is for
 
-You have a Mac with Apple Silicon (M1/M2/M3/M4) and enough unified memory to hold the models — 32 GB is the tested floor. You want the whole editor running on your own machine, no cloud APIs. You're comfortable with the terminal.
+You have a Mac with Apple Silicon (M1/M2/M3/M4) and enough unified memory to hold the models: 32 GB is the tested floor. You want the whole editor running on your own machine, no cloud APIs. You're comfortable with the terminal.
 
 ## Architecture
 
@@ -20,7 +20,7 @@ You have a Mac with Apple Silicon (M1/M2/M3/M4) and enough unified memory to hol
 │  │  oMLX        │  │   Immich Memories         │  │
 │  │  reader model│←─│   (native Python)         │  │
 │  │  port 8000   │  │   VideoToolbox encoding   │  │
-│  │              │  │   Vision face detection   │  │
+│  │              │  │   Taichi titles on Metal  │  │
 │  └──────────────┘  └──────────────────────────┘  │
 │                             │                     │
 │                    ┌────────┴─────────┐           │
@@ -35,16 +35,17 @@ You have a Mac with Apple Silicon (M1/M2/M3/M4) and enough unified memory to hol
 ## Install
 
 ```bash
-# Install Immich Memories with the Mac extras (Vision face detection, Taichi GPU titles, ...)
+# Install Immich Memories with the Mac extras (Taichi GPU titles, the editorial stack, ...)
 uv tool install "immich-memories[all-mac]"
 
 # Start the UI
 immich-memories ui
 ```
 
-The bare `immich-memories` package works too, but face detection then falls back to CPU Haar
-cascades and title screens are PIL-rendered — the `all-mac` extra is what enables the Vision
-Framework and Taichi paths described below.
+The bare `immich-memories` package works too, but title screens are then PIL-rendered and the
+context heads and detectors have no runtime: `all-mac` is what installs Taichi and the editorial
+stack described below. Note it does not include the `auth` extra; add that separately if you want
+OIDC login.
 
 Open [http://localhost:8080](http://localhost:8080).
 
@@ -54,7 +55,7 @@ general model connection below. New runs use story-first selection and the FAMIL
 
 ## Set up the reader
 
-The reader groups the period's days into stories, weighs them and picks the pictures — and it is
+The reader groups the period's days into stories, weighs them and picks the pictures, and it is
 what *looks* at some of them: the candidates whose facts the edit demands, a few dozen per
 memory, reach this endpoint as 800 px tiles. So the seat needs vision and at least a 32k context,
 and a text-only model cannot take it.
@@ -83,7 +84,7 @@ or drop it into the model directory yourself. The weights are on Hugging Face:
 | Reader | `mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit` | ~17 GB |
 | Captions | `mlx-community/SmolVLM2-500M-Video-Instruct-mlx` (revision `fa57db46`) | 1–2 GB |
 
-The weights stay resident while the servers are up — read them as the floor for how much unified
+The weights stay resident while the servers are up: read them as the floor for how much unified
 memory the models alone take. The caption server is a second service on its own port (8092 by
 default) and has to advertise the alias `smolvlm2-500m-base-public`; the
 [self-hosting guide](../self-hosting.md) stands both of them up.
@@ -117,7 +118,6 @@ so check it covers whatever you load before you count on it.
 
 - **A local editor**: the model reads the period's pictures and edits the memory on your machine; nothing leaves it.
 - **VideoToolbox encoding**: H.264/H.265 encoding on the chip's media engine instead of the CPU cores.
-- **Vision framework face detection**: uses macOS native Vision framework for face detection. More accurate than the CPU fallback, no additional model downloads needed.
 - **Taichi GPU title renderer**: particle effects and gradient backgrounds rendered on Apple GPU.
 - **AI music generation**: ACE-Step runs in-process on Apple Silicon via MLX, no server involved. A 60 s track takes ~17 s with `use_lm: false`, or ~45 s with thinking mode on. What it costs is memory, not time: see below.
 - **All memory types and features**: everything works natively on Mac.
@@ -133,7 +133,11 @@ ACE-Step's weights have to stay resident for the model to run at all, so memory 
 | 2B + 1.7B planner | ~11 GB |
 | 2B, `use_lm: false` | ~7 GB |
 
-A 16 GB Mac runs the 2B profiles. XL wants 20 GB of unified memory free, and that is free memory, not installed. If the profile does not fit, `lib` mode says so before loading anything and the run falls back to a bundled track rather than being killed mid-render.
+A 16 GB Mac runs `2B, use_lm: false` and, on a quiet machine, the 11 GB 2B-plus-planner profile.
+The numbers above are the check, and they are free memory, not installed: 21 GB free for XL
+without the planner, 29 GB with it. Subtract the 2 to 4 GB the app itself is holding. If the profile does not fit,
+`lib` mode says so before loading anything and the run falls back to a bundled track rather than
+being killed mid-render.
 
 The config, the pinned install commands and the full memory notes are in [Fully Local Setup](../../create/pipeline/audio-and-music.md#fully-local-setup-no-servers).
 
@@ -145,20 +149,16 @@ The config, the pinned install commands and the full memory notes are in [Fully 
 
 On an M2 Pro (12-core, 32 GB):
 
-| Clips | Resolution | LLM analysis | Total time |
-|-------|-----------|-------------|-----------|
-| 15 | 1080p | ~3 min | ~5 min |
-| 30 | 1080p | ~5 min | ~8 min |
-| 30 | 4K | ~5 min | ~14 min |
-| 50 | 1080p | ~8 min | ~12 min |
+There is no table here. The one that used to be was keyed on clip count and measured a per-clip
+scorer that no longer exists, which makes it worse than nothing to calibrate against. Preparation
+on the current route has [not been measured](./nas-only.md#preparation-not-measured-yet).
 
-Those numbers are from an earlier 7B vision model (2 frames per clip at ~3 seconds per frame) and
-have not been re-measured against the 30B reader — read them as a floor, not a forecast. What
-has not changed is the shape: the model passes are the slowest phase, and they are cached. A
-second cut over the same period skips them entirely.
+What has not changed is the shape: the model passes are the slowest phase, they scale with how
+many candidate pictures the period holds rather than with how long the video is, and they are
+banked. A second cut over the same period skips them entirely.
 
 Memory is the constraint, not time. Immich Memories itself wants 2-4 GB; the models want their
-weights resident for as long as their servers are up — ~17 GB for the reader, 1-2 GB for the
+weights resident for as long as their servers are up: ~17 GB for the reader, 1-2 GB for the
 captions.
 
 That is what makes local music generation tighter here than on a machine doing nothing else: a
@@ -170,7 +170,8 @@ Stopping the model servers before a music-heavy run buys all of it back.
 - **Start the required model services before generating.** Missing annotation or story providers
   stop an uncached editorial run with an incomplete result. Matching cached facts are reused.
 - **The graded reader is the 4-bit one.** A higher-precision build of the same model will run if the memory is there; it is not what the approved sheets came from.
-- **Smaller vision models will run** on tighter machines. None of them has been graded on this route — treat the output as your own experiment rather than a supported configuration.
+- **Smaller vision models will run** on tighter machines. None of them has been graded on this route: treat the output as your own experiment rather than a supported configuration.
 - **Ollama speaks the same contract**, so it works as a transport. Nothing on this route has been run on it, and whatever you serve there still has to accept images.
-- **Preparation covers the whole source period.** Clip-analysis depth does not shortlist the
-  material used to understand its stories. Exact producer/input cache hits are reused.
+- **Preparation covers the whole source period.** There is no depth knob and no shortlist: every
+  eligible picture is read once, because one the editor never saw is one it cannot weigh. Exact
+  producer/input cache hits are reused.

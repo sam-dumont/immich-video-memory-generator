@@ -1,11 +1,18 @@
-graph TB
+graph LR
     subgraph NAS["🖥️ Synology / QNAP NAS"]
-        subgraph Docker["Docker"]
-            Immich["📷 Immich<br/>photos & videos"]
-            Memories["🎬 Immich Memories<br/>CPU encoding · 1080p"]
-        end
+        direction TB
+        Immich["📷 Immich<br/>photos & videos"]
+        Memories["🎬 Immich Memories<br/>heads · detectors · encode"]
         Output[("📁 /output volume")]
+        Immich -->|API| Memories
+        Memories -->|renders| Output
     end
 
-    Immich -->|API| Memories
-    Memories -->|renders| Output
+    subgraph Box["💻 Mac 32 GB, or a 24 GB GPU"]
+        direction TB
+        Reader["🧠 vision reader<br/>~17 GB resident"]
+        Caption["📝 caption server"]
+    end
+
+    Memories -->|LAN| Reader
+    Memories -->|LAN| Caption

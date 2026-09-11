@@ -12,9 +12,10 @@ Story-first selection prepares descriptions, context labels and pixel measuremen
 whole source period. It reuses complete facts from the annotation database. Missing previews,
 unavailable providers and incomplete facts stop selection with a count for each missing producer.
 
-This is the default route for UI, CLI and scheduled runs. New runs use the FAMILY audience:
-ordinary family baby care is eligible; graphic procedures, sexual content, exposed adult
-changing and identifying records remain excluded.
+This is the default route for UI, CLI and scheduled runs. New runs use the FAMILY audience.
+A shirtless baby is ordinary family content. Eight findings are held out of the cut at every
+audience: breastfeeding or expressing milk, bathing, toileting or changing, intimate hygiene,
+graphic medical procedures, identifying records, sexual content, and adult changing.
 
 Install the inference dependencies:
 
@@ -87,7 +88,7 @@ completed batch. It does not upload images to Hugging Face.
 | `docling-project/DocumentFigureClassifier-v2.0` | `2a12e02668b98ca40216eab41cdf19530577cba4` | `model.onnx` |
 
 By default these files must already be in the Hugging Face Hub cache. `immich-memories models
-fetch` puts them there — it warms every file in the table at its pinned revision, into
+fetch` puts them there: it warms every file in the table at its pinned revision, into
 `detector_cache_dir` when that is set, so `allow_model_downloads` can stay `false` and mean what
 it says. `--no-detectors` fetches only the encoder. Setting `allow_model_downloads: true` instead
 allows the worker itself to acquire the pinned files when needed. Neither starts a caption
@@ -95,8 +96,9 @@ server.
 
 A separate `detector_python` needs `timm`, `torch`, `huggingface-hub`, `onnxruntime`, `numpy`
 and `Pillow`. The worker ships with the main package and runs without importing the app's UI
-or configuration dependencies. The accepted detector environment used timm 1.0.29, Torch
-2.13.0, Hugging Face Hub 1.29.0 and ONNX Runtime 1.29.0.
+or configuration dependencies. The versions `uv.lock` currently pins are timm 1.0.29, Torch
+2.14.0, Hugging Face Hub 1.30.0 and ONNX Runtime 1.28.0; read the lock rather than this sentence
+if they matter to you.
 
 ## Compact captions
 

@@ -68,7 +68,7 @@ def _occasion_title(
     Returns None for the types whose span *is* the answer.
     """
     if memory_type == "on_this_day":
-        return f"On This Day — {_MONTH_NAMES[start.month]} {start.day}", None
+        return f"On This Day: {_MONTH_NAMES[start.month]} {start.day}", None
 
     if memory_type == "holiday":
         from immich_memories.memory_types.factory import holiday_label

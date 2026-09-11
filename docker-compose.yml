@@ -5,15 +5,18 @@
 # Reaching it from another machine is a deliberate two-step change — see the ports block.
 # The stateful UI supports one user flow in one replica.
 #
-# Resource requirements:
-#   Idle (UI): ~100MB RAM
-#   Analysis:  2-4GB RAM, 2+ cores (downloads + scores clips)
-#   Encoding:  4-8GB RAM, 4+ cores (FFmpeg assembly, depends on resolution)
+# Resource requirements for THIS container:
+#   Idle (UI):    ~100MB RAM
+#   Preparation:  2-4GB RAM, 2+ cores (Immich previews, the ONNX heads, two CPU detectors)
+#   Encoding:     4-8GB RAM, 4+ cores (FFmpeg assembly, depends on resolution)
 #
 # For GPU-accelerated title rendering or 4K output, increase limits.
 # For GPU acceleration, see the hardware docs.
 #
-# For LLM-based clip analysis, set LLM env vars below.
+# This container is not the whole stack. The editor also needs two model endpoints
+# you host yourself: a vision reader (~17GB resident) and a caption server. Without
+# them a run stops rather than guessing. Set both below; see the self-hosting guide:
+# https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/self-hosting
 services:
   immich-memories:
     image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
@@ -31,9 +34,11 @@ services:
       IMMICH_API_KEY: "${IMMICH_API_KEY}"
       # Optional: session secret (auto-generated if not set; set to preserve sessions on restart)
       # IMMICH_MEMORIES_STORAGE_SECRET: "${IMMICH_MEMORIES_STORAGE_SECRET}"
-      # Optional: LLM for clip content analysis (any OpenAI-compatible API)
-      # IMMICH_MEMORIES_LLM__BASE_URL: "http://your-llm:8080/v1"
-      # IMMICH_MEMORIES_LLM__MODEL: "qwen2.5-vl"
+      # Required to cut at all: the vision reader and the caption server.
+      # "localhost" here means this container, so use a real hostname.
+      # IMMICH_MEMORIES_LLM__BASE_URL: "http://your-model-box:8000/v1"
+      # IMMICH_MEMORIES_LLM__MODEL: "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"
+      # IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL: "http://your-model-box:8092/v1"
       # Optional: basic auth
       # IMMICH_MEMORIES_AUTH_USERNAME: "${IMMICH_MEMORIES_AUTH_USERNAME}"
       # IMMICH_MEMORIES_AUTH_PASSWORD: "${IMMICH_MEMORIES_AUTH_PASSWORD}"

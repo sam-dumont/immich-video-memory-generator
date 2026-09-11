@@ -148,7 +148,7 @@ def output_options(command: FC) -> FC:
             "-t",
             type=click.Choice(["smart", "cut", "crossfade", "none"]),
             default="smart",
-            help="Transition style (default: smart — mix of fades & cuts)",
+            help="Transition style (default: smart, a mix of fades and cuts)",
         ),
         click.option(
             "--resolution",
@@ -246,7 +246,10 @@ def run_options(command: FC) -> FC:
             help="Keep intermediate files for debugging",
         ),
         click.option(
-            "--privacy-mode", is_flag=True, default=False, help="Blur faces and mute speech"
+            "--privacy-mode",
+            is_flag=True,
+            default=False,
+            help="Demo mode: blur every clip frame, scramble the audio, fake the person names",
         ),
         click.option(
             "--title",

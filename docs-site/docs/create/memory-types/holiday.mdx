@@ -4,7 +4,7 @@ sidebar_label: "Holiday"
 
 # Holiday
 
-A memory type that does **not** cover one continuous stretch of time. It builds a separate window per year, and the pipeline queries every one of them — a Holiday memory across five years asks Immich for five windows around that holiday, not for the five years between them.
+A memory type that does **not** cover one continuous stretch of time. It builds a separate window per year, and the pipeline queries every one of them: a Holiday memory across five years asks Immich for five windows around that holiday, not for the five years between them.
 
 That is the whole reason it exists. A year in review is a period; this is a **recurrence**: the same occasion, across the years. Christmas 2022, 2023, 2024, 2025 and 2026 in one video.
 
@@ -12,7 +12,7 @@ That is the whole reason it exists. A year in review is a period; this is a **re
 immich-memories generate --memory-type holiday --holiday christmas --years-back 5
 ```
 
-`--holiday` is required. `--years-back` defaults to **5**, and `--years-back 0` is read as *unset* rather than as an error — pass a positive number.
+`--holiday` is required. `--years-back` defaults to **5**, and `--years-back 0` is read as *unset* rather than as an error: pass a positive number.
 
 ## What `--holiday` accepts
 
@@ -22,7 +22,7 @@ Ten names the pipeline resolves for any year:
 |------|----------|
 | `new_year` | 1 January |
 | `valentines` | 14 February |
-| `easter` | computed — Western Easter Sunday |
+| `easter` | computed: Western Easter Sunday |
 | `mothers_day` | second Sunday of May |
 | `fathers_day` | third Sunday of June |
 | `halloween` | 31 October |
@@ -44,7 +44,7 @@ An unrecognised name that is not a valid `MM-DD` fails immediately with the list
 
 ## The window around the date
 
-Each year contributes **the holiday ± 2 days** — a five-day window. A celebration that starts on Christmas Eve and runs into Boxing Day is one memory, not three. This is not exposed as a CLI flag.
+Each year contributes **the holiday ± 2 days**: a five-day window. A celebration that starts on Christmas Eve and runs into Boxing Day is one memory, not three. This is not exposed as a CLI flag.
 
 ## Asking before the holiday has happened
 
@@ -56,7 +56,7 @@ An explicit `--year` is treated as a deliberate choice and is left alone:
 # In August 2026 this covers Christmas 2025, 2024, 2023
 immich-memories generate --memory-type holiday --holiday christmas --years-back 3
 
-# ...but this covers 2026, 2025, 2024 — even though 2026's has not happened
+# ...but this covers 2026, 2025 and 2024, even though 2026's has not happened
 immich-memories generate --memory-type holiday --holiday christmas --years-back 3 --year 2026
 ```
 
@@ -70,6 +70,6 @@ Pick **Holiday** on the [Memory page](../web-ui/memory.mdx#memory-types-and-thei
 
 ## Titles
 
-A Holiday memory is not titled after its span, because the span describes nothing — five Christmases run across five years. The title is the occasion ("Christmas"), subtitled "Through the Years"; a custom `MM-DD` holiday with no name of its own is titled by its date ("14 September").
+A Holiday memory is not titled after its span, because the span describes nothing: five Christmases run across five years. The title is the occasion ("Christmas"), subtitled "Through the Years"; a custom `MM-DD` holiday with no name of its own is titled by its date ("14 September").
 
 Holiday's pair is currently produced by the web UI only. On the CLI a Holiday memory still falls through to the generic span title ("December 2021 to December 2026").

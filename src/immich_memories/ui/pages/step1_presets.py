@@ -449,7 +449,7 @@ def _special_day_options(
     from immich_memories.automation.special_day_scan import anniversaries_due
 
     rows = [
-        (entry, f"{years} years ago — {_day_name(entry)}")
+        (entry, f"{years} years ago: {_day_name(entry)}")
         for entry, years in anniversaries_due(entries, today)
         if _day_name(entry)
     ]

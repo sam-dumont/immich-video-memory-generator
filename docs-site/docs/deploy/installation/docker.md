@@ -5,7 +5,7 @@ title: Docker
 
 # Install with Docker
 
-No Python environment to manage. Pull the image, set two env vars, done — for the app.
+No Python environment to manage. Pull the image, set two env vars, done (for the app).
 
 ## What it takes to run
 
@@ -14,12 +14,12 @@ render. A cut needs two services you host, and they are the expensive half.
 
 | | What it is | Resident |
 |---|---|---|
-| **Reader** | Vision + text. Groups the period into stories, weighs them, and is sent an 800 px tile of the candidates whose facts the edit demands — a few dozen per memory | ~17 GB at 4-bit |
+| **Reader** | Vision + text. Groups the period into stories, weighs them, and is sent an 800 px tile of the candidates whose facts the edit demands: a few dozen per memory | ~17 GB at 4-bit |
 | **Caption server** | 500M vision model. One description per picture, once, then banked | 1-2 GB |
 
 Plus an 88 MB encoder and ~400 MB of CPU detectors on the app's disk. The container itself wants
 2-4 GB. So the cheapest things that work are one Apple Silicon Mac with 32 GB+ running everything,
-or this container anywhere plus one box that can hold the models — and remember that `localhost`
+or this container anywhere plus one box that can hold the models. And remember that `localhost`
 inside a container is the container, so those endpoints need real hostnames.
 
 The [self-hosting guide](../self-hosting.md) stands all of it up in order.
@@ -33,7 +33,9 @@ IMMICH_URL=https://photos.example.com
 IMMICH_API_KEY=your-api-key-here
 ```
 
-Get the API key from Immich: **Account Settings > API Keys > New API Key**. When Immich asks which permissions to grant, pick **All** — or, for a minimal key: read access to assets, people, albums, timeline and search, plus **asset upload** and **album create/update** if you turn on upload-back to Immich. This tool never deletes or modifies existing assets.
+Get the API key from Immich: **Account Settings > API Keys > New API Key**. When Immich asks which permissions to grant, pick **All**; or, for a minimal key: read access to assets, people, albums, timeline and search, plus **asset upload**, **album create/update** and **asset delete** if you turn on upload-back to Immich.
+
+Your originals are never touched. The one write beyond uploading is narrow and worth knowing about: when upload-back puts a new render in an album, any earlier upload with the same filename in that same album is moved to Immich's trash, so the album does not fill with indistinguishable copies of one memory. The filename carries a hash of the recipe, the trash is recoverable, and the asset just uploaded is never a candidate. That is what the delete permission is for; without it you get a warning in the log each run and the old copies stay.
 
 Then grab the compose file from the repo and start it:
 
@@ -46,7 +48,7 @@ UI is at [http://localhost:8080](http://localhost:8080). The compose file publis
 `127.0.0.1:8080:8080`, so nothing else on your network reaches it out of the box.
 
 :::caution Do not publish the default UI
-Authentication is disabled by default. Inside the container the app listens on `0.0.0.0` — the
+Authentication is disabled by default. Inside the container the app listens on `0.0.0.0`: the
 compose port mapping is the only thing keeping it off your network, and the app holds an Immich
 API key to your whole photo library. The UI is single-user, single-replica; keep this service at
 one instance.
@@ -63,15 +65,15 @@ automation history, and pending-delivery state.
 :::caution Who owns ./output
 The image writes to `/app/output` (the Dockerfile sets `IMMICH_MEMORIES_OUTPUT__DIRECTORY`) and the
 compose file mounts `./output` there, so videos land on your host without extra configuration. That
-is an environment variable, so it beats `output.directory` in `config.yaml` — to write somewhere
+is an environment variable, so it beats `output.directory` in `config.yaml`. To write somewhere
 else, override the variable in the service's `environment:` block, not in the YAML.
 
-What you do have to get right is ownership. The container runs as the unprivileged `immich` user, **UID/GID 1000** — the first user on most
+What you do have to get right is ownership. The container runs as the unprivileged `immich` user, **UID/GID 1000**: the first user on most
 Linux hosts, so a `./output` folder you create yourself is writable without any `chown`. If Docker
 creates the folder for you it is owned by root; then either `mkdir -p output` before the first
 `up`, or `sudo chown 1000:1000 output`. On a host where your user is not 1000, set
-`user: "<uid>:<gid>"` on the service — the config volume must then be writable by that UID too
-(bind-mount it and `chown` it the same way) — or use a named volume
+`user: "<uid>:<gid>"` on the service (the config volume must then be writable by that UID too;
+bind-mount it and `chown` it the same way), or use a named volume
 (`immich-memories-output:/app/output`) and copy files out with `docker cp`.
 :::
 
@@ -88,24 +90,26 @@ The container's resource usage depends on what phase it's in:
 
 | Phase | RAM | CPU | When |
 |-------|-----|-----|------|
-| Idle (UI running, waiting) | ~100 MB | minimal | Most of the time |
-| Analysis (downloading + preparing pictures) | 2-4 GB | 2+ cores | First cut over a period, and where most of the wall time goes |
+| Idle (UI running, waiting) | small | minimal | Most of the time |
+| Preparation (downloading previews, heads, detectors) | 2-4 GB | 2+ cores | First cut over a period |
 | Assembly (title screens + FFmpeg encode) | 4-8 GB | 4+ cores | Final video generation |
-| **Reader model** (not in this container) | **~17 GB resident** at 4-bit | — | For as long as its server is up |
-| **Caption server** (not in this container) | **1-2 GB resident** | — | For as long as its server is up |
+| **Reader model** (not in this container) | **~17 GB resident** at 4-bit | n/a | For as long as its server is up |
+| **Caption server** (not in this container) | **1-2 GB resident** | n/a | For as long as its server is up |
+
+The two container rows are the working sizes the compose limits were set around, not a benchmark:
+nobody has profiled this image's RSS per phase. The reader row is arithmetic (30B parameters at
+4 bits), not a measurement either. Watch your own box before you size a host around any of them.
 
 The quickstart compose file sets `memory: 4G` and `cpus: 4`. That's fine for 1080p, and it sizes
-the app only. The two model services run outside the image — by design, the image's job is the app
-and the render — so their memory is on whatever host you point `llm.base_url` and
+the app only. The two model services run outside the image (by design, the image's job is the app
+and the render), so their memory is on whatever host you point `llm.base_url` and
 `caption_base_url` at. For 4K output, bump the container to 8 GB.
 
 Inside assembly, the title screens cost more than the encode does on a CPU-only box: measured at `--cpus=2`, title rendering was ~263 s of a ~339 s assembly. See [CPU-Only Mode](../hardware/cpu-only.md#title-rendering-is-the-bottleneck-not-encoding) before you size a box around the encoder.
 
-Temporary files during encoding can use 2x the size of your source clips. A 10-minute memory from 50 clips might need 5-10 GB of temp space.
-
-The image is not small. Measured on arm64: `INSTALL_EXTRAS=all` is 2.37 GB on disk,
-`INSTALL_EXTRAS=none` is 958 MB. The difference is the annotation stack, and PyTorch alone is
-656 MB of it. Both published architectures take torch from the
+The image is not small. Measured on arm64, `INSTALL_EXTRAS=all` is 2.37 GB on disk, down from
+7.08 GB. The difference is the annotation stack, most of it PyTorch. Both published architectures
+take torch from the
 [CPU wheel index](../hardware/nvidia.md) rather than PyPI's CUDA build, which is what keeps `all`
 off the 7 GB it would otherwise cost.
 
@@ -167,7 +171,7 @@ volumes:
 ```
 
 :::tip Immich port
-Inside Immich's own compose stack, `immich-server` listens on **2283** (every Immich v2/v3 release). This tool works with Immich v2 or v3 — not "or newer": an unrecognised major stops the run. See [Immich API compatibility](../configuration/config-file.md#immich-api-compatibility). If you're connecting from a separate compose stack, use the URL you open Immich with in your browser instead (for example `http://nas.local:2283`).
+Inside Immich's own compose stack, `immich-server` listens on **2283** (every Immich v2/v3 release). This tool works with Immich v2 or v3, not "or newer": an unrecognised major stops the run. See [Immich API compatibility](../configuration/config-file.md#immich-api-compatibility). If you're connecting from a separate compose stack, use the URL you open Immich with in your browser instead (for example `http://nas.local:2283`).
 :::
 
 ## Environment variables
@@ -177,16 +181,16 @@ Inside Immich's own compose stack, `immich-server` listens on **2283** (every Im
 | `IMMICH_URL` | Yes | Your Immich server URL |
 | `IMMICH_API_KEY` | Yes | Immich API key |
 | `IMMICH_MEMORIES_PRESET` | No | `fast` = CPU-only/NAS profile (1080p h264, fast encoder, static titles). Explicit settings win. See the [NAS guide](../common-setups/nas-only.md#one-switch-preset-fast). |
-| `IMMICH_MEMORIES_OUTPUT__DIRECTORY` | No | Already `/app/output` in the image. Set it only to write somewhere else — and note it beats `output.directory` in `config.yaml`. |
+| `IMMICH_MEMORIES_OUTPUT__DIRECTORY` | No | Already `/app/output` in the image. Set it only to write somewhere else, and note it beats `output.directory` in `config.yaml`. |
 | `IMMICH_MEMORIES_STORAGE_SECRET` | No | Session secret for the web UI. Auto-generated into the config volume if not set, so sessions already survive a restart. Set it explicitly to share one secret across hosts. It does not make multiple replicas supported. |
-| `IMMICH_MEMORIES_LLM__BASE_URL` | No | LLM endpoint (any OpenAI-compatible API). On its own it does nothing for scoring — see the next row. |
+| `IMMICH_MEMORIES_LLM__BASE_URL` | No | LLM endpoint (any OpenAI-compatible API). On its own it does nothing for scoring: see the next row. |
 | `IMMICH_MEMORIES_LLM__MODEL` | No | Model name as the server reports it. The reader is graded on `mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit` (oMLX); it is sent pictures, so a text-only model will not do. See the [self-hosting guide](../self-hosting.md#what-has-actually-been-tested). |
 | `IMMICH_MEMORIES_AUTH_USERNAME` | No | Basic auth username. Set with `IMMICH_MEMORIES_AUTH_PASSWORD` to enable auth. |
 | `IMMICH_MEMORIES_AUTH_PASSWORD` | No | Basic auth password. Set with `IMMICH_MEMORIES_AUTH_USERNAME` to enable auth. |
 | `IMMICH_MEMORIES_AUTOMATION__ENABLED` | No | `true` to run the daily `auto run` decision inside the container. Off by default. See [Daily automation](#daily-automation). |
 | `IMMICH_MEMORIES_AUTOMATION__DAILY_AT` | No | Wall-clock time for that run, `HH:MM` in the container's `TZ` (default `09:00`). |
 
-All config options can also be set via env vars with the `IMMICH_MEMORIES_` prefix. Double underscores for nesting: `IMMICH_MEMORIES_ANALYSIS__SCENE_THRESHOLD=25`.
+All config options can also be set via env vars with the `IMMICH_MEMORIES_` prefix. Double underscores for nesting: `IMMICH_MEMORIES_ANALYSIS__DOWNLOAD_WORKERS=3`.
 
 ## Security hardening
 
@@ -211,19 +215,16 @@ services:
       - /tmp:size=2G
       - /home/immich/.cache:size=1G
 
-    deploy:
-      resources:
-        limits:
-          memory: 8G
-          cpus: "4"
 ```
 
-The root `docker-compose.yml` has these options as a commented section: uncomment to enable.
+The root `docker-compose.yml` carries exactly that block commented out (`security_opt`,
+`cap_drop`, `read_only`, `tmpfs`); uncomment to enable. Its resource limits are live, not
+commented: `memory: 4G` and `cpus: "4"`. Raise the memory yourself if you render 4K.
 
 Nothing else needs a writable root. The web UI keeps its session storage under
 `/home/immich/.immich-memories/.nicegui` on the config volume (the image sets
 `NICEGUI_STORAGE_PATH`), so logins survive both a read-only root and a restart.
-Don't repoint that variable at `/tmp` or another tmpfs — sessions would work
+Don't repoint that variable at `/tmp` or another tmpfs: sessions would work
 until the next restart and then quietly log everyone out.
 
 :::caution tmpfs size for 4K
@@ -247,7 +248,7 @@ pending upload, or generate one eligible memory, then notify) with the same lock
 the container was down at that time it catches up on start; if the day's run already happened it
 waits for tomorrow. Details and the config-file form: [automated generation](../../create/recipes/automated-generation.md#docker-and-the-web-ui-built-in-daily-timer).
 
-Check it from outside with `/health/ready` — the `in_process_scheduler` block shows `next_run`,
+Check it from outside with `/health/ready`: the `in_process_scheduler` block shows `next_run`,
 `running`, and the last outcome. Automation history stays in the config volume, so keep it
 persistent (see below).
 
@@ -269,36 +270,26 @@ the readiness code above.
 
 ## Cache persistence
 
-Analysis scores are cached in `~/.immich-memories/cache.db` (SQLite). This avoids re-running LLM analysis on every generation. The config volume already covers it:
+The expensive thing to keep is `~/.immich-memories/cache/annotations.sqlite`: every caption, head
+answer, detector verdict and reading the editor has ever banked, keyed by producer and exact
+input. Lose it and the next cut re-reads the library from scratch. `cache.db` beside it holds run
+history, automation state and the retired score table.
+
+The config volume covers both:
 
 ```yaml
 volumes:
-  - immich-memories-config:/home/immich/.immich-memories  # includes cache.db
+  - immich-memories-config:/home/immich/.immich-memories  # cache.db and cache/annotations.sqlite
 ```
 
-To back up or migrate the cache separately:
-
-```bash
-# Backup
-docker exec immich-memories immich-memories cache backup /app/output/cache-backup.db
-
-# Export to JSON (portable)
-docker exec immich-memories immich-memories cache export /app/output/scores.json
-
-# Import on a new instance
-docker exec immich-memories immich-memories cache import /app/output/scores.json
-
-# Check what's cached
-docker exec immich-memories immich-memories cache stats
-```
-
-:::tip Migration between hosts
-Export to JSON before migrating. The JSON format is portable across SQLite versions and architectures. The binary backup is faster but ties you to the same SQLite version.
-:::
+Moving to a new host: copy that volume. Do not reach for `immich-memories cache backup|export|
+import` to do it. Those three commands read and write `asset_scores`, the per-clip scorer's table,
+which nothing in the current pipeline writes to; they will happily move an empty set and leave the
+banks behind.
 
 ## Custom music
 
-In the web UI, pick **Upload file** on the options page and the browser uploads the track — no mount needed.
+In the web UI, pick **Upload file** on the options page and the browser uploads the track; no mount needed.
 For CLI runs inside the container, bind-mount a directory and point `--music` at it:
 
 ```yaml

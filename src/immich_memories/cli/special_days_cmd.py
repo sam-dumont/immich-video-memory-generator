@@ -60,8 +60,8 @@ def _register_discover(main: click.Group) -> None:
         """Find days something happened on, and remember them for later.
 
         Meant to run occasionally rather than per generation: the point of a
-        catalogue is a memory nobody asked for — five years to the day since
-        the wedding — and that needs the days found in advance.
+        catalogue is a memory nobody asked for (five years to the day since
+        the wedding), and that needs the days found in advance.
 
         Days inside a trip are skipped, since a trip memory already tells that
         story, and so are holidays, which have their own.

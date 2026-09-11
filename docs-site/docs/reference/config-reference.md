@@ -8,8 +8,8 @@ sidebar_label: Config Reference
 These options have sane defaults and most users don't need to change them. Add any of these to your `~/.immich-memories/config.yaml` to override. Values shown below are the built-in defaults (placeholders like URLs and example schedules aside).
 
 :::tip Config tiers
-Tier 2 sections — `analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `server`, `auth`,
-`automation`, `notifications`, `triage`, `editorial` — are
+Tier 2 sections (`analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `server`, `auth`,
+`automation`, `notifications`, `triage`, `editorial`) are
 written under an `advanced:` key when the app saves the file:
 
 ```yaml
@@ -23,21 +23,21 @@ advanced:
 When reading, both placements work; if a section appears in both places the top-level one wins.
 Everything else stays at the top level: `immich`, `defaults`, `output`, `audio`, `title_screens`,
 `cache`, `upload`, `trips`, `photos`, `preset`, and the two the loader calls internal rather than
-Tier 1, `scheduler` and `title_llm`. The rule is mechanical — anything outside the Tier 2 set is
+Tier 1, `scheduler` and `title_llm`. The rule is mechanical: anything outside the Tier 2 set is
 left where it is.
-Unknown keys *inside* a section are silently ignored, with one exception: the keys of the removed
-clip scorer (`analysis.max_refinement_passes`, `photos.max_ratio`, the whole `content_analysis`,
-`audio_content`, `speech` and `transcription` sections, and the rest of that family). A file that
-still sets one is refused at startup with a message naming the key, because a setting that loads
-and does nothing is worse than one that fails. Unknown top-level keys and invalid values fail
+Unknown keys *inside* a section are silently ignored, with one exception: the thirty keys of the
+removed clip scorer (`analysis.max_refinement_passes`, `photos.max_ratio`, `description_llm`, the
+whole `content_analysis`, `audio_content`, `speech` and `transcription` sections, and the rest of
+that family). A file that still sets one is refused at startup with a message naming the key,
+because a setting that loads and does nothing is worse than one that fails. Unknown top-level keys and invalid values fail
 validation at startup.
 :::
 
 ## Preset
 
 One top-level switch that fills several knobs at once. `fast` is the CPU-only / NAS profile.
-Anything you set yourself — a key in the file, an `IMMICH_MEMORIES_…` env var, a CLI flag, a
-choice in the web UI — wins over the preset.
+Anything you set yourself (a key in the file, an `IMMICH_MEMORIES_…` env var, a CLI flag, a
+choice in the web UI) wins over the preset.
 
 ```yaml
 preset: null                       # null | fast
@@ -53,7 +53,7 @@ Env: `IMMICH_MEMORIES_PRESET=fast`. One-off on the CLI: `immich-memories --prese
 its resolution to the preset's and says so.
 
 Caveat: **the Memory page's "Save Config"** (under Advanced) writes every value to `config.yaml`, not just the connection
-fields it appears to be about — after which they all count as "set by you", and the preset has
+fields it appears to be about, after which they all count as "set by you", and the preset has
 nothing left to fill in. Remove the keys you want the preset to own again. (`server.host` is the
 single exception; see [Server (UI)](#server-ui).) The `/settings/config` page is read-only and
 does not save; see [Settings](../create/web-ui/settings.mdx).
@@ -110,7 +110,7 @@ analysis:
   live_photo_min_clip_seconds: 3.5       # Below this a burst ships as a photo (0-30s)
 ```
 
-Any Live Photo cluster of two or more within the merge window is treated as a burst — the count
+Any Live Photo cluster of two or more within the merge window is treated as a burst; the count
 is not configurable. Where a clip is cut, and how long it runs, is the editor's decision per
 carrier; there is no pacing preset any more.
 
@@ -123,19 +123,19 @@ album, raise the cap, or use a date range instead.
 
 ```yaml
 defaults:
-  scale_mode: "blur"             # blur | fit (black bars) — used when --scale-mode is not given
+  scale_mode: "blur"             # blur | fit (black bars); used when --scale-mode is not given
   transition: "smart"            # cut, crossfade, smart, none (used when --transition is left on smart)
   transition_duration: 0.5       # 0-2 seconds
 ```
 
-Target duration and orientation are chosen per run — the UI slider / `--duration` (seconds) and
-`--orientation` — with the memory type preset supplying the default duration; there is no config
+Target duration and orientation are chosen per run: the UI slider / `--duration` (seconds) and
+`--orientation`, with the memory type preset supplying the default duration; there is no config
 default for either. The target duration describes the finished video, not just the selected source
 clips. The planner budgets opening/title/ending cards, then adds back the time the fades overlap
-away — so the content budget ends up larger than the timeline left over, not smaller. Month
+away, so the content budget ends up larger than the timeline left over, not smaller. Month
 dividers use an all-or-none policy, and trip location cards are counted only after the final media
-selection. If filtering leaves usable time on the table, the optimizer backfills eligible leftovers
-and can relax the preferred photo ratio; hard eligibility and deduplication rules remain enforced.
+selection. There is no backfill: if the stories the editor funded do not fill the budget, the run
+reports the shortfall instead of padding it with material it had already decided against.
 Treat the target as a target: frame and transition boundaries mean the encoded file lands near the
 requested duration, not exactly on it.
 
@@ -266,7 +266,7 @@ audio:
 ```
 
 `audio.local_music_dir` only feeds the `immich-memories music` helper commands; generation never
-picks music from it on its own — pass the file with `--music`.
+picks music from it on its own: pass the file with `--music`.
 
 ## LLM (vision model)
 
@@ -289,10 +289,10 @@ llm:
   #     enable_thinking: false
 ```
 
-**The goal of this product is a fully local process** — your photos analyzed
+**The goal of this product is a fully local process**: your photos analyzed
 on your own hardware, nothing leaving your network. A local server (mlx,
 vLLM, Ollama) is the intended setup. The cloud providers below exist for one
-reason: so that people without the means — or the desire — to run a local
+reason: so that people without the means (or the desire) to run a local
 model can still use the product. Using one sends each analyzed clip's frames
 or thumbnails and the derived descriptions to that provider; see the
 "data leaving your network" page before choosing this route.
@@ -302,31 +302,30 @@ Two adapters cover every provider: `openai-compatible` speaks
 and `anthropic` speaks the native `/v1/messages` API (Claude, or z.ai's
 Anthropic-compatible endpoint) with its own reasoning dialect handled
 natively. `openai` and `zai` are named presets: the generic adapter with the
-provider's URL and reasoning dialect pre-filled — set `provider: openai`,
+provider's URL and reasoning dialect pre-filled; set `provider: openai`,
 `model: gpt-5.6-terra` and an API key, and thinking works with nothing else
 to configure. Explicit `base_url`/`thinking_params` always win over a preset.
 
-`thinking: true` runs the model in reasoning mode for the judgement calls
-only — the holistic selection review, title generation, and the special-day
-question in `discover-days`. Measured on the live endpoint, a thinking call
-ran 30-134 s where the same model answered in 4-7 s without it, and it needs
-a 4000-token ceiling to finish reasoning — which matters on a paid API. Bulk
-work (per-clip content analysis, photo scoring) always runs in fast mode:
-reasoning over multiple images is unreliable on current models, and the volume
-would make it unaffordable anyway.
+`thinking: true` runs the model in reasoning mode for two calls: title
+generation, and the special-day question in `discover-days`. Measured on the
+live endpoint, a thinking call ran 30-134 s where the same model answered in
+4-7 s without it, and it needs a 4000-token ceiling to finish reasoning, which
+matters on a paid API. Everything else runs fast, and the switch is refused
+outright alongside images: reasoning over multiple pictures is a measured
+runaway, so the editor's picture passes never see it whatever this is set to.
 
 `thinking_params` is merged verbatim into a thinking request, so the switch
 matches your server's dialect: the default is Qwen's
 `chat_template_kwargs: {"enable_thinking": true}` (vLLM, mlx, SGLang); for
 the OpenAI API use `{"reasoning_effort": "medium"}`. Leave `thinking` off
-unless you know the server supports your chosen switch — some
+unless you know the server supports your chosen switch: some
 OpenAI-compatible servers reject unknown request fields.
 
 `no_thinking_params` is the other half, and it matters on servers whose chat
 template reasons by default: not asking for reasoning is not the same as
 asking for none, so bulk analysis reasons anyway, at the small token budget
 those calls ask for, and comes back truncated mid-thought with nothing
-parseable in it. This field is sent on every non-thinking call — it hangs off
+parseable in it. This field is sent on every non-thinking call: it hangs off
 the switch, not off `thinking`, because a server that reasons by default does
 so whether or not you turned reasoning on. The default is Qwen's
 `chat_template_kwargs: {"enable_thinking": false}`; set it to `{}` for servers
@@ -337,12 +336,12 @@ from then on.
 `send_image_detail` covers one more dialect gap: OpenAI's optional
 `image_url.detail` field is sent by default, and some strict vision schemas
 accept only `image_url.url` and reject requests carrying anything more. Set it
-to `false` for those servers — the `zai` preset already does.
+to `false` for those servers: the `zai` preset already does.
 
 Parameter dialects are otherwise handled automatically: OpenAI's reasoning
 models (gpt-5 family) reject `max_tokens` and non-default temperatures, and
 the query layer reads those 400s, adapts the request, and remembers the
-answer per server and model — validated against the live OpenAI API. One
+answer per server and model, validated against the live OpenAI API. One
 provider note: z.ai's OpenAI-compatible endpoint accepts image content only
 on its dedicated vision models, so point `llm.model` at one of those if you
 use it for content analysis.
@@ -359,7 +358,7 @@ llm:
 `max_tokens_param` and `drop_params` describe the OpenAI dialect and are read
 only there. `extra_params` applies on the Ollama provider too, where anything
 you put under `options` (`num_ctx`, `num_predict`) is merged into Ollama's own
-options block rather than replacing it — content analysis already asks for a
+options block rather than replacing it: content analysis already asks for a
 4096-token window that way, since Ollama's 2048 default does not hold the
 prompt plus several frames.
 
@@ -378,7 +377,7 @@ title_llm:
 
 The switch is all-or-nothing on `title_llm.model`: when it is set the whole `title_llm` block is
 used, and any field you leave out takes the *built-in* default (`provider: openai-compatible`,
-`base_url: http://localhost:8080/v1`, empty `api_key`) — it is not inherited from `llm`. When
+`base_url: http://localhost:8080/v1`, empty `api_key`); it is not inherited from `llm`. When
 `title_llm.model` is empty, `llm` is used. Both entry points resolve it the same way.
 
 ## Triage heads
@@ -394,8 +393,10 @@ triage:
 Editorial preparation uses `triage.encoder` with the public six-head bundle configured under
 `editorial.preparation.head_bundle`. Install the `editorial` extra and provide the pinned
 DINOv2-small ONNX export. Its digest is checked on load. Missing required head facts stop
-selection; `triage.enabled: false` does not bypass preparation. The separate legacy triage
-hook still uses `triage.bundle` and `triage.db`.
+selection; `triage.enabled: false` does not bypass preparation.
+
+Only `encoder` and `encoder_url` are read. `enabled` and `bundle` are left over from the
+standalone triage hook and nothing looks at them: they load, they validate, they do nothing.
 
 The public heads provide context. They do not train on your library or independently decide
 whether a picture is suitable for the audience.
@@ -427,7 +428,7 @@ editorial:
     allow_model_downloads: false
 ```
 
-Tier 2 — lives under `advanced:` when the app writes the file. Story-first selection is the
+Tier 2: lives under `advanced:` when the app writes the file. Story-first selection is the
 production route for UI, CLI and scheduled runs. Old `enabled` and `story_first` keys are
 ignored; there is no opt-in flag or environment switch.
 
@@ -461,13 +462,13 @@ title_screens:
   show_decorative_lines: false   # Line accents around the title text
   show_month_dividers: true      # When the video spans several months (all-or-none)
   month_divider_threshold: 2     # Min clips in a month to show its divider (1-10)
-  use_first_name_only: true      # "Alice" instead of "Alice Smith" in titles
+  use_first_name_only: true      # "Riley" instead of "Riley Smith" in titles
 ```
 
 `animated_background` and `show_decorative_lines` are all the look-and-feel the config file
 exposes; the colour palette and custom fonts are not configurable today.
 `animated_background: false` keeps the gradient still
-— no rotation, colour pulse or vignette pulse — which is what `preset: fast` selects. The
+ (no rotation, colour pulse or vignette pulse), which is what `preset: fast` selects. The
 `immich-memories titles` command exposes more of the look as flags for previewing.
 
 ## Trip detection
@@ -501,7 +502,7 @@ The video cache defaults to 10 GB. If you're tight on disk, lower `video_cache_m
 
 ### Size the thumbnail cache by your library, not by taste
 
-`thumbnail_cache_max_size_mb` is the one cache budget that scales with how big your library is. Every candidate asset in a memory's scope gets an Immich preview fetched and read back several times — sharpness and exposure, the DINOv2 heads, the contact sheets, the caption. Measured on a real library, one preview is about **315 KB**, so:
+`thumbnail_cache_max_size_mb` is the one cache budget that scales with how big your library is. Every candidate asset in a memory's scope gets an Immich preview fetched and read back several times: sharpness and exposure, the DINOv2 heads, the contact sheets, the caption. Measured on a real library, one preview is about **315 KB**, so:
 
 ```
 budget in MB ≈ 0.35 × (assets a memory's scope can reach)
@@ -509,7 +510,7 @@ budget in MB ≈ 0.35 × (assets a memory's scope can reach)
 
 One 10,793-candidate scope wants about 3.4 GB; the `0.35` leaves a little headroom over the measured 0.315 MB. The 10 GB default holds roughly 31,000 previews, which covers three scopes that size.
 
-If the run's working set does not fit, nothing is lost mid-run — previews this run is still using are never deleted, so the cache temporarily overflows the limit instead. But the *next* run reclaims them, so the next overlapping memory re-downloads every preview and re-captions the assets whose banked caption failure no longer matches the bytes. You get one `WARNING` per run saying how far over you are and naming this setting. Raise it rather than ignoring it.
+If the run's working set does not fit, nothing is lost mid-run: previews this run is still using are never deleted, so the cache temporarily overflows the limit instead. But the *next* run reclaims them, so the next overlapping memory re-downloads every preview and re-captions the assets whose banked caption failure no longer matches the bytes. You get one `WARNING` per run saying how far over you are and naming this setting. Raise it rather than ignoring it.
 
 The other two budgets are not library-sized and need no such rule: `preview_cache_max_size_mb` holds the video renditions the wizard's player streams (one cut's clips), and the video cache holds the originals being assembled (also one cut's clips). Both are tens of files per run, however big your library is.
 
@@ -526,7 +527,7 @@ server:
   secure_cookies: false          # Mark the session cookie Secure (turn on behind an HTTPS reverse proxy)
   trigger_token: ""              # Shared secret for POST /api/trigger. Empty, and with auth
                                  # off, the trigger API is not served at all
-  allow_unauthenticated_lan: false  # Listen beyond localhost with auth disabled —
+  allow_unauthenticated_lan: false  # Listen beyond localhost with auth disabled:
                                  # anyone reaching the port can use the UI and the
                                  # Immich library behind it
 ```
@@ -534,17 +535,19 @@ server:
 `host` and `port` also have CLI flags: `immich-memories ui --host 127.0.0.1 --port 9090`. The rest
 of the section is config-only.
 
-`trigger_token` turns on the HTTP trigger — one POST that runs whatever `auto run` would have
+`trigger_token` turns on the HTTP trigger: one POST that runs whatever `auto run` would have
 decided, so an Immich workflow (or a cron, or a phone shortcut) can start a memory. See
 [Trigger from Immich or anything else](../create/recipes/trigger-endpoint.md). Keep it out of
-`config.yaml` with `IMMICH_MEMORIES_SERVER__TRIGGER_TOKEN` or a `${VAR}` reference; either way it
-is redacted from `/health`, the config viewer, and the logs. Log redaction is armed at config
-load, so the handful of lines printed before the config exists — startup, a config file that
-fails to parse — cannot be covered by it.
+`config.yaml` with `IMMICH_MEMORIES_SERVER__TRIGGER_TOKEN`: `server` is not one of the sections
+that expand a `${VAR}` reference, so writing one here stores the six literal characters `${VAR}`
+as your token. Either way the value is redacted from `/health`, the config viewer, and the logs.
+Log redaction is armed at config
+load, so the handful of lines printed before the config exists (startup, a config file that
+fails to parse) cannot be covered by it.
 
 `host` is the one value "save" leaves out of `config.yaml` when you never set it. Writing the
 `0.0.0.0` default would make the next load treat it as your decision and quietly retire the
-localhost bind — which is exactly what older versions did, so a `server.host: 0.0.0.0` already
+localhost bind, which is exactly what older versions did, so a `server.host: 0.0.0.0` already
 sitting in your file is ignored with a warning and disappears the next time the file is saved.
 Any other address is yours and is kept; so are `--host` and `IMMICH_MEMORIES_SERVER__HOST`, which
 nothing but a human ever wrote. To keep a LAN bind with authentication off, use
@@ -579,7 +582,7 @@ scheduler:
 
 ## Automation
 
-Controls what `immich-memories auto suggest` and `auto run` detect and generate. See the [auto CLI docs](../create/cli/auto.md) for the full command reference. Tier 2 — lives under `advanced:` when the app writes the file.
+Controls what `immich-memories auto suggest` and `auto run` detect and generate. See the [auto CLI docs](../create/cli/auto.md) for the full command reference. Tier 2: lives under `advanced:` when the app writes the file.
 
 ```yaml
 automation:
@@ -636,7 +639,7 @@ Place under `advanced:` in your config file (like all Tier 2 sections).
 
 ## Notifications
 
-Get notified when auto-generation or scheduled jobs complete. Uses [Apprise](https://github.com/caronc/apprise) (130+ services: ntfy, Discord, Telegram, Slack, email, webhooks). Apprise ships with the base package — no extra to install. Tier 2 — lives under `advanced:` when the app writes the file.
+Get notified when auto-generation or scheduled jobs complete. Uses [Apprise](https://github.com/caronc/apprise) (130+ services: ntfy, Discord, Telegram, Slack, email, webhooks). Apprise ships with the base package, no extra to install. Tier 2: lives under `advanced:` when the app writes the file.
 
 ```yaml
 notifications:

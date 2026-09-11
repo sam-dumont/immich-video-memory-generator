@@ -4,22 +4,23 @@ title: Testing Guide
 
 # Testing Guide
 
-Immich Memories has 5,600+ tests: 5,000+ fast unit tests that run everywhere, and 600+ integration and E2E tests that need real services (FFmpeg, Immich, a browser).
+Immich Memories has 7,461 tests: 6,838 fast unit tests that run everywhere, and 623 integration and E2E tests that need real services (FFmpeg, Immich, a browser).
 
 ## Testing Tiers
 
 | Tier | Where it runs | Command | What it needs |
 |------|--------------|---------|---------------|
 | **Unit tests** | CI (Linux + macOS) + local | `make test` | Nothing external |
+| **Extras** | CI + local | `make test-extras` | The torch-family extras (demucs/editorial); CI's job installs `audio`+`gpu` only, so the torch paths are effectively a local tier |
 | **Integration tests** | Local + self-hosted Linux GPU runner | `make test-integration` | FFmpeg + Immich server |
 | **E2E (Playwright)** | CI launch check + local | `make e2e` (`make e2e-full` for the generation flow) | `make playwright-install`, no Immich (fake server) |
 
 ### Unit tests
 
-Cover pure logic: scoring math, config parsing, data models, assembly settings, helper functions. No FFmpeg, no Immich, no network.
+Cover pure logic: selection rules, config parsing, data models, assembly settings, helper functions. No FFmpeg, no Immich, no network.
 
 ```bash
-make test          # Run all unit tests (~60s)
+make test          # Run all unit tests (~3 min on an M-series Mac, slower on CI)
 make test-fast     # Skip slow tests
 ```
 
@@ -28,11 +29,11 @@ make test-fast     # Skip slow tests
 Cover the real pipeline: download from Immich, FFmpeg assembly, video output validation, music mixing. They **read** from Immich (no writes) and skip gracefully if services aren't available.
 
 ```bash
-make test-integration            # Every suite except cli (~15 min)
+make test-integration            # Every suite except cli, audio and automation
 make test-integration-assembly   # One suite: assembly, audio, audio-mixing, auth, cli, live-photos, photos, pipeline, processing, titles
 ```
 
-Each suite is a folder under `tests/integration/`, and most have their own `make test-integration-<suite>` target with a rough runtime (see the table in `CLAUDE.md`). `automation` has no dedicated target yet; it runs as part of `make test-integration`. `cli` is the other exception: it re-runs the full pipeline (~15 min) and is not part of `make test-integration`.
+Each suite is a folder under `tests/integration/`, and most have their own `make test-integration-<suite>` target with a rough runtime (see the table in `CLAUDE.md`). Three are not in the aggregate target: `cli`, because it re-runs the full pipeline that `pipeline` already covers and is the slowest suite in the tree (`make help` prints its estimate); `audio`, because it wants the demucs and ACE-Step packages; and `automation`, which has no target at all. Run it with `pytest tests/integration/automation` until one exists.
 
 **What's tested:**
 - Real FFmpeg assembly (single clip, crossfade, smart transitions)
@@ -42,7 +43,7 @@ Each suite is a folder under `tests/integration/`, and most have their own `make
 - Clip segment trimming (custom start/end times)
 - Upload-back to Immich (mocked write, real everything else)
 - CLI `generate` command with real Immich
-- Scoring engine with real video frames
+- Selection over real video frames
 
 **What's needed:**
 - FFmpeg installed (`brew install ffmpeg` or `apt install ffmpeg`)
@@ -55,7 +56,7 @@ Tests skip gracefully if services aren't available: you won't get failures, just
 
 ### How coverage works
 
-CI runs unit tests and uploads `coverage.xml` to Codecov under the `unittests` flag. The self-hosted GPU runner runs the integration suites and uploads its coverage under the `integration-linux` flag; Codecov merges the two. The per-suite XMLs that `make test-integration` writes locally (`tests/*-coverage.xml`, `tests/*-junit.xml`) are gitignored — they are for your own inspection, not for committing.
+CI runs unit tests and uploads `coverage.xml` to Codecov under the `unittests` flag. The self-hosted GPU runner runs the integration suites and uploads its coverage under the `integration-linux` flag; Codecov merges the two. The per-suite XMLs that `make test-integration` writes locally (`tests/*-coverage.xml`, `tests/*-junit.xml`) are gitignored: they are for your own inspection, not for committing.
 
 ### Workflow when you change code
 
@@ -145,7 +146,7 @@ gh api repos/<owner>/<repo>/actions/jobs/<job-id> \
 `Run tests with coverage -> cancelled`, with everything downstream `skipped`, is
 the signature of a runner that died. No assertion ever ran.
 
-`gh run view --log-failed` returns **nothing** in this case — precisely because
+`gh run view --log-failed` returns **nothing** in this case: precisely because
 nothing failed. An empty failure log is evidence, not a broken tool.
 
 ### Check how far it got
@@ -192,7 +193,7 @@ what makes a test the victim.
 
 The `CI Success` gate tolerates `cancelled` because the concurrency group
 cancels superseded runs. That is safe: a runner death produces
-`conclusion=failure` on the *job* — `make` returns 137 — even though the step
+`conclusion=failure` on the *job* (`make` returns 137) even though the step
 reads `cancelled`. So an OOM still fails the gate, and only genuinely superseded
 runs pass through. Check `gh run list --branch <branch>` to confirm a newer run
 covered the cancelled one.
@@ -212,8 +213,8 @@ stayed there through two PRs:
 | PR | macOS job | merged |
 |---|---|---|
 | introduced the test | **failure** | yes |
-| shortened the test | **all three cancelled — never ran** | yes |
-| next merge | — | failure finally surfaced on main |
+| shortened the test | **all three cancelled, never ran** | yes |
+| next merge | n/a | failure finally surfaced on main |
 
 The test had never once passed on a macOS runner. Nothing reported it, because
 the job was either red-and-ignored or reclaimed, and every branch cut from main
@@ -226,7 +227,7 @@ Before merging, check that each job **ran**, not just that nothing is red.
 `_render_single_photo` picks its encoder from `check_zscale_available()`: with
 zscale it uses `hevc_videotoolbox`, without it `libx264`. VideoToolbox writes no
 file inside CI's macOS VM, and the function returns `None` when encoding
-produces nothing — so the failure surfaces as whatever the test asserted next,
+produces nothing, so the failure surfaces as whatever the test asserted next,
 not as an encoder error.
 
 Any unit test that reaches the photo encoder needs the software path forced:
@@ -243,7 +244,7 @@ and hard to notice.
 ### Re-running
 
 `gh run rerun <run-id> --failed` is rejected while any job in the run is still
-in progress ("cannot be rerun; its workflow file may be broken" — the message is
+in progress ("cannot be rerun; its workflow file may be broken": the message is
 misleading). Wait for the run to complete, then re-run.
 
 If the same cell is reclaimed three times, stop re-running and treat it as a
