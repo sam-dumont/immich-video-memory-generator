@@ -8,7 +8,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from immich_memories.ui.pages.memory_brief import MEMORY_TYPE_LABELS
-from tests.e2e.fake_editorial import STAGES
+from tests.e2e.fake_editorial import PREVIEW_STAGE, STAGES
 from tests.e2e.test_launch_smoke import _choose
 
 pytestmark = pytest.mark.e2e
@@ -29,6 +29,11 @@ _POOL_FILES = (
 # One of the fixture's editing stages, exactly as the active row reports it once the
 # attempt exists (the row titles alone never match, so this waits for the real run).
 _EDITING_STAGE = re.compile("^(" + "|".join(re.escape(stage) for stage in STAGES[1:]) + ")$")
+
+
+def _active_stage(page: Page):
+    """The stage on the active phase row, not the same string echoed in the detail panel."""
+    return page.locator(".cut-phase-rows").get_by_text(_EDITING_STAGE)
 
 
 def _attempts_written(launch_workspace) -> int:
@@ -79,7 +84,7 @@ def test_a_reload_mid_cut_joins_the_running_cut_instead_of_starting_another(
 ) -> None:
     _brief_for_june(page, launch_app_url)
     page.get_by_role("button", name="Cut", exact=True).click()
-    expect(page.get_by_text(_EDITING_STAGE)).to_be_visible(timeout=60_000)
+    expect(_active_stage(page)).to_be_visible(timeout=60_000)
     attempts_before = _attempts_written(launch_workspace)
 
     # WHY: a reload is what a user does when a run seems stuck; it deletes the NiceGUI
@@ -91,10 +96,46 @@ def test_a_reload_mid_cut_joins_the_running_cut_instead_of_starting_another(
     assert _attempts_written(launch_workspace) == attempts_before
 
 
+def test_the_cut_shows_the_pictures_it_is_working_on_while_it_works(
+    page: Page, launch_app_url: str
+) -> None:
+    """The wait has to look alive: the user's own library goes past, and a bar moves."""
+    _brief_for_june(page, launch_app_url)
+    page.get_by_role("button", name="Cut", exact=True).click()
+
+    strip = page.locator(".q-img").locator("visible=true")
+    expect(strip.first).to_be_visible(timeout=60_000)
+    # A real bar for the pass that reports numbers, from the engine's own count.
+    expect(page.get_by_text(re.compile(rf"^{PREVIEW_STAGE} \d+ of 6$"))).to_be_visible(
+        timeout=60_000
+    )
+    # Bounded by construction: a long stage must not grow the page.
+    expect(page.locator(".q-linear-progress")).to_have_count(1)
+    assert strip.count() <= 12
+    # The pictures stay while the run moves on to the stages that count nothing.
+    expect(_active_stage(page)).to_be_visible(timeout=60_000)
+    expect(strip.first).to_be_visible()
+
+
+def test_the_detail_lines_are_folded_away_until_asked_for(page: Page, launch_app_url: str) -> None:
+    _brief_for_june(page, launch_app_url)
+    page.get_by_role("button", name="Cut", exact=True).click()
+    expect(_active_stage(page)).to_be_visible(timeout=60_000)
+    # The clean five-row view is the default: the lines exist but are not shown.
+    a_preview_line = page.get_by_text(re.compile(rf"^Preparing {PREVIEW_STAGE}: \d+/6$"))
+    expect(a_preview_line.first).to_be_hidden()
+
+    page.get_by_text("Details", exact=True).click()
+
+    # The engine's own stage strings, newest last, including ones already passed.
+    expect(a_preview_line.first).to_be_visible()
+    expect(page.get_by_text(STAGES[0], exact=True).last).to_be_visible()
+
+
 def test_cancel_ends_the_cut_and_offers_to_cut_again(page: Page, launch_app_url: str) -> None:
     _brief_for_june(page, launch_app_url)
     page.get_by_role("button", name="Cut", exact=True).click()
-    expect(page.get_by_text(_EDITING_STAGE)).to_be_visible(timeout=60_000)
+    expect(_active_stage(page)).to_be_visible(timeout=60_000)
 
     page.get_by_role("button", name="Cancel", exact=True).click()
 

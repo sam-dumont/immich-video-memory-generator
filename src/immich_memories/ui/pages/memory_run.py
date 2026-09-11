@@ -22,6 +22,7 @@ from nicegui import background_tasks, run, ui
 
 from immich_memories.analysis.editorial_planner import EditorialSelection
 from immich_memories.api.models import AssetType, VideoClipInfo
+from immich_memories.operations.cut_progress import StageProgress, read_stage_progress
 from immich_memories.operations.editorial_attempt import read_editorial_attempt
 from immich_memories.operations.phases import OperationalPhase
 from immich_memories.security import sanitize_error_message
@@ -34,7 +35,9 @@ from immich_memories.ui.pages.clip_pipeline import (
     _run_pipeline_blocking,
     ui_cut_key,
 )
+from immich_memories.ui.pages.cut_progress_view import LiveStrip, StageBar, StageLog
 from immich_memories.ui.pages.memory_story_data import MOTION_KINDS, PLAN_FILE
+from immich_memories.ui.pages.step2_helpers import get_thumbnail
 from immich_memories.ui.pages.step2_loading import ensure_caches, load_pool
 
 if TYPE_CHECKING:
@@ -84,6 +87,7 @@ def arm_cut(state: AppState, before: Callable[[], None] | None = None) -> bool:
         if before is not None:
             before()
         state.active_cut_key = None
+        state.cut_stage_log.clear()
         # Attempt records carry whole seconds; an attempt started in this same second is ours.
         state.cut_armed_at = datetime.now(UTC).replace(microsecond=0)
         state.cancel_requested = False
@@ -145,6 +149,22 @@ def read_latest_attempt(root: Path | None, since: datetime | None = None) -> dic
 def latest_attempt_of(state: AppState) -> dict[str, Any] | None:
     """The armed cut's newest attempt, or None before it has written one."""
     return read_latest_attempt(attempt_root(state), since=state.cut_armed_at)
+
+
+def live_progress_of(record: Mapping[str, Any] | None) -> StageProgress | None:
+    """The numbers the attempt is reporting right now, read from that same attempt.
+
+    Going through the record rather than the session's own key is what makes a
+    reload rejoin the bar exactly where it rejoins the rows. A finished per-asset
+    pass leaves its last snapshot on disk, so the stage it names has to match the
+    stage the attempt is on: otherwise a full bar would sit under a row that has
+    long since moved on to work that counts nothing.
+    """
+    directory = (record or {}).get("directory")
+    progress = read_stage_progress(Path(directory)) if directory else None
+    if progress is None or progress.stage_label != str((record or {}).get("stage") or ""):
+        return None
+    return progress
 
 
 def phase_of(record: Mapping[str, Any] | None) -> CutStatus:
@@ -241,7 +261,9 @@ class _PhaseRows:
 
     def __init__(self) -> None:
         self._rows: dict[OperationalPhase, tuple[ui.icon, ui.label]] = {}
-        with ui.column().classes("w-full gap-1 mb-3"):
+        # Named so a reader -- a person or a browser test -- can tell the active
+        # row's stage from the same string echoed in the detail panel below.
+        with ui.column().classes("w-full gap-1 mb-3 cut-phase-rows"):
             for phase in CUT_PHASES:
                 with ui.row().classes("items-center gap-3"):
                     icon = ui.icon("radio_button_unchecked").classes("text-lg")
@@ -333,7 +355,10 @@ def render_cutting(state: AppState) -> None:
     ensure_caches(state)
     ui.label("Cutting the memory...").classes("text-2xl font-bold mb-2")
     rows = _PhaseRows()
+    strip = LiveStrip(get_thumbnail)
+    bar = StageBar()
     elapsed = ui.label("").classes("text-sm mb-2").style("color: var(--im-text-secondary)")
+    log = StageLog(state.cut_stage_log)
 
     def cancel() -> None:
         state.cancel_requested = True
@@ -349,7 +374,12 @@ def render_cutting(state: AppState) -> None:
             _finish(state, progress_state)
             return
         record = latest_attempt_of(state)
-        rows.paint(phase_of(record))
+        status = phase_of(record)
+        rows.paint(status)
+        log.remember(status.detail)
+        progress = live_progress_of(record)
+        bar.show(progress)
+        strip.show(progress.recent_asset_ids if progress is not None else ())
         if record is not None and not state.cancel_requested:
             elapsed.set_text(f"Elapsed: {elapsed_label(record.get('started_at'))}")
 

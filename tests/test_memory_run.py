@@ -8,6 +8,7 @@ from pathlib import Path
 
 from immich_memories.api.models import AssetType
 from immich_memories.config_loader import Config
+from immich_memories.operations.cut_progress import StageProgressWriter
 from immich_memories.operations.editorial_attempt import EditorialAttempt
 from immich_memories.operations.phases import OperationalPhase
 from immich_memories.ui.pages.memory_run import (
@@ -15,6 +16,7 @@ from immich_memories.ui.pages.memory_run import (
     arm_cut,
     attempt_root,
     elapsed_label,
+    live_progress_of,
     phase_of,
     read_latest_attempt,
     restore_cut_from_attempt,
@@ -141,3 +143,53 @@ def test_a_finished_attempt_rebuilds_the_selection_over_a_reloaded_pool(tmp_path
     assert state.pipeline_result["stats"]["editorial_duration_realization"] == {
         "status": "near_target"
     }
+
+
+def test_the_live_numbers_come_from_the_same_attempt_the_rows_follow(tmp_path: Path) -> None:
+    """A reload rejoins the bar and the strip the way it rejoins the rows: through the attempt."""
+    root = tmp_path / "editorial-runs" / "k"
+    with EditorialAttempt(root, request={"key": "k"}) as attempt:
+        attempt.stage("Preparing previews: 2/9")
+        writer = StageProgressWriter(lambda: attempt.directory)
+        writer.note_asset("asset-1")
+        writer.publish("previews", 2, 9)
+
+        record = read_latest_attempt(root)
+
+    progress = live_progress_of(record)
+    assert progress is not None
+    assert (progress.label, progress.done, progress.total) == ("previews", 2, 9)
+    assert progress.recent_asset_ids == ("asset-1",)
+    assert live_progress_of(None) is None
+
+
+def test_a_stage_that_has_published_nothing_yet_offers_no_numbers(tmp_path: Path) -> None:
+    root = tmp_path / "editorial-runs" / "k"
+    with EditorialAttempt(root, request={"key": "k"}):
+        record = read_latest_attempt(root)
+
+    assert live_progress_of(record) is None
+    assert live_progress_of({"status": "running"}) is None
+
+
+def test_arming_a_cut_starts_its_detail_lines_empty() -> None:
+    """A new cut must not open on the previous cut's log."""
+    state = AppState(cut_stage_log=["Preparing previews: 900/900"])
+
+    assert arm_cut(state) is True
+
+    assert state.cut_stage_log == []
+
+
+def test_numbers_from_a_stage_the_run_has_left_behind_are_not_offered(tmp_path: Path) -> None:
+    """A finished per-asset pass must not leave a full bar under a row doing other work."""
+    root = tmp_path / "editorial-runs" / "k"
+    with EditorialAttempt(root, request={"key": "k"}) as attempt:
+        writer = StageProgressWriter(lambda: attempt.directory)
+        attempt.stage(writer.publish("previews", 9, 9).stage_label)
+        still_reporting = read_latest_attempt(root)
+        attempt.stage("Reading the period account")
+        moved_on = read_latest_attempt(root)
+
+    assert live_progress_of(still_reporting) is not None
+    assert live_progress_of(moved_on) is None

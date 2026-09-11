@@ -25,6 +25,12 @@ from typing import Any
 
 from immich_memories.security import write_secret_file
 
+# The per-asset pass the real route runs before its named stages, and the one a
+# first cut over a big library sits inside for a long time. It is scripted here
+# so the Memory page's live detail -- the bar and the strip of pictures -- is
+# exercised by the same file the production pass writes.
+PREVIEW_STAGE = "previews"
+
 # The exact labels `RuntimeEditorialPlanner` reports through `on_stage`, in the
 # order the real route reaches them. The Memory page shows the current one, so a
 # wrong label here would hide a real regression in the progress surface.
@@ -257,6 +263,7 @@ class _FakeEditorialPipeline:
                 EditorialAttempt(self._context.artifact_dir, request=request) as attempt,
                 cancellation_scope(report_stage.repeat),
             ):
+                self._prepare_previews(sources, attempt, report_stage, check_cancelled)
                 for label in STAGES:
                     attempt.stage(label)
                     report_stage(label)
@@ -279,6 +286,22 @@ class _FakeEditorialPipeline:
             with contextlib.suppress(PipelineCancelled):
                 report_stage("Editorial selection cancelled", status="cancelled")
             raise
+
+    def _prepare_previews(self, sources, attempt, report_stage, check_cancelled) -> None:
+        """Walk the sources the way the real preparation pass does, publishing as it goes."""
+        from immich_memories.operations.cut_progress import StageProgressWriter
+
+        live = StageProgressWriter(lambda: attempt.directory)
+        total = len(sources)
+        for index, source in enumerate(sources, 1):
+            live.note_asset(_asset_of(source).id)
+            label = live.publish(PREVIEW_STAGE, index, total).stage_label
+            attempt.stage(label)
+            report_stage(label)
+            # Half a stage per picture: long enough that a watcher's one-second
+            # poll sees the bar move, short enough not to double the smoke.
+            time.sleep(self._stage_seconds / 2)
+            check_cancelled()
 
     def _result(self, candidates: tuple[Any, ...], attempt_directory: Path) -> Any:
         from immich_memories.analysis.editorial_planner import EditorialSelection
