@@ -1,5 +1,11 @@
 import React from "react";
-import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
+import {
+  AbsoluteFill,
+  interpolate,
+  spring,
+  useCurrentFrame,
+  useVideoConfig,
+} from "remotion";
 import { COLORS } from "../theme";
 import { fontFamily } from "../fonts";
 import { WindowFrame } from "../components/WindowFrame";
@@ -14,16 +20,25 @@ import { ImSeparator } from "../components/ImSeparator";
 import { ImToggle } from "../components/ImToggle";
 import { AnimatedCursor } from "../components/AnimatedCursor";
 
+const STATS = [
+  { icon: "movie", value: "6", label: "Clips" },
+  { icon: "photo_library", value: "3", label: "Photo Pool" },
+  { icon: "timer", value: "5:12", label: "Duration" },
+  { icon: "video_file", value: "MP4", label: "Format" },
+];
+
 const FILENAME = "year_2025_memories.mp4";
 const OUTPUT_DIR = "/home/user/Videos/Memories";
 
-const CLICK_GENERATE = 118;
+const CLICK_GENERATE = 78;
 
 // Measured against a 1920x1080 still render: the middle of the full-width button.
 const GENERATE_XY = { x: CONTENT_X + 520, y: CONTENT_Y + 460 };
 
+// The cursor is hidden until 15 frames before its first step, so a late first
+// step is a still page. This one arrives while the cards are still landing.
 const cursorSteps = [
-  { frame: 100, ...GENERATE_XY },
+  { frame: 58, ...GENERATE_XY },
   { frame: CLICK_GENERATE, ...GENERATE_XY, click: true },
 ];
 
@@ -31,6 +46,12 @@ type Props = { bassIntensity?: number };
 
 export const ExportScene: React.FC<Props> = ({ bassIntensity }) => {
   const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+
+  // The page assembles rather than appearing finished: without this the scene
+  // was a still frame until the cursor showed up.
+  const reveal = (delay: number) =>
+    spring({ frame, fps, config: { damping: 20, stiffness: 140 }, delay });
 
   const press = interpolate(
     frame,
@@ -57,36 +78,33 @@ export const ExportScene: React.FC<Props> = ({ bassIntensity }) => {
 
           <ImSectionHeader icon="summarize" title="Summary" />
           <div style={{ display: "flex", gap: 12 }}>
-            <ImStatCard
-              icon="movie"
-              value="6"
-              label="Clips"
-              style={{ flex: "0 0 160px" }}
-            />
-            <ImStatCard
-              icon="photo_library"
-              value="3"
-              label="Photo Pool"
-              style={{ flex: "0 0 160px" }}
-            />
-            <ImStatCard
-              icon="timer"
-              value="5:12"
-              label="Duration"
-              style={{ flex: "0 0 160px" }}
-            />
-            <ImStatCard
-              icon="video_file"
-              value="MP4"
-              label="Format"
-              style={{ flex: "0 0 160px" }}
-            />
+            {STATS.map((stat, i) => {
+              const entry = reveal(4 + i * 6);
+              return (
+                <ImStatCard
+                  key={stat.label}
+                  icon={stat.icon}
+                  value={stat.value}
+                  label={stat.label}
+                  style={{
+                    flex: "0 0 160px",
+                    opacity: entry,
+                    transform: `translateY(${(1 - entry) * 14}px)`,
+                  }}
+                />
+              );
+            })}
           </div>
 
-          <div style={{ marginTop: 16 }}>
+          <div style={{ marginTop: 16, opacity: reveal(30) }}>
             <ImSectionHeader icon="folder" title="Output" />
           </div>
-          <ImCard>
+          <ImCard
+            style={{
+              opacity: reveal(34),
+              transform: `translateY(${(1 - reveal(34)) * 12}px)`,
+            }}
+          >
             <ImInput
               label="Output filename"
               value={FILENAME}
@@ -105,7 +123,7 @@ export const ExportScene: React.FC<Props> = ({ bassIntensity }) => {
             <ImToggle label="Upload after generation" checked={false} />
           </ImCard>
 
-          <div style={{ marginTop: 16 }}>
+          <div style={{ marginTop: 16, opacity: reveal(44) }}>
             <ImButton
               text="Generate Video"
               variant="primary"

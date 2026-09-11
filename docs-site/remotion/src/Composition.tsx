@@ -22,7 +22,7 @@ const SLIDE = 12; // 0.4s
 
 // Scene durations (frames at 30fps). TransitionSeries overlaps each pair by the
 // transition's length, so the video runs sum(D) - sum(transitions) = 1350 frames.
-// Transitions below add up to 129; the D map adds up to 1479.
+// Transitions below add up to 129; the D map adds up to 1459.
 //
 // Every length here is cut to the frame its own scene stops moving on: the demo
 // used to hold four of them still for a second or more after the last animation.
@@ -31,7 +31,7 @@ const D = {
   brief: 168, // 5.6s — open the type dropdown, pick, click Cut
   cutting: 186, // 6.2s — the phase rows, and the pictures going past under them
   story: 285, // 9.5s — the payoff: what the cut produced
-  export: 130, // 4.3s — summary, output path, click Generate
+  export: 110, // 3.7s — summary lands, cursor arrives, click Generate
   generating: 165, // 5.5s — progress + live preview
   complete: 55, // 1.8s — success state
   output: 235, // 7.8s — the ACTUAL output video at 3x; absorbs the frame remainder
