@@ -1657,16 +1657,52 @@
       {
         "name": "ClipEncoder::encode_single_clip",
         "complexity": 18,
-        "line_start": 160,
-        "line_end": 264,
+        "line_start": 148,
+        "line_end": 252,
         "line_complexities": [
           {
+            "line": 156,
+            "complexity": 0
+          },
+          {
+            "line": 158,
+            "complexity": 0
+          },
+          {
+            "line": 159,
+            "complexity": 0
+          },
+          {
+            "line": 161,
+            "complexity": 0
+          },
+          {
+            "line": 162,
+            "complexity": 2
+          },
+          {
+            "line": 163,
+            "complexity": 0
+          },
+          {
+            "line": 165,
+            "complexity": 0
+          },
+          {
+            "line": 167,
+            "complexity": 0
+          },
+          {
             "line": 168,
+            "complexity": 1
+          },
+          {
+            "line": 169,
             "complexity": 0
           },
           {
             "line": 170,
-            "complexity": 0
+            "complexity": 1
           },
           {
             "line": 171,
@@ -1678,91 +1714,99 @@
           },
           {
             "line": 174,
-            "complexity": 2
+            "complexity": 1
           },
           {
             "line": 175,
-            "complexity": 0
+            "complexity": 1
+          },
+          {
+            "line": 176,
+            "complexity": 1
           },
           {
             "line": 177,
             "complexity": 0
           },
           {
-            "line": 179,
-            "complexity": 0
-          },
-          {
-            "line": 180,
-            "complexity": 1
-          },
-          {
             "line": 181,
-            "complexity": 0
+            "complexity": 1
           },
           {
             "line": 182,
-            "complexity": 1
-          },
-          {
-            "line": 183,
             "complexity": 0
-          },
-          {
-            "line": 185,
-            "complexity": 0
-          },
-          {
-            "line": 186,
-            "complexity": 1
-          },
-          {
-            "line": 187,
-            "complexity": 1
           },
           {
             "line": 188,
-            "complexity": 1
-          },
-          {
-            "line": 189,
             "complexity": 0
           },
           {
             "line": 193,
+            "complexity": 0
+          },
+          {
+            "line": 196,
+            "complexity": 0
+          },
+          {
+            "line": 219,
+            "complexity": 0
+          },
+          {
+            "line": 224,
+            "complexity": 0
+          },
+          {
+            "line": 230,
+            "complexity": 0
+          },
+          {
+            "line": 238,
+            "complexity": 0
+          },
+          {
+            "line": 239,
+            "complexity": 0
+          },
+          {
+            "line": 240,
             "complexity": 1
           },
           {
-            "line": 194,
-            "complexity": 0
-          },
-          {
-            "line": 200,
-            "complexity": 0
-          },
-          {
-            "line": 205,
-            "complexity": 0
-          },
-          {
-            "line": 208,
-            "complexity": 0
-          },
-          {
-            "line": 231,
-            "complexity": 0
-          },
-          {
-            "line": 236,
-            "complexity": 0
+            "line": 241,
+            "complexity": 2
           },
           {
             "line": 242,
             "complexity": 0
           },
           {
-            "line": 250,
+            "line": 243,
             "complexity": 0
+          },
+          {
+            "line": 245,
+            "complexity": 3
+          },
+          {
+            "line": 246,
+            "complexity": 3
+          },
+          {
+            "line": 247,
+            "complexity": 0
+          },
+          {
+            "line": 248,
+            "complexity": 0
+          },
+          {
+            "line": 249,
+            "complexity": 0
+          },
+          {
+            "line": 250,
+            "complexity": 1
           },
           {
             "line": 251,
@@ -1770,56 +1814,12 @@
           },
           {
             "line": 252,
-            "complexity": 1
-          },
-          {
-            "line": 253,
-            "complexity": 2
-          },
-          {
-            "line": 254,
-            "complexity": 0
-          },
-          {
-            "line": 255,
-            "complexity": 0
-          },
-          {
-            "line": 257,
-            "complexity": 3
-          },
-          {
-            "line": 258,
-            "complexity": 3
-          },
-          {
-            "line": 259,
-            "complexity": 0
-          },
-          {
-            "line": 260,
-            "complexity": 0
-          },
-          {
-            "line": 261,
-            "complexity": 0
-          },
-          {
-            "line": 262,
-            "complexity": 1
-          },
-          {
-            "line": 263,
-            "complexity": 0
-          },
-          {
-            "line": 264,
             "complexity": 0
           }
         ]
       }
     ],
-    "complexity": 51
+    "complexity": 44
   },
   {
     "path": "src/immich_memories/processing/encoding_plan.py",
@@ -2033,7 +2033,7 @@
         ]
       }
     ],
-    "complexity": 83
+    "complexity": 76
   },
   {
     "path": "src/immich_memories/processing/streaming_assembler.py",
@@ -2490,7 +2490,7 @@
         ]
       }
     ],
-    "complexity": 35
+    "complexity": 34
   },
   {
     "path": "src/immich_memories/titles/taichi_kernels.py",
@@ -3588,6 +3588,6 @@
         ]
       }
     ],
-    "complexity": 101
+    "complexity": 99
   }
 ]
