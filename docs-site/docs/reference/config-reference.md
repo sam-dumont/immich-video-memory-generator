@@ -427,6 +427,7 @@ editorial:
     swim: oi-v3
     venue: oi-v3
   preparation:
+    tier: full                   # full | no_captions | metadata_only
     caption_base_url: http://localhost:8092/v1
     caption_timeout_seconds: 90
     caption_concurrency: 4
@@ -440,6 +441,29 @@ editorial:
 Tier 2: lives under `advanced:` when the app writes the file. Story-first selection is the
 production route for UI, CLI and scheduled runs. Old `enabled` and `story_first` keys are
 ignored; there is no opt-in flag or environment switch.
+
+### Preparation tiers
+
+`preparation.tier` names which producers a deployment asks for. It is a named choice, never a
+fallback: a producer the tier demands and cannot reach still stops the run.
+
+| `tier` | What runs | First pass over 10,793 pictures on a Celeron J4125 NAS |
+| --- | --- | --- |
+| `full` | pixels, encoder + six heads, both detectors, captions | 4 days |
+| `no_captions` | pixels, encoder + six heads, both detectors | 3 h 41 min |
+| `metadata_only` | pixels and Immich metadata; no ONNX, no captions | minutes |
+
+`no_captions` is the tier for a low-power NAS. The captioner costs 25 times the rest of the
+pipeline put together, and dropping it keeps every producer the audience gate reads
+(`nsfw_marqo`, `swim`, `children`, `exposure`, `doc_docling`), so the gate is unchanged.
+Reasons under each picture become facts rather than sentences.
+
+`metadata_only` also drops the six heads and both detectors, so the gate loses its evidence.
+It therefore holds **every** unit to `family_only` and refuses a `sendable` export outright.
+Use it only on a machine that cannot run ONNX at all.
+
+Captions are banked per picture, so a `no_captions` deployment can add them later and switch
+the tier to `full` when it finishes.
 
 The planner reads the whole source period, identifies its stories and distinct moments,
 then allocates duration and picks representations of those moments. A longer target can

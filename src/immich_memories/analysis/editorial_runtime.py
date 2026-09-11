@@ -461,7 +461,11 @@ class _EvidencePreparation:
         result = self._produce(prepared, on_stage)
         write_secret_file(
             self.artifact_dir() / "preparation.private.json",
-            json.dumps(asdict(result), ensure_ascii=False, indent=2),
+            json.dumps(
+                asdict(result) | {"seconds_per_picture": result.stage_rates()},
+                ensure_ascii=False,
+                indent=2,
+            ),
         )
         if not result.complete:
             missing = ", ".join(
