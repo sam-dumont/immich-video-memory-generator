@@ -62,6 +62,28 @@ and a bounded wait of up to five more seconds. Scheduler shutdown uses the same
 cleanup. Captured output remains available to diagnose the failure. `auto run`
 uses the same process cleanup for its generation deadline and interruption.
 
+## Which memory types can be scheduled
+
+| Memory type | What the schedule has to say |
+|-------------|------------------------------|
+| `year_in_review` | nothing |
+| `monthly_highlights` | nothing |
+| `on_this_day` | nothing |
+| `trip` | nothing (every detected trip), or a selector in `params` |
+| `season` | `params: { season: "summer" }` |
+| `holiday` | `params: { holiday: "christmas" }` |
+| `person_spotlight` | `person_names: ["Name"]` |
+| `multi_person` | `person_names: ["One", "Two"]` |
+| `album` | `params: { from_album: "Album name" }` |
+| `special_day` | **cannot be scheduled** — its window comes from the catalogue, not from a cron expression. Use [`auto run`](./auto.md#auto-run), which generates the special days that are due |
+
+## Timezone
+
+`scheduler.timezone` is the zone the cron expressions are written in, and `9am` means 9am there.
+It defaults to `UTC`. A name the system cannot resolve — a typo, or a box with no timezone
+database — falls back to UTC and says so in the log; `scheduler list` shows each job's next run
+in the zone it will actually fire in, so check it there.
+
 ## Auto-resolved parameters
 
 When a schedule fires, date parameters get resolved automatically from the fire time:

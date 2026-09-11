@@ -24,7 +24,10 @@ class ScheduleEntry(BaseModel):
     duration_minutes: int | None = Field(default=None, description="Override target duration")
     params: dict[str, Any] = Field(
         default_factory=dict,
-        description="Extra params passed to preset factory (year, month, season, etc.)",
+        description=(
+            "Extra generate options for this memory type: year, month, season, holiday, "
+            "years_back, trip_index, near_date, from_album"
+        ),
     )
 
 
@@ -32,7 +35,7 @@ class SchedulerConfig(BaseModel):
     """Scheduler configuration — defines automatic generation schedules."""
 
     enabled: bool = Field(default=False, description="Enable the scheduler daemon")
-    timezone: str = Field(default="UTC", description="Timezone for cron evaluation")
+    timezone: str = Field(default="UTC", description="Timezone the cron expressions are written in")
     job_timeout_minutes: int = Field(
         default=DEFAULT_JOB_TIMEOUT_MINUTES,
         ge=1,

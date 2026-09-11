@@ -4,6 +4,7 @@ Auto-fills date parameters based on fire time:
 - year_in_review: generates for the previous year
 - monthly_highlights: generates for the previous month
 - on_this_day: no date param — the run covers the day it fires
+- album: no date param — --from-album is the whole scope
 - season: generates for the current/most recent season
 - Others: uses the fire time's year
 
@@ -58,10 +59,11 @@ def resolve_schedule_params(entry: ScheduleEntry, fire_time: datetime) -> dict[s
             auto["year"] = fire_time.year
             auto["month"] = fire_time.month - 1
 
-    elif mt == "on_this_day":
-        # No date param: `generate` has no option that names another day, and
-        # the child's own local date is the day the library is living in --
-        # fire_time is UTC, which near midnight is a different day entirely.
+    elif mt in ("on_this_day", "album"):
+        # Neither names a date the schedule could fill in. on_this_day covers
+        # the day it fires: `generate` has no option naming another one, and
+        # the child's own date is the day the library is living in. An album
+        # is its own scope, and `generate` refuses date flags beside it.
         pass
 
     elif mt == "season":

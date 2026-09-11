@@ -16,6 +16,11 @@ from typing import Any
 import click
 
 from immich_memories.cli import main
+from immich_memories.cli.generate_resolution import (
+    _resolve_generation_scope,
+    _validate_album_scope,
+)
+from immich_memories.timeperiod import DateRange
 
 EXECUTABLE = "immich-memories"
 
@@ -58,3 +63,41 @@ def parse_generate_argv(argv: list[str]) -> dict[str, Any]:
     if name != "generate":
         raise AssertionError(f"argv invokes {name!r}, not 'generate'")
     return params
+
+
+def memory_scope(params: dict[str, Any]) -> tuple[DateRange, list[DateRange]]:
+    """What the parsed params resolve to: the window, and the ranges to search.
+
+    Parsing proves the options exist; this proves they add up to a memory.
+    `generate` rejects a season with no season and an album with no album name
+    after parsing, deeper in the command, so the argv a scheduler builds can
+    parse cleanly and still name nothing that could be rendered. These are the
+    command's own resolvers, called the way the command calls them.
+    """
+    _validate_album_scope(
+        from_album=params["from_album"],
+        year=params["year"],
+        start=params["start"],
+        end=params["end"],
+        period=params["period"],
+        birthday=params["birthday"],
+        season=params["season"],
+        month=params["month"],
+        memory_type=params["memory_type"],
+        person_names=list(params["person"]),
+    )
+    return _resolve_generation_scope(
+        from_album=params["from_album"],
+        year=params["year"],
+        start=params["start"],
+        end=params["end"],
+        period=params["period"],
+        birthday=params["birthday"],
+        memory_type=params["memory_type"],
+        season=params["season"],
+        month=params["month"],
+        hemisphere=params["hemisphere"],
+        years_back=params["years_back"],
+        on_this_day_target=None,
+        holiday=params["holiday"],
+    )

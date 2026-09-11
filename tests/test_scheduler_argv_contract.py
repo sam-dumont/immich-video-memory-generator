@@ -13,15 +13,16 @@ from unittest.mock import patch
 
 import pytest
 
+from immich_memories.memory_types.registry import OFFERED_MEMORY_TYPES
 from immich_memories.scheduling.daemon import (
-    UnschedulableParam,
+    UnschedulableJob,
     _generate_command,
     execute_job,
 )
 from immich_memories.scheduling.engine import PendingJob
 from immich_memories.scheduling.executor import resolve_schedule_params
 from immich_memories.scheduling.models import ScheduleEntry
-from tests.cli_argv_contract import parse_generate_argv
+from tests.cli_argv_contract import memory_scope, parse_generate_argv
 
 FIRE_TIME = datetime(2026, 7, 15, 9, 0, tzinfo=UTC)
 
@@ -91,7 +92,7 @@ class TestExplicitScopeSurvives:
         assert params["year"] == 2024
 
     def test_a_param_no_option_expresses_is_refused(self) -> None:
-        with pytest.raises(UnschedulableParam, match="target_date"):
+        with pytest.raises(UnschedulableJob, match="target_date"):
             _generate_command(
                 _scheduled_params(
                     name="daily", memory_type="on_this_day", params={"target_date": "2026-07-15"}
@@ -132,3 +133,55 @@ class TestScheduledDurationUnit:
     def test_no_duration_leaves_the_preset_default(self) -> None:
         params = _parse_schedule(name="monthly", memory_type="monthly_highlights")
         assert params["duration"] is None
+
+
+# What a user has to write in the schedule for each memory type to mean
+# anything: the types that are not listed need nothing beyond their name.
+SCHEDULE_FOR_TYPE = {
+    "season": {"params": {"season": "summer"}},
+    "person_spotlight": {"person_names": ["Someone"]},
+    "multi_person": {"person_names": ["Someone", "Another"]},
+    "holiday": {"params": {"holiday": "christmas"}},
+    "album": {"params": {"from_album": "Some Album"}},
+}
+
+# special_day takes its window from the catalogue rather than from flags, so a
+# cron expression cannot say which day it means.
+UNSCHEDULABLE_TYPES = {"special_day"}
+
+
+class TestEveryOfferedMemoryType:
+    """A schedule names a memory type; all ten have to mean something."""
+
+    @pytest.mark.parametrize("memory_type", [t.value for t in OFFERED_MEMORY_TYPES])
+    def test_a_schedule_either_resolves_a_memory_or_is_refused(self, memory_type: str) -> None:
+        params = _scheduled_params(
+            name="scheduled", memory_type=memory_type, **SCHEDULE_FOR_TYPE.get(memory_type, {})
+        )
+
+        if memory_type in UNSCHEDULABLE_TYPES:
+            with pytest.raises(UnschedulableJob, match=memory_type):
+                _generate_command(params, None)
+            return
+
+        parsed = parse_generate_argv(_generate_command(params, None))
+        window, ranges = memory_scope(parsed)
+
+        assert parsed["memory_type"] == memory_type
+        assert ranges or parsed["from_album"], f"{memory_type} resolved no range to search"
+        assert window is not None
+
+    def test_holiday_reaches_the_holiday_option(self) -> None:
+        params = _parse_schedule(
+            name="christmas", memory_type="holiday", params={"holiday": "christmas"}
+        )
+        assert params["holiday"] == "christmas"
+
+    def test_an_album_schedule_carries_the_album_and_no_date(self) -> None:
+        """--from-album is the whole scope; generate refuses date flags beside it."""
+        params = _parse_schedule(
+            name="album", memory_type="album", params={"from_album": "Some Album"}
+        )
+        assert params["from_album"] == "Some Album"
+        assert params["year"] is None
+        assert params["month"] is None

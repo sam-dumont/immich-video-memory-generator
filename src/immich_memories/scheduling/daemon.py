@@ -154,6 +154,15 @@ _SCOPE_FLAGS = {
     "years_back": "--years-back",
     "trip_index": "--trip-index",
     "near_date": "--near-date",
+    "from_album": "--from-album",
+}
+
+# A memory type whose window no cron expression can name, and why.
+_UNSCHEDULABLE_TYPES = {
+    "special_day": (
+        "its window comes from the catalogue rather than from flags; "
+        "`auto run` generates the special days that are due"
+    ),
 }
 
 # Any of these tells trip generation which trip to render; without one it lists
@@ -161,14 +170,8 @@ _SCOPE_FLAGS = {
 _TRIP_SELECTORS = ("trip_index", "month", "near_date")
 
 
-class UnschedulableParam(ValueError):
-    """A resolved schedule param that no `generate` option can express."""
-
-    def __init__(self, key: str) -> None:
-        super().__init__(
-            f"schedule param '{key}' has no matching generate option, "
-            f"so the run would silently ignore it"
-        )
+class UnschedulableJob(ValueError):
+    """Something in the schedule that no `generate` invocation can carry out."""
 
 
 def _scope_arguments(params: dict) -> list[str]:
@@ -179,7 +182,10 @@ def _scope_arguments(params: dict) -> list[str]:
             continue
         flag = _SCOPE_FLAGS.get(key)
         if flag is None:
-            raise UnschedulableParam(key)
+            raise UnschedulableJob(
+                f"schedule param '{key}' has no matching generate option, "
+                f"so the run would silently ignore it"
+            )
         arguments.extend([flag, str(value)])
     return arguments
 
@@ -190,6 +196,10 @@ def _generate_command(params: dict, config_path: Path | None) -> list[str]:
         cmd.extend(["--config", str(config_path)])
     cmd.append("generate")
     memory_type = params["memory_type"]
+    if memory_type in _UNSCHEDULABLE_TYPES:
+        raise UnschedulableJob(
+            f"memory type '{memory_type}' cannot be scheduled: {_UNSCHEDULABLE_TYPES[memory_type]}"
+        )
     cmd.extend(["--memory-type", memory_type])
     cmd.extend(_scope_arguments(params))
     if memory_type == "trip" and not any(key in params for key in _TRIP_SELECTORS):
@@ -251,7 +261,7 @@ def execute_job(
 
     try:
         cmd = _generate_command(params, config_path)
-    except UnschedulableParam as exc:
+    except UnschedulableJob as exc:
         logger.error(f"Job '{job.schedule.name}' cannot run: {exc}")
         _notify_if_configured(
             memory_type=params["memory_type"],
