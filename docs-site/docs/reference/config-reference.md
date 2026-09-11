@@ -8,15 +8,14 @@ sidebar_label: Config Reference
 These options have sane defaults and most users don't need to change them. Add any of these to your `~/.immich-memories/config.yaml` to override. Values shown below are the built-in defaults (placeholders like URLs and example schedules aside).
 
 :::tip Config tiers
-Tier 2 sections — `analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `content_analysis`,
-`audio_content`, `speech`, `transcription`, `server`, `auth`, `automation`, `notifications`,
-`triage` — are
+Tier 2 sections — `analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `server`, `auth`,
+`automation`, `notifications`, `triage`, `editorial` — are
 written under an `advanced:` key when the app saves the file:
 
 ```yaml
 advanced:
   analysis:
-    scene_threshold: 25.0
+    max_album_assets: 5000
   hardware:
     encoder_preset: "quality"
 ```
@@ -26,27 +25,28 @@ Everything else stays at the top level: `immich`, `defaults`, `output`, `audio`,
 `cache`, `upload`, `trips`, `photos`, `preset`, and the two the loader calls internal rather than
 Tier 1, `scheduler` and `title_llm`. The rule is mechanical — anything outside the Tier 2 set is
 left where it is.
-Unknown keys *inside* a section are silently ignored; unknown top-level keys and invalid values
-fail validation at startup.
+Unknown keys *inside* a section are silently ignored, with one exception: the keys of the removed
+clip scorer (`analysis.max_refinement_passes`, `photos.max_ratio`, the whole `content_analysis`,
+`audio_content`, `speech` and `transcription` sections, and the rest of that family). A file that
+still sets one is refused at startup with a message naming the key, because a setting that loads
+and does nothing is worse than one that fails. Unknown top-level keys and invalid values fail
+validation at startup.
 :::
 
 ## Preset
 
 One top-level switch that fills several knobs at once. `fast` is the CPU-only / NAS profile.
 Anything you set yourself — a key in the file, an `IMMICH_MEMORIES_…` env var, a CLI flag, a
-choice in the web UI — wins over the preset, exactly like `clip_style`.
+choice in the web UI — wins over the preset.
 
 ```yaml
 preset: null                       # null | fast
 ```
 
 `fast` sets, unless you set them yourself: `output.resolution: 1080p`, `output.codec: h264`,
-`output.quality: medium`, `hardware.encoder_preset: fast`, `speech.enabled: false` (no per-clip
-voice-activity pass), `title_screens.animated_background: false` (static title backgrounds),
-`photos.max_ratio: 0.25`, and two settings of the old selector that story-first selection does not
-read (`analysis.max_refinement_passes: 3`, analysis depth `fast`).
-The heavy optional features (the legacy LLM scorer, music generation, audio-content tagging,
-transcription) are already off by default and stay wherever you put them.
+`output.quality: medium`, `hardware.encoder_preset: fast` and
+`title_screens.animated_background: false` (static title backgrounds). Music generation is already
+off by default and stays wherever you put it.
 
 Env: `IMMICH_MEMORIES_PRESET=fast`. One-off on the CLI: `immich-memories --preset fast generate …`
 (root option, before the subcommand). The settings page names the active preset; the options page defaults
@@ -83,21 +83,6 @@ credentials and see the resolved API contract without generating or uploading a 
 
 ```yaml
 analysis:
-  # Clip pacing preset (fills in the five duration params below; explicit values win)
-  clip_style: null               # fast-cuts | balanced | long-cuts (null = use individual values)
-
-  # Scene detection
-  scene_threshold: 27.0          # Scene change sensitivity (1-100, lower = more scenes)
-  min_scene_duration: 1.0        # Minimum scene length in seconds (0.5-10)
-  use_scene_detection: true      # Use scene detection for natural cut points
-
-  # Clip duration tuning (or use clip_style above)
-  max_segment_duration: 15.0     # Long scenes get subdivided (2-30s)
-  min_segment_duration: 2.0      # Clips shorter than this are discarded (0.5-5s)
-  optimal_clip_duration: 5.0     # Sweet spot clip duration (2-15s)
-  max_optimal_duration: 10.0     # Max optimal duration for long sources (5-30s)
-  target_extraction_ratio: 0.15  # Target ratio of clip to source (0.15 = use 15%; 0.05-0.5)
-
   # Media the camera roll did not shoot (see Configuration → Footage the
   # camera roll did not shoot). Setting the list replaces it; [] turns it off.
   exclude_filename_patterns:     # case-insensitive globs on the source filename
@@ -108,39 +93,26 @@ analysis:
     - "img-*-wa[0-9][0-9][0-9][0-9]*"
     - "vid-*-wa[0-9][0-9][0-9][0-9]*"
   exclude_stills_without_camera_exif: true   # a photo naming no camera was received, not shot
-  include_off_timeline_assets: false        # archive/hidden/locked stay out; generation forces this off
-
-  # Duplicate detection
-  duplicate_hash_threshold: 8    # Perceptual hash threshold (0-64)
   min_source_short_side: 1080    # Drop smaller clips unless they carry camera EXIF
-  subject_policy_enabled: true   # Prefer clips of people over things
-  max_animal_ratio: 0.10         # Share of the video that may be animal clips
-  max_object_ratio: 0.05         # Share that may be object clips (must also score well)
 
   # Album source
   max_album_assets: 10000        # Most assets read from one album, per media type (min 1)
 
-  # Performance
-  max_refinement_passes: 10      # Legacy scorer rounds; not read by story-first selection (1-20)
+  # Downloads
   download_workers: 3            # Parallel download clients for video and thumbnail prefetching (1-8)
-  enable_downscaling: true       # Downscale for analysis (~3-5x faster)
-  analysis_resolution: 480       # Target height for analysis (240-1080)
+
+  # Duration sizing
+  optimal_clip_duration: 5.0     # Expected seconds per clip when a trip or album sizes its own duration (2-15s)
 
   # Live Photos (iPhone 3s video clips)
   include_live_photos: true      # Include Live Photo clips (ON by default)
   live_photo_merge_window_seconds: 10.0  # Max gap to group as burst (1-60s)
   live_photo_min_clip_seconds: 3.5       # Below this a burst ships as a photo (0-30s)
-
-  # Audio-aware boundaries
-  use_unified_analysis: true     # Avoid mid-sentence cuts
-  cut_point_merge_tolerance: 0.5 # Window for merging nearby boundaries (0.1-2s)
-  silence_threshold_db: -40.0    # Silence detection threshold (-60 to -10 dB)
-  min_silence_duration: 0.3      # Minimum silence gap duration (0.1-1s)
 ```
 
-Presets: `fast-cuts` = 3–6 s clips, 30% extraction; `balanced` = 5–10 s, 40%; `long-cuts` =
-8–15 s, 50%. With no preset the defaults above apply (5–10 s, 15%). Any Live Photo cluster of two
-or more within the merge window is treated as a burst — the count is not configurable.
+Any Live Photo cluster of two or more within the merge window is treated as a burst — the count
+is not configurable. Where a clip is cut, and how long it runs, is the editor's decision per
+carrier; there is no pacing preset any more.
 
 `max_album_assets` applies per media type, so the default reads up to 10,000 videos and 10,000
 photos from one album. Smart albums reach tens of thousands; Immich returns newest first, so a
@@ -204,11 +176,7 @@ tone-maps detected HDR sources and logs the reason. Use `hdr_mode: sdr` when SDR
 ```yaml
 photos:
   enabled: true                  # Include photos in memories
-  read_moments: false            # Read each moment from a contact sheet first
-  max_ratio: 0.50               # Max 50% of clips can be photos (0-1)
   duration: 4.0                  # Seconds per photo clip (1-10)
-  moment_gap_seconds: 120        # Window for "same moment as a video" (0-3600)
-  moment_hash_threshold: 10      # Hash bits allowed between photo and that video (0-64)
   burst_window_seconds: 300      # Near-identical photos this close apart are one burst (0-3600)
   burst_hash_threshold: 8        # Hash bits two photos may differ by and still be one burst (0-64)
 ```
@@ -219,7 +187,6 @@ photo's content; it is not configurable.
 Burst de-duplication keeps only the best-scored frame of a run of near-identical photos, so the
 fifteen shots of the same jump do not become fifteen clips. `burst_window_seconds: 0` all but turns
 it off: photos sharing an identical timestamp still group.
-It is separate from `moment_gap_seconds`, which is about a photo and a *video* of the same moment.
 
 ## Hardware acceleration
 
@@ -227,7 +194,6 @@ It is separate from `moment_gap_seconds`, which is about a photo and a *video* o
 hardware:
   enabled: true                  # false = CPU encoding, no GPU probing at all
   encoder_preset: "balanced"     # fast, balanced, quality
-  gpu_analysis: true             # CUDA frame differencing for scene analysis when available
   gpu_decode: true               # Hardware video decoding
 ```
 
@@ -389,160 +355,6 @@ The switch is all-or-nothing on `title_llm.model`: when it is set the whole `tit
 used, and any field you leave out takes the *built-in* default (`provider: openai-compatible`,
 `base_url: http://localhost:8080/v1`, empty `api_key`) — it is not inherited from `llm`. When
 `title_llm.model` is empty, `llm` is used. Both entry points resolve it the same way.
-
-A `description_llm` section works the same way for the bulk asset-description
-pass — it is where a distilled description student is served. When
-`description_llm.model` is set, description calls route to that model through
-the editorial gateway while every other pass stays on `llm`. Banked answers
-carry the model that wrote them, so switching arms never replays one model's
-words as the other's.
-
-```yaml
-description_llm:
-  provider: "openai-compatible"
-  base_url: "http://localhost:8090/v1"
-  model: ""                      # empty: descriptions use llm
-  api_key: ""
-  timeout_seconds: 300
-```
-
-## Content analysis (LLM-based scoring)
-
-```yaml
-content_analysis:
-  enabled: false
-  weight: 0.35                   # Score weight (0-1)
-  analyze_frames: 2              # Frames per segment (1-4)
-  min_confidence: 0.5
-  frame_max_height: 480
-  openai_image_detail: "low"     # low (85 tokens), high (1889 tokens), or auto
-
-audio_content:
-  enabled: false
-  weight: 0.15
-  use_panns: true                # Semantic labels via optional audio-ml extra
-  min_confidence: 0.3
-  laughter_confidence: 0.1       # Lower threshold for laughter/baby sounds (0.1-0.5)
-  laughter_bonus: 0.1            # Score added to a segment with laughter (0-0.3)
-  protect_laughter: true         # Avoid cutting through laughter events
-  protect_speech: true           # Avoid cutting through speech regions
-```
-
-`use_panns: true` uses PANNs to label laughter, babies, speech, music, cheering, engines, and
-other AudioSet events. Install it with `uv sync --extra audio-ml` or
-`pip install 'immich-memories[audio-ml]'`. If the extra is missing, generation continues with the
-energy-only analyzer. That fallback can find loud and quiet structure, but it cannot reliably tell
-laughter from speech, music, or background noise.
-
-## Speech boundaries
-
-```yaml
-speech:
-  enabled: true
-  vad_threshold: 0.25            # Frame speech probability that counts as voice (0.1-0.9)
-  min_silence_ms: 200            # Silence needed to close a speech region (50-2000)
-```
-
-Requires the `speech` extra (`uv sync --extra speech`, included in `all` and `all-mac`). The
-FireRedVAD weights ship inside the package — nothing is downloaded at runtime.
-
-How this interacts with PANNs, and why cut placement still works without `audio_content`, is in
-[Audio and music → Speech boundaries](../create/pipeline/audio-and-music.md#speech-boundaries).
-
-`vad_threshold` is below FireRedVAD upstream's 0.4 on purpose: measured across 143 clips, 0.25
-detected speech in 49 more of them with no false positives on clips below -40 dBFS. Raise it if
-background chatter is being protected; lower it if quiet speech is being cut through.
-
-`min_silence_ms` does double duty: it is the pause width that closes a speech region, and it
-caps how far each protected range is widened before boundary adjustment. Widening by half that
-pause or more would merge the regions back together and undo the split.
-
-Set `enabled: false` to turn voice activity off entirely — there is no alternative engine.
-
-## Transcription
-
-```yaml
-transcription:
-  enabled: false                 # Transcribe speech in the top candidate clips
-  languages: []                  # Languages your library contains, e.g. [fr, en]
-  model: medium                  # tiny / base / small / medium / large, or a path
-  min_voiced_seconds: 1.0        # Voice activity required before transcribing
-  min_confidence: 0.0            # Mean token probability floor (see below)
-  use_gpu: true                  # Metal on macOS; Linux wheels are CPU-only
-```
-
-Requires the `transcribe` extra (`uv sync --extra transcribe`, included in `all` and `all-mac`)
-and `speech.enabled: true` — voice activity is what decides whether a clip is transcribed at all,
-so with speech off there is no gate and nothing is transcribed.
-
-`languages` is the one setting you have to fill in. Leave it empty and nothing is transcribed,
-which is deliberate: automatic detection across all 99 languages put French audio in Japanese and
-in German on both attempts, and a transcript in the wrong language is worse than no transcript.
-One entry forces that language and skips detection entirely. Several restrict detection to those
-languages, so the model chooses between the two or three your library actually contains instead of
-guessing among 99.
-
-Transcripts are stored on the top five candidate segments of each video, and the vision model reads
-them — see [What the transcript is used for](#what-the-transcript-is-used-for) below. They move
-LLM-derived scores.
-
-Unlike the FireRedVAD weights, which ship inside the package, whisper models are downloaded from
-HuggingFace on first use — about 1.5 GB for the `medium` default. In Docker, mount the model
-directory as a volume or every container start downloads it again. Set `model: base` (~148 MB) if
-that download matters more to you than accuracy; measured on real family audio, `base` returned
-fragments where `medium` returned whole sentences.
-
-### A 30-second window, not the clip
-
-Whisper is transcribed over a **30-second window centred on the clip**, not the clip itself. It is
-trained on 30-second windows and pads shorter input with silence, which triggers hallucination: on
-short slices the same moments returned "- Dear." and "La papa." where a full window returned
-"Il est mignon. Tu veux lui faire une petite douce ? Pas la tête, pas le ventre."
-
-The stored transcript is therefore speech heard *around* the clip, and neighbouring candidates of
-one moment share it. Audio context distinguishes between videos, not between the top candidates
-of a single video.
-
-`min_voiced_seconds` is still measured on the clip itself — the question "is there speech here"
-is unchanged, only the audio handed to the model widens.
-
-### What the gate can and cannot catch
-
-Measured over 80 clips from a real family library:
-
-| | |
-|---|---|
-| Whisper calls saved by reusing overlapping candidates | 46% |
-| Cost per segment, `medium` | ~0.6 s |
-
-`min_voiced_seconds` does most of the filtering. Surviving transcripts are also rejected if they
-are a repetition loop — whisper emitting one phrase several times over — or contain no words at
-all, such as the `...` it returns on digital silence. Both arrive at confidence 0.83 and above and
-so are invisible to `min_confidence`.
-
-`min_confidence` defaults to **0.0** because the signal is inverted on this audio: correct
-transcripts measured 0.63–0.71 while fluent nonsense measured 0.84–0.95. Raising the floor removes
-good transcripts before bad ones. It stays configurable if your library is quieter than a house
-with children in it.
-
-The signal that would separate the two is `no_speech_prob`, and whisper.cpp does not expose it:
-the getter exists in the C API but neither the CLI's JSON output nor the Python bindings surface
-it.
-
-### What the transcript is used for
-
-Transcripts are given to the vision model alongside the frames, marked as possibly inaccurate,
-with an instruction to ignore them when they do not match the image. The vision model is the only
-component that sees both, so it is the only available check on a wrong transcript — and it works:
-a clip whose transcript was about refuelling a car, over footage of a beach, produced exactly the
-same description as the frames alone.
-
-Because the model reads the speech, spoken names can end up in the stored description. Enabling
-transcription therefore changes what the analysis cache records about the people in your videos.
-
-Because transcripts change what the model is given, wiring them in bumped the scoring version once,
-which invalidated every cached LLM score at that release. Toggling the setting afterwards does not
-bump anything: `SCORING_VERSION` is a fixed constant, not a function of your config.
 
 ## Triage heads
 

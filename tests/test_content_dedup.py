@@ -19,7 +19,7 @@ below it, which is where distinct shots start merging.
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
-from immich_memories.analysis.clip_scaler import describes_the_same_thing
+from immich_memories.analysis.editorial_final_sampled_duplicates import describes_the_same_thing
 
 
 def _clip(asset_id: str, description: str, minute: int = 0, score: float = 0.5):

@@ -17,7 +17,6 @@ from immich_memories.memory_types.date_builders import (
     build_on_this_day,
     build_season,
     build_special_day,
-    build_then_and_now,
     build_trip,
     resolve_holiday,
 )
@@ -95,7 +94,7 @@ def create_preset(memory_type: MemoryType, **kwargs) -> MemoryPreset:
 
 
 def list_memory_types() -> list[dict[str, str]]:
-    """List creation choices; retired factories remain readable for saved presets.
+    """List creation choices.
 
     Returns:
         List of dicts with 'type', 'name', 'description' keys.
@@ -103,7 +102,6 @@ def list_memory_types() -> list[dict[str, str]]:
     return [
         {"type": str(mt), "name": name, "description": desc}
         for mt, (name, desc) in _DESCRIPTIONS.items()
-        if mt != MemoryType.THEN_AND_NOW
     ]
 
 
@@ -381,35 +379,6 @@ def _holiday(
         date_ranges=build_holiday(holiday, year, years_back, window_days, today=today),
         person_filter=person_filter_for(person_names),
         default_duration_seconds=60,
-    )
-
-
-@register_preset(
-    MemoryType.THEN_AND_NOW,
-    name="Then and Now",
-    description="An early year beside the present one",
-)
-def _then_and_now(
-    year: int | None = None,
-    years_back: int = 10,
-    person_names: list[str] | None = None,
-    **kwargs,  # noqa: ARG001
-) -> MemoryPreset:
-    """Two windows, far apart on purpose.
-
-    The contrast is the whole point, so the gap is required: a then-and-now with
-    no distance between the two is just a now.
-    """
-    year = year or date.today().year
-    then_year = year - years_back
-
-    return MemoryPreset(
-        memory_type=MemoryType.THEN_AND_NOW,
-        name=f"{then_year} and {year}",
-        description=f"{then_year} beside {year}",
-        date_ranges=build_then_and_now(year, years_back),
-        person_filter=person_filter_for(person_names),
-        default_duration_seconds=45,
     )
 
 

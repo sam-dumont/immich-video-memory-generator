@@ -132,29 +132,3 @@ def group_by_time_and_place(
             radius_metres=radius_metres,
         )
     )
-
-
-def moments_to_read(
-    assets: list[Any],
-    config: Any,
-    window_minutes: float = EPISODE_WINDOW_MINUTES,
-    radius_metres: float = MOMENT_RADIUS_METRES,
-) -> list[list[Any]]:
-    """Assets grouped for reading, with foreign media dropped before tiling.
-
-    Received media is often the most striking thing in an episode. A period
-    read from unfiltered sheets reported a wedding, a fresh tattoo and a grid
-    comparing chihuahuas to muffins as its remarkable days; they were forwarded
-    messages, screenshots and a meme. Nothing about them was photographed here.
-
-    source_filter already says where this belongs — gone "before it is sampled
-    into a prompt" — so it sits at the one door into grouping-for-reading, and
-    every reader downstream inherits it rather than remembering to ask.
-    """
-    from immich_memories.analysis.source_filter import from_the_camera_roll
-
-    return _group_by_time_and_place(
-        from_the_camera_roll(assets, config),
-        window_minutes=window_minutes,
-        radius_metres=radius_metres,
-    )

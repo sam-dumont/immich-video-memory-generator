@@ -20,12 +20,6 @@ class PackEncoder(Protocol):
     def embed(self, batch: np.ndarray) -> np.ndarray: ...
 
 
-class PreviewTriage(Protocol):
-    """What the pipeline holds: something that decides facts for a set of previews."""
-
-    def run(self, asset_ids: Sequence[str], images: AssetImageSource) -> object: ...
-
-
 class FactStore(Protocol):
     def remember_facts(
         self, asset_id: str, facts: Sequence[HeadFact], *, encoder_key: str

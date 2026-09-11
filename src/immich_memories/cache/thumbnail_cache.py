@@ -5,7 +5,6 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
-import time
 from pathlib import Path
 
 from immich_memories.cache.disk_budget import evict_to_budget
@@ -56,32 +55,6 @@ class ThumbnailCache:
         answer a question `stat` already answers.
         """
         return {asset_id for asset_id in asset_ids if self.has(asset_id, size)}
-
-    def begin_working_set(self, asset_ids: set[str] | list[str], size: str) -> int:
-        """Protect this run's thumbnails while reclaiming earlier leftovers.
-
-        Also the autotune point: a flat budget under a large corpus would make
-        every later run start cold, so the budget grows to hold the measured
-        working set with headroom. The configured value stays as the floor;
-        the corpus on disk is the ceiling's own evidence.
-        """
-        self._run_started_at = time.time()
-        working_bytes = 0
-        for asset_id in asset_ids:
-            path = self._path(asset_id, size)
-            with contextlib.suppress(OSError):
-                working_bytes += path.stat().st_size
-                os.utime(path)
-        fitted_mb = working_bytes * 1.2 / 1_000_000
-        if fitted_mb > self.max_size_mb:
-            logger.info(
-                "Thumbnail budget raised %.0f -> %.0f MB to hold this run's %d-asset working set",
-                self.max_size_mb,
-                fitted_mb,
-                len(asset_ids),
-            )
-            self.max_size_mb = fitted_mb
-        return self.enforce_budget()
 
     def put(self, asset_id: str, size: str, data: bytes) -> Path:
         path = self._path(asset_id, size)

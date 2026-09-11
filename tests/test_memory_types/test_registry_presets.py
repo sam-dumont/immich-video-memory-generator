@@ -32,11 +32,10 @@ class TestMemoryTypeEnum:
         assert {str(m) for m in phase1} == expected
 
     def test_all_phase2_values_exist(self) -> None:
-        expected = {"holiday", "trip", "then_and_now"}
+        expected = {"holiday", "trip"}
         phase2 = {
             MemoryType.HOLIDAY,
             MemoryType.TRIP,
-            MemoryType.THEN_AND_NOW,
         }
         assert {str(m) for m in phase2} == expected
 
@@ -44,7 +43,7 @@ class TestMemoryTypeEnum:
         assert str(MemoryType.ALBUM) == "album"
 
     def test_total_enum_count(self) -> None:
-        assert len(MemoryType) == 11
+        assert len(MemoryType) == 10
 
     def test_is_str_enum(self) -> None:
         assert isinstance(MemoryType.YEAR_IN_REVIEW, str)
@@ -124,9 +123,6 @@ class TestBuriedFields:
             )
 
     def test_the_scoring_profile_is_gone_from_the_package(self) -> None:
-        """Its only converter, SceneScorer.from_profile, went with it."""
         import immich_memories.memory_types as memory_types
-        from immich_memories.analysis.scoring import SceneScorer
 
         assert not hasattr(memory_types, "ScoringProfile")
-        assert not hasattr(SceneScorer, "from_profile")

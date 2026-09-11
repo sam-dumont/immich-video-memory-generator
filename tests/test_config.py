@@ -152,11 +152,11 @@ class TestAnalysisConfig:
     @pytest.mark.parametrize(
         "field,value",
         [
-            pytest.param("scene_threshold", 0.5, id="threshold-below-min"),
-            pytest.param("scene_threshold", 101.0, id="threshold-above-max"),
-            pytest.param("min_scene_duration", 0.1, id="scene-dur-below-min"),
-            pytest.param("duplicate_hash_threshold", -1, id="hash-negative"),
-            pytest.param("duplicate_hash_threshold", 65, id="hash-above-max"),
+            pytest.param("download_workers", 0, id="workers-below-min"),
+            pytest.param("download_workers", 9, id="workers-above-max"),
+            pytest.param("max_album_assets", 0, id="album-cap-below-min"),
+            pytest.param("optimal_clip_duration", 1.0, id="clip-seconds-below-min"),
+            pytest.param("optimal_clip_duration", 16.0, id="clip-seconds-above-max"),
         ],
     )
     def test_validation_rejects_out_of_range(self, field, value):
@@ -167,75 +167,12 @@ class TestAnalysisConfig:
     def test_boundary_values_accepted(self):
         """Exact boundary values are accepted."""
         config = AnalysisConfig(
-            scene_threshold=1.0,
-            min_scene_duration=0.5,
-            duplicate_hash_threshold=0,
+            download_workers=1,
+            max_album_assets=1,
+            optimal_clip_duration=2.0,
         )
-        assert config.scene_threshold == 1.0
-        assert config.duplicate_hash_threshold == 0
-
-
-class TestClipStyle:
-    """Tests for clip_style parameter mapping."""
-
-    def test_balanced_sets_defaults(self):
-        """clip_style balanced maps to the standard duration params."""
-        config = AnalysisConfig(clip_style="balanced")
-        assert config.optimal_clip_duration == 5.0
-        assert config.max_optimal_duration == 10.0
-        assert config.target_extraction_ratio == 0.4
-        assert config.max_segment_duration == 15.0
-        assert config.min_segment_duration == 2.0
-
-    def test_fast_cuts(self):
-        """clip_style fast-cuts uses shorter durations."""
-        config = AnalysisConfig(clip_style="fast-cuts")
-        assert config.optimal_clip_duration == 3.0
-        assert config.max_optimal_duration == 6.0
-        assert config.target_extraction_ratio == 0.3
-        assert config.max_segment_duration == 8.0
-        assert config.min_segment_duration == 1.5
-
-    def test_long_cuts(self):
-        """clip_style long-cuts uses longer durations."""
-        config = AnalysisConfig(clip_style="long-cuts")
-        assert config.optimal_clip_duration == 8.0
-        assert config.max_optimal_duration == 15.0
-        assert config.target_extraction_ratio == 0.5
-        assert config.max_segment_duration == 25.0
-        assert config.min_segment_duration == 3.0
-
-    def test_explicit_override_wins(self):
-        """Explicit values override clip_style defaults."""
-        config = AnalysisConfig(clip_style="balanced", optimal_clip_duration=7.0)
-        assert config.optimal_clip_duration == 7.0
-        assert config.max_optimal_duration == 10.0  # rest from balanced
-
-    def test_no_clip_style_keeps_field_defaults(self):
-        """Without clip_style, original field defaults are used.
-
-        `target_extraction_ratio` is the discriminator rather than
-        `max_optimal_duration`: the field default is now 10.0, which happens to
-        coincide with balanced's, so that assertion could no longer tell the two
-        apart.
-        """
-        config = AnalysisConfig()
-        assert config.optimal_clip_duration == 5.0
-        assert config.target_extraction_ratio == 0.15  # field default, not balanced's 0.4
-
-    def test_download_workers_defaults_and_is_bounded(self):
-        assert AnalysisConfig().download_workers == 3
-        assert AnalysisConfig(download_workers=1).download_workers == 1
-        assert AnalysisConfig(download_workers=8).download_workers == 8
-        with pytest.raises(ValueError):
-            AnalysisConfig(download_workers=0)
-        with pytest.raises(ValueError):
-            AnalysisConfig(download_workers=9)
-
-    def test_invalid_clip_style_rejected(self):
-        """Invalid clip_style value is rejected."""
-        with pytest.raises(ValueError):
-            AnalysisConfig(clip_style="cinematic")
+        assert config.download_workers == 1
+        assert config.max_album_assets == 1
 
 
 class TestOutputConfig:
@@ -395,12 +332,12 @@ class TestConfig:
         config_path.write_text(
             "immich:\n  url: https://example.com\n"
             "advanced:\n"
-            "  analysis:\n    scene_threshold: 20.0\n"
+            "  analysis:\n    max_album_assets: 2000\n"
             "  server:\n    port: 9090\n"
         )
         loaded = Config.from_yaml(config_path)
         assert loaded.immich.url == "https://example.com"
-        assert loaded.analysis.scene_threshold == 20.0
+        assert loaded.analysis.max_album_assets == 2000
         assert loaded.server.port == 9090
 
     def test_flat_yaml_still_works(self, tmp_path):
@@ -408,12 +345,12 @@ class TestConfig:
         config_path = tmp_path / "config.yaml"
         config_path.write_text(
             "immich:\n  url: https://flat.com\n"
-            "analysis:\n  scene_threshold: 25.0\n"
+            "analysis:\n  max_album_assets: 2500\n"
             "server:\n  port: 8080\n"
         )
         loaded = Config.from_yaml(config_path)
         assert loaded.immich.url == "https://flat.com"
-        assert loaded.analysis.scene_threshold == 25.0
+        assert loaded.analysis.max_album_assets == 2500
         assert loaded.server.port == 8080
 
     def test_save_yaml_groups_tier2_under_advanced(self, tmp_path):
@@ -421,7 +358,7 @@ class TestConfig:
         config_path = tmp_path / "config.yaml"
         config = Config(
             immich=ImmichConfig(url="https://save.com"),
-            analysis=AnalysisConfig(scene_threshold=30.0),
+            analysis=AnalysisConfig(max_album_assets=3000),
         )
         config.save_yaml(config_path)
 
@@ -433,7 +370,7 @@ class TestConfig:
         assert raw["immich"]["url"] == "https://save.com"
         # Tier 2 under advanced:
         assert "analysis" not in raw
-        assert raw["advanced"]["analysis"]["scene_threshold"] == 30.0
+        assert raw["advanced"]["analysis"]["max_album_assets"] == 3000
 
     def test_triage_is_a_tier2_section_off_by_default(self, tmp_path):
         config_path = tmp_path / "config.yaml"
@@ -455,23 +392,23 @@ class TestConfig:
         config_path = tmp_path / "config.yaml"
         original = Config(
             immich=ImmichConfig(url="https://rt.com", api_key="key"),
-            analysis=AnalysisConfig(scene_threshold=22.0),
+            analysis=AnalysisConfig(max_album_assets=2200),
             server=ServerConfig(port=7070),
         )
         original.save_yaml(config_path)
         loaded = Config.from_yaml(config_path)
         assert loaded.immich.url == "https://rt.com"
-        assert loaded.analysis.scene_threshold == 22.0
+        assert loaded.analysis.max_album_assets == 2200
         assert loaded.server.port == 7070
 
     def test_top_level_overrides_advanced(self, tmp_path):
         """If a section appears both at top level and under advanced:, top level wins."""
         config_path = tmp_path / "config.yaml"
         config_path.write_text(
-            "analysis:\n  scene_threshold: 99.0\nadvanced:\n  analysis:\n    scene_threshold: 1.0\n"
+            "analysis:\n  max_album_assets: 9900\nadvanced:\n  analysis:\n    max_album_assets: 100\n"
         )
         loaded = Config.from_yaml(config_path)
-        assert loaded.analysis.scene_threshold == 99.0
+        assert loaded.analysis.max_album_assets == 9900
 
 
 class TestRemovedSections:
@@ -488,17 +425,3 @@ class TestRemovedSections:
         assert loaded.immich.url == "http://x"
         assert loaded.defaults.transition == "cut"
         assert "scoring_priority" in caplog.text
-
-
-class TestDescriptionLLM:
-    def test_description_llm_loads_from_yaml_and_defaults_to_none(self, tmp_path):
-        """The description pass can point at its own model; absent means "use llm"."""
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(
-            "description_llm:\n  model: 'student-q3vl'\n  base_url: 'http://localhost:8090/v1'\n"
-        )
-        loaded = Config.from_yaml(config_path)
-        assert loaded.description_llm is not None
-        assert loaded.description_llm.model == "student-q3vl"
-        assert loaded.description_llm.base_url == "http://localhost:8090/v1"
-        assert Config().description_llm is None

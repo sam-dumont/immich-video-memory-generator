@@ -23,7 +23,6 @@ from immich_memories.analysis.editorial_structure_contract import StructurePlann
 from immich_memories.analysis.selection_trace import Trace
 from tests.editorial_story_fixtures import ControlledStoryJudge
 from tests.test_editorial_duration_planner_integration import run, source
-from tests.test_smart_pipeline_editorial_planner import _ForbiddenLegacyStage, _pipeline
 
 
 def test_available_story_material_and_shorter_selection_are_not_discarded(tmp_path):
@@ -126,13 +125,12 @@ def test_default_admission_refusal_still_persists_an_empty_cut(tmp_path):
     assert json.loads((captured.artifact_dir / "plan.private.json").read_text()) == result.plan
 
 
-def test_actual_source_pipeline_rethrows_incomplete_failure_without_legacy_or_projection(
+def test_actual_source_pipeline_rethrows_incomplete_failure_without_projection(
     tmp_path,
     monkeypatch,
-    mock_immich_client,
-    mock_analysis_cache,
-    mock_thumbnail_cache,
 ):
+    from immich_memories.analysis.smart_pipeline import SmartPipeline
+
     captured = source(tmp_path, seconds=60, pictures=3)
     result = partial_result(captured)
     backend = backend_for(captured, result)
@@ -141,11 +139,7 @@ def test_actual_source_pipeline_rethrows_incomplete_failure_without_legacy_or_pr
         def plan_source(self, _sources, *, trace, **_kwargs):
             return backend.edit(captured, trace=trace)
 
-    pipeline = _pipeline(
-        mock_immich_client, mock_analysis_cache, mock_thumbnail_cache, planner=Planner()
-    )
-    pipeline.refiner = _ForbiddenLegacyStage()
-    pipeline.quality.refiner = _ForbiddenLegacyStage()
+    pipeline = SmartPipeline(planner=Planner())
     monkeypatch.setattr(
         pipeline, "_project_editorial_plan", lambda *_a, **_k: pytest.fail("no projection")
     )

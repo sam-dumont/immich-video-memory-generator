@@ -13,15 +13,12 @@ from immich_memories.config_loader import Config
 from immich_memories.preflight import (
     CheckResult,
     CheckStatus,
-    check_audio_content,
     check_caption_endpoint,
     check_encoder,
     check_immich,
     check_llm,
     check_notifications,
-    check_speech_boundaries,
     check_title_rendering,
-    check_transcription,
     run_preflight_checks,
 )
 
@@ -78,7 +75,6 @@ def test_llm_preflight_reports_missing_configured_model() -> None:
             "base_url": "http://localhost:9999/v1",
             "model": "removed-vlm",
         },
-        content_analysis={"enabled": True},
     )
     response = MagicMock()
     response.status_code = 404
@@ -105,7 +101,6 @@ def test_llm_preflight_reports_missing_chat_route() -> None:
             "base_url": "http://localhost:9999/v1",
             "model": "vlm",
         },
-        content_analysis={"enabled": True},
     )
     response = MagicMock()
     response.status_code = 404
@@ -121,36 +116,6 @@ def test_llm_preflight_reports_missing_chat_route() -> None:
     assert result.status is CheckStatus.WARNING
     assert result.message == "Chat-completions route unavailable"
     assert "localhost:9999" not in (result.details or "")
-
-
-def test_audio_preflight_warns_when_panns_requested_but_extra_absent() -> None:
-    config = Config(audio_content={"enabled": True, "use_panns": True})
-
-    with patch("importlib.util.find_spec", return_value=None):
-        result = check_audio_content(config)
-
-    assert result.status is CheckStatus.WARNING
-    assert "energy-only fallback" in result.message
-    assert "audio-ml" in (result.details or "")
-
-
-def test_audio_preflight_reports_semantic_panns_ready() -> None:
-    config = Config(audio_content={"enabled": True, "use_panns": True})
-
-    with patch("importlib.util.find_spec", return_value=MagicMock()):
-        result = check_audio_content(config)
-
-    assert result.status is CheckStatus.OK
-    assert result.message == "Semantic PANNs audio classification ready"
-
-
-def test_audio_preflight_skips_when_disabled() -> None:
-    config = Config(audio_content={"enabled": False})
-
-    result = check_audio_content(config)
-
-    assert result.status is CheckStatus.SKIPPED
-    assert result.message == "Audio-content analysis disabled"
 
 
 def test_notification_preflight_warns_on_sanitized_failure_cooldown(tmp_path) -> None:
@@ -183,32 +148,6 @@ def test_notification_preflight_is_optional_when_disabled() -> None:
     assert result.message == "Notifications disabled"
 
 
-def test_speech_boundaries_preflight_names_the_feature_lost_without_the_extra() -> None:
-    """A bare install must see the cost, not just a missing package name."""
-    # WHY: replaces the installed-package probe with what a bare pip install sees.
-    with patch("immich_memories.preflight.importlib.util.find_spec", return_value=None):
-        result = check_speech_boundaries(Config())
-
-    assert result.status is CheckStatus.WARNING
-    assert result.message == "Speech boundaries unavailable; cuts may land mid-sentence"
-    assert "onnxruntime" in (result.details or "")
-    assert "immich-memories[speech]" in (result.details or "")
-
-
-def test_transcription_preflight_names_the_feature_lost_without_the_extra() -> None:
-    config = Config(transcription={"enabled": True, "languages": ["en"]})
-
-    # WHY: replaces the installed-package probe with what a no-transcribe install sees.
-    with patch("immich_memories.preflight.importlib.util.find_spec", return_value=None):
-        result = check_transcription(config)
-
-    assert result.status is CheckStatus.WARNING
-    assert result.message == (
-        "Speech transcription unavailable; clips are chosen without what was said"
-    )
-    assert "immich-memories[transcribe]" in (result.details or "")
-
-
 def test_title_rendering_preflight_reports_the_pil_fallback_without_taichi() -> None:
     # WHY: replaces the installed-package probe with what a no-gpu install sees.
     with patch("immich_memories.preflight.importlib.util.find_spec", return_value=None):
@@ -221,17 +160,12 @@ def test_title_rendering_preflight_reports_the_pil_fallback_without_taichi() -> 
 
 def test_preflight_run_lists_every_absent_optional_feature() -> None:
     """The degraded-install summary is the whole point: one line per lost feature."""
-    config = Config(
-        audio_content={"enabled": True},
-        transcription={"enabled": True, "languages": ["en"]},
-    )
-
     # WHY: replaces the installed-package probe with what a bare pip install sees.
     with patch("immich_memories.preflight.importlib.util.find_spec", return_value=None):
-        checks = run_preflight_checks(config)
+        checks = run_preflight_checks(Config())
 
     degraded = {c.name for c in checks if c.status is CheckStatus.WARNING}
-    assert {"Audio content", "Speech boundaries", "Transcription", "Title rendering"} <= degraded
+    assert {"Title rendering"} <= degraded
 
 
 class _CaptionEndpoint:

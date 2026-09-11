@@ -11,13 +11,10 @@ from pathlib import Path
 import httpx
 import pytest
 
-from immich_memories.analysis.density_budget import AssetEntry
 from immich_memories.analysis.duplicate_hashing import compute_thumbnail_hash, hamming_distance
-from immich_memories.analysis.smart_pipeline import PipelineConfig, SmartPipeline
 from immich_memories.api.compatibility import ResolvedApiVersion
 from immich_memories.api.immich import ImmichAuthError, SyncImmichClient
-from immich_memories.api.models import AssetType, VideoClipInfo
-from immich_memories.config_models_analysis import AnalysisConfig
+from immich_memories.api.models import AssetType
 from immich_memories.generate_clips import MIN_CLIP_DURATION
 from immich_memories.timeperiod import calendar_year
 from immich_memories.ui.pages.step2_loading import _build_clips
@@ -229,43 +226,6 @@ def test_real_step2_duration_filter_keeps_selectable_fake_clips(fake_immich_serv
     assert all(clip.duration_seconds >= MIN_CLIP_DURATION for clip in clips)
 
 
-def test_default_2160p_budget_gate_keeps_every_fake_video(fake_immich_server) -> None:
-    """No fake video may depend on a star to reach analysis (#525).
-
-    The gate reads camera EXIF and resolution off the asset, so the fixture
-    only survives it by carrying both — which is exactly what it stopped doing.
-    """
-    with SyncImmichClient(
-        fake_immich_server.base_url,
-        fake_immich_server.api_key,
-        api_version="v3",
-    ) as client:
-        assets = client.search_metadata(asset_type=AssetType.VIDEO).all_assets
-
-    entries = [
-        AssetEntry(
-            asset_id=asset.id,
-            asset_type="video",
-            date=asset.file_created_at,
-            duration=asset.duration_seconds or 0,
-            is_favorite=asset.is_favorite,
-            score=0.0,
-            width=asset.width,
-            height=asset.height,
-            is_camera_original=VideoClipInfo(asset=asset).is_camera_original,
-        )
-        for asset in assets
-    ]
-    pipeline = SmartPipeline.__new__(SmartPipeline)
-    pipeline.config = PipelineConfig()
-
-    survivors = pipeline._apply_budget_quality_gate(entries)
-
-    assert pipeline.config.output_resolution == 2160
-    assert [entry.asset_id for entry in survivors] == _VIDEO_IDS
-    assert [entry.asset_id for entry in survivors if entry.is_favorite] == ["video-1"]
-
-
 def test_original_and_playback_downloads_are_valid_h264_sdr_media(
     fake_immich_server,
     tmp_path: Path,
@@ -333,7 +293,8 @@ def test_every_asset_thumbnail_shows_its_own_scene(fake_immich_server) -> None:
             for asset_id in _VIDEO_IDS + _PHOTO_IDS
         }
 
-    threshold = AnalysisConfig().duplicate_hash_threshold
+    # The editor's duplicate gate: a thumbnail pair within 8 hash bits reads as one scene.
+    threshold = 8
     distances = {
         (left, right): hamming_distance(hashes[left], hashes[right])
         for left, right in combinations(sorted(hashes), 2)

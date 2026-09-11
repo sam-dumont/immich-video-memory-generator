@@ -54,11 +54,8 @@ rather than services: `EditorialRuntimePorts` (editorial_runtime_ports.py: provi
 loader), `ProductionPostCardBackend` (editorial_runtime_backend.py), `StructurePlannerPorts`
 (editorial_structure_contract.py: judges, banks, audience gate).
 
-The legacy services (`ClipAnalyzer`, `PreviewBuilder`, `ClipRefiner`, `ClipScaler`,
-`SelectionQuality`) stay composed for `run()`/`run_selection()`, which nothing reaches; they and
-`compute_density_budget()` go in the removal phase. `SmartPipeline` also owns a
-`ProviderCircuit` (provider_health.py, LLM provider circuit breaker) and an optional
-`VideoDownloadCache`.
+`SmartPipeline` composes nothing else: the only seams it reads are `PipelineConfig.hdr_only`
+and the planner, and `ProgressTracker` (progress.py) is the run clock the stage reporter reads.
 
 **ImmichClient** (api/immich.py) composes 5 services:
 - `SearchService` (search_service.py): video search and time bucket queries
@@ -114,21 +111,18 @@ src/immich_memories/
 │   ├── __init__.py             # Public API re-exports
 │   ├── renderer.py             # Frame-by-frame renderer: Ken Burns, face_aware_pan, render_split (parked)
 │   ├── animator.py             # Photo source prep: HEIC decode, downscale cap, HDR detection
-│   ├── photo_pipeline.py       # PhotoPipeline: end-to-end photo processing orchestrator
+│   ├── photo_pipeline.py       # Render one photograph as a Ken Burns clip, streamed to FFmpeg
 │   ├── ultrahdr.py             # Ultra HDR JPEG (Android/Pixel): MPF parser, gain map, ISO 21496-1
-│   ├── scoring.py              # Photo scoring: favorites, faces, camera, penalty
-│   ├── frame_quality.py        # Sharpness / brightness from the thumbnail, to break metadata-score ties
-│   ├── burst_dedup.py          # One photo per burst: near-duplicates shot within minutes of each other
-│   └── moment_suppression.py   # Drop stills a video from the same moment already shows
+│   └── burst_dedup.py          # One photo per burst: near-duplicates shot within minutes of each other
 │
 ├── memory_types/               # Memory type presets & factory
 │   ├── __init__.py             # Public API re-exports
 │   ├── registry.py             # MemoryType enum
 │   ├── presets.py              # ScoringProfile, PersonFilter, MemoryPreset
 │   ├── date_builders.py        # build_season(), build_month(), build_on_this_day()
-│   └── factory.py              # Registry + 9 preset factories; Album is handled by cli/_album_generation.py
+│   └── factory.py              # Registry + preset factories; Album is handled by cli/_album_generation.py
 │
-├── analysis/                   # Selection: the story-first editorial route (and the legacy scorer until removal)
+├── analysis/                   # Selection: the story-first editorial route
 │   ├── smart_pipeline.py       # SmartPipeline: run_editorial_source() is the production entry
 │   ├── editorial_runtime.py    # RuntimeEditorialPlanner + build_smart_pipeline(); _ports.py, _backend.py beside it
 │   ├── editorial_orchestration.py  # TextEditorialPlanner: episodes -> period account -> cards -> edit
@@ -138,49 +132,20 @@ src/immich_memories/
 │   ├── editorial_story_*.py    # Story reading, weighing, slots, shortlist, carriers: the story planner
 │   ├── editorial_structure_*.py    # The structure planner: wall, memory-worthy + standing gates, audience, record
 │   ├── editorial_projection.py # Plan -> PipelineResult, and the stage reporter
-│   ├── provider_health.py      # ProviderCircuit: bounded, credential-safe LLM provider health
-│   ├── cache_projection.py     # Project compatible cached analysis back onto in-memory clips
-│   ├── clip_analyzer.py        # ClipAnalyzer: download + analyze + score
-│   ├── clip_refiner.py         # ClipRefiner: final selection + distribution
-│   ├── clip_scaler.py          # ClipScaler: duration scaling + dedup
-│   ├── selection_quality.py    # SelectionQuality: verify + judge + cut
-│   ├── selection_review.py     # LLM holistic pass that MAKES the cut: which clips belong, which do not
+│   ├── provider_health.py      # ProviderHealth: what a provider's answer says about its availability (preflight)
 │   ├── selection_trace.py      # Per-stage funnel record: what each filter received and let through
-│   ├── clip_selection.py       # Standalone clip selection functions
-│   ├── clip_distribution.py    # Which periods make the cut (per-period caps, applied after ranking)
-│   ├── clip_backfill.py        # Fill a short cut to its runtime, cheapest concession first
-│   ├── density_budget.py       # compute_density_budget(): density-proportional asset budget
-│   ├── preview_builder.py      # PreviewBuilder: preview segment extraction
-│   ├── progress.py             # Progress tracking helpers
+│   ├── progress.py             # ProgressTracker: the run clock the stage reporter reads
 │   ├── trip_detection.py       # GPS-based trip detection (clustering, geocoding)
 │   ├── special_day.py          # Which days had something happen: active hours, not photo volume
 │   ├── special_day_title.py    # What a day may be called: the grounding guard, the re-ask, the fallback
 │   ├── album_source.py         # Album mode: the album is the candidate pool, nothing is searched for
 │   ├── source_filter.py        # Drop doorbell / dashcam / screen-recorder uploads by filename
 │   ├── source_quality.py       # Drop messaging re-encodes: sub-1080p with no camera EXIF
-│   ├── subject_policy.py       # What a clip is of (people / scenery / animal / object) and how much fits
-│   ├── unified_analyzer.py     # UnifiedSegmentAnalyzer (composes SpeechAnalysisService)
-│   ├── speech_analysis.py      # SpeechAnalysisService: PANNs audio-content + VAD speech boundaries
-│   ├── segment_transcription.py # Transcribe the top candidate segments (whisper via speech/transcription.py)
-│   ├── photo_look.py           # VLM pass over the stills that shipped but were never shortlisted
-│   ├── segment_generation.py   # Boundary detection, candidate segment generation
-│   ├── segment_extents.py      # How long a clip may run and where it may be cut (duration caps, step 3b, best-segment repair)
-│   ├── boundary_placement.py   # Where a cut may land: protected-range gaps, edge selection
-│   ├── content_analyzer.py     # LLM-based content analysis
-│   ├── llm_response_parser.py  # Content analysis response parsing
-│   ├── _content_providers.py   # Ollama / OpenAI-compatible ContentAnalyzer implementations
 │   ├── llm_failures.py         # Separate "the model could not answer" from a bug in the calling code
 │   ├── request_heartbeat.py    # RequestHeartbeat: periodic log line for long-outstanding HTTP calls
-│   ├── analyzer_factory.py     # Analyzer factory
-│   ├── analyzer_models.py      # Analyzer data models
 │   ├── duplicate_hashing.py    # Perceptual hashing for duplicates
-│   ├── thumbnail_clustering.py # Thumbnail-based clustering
-│   ├── thumbnail_prefetch.py   # ThumbnailPrefetcher: fills the thumbnail cache before phase 1 (CLI/auto path)
-│   ├── scoring.py              # Quality scoring (motion, duration, segments) + SceneScorer
-│   ├── face_scoring.py         # Face detection scoring: Apple Vision / OpenCV backends
-│   ├── scenes.py               # Scene detection
-│   ├── silence_detection.py    # Audio silence detection
-│   ├── apple_vision.py         # macOS Vision framework integration
+│   ├── thumbnail_prefetch.py   # cached_preview_bytes(): the one preview reader the editorial modules share
+│   ├── apple_vision.py         # macOS Vision framework face detection (smart crops)
 │   ├── apple_vision_image.py   # Vision image conversion helpers
 │   ├── llm_query.py            # LLM query helpers
 │   ├── live_photo_pipeline.py  # Keep a Live Photo's video half out of the video pool
@@ -228,8 +193,6 @@ src/immich_memories/
 │   └── live_photo_merger.py    # Live Photo merging
 │
 ├── audio/                      # Audio processing
-│   ├── content_analyzer.py     # PANNs audio classification
-│   ├── audio_models.py         # Audio data models
 │   ├── mixer.py                # Audio mixing & ducking
 │   ├── mixer_class.py          # AudioMixer class
 │   ├── mixer_helpers.py        # Mixing helper functions
@@ -253,15 +216,6 @@ src/immich_memories/
 │       ├── ace_step_runtime.py # ACE-Step in-process handlers: device, MLX/torch memory, one render
 │       ├── ace_step_captions.py # Dense caption templates
 │       └── demucs_local.py     # Local Demucs stem separation (in-process)
-│
-├── speech/                     # Voice activity for clip boundaries (optional `speech` extra)
-│   ├── vad.py                  # extract_audio_16k, silence_gaps, select_detector
-│   ├── fireredvad.py           # FireRedSpeechDetector: vendored AED ONNX + Kaldi fbank/CMVN
-│   ├── boundary_scoring.py     # BoundaryWeights, candidates_from_gaps, best_boundary
-│   ├── turn_detection.py       # SmartTurnDetector (weighted 0.0; deps in no extra)
-│   ├── transcription.py        # whisper.cpp transcription of one segment's audio slice (`transcribe` extra)
-│   ├── models.py               # SpeechRegion, BoundaryCandidate
-│   └── bundled_models/         # fireredvad_aed.onnx (2.4 MB, Apache-2.0) — no runtime download
 │
 ├── titles/                     # Title screen generation
 │   ├── generator.py            # TitleScreenGenerator (composes 3 services)
@@ -321,7 +275,6 @@ src/immich_memories/
 │   ├── _editorial_context.py   # CLI flags + presets -> one EditorialRunContext
 │   ├── _run_timeline.py        # The run's timeline: selection budget, then the settled plan
 │   ├── _asset_fetch.py         # What a memory asks Immich for: videos, Live Photos, stills
-│   ├── _candidate_pool.py      # One pool: videos + photographs, each carrying its rendering
 │   ├── _album_generation.py    # Album mode: an Immich album is the candidate pool
 │   ├── _llm_title.py           # Opt-in LLM title on the CLI path (the wizard's default differs)
 │   ├── _trip_generation.py     # Trip detection, selection, per-trip generation
@@ -383,14 +336,14 @@ src/immich_memories/
 │
 ├── cache/                      # Analysis caching system
 │   ├── __init__.py             # Re-exports public API
-│   ├── database.py             # VideoAnalysisCache class (SQLite reads/writes)
+│   ├── database.py             # VideoAnalysisCache: owns cache.db's schema; the legacy segment tables it still reads
 │   ├── schema_migrator.py      # SchemaMigrator: schema ladder v1..vN, DDL
 │   ├── database_models.py      # CachedSegment, CachedVideoAnalysis, SimilarVideo
 │   ├── database_rows.py        # SQLite row <-> model conversion
 │   ├── versions.py             # SCHEMA_VERSION / ANALYSIS_VERSION (independent)
 │   ├── migration_sql.py        # Transactional migration helpers
 │   ├── migration_v11.py … v19.py # One module per schema migration (no v18)
-│   ├── asset_score_cache.py    # Asset score persistence (photo/video scores)
+│   ├── asset_score_cache.py    # The legacy photo scorer's table, still read by `cache stats/export/import`
 │   ├── judgment_cache.py       # Reasoning-mode LLM verdicts, keyed by the exact prompt asked
 │   ├── thumbnail_cache.py      # File-based thumbnail storage
 │   ├── disk_budget.py          # LRU-by-mtime eviction that holds a cache directory to a size cap
@@ -442,7 +395,7 @@ src/immich_memories/
 ├── config_loader.py            # Config loading logic
 ├── config_presets.py           # Named presets (`preset: fast`) that fill several knobs at once
 ├── config_models.py            # Resources a run uses: Immich server, cache, hardware (+ expand_env_vars)
-├── config_models_analysis.py   # What the pipeline learns: analysis, content, audio events, speech, transcription
+├── config_models_analysis.py   # Source admission and the expected seconds per clip
 ├── config_models_auth.py       # Authentication config model (basic, OIDC, header)
 ├── config_models_automation.py # Running unattended: trips, automation, notifications, upload
 ├── config_models_llm.py        # LLM provider settings (shared by analysis and titles)
@@ -492,40 +445,6 @@ generate / Memory page Cut
               └── PipelineResult with editorial_selections  (editorial_projection.py)
 ```
 
-### Legacy flow (unreached, removal phase)
-
-```
-SmartPipeline.run_analysis()           (Phases 1-3: videos only)
-  ├── _phase_cluster()            → thumbnail dedup → Immich API
-  ├── _hard_eligible_clips()      → hard eligibility filter
-  ├── _analysis_candidates()      → analysis depth (fast/auto/thorough) → shortlist
-  │     └── _phase_filter()       → compute_density_budget(), _adapt_target_for_content()
-  └── _analyze_with_cache_batch() → ClipAnalyzer.analyze() (one cache batch)
-        │  (leftovers: ClipAnalyzer.plan_cached_or_metadata() fallback)
-        └── via UnifiedSegmentAnalyzer:
-              ├── boundary detection
-              ├── candidate generation
-              ├── protected-range adjustment
-              │     speech/ VAD regions ∪ non-speech PANNs events
-              ├── visual + LLM scoring
-              ├── transcription of top segments (segment_transcription.py, optional)
-              └── best segment selection
-
-score_photos()                         (Photos: metadata + LLM thumbnails)
-  ├── metadata scoring (favorites, faces, camera)
-  └── LLM enhancement on shortlist
-
-MERGE → all candidates as ClipWithSegment
-
-SmartPipeline.run_selection()          (Phase 4: unified pool)
-  └── ClipRefiner.phase_refine()
-       ├── favorites-first selection
-       ├── temporal coverage (1 clip per month/week guaranteed)
-       ├── ClipScaler: duration scaling (sole reps protected)
-       ├── temporal dedup (photos + videos together)
-       └── type interleaving (max 2 consecutive same type)
-```
-
 ### Assembly Flow
 
 ```
@@ -546,7 +465,7 @@ VideoAssembler.assemble_with_titles()
 
 - `Config` (config_loader.py): loaded from `~/.immich-memories/config.yaml`, tiered YAML (see above)
 - `AssemblySettings` (assembly_config.py): video assembly parameters
-- `PipelineConfig` (smart_pipeline.py): analysis pipeline parameters
+- `PipelineConfig` (smart_pipeline.py): the per-run switches the editorial route reads
 
 ## Data Flow
 
@@ -561,7 +480,7 @@ Immich API → Asset models → ClipExtractor → VideoClipInfo
 Config is organized in 3 tiers (see `config_loader.py`):
 
 - **Tier 1** (top-level YAML): `immich`, `defaults`, `output`, `audio`, `title_screens`, `cache`, `upload`, `trips`, `photos`
-- **Tier 2** (under `advanced:` in YAML, `_TIER2_SECTIONS`): `analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `content_analysis`, `audio_content`, `speech`, `transcription`, `server`, `auth`, `automation`, `notifications`, `triage`, `editorial`
+- **Tier 2** (under `advanced:` in YAML, `_TIER2_SECTIONS`): `analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `server`, `auth`, `automation`, `notifications`, `triage`, `editorial`
 - **Tier 3** (internal): `scheduler`, `title_llm`
 - Not in any tier list (top-level field on `Config`): `scoring_priority`
 
@@ -571,7 +490,8 @@ Both flat and nested YAML formats are accepted.
 The tiers are a YAML layout, not a code layout. The section models are grouped by
 domain across the `config_models*.py` modules (resources, analysis, render,
 soundtrack, automation, llm, auth, server), and `Config` in `config_loader.py`
-assembles them into one flat settings object.
+assembles them into one flat settings object. A file naming a key of the removed
+clip scorer (`_REMOVED_CONFIG_KEYS`) is refused at load with a message naming it.
 
 ## Conventions
 

@@ -1,7 +1,7 @@
 """The wizard has to hold every window a memory spans, not just the first.
 
-Three memory types build more than one date range — On This Day and Holiday
-build one window per year, Then and Now builds two years far apart. The wizard
+Two memory types build more than one date range — On This Day and Holiday
+build one window per year. The wizard
 stored a single `date_range`, so it kept `date_ranges[0]` and silently dropped
 the rest. Since the builders order their windows most-recent-first, that made
 "This day through the years" a memory about this year.
@@ -49,8 +49,8 @@ def test_the_wizard_fetches_each_window_not_the_span_between_them() -> None:
     """Three windows means three queries.
 
     Querying the span instead would pull every asset between the oldest and
-    newest window — for a Then and Now, a decade of library it has no interest
-    in, at Immich's expense and then the analyzer's.
+    newest window — years of library it has no interest in, at Immich's expense
+    and then the editor's.
     """
     from immich_memories.ui.pages.step2_loading import _fetch_assets
 

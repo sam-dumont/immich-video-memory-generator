@@ -111,7 +111,6 @@ IMMICH_API_KEY=your-api-key-here
 ## What works
 
 - **NVENC encoding**: hardware-accelerated H.264/H.265 encoding. NVIDIA is probed first, so NVENC is used automatically — nothing to configure.
-- **CUDA scene analysis**: frame differencing for scene detection runs on the GPU when OpenCV has CUDA support. Face detection is CPU (OpenCV Haar cascades) on Linux — there is no CUDA face path.
 - **Taichi GPU title renderer**: full particle effects and gradient backgrounds using the NVIDIA GPU.
 - **AI music generation**: if you run a MusicGen or ACE-Step server alongside, configure it in the `musicgen` or `ace_step` config sections.
 - **All memory types and features**: everything works with GPU acceleration.
@@ -155,8 +154,6 @@ advanced:
     provider: openai-compatible
     base_url: http://your-model-host:8000/v1
     model: the-tag-your-server-reports
-  content_analysis:
-    enabled: true
 ```
 
 `model` has to be what the server reports at `/v1/models`, exactly. Smaller vision models will

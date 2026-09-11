@@ -33,8 +33,7 @@ dependencies = [
     "pydantic>=2.0",
     "pydantic-settings>=2.14.2",
     "nicegui>=3.16.0",  # 3.16 fixes GHSA-46f2 (unauth memory exhaustion) + GHSA-955g (XSS)
-    "scenedetect>=0.7,<0.8",  # OpenCV is already a direct dependency below; 0.7 = VFR-correct (iPhone)
-    "opencv-python>=4.9,<5",  # OpenCV 5 dropped cv2.CascadeClassifier (face scoring, #339)
+    "opencv-python>=4.9,<5",  # photo rendering, thumbnail hashing, motion facts; <5 pins the API used
     "pyyaml>=6.0",
     "click>=8.3.3",
     "rich>=13.0",
@@ -65,33 +64,6 @@ mac = [
 # Audio metadata for local music library
 audio = [
     "mutagen>=1.47",
-]
-# ML-based audio content analysis (laughter/speech detection)
-# PANNs replaces TensorFlow/YAMNet — same AudioSet classes, pure PyTorch
-audio-ml = [
-    "torch>=2.0",
-    "panns-inference>=0.1",
-]
-# Speech boundary detection (VAD)
-# FireRedVAD's ONNX weights are vendored in speech/bundled_models/ -- no
-# runtime download, no torch.
-# smart-turn-v3 (speech/turn_detection.py) additionally needs huggingface-hub
-# and transformers, which are deliberately NOT listed: its contribution is
-# weighted zero (see speech/boundary_scoring.py) and nothing in src/ imports
-# it, so shipping ~500 MB of transformers in the Docker image would buy
-# nothing. `pip install transformers huggingface-hub` re-enables it; without
-# them SmartTurnDetector returns a neutral 0.5.
-speech = [
-    "onnxruntime>=1.28",
-    "kaldi-native-fbank>=1.20",
-]
-# Speech transcription (whisper.cpp via pywhispercpp)
-# Prebuilt wheels exist for macOS arm64 (with Metal), manylinux x86_64/aarch64,
-# musllinux and Windows -- nothing compiles at install time. Linux wheels are
-# CPU-only. ggml model weights are NOT vendored (a base model is ~148 MB) and are
-# downloaded from HuggingFace on first use.
-transcribe = [
-    "pywhispercpp>=1.5",
 ]
 # OIDC authentication (only needed for SSO login)
 auth = [
@@ -126,24 +98,18 @@ editorial = [
 all = [
     "immich-memories[music]",
     "immich-memories[audio]",
-    "immich-memories[audio-ml]",
     "immich-memories[auth]",
     "immich-memories[demucs]",
     "immich-memories[gpu]",
-    "immich-memories[speech]",
-    "immich-memories[transcribe]",
     "immich-memories[editorial]",
 ]
 # All features for macOS (includes Apple Vision framework)
 all-mac = [
     "immich-memories[music]",
     "immich-memories[audio]",
-    "immich-memories[audio-ml]",
     "immich-memories[demucs]",
     "immich-memories[mac]",
     "immich-memories[gpu]",
-    "immich-memories[speech]",
-    "immich-memories[transcribe]",
     "immich-memories[editorial]",
 ]
 dev = [
@@ -363,22 +329,12 @@ module = [
     "CoreImage.*",
     "Metal.*",
     "objc.*",
-    # PANNs / PyTorch (optional for audio content analysis)
+    # Editorial preparation's encoder and detectors (optional, editorial extra).
+    # CI installs only dev + gpu, so these imports must stay ignorable there
+    # while still type-checking on a machine that has the extra.
     "torch.*",
-    "panns_inference.*",
-    # FireRedVAD's ONNX runtime + feature extractor (optional, speech extra)
     "onnxruntime",
     "onnxruntime.*",
-    "kaldi_native_fbank",
-    "kaldi_native_fbank.*",
-    # whisper.cpp bindings (optional, transcribe extra). CI installs only the dev
-    # extra, so the import must be ignorable or the type check fails there while
-    # passing on any machine that has the extra.
-    "pywhispercpp",
-    "pywhispercpp.*",
-    # smart-turn's Hub download + log-mel extractor (not in any extra)
-    "transformers",
-    "transformers.*",
     "huggingface_hub",
     "huggingface_hub.*",
     # Taichi (GPU rendering)
@@ -490,7 +446,7 @@ disable_error_code = ["union-attr", "arg-type"]
 module = ["immich_memories.titles.rendering_service"]
 disable_error_code = ["assignment", "misc", "attr-defined", "arg-type"]
 
-# Speech/audio-content analysis service (dynamic AudioContentAnalyzer typing)
+# Title generator (dynamic backend typing)
 [[tool.mypy.overrides]]
 module = ["immich_memories.titles.generator"]
 disable_error_code = ["assignment", "misc"]
@@ -543,7 +499,7 @@ DEP002 = [
     "timm",                                             # editorial extra: imported by the detector subprocess interpreter, not by the package
     "pyobjc-core", "pyobjc-framework-Vision",           # macOS-only, runtime
     "pyobjc-framework-Quartz", "pyobjc-framework-Metal", # macOS GPU
-    "torch",                                            # PANNs inference backend
+    "torch",                                            # editorial extra: the detector subprocess interpreter
     "freetype-py",                                      # imported as freetype
     "pytest", "pytest-cov", "pytest-asyncio",           # dev tools (CLI usage)
     "pytest-benchmark", "pytest-xdist", "pytest-playwright", # dev tools
@@ -621,7 +577,7 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
     "integration: requires FFmpeg (deselect with '-m not integration')",
-    "extras: needs the torch-family optional dependencies (audio-ml/demucs)",
+    "extras: needs the torch-family optional dependencies (demucs/editorial)",
     "e2e: Playwright E2E browser tests (deselect with '-m not e2e')",
     "slow: long-running tests (full generation pipeline, ~10min)",
     "perf: performance benchmarks (run with: make benchmark-perf)",

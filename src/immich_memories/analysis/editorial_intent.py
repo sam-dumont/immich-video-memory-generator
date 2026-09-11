@@ -185,25 +185,6 @@ def _per_month(whole) -> tuple[IntentPartition, ...]:
     return tuple(parts)
 
 
-def _then_and_now(product, spans, whole, *, brief, who):
-    return EditorialIntent(
-        product=product,
-        scope=f"{spans[0][0].isoformat()}..{spans[0][1].isoformat()} against {spans[-1][0].isoformat()}..{spans[-1][1].isoformat()}",
-        narrative_objective="what changed and what stayed across the gap: counterparts that show the same people, places, rituals or activities then and now",
-        partitions=_per_range(spans, "range", required=True),
-        coverage_requirements=(
-            "both sides of the gap carry material",
-            "every funded comparison has a counterpart on each side",
-        ),
-        selection_priorities=(
-            "grounded counterparts first",
-            "the same subject at both ends beats a striking one-sided frame",
-        ),
-        allowed_texture="only frames that belong to a comparison",
-        abstention_policy="a side has no counterpart for a comparison: drop that comparison; a side has no material at all: insufficient_material, never a one-sided film",
-    )
-
-
 def _recurring(product, spans, whole, *, brief, who):
     day = "this holiday" if product == "holiday" else "this day of the year"
     partitions = _per_range(spans, "occurrence", required=True)
@@ -427,10 +408,6 @@ _STORY_PARTS = {
         "An episode is one stage of the day's occasion. Central: the occasion itself; if the day holds one "
         "occasion, its distinct moments are the depth. More time adds the next stage of the same occasion."
     ),
-    "then_and_now": (
-        "An episode is one occasion within one of the two eras. Central: occasions that have a counterpart in "
-        "the other era; an occasion without a counterpart is texture. More time adds matched pairs."
-    ),
     "custom": (
         "An episode is one occasion that concerns the requested subject. The subject's stages across the whole span are one story even with weeks between them. Central: the subject's visible stages and changes; anything not about the subject is texture even when attractive. More time adds the next stage of the subject."
     ),
@@ -443,7 +420,6 @@ _STORY_PART_DEFAULT = (
 
 
 _BUILDERS = {
-    "then_and_now": _then_and_now,
     "on_this_day": _recurring,
     "holiday": _recurring,
     "person_spotlight": _person,

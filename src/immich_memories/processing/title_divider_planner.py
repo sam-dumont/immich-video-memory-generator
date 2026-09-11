@@ -115,19 +115,6 @@ class TitleDividerPlanner:
         self._generator = generator
         self._title_settings = title_settings
 
-    @property
-    def _labels_every_era(self) -> bool:
-        """Whether the opening block needs a card of its own.
-
-        Normally it does not: a memory running continuously through its years
-        opens on a title card that already names the first, so a divider there
-        would say it twice. A then-and-now's title names its two ends as a pair
-        and never says which era the opening block is, so both get labeled.
-        """
-        from immich_memories.processing.timeline_budget import ERA_LABELED_TYPES
-
-        return getattr(self._title_settings, "memory_type", None) in ERA_LABELED_TYPES
-
     def generate_year_dividers(
         self,
         clips: list[AssemblyClip],
@@ -143,12 +130,9 @@ class TitleDividerPlanner:
             progress_callback(0.05, "Generating year dividers...")
 
         limit = _divider_limit(self._title_settings)
-        if limit is None:
-            planned_changes = year_changes
-        elif self._labels_every_era:
-            planned_changes = year_changes[:limit]
-        else:
-            planned_changes = year_changes[1 : limit + 1]
+        # The opening block gets no card: the title card already names the year
+        # a memory opens in, so a divider there would say it twice.
+        planned_changes = year_changes if limit is None else year_changes[1 : limit + 1]
         for _, year in planned_changes:
             if year not in year_divider_paths:
                 divider = self._generator.generate_year_divider(year)
@@ -168,7 +152,7 @@ class TitleDividerPlanner:
             return False
         if current_year is not None:
             return year != current_year
-        return limit is None or self._labels_every_era
+        return limit is None
 
     def _year_card(self, year: int, path: Path) -> AssemblyClip:
         return AssemblyClip(

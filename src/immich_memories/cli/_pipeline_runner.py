@@ -1,8 +1,7 @@
 """Pipeline orchestration for the generate command.
 
-Bridges CLI to SmartPipeline + generate_memory: runs analysis over the assets
-the CLI fetched, selects from the candidate pool, and generates the final
-video.
+Bridges CLI to SmartPipeline + generate_memory: runs the editorial route over
+the assets the CLI fetched, then generates the final video from its cut.
 """
 
 from __future__ import annotations
@@ -21,7 +20,6 @@ from immich_memories.cli._editorial_context import (
     narrow_to_special_event,
 )
 from immich_memories.cli._helpers import console, print_error, print_success, print_warning
-from immich_memories.cli._pool_coverage import report_pool_coverage
 from immich_memories.cli._run_inputs import ResolvedRunInputs
 from immich_memories.cli._run_summary import render_run_summary
 from immich_memories.cli._run_timeline import configure_timeline, final_timeline
@@ -33,7 +31,7 @@ if TYPE_CHECKING:
     from rich.progress import TaskID
 
     from immich_memories.analysis.editorial_planner import EditorialSelection
-    from immich_memories.analysis.smart_pipeline import PipelineConfig, PipelineResult
+    from immich_memories.analysis.smart_pipeline import PipelineResult
     from immich_memories.api.immich import SyncImmichClient
     from immich_memories.cli._live_display import ProgressDisplay
     from immich_memories.config_loader import Config
@@ -82,7 +80,6 @@ def _resolve_requested_duration(
 
 
 def _configure_output_canvas(
-    pipeline_config: PipelineConfig,
     *,
     clips: list,
     photo_assets: list | None,
@@ -90,19 +87,16 @@ def _configure_output_canvas(
     output_resolution: str | None,
     output_orientation: str | None,
 ) -> OutputCanvas:
-    """Resolve one canvas and align selection quality gates with it."""
+    """Resolve the one pixel canvas this run renders to."""
     from immich_memories.processing.output_canvas import resolve_output_canvas
 
     planning_sources = [*clips, *(photo_assets or [])]
-    canvas = resolve_output_canvas(
+    return resolve_output_canvas(
         resolution=output_resolution,
         orientation=output_orientation,
         configured_resolution=config.output.resolution_tuple,
         clips=planning_sources,
     )
-    # PipelineConfig expresses output resolution as the short-edge tier.
-    pipeline_config.output_resolution = min(canvas.width, canvas.height)
-    return canvas
 
 
 def _stops_before_rendering(*, dry_run: bool, no_render: bool) -> bool:
@@ -310,12 +304,10 @@ def run_pipeline_and_generate(
     """
     from immich_memories.analysis.editorial_runtime import build_smart_pipeline
     from immich_memories.analysis.smart_pipeline import PipelineConfig
-    from immich_memories.cache.database import VideoAnalysisCache
     from immich_memories.cache.thumbnail_cache import ThumbnailCache
     from immich_memories.generate import GenerationParams, assets_to_clips, generate_memory
     from immich_memories.operations.phases import OperationalPhase
     from immich_memories.tracking.models import normalize_memory_people
-    from immich_memories.triage.runtime import open_triage
 
     assets, photo_assets = narrow_to_special_event(
         memory_type=memory_type,
@@ -372,14 +364,8 @@ def run_pipeline_and_generate(
     phases.emit(OperationalPhase.DISCOVERY, len(clips), len(clips), "Discovery complete")
     phases.emit(OperationalPhase.DOWNLOAD, 0, len(clips), "Preparing source downloads")
 
-    pipeline_config = PipelineConfig.from_app_config(
-        config,
-        hdr_only=False,
-        prioritize_favorites=True,
-        accept_any_provenance=accept_any_provenance,
-    )
+    pipeline_config = PipelineConfig(hdr_only=False)
     output_canvas = _configure_output_canvas(
-        pipeline_config,
         clips=clips,
         photo_assets=resolved.photo_assets,
         config=config,
@@ -387,7 +373,6 @@ def run_pipeline_and_generate(
         output_orientation=output_orientation,
     )
     timeline_plan, planning_titles = configure_timeline(
-        pipeline_config,
         clips=clips,
         photo_assets=photo_assets,
         output_path=output_path,
@@ -436,19 +421,15 @@ def run_pipeline_and_generate(
             album_name=album or config.upload.album_name,
         )
 
-    analysis_cache = VideoAnalysisCache(db_path=config.cache.database_path)
     thumbnail_cache = ThumbnailCache(
         cache_dir=config.cache.cache_path / "thumbnails",
         max_size_mb=config.cache.thumbnail_cache_max_size_mb,
     )
     pipeline = build_smart_pipeline(
         client=client,
-        analysis_cache=analysis_cache,
         thumbnail_cache=thumbnail_cache,
         config=pipeline_config,
-        analysis_config=config.analysis,
         app_config=config,
-        triage=open_triage(config.triage, store_path=config.cache.cache_path / "triage.db"),
         editorial_context=editorial_context,
         dry_run=False,
     )
@@ -499,8 +480,6 @@ def run_pipeline_and_generate(
     duration_realization = pipeline_result.stats.get("editorial_duration_realization")
     if duration_warning := editorial_duration_warning(duration_realization):
         print_warning(duration_warning)
-    if pipeline_result.stats.get("selection_route") != "editorial-source":
-        report_pool_coverage(pipeline_result.coverage)
 
     should_upload = resolved.should_upload
     album_name = album or config.upload.album_name
@@ -616,7 +595,6 @@ def run_pipeline_and_generate(
             analysis_seconds=_analysis_time,
             generation_seconds=_gen_time,
             eligible=len(all_candidates),
-            deeply_analyzed=pipeline.last_deep_analysis_count,
             planned=len(selected_clips),
             counters=llm_metrics.active(),
         )

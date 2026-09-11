@@ -7,7 +7,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from immich_memories.analysis.editorial_planner import EditorialSelection
-from immich_memories.analysis.selection_coverage import AnalysisCoverage
 from immich_memories.analysis.smart_pipeline import PipelineResult
 from immich_memories.config_loader import Config
 from immich_memories.timeperiod import DateRange
@@ -26,7 +25,6 @@ def test_cli_passes_exact_selected_carriers_and_editorial_decisions_to_generatio
         selected_clips=selected_clips,
         clip_segments={clip.asset.id: (0.0, 4.0)},
         errors=[],
-        coverage=AnalysisCoverage(analyzed=1, total=1),
         editorial_selections=decisions,
     )
     config = Config(

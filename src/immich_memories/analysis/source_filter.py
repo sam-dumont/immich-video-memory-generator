@@ -24,7 +24,6 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from immich_memories.analysis.source_quality import (
-    forwarded_source_refusal,
     predates_modern_mobile_sharing,
 )
 from immich_memories.api.models import Asset, VideoClipInfo
@@ -171,85 +170,3 @@ def not_shot_here(
     if from_an_excluded_source(getattr(asset, "original_file_name", None), patterns):
         return True
     return stills_need_a_camera and _a_still_with_no_camera(asset)
-
-
-def _minimum_source_short_side(analysis: Any) -> int:
-    value = getattr(analysis, "min_source_short_side", 0)
-    return value if isinstance(value, int) and not isinstance(value, bool) else 0
-
-
-def _has_allowed_photo_provenance(
-    asset: Any,
-    *,
-    patterns: Sequence[str],
-    legacy_still_exif_veto: bool,
-    min_short_side: int,
-) -> bool:
-    if not_shot_here(
-        asset,
-        patterns=patterns,
-        stills_need_a_camera=legacy_still_exif_veto,
-    ):
-        return False
-    return forwarded_source_refusal(asset, min_short_side=min_short_side) is None
-
-
-def from_the_camera_roll(
-    photo_assets: list[Any],
-    config: Any,
-    *,
-    accept_any_provenance: bool = False,
-) -> list[Any]:
-    """Drop the photos nothing says the library's own camera made.
-
-    Videos are filtered on the same rule before analysis; photos reached
-    selection without ever being asked, so a collage forwarded through a
-    messaging app walked into a year recap while a doorbell clip beside it was
-    turned away. Dropped here rather than later because there is no sense
-    paying a VLM to score something that cannot ship.
-    """
-    analysis = getattr(config, "analysis", None)
-    patterns = getattr(analysis, "exclude_filename_patterns", ())
-    stills_need_a_camera = getattr(analysis, "exclude_stills_without_camera_exif", False)
-    min_short_side = _minimum_source_short_side(analysis)
-    # Read only to say out loud that it is being ignored. The setting lets
-    # analysis be pointed at the archive on purpose; generation refuses it,
-    # because a gate that depends on remembering a setting is not a gate. A
-    # silent refusal would be worse than no setting at all -- someone would
-    # turn it on and never learn it did nothing here.
-    if getattr(analysis, "include_off_timeline_assets", False):
-        logger.warning(
-            "include_off_timeline_assets is on, and generation ignores it: "
-            "archived, hidden and locked assets stay out of the video."
-        )
-    on_the_timeline = [asset for asset in photo_assets if not not_on_the_timeline(asset)]
-    if len(on_the_timeline) < len(photo_assets):
-        logger.info(
-            "Source filter: %d photo(s) Immich keeps off the timeline",
-            len(photo_assets) - len(on_the_timeline),
-        )
-    photo_assets = on_the_timeline
-    if accept_any_provenance:
-        return photo_assets
-
-    # A resolution-aware provenance read supersedes the blanket still EXIF
-    # veto. Otherwise a 4000x2666 official race photograph with no camera make
-    # dies before its size and named export can vouch for it.
-    legacy_still_exif_veto = stills_need_a_camera and min_short_side <= 0
-    if not patterns and not legacy_still_exif_veto and min_short_side <= 0:
-        return photo_assets
-    kept = [
-        asset
-        for asset in photo_assets
-        if _has_allowed_photo_provenance(
-            asset,
-            patterns=patterns,
-            legacy_still_exif_veto=legacy_still_exif_veto,
-            min_short_side=min_short_side,
-        )
-    ]
-    if len(kept) < len(photo_assets):
-        logger.info(
-            "Source filter: %d photo(s) from excluded sources", len(photo_assets) - len(kept)
-        )
-    return kept

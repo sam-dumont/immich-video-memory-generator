@@ -233,7 +233,6 @@ def restore_cut_from_attempt(state: AppState, attempt_dir: Path, record: Mapping
             "planned_count": len(selected),
             "recovered": True,
         },
-        "coverage": None,
     }
 
 
@@ -287,7 +286,7 @@ def _launch(state: AppState, progress_state: dict[str, Any]) -> None:
     clips, photos = _eligible_pipeline_media(state, state.clips)
     _resolve_auto_duration_for_selection(state, clips, photos)
     _configure_timeline_for_selection(state, clips, photos)
-    config = _build_pipeline_config(state, clips)
+    config = _build_pipeline_config(state)
     state.active_cut_key = ui_cut_key(state)
 
     async def work() -> None:

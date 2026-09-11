@@ -94,13 +94,10 @@ def launch_workspace(
                     "hardware": {
                         "enabled": False,
                         "backend": "none",
-                        "gpu_analysis": False,
                         "gpu_decode": False,
                     },
                     "musicgen": {"enabled": False},
                     "ace_step": {"enabled": False},
-                    "content_analysis": {"enabled": False},
-                    "audio_content": {"enabled": False},
                 },
             },
             sort_keys=False,

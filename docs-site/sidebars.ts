@@ -71,9 +71,7 @@ const sidebars: SidebarsConfig = {
           items: [
             'create/pipeline/pipeline-overview',
             'create/pipeline/the-curator',
-            'create/pipeline/clip-selection-scoring',
             'create/pipeline/face-aware-cropping',
-            'create/pipeline/scene-detection',
             'create/pipeline/duplicate-detection',
             'create/pipeline/live-photos',
             'create/pipeline/photo-support',

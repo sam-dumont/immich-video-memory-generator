@@ -65,7 +65,6 @@ spec:
             #   value: "http://your-llm.llm.svc.cluster.local:8080/v1"
             # - name: IMMICH_MEMORIES_LLM__MODEL
             #   value: "qwen2.5-vl"
-            # - name: IMMICH_MEMORIES_CONTENT_ANALYSIS__ENABLED
             #   value: "true"
             # Optional: daily automation inside the pod (no CronJob needed)
             # - name: IMMICH_MEMORIES_AUTOMATION__ENABLED

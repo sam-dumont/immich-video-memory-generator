@@ -178,7 +178,6 @@ class AssemblyClip:
     longitude: float | None = None
     location_name: str | None = None
     # Audio analysis results for targeted ducking
-    has_speech: bool = False  # Segment contains speech (from audio analysis)
     # Pre-decided outgoing transition (from clips.plan_transitions)
     # "fade" = crossfade to next clip, "cut" = hard cut to next clip
     # None = let assembler decide (title screens always use fade)

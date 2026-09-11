@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pytest
 
-from immich_memories.analysis.selection_coverage import AnalysisCoverage
 from immich_memories.analysis.smart_pipeline import ClipWithSegment, PipelineResult
 from immich_memories.automation.state_store import AutomationStateStore
 from immich_memories.cache import database as cache_database
@@ -203,7 +202,6 @@ def test_editorial_continues_when_attempt_phase_write_fails(tmp_path: Path) -> N
         clip_segments={clip.asset.id: (0.0, 4.0)},
         errors=[],
         stats={"selection_route": "editorial-source"},
-        coverage=AnalysisCoverage(analyzed=1, total=1),
     )
     output = tmp_path / "memory.mp4"
 

@@ -57,7 +57,7 @@ class AppState:
     custom_start: date | None = None
     custom_end: date | None = None
     # Every window the memory covers. On This Day and Holiday build one per
-    # year, Then and Now builds two far apart; the rest build exactly one.
+    # year; the rest build exactly one.
     date_ranges: list[DateRange] = field(default_factory=list)
 
     # Person selection
@@ -71,7 +71,6 @@ class AppState:
     editorial_selections: tuple[EditorialSelection, ...] = ()
     selected_clip_ids: set[str] = field(default_factory=set)
     clip_segments: dict[str, tuple[float, float]] = field(default_factory=dict)
-    cached_analysis_ids: set[str] = field(default_factory=set)
     clip_rotations: dict[str, int | None] = field(default_factory=dict)
 
     # Generation options
@@ -95,7 +94,6 @@ class AppState:
     cancel_requested: bool = False
 
     # Pipeline state
-    auto_analyze_pending: bool = False
     review_selected_mode: bool = False
     pipeline_running: bool = False
     pipeline_result: dict[str, Any] | None = None
@@ -163,15 +161,13 @@ class AppState:
 
     # Caches (initialized at runtime)
     thumbnail_cache: ThumbnailCache | None = None
-    analysis_cache: Any = None  # AnalysisCache
 
     @property
     def date_range(self) -> DateRange | None:
         """The whole period the memory covers — for titles, filenames and labels.
 
-        Anything that *fetches* must use `date_ranges` instead. The span of a
-        Then and Now is a decade it has no interest in, and the span of an On
-        This Day is years it wants three days out of.
+        Anything that *fetches* must use `date_ranges` instead: the span of an
+        On This Day is years it wants three days out of.
         """
         if not self.date_ranges:
             return None
@@ -352,7 +348,6 @@ class AppState:
         self.selected_clip_ids = set()
         self.selected_photo_ids = set()
         self.clip_segments = {}
-        self.cached_analysis_ids = set()
         self.clip_rotations = {}
         self.pipeline_result = None
         self.timeline_plan = None

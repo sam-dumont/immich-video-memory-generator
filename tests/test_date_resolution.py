@@ -619,20 +619,6 @@ class TestMultiYearDefaultDuration:
 
         assert default_duration_for_type("holiday", span) == 60.0
 
-    def test_then_and_now_default_duration_is_the_preset_length_not_the_floor(self):
-        ranges = resolve_date_range(
-            year=2026,
-            start=None,
-            end=None,
-            period=None,
-            birthday=None,
-            memory_type="then_and_now",
-        )
-        assert isinstance(ranges, list)
-        span = self._display_span(ranges)
-
-        assert default_duration_for_type("then_and_now", span) == 45.0
-
     def test_a_single_month_still_scales_off_its_span(self):
         """The span curve keeps the range it was fitted for: one month ~= 60s."""
         span = resolve_date_range(

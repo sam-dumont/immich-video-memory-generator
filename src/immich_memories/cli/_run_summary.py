@@ -2,8 +2,8 @@
 
 Two things a reader has to be able to tell apart, so the block labels them:
 
-*Measured this run* -- the CLI wraps `run_analysis` and `run_selection`, so
-their wall-clock is honest local arithmetic. It is not in the run database:
+*Measured this run* -- the CLI wraps `run_editorial_source`, so its
+wall-clock is honest local arithmetic. It is not in the run database:
 `RunTracker` records only clip_extraction, assembly and music, all inside
 `generate_memory`. Claiming a phase breakdown the database does not hold is
 how a partial picture starts reading as the whole one.
@@ -69,7 +69,6 @@ def render_run_summary(
     analysis_seconds: float,
     generation_seconds: float,
     eligible: int,
-    deeply_analyzed: int,
     planned: int,
     counters: LLMCounters | None,
 ) -> str:
@@ -84,8 +83,8 @@ def render_run_summary(
         f"Memory generated in {_clock(total_seconds)}",
         "",
         "  measured this run",
-        f"    analysis + selection   {_clock(analysis_seconds):>8}   "
-        f"{deeply_analyzed} of {eligible} deeply analyzed, {planned} planned",
+        f"    selection              {_clock(analysis_seconds):>8}   "
+        f"{planned} planned from {eligible} candidates",
         f"    generation             {_clock(generation_seconds):>8}",
     ]
     lines.extend(_llm_lines(counters))

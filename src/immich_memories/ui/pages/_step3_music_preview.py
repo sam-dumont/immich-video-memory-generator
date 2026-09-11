@@ -18,22 +18,6 @@ from immich_memories.ui.state import get_app_state
 logger = logging.getLogger(__name__)
 
 
-def _build_mood_cache(state, selected_clips: list) -> dict[str, str]:
-    """Build a map of clip asset_id → LLM emotion from analysis cache."""
-    mood_cache: dict[str, str] = {}
-    if not state.analysis_cache:
-        return mood_cache
-    for clip in selected_clips:
-        analysis = state.analysis_cache.get_analysis(clip.asset.id)
-        if not (analysis and analysis.segments):
-            continue
-        for seg in analysis.segments:
-            if seg.llm_emotion:
-                mood_cache[clip.asset.id] = seg.llm_emotion
-                break
-    return mood_cache
-
-
 def _get_clip_month(clip) -> int | None:
     """Return the month of a clip's creation date, or None."""
     if not clip.asset.file_created_at:
@@ -49,13 +33,14 @@ def _build_timeline(state, config):
     from immich_memories.audio.music_generator_models import VideoTimeline
 
     selected_clips = state.get_selected_clips()
-    mood_cache = _build_mood_cache(state, selected_clips)
 
     clip_data: list[tuple[float, str, int | None]] = []
     for clip in selected_clips:
         segment = state.clip_segments.get(clip.asset.id, (0, clip.duration_seconds or 5))
         duration = segment[1] - segment[0]
-        mood = mood_cache.get(clip.asset.id, "calm")
+        # WHY: per-clip moods came from the legacy analysis cache; the mood analyzer
+        # reads the keyframes itself, so the timeline only needs a placeholder here.
+        mood = "calm"
         clip_data.append((duration, mood, _get_clip_month(clip)))
 
     title_dur = config.title_screens.title_duration if config.title_screens.enabled else 0

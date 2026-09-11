@@ -367,7 +367,7 @@ def _render_review_nav(state) -> None:
             state.review_selected_mode = False
             ui.navigate.to("/step2")
 
-        def rerun_analysis():
+        def reload_pool():
             state.review_selected_mode = False
             state.selected_clip_ids = set()
             state.clip_segments = {}
@@ -384,7 +384,7 @@ def _render_review_nav(state) -> None:
         ui.button("Back to Selection", on_click=go_back_selection, icon="arrow_back").props(
             "outline"
         )
-        ui.button("Re-run Analysis", on_click=rerun_analysis, icon="refresh").props("outline")
+        ui.button("Reload the pool", on_click=reload_pool, icon="refresh").props("outline")
         ui.button(
             "Continue to Generation",
             on_click=continue_to_generation,
