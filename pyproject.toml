@@ -88,6 +88,9 @@ gpu = [
 # All cross-platform optional features
 # Required when preparing missing editorial public heads and detector facts.
 # Weights and the compact-caption endpoint are separate setup dependencies.
+# `timm` requires `torchvision`, so it is not named here. What matters is not
+# that it is present but that it comes from the same index as `torch` -- see
+# docker/Dockerfile, where the two are built together from the CPU index.
 editorial = [
     "onnxruntime>=1.28",
     "torch>=2.0",
