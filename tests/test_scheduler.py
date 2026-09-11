@@ -209,7 +209,7 @@ class TestJobExecutor:
         assert params["month"] == 12
 
     def test_resolve_on_this_day(self):
-        """On This Day should use fire date as the target."""
+        """On This Day resolves no date: the run covers the day it fires."""
         from immich_memories.scheduling.executor import resolve_schedule_params
         from immich_memories.scheduling.models import ScheduleEntry
 
@@ -219,8 +219,7 @@ class TestJobExecutor:
         params = resolve_schedule_params(entry, fire_time)
 
         assert params["memory_type"] == "on_this_day"
-        assert params["target_date"].month == 7
-        assert params["target_date"].day == 15
+        assert set(params) == {"memory_type"}
 
     def test_explicit_params_override(self):
         """Explicit params in config should override auto-resolved ones."""

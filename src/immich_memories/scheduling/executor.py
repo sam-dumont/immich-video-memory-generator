@@ -3,9 +3,12 @@
 Auto-fills date parameters based on fire time:
 - year_in_review: generates for the previous year
 - monthly_highlights: generates for the previous month
-- on_this_day: uses the fire date
+- on_this_day: no date param — the run covers the day it fires
 - season: generates for the current/most recent season
 - Others: uses the fire time's year
+
+Every param resolved here has to be expressible as a `generate` option, or the
+schedule means something the run cannot carry out.
 """
 
 from __future__ import annotations
@@ -22,8 +25,8 @@ logger = logging.getLogger(__name__)
 def resolve_schedule_params(entry: ScheduleEntry, fire_time: datetime) -> dict[str, Any]:
     """Resolve a schedule entry + fire time into params for preset creation.
 
-    Auto-fills year/month/target_date based on memory_type and fire_time,
-    then merges with explicit params (explicit wins).
+    Auto-fills year/month based on memory_type and fire_time, then merges with
+    explicit params (explicit wins).
     """
     auto: dict[str, Any] = {"memory_type": entry.memory_type}
 
@@ -56,7 +59,10 @@ def resolve_schedule_params(entry: ScheduleEntry, fire_time: datetime) -> dict[s
             auto["month"] = fire_time.month - 1
 
     elif mt == "on_this_day":
-        auto["target_date"] = fire_time.date()
+        # No date param: `generate` has no option that names another day, and
+        # the child's own local date is the day the library is living in --
+        # fire_time is UTC, which near midnight is a different day entirely.
+        pass
 
     elif mt == "season":
         auto["year"] = fire_time.year
