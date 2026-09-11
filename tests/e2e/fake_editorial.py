@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from immich_memories.security import write_secret_file
+from tests.e2e.fake_library import BY_ID, STORIES, STORY_OF, THESIS
 
 # The per-asset pass the real route runs before its named stages, and the one a
 # first cut over a big library sits inside for a long time. It is scripted here
@@ -53,35 +54,19 @@ _MOTION_CAP_SECONDS = 6.0
 
 _ACCEPTED_SHORTFALL_FRACTION = 0.15
 
-_THESIS = (
-    "A month of short test-pattern captures, three separate days apart, "
-    "recorded by one device with nothing else going on around them."
-)
+_THESIS = THESIS
 
 # Three weighed stories over the same period: one carries the memory, one
 # supports it, one is texture. The weights are the output vocabulary.
-_EPISODES = (
+_EPISODES = tuple(
     {
-        "key": "S0001",
-        "title": "The first captures",
-        "weight": "dominant",
-        "role": "central",
-        "purpose": "Opens the month and shows what the device was recording",
-    },
-    {
-        "key": "S0002",
-        "title": "The midmonth captures",
-        "weight": "major",
-        "role": "central",
-        "purpose": "Carries the middle of the month at the same cadence",
-    },
-    {
-        "key": "S0003",
-        "title": "The closing captures",
-        "weight": "glimpse",
-        "role": "texture",
-        "purpose": "Closes the month with one last pair",
-    },
+        "key": story.key,
+        "title": story.title,
+        "weight": story.weight,
+        "role": story.role,
+        "purpose": story.purpose,
+    }
+    for story in STORIES
 )
 
 
@@ -92,28 +77,29 @@ def _asset_of(source: Any) -> Any:
 
 
 def _carrier_rows(candidates: Sequence[Any]) -> list[dict[str, Any]]:
-    """One carrier per chosen source, in capture order, weighed into three stories."""
+    """One carrier per chosen source, in capture order, under the story it belongs to.
+
+    The reason is the line the library itself wrote about that picture, prefixed
+    with its story title the way the production writer prefixes one.
+    """
     from immich_memories.api.models import AssetType
 
-    per_episode = max(1, -(-len(candidates) // len(_EPISODES)))
     rows = []
-    for index, row in enumerate(candidates):
+    for row in candidates:
         asset = row.clip.asset
-        episode = _EPISODES[min(index // per_episode, len(_EPISODES) - 1)]
-        is_video = asset.type == AssetType.VIDEO
-        seconds = round(row.end_time - row.start_time, 2)
+        story = STORY_OF[asset.id]
+        picture = BY_ID[asset.id]
         rows.append(
             {
                 "asset_id": asset.id,
-                "kind": "video" if is_video else "still",
-                "seconds": seconds,
+                "kind": "video" if asset.type == AssetType.VIDEO else "still",
+                "seconds": round(row.end_time - row.start_time, 2),
                 "taken": asset.file_created_at.isoformat(),
-                "story_episode": episode["key"],
-                "story_weight": episode["weight"],
-                "story_role": episode["role"],
-                "why": f"{episode['title']}: {'a moving' if is_video else 'a still'} "
-                "test pattern, the only capture of its day",
-                "standing": "remarkable" if is_video else "maybe",
+                "story_episode": story.key,
+                "story_weight": story.weight,
+                "story_role": story.role,
+                "why": f"{story.title}: {picture.caption}",
+                "standing": "remarkable" if picture.is_favorite else "maybe",
                 "start_time": row.start_time,
                 "end_time": row.end_time,
             }

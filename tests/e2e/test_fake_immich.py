@@ -19,11 +19,12 @@ from immich_memories.generate_clips import MIN_CLIP_DURATION
 from immich_memories.timeperiod import calendar_year
 from immich_memories.ui.pages.step2_loading import _build_clips
 from tests.e2e.fake_immich import FakeImmichServer
+from tests.e2e.fake_library import LIBRARY
 
 pytestmark = pytest.mark.e2e
 
-_VIDEO_IDS = ["video-1", "video-2", "video-3"]
-_PHOTO_IDS = ["photo-1", "photo-2", "photo-3"]
+_VIDEO_IDS = [p.asset_id for p in LIBRARY if p.is_video]
+_PHOTO_IDS = [p.asset_id for p in LIBRARY if not p.is_video]
 
 
 def _probe_video(path: Path) -> dict:
@@ -240,8 +241,8 @@ def test_original_and_playback_downloads_are_valid_h264_sdr_media(
         fake_immich_server.api_key,
         api_version="v3",
     ) as client:
-        client.download_asset("video-1", original_path)
-        playback_path.write_bytes(client.get_video_playback("video-1"))
+        client.download_asset(_VIDEO_IDS[0], original_path)
+        playback_path.write_bytes(client.get_video_playback(_VIDEO_IDS[0]))
 
     for path in (original_path, playback_path):
         probe = _probe_video(path)
@@ -277,7 +278,7 @@ def test_photo_originals_are_generated_jpegs(fake_immich_server, tmp_path: Path)
 
     for path in downloaded:
         assert _probe_image(path)["streams"] == [
-            {"codec_name": "mjpeg", "codec_type": "video", "width": 2016, "height": 1512}
+            {"codec_name": "mjpeg", "codec_type": "video", "width": 1920, "height": 1280}
         ]
 
 
@@ -316,8 +317,9 @@ def test_real_auto_client_uploads_and_fake_records_v3_multipart(fake_immich_serv
     assert len(fake_immich_server.uploads) == 1
     upload = fake_immich_server.uploads[0]
     assert set(upload.fields) == {"filename", "fileCreatedAt", "fileModifiedAt"}
-    assert upload.fields["filename"] == "video-1.mp4"
-    assert upload.filename == "video-1.mp4"
+    source_name = fake_immich_server.source_video.name
+    assert upload.fields["filename"] == source_name
+    assert upload.filename == source_name
     assert upload.content_type == "video/mp4"
     assert upload.data == fake_immich_server.source_video.read_bytes()
 

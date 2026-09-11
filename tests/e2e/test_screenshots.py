@@ -21,13 +21,14 @@ from playwright.sync_api import Page, expect
 
 from tests.e2e.conftest import set_theme
 from tests.e2e.fake_editorial import STAGES
+from tests.e2e.fake_library import THESIS
 from tests.e2e.redaction import redact_page
 from tests.e2e.test_launch_smoke import _choose
 
 pytestmark = [pytest.mark.e2e, pytest.mark.visual]
 
 _THEMES = ("light", "dark")
-_THESIS = re.compile(r"^A month of short test-pattern captures")
+_THESIS = THESIS
 # Any editing stage the fixture announces after preparation: the active phase row
 # shows it, which is the frame the cutting screenshot wants.
 _EDITING_STAGE = re.compile("^(" + "|".join(re.escape(stage) for stage in STAGES[1:]) + ")$")
