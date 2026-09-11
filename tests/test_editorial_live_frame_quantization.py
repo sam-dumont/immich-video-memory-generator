@@ -134,9 +134,10 @@ def test_only_certified_merge_opts_into_eof_frame_retention(monkeypatch):
     monkeypatch.setattr(merger, "_detect_clip_hdr", lambda _p: False)
     monkeypatch.setattr(merger, "probe_clip_has_audio", lambda _p: False)
     monkeypatch.setattr(merger, "burst_fps", lambda _p: 240.0)
-    # The merge now reads the plan's pixel format when it uploads to a device,
-    # so a None stand-in no longer stands in. Software capabilities keep it
-    # deterministic without probing this machine.
+    # WHY: burst_encoding_plan is typed to return an EncodingPlan and never returns
+    # None. Stubbing None passed only while build_merge_command stopped at
+    # _append_encoding_args; the hardware-encode pass reads plan.pixel_format, so a
+    # None stub is a fiction that fails the moment that pass lands.
     software_plan = merger.burst_encoding_plan(is_hdr=False, hardware_enabled=False)
     monkeypatch.setattr(merger, "burst_encoding_plan", lambda **_kw: software_plan)
     monkeypatch.setattr(merger, "_append_encoding_args", lambda *_a: None)
@@ -153,7 +154,12 @@ def test_subframe_hold_preserves_encoded_frames_and_records_ceil_target(tmp_path
     path.write_bytes(b"all-original-selected-frames")
     before = renderer._sha(path)
     commands = []
-    monkeypatch.setattr(merger, "burst_encoding_plan", lambda **_kw: None)
+    # WHY: burst_encoding_plan is typed to return an EncodingPlan and never returns
+    # None. Stubbing None passed only while build_merge_command stopped at
+    # _append_encoding_args; the hardware-encode pass reads plan.pixel_format, so a
+    # None stub is a fiction that fails the moment that pass lands.
+    software_plan = merger.burst_encoding_plan(is_hdr=False, hardware_enabled=False)
+    monkeypatch.setattr(merger, "burst_encoding_plan", lambda **_kw: software_plan)
     monkeypatch.setattr(
         merger, "_append_encoding_args", lambda cmd, _p, _a, out: cmd.append(str(out))
     )

@@ -38,8 +38,25 @@ class ThumbnailCache:
         -- and a preview evicted between those stages is recorded as a missing
         fact rather than re-fetched.
         """
-        self._run_started_at = time.time()
+        self._run_started_at = self._filesystem_now()
         self._overflow_announced = False
+
+    def _filesystem_now(self) -> float:
+        """Now, as this filesystem would stamp a file touched right here.
+
+        Eviction spares an entry whose mtime is at or after the run started, and
+        it reads that mtime back off this same filesystem. A filesystem that
+        truncates timestamps to the second stamps a preview touched a moment
+        from now *earlier* than a `time.time()` taken here, so the run evicts
+        the very previews it is reading. Taking the boundary from a real file
+        removes the mismatch, whatever the granularity is.
+        """
+        marker = self.cache_dir / ".run-started"
+        try:
+            marker.touch()
+            return marker.stat().st_mtime
+        except OSError:
+            return time.time()
 
     def _path(self, asset_id: str, size: str) -> Path:
         subdir = asset_id[:2] if len(asset_id) >= 2 else "00"
