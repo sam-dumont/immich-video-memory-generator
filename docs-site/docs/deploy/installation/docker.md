@@ -148,7 +148,7 @@ Inside Immich's own compose stack, `immich-server` listens on **2283** (every Im
 | `IMMICH_MEMORIES_OUTPUT__DIRECTORY` | No | Already `/app/output` in the image. Set it only to write somewhere else — and note it beats `output.directory` in `config.yaml`. |
 | `IMMICH_MEMORIES_STORAGE_SECRET` | No | Session secret for the web UI. Auto-generated into the config volume if not set, so sessions already survive a restart. Set it explicitly to share one secret across hosts. It does not make multiple replicas supported. |
 | `IMMICH_MEMORIES_LLM__BASE_URL` | No | LLM endpoint (any OpenAI-compatible API). On its own it does nothing for scoring — see the next row. |
-| `IMMICH_MEMORIES_LLM__MODEL` | No | Model name as the server reports it. Tested against Qwen3.6-27B and Qwen3.6-35B-A3B (e.g. `qwen3.6:27b` on Ollama). |
+| `IMMICH_MEMORIES_LLM__MODEL` | No | Model name as the server reports it. The reader is graded on `mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit` (oMLX); it is sent pictures, so a text-only model will not do. See the [self-hosting guide](../self-hosting.md#what-has-actually-been-tested). |
 | `IMMICH_MEMORIES_CONTENT_ANALYSIS__ENABLED` | No | `true` to actually use the LLM for clip scoring. Off by default. |
 | `IMMICH_MEMORIES_AUTH_USERNAME` | No | Basic auth username. Set with `IMMICH_MEMORIES_AUTH_PASSWORD` to enable auth. |
 | `IMMICH_MEMORIES_AUTH_PASSWORD` | No | Basic auth password. Set with `IMMICH_MEMORIES_AUTH_USERNAME` to enable auth. |

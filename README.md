@@ -121,8 +121,10 @@ run on your own hardware:
   describes every picture once, and the description is kept;
 - the pinned **DINOv2-small encoder** and two CPU **detectors** — `pip install "immich-memories[editorial]"`
   plus the pinned weights;
-- a **text model** on any OpenAI-compatible chat endpoint — it reads the period, weighs its
-  stories and picks the moments. Developed and tested against Qwen3.6-27B and Qwen3.6-35B-A3B.
+- a **reader** on any OpenAI-compatible chat endpoint — it reads the period, weighs its stories
+  and picks the moments, and it is sent an 800 px tile of every candidate, so it needs vision and
+  a 32k context. Graded on `Qwen3-VL-30B-A3B-Instruct-4bit` on oMLX (Apple Silicon);
+  other vision models should work, text-only ones cannot.
 
 A cut with one of them missing stops and says which. The whole setup, in order, is the
 [self-hosting guide](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/self-hosting);
@@ -135,7 +137,7 @@ advanced:
   llm:
     provider: "openai-compatible"
     base_url: "http://your-llm-server:8000/v1"
-    model: "mlx-community/Qwen3.6-27B-8bit"
+    model: "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"
   editorial:
     preparation:
       caption_base_url: "http://localhost:8092/v1"

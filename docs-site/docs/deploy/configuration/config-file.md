@@ -40,11 +40,12 @@ defaults:
 # ── AI analysis (any OpenAI-compatible vision model) ──────
 # Both sections are needed: `llm` says where the model is,
 # `content_analysis.enabled` turns scoring with it on.
-# Tested against Qwen3.6-27B and Qwen3.6-35B-A3B.
+# The reader is graded on Qwen3-VL-30B-A3B-Instruct-4bit (oMLX).
+# It is sent pictures, so a text-only model cannot take this seat.
 llm:
   provider: "openai-compatible"
   base_url: "http://localhost:8000/v1"
-  model: "mlx-community/Qwen3.6-27B-8bit"
+  model: "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"
 
 content_analysis:
   enabled: true

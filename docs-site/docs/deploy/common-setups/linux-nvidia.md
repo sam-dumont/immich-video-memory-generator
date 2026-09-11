@@ -118,7 +118,8 @@ IMMICH_API_KEY=your-api-key-here
 
 ## What doesn't work
 
-- **LLM content analysis on consumer GPUs**: the tested models are Qwen3.6-27B and Qwen3.6-35B-A3B, which Ollama ships as 17 GB and 24 GB downloads. Neither stays resident on a 12 GB card — Ollama will offload the rest to system RAM and run, slowly. A 24 GB card (3090, 4090) holds the 27B comfortably. Below that, point `llm.base_url` at a box that can, or leave content analysis off: everything except the holistic review still runs.
+- **The reader on a small card**: the graded reader is ~17 GB of 4-bit weights and they stay resident for as long as the server is up. A 12 GB card offloads the rest to system RAM and runs slowly; 24 GB (3090, 4090) holds it. Below that, point `llm.base_url` at a box that can — there is no cut without a reader.
+- **A graded NVIDIA configuration**: there isn't one. The approved matrix ran on Apple Silicon MLX, for both the reader and the captions. Any OpenAI-compatible vision model with a 32k context is expected to work here; nobody has compared its output to the graded run.
 
 ## Performance expectations
 
@@ -135,33 +136,30 @@ the card. Analysis is cached, so a second run of the same period is much cheaper
 If you measure a run on your own box, [an issue](https://github.com/sam-dumont/immich-video-memory-generator/issues)
 with the numbers is welcome.
 
-## Adding LLM analysis
+## Pointing the reader at this box
 
-Developed and tested against **Qwen3.6-27B** and **Qwen3.6-35B-A3B**. Vision is built into the
-Qwen3.x models, so there is no `-VL` variant to look for. Any OpenAI-compatible endpoint that
-accepts images works; those two are what the pipeline was exercised against.
+The reader groups the period's days into stories, weighs them and picks the pictures — and it is
+sent an 800 px tile of every candidate, so this seat needs vision and at least a 32k context. The
+one graded configuration is `mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit` on oMLX, which is
+Apple Silicon only. On NVIDIA, serve an equivalent vision model with vLLM or Ollama and treat the
+quality as your own measurement. The older Qwen3.6 pair was exercised against the retired per-clip
+scorer, not this route.
 
-Run Ollama with GPU support alongside Immich Memories:
-
-```bash
-docker run -d --gpus all -p 11434:11434 --name ollama ollama/ollama
-docker exec ollama ollama pull qwen3.6:27b     # 17 GB; :35b is the 35B-A3B, 24 GB
-```
-
-Then add to your Immich Memories config:
+Whatever you run, it has to answer `/v1/chat/completions` with images and honour
+`response_format: json_schema`. Then point the app at it:
 
 ```yaml
 advanced:
   llm:
-    provider: ollama
-    base_url: http://ollama:11434
-    model: qwen3.6:27b
+    provider: openai-compatible
+    base_url: http://your-model-host:8000/v1
+    model: the-tag-your-server-reports
   content_analysis:
     enabled: true
 ```
 
-`model` has to be the tag you pulled, exactly. Smaller Qwen3.x sizes exist and will run — they are
-not the tested pair, so treat them as your own experiment.
+`model` has to be what the server reports at `/v1/models`, exactly. Smaller vision models will
+run; none of them has been graded on this route, so treat the output as your own experiment.
 
 ## Adding AI music
 
