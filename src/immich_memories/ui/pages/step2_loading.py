@@ -278,6 +278,7 @@ def ensure_caches(state) -> None:
             cache_dir=config.cache.cache_path / "thumbnails",
             max_size_mb=config.cache.thumbnail_cache_max_size_mb,
         )
+        state.thumbnail_cache.begin_run()
 
 
 async def load_pool(state, status_label, progress_bar, on_phase: PhaseHook = None) -> None:

@@ -67,9 +67,19 @@ def _noop_asset(_asset_id: str) -> None:
 
 
 def _ensure_preview(path: Path, asset_id: str, fetch_preview) -> None:
-    with suppress(OSError, ValueError):
+    try:
         with Image.open(path) as image:
             image.verify()
+    except (OSError, ValueError):
+        pass
+    else:
+        # Reuse is use. The cache evicts oldest mtime first, so without this a
+        # preview an earlier run downloaded still looks as old as that run while
+        # this one reads it back for pixels, heads, sheets and the caption --
+        # and a preview that vanishes between those stages is recorded as a
+        # missing fact rather than fetched again.
+        with suppress(OSError):
+            os.utime(path)
         return
     payload = fetch_preview(asset_id) if fetch_preview else None
     if not payload:
@@ -237,6 +247,13 @@ def prepare_editorial_annotations(
     stage.check()
     store_path.parent.mkdir(parents=True, exist_ok=True)
     preview_paths, preview_missing = stage.previews(ids, cache_path, fetch_preview)
+    # This stage writes into the cache layout directly rather than through `put`,
+    # so the periodic check `put` performs never sees the previews a scope brings
+    # in -- and on a rerun, where nothing is fetched, nothing checks at all. The
+    # cap belongs to the directory, not to whoever last wrote to it.
+    enforce_budget = getattr(thumbnail_cache, "enforce_budget", None)
+    if callable(enforce_budget):
+        enforce_budget()
     with closing(sqlite3.connect(private_database_path(store_path), timeout=60)) as connection:
 
         def outstanding() -> tuple[dict[str, tuple[str, ...]], tuple[str, ...]]:
