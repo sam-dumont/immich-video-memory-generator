@@ -113,6 +113,31 @@ def test_cold_full_source_then_warm_has_zero_provider_calls(tmp_path):
     assert stat.S_IMODE((tmp_path / "annotations.sqlite").stat().st_mode) == 0o600
 
 
+def test_the_pass_names_each_picture_it_finishes_so_a_watcher_can_show_them(tmp_path):
+    """A count cannot carry a picture: a surface watching a long stage needs the ids."""
+    seen: list[str] = []
+
+    result = run(
+        tmp_path,
+        ports=successful_ports([]),
+        fetch_preview=lambda _: preview(),
+        on_asset=seen.append,
+    )
+
+    assert result.complete
+    # Previews first, in source order, then the pixel read of the same two.
+    assert seen[:2] == ["aa1", "bb2"]
+    assert set(seen) == {"aa1", "bb2"}
+
+
+def test_a_picture_whose_preview_never_arrives_is_not_offered_to_the_watcher(tmp_path):
+    seen: list[str] = []
+
+    run(tmp_path, ports=successful_ports([]), fetch_preview=lambda _: None, on_asset=seen.append)
+
+    assert seen == []
+
+
 def test_cancellation_closes_database_and_retains_committed_pixel_facts(monkeypatch, tmp_path):
     from immich_memories.analysis import editorial_preparation as preparation
 

@@ -476,13 +476,19 @@ class _EvidencePreparation:
 
     def _produce(self, prepared: Any, on_stage: Callable[[str], None] | None) -> Any:
         from immich_memories.analysis.editorial_preparation import prepare_editorial_annotations
+        from immich_memories.operations.cut_progress import StageProgressWriter
 
         config = self.readings.config
         batch_size = config.editorial.preparation.batch_size
+        # The sentence and the numbers are published together, on one throttle,
+        # so a watcher never sees a bar disagreeing with the row above it.
+        live = StageProgressWriter(self.artifact_dir)
 
         def progress(stage: str, done: int, total: int) -> None:
-            if on_stage is not None and (done in {0, total} or done % batch_size == 0):
-                on_stage(f"Preparing {stage}: {done}/{total}")
+            if done not in {0, total} and done % batch_size:
+                return
+            if on_stage is not None:
+                on_stage(live.publish(stage, done, total).stage_label)
 
         prepare = self.ports.prepare_annotations or prepare_editorial_annotations
         return prepare(
@@ -496,6 +502,7 @@ class _EvidencePreparation:
             pixel_producer_key=config.editorial.pixel_producer_key,
             fetch_preview=lambda asset_id: self.ports.fetch_preview(self.client, asset_id),
             progress=progress,
+            on_asset=live.note_asset,
         )
 
     def _screen_documents(self, prepared: Any) -> dict[str, Any]:

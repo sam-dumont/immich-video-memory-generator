@@ -107,6 +107,10 @@ class AppState:
     # count as this cut's.
     active_cut_key: str | None = None
     cut_armed_at: datetime | None = None
+    # The stage lines this session has watched go by, bounded. Kept here rather
+    # than in the widget so a reload mid-cut rebuilds the detail panel with what
+    # the session already saw, the way the phase rows rebuild from the attempt.
+    cut_stage_log: list[str] = field(default_factory=list)
 
     # Generation settings
     duration_mode: Literal["auto", "manual"] = "auto"

@@ -9,10 +9,11 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
+from immich_memories.api.models import Person
 from immich_memories.automation.calendar_detectors import BirthdayDetector
 from immich_memories.automation.generation_request import GenerationRequest
 from immich_memories.cli._asset_fetch import fetch_videos
@@ -26,6 +27,8 @@ from immich_memories.memory_types.date_builders import (
 from immich_memories.memory_types.factory import create_preset
 from immich_memories.memory_types.registry import MemoryType
 from immich_memories.timeperiod import DateRange
+from immich_memories.ui.pages import step1_people
+from immich_memories.ui.state import AppState
 
 
 class TestRollingYear:
@@ -263,3 +266,97 @@ class TestLeapDay:
         windows = build_birthday_windows(date(2000, 2, 29), year=2026, years_back=2)
 
         assert windows[-1].contains(datetime(2024, 2, 29, 12, 0))
+
+
+def _render_spotlight(state: AppState) -> SimpleNamespace:
+    """Draw the Person Spotlight card offline and report its birthday control.
+
+    ``pick`` is the person select's own change handler, so a test can switch
+    people the way the browser does instead of writing preset params by hand.
+    """
+    # WHY: replaces NiceGUI's widget layer, the one boundary that needs a
+    # browser session; everything asserted below is this module's own state.
+    with patch.object(step1_people, "ui", MagicMock()) as ui:
+        step1_people.render_person_spotlight_params(state, MagicMock())
+    chain = ui.checkbox.return_value.classes.return_value
+    return SimpleNamespace(
+        checked=ui.checkbox.call_args.kwargs["value"],
+        disabled="disable" in chain.props.call_args.args[0],
+        tooltip=chain.props.return_value.tooltip.call_args.args[0],
+        pick=next(
+            call.kwargs["on_change"]
+            for call in ui.select.call_args_list
+            if call.kwargs.get("label") == "Person"
+        ),
+    )
+
+
+_ROSTER = (
+    Person(id="face-dated", name="Person A", birth_date=datetime(2018, 2, 7)),
+    Person(id="face-undated", name="Person B"),
+)
+
+
+def _spotlight_state(name: str) -> AppState:
+    """The wizard as it comes back from saved state: a person, and no anchor."""
+    person = next(p for p in _ROSTER if p.name == name)
+    return AppState(
+        memory_type="person_spotlight",
+        people=list(_ROSTER),
+        memory_preset_params={"year": 2026, "person_id": person.id, "person_names": [name]},
+    )
+
+
+class TestTheWizardsBirthdayAnchor:
+    """The spotlight card re-reads Immich on every render, not only on a change."""
+
+    def test_a_restored_person_with_a_birth_date_is_anchored_without_a_change_event(self):
+        """The reported bug: the control was disabled on first render and blamed Immich."""
+        state = _spotlight_state("Person A")
+
+        card = _render_spotlight(state)
+
+        assert not card.disabled
+        assert card.checked
+        assert state.memory_preset_params["use_birthday"] is True
+        assert state.memory_preset_params["birthday"] == datetime(2018, 2, 7)
+
+    def test_a_person_without_one_is_refused_and_told_where_the_date_lives(self):
+        state = _spotlight_state("Person B")
+
+        card = _render_spotlight(state)
+
+        assert card.disabled
+        assert not card.checked
+        assert "Immich" in card.tooltip and "People" in card.tooltip
+        assert state.memory_preset_params["use_birthday"] is False
+        assert "birthday" not in state.memory_preset_params
+
+    def test_switching_people_drops_the_previous_anchor_rather_than_keeping_it(self):
+        state = _spotlight_state("Person A")
+
+        _render_spotlight(state).pick(SimpleNamespace(value="Person B"))
+
+        assert "birthday" not in state.memory_preset_params
+        assert state.memory_preset_params["use_birthday"] is False
+        assert _render_spotlight(state).disabled
+
+    def test_with_nobody_picked_the_control_does_not_blame_a_person(self):
+        state = _spotlight_state("Person A")
+        state.memory_preset_params.pop("person_id")
+
+        card = _render_spotlight(state)
+
+        assert card.disabled
+        assert "Pick a person" in card.tooltip
+
+    def test_an_explicit_untick_survives_the_next_render(self):
+        """Immich decides whether the anchor exists; the user decides whether to use it."""
+        state = _spotlight_state("Person A")
+        _render_spotlight(state)
+
+        state.memory_preset_params["use_birthday"] = False
+        card = _render_spotlight(state)
+
+        assert not card.checked
+        assert not card.disabled
