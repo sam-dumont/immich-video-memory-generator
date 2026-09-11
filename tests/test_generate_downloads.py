@@ -18,7 +18,7 @@ class TestDownloadClip:
         local = tmp_path / "existing.mp4"
         local.write_bytes(b"video")
 
-        clip = MagicMock()  # WHY: VideoClipInfo is complex to construct
+        clip = MagicMock(editorial_live_manifest=None)  # WHY: isolate the legacy clip contract
         clip.local_path = str(local)
 
         result = download_clip(client=None, video_cache=MagicMock(), clip=clip, output_dir=tmp_path)
@@ -30,7 +30,7 @@ class TestDownloadClip:
         """If client is None and no local path, return None."""
         from immich_memories.generate_downloads import download_clip
 
-        clip = MagicMock()  # WHY: VideoClipInfo is complex to construct
+        clip = MagicMock(editorial_live_manifest=None)  # WHY: isolate the legacy clip contract
         clip.local_path = None
 
         result = download_clip(client=None, video_cache=MagicMock(), clip=clip, output_dir=tmp_path)
@@ -43,7 +43,7 @@ class TestDownloadClip:
 
         from immich_memories.generate_downloads import download_clip
 
-        clip = MagicMock()  # WHY: VideoClipInfo is complex to construct
+        clip = MagicMock(editorial_live_manifest=None)  # WHY: isolate the legacy clip contract
         clip.local_path = None
         clip.live_burst_video_ids = ["id1", "id2"]
         clip.live_burst_trim_points = [(0.0, 1.0), (0.0, 1.0)]
@@ -51,6 +51,7 @@ class TestDownloadClip:
         mock_client = MagicMock()  # WHY: SyncImmichClient requires real server
         mock_cache = MagicMock()  # WHY: VideoDownloadCache needs disk setup
 
+        # WHY: merging a burst downloads every member from Immich and stitches them with FFmpeg.
         with patch("immich_memories.generate_downloads._download_and_merge_burst") as mock_merge:
             mock_merge.return_value = tmp_path / "merged.mp4"
             result = download_clip(
@@ -64,7 +65,7 @@ class TestDownloadClip:
         """If no local path and no burst, use video_cache.download_or_get."""
         from immich_memories.generate_downloads import download_clip
 
-        clip = MagicMock()  # WHY: VideoClipInfo is complex to construct
+        clip = MagicMock(editorial_live_manifest=None)  # WHY: isolate the legacy clip contract
         clip.local_path = None
         clip.live_burst_video_ids = None
         clip.live_burst_trim_points = None
@@ -117,7 +118,7 @@ def test_disabled_cache_download_is_run_owned_and_cleaned(tmp_path: Path) -> Non
     from immich_memories.generate_clips import _cleanup_temp_dirs
     from immich_memories.generate_downloads import download_clip
 
-    clip = MagicMock()
+    clip = MagicMock(editorial_live_manifest=None)
     clip.local_path = None
     clip.live_burst_video_ids = None
     clip.live_burst_trim_points = None
@@ -350,22 +351,24 @@ def test_extraction_uses_burst_prefetch_results_without_component_retries(
 
 def test_extraction_does_not_prefetch_static_photo(tmp_path: Path, monkeypatch) -> None:
     from immich_memories.api.models import AssetType
+    from immich_memories.config_loader import Config
+    from immich_memories.generate import GenerationParams
     from immich_memories.generate_clips import _extract_clips
 
     clip = make_clip("static-photo", duration=5.0)
     clip.asset.type = AssetType.IMAGE
-    params = MagicMock()
-    params.clips = [clip]
-    params.progress_callback = None
-    params.clip_segments = {}
-    params.clip_rotations = {}
-    params.config = MagicMock()
+    params = GenerationParams(clips=[clip], output_path=tmp_path / "memory.mp4", config=Config())
     coordinator = MagicMock()
     coordinator.prefetch.return_value = {}
 
-    monkeypatch.setattr(
-        "immich_memories.generate_photos._render_photo_as_clip", lambda *_args: None
-    )
+    def render_photo(source, request, output_dir, *, duration_seconds):
+        assert source is clip
+        assert request is params
+        assert output_dir == tmp_path
+        assert duration_seconds is None
+
+    # WHY: rendering downloads media and invokes FFmpeg; inspect its request only.
+    monkeypatch.setattr("immich_memories.generate_photos._render_photo_as_clip", render_photo)
 
     _extract_clips(params, MagicMock(), tmp_path, download_coordinator=coordinator)
 

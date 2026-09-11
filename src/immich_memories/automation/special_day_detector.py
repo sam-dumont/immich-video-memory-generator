@@ -58,7 +58,10 @@ class SpecialDayDetector:
         for entry, years in anniversaries_due(catalogue, today, window_days=self.WINDOW_DAYS):
             # Keyed by the anniversary as well as the day, so a day that got
             # its memory at ten can still get one at fifteen.
-            key = make_memory_key("special_day", entry.day, entry.day, discriminator=f"{years}y")
+            discriminator = f"{years}y"
+            if entry.event_id is not None:
+                discriminator += f":{entry.event_id}"
+            key = make_memory_key("special_day", entry.day, entry.day, discriminator=discriminator)
             if key in generated_keys:
                 continue
             candidates.append(
@@ -84,6 +87,7 @@ class SpecialDayDetector:
                         # here instead of being handed a doctored date range.
                         "recency_date": same_day_in(entry.day, entry.day.year + years),
                         "source": "special-days catalogue",
+                        **({"event_id": entry.event_id} if entry.event_id is not None else {}),
                     },
                 )
             )

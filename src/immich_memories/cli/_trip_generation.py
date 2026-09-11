@@ -76,9 +76,10 @@ def _print_trip_result(
     result_path: Path,
     should_upload: bool,
     album_name: str | None,
+    no_render: bool = False,
 ) -> None:
     """Report trip planning without claiming an artifact or upload exists."""
-    if dry_run:
+    if dry_run or no_render:
         print_success(f"Trip plan complete: {location_name}")
         return
     print_success(f"Trip video: {result_path}")
@@ -184,6 +185,8 @@ def handle_trip_generation(
     automation_attempt_id: str | None = None,
     orientation: str = "landscape",
     dry_run: bool = False,
+    no_render: bool = False,
+    accept_any_provenance: bool = False,
 ) -> None:
     """Detect trips, select, and generate video for each."""
     from immich_memories.cli._trip_display import (
@@ -306,6 +309,7 @@ def handle_trip_generation(
             memory_type="trip",
             person_names=person_names,
             date_range=trip_date_range,
+            date_ranges=(trip_date_range,),
             upload_to_immich=upload_to_immich,
             album=album,
             memory_preset_params=trip_preset,
@@ -314,11 +318,14 @@ def handle_trip_generation(
             memory_category=memory_category,
             automation_attempt_id=automation_attempt_id,
             dry_run=dry_run,
+            no_render=no_render,
+            accept_any_provenance=accept_any_provenance,
         )
 
         console.print()
         _print_trip_result(
             dry_run=dry_run,
+            no_render=no_render,
             location_name=trip.location_name,
             result_path=result_path,
             should_upload=should_upload,

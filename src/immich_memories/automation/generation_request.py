@@ -6,7 +6,12 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from immich_memories.automation.candidates import CandidateCategory, MemoryCandidate
+from immich_memories.api.person_expression import PersonExpression
+from immich_memories.automation.candidates import (
+    CandidateCategory,
+    MemoryCandidate,
+    bind_people_expression_key,
+)
 
 
 @dataclass(frozen=True)
@@ -23,6 +28,27 @@ class GenerationRequest:
     album_name: str | None = None
     automation_attempt_id: str | None = None
     config_path: Path | None = None
+    event_id: str | None = None
+    person_expression: PersonExpression | None = None
+
+    def __post_init__(self) -> None:
+        if self.person_expression is not None:
+            if not isinstance(self.person_expression, PersonExpression):
+                raise ValueError("generation people condition must be a validated expression")
+            if self.category in {
+                CandidateCategory.BIRTHDAY,
+                CandidateCategory.PERSON_SPOTLIGHT,
+                CandidateCategory.TRIP,
+            }:
+                raise ValueError("grouped people condition is unsupported for this category")
+            if self.people and set(self.people) != set(self.person_expression.leaf_values):
+                raise ValueError("generation names and grouped people condition disagree")
+            object.__setattr__(self, "people", self.person_expression.leaf_values)
+            object.__setattr__(
+                self,
+                "memory_key",
+                bind_people_expression_key(self.memory_key, self.person_expression),
+            )
 
     @classmethod
     def from_candidate(
@@ -52,6 +78,14 @@ class GenerationRequest:
             case _:
                 raise ValueError(f"Unsupported automation category: {candidate.category!r}")
 
+        event_id = (
+            candidate.extra_params.get("event_id")
+            if candidate.category == CandidateCategory.EMERGENT_DAY
+            else None
+        )
+        if event_id is not None and (not isinstance(event_id, str) or not event_id.strip()):
+            raise ValueError("special-day event_id must be a nonempty catalogue ID")
+        expression_record = candidate.extra_params.get("person_expression")
         return cls(
             memory_type=memory_type,
             category=candidate.category,
@@ -63,6 +97,12 @@ class GenerationRequest:
             album_name=album_name,
             automation_attempt_id=automation_attempt_id,
             config_path=config_path,
+            event_id=event_id,
+            person_expression=(
+                PersonExpression.from_dict(expression_record)
+                if expression_record is not None
+                else None
+            ),
         )
 
     def to_argv(self) -> list[str]:
@@ -103,13 +143,17 @@ class GenerationRequest:
                     ]
                 )
             case CandidateCategory.EMERGENT_DAY:
-                # A date, and nothing else. The child re-reads the catalogue for
-                # the day's name: this argv is logged in full and is readable in
-                # `ps`, and the catalogue's titles name real people and places.
+                # Only the date and opaque selector travel in the logged argv.
+                # The child re-reads the catalogue for private names and members.
                 argv.extend(["--day", self.start.isoformat()])
+                if self.event_id is not None:
+                    argv.extend(["--event-id", self.event_id])
             case _:
                 raise ValueError(f"Unsupported automation category: {self.category!r}")
 
+        if self.person_expression is not None:
+            argv = [arg for arg in argv if not arg.startswith("--person=")]
+            argv.append(f"--people-expression={self.person_expression.display_label}")
         argv.extend(
             [
                 "--source=auto",

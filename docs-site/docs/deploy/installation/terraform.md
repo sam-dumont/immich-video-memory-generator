@@ -78,7 +78,7 @@ module "immich_memories" {
   immich_url     = "https://photos.example.com"
   immich_api_key = var.immich_api_key
 
-  # Optional: LLM clip content analysis (any OpenAI-compatible API)
+  # Editorial model connection (model services are deployed separately)
   # Tested against Qwen3.6-27B and Qwen3.6-35B-A3B; `llm_model` is the tag the server serves
   llm_base_url = "http://ollama.ollama.svc.cluster.local:11434/v1"
   llm_model    = "qwen3.6:27b"
@@ -97,6 +97,11 @@ module "immich_memories" {
   cache_storage_size  = "50Gi"
 }
 ```
+
+Also configure [editorial annotation preparation](../configuration/editorial-preparation.md)
+through the module's `env` map and persistent model/cache storage. Its compact-caption endpoint
+and pinned encoder/detector artifacts are separate from `llm_base_url`; an uncached generation
+requires both preparation and story providers.
 
 ## Variables
 

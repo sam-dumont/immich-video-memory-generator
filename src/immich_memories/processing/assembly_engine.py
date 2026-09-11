@@ -193,10 +193,12 @@ class AssemblyEngine:
         and pipes frames to a single FFmpeg encode process. Memory stays
         constant regardless of clip count (~550 MB at 4K).
         """
-        if len(clips) < 2:
-            if len(clips) == 1:
-                return self._assemble_single_clip(clips[0], output_path)
+        if not clips:
             raise ValueError("No clips to assemble")
+        if len(clips) == 1 and not (
+            self.settings.add_date_overlay or self.settings.add_place_overlay
+        ):
+            return self._assemble_single_clip(clips[0], output_path)
 
         # Resolve target resolution ONCE for all clips — prevents each chunk
         # from auto-detecting a different resolution/orientation
@@ -250,6 +252,10 @@ class AssemblyEngine:
         def record_effective_plan(effective_plan) -> None:
             self.settings.encoding_plan = effective_plan
 
+        caption_locale = self.settings.caption_locale
+        if caption_locale is None and self.settings.title_screens:
+            caption_locale = self.settings.title_screens.locale
+
         streaming_assemble_full(
             clips=clips,
             transitions=transitions,
@@ -264,9 +270,7 @@ class AssemblyEngine:
             privacy_mode=self.settings.privacy_mode,
             date_overlay=self.settings.add_date_overlay,
             place_overlay=self.settings.add_place_overlay,
-            caption_locale=resolve_caption_locale(
-                self.settings.title_screens.locale if self.settings.title_screens else None
-            ),
+            caption_locale=resolve_caption_locale(caption_locale),
             scale_mode=self.settings.scale_mode,
             progress_callback=progress_callback,
             frame_preview_callback=frame_preview_callback,

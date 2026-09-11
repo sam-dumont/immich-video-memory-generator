@@ -124,7 +124,9 @@ class TestSuggestReturnsCandidates:
         client.get_time_buckets.return_value = []
         client.get_all_people.return_value = []
 
+        # WHY: replaces the Immich preflight probe and the SyncImmichClient factory
         with (
+            # WHY: skips the real HTTP call to Immich's preflight/health endpoint
             patch(
                 "immich_memories.preflight.check_immich",
                 return_value=MagicMock(status=CheckStatus.OK),
@@ -185,7 +187,9 @@ class TestSuggestReturnsCandidates:
         asset_service.get_assets_for_date_range.return_value = query
         client._run.return_value = gps_assets
 
+        # WHY: covers Immich preflight, the API client, trip detection, and the clock
         with (
+            # WHY: preflight's real health probe against the Immich server
             patch(
                 "immich_memories.preflight.check_immich",
                 return_value=MagicMock(status=CheckStatus.OK),
@@ -273,6 +277,7 @@ class TestSuggestReturnsCandidates:
 
         from immich_memories.preflight import CheckStatus
 
+        # WHY: adds a fixed 'today' clock alongside the mocked Immich reads below
         with (
             # WHY: external Immich server
             patch(
@@ -310,7 +315,9 @@ class TestSuggestReturnsCandidates:
         client.get_all_people.return_value = [person]
         client.get_person_asset_count.return_value = 50
 
+        # WHY: replaces the Immich client, its preflight check, and today's date
         with (
+            # WHY: avoids a real HTTP call to fetch people and time buckets from Immich
             patch(
                 "immich_memories.api.immich.SyncImmichClient",
                 return_value=client,
@@ -347,7 +354,9 @@ class TestSuggestReturnsCandidates:
         client.get_all_people.return_value = [person]
         client.get_person_asset_count.return_value = 50
 
+        # WHY: stands in for the Immich client, its preflight check, and the clock
         with (
+            # WHY: keeps this birthday-suppression test off the real Immich HTTP client
             patch(
                 "immich_memories.api.immich.SyncImmichClient",
                 return_value=client,
@@ -421,7 +430,9 @@ class TestSuggestReturnsCandidates:
         mock_client.get_time_buckets.return_value = [_make_time_bucket(2026, 7, 150)]
         mock_client.get_all_people.return_value = []
 
+        # WHY: replaces Immich client/preflight and the clock; wraps list_runs to spy on it
         with (
+            # WHY: no real Immich HTTP call is made for this variety-history check
             patch(
                 "immich_memories.api.immich.SyncImmichClient",
                 return_value=mock_client,
@@ -470,7 +481,9 @@ class TestSuggestReturnsCandidates:
         mock_client.get_time_buckets.return_value = [_make_time_bucket(2026, 7, 150)]
         mock_client.get_all_people.return_value = []
 
+        # WHY: replaces Immich client/preflight and the clock; wraps score_and_rank to observe it
         with (
+            # WHY: this rejection-path test never touches the real Immich HTTP client
             patch(
                 "immich_memories.api.immich.SyncImmichClient",
                 return_value=mock_client,
@@ -508,7 +521,7 @@ class TestSuggestReturnsCandidates:
                 status="completed",
                 source="auto",
                 memory_category=CandidateCategory.ON_THIS_DAY.value,
-                memory_people=("Alice",),
+                memory_people=("Riley",),
             ),
             RunMetadata(
                 run_id="middle",
@@ -543,12 +556,12 @@ class TestSuggestReturnsCandidates:
             reason="latest month",
             asset_count=100,
         )
-        alice = MemoryCandidate(
+        riley = MemoryCandidate(
             memory_type="multi_person",
             category=CandidateCategory.MULTI_PERSON,
             date_range_start=date(2025, 1, 1),
             date_range_end=date(2025, 12, 31),
-            person_names=["Alice", "Dani"],
+            person_names=["Riley", "Dani"],
             memory_key="people:completion-order",
             score=0.6,
             reason="pair",
@@ -560,7 +573,9 @@ class TestSuggestReturnsCandidates:
         mock_client.get_time_buckets.return_value = []
         mock_client.get_all_people.return_value = []
 
+        # WHY: replaces Immich client/preflight, the clock, and the full detector scan
         with (
+            # WHY: keeps this completion-order test off the real Immich HTTP client
             patch(
                 "immich_memories.api.immich.SyncImmichClient",
                 return_value=mock_client,
@@ -572,13 +587,13 @@ class TestSuggestReturnsCandidates:
             patch("immich_memories.automation.candidate_discovery.date") as mock_date,
             patch(
                 "immich_memories.automation.candidate_discovery._run_all_detectors",
-                return_value=[monthly, alice],
+                return_value=[monthly, riley],
             ),
         ):
             mock_date.today.return_value = date(2026, 8, 11)
             candidates = runner.suggest(limit=10)
 
-        assert candidates == [alice]
+        assert candidates == [riley]
         assert [item.rule for item in runner.last_variety_decision.rejected] == [
             "same_category_as_previous"
         ]
@@ -595,7 +610,9 @@ class TestSuggestEmptyLibrary:
 
         from immich_memories.preflight import CheckStatus
 
+        # WHY: replaces the Immich client and its preflight check
         with (
+            # WHY: fakes an empty-library response instead of a live Immich client
             patch(
                 "immich_memories.api.immich.SyncImmichClient",
                 return_value=mock_client,
@@ -751,7 +768,9 @@ class TestRunOneNoCandidates:
             replace(candidate, memory_key=f"{candidate.memory_key}:{index}") for index in range(25)
         ]
 
+        # WHY: replaces Immich preflight, the client, detector output, and the clock
         with (
+            # WHY: preflight's real health check against the Immich server
             patch(
                 "immich_memories.preflight.check_immich",
                 return_value=MagicMock(status=CheckStatus.OK),
@@ -815,6 +834,7 @@ class TestRunOneNoCandidates:
         """A preflight exception cannot leave a forever-running attempt."""
         runner = AutoRunner(config)
 
+        # WHY: stubs the Immich-backed suggest() call and spies the sqlite finish_attempt write
         with (
             patch.object(runner, "suggest", side_effect=RuntimeError("preflight exploded")),
             patch.object(
@@ -843,7 +863,9 @@ class TestRunOneNoCandidates:
             details=f"API key rejected: {config.immich.api_key}",
         )
 
+        # WHY: fakes a failed Immich preflight and spies the sqlite attempt write
         with (
+            # WHY: replaces the real network probe to Immich with a canned error result
             patch("immich_memories.preflight.check_immich", return_value=preflight),
             patch.object(
                 runner.state, "finish_attempt", wraps=runner.state.finish_attempt
@@ -879,11 +901,15 @@ class TestRunOneNoCandidates:
         mock_client.get_time_buckets.return_value = []
         mock_client.get_all_people.return_value = []
 
+        # WHY: simulates the Immich server being unreachable during preflight
         with patch("immich_memories.preflight.check_immich", return_value=failed):
             assert runner.suggest(limit=1) == []
 
+        # WHY: now simulates Immich recovering for the following healthy run
         with (
+            # WHY: the real preflight probe is replaced with a healthy canned result
             patch("immich_memories.preflight.check_immich", return_value=healthy),
+            # WHY: avoids a real HTTP call to Immich for the recovered suggest() run
             patch("immich_memories.api.immich.SyncImmichClient", return_value=mock_client),
         ):
             result = runner.run_one(force=True)
@@ -905,6 +931,7 @@ class TestRunOneOutcomes:
         lease_path = config.cache.database_path.parent / ".auto.lock"
         active = runner.state.start_attempt(reason="daily wake")
 
+        # WHY: stubs suggest() and the notification send while holding a real OS lease
         with (
             AutomationLease(lease_path),
             patch.object(runner, "suggest", suggest),
@@ -1041,6 +1068,7 @@ class TestRunOneOutcomes:
 
         def verify_file(path: Path) -> bool:
             if path == output:
+                # WHY: real flock-based lease proves a second acquire fails while held
                 with (
                     pytest.raises(AutomationAlreadyRunningError),
                     AutomationLease(lease_path),
@@ -1049,6 +1077,7 @@ class TestRunOneOutcomes:
             return real_is_file(path)
 
         runner.execute = execute
+        # WHY: stubs suggest() and intercepts the real filesystem is_file() check
         with (
             patch.object(runner, "suggest", return_value=[candidate]),
             patch.object(Path, "is_file", verify_file),
@@ -1109,6 +1138,7 @@ class TestRunOneOutcomes:
             return ProcessResult(0, "", "")
 
         runner.execute = execute
+        # WHY: stubs suggest(), spies finish_attempt, and stubs the notification send
         with (
             patch.object(runner, "suggest", return_value=[candidate]),
             patch.object(
@@ -1136,6 +1166,7 @@ class TestRunOneOutcomes:
             config,
             execute=lambda _argv: ProcessResult(9, "child failed", ""),
         )
+        # WHY: stubs suggest(), spies finish_attempt, and fails the real notification transport
         with (
             patch.object(runner, "suggest", return_value=[candidate]),
             patch.object(
@@ -1162,6 +1193,7 @@ class TestRunOneOutcomes:
         """An exception after selection belongs to that candidate and one finalizer."""
         config.immich.api_key = "outer-secret-78dd"
         runner = AutoRunner(config)
+        # WHY: stubs suggest(), the command builder, and the outbound notification send
         with (
             patch.object(runner, "suggest", return_value=[candidate]),
             patch(
@@ -1189,6 +1221,7 @@ class TestRunOneOutcomes:
         execute = MagicMock(return_value=ProcessResult(7, "root cause on stdout", ""))
         runner = AutoRunner(config, execute=execute)
 
+        # WHY: stubs suggest(), spies finish_attempt, and stubs the notification send
         with (
             patch.object(runner, "suggest", return_value=[candidate]),
             patch.object(
@@ -1219,6 +1252,7 @@ class TestRunOneOutcomes:
             execute=lambda _argv: ProcessResult(7, f"child rejected {configured_value}", ""),
         )
 
+        # WHY: stubs suggest() and the outbound notification send
         with (
             patch.object(runner, "suggest", return_value=[candidate]),
             patch("immich_memories.automation.runner._send_notification") as notify,
@@ -1260,6 +1294,7 @@ class TestRunOneOutcomes:
             execute=lambda _argv: ProcessResult(7, child_output, ""),
         )
 
+        # WHY: stubs suggest() and the notification send while capturing real log output
         with (
             patch.object(runner, "suggest", return_value=[candidate]),
             patch("immich_memories.automation.runner._send_notification") as notify,
@@ -1318,6 +1353,7 @@ class TestRunOneOutcomes:
             execute=lambda _argv: ProcessResult(8, stdout, stderr),
         )
 
+        # WHY: stubs suggest() and the outbound notification send
         with (
             patch.object(runner, "suggest", return_value=[candidate]),
             patch("immich_memories.automation.runner._send_notification") as notify,
@@ -1346,9 +1382,10 @@ class TestRunOneOutcomes:
         completed = subprocess.CompletedProcess(["generate"], 7, stdout, "")
         runner = AutoRunner(config)
 
+        # WHY: stubs suggest() and replaces the real subprocess launch of the child process
         with (
             patch.object(runner, "suggest", return_value=[candidate]),
-            patch("immich_memories.automation.runner.subprocess.run", return_value=completed),
+            patch("immich_memories.automation.runner.run_bounded_process", return_value=completed),
         ):
             result = runner.run_one(force=True)
 
@@ -1408,9 +1445,10 @@ class TestRunOneOutcomes:
         completed = subprocess.CompletedProcess(["generate"], 9, "", stderr)
         runner = AutoRunner(config)
 
+        # WHY: stubs suggest() and replaces the real subprocess launch with a canned result
         with (
             patch.object(runner, "suggest", return_value=[candidate]),
-            patch("immich_memories.automation.runner.subprocess.run", return_value=completed),
+            patch("immich_memories.automation.runner.run_bounded_process", return_value=completed),
         ):
             result = runner.run_one(force=True)
 
@@ -1515,6 +1553,7 @@ class TestRunOneOutcomes:
             return ProcessResult(0, "generated", "")
 
         runner.execute = execute
+        # WHY: stubs suggest() and the outbound notification send
         with (
             patch.object(runner, "suggest", return_value=[candidate]),
             patch("immich_memories.automation.runner._send_notification") as notify,
@@ -1541,6 +1580,7 @@ class TestRunOneOutcomes:
             )
 
         runner = AutoRunner(config, execute=timeout)
+        # WHY: stubs suggest() and the notification send around a simulated timeout
         with (
             patch.object(runner, "suggest", return_value=[candidate]),
             patch("immich_memories.automation.runner._send_notification") as notify,
@@ -1556,15 +1596,14 @@ class TestRunOneOutcomes:
 
     def test_execute_adapter_captures_process_result_with_two_hour_timeout(self) -> None:
         completed = subprocess.CompletedProcess(["generate"], 0, "stdout", "stderr")
+        # WHY: replaces the real subprocess launch of the generate child process
         with patch(
-            "immich_memories.automation.runner.subprocess.run", return_value=completed
+            "immich_memories.automation.runner.run_bounded_process", return_value=completed
         ) as run:
             result = _execute_generate(["immich-memories", "generate"])
 
         assert result == ProcessResult(0, "stdout", "stderr")
         assert run.call_args.args[0] == ["immich-memories", "generate"]
-        assert run.call_args.kwargs["capture_output"] is True
-        assert run.call_args.kwargs["text"] is True
         assert run.call_args.kwargs["timeout"] == 7200
 
     def test_execute_adapter_states_the_child_environment_instead_of_inheriting_it(
@@ -1574,9 +1613,9 @@ class TestRunOneOutcomes:
         monkeypatch.setenv("ACESTEP_MLX_VAE_CHUNK", "384")
         completed = subprocess.CompletedProcess(["generate"], 0, "", "")
 
-        # WHY: subprocess.run would fork a real generation
+        # WHY: the process adapter would fork a real generation
         with patch(
-            "immich_memories.automation.runner.subprocess.run", return_value=completed
+            "immich_memories.automation.runner.run_bounded_process", return_value=completed
         ) as run:
             _execute_generate(["immich-memories", "generate"])
 
@@ -1618,15 +1657,15 @@ class TestBuildGenerateCommand:
             category=CandidateCategory.PERSON_SPOTLIGHT,
             date_range_start=date(2025, 1, 1),
             date_range_end=date(2025, 12, 31),
-            person_names=["Alice"],
-            memory_key="person_spotlight:2025-01-01:2025-12-31:alice",
+            person_names=["Riley"],
+            memory_key="person_spotlight:2025-01-01:2025-12-31:riley",
             score=0.6,
             reason="1st most featured person",
             asset_count=0,
         )
         cmd = _build_generate_command(candidate, upload=True)
         assert "--upload-to-immich" in cmd
-        assert "--person=Alice" in cmd
+        assert "--person=Riley" in cmd
 
     def test_year_in_review_command(self) -> None:
         candidate = MemoryCandidate(
@@ -1699,14 +1738,14 @@ class TestBuildGenerateCommand:
             category=CandidateCategory.MULTI_PERSON,
             date_range_start=date(2025, 1, 1),
             date_range_end=date(2025, 12, 31),
-            person_names=["Alice", "--evil"],
-            memory_key="multi_person:2025-01-01:2025-12-31:alice:--evil",
+            person_names=["Riley", "--evil"],
+            memory_key="multi_person:2025-01-01:2025-12-31:riley:--evil",
             score=0.5,
             reason="pair",
             asset_count=50,
         )
         cmd = _build_generate_command(candidate, upload=False)
-        assert "--person=Alice" in cmd
+        assert "--person=Riley" in cmd
         assert "--person=--evil" in cmd
 
 
@@ -1727,6 +1766,7 @@ class TestSuggestOutput:
         row = json.loads(_candidates_to_json([candidate]))[0]
         assert row["category"] == "monthly_review"
 
+        # WHY: swaps the module's stdout Console for one that records output
         with patch(
             "immich_memories.cli.auto_cmd.console", new=Console(record=True, width=200)
         ) as console:

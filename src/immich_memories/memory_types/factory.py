@@ -73,11 +73,29 @@ def create_preset(memory_type: MemoryType, **kwargs) -> MemoryPreset:
             f"No preset factory registered for '{memory_type}'. "
             f"Available: {', '.join(str(t) for t in _REGISTRY)}"
         )
-    return factory(**kwargs)
+    expression = kwargs.pop("person_expression", None)
+    if expression is not None:
+        from immich_memories.api.person_expression import PersonExpression
+
+        if isinstance(expression, dict):
+            expression = PersonExpression.from_dict(expression)
+        if not isinstance(expression, PersonExpression):
+            raise ValueError("person_expression must be a validated grouped condition")
+        if memory_type == MemoryType.PERSON_SPOTLIGHT or kwargs.get("use_birthday"):
+            raise ValueError("a single-person or birthday memory needs one person")
+        person_filter = person_filter_for(kwargs.get("person_names"), person_expression=expression)
+        kwargs["person_names"] = person_filter.person_names
+    preset = factory(**kwargs)
+    if expression is not None:
+        preset.person_filter = person_filter
+        if memory_type == MemoryType.MULTI_PERSON:
+            preset.name = f"Together: {expression.display_label}"
+            preset.description = f"Memories matching {expression.display_label} in each picture"
+    return preset
 
 
 def list_memory_types() -> list[dict[str, str]]:
-    """List all registered memory types with metadata.
+    """List creation choices; retired factories remain readable for saved presets.
 
     Returns:
         List of dicts with 'type', 'name', 'description' keys.
@@ -85,6 +103,7 @@ def list_memory_types() -> list[dict[str, str]]:
     return [
         {"type": str(mt), "name": name, "description": desc}
         for mt, (name, desc) in _DESCRIPTIONS.items()
+        if mt != MemoryType.THEN_AND_NOW
     ]
 
 
@@ -179,7 +198,7 @@ def _person_spotlight(
         # A spotlight is one person by definition, so extra names name a
         # different memory -- Multi-Person -- rather than narrowing this one.
         person_filter=person_filter_for([name]),
-        default_duration_seconds=120,
+        default_duration_seconds=600,
     )
 
 
@@ -191,24 +210,23 @@ def _person_spotlight(
 def _multi_person(
     year: int,
     person_names: list[str] | None = None,
-    require_co_occurrence: bool = True,
+    person_match: str = "and",
+    require_co_occurrence: bool | None = None,
     **kwargs,  # noqa: ARG001
 ) -> MemoryPreset:
     if not person_names:
         raise ValueError("person_names is required for MULTI_PERSON memory type")
-    joined = " & ".join(person_names)
-    mode = "all_of" if require_co_occurrence else "any"
+    if require_co_occurrence is not None:
+        person_match = "and" if require_co_occurrence else "or"
+    person_filter = person_filter_for(person_names, person_match=person_match)
+    joined = (" & " if person_match == "and" else " or ").join(person_names)
     return MemoryPreset(
         memory_type=MemoryType.MULTI_PERSON,
         name=joined,
         description=f"Moments with {joined} in {year}",
         date_ranges=[calendar_year(year)],
-        person_filter=PersonFilter(
-            mode=mode,
-            person_names=list(person_names),
-            require_co_occurrence=require_co_occurrence,
-        ),
-        default_duration_seconds=300,
+        person_filter=person_filter,
+        default_duration_seconds=600,
     )
 
 

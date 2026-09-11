@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -152,15 +153,32 @@ class TestPipelineRunExceptionBranches:
             mock_thumbnail_cache,
             config=PipelineConfig(target_clips=5, analyze_all=True),
         )
+        failure = RuntimeError("boom")
+        events = []
 
+        def failed_source(_sources, *, on_stage, **_kwargs):
+            on_stage("Reading event evidence")
+            raise failure
+
+        # The source planner is the production boundary; legacy clustering is
+        # not entered by run() and cannot simulate a source failure.
+        pipeline._planner = SimpleNamespace(plan_source=failed_source)
+
+        # WHY: native release is an external resource boundary; verify both releases on failure.
         with (
-            patch.object(pipeline, "_phase_cluster", side_effect=RuntimeError("boom")),
-            pytest.raises(RuntimeError, match="boom"),
+            patch.object(pipeline.analyzer, "close") as close_analyzer,
+            patch.object(pipeline.previewer, "close") as close_previewer,
+            pytest.raises(RuntimeError, match="boom") as caught,
         ):
-            pipeline.run(_make_clips(3))
+            pipeline.run(_make_clips(3), events.append)
 
         from immich_memories.analysis.progress import PipelinePhase
 
+        assert caught.value is failure
+        assert [event["status"] for event in events] == ["running", "running", "failed"]
+        assert events[1]["current_phase"] == "Reading event evidence"
+        close_analyzer.assert_called_once()
+        close_previewer.assert_called_once()
         assert pipeline.tracker.progress.phase == PipelinePhase.NOT_STARTED
         assert pipeline.tracker.progress.operational_event is None
 
@@ -466,6 +484,7 @@ class TestDetectAudioBoundariesException:
     """Lines 88-90: exception in audio boundary detection returns empty list."""
 
     def test_audio_detection_failure_returns_empty(self):
+        # WHY: silence detection shells out to FFmpeg; OSError reproduces a missing binary.
         with patch(
             "immich_memories.analysis.segment_generation.detect_silence_gaps",
             side_effect=OSError("ffmpeg missing"),

@@ -23,6 +23,7 @@ from immich_memories.config_models_analysis import (  # noqa: F401
     AudioContentConfig,
     ContentAnalysisConfig,
 )
+from immich_memories.config_models_editorial import EditorialConfig  # noqa: F401
 from immich_memories.config_models_llm import LLMConfig  # noqa: F401
 from immich_memories.config_models_render import (  # noqa: F401
     DefaultsConfig,
@@ -46,6 +47,7 @@ __all__ = [
     "Config",
     "ContentAnalysisConfig",
     "DefaultsConfig",
+    "EditorialConfig",
     "HardwareAccelConfig",
     "ImmichConfig",
     "LLMConfig",

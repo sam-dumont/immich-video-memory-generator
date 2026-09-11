@@ -12,10 +12,12 @@ from pathlib import Path
 import yaml
 
 from immich_memories.people.companion import (
+    add_confirmed_person,
     default_people_path,
     load_document,
     people_entries,
     save_confirmed,
+    save_confirmed_relationship,
     save_graph,
 )
 from immich_memories.people.graph import Owner, PeopleGraph, PersonNode
@@ -120,6 +122,44 @@ class TestConfirmedBeatsInferred:
         by_name = {entry["name"]: entry for entry in people_entries(load_document(path))}
         assert by_name["Sam Sample"]["confirmed"]["role"] == "friend"
 
+    def test_one_relationship_answer_writes_both_directions(self, tmp_path):
+        path = tmp_path / "people.yaml"
+        save_graph(
+            path,
+            _graph(_node("Alex Example", Tier.INNER), _node("Sam Sample", Tier.INNER)),
+        )
+
+        save_confirmed_relationship(path, "id-alex-example", "parent-of", "id-sam-sample")
+
+        by_name = {entry["name"]: entry for entry in people_entries(load_document(path))}
+        assert by_name["Alex Example"]["confirmed"]["links"] == [
+            {
+                "kind": "parent-of",
+                "with": "id-sam-sample",
+                "reverse": "child-of",
+                "decision": "confirmed",
+            }
+        ]
+        assert by_name["Sam Sample"]["confirmed"]["links"] == [
+            {
+                "kind": "child-of",
+                "with": "id-alex-example",
+                "reverse": "parent-of",
+                "decision": "confirmed",
+            }
+        ]
+
+    def test_an_off_camera_person_survives_a_refresh(self, tmp_path):
+        path = tmp_path / "people.yaml"
+        save_graph(path, _graph(_node("Alex Example", Tier.INNER)))
+        local_id = add_confirmed_person(path, "Robin Placeholder", role="family")
+
+        save_graph(path, _graph(_node("Alex Example", Tier.INNER)))
+
+        by_name = {entry["name"]: entry for entry in people_entries(load_document(path))}
+        assert local_id.startswith("manual:")
+        assert by_name["Robin Placeholder"]["confirmed"]["role"] == "family"
+
     def test_a_person_nobody_annotated_leaves_with_the_roster(self, tmp_path):
         path = tmp_path / "people.yaml"
         save_graph(path, _graph(_node("Alex Example", Tier.INNER), _node("Sam Sample", Tier.EVENT)))
@@ -197,3 +237,24 @@ class TestOneEntryPerPerson:
             "partner",
             "partner",
         ]
+
+
+class TestEraDayShares:
+    def test_era_day_shares_reach_the_written_evidence(self, tmp_path):
+        """The gathered share survives into the file the confirm flow reads."""
+        from dataclasses import replace
+
+        node = _node("Alex Example", Tier.INNER)
+        node = replace(node, evidence=replace(node.evidence, era_day_shares=(("covid", 0.3),)))
+        path = tmp_path / "people.yaml"
+        save_graph(path, _graph(node))
+
+        evidence = people_entries(load_document(path))[0]["inferred"]["evidence"]
+        assert evidence["era_day_share"] == {"covid": 0.3}
+
+    def test_an_unscanned_library_writes_no_era_block(self, tmp_path):
+        path = tmp_path / "people.yaml"
+        save_graph(path, _graph(_node("Alex Example", Tier.INNER)))
+
+        evidence = people_entries(load_document(path))[0]["inferred"]["evidence"]
+        assert "era_day_share" not in evidence

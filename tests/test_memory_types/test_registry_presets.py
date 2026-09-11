@@ -67,18 +67,18 @@ class TestPersonFilter:
     def test_custom_values(self) -> None:
         pf = PersonFilter(
             mode="all_of",
-            person_names=["Alice", "Bob"],
+            person_names=["Riley", "Bob"],
             require_co_occurrence=True,
         )
         assert pf.mode == "all_of"
-        assert pf.person_names == ["Alice", "Bob"]
+        assert pf.person_names == ["Riley", "Bob"]
         assert pf.require_co_occurrence
 
     def test_person_names_are_independent(self) -> None:
         """Each instance gets its own list (no shared mutable default)."""
         pf1 = PersonFilter()
         pf2 = PersonFilter()
-        pf1.person_names.append("Alice")
+        pf1.person_names.append("Riley")
         assert not pf2.person_names
 
 
@@ -87,10 +87,16 @@ class TestPersonFilterFor:
 
     def test_several_names_intersect(self) -> None:
         """Both on the picture — the CLI's semantics, now the preset's too."""
-        pf = person_filter_for(["Alice", "Bob"])
+        pf = person_filter_for(["Riley", "Bob"])
 
-        assert pf.person_names == ["Alice", "Bob"]
+        assert pf.person_names == ["Riley", "Bob"]
         assert pf.require_co_occurrence
+
+    def test_several_names_can_be_unioned_explicitly(self) -> None:
+        pf = person_filter_for(["Riley", "Bob"], person_match="or")
+
+        assert pf.mode == "any"
+        assert not pf.require_co_occurrence
 
     def test_no_names_narrows_nothing(self) -> None:
         assert not person_filter_for(None).person_names

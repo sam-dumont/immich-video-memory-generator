@@ -87,6 +87,13 @@ class LLMConfig(BaseModel):
         default_factory=dict,
         description="Request fields merged into every call, for provider-specific requirements.",
     )
+    send_image_detail: bool = Field(
+        default=True,
+        description=(
+            "Include OpenAI's optional image_url.detail field. Disable for compatible APIs "
+            "whose strict vision schema accepts only image_url.url."
+        ),
+    )
 
     @field_validator("api_key", mode="before")
     @classmethod

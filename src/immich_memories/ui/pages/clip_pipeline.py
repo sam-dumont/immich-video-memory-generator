@@ -5,12 +5,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from nicegui import run, ui
 
 from immich_memories.api.immich import SyncImmichClient
 from immich_memories.api.models import Asset, VideoClipInfo
+from immich_memories.operations.cancellation import PipelineCancelled
 from immich_memories.planning.auto_duration import (
     AutoDurationResult,
     resolve_trip_auto_duration,
@@ -26,10 +27,6 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from immich_memories.processing.timeline_budget import TimelinePlan
-
-
-class PipelineCancelled(Exception):
-    """Raised when the user cancels the pipeline from the UI."""
 
 
 def _pipeline_summary_counts(result: dict) -> tuple[int, int, int]:
@@ -62,6 +59,8 @@ def render_phase_indicator(current_phase: int, total_phases: int = 4) -> None:
 
 def render_pipeline_summary(result: dict) -> None:
     """Render pipeline completion summary."""
+    from immich_memories.analysis.editorial_duration_advisory import editorial_duration_warning
+
     stats = result.get("stats", {})
     errors = result.get("errors", [])
 
@@ -74,6 +73,8 @@ def render_pipeline_summary(result: dict) -> None:
             f"Pipeline complete! Planned {planned_count} clips from "
             f"{eligible_count} eligible media items."
         ).classes("font-semibold").style("color: var(--im-success-text)")
+        if warning := editorial_duration_warning(stats.get("editorial_duration_realization")):
+            ui.label(warning).classes("text-sm").style("color: var(--im-warning)")
 
         with ui.row().classes("w-full gap-8 mt-4"):
             with ui.column().classes("items-center"):
@@ -127,6 +128,9 @@ def _handle_pipeline_completion(
 
 
 _PROGRESS_STATUS_KEYS = [
+    "indeterminate",
+    "status",
+    "started_at",
     "phase_number",
     "total_phases",
     "phase_label",
@@ -152,6 +156,9 @@ _PROGRESS_STATUS_KEYS = [
     "last_completed_audio_categories",
 ]
 _PROGRESS_DEFAULTS: dict[str, Any] = {
+    "indeterminate": False,
+    "status": "running",
+    "started_at": None,
     "phase_number": 1,
     "total_phases": 4,
     "phase_label": "Processing",
@@ -175,7 +182,9 @@ def _make_progress_callback(progress_state: dict[str, Any]) -> Any:
         if progress_state["cancelled"]:
             raise PipelineCancelled("Cancelled by user")
         for key in _PROGRESS_STATUS_KEYS:
-            progress_state[key] = status.get(key, _PROGRESS_DEFAULTS.get(key))
+            value = status.get(key, _PROGRESS_DEFAULTS.get(key))
+            if key not in progress_state or progress_state[key] != value:
+                progress_state[key] = value
 
     return on_progress
 
@@ -274,6 +283,185 @@ def _configure_timeline_for_selection(
     return plan
 
 
+def _ui_timing_policy(state: Any, config: Any):
+    from immich_memories.processing.editorial_timing import build_editorial_timing_policy
+    from immich_memories.ui.pages._step4_generate import _TRANSITION_MAP
+
+    person = state.selected_person
+    date_range = state.date_range
+    return build_editorial_timing_policy(
+        config=config,
+        target_seconds=state.target_duration_seconds,
+        memory_type=state.memory_type,
+        date_start=date_range.start if date_range else None,
+        date_end=date_range.end if date_range else None,
+        person_name=person.name if person else None,
+        memory_preset_params=state.memory_preset_params,
+        transition=_TRANSITION_MAP.get(
+            state.generation_options.get("transition", "Smart (mix of fades & cuts)"), "crossfade"
+        ),
+        transition_duration=config.defaults.transition_duration,
+    )
+
+
+def _editorial_source_id(source: VideoClipInfo | Asset) -> str:
+    """Return the Immich identity carried by either production source type."""
+    return source.asset.id if isinstance(source, VideoClipInfo) else source.id
+
+
+def _ui_editorial_people(state: Any) -> tuple[str, ...]:
+    """Keep the names the owner selected, in their displayed order."""
+    expression = _ui_person_expression(state)
+    if expression is not None:
+        return expression.leaf_values
+    names = tuple(str(name) for name in state.memory_preset_params.get("person_names", ()) if name)
+    if names:
+        return names
+    person = state.selected_person
+    return (person.display_name,) if person is not None else ()
+
+
+def _ui_person_expression(state: Any) -> Any:
+    """Validate explicit grouped scope before using even already-loaded media."""
+    if state.memory_preset_params.get("person_expression") is None and not getattr(
+        state, "person_expression_error", None
+    ):
+        return None
+    state.resolved_person_expression()  # Reject unsupported scope or unresolved names.
+    return state.person_expression
+
+
+def _ui_editorial_label(
+    state: Any,
+    *,
+    product: str,
+    date_ranges: tuple[Any, ...],
+    people: tuple[str, ...],
+) -> str:
+    """Build prompt-facing identity without collapsing discontinuous windows."""
+    if product == "album" and state.album_name:
+        return str(state.album_name)
+    if product == "trip" and state.memory_preset_params.get("location_name"):
+        return str(state.memory_preset_params["location_name"])
+    expression = _ui_person_expression(state)
+    if expression is not None:
+        return expression.display_label
+    if people:
+        return " and ".join(people)
+    if date_ranges:
+        return "; ".join(date_range.description for date_range in date_ranges)
+    return product.replace("_", " ").title()
+
+
+def _ui_editorial_key(
+    state: Any,
+    *,
+    product: str,
+    date_ranges: tuple[Any, ...],
+    people: tuple[str, ...],
+    full_sources: tuple[VideoClipInfo | Asset, ...],
+) -> str:
+    """Return one stable cache identity even before Step 4 has a run id."""
+    import hashlib
+    import json
+
+    expression = _ui_person_expression(state)
+    expression_json = (
+        json.dumps(expression.to_dict(), sort_keys=True, separators=(",", ":"))
+        if expression is not None
+        else None
+    )
+    suffix = (
+        "-people-" + hashlib.sha256(expression_json.encode()).hexdigest()[:16]
+        if expression_json is not None
+        else ""
+    )
+    if state.active_run_id:
+        return str(state.active_run_id) + suffix
+    if state.output_path:
+        return state.output_path.stem + suffix
+
+    identity_parts = [product, str(state.album_id or ""), state.person_match, *people]
+    if expression_json is not None:
+        identity_parts.append(expression_json)
+    identity_parts.extend(
+        f"{date_range.start.isoformat()}/{date_range.end.isoformat()}" for date_range in date_ranges
+    )
+    if product == "album":
+        identity_parts.extend(_editorial_source_id(source) for source in full_sources)
+    if product == "special_day" and state.memory_preset_params.get("event_id"):
+        identity_parts.append(str(state.memory_preset_params["event_id"]))
+    digest = hashlib.sha256("\n".join(identity_parts).encode()).hexdigest()[:16]
+    return f"{product}-{digest}"
+
+
+def _build_ui_editorial_context(
+    state: Any,
+    app_config: Any,
+    clips: list[VideoClipInfo],
+    photos: list[Asset],
+) -> Any:
+    """Adapt immutable wizard truth to the shared production runtime contract."""
+    from immich_memories.analysis.editorial_runtime import EditorialRunContext
+    from immich_memories.analysis.special_event_scope import read_special_event_admission
+
+    product = str(state.memory_type or "custom")
+    date_ranges = () if product == "album" else tuple(state.date_ranges)
+    people = _ui_editorial_people(state)
+    full_sources = (*state.clips, *state.photo_assets)
+    reviewed_ids = {
+        *(clip.asset.id for clip in clips),
+        *(photo.id for photo in photos),
+    }
+    owner_excluded_asset_ids = tuple(
+        _editorial_source_id(source)
+        for source in full_sources
+        if _editorial_source_id(source) not in reviewed_ids
+    )
+    key = _ui_editorial_key(
+        state,
+        product=product,
+        date_ranges=date_ranges,
+        people=people,
+        full_sources=full_sources,
+    )
+    person_match: Literal["and", "or"] = "or" if state.person_match == "or" else "and"
+    return EditorialRunContext(
+        key=key,
+        label=_ui_editorial_label(
+            state,
+            product=product,
+            date_ranges=date_ranges,
+            people=people,
+        ),
+        product=product,
+        date_ranges=date_ranges,
+        target_seconds=state.target_duration_seconds,
+        hemisphere=state.memory_preset_params.get("hemisphere", "north"),
+        render_timing=_ui_timing_policy(state, app_config),
+        artifact_dir=app_config.cache.cache_path / "editorial-runs" / key,
+        people=people,
+        person_match=person_match,
+        person_expression=_ui_person_expression(state),
+        accept_any_provenance=state.accept_any_provenance,
+        trip=product == "trip",
+        album_ref=str(state.album_id or "") if product == "album" else None,
+        album_sources=full_sources if product == "album" else (),
+        owner_excluded_asset_ids=owner_excluded_asset_ids,
+        special_event_id=(
+            state.memory_preset_params.get("event_id") if product == "special_day" else None
+        ),
+        event_admission=read_special_event_admission(
+            state.memory_preset_params.get("event_admission")
+        ),
+        event_asset_ids=(
+            tuple(state.memory_preset_params.get("asset_ids") or ())
+            if product == "special_day"
+            else ()
+        ),
+    )
+
+
 def _run_pipeline_blocking(
     state: Any,
     config: Any,
@@ -282,8 +470,6 @@ def _run_pipeline_blocking(
     progress_state: dict[str, Any],
 ) -> None:
     """Run the SmartPipeline in a background thread — no UI calls here."""
-    from immich_memories.analysis.smart_pipeline import SmartPipeline
-
     tc = state.thumbnail_cache
     if tc is None:
         raise RuntimeError("Thumbnail cache not initialized")
@@ -293,43 +479,35 @@ def _run_pipeline_blocking(
             api_key=state.immich_api_key,
             api_version=state.immich_api_version,
         ) as client:
+            from immich_memories.analysis.editorial_runtime import build_smart_pipeline
             from immich_memories.config import get_config
 
             app_config = get_config()
-            pipeline = SmartPipeline(
+            pipeline = build_smart_pipeline(
                 client=client,
                 analysis_cache=state.analysis_cache,
                 thumbnail_cache=tc,
                 config=config,
                 analysis_config=app_config.analysis,
                 app_config=app_config,
+                editorial_context=_build_ui_editorial_context(
+                    state,
+                    app_config,
+                    clips,
+                    photos,
+                ),
+                dry_run=False,
+                triage=None,
             )
 
-            # Unified selection: analyze videos, score photos, merge, select
-            analyzed = pipeline.run_analysis(
-                clips=clips,
+            source_photos = photos if state.include_photos else []
+            all_candidates, result = pipeline.run_editorial_source(
+                [*clips, *source_photos],
                 progress_callback=_make_progress_callback(progress_state),
+                include_live_photos=(
+                    state.include_live_photos and app_config.analysis.include_live_photos
+                ),
             )
-
-            # Merge photos into the unified pool (same as CLI path)
-            all_candidates = analyzed
-            if state.include_photos and photos:
-                from pathlib import Path
-
-                from immich_memories.cli._candidate_pool import _merge_photos_into_pool
-
-                all_candidates = _merge_photos_into_pool(
-                    analyzed,
-                    photo_assets=photos,
-                    include_photos=True,
-                    use_live_photos=state.include_live_photos,
-                    config=app_config,
-                    client=client,
-                    work_dir=Path(app_config.cache.cache_path) / "photo_scoring",
-                    thumbnail_cache=tc,
-                )
-
-            result = pipeline.run_selection(all_candidates)
             result.stats.update(
                 {
                     "eligible_count": len(clips) + len(photos),
@@ -340,11 +518,19 @@ def _run_pipeline_blocking(
 
             state.pipeline_result = {
                 "selected_clips": result.selected_clips,
+                "editorial_selections": result.editorial_selections,
                 "clip_segments": result.clip_segments,
                 "errors": result.errors,
                 "stats": result.stats,
                 "coverage": result.coverage,
             }
+            state.pipeline_selected_clips = result.selected_clips
+            state.editorial_render_timing = result.stats.get("editorial_render_timing")
+            if state.editorial_render_timing is not None:
+                from immich_memories.processing.editorial_timing import read_editorial_timeline
+
+                state.timeline_plan = read_editorial_timeline(state.editorial_render_timing)
+            state.editorial_selections = result.editorial_selections
             state.selected_clip_ids = {c.asset.id for c in result.selected_clips}
             state.clip_segments = result.clip_segments
 
@@ -411,6 +597,7 @@ def _build_pipeline_config(
         analyze_all=config_dict.get("analyze_all", False),
         overnight_bases=overnight_bases,
         analysis_depth=getattr(state, "analysis_depth", "auto"),
+        accept_any_provenance=getattr(state, "accept_any_provenance", False),
     )
 
 
@@ -436,7 +623,14 @@ def _wire_progress_timer(
 
     def poll_progress() -> None:
         _poll_phase(progress_state, _rendered_state, phase_container, render_phase_indicator)
-        progress_bar.value = progress_state["progress_fraction"]
+        running_editorial = (
+            progress_state.get("indeterminate") and progress_state.get("status") == "running"
+        )
+        if running_editorial:
+            progress_bar.props("indeterminate")
+        else:
+            progress_bar.props(remove="indeterminate")
+            progress_bar.value = progress_state["progress_fraction"]
         _poll_stats(
             progress_state,
             stats_clips_label,
@@ -448,7 +642,9 @@ def _wire_progress_timer(
         )
         if not progress_state["cancelled"]:
             status_label.set_text(
-                f"{progress_state['phase_label']}: {progress_state['current_item'] or '...'}"
+                progress_state["phase_label"]
+                if progress_state.get("indeterminate")
+                else f"{progress_state['phase_label']}: {progress_state['current_item'] or '...'}"
             )
         _poll_detail_cards(progress_state, _rendered_state, detail_container)
         if progress_state["done"]:

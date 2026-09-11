@@ -194,6 +194,12 @@ class Asset(BaseModel):
     updated_at: datetime = Field(alias="updatedAt")
     is_favorite: bool = Field(default=False, alias="isFavorite")
     is_archived: bool = Field(default=False, alias="isArchived")
+    # WHY: Immich's four-way visibility (timeline/archive/hidden/locked) is not
+    # the same gate as isArchived, which stays false for hidden assets. The
+    # default metadata search returns `hidden` unasked. Defaults to "timeline"
+    # so a server too old to send the field is read as ordinary, which is what
+    # it is -- the locked folder postdates it.
+    visibility: str = Field(default="timeline")
     is_trashed: bool = Field(default=False, alias="isTrashed")
     duration_seconds: float | None = None
     # WHY: width/height from search API — needed for resolution filtering
@@ -390,6 +396,10 @@ class VideoClipInfo(BaseModel):
     live_burst_trim_points: list[tuple[float, float]] | None = None
     live_burst_shutter_timestamps: list[float] | None = None  # epoch seconds per clip
     live_burst_still_ids: list[str] | None = None  # still assets merged into this clip
+    # Complete still lineage may include empty source slices omitted from the render arrays.
+    live_burst_material: dict[str, Any] | None = None
+    # Explicit editorial certification; legacy merging retains its existing behavior.
+    editorial_live_manifest: dict[str, Any] | None = None
 
     # Audio categories detected (populated during pipeline analysis)
     audio_categories: list[str] | None = None  # e.g. ["laughter", "speech", "engine"]

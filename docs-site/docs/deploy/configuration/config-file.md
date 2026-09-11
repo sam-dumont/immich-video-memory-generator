@@ -83,8 +83,8 @@ advanced:
 ```
 
 Tier 2 sections: `analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `content_analysis`,
-`audio_content`, `speech`, `transcription`, `server`, `auth`, `automation`, `notifications`.
-Everything else (`immich`, `defaults`, `output`, `audio`, `title_screens`, `title_llm`, `cache`,
+`audio_content`, `speech`, `transcription`, `server`, `auth`, `automation`, `notifications`,
+`triage`. Everything else (`immich`, `defaults`, `output`, `audio`, `title_screens`, `title_llm`, `cache`,
 `upload`, `trips`, `photos`, `scheduler`) stays at the top level.
 
 Unknown keys inside a section are silently ignored — a typo does not fail the load, it just does

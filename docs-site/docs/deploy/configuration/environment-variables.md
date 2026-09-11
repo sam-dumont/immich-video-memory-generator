@@ -52,8 +52,24 @@ export IMMICH_MEMORIES_LLM__PROVIDER="openai-compatible"
 export IMMICH_MEMORIES_LLM__BASE_URL="https://api.openai.com/v1"
 export IMMICH_MEMORIES_LLM__MODEL="gpt-4.1-nano"
 export IMMICH_MEMORIES_LLM__API_KEY="sk-..."
-export IMMICH_MEMORIES_CONTENT_ANALYSIS__ENABLED="true"   # without this the LLM is never called for scoring
+export IMMICH_MEMORIES_CONTENT_ANALYSIS__ENABLED="true"   # controls optional clip-content scoring, not editorial selection
 ```
+
+### Editorial annotation preparation
+
+Story-first selection runs by default. These variables configure its preparation providers:
+
+```bash
+export IMMICH_MEMORIES_EDITORIAL__ANNOTATION_DATABASE="/mnt/cache/annotations.sqlite"
+export IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL="http://localhost:8092/v1"
+export IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR="/mnt/models/huggingface/hub"
+export IMMICH_MEMORIES_EDITORIAL__PREPARATION__ALLOW_MODEL_DOWNLOADS="false"
+export IMMICH_MEMORIES_TRIAGE__ENCODER="/mnt/models/triage/dinov2-small.onnx"
+```
+
+Nested preparation fields use another double underscore. There is no editorial opt-in
+environment variable. New runs use the FAMILY audience. See
+[Editorial annotation setup](editorial-preparation.md) before the first uncached run.
 
 ### Hardware
 

@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import math
 import subprocess
 from dataclasses import dataclass
+from fractions import Fraction
+from operator import itemgetter
 from pathlib import Path
 from typing import Any
 
@@ -47,6 +50,10 @@ class VideoProbe:
     has_audio: bool
     audio_codec: str | None
     audio_bitrate: int
+    video_start_seconds: float = 0.0
+    average_frame_rate: str | None = None
+    nominal_frame_rate: str | None = None
+    video_time_base: str | None = None
 
     @property
     def resolution(self) -> tuple[int, int] | None:
@@ -83,18 +90,21 @@ def _integer(value: object, default: int = 0) -> int:
         return default
 
 
+def _parsed_rate(value: str) -> float:
+    if "/" in value:
+        numerator, denominator = value.split("/", maxsplit=1)
+        return float(numerator) / float(denominator) if float(denominator) else 0.0
+    return float(value) if value else 0.0
+
+
 def _frame_rate(stream: dict[str, Any]) -> float:
-    for raw_value in (stream.get("r_frame_rate"), stream.get("avg_frame_rate")):
+    for raw_value in (stream.get("avg_frame_rate"), stream.get("r_frame_rate")):
         value = str(raw_value or "")
         try:
-            if "/" in value:
-                numerator, denominator = value.split("/", maxsplit=1)
-                rate = float(numerator) / float(denominator) if float(denominator) else 0.0
-            else:
-                rate = float(value) if value else 0.0
+            rate = _parsed_rate(value)
         except (TypeError, ValueError, ZeroDivisionError):
             continue
-        if rate > 0:
+        if math.isfinite(rate) and rate > 0:
             return rate
     return 0.0
 
@@ -138,6 +148,10 @@ def _parse_video_probe(data: dict[str, Any]) -> VideoProbe:
         has_audio=bool(audio_streams),
         audio_codec=str(audio.get("codec_name")) if audio.get("codec_name") else None,
         audio_bitrate=_integer(audio.get("bit_rate")),
+        video_start_seconds=_number(video.get("start_time")),
+        average_frame_rate=video.get("avg_frame_rate"),
+        nominal_frame_rate=video.get("r_frame_rate"),
+        video_time_base=video.get("time_base"),
     )
 
 
@@ -146,6 +160,7 @@ class ProbeCache:
 
     def __init__(self) -> None:
         self._entries: dict[Path, tuple[ProbeKey, VideoProbe]] = {}
+        self._packet_entries: dict[Path, tuple[ProbeKey, dict]] = {}
 
     def get(self, path: Path | str) -> VideoProbe:
         validated = validate_video_path(path, must_exist=True)
@@ -166,6 +181,106 @@ class ProbeCache:
         except (OSError, RuntimeError):
             return
         self._entries.pop(resolved, None)
+        self._packet_entries.pop(resolved, None)
+
+    def _video_packets(self, path: Path | str) -> dict:
+        """Read selected compressed presentation timestamps, cached by file identity."""
+        source = validate_video_path(path, must_exist=True)
+        stat = source.stat()
+        key = ProbeKey(source, stat.st_size, stat.st_mtime_ns)
+        cached = self._packet_entries.get(source)
+        if cached is not None and cached[0] == key:
+            return cached[1]
+        probe = self.get(source)
+        try:
+            result = subprocess.run(
+                [
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-select_streams",
+                    str(probe.video_stream_index),
+                    "-show_packets",
+                    "-show_entries",
+                    "stream=time_base:packet=pts,duration",
+                    "-of",
+                    "json",
+                    str(source),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            if result.returncode:
+                raise ValueError("packet probe failed")
+            data = json.loads(result.stdout)
+            clock = Fraction(data["streams"][0]["time_base"])
+            packets = data["packets"]
+            if clock <= 0 or not packets or any(type(p.get("pts")) is not int for p in packets):
+                raise ValueError("missing presentation timestamps")
+            packets = sorted(packets, key=itemgetter("pts"))
+            if len({p["pts"] for p in packets}) != len(packets):
+                raise ValueError("ambiguous duplicate presentation timestamps")
+            value = {"clock": clock, "packets": packets}
+            self._packet_entries[source] = key, value
+            return value
+        except (
+            OSError,
+            subprocess.SubprocessError,
+            KeyError,
+            IndexError,
+            TypeError,
+            ValueError,
+            ZeroDivisionError,
+        ) as exc:
+            raise ProbeError("Source has no verified presentation packet clock") from exc
+
+    def render_frame_rate(self, path: Path | str) -> dict:
+        """Preserve the densest selected cadence, independently of average metadata fps.
+
+        Matching valid stream rates retain the CFR fast path, including true high
+        rates. VFR/ambiguous sources need unique actual PTS; an average fallback
+        cannot establish that a common output frame grid preserves dense motion.
+        """
+        probe = self.get(path)
+        try:
+            average = Fraction(probe.average_frame_rate or "0")
+            nominal = Fraction(probe.nominal_frame_rate or "0")
+        except (ValueError, ZeroDivisionError):
+            average = nominal = Fraction(0)
+        if average > 0 and average == nominal:
+            return {"basis": "matching-stream-rates", "rate": str(average), "fps": float(average)}
+        data = self._video_packets(path)
+        packets, clock = data["packets"], data["clock"]
+        if len(packets) < 2:
+            raise ProbeError("Source has no verified presentation cadence")
+        spacing = min(b["pts"] - a["pts"] for a, b in zip(packets, packets[1:], strict=False))
+        rate = 1 / (spacing * clock)
+        return {
+            "basis": "presentation-packet-spacing",
+            "rate": str(rate),
+            "fps": float(rate),
+            "packet_count": len(packets),
+            "time_base": str(clock),
+            "min_spacing_ticks": spacing,
+        }
+
+    def last_video_frame(self, path: Path | str) -> dict[str, float | int | str]:
+        """Bind a rounded source endpoint to its actual final presentation packet."""
+        data = self._video_packets(path)
+        clock, tail = data["clock"], data["packets"][-1]
+        ticks = tail.get("duration")
+        if type(ticks) is not int or ticks <= 0:
+            raise ProbeError("Source has no verified final presentation frame")
+        return {
+            "time_base": str(clock),
+            "last_pts": tail["pts"],
+            "duration_ticks": ticks,
+            "start_seconds": float(tail["pts"] * clock),
+            "end_seconds": float((tail["pts"] + ticks) * clock),
+            "frame_seconds": float(ticks * clock),
+        }
 
     @staticmethod
     def _probe(path: Path) -> VideoProbe:
@@ -176,7 +291,7 @@ class ProbeCache:
             "-show_entries",
             (
                 "stream=index,codec_type,codec_name,width,height,r_frame_rate,avg_frame_rate,"
-                "bit_rate,duration,color_space,color_transfer,color_primaries,"
+                "bit_rate,duration,start_time,time_base,color_space,color_transfer,color_primaries,"
                 "bits_per_raw_sample,sample_rate,channels:stream_side_data=rotation:"
                 "format=duration,size,bit_rate"
             ),

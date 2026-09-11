@@ -39,7 +39,6 @@ _PRESET_CARDS: list[tuple[str, str, str, str]] = [
     (MemoryType.MONTHLY_HIGHLIGHTS, "event_note", "Monthly Highlights", "One month, distilled"),
     (MemoryType.ON_THIS_DAY, "history", "On This Day", "This day through the years"),
     (MemoryType.HOLIDAY, "celebration", "Holiday", "The same holiday, across the years"),
-    (MemoryType.THEN_AND_NOW, "compare_arrows", "Then and Now", "An early year beside this one"),
     (MemoryType.TRIP, "flight_takeoff", "Trip", "Auto-detect trips from GPS data"),
     (MemoryType.ALBUM, "photo_album", "Album", "Everything from one Immich album"),
     (
@@ -607,6 +606,12 @@ def _choose_special_day(entry: DiscoveredDay) -> None:
         "photos": entry.photos,
         "active_hours": entry.active_hours,
     }
+    if entry.event_id is not None:
+        state.memory_preset_params["event_id"] = entry.event_id
+    if entry.asset_ids:
+        state.memory_preset_params["asset_ids"] = entry.asset_ids
+    if entry.event_admission is not None:
+        state.memory_preset_params["event_admission"] = entry.event_admission.as_record()
     _apply_preset_to_state(MemoryType.SPECIAL_DAY)
     # Step 3 opens on the day's own name instead of asking the title LLM to
     # invent one for an occasion it never saw.

@@ -1,11 +1,4 @@
-"""Running the real selection without producing a video.
-
---dry-run cannot do this. It welds three separate decisions together: use only
-cached analysis, skip the verify pass, and stop before rendering. So the cheap
-mode runs a *different* selection than the real one, and there was no way to
-exercise the real one without also spending minutes encoding an mp4 nobody
-wanted.
-"""
+"""Dry-run prepares inputs; no-render runs the sole production selector."""
 
 from datetime import datetime
 from pathlib import Path
@@ -27,14 +20,14 @@ def _run(**kwargs):
     with (
         patch("immich_memories.generate.assets_to_clips", return_value=[clip]),
         # WHY: the pipeline is the collaborator under inspection.
-        patch("immich_memories.analysis.smart_pipeline.SmartPipeline") as pipeline_type,
+        patch("immich_memories.analysis.editorial_runtime.build_smart_pipeline") as pipeline_type,
     ):
         pipeline = pipeline_type.return_value
         pipeline.run_analysis.return_value = []
         pipeline.run_planning_analysis.return_value = []
         # Stop at the call under inspection: everything past it is rendering,
         # which is the whole thing this flag exists to avoid.
-        pipeline.run_selection.side_effect = RuntimeError("stop at selection")
+        pipeline.run_editorial_source.side_effect = RuntimeError("stop at selection")
         try:
             run_pipeline_and_generate(
                 assets=[clip.asset],
@@ -56,24 +49,28 @@ def _run(**kwargs):
         except RuntimeError as exc:
             if "stop at selection" not in str(exc):
                 raise
+        if kwargs.get("dry_run"):
+            pipeline_type.assert_not_called()
         return pipeline
 
 
 def test_no_render_runs_the_real_selection() -> None:
-    """The verify pass is what makes it the real one, so it has to stay on."""
+    """The production source route owns all selection and media checks."""
     pipeline = _run(no_render=True)
 
-    assert pipeline.run_selection.call_args.kwargs["verify"] is True
-    pipeline.run_analysis.assert_called()
+    pipeline.run_editorial_source.assert_called_once()
+    pipeline.run_selection.assert_not_called()
+    pipeline.run_analysis.assert_not_called()
     pipeline.run_planning_analysis.assert_not_called()
 
 
-def test_dry_run_still_means_the_cheap_plan() -> None:
-    """Unchanged: --dry-run stays the cached-only, unverified preview."""
+def test_dry_run_prepares_without_an_alternate_selection(capsys) -> None:
     pipeline = _run(dry_run=True)
 
-    assert pipeline.run_selection.call_args.kwargs["verify"] is False
-    pipeline.run_planning_analysis.assert_called()
+    pipeline.run_editorial_source.assert_not_called()
+    pipeline.run_selection.assert_not_called()
+    pipeline.run_planning_analysis.assert_not_called()
+    assert "Selection: pending" in capsys.readouterr().out
 
 
 def test_the_flag_exists_and_says_what_it_does() -> None:
@@ -92,14 +89,11 @@ def test_the_flag_exists_and_says_what_it_does() -> None:
 def test_no_render_is_not_dry_run() -> None:
     """The two must not be the same switch wearing two names.
 
-    --dry-run uses cached analysis only and skips verify; --no-render runs
-    both for real. If they ever collapse into one, the cheap preview silently
-    becomes the expensive path or the real one silently becomes approximate.
+    Dry-run never enters selection. No-render selects exactly what would ship.
     """
     real = _run(no_render=True)
     cheap = _run(dry_run=True)
 
-    assert real.run_selection.call_args.kwargs["verify"] is True
-    assert cheap.run_selection.call_args.kwargs["verify"] is False
-    real.run_analysis.assert_called()
-    cheap.run_planning_analysis.assert_called()
+    real.run_editorial_source.assert_called_once()
+    cheap.run_editorial_source.assert_not_called()
+    cheap.run_planning_analysis.assert_not_called()

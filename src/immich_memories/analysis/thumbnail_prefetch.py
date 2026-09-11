@@ -35,6 +35,11 @@ logger = logging.getLogger(__name__)
 THUMBNAIL_SIZE = "preview"
 
 
+def cached_preview_bytes(thumbnail_cache: ThumbnailCache, asset_id: str) -> bytes | None:
+    """Read an already-fetched preview without turning atlas construction into a network call."""
+    return thumbnail_cache.get(asset_id, THUMBNAIL_SIZE)
+
+
 class ThumbnailPrefetcher:
     """Best-effort preview fetcher; failures degrade de-dup, never abort the run."""
 
@@ -66,6 +71,10 @@ class ThumbnailPrefetcher:
 
     def ensure_cached(self, clips: Sequence[VideoClipInfo]) -> None:
         """Fetch previews that are not cached yet; log (never raise) on failure."""
+        self._thumbnail_cache.begin_working_set(
+            [clip.asset.id for clip in clips],
+            THUMBNAIL_SIZE,
+        )
         missing = [
             clip for clip in clips if not self._thumbnail_cache.has(clip.asset.id, THUMBNAIL_SIZE)
         ]

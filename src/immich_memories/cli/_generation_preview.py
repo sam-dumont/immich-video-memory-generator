@@ -74,7 +74,7 @@ def music_policy(*, config, music: str | None, no_music: bool) -> str:
 
 def print_generation_preview(preview: GenerationPreview) -> None:
     """Print a stable summary even when interactive progress is disabled."""
-    click.echo("Dry-run plan (no video will be created)")
+    click.echo("Selection plan (no video will be created)")
     click.echo(f"Memory: {preview.memory_type}")
     click.echo(f"Date range: {preview.date_range}")
     click.echo(

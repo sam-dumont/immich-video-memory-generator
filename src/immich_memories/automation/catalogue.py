@@ -4,9 +4,8 @@ More than one reader wants this file -- `days-due` prints from it and the
 wizard's Surprise me card offers from it -- and they have to agree on where it
 lives and on what a half-written entry means, so the reading happens once here.
 
-Nothing raises. A scan of twenty years is not something to ask anybody to run
-again for a field they can live without, so every key falls back and an
-unreadable file reads as an empty catalogue.
+Legacy entries tolerate missing display fields. Exact event membership is a
+source boundary: incomplete or inconsistent event records must not widen to a day.
 """
 
 from __future__ import annotations
@@ -50,24 +49,62 @@ def load_catalogue(path: Path) -> list[dict]:
 
 
 def entries_from(path: Path) -> list[DiscoveredDay]:
-    """The catalogue as discovered days, skipping anything without a date."""
+    """Read legacy days and canonical events without discarding event identity."""
+    entries = []
+    for raw in load_catalogue(path):
+        if not isinstance(raw, dict):
+            continue
+        entry = _entry_from_record(raw, path)
+        if entry is not None:
+            entries.append(entry)
+    return entries
+
+
+def _event_run(
+    raw: dict, start: datetime | None, end: datetime | None
+) -> tuple[datetime, datetime, tuple[datetime, datetime]]:
+    start = start or _moment_in(raw.get("run_start"))
+    end = end or _moment_in(raw.get("run_end"))
+    if start is None or end is None or start > end:
+        raise ValueError("canonical special event needs its exact start and end")
+    return start, end, (start, end)
+
+
+def _entry_from_record(raw: dict, path: Path) -> DiscoveredDay | None:
+    """One catalogue record; a legacy day without any date is skipped, not an error."""
+    from immich_memories.analysis.special_event_scope import (
+        SpecialEventAdmission,
+        validate_special_event_scope,
+    )
     from immich_memories.automation.special_day_scan import DiscoveredDay
 
-    return [
-        DiscoveredDay(
-            day=date.fromisoformat(raw["day"]),
-            title=raw.get("title", ""),
-            subtitle=raw.get("subtitle", ""),
-            what=raw.get("what", ""),
-            photos=raw.get("photos", 0),
-            window=_window_in(raw.get("window")),
-            active_hours=raw.get("active_hours", 0),
-            run_start=_moment_in(raw.get("run_start")),
-            run_end=_moment_in(raw.get("run_end")),
-        )
-        for raw in load_catalogue(path)
-        if raw.get("day")
-    ]
+    event_id = raw.get("event_id")
+    members = validate_special_event_scope(event_id, raw.get("asset_ids", ()))
+    start, end = _moment_in(raw.get("start")), _moment_in(raw.get("end"))
+    window = _window_in(raw.get("window"))
+    if event_id is not None:
+        start, end, window = _event_run(raw, start, end)
+    day = date.fromisoformat(raw["day"]) if raw.get("day") else (start.date() if start else None)
+    if day is None:
+        return None
+    if event_id is not None and start is not None and day != start.date():
+        raise ValueError("canonical special event day must match its start")
+    return DiscoveredDay(
+        day=day,
+        title=raw.get("title", ""),
+        subtitle=raw.get("subtitle", ""),
+        what=raw.get("what", ""),
+        photos=len(members) if event_id else raw.get("photos", 0),
+        window=window,
+        active_hours=raw.get("active_hours", 0),
+        run_start=start if event_id else _moment_in(raw.get("run_start")),
+        run_end=end if event_id else _moment_in(raw.get("run_end")),
+        event_id=event_id,
+        asset_ids=members,
+        event_admission=SpecialEventAdmission.from_catalogue_record(raw, evidence_ref=str(path))
+        if event_id is not None
+        else None,
+    )
 
 
 def hours_awake(entry: DiscoveredDay) -> float:

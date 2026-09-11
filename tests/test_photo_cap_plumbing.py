@@ -1,7 +1,11 @@
-"""The photo cap the user configured has to be the cap the pipeline enforces."""
+"""The configured photo ratio is forwarded into the shared pipeline configuration.
+
+These construction tests do not establish enforcement by the story-first selector.
+"""
 
 from immich_memories.analysis.smart_pipeline import PipelineConfig
 from immich_memories.config_loader import Config
+from tests.conftest import make_clip
 
 
 def _config_capping_photos_at(ratio: float) -> Config:
@@ -10,13 +14,8 @@ def _config_capping_photos_at(ratio: float) -> Config:
     return config
 
 
-def test_the_configured_photo_ratio_becomes_the_enforced_ratio() -> None:
-    """photos.max_ratio is documented as the dial; it has to reach the enforcer.
-
-    The cap is applied from PipelineConfig.photo_max_ratio, so a construction
-    site that never sets it enforces the dataclass default however the YAML
-    reads.
-    """
+def test_the_configured_photo_ratio_reaches_pipeline_config() -> None:
+    """Forward the user's value instead of silently keeping the dataclass default."""
     pipeline_config = PipelineConfig.from_app_config(_config_capping_photos_at(0.25))
 
     assert pipeline_config.photo_max_ratio == 0.25
@@ -32,7 +31,7 @@ def test_caller_supplied_fields_survive_the_app_config_defaults() -> None:
     assert pipeline_config.target_clips == 42
 
 
-def test_the_ui_hands_the_pipeline_the_configured_cap() -> None:
+def test_the_ui_forwards_the_configured_photo_ratio() -> None:
     """The wizard builds its own pipeline config; it has to read the dial too."""
     from immich_memories.ui.pages.clip_pipeline import _build_pipeline_config
     from immich_memories.ui.state import AppState
@@ -42,7 +41,7 @@ def test_the_ui_hands_the_pipeline_the_configured_cap() -> None:
     assert _build_pipeline_config(state, []).photo_max_ratio == 0.25
 
 
-def test_the_cli_hands_the_pipeline_the_configured_cap(tmp_path) -> None:
+def test_the_cli_forwards_the_configured_photo_ratio(tmp_path) -> None:
     """The CLI builds its own pipeline config; it has to read the dial too."""
     from datetime import datetime
     from unittest.mock import MagicMock, patch
@@ -55,19 +54,14 @@ def test_the_cli_hands_the_pipeline_the_configured_cap(tmp_path) -> None:
     config = _config_capping_photos_at(0.25)
     config.cache.database = str(tmp_path / "cap.db")
     config.cache.directory = str(tmp_path / "cache")
-    clip = MagicMock()
-    clip.asset.id = "asset-1"
-    clip.width, clip.height = 1920, 1080
+    clip = make_clip("asset-1", file_created_at=datetime(2026, 1, 1))
 
-    # WHY: run_pipeline_and_generate otherwise talks to Immich and runs a full analysis.
+    # WHY: runtime construction opens stores and model clients; capture its config, then stop.
     with (
-        # WHY: Immich is the external boundary — this stands in for the library read.
-        patch("immich_memories.generate.assets_to_clips", return_value=[clip]),
-        # WHY: the pipeline is the boundary under inspection; stopping it in analysis
-        patch("immich_memories.analysis.smart_pipeline.SmartPipeline") as pipeline_type,
+        patch("immich_memories.analysis.editorial_runtime.build_smart_pipeline") as build_pipeline,
         pytest.raises(RuntimeError, match="stop here"),
     ):
-        pipeline_type.return_value.run_analysis.side_effect = RuntimeError("stop here")
+        build_pipeline.return_value.run_editorial_source.side_effect = RuntimeError("stop here")
         run_pipeline_and_generate(
             assets=[clip.asset],
             client=MagicMock(),
@@ -85,4 +79,6 @@ def test_the_cli_hands_the_pipeline_the_configured_cap(tmp_path) -> None:
             source="auto",
         )
 
-    assert pipeline_type.call_args.kwargs["config"].photo_max_ratio == 0.25
+    build_pipeline.assert_called_once()
+    assert build_pipeline.call_args.kwargs["config"].photo_max_ratio == 0.25
+    build_pipeline.return_value.run_editorial_source.assert_called_once()

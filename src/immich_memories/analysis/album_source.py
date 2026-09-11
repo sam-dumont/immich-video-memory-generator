@@ -117,15 +117,6 @@ def fetch_album_media(
     return media
 
 
-def album_media_as_clips(media: AlbumMedia) -> tuple[list[VideoClipInfo], list[Asset]]:
-    """Flatten an album's media into the clip and photo pools the wizard uses."""
-    from immich_memories.generate import assets_to_clips
-
-    clips = assets_to_clips(media.videos)
-    clips.sort(key=lambda clip: clip.asset.file_created_at)
-    return clips, media.photos.copy()
-
-
 # An album is one curated event, so the pool is mostly keepers: a few seconds
 # each reads as a highlight reel rather than a slideshow.
 _SECONDS_PER_ITEM = 4.0

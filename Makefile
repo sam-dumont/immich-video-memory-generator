@@ -2,7 +2,7 @@
 # Uses uv for fast Python package management
 export PYTHONUNBUFFERED=1
 
-.PHONY: help install dev dev-ci dev-test run preflight docs-cli-check docs-config-check test test-extras test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-audio-mixing test-integration-titles test-fast benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci integration-coverage-for-diff ci critique ensure-dev commitlint privacy-gate pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots diagrams capability-matrix
+.PHONY: help install dev dev-ci dev-test run preflight parity docs-cli-check docs-config-check test test-extras test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-audio-mixing test-integration-titles test-fast benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci integration-coverage-for-diff ci critique ensure-dev commitlint privacy-gate pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots diagrams capability-matrix
 
 # Default target
 help:
@@ -405,6 +405,12 @@ bandit-ci:
 	high=[i for i in r['results'] if i['issue_severity']=='HIGH']; \
 	[print(f\"  {i['filename']}:{i['line_number']} [{i['test_id']}] {i['issue_text']}\") for i in high]; \
 	sys.exit(len(high))"
+
+# Editorial parity: replay the reference routes warm through the public CLI with the
+# model providers blocked; needs the owner's library, store and reference file, so it is
+# a post-slice check and deliberately not part of `make ci`.
+parity:  ## Replay reference editorial routes warm; fail on provider calls or changed carriers
+	uv run python scripts/replay_editorial_routes.py --reference $${PARITY_REFERENCE:-~/.immich-memories-matrix/story-first-reference.private.json} $(PARITY_ARGS)
 
 # Private terms gate: the denylist itself lives outside the repo (see
 # scripts/private_terms_gate.py), so this only ever scans -- it never commits

@@ -131,8 +131,16 @@ class SyncImmichClient:
     def get_video_playback(self, asset_id: str) -> bytes:
         return self._run(self._async_client.get_video_playback(asset_id))
 
-    def download_asset(self, asset_id: str, output_path: Path) -> Path:
-        return self._run(self._async_client.download_asset(asset_id, output_path))
+    def download_asset(
+        self, asset_id: str, output_path: Path, *, expected_size_bytes: int | None = None
+    ) -> Path:
+        if expected_size_bytes is None:
+            return self._run(self._async_client.download_asset(asset_id, output_path))
+        return self._run(
+            self._async_client.download_asset(
+                asset_id, output_path, expected_size_bytes=expected_size_bytes
+            )
+        )
 
     def search_metadata(self, **kwargs) -> MetadataSearchResult:
         return self._run(self._async_client.search_metadata(**kwargs))

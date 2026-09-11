@@ -435,6 +435,21 @@ class TestConfig:
         assert "analysis" not in raw
         assert raw["advanced"]["analysis"]["scene_threshold"] == 30.0
 
+    def test_triage_is_a_tier2_section_off_by_default(self, tmp_path):
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text("advanced:\n  triage:\n    enabled: true\n")
+
+        assert Config().triage.enabled is False
+        loaded = Config.from_yaml(config_path)
+        assert loaded.triage.enabled is True
+
+        loaded.save_yaml(config_path)
+        import yaml
+
+        raw = yaml.safe_load(config_path.read_text())
+        assert "triage" not in raw
+        assert raw["advanced"]["triage"]["enabled"] is True
+
     def test_tiered_roundtrip(self, tmp_path):
         """Config survives save (tiered) → load cycle."""
         config_path = tmp_path / "config.yaml"
@@ -473,3 +488,17 @@ class TestRemovedSections:
         assert loaded.immich.url == "http://x"
         assert loaded.defaults.transition == "cut"
         assert "scoring_priority" in caplog.text
+
+
+class TestDescriptionLLM:
+    def test_description_llm_loads_from_yaml_and_defaults_to_none(self, tmp_path):
+        """The description pass can point at its own model; absent means "use llm"."""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            "description_llm:\n  model: 'student-q3vl'\n  base_url: 'http://localhost:8090/v1'\n"
+        )
+        loaded = Config.from_yaml(config_path)
+        assert loaded.description_llm is not None
+        assert loaded.description_llm.model == "student-q3vl"
+        assert loaded.description_llm.base_url == "http://localhost:8090/v1"
+        assert Config().description_llm is None

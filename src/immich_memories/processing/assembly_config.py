@@ -150,6 +150,12 @@ class AssemblySettings:
     # Fallback resolution when auto_resolution is False and target_resolution is None
     # Set by the caller from config.output.resolution_tuple
     default_resolution: tuple[int, int] | None = None
+    # Exact source intervals already inspected and extracted by the editorial route.
+    # Titles may use their pixels but cannot consume part of the content interval.
+    certified_content_intervals: dict[str, tuple[float, float]] = field(default_factory=dict)
+    # Captions keep their configured language even when title cards are disabled.
+    # None preserves the title-settings locale for standalone assembly callers.
+    caption_locale: str | None = None
 
 
 @dataclass

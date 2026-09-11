@@ -49,6 +49,14 @@ def _build_assembly_settings(
     probe_cache: ProbeCache | None = None,
 ) -> AssemblySettings:
     """Build AssemblySettings from GenerationParams."""
+    from immich_memories.generate_timeline import validate_certified_content
+
+    certified_ids = validate_certified_content(params, assembly_clips)
+    certified_intervals = {
+        clip.asset.id: tuple(clip.editorial_live_manifest["selected_interval"])
+        for clip in params.clips
+        if clip.asset.id in certified_ids and clip.editorial_live_manifest is not None
+    }
     config = params.config
 
     transition_type = {
@@ -117,8 +125,10 @@ def _build_assembly_settings(
         scale_mode=effective_scale_mode,
         add_date_overlay=params.add_date_overlay,
         add_place_overlay=params.add_place_overlay,
+        caption_locale=config.title_screens.locale,
         debug_preserve_intermediates=params.debug_preserve_intermediates,
         privacy_mode=params.privacy_mode,
+        certified_content_intervals=certified_intervals,
     )
 
 

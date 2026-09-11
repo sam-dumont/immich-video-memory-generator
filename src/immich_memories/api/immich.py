@@ -510,8 +510,14 @@ class ImmichClient:
     async def get_video_playback(self, asset_id: str) -> bytes:
         return await self.assets.get_video_playback(asset_id)
 
-    async def download_asset(self, asset_id: str, output_path: Path) -> Path:
-        return await self.assets.download_asset(asset_id, output_path)
+    async def download_asset(
+        self, asset_id: str, output_path: Path, *, expected_size_bytes: int | None = None
+    ) -> Path:
+        if expected_size_bytes is None:
+            return await self.assets.download_asset(asset_id, output_path)
+        return await self.assets.download_asset(
+            asset_id, output_path, expected_size_bytes=expected_size_bytes
+        )
 
     # ---- Delegate to PersonService ----
 

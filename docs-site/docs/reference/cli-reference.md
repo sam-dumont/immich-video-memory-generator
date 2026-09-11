@@ -236,8 +236,8 @@ Generate a video compilation.
 ```text
 Memory type presets:
   --memory-type season --season summer --year 2024
-  --memory-type person_spotlight --person "Alice" --year 2024
-  --memory-type multi_person --person "Alice" --person "Bob" --year 2024
+  --memory-type person_spotlight --person "Riley" --year 2024
+  --memory-type multi_person --person "Riley" --person "Bob" --year 2024
   --memory-type monthly_highlights --month 7 --year 2024
   --memory-type on_this_day
 ```
@@ -263,7 +263,9 @@ immich-memories generate [OPTIONS]
 | `--birthday`, `-b` | text | - | Run the year up to a birthday, plus earlier birthdays (reads Immich's birth date, or override with MM-DD, e.g. 03-15) |
 | `--from-album` | text | - | Generate from an Immich album (name or ID) instead of a date range |
 | `--person`, `-p` | text | - | Person name (repeatable) |
-| `--memory-type` | choice: `year_in_review` \| `season` \| `person_spotlight` \| `multi_person` \| `monthly_highlights` \| `on_this_day` \| `trip` \| `holiday` \| `then_and_now` \| `special_day` | - | Memory type preset |
+| `--people-expression` | text | - | Grouped people condition, e.g. ("Person A" OR "Person B") AND "Person C". Use exact library names; each asset must match. |
+| `--person-match` | choice: `and` \| `or` | and | With several --person values, require everyone in each asset (and) or accept any named person (or) |
+| `--memory-type` | choice: `year_in_review` \| `season` \| `person_spotlight` \| `multi_person` \| `monthly_highlights` \| `on_this_day` \| `trip` \| `holiday` \| `special_day` | - | Memory type preset |
 | `--holiday` | text | - | Holiday name or MM-DD (use with --memory-type holiday) |
 | `--season` | choice: `spring` \| `summer` \| `fall` \| `autumn` \| `winter` | - | Season (use with --memory-type season) |
 | `--month` | integer | - | Month 1-12 (with --year, generates that month; selects trip by month) |
@@ -280,8 +282,8 @@ immich-memories generate [OPTIONS]
 | `--output`, `-o`, `-O` | path | - | Output file path |
 | `--music`, `-m` | text | - | Music: path to audio file, 'auto' to generate from config, or omit for default behavior |
 | `--no-music` | boolean | false | Disable all music (skip both provided files and AI generation) |
-| `--dry-run` | boolean | false | Show what would be done without generating |
-| `--no-render` | boolean | false | Run the real selection — analysis, verify, judge, review — and stop before encoding. Unlike --dry-run, which uses cached analysis only and skips the verify pass, this picks the clips it would actually ship |
+| `--dry-run` | boolean | false | Discover inputs and show preparation needs without selection or generation |
+| `--no-render` | boolean | false | Run story-first selection and its audience and media checks, then stop before encoding. Unlike --dry-run, this picks the clips it would actually ship |
 | `--trace-selection` | file | - | Write a stage-by-stage report of how the clips were chosen |
 | `--upload-to-immich` | boolean | false | Upload generated video back to Immich |
 | `--album` | text | - | Immich album name for uploaded video |
@@ -294,13 +296,15 @@ immich-memories generate [OPTIONS]
 | `--subtitle` | text | - | Override video subtitle text |
 | `--include-live-photos` | boolean | - | Include Live Photo video clips (3s iPhone clips, merged when burst-captured) |
 | `--include-photos` | boolean | - | Include photos as animated Ken Burns clips (blur background, face-aware pan) |
+| `--accept-any-provenance` | boolean | false | Keep forwarded and re-encoded media for this memory; date, person, privacy, and Live Photo boundaries still apply |
 | `--photo-duration` | float | - | Duration per photo clip in seconds (default: 4.0) |
 | `--refinement-passes` | integer range | - | How many times selection may verify, judge and review before settling (default: 10). The biggest dial on warm-run time, and on the bill when llm.base_url points at a paid API |
 | `--analysis-depth` | choice: `auto` \| `fast` \| `thorough` | - | Analysis depth: auto (full analysis for manageable pools), fast (favorites first), or thorough (every eligible clip) |
 | `--trip-index` | integer | - | Select a specific trip by index (use with --memory-type trip) |
 | `--all-trips` | boolean | false | Generate a video for every detected trip (use with --memory-type trip) |
-| `--years-back` | integer | - | Years to look back for --birthday, on_this_day, holiday or then_and_now |
+| `--years-back` | integer | - | Years to look back for --birthday, on_this_day or holiday |
 | `--near-date` | text | - | Select trip closest to this date (YYYY-MM-DD, use with --memory-type trip) |
+| `--event-id` | text | - | Exact catalogue event ID (use with --memory-type special_day and --day) |
 | `--day` | datetime | - | The catalogued day to generate (YYYY-MM-DD, use with --memory-type special_day). Its title comes from the catalogue, not from here: run `immich-memories days-due` to see which days are in it |
 | `--quiet` | boolean | false | Suppress interactive progress, emit log lines |
 
