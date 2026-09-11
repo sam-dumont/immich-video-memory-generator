@@ -4,11 +4,11 @@ sidebar_label: "Mac + Local LLM"
 
 # Mac + Local LLM Setup
 
-For Mac users running everything locally: LLM clip scoring, Apple Silicon hardware acceleration, and a native install without Docker.
+For Mac users running everything locally: the reader, the caption server, Apple Silicon hardware acceleration, and a native install without Docker.
 
 ## Who this is for
 
-You have a Mac with Apple Silicon (M1/M2/M3/M4). You want LLM-powered content analysis running entirely on your machine, no cloud APIs. You're comfortable with the terminal.
+You have a Mac with Apple Silicon (M1/M2/M3/M4) and enough unified memory to hold the models — 32 GB is the tested floor. You want the whole editor running on your own machine, no cloud APIs. You're comfortable with the terminal.
 
 ## Architecture
 
@@ -18,7 +18,7 @@ You have a Mac with Apple Silicon (M1/M2/M3/M4). You want LLM-powered content an
 │                                                   │
 │  ┌──────────────┐  ┌──────────────────────────┐  │
 │  │  oMLX        │  │   Immich Memories         │  │
-│  │  (Qwen3.6)   │←─│   (native Python)         │  │
+│  │  reader model│←─│   (native Python)         │  │
 │  │  port 8000   │  │   VideoToolbox encoding   │  │
 │  │              │  │   Vision face detection   │  │
 │  └──────────────┘  └──────────────────────────┘  │
@@ -52,13 +52,19 @@ Also complete [editorial annotation setup](../configuration/editorial-preparatio
 public context encoder, detector weights and compact-caption service are separate from the
 general model connection below. New runs use story-first selection and the FAMILY audience.
 
-## Set up a local vision model
+## Set up the reader
 
-This is developed and tested against **Qwen3.6-27B** and **Qwen3.6-35B-A3B**, served by
-[oMLX](https://github.com/jundot/omlx) on Apple Silicon. Vision is built into the Qwen3.x models —
-there is no separate `-VL` variant to hunt for. Anything else that speaks the OpenAI
-`/v1/chat/completions` contract and accepts images will work; it just is not what the pipeline was
-exercised against.
+The reader groups the period's days into stories, weighs them and picks the pictures — and it is
+what *looks* at some of them: the candidates whose facts the edit demands, a few dozen per
+memory, reach this endpoint as 800 px tiles. So the seat needs vision and at least a 32k context,
+and a text-only model cannot take it.
+
+The graded configuration, the one whose cuts have been approved, is
+**`mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit`** served by
+[oMLX](https://github.com/jundot/omlx). Anything else that speaks the OpenAI
+`/v1/chat/completions` contract, accepts images and honours `response_format: json_schema` will
+work; it just has not been graded. The older Qwen3.6 pair was exercised against the retired
+per-clip scorer, not this route.
 
 oMLX is a menu-bar app that serves MLX models over an OpenAI-compatible API. macOS 15+, Python
 3.11-3.13:
@@ -72,15 +78,15 @@ omlx start        # background service on port 8000
 Pull a model from the admin dashboard at [http://localhost:8000/admin/chat](http://localhost:8000/admin/chat),
 or drop it into the model directory yourself. The weights are on Hugging Face:
 
-| Model | Repo | Download |
-|-------|------|----------|
-| Qwen3.6-27B, 8-bit | `mlx-community/Qwen3.6-27B-8bit` | 29.5 GB |
-| Qwen3.6-27B, 4-bit | `mlx-community/Qwen3.6-27B-4bit` | 16.1 GB |
-| Qwen3.6-35B-A3B, 8-bit | `mlx-community/Qwen3.6-35B-A3B-8bit` | 37.7 GB |
-| Qwen3.6-35B-A3B, 4-bit | `mlx-community/Qwen3.6-35B-A3B-4bit` | 20.4 GB |
+| Seat | Repo | Resident |
+|------|------|----------|
+| Reader | `mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit` | ~17 GB |
+| Captions | `mlx-community/SmolVLM2-500M-Video-Instruct-mlx` (revision `fa57db46`) | 1–2 GB |
 
-Those are download sizes, and the weights stay resident while the server is up — read them as the
-floor for how much unified memory the model alone takes.
+The weights stay resident while the servers are up — read them as the floor for how much unified
+memory the models alone take. The caption server is a second service on its own port (8092 by
+default) and has to advertise the alias `smolvlm2-500m-base-public`; the
+[self-hosting guide](../self-hosting.md) stands both of them up.
 
 Then point Immich Memories at it in `~/.immich-memories/config.yaml`:
 
@@ -89,7 +95,7 @@ advanced:
   llm:
     provider: openai-compatible
     base_url: http://localhost:8000/v1
-    model: mlx-community/Qwen3.6-27B-8bit
+    model: mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit
   content_analysis:
     enabled: true
 ```
@@ -100,7 +106,7 @@ Or set via environment variables:
 
 ```bash
 export IMMICH_MEMORIES_LLM__BASE_URL=http://localhost:8000/v1
-export IMMICH_MEMORIES_LLM__MODEL=mlx-community/Qwen3.6-27B-8bit
+export IMMICH_MEMORIES_LLM__MODEL=mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit
 export IMMICH_MEMORIES_CONTENT_ANALYSIS__ENABLED=true
 ```
 
@@ -150,23 +156,24 @@ On an M2 Pro (12-core, 32 GB):
 | 50 | 1080p | ~8 min | ~12 min |
 
 Those numbers are from an earlier 7B vision model (2 frames per clip at ~3 seconds per frame) and
-have not been re-measured against the Qwen3.6 pair, which is several times larger — read them as a
-floor, not a forecast. What has not changed is the shape: LLM analysis is the slowest phase, and it
-is cached. A second run over the same clips skips it entirely.
+have not been re-measured against the 30B reader — read them as a floor, not a forecast. What
+has not changed is the shape: the model passes are the slowest phase, and they are cached. A
+second cut over the same period skips them entirely.
 
-Memory is the constraint, not time. Immich Memories itself wants ~2 GB; the model wants its whole
-weight file resident (16-38 GB from the table above) for as long as the server is up.
+Memory is the constraint, not time. Immich Memories itself wants 2-4 GB; the models want their
+weights resident for as long as their servers are up — ~17 GB for the reader, 1-2 GB for the
+captions.
 
 That is what makes local music generation tighter here than on a machine doing nothing else: a
-27B model holding 30 GB is exactly the situation where an ACE-Step XL profile stops fitting.
-Stopping the LLM server before a music-heavy run buys all of it back.
+reader holding 17 GB is exactly the situation where an ACE-Step XL profile stops fitting.
+Stopping the model servers before a music-heavy run buys all of it back.
 
 ## Tips
 
 - **Start the required model services before generating.** Missing annotation or story providers
   stop an uncached editorial run with an incomplete result. Matching cached facts are reused.
-- **Take 8-bit if the memory is there, 4-bit if it isn't.** 4-bit roughly halves the resident weights (16.1 GB against 29.5 GB for the 27B) and costs accuracy. On a 32 GB Mac the 4-bit 27B is the one that leaves room for anything else.
-- **Smaller Qwen3.x sizes exist** for tighter machines, and they are not part of the tested pair — treat them as your own experiment rather than a supported configuration.
-- **Ollama works too.** `ollama pull qwen3.6:27b` (17 GB), then set `provider: ollama`, `base_url: http://localhost:11434` and `model: qwen3.6:27b` in config.
+- **The graded reader is the 4-bit one.** A higher-precision build of the same model will run if the memory is there; it is not what the approved sheets came from.
+- **Smaller vision models will run** on tighter machines. None of them has been graded on this route — treat the output as your own experiment rather than a supported configuration.
+- **Ollama speaks the same contract**, so it works as a transport. Nothing on this route has been run on it, and whatever you serve there still has to accept images.
 - **Preparation covers the whole source period.** Clip-analysis depth does not shortlist the
   material used to understand its stories. Exact producer/input cache hits are reused.

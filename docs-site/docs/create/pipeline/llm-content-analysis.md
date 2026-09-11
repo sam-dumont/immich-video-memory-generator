@@ -109,11 +109,12 @@ ollama serve
 Content analysis needs TWO config sections: `content_analysis` controls the feature itself, and `llm` tells it which model to talk to.
 
 ```yaml
-# Which LLM to use (shared with title generation)
-# Tested against Qwen3.6-27B and Qwen3.6-35B-A3B
+# Which LLM to use (shared with title generation and the reader)
+# The Qwen3.6 pair was tested against this per-clip scorer. The story-first
+# reader that replaced it is graded on Qwen3-VL-30B-A3B-Instruct-4bit.
 llm:
   base_url: "http://localhost:8000/v1"
-  model: "mlx-community/Qwen3.6-27B-8bit"
+  model: "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"
   api_key: "not-needed"        # for local models
   provider: "openai-compatible"  # or "ollama"
   timeout_seconds: 300
