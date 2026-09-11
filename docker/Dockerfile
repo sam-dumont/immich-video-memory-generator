@@ -52,8 +52,12 @@ RUN grep -E '^[A-Za-z0-9_.[-]+==' /constraints.txt > /constraints.pins && \
 # construction (Docling forces CPUExecutionProvider, Marqo sets torch threads),
 # and the CUDA build reports cuda_available: False in the image it ships in.
 # Measured with INSTALL_EXTRAS=all on arm64: 7.08 GB -> 2.37 GB.
-# The wheel is built into its own directory, not /wheels, so a torch-free
-# INSTALL_EXTRAS never installs it, and uv.lock is untouched so Apple
+# torchvision comes from the same index, and must: `timm` pulls it in, and a
+# PyPI torchvision is compiled against the CUDA-flavoured torch. Mixed, the C++
+# operators never register and `Marqo` dies on import with `operator
+# torchvision::nms does not exist` -- which is every shipped image today.
+# The wheels are built into their own directory, not /wheels, so a torch-free
+# INSTALL_EXTRAS never installs them, and uv.lock is untouched so Apple
 # development resolves exactly as before. The case list is what release.yml
 # publishes; any other arch keeps the PyPI resolution rather than failing
 # against an index that may not serve it.
@@ -62,7 +66,7 @@ RUN mkdir -p /torch-cpu && \
         amd64|arm64) \
             pip wheel --no-cache-dir --no-deps --wheel-dir=/torch-cpu \
                 --index-url https://download.pytorch.org/whl/cpu \
-                --constraint /constraints.txt torch ;; \
+                --constraint /constraints.txt torch torchvision ;; \
     esac
 
 # The bundled-music package is built from the tree so the image does not depend
