@@ -10,6 +10,7 @@ from enum import StrEnum
 from typing import Literal
 
 from immich_memories.processing.hardware_encode import device_args, upload_filter
+from immich_memories.processing.rate_control import quality_args
 
 logger = logging.getLogger(__name__)
 
@@ -258,9 +259,13 @@ def get_ffmpeg_encoder(
         (HWAccelBackend.QSV, "h265"): ("hevc_qsv", "qsv", "-preset", False),
     }
 
-    # Extra args appended per backend
+    # Extra args appended per backend. Rate control is deliberately absent: it
+    # belongs to rate_control.quality_args, which the plan appends after these.
+    # `-rc vbr` used to live here and would now be overridden by `-rc constqp`
+    # two flags later — one of them has to be wrong, so only one sets the mode.
+    # `-spatial-aq` is an adaptive-quantisation knob, not a mode, and still applies.
     _EXTRA_ARGS: dict[HWAccelBackend, list[str]] = {
-        HWAccelBackend.NVIDIA: ["-rc", "vbr", "-spatial-aq", "1"],
+        HWAccelBackend.NVIDIA: ["-spatial-aq", "1"],
         HWAccelBackend.APPLE: ["-allow_sw", "1"],
     }
 
@@ -395,12 +400,25 @@ def print_hardware_info(capabilities: HWAccelCapabilities) -> None:
     print()
 
 
-_SOFTWARE_FAST_ARGS = ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "28"]
-_HARDWARE_FAST_ARGS = {
-    HWAccelBackend.NVIDIA: ["-c:v", "h264_nvenc", "-preset", "p1", "-rc", "constqp", "-qp", "28"],
-    HWAccelBackend.VAAPI: ["-c:v", "h264_vaapi", "-qp", "28"],
-    HWAccelBackend.QSV: ["-c:v", "h264_qsv", "-preset", "veryfast"],
+# Temp files for analysis and previews are never shown to anyone, so they run at
+# the CRF the "low" quality preset means. The rate control comes from the same
+# mapping the final output uses, so "CRF 28" costs the same picture on every
+# backend instead of each one inventing its own default.
+_FAST_CRF = 28
+_FAST_SPEED_ARGS: dict[HWAccelBackend, list[str]] = {
+    HWAccelBackend.NVIDIA: ["-preset", "p1"],
+    HWAccelBackend.QSV: ["-preset", "veryfast"],
 }
+_FAST_ENCODERS: dict[HWAccelBackend, str] = {
+    HWAccelBackend.NVIDIA: "h264_nvenc",
+    HWAccelBackend.VAAPI: "h264_vaapi",
+    HWAccelBackend.QSV: "h264_qsv",
+}
+_SOFTWARE_FAST_ARGS = ["-c:v", "libx264", "-preset", "ultrafast", "-crf", str(_FAST_CRF)]
+
+
+def _fast_args_for(encoder: str, backend: HWAccelBackend) -> list[str]:
+    return ["-c:v", encoder, *_FAST_SPEED_ARGS.get(backend, []), *quality_args(encoder, _FAST_CRF)]
 
 
 def fast_encoder_args(*, hardware_enabled: bool = True) -> list[str]:
@@ -412,9 +430,12 @@ def fast_encoder_args(*, hardware_enabled: bool = True) -> list[str]:
     if not hardware_enabled:
         return _SOFTWARE_FAST_ARGS.copy()
     if sys.platform == "darwin":
-        return ["-c:v", "h264_videotoolbox", "-q:v", "65"]  # lower quality is fine for temp files
+        return _fast_args_for("h264_videotoolbox", HWAccelBackend.APPLE)
     backend = detect_hardware_acceleration().backend
-    return list(_HARDWARE_FAST_ARGS.get(backend, _SOFTWARE_FAST_ARGS))
+    encoder = _FAST_ENCODERS.get(backend)
+    if encoder is None:
+        return _SOFTWARE_FAST_ARGS.copy()
+    return _fast_args_for(encoder, backend)
 
 
 # ---------------------------------------------------------------------------

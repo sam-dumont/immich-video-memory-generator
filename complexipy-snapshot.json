@@ -2451,51 +2451,67 @@
       {
         "name": "resolve_encoding_plan",
         "complexity": 20,
-        "line_start": 224,
-        "line_end": 288,
+        "line_start": 206,
+        "line_end": 270,
         "line_complexities": [
           {
-            "line": 232,
+            "line": 214,
             "complexity": 0
           },
           {
-            "line": 233,
+            "line": 215,
             "complexity": 0
           },
           {
-            "line": 234,
+            "line": 216,
             "complexity": 0
           },
           {
-            "line": 235,
+            "line": 217,
             "complexity": 1
           },
           {
-            "line": 236,
+            "line": 218,
             "complexity": 0
           },
           {
-            "line": 237,
+            "line": 219,
             "complexity": 2
+          },
+          {
+            "line": 220,
+            "complexity": 1
+          },
+          {
+            "line": 222,
+            "complexity": 0
+          },
+          {
+            "line": 223,
+            "complexity": 1
+          },
+          {
+            "line": 224,
+            "complexity": 0
+          },
+          {
+            "line": 227,
+            "complexity": 0
+          },
+          {
+            "line": 228,
+            "complexity": 3
+          },
+          {
+            "line": 232,
+            "complexity": 0
           },
           {
             "line": 238,
             "complexity": 1
           },
           {
-            "line": 240,
-            "complexity": 0
-          },
-          {
-            "line": 241,
-            "complexity": 1
-          },
-          {
-            "line": 242,
-            "complexity": 0
-          },
-          {
-            "line": 245,
+            "line": 239,
             "complexity": 0
           },
           {
@@ -2503,7 +2519,23 @@
             "complexity": 3
           },
           {
+            "line": 249,
+            "complexity": 0
+          },
+          {
             "line": 250,
+            "complexity": 1
+          },
+          {
+            "line": 251,
+            "complexity": 2
+          },
+          {
+            "line": 254,
+            "complexity": 1
+          },
+          {
+            "line": 255,
             "complexity": 0
           },
           {
@@ -2512,56 +2544,24 @@
           },
           {
             "line": 257,
-            "complexity": 0
-          },
-          {
-            "line": 264,
-            "complexity": 3
-          },
-          {
-            "line": 267,
-            "complexity": 0
-          },
-          {
-            "line": 268,
-            "complexity": 1
-          },
-          {
-            "line": 269,
             "complexity": 2
           },
           {
-            "line": 272,
+            "line": 258,
             "complexity": 1
           },
           {
-            "line": 273,
+            "line": 259,
             "complexity": 0
           },
           {
-            "line": 274,
-            "complexity": 1
-          },
-          {
-            "line": 275,
-            "complexity": 2
-          },
-          {
-            "line": 276,
-            "complexity": 1
-          },
-          {
-            "line": 277,
-            "complexity": 0
-          },
-          {
-            "line": 279,
+            "line": 261,
             "complexity": 0
           }
         ]
       }
     ],
-    "complexity": 44
+    "complexity": 41
   },
   {
     "path": "src/immich_memories/processing/hdr_utilities.py",

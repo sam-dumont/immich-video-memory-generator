@@ -31,6 +31,7 @@ from immich_memories.processing.encoding_plan import (
 from immich_memories.processing.ffmpeg_runner import AssemblyContext
 from immich_memories.processing.hardware import detect_hardware_acceleration
 from immich_memories.processing.hardware_encode import encoder_backend
+from immich_memories.processing.rate_control import quality_args
 
 
 class _SyntheticProber:
@@ -119,6 +120,7 @@ def main() -> int:
 
     empty: list[str] = []
     on_cpu: list[str] = []
+    no_rate_control: list[str] = []
     with tempfile.TemporaryDirectory() as work:
         for codec in ("h264", "h265"):
             plan = _plan_for(codec)
@@ -127,7 +129,11 @@ def main() -> int:
             size = output.stat().st_size if output.exists() else 0
             device = encoder_backend(plan.encoder)
             where = f"on the {device} device" if device else "without a device upload"
-            print(f"{codec}: {plan.encoder} {where}, wrote {written} ({size} bytes)")
+            rate = " ".join(quality_args(plan.encoder, plan.crf))
+            print(f"{codec}: {plan.encoder} {where}, rate control [{rate}]")
+            print(f"      wrote {written} ({size} bytes)")
+            if not rate:
+                no_rate_control.append(codec)
             if not written or size == 0:
                 empty.append(codec)
             elif capabilities.has_encoding and not uses_hardware_encoder(plan):
@@ -135,6 +141,9 @@ def main() -> int:
 
     if empty:
         print(f"FAILED: {', '.join(empty)} produced no video")
+        return 1
+    if no_rate_control:
+        print(f"FAILED: {', '.join(no_rate_control)} got no rate control; the driver picked")
         return 1
     if on_cpu:
         # Expected on a chip whose driver has no encode entrypoint for that codec.

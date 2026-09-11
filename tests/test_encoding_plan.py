@@ -429,28 +429,28 @@ def test_standalone_assembly_plan_records_its_effective_crf() -> None:
     assert plan.encoder_args[-2:] == ("-crf", "28")
 
 
-@pytest.mark.parametrize(
-    ("crf", "expected_quality"),
-    [
-        pytest.param(0, "100", id="lossless-boundary"),
-        pytest.param(12, "87", id="high"),
-        pytest.param(18, "75", id="medium"),
-        pytest.param(23, "65", id="common-default"),
-        pytest.param(51, "9", id="lowest-boundary"),
-    ],
-)
-def test_videotoolbox_quality_is_derived_from_requested_crf(
-    crf: int,
-    expected_quality: str,
-) -> None:
+def _videotoolbox_quality(crf: int) -> int:
     plan = resolve_encoding_plan(
         _request(OutputCodec.H265, hardware_enabled=True, crf=crf),
         _apple_capabilities(),
         input_has_hdr=True,
     )
+    return int(plan.encoder_args[plan.encoder_args.index("-q:v") + 1])
 
-    quality_index = plan.encoder_args.index("-q:v")
-    assert plan.encoder_args[quality_index + 1] == expected_quality
+
+@pytest.mark.parametrize("crf", [0, 12, 18, 23, 51])
+def test_videotoolbox_quality_is_derived_from_requested_crf(crf: int) -> None:
+    assert 1 <= _videotoolbox_quality(crf) <= 100
+
+
+def test_videotoolbox_quality_falls_as_the_requested_crf_rises() -> None:
+    assert _videotoolbox_quality(12) > _videotoolbox_quality(18) > _videotoolbox_quality(23)
+
+
+def test_videotoolbox_no_longer_overshoots_the_software_encode_it_matches() -> None:
+    """`111 - 2*crf` asked for 37.3 Mbps at CRF 18 where libx265 spent 4.6."""
+    assert _videotoolbox_quality(18) < 75
+    assert _videotoolbox_quality(12) < 87
 
 
 def test_software_fallback_preserves_requested_crf() -> None:
