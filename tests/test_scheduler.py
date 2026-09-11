@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 
 import pytest
@@ -97,6 +98,60 @@ class TestSchedulerEngine:
         assert next_jobs[0].schedule.name == "daily"
         # Next 9:00 AM UTC after 8:00 AM is same day
         assert next_jobs[0].fire_time == datetime(2024, 7, 15, 9, 0, 0, tzinfo=UTC)
+
+    def test_cron_is_evaluated_in_the_configured_timezone(self):
+        """scheduler.timezone was stored, printed and never used."""
+        from immich_memories.scheduling.engine import Scheduler
+        from immich_memories.scheduling.models import ScheduleEntry, SchedulerConfig
+
+        config = SchedulerConfig(
+            enabled=True,
+            timezone="America/New_York",
+            schedules=[
+                ScheduleEntry(name="daily", memory_type="year_in_review", cron="0 9 * * *"),
+            ],
+        )
+        now = datetime(2024, 7, 15, 6, 0, 0, tzinfo=UTC)  # 02:00 in New York
+
+        fire_time = Scheduler(config).get_next_jobs(now)[0].fire_time
+
+        # 09:00 EDT the same morning, not 09:00 UTC five hours earlier.
+        assert fire_time.astimezone(UTC) == datetime(2024, 7, 15, 13, 0, 0, tzinfo=UTC)
+
+    def test_the_fire_time_keeps_the_local_calendar_date(self):
+        """A New Year job must resolve the year it fired in, not UTC's."""
+        from immich_memories.scheduling.engine import Scheduler
+        from immich_memories.scheduling.executor import resolve_schedule_params
+        from immich_memories.scheduling.models import ScheduleEntry, SchedulerConfig
+
+        entry = ScheduleEntry(name="recap", memory_type="year_in_review", cron="0 9 1 1 *")
+        config = SchedulerConfig(enabled=True, timezone="Pacific/Auckland", schedules=[entry])
+        now = datetime(2026, 12, 31, 12, 0, 0, tzinfo=UTC)  # already Jan 1 in Auckland
+
+        fire_time = Scheduler(config).get_next_jobs(now)[0].fire_time
+
+        assert fire_time.year == 2027
+        assert resolve_schedule_params(entry, fire_time)["year"] == 2026
+
+    def test_an_unknown_timezone_says_so_and_falls_back_to_utc(self, caplog):
+        """A daemon must not die of a typo, and must not hide one either."""
+        from immich_memories.scheduling.engine import Scheduler
+        from immich_memories.scheduling.models import ScheduleEntry, SchedulerConfig
+
+        config = SchedulerConfig(
+            enabled=True,
+            timezone="Not/AZone",
+            schedules=[
+                ScheduleEntry(name="daily", memory_type="year_in_review", cron="0 9 * * *"),
+            ],
+        )
+        now = datetime(2024, 7, 15, 6, 0, 0, tzinfo=UTC)
+
+        with caplog.at_level(logging.WARNING):
+            fire_time = Scheduler(config).get_next_jobs(now)[0].fire_time
+
+        assert fire_time == datetime(2024, 7, 15, 9, 0, 0, tzinfo=UTC)
+        assert "Not/AZone" in caplog.text
 
     def test_skips_disabled_schedules(self):
         from immich_memories.scheduling.engine import Scheduler
@@ -209,7 +264,7 @@ class TestJobExecutor:
         assert params["month"] == 12
 
     def test_resolve_on_this_day(self):
-        """On This Day should use fire date as the target."""
+        """On This Day resolves no date: the run covers the day it fires."""
         from immich_memories.scheduling.executor import resolve_schedule_params
         from immich_memories.scheduling.models import ScheduleEntry
 
@@ -219,8 +274,7 @@ class TestJobExecutor:
         params = resolve_schedule_params(entry, fire_time)
 
         assert params["memory_type"] == "on_this_day"
-        assert params["target_date"].month == 7
-        assert params["target_date"].day == 15
+        assert set(params) == {"memory_type"}
 
     def test_explicit_params_override(self):
         """Explicit params in config should override auto-resolved ones."""
