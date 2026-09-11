@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 from immich_memories.analysis.annotation_lines import StoredAnnotationLineReader
 from immich_memories.analysis.editorial_attached_outcomes import AttachedOutcomeReplay
+from immich_memories.analysis.editorial_evidence_provenance import AttemptEvidenceProvenance
 from immich_memories.analysis.editorial_motion_outcomes import MotionOutcomeReplay
 from immich_memories.analysis.editorial_orchestration import TextEditorialPlanner
 from immich_memories.analysis.editorial_people import adapt_editorial_people
@@ -572,6 +573,7 @@ def build_editorial_planner(
         context.album_sources if context.product == "album" else None
     )
     source_snapshots = AttemptSourceSnapshots()
+    evidence_provenance = AttemptEvidenceProvenance()
 
     def source_fetcher(requested_scope: SourceScope) -> Sequence[Asset | VideoClipInfo]:
         nonlocal source_snapshot
@@ -607,6 +609,9 @@ def build_editorial_planner(
             producer=producer,
             annotations=annotations,
             requester=episode_requester,
+            record_evidence=lambda episodes: evidence_provenance.capture(
+                episodes, directory=backend._context.artifact_dir
+            ),
         )
 
     def period_reader(episodes: Any) -> Any:

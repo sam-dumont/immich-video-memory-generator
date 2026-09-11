@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import re
 
 import pytest
 from playwright.sync_api import Page, expect
 
 from immich_memories.ui.pages.memory_brief import MEMORY_TYPE_LABELS
-from tests.e2e.fake_editorial import STAGES
+from tests.e2e.fake_editorial import _EPISODES, STAGES
 from tests.e2e.test_launch_smoke import _choose
 
 pytestmark = pytest.mark.e2e
@@ -35,6 +36,13 @@ def _attempts_written(launch_workspace) -> int:
     return len(list(launch_workspace.cache_dir.glob("editorial-runs/*/attempts/*")))
 
 
+def _newest_attempt(launch_workspace):
+    return max(
+        launch_workspace.cache_dir.glob("editorial-runs/*/attempts/*"),
+        key=lambda path: path.stat().st_mtime,
+    )
+
+
 def _open_brief(page: Page, launch_app_url: str) -> None:
     page.goto(launch_app_url, wait_until="domcontentloaded", timeout=30_000)
     expect(page.get_by_role("combobox", name="Memory type")).to_be_visible(timeout=30_000)
@@ -56,7 +64,7 @@ def test_the_brief_offers_the_cli_memory_types(page: Page, launch_app_url: str) 
 
 
 def test_a_cut_from_the_brief_shows_the_story_and_offers_export(
-    page: Page, launch_app_url: str
+    page: Page, launch_app_url: str, launch_workspace
 ) -> None:
     _brief_for_june(page, launch_app_url)
     expect(page.get_by_text("Auto · 1m 00s", exact=True)).to_be_visible()
@@ -72,6 +80,14 @@ def test_a_cut_from_the_brief_shows_the_story_and_offers_export(
     expect(page.get_by_text("Still", exact=True)).to_have_count(3)
     expect(page.get_by_text(re.compile(r"^\d+ s of pictures and video selected"))).to_be_visible()
     expect(page.get_by_role("button", name="Export", exact=True)).to_be_visible()
+    # The attempt keeps what each story was read from, so a later drift can be diffed.
+    provenance = json.loads(
+        (_newest_attempt(launch_workspace) / "evidence-hashes.json").read_text()
+    )
+    assert [episode["group_id"] for episode in provenance["episodes"]] == [
+        episode["key"] for episode in _EPISODES
+    ]
+    assert "test pattern" not in json.dumps(provenance)
 
 
 def test_a_reload_mid_cut_joins_the_running_cut_instead_of_starting_another(
