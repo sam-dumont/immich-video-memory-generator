@@ -95,17 +95,18 @@ install-acestep:  ## Install the tested ACE-Step 1.5 inference stack (music gene
 	  'vector-quantize-pytorch>=1.27.15'
 	@uv run python -c "from immich_memories.audio.generators.ace_step_backend import ACEStepBackend; import torch, torchvision.ops as o; o.nms(torch.zeros((0,4)), torch.zeros((0,)), 0.5); print('ACE-Step stack OK')"
 
-# Install dev tools only (no GPU/CUDA/audio-ml/face deps — for CI quality gates).
+# Install dev tools only (no GPU/CUDA/editorial deps — for CI quality gates).
 # --locked: CI must install exactly what uv.lock pins, since that is what
 # `make pip-audit` audits. Without it a fresh resolve can install something
 # the audit never saw.
 dev-ci:
 	uv sync --extra dev --locked
 
-# Install dev + GPU + speech extras for CI test jobs (taichi/freetype/onnxruntime,
-# no torch/nvidia -- FireRedVAD is the only speech engine and needs neither)
+# Install dev + GPU extras for CI test jobs (taichi/freetype). The editorial
+# extra stays out: onnxruntime and torch are imported inside the functions that
+# need them, so the unit suite runs without either.
 dev-test:
-	uv sync --extra dev --extra gpu --extra speech --locked
+	uv sync --extra dev --extra gpu --locked
 
 # Install with macOS-specific extras (Apple Vision, Metal GPU, etc.)
 dev-mac:
