@@ -38,14 +38,13 @@ server:
 |------|-----------------|
 | Video content | Whole-frame Gaussian blur plus a noise texture (frosted glass, not pixelation) applied via FFmpeg before assembly. Not face detection: every pixel of every clip goes |
 | Audio | Segment reversal (200 ms) + 300 Hz lowpass on all clip audio, not just detected speech: you hear people talking but cannot make out words |
+| GPS coordinates | The whole memory is moved onto one fake city: its centre lands on the city, every clip keeps its bearing and distance from that centre, and a memory spread wider than about 25 km is scaled down to fit. Home base moves with it |
+| Place names | Replaced with the fake city's name wherever the memory carried one. A clip with no place name does not gain one |
 | Person names | Replaced with one of twelve fake names, picked by SHA-256 of the real one, so the same person is the same alias every run |
-| Home base | Shifted to a fixed European city, offset so the fly-in route stays visible. There are eight in the list, but the picker reseeds itself on every call, so in practice it is always the same one |
-| Title screen text | Uses the fake person name |
+| Title screen text | Uses the fake person name and the fake city |
+| Map animation | Flies to the fake destination, same visual style |
 
-**What it does not anonymize: the destination.** Clip GPS, place names, location cards and the
-trip map all show the real place. That is deliberate: a trip memory with a fake destination is
-not a demo of a trip memory. If the place itself is the thing you cannot show, privacy mode is
-the wrong tool.
+The move is the same every run: two renders of the same trip put it in the same place, and repeated renders give away nothing that could be averaged back to the real one.
 
 ## What stays unblurred
 
@@ -55,3 +54,9 @@ fly-over, the location interstitial cards, the ending screen.
 The footage behind them is not. An opening or ending card backed by a frame from your own clips
 gets the same privacy blur the clips do, because it is a clip. So nothing unblurred from your
 library appears at any point; what stays legible is the text and the map drawn on top.
+
+## What it does not cover
+
+The output file name is built before anonymization, so it can still carry the real place or the
+real person names. Rename the file before sharing it: what is inside the video is anonymized, the
+name on disk is not.

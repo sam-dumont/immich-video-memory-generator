@@ -11,6 +11,7 @@ import pytest
 
 from immich_memories.automation.candidates import CandidateCategory, MemoryCandidate
 from immich_memories.automation.generation_request import GenerationRequest
+from tests.cli_argv_contract import parse_generate_argv
 
 
 def _candidate(
@@ -200,6 +201,22 @@ def _candidate(
 def test_category_maps_to_exact_argv(candidate: MemoryCandidate, expected: list[str]) -> None:
     """Changing or omitting a category branch changes its generated CLI contract."""
     assert GenerationRequest.from_candidate(candidate, upload=False).to_argv() == expected
+
+
+@pytest.mark.parametrize("category", list(CandidateCategory))
+def test_every_category_argv_parses_as_the_real_generate_command(
+    category: CandidateCategory,
+) -> None:
+    """The list above agrees with the builder; only Click agrees with the CLI."""
+    request = GenerationRequest.from_candidate(
+        _candidate(category, "unused", start=date(2026, 5, 3), end=date(2026, 5, 11)),
+        upload=False,
+    )
+
+    params = parse_generate_argv(request.to_argv())
+
+    assert params["source"] == "auto"
+    assert params["memory_category"] == category.value
 
 
 def test_upload_forwards_the_automation_album_to_the_child_cli() -> None:

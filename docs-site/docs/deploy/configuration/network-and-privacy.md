@@ -37,7 +37,9 @@ cluster so trips get names, and trip title screens use those names.
 are only used for the map animation, not geocoded.
 
 **Opt out:** don't use the Trip memory type. Disabling title screens does **not** stop trip
-detection from geocoding. Privacy mode does **not** change these coordinates (see below).
+detection from geocoding. Privacy mode does **not** change what is geocoded: detection runs
+before anonymization, so the request carries the real centroid either way. What reaches the
+video is anonymized (see below).
 
 ### Map tiles (satellite)
 
@@ -45,7 +47,8 @@ detection from geocoding. Privacy mode does **not** change these coordinates (se
 
 **What's sent:** standard tile URLs (`{z}/{y}/{x}`) covering the trip area and the route from
 your home base. Hundreds of tile requests per animated title. Only ArcGIS World Imagery is used
-today; the OSM/OpenTopo styles in the renderer are not reachable from the config.
+today; the OSM/OpenTopo styles in the renderer are not reachable from the config. In privacy
+mode the animation is built from the relocated coordinates, so the tiles cover the fake city.
 
 **Opt out:** `title_screens.enabled: false`.
 
@@ -114,10 +117,11 @@ turning that on.
 
 Privacy mode (`--privacy-mode` / `server.enable_demo_mode: true`) is a **demo/screenshot**
 feature: it blurs every frame of every clip (not faces, the whole picture), makes all clip audio
-unintelligible, replaces person names, and shifts your *home base* to a fake city so the map
-fly-in does not start at your house. It does **not** fake the destination coordinates: trip
-detection and titles still geocode and render the real place, because that is the point of a
-trip memory. See [Privacy Mode](../../create/pipeline/privacy-mode.md).
+unintelligible, replaces person names, and moves the whole memory — home base and destination
+alike — onto a fake city, keeping the spacing between clips so the map still reads as a trip.
+Place names go with the coordinates. It does not reach the geocoding above, which already ran
+during detection, nor the output file name, which is built before anonymization. See
+[Privacy Mode](../../create/pipeline/privacy-mode.md).
 
 ## CI only
 

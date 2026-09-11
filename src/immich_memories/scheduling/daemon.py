@@ -73,7 +73,7 @@ def run_daemon_loop(
             next_job = jobs[0]
             logger.info(
                 f"Next: '{next_job.schedule.name}' at "
-                f"{next_job.fire_time.strftime('%Y-%m-%d %H:%M UTC')} "
+                f"{next_job.fire_time.strftime('%Y-%m-%d %H:%M %Z')} "
                 f"(in {wait:.0f}s)"
             )
 
@@ -136,21 +136,85 @@ def _child_log_path(schedule_name: str) -> Path:
     return Path.home() / ".immich-memories" / "logs" / f"generate-{safe}.log"
 
 
+_SECONDS_PER_MINUTE = 60
+
+# Params that come from the ScheduleEntry's own fields; each has its own flag
+# below rather than a scope option.
+_ENTRY_PARAMS = frozenset(
+    {"memory_type", "person_names", "duration_minutes", "upload_to_immich", "album_name"}
+)
+
+# Every scope or selector a schedule can resolve, and the `generate` option
+# that carries it. A param outside this table cannot reach the child at all.
+_SCOPE_FLAGS = {
+    "year": "--year",
+    "month": "--month",
+    "season": "--season",
+    "holiday": "--holiday",
+    "years_back": "--years-back",
+    "trip_index": "--trip-index",
+    "near_date": "--near-date",
+    "from_album": "--from-album",
+}
+
+# A memory type whose window no cron expression can name, and why.
+_UNSCHEDULABLE_TYPES = {
+    "special_day": (
+        "its window comes from the catalogue rather than from flags; "
+        "`auto run` generates the special days that are due"
+    ),
+}
+
+# Any of these tells trip generation which trip to render; without one it lists
+# what it found and renders nothing.
+_TRIP_SELECTORS = ("trip_index", "month", "near_date")
+
+
+class UnschedulableJob(ValueError):
+    """Something in the schedule that no `generate` invocation can carry out."""
+
+
+def _scope_arguments(params: dict) -> list[str]:
+    """Translate the resolved scope into options, refusing to drop any of it."""
+    arguments: list[str] = []
+    for key, value in params.items():
+        if key in _ENTRY_PARAMS:
+            continue
+        flag = _SCOPE_FLAGS.get(key)
+        if flag is None:
+            raise UnschedulableJob(
+                f"schedule param '{key}' has no matching generate option, "
+                f"so the run would silently ignore it"
+            )
+        arguments.extend([flag, str(value)])
+    return arguments
+
+
 def _generate_command(params: dict, config_path: Path | None) -> list[str]:
     cmd = ["immich-memories"]
     if config_path is not None:
         cmd.extend(["--config", str(config_path)])
     cmd.append("generate")
-    cmd.extend(["--memory-type", params["memory_type"]])
-    for flag, key in (("--year", "year"), ("--month", "month"), ("--target-date", "target_date")):
-        if key in params:
-            cmd.extend([flag, str(params[key])])
+    memory_type = params["memory_type"]
+    if memory_type in _UNSCHEDULABLE_TYPES:
+        raise UnschedulableJob(
+            f"memory type '{memory_type}' cannot be scheduled: {_UNSCHEDULABLE_TYPES[memory_type]}"
+        )
+    cmd.extend(["--memory-type", memory_type])
+    cmd.extend(_scope_arguments(params))
+    if memory_type == "trip" and not any(key in params for key in _TRIP_SELECTORS):
+        # WHY: a trip run with no selector prints the trips it detected, renders
+        # none of them and exits zero -- a scheduled trip that reports success
+        # and produces nothing.
+        cmd.append("--all-trips")
     if params.get("upload_to_immich"):
         cmd.append("--upload-to-immich")
     if params.get("album_name"):
         cmd.extend(["--album", params["album_name"]])
     if params.get("duration_minutes"):
-        cmd.extend(["--duration", str(params["duration_minutes"])])
+        # WHY: the schedule states minutes and --duration takes seconds, so
+        # `duration_minutes: 3` used to ask for a three-second video.
+        cmd.extend(["--duration", str(params["duration_minutes"] * _SECONDS_PER_MINUTE)])
     for name in params.get("person_names", []):
         # WHY: `=` syntax prevents names starting with `-` from being parsed as flags
         cmd.append(f"--person={name}")
@@ -195,7 +259,17 @@ def execute_job(
     params = resolve_schedule_params(job.schedule, job.fire_time)
     logger.info(f"Executing '{job.schedule.name}': {params}")
 
-    cmd = _generate_command(params, config_path)
+    try:
+        cmd = _generate_command(params, config_path)
+    except UnschedulableJob as exc:
+        logger.error(f"Job '{job.schedule.name}' cannot run: {exc}")
+        _notify_if_configured(
+            memory_type=params["memory_type"],
+            success=False,
+            error=str(exc),
+            config_path=config_path,
+        )
+        return
     logger.info(f"Running: {' '.join(cmd)}")
     start = time.monotonic()
 
