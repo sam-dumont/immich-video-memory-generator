@@ -27,6 +27,7 @@ COPY docker/uv-requirements.txt ./docker/uv-requirements.txt
 # The caller must provide the release identity explicitly.
 ARG APP_VERSION
 ARG INSTALL_EXTRAS=all
+ARG TARGETARCH
 RUN if [ -z "${APP_VERSION}" ]; then echo "APP_VERSION build argument is required" >&2; exit 1; fi
 ENV SETUPTOOLS_SCM_PRETEND_VERSION=${APP_VERSION}
 
@@ -43,12 +44,26 @@ RUN pip install --no-cache-dir --require-hashes -r docker/uv-requirements.txt &&
 RUN grep -E '^[A-Za-z0-9_.[-]+==' /constraints.txt > /constraints.pins && \
     mv /constraints.pins /constraints.txt
 
+# WHY the CPU index on amd64: the PyPI torch wheel drags the whole CUDA stack
+# behind it -- measured at 2.9 GB of wheels for torch 2.14.0 against 197 MB for
+# the same version from the CPU index -- and nothing in this image runs GPU
+# inference. Both detectors are CPU by construction (Docling forces
+# CPUExecutionProvider, Marqo sets torch threads). The wheel is built into its
+# own directory, not /wheels, so a torch-free INSTALL_EXTRAS never installs it,
+# and uv.lock is untouched so Apple development resolves exactly as before.
+RUN mkdir -p /torch-cpu && \
+    if [ "${TARGETARCH}" = "amd64" ]; then \
+        pip wheel --no-cache-dir --no-deps --wheel-dir=/torch-cpu \
+            --index-url https://download.pytorch.org/whl/cpu \
+            --constraint /constraints.txt torch; \
+    fi
+
 # The bundled-music package is built from the tree so the image does not depend
 # on it being published yet; pip then resolves the `music` extra against it.
 RUN pip wheel --no-cache-dir --wheel-dir=/wheels --constraint /constraints.txt ./packages/immich-memories-music
 
 RUN INSTALL_TARGET="$(python docker/validate_install_extras.py "${INSTALL_EXTRAS}")" && \
-    pip wheel --no-cache-dir --wheel-dir=/wheels --find-links=/wheels --constraint /constraints.txt "${INSTALL_TARGET}"
+    pip wheel --no-cache-dir --wheel-dir=/wheels --find-links=/wheels --find-links=/torch-cpu --constraint /constraints.txt "${INSTALL_TARGET}"
 
 
 # Stage 2: Runtime image

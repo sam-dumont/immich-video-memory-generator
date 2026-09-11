@@ -411,3 +411,25 @@ def test_anything_we_publish_ourselves_is_published_before_the_main_wheel() -> N
 
     assert "pypi-publish-music" in jobs
     assert "pypi-publish-music" in jobs["pypi-publish"]["needs"]
+
+
+def test_amd64_takes_torch_from_the_cpu_wheel_index() -> None:
+    """Nothing in the image runs GPU inference, so the CUDA stack is dead weight."""
+    source = _dockerfile()
+    dockerfile = _logical_instructions(source)
+
+    assert re.search(r"(?m)^ARG TARGETARCH\s*$", dockerfile)
+    cpu_wheel = re.search(
+        r'if \[ "\$\{TARGETARCH\}" = "amd64" \]; then pip wheel [^\n]*'
+        r"--no-deps [^\n]*--wheel-dir=(?P<dir>/\S+) "
+        r"--index-url https://download\.pytorch\.org/whl/cpu[^\n]* torch",
+        dockerfile,
+    )
+    assert cpu_wheel, "amd64 must build torch from the CPU index"
+    assert cpu_wheel.group("dir") != "/wheels", (
+        "the CPU wheel must stay out of /wheels so a torch-free extras set never installs it"
+    )
+    install_target = re.search(r'(?m)^.*pip wheel[^\n]*"\$\{INSTALL_TARGET\}".*$', dockerfile)
+    assert install_target and f"--find-links={cpu_wheel.group('dir')}" in install_target.group(0)
+    # Only the builder resolves anything; the runtime stage installs local wheels.
+    assert "download.pytorch.org" not in source.split("# Stage 2:")[1]
