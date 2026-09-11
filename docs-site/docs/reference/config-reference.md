@@ -388,7 +388,16 @@ triage:
   encoder: ~/.immich-memories/models/triage/dinov2-small.onnx  # DINOv2-small ONNX export (88 MB)
   encoder_url: https://github.com/...    # where `models fetch` downloads that export from
   bundle: ""                     # Head weights (.npz); empty = the public bundle in the package
+  provider: auto                 # ONNX Runtime provider for the encoder: auto, cpu, cuda, coreml
 ```
+
+`provider: auto` takes CUDA where that provider is present and CPU everywhere else. It never
+takes CoreML. Measured on the pinned export, the CoreML provider claims 274 of its 513 nodes and
+splits the graph into 87 partitions, so a tensor crosses the accelerator boundary dozens of times
+per image: it runs 6 to 8 times slower than the CPU provider, holds 9 times the resident memory,
+and gets worse as the batch grows while the CPU provider gets better. Set `provider: coreml` to
+re-measure it. The choice is operational, never identity: it does not enter the encoder key, so
+changing it invalidates no banked fact and re-derives nothing.
 
 Editorial preparation uses `triage.encoder` with the public six-head bundle configured under
 `editorial.preparation.head_bundle`. Install the `editorial` extra and provide the pinned
