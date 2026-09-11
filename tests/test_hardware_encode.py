@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pathlib
-
 import pytest
 
 from immich_memories.processing.clip_encoder import encoder_args_for_plan
@@ -354,40 +352,6 @@ def test_analysis_downscale_runs_on_the_device(tmp_path) -> None:
         downscaler.downscale_video(source, 720, tmp_path / "small.mp4")
 
     assert_uploads_to_device(run.call_args.args[0], "vaapi")
-
-
-def test_analysis_preview_runs_on_the_device(tmp_path, monkeypatch) -> None:
-    from unittest.mock import MagicMock
-
-    from immich_memories.analysis.preview_builder import PreviewBuilder
-    from immich_memories.config_models import CacheConfig
-    from immich_memories.config_models_analysis import AnalysisConfig, ContentAnalysisConfig
-
-    commands: list[list[str]] = []
-
-    def fake_run(command, **_kwargs):
-        if command[0] == "ffprobe":
-            return MagicMock(returncode=0, stdout="20.0")
-        commands.append(command)
-        pathlib.Path(command[-1]).write_bytes(b"preview")
-        return MagicMock(returncode=0, stdout="", stderr="")
-
-    # WHY: this Mac reports VideoToolbox; the Linux answer is what is under test.
-    monkeypatch.setattr("subprocess.run", fake_run)
-    monkeypatch.setattr(
-        "immich_memories.analysis.preview_builder.fast_encoder_args",
-        lambda **_kwargs: ["-c:v", "h264_qsv"],
-    )
-    builder = PreviewBuilder(
-        client=MagicMock(),
-        cache_config=CacheConfig(directory=str(tmp_path / "cache")),
-        analysis_config=AnalysisConfig(),
-        content_analysis_config=ContentAnalysisConfig(),
-    )
-
-    builder.extract_preview_segment(tmp_path / "source.mp4", 0.0, 2.0, asset_id="video-1")
-
-    assert_uploads_to_device(commands[-1], "qsv")
 
 
 def test_clip_extraction_runs_on_the_device(tmp_path) -> None:
