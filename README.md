@@ -56,7 +56,7 @@ docker compose up -d     # then open http://localhost:8080
 
 ### Resource Requirements
 
-Time depends mostly on where the caption server and the text model run, and on whether the period
+Time depends mostly on where the caption server and the reader run, and on whether the period
 has been prepared before. Facts and readings are cached, so the first cut over a period is the slow one.
 
 | Phase | RAM | CPU | Apple Silicon / GPU | CPU-only (4-core NAS class) |
@@ -65,6 +65,18 @@ has been prepared before. Facts and readings are cached, so the first cut over a
 | Preparing pictures (first cut) | 2-4GB | 2+ cores | one caption request and one encoder pass per picture; not yet measured on this route | same, slower on the encoder |
 | Assembling 1080p | 4GB | 4 cores | ~2 min per 5 min of output | ~10-16 min for a 14-clip monthly (measured) |
 | Assembling 4K | 6-8GB | 4+ cores | ~5 min per 5 min of output | not recommended |
+
+Those are the app's numbers. The two model services are the big line item and they are not in that
+table because they are not in that process:
+
+| Service | Resident while it's up | Where |
+|---------|------------------------|-------|
+| Reader (vision + text) | **~17GB** at 4-bit | this box if it has 32GB+, otherwise another one |
+| Caption server | **1-2GB** | same |
+
+A 4-core, 8GB NAS runs the app and the render perfectly well. It does not run the reader, and no
+media accelerator changes that — see the
+[self-hosting guide](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/self-hosting#one-machine-or-two).
 
 Most of that assembly time is the title screens, not the encode: measured at 2 CPUs, title
 rendering took ~263 s of a ~339 s assembly, so read

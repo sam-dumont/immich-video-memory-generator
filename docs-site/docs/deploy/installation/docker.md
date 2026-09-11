@@ -72,10 +72,15 @@ The container's resource usage depends on what phase it's in:
 | Phase | RAM | CPU | When |
 |-------|-----|-----|------|
 | Idle (UI running, waiting) | ~100 MB | minimal | Most of the time |
-| Analysis (downloading + scoring clips) | 2-4 GB | 2+ cores | First run or new videos, and where most of the wall time goes |
+| Analysis (downloading + preparing pictures) | 2-4 GB | 2+ cores | First cut over a period, and where most of the wall time goes |
 | Assembly (title screens + FFmpeg encode) | 4-8 GB | 4+ cores | Final video generation |
+| **Reader model** (not in this container) | **~17 GB resident** at 4-bit | — | For as long as its server is up |
+| **Caption server** (not in this container) | **1-2 GB resident** | — | For as long as its server is up |
 
-The quickstart compose file sets `memory: 4G` and `cpus: 4`. That's fine for 1080p. For 4K output, bump to 8 GB.
+The quickstart compose file sets `memory: 4G` and `cpus: 4`. That's fine for 1080p, and it sizes
+the app only. The two model services run outside the image — by design, the image's job is the app
+and the render — so their memory is on whatever host you point `llm.base_url` and
+`caption_base_url` at. For 4K output, bump the container to 8 GB.
 
 Inside assembly, the title screens cost more than the encode does on a CPU-only box: measured at `--cpus=2`, title rendering was ~263 s of a ~339 s assembly. See [CPU-Only Mode](../hardware/cpu-only.md#title-rendering-is-the-bottleneck-not-encoding) before you size a box around the encoder.
 
