@@ -1,8 +1,10 @@
 name: CI
 
 on:
+  # Every pull request, not only the ones aimed at main. A stacked PR targets the
+  # branch below it, and a main-only filter meant those never ran CI at all —
+  # they showed green because nothing had run.
   pull_request:
-    branches: [main]
   workflow_call:  # Called from release.yml on push to main (provides Codecov baseline)
 
 permissions:
