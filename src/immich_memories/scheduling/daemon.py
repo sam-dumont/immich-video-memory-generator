@@ -73,7 +73,7 @@ def run_daemon_loop(
             next_job = jobs[0]
             logger.info(
                 f"Next: '{next_job.schedule.name}' at "
-                f"{next_job.fire_time.strftime('%Y-%m-%d %H:%M UTC')} "
+                f"{next_job.fire_time.strftime('%Y-%m-%d %H:%M %Z')} "
                 f"(in {wait:.0f}s)"
             )
 
