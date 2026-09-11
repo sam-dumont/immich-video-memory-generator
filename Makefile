@@ -390,11 +390,19 @@ dead-code:
 	# 60, not 90: at 90 vulture only reports unused imports and found nothing,
 	# while eight genuinely dead functions sat in src/ kept alive by their own
 	# tests. The whitelist freezes what was already there; anything new fails.
-	# --ignore-decorators: @register_preset puts the function in a dict, so vulture
-	# sees a definition nobody calls. Six presets were whitelisted one by one for
-	# this; telling vulture about the decorator removes the whole class instead.
+	# --ignore-decorators names the registration mechanisms vulture cannot follow,
+	# each of which makes a definition reachable without any source line calling it
+	# by name. Told once here, they stop producing whitelist lines forever:
+	#   @register_preset          puts the function in a preset dict
+	#   @*.command / @*.group     Click registers the callback on a group
+	#   @ui.page / @app.middleware NiceGUI/Starlette register the route
+	#   @field_validator, @model_validator, @field_serializer
+	#                             pydantic runs these off the schema, never by name
+	# --ignore-names model_config: pydantic reads the ConfigDict class attribute
+	# off the model; nothing in src/ is meant to name it.
 	uvx vulture src/ vulture-whitelist.py --min-confidence 60 \
-		--ignore-decorators "@register_preset"
+		--ignore-names "model_config" \
+		--ignore-decorators "@register_preset,@*.command,@*.group,@ui.page,@app.middleware,@field_validator,@model_validator,@field_serializer"
 
 # Security lint (Bandit)
 security-lint:
