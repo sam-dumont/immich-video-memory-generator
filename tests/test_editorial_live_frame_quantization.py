@@ -134,7 +134,11 @@ def test_only_certified_merge_opts_into_eof_frame_retention(monkeypatch):
     monkeypatch.setattr(merger, "_detect_clip_hdr", lambda _p: False)
     monkeypatch.setattr(merger, "probe_clip_has_audio", lambda _p: False)
     monkeypatch.setattr(merger, "burst_fps", lambda _p: 240.0)
-    monkeypatch.setattr(merger, "burst_encoding_plan", lambda **_kw: None)
+    # The merge now reads the plan's pixel format when it uploads to a device,
+    # so a None stand-in no longer stands in. Software capabilities keep it
+    # deterministic without probing this machine.
+    software_plan = merger.burst_encoding_plan(is_hdr=False, hardware_enabled=False)
+    monkeypatch.setattr(merger, "burst_encoding_plan", lambda **_kw: software_plan)
     monkeypatch.setattr(merger, "_append_encoding_args", lambda *_a: None)
     plain = merger.build_merge_command(paths, [(0, 1), (0, 1)], Path("out.mp4"))
     certified = merger.build_merge_command(
