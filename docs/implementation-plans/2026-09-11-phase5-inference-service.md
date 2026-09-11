@@ -87,10 +87,15 @@ most often already owns.
 
 ### 1.3 The per-picture table
 
-Seconds per picture, warm, model already loaded. Machine A at `provider=cpu`, batch 8. Machine B
-at the settings the product ships today (batch 32, ORT `cpu_count-1` = 3 threads, torch 6 threads).
+Seconds per picture, warm, model already loaded.
 
-| producer | A: M5 Max | B: J4125 | B ÷ A |
+**Read the scope labels before comparing anything.** Machine A's column is **tuned**
+(`provider=cpu`, batch 8) because its shipped default is the slower CoreML path (§1.6); machine
+B's column is **as shipped** (batch 32, ORT `cpu_count-1` = 3 threads, torch 6 threads) because
+§1.8 found nothing to tune there. Every total row names its own scope, and a tuned number is
+never set beside an untuned one without saying so.
+
+| producer | A: M5 Max (tuned) | B: J4125 (as shipped) | B ÷ A |
 |---|---:|---:|---:|
 | preview reuse check (`Image.verify`) | 0.0000 | 0.0003 | — |
 | pixel facts (`pixel-facts-v1`) | 0.0096 | 0.0549 | 5.7× |
@@ -101,23 +106,40 @@ at the settings the product ships today (batch 32, ORT `cpu_count-1` = 3 threads
 | six public heads | 0.0000 | 0.0175 | — |
 | **`nsfw_marqo` (timm/torch)** | **0.0139** | **0.3962** | **29×** |
 | **`doc_docling` (ONNX Runtime)** | **0.0059** | **0.1266** | **21×** |
-| **producers, no caption** | **0.0629** | **1.2315** | **20×** |
+| **sum: all producers, no caption** | **0.0629** | **1.2315** | **20×** |
 | caption — graded MLX, serial | 0.171 | n/a (Apple-only) | |
 | caption — graded MLX, concurrency 4 | 0.117 | n/a | |
-| **caption — SmolVLM2-500M Q8\_0 GGUF, `llama.cpp`** | n/a | **30.9** | **~180×** |
-| **everything, per picture** | **0.180** | **32.1** | **178×** |
+| caption — SmolVLM2-500M Q8\_0 GGUF, `llama.cpp` | n/a | 30.9 | |
+| **sum: all producers + caption** | **0.180** | **32.1** | *not a ratio — see below* |
 
 Peak RSS for all producers in one process: 671 MB (A), 570 MB (B). Memory is not the constraint on
 a 4 GB container; time is.
+
+**The like-for-like comparison, same scope on both sides.** The two machines run different
+captioners, so the only honest machine-to-machine ratio is the one that leaves the captioner out
+of both columns — and it is the same 20× the per-stage column already shows:
+
+| all producers, no caption, 10,793 pictures | A: M5 Max (tuned) | B: J4125 (as shipped) | B ÷ A |
+|---|---:|---:|---:|
+| per picture | 0.0629 s | 1.2315 s | 20× |
+| **first pass** | **11 min** | **3 h 41 min** | **20×** |
+
+Adding each machine's own captioner is a separate question with a separate answer (§1.4), and
+32.1 against 0.180 is *not* a machine ratio: it is MLX on Apple silicon against `llama.cpp` on a
+CPU with no AVX, which is two variables at once.
 
 Two shapes hide in that table, and they are the whole story:
 
 1. **Python-and-Pillow work is only 3–6× slower on the Celeron.** Decode, resize, hash, Laplacian
    variance — a slow core is just a slow core.
-2. **Neural work is 20–50× slower, and the captioner is ~180×.** That is not clock speed. A
-   J4125 has no AVX of any kind, so every GEMM falls back to scalar or SSE4.2 kernels while the
-   M5 Max runs wide NEON. The gap between the two shapes is the single most useful thing measured
-   here, because it says exactly which seats can move to a small box and which cannot.
+2. **Neural work is 20–50× slower.** That is not clock speed. A J4125 has no AVX of any kind, so
+   every GEMM falls back to scalar or SSE4.2 kernels while the M5 Max runs wide NEON. The gap
+   between these two shapes is the single most useful thing measured here, because it says
+   exactly which seats can move to a small box and which cannot.
+3. **The captioner is worse than either, but by an amount nobody should quote as a ratio.** 30.9 s
+   against 0.171 s is `llama.cpp` Q8\_0 on a no-AVX CPU against MLX 4-bit on Apple silicon —
+   different runtime, different quantisation, different silicon. What is safe to say is the
+   absolute number, and it is 30.9 s.
 
 ### 1.4 What one library costs
 
@@ -125,16 +147,21 @@ At the 10,793 candidates one scope of the owner's library reported, and per 1,00
 arithmetic on any other library. Preparation is banked per picture, so these are **first-pass**
 costs; a rerun over prepared pictures pays only the preview reuse check.
 
-| | per 1,000 | 10,793 | pictures/day if it ran for 24 h |
-|---|---:|---:|---:|
-| A — M5 Max, everything, best settings | 3.0 min | **32 min** | 480,000 |
-| A — M5 Max, everything, **today's defaults** | 4.3 min | **46 min** | 336,000 |
-| B — J4125, producers only (no caption) | 21 min | **3 h 42 min** | 70,000 |
-| B — J4125, **everything including captions** | 8 h 55 min | **96 h ≈ 4 days** | 2,690 |
+Every row names its machine, its scope and whether it is tuned, so no two rows can be read as a
+ratio unless they say the same thing on both counts.
 
-The last two rows are the decision. Encoder, heads and both detectors on a DS423+ finish a whole
-library **overnight**. Adding captions turns that into four days. Nothing else in this plan
-matters as much as that one line.
+| machine | scope | settings | per 1,000 | 10,793 | pictures/day at 24 h |
+|---|---|---|---:|---:|---:|
+| A — M5 Max | producers only | tuned | 1.0 min | **11 min** | 1,373,000 |
+| A — M5 Max | producers + MLX caption | tuned | 3.0 min | **32 min** | 480,000 |
+| A — M5 Max | producers + MLX caption | **as shipped today** | 4.3 min | **46 min** | 336,000 |
+| B — J4125 | producers only | as shipped | 21 min | **3 h 41 min** | 70,000 |
+| B — J4125 | producers + GGUF caption | as shipped | 8 h 55 min | **96 h ≈ 4 days** | 2,690 |
+
+The last two rows are the decision, and they differ in one variable only — the captioner, on one
+machine. Encoder, heads and both detectors on a DS423+ finish a whole library **overnight**.
+Adding captions turns that into four days. Nothing else in this plan matters as much as that one
+line.
 
 And the steady state is not the first pass. A family that adds 50 pictures a day needs 25 minutes
 a day of NAS captioning, which is nothing. **The first pass is the problem, not the rate.**
