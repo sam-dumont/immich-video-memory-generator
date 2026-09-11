@@ -160,6 +160,7 @@ class _Acquisition:
                 batch_size=self.preparation_config.batch_size,
                 check_cancelled=self.check,
                 progress=self.report,
+                provider=self.triage_config.provider,
             )
         except Exception as exc:
             self.failures["public_heads"] = f"{type(exc).__name__}: {exc}"
