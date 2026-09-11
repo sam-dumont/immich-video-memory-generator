@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -40,6 +41,14 @@ class TriageConfig(BaseModel):
     bundle: str = Field(
         default="",
         description="Head bundle (.npz) to serve; empty means the public bundle shipped in the package",
+    )
+    provider: Literal["auto", "cpu", "cuda", "coreml"] = Field(
+        default="auto",
+        description=(
+            "ONNX Runtime execution provider for the encoder. `auto` takes CUDA where it is "
+            "present and CPU otherwise, and never takes CoreML: measured on this export CoreML "
+            "runs 6-8x slower than the CPU provider and holds 9x the memory. Name it to re-test it"
+        ),
     )
 
     @property

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import os
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -103,24 +103,40 @@ class DinoEncoder:
         )
 
 
+# The execution providers each choice offers ONNX Runtime, in order.
+_PROVIDER_CHAINS: dict[str, tuple[str, ...]] = {
+    "cpu": ("CPUExecutionProvider",),
+    "cuda": ("CUDAExecutionProvider", "CPUExecutionProvider"),
+    "coreml": ("CoreMLExecutionProvider", "CPUExecutionProvider"),
+}
+
+
+def provider_chain(provider: str, available: Collection[str]) -> tuple[str, ...]:
+    """The providers to offer ORT for this choice, best first.
+
+    `auto` takes CUDA where the EP is present and CPU everywhere else. It never
+    takes CoreML, which is a deliberate exception rather than an oversight:
+    measured on this export, the CoreML EP claims 274 of its 513 nodes and splits
+    the graph into 87 partitions, so a tensor crosses the accelerator boundary
+    dozens of times per image. It runs 6-8x slower than the CPU EP, holds 9x the
+    resident memory, and gets *worse* as the batch grows while the CPU EP gets
+    better. Naming `coreml` still selects it, so the measurement can be redone
+    when the EP's partitioning improves.
+    """
+    if provider == "auto":
+        provider = "cuda" if "CUDAExecutionProvider" in available else "cpu"
+    chain = _PROVIDER_CHAINS.get(provider)
+    if chain is None:
+        raise ValueError(f"unknown provider: {provider}")
+    if chain[0] not in available:
+        raise RuntimeError(f"{chain[0]} is unavailable")
+    return chain
+
+
 def _create_session(model_path: Path, provider: str) -> Any:
     import onnxruntime as ort
 
-    available = set(ort.get_available_providers())
-    if provider == "cpu":
-        providers: list[str] = ["CPUExecutionProvider"]
-    elif provider == "coreml":
-        if "CoreMLExecutionProvider" not in available:
-            raise RuntimeError("CoreMLExecutionProvider is unavailable")
-        providers = ["CoreMLExecutionProvider", "CPUExecutionProvider"]
-    elif provider == "auto":
-        providers = (
-            ["CoreMLExecutionProvider", "CPUExecutionProvider"]
-            if "CoreMLExecutionProvider" in available
-            else ["CPUExecutionProvider"]
-        )
-    else:
-        raise ValueError(f"unknown provider: {provider}")
+    providers = list(provider_chain(provider, ort.get_available_providers()))
     options = ort.SessionOptions()
     options.intra_op_num_threads = max(1, min(8, (os.cpu_count() or 2) - 1))
     options.inter_op_num_threads = 1

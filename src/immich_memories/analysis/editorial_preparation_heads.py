@@ -29,6 +29,7 @@ def prepare_heads(
     batch_size: int,
     check_cancelled: Callable[[], None],
     progress: Callable[[str, int, int], None],
+    provider: str = "auto",
 ) -> None:
     bundle = HeadBundle.load(bundle_path)
     supplied = {head.name: head.version for head in bundle.heads}
@@ -42,7 +43,7 @@ def prepare_heads(
             f"public heads need the pinned DINOv2 ONNX export at {encoder_path}; set triage.encoder"
         )
     check_cancelled()
-    encoder = DinoEncoder.open(encoder_path)
+    encoder = DinoEncoder.open(encoder_path, provider=provider)
     store = HeadFactStore(store_path)
     try:
         engine = TriageEngine(encoder=encoder, bundle=bundle, store=store)

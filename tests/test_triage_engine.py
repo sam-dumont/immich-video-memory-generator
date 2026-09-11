@@ -18,6 +18,7 @@ from immich_memories.triage.encoder import (
     DinoEncoder,
     encoder_key,
     pool_token_pack,
+    provider_chain,
 )
 from immich_memories.triage.engine import TriageEngine
 from immich_memories.triage.heads import (
@@ -273,3 +274,41 @@ def test_a_new_head_version_reopens_an_already_banked_asset(tmp_path):
     assert (run.decided, run.banked) == (1, 0)
     assert store.facts_for(["one"], head="people", version="public-v0")["one"].label == "yes"
     store.close()
+
+
+class TestTheEncoderProviderChoice:
+    """`auto` never reaches for CoreML, which is a decision rather than an oversight.
+
+    Measured on the pinned export: the CoreML provider claims 274 of its 513 nodes
+    and splits the graph into 87 partitions, so a tensor crosses the accelerator
+    boundary dozens of times per image. It runs 6-8x slower than the CPU provider,
+    holds 9x the resident memory, and gets worse as the batch grows while the CPU
+    provider gets better. It stays reachable by name so that can be re-measured.
+    """
+
+    def test_auto_never_reaches_for_coreml(self):
+        available = {"CoreMLExecutionProvider", "CPUExecutionProvider"}
+
+        assert provider_chain("auto", available) == ("CPUExecutionProvider",)
+
+    def test_auto_takes_cuda_where_the_provider_is_present(self):
+        chain = provider_chain("auto", {"CUDAExecutionProvider", "CPUExecutionProvider"})
+
+        assert chain[0] == "CUDAExecutionProvider"
+        assert chain[-1] == "CPUExecutionProvider"
+
+    def test_auto_falls_back_to_cpu_with_nothing_else_present(self):
+        assert provider_chain("auto", {"CPUExecutionProvider"}) == ("CPUExecutionProvider",)
+
+    def test_coreml_is_still_reachable_by_name(self):
+        chain = provider_chain("coreml", {"CoreMLExecutionProvider", "CPUExecutionProvider"})
+
+        assert chain[0] == "CoreMLExecutionProvider"
+
+    def test_a_named_provider_that_is_absent_says_so(self):
+        with pytest.raises(RuntimeError, match="CUDAExecutionProvider"):
+            provider_chain("cuda", {"CPUExecutionProvider"})
+
+    def test_a_provider_nobody_offers_is_a_hard_error(self):
+        with pytest.raises(ValueError, match="metal"):
+            provider_chain("metal", {"CPUExecutionProvider"})
