@@ -30,6 +30,7 @@ Hugging Face Hub. Model weights and the caption server need separate setup.
 advanced:
   triage:
     encoder: ~/.immich-memories/models/triage/dinov2-small.onnx
+    encoder_url: https://github.com/sam-dumont/immich-video-memory-generator/releases/download/models-v1/dinov2-small-478164cd.onnx
   editorial:
     annotation_database: ""  # defaults to annotations.sqlite inside the cache directory
     preparation:
@@ -53,8 +54,15 @@ The wheel includes `public-6heads-v3.npz` and its provenance notice. Its four ba
 `public-v1`; venue and swim use `oi-v3`. It contains public training coefficients, no library
 photographs or owner-trained heads.
 
-Place the pinned 88 MB DINOv2-small ONNX export at `triage.encoder`, or point that setting at
-an existing copy. Its expected SHA-256 is:
+Fetch the pinned 88 MB DINOv2-small ONNX export, or point `triage.encoder` at an existing copy:
+
+```bash
+immich-memories models fetch
+```
+
+The command downloads `triage.encoder_url` to a temporary file, hashes it, and only then renames
+it into `triage.encoder`; a download that does not match the pin leaves nothing behind. An export
+that is already correct is a no-op, and `--force` re-downloads it. Its expected SHA-256 is:
 
 ```text
 478164cd290ee78e5ddb4fcc474136eec714b4b8253a3609cc7164b592e958af

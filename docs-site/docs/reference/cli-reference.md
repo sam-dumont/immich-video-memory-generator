@@ -314,6 +314,26 @@ Show hardware acceleration information.
 immich-memories hardware [OPTIONS]
 ```
 
+## `models`
+
+Fetch the pinned model artifacts selection needs.
+
+```bash
+immich-memories models [OPTIONS]
+```
+
+### `models fetch`
+
+Download the pinned DINOv2 encoder export to the configured path.
+
+```bash
+immich-memories models fetch [OPTIONS]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--force` | boolean | false | Re-download even when the file is already right |
+
 ## `music`
 
 Music and audio commands.
@@ -435,6 +455,8 @@ Checks:
 - Speech boundaries (FireRedVAD runtime)
 - Speech transcription (whisper.cpp runtime)
 - Title rendering (GPU or PIL fallback)
+- Pinned DINOv2 encoder export (presence and digest)
+- Caption endpoint (advertises the accepted alias)
 - Notification delivery health
 - Hardware acceleration
 

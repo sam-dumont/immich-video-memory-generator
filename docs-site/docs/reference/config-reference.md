@@ -550,6 +550,7 @@ bump anything: `SCORING_VERSION` is a fixed constant, not a function of your con
 triage:
   enabled: false                 # Legacy standalone triage hook; editorial preparation runs independently
   encoder: ~/.immich-memories/models/triage/dinov2-small.onnx  # DINOv2-small ONNX export (88 MB)
+  encoder_url: https://github.com/...    # where `models fetch` downloads that export from
   bundle: ""                     # Head weights (.npz); empty = the public bundle in the package
 ```
 

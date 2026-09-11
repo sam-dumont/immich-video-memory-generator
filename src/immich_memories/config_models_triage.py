@@ -6,6 +6,13 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+# The one place the encoder artifact's host is named; `models fetch` verifies the
+# digest pinned in triage/encoder.py whatever this points at.
+DINOV2_SMALL_ONNX_URL = (
+    "https://github.com/sam-dumont/immich-video-memory-generator/"
+    "releases/download/models-v1/dinov2-small-478164cd.onnx"
+)
+
 
 class TriageConfig(BaseModel):
     """Settings for the triage heads (frozen DINOv2 + linear heads over previews).
@@ -25,6 +32,10 @@ class TriageConfig(BaseModel):
             "DINOv2-small ONNX export (88 MB, digest-pinned in code); not vendored — "
             "place it here or point at your copy"
         ),
+    )
+    encoder_url: str = Field(
+        default=DINOV2_SMALL_ONNX_URL,
+        description="Where `models fetch` downloads the pinned encoder from",
     )
     bundle: str = Field(
         default="",
