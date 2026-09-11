@@ -134,34 +134,6 @@ def is_ace_step_importable() -> bool:
         return False
 
 
-def _validate_torchcodec() -> None:
-    """Verify torchcodec is installed and version-compatible with torch.
-
-    torchaudio 2.9+ delegates all I/O to torchcodec. The torchcodec minor
-    version must match the torch minor version (e.g. torch 2.10 → torchcodec 0.10).
-    """
-    try:
-        import torchcodec  # type: ignore[import-untyped,import-not-found]
-    except ImportError:
-        raise RuntimeError(
-            "torchcodec is required for ACE-Step lib mode (torchaudio 2.9+ "
-            "delegates all audio I/O to torchcodec). Install the version that "
-            "matches your torch: pip install 'torchcodec==0.<torch_minor>.*' "
-            "(e.g. torchcodec==0.10.* for torch 2.10)"
-        ) from None
-
-    import torch
-
-    torch_minor = torch.__version__.split(".")[1]
-    tc_minor = torchcodec.__version__.split(".")[1]
-    if torch_minor != tc_minor:
-        raise RuntimeError(
-            f"torchcodec {torchcodec.__version__} is incompatible with "
-            f"torch {torch.__version__} (minor versions must match). "
-            f"Fix: pip install 'torchcodec==0.{torch_minor}.*'"
-        )
-
-
 def _run_with_suppressed_output(pipeline_fn, **kwargs):
     """Run the ACE-Step pipeline with loguru and FutureWarnings suppressed.
 

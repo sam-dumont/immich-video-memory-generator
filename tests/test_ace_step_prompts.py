@@ -4,51 +4,20 @@ from pathlib import Path
 
 import pytest
 
-from immich_memories.audio.generators.ace_step_backend import (
-    build_ace_caption,
-)
 from immich_memories.audio.generators.ace_step_captions import (
     build_ace_caption_structured,
 )
 
 
-def test_build_ace_caption_returns_tags_and_lyrics():
-    tags, lyrics = build_ace_caption("happy")
-    assert isinstance(tags, str)
-    assert isinstance(lyrics, str)
-    assert "[Instrumental]" in lyrics
-
-
-def test_build_ace_caption_includes_key():
-    tags, _ = build_ace_caption("happy")
-    assert "key of" in tags.lower()
-
-
-def test_build_ace_caption_all_moods_covered():
-    moods = [
-        "happy",
-        "energetic",
-        "calm",
-        "nostalgic",
-        "romantic",
-        "playful",
-        "dramatic",
-        "peaceful",
-        "inspiring",
-    ]
-    for mood in moods:
-        tags, lyrics = build_ace_caption(mood)
-        assert len(tags) > 10, f"Tags too short for mood '{mood}': {tags}"
-
-
 def test_build_ace_caption_seasonal_modifiers():
-    tags, _ = build_ace_caption("happy", season="winter")
-    assert "cozy" in tags.lower() or "warm" in tags.lower()
+    caption = build_ace_caption_structured("happy", season="winter").caption
+    assert "cozy" in caption.lower() or "warm" in caption.lower()
 
 
 def test_build_ace_caption_unknown_mood_uses_default():
-    tags, _ = build_ace_caption("xyznonexistent")
-    assert len(tags) > 10
+    result = build_ace_caption_structured("xyznonexistent")
+    assert len(result.caption) > 10
+    assert result.lyrics == "[Instrumental]"
 
 
 def test_every_matrix_cell_yields_a_complete_caption():

@@ -112,25 +112,6 @@ class MusicGenBackend(MusicGenerator):
             backend_name=self.name,
         )
 
-    async def generate_with_stems(
-        self,
-        request: GenerationRequest,
-        progress_callback: Any | None = None,
-    ) -> tuple[GenerationResult, Any]:
-        """Generate music and separate stems via MusicGen API."""
-        result = await self.generate(request, progress_callback)
-
-        if self._client is None:
-            return result, None
-
-        stems = await self._client.separate_stems(
-            result.audio_path,
-            output_dir=request.output_dir,
-            progress_callback=progress_callback,
-        )
-
-        return result, stems
-
     async def separate_stems(
         self,
         audio_path: Path,

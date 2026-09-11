@@ -226,7 +226,7 @@ def _key_root(mood_key: str, style_key: str) -> str:
 
 @dataclass
 class ACECaptionResult:
-    """Structured result from build_ace_caption.
+    """Structured result from build_ace_caption_structured.
 
     Separates musical parameters so they can be sent as explicit
     API fields rather than embedded in the caption text.
@@ -237,26 +237,6 @@ class ACECaptionResult:
     bpm: int
     key_scale: str
     time_signature: str
-
-
-def build_ace_caption(mood: str, season: str | None = None) -> tuple[str, str]:
-    """Build ACE-Step tags and lyrics from mood + optional season.
-
-    Returns caption with genre and instruments. BPM/key/time_signature
-    are NOT included in the caption — use build_ace_caption_structured()
-    to get them as separate fields for the API.
-
-    Args:
-        mood: Mood string (e.g. "happy", "upbeat warm groovy calm")
-        season: Optional season modifier ("winter", "summer", etc.)
-
-    Returns:
-        Tuple of (tags, lyrics) for backwards compatibility.
-    """
-    result = build_ace_caption_structured(mood, season=season)
-    # Include key in caption string for backwards compat (lib mode)
-    tags = f"{result.caption}. Key of {result.key_scale}"
-    return tags, result.lyrics
 
 
 def build_ace_caption_structured(

@@ -795,7 +795,6 @@ class TestAutoMusicGeneration:
             mock_generate.return_value = MusicGenerationResult(
                 versions=[
                     GeneratedMusic(
-                        version_id=0,
                         full_mix=fake_music_path,
                         duration=30.0,
                         prompt="test",
@@ -963,40 +962,6 @@ class TestPhaseAllocation:
         )
         pp = _PipelineProgress(params, clip_count=5)
         assert pp.assembly_callback() is None
-
-
-class TestQuietModeProgressCallback:
-    """Quiet mode should produce structured log lines instead of Rich progress."""
-
-    def test_quiet_progress_emits_structured_logs(self):
-        """Quiet-mode callback emits structured key=value log lines."""
-        from immich_memories.cli._progress import make_quiet_progress_callback
-
-        log_lines: list[str] = []
-        cb = make_quiet_progress_callback(log_fn=log_lines.append)
-
-        cb("extract", 0.3, "Downloading clip_001.mp4")
-        cb("assemble", 0.7, "Encoding (1:30 / 3:00) — 50%")
-
-        assert len(log_lines) == 2
-        assert "phase=extract" in log_lines[0]
-        assert "pct=30" in log_lines[0]
-        assert "phase=assemble" in log_lines[1]
-        assert "pct=70" in log_lines[1]
-
-    def test_quiet_progress_throttles_updates(self):
-        """Quiet callback throttles to avoid spamming logs."""
-        from immich_memories.cli._progress import make_quiet_progress_callback
-
-        log_lines: list[str] = []
-        cb = make_quiet_progress_callback(log_fn=log_lines.append, min_interval=10.0)
-
-        # Rapid fire — only first should go through due to throttle
-        for i in range(100):
-            cb("assemble", i / 100, f"Frame {i}")
-
-        # Should have at most a few lines, not 100
-        assert len(log_lines) < 10
 
 
 class TestApplyMusicFileAtomic:

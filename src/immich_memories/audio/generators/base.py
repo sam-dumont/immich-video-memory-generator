@@ -95,22 +95,6 @@ class MusicGenerator(ABC):
             GenerationResult with path to generated audio.
         """
 
-    async def generate_with_stems(
-        self,
-        request: GenerationRequest,
-        progress_callback: Any | None = None,
-    ) -> tuple[GenerationResult, Any]:
-        """Generate music and separate stems.
-
-        Default implementation generates music then returns no stems.
-        Backends with stem separation support should override this.
-
-        Returns:
-            Tuple of (GenerationResult, MusicStems or None).
-        """
-        result = await self.generate(request, progress_callback)
-        return result, None
-
     async def health_check(self) -> dict[str, Any]:
         """Detailed health/status info. Override for richer info."""
         available = await self.is_available()

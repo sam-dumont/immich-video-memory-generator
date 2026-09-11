@@ -20,7 +20,6 @@ from immich_memories.audio.mood_analyzer_backends import (
 from immich_memories.audio.music_sources import (
     LocalMusicSource,
     MusicTrack,
-    get_music_source,
 )
 
 
@@ -40,35 +39,6 @@ class TestMusicTrack:
         assert track.title == "Test Song"
         assert track.artist == "Test Artist"
         assert track.duration_seconds == 180.0
-
-    def test_cache_filename(self):
-        """Test cache filename generation."""
-        track = MusicTrack(
-            id="123",
-            title="My Song Title",
-            artist="Artist",
-            duration_seconds=60.0,
-            url="https://example.com/song.mp3",
-            source="local",
-        )
-        filename = track.cache_filename
-        assert filename.endswith(".mp3")
-        assert "My_Song_Title" in filename
-        # Hash should be consistent
-        assert track.cache_filename == filename
-
-    def test_cache_filename_special_chars(self):
-        """Test cache filename with special characters."""
-        track = MusicTrack(
-            id="456",
-            title="Song: With $pecial Ch@rs!",
-            artist="Artist",
-            duration_seconds=60.0,
-            url="https://example.com/song.mp3",
-        )
-        filename = track.cache_filename
-        # Should only contain alphanumeric and underscores
-        assert all(c.isalnum() or c in "_." for c in filename)
 
 
 class TestDuckingConfig:
@@ -116,25 +86,6 @@ class TestVideoMood:
         assert mood.energy_level == "high"
         assert mood.tempo_suggestion == "fast"
 
-    def test_to_search_params(self):
-        """Test conversion to search parameters."""
-        mood = VideoMood(
-            primary_mood="energetic",
-            genre_suggestions=["electronic", "pop"],
-            tempo_suggestion="fast",
-        )
-        params = mood.to_search_params()
-        assert params["mood"] == "energetic"
-        assert params["genre"] == "electronic"
-        assert params["tempo"] == "fast"
-
-    def test_to_search_params_no_genre(self):
-        """Test search params without genre."""
-        mood = VideoMood(primary_mood="calm")
-        params = mood.to_search_params()
-        assert params["mood"] == "calm"
-        assert params["genre"] is None
-
 
 class TestLocalMusicSource:
     """Tests for LocalMusicSource class."""
@@ -179,26 +130,6 @@ class TestLocalMusicSource:
             source = LocalMusicSource(Path(tmpdir))
             result = await source.download(track, Path(tmpdir))
             assert result == test_file
-
-
-class TestGetMusicSource:
-    """Tests for get_music_source function."""
-
-    def test_local_source(self):
-        """Test creating local source."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            source = get_music_source("local", music_dir=Path(tmpdir))
-            assert isinstance(source, LocalMusicSource)
-
-    def test_local_source_missing_dir(self):
-        """Test local source requires directory."""
-        with pytest.raises(ValueError, match="music_dir required"):
-            get_music_source("local")
-
-    def test_unknown_source(self):
-        """Test unknown source type."""
-        with pytest.raises(ValueError, match="Unknown music source"):
-            get_music_source("unknown")
 
 
 class TestOllamaMoodAnalyzer:
@@ -299,30 +230,6 @@ class TestOpenAICompatibleMoodAnalyzer:
 class TestMusicTrackEdgeCases:
     """Edge cases for MusicTrack."""
 
-    def test_cache_filename_idempotent(self):
-        """cache_filename returns the same value on repeated calls."""
-        track = MusicTrack(
-            id="1",
-            title="Test",
-            artist="A",
-            duration_seconds=60.0,
-            url="https://example.com/song.mp3",
-        )
-        assert track.cache_filename == track.cache_filename
-
-    def test_cache_filename_empty_title(self):
-        """Empty title still produces a valid filename."""
-        track = MusicTrack(
-            id="1",
-            title="",
-            artist="A",
-            duration_seconds=60.0,
-            url="https://example.com/song.mp3",
-        )
-        filename = track.cache_filename
-        assert filename.endswith(".mp3")
-        assert len(filename) > 4  # more than just ".mp3"
-
     def test_zero_duration_track(self):
         """Track with zero duration is valid."""
         track = MusicTrack(
@@ -337,12 +244,6 @@ class TestMusicTrackEdgeCases:
 
 class TestVideoMoodEdgeCases:
     """Edge cases for VideoMood."""
-
-    def test_to_search_params_with_empty_genre_list(self):
-        """Empty genre list maps to None genre."""
-        mood = VideoMood(primary_mood="happy", genre_suggestions=[])
-        params = mood.to_search_params()
-        assert params["genre"] is None
 
     def test_confidence_range(self):
         """Default confidence is between 0 and 1."""
