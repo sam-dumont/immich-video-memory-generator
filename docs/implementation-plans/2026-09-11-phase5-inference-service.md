@@ -30,6 +30,54 @@ is stated.
 
 ---
 
+## 0. Where this stands, and what to do next
+
+**Status on 2026-09-11 evening.** The measuring is finished. Every number this plan turns on was
+taken on real hardware — an Apple M5 Max, the owner's DS423+, and a T1000 in his cluster — and the
+decisions that rest on them are settled. What is not built is nearly all of the code.
+
+**The four things the measurements settled, so nobody re-opens them:**
+
+1. **A low-power NAS ships the no-captions tier**, not metadata-only (§5.A). It costs 3 h 41 min
+   against four days and keeps every producer the audience gate reads.
+2. **Offload the whole ML service, never just the captioner** (§1.3b). Moving only the caption
+   seat leaves the NAS doing encoder and detector work it is 20–55× too slow for: 6 h 30 min
+   against 3 h 23 min for the same library.
+3. **A GPU transforms exactly one seat.** The captioner gains 33×. DINOv2 on a T1000 beats a
+   laptop CPU by 13 %, because a 22M-parameter encoder over a handful of images never fills a GPU.
+4. **Topology 3 with captions beats topology 2 without them** — 3 h 23 min against 3 h 41 min.
+   Attaching a GPU box is not a trade of time for descriptions. It gives both.
+
+**Landed on 2026-09-11.** W0 is done and was worse than the plan recorded: the published image
+could not run `nsfw_marqo` **at all**, on either architecture, because torch came from the CPU
+index while `torchvision` came from PyPI and its operators never registered (#805, #806). The
+DINOv2 encoder is published and digest-verified at the `models-v1` release, which closes
+launch-readiness 4.1 and makes `models fetch` true for the first time.
+
+**The next three slices, in order.**
+
+| next | item | why it is next | exit test |
+|---|---|---|---|
+| 1 | **W1 + W2** (§5.2b) | The only remaining items that make the product faster for people who already have it. W1 returns 6–8× of encoder time and 2.5 GB resident on every Mac, and re-keys nothing. | On a Mac the default session is the CPU provider; on a CUDA host, CUDA; same input gives the same `encoder_key` and the same six head labels on all three. |
+| 2 | **W14** (§5.A) | The tiers are the NAS product. Nothing today implements running without captions and saying so, and it touches none of the service work, so it can be built in parallel by anyone. | A cut completes with no captions and no unit loses its gate evidence; with no models at all a cut still completes, every approved occasion keeps a picture, and no unit is marked `share`. |
+| 3 | **W3b → W4 → W5 → W6** | The service itself. W3b first because dropping the torch family removes 920 MB, 11 s of start-up and W0's whole class of bug before any image is built on top of it. | `/facts` on a fixed picture returns the same labels, versions and `encoder_key` as the in-process path; both image variants build and the cuda one loads a CUDA session. |
+
+**What is still owed before release, beyond the table.** Both NAS profiles were ruled mandatory:
+the hosted-reader profile and the no-LLM profile. The no-LLM profile is the rule reader, which is a
+design (`docs/designs/2026-09-11-rule-reader.md`) with no implementation. W13's consent gate is
+owed the moment any picture leaves the box, which topology 3 does by construction.
+
+**The one packaging trap to carry into W5.** The stock `llama.cpp` CUDA image ships cubins for
+`sm_86`, `sm_89` and `sm_120a` and PTX for everything else, so a Turing card compiles 858 modules
+on first use: 31.3 s, once per container, with a cache that dies with the container. §5.2c names
+the architecture list to build instead. The ONNX seats do not have this problem — 0.0 MB of JIT
+cache and a 0.42 s first inference on the same card — so it is a llama.cpp packaging issue, not a
+CUDA one.
+
+---
+
+---
+
 ## 1. What preparation costs
 
 ### 1.1 How these numbers were taken
