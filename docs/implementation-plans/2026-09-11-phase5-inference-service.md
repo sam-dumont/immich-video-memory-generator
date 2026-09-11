@@ -190,10 +190,18 @@ Q8\_0 `mmproj` projector (109 MB) and `--alias smolvlm2-500m-base-public`:
 So `editorial_description_wire.request_payload` does not change one byte, and **the Linux caption
 path exists.** What it costs is the problem: **30.9 s per picture**, of which ~25 s is prompt
 evaluation (the vision tower — 188 prompt tokens) and ~5 s is generation (~50 completion tokens).
-Two consequences follow directly. `check_provider` sends three synthetic control tiles before any
-library picture, so every run starts with 93 s of warm-up. And because five sixths of the cost is
-the image encoder, **quantising the text weights attacks the small half**, which the next section
+Three consequences follow directly. `check_provider` sends three synthetic control tiles before any
+library picture, so every run starts with 93 s of warm-up. Because five sixths of the cost is the
+image encoder, **quantising the text weights attacks the small half**, which the next section
 measures rather than assumes.
+
+And the 400 px tile turns out to be a **performance** contract, not only a privacy one. Sending
+the same picture's full preview instead of its tile, to the same server, costs **519 prompt tokens
+and 103.6 s** against the tile's 188 tokens and 30.9 s — SmolVLM2 multi-crops anything larger than
+its grid. `TILE_VERSION` is therefore load-bearing in a way its name does not advertise: change the
+tile and the caption bill changes by 3×. It is also why a GPU benchmark of this seat has to be fed
+the real tiles, and why the manifest in §7 verifies `prompt_tokens == 188` on every request before
+any timing is believed.
 
 Output quality is comparable to MLX and differs in wording, as expected from a different numeric
 path. From the public fixtures, same picture, same prompt:
@@ -671,6 +679,20 @@ kubectl -n immich-memories exec deploy/immich-memories -- \
 Measured here: seconds per picture on a GPU — the one column §1.3 is missing — and whether the
 NetworkPolicy actually lets the app pod through (it does not today).
 
+**The GPU box has no usable Docker daemon** (a different mount namespace defeats bind mounts and
+the toolkit hook), so this rung runs as a one-shot Pod, not `docker run`. Two things that cost a
+wasted run if forgotten, both learned the hard way on the NVENC work and on this one:
+
+- **Version ranges are real.** That node's driver is 570.144; the `llama.cpp:server-cuda` image is
+  built against CUDA 12.8.90, which needs ≥ 570.26 — inside the range, but not by much. The same
+  class of mismatch already bit an FFmpeg built against NVENC SDK 13.1 on a driver providing 13.0:
+  it listed the encoder, passed a naive probe, and then refused to open it.
+- **A GPU benchmark must prove it used the GPU.** Both ONNX Runtime and `llama.cpp` fall back to
+  the CPU silently, which biases the result in exactly the flattering direction. So the pod exits
+  non-zero unless `nvidia-smi -L` lists a device *and* the server log contains
+  `ggml_cuda_init: found [1-9]`, and it re-checks `prompt_tokens == 188` on every request so a
+  differently-sized input cannot masquerade as a faster machine (§1.5).
+
 **Rung 3 — the DS423+. Now a regression run, not an experiment.**
 
 The open questions this rung used to carry are answered: torch runs, ONNX Runtime runs,
@@ -722,7 +744,12 @@ seven have nothing to do with a NAS at all.
 6. **Smaller quantisation is not faster.** Q4\_K\_M is 2× slower than Q8\_0 on a CPU without AVX2,
    and worse at the task. Int8 weights made the encoder slower on Apple Silicon. Quantisation is a
    trade against a specific instruction set, and it has to be measured on the target.
-7. **A benchmark on a shared box measures the box.** Two knob sweeps here reversed sign between a
+7. **The size of what you send a VLM is a cliff, not a slope.** The same picture as a 400 px tile
+   is 188 prompt tokens; as a full preview it is 519, and 3.4× the wall clock. Multi-crop means
+   there is a threshold, not a gradient, so "send a slightly bigger image" is not a slightly bigger
+   bill. Any seat that talks to a vision model needs its input size pinned and version-stamped,
+   which `TILE_VERSION` already does — the plan just never said it was a cost control.
+8. **A benchmark on a shared box measures the box.** Two knob sweeps here reversed sign between a
    loaded and a quiesced run, and a caption number was five times too good because the server
    cached image embeddings and the harness fed it the same pictures twice. Both are in the harness
    now: duplicates are dropped, and the caption stage refuses to report anything but its cold pass.
