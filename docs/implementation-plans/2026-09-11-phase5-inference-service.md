@@ -417,6 +417,46 @@ Not a slow detector — a missing one, on the exact install path a Linux user is
 `torchvision` must be declared in the extra and pinned to the same index as torch. That is W0,
 and it is a bug fix, not a size optimisation.
 
+### 5.2b The CoreML fix, concretely
+
+§1.6 measured the macOS default as the slowest and fattest option available. This is the one item
+in this plan that makes the product better for people who already run it, so it is written out
+rather than left as a number.
+
+**What is wrong today.** `DinoEncoder.open` defaults to `provider="auto"`
+(`triage/encoder.py:92`), and `_create_session`'s `auto` branch prefers CoreML whenever the EP is
+merely *present* (`:116`), which on any Apple Silicon machine it is. `prepare_heads` calls
+`DinoEncoder.open(encoder_path)` with no provider (`editorial_preparation_heads.py:45`), and
+`TriageConfig` has no field to override it with. So every Mac silently takes the slow path and no
+setting exists to stop it.
+
+**The change.**
+
+| | now | after |
+|---|---|---|
+| `TriageConfig` | no provider field | `provider: Literal["auto","cpu","coreml","cuda"] = "auto"` |
+| `auto` on macOS | CoreML → CPU | **CPU only** |
+| `auto` on Linux | CPU | CUDA → CPU where the EP is present |
+| `coreml` | as now | kept, as an explicit opt-in for re-testing |
+| `prepare_heads` | hardcodes the default | passes `triage_config.provider` through |
+
+**Unconditional, not a per-machine probe**, for two reasons. The mechanism is a property of the
+graph and the EP rather than of one laptop: ORT's CoreML EP claimed 274 of this export's 513
+nodes and split it into **87 partitions**, so the tensor crosses the accelerator boundary dozens
+of times per image — which is why CoreML got *slower* as the batch grew while the CPU EP got
+faster. And a startup probe would be self-defeating: merely building the CoreML session costs
+0.68–0.76 s against 0.08 s, so discovering it is slow costs more than the default being right.
+
+**The fix is free, and that is worth stating.** Provider is operational, never identity (§4): the
+`encoder_key` does not hash it, the packs move by at most 5.5e-3, and all six head labels were
+identical across providers on every fixture. So this re-keys nothing, invalidates no bank row and
+re-derives no fact. It is a one-line default change that gives back 6–8× of encoder time and
+2.5 GB of resident memory, and costs a re-grade of nothing.
+
+**Exit test** is W1's: a Mac session reports `CPUExecutionProvider`, a CUDA host reports
+`CUDAExecutionProvider`, and the same picture yields the same `encoder_key` and the same six head
+labels on both.
+
 ### 5.3 Model delivery
 
 **Recommendation: bake what is ours and tiny, fetch what is large, verify everything.**
@@ -611,7 +651,7 @@ Reordered so that the items §1 showed to be bugs come before the items §1 show
 | # | Item | Size | Exit test |
 |---|---|---|---|
 | **W0** | **Declare `torchvision` in the `editorial` extra, from the same index as torch.** §5.2: without it `nsfw_marqo` dies with `torchvision::nms does not exist` on the documented Linux install. | XS | A clean `linux/amd64` container installing the extra from the CPU index loads `Marqo` and decides a picture. |
-| **W1** | **Provider selection by measurement, not by name.** `triage/encoder.py` `_create_session` picks CoreML whenever it is available; §1.6 measures CoreML at 6–8× the CPU EP for this graph and at 9× its resident memory. Add a `provider` field to `TriageConfig` (it has none), default to the CPU EP on macOS, resolve CUDA from `ort.get_available_providers()` where present. | S | On a Mac the default session is `CPUExecutionProvider`; on a CUDA host, `CUDAExecutionProvider`; same input → same `encoder_key` and the same head labels on all three. |
+| **W1** | **Provider selection by measurement, not by name — spelled out in §5.2b.** `_create_session` prefers CoreML whenever the EP is merely present; §1.6 measures it at 6–8× the CPU EP for this graph and 9× its resident memory. Add `provider` to `TriageConfig` (it has none), make `auto` mean CPU on macOS and CUDA→CPU on Linux, and pass it through `prepare_heads`. Re-keys nothing (§5.2b). | S | On a Mac the default session is `CPUExecutionProvider`; on a CUDA host, `CUDAExecutionProvider`; same input → same `encoder_key` and the same head labels on all three. |
 | **W2** | **Thread counts stop being constants.** `torch.set_num_threads(6)`, `intra_op_num_threads = 6` and `OMP_NUM_THREADS=6` are hardcoded for a machine nobody has, while `_create_session` derives its own from `os.cpu_count()`. One setting, honoured by every seat. **Honest ranking: §1.8 found no win on either machine measured** — 6 is harmless on 4 cores and the encoder's derived 3 is already optimal. This is hygiene and a lever for hosts nobody has tried, not a speed-up. | S | Setting it changes what the sweep in §1.8 measures; leaving it unset reproduces today's numbers. |
 | **W3** | Split the `editorial` extra by device: CPU torch index for `cpu`, CUDA wheels only for `cuda`. | S | `docker buildx build --platform linux/amd64` produces a `cpu` image with zero `nvidia-*` wheels. Measured target: the non-torch base is 700 MB and the full CPU image 1.62 GB (§5.2). |
 | **W3b** | **Export the Marqo detector to ONNX and drop the torch family.** `scripts/export_marqo_onnx.py` already does it: a 22.5 MB single-file graph, every label agreeing with torch across the fixtures (max probability delta 1.19e-7 with timm's transform, 1.01e-3 with the torch-free numpy transform in the same script). | M | Label agreement on a held-out sample; the `nsfw_marqo` fact version bumps and re-derives. **Justified by size and dependency hygiene, not speed** — §1.6 measured ONNX at 0.469 s vs torch at 0.440 s on the NAS. What it buys is 920 MB, 11 s of start-up, and W0's whole class of bug. |
