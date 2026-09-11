@@ -39,6 +39,62 @@ The backend is probed automatically in the order NVIDIA → Apple → Intel QSV 
 one that works is used. There is no override to pick a specific backend; the only switch is
 `hardware.enabled: false`, which forces software encoding (useful for testing or a broken driver).
 
+A backend is chosen per codec, not once: a chip whose VA-API driver has an H.264 encode entrypoint
+and no HEVC one (Intel Gemini Lake, for example) encodes H.264 on the GPU and H.265 in libx265,
+and logs which half went where.
+
+## VAAPI and QSV in Docker (fixed after 0.76.1)
+
+Two things had to be true before either backend could work in a container, and until 0.76.1
+neither was:
+
+1. **A VA-API driver in the image.** FFmpeg lists `vaapi` and `qsv` under `-hwaccels` whenever it
+   was compiled with them, which says nothing about whether libva can reach a GPU. The image
+   shipped no `*_drv_video.so` at all, so `vaInitialize` failed with `-542398533` on every host.
+   `intel-media-va-driver`, `i965-va-driver` and `mesa-va-drivers` now ship in the amd64 image,
+   along with `vainfo` for diagnosis.
+2. **The render device, and permission to open it.** See the per-backend pages: `devices:` alone
+   is not enough, because the container runs as uid 1000 and `/dev/dri/renderD128` is group-only.
+
+## Quality: what CRF means on each backend
+
+`output.quality` (or an explicit `output.crf`) is one dial, but only libx264/libx265 take a CRF.
+Each backend gets that dial translated into its own constant-quality control — VAAPI `-rc_mode CQP
+-qp`, QSV `-global_quality`, NVENC `-rc constqp -qp`, VideoToolbox `-q:v`. Before 0.76.1 the three
+hardware backends got **no rate-control flag at all** and the driver's default decided quality, and
+VideoToolbox got a mapping that had never been checked against an output.
+
+Constant-quality modes are used throughout rather than bitrate targets, so a still frame and a fast
+pan each cost what they need.
+
+### Hardware encoding is not free quality
+
+Measured on a Synology J4125 (Gemini Lake), 20 s of 1080p60 film, SSIM against the same source,
+with software on the same box as the reference:
+
+| Encode | Size | SSIM |
+|---|---|---|
+| `libx264 -crf 18` | 17.4 MB | 0.99011 |
+| `h264_vaapi -qp 20` | 38.2 MB | 0.98946 |
+| `h264_vaapi -qp 22` | 19.8 MB | 0.98468 |
+| `h264_vaapi -qp 24` | 14.7 MB | 0.98079 |
+| `h264_vaapi -qp 26` | 10.4 MB | 0.97561 |
+
+Matching CRF 18 quality costs QP 20 and about **2.2x the bits**. At equal file size VAAPI is
+clearly worse than x264. That is the trade a hardware encoder makes: it buys speed, not quality per
+byte. The CRF mapping is anchored on this table, so `crf: 18` asks VAAPI for QP 20.
+
+VideoToolbox was the other way round — its old mapping sent CRF 18 to `-q:v 75`, which on the same
+kind of source is 37.3 Mbps against libx265's 4.6 Mbps at CRF 18. That is where oversized exports
+came from; the default `quality: high` is CRF 12, which the old line sent all the way to `-q:v 87`.
+
+:::note NVENC is provisional
+The NVENC offset has not been measured on real hardware yet — it starts at the VAAPI offset because
+both use the same 0-51 quantiser scale. If you have an NVIDIA card, a sweep of
+`h264_nvenc -rc constqp -qp {18,20,22,24}` against `libx264 -crf 18` on the same clip would replace
+the assumption with a number.
+:::
+
 ## Checking your hardware
 
 ```bash
