@@ -33,10 +33,10 @@ from immich_memories.cli.generate_options import (
     selection_options,
 )
 from immich_memories.cli.generate_resolution import (
-    _apply_scalar_overrides,
+    _apply_photo_duration_override,
     _arm_selection_trace,
-    _reject_album_scope_conflicts,
     _resolve_generation_scope,
+    _validate_album_scope,
     name_from_catalogue,
     resolve_inclusion,
     resolve_people_condition,
@@ -105,8 +105,6 @@ def register_generate_commands(main: click.Group) -> None:
         include_photos: bool | None,
         accept_any_provenance: bool,
         photo_duration: float | None,
-        refinement_passes: int | None,
-        analysis_depth: str | None,
         trip_index: int | None,
         all_trips: bool,
         years_back: int | None,
@@ -186,18 +184,18 @@ def register_generate_commands(main: click.Group) -> None:
             except ValueError as exc:
                 raise click.UsageError(str(exc)) from exc
 
-        if from_album:
-            _reject_album_scope_conflicts(
-                year=year,
-                start=start,
-                end=end,
-                period=period,
-                birthday=birthday,
-                season=season,
-                month=month,
-                memory_type=memory_type,
-                person_names=person_names,
-            )
+        _validate_album_scope(
+            from_album=from_album,
+            year=year,
+            start=start,
+            end=end,
+            period=period,
+            birthday=birthday,
+            season=season,
+            month=month,
+            memory_type=memory_type,
+            person_names=person_names,
+        )
 
         # Read the memory from the date flags when it was not named. Without
         # this --month did nothing unless --memory-type was also given, so
@@ -295,12 +293,7 @@ def register_generate_commands(main: click.Group) -> None:
             include_live_photos, config_enabled=config.analysis.include_live_photos
         )
         use_photos = resolve_inclusion(include_photos, config_enabled=config.photos.enabled)
-        _apply_scalar_overrides(
-            config, photo_duration=photo_duration, refinement_passes=refinement_passes
-        )
-
-        # Analysis depth: CLI override → stored for PipelineConfig
-        effective_analysis_depth = analysis_depth or "auto"
+        _apply_photo_duration_override(config, photo_duration=photo_duration)
 
         # Infer memory type from context when not explicitly set
         if memory_type is None and person_names:
@@ -404,7 +397,6 @@ def register_generate_commands(main: click.Group) -> None:
                             output_path=output_path,
                             use_live_photos=use_live_photos,
                             use_photos=use_photos,
-                            effective_analysis_depth=effective_analysis_depth,
                             transition=transition,
                             music=music,
                             music_volume=music_volume,
@@ -448,7 +440,6 @@ def register_generate_commands(main: click.Group) -> None:
                             output_path=output_path,
                             use_live_photos=use_live_photos,
                             use_photos=use_photos,
-                            effective_analysis_depth=effective_analysis_depth,
                             transition=transition,
                             music=music,
                             music_volume=music_volume,
@@ -610,7 +601,6 @@ def register_generate_commands(main: click.Group) -> None:
                         photo_assets=fetched_photos if use_photos else None,
                         include_photos=use_photos and bool(fetched_photos),
                         use_live_photos=use_live_photos,
-                        analysis_depth=effective_analysis_depth,
                         client=client,
                         config=config,
                         progress=progress,

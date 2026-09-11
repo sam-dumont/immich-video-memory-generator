@@ -10,8 +10,8 @@ from rich.table import Table
 
 from immich_memories.cli._generate_display import _add_scope_rows, _format_target_duration
 from immich_memories.cli.generate_resolution import (
-    _reject_album_scope_conflicts,
     _resolve_generation_scope,
+    _validate_album_scope,
 )
 from immich_memories.timeperiod import DateRange
 
@@ -58,7 +58,8 @@ def test_on_this_day_spans_its_ranges_for_display_but_searches_each():
 
 def test_album_mode_rejects_flags_that_would_scope_it_differently():
     with pytest.raises(click.UsageError) as exc:
-        _reject_album_scope_conflicts(
+        _validate_album_scope(
+            from_album="Holiday 2025",
             year=2025,
             start=None,
             end=None,
@@ -75,7 +76,8 @@ def test_album_mode_rejects_flags_that_would_scope_it_differently():
 
 
 def test_album_mode_accepts_a_bare_album():
-    _reject_album_scope_conflicts(
+    _validate_album_scope(
+        from_album="Holiday 2025",
         year=None,
         start=None,
         end=None,

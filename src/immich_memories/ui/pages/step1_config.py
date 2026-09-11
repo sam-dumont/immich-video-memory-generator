@@ -1,17 +1,15 @@
-"""Step 1: Configuration page with preset selector and themed components."""
+"""The Immich connection panel and the custom date range, both reached from the brief."""
 
 from __future__ import annotations
 
 import logging
 from collections.abc import Callable
 from datetime import date
-from typing import TYPE_CHECKING
 
 from nicegui import ui
 
 from immich_memories.api.immich import ImmichAPIError, SyncImmichClient
 from immich_memories.config import Config, set_config
-from immich_memories.memory_types.registry import MemoryType
 from immich_memories.security import sanitize_error_message
 from immich_memories.timeperiod import (
     birthday_year,
@@ -19,31 +17,20 @@ from immich_memories.timeperiod import (
     custom_range,
     from_period,
 )
-from immich_memories.ui.components import (
-    im_button,
-    im_card,
-    im_info_card,
-    im_section_header,
-    im_separator,
-)
+from immich_memories.ui.components import im_button, im_section_header
 from immich_memories.ui.nicegui_compat import io_bound_result
-from immich_memories.ui.pages.step1_presets import render_preset_selector
 from immich_memories.ui.pages.step1_tabs import (
     _render_custom_tab,
     _render_duration_tab,
     _render_year_tab,
 )
-from immich_memories.ui.state import apply_api_key_entry, get_app_state
-
-if TYPE_CHECKING:
-    from nicegui.elements.number import Number
+from immich_memories.ui.state import apply_api_key_entry
 
 logger = logging.getLogger(__name__)
 
 
-def _render_immich_config_section(state) -> None:
-    """Render the Immich connection as a collapsible section."""
-    # If connected, show compact inline status; expand for editing
+def render_immich_connection(state) -> None:
+    """The connection as a collapsible panel: open until connected, one line after."""
     is_connected = bool(state.connected_user)
     header_text = (
         f"Immich Connection — {state.connected_user}" if is_connected else "Immich Connection"
@@ -153,18 +140,6 @@ def _render_immich_config_section(state) -> None:
             ui.timer(0.1, test_connection, once=True)
 
 
-def _render_preset_section(state) -> None:
-    """Render the memory type preset selector section."""
-    im_section_header("Memory Type", icon="auto_awesome")
-
-    def _on_custom_selected(_container) -> None:
-        """Render custom date range UI when Custom preset is selected."""
-        im_section_header("Custom Date Range", icon="date_range")
-        _render_time_period_tabs(state)
-
-    render_preset_selector(on_custom_selected=_on_custom_selected)
-
-
 def _compute_date_range(state):
     """Compute DateRange from current state. Returns None if not computable."""
     if state.time_period_mode == "year" and state.selected_year:
@@ -182,10 +157,8 @@ def _compute_date_range(state):
     return None
 
 
-def _make_date_range_updater(
-    state, date_range_label, duration_input_ref: list
-) -> Callable[[], None]:
-    """Return a closure that updates the date range display label."""
+def _make_date_range_updater(state, date_range_label) -> Callable[[], None]:
+    """Return a closure that recomputes the range and updates its display label."""
 
     def update() -> None:
         try:
@@ -195,10 +168,9 @@ def _make_date_range_updater(
                 return
             state.date_ranges = [dr]
             date_range_label.set_text(f"{dr.description} ({dr.days} days)")
-            auto_duration = max(1, min(60, round(dr.days / 365 * 10)))
-            state.target_duration = auto_duration
-            if duration_input_ref[0] is not None and duration_input_ref[0].value != auto_duration:
-                duration_input_ref[0].value = auto_duration
+            if state.duration_mode == "auto":
+                # About ten minutes per year of range; an override on the brief stands.
+                state.target_duration = max(1, min(60, round(dr.days / 365 * 10)))
         except Exception as e:  # WHY: UI graceful degradation
             date_range_label.set_text(f"Invalid date range: {e}")
             date_range_label.style("color: var(--im-error); background: rgba(239,68,68,0.1)")
@@ -206,8 +178,8 @@ def _make_date_range_updater(
     return update
 
 
-def _render_person_filter(state, update_fn, duration_input_ref: list) -> None:
-    """Render person filter + target duration row."""
+def _render_person_filter(state, update_fn) -> None:
+    """Render the custom range's single-person filter."""
     im_section_header("Person Filter", icon="person")
     named_people = [p for p in state.people if p.name]
     person_options = {"all": "All people"}
@@ -242,16 +214,9 @@ def _render_person_filter(state, update_fn, duration_input_ref: list) -> None:
 
         person_select.on_value_change(on_person_change)
 
-        duration_select = (
-            ui.number("Target Duration (minutes)", value=state.target_duration, min=1, max=60)
-            .classes("w-48")
-            .bind_value(state, "target_duration")
-        )
-        duration_input_ref[0] = duration_select
 
-
-def _render_time_period_tabs(state) -> None:
-    """Render time period mode tabs (Year / Duration / Custom Range)."""
+def render_custom_range(state) -> None:
+    """The custom range as tabs (Year / Duration / Custom Range) plus a person filter."""
     _tab_mode_map = {"Year": "year", "Duration": "period", "Custom Range": "custom"}
 
     with ui.tabs().classes("w-full") as tabs:
@@ -284,115 +249,9 @@ def _render_time_period_tabs(state) -> None:
         .classes("p-2 rounded-lg mt-2")
         .style("color: var(--im-info); background: rgba(59,130,246,0.1)")
     )
-    _duration_input: list[Number | None] = [None]
 
-    update_fn = _make_date_range_updater(state, date_range_label, _duration_input)
+    update_fn = _make_date_range_updater(state, date_range_label)
     _updater[0] = update_fn
     update_fn()
 
-    _render_person_filter(state, update_fn, _duration_input)
-
-
-def _render_options_section(state) -> None:
-    """Render generation options as a compact 2x2 grid with tooltips."""
-    im_section_header("Options", icon="settings")
-
-    with (
-        ui.element("div")
-        .classes("w-full grid gap-3")
-        .style("grid-template-columns: repeat(auto-fill, minmax(180px, 1fr))")
-    ):
-        # Prioritize Favorites
-        with im_card() as c1:
-            c1.classes("p-3")
-            ui.switch("Prioritize Favorites").bind_value(state, "prioritize_favorites").props(
-                "color=primary"
-            ).tooltip("Rank favorited clips higher in selection")
-
-        # Include Photos
-        with im_card() as c2:
-            c2.classes("p-3")
-            ui.switch("Include Photos").bind_value(state, "include_photos").props(
-                "color=primary"
-            ).tooltip("Include photos as animated clips")
-
-        # Include Live Photos
-        with im_card() as c3:
-            c3.classes("p-3")
-            ui.switch("Include Live Photos").bind_value(state, "include_live_photos").props(
-                "color=primary"
-            ).tooltip("Short clips from Live Photos, burst-merged when consecutive")
-
-        # Forwarded-media override
-        with im_card() as c4:
-            c4.classes("p-3")
-            ui.switch("Accept Forwarded Media").bind_value(state, "accept_any_provenance").props(
-                "color=primary"
-            ).tooltip(
-                "For this memory, keep WhatsApp and other received media in the candidate pool"
-            )
-
-        # Analysis Depth
-        with im_card() as c5:
-            c5.classes("p-3")
-            ui.select(
-                options={
-                    "auto": "Auto (recommended)",
-                    "fast": "Fast (favorites first)",
-                    "thorough": "Thorough (every eligible clip)",
-                },
-                label="Analysis Depth",
-                value=state.analysis_depth,
-            ).classes("w-full").bind_value(state, "analysis_depth").tooltip(
-                "Auto fully analyzes manageable pools and shortlists large libraries; "
-                "Fast reserves LLM analysis for favorites; Thorough analyzes every eligible clip"
-            )
-
-
-def _render_navigation(state) -> None:
-    """Render the Next button at the bottom."""
-    im_separator()
-
-    def go_to_step2():
-        if not state.scope_is_selected:
-            missing = (
-                "Please pick an album"
-                if state.memory_type == MemoryType.ALBUM
-                else "Please select a valid time period"
-            )
-            ui.notify(missing, type="warning")
-            return
-        state.step = 2
-        state.reset_clips()
-        ui.navigate.to("/step2")
-
-    im_button(
-        "Next: Review Clips",
-        variant="primary",
-        on_click=go_to_step2,
-        icon="arrow_forward",
-    ).classes("w-full")
-
-
-def render_step1() -> None:
-    """Render Step 1: Configuration."""
-    state = get_app_state()
-
-    if not state.immich_url and state.config:
-        state.immich_url = state.config.immich.url
-        state.immich_api_key = state.config.immich.api_key
-
-    _render_immich_config_section(state)
-
-    if state.people or state.years:
-        im_separator()
-        _render_preset_section(state)
-        im_separator()
-        _render_options_section(state)
-        _render_navigation(state)
-    else:
-        im_info_card(
-            "Connect to your Immich server to continue. "
-            "Enter your server URL and API key above, then click 'Test Connection'.",
-            variant="warning",
-        )
+    _render_person_filter(state, update_fn)

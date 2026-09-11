@@ -93,7 +93,6 @@ def _run_album(monkeypatch, videos, images, **overrides):
         "output_path": Path("/out/all_memories.mp4"),
         "use_live_photos": False,
         "use_photos": True,
-        "effective_analysis_depth": "auto",
         "transition": "fade",
         "music": None,
         "music_volume": 0.5,

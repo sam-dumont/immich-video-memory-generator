@@ -856,14 +856,12 @@ class TestFilterNearHome:
 
 
 class TestTripInUI:
-    """Trip memory type appears in the UI preset selector."""
+    """Trip memory type appears in the brief's type select."""
 
-    def test_trip_in_preset_cards(self):
-        """Trip should be listed in the UI preset cards."""
-        from immich_memories.ui.pages.step1_presets import _PRESET_CARDS
+    def test_trip_is_offered_on_the_brief(self):
+        from immich_memories.ui.pages.memory_brief import MEMORY_TYPE_LABELS
 
-        keys = [card[0] for card in _PRESET_CARDS]
-        assert "trip" in keys
+        assert "trip" in MEMORY_TYPE_LABELS
 
     def test_trip_render_params_branch(self):
         """_render_params should handle the TRIP memory type without error."""

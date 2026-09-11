@@ -131,7 +131,7 @@ def test_repair_with_no_central_candidates_requires_an_empty_about():
         'Never output the input reading labels "remarkable", "maybe", or "background" as weights.'
         in repair
     )
-    assert len(judge.asked) == 2
+    assert len(judge.asked) == 3
 
 
 def test_stringified_join_is_rejected_and_repair_shows_nested_array_shape():

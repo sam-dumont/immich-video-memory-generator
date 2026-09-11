@@ -229,15 +229,42 @@ class TestCLIMemoryTypeFlags:
         result = _invoke(["generate", "--help"])
         assert "--person" in result.output
 
-    def test_choices_are_active_date_memory_types(self):
-        """Album has its own flag; retired then-and-now remains readable only."""
+    def test_choices_are_every_type_the_product_still_offers(self):
+        """Only retired then-and-now is missing; album is nameable as well as implied."""
         memory_type_option = next(
             param for param in main.commands["generate"].params if param.name == "memory_type"
         )
         assert set(memory_type_option.type.choices) == {m.value for m in MemoryType} - {
-            "album",
-            "then_and_now",
+            "then_and_now"
         }, "--memory-type's choices in cli/generate_options.py have fallen behind MemoryType"
+
+    def test_the_album_type_says_what_it_needs(self):
+        """An album memory has no window of its own to fall back on."""
+        config = Config()
+        config.immich.url = "http://immich:2283"
+        config.immich.api_key = "test-key"
+
+        result = _invoke(["generate", "--memory-type", "album"], config=config)
+
+        assert result.exit_code != 0
+        assert "--from-album" in result.output
+
+    def test_naming_the_album_type_alongside_the_album_is_not_a_conflict(self):
+        """--memory-type album repeats what --from-album says; agreeing is not a clash."""
+        config = Config()
+        config.immich.url = "http://immich:2283"
+        config.immich.api_key = "test-key"
+        # WHY: album generation reads the album from Immich and renders it.
+        with patch(
+            "immich_memories.cli._album_generation.handle_album_generation"
+        ) as album_generation:
+            result = _invoke_planned_generation(
+                ["generate", "--memory-type", "album", "--from-album", "Holiday 2025", "--dry-run"],
+                config,
+            )
+
+        assert result.exit_code == 0, result.output
+        assert album_generation.called
 
     def test_retired_then_and_now_cannot_start_generation(self):
         result = _invoke(["generate", "--memory-type", "then_and_now", "--year", "2024"])

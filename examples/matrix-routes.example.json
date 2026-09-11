@@ -1,0 +1,120 @@
+{
+  "schema": "matrix-routes-v1",
+  "_comment": [
+    "One entry per memory route. Everything here is public: the scope values are",
+    "@placeholders that a private overlay fills in at build time. `duration_seconds`",
+    "null means the memory type picks its own length. `music` names a loop in the",
+    "bundled immich-memories-music package (folder/file).",
+    "See docs-site/docs/create/recipes/matrix-routes.md."
+  ],
+  "routes": [
+    {
+      "id": "monthly-highlights",
+      "memory_type": "monthly_highlights",
+      "duration_seconds": 60,
+      "music": "nostalgic/nostalgic_acoustic_1.opus",
+      "scope": {
+        "year": "@year",
+        "month": "@month"
+      }
+    },
+    {
+      "id": "person-spotlight",
+      "memory_type": "person_spotlight",
+      "duration_seconds": 90,
+      "music": "tender/tender_acoustic_1.opus",
+      "scope": {
+        "person": "@person",
+        "year": "@year"
+      }
+    },
+    {
+      "id": "multi-person",
+      "memory_type": "multi_person",
+      "duration_seconds": 90,
+      "music": "happy/happy_acoustic_1.opus",
+      "scope": {
+        "expression": "@expression",
+        "year": "@year"
+      }
+    },
+    {
+      "id": "special-day",
+      "memory_type": "special_day",
+      "duration_seconds": 90,
+      "music": "tender/tender_electronic_1.opus",
+      "scope": {
+        "day": "@day",
+        "event_id": "@event_id"
+      }
+    },
+    {
+      "id": "trip",
+      "memory_type": "trip",
+      "music": "energetic/energetic_acoustic_1.opus",
+      "scope": {
+        "year": "@year",
+        "near_date": "@near_date"
+      }
+    },
+    {
+      "id": "year-in-review",
+      "memory_type": "year_in_review",
+      "duration_seconds": 150,
+      "music": "nostalgic/nostalgic_electronic_2.opus",
+      "scope": {
+        "year": "@year"
+      }
+    },
+    {
+      "id": "season",
+      "memory_type": "season",
+      "duration_seconds": 135,
+      "music": "calm/calm_acoustic_1.opus",
+      "scope": {
+        "season": "@season",
+        "year": "@year"
+      }
+    },
+    {
+      "id": "holiday",
+      "memory_type": "holiday",
+      "duration_seconds": 60,
+      "music": "happy/happy_electronic_1.opus",
+      "scope": {
+        "holiday": "@holiday",
+        "year": "@year",
+        "years_back": "@years_back"
+      }
+    },
+    {
+      "id": "on-this-day",
+      "memory_type": "on_this_day",
+      "duration_seconds": 45,
+      "music": "nostalgic/nostalgic_acoustic_1.opus",
+      "scope": {
+        "years_back": "@years_back"
+      }
+    },
+    {
+      "id": "album",
+      "memory_type": "album",
+      "duration_seconds": 45,
+      "music": "calm/calm_electronic_s411.opus",
+      "scope": {
+        "album": "@album"
+      }
+    },
+    {
+      "id": "monthly-supersede",
+      "memory_type": "monthly_highlights",
+      "duration_seconds": 60,
+      "music": "nostalgic/nostalgic_acoustic_1.opus",
+      "scope": {
+        "year": "@year",
+        "month": "@month"
+      },
+      "supersedes": "monthly-highlights"
+    }
+  ]
+}
