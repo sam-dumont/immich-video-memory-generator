@@ -16,7 +16,7 @@ output:
   directory: "~/Videos/Memories"   # one timestamped folder per run inside it
   format: mp4                      # mp4 | mov
   codec: h264                      # h264 | h265 | prores
-  resolution: auto                 # auto | 4k | 1080p | 720p
+  resolution: 1080p                # 4k | 1080p | 720p
   quality: high                    # high | medium | low
 
 cache:
@@ -38,12 +38,13 @@ trips:                             # needed for --memory-type trip only
   max_gap_days: 2
 
 advanced:
-  # The text model: reads the period, weighs its stories, picks the moments.
-  # Any OpenAI-compatible chat endpoint.
+  # The reader: reads the period, weighs its stories, picks the moments.
+  # Any OpenAI-compatible chat endpoint. It is also sent picture tiles, so this
+  # seat needs a vision model; a text-only one cannot take it.
   llm:
     provider: "openai-compatible"
     base_url: "http://localhost:8000/v1"
-    model: "mlx-community/Qwen3.6-27B-8bit"
+    model: "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"
     timeout_seconds: 120
 
   # The facts the editor reads: a compact caption, six public context heads,

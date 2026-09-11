@@ -79,9 +79,11 @@ module "immich_memories" {
   immich_api_key = var.immich_api_key
 
   # Editorial model connection (model services are deployed separately)
-  # Tested against Qwen3.6-27B and Qwen3.6-35B-A3B; `llm_model` is the tag the server serves
-  llm_base_url = "http://ollama.ollama.svc.cluster.local:11434/v1"
-  llm_model    = "qwen3.6:27b"
+  # The reader is graded on Qwen3-VL-30B-A3B-Instruct-4bit served by oMLX; nothing on this route
+  # has been run on Ollama. Whatever serves it must take images and hold 32k of context.
+  # `llm_model` is the tag that server reports at /v1/models.
+  llm_base_url = "http://your-model-host:8000/v1"
+  llm_model    = "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"
 
   # Optional: anything else, e.g. the in-pod daily automation
   env = {

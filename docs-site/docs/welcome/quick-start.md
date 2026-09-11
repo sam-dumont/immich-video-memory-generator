@@ -46,8 +46,8 @@ immich:
 Get your API key from Immich: **Account Settings > API Keys > New API Key**. When Immich asks which permissions to grant, pick **All** — or, for a minimal key: read access to assets, people, albums, timeline and search, plus **asset upload** and **album create/update** if you turn on upload-back to Immich. This tool never deletes or modifies existing assets.
 
 Then set up the three things the editor reads with — a caption endpoint, the pinned encoder, two
-detectors — following [Editorial annotation setup](../deploy/configuration/editorial-preparation.md).
-A cut with one of them missing stops and says which.
+detectors — following the [self-hosting guide](../deploy/self-hosting.md), which walks the whole
+thing in order. A cut with one of them missing stops and says which.
 
 ## 3. Launch
 

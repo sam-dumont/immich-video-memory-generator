@@ -13,7 +13,7 @@
 > Expect runs that fail, photos that go missing, and options that move between releases. Try it
 > on one small album first, not your whole library, and file what breaks.
 
-**Cuts your [Immich](https://immich.app/) library into edited memory videos: title screens, music, and only the good five seconds of each clip.**
+**Cuts your [Immich](https://immich.app/) library into edited memory videos: it reads the period as a story and argues for every picture it keeps.**
 
 It connects to your self-hosted Immich server and runs a real editor over your library: a small
 vision model captions every picture once, a text model reads the period as a story and weighs its
@@ -36,6 +36,25 @@ faking it. How it decides is documented in
 
 **Why:** you left Google Photos for Immich and lost the year-in-review / trip / "your kid's year" videos. This brings them back: on your hardware, with pictures you can veto and music that isn't canned. AI music and LLM titles are optional extras; the render runs on CPU, and the models the editor reads with can run on the same box.
 
+## What it takes to run
+
+This is heavy machinery. The editor reads with two models you host yourself: a **reader** — vision
+and text, ~17 GB resident at 4-bit — that groups the period into stories and looks at the
+candidates whose facts the edit demands, a few dozen per memory, and a **caption server** — 500M,
+1-2 GB — that describes each picture once. On the app's
+disk, an 88 MB encoder and ~400 MB of CPU detectors. The app itself is cheap: 2-4 GB and a CPU
+render. It will not cut anything without the models.
+
+The two configurations that work:
+
+- **One Apple Silicon Mac, 32 GB or more.** App, both models, render, all on it. This is the one
+  that has actually been graded.
+- **The app anywhere — NAS, mini-PC, Kubernetes — plus one box that can hold the models.** Two
+  machines. There is no version of this with one small machine.
+
+A NAS on its own, with no second machine, is not a supported setup. The whole stand-up, in order,
+is the [self-hosting guide](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/self-hosting).
+
 ---
 
 ## Docker (recommended for self-hosters)
@@ -56,7 +75,7 @@ docker compose up -d     # then open http://localhost:8080
 
 ### Resource Requirements
 
-Time depends mostly on where the caption server and the text model run, and on whether the period
+Time depends mostly on where the caption server and the reader run, and on whether the period
 has been prepared before. Facts and readings are cached, so the first cut over a period is the slow one.
 
 | Phase | RAM | CPU | Apple Silicon / GPU | CPU-only (4-core NAS class) |
@@ -65,6 +84,18 @@ has been prepared before. Facts and readings are cached, so the first cut over a
 | Preparing pictures (first cut) | 2-4GB | 2+ cores | one caption request and one encoder pass per picture; not yet measured on this route | same, slower on the encoder |
 | Assembling 1080p | 4GB | 4 cores | ~2 min per 5 min of output | ~10-16 min for a 14-clip monthly (measured) |
 | Assembling 4K | 6-8GB | 4+ cores | ~5 min per 5 min of output | not recommended |
+
+Those are the app's numbers. The two model services are the big line item and they are not in that
+table because they are not in that process:
+
+| Service | Resident while it's up | Where |
+|---------|------------------------|-------|
+| Reader (vision + text) | **~17GB** at 4-bit | this box if it has 32GB+, otherwise another one |
+| Caption server | **1-2GB** | same |
+
+A 4-core, 8GB NAS runs the app and the render perfectly well. It does not run the reader, and no
+media accelerator changes that — see the
+[self-hosting guide](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/self-hosting#one-machine-or-two).
 
 Most of that assembly time is the title screens, not the encode: measured at 2 CPUs, title
 rendering took ~263 s of a ~339 s assembly, so read
@@ -121,11 +152,14 @@ run on your own hardware:
   describes every picture once, and the description is kept;
 - the pinned **DINOv2-small encoder** and two CPU **detectors** — `pip install "immich-memories[editorial]"`
   plus the pinned weights;
-- a **text model** on any OpenAI-compatible chat endpoint — it reads the period, weighs its
-  stories and picks the moments. Developed and tested against Qwen3.6-27B and Qwen3.6-35B-A3B.
+- a **reader** on any OpenAI-compatible chat endpoint — it reads the period, weighs its stories
+  and picks the moments, and it is sent an 800 px tile of the candidates whose facts the edit
+  demands — a few dozen per memory — so it needs vision and a 32k context. Graded on `Qwen3-VL-30B-A3B-Instruct-4bit` on oMLX (Apple Silicon);
+  other vision models should work, text-only ones cannot.
 
-A cut with one of them missing stops and says which. The pinned versions, digests and the
-caption server contract are on
+A cut with one of them missing stops and says which. The whole setup, in order, is the
+[self-hosting guide](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/self-hosting);
+the pinned versions, digests and the caption server contract are on
 [Editorial annotation setup](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/configuration/editorial-preparation).
 
 ```yaml
@@ -134,7 +168,7 @@ advanced:
   llm:
     provider: "openai-compatible"
     base_url: "http://your-llm-server:8000/v1"
-    model: "mlx-community/Qwen3.6-27B-8bit"
+    model: "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"
   editorial:
     preparation:
       caption_base_url: "http://localhost:8092/v1"

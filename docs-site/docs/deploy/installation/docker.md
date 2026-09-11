@@ -5,7 +5,24 @@ title: Docker
 
 # Install with Docker
 
-No Python environment to manage. Pull the image, set two env vars, done.
+No Python environment to manage. Pull the image, set two env vars, done — for the app.
+
+## What it takes to run
+
+The editor's models are not in this image and will not be: the image's job is the app and the
+render. A cut needs two services you host, and they are the expensive half.
+
+| | What it is | Resident |
+|---|---|---|
+| **Reader** | Vision + text. Groups the period into stories, weighs them, and is sent an 800 px tile of the candidates whose facts the edit demands — a few dozen per memory | ~17 GB at 4-bit |
+| **Caption server** | 500M vision model. One description per picture, once, then banked | 1-2 GB |
+
+Plus an 88 MB encoder and ~400 MB of CPU detectors on the app's disk. The container itself wants
+2-4 GB. So the cheapest things that work are one Apple Silicon Mac with 32 GB+ running everything,
+or this container anywhere plus one box that can hold the models — and remember that `localhost`
+inside a container is the container, so those endpoints need real hostnames.
+
+The [self-hosting guide](../self-hosting.md) stands all of it up in order.
 
 ## Quick start
 
@@ -72,10 +89,15 @@ The container's resource usage depends on what phase it's in:
 | Phase | RAM | CPU | When |
 |-------|-----|-----|------|
 | Idle (UI running, waiting) | ~100 MB | minimal | Most of the time |
-| Analysis (downloading + scoring clips) | 2-4 GB | 2+ cores | First run or new videos, and where most of the wall time goes |
+| Analysis (downloading + preparing pictures) | 2-4 GB | 2+ cores | First cut over a period, and where most of the wall time goes |
 | Assembly (title screens + FFmpeg encode) | 4-8 GB | 4+ cores | Final video generation |
+| **Reader model** (not in this container) | **~17 GB resident** at 4-bit | — | For as long as its server is up |
+| **Caption server** (not in this container) | **1-2 GB resident** | — | For as long as its server is up |
 
-The quickstart compose file sets `memory: 4G` and `cpus: 4`. That's fine for 1080p. For 4K output, bump to 8 GB.
+The quickstart compose file sets `memory: 4G` and `cpus: 4`. That's fine for 1080p, and it sizes
+the app only. The two model services run outside the image — by design, the image's job is the app
+and the render — so their memory is on whatever host you point `llm.base_url` and
+`caption_base_url` at. For 4K output, bump the container to 8 GB.
 
 Inside assembly, the title screens cost more than the encode does on a CPU-only box: measured at `--cpus=2`, title rendering was ~263 s of a ~339 s assembly. See [CPU-Only Mode](../hardware/cpu-only.md#title-rendering-is-the-bottleneck-not-encoding) before you size a box around the encoder.
 
@@ -148,7 +170,7 @@ Inside Immich's own compose stack, `immich-server` listens on **2283** (every Im
 | `IMMICH_MEMORIES_OUTPUT__DIRECTORY` | No | Already `/app/output` in the image. Set it only to write somewhere else — and note it beats `output.directory` in `config.yaml`. |
 | `IMMICH_MEMORIES_STORAGE_SECRET` | No | Session secret for the web UI. Auto-generated into the config volume if not set, so sessions already survive a restart. Set it explicitly to share one secret across hosts. It does not make multiple replicas supported. |
 | `IMMICH_MEMORIES_LLM__BASE_URL` | No | LLM endpoint (any OpenAI-compatible API). On its own it does nothing for scoring — see the next row. |
-| `IMMICH_MEMORIES_LLM__MODEL` | No | Model name as the server reports it. Tested against Qwen3.6-27B and Qwen3.6-35B-A3B (e.g. `qwen3.6:27b` on Ollama). |
+| `IMMICH_MEMORIES_LLM__MODEL` | No | Model name as the server reports it. The reader is graded on `mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit` (oMLX); it is sent pictures, so a text-only model will not do. See the [self-hosting guide](../self-hosting.md#what-has-actually-been-tested). |
 | `IMMICH_MEMORIES_CONTENT_ANALYSIS__ENABLED` | No | `true` to actually use the LLM for clip scoring. Off by default. |
 | `IMMICH_MEMORIES_AUTH_USERNAME` | No | Basic auth username. Set with `IMMICH_MEMORIES_AUTH_PASSWORD` to enable auth. |
 | `IMMICH_MEMORIES_AUTH_PASSWORD` | No | Basic auth password. Set with `IMMICH_MEMORIES_AUTH_USERNAME` to enable auth. |
