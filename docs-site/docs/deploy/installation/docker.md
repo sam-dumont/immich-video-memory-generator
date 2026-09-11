@@ -81,6 +81,11 @@ Inside assembly, the title screens cost more than the encode does on a CPU-only 
 
 Temporary files during encoding can use 2x the size of your source clips. A 10-minute memory from 50 clips might need 5-10 GB of temp space.
 
+The image itself is not small, and nearly all of it is PyTorch and the annotation stack. Measured
+on arm64: `INSTALL_EXTRAS=all` is 7.08 GB on disk, `INSTALL_EXTRAS=none` is 958 MB. amd64 comes out
+smaller still because torch is taken from the [CPU wheel index](../hardware/nvidia.md) instead of
+PyPI's CUDA build.
+
 ## Standalone Docker run
 
 If you don't use compose:
@@ -103,6 +108,10 @@ Published images include the `all` dependency set. For a local build, make the e
 ```bash
 docker build --build-arg APP_VERSION=0.0.0 --build-arg INSTALL_EXTRAS=all -f docker/Dockerfile .
 ```
+
+The build needs BuildKit, which has been the default since Docker 23. The runtime stage
+bind-mounts the wheels the builder produced rather than copying them in, so they are installed
+without ever landing in a layer.
 
 From a checkout, `make docker` runs the same build with the version and git metadata filled in
 (`INSTALL_EXTRAS=none make docker` for a slim image), and `make docker-run` starts it.

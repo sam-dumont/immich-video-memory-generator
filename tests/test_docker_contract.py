@@ -30,6 +30,21 @@ def _logical_instructions(source: str) -> str:
     return re.sub(r"[ \t]+", " ", joined)
 
 
+def _final_stage_instructions(source: str) -> list[str]:
+    """Instructions of the last build stage, in file order — earlier stages are discarded."""
+    lines = [
+        line.strip()
+        for line in _logical_instructions(source).splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    final_stage = max(index for index, line in enumerate(lines) if line.startswith("FROM "))
+    return lines[final_stage:]
+
+
+# `rm` with its flags stripped, leaving the operands it deletes.
+_REMOVED_PATHS = re.compile(r"\brm\b(?:\s+-\S+)*(?P<paths>(?:\s+[^\s;&|]+)+)")
+
+
 def _dry_run_make(target: str, *assignments: str, env: dict[str, str] | None = None) -> str:
     result = subprocess.run(
         ["make", "--no-print-directory", "-n", target, *assignments],
@@ -433,3 +448,45 @@ def test_amd64_takes_torch_from_the_cpu_wheel_index() -> None:
     assert install_target and f"--find-links={cpu_wheel.group('dir')}" in install_target.group(0)
     # Only the builder resolves anything; the runtime stage installs local wheels.
     assert "download.pytorch.org" not in source.split("# Stage 2:")[1]
+
+
+def test_final_stage_never_deletes_what_an_earlier_layer_copied() -> None:
+    """A COPY writes its bytes into a layer that no later `rm` can reclaim.
+
+    /wheels was copied into the runtime stage and removed after the install, so the
+    published image carried every dependency twice -- once as a wheel, once unpacked
+    into site-packages -- and the tarball ran to ~10 GB.
+    """
+    instructions = _final_stage_instructions(_dockerfile())
+    copied = {
+        instruction.split()[-1].rstrip("/"): index
+        for index, instruction in enumerate(instructions)
+        if instruction.startswith("COPY ")
+    }
+
+    for index, instruction in enumerate(instructions):
+        deleted = {
+            path.rstrip("/").removesuffix("/*")
+            for match in _REMOVED_PATHS.finditer(instruction)
+            for path in match.group("paths").split()
+        }
+        stale = sorted(
+            destination
+            for destination, copied_at in copied.items()
+            if copied_at < index
+            and any(destination == gone or destination.startswith(f"{gone}/") for gone in deleted)
+        )
+        assert not stale, (
+            f"{stale} is copied into the runtime stage and deleted by a later instruction, "
+            f"which frees nothing. Mount it for the command that needs it: {instruction}"
+        )
+
+
+def test_runtime_wheels_are_mounted_for_the_install_rather_than_copied() -> None:
+    """Mounted wheels never enter a layer, so the image holds one copy of each dependency."""
+    final_stage = "\n".join(_final_stage_instructions(_dockerfile()))
+    install = re.search(r"(?m)^RUN[^\n]*pip install[^\n]*/wheels[^\n]*$", final_stage)
+
+    assert install, "the runtime stage must install the wheels the builder produced"
+    assert "--mount=type=bind,from=builder,source=/wheels,target=/wheels" in install.group()
+    assert "COPY --from=builder /wheels" not in final_stage
