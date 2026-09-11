@@ -122,7 +122,7 @@ followed the docs exactly.
 | **Tested** | Apple Silicon with 32 GB+ unified memory | Everything on one box: reader, caption server, app, render | The only end-to-end configuration anyone has graded |
 | **Expected to work** | App on a NAS/mini-PC + a 24 GB GPU box or a second Mac for the two model services | App is cheap (2–4 GB); the models are not | Two machines. Say so plainly |
 | **Expected to work, slowly** | One amd64 box, CPU-only, small reader model | A 4B-class reader will answer; quality unmeasured | Fine for a first look, not for a verdict on the editor |
-| **Unsupported** | NAS alone, no second machine, no hosted key | — | The rule reader (§5) is the answer for this tier, not a smaller model |
+| **Not yet supported** | NAS alone | Captions, encoder and detectors on the NAS CPU; the reader hosted (4.21) or gone (4.22) | Two profiles, both owed before release. Not a smaller local reader |
 
 **VAAPI, Quick Sync and NVENC are media accelerators.** They decode, scale and encode. They do not
 run inference. The hardware pages are correct today and must stay that way.
@@ -264,6 +264,40 @@ The reading labels stay available behind a **Details** disclosure, because the w
 engine is that it can show its work.
 *Exit test:* the story page contains no word from the model's answer schema above the fold.
 
+### The two NAS profiles — both owed before release
+
+A NAS owner has two honest routes and we owe them both. Neither is a smaller local reader: shipping
+an ungraded model to the tier least able to judge the output is how the acceptance bar dies.
+
+**What neither route removes.** Captions, the encoder and the two detectors run on the NAS either
+way. The 500M captioner on a CPU is the real first-run cost, it is paid once per picture, and
+VAAPI does not help it — that silicon decodes and encodes video, it does not run neural networks.
+
+**4.21 — The hosted reader. M.**
+Config already allows it: `llm.base_url` plus `llm.api_key`, with `max_tokens_param` negotiating the
+reasoning-model field name. Three things are missing, and the second is the one nobody expects.
+1. *No hosted provider has been graded on this route.* One route, one provider, compared against the
+   approved plan, or we are guessing.
+2. **Captions cannot go hosted.** `editorial_description_contract.API_MODEL` pins the alias
+   `smolvlm2-500m-base-public`, and a hosted provider will never advertise it. So "use a hosted
+   model" shrinks the local footprint from ~17 GB to ~2 GB — it does not empty it. Say that in the
+   docs before someone buys a subscription expecting otherwise.
+3. *Privacy is a decision, not a default.* The annotation lines carry people's real names and place
+   names, and the reader is sent picture tiles. A third-party endpoint therefore needs an explicit
+   opt-in that names what leaves the machine, not a base-url change that quietly starts uploading a
+   family album.
+Cost, measured earlier at 2026-09 prices: a full-year cut is ~746k input and ~42k output tokens, a
+month ~111k and ~18k — EUR 0.02 to 0.12 per render. With a user's own key that is zero to us.
+*Exit test:* a BYO-key recipe in the self-hosting guide, one route graded against a hosted provider,
+and a first-run consent gate that states what is sent.
+
+**4.22 — The no-LLM rule reader. L.**
+Designed in [`docs/designs/2026-09-11-rule-reader.md`](../designs/2026-09-11-rule-reader.md): a
+deterministic reader behind the existing reading contracts, four of its eight judgments already in
+the tree as today's failure path. Four-day spike on one route, sequenced after the scorer removal.
+*Exit test:* the design's own bar — every approved story keeps a carrier on all ten routes and zero
+audience regressions, or it does not ship.
+
 ### Provenance
 
 **4.19 — Issue #784: per-episode evidence-line hashes in attempts. M.**
@@ -282,18 +316,13 @@ Selection + CLI/UI + docs together, `make ci` plus the Docker jobs on both platf
 
 ## 5. Deliberately not done before launch
 
-- **The no-LLM rule reader.** Designed separately (`docs/designs/2026-09-11-rule-reader.md`). It is
-  the honest answer for users who will not run a text model and will not use a hosted key. It is
-  not a launch blocker and it is not designed here.
 - **Phase 4 deletion.** In progress on `feat/story-first-removal`. Noted, not planned here; it
   should follow the merge quickly so the tree stops carrying two selection stories.
-- **A hosted/BYO-key operator path.** Measured and parked; the cost question is undecided and the
-  privacy story for a self-hosting audience is the harder half.
 - **Retraining or replacing any head.** The bundle is graded and bound to the encoder. Nothing on
   this list touches it.
 - **A smaller reader model for the NAS-alone tier.** Tempting and wrong: shipping an ungraded model
-  to the tier least able to judge the output is how we lose the acceptance bar. That tier gets the
-  rule reader.
+  to the tier least able to judge the output is how we lose the acceptance bar. That tier gets 4.21
+  or 4.22, not a model nobody graded.
 - **GPU inference anywhere in the shipped image.** Stays out. The image's job is the app and the
   render; models are services.
 

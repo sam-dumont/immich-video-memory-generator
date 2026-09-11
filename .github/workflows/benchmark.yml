@@ -28,8 +28,9 @@ on:
       - "scripts/profile_pipeline.py"
       - "tests/performance/test_benchmark_contract.py"
       - "Makefile"
+  # Every pull request, not only the ones aimed at main: a stacked PR targets the
+  # branch below it, and a main-only filter skipped all of them.
   pull_request:
-    branches: [main]
     paths:
       - "src/immich_memories/processing/**"
       - "src/immich_memories/analysis/**"
