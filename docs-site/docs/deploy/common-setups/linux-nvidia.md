@@ -111,14 +111,13 @@ IMMICH_API_KEY=your-api-key-here
 ## What works
 
 - **NVENC encoding**: hardware-accelerated H.264/H.265 encoding. NVIDIA is probed first, so NVENC is used automatically — nothing to configure.
-- **CUDA scene analysis**: frame differencing for scene detection runs on the GPU when OpenCV has CUDA support. Face detection is CPU (OpenCV Haar cascades) on Linux — there is no CUDA face path.
 - **Taichi GPU title renderer**: full particle effects and gradient backgrounds using the NVIDIA GPU.
 - **AI music generation**: if you run a MusicGen or ACE-Step server alongside, configure it in the `musicgen` or `ace_step` config sections.
 - **All memory types and features**: everything works with GPU acceleration.
 
 ## What doesn't work
 
-- **LLM content analysis on consumer GPUs**: the tested models are Qwen3.6-27B and Qwen3.6-35B-A3B, which Ollama ships as 17 GB and 24 GB downloads. Neither stays resident on a 12 GB card — Ollama will offload the rest to system RAM and run, slowly. A 24 GB card (3090, 4090) holds the 27B comfortably. Below that, point `llm.base_url` at a box that can, or leave content analysis off: everything except the holistic review still runs.
+- **The editor's model on consumer GPUs**: the tested models are Qwen3.6-27B and Qwen3.6-35B-A3B, which Ollama ships as 17 GB and 24 GB downloads. Neither stays resident on a 12 GB card — Ollama will offload the rest to system RAM and run, slowly. A 24 GB card (3090, 4090) holds the 27B comfortably. Below that, point `llm.base_url` at a box that can, or leave content analysis off: everything except the holistic review still runs.
 
 ## Performance expectations
 
@@ -156,8 +155,6 @@ advanced:
     provider: ollama
     base_url: http://ollama:11434
     model: qwen3.6:27b
-  content_analysis:
-    enabled: true
 ```
 
 `model` has to be the tag you pulled, exactly. Smaller Qwen3.x sizes exist and will run — they are

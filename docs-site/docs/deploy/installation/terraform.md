@@ -159,7 +159,7 @@ requires both preparation and story providers.
 
 | Name | Description | Type | Default |
 |------|-------------|------|---------|
-| `llm_base_url` | OpenAI-compatible endpoint (Ollama: append `/v1`). Sets `llm.base_url` and turns on `content_analysis.enabled`; empty disables LLM analysis | `string` | `""` |
+| `llm_base_url` | OpenAI-compatible endpoint (Ollama: append `/v1`). Sets `llm.base_url`; empty leaves the editor without a model | `string` | `""` |
 | `llm_model` | Vision model name served at `llm_base_url` | `string` | `""` |
 | `llm_api_key` | API key for `llm_base_url` (stored in the Secret) | `string` | `""` |
 | `musicgen_enabled` | Generate AI music with a MusicGen server | `bool` | `false` |

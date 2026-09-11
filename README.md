@@ -75,7 +75,7 @@ before you buy a GPU for the encoder.
 Measured once for calibration (2026-08-18): a 14-clip monthly at 1080p, cold cache, in the Docker
 image with `--cpus=4 --memory=4g` and no GPU took **10 min with `preset: fast`** and 15.7 min with
 the default profile (4 M5 Max cores; a Celeron-class NAS is 2-3× slower). `preset: fast` swaps in
-1080p H.264, a fast encoder, static titles and no speech pass; explicit settings still win over it. The
+1080p H.264, a fast encoder and static titles; explicit settings still win over it. The
 [NAS-only guide](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/common-setups/nas-only)
 has the Celeron-class table. Field reports from Synology, Unraid, Proxmox and Raspberry Pi are
 welcome: [open an issue](https://github.com/sam-dumont/immich-video-memory-generator/issues).

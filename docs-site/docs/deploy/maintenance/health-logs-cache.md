@@ -124,8 +124,8 @@ up deleting thumbnails that run is still using and fetching them again. You will
 see a `WARNING` per eviction pass saying how many files this run is still using
 went, which is your cue to raise `thumbnail_cache_max_size_mb` — a yearly memory
 over a large library can want several GB. Left alone it degrades selection
-quietly: duplicate clustering and burst dedup skip assets whose thumbnail
-vanished, and those photos score neutral instead of on their merits.
+quietly: burst dedup and the picture readings skip assets whose thumbnail
+vanished.
 
 Before these limits existed neither directory had a cap or an expiry, so both
 grew for as long as the app ran — on one real library, 5.2 GB of previews and
@@ -142,13 +142,9 @@ From the CLI:
 immich-memories cache stats
 ```
 
-`cache stats` reports **scored assets** and **banked looks** separately. They
-differ because a look is stored against the model and prompt version that
-produced it: when either changes, the new answer is banked *beside* the old one
-rather than replacing it, so an asset can hold several. That is deliberate —
-the previous behaviour made every stored answer unreadable on a prompt edit, and
-re-analysed the whole library from scratch. The cost is a few MB; the benefit is
-that a rollback is free and the corpus keeps growing instead of resetting.
+`cache stats` reports the legacy photo scorer's table, which nothing writes any
+more; the editor's facts and banks live in `annotations.sqlite` beside it (see
+[Editorial annotation setup](../configuration/editorial-preparation.md)).
 
 The CLI has no `clear` command. To clear caches:
 
@@ -163,14 +159,16 @@ The CLI has no `clear` command. To clear caches:
   # Docker: docker exec immich-memories rm -rf /home/immich/.immich-memories/cache/video-cache
   ```
 
-  The analysis cache lives in `~/.immich-memories/cache.db`; deleting it forces a full
-  re-analysis on the next run, so back it up first (`immich-memories cache backup`).
+  `~/.immich-memories/cache.db` holds the run history and automation state, so back it up
+  before deleting it (`immich-memories cache backup`). The editor's banks are in
+  `annotations.sqlite` in the same directory; deleting that re-asks the model everything.
 
-### Analysis cache
+### Analysis database
 
-Separate from the video cache. Analysis scores, face detections, and LLM content results are stored in a SQLite database (`cache.db`). This is the most valuable cache: re-analyzing a library of 500 videos takes 20+ minutes, but cache hits are instant.
-
-The analysis cache persists across video cache evictions. You can safely clear the video cache without losing analysis results.
+Separate from the video cache. `cache.db` holds the run history, the automation state and the
+tables the legacy scorer used to fill. What the editor learned about your library — captions,
+head facts, readings and banked answers — is in `annotations.sqlite`, which persists across video
+cache evictions. You can safely clear the video cache without losing any of it.
 
 ### Disk space planning
 

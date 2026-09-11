@@ -157,9 +157,6 @@ def register_config_commands(main: click.Group) -> None:
         Checks:
         - Immich server connection and API key
         - LLM availability (Ollama or OpenAI-compatible)
-        - Semantic audio analysis (PANNs or energy fallback)
-        - Speech boundaries (FireRedVAD runtime)
-        - Speech transcription (whisper.cpp runtime)
         - Title rendering (GPU or PIL fallback)
         - Notification delivery health
         - Hardware acceleration

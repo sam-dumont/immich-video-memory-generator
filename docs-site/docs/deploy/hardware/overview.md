@@ -21,9 +21,8 @@ The encode is not where a run spends its time, though. Analysis and title render
 | **AMD VAAPI** | Linux | h264_vaapi, hevc_vaapi | VAAPI | scale_vaapi | CPU (OpenCV Haar cascades) |
 | **Software** | Everywhere | libx264, libx265 | FFmpeg | swscale | CPU (OpenCV Haar cascades) |
 
-Face detection runs on the GPU only on Apple Silicon (Vision Framework). Everywhere else it is
-OpenCV Haar cascades on the CPU. On NVIDIA, CUDA is also used for scene analysis (frame
-differencing) when OpenCV has CUDA support and `hardware.gpu_analysis` is on.
+Face detection (for smart crops) runs on the GPU only on Apple Silicon (Vision Framework).
+Everywhere else it is OpenCV Haar cascades on the CPU.
 
 ## Configuration
 
@@ -32,7 +31,6 @@ hardware:
   enabled: true                # false = software encoding, no GPU probing
   encoder_preset: "balanced"   # fast | balanced | quality
   gpu_decode: true             # hardware decoding when the backend supports it
-  gpu_analysis: true           # CUDA scene analysis on NVIDIA when available
 ```
 
 The backend is probed automatically in the order NVIDIA → Apple → Intel QSV → VAAPI, and the first

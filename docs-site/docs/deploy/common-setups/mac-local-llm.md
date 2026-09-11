@@ -8,7 +8,7 @@ For Mac users running everything locally: LLM clip scoring, Apple Silicon hardwa
 
 ## Who this is for
 
-You have a Mac with Apple Silicon (M1/M2/M3/M4). You want LLM-powered content analysis running entirely on your machine, no cloud APIs. You're comfortable with the terminal.
+You have a Mac with Apple Silicon (M1/M2/M3/M4). You want the editor's model running entirely on your machine, no cloud APIs. You're comfortable with the terminal.
 
 ## Architecture
 
@@ -90,8 +90,6 @@ advanced:
     provider: openai-compatible
     base_url: http://localhost:8000/v1
     model: mlx-community/Qwen3.6-27B-8bit
-  content_analysis:
-    enabled: true
 ```
 
 `model` has to match what the server reports at `GET /v1/models`, not the name you typed anywhere else.
@@ -101,7 +99,6 @@ Or set via environment variables:
 ```bash
 export IMMICH_MEMORIES_LLM__BASE_URL=http://localhost:8000/v1
 export IMMICH_MEMORIES_LLM__MODEL=mlx-community/Qwen3.6-27B-8bit
-export IMMICH_MEMORIES_CONTENT_ANALYSIS__ENABLED=true
 ```
 
 :::note mlx-vlm
@@ -112,7 +109,7 @@ so check it covers whatever you load before you count on it.
 
 ## What works
 
-- **LLM content analysis**: the model reads video frames and scores clips on what is in them (birthday cakes, sunsets, kids playing). Adds a content score weighted at 35% in the overall clip ranking.
+- **A local editor**: the model reads the period's pictures and edits the memory on your machine; nothing leaves it.
 - **VideoToolbox encoding**: H.264/H.265 encoding on the chip's media engine instead of the CPU cores.
 - **Vision framework face detection**: uses macOS native Vision framework for face detection. More accurate than the CPU fallback, no additional model downloads needed.
 - **Taichi GPU title renderer**: particle effects and gradient backgrounds rendered on Apple GPU.

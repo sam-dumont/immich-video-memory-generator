@@ -120,7 +120,7 @@ explicit incomplete result. There is no model-free alternate selector.
 
 Add `IMMICH_MEMORIES_PRESET=fast` to the compose `environment:` (or `preset: fast` at the top of
 `config.yaml`) and the CPU-only profile is on: 1080p H.264 with the fast encoder preset and
-medium quality, static title backgrounds instead of animated ones, no per-clip speech analysis,
+medium quality, static title backgrounds instead of animated ones, 
 and photos capped at a quarter of the cut. Every value you set explicitly still wins, and the web
 UI's options page shows a banner when the preset is active. `immich-memories --preset fast generate …`
 does the same for one CLI run.

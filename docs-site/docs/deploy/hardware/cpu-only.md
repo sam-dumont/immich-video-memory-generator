@@ -18,11 +18,9 @@ title: CPU-Only Mode
 | Video scaling | GPU-accelerated (scale_cuda, scale_vaapi) | FFmpeg swscale (CPU) | Slower for resolution changes |
 
 **Core pipeline features that work identically on CPU:**
-- Clip discovery and selection from Immich
-- Quality scoring and ranking
+- Clip discovery from Immich and story-first selection
 - Duplicate detection (perceptual hashing)
-- Scene detection (PySceneDetect)
-- LLM-powered content analysis
+- The editor's readings, against any OpenAI-compatible endpoint
 - Audio ducking and music mixing
 - Clip ordering
 - All CLI and UI functionality

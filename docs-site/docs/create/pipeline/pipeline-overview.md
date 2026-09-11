@@ -220,4 +220,3 @@ question the text model was asked.
 - [Photo Support](./photo-support.md) — animation modes and HDR handling
 - [Audio & Music](./audio-and-music.md) — the music backends
 - [Hardware Acceleration](../../deploy/hardware/overview.md) — what each encoder needs
-- [Legacy scoring reference](./clip-selection-scoring.md) — the old selector, until it is removed

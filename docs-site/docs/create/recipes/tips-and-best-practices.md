@@ -30,18 +30,6 @@ immich-memories hardware
 
 Encoding 1080p runs at about 2 minutes per 5 minutes of output on Apple Silicon or a GPU; a 30-clip video takes around 15 minutes on a 4-core NAS CPU. See the [resource table](https://github.com/sam-dumont/immich-video-memory-generator#resource-requirements).
 
-## Adjust Scene Detection Threshold
-
-The default threshold (`27.0`) works for most content, but you might need to tune it:
-
-- **Lower threshold** (e.g., `20.0`) = more scene cuts detected. Good for fast-paced content with lots of action.
-- **Higher threshold** (e.g., `35.0`) = fewer cuts. Better for slow, steady footage like landscapes.
-
-```yaml
-analysis:
-  scene_threshold: 27.0
-```
-
 ## Start with Shorter Durations
 
 Your first video should be 3-5 minutes, not 30. Shorter durations mean:

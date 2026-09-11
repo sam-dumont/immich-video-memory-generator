@@ -19,9 +19,9 @@ is not listed here, [open an issue](https://github.com/sam-dumont/immich-video-m
 | `nominatim.openstreetmap.org` | trip detection and trip titles | real GPS of trip clusters (lat/lon → place name) | no (runs when trips are detected) | don't use the Trip type; see below |
 | `server.arcgisonline.com` (World Imagery) | satellite map title screens | tile x/y/z requests for the trip area and your home base | no | `title_screens.enabled: false` |
 | `cdn.jsdelivr.net` (Fontsource) | first map / GPU title render **only if** the configured font is not bundled or cached | nothing personal (a font file is downloaded) | n/a | keep the default bundled font (Montserrat); pre-place TTFs in `~/.immich-memories/fonts/` |
-| `llm.base_url` | content analysis, mood detection, LLM titles | frame thumbnails, photos, and for titles: **person names, place names, dates, clip descriptions** | **yes** | leave `llm` unconfigured, or point it at a local model |
+| `llm.base_url` | the editor's readings, mood detection, LLM titles | frame thumbnails, photos, and for titles: **person names, place names, dates, clip descriptions** | **yes** | leave `llm` unconfigured, or point it at a local model |
 | `ace_step.api_url` / `musicgen.base_url` | AI music via a remote API | mood/genre/tempo text; a generated WAV for stem separation (MusicGen path) | **yes** | in-process ACE-Step (`ace_step.mode: lib`), your own file with `--music`, or `--no-music` |
-| Hugging Face / torch hub / Zenodo | first use of ACE-Step, Demucs, whisper.cpp, PANNs, smart-turn | nothing personal (model weights are downloaded once) | features are opt-in | pre-download models; air-gapped installs should disable those features |
+| Hugging Face / torch hub | first use of ACE-Step, Demucs, the `editorial` extra's detectors | nothing personal (model weights are downloaded once) | features are opt-in | pre-download models; air-gapped installs should disable those features |
 | Your Apprise / ntfy targets | notifications | memory type, status, duration, output path, error tail; a JPEG frame if `attach_thumbnail: true` | **yes** | `notifications.enabled: false` (default) |
 | Your OIDC provider | login | standard OIDC flow (client id, PKCE, tokens) | **yes** | basic auth or trusted-header auth |
 
@@ -62,12 +62,14 @@ if you configure a family of your own. Then a `latin-<weight>` TTF is fetched fr
 
 ### LLM vision API
 
-**When:** `content_analysis.enabled: true` (clip scoring), mood detection, or LLM-written
-titles.
+**When:** `llm` is configured: the editor's readings of a period, mood detection, or
+LLM-written titles.
 
 **What's sent:**
-- Video frame thumbnails (JPEG, downscaled to `frame_max_height`, default 480px) and whole
-  photos, with a scoring prompt.
+- For the editor: the period's picture captions and metadata with the editing prompts; contact
+  sheets of the pictures where a reading asks to see them. See
+  [Editorial annotation setup](./editorial-preparation.md).
+- For mood detection: video keyframes.
 - For titles: the **person names, city/place names, dates and clip descriptions** the title is
   written from.
 - `immich-memories preflight` sends one small test completion to verify the endpoint.
@@ -91,8 +93,8 @@ uploads the *generated* track for stem separation. No frames, no personal data.
 ### Model downloads
 
 First use of an optional ML feature downloads its weights once: ACE-Step (Hugging Face),
-Demucs (torch hub), whisper.cpp models for transcription (Hugging Face), PANNs audio tagging
-(Zenodo), smart-turn (Hugging Face). FireRedVAD is bundled. Nothing about your library is sent;
+Demucs (torch hub), the `editorial` extra's detector weights (Hugging Face). Nothing about your
+library is sent;
 weights are cached under the respective library's cache directory. Air-gapped installs should
 pre-seed those caches or leave the features off.
 

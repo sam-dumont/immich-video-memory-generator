@@ -94,8 +94,7 @@ Every reported match is masked to its first character, so a hit report never con
 ```
 src/immich_memories/
   api/          # Immich API client
-  analysis/     # Story-first selection (the editorial route); the legacy scorer until it is removed
-  speech/       # VAD + transcription for cut placement
+  analysis/     # Story-first selection (the editorial route)
   photos/       # Photo-to-video animation
   processing/   # Video assembly (FFmpeg)
   titles/       # Title screens, map fly-overs

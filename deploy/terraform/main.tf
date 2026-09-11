@@ -32,7 +32,6 @@ locals {
     var.llm_base_url != "" ? {
       IMMICH_MEMORIES_LLM__BASE_URL             = var.llm_base_url
       IMMICH_MEMORIES_LLM__MODEL                = var.llm_model
-      IMMICH_MEMORIES_CONTENT_ANALYSIS__ENABLED = "true"
     } : {},
     var.musicgen_enabled ? {
       IMMICH_MEMORIES_MUSICGEN__ENABLED  = "true"
