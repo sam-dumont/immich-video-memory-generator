@@ -18,6 +18,7 @@ from immich_memories.analysis.editorial_runtime import (
 from immich_memories.analysis.editorial_runtime_ports import EditorialRuntimePorts
 from immich_memories.analysis.selection_trace import Trace
 from immich_memories.config_loader import Config
+from immich_memories.operations.cut_progress import read_stage_progress
 from immich_memories.operations.editorial_attempt import read_editorial_attempt
 from tests.test_editorial_preparation import preview, successful_ports
 from tests.test_editorial_runtime import _window
@@ -133,3 +134,23 @@ def test_missing_required_producer_blocks_all_editing_and_records_failed_attempt
     report = json.loads((attempt / "preparation.private.json").read_text())
     assert len(report["missing_by_producer"]) == 6
     assert all(len(ids) == 3 for ids in report["missing_by_producer"].values())
+
+
+def test_the_attempt_carries_live_numbers_and_recent_pictures_beside_its_stage(
+    tmp_path, monkeypatch
+):
+    """The stage sentence keeps its wording; the bar and the strip read the numbers."""
+    planner, sources, _ = build(tmp_path, providers=successful_ports([]), fetched=[])
+    monkeypatch.setattr(planner._planner, "plan_prepared", lambda *_, **__: EditorialPlan())
+    stages: list[str] = []
+
+    planner.plan_source(sources, trace=Trace(), on_stage=stages.append)
+
+    progress = read_stage_progress(planner.last_attempt_directory)
+    assert progress is not None
+    assert progress.done == progress.total == len(sources)
+    assert set(progress.recent_asset_ids) <= {s.id for s in sources}
+    assert progress.fraction == 1.0
+    # The label vocabulary the phase rows depend on is unchanged.
+    assert "Preparing source metadata" in stages
+    assert any(stage.startswith("Preparing previews: ") for stage in stages)

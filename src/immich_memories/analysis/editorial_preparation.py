@@ -62,6 +62,10 @@ def _noop_progress(_stage: str, _done: int, _total: int) -> None:
     pass
 
 
+def _noop_asset(_asset_id: str) -> None:
+    pass
+
+
 def _ensure_preview(path: Path, asset_id: str, fetch_preview) -> None:
     with suppress(OSError, ValueError):
         with Image.open(path) as image:
@@ -97,6 +101,10 @@ class _Acquisition:
     preview_for: Callable[[str], bytes]
     check: Callable[[], None]
     report: Callable[[str, int, int], None]
+    # Named separately from `report` because a count is not a picture: only the
+    # per-asset loops here know which one they just finished, and the producers
+    # `report` is also handed work in batches they cannot name.
+    note: Callable[[str], None]
     failures: dict[str, str]
 
     def previews(
@@ -111,6 +119,7 @@ class _Acquisition:
             try:
                 _ensure_preview(path, asset_id, fetch_preview)
                 paths[asset_id] = path
+                self.note(asset_id)
             except Exception as exc:
                 unusable.append(asset_id)
                 self.failures[f"preview:{asset_id}"] = f"{type(exc).__name__}: {exc}"
@@ -122,6 +131,7 @@ class _Acquisition:
             self.check()
             try:
                 remember_pixel(connection, asset_id, self.preview_for(asset_id))
+                self.note(asset_id)
             except Exception as exc:
                 self.failures[f"pixel:{asset_id}"] = f"{type(exc).__name__}: {exc}"
             self.report("pixels", index, len(asset_ids))
@@ -196,14 +206,18 @@ def prepare_editorial_annotations(
     pixel_producer_key: str = PRODUCER_KEY,
     fetch_preview: Callable[[str], bytes | None] | None = None,
     progress: Callable[[str, int, int], None] | None = None,
+    on_asset: Callable[[str], None] | None = None,
     check_cancelled: Callable[[], None] | None = None,
     ports: PreparationPorts | None = None,
 ) -> PreparationResult:
     """Prepare the full source, never only the duration-limited selection demand.
 
     ``fetch_preview`` receives an asset ID and returns the Immich preview bytes.
-    It is called once for an absent or corrupt preview. A caller may provide ThumbnailCache
-    or its directory; successful fetches use the same native disk layout.
+    It is called once for an absent or corrupt preview. A caller may provide
+    ThumbnailCache or its directory; successful fetches use the same native disk
+    layout. ``on_asset`` is told the ID of each picture this pass finishes, so a
+    surface watching a long stage can show them; it is never told about one
+    whose preview could not be read.
     """
     cache_path = Path(getattr(thumbnail_cache, "cache_dir", thumbnail_cache))
     store_path = Path(store_path)
@@ -217,6 +231,7 @@ def prepare_editorial_annotations(
         preview_for=lambda asset_id: cached_preview(cache_path, asset_id),
         check=check_cancelled or current_check_cancelled,
         report=progress or _noop_progress,
+        note=on_asset or _noop_asset,
         failures={},
     )
     stage.check()

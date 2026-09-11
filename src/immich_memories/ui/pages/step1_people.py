@@ -144,6 +144,48 @@ def render_person_picker(state: AppState, memory_type: MemoryType, apply: ApplyP
     clear_grouped_display = _render_grouped_condition(state, memory_type, apply)
 
 
+def _anchor_on(state: AppState, selected: Person | None) -> bool:
+    """Take the birthday anchor from whoever is selected now; say if there is one.
+
+    Immich is the source of truth, so this is re-read from the selected person
+    rather than written once by a change handler: a person restored from saved
+    state has to reach the same answer a freshly picked one does. The mode
+    follows the birth date and drops with it, so a previous person's date can
+    never silently decide the window.
+
+    This is the preset card's anchor -- kwargs for ``create_preset`` -- and is
+    deliberately not ``state.birthday``, which belongs to the custom-range tabs
+    and carries their own picker's override.
+    """
+    birth_date = selected.birth_date if selected is not None else None
+    if birth_date is None:
+        state.memory_preset_params.pop("birthday", None)
+        state.memory_preset_params["use_birthday"] = False
+        return False
+    state.memory_preset_params["birthday"] = birth_date
+    # Immich having a date is what offers the mode; unticking it is the user's.
+    state.memory_preset_params.setdefault("use_birthday", True)
+    return True
+
+
+def _birthday_tooltip(anchored: bool, *, has_person: bool) -> str:
+    """Why the anchor is or is not on offer, naming the field that decides it.
+
+    The disabled state used to read as a verdict on the selected person even
+    when none was selected, and pointed at a People page this product does not
+    have: the birth date lives on Immich's person, and that is where a user has
+    to go to unlock this.
+    """
+    if anchored:
+        return "The year runs up to the birthday, and earlier birthdays come with it"
+    if not has_person:
+        return "Pick a person first: their birth date in Immich is what anchors this"
+    return (
+        "This person has no birth date in Immich. Add it there — People → the person "
+        "→ edit → birth date — and every birthday memory follows it."
+    )
+
+
 def render_person_spotlight_params(state: AppState, apply: ApplyPreset) -> None:
     """Year (with All Time) + single person picker + birthday toggle."""
     by_name = _named_people(state)
@@ -172,12 +214,10 @@ def render_person_spotlight_params(state: AppState, apply: ApplyPreset) -> None:
             if selected:
                 state.memory_preset_params["person_id"] = selected.id
                 state.memory_preset_params["person_names"] = [e.value]
-                # Immich is the source of truth for the anchor, so the mode
-                # follows the birth date -- and drops with it, rather than
-                # leaving the previous person's date behind to silently
-                # decide the window.
-                state.memory_preset_params["birthday"] = selected.birth_date
-                state.memory_preset_params["use_birthday"] = bool(selected.birth_date)
+            # A new pick is answered by Immich afresh: the previous person's
+            # choice of mode is not evidence about this one.
+            state.memory_preset_params.pop("use_birthday", None)
+            _anchor_on(state, selected)
             apply(MemoryType.PERSON_SPOTLIGHT)
 
         ui.select(
@@ -191,15 +231,14 @@ def render_person_spotlight_params(state: AppState, apply: ApplyPreset) -> None:
         state.memory_preset_params["use_birthday"] = e.value
         apply(MemoryType.PERSON_SPOTLIGHT)
 
-    anchored = state.memory_preset_params.get("birthday") is not None
+    selected_person = by_name[current_name] if current_name else None
+    anchored = _anchor_on(state, selected_person)
     ui.checkbox(
         "Birthday to birthday",
-        value=bool(state.memory_preset_params.get("use_birthday")) and anchored,
+        value=bool(state.memory_preset_params.get("use_birthday")),
         on_change=on_birthday_toggle,
     ).classes("mt-2").props("" if anchored else "disable").tooltip(
-        "The year runs up to the birthday, and earlier birthdays come with it"
-        if anchored
-        else "This person has no birth date in Immich — add one under People to unlock this"
+        _birthday_tooltip(anchored, has_person=selected_person is not None)
     )
 
     state.memory_preset_params.setdefault("year", saved_year)
