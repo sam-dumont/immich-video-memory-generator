@@ -1,0 +1,39 @@
+# The image copies pyproject.toml, README.md, uv.lock, src/, packages/ and
+# docker/. Everything else only slows the daemon handshake down, and some of it
+# (local renders, private evaluation files) must never reach a build at all.
+
+.git
+.gitattributes
+.github
+.venv
+.worktrees
+venv
+
+# Test suites, the docs site and rendered videos are not part of the app
+tests
+docs-site
+docs
+examples
+deploy
+scripts
+
+# Tool caches and coverage artifacts
+**/__pycache__
+*.pyc
+*.pyo
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.complexipy_cache
+.import_linter_cache
+.coverage
+coverage.xml
+htmlcov
+node_modules
+.DS_Store
+
+# Renders and anything marked private stay on the machine that made them
+output
+*.private.*
+.env
+*.log
