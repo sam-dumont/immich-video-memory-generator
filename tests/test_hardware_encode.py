@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pathlib
-
 import pytest
 
 from immich_memories.processing.clip_encoder import encoder_args_for_plan
