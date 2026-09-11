@@ -70,7 +70,7 @@ def init_face_detectors() -> tuple[bool, object | None, object | None]:
         try:
             from immich_memories.analysis.apple_vision import VisionFaceDetector
 
-            vision_detector = VisionFaceDetector(detect_landmarks=False)
+            vision_detector = VisionFaceDetector()
             use_vision = True
             logger.info("Using Apple Vision for smart crop face detection")
         except (ImportError, RuntimeError, OSError) as e:
