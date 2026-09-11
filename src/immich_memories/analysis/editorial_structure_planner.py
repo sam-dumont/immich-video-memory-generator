@@ -29,6 +29,7 @@ from immich_memories.analysis.editorial_final_sampled_duplicates import (
 from immich_memories.analysis.editorial_picture_evidence import PictureEvidenceOverlay
 from immich_memories.analysis.editorial_picture_ladders import depth_cap
 from immich_memories.analysis.editorial_sampled_reference import sampled_source_relation
+from immich_memories.analysis.editorial_shareability_tiers import audience_check_for
 from immich_memories.analysis.editorial_story_planner import (
     alternatives_pool,
     select_story_first,
@@ -471,6 +472,7 @@ def _select(
         flag_rows=source.shareability_flags,
         lines=source.annotations,
         bank_path=audit_dir / "shareability.private.json",
+        check_audience=audience_check_for(source.config.editorial.preparation.tier),
     )
     attached_relation_records: dict[str, dict[str, Any]] = {}
     relation_records = ChainMap(attached_relation_records, material.picture_evidence.records)
