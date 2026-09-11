@@ -18,6 +18,7 @@ import numpy as np
 
 from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer
 from immich_memories.processing.ffmpeg_runner import drain_stderr_tail
+from immich_memories.processing.hardware_encode import apply_hardware_encode
 
 from .encoding import standalone_title_encoding_plan, title_color_filter, title_encoder_args
 from .renderer_taichi import TaichiTitleConfig, TaichiTitleRenderer
@@ -247,6 +248,8 @@ def create_title_video_taichi(
         "+faststart",
         str(output_path),
     ]
+
+    cmd = apply_hardware_encode(cmd, pixel_format=plan.pixel_format)
 
     logger.info(f"Generating title with Taichi: {title}")
 

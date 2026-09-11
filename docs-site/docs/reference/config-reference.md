@@ -44,7 +44,7 @@ preset: null                       # null | fast
 ```
 
 `fast` sets, unless you set them yourself: `output.resolution: 1080p`, `output.codec: h264`,
-`output.quality: medium`, `hardware.encoder_preset: fast` and
+`output.quality: fast`, `hardware.encoder_preset: fast` and
 `title_screens.animated_background: false` (static title backgrounds). Music generation is already
 off by default and stays wherever you put it.
 
@@ -147,17 +147,42 @@ output:
   format: "mp4"                  # mp4 or mov
   resolution: "1080p"            # 720p, 1080p, 4k
   codec: h264                     # h264 (default), h265 (HDR-capable), prores
+  codec_policy: prefer_hardware   # prefer_hardware (default) or strict
   hdr_mode: auto                  # auto, sdr, hdr
-  quality: "high"                # high, medium, low (shorthand for CRF presets)
+  quality: "balanced"            # high, balanced, fast (shorthand for CRF presets)
   crf: null                      # unset = derived from quality; 0-51 overrides (lower = better)
 ```
 
 CRF is the image-quality authority. `quality` is only a shorthand used when `crf` is omitted;
-an explicit `crf` wins. Software H.264/H.265 encoders receive CRF directly. FFmpeg's
-VideoToolbox encoders do not implement CRF, so the app translates the same 0-51 setting to
-VideoToolbox's 1-100 quality scale (for example, CRF 18 becomes `-q:v 75`). Lower CRF still means
-higher quality for software H.264/H.265 and Apple VideoToolbox. NVENC, VAAPI, QSV, and ProRes use
-their existing backend policies; `output.crf` is not currently translated for those encoders.
+an explicit `crf` wins. The number is on **libx265's CRF scale**, which is the reference every
+other encoder is calibrated against: each backend gets whatever setting reproduces the same
+picture, measured by SSIM, rather than the same integer. See
+[the hardware overview](../deploy/hardware/overview.md#quality-what-crf-means-on-each-backend)
+for the measured table. Lower CRF still means higher quality everywhere.
+
+The presets are points on that curve, measured on 1080p60 film and — for `balanced` — judged by
+eye on gradients:
+
+| `quality` | reference CRF | SSIM | software bitrate | per minute |
+|---|---|---|---|---|
+| `high` | 18 | 0.99169 | 4.6 Mbps | ~35 MB |
+| `balanced` (default) | 24 | 0.98451 | 1.6 Mbps | ~12 MB |
+| `fast` | 24 | 0.98451 | 1.6 Mbps | ~12 MB, encoded as fast as the backend can |
+
+`high` used to mean CRF 12, which is past SSIM 0.999 — quality nobody can see, at several times
+the bits, and the reason exports were hundreds of megabytes.
+
+There is deliberately no tier below `balanced`: around 0.980 gradients start to band, and a preset
+that visibly breaks up a sky is not worth a few megabytes. `fast` keeps the balanced picture and
+buys its speed from the encoder effort preset instead, overriding `hardware.encoder_preset`.
+`medium` and `low` are retired names that still load, resolving to `balanced` and `fast`.
+
+`codec_policy` decides what happens when the machine has no hardware encoder for the codec you
+asked for but does have one for the other. `prefer_hardware` (the default) switches codec and says
+so in the log and the run record, which on a chip like Intel Gemini Lake — H.264 encode entrypoint,
+no HEVC one — is the difference between a film finishing and the CPU doing all of it. The file is
+bigger and plays on more things. `strict` always honours `output.codec` and accepts the CPU cost.
+The switch never applies to ProRes, and never to an HDR output, because H.264 carries no HDR.
 
 The final encoding plan permits only `mp4` and `mov` containers with `h264`, `h265`, or `prores`
 codecs. `generate --format` accepts only `mp4`, `h265`, and `prores`: they select H.264/MP4,

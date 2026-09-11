@@ -9,6 +9,9 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Literal
 
+from immich_memories.processing.hardware_encode import device_args, upload_filter
+from immich_memories.processing.rate_control import quality_args
+
 logger = logging.getLogger(__name__)
 
 
@@ -93,24 +96,12 @@ def _check_ffmpeg_encoder(encoder: str) -> bool:
     return success and encoder in output
 
 
-# Extra input-side args a hardware encoder needs to accept a software frame in a probe.
+# The probe has to set up exactly what a render sets up, or it proves nothing
+# about the render — which is how VAAPI and QSV came to pass detection on any
+# box with /dev/dri while every real encode failed.
 _PROBE_UPLOAD_ARGS: dict[str, list[str]] = {
-    "vaapi": [
-        "-init_hw_device",
-        "vaapi=va",
-        "-filter_hw_device",
-        "va",
-        "-vf",
-        "format=nv12,hwupload",
-    ],
-    "qsv": [
-        "-init_hw_device",
-        "qsv=hw",
-        "-filter_hw_device",
-        "hw",
-        "-vf",
-        "hwupload=extra_hw_frames=8,format=qsv",
-    ],
+    backend: [*device_args(backend), "-vf", upload_filter(backend, "yuv420p")]
+    for backend in ("vaapi", "qsv")
 }
 
 
@@ -135,7 +126,41 @@ def _probe_ffmpeg_encode(encoder_args: list[str], *, upload: str | None = None) 
     success, output = _run_ffmpeg_check(args)
     if not success:
         logger.info("Hardware encoder probe failed for %s: %s", encoder_args, output.strip()[-200:])
+        advice = _probe_failure_advice(output)
+        if advice:
+            logger.warning("Hardware encoding is unavailable: %s", advice)
     return success
+
+
+# Probe failures that have a known cause and a known fix. Everything else is
+# reported verbatim; these three otherwise read as "could not open encoder",
+# which tells a user nothing about what to change. All three were hit for real
+# on the owner's hardware.
+_PROBE_FAILURE_ADVICE: tuple[tuple[str, str], ...] = (
+    (
+        "minimum required nvidia driver",
+        "this FFmpeg was built against a newer NVENC SDK than your driver provides. "
+        "Update the NVIDIA driver, or use an image built against an older SDK",
+    ),
+    (
+        "libnvidia-encode",
+        "the NVENC library is missing. Requesting the GPU is not enough: `--gpus all` "
+        "grants compute and utility only, so add the `video` driver capability "
+        "(NVIDIA_DRIVER_CAPABILITIES=compute,video,utility)",
+    ),
+    (
+        "device creation failed",
+        "libva could not open a device. Check that /dev/dri is passed into the "
+        "container and that the container user is in the render group",
+    ),
+)
+
+
+def _probe_failure_advice(output: str) -> str | None:
+    lowered = output.lower()
+    return next(
+        (advice for signature, advice in _PROBE_FAILURE_ADVICE if signature in lowered), None
+    )
 
 
 def _check_ffmpeg_decoder(decoder: str) -> bool:
@@ -268,9 +293,13 @@ def get_ffmpeg_encoder(
         (HWAccelBackend.QSV, "h265"): ("hevc_qsv", "qsv", "-preset", False),
     }
 
-    # Extra args appended per backend
+    # Extra args appended per backend. Rate control is deliberately absent: it
+    # belongs to rate_control.quality_args, which the plan appends after these.
+    # `-rc vbr` used to live here and would now be overridden by `-rc constqp`
+    # two flags later — one of them has to be wrong, so only one sets the mode.
+    # `-spatial-aq` is an adaptive-quantisation knob, not a mode, and still applies.
     _EXTRA_ARGS: dict[HWAccelBackend, list[str]] = {
-        HWAccelBackend.NVIDIA: ["-rc", "vbr", "-spatial-aq", "1"],
+        HWAccelBackend.NVIDIA: ["-spatial-aq", "1"],
         HWAccelBackend.APPLE: ["-allow_sw", "1"],
     }
 
@@ -287,6 +316,13 @@ def get_ffmpeg_encoder(
             args = [preset_flag, preset_val]
             args.extend(_EXTRA_ARGS.get(capabilities.backend, []))
             return encoder, args
+        # A backend can encode one codec and not the other — Gemini Lake VAAPI
+        # advertises H.264 encode and no HEVC, and h265 is the default output.
+        logger.info(
+            "%s cannot encode %s on this device; encoding it in software",
+            capabilities.backend.value,
+            codec,
+        )
 
     # Fallback to software encoding
     sw_preset = _PRESET_VALUES["software"][preset]
@@ -398,12 +434,25 @@ def print_hardware_info(capabilities: HWAccelCapabilities) -> None:
     print()
 
 
-_SOFTWARE_FAST_ARGS = ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "28"]
-_HARDWARE_FAST_ARGS = {
-    HWAccelBackend.NVIDIA: ["-c:v", "h264_nvenc", "-preset", "p1", "-rc", "constqp", "-qp", "28"],
-    HWAccelBackend.VAAPI: ["-c:v", "h264_vaapi", "-qp", "28"],
-    HWAccelBackend.QSV: ["-c:v", "h264_qsv", "-preset", "veryfast"],
+# Temp files for analysis and previews are never shown to anyone, so they run at
+# the CRF the "low" quality preset means. The rate control comes from the same
+# mapping the final output uses, so "CRF 28" costs the same picture on every
+# backend instead of each one inventing its own default.
+_FAST_CRF = 28
+_FAST_SPEED_ARGS: dict[HWAccelBackend, list[str]] = {
+    HWAccelBackend.NVIDIA: ["-preset", "p1"],
+    HWAccelBackend.QSV: ["-preset", "veryfast"],
 }
+_FAST_ENCODERS: dict[HWAccelBackend, str] = {
+    HWAccelBackend.NVIDIA: "h264_nvenc",
+    HWAccelBackend.VAAPI: "h264_vaapi",
+    HWAccelBackend.QSV: "h264_qsv",
+}
+_SOFTWARE_FAST_ARGS = ["-c:v", "libx264", "-preset", "ultrafast", "-crf", str(_FAST_CRF)]
+
+
+def _fast_args_for(encoder: str, backend: HWAccelBackend) -> list[str]:
+    return ["-c:v", encoder, *_FAST_SPEED_ARGS.get(backend, []), *quality_args(encoder, _FAST_CRF)]
 
 
 def fast_encoder_args(*, hardware_enabled: bool = True) -> list[str]:
@@ -415,9 +464,12 @@ def fast_encoder_args(*, hardware_enabled: bool = True) -> list[str]:
     if not hardware_enabled:
         return _SOFTWARE_FAST_ARGS.copy()
     if sys.platform == "darwin":
-        return ["-c:v", "h264_videotoolbox", "-q:v", "65"]  # lower quality is fine for temp files
+        return _fast_args_for("h264_videotoolbox", HWAccelBackend.APPLE)
     backend = detect_hardware_acceleration().backend
-    return list(_HARDWARE_FAST_ARGS.get(backend, _SOFTWARE_FAST_ARGS))
+    encoder = _FAST_ENCODERS.get(backend)
+    if encoder is None:
+        return _SOFTWARE_FAST_ARGS.copy()
+    return _fast_args_for(encoder, backend)
 
 
 # ---------------------------------------------------------------------------
