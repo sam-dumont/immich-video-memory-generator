@@ -7,6 +7,16 @@ gate starts the fake Immich on the host, runs `immich-memories generate`
 inside the exact image the release would publish, and fails on a non-zero
 exit, a missing/undecodable MP4, or a hang (hard timeout).
 
+The story-first route needs two things a release runner has not got: a text
+model to read the period with, and an annotation store already prepared for
+the library. Without them `generate` stops on the blank-model guard before
+anything is rendered, so the gate would fail every release for a reason that
+says nothing about the image. The hermetic route from `tests/e2e/fake_editorial.py`
+— the same one the launch smoke uses — is mounted into the container and
+installed by a bootstrap that then hands over to the real CLI. Everything
+downstream of selection (downloads, timing, FFmpeg, output validation) is the
+production code the release would ship.
+
 Usage: python scripts/docker_smoke.py --image <ref-or-digest> [--timeout 900]
 Linux-only (uses --network host so the container reaches the host's
 localhost-bound fake service).
@@ -15,6 +25,7 @@ localhost-bound fake service).
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -23,6 +34,91 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from tests.e2e.fake_immich import FakeImmichServer  # noqa: E402
+
+FIXTURE = Path(__file__).resolve().parent.parent / "tests" / "e2e" / "fake_editorial.py"
+SMOKE_MOUNT = "/smoke"
+
+# Installed before the CLI is imported, so the route is already replaced by the
+# time `generate` builds a pipeline. Taichi's banner settings come first for the
+# same reason they do in the CLI's own __init__.
+_BOOTSTRAP = f'''import os
+import sys
+
+os.environ.setdefault("ENABLE_TAICHI_HEADER_PRINT", "0")
+os.environ.setdefault("TI_LOG_LEVEL", "error")
+sys.path.insert(0, "{SMOKE_MOUNT}")
+
+from fake_editorial import install_fake_editorial_route
+
+install_fake_editorial_route(stage_seconds=0.0)
+
+from immich_memories.cli import main
+
+main()
+'''
+
+
+def prepare_editorial_fixture(root: Path) -> Path:
+    """Lay out the hermetic route and its bootstrap for the container to mount."""
+    if not FIXTURE.is_file():
+        raise FileNotFoundError(f"{FIXTURE} is missing; the smoke cannot stand up a cut")
+    directory = root / "editorial"
+    directory.mkdir()
+    shutil.copy(FIXTURE, directory / FIXTURE.name)
+    (directory / "smoke_bootstrap.py").write_text(_BOOTSTRAP)
+    # The container runs as UID 1000 and only reads these.
+    directory.chmod(0o755)
+    for entry in directory.iterdir():
+        entry.chmod(0o644)
+    return directory
+
+
+def generate_argv(
+    *,
+    image: str,
+    container: str,
+    immich_url: str,
+    api_key: str,
+    out_dir: Path,
+    editorial_dir: Path,
+) -> list[str]:
+    """The exact `docker run` that renders one monthly cut inside the image."""
+    return [
+        "docker",
+        "run",
+        "--rm",
+        "--name",
+        container,
+        "--network",
+        "host",
+        "--cpus",
+        "2",
+        "-e",
+        f"IMMICH_URL={immich_url}",
+        "-e",
+        # WHY the server's own key: FakeImmichServer rejects anything
+        # else with "Invalid API key", which failed every release.
+        f"IMMICH_API_KEY={api_key}",
+        "-v",
+        f"{out_dir}:/app/output",
+        "-v",
+        f"{editorial_dir}:{SMOKE_MOUNT}:ro",
+        image,
+        "python",
+        f"{SMOKE_MOUNT}/smoke_bootstrap.py",
+        "generate",
+        "--memory-type",
+        "monthly_highlights",
+        "--year",
+        "2024",
+        "--month",
+        "6",
+        "--duration",
+        "20",
+        "--no-music",
+        "--output",
+        "/app/output/smoke.mp4",
+    ]
 
 
 def main() -> int:
@@ -40,44 +136,20 @@ def main() -> int:
             out_dir = root / "output"
             out_dir.mkdir()
             out_dir.chmod(0o777)  # the container runs as UID 1000
+            editorial_dir = prepare_editorial_fixture(root)
             server = FakeImmichServer.start(root / "immich")
             container = f"immich-memories-smoke-{uuid.uuid4().hex[:8]}"
             print(f"fake Immich at {server.base_url}; image {args.image}")
             try:
                 proc = subprocess.run(
-                    [
-                        "docker",
-                        "run",
-                        "--rm",
-                        "--name",
-                        container,
-                        "--network",
-                        "host",
-                        "--cpus",
-                        "2",
-                        "-e",
-                        f"IMMICH_URL={server.base_url}",
-                        "-e",
-                        # WHY the server's own key: FakeImmichServer rejects anything
-                        # else with "Invalid API key", which failed every release.
-                        f"IMMICH_API_KEY={server.api_key}",
-                        "-v",
-                        f"{out_dir}:/app/output",
-                        args.image,
-                        "immich-memories",
-                        "generate",
-                        "--memory-type",
-                        "monthly_highlights",
-                        "--year",
-                        "2024",
-                        "--month",
-                        "6",
-                        "--duration",
-                        "20",
-                        "--no-music",
-                        "--output",
-                        "/app/output/smoke.mp4",
-                    ],
+                    generate_argv(
+                        image=args.image,
+                        container=container,
+                        immich_url=server.base_url,
+                        api_key=server.api_key,
+                        out_dir=out_dir,
+                        editorial_dir=editorial_dir,
+                    ),
                     timeout=args.timeout,
                     capture_output=True,
                     text=True,
