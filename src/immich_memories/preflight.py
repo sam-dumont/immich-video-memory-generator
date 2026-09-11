@@ -342,40 +342,6 @@ def check_hardware() -> CheckResult:
         )
 
 
-def check_audio_content(config: Config) -> CheckResult:
-    """Report semantic-audio capability without importing Torch or loading a model."""
-    audio = config.audio_content
-    if not audio.enabled:
-        return CheckResult(
-            name="Audio content",
-            status=CheckStatus.SKIPPED,
-            message="Audio-content analysis disabled",
-        )
-    if not audio.use_panns:
-        return CheckResult(
-            name="Audio content",
-            status=CheckStatus.OK,
-            message="Energy-only audio analysis enabled",
-            details="Semantic labels such as laughter and speech are unavailable",
-        )
-    if (
-        importlib.util.find_spec("torch") is not None
-        and importlib.util.find_spec("panns_inference") is not None
-    ):
-        return CheckResult(
-            name="Audio content",
-            status=CheckStatus.OK,
-            message="Semantic PANNs audio classification ready",
-            details="Laughter, baby, speech, music, and other AudioSet labels are available",
-        )
-    return CheckResult(
-        name="Audio content",
-        status=CheckStatus.WARNING,
-        message="PANNs unavailable; using energy-only fallback",
-        details="Install the audio-ml extra for semantic laughter, baby, speech, and music labels",
-    )
-
-
 def _optional_runtime_check(
     name: str, modules: tuple[str, ...], *, extra: str, ready: str, cost: str
 ) -> CheckResult:
@@ -393,40 +359,6 @@ def _optional_runtime_check(
         status=CheckStatus.WARNING,
         message=cost,
         details=f"Missing {', '.join(missing)}; install with pip install 'immich-memories[{extra}]'",
-    )
-
-
-def check_speech_boundaries(config: Config) -> CheckResult:
-    """Report whether speech-aware cut boundaries can actually run."""
-    if not config.speech.enabled:
-        return CheckResult(
-            name="Speech boundaries",
-            status=CheckStatus.SKIPPED,
-            message="Speech boundaries disabled",
-        )
-    return _optional_runtime_check(
-        "Speech boundaries",
-        ("onnxruntime", "kaldi_native_fbank"),
-        extra="speech",
-        ready="Speech-aware cut boundaries ready",
-        cost="Speech boundaries unavailable; cuts may land mid-sentence",
-    )
-
-
-def check_transcription(config: Config) -> CheckResult:
-    """Report whether speech transcription can actually run."""
-    if not config.transcription.enabled:
-        return CheckResult(
-            name="Transcription",
-            status=CheckStatus.SKIPPED,
-            message="Speech transcription disabled",
-        )
-    return _optional_runtime_check(
-        "Transcription",
-        ("pywhispercpp",),
-        extra="transcribe",
-        ready="Speech transcription ready",
-        cost="Speech transcription unavailable; clips are chosen without what was said",
     )
 
 
@@ -459,9 +391,6 @@ def run_preflight_checks(config: Config) -> list[CheckResult]:
     return [
         check_immich(config),
         check_llm(config),
-        check_audio_content(config),
-        check_speech_boundaries(config),
-        check_transcription(config),
         check_title_rendering(config),
         check_notifications(config),
         check_hardware(),

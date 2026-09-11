@@ -87,7 +87,7 @@ class TitleInserter:
             # WHY replace(): AssemblyClip carries sixteen fields and rebuilding
             # it by hand copied eight, silently dropping a user-set
             # rotation_override, the has_music flag the ducking pass depends on,
-            # has_speech, is_photo and the planned outgoing_transition. Trimming
+            # is_photo and the planned outgoing_transition. Trimming
             # a clip should change its start and its length, nothing else.
             clips[0] = replace(
                 first,

@@ -29,7 +29,6 @@ def _clip(asset_id: str, *, score: float = 0.5, starred: bool = False) -> ClipWi
     )
     clip = VideoClipInfo(asset=asset, duration_seconds=4.0)
     clip.llm_category = "landscape"
-    clip.llm_interestingness = 0.4
     return ClipWithSegment(clip=clip, start_time=0.0, end_time=4.0, score=score)
 
 
@@ -63,17 +62,6 @@ class TestEveryClipCanAccountForItself:
 
         assert story.shipped
         assert story.admitted_at == "duration backfill"
-
-
-class TestLegacyTraceSerialization:
-    def test_the_legacy_adapter_keeps_the_selector_order(self):
-        """The old selector cannot reorder material while it remains supported."""
-        late, early = _clip("late"), _clip("early")
-        trace = Trace()
-
-        trace.record("legacy cull", [late, early], [late, early])
-
-        assert trace.as_dict()["stages"][0]["kept_ids"] == ["late", "early"]
 
 
 class TestTheReportShowsIt:

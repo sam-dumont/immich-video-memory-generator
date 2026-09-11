@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from immich_memories.analysis.editorial_planner import EditorialSelection
-from immich_memories.analysis.selection_coverage import AnalysisCoverage
 from immich_memories.analysis.smart_pipeline import PipelineConfig, PipelineResult
 from immich_memories.api.models import Asset, AssetType, VideoClipInfo
 from immich_memories.config_loader import Config
@@ -29,20 +28,6 @@ def _forbidden(*_args, **_kwargs):
 def _offline_source_route(monkeypatch):
     monkeypatch.setattr(socket.socket, "connect", _forbidden)
     monkeypatch.setattr(socket, "create_connection", _forbidden)
-    # WHY: the legacy pool still exists for the selector removal PR; these two
-    # replace its entry points so a surface that fell back to them fails loudly
-    # instead of quietly re-fetching from Immich.
-    # WHY: opens the guard for both legacy-pool functions patched below.
-    with (
-        # WHY: replaces _merge_photos_into_pool so a legacy fallback call raises immediately.
-        patch(
-            "immich_memories.cli._candidate_pool._merge_photos_into_pool", side_effect=_forbidden
-        ),
-        patch(
-            "immich_memories.cli._candidate_pool._drop_reencoded_sources", side_effect=_forbidden
-        ),
-    ):
-        yield
 
 
 def _config(tmp_path) -> Config:
@@ -98,7 +83,6 @@ def _finished_selection() -> PipelineResult:
         clip_segments=segments,
         editorial_selections=decisions,
         errors=[],
-        coverage=AnalysisCoverage(analyzed=0, total=3),
         stats={"selection_route": "editorial-source"},
     )
 
@@ -106,11 +90,7 @@ def _finished_selection() -> PipelineResult:
 def _source_pipeline(result: PipelineResult) -> MagicMock:
     pipeline = MagicMock()
     pipeline.has_editorial_source_route = True
-    pipeline.last_deep_analysis_count = 0
     pipeline.run_editorial_source.return_value = (result.selected_clips, result)
-    pipeline.run_analysis.side_effect = _forbidden
-    pipeline.run_planning_analysis.side_effect = _forbidden
-    pipeline.run_selection.side_effect = _forbidden
     return pipeline
 
 
@@ -291,7 +271,6 @@ def test_ui_source_route_retains_reviewed_demand_and_exact_selection(
     assert state.pipeline_selected_clips is result.selected_clips
     assert state.clip_segments is result.clip_segments
     assert state.editorial_selections is result.editorial_selections
-    assert state.pipeline_result["stats"]["deeply_analyzed_count"] == 0
     assert state.pipeline_result["stats"]["selection_route"] == "editorial-source"
     if include_photos:
         assert state.selected_photo_ids == {reviewed_photo.id}
@@ -379,19 +358,3 @@ async def test_ui_loading_fetches_only_uncached_thumbnails_and_never_probes(tmp_
     # declared, and only the thumbnail the cache lacks is fetched.
     assert (missing.width, missing.height, missing.duration_seconds) == (1920, 1080, 5.0)
     assert fetch_thumbnails.await_args.args[0] == [missing]
-
-
-def test_ui_legacy_score_coverage_does_not_mislabel_native_source_evidence(monkeypatch):
-    from immich_memories.analysis.selection_coverage import AnalysisCoverage
-    from immich_memories.ui.pages import step2_review
-
-    notices = []
-    monkeypatch.setattr(step2_review, "im_info_card", lambda *args, **_kwargs: notices.append(args))
-    result = {
-        "coverage": AnalysisCoverage(analyzed=0, total=22),
-        "stats": {"selection_route": "editorial-source"},
-    }
-    step2_review._render_pool_coverage_notice(result)
-    assert not notices
-    step2_review._render_pool_coverage_notice({**result, "stats": {}})
-    assert len(notices) == 1 and "were picked on metadata" in notices[0][0]

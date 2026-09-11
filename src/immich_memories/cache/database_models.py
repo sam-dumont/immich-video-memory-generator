@@ -4,13 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING
-
-from immich_memories.cache.versions import ANALYSIS_VERSION
-
-if TYPE_CHECKING:
-    from immich_memories.analysis.scenes import Scene
-    from immich_memories.analysis.scoring import MomentScore
 
 
 @dataclass
@@ -21,15 +14,9 @@ class CachedSegment:
     start_time: float
     end_time: float
     start_frame: int | None = None
-    end_frame: int | None = None
-    face_score: float | None = None
-    motion_score: float | None = None
-    stability_score: float | None = None
-    audio_score: float | None = None
     total_score: float | None = None
     face_positions: list[tuple[float, float]] | None = None
     motion_vectors: dict | None = None
-    keyframe_path: str | None = None
 
     # LLM analysis results (persisted from unified analysis)
     llm_description: str | None = None
@@ -37,50 +24,14 @@ class CachedSegment:
     llm_emotion: str | None = None
     llm_setting: str | None = None
     llm_subjects: list[str] | None = None
-    llm_activities: list[str] | None = None
-    llm_interestingness: float | None = None
     llm_quality: float | None = None
-
-    # Where a cut may land in this source — the evidence behind start_time
-    # and end_time, without which a cached rerun cannot move either.
-    safe_cut_gaps: list[tuple[float, float]] | None = None
 
     # Audio content categories (from PANNs analysis)
     audio_categories: list[str] | None = None
 
-    # Speech transcript (from whisper.cpp; nothing reads it for scoring)
-    transcript: str | None = None
-    transcript_language: str | None = None
-    transcript_confidence: float | None = None
-
     @property
     def duration(self) -> float:
         return self.end_time - self.start_time
-
-    def to_moment_score(self) -> MomentScore:
-        from immich_memories.analysis.scoring import MomentScore
-
-        return MomentScore(
-            start_time=self.start_time,
-            end_time=self.end_time,
-            total_score=self.total_score or 0.0,
-            face_score=self.face_score or 0.0,
-            motion_score=self.motion_score or 0.0,
-            audio_score=self.audio_score or 0.0,
-            stability_score=self.stability_score or 0.0,
-            face_positions=self.face_positions,
-        )
-
-    def to_scene(self) -> Scene:
-        from immich_memories.analysis.scenes import Scene
-
-        return Scene(
-            start_time=self.start_time,
-            end_time=self.end_time,
-            start_frame=self.start_frame or 0,
-            end_frame=self.end_frame or 0,
-            keyframe_path=self.keyframe_path,
-        )
 
 
 @dataclass
@@ -89,19 +40,10 @@ class CachedVideoAnalysis:
 
     asset_id: str
     checksum: str | None
-    file_modified_at: datetime | None
     analysis_timestamp: datetime
 
-    # Versioning
-    # Defaults to the current generation: an instance built in memory describes
-    # analysis being produced now. row_to_analysis() passes 0 for a stored row
-    # that predates the column, which correctly reads as stale.
-    analysis_version: int = ANALYSIS_VERSION
     scoring_version: int = 1
     model_version: str | None = None
-
-    # Hashes
-    perceptual_hash: str | None = None
     thumbnail_hash: str | None = None
 
     # Video metadata
@@ -124,10 +66,6 @@ class CachedVideoAnalysis:
     best_stability_score: float | None = None
     best_audio_score: float | None = None
     best_total_score: float | None = None
-
-    # JSON fields (parsed)
-    motion_summary: dict | None = None
-    audio_levels: dict | None = None
 
     # File creation date (for queries)
     file_created_at: datetime | None = None
@@ -152,22 +90,3 @@ class CachedVideoAnalysis:
                 return 0.0
 
         return max(self.segments, key=safe_score)
-
-
-@dataclass
-class SimilarVideo:
-    """A video similar to a query video."""
-
-    asset_id: str
-    hash_value: str
-    hamming_distance: int
-
-
-def _hamming_distance(hash1: str, hash2: str) -> int:
-    try:
-        int1 = int(hash1, 16)
-        int2 = int(hash2, 16)
-        xor = int1 ^ int2
-        return xor.bit_count()
-    except (ValueError, TypeError):
-        return 64  # Maximum distance if hashes are invalid

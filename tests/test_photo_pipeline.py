@@ -8,11 +8,9 @@ clip beside it was turned away.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from types import SimpleNamespace
 
 from immich_memories.analysis.source_filter import from_an_excluded_source
 from immich_memories.api.models import AssetType
-from immich_memories.config import Config
 from immich_memories.config_models_analysis import AnalysisConfig
 from tests.conftest import make_asset
 
@@ -95,89 +93,6 @@ def test_pre_smartphone_media_is_considered_despite_modern_source_signals() -> N
     )
 
 
-def test_the_description_survives_scoring_and_the_score_stays_a_number(tmp_path, monkeypatch):
-    """What the model said has to reach the clip, and the score must stay a score.
-
-    The review reads a clip's description. A photo never had one, so it was
-    handed a bare line and protected by the rule that says never to drop a
-    clip for missing information.
-    """
-    from immich_memories.photos import photo_pipeline, scoring
-    from immich_memories.photos.scoring import PhotoLook
-
-    asset = _photo("shot", "IMG_1375.HEIC")
-    asset.exif_info = SimpleNamespace(make="Apple", model="iPhone 15 Pro")
-
-    # WHY: the VLM is the network boundary; this stands in for its answer.
-    monkeypatch.setattr(
-        scoring,
-        "_llm_score_photo",
-        lambda *_a, **_k: PhotoLook(
-            score=0.42,
-            payload={"description": "a whiteboard covered in sticky notes", "category": "object"},
-        ),
-    )
-
-    enhanced, payloads = photo_pipeline._enhance_with_llm(
-        [(asset, 0.3)],
-        config=SimpleNamespace(),
-        work_dir=tmp_path,
-        download_fn=None,
-        app_config=SimpleNamespace(
-            content_analysis=SimpleNamespace(enabled=True),
-            llm=SimpleNamespace(model="qwen-3.6"),
-        ),
-    )
-
-    assert enhanced == [(asset, 0.42)], "the score must still be a number"
-    assert payloads["shot"]["description"] == "a whiteboard covered in sticky notes"
-
-
-def test_a_score_cached_before_photos_could_describe_themselves_is_re_asked(tmp_path, monkeypatch):
-    """Old rows hold a score and nothing else, and would hold it forever.
-
-    The cache is keyed by the model that produced the row. What the row can
-    answer is now a property of the prompt as well, so the key carries both —
-    which invalidates the scores-only rows exactly once, and never again.
-    """
-    from immich_memories.photos import photo_pipeline, scoring
-    from immich_memories.photos.scoring import PhotoLook
-
-    asset = _photo("shot", "IMG_1375.HEIC")
-    asset.exif_info = SimpleNamespace(make="Apple", model="iPhone 15 Pro")
-
-    stale = {"shot": {"combined_score": 0.9, "llm_description": None, "llm_emotion": None}}
-    cache = SimpleNamespace(
-        get_asset_scores_batch=lambda _ids, model_version=None: (
-            stale if model_version == "qwen-3.6" else {}
-        ),
-        save_asset_score=lambda **_kw: None,
-        failed_looks=lambda _ids, **_kw: {},
-        record_failed_look=lambda *_a: None,
-    )
-    monkeypatch.setattr(scoring, "_get_score_cache", lambda _db: cache)
-    monkeypatch.setattr(
-        scoring,
-        "_llm_score_photo",
-        lambda *_a, **_k: PhotoLook(score=0.42, payload={"description": "a whiteboard"}),
-    )
-
-    enhanced, payloads = photo_pipeline._enhance_with_llm(
-        [(asset, 0.3)],
-        config=SimpleNamespace(),
-        work_dir=tmp_path,
-        download_fn=None,
-        db_path=tmp_path / "scores.db",
-        app_config=SimpleNamespace(
-            content_analysis=SimpleNamespace(enabled=True),
-            llm=SimpleNamespace(model="qwen-3.6"),
-        ),
-    )
-
-    assert enhanced == [(asset, 0.42)], "the stale row must not stand in for a look"
-    assert payloads["shot"]["description"] == "a whiteboard"
-
-
 def test_a_starred_photo_passes_whatever_its_filename_says() -> None:
     """Every other hard gate in the pipeline subordinates itself to a star.
 
@@ -197,75 +112,6 @@ def test_a_starred_photo_passes_whatever_its_filename_says() -> None:
     patterns = AnalysisConfig().exclude_filename_patterns
     assert not not_shot_here(forwarded, patterns=patterns, stills_need_a_camera=True)
     assert not not_shot_here(doorbell, patterns=patterns, stills_need_a_camera=True)
-
-
-def test_the_pool_the_cli_and_ui_build_drops_what_the_camera_did_not_shoot(tmp_path) -> None:
-    """The filter lived on the legacy path only.
-
-    _merge_photos_into_pool is what both surfaces actually run, and it calls
-    score_photos directly — so a forwarded still was fetched, VLM-scored and
-    shipped on the two paths anybody uses.
-    """
-    from datetime import UTC, datetime
-
-    from immich_memories.cli._candidate_pool import _merge_photos_into_pool
-
-    when = datetime(2019, 6, 12, 12, tzinfo=UTC)
-    forwarded = make_asset(
-        "forwarded", original_file_name="IMG-20190105-WA0006.jpg", file_created_at=when
-    )
-    forwarded.type = AssetType.IMAGE
-    shot = make_asset("shot", original_file_name="IMG_1375.HEIC", file_created_at=when)
-    shot.type = AssetType.IMAGE
-
-    pool = _merge_photos_into_pool(
-        [],
-        photo_assets=[forwarded, shot],
-        include_photos=True,
-        config=Config(cache={"directory": str(tmp_path / "cache")}),
-        client=None,
-        work_dir=tmp_path,
-        dry_run=True,
-    )
-
-    assert [c.clip.asset.id for c in pool] == ["shot"]
-
-
-def test_the_generation_override_keeps_forwarded_photos_in_the_real_pool(tmp_path) -> None:
-    """The override reaches the pre-scoring gate where it can actually save or admit work."""
-    from immich_memories.cli._candidate_pool import _merge_photos_into_pool
-
-    when = datetime(2023, 6, 18, tzinfo=UTC)
-    forwarded = make_asset(
-        "forwarded",
-        original_file_name="00000000-0000-4000-8000-000000000000.jpg",
-        exif_make=None,
-        exif_model=None,
-        file_created_at=when,
-    ).model_copy(update={"type": AssetType.IMAGE, "width": 2048, "height": 1153})
-
-    rejected = _merge_photos_into_pool(
-        [],
-        photo_assets=[forwarded],
-        include_photos=True,
-        config=Config(cache={"directory": str(tmp_path / "rejected")}),
-        client=None,
-        work_dir=tmp_path,
-        dry_run=True,
-    )
-    accepted = _merge_photos_into_pool(
-        [],
-        photo_assets=[forwarded],
-        include_photos=True,
-        config=Config(cache={"directory": str(tmp_path / "accepted")}),
-        client=None,
-        work_dir=tmp_path,
-        dry_run=True,
-        accept_any_provenance=True,
-    )
-
-    assert rejected == []
-    assert [candidate.clip.asset.id for candidate in accepted] == ["forwarded"]
 
 
 def test_the_messaging_glob_does_not_match_a_place_called_wa() -> None:

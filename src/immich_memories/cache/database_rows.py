@@ -23,14 +23,9 @@ def row_to_analysis(row: sqlite3.Row) -> CachedVideoAnalysis:
     return CachedVideoAnalysis(
         asset_id=row["asset_id"],
         checksum=row["checksum"],
-        file_modified_at=(
-            datetime.fromisoformat(row["file_modified_at"]) if row["file_modified_at"] else None
-        ),
         analysis_timestamp=datetime.fromisoformat(row["analysis_timestamp"]),
-        analysis_version=_row_value(row, "analysis_version", 0),
         scoring_version=_row_value(row, "scoring_version", 1),
         model_version=_row_value(row, "model_version", None),
-        perceptual_hash=row["perceptual_hash"],
         thumbnail_hash=row["thumbnail_hash"],
         duration_seconds=row["duration_seconds"],
         width=row["width"],
@@ -47,8 +42,6 @@ def row_to_analysis(row: sqlite3.Row) -> CachedVideoAnalysis:
         best_stability_score=row["best_stability_score"],
         best_audio_score=row["best_audio_score"],
         best_total_score=row["best_total_score"],
-        motion_summary=(json.loads(row["motion_summary"]) if row["motion_summary"] else None),
-        audio_levels=(json.loads(row["audio_levels"]) if row["audio_levels"] else None),
         file_created_at=(
             datetime.fromisoformat(row["file_created_at"]) if row["file_created_at"] else None
         ),
@@ -72,35 +65,21 @@ def row_to_segment(row: sqlite3.Row) -> CachedSegment:
         return float(value) if value is not None else None
 
     subjects_raw = optional_str("llm_subjects")
-    activities_raw = optional_str("llm_activities")
     audio_categories_raw = optional_str("audio_categories")
-    gaps_raw = optional_str("safe_cut_gaps")
 
     return CachedSegment(
         segment_index=row["segment_index"],
         start_time=row["start_time"],
         end_time=row["end_time"],
         start_frame=row["start_frame"],
-        end_frame=row["end_frame"],
-        face_score=row["face_score"],
-        motion_score=row["motion_score"],
-        stability_score=row["stability_score"],
-        audio_score=row["audio_score"],
         total_score=row["total_score"],
         face_positions=face_positions,
         motion_vectors=(json.loads(row["motion_vectors"]) if row["motion_vectors"] else None),
-        keyframe_path=row["keyframe_path"],
         llm_description=optional_str("llm_description"),
         llm_category=optional_str("llm_category"),
         llm_emotion=optional_str("llm_emotion"),
         llm_setting=optional_str("llm_setting"),
         llm_subjects=(json.loads(subjects_raw) if subjects_raw else None),
-        llm_activities=(json.loads(activities_raw) if activities_raw else None),
-        llm_interestingness=optional_float("llm_interestingness"),
         llm_quality=optional_float("llm_quality"),
         audio_categories=(json.loads(audio_categories_raw) if audio_categories_raw else None),
-        safe_cut_gaps=([tuple(gap) for gap in json.loads(gaps_raw)] if gaps_raw else None),
-        transcript=optional_str("transcript"),
-        transcript_language=optional_str("transcript_language"),
-        transcript_confidence=optional_float("transcript_confidence"),
     )

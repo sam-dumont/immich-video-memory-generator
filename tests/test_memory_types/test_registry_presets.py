@@ -124,9 +124,6 @@ class TestBuriedFields:
             )
 
     def test_the_scoring_profile_is_gone_from_the_package(self) -> None:
-        """Its only converter, SceneScorer.from_profile, went with it."""
         import immich_memories.memory_types as memory_types
-        from immich_memories.analysis.scoring import SceneScorer
 
         assert not hasattr(memory_types, "ScoringProfile")
-        assert not hasattr(SceneScorer, "from_profile")

@@ -185,7 +185,6 @@ def test_source_probe_helpers_share_one_caller_owned_cache(tmp_path: Path, monke
     from immich_memories.processing.clip_probing import (
         get_main_video_stream_map,
         get_video_duration,
-        get_video_info,
     )
     from immich_memories.processing.encoding_plan import HdrTransfer
     from immich_memories.processing.ffmpeg_prober import FFmpegProber
@@ -210,7 +209,6 @@ def test_source_probe_helpers_share_one_caller_owned_cache(tmp_path: Path, monke
     clip = AssemblyClip(path=source, duration=5.0)
 
     assert get_video_duration(source, probe_cache=cache) == 5.12
-    assert get_video_info(source, probe_cache=cache)["codec"] == "hevc"
     assert get_main_video_stream_map(source, probe_cache=cache) == "0:v:0"
     assert prober.get_video_resolution(source) == (1080, 1920)
     assert prober.probe_framerate(source) == pytest.approx(59.94, abs=0.01)

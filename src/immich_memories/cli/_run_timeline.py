@@ -1,6 +1,6 @@
-"""The generate run's timeline, before selection budgets it and after it settles.
+"""The generate run's timeline, before the edit and after it settles.
 
-`plan_timeline` sets the strict content budget selection must respect; once the
+`plan_timeline` sizes the content budget the brief is cut against; once the
 edit exists the editorial route may already have bound its own timing, and only
 then can the final plan be read or re-budgeted.
 """
@@ -8,13 +8,11 @@ then can the final plan be read or re-budgeted.
 from __future__ import annotations
 
 import logging
-import math
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from immich_memories.analysis.smart_pipeline import PipelineConfig
     from immich_memories.config_loader import Config
     from immich_memories.processing.assembly_config import TitleScreenSettings
     from immich_memories.processing.timeline_budget import TimelinePlan
@@ -24,7 +22,6 @@ logger = logging.getLogger(__name__)
 
 
 def configure_timeline(
-    pipeline_config: PipelineConfig,
     *,
     clips: list,
     photo_assets: list | None,
@@ -37,7 +34,7 @@ def configure_timeline(
     duration: float,
     transition: str,
 ) -> tuple[TimelinePlan, TitleScreenSettings | None]:
-    """Resolve one plan and apply its strict content budget to selection."""
+    """Resolve the preliminary plan the brief is cut against."""
     from immich_memories.generate import GenerationParams
     from immich_memories.generate_settings import _build_title_settings
     from immich_memories.processing.timeline_budget import plan_timeline
@@ -59,14 +56,8 @@ def configure_timeline(
         planning_titles,
         duration,
         memory_type,
-        expected_clip_duration=pipeline_config.avg_clip_duration,
         transition_mode=transition,
         transition_duration=config.defaults.transition_duration,
-    )
-    pipeline_config.target_duration_seconds = timeline.content_budget
-    pipeline_config.target_clips = max(
-        1,
-        math.ceil(timeline.content_budget / pipeline_config.avg_clip_duration),
     )
     return timeline, planning_titles
 

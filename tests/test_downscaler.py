@@ -7,7 +7,6 @@ from unittest.mock import MagicMock, patch
 
 from immich_memories.processing.downscaler import (
     DEFAULT_ANALYSIS_HEIGHT,
-    cleanup_downscaled,
     get_downscaled_path,
     needs_downscaling,
 )
@@ -93,45 +92,6 @@ class TestNeedsDownscaling:
         # 1081 > 1080 → True
         mock_height.return_value = 1081
         assert needs_downscaling(Path("/tmp/video.mp4"), target_height=720) is True
-
-
-class TestCleanupDownscaled:
-    """Tests for downscaled file cleanup."""
-
-    def test_removes_existing_downscaled_file(self, tmp_path: Path):
-        original = tmp_path / "video.mp4"
-        original.touch()
-        downscaled = tmp_path / "video_480p.mp4"
-        downscaled.write_text("dummy")
-
-        cleanup_downscaled(original)
-        assert not downscaled.exists()
-
-    def test_noop_when_no_downscaled_file(self, tmp_path: Path):
-        original = tmp_path / "video.mp4"
-        original.touch()
-        # No downscaled file exists — should not raise
-        cleanup_downscaled(original)
-
-    def test_does_not_delete_original_if_same_path(self, tmp_path: Path):
-        # get_downscaled_path always adds a suffix, so this can't happen
-        # naturally, but test the guard anyway
-        video = tmp_path / "video_480p.mp4"
-        video.write_text("original")
-        # If someone passes a path that already has the _480p suffix,
-        # the downscaled path becomes video_480p_480p.mp4 (different),
-        # so the original is safe.
-        cleanup_downscaled(video)
-        assert video.exists()
-
-    def test_cleanup_custom_height(self, tmp_path: Path):
-        original = tmp_path / "clip.mov"
-        original.touch()
-        downscaled = tmp_path / "clip_720p.mov"
-        downscaled.write_text("dummy")
-
-        cleanup_downscaled(original, target_height=720)
-        assert not downscaled.exists()
 
 
 class TestFastEncoderArgs:

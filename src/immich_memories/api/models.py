@@ -58,7 +58,6 @@ class ExifInfo(BaseModel):
     model: str | None = None
     exposure_time: str | None = Field(default=None, alias="exposureTime")
     f_number: float | None = Field(default=None, alias="fNumber")
-    iso: int | None = None
     focal_length: float | None = Field(default=None, alias="focalLength")
     latitude: float | None = None
     longitude: float | None = None
@@ -81,7 +80,6 @@ class VideoInfo(BaseModel):
     height: int | None = None
     codec: str | None = None
     audio_codec: str | None = Field(default=None, alias="audioCodec")
-    frame_rate: float | None = Field(default=None, alias="frameRate")
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -404,20 +402,12 @@ class VideoClipInfo(BaseModel):
     # Audio categories detected (populated during pipeline analysis)
     audio_categories: list[str] | None = None  # e.g. ["laughter", "speech", "engine"]
 
-    # Where a cut may land in this source: the spans between protected audio,
-    # from the analysis that chose the segment's boundaries. None means this
-    # run never measured it — the analysis cache restores boundaries without
-    # the evidence behind them.
-    safe_cut_gaps: list[tuple[float, float]] | None = None
-
     # LLM Content Analysis results (populated during pipeline analysis)
     llm_description: str | None = None  # Brief description of what's happening
     llm_category: str | None = None  # people | animal | landscape | object
     llm_emotion: str | None = None  # Detected emotional tone (happy, calm, excited, etc.)
     llm_setting: str | None = None  # Where it takes place (indoor, outdoor, beach, etc.)
     llm_subjects: list[str] | None = None  # Who/what is in the video
-    llm_activities: list[str] | None = None  # Pastimes/sports named, e.g. ["cycling"]
-    llm_interestingness: float | None = None  # Score 0-1 for how interesting
     llm_quality: float | None = None  # Score 0-1 for visual quality
 
     @property
@@ -471,25 +461,6 @@ class VideoClipInfo(BaseModel):
         return self.displayed_width > self.displayed_height
 
     @property
-    def quality_score(self) -> float:
-        """Calculate a quality score based on resolution, bitrate, etc."""
-        # Weight factors
-        resolution_weight = 0.4
-        bitrate_weight = 0.4
-        duration_weight = 0.2
-
-        # Normalize values (assuming max 4K, 50Mbps, 60s)
-        resolution_score = min((self.width * self.height) / (3840 * 2160), 1.0)
-        bitrate_score = min(self.bitrate / 50_000_000, 1.0) if self.bitrate else 0.5
-        duration_score = min(self.duration_seconds / 60, 1.0)
-
-        return (
-            resolution_score * resolution_weight
-            + bitrate_score * bitrate_weight
-            + duration_score * duration_weight
-        )
-
-    @property
     def is_hdr(self) -> bool:
         """Check if video is HDR based on color transfer function."""
         hdr_transfers = {"smpte2084", "arib-std-b67", "smpte428"}  # HDR10, HLG, DCI-P3
@@ -505,15 +476,3 @@ class VideoClipInfo(BaseModel):
             "arib-std-b67": "HLG",
             "smpte428": "DCI-P3",
         }.get(self.color_transfer, "SDR")
-
-    @property
-    def is_camera_original(self) -> bool:
-        """Check if video is original camera footage (not a compilation/processed video).
-
-        Videos from phones/cameras have EXIF make/model metadata.
-        Compilations (FamilyAlbum, etc.) typically lack this metadata.
-        """
-        if not self.asset.exif_info:
-            return False
-        # Must have either make or model to be considered original camera footage
-        return bool(self.asset.exif_info.make or self.asset.exif_info.model)

@@ -168,21 +168,6 @@ class PhotoConfig(BaseModel):
     """Photo-to-video animation settings."""
 
     enabled: bool = Field(default=True, description="Include photos in memory videos")
-    read_moments: bool = Field(
-        default=False,
-        description=(
-            "Read each moment from a contact sheet of its photos before "
-            "shortlisting, so the shortlist is what the model saw happening "
-            "rather than what metadata guessed. Off by default while the "
-            "behaviour is measured against whole sweeps."
-        ),
-    )
-    max_ratio: float = Field(
-        default=0.50,
-        ge=0.0,
-        le=1.0,
-        description="Maximum fraction of clips that can be photos (0.50 = 50%)",
-    )
     duration: float = Field(
         default=4.0,
         ge=1.0,
@@ -203,22 +188,4 @@ class PhotoConfig(BaseModel):
         ge=0,
         le=64,
         description="Perceptual-hash bits two photos may differ by and still be one burst",
-    )
-    moment_gap_seconds: float = Field(
-        default=120.0,
-        ge=0.0,
-        le=3600.0,
-        description=(
-            "Time window for treating a photo and a video as the same moment. "
-            "A photo this close to a visually matching video is dropped."
-        ),
-    )
-    moment_hash_threshold: int = Field(
-        default=10,
-        ge=0,
-        le=64,
-        description=(
-            "Perceptual-hash bits a photo may differ from a nearby video and "
-            "still count as the same scene (0 = only identical framing)"
-        ),
     )

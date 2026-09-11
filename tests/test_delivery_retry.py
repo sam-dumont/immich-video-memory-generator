@@ -306,36 +306,6 @@ def test_populated_v12_migrates_additively_without_changing_attempt_identity(
     assert migrated.warnings == []
 
 
-def test_v13_delivery_migration_keeps_v12_analysis_cache_current(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A delivery-only schema migration cannot force expensive video reanalysis."""
-    from immich_memories.cache import database as cache_database
-    from tests.conftest import make_asset
-
-    db_path = tmp_path / "populated-analysis-v12.db"
-    asset = make_asset("analysis-v12")
-    monkeypatch.setattr(cache_database, "SCHEMA_VERSION", 12)
-    v12_cache = VideoAnalysisCache(db_path)
-    v12_cache.save_analysis(asset, segments=[])
-
-    monkeypatch.setattr(cache_database, "SCHEMA_VERSION", 13)
-    migrated_cache = VideoAnalysisCache(db_path)
-
-    with sqlite3.connect(db_path) as conn:
-        schema_version = conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
-        analysis_version = conn.execute(
-            "SELECT analysis_version FROM video_analysis WHERE asset_id = ?",
-            (asset.id,),
-        ).fetchone()[0]
-    assert schema_version == 13
-    # The claim is that a delivery-only schema migration leaves the analysis
-    # generation alone -- not that it happens to be any particular number.
-    assert analysis_version == cache_database.ANALYSIS_VERSION
-    assert migrated_cache.needs_reanalysis(asset, max_age_days=365) is False
-
-
 def test_database_marks_delivery_pending_atomically_without_changing_artifact(
     tmp_path: Path,
 ) -> None:

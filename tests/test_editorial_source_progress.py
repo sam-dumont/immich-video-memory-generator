@@ -10,29 +10,16 @@ import pytest
 
 from immich_memories.analysis.editorial_planner import EditorialPlan, EditorialSelection
 from immich_memories.analysis.editorial_source_route import EditorialSourcePlan
-from immich_memories.analysis.progress import PipelinePhase
 from immich_memories.analysis.smart_pipeline import PipelineConfig, SmartPipeline
-from immich_memories.config_loader import Config
 from tests.test_editorial_source_route import demand, photo
 
 
-def pipeline_for(planner, client, cache, thumbnails):
-    config = Config()
-    return SmartPipeline(
-        client=client,
-        analysis_cache=cache,
-        thumbnail_cache=thumbnails,
-        config=PipelineConfig(),
-        analysis_config=config.analysis,
-        app_config=config,
-        planner=planner,
-    )
+def pipeline_for(planner):
+    return SmartPipeline(config=PipelineConfig(), planner=planner)
 
 
 @pytest.mark.parametrize("failure", [False, True])
-def test_source_timer_includes_work_and_finishes_with_truthful_outcome(
-    monkeypatch, mock_immich_client, mock_analysis_cache, mock_thumbnail_cache, failure
-):
+def test_source_timer_includes_work_and_finishes_with_truthful_outcome(monkeypatch, failure):
     clock = [100.0]
     monkeypatch.setattr("immich_memories.analysis.progress.time.time", lambda: clock[0])
     sources = [photo("picture")]
@@ -51,12 +38,7 @@ def test_source_timer_includes_work_and_finishes_with_truthful_outcome(
             rows, EditorialPlan((EditorialSelection("picture", render_mode="still"),))
         )
 
-    pipeline = pipeline_for(
-        SimpleNamespace(plan_source=plan_source),
-        mock_immich_client,
-        mock_analysis_cache,
-        mock_thumbnail_cache,
-    )
+    pipeline = pipeline_for(SimpleNamespace(plan_source=plan_source))
     if failure:
         with pytest.raises(RuntimeError, match="required source evidence unavailable"):
             pipeline.run_editorial_source(sources, events.append)
@@ -76,16 +58,9 @@ def test_source_timer_includes_work_and_finishes_with_truthful_outcome(
         for key in ("progress_fraction", "total_items", "completed_count", "phase_number", "eta")
     )
     assert pipeline.tracker.progress.start_time == 100
-    assert pipeline.tracker.progress.phase is (
-        PipelinePhase.NOT_STARTED if failure else PipelinePhase.COMPLETE
-    )
-    if failure:
-        assert pipeline.tracker.progress.operational_event is None
 
 
-def test_display_callback_failure_does_not_change_selection(
-    mock_immich_client, mock_analysis_cache, mock_thumbnail_cache
-):
+def test_display_callback_failure_does_not_change_selection():
     sources = [photo("picture")]
     _, rows = demand(sources)
     expected = EditorialPlan((EditorialSelection("picture", render_mode="still"),))
@@ -97,11 +72,6 @@ def test_display_callback_failure_does_not_change_selection(
     def broken_display(_event):
         raise ValueError("display disconnected")
 
-    pipeline = pipeline_for(
-        SimpleNamespace(plan_source=plan_source),
-        mock_immich_client,
-        mock_analysis_cache,
-        mock_thumbnail_cache,
-    )
+    pipeline = pipeline_for(SimpleNamespace(plan_source=plan_source))
     _, result = pipeline.run_editorial_source(sources, broken_display)
     assert result.editorial_selections == expected.selections

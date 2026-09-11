@@ -96,7 +96,7 @@ def provider_hosts(config_path: Path) -> set[str]:
     document = yaml.safe_load(config_path.read_text()) or {}
     advanced = document.get("advanced") or {}
     candidates = []
-    for section in ("llm", "description_llm", "title_llm"):
+    for section in ("llm", "title_llm"):
         block = document.get(section) or advanced.get(section) or {}
         candidates.append(block.get("base_url"))
     editorial = document.get("editorial") or advanced.get("editorial") or {}

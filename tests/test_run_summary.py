@@ -18,15 +18,13 @@ def test_the_block_reports_what_it_measured_this_run() -> None:
         analysis_seconds=229.0,
         generation_seconds=158.0,
         eligible=312,
-        deeply_analyzed=28,
         planned=14,
         counters=LLMCounters(),
     )
 
     assert "6m 27s" in text
     assert "measured this run" in text
-    assert "28 of 312" in text
-    assert "14 planned" in text
+    assert "14 planned from 312 candidates" in text
 
 
 def test_a_truncated_thinking_call_is_named_in_the_block() -> None:
@@ -38,7 +36,6 @@ def test_a_truncated_thinking_call_is_named_in_the_block() -> None:
         analysis_seconds=229.0,
         generation_seconds=158.0,
         eligible=312,
-        deeply_analyzed=28,
         planned=14,
         counters=counters,
     )
@@ -55,7 +52,6 @@ def test_a_run_that_never_touched_the_model_prints_no_llm_line() -> None:
         analysis_seconds=40.0,
         generation_seconds=50.0,
         eligible=20,
-        deeply_analyzed=20,
         planned=8,
         counters=LLMCounters(),
     )
@@ -71,7 +67,6 @@ def test_a_healthy_llm_run_stays_quiet_about_truncation() -> None:
         analysis_seconds=70.0,
         generation_seconds=50.0,
         eligible=40,
-        deeply_analyzed=12,
         planned=9,
         counters=counters,
     )

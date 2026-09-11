@@ -68,11 +68,8 @@ if TYPE_CHECKING:
         SmartPipeline,
     )
     from immich_memories.api.sync_client import SyncImmichClient
-    from immich_memories.cache.database import VideoAnalysisCache
     from immich_memories.cache.thumbnail_cache import ThumbnailCache
     from immich_memories.config_loader import Config
-    from immich_memories.config_models_analysis import AnalysisConfig
-    from immich_memories.triage.contracts import PreviewTriage
 
 _Row = TypeVar("_Row")
 
@@ -670,16 +667,12 @@ def build_editorial_planner(
 
 def build_smart_pipeline(
     client: SyncImmichClient,
-    analysis_cache: VideoAnalysisCache,
     thumbnail_cache: ThumbnailCache,
     config: PipelineConfig | None = None,
-    run_id: str | None = None,
     *,
-    analysis_config: AnalysisConfig,
     app_config: Config,
     editorial_context: EditorialRunContext,
     dry_run: bool = False,
-    triage: PreviewTriage | None = None,
     editorial_ports: EditorialRuntimePorts | None = None,
 ) -> SmartPipeline:
     """Construct the shared pipeline while retaining its existing public patch seam."""
@@ -693,14 +686,4 @@ def build_smart_pipeline(
         dry_run=dry_run,
         ports=editorial_ports,
     )
-    return SmartPipeline(
-        client=client,
-        analysis_cache=analysis_cache,
-        thumbnail_cache=thumbnail_cache,
-        config=config,
-        run_id=run_id,
-        analysis_config=analysis_config,
-        app_config=app_config,
-        planner=planner,
-        triage=triage,
-    )
+    return SmartPipeline(config=config, planner=planner)

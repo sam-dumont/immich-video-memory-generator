@@ -11,7 +11,6 @@ from immich_memories.api.models import (
     Asset,
     AssetFace,
     AssetType,
-    ExifInfo,
     Person,
     ServerInfo,
     VideoClipInfo,
@@ -205,25 +204,6 @@ class TestVideoClipInfo:
         assert clip.is_portrait
         assert not clip.is_landscape
 
-    def test_quality_score(self):
-        """Test quality score calculation."""
-        asset = Asset(
-            id="123",
-            type=AssetType.VIDEO,
-            fileCreatedAt=datetime.now(),
-            fileModifiedAt=datetime.now(),
-            updatedAt=datetime.now(),
-        )
-        clip = VideoClipInfo(
-            asset=asset,
-            width=1920,
-            height=1080,
-            bitrate=10_000_000,
-            duration_seconds=30,
-        )
-        score = clip.quality_score
-        assert 0 <= score <= 1
-
     def test_is_hdr_with_hdr10(self):
         """Test HDR10 detection."""
         asset = Asset(
@@ -319,18 +299,6 @@ class TestVideoClipInfoEdgeCases:
         """Portrait video has aspect ratio < 1."""
         clip = VideoClipInfo(asset=self._make_asset(), width=1080, height=1920)
         assert clip.aspect_ratio < 1.0
-
-    def test_zero_bitrate_quality_score(self):
-        """Zero bitrate produces a valid quality score (no division error)."""
-        clip = VideoClipInfo(
-            asset=self._make_asset(),
-            width=1920,
-            height=1080,
-            bitrate=0,
-            duration_seconds=30,
-        )
-        score = clip.quality_score
-        assert 0 <= score <= 1
 
     def test_duration_zero_seconds(self):
         """Asset with zero duration parses correctly."""
@@ -490,48 +458,6 @@ class TestRotationParametrized:
         clip = self._make_clip(rotation=rotation)
         assert clip.displayed_width == exp_width
         assert clip.displayed_height == exp_height
-
-
-class TestIsCameraOriginal:
-    """Tests for is_camera_original property."""
-
-    def test_with_exif_make_and_model(self):
-        """Camera original when exif has make and model."""
-        asset = Asset(
-            id="c",
-            type=AssetType.VIDEO,
-            fileCreatedAt=datetime.now(),
-            fileModifiedAt=datetime.now(),
-            updatedAt=datetime.now(),
-            exifInfo=ExifInfo(make="Apple", model="iPhone 15 Pro"),
-        )
-        clip = VideoClipInfo(asset=asset, width=1920, height=1080)
-        assert clip.is_camera_original
-
-    def test_without_exif(self):
-        """Not camera original without exif info."""
-        asset = Asset(
-            id="c",
-            type=AssetType.VIDEO,
-            fileCreatedAt=datetime.now(),
-            fileModifiedAt=datetime.now(),
-            updatedAt=datetime.now(),
-        )
-        clip = VideoClipInfo(asset=asset, width=1920, height=1080)
-        assert not clip.is_camera_original
-
-    def test_with_exif_no_make_no_model(self):
-        """Not camera original when exif has neither make nor model."""
-        asset = Asset(
-            id="c",
-            type=AssetType.VIDEO,
-            fileCreatedAt=datetime.now(),
-            fileModifiedAt=datetime.now(),
-            updatedAt=datetime.now(),
-            exifInfo=ExifInfo(),
-        )
-        clip = VideoClipInfo(asset=asset, width=1920, height=1080)
-        assert not clip.is_camera_original
 
 
 class TestPersonDisplayName:

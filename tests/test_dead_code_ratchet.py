@@ -38,17 +38,24 @@ WHITELIST = Path(__file__).resolve().parent.parent / "vulture-whitelist.py"
 # called, and the get_video_metadata reader whose writer went with them.
 # Six lines came back the other way: the legacy selector (SmartPipeline's
 # run_analysis/run_planning_analysis/run_selection and the three _candidate_pool
-# stages) lost its last caller in src/ when those CLI functions went, and is
-# listed rather than deleted because it comes out in one piece, with the tests
-# that still cover it, in the PR that removes it. Those six are the only lines
-# here that should fall next.
+# stages) lost its last caller in src/ when those CLI functions went, and was
+# listed rather than deleted until the PR that removed it.
+# 279, down from 332: the legacy selector went, with every module only it
+# reached (the clip analyzers, the scorers, speech, the photo scorer, the
+# density budget) and the config dials only they read. Fifty lines left: the
+# six above, the whitelisted parts of the deleted modules, and the lines that
+# had gone stale before this -- symbols already removed whose entries nobody
+# had pruned, since vulture never complains about a whitelist line that names
+# nothing -- and description_llm, a config section nothing read. One line came
+# the other way: Asset.file_modified_at, an Immich wire field the loader fills
+# that lost its last reader with the analysis cache.
 # What remains is one permanent block at the end of the whitelist, in classes
 # vulture cannot see through: pydantic fields and validators built from the
 # schema by name; Protocol parameter names and the attributes onnxruntime's
 # SessionOptions owns; frozen record fields written at construction and read
 # back out of the private artifact JSON; and the attempt reader the phase-2
 # review page consumes.
-MAX_WHITELISTED_SYMBOLS = 332
+MAX_WHITELISTED_SYMBOLS = 279
 
 
 def test_the_dead_code_whitelist_never_grows() -> None:

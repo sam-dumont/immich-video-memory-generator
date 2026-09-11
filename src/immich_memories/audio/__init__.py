@@ -1,4 +1,4 @@
-"""Audio processing module for automatic music and mixing."""
+"""Music sourcing, generation and mixing under a memory."""
 
 import importlib as _importlib
 
@@ -24,11 +24,6 @@ __all__ = [
     "OllamaMoodAnalyzer",
     "OpenAICompatibleMoodAnalyzer",
     "get_mood_analyzer",
-    # Audio content analysis
-    "AudioEvent",
-    "AudioAnalysisResult",
-    "AudioContentAnalyzer",
-    "get_audio_content_score",
     # Audio mixing
     "AudioMixer",
     "mix_audio_with_ducking",
@@ -44,10 +39,6 @@ __all__ = [
 ]
 
 _SUBMODULE_MAP = {
-    "AudioAnalysisResult": "immich_memories.audio.audio_models",
-    "AudioContentAnalyzer": "immich_memories.audio.content_analyzer",
-    "AudioEvent": "immich_memories.audio.audio_models",
-    "get_audio_content_score": "immich_memories.audio.audio_models",
     "AudioMixer": "immich_memories.audio.mixer_class",
     "loop_audio_to_duration": "immich_memories.audio.mixer",
     "mix_audio_with_ducking": "immich_memories.audio.mixer",

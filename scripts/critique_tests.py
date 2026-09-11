@@ -22,12 +22,14 @@ EXIT_FAILURE = 1
 # Ratchets. These are the counts that existed when each check was made
 # enforceable; they may fall and must not rise. Raising one accepts new
 # untested mocking rather than fixing it, so do it in a commit that says so.
-MAX_MOCK_ONLY_TESTS = 41
+# 41 -> 29 and 765 -> 651: the legacy clip scorer's tests went with it, and they
+# were where most of the unexplained patching lived.
+MAX_MOCK_ONLY_TESTS = 29
 # 905 -> 765: the story-first route brought ~100 unexplained patches with its own
 # test suite. Rather than raise the ceiling to admit them, every patch site in a
 # file this branch added or touched now names the boundary it replaces, which
 # also cleared the backlog those files were carrying from before.
-MAX_PATCHES_WITHOUT_WHY = 765
+MAX_PATCHES_WITHOUT_WHY = 651
 EXIT_SUCCESS = 0
 
 

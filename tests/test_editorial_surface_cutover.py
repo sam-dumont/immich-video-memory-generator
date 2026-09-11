@@ -7,7 +7,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from immich_memories.analysis.selection_coverage import AnalysisCoverage
 from immich_memories.analysis.smart_pipeline import PipelineConfig
 from immich_memories.api.models import Asset, AssetType
 from immich_memories.config_loader import Config
@@ -263,7 +262,6 @@ def test_ui_runtime_uses_exact_state_windows_and_total_duration(tmp_path) -> Non
         clip_segments={},
         errors=[],
         stats={},
-        coverage=AnalysisCoverage(analyzed=0, total=0),
     )
     pipeline.run_editorial_source.return_value = ([], result)
     progress_state = {"cancelled": False, "done": False, "error": None}
@@ -294,7 +292,6 @@ def test_ui_runtime_uses_exact_state_windows_and_total_duration(tmp_path) -> Non
     assert context.artifact_dir.parent == tmp_path / "cache" / "editorial-runs"
     assert context.accept_any_provenance is True
     assert build_pipeline.call_args.kwargs["dry_run"] is False
-    assert build_pipeline.call_args.kwargs["triage"] is None
 
 
 def test_ui_album_runtime_keeps_full_corpus_and_owner_review_exclusions(tmp_path) -> None:
@@ -349,7 +346,6 @@ def test_ui_album_runtime_keeps_full_corpus_and_owner_review_exclusions(tmp_path
         clip_segments={},
         errors=[],
         stats={},
-        coverage=AnalysisCoverage(analyzed=0, total=0),
     )
     pipeline.run_editorial_source.return_value = ([], result)
     progress_state = {"cancelled": False, "done": False, "error": None}

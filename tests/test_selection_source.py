@@ -75,16 +75,14 @@ def test_source_preparation_records_on_the_callers_existing_trace() -> None:
 
 def test_source_observations_survive_without_running_legacy_selectors(monkeypatch) -> None:
     """Eligible source facts survive without invoking the old ranking pipeline."""
-    from immich_memories.analysis import source_filter, subject_policy
-    from immich_memories.photos import burst_dedup, moment_suppression
+    from immich_memories.analysis import source_filter
+    from immich_memories.photos import burst_dedup
 
     def forbidden(*_args, **_kwargs):
         raise AssertionError("legacy selection must not run before pass 0")
 
     monkeypatch.setattr(source_filter, "not_shot_here", forbidden)
-    monkeypatch.setattr(subject_policy, "filter_candidates_by_subject", forbidden)
     monkeypatch.setattr(burst_dedup, "drop_burst_duplicates", forbidden)
-    monkeypatch.setattr(moment_suppression, "suppress_photos_covered_by_motion", forbidden)
     clip = VideoClipInfo(
         asset=make_asset("evidence", exif_make=None, exif_model=None, duration="0:00:01.250"),
         duration_seconds=1.25,

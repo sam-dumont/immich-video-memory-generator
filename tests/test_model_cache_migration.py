@@ -6,7 +6,6 @@ import sqlite3
 from pathlib import Path
 
 from immich_memories.cache import database as cache_database
-from immich_memories.cache.asset_score_cache import AssetScoreCache
 from immich_memories.cache.database import VideoAnalysisCache
 
 
@@ -21,7 +20,7 @@ def test_v16_marks_existing_video_analysis_as_unversioned(tmp_path: Path, monkey
                 asset_id, analysis_timestamp, analysis_version, scoring_version
             ) VALUES (?, datetime('now'), ?, ?)
             """,
-            ("existing-video", cache_database.ANALYSIS_VERSION, cache_database.SCORING_VERSION),
+            ("existing-video", 15, 3),
         )
         conn.commit()
 
@@ -61,15 +60,14 @@ def test_v22_carries_every_banked_row_onto_the_version_key(tmp_path: Path, monke
     monkeypatch.setattr(cache_database, "SCHEMA_VERSION", 22)
     VideoAnalysisCache(db_path)
 
-    cache = AssetScoreCache(db_path)
     # A row that predates versions is addressable under the empty version, not lost.
-    served = {
-        asset_id: cache.get_asset_scores_batch([asset_id], model_version=version or "")
-        for asset_id, _score, version in banked
-    }
+    with sqlite3.connect(db_path) as conn:
+        served = [
+            conn.execute(
+                "SELECT combined_score FROM asset_scores WHERE asset_id = ? AND model_version = ?",
+                (asset_id, version or ""),
+            ).fetchone()[0]
+            for asset_id, _score, version in banked
+        ]
 
-    assert [served[asset_id][asset_id]["combined_score"] for asset_id, _s, _v in banked] == [
-        0.81,
-        0.62,
-        0.43,
-    ]
+    assert served == [0.81, 0.62, 0.43]

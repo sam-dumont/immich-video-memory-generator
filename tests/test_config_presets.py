@@ -15,19 +15,17 @@ class TestFastPreset:
         assert config.output.codec == "h264"
         assert config.output.quality == "medium"
         assert config.hardware.encoder_preset == "fast"
-        assert config.speech.enabled is False
         assert config.title_screens.animated_background is False
-        assert config.photos.max_ratio == 0.25
 
     def test_explicit_values_win_over_the_preset(self) -> None:
         config = Config(
             preset="fast",
             output={"resolution": "720p"},
-            speech={"enabled": True},
+            title_screens={"animated_background": True},
         )
 
         assert config.output.resolution == "720p"
-        assert config.speech.enabled is True
+        assert config.title_screens.animated_background is True
         assert config.hardware.encoder_preset == "fast"  # untouched knobs still filled
 
     def test_no_preset_changes_nothing(self) -> None:
@@ -35,7 +33,7 @@ class TestFastPreset:
 
         assert config.preset is None
         assert config.hardware.encoder_preset == "balanced"
-        assert config.speech.enabled is True
+        assert config.title_screens.animated_background is True
 
     def test_unknown_preset_is_rejected(self) -> None:
         with pytest.raises(ValueError, match="preset"):
@@ -45,47 +43,6 @@ class TestFastPreset:
         monkeypatch.setenv("IMMICH_MEMORIES_PRESET", "fast")
 
         assert Config().hardware.encoder_preset == "fast"
-
-
-class TestAnalysisDepthUnderPreset:
-    @pytest.mark.parametrize(
-        ("requested", "preset", "expected"),
-        [
-            ("auto", "fast", "fast"),
-            ("auto", None, "auto"),
-            ("thorough", "fast", "thorough"),
-            ("fast", None, "fast"),
-        ],
-    )
-    def test_auto_becomes_fast_only_under_the_fast_preset(
-        self, requested: str, preset: str | None, expected: str
-    ) -> None:
-        from immich_memories.config_presets import resolve_analysis_depth
-
-        assert resolve_analysis_depth(requested, preset) == expected
-
-    def test_pipeline_hands_the_analyzer_fast_depth_when_auto_and_preset_fast(self) -> None:
-        from unittest.mock import MagicMock
-
-        from immich_memories.analysis.smart_pipeline import PipelineConfig, SmartPipeline
-        from immich_memories.config_models_analysis import AnalysisConfig
-        from tests.conftest import make_clip
-
-        pipeline_config = PipelineConfig(target_clips=4, analysis_depth="auto")
-        pipeline = SmartPipeline(
-            client=MagicMock(),  # WHY: Immich is never contacted for the depth decision
-            analysis_cache=MagicMock(),  # WHY: cache-miss counting is the auto path we bypass
-            thumbnail_cache=MagicMock(),  # WHY: constructor dependency, unused here
-            config=pipeline_config,
-            analysis_config=AnalysisConfig(),
-            app_config=Config(preset="fast"),
-        )
-        clips = [make_clip(f"c{i}", duration=10.0) for i in range(6)]
-
-        pipeline._analysis_candidates(clips)
-
-        # The analyzer reads the same PipelineConfig object; "fast" is what it must see.
-        assert pipeline_config.analysis_depth == "fast"
 
 
 class TestCliPresetFlag:

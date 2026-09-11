@@ -75,6 +75,7 @@ def main(ctx: click.Context, config: str | None, preset: str | None) -> None:
     from pydantic import ValidationError
 
     from immich_memories.cli._config_errors import format_validation_error, format_yaml_error
+    from immich_memories.config_loader import RemovedConfigKeyError
 
     try:
         if config:
@@ -91,6 +92,9 @@ def main(ctx: click.Context, config: str | None, preset: str | None) -> None:
             apply_preset(ctx.obj["config"])
     except ValidationError as e:
         print_error(format_validation_error(e))
+        sys.exit(1)
+    except RemovedConfigKeyError as e:
+        print_error(str(e))
         sys.exit(1)
     except yaml.YAMLError as e:
         print_error(format_yaml_error(e))

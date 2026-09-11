@@ -102,7 +102,7 @@ class TestPrivacyAudioMuffle:
         """ALL clips get muffled audio in privacy mode, not just speech-detected."""
         fb = self._make_filter_builder(privacy_mode=True)
         clips = [
-            AssemblyClip(path=Path("/tmp/a.mp4"), duration=3.0, has_speech=True),
+            AssemblyClip(path=Path("/tmp/a.mp4"), duration=3.0),
         ]
         filter_parts, labels = fb.build_audio_prep_filters(clips)
         # Should apply lowpass to make speech unintelligible
@@ -114,7 +114,7 @@ class TestPrivacyAudioMuffle:
         """Privacy mode must muffle ALL audio — speech detection is unreliable."""
         fb = self._make_filter_builder(privacy_mode=True)
         clips = [
-            AssemblyClip(path=Path("/tmp/a.mp4"), duration=3.0, has_speech=False),
+            AssemblyClip(path=Path("/tmp/a.mp4"), duration=3.0),
         ]
         filter_parts, labels = fb.build_audio_prep_filters(clips)
         assert "lowpass" in filter_parts[0]
@@ -132,7 +132,7 @@ class TestPrivacyAudioMuffle:
     def test_normal_audio_when_privacy_off(self):
         fb = self._make_filter_builder(privacy_mode=False)
         clips = [
-            AssemblyClip(path=Path("/tmp/a.mp4"), duration=3.0, has_speech=True),
+            AssemblyClip(path=Path("/tmp/a.mp4"), duration=3.0),
         ]
         filter_parts, labels = fb.build_audio_prep_filters(clips)
         # Should keep real audio when privacy is off
@@ -214,7 +214,6 @@ class TestPrivacyGpsAnonymization:
                 llm_emotion="joyful",
                 original_segment=segment,
                 is_photo=True,
-                has_speech=True,
                 outgoing_transition="fade",
             ),
         ]
@@ -222,7 +221,6 @@ class TestPrivacyGpsAnonymization:
         assert result[0].llm_emotion == "joyful"
         assert result[0].original_segment is segment
         assert result[0].is_photo is True
-        assert result[0].has_speech is True
         assert result[0].outgoing_transition == "fade"
 
 
