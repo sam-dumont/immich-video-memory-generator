@@ -814,3 +814,14 @@ demo-ui-dev: demo-ui-install  ## Start Remotion Studio for live demo preview
 demo-ui: demo-ui-install  ## Render Remotion demo → docs-site/static/demo/demo.mp4
 	@mkdir -p docs-site/static/demo
 	cd docs-site/remotion && npx remotion render src/index.ts DemoVideo ../static/demo/demo.mp4 --codec h264 --crf 18
+
+# The README hero is the brief → cut → story stretch of the Remotion demo (seconds
+# 2.6 to 20.6 of the composition), 800 px wide at 12 fps with a two-pass palette so
+# the UI's flat colours stay crisp. Re-run after `make demo-ui`.
+demo-hero:  ## Cut the README hero GIF from docs-site/static/demo/demo.mp4
+	ffmpeg -y -loglevel error -ss 2.6 -t 18 -i docs-site/static/demo/demo.mp4 \
+	  -vf "fps=12,scale=800:-1:flags=lanczos,palettegen=stats_mode=diff" docs-site/static/demo/hero-palette.png
+	ffmpeg -y -loglevel error -ss 2.6 -t 18 -i docs-site/static/demo/demo.mp4 -i docs-site/static/demo/hero-palette.png \
+	  -lavfi "fps=12,scale=800:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle" \
+	  docs-site/static/img/demo-hero.gif
+	@rm -f docs-site/static/demo/hero-palette.png
