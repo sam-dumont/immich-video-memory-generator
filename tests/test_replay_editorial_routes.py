@@ -143,3 +143,61 @@ def test_reference_routes_skip_metadata_and_prefer_the_head_baseline(harness):
         "plan_sha256": "b",
     }
     assert harness.baseline_of(routes["fresh"]) is None
+
+
+def _hashes(directory: Path, episodes: list[tuple[str, str, dict[str, str]]]) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / "evidence-hashes.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema": "episode-evidence-provenance-v1",
+                "episodes": [
+                    {
+                        "group_id": group_id,
+                        "evidence_key": key,
+                        "assets": [
+                            {"asset_id": asset_id, "line_sha256": line_sha}
+                            for asset_id, line_sha in assets.items()
+                        ],
+                    }
+                    for group_id, key, assets in episodes
+                ],
+            }
+        )
+    )
+    return path
+
+
+def test_evidence_drift_names_the_first_moved_episode_and_counts_its_changed_lines(
+    harness, tmp_path
+):
+    steady = ("g0", "k0", {"a": "h-a"})
+    _hashes(tmp_path / "old", [steady, ("g1", "k1", {"b": "h-b", "c": "h-c", "d": "h-d"})])
+    _hashes(tmp_path / "new", [steady, ("g1", "k9", {"b": "h-b", "c": "MOVED", "d": "ALSO"})])
+
+    drift = harness.evidence_drift(tmp_path / "new", tmp_path / "old")
+
+    assert "g1" in drift
+    assert "2/3" in drift
+    assert "c" in drift
+    assert "g0" not in drift
+
+
+def test_evidence_drift_reports_membership_instead_of_guessing_at_a_missing_episode(
+    harness, tmp_path
+):
+    _hashes(tmp_path / "old", [("g1", "k1", {"b": "h-b"})])
+    _hashes(tmp_path / "new", [("g2", "k2", {"b": "h-b"})])
+
+    assert "1 new" in harness.evidence_drift(tmp_path / "new", tmp_path / "old")
+    assert harness.evidence_drift(tmp_path / "new", tmp_path / "absent") == ""
+
+
+def test_the_baseline_attempt_directory_comes_from_the_reference_when_it_names_one(harness):
+    assert harness.baseline_attempt_dir({}) is None
+    named = {"head_baseline": {"attempt_dir": "~/runs/head"}, "attempt_dir": "~/runs/accepted"}
+    assert harness.baseline_attempt_dir(named) == Path("~/runs/head").expanduser()
+    assert harness.baseline_attempt_dir({"attempt_dir": "~/runs/accepted"}) == (
+        Path("~/runs/accepted").expanduser()
+    )
