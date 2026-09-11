@@ -16,6 +16,7 @@ import click
 
 from immich_memories.cli._flags import calendar_day, output_path
 from immich_memories.cli.generate_resolution import SHORT_FORM_SECONDS
+from immich_memories.memory_types.registry import OFFERED_MEMORY_TYPES
 
 FC = TypeVar("FC", bound=Callable[..., Any])
 
@@ -80,21 +81,9 @@ def scope_options(command: FC) -> FC:
         ),
         click.option(
             "--memory-type",
-            type=click.Choice(
-                [
-                    "year_in_review",
-                    "season",
-                    "person_spotlight",
-                    "multi_person",
-                    "monthly_highlights",
-                    "on_this_day",
-                    "trip",
-                    "holiday",
-                    "special_day",
-                ]
-            ),
+            type=click.Choice([memory_type.value for memory_type in OFFERED_MEMORY_TYPES]),
             default=None,
-            help="Memory type preset",
+            help="Memory type preset (album takes its pool from --from-album)",
         ),
         click.option(
             "--holiday",
@@ -284,7 +273,7 @@ def run_options(command: FC) -> FC:
 
 
 def selection_options(command: FC) -> FC:
-    """What the candidate pool may hold, and how hard selection works on it."""
+    """What the candidate pool may hold."""
     options = [
         click.option(
             "--include-live-photos/--no-live-photos",
@@ -312,25 +301,6 @@ def selection_options(command: FC) -> FC:
             type=float,
             default=None,
             help="Duration per photo clip in seconds (default: 4.0)",
-        ),
-        click.option(
-            "--refinement-passes",
-            type=click.IntRange(1, 20),
-            default=None,
-            help=(
-                "How many times selection may verify, judge and review before settling "
-                "(default: 10). The biggest dial on warm-run time, and on the bill when "
-                "llm.base_url points at a paid API"
-            ),
-        ),
-        click.option(
-            "--analysis-depth",
-            type=click.Choice(["auto", "fast", "thorough"]),
-            default=None,
-            help=(
-                "Analysis depth: auto (full analysis for manageable pools), "
-                "fast (favorites first), or thorough (every eligible clip)"
-            ),
         ),
     ]
     return _apply(command, options)

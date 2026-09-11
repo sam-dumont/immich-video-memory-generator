@@ -209,8 +209,9 @@ def _resolve_generation_scope(
     return DateRange(start=date_result[-1].start, end=date_result[0].end), date_result
 
 
-def _reject_album_scope_conflicts(
+def _validate_album_scope(
     *,
+    from_album: str | None,
     year: int | None,
     start: str | None,
     end: str | None,
@@ -221,7 +222,16 @@ def _reject_album_scope_conflicts(
     memory_type: str | None,
     person_names: list[str] | tuple[str, ...],
 ) -> None:
-    """Album mode replaces date-range discovery, so date scoping is meaningless."""
+    """The album is the whole scope, read in both directions.
+
+    With an album, date scoping is meaningless because album mode replaces
+    date-range discovery. Without one, --memory-type album has nothing to
+    select from -- it is the one type that resolves no window of its own.
+    """
+    if not from_album:
+        if memory_type == "album":
+            raise click.UsageError("--memory-type album needs --from-album to name the album")
+        return
     conflicts = {
         "--year": year,
         "--start": start,
@@ -230,7 +240,9 @@ def _reject_album_scope_conflicts(
         "--birthday": birthday,
         "--season": season,
         "--month": month,
-        "--memory-type": memory_type,
+        # --memory-type album says what --from-album already says, so it is the
+        # one type that agrees with album mode rather than competing with it.
+        "--memory-type": None if memory_type == "album" else memory_type,
         "--person": person_names,
     }
     used = sorted(flag for flag, value in conflicts.items() if value)
@@ -270,17 +282,10 @@ def resolve_short_form(
     )
 
 
-def _apply_scalar_overrides(
-    config: Config,
-    *,
-    photo_duration: float | None,
-    refinement_passes: int | None,
-) -> None:
-    """Let a flag outrank the config file for the dials that have both."""
+def _apply_photo_duration_override(config: Config, *, photo_duration: float | None) -> None:
+    """Let --photo-duration outrank the configured photos.duration."""
     if photo_duration is not None:
         config.photos.duration = photo_duration
-    if refinement_passes is not None:
-        config.analysis.max_refinement_passes = refinement_passes
 
 
 def resolve_inclusion(flag: bool | None, *, config_enabled: bool) -> bool:

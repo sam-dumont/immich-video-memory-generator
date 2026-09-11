@@ -4,7 +4,7 @@ sidebar_label: "Settings"
 
 # Settings
 
-Two pages sit outside the four-step wizard, reachable from the sidebar at any time: **Config** (`/settings/config`) and **Cache** (`/settings/cache`).
+Two pages sit outside the memory flow, reachable from the sidebar at any time: **Config** (`/settings/config`) and **Cache** (`/settings/cache`).
 
 ## Config — what is actually running
 
@@ -26,12 +26,12 @@ This matters if you screenshot the page for a bug report: the masking is server-
 - The **config file path** is printed beside the button, so you know which file you are editing.
 
 :::note There is no Save button on this page
-Saving is on **Step 1**, not here. This page only reads.
+Saving is on the **Memory** page, under Advanced, not here. This page only reads.
 :::
 
-## Saving config from Step 1, and what it costs you
+## Saving config from the Memory page, and what it costs you
 
-Step 1's connection panel has a **Save Config** button. It writes the Immich URL and API key you entered — but it saves the **whole configuration**, not just those two fields.
+The connection panel under **Advanced** on the [Memory page](./memory.mdx) has a **Save Config** button. It writes the Immich URL and API key you entered — but it saves the **whole configuration**, not just those two fields.
 
 That has a consequence worth understanding before you press it: **every value becomes explicitly set.** A preset works by filling in what you have not chosen, so once everything is written to the file, there is nothing left for the preset to own. `preset: fast` will still be named, but the values it would have supplied are now yours and will not move again.
 
@@ -60,4 +60,4 @@ Clear the **analysis** cache when you have changed something that would alter ho
 ## See also
 
 - [Configuration reference](../../reference/config-reference.md) — every key, with defaults
-- [Step 1 — Configuration](./step1-configuration.mdx) — where Save Config lives
+- [Memory](./memory.mdx) — where Save Config lives

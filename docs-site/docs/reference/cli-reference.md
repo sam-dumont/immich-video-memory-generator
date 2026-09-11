@@ -265,7 +265,7 @@ immich-memories generate [OPTIONS]
 | `--person`, `-p` | text | - | Person name (repeatable) |
 | `--people-expression` | text | - | Grouped people condition, e.g. ("Person A" OR "Person B") AND "Person C". Use exact library names; each asset must match. |
 | `--person-match` | choice: `and` \| `or` | and | With several --person values, require everyone in each asset (and) or accept any named person (or) |
-| `--memory-type` | choice: `year_in_review` \| `season` \| `person_spotlight` \| `multi_person` \| `monthly_highlights` \| `on_this_day` \| `trip` \| `holiday` \| `special_day` | - | Memory type preset |
+| `--memory-type` | choice: `year_in_review` \| `season` \| `person_spotlight` \| `multi_person` \| `monthly_highlights` \| `on_this_day` \| `album` \| `trip` \| `holiday` \| `special_day` | - | Memory type preset (album takes its pool from --from-album) |
 | `--holiday` | text | - | Holiday name or MM-DD (use with --memory-type holiday) |
 | `--season` | choice: `spring` \| `summer` \| `fall` \| `autumn` \| `winter` | - | Season (use with --memory-type season) |
 | `--month` | integer | - | Month 1-12 (with --year, generates that month; selects trip by month) |
@@ -298,8 +298,6 @@ immich-memories generate [OPTIONS]
 | `--include-photos` | boolean | - | Include photos as animated Ken Burns clips (blur background, face-aware pan) |
 | `--accept-any-provenance` | boolean | false | Keep forwarded and re-encoded media for this memory; date, person, privacy, and Live Photo boundaries still apply |
 | `--photo-duration` | float | - | Duration per photo clip in seconds (default: 4.0) |
-| `--refinement-passes` | integer range | - | How many times selection may verify, judge and review before settling (default: 10). The biggest dial on warm-run time, and on the bill when llm.base_url points at a paid API |
-| `--analysis-depth` | choice: `auto` \| `fast` \| `thorough` | - | Analysis depth: auto (full analysis for manageable pools), fast (favorites first), or thorough (every eligible clip) |
 | `--trip-index` | integer | - | Select a specific trip by index (use with --memory-type trip) |
 | `--all-trips` | boolean | false | Generate a video for every detected trip (use with --memory-type trip) |
 | `--years-back` | integer | - | Years to look back for --birthday, on_this_day or holiday |

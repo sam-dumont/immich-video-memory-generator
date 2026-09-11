@@ -33,9 +33,9 @@ immich-memories generate [OPTIONS]
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--memory-type` | — | choice | — | `year_in_review`, `season`, `person_spotlight`, `multi_person`, `monthly_highlights`, `on_this_day`, `trip`, `holiday`, `then_and_now`, `special_day` |
+| `--memory-type` | — | choice | — | `year_in_review`, `season`, `person_spotlight`, `multi_person`, `monthly_highlights`, `on_this_day`, `album`, `trip`, `holiday`, `special_day`. `album` needs `--from-album`, which also implies it |
 | `--holiday` | — | text | — | Holiday name or `MM-DD` (with `--memory-type holiday`) |
-| `--from-album` | — | string | — | Generate from an Immich album (name or ID) instead of a date range. See [Album Memories](../memory-types/album-memories). Cannot be combined with any time-period or person flag |
+| `--from-album` | — | string | — | Generate from an Immich album (name or ID) instead of a date range. See [Album Memories](../memory-types/album-memories). Cannot be combined with any time-period or person flag; `--memory-type album` is the one type it accepts |
 | `--person` | `-p` | string | — | Person name from Immich face recognition (repeatable: `--person "Riley" --person "Bob"`) |
 | `--person-match` | — | choice | `and` | With repeated `--person`, require everyone in each asset (`and`) or accept any named person (`or`) |
 | `--people-expression` | — | string | — | Combine quoted full names with `AND`, `OR` and parentheses; evaluated within each picture or video. Use separately from `--person` and `--person-match` |
@@ -129,12 +129,10 @@ static title backgrounds, no speech pass, photos ≤25 %, favorites-first analys
 have not set explicitly; the flags below still win. Persistent form: `preset: fast` in
 `config.yaml` or `IMMICH_MEMORIES_PRESET=fast` — see the [config reference](../../reference/config-reference.md#preset).
 
-### Analysis
+### Photos
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--refinement-passes` | — | integer | `10` | How many times selection may verify, judge and review before it settles. Three loops run up to this many times, so it is the largest multiplier on a warm run — and on the bill if `llm.base_url` is a paid API. `preset: fast` uses 3 |
-| `--analysis-depth` | — | choice | `auto` | `auto` (all manageable cache misses, shortlist large pools), `fast` (favorites first), or `thorough` (every eligible clip). Under `preset: fast`, `auto` runs as `fast` |
 | `--include-photos` | — | flag | — | Include photos alongside videos |
 | `--photo-duration` | — | float | `4.0` | Seconds per photo clip (use with `--include-photos`) |
 

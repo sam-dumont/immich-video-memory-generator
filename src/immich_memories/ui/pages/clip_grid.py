@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import base64
-from collections import defaultdict
+from collections.abc import Callable, Sequence
 from datetime import datetime
+from typing import TypeVar
 
 from nicegui import ui
 
@@ -20,6 +21,7 @@ CLIPS_PER_PAGE = 20
 
 # Union type for items in the mixed grid
 GridItem = VideoClipInfo | Asset
+Item = TypeVar("Item")
 
 
 def grid_item_date(item: GridItem) -> datetime:
@@ -29,121 +31,11 @@ def grid_item_date(item: GridItem) -> datetime:
     return item.file_created_at
 
 
-def grid_item_id(item: GridItem) -> str:
-    """Extract the asset ID from either a VideoClipInfo or an Asset."""
-    if isinstance(item, VideoClipInfo):
-        return item.asset.id
-    return item.id
-
-
-def clip_quality_score(c: VideoClipInfo) -> tuple[int, int, int, int]:
-    """Score a clip for quality comparison. Higher is better."""
-    res_score = c.width * c.height
-    hdr_score = 1 if c.is_hdr else 0
-    depth_score = c.bit_depth or 8
-    bitrate_score = c.bitrate
-    return (res_score, hdr_score, depth_score, bitrate_score)
-
-
-def _detect_duplicates(
-    clips: list[VideoClipInfo],
-) -> tuple[set[str], set[str]]:
-    """Detect duplicate clips and identify lower quality ones.
-
-    Uses two strategies:
-    1. Same-minute + same-duration: exact duplicate (different codec/quality)
-    2. Thumbnail perceptual hash: catches messaging app copies (WhatsApp, etc.)
-       that have different timestamps but visually identical content
-    """
-    duplicate_ids: set[str] = set()
-    lower_quality_ids: set[str] = set()
-
-    # Strategy 1: exact datetime+duration match
-    clips_by_datetime = _group_clips_by_datetime(clips)
-    for group in clips_by_datetime.values():
-        if len(group) > 1:
-            _mark_lower_quality(group, duplicate_ids, lower_quality_ids)
-
-    # Strategy 2: thumbnail perceptual hash deduplication
-    _detect_thumbnail_duplicates(clips, duplicate_ids, lower_quality_ids)
-
-    return duplicate_ids, lower_quality_ids
-
-
-def _mark_lower_quality(
-    group: list[VideoClipInfo],
-    duplicate_ids: set[str],
-    lower_quality_ids: set[str],
-) -> None:
-    """Within a group of duplicates, mark all but the best as lower quality."""
-    sorted_group = sorted(group, key=clip_quality_score, reverse=True)
-    best_clip = sorted_group[0]
-    for c in group:
-        duplicate_ids.add(c.asset.id)
-        if c.asset.id != best_clip.asset.id:
-            lower_quality_ids.add(c.asset.id)
-
-
-def _detect_thumbnail_duplicates(
-    clips: list[VideoClipInfo],
-    duplicate_ids: set[str],
-    lower_quality_ids: set[str],
-) -> None:
-    """Detect duplicates using thumbnail perceptual hashing.
-
-    Catches messaging app copies (WhatsApp, Telegram, etc.) that have
-    different timestamps/filenames but visually identical content.
-    """
-    state = get_app_state()
-    thumbnail_cache = state.thumbnail_cache
-    if thumbnail_cache is None:
-        return
-
-    try:
-        from immich_memories.analysis.thumbnail_clustering import cluster_thumbnails
-        from immich_memories.config import get_config
-
-        clusters = cluster_thumbnails(
-            clips=clips,
-            thumbnail_cache=thumbnail_cache,
-            duplicate_hash_threshold=get_config().analysis.duplicate_hash_threshold,
-            hash_cache=state.thumbnail_hashes,
-        )
-
-        for cluster in clusters:
-            if len(cluster.clip_ids) <= 1:
-                continue
-            # All members are duplicates; non-representatives are lower quality
-            for clip_id in cluster.clip_ids:
-                duplicate_ids.add(clip_id)
-                if clip_id != cluster.representative_id:
-                    lower_quality_ids.add(clip_id)
-
-    except Exception:  # WHY: UI graceful degradation
-        import logging
-
-        logging.getLogger(__name__).debug(
-            "Thumbnail dedup failed, falling back to datetime only", exc_info=True
-        )
-
-
-def _group_clips_by_datetime(clips: list[VideoClipInfo]) -> dict[str, list[VideoClipInfo]]:
-    """Group clips by datetime and duration for duplicate detection."""
-    clips_by_datetime: dict[str, list[VideoClipInfo]] = defaultdict(list)
-    for clip in clips:
-        dt_key = clip.asset.file_created_at.strftime("%Y-%m-%d_%H:%M")
-        dur_key = round(clip.duration_seconds or 0, 0)
-        key = f"{dt_key}_{dur_key}"
-        clips_by_datetime[key].append(clip)
-    return clips_by_datetime
-
-
 def _update_duration_summary(clips: list[VideoClipInfo], container: ui.element) -> None:
     """Update the duration summary display."""
     from immich_memories.ui.pages.step2_helpers import render_duration_summary
 
     state = get_app_state()
-    avg_clip_sec = state.avg_clip_duration
 
     selected_duration = 0.0
     for c in clips:
@@ -152,7 +44,7 @@ def _update_duration_summary(clips: list[VideoClipInfo], container: ui.element) 
                 start, end = state.clip_segments[c.asset.id]
                 selected_duration += end - start
             else:
-                selected_duration += min(c.duration_seconds or avg_clip_sec, avg_clip_sec)
+                selected_duration += c.duration_seconds
 
     selected_count = len(state.selected_clip_ids)
     if state.include_photos:
@@ -262,7 +154,7 @@ def _render_clip_metadata(clip: VideoClipInfo) -> None:
     duration_str = format_duration(clip.duration_seconds) if clip.duration_seconds else "N/A"
 
     ui.label(date_str).classes("font-semibold text-sm").style("color: var(--im-text)")
-    ui.label(f"\u23f1 {duration_str}").classes("text-xs").style("color: var(--im-text-secondary)")
+    ui.label(f"⏱ {duration_str}").classes("text-xs").style("color: var(--im-text-secondary)")
 
     filename = clip.asset.original_file_name or "Unknown"
     if len(filename) > 20:
@@ -272,32 +164,18 @@ def _render_clip_metadata(clip: VideoClipInfo) -> None:
     if clip.width and clip.height:
         res_str = f"{clip.width}x{clip.height}"
         if clip.color_space:
-            res_str += f" \u2022 {clip.color_space}"
+            res_str += f" • {clip.color_space}"
         ui.label(res_str).classes("text-xs").style("color: var(--im-text-secondary)")
-
-
-def _render_duplicate_indicator(is_duplicate: bool, is_best: bool) -> None:
-    """Render the duplicate/best quality indicator label."""
-    if not is_duplicate:
-        return
-    if is_best:
-        ui.label("Best").classes("text-xs font-semibold").style("color: var(--im-success)")
-    else:
-        ui.label("Duplicate").classes("text-xs").style("color: var(--im-warning)")
 
 
 def _render_clip_card(
     clip: VideoClipInfo,
     state,
     all_clips: list[VideoClipInfo],
-    duplicate_ids: set[str],
-    lower_quality_ids: set[str],
     summary_container: ui.element,
 ) -> None:
     """Render a single themed clip card."""
     is_selected = clip.asset.id in state.selected_clip_ids
-    is_duplicate = clip.asset.id in duplicate_ids
-    is_best = is_duplicate and clip.asset.id not in lower_quality_ids
 
     with (
         ui.card()
@@ -309,7 +187,6 @@ def _render_clip_card(
         _render_cached_analysis(clip, state)
         _render_audio_categories(clip)
         _render_clip_metadata(clip)
-        _render_duplicate_indicator(is_duplicate, is_best)
 
         # Selection checkbox
         def make_toggle_handler(asset_id: str):
@@ -499,51 +376,8 @@ def _render_compact_grid(
             _render_compact_thumbnail(clip, state, all_clips, summary_container)
 
 
-def _render_compact_grid_paginated(
-    clips: list[VideoClipInfo],
-    summary_container: ui.element,
-    page_size: int = CLIPS_PER_PAGE,
-) -> None:
-    """Render a paginated compact thumbnail grid."""
-    if len(clips) <= page_size:
-        _render_compact_grid(clips, summary_container)
-        return
-
-    grid_container = ui.column().classes("w-full")
-    with grid_container:
-        _render_compact_grid(clips[:page_size], summary_container)
-
-    remaining = clips[page_size:]
-    if remaining:
-        btn_container = ui.row().classes("w-full justify-center mt-2")
-        with btn_container:
-
-            def load_more(
-                remaining_clips=remaining,
-                parent=grid_container,
-                btn_ctr=btn_container,
-            ):
-                btn_ctr.clear()
-                with parent:
-                    _render_compact_grid(remaining_clips[:page_size], summary_container)
-                still_remaining = remaining_clips[page_size:]
-                if still_remaining:
-                    with btn_ctr:
-                        ui.button(
-                            f"Show more ({len(still_remaining)} remaining)",
-                            on_click=lambda sr=still_remaining: load_more(sr, parent, btn_ctr),
-                        ).props("outline")
-
-            ui.button(
-                f"Show more ({len(remaining)} remaining)",
-                on_click=load_more,
-            ).props("outline")
-
-
 def _render_clip_grid(
     clips: list[VideoClipInfo],
-    duplicate_ids: set[str],
-    lower_quality_ids: set[str],
     summary_container: ui.element,
 ) -> None:
     """Render a responsive grid of clip cards."""
@@ -556,63 +390,11 @@ def _render_clip_grid(
         .style("grid-template-columns: repeat(auto-fill, minmax(200px, 1fr))")
     ):
         for clip in clips:
-            _render_clip_card(
-                clip, state, all_clips, duplicate_ids, lower_quality_ids, summary_container
-            )
-
-
-def _render_clip_grid_paginated(
-    clips: list[VideoClipInfo],
-    duplicate_ids: set[str],
-    lower_quality_ids: set[str],
-    summary_container: ui.element,
-    page_size: int = CLIPS_PER_PAGE,
-) -> None:
-    """Render a paginated grid of clip cards (loads in batches)."""
-    if len(clips) <= page_size:
-        _render_clip_grid(clips, duplicate_ids, lower_quality_ids, summary_container)
-        return
-
-    grid_container = ui.column().classes("w-full")
-    with grid_container:
-        _render_clip_grid(clips[:page_size], duplicate_ids, lower_quality_ids, summary_container)
-
-    remaining = clips[page_size:]
-    if remaining:
-        btn_container = ui.row().classes("w-full justify-center mt-2")
-        with btn_container:
-
-            def load_more(
-                remaining_clips=remaining,
-                parent=grid_container,
-                btn_ctr=btn_container,
-            ):
-                btn_ctr.clear()
-                with parent:
-                    _render_clip_grid(
-                        remaining_clips[:page_size],
-                        duplicate_ids,
-                        lower_quality_ids,
-                        summary_container,
-                    )
-                still_remaining = remaining_clips[page_size:]
-                if still_remaining:
-                    with btn_ctr:
-                        ui.button(
-                            f"Show more ({len(still_remaining)} remaining)",
-                            on_click=lambda sr=still_remaining: load_more(sr, parent, btn_ctr),
-                        ).props("outline")
-
-            ui.button(
-                f"Show more ({len(remaining)} remaining)",
-                on_click=load_more,
-            ).props("outline")
+            _render_clip_card(clip, state, all_clips, summary_container)
 
 
 def _render_mixed_grid(
     items: list[GridItem],
-    duplicate_ids: set[str],
-    lower_quality_ids: set[str],
     summary_container: ui.element,
 ) -> None:
     """Render a mixed grid of video clips and photos, sorted chronologically."""
@@ -624,59 +406,9 @@ def _render_mixed_grid(
     ):
         for item in items:
             if isinstance(item, VideoClipInfo):
-                _render_clip_card(
-                    item, state, all_clips, duplicate_ids, lower_quality_ids, summary_container
-                )
+                _render_clip_card(item, state, all_clips, summary_container)
             else:
                 _render_photo_card(item, state, all_clips, summary_container)
-
-
-def _render_mixed_grid_paginated(
-    items: list[GridItem],
-    duplicate_ids: set[str],
-    lower_quality_ids: set[str],
-    summary_container: ui.element,
-    page_size: int = CLIPS_PER_PAGE,
-) -> None:
-    """Render a paginated mixed grid of video clips and photos."""
-    if len(items) <= page_size:
-        _render_mixed_grid(items, duplicate_ids, lower_quality_ids, summary_container)
-        return
-
-    grid_container = ui.column().classes("w-full")
-    with grid_container:
-        _render_mixed_grid(items[:page_size], duplicate_ids, lower_quality_ids, summary_container)
-
-    remaining = items[page_size:]
-    if remaining:
-        btn_container = ui.row().classes("w-full justify-center mt-2")
-        with btn_container:
-
-            def load_more(
-                remaining_items=remaining,
-                parent=grid_container,
-                btn_ctr=btn_container,
-            ):
-                btn_ctr.clear()
-                with parent:
-                    _render_mixed_grid(
-                        remaining_items[:page_size],
-                        duplicate_ids,
-                        lower_quality_ids,
-                        summary_container,
-                    )
-                still_remaining = remaining_items[page_size:]
-                if still_remaining:
-                    with btn_ctr:
-                        ui.button(
-                            f"Show more ({len(still_remaining)} remaining)",
-                            on_click=lambda sr=still_remaining: load_more(sr, parent, btn_ctr),
-                        ).props("outline")
-
-            ui.button(
-                f"Show more ({len(remaining)} remaining)",
-                on_click=load_more,
-            ).props("outline")
 
 
 def _render_compact_mixed_grid(
@@ -695,42 +427,34 @@ def _render_compact_mixed_grid(
                 _render_compact_photo_thumbnail(item, state, all_clips, summary_container)
 
 
-def _render_compact_mixed_grid_paginated(
-    items: list[GridItem],
-    summary_container: ui.element,
+def _render_paginated(
+    items: Sequence[Item],
+    render_page: Callable[[Sequence[Item]], None],
     page_size: int = CLIPS_PER_PAGE,
 ) -> None:
-    """Render a paginated compact mixed grid."""
+    """Render the first page now and the rest behind "Show more" buttons, a page at a time."""
     if len(items) <= page_size:
-        _render_compact_mixed_grid(items, summary_container)
+        render_page(items)
         return
 
     grid_container = ui.column().classes("w-full")
     with grid_container:
-        _render_compact_mixed_grid(items[:page_size], summary_container)
+        render_page(items[:page_size])
+    button_container = ui.row().classes("w-full justify-center mt-2")
 
-    remaining = items[page_size:]
-    if remaining:
-        btn_container = ui.row().classes("w-full justify-center mt-2")
-        with btn_container:
+    def load_more(remaining: Sequence[Item]) -> None:
+        button_container.clear()
+        with grid_container:
+            render_page(remaining[:page_size])
+        still_remaining = remaining[page_size:]
+        if still_remaining:
+            offer(still_remaining)
 
-            def load_more(
-                remaining_items=remaining,
-                parent=grid_container,
-                btn_ctr=btn_container,
-            ):
-                btn_ctr.clear()
-                with parent:
-                    _render_compact_mixed_grid(remaining_items[:page_size], summary_container)
-                still_remaining = remaining_items[page_size:]
-                if still_remaining:
-                    with btn_ctr:
-                        ui.button(
-                            f"Show more ({len(still_remaining)} remaining)",
-                            on_click=lambda sr=still_remaining: load_more(sr, parent, btn_ctr),
-                        ).props("outline")
-
+    def offer(remaining: Sequence[Item]) -> None:
+        with button_container:
             ui.button(
                 f"Show more ({len(remaining)} remaining)",
-                on_click=load_more,
+                on_click=lambda: load_more(remaining),
             ).props("outline")
+
+    offer(items[page_size:])

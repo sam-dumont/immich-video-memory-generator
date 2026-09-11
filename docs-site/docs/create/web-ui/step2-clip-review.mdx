@@ -7,13 +7,13 @@ import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
 
 # Step 2: Clip Review
 
-This step has three screens in sequence: the media list (pick the pool), the analysis run, and **Review & Refine** (trim the clips the pipeline chose). The sidebar calls it **Clip Review**.
+This page is the media pool and the excerpt editor. It is reached from the [Memory page](./memory.mdx): **Advanced → Open the media pool** before a cut, or **Review the pool** after one. It has three screens in sequence: the media list (pick the pool), the analysis run, and **Review & Refine** (trim the clips the pipeline chose). The sidebar calls it **Clip Review**.
 
 <ThemedScreenshot name="step2-clip-review" alt="Step 2: Clip Review" />
 
 ## Loading
 
-When you arrive from Step 1, a "Loading videos…" dialog fetches the videos, Live Photos and (if enabled) photos for your date range and person filter, plus thumbnails. Nothing is analyzed yet. Media that already has a cached analysis from the current model is tagged **Current analysis** on its card and is not re-sent to the LLM.
+When you arrive from the Memory page, a "Loading videos…" dialog fetches the videos, Live Photos and (if enabled) photos for your date range and person filter, plus thumbnails. Nothing is analyzed yet. Media that already has a cached analysis from the current model is tagged **Current analysis** on its card and is not re-sent to the LLM.
 
 ## The media list
 
@@ -23,28 +23,23 @@ Each card shows the thumbnail, badges (Live, ★ favorite, HDR, 4K/HD), the cach
 
 <ThemedScreenshot name="step2-list" alt="Detailed list view" />
 
-Toolbar: **Select All**, **Deselect All**, **Invert Selection**, and a grid/list toggle. In grid view, click a thumbnail to toggle it; in list view use the checkbox.
+Toolbar: a grid/list toggle. In grid view, click a thumbnail to toggle it; in list view use the checkbox.
 
 <ThemedScreenshot name="step2-grid" alt="Compact grid view" />
 
-All discovered videos and Live Photos start checked; photos start checked when photo support is on. Checked media is the pool: analysis can rank it, deduplicate it and choose excerpts, but a Fast-depth shortlist cannot silently drop the leftovers.
-
-### Duplicate detection
-
-Clips recorded at the same moment (burst recordings, multiple takes) are grouped by perceptual hash. An info card reports the number of duplicate groups; the best version of each is marked **Best** and the lower-quality copies are auto-deselected and marked **Duplicate**.
+All discovered videos and Live Photos start checked; photos start checked when photo support is on. Checked media is the pool the editor cuts from: untick what may never be used. Twins and bursts are the editor's to judge, so nothing here pre-deselects them.
 
 ## The "Generate Memories" panel
 
 The expansion at the top holds the run settings:
 
-- **Auto duration** switch. On (default) it shows "Auto · Xm YYs" — the preset target, or for Trip memories a media-aware estimate. Off shows a **Target duration (min)** field (0.25–60).
-- **Avg seconds per clip** (2–30, default 5) and the derived **Clips needed**.
-- **HDR clips only** and **Prioritize favorites** checkboxes. With favorites on, a **Preferred max non-favorites** slider (0–100 %, default 25 %) sets a preference; Auto exceeds it rather than leave the video short.
-- The **Generate Memories** button.
+- **Auto duration** switch. On (default) it shows "Auto · Xm YYs" — the type's target, or for Trip memories a media-aware estimate. Off shows a **Target duration (min)** field (0.25–60). It is the same duration as the Memory page's line.
+- **HDR clips only**: drop SDR video from the pool.
+- The **Generate Memories** button, which cuts from the checked pool.
 
 ## Running the analysis
 
-Clicking **Generate Memories** replaces the list with a progress screen: phases **1. Clustering → 2. Filtering → 3. Analyzing → 4. Refining**, a progress bar with clip count, elapsed time and ETA, a **Currently Analyzing** card and a **Last Analyzed** card (chosen segment, score, LLM description when enabled), and a **Cancel Pipeline** button. First runs cost about a minute per 10 clips on Apple Silicon or a GPU and 1–2 minutes per clip on a CPU-only box (see the [resource table](https://github.com/sam-dumont/immich-video-memory-generator#resource-requirements)); cached clips are free.
+Clicking **Generate Memories** replaces the list with a progress screen: the current editorial stage, the elapsed time and a **Cancel Pipeline** button. A first cut over a library that has not been read yet is the slow one; the readings are banked, so the next cut over the same period reuses them.
 
 When it finishes you get "Pipeline complete! Planned N clips from M eligible media items." with counts for Media Eligible, Videos Deeply Analyzed, Clips Planned and Time Elapsed, then two buttons: **Review & Refine Selected Clips** or **Start Over (Select Different Clips)**.
 
@@ -64,7 +59,7 @@ The **Final Duration** updates as you edit. Navigation: **Back to Selection**, *
 
 ## Photos in the list
 
-When photo support is enabled (config or the Step 1 switch), photos appear alongside video clips, merged into the same chronological list, with a camera badge and their own Include checkbox. Photos are auto-selected at generation time from the checked pool; see [Photo Support](../pipeline/photo-support.md).
+When photo support is enabled (config or the **Include Photos** switch under Advanced on the Memory page), photos appear alongside video clips, merged into the same chronological list, with a camera badge and their own Include checkbox. Photos are auto-selected at generation time from the checked pool; see [Photo Support](../pipeline/photo-support.md).
 
 ## Cache
 

@@ -53,38 +53,6 @@ class VideoAnalysisCache:
             conn.close()
 
     # =========================================================================
-    # Quick Video Metadata Methods
-    # =========================================================================
-
-    def get_video_metadata_batch(self, asset_ids: list[str]) -> dict[str, dict]:
-        if not asset_ids:
-            return {}
-
-        with self._get_connection() as conn:
-            placeholders = ",".join("?" * len(asset_ids))
-            rows = conn.execute(
-                f"SELECT * FROM video_metadata WHERE asset_id IN ({placeholders})",  # noqa: S608  # nosemgrep: sqlalchemy-execute-raw-query — placeholders are parameterized ?-marks
-                asset_ids,
-            ).fetchall()
-
-            result = {}
-            for row in rows:
-                result[row["asset_id"]] = {
-                    "duration_seconds": row["duration_seconds"],
-                    "width": row["width"],
-                    "height": row["height"],
-                    "bitrate": row["bitrate"],
-                    "fps": row["fps"],
-                    "codec": row["codec"],
-                    "color_space": row["color_space"],
-                    "color_transfer": row["color_transfer"],
-                    "color_primaries": row["color_primaries"],
-                    "bit_depth": row["bit_depth"],
-                    "rotation": (row["rotation"] if "rotation" in row else 0),  # noqa: SIM401
-                }
-            return result
-
-    # =========================================================================
     # Core CRUD Methods
     # =========================================================================
 

@@ -39,10 +39,15 @@ immich-memories generate --from-album 59080965-22f0-46a4-be67-135692a9f584
 The video is titled after the album, and named `album_<slug>.mp4` in your output
 directory. `--title` still overrides the title if you want something else.
 
+`--from-album` already makes this an album memory, so `--memory-type album` is
+optional — it is accepted, and it is the only memory type that can accompany the
+flag. On its own it is an error: an album memory has no window to fall back on.
+
 Because the album defines its own contents, `--from-album` cannot be combined with
-`--year`, `--start`/`--end`, `--period`, `--birthday`, `--season`, `--month`,
-`--memory-type` or `--person`. Everything else — `--duration`, `--orientation`,
-`--music`, `--no-music`, `--upload-to-immich`, `--dry-run` — works as usual.
+`--year`, `--start`/`--end`, `--period`, `--birthday`, `--season`, `--month`, any
+other `--memory-type` or `--person`. Everything else — `--duration`,
+`--orientation`, `--music`, `--no-music`, `--upload-to-immich`, `--dry-run` —
+works as usual.
 
 ## What gets used
 

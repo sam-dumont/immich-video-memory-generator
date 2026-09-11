@@ -327,17 +327,22 @@ src/immich_memories/
 │   ├── nicegui_compat.py       # Compatibility helpers for NiceGUI background work
 │   └── pages/
 │       ├── login.py                # Login page (basic form + OIDC SSO button)
-│       ├── step1_config.py         # Connection & time period config
+│       ├── memory.py               # The Memory page router: brief, cut in progress, result
+│       ├── memory_brief.py         # The brief: type select, its params, Advanced, Cut
+│       ├── memory_duration.py      # The duration line: the type's answer or an override
+│       ├── memory_run.py           # The cut that outlives its page: arm, poll the attempt, cancel, recover
+│       ├── memory_story.py         # The story view: thesis, stories, carriers with reasons
+│       ├── memory_story_data.py    # The only UI reader of plan.private.json -> frozen StoryView
+│       ├── step1_config.py         # Immich connection panel + custom date range
 │       ├── step1_cache.py          # Cache management UI
-│       ├── step1_presets.py        # Memory preset selection
+│       ├── step1_presets.py        # The parameters each memory type asks for
 │       ├── step1_tabs.py           # Step 1 tab layout
 │       ├── step2_review.py         # Clip review orchestration
 │       ├── step2_loading.py        # Loading state UI
 │       ├── step2_helpers.py        # Shared step2 utilities
 │       ├── clip_grid.py            # Clip card grid display
 │       ├── clip_review.py          # Clip refinement controls
-│       ├── clip_pipeline.py        # Pipeline execution UI
-│       ├── clip_pipeline_helpers.py # Pipeline helper functions
+│       ├── clip_pipeline.py        # The blocking cut worker and its editorial context
 │       ├── pipeline_title.py       # Pipeline title display
 │       ├── step3_options.py        # Assembly options
 │       ├── _step3_music_preview.py # Music preview controls

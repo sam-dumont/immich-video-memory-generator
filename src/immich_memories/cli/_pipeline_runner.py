@@ -269,7 +269,6 @@ def run_pipeline_and_generate(
     photo_assets: list | None = None,
     include_photos: bool = False,
     use_live_photos: bool = True,
-    analysis_depth: str = "auto",
     client: SyncImmichClient,
     config: Config,
     progress: ProgressDisplay,
@@ -377,7 +376,6 @@ def run_pipeline_and_generate(
         config,
         hdr_only=False,
         prioritize_favorites=True,
-        analysis_depth=analysis_depth,
         accept_any_provenance=accept_any_provenance,
     )
     output_canvas = _configure_output_canvas(

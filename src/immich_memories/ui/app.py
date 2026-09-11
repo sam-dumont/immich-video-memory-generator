@@ -62,7 +62,7 @@ def _get_storage_secret() -> str:
 
 
 _STEPS = [
-    ("Configuration", "settings", "/"),
+    ("Memory", "auto_awesome", "/"),
     ("Clip Review", "video_library", "/step2"),
     ("Options", "tune", "/step3"),
     ("Export", "download", "/step4"),
@@ -126,7 +126,7 @@ def render_step_indicator(current_step: int) -> None:  # noqa: ARG001
 def _is_step_complete(state, step: int) -> bool:
     """Check whether a wizard step has been completed based on AppState."""
     if step == 1:
-        return state.config is not None and state.date_range is not None
+        return state.config is not None and state.scope_is_selected
     if step == 2:
         return len(state.selected_clip_ids) > 0
     if step == 3:
@@ -240,14 +240,14 @@ def page_header(title: str, step: int, drawer=None) -> None:
 
 @ui.page("/")
 def index_page() -> None:
-    """Step 1: Configuration page."""
-    from immich_memories.ui.pages.step1_config import render_step1
+    """The Memory page: the brief, the cut in progress, or what the cut produced."""
+    from immich_memories.ui.pages.memory import render_memory
 
     apply_theme()
     d = render_sidebar(1)
     with ui.column().classes("w-full px-8 py-5"):
-        page_header("Configuration", 1, drawer=d)
-        render_step1()
+        page_header("Memory", 1, drawer=d)
+        render_memory()
 
 
 @ui.page("/step2")

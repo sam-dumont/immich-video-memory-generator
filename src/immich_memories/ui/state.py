@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+import threading
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -98,28 +99,27 @@ class AppState:
     review_selected_mode: bool = False
     pipeline_running: bool = False
     pipeline_result: dict[str, Any] | None = None
-    pipeline_config: dict[str, Any] = field(default_factory=dict)
     timeline_plan: TimelinePlan | None = None
     editorial_render_timing: dict[str, Any] | None = None
+    # Where the last cut wrote its plan; the story page reads it from there.
+    editorial_attempt_dir: Path | None = None
+    # The armed cut's identity, set before its worker starts. A reload polls the
+    # attempt tree under this key instead of starting a second run. Sessions that
+    # cut the same brief share a key, so only attempts started after the arming
+    # count as this cut's.
+    active_cut_key: str | None = None
+    cut_armed_at: datetime | None = None
 
     # Generation settings
     duration_mode: Literal["auto", "manual"] = "auto"
     target_duration: float = 10.0  # minutes; fractional values preserve exact seconds
-    avg_clip_duration: int = 5  # seconds per clip
     hdr_only: bool = False
-    prioritize_favorites: bool = True
-    analyze_all: bool = False
-    max_non_favorite_pct: int = 25
-    max_non_favorite_ratio: float = 0.25
     include_live_photos: bool = False
     include_photos: bool = False
     accept_any_provenance: bool = False
     photo_assets: list[Any] = field(default_factory=list)
     selected_photo_ids: set[str] = field(default_factory=set)
     photo_duration: float = 4.0
-
-    # Analysis depth (auto, fast, or thorough)
-    analysis_depth: str = "auto"
 
     # Connection
     connected_user: str | None = None
@@ -152,18 +152,17 @@ class AppState:
     # Step 2 view mode: "list" (detailed cards) or "grid" (compact thumbnails)
     clip_view_mode: str = "list"
 
-    # Duplicate tracking
-    _duplicates_processed: bool = False
-
     # Session tracking
     last_accessed: datetime | None = None
 
+    # One session, one cut at a time: the worker writes its result back under
+    # this lock, and arming a second cut while one runs is refused under it.
+    # Every tab of a browser still shares this object; per-tab state is not
+    # attempted here.
+    lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
+
     # Caches (initialized at runtime)
     thumbnail_cache: ThumbnailCache | None = None
-    # Perceptual hashes keyed by asset id. Duplicate detection re-runs on
-    # every Step 2 render, and a thumbnail's hash cannot change while the
-    # file does not.
-    thumbnail_hashes: dict[str, str] = field(default_factory=dict)
     analysis_cache: Any = None  # AnalysisCache
 
     @property
@@ -347,6 +346,7 @@ class AppState:
     def reset_clips(self) -> None:
         """Reset clip-related state when changing configuration."""
         self.clips = []
+        self.photo_assets = []
         self.pipeline_selected_clips = []
         self.editorial_selections = ()
         self.selected_clip_ids = set()
@@ -357,12 +357,13 @@ class AppState:
         self.pipeline_result = None
         self.timeline_plan = None
         self.editorial_render_timing = None
+        self.editorial_attempt_dir = None
+        self.active_cut_key = None
+        self.cut_armed_at = None
         self.review_selected_mode = False
-        self._duplicates_processed = False
         self.title_suggestion_title = None
         self.title_suggestion_subtitle = None
         self.cancel_requested = False
-        self.thumbnail_hashes = {}
         self.discard_music_preview()
 
     def discard_music_preview(self) -> None:

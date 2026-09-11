@@ -114,86 +114,21 @@ def test_cli_real_display_enters_indeterminate_then_reports_actual_terminal_stag
 
 
 @pytest.mark.parametrize("status", ["running", "complete", "failed"])
-def test_ui_retains_stage_and_elapsed_but_hides_counts_rates_eta_and_phase_fraction(status):
+def test_ui_callback_keeps_the_stage_and_elapsed_and_marks_the_display_indeterminate(status):
     from immich_memories.ui.pages.clip_pipeline import _make_progress_callback
-    from immich_memories.ui.pages.clip_pipeline_helpers import _poll_phase, _poll_stats
 
-    state = {"cancelled": False}
+    state: dict = {}
     _make_progress_callback(state)(_status(status=status))
     assert state["phase_label"] == "Editing the memory"
     assert state["status"] == status and state["indeterminate"] is True
     assert state["started_at"] == 100.0 and state["elapsed"] == "8s"
-    # Old legacy counters must not leak into this display mode, even if stale.
-    state.update(current_index=999, total_items=999, avg_duration=50, speed_ratio=9, eta="2h")
-    labels = [MagicMock() for _ in range(6)]
-    phase = MagicMock()
-    render_phase = MagicMock()
-    _poll_phase(state, {"phase_number": 2}, phase, render_phase)
-    phase.clear.assert_called_once()
-    render_phase.assert_not_called()
-    # WHY: freezes the wall clock so the elapsed-time label is deterministic.
-    with patch("immich_memories.ui.pages.clip_pipeline_helpers.time.time", return_value=165.0):
-        _poll_stats(state, *labels)
-    labels[1].set_text.assert_called_once_with(
-        "Elapsed: 65s" if status == "running" else "Elapsed: 8s"
-    )
-    for index in (0, 2, 3, 4, 5):
-        labels[index].set_text.assert_called_once_with("")
-
-
-def test_ui_timer_shows_indeterminate_bar_and_exact_stage_without_fake_count():
-    from immich_memories.ui.pages.clip_pipeline import _make_progress_callback, _wire_progress_timer
-
-    state = {"cancelled": False, "done": False, "error": None}
-    callback = _make_progress_callback(state)
-    callback(_status())
-    bar = MagicMock()
-    bar.value = 0.37
-    label = MagicMock()
-    timers = []
-
-    def timer(interval, function, **_kwargs):
-        timers.append((interval, function))
-        return MagicMock()
-
-    # WHY: stubs the NiceGUI timer, the detail-card poller, and the clock together.
-    with (
-        # WHY: replaces NiceGUI's timer so the test can invoke the registered callback directly.
-        patch("immich_memories.ui.pages.clip_pipeline.ui.timer", side_effect=timer),
-        # WHY: silences the per-clip detail poller, which this test's assertions don't cover.
-        patch("immich_memories.ui.pages.clip_pipeline._poll_detail_cards"),
-        # WHY: freezes the wall clock so the elapsed-time math stays deterministic.
-        patch("immich_memories.ui.pages.clip_pipeline_helpers.time.time", return_value=165.0),
-    ):
-        _wire_progress_timer(
-            state,
-            {"phase_number": 2},
-            MagicMock(),
-            MagicMock(),
-            bar,
-            label,
-            MagicMock(),
-            *[MagicMock() for _ in range(6)],
-            [],
-            [],
-            MagicMock(),
-        )
-        poll = next(fn for interval, fn in timers if interval == 1.0)
-        poll()
-        bar.props.assert_called_with("indeterminate")
-        assert bar.value == 0.37  # No fabricated percentage is assigned while planning.
-        label.set_text.assert_called_with("Editing the memory")
-        callback(_status("Editorial selection complete", "complete"))
-        poll()
-        bar.props.assert_called_with(remove="indeterminate")
-        label.set_text.assert_called_with("Editorial selection complete")
 
 
 def test_ui_progress_callback_preserves_explicit_cancellation_contract():
     from immich_memories.ui.pages.clip_pipeline import PipelineCancelled, _make_progress_callback
 
     with pytest.raises(PipelineCancelled):
-        _make_progress_callback({"cancelled": True})(_status())
+        _make_progress_callback({}, lambda: True)(_status())
 
 
 def test_cached_asset_checks_do_not_repeat_logs_or_ui_writes_and_still_cancel(caplog):
@@ -209,8 +144,9 @@ def test_cached_asset_checks_do_not_repeat_logs_or_ui_writes_and_still_cancel(ca
             self.writes += 1
             super().__setitem__(key, value)
 
-    state = CountingState(cancelled=False)
-    update_ui = _make_progress_callback(state)
+    state = CountingState()
+    cancel = {"requested": False}
+    update_ui = _make_progress_callback(state, lambda: cancel["requested"])
     display = QuietDisplay()
     with caplog.at_level(logging.INFO, logger="immich_memories.progress"):
         task = display.add_task("Preparing cached previews", total=None)
@@ -229,7 +165,7 @@ def test_cached_asset_checks_do_not_repeat_logs_or_ui_writes_and_still_cancel(ca
         assert state["current_index"] == state["completed_count"] == 4
         update_ui(_status("Reading the period", status="complete"))
         assert state["status"] == "complete"
-        state["cancelled"] = True
+        cancel["requested"] = True
         with pytest.raises(PipelineCancelled):
             update_ui(_status("Reading the period"))
 

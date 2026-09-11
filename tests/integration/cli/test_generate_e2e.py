@@ -145,7 +145,6 @@ def _generate_memory(
         pipeline_config = PipelineConfig(
             hdr_only=False,
             prioritize_favorites=True,
-            analysis_depth="fast",
         )
         pipeline_config.target_clips = min(target_clips, len(clips))
 

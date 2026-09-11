@@ -36,7 +36,7 @@ def test_the_ui_forwards_the_configured_photo_ratio() -> None:
     from immich_memories.ui.pages.clip_pipeline import _build_pipeline_config
     from immich_memories.ui.state import AppState
 
-    state = AppState(config=_config_capping_photos_at(0.25), pipeline_config={})
+    state = AppState(config=_config_capping_photos_at(0.25))
 
     assert _build_pipeline_config(state, []).photo_max_ratio == 0.25
 

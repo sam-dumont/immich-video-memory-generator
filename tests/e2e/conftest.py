@@ -124,14 +124,14 @@ import immich_memories.config_loader as config_loader
 
 config_path = Path(sys.argv[1])
 state_dir = Path(sys.argv[2])
-workspace_root = Path(sys.argv[4])
 config_loader.Config.get_default_path = classmethod(lambda cls: config_path)
 config_loader.init_config_dir = lambda: state_dir
 
-from tests.e2e.fake_editorial import install_fake_editorial_route, write_attempt_tree
-from tests.e2e.fake_immich import TIMELINE_ASSETS
+from tests.e2e.fake_editorial import install_fake_editorial_route
 
-install_fake_editorial_route(write_attempt_tree(workspace_root, TIMELINE_ASSETS))
+# WHY 1.5 s per stage: a browser reload takes a second or two, and the reload
+# test has to land while the six stages are still running.
+install_fake_editorial_route(stage_seconds=1.5)
 
 from immich_memories.ui.app import main
 
@@ -199,7 +199,6 @@ def launch_app_url(
                 str(launch_workspace.config_path),
                 str(launch_workspace.root / "state"),
                 str(port),
-                str(launch_workspace.root),
             ],
             stdout=log_file,
             stderr=log_file,

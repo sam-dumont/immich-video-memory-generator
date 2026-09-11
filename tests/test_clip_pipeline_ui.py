@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
@@ -99,8 +98,7 @@ def test_selection_uses_the_persisted_timeline_content_budget() -> None:
         memory_type="trip",
         duration_mode="manual",
         target_duration=2.5,
-        avg_clip_duration=5,
-        pipeline_config={"avg_clip_duration": 5.0},
+        hdr_only=True,
     )
 
     plan = _configure_timeline_for_selection(state, clips, photos)
@@ -109,7 +107,8 @@ def test_selection_uses_the_persisted_timeline_content_budget() -> None:
     assert plan.target_duration == 150.0
     assert state.timeline_plan is plan
     assert pipeline_config.target_duration_seconds == plan.content_budget
-    assert pipeline_config.target_clips == math.ceil(plan.content_budget / 5.0)
+    # The one pool switch the editorial route still reads travels with the plan.
+    assert pipeline_config.hdr_only is True
 
 
 def test_pipeline_summary_distinguishes_eligible_deep_and_planned_counts() -> None:
@@ -261,6 +260,93 @@ def test_blocking_pipeline_hands_source_selection_its_thumbnail_cache() -> None:
     assert progress_state["error"] is None
     assert build_pipeline.call_args.kwargs["thumbnail_cache"] is state.thumbnail_cache
     assert pipeline.run_editorial_source.call_args.args[0] == [photo]
+
+
+class _RecordingLock:
+    """Counts how often the worker takes the session lock for its write-back."""
+
+    def __init__(self) -> None:
+        self.entered = 0
+
+    def __enter__(self) -> None:
+        self.entered += 1
+
+    def __exit__(self, *exc: object) -> None:
+        return None
+
+
+def test_blocking_pipeline_writes_its_result_back_under_the_session_lock() -> None:
+    state = AppState(
+        config=Config(),
+        immich_url="http://immich.test",
+        immich_api_key="test-key",
+        date_ranges=[_WINDOW],
+        thumbnail_cache=MagicMock(),
+        analysis_cache=MagicMock(),
+    )
+    lock = _RecordingLock()
+    state.lock = lock  # type: ignore[assignment]
+    pipeline = _source_pipeline(
+        PipelineResult(selected_clips=[], clip_segments={}, errors=[], stats={})
+    )
+    progress_state = {"cancelled": False, "done": False, "error": None}
+
+    # WHY: get_config would read the developer's own config.yaml off disk.
+    with (
+        # WHY: Immich is the external boundary — the wizard's library read.
+        patch("immich_memories.ui.pages.clip_pipeline.SyncImmichClient") as client_cls,
+        # WHY: the pipeline is not under test; only how its result reaches the session.
+        patch(
+            "immich_memories.analysis.editorial_runtime.build_smart_pipeline", return_value=pipeline
+        ),
+        patch("immich_memories.config.get_config", return_value=state.config),
+    ):
+        client_cls.return_value.__enter__.return_value = MagicMock()
+        _run_pipeline_blocking(state, PipelineConfig(), [], [], progress_state)
+
+    assert progress_state["error"] is None
+    assert lock.entered == 1
+    assert state.pipeline_running is False
+
+
+def test_blocking_pipeline_remembers_where_the_cut_wrote_its_plan(tmp_path) -> None:
+    """The story page reads the plan from the attempt directory the route reports."""
+    state = AppState(
+        config=Config(),
+        immich_url="http://immich.test",
+        immich_api_key="test-key",
+        date_ranges=[_WINDOW],
+        thumbnail_cache=MagicMock(),
+        analysis_cache=MagicMock(),
+    )
+    selection_result = PipelineResult(
+        selected_clips=[],
+        clip_segments={},
+        errors=[],
+        stats={"editorial_attempt_directory": str(tmp_path / "attempts" / "one")},
+    )
+    pipeline = _source_pipeline(selection_result)
+    progress_state = {"cancelled": False, "done": False, "error": None}
+
+    # WHY: get_config would read the developer's own config.yaml off disk.
+    with (
+        # WHY: Immich is the external boundary — the wizard's library read.
+        patch("immich_memories.ui.pages.clip_pipeline.SyncImmichClient") as client_cls,
+        # WHY: the pipeline is not under test; only where it says the plan went.
+        patch(
+            "immich_memories.analysis.editorial_runtime.build_smart_pipeline", return_value=pipeline
+        ),
+        patch("immich_memories.config.get_config", return_value=state.config),
+    ):
+        client_cls.return_value.__enter__.return_value = MagicMock()
+        _run_pipeline_blocking(state, PipelineConfig(), [], [], progress_state)
+
+    assert progress_state["error"] is None
+    assert state.editorial_attempt_dir == tmp_path / "attempts" / "one"
+
+    state.reset_clips()
+
+    assert state.editorial_attempt_dir is None
 
 
 def test_blocking_pipeline_hands_the_review_page_its_pool_coverage() -> None:

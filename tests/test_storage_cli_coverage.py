@@ -137,43 +137,6 @@ def _invoke_planned_generation(args: list[str], config: Config) -> object:
 # =========================================================================
 
 
-def _seed_video_metadata(cache, asset_id: str, codec: str) -> None:
-    """Write a row the way an older install did.
-
-    Nothing writes `video_metadata` any more -- the UI loader lost its ffprobe
-    pass when the editorial source route landed -- so the only rows the batch
-    read will ever see are ones a previous version left behind.
-    """
-    with cache._get_connection() as conn:
-        conn.execute(
-            "INSERT OR REPLACE INTO video_metadata (asset_id, codec, cached_at) "
-            "VALUES (?, ?, datetime('now'))",
-            (asset_id, codec),
-        )
-        conn.commit()
-
-
-class TestVideoMetadataBatch:
-    """get_video_metadata_batch behavior."""
-
-    @pytest.fixture
-    def cache(self, tmp_path):
-        return VideoAnalysisCache(tmp_path / "test.db")
-
-    def test_batch_returns_only_existing(self, cache):
-        """Batch query returns metadata only for assets that exist."""
-        _seed_video_metadata(cache, "a", "h264")
-        _seed_video_metadata(cache, "b", "hevc")
-        result = cache.get_video_metadata_batch(["a", "b", "c"])
-        assert set(result.keys()) == {"a", "b"}
-        assert result["a"]["codec"] == "h264"
-        assert result["b"]["codec"] == "hevc"
-
-    def test_batch_empty_input(self, cache):
-        """Empty list returns empty dict."""
-        assert cache.get_video_metadata_batch([]) == {}
-
-
 class TestAnalysisSaveWithScenes:
     """save_analysis with scenes (not moments) and get_analysis retrieval."""
 

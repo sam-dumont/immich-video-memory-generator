@@ -162,9 +162,9 @@ CLI_MEMORY_TYPE_CHOICES = frozenset(
         "multi_person",
         "monthly_highlights",
         "on_this_day",
+        "album",
         "trip",
         "holiday",
-        "then_and_now",
         "special_day",
     }
 )
@@ -308,11 +308,15 @@ class TestRegistryCoverage:
             "name the type as a documented exception."
         )
 
-    def test_cli_offers_every_type_that_has_a_preset(self) -> None:
-        assert {str(memory_type) for memory_type in SPECS} == CLI_MEMORY_TYPE_CHOICES
+    def test_the_flag_offers_every_type_but_the_retired_one(self) -> None:
+        """Album is offered with no preset; then-and-now keeps a preset nobody can ask for."""
+        offered = ({str(memory_type) for memory_type in SPECS} | {str(ALBUM_HAS_NO_PRESET)}) - {
+            "then_and_now"
+        }
+
+        assert offered == CLI_MEMORY_TYPE_CHOICES
 
     def test_album_resolves_no_window_on_either_surface(self) -> None:
-        assert str(ALBUM_HAS_NO_PRESET) not in CLI_MEMORY_TYPE_CHOICES
         with pytest.raises(ValueError, match="No preset factory"):
             create_preset(ALBUM_HAS_NO_PRESET)
 

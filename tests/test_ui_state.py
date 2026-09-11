@@ -189,6 +189,12 @@ class TestAppStateIncludePhotos:
         state.reset_clips()
         assert state.selected_photo_ids == set()
 
+    def test_reset_clips_drops_the_photo_pool_with_the_video_pool(self):
+        """A cut from a new brief must not inherit the previous brief's photographs."""
+        state = AppState(photo_assets=[MagicMock()])
+        state.reset_clips()
+        assert state.photo_assets == []
+
     def test_reset_clips_clears_the_preliminary_timeline_plan(self):
         state = AppState()
         state.timeline_plan = MagicMock()
@@ -594,19 +600,6 @@ class TestAppStatePhotoDuration:
         state = AppState()
         state.photo_duration = 6.0
         assert state.photo_duration == 6.0
-
-
-class TestAppStateAnalysisDepth:
-    """Test analysis_depth state field."""
-
-    def test_default_analysis_depth_is_auto(self):
-        state = AppState()
-        assert state.analysis_depth == "auto"
-
-    def test_analysis_depth_can_be_set(self):
-        state = AppState()
-        state.analysis_depth = "thorough"
-        assert state.analysis_depth == "thorough"
 
 
 class TestAppStateCancelRequested:
