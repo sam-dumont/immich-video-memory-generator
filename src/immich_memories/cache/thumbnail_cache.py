@@ -25,10 +25,7 @@ class ThumbnailCache:
         self.cache_dir = cache_dir
         self.max_size_mb = max_size_mb
         self._puts_since_check = 0
-        # A thumbnail written or read since the cache was opened belongs to the
-        # run holding it; evicting one means the budget cannot hold the working
-        # set, which the run should hear about instead of quietly re-fetching.
-        self._run_started_at = time.time()
+        self._run_started_at: float | None = None
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     def _path(self, asset_id: str, size: str) -> Path:
@@ -60,6 +57,32 @@ class ThumbnailCache:
         """
         return {asset_id for asset_id in asset_ids if self.has(asset_id, size)}
 
+    def begin_working_set(self, asset_ids: set[str] | list[str], size: str) -> int:
+        """Protect this run's thumbnails while reclaiming earlier leftovers.
+
+        Also the autotune point: a flat budget under a large corpus would make
+        every later run start cold, so the budget grows to hold the measured
+        working set with headroom. The configured value stays as the floor;
+        the corpus on disk is the ceiling's own evidence.
+        """
+        self._run_started_at = time.time()
+        working_bytes = 0
+        for asset_id in asset_ids:
+            path = self._path(asset_id, size)
+            with contextlib.suppress(OSError):
+                working_bytes += path.stat().st_size
+                os.utime(path)
+        fitted_mb = working_bytes * 1.2 / 1_000_000
+        if fitted_mb > self.max_size_mb:
+            logger.info(
+                "Thumbnail budget raised %.0f -> %.0f MB to hold this run's %d-asset working set",
+                self.max_size_mb,
+                fitted_mb,
+                len(asset_ids),
+            )
+            self.max_size_mb = fitted_mb
+        return self.enforce_budget()
+
     def put(self, asset_id: str, size: str, data: bytes) -> Path:
         path = self._path(asset_id, size)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -72,6 +95,8 @@ class ThumbnailCache:
     def enforce_budget(self) -> int:
         """Drop the least recently used thumbnails until the cache fits."""
         self._puts_since_check = 0
+        if self.max_size_mb == float("inf"):
+            return 0
         return evict_to_budget(
             self.cache_dir,
             max_bytes=int(self.max_size_mb * 1_000_000),
@@ -82,6 +107,7 @@ class ThumbnailCache:
     def clear(self) -> int:
         """Remove all cached thumbnails. Returns count of removed files."""
 
+        self._run_started_at = None
         count = 0
         if self.cache_dir.exists():
             for f in self.cache_dir.rglob("*.jpg"):

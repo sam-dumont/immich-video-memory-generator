@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 
+from immich_memories.api.asset_service import large_original_size
 from immich_memories.api.immich import ImmichAPIError
 from immich_memories.processing.hardware import HWAccelCapabilities
 from immich_memories.processing.probe_cache import ProbeCache, ProbeError
@@ -392,7 +393,9 @@ class VideoDownloadCache:
         ext = Path(asset.original_file_name or "video.mp4").suffix or ".mp4"
         if asset.live_photo_video_id:
             ext = ".MOV"  # Live photo videos are always MOV
-        return self._download_id(client, download_id, ext, batch)
+        return self._download_id(
+            client, download_id, ext, batch, expected_size_bytes=large_original_size(asset)
+        )
 
     def _download_id(
         self,
@@ -400,6 +403,8 @@ class VideoDownloadCache:
         download_id: str,
         extension: str,
         batch: CacheBatch,
+        *,
+        expected_size_bytes: int | None = None,
     ) -> Path | None:
         """Download one resolved video ID and update the active manifest."""
         cached = self._find_cached(download_id)
@@ -418,7 +423,10 @@ class VideoDownloadCache:
         part = dest.with_name(f"{dest.name}{_PARTIAL_SUFFIX}")
 
         try:
-            client.download_asset(download_id, part)
+            if expected_size_bytes is None:
+                client.download_asset(download_id, part)
+            else:
+                client.download_asset(download_id, part, expected_size_bytes=expected_size_bytes)
             if part.exists() and part.stat().st_size > 0:
                 os.replace(part, dest)
                 batch._record_manifest_entry(dest)

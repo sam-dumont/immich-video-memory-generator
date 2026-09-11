@@ -12,36 +12,38 @@ import sys
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import click
 
+from immich_memories.api.person_expression import PersonExpression
 from immich_memories.cli._date_resolution import resolve_date_range
 from immich_memories.cli._helpers import print_error
 from immich_memories.timeperiod import DateRange
 
 if TYPE_CHECKING:
+    from immich_memories.automation.special_day_scan import DiscoveredDay
     from immich_memories.config_loader import Config
 
 
-def resolve_special_day(day: date | None, memory_type: str | None) -> dict | None:
+def resolve_special_day(
+    day: date | None, memory_type: str | None, event_id: str | None = None
+) -> dict | None:
     """What the catalogue records about one day, as preset parameters.
 
     ``--day`` carries a date and the catalogue is re-read here rather than
     having the title passed in, because the runner logs the whole argv and argv
     is readable in `ps` and in launchd's logs. The catalogue's titles name real
-    people and places; a date is the most a scheduled run should say out loud.
+    people and places; only a date and opaque event selector travel in argv.
 
     Refuse over fake throughout: a day the catalogue never found, or one the
     model could not name, is a day with nothing truthful to put on its title
     card, so it errors rather than rendering "Memories from 12 June 2016".
     """
-    from immich_memories.automation.catalogue import (
-        default_catalogue_path,
-        entries_from,
-        hours_awake,
-    )
+    from immich_memories.automation.catalogue import default_catalogue_path
 
+    if event_id is not None and (day is None or memory_type != "special_day"):
+        raise click.UsageError("--event-id requires --memory-type special_day and --day")
     if day is None:
         # The missing half of the pair is reported where the scope is resolved,
         # beside --season's and --holiday's identical rule.
@@ -50,29 +52,87 @@ def resolve_special_day(day: date | None, memory_type: str | None) -> dict | Non
         raise click.UsageError("--day requires --memory-type special_day")
 
     path = default_catalogue_path()
-    entry = next((e for e in entries_from(path) if e.day == day), None)
-    if entry is None:
-        raise click.UsageError(
-            f"{day.isoformat()} is not one of the days in {path}. Run "
-            "`immich-memories days-due` to see which days it holds, or "
-            "`immich-memories discover-days` to look for more."
-        )
-
-    name = (entry.title or "").strip() or (entry.what or "").strip()
+    entry = _catalogued_event(path, day, event_id)
+    name = entry.title.strip() or entry.what.strip()
     if not name:
         raise click.UsageError(
             f"{path} has neither a title nor a 'what' for {day.isoformat()}, so there "
             "is nothing truthful to call the memory. Re-run `immich-memories "
             "discover-days --rescan` to name it."
         )
+    return _special_day_params(entry, name)
 
-    return {
+
+def _catalogued_event(path: Path, day: date, event_id: str | None) -> DiscoveredDay:
+    from immich_memories.automation.catalogue import entries_from
+
+    matches = [entry for entry in entries_from(path) if entry.day == day]
+    if event_id is not None:
+        matches = [entry for entry in matches if entry.event_id == event_id]
+        if not matches:
+            raise click.UsageError(f"No catalogued event {event_id!r} on {day.isoformat()}")
+    if len(matches) > 1:
+        raise click.UsageError(
+            f"{day.isoformat()} has multiple catalogued events; choose one with --event-id"
+        )
+    if not matches:
+        raise click.UsageError(
+            f"{day.isoformat()} is not one of the days in {path}. Run "
+            "`immich-memories days-due` to see which days it holds, or "
+            "`immich-memories discover-days` to look for more."
+        )
+    return matches[0]
+
+
+def _special_day_params(entry: DiscoveredDay, name: str) -> dict[str, Any]:
+    from immich_memories.automation.catalogue import hours_awake
+
+    params: dict[str, Any] = {
         "day": entry.day,
         "window": entry.window,
         "title": name,
         "subtitle": entry.subtitle,
         "active_hours": hours_awake(entry),
     }
+    if entry.event_id is not None:
+        params["event_id"] = entry.event_id
+    if entry.asset_ids:
+        params["asset_ids"] = entry.asset_ids
+    if entry.event_admission is not None:
+        params["event_admission"] = entry.event_admission.as_record()
+    return params
+
+
+def resolve_people_condition(
+    person_expression: str | None,
+    *,
+    person_names: list[str],
+    person_match_typed: bool,
+    from_album: str | None,
+    memory_type: str | None,
+    birthday: str | None,
+) -> tuple[PersonExpression | None, list[str]]:
+    """Read --people-expression, which replaces --person rather than refining it.
+
+    A grouped condition names its own people, so mixing it with --person or
+    --person-match would leave two disagreeing answers to the same question.
+    """
+    if person_expression is None:
+        return None, person_names
+    if person_names or person_match_typed:
+        raise click.UsageError(
+            "Use --people-expression separately from --person and --person-match"
+        )
+    try:
+        condition = PersonExpression.parse(person_expression)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    if from_album or memory_type in {"trip", "album", "person_spotlight"} or birthday:
+        raise click.UsageError(
+            "Grouped people conditions currently support date-range memories, "
+            "not trips, albums or a single-person birthday"
+        )
+    return condition, list(condition.leaf_values)
 
 
 def name_from_catalogue(

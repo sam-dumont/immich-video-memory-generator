@@ -5,6 +5,28 @@ title: Pipeline Overview
 
 # Pipeline Overview
 
+## Current selection route
+
+UI, CLI and scheduled memories use one story-first route with the FAMILY audience. It prepares
+facts for the whole source period, reads stories and distinct moments, then allocates duration
+and assembles the chosen material. Missing required facts stop selection; complete cached
+producer results are reused. Provider setup is documented in
+[Editorial annotation setup](../../deploy/configuration/editorial-preparation.md).
+
+```mermaid
+flowchart LR
+    source["Source metadata and previews"] --> facts["Exact-producer annotation preparation"]
+    facts --> stories["Period stories and distinct moments"]
+    stories --> choose["Duration allocation and picture choices"]
+    choose --> render["Render, music and delivery"]
+```
+
+## Earlier pipeline trace
+
+The detailed timing trace below describes the earlier SmartPipeline selector. Its density
+shortlist and ranking passes are not the current production selection route. The rendering,
+audio and delivery sections remain useful when investigating those stages.
+
 One `immich-memories generate` run goes through eight phases before an `.mp4`
 lands on disk. This page traces all of them against the code and answers the two
 questions that matter when you are sizing a machine or hunting a slow step:

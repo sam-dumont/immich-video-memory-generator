@@ -75,12 +75,18 @@ class _SilentProgress:
         return None
 
 
-def _fetch(client: _LibraryClient, person_ids: list[str]) -> list[_Asset]:
+def _fetch(
+    client: _LibraryClient,
+    person_ids: list[str],
+    *,
+    person_match: str = "and",
+) -> list[_Asset]:
     assets = fetch_videos(
         client=client,
         progress=_SilentProgress(),
         date_ranges=[WINDOW],
         person_ids=person_ids,
+        person_match=person_match,
     )
     return assets
 
@@ -107,6 +113,22 @@ def test_no_shared_moment_yields_nothing_rather_than_two_solo_reels():
     assert assets == []
 
 
+def test_or_selects_each_persons_assets_and_deduplicates_shared_ones():
+    client = _LibraryClient(
+        [
+            _Asset("a-alone", {PERSON_A}),
+            _Asset("b-alone", {PERSON_B}),
+            _Asset("a-and-b", {PERSON_A, PERSON_B}),
+            _Asset("neither"),
+        ]
+    )
+
+    assets = _fetch(client, [PERSON_A, PERSON_B], person_match="or")
+
+    assert {asset.id for asset in assets} == {"a-alone", "b-alone", "a-and-b"}
+    assert len(assets) == 3
+
+
 def test_photos_follow_the_same_rule_as_videos():
     client = _LibraryClient(
         [],
@@ -120,6 +142,32 @@ def test_photos_follow_the_same_rule_as_videos():
     photos = fetch_photos(client=client, date_ranges=[WINDOW], person_ids=[PERSON_A, PERSON_B])
 
     assert [p.id for p in photos] == ["photo-a-and-b"]
+
+
+def test_photos_can_union_any_named_person_without_duplicates():
+    client = _LibraryClient(
+        [],
+        photos=[
+            _Asset("photo-a-alone", {PERSON_A}),
+            _Asset("photo-b-alone", {PERSON_B}),
+            _Asset("photo-a-and-b", {PERSON_A, PERSON_B}),
+            _Asset("photo-nobody-named"),
+        ],
+    )
+
+    photos = fetch_photos(
+        client=client,
+        date_ranges=[WINDOW],
+        person_ids=[PERSON_A, PERSON_B],
+        person_match="or",
+    )
+
+    assert {photo.id for photo in photos} == {
+        "photo-a-alone",
+        "photo-b-alone",
+        "photo-a-and-b",
+    }
+    assert len(photos) == 3
 
 
 def test_one_person_still_selects_every_moment_they_appear_in():

@@ -20,22 +20,33 @@ from immich_memories.analysis import selection_trace as trace
 from immich_memories.analysis.clip_analyzer import ClipAnalyzer
 from immich_memories.analysis.clip_refiner import ClipRefiner
 from immich_memories.analysis.clip_scaler import ClipScaler
+from immich_memories.analysis.editorial_projection import (
+    EditorialStageReporter,
+    editorial_clip_segment,
+    editorial_membership,
+)
 from immich_memories.analysis.preview_builder import PreviewBuilder
 from immich_memories.analysis.progress import PipelinePhase, ProgressTracker
 from immich_memories.analysis.selection_coverage import AnalysisCoverage
 from immich_memories.analysis.selection_quality import SelectionQuality
-from immich_memories.analysis.source_filter import not_shot_here
-from immich_memories.analysis.thumbnail_prefetch import ThumbnailPrefetcher
+from immich_memories.analysis.source_filter import not_on_the_timeline, not_shot_here
+from immich_memories.analysis.thumbnail_prefetch import ThumbnailPrefetcher, cached_preview_bytes
 from immich_memories.config_presets import resolve_analysis_depth
 
 if TYPE_CHECKING:
+    from immich_memories.analysis.editorial_planner import (
+        EditorialPlan,
+        EditorialPlanner,
+        EditorialSelection,
+    )
     from immich_memories.api.immich import SyncImmichClient
-    from immich_memories.api.models import VideoClipInfo
+    from immich_memories.api.models import Asset, VideoClipInfo
     from immich_memories.cache.database import VideoAnalysisCache
     from immich_memories.cache.thumbnail_cache import ThumbnailCache
     from immich_memories.cache.video_cache import VideoDownloadCache
     from immich_memories.config_loader import Config
     from immich_memories.config_models_analysis import AnalysisConfig
+    from immich_memories.triage.contracts import PreviewTriage
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +127,11 @@ class PipelineConfig:
     # Analysis depth: auto budgets misses, fast favors speed, thorough analyzes all.
     analysis_depth: str = "auto"
 
+    # A per-run source-scope choice, never loaded from config.yaml. Some
+    # memories (for example a nephew spotlight) are intentionally built from
+    # family forwards rather than only the owner's camera roll.
+    accept_any_provenance: bool = False
+
     @classmethod
     def from_app_config(cls, config: Config, **overrides: object) -> PipelineConfig:
         """Build a pipeline config, taking its dials from user configuration.
@@ -151,6 +167,9 @@ class PipelineResult:
     stats: dict = field(default_factory=dict)
     # How much of the pool this selection was drawn from had a real look (#489).
     coverage: AnalysisCoverage = field(default_factory=lambda: AnalysisCoverage(0, 0))
+    # Kept separate from mutable API models: the final editor may deliberately
+    # render a video as a still or a Live Photo as motion.
+    editorial_selections: tuple[EditorialSelection, ...] = ()
 
 
 @dataclass
@@ -193,6 +212,8 @@ class SmartPipeline:
         *,
         analysis_config: AnalysisConfig,
         app_config: Config,
+        planner: EditorialPlanner | None = None,
+        triage: PreviewTriage | None = None,
     ):
         self.client = client
         self.analysis_cache = analysis_cache
@@ -202,6 +223,8 @@ class SmartPipeline:
         self.run_id = run_id
         self._analysis_config = analysis_config
         self._app_config = app_config
+        self._planner = planner
+        self._triage = triage
         from immich_memories.analysis.provider_health import ProviderCircuit
 
         self.provider_circuit = ProviderCircuit()
@@ -258,10 +281,98 @@ class SmartPipeline:
         clips: list[VideoClipInfo],
         progress_callback: Callable[[dict], None] | None = None,
     ) -> PipelineResult:
-        """Run the full pipeline (phases 1-4)."""
-        analyzed = self.run_analysis(clips, progress_callback)
-        result = self.run_selection(analyzed)
+        """Return the final cut from the sole production editorial source route."""
+        _, result = self.run_editorial_source(clips, progress_callback)
         return result
+
+    def run_editorial_source(
+        self,
+        sources: list[Asset | VideoClipInfo],
+        progress_callback: Callable[[dict], None] | None = None,
+        *,
+        include_live_photos: bool = True,
+    ) -> tuple[list[ClipWithSegment], PipelineResult]:
+        """Plan from full requested metadata, with no legacy analysis or fallback."""
+        from immich_memories.analysis.editorial_source_route import EditorialSourcePlanner
+        from immich_memories.operations.cancellation import PipelineCancelled, cancellation_scope
+
+        if not isinstance(self._planner, EditorialSourcePlanner):
+            raise RuntimeError("pipeline has no production editorial source route")
+        report_stage = EditorialStageReporter(self.tracker, progress_callback)
+        self.last_deep_analysis_count = 0
+        try:
+            self.tracker.start()
+            with (
+                cancellation_scope(report_stage.repeat),
+                trace.tracing(trace.path_from_env()),
+            ):
+                candidates, result = self._planned_editorial_source(
+                    sources, report_stage, include_live_photos=include_live_photos
+                )
+                report_stage("Editorial selection complete", status="complete")
+                # Only a successful cut completes the legacy tracker. Its display
+                # callbacks cannot turn an already finished selection into failure.
+                with contextlib.suppress(Exception, PipelineCancelled):
+                    self.tracker.finish()
+                return candidates, result
+        except PipelineCancelled:
+            with contextlib.suppress(PipelineCancelled):
+                report_stage("Editorial selection cancelled", status="cancelled")
+            raise
+        except Exception:
+            # A stop requested by a terminal display callback must not replace
+            # the source failure that caused this notification.
+            with contextlib.suppress(PipelineCancelled):
+                report_stage("Editorial selection failed", status="failed")
+            raise
+        finally:
+            with contextlib.suppress(Exception):
+                self.analyzer.close()
+            with contextlib.suppress(Exception):
+                self.previewer.close()
+
+    def _planned_editorial_source(
+        self,
+        sources: list[Asset | VideoClipInfo],
+        report_stage: EditorialStageReporter,
+        *,
+        include_live_photos: bool,
+    ) -> tuple[list[ClipWithSegment], PipelineResult]:
+        """Ask the planner for the cut, then put its provenance on the result."""
+        active_trace = trace.active()
+        if active_trace is None:
+            raise RuntimeError("editorial source route requires an active trace")
+        planned = self._planner.plan_source(  # type: ignore[union-attr]
+            sources,
+            trace=active_trace,
+            include_live_photos=include_live_photos,
+            hdr_only=self.config.hdr_only,
+            on_stage=report_stage,
+        )
+        if planned.plan.unavailable_reason is not None:
+            raise RuntimeError("editorial source route returned unavailable evidence")
+        candidates = list(planned.candidates)
+        result = self._project_editorial_plan(planned.plan, candidates, source_verified=True)
+        result.stats.update(
+            {
+                "selection_route": "editorial-source",
+                "source_evidence": "canonical annotations and native editorial checks",
+                "legacy_deep_analysis_count": 0,
+                "total_analyzed": 0,
+                "source_candidate_count": len(candidates),
+                "editorial_render_adjustments": list(planned.render_adjustments),
+                "editorial_duration_realization": planned.duration_realization,
+            }
+        )
+        attempt_dir = getattr(self._planner, "last_attempt_directory", None)
+        if attempt_dir is not None:
+            result.stats["editorial_attempt_directory"] = str(attempt_dir)
+        active_trace.record("editorial final cut", candidates, result.selected_clips)
+        if planned.render_timing is not None:
+            result.stats["editorial_render_timing"] = planned.render_timing
+        trace.record_favourite_law(candidates, result.selected_clips)
+        result.stats["elapsed_seconds"] = self.tracker.progress.elapsed_seconds
+        return candidates, result
 
     def run_analysis(
         self,
@@ -436,14 +547,21 @@ class SmartPipeline:
         # survived to the end.
         pool = analyzed.copy()
         try:
-            result = self.refiner.phase_refine(analyzed, self.tracker)
-            if verify:
-                result, analyzed = self.quality.stabilize(analyzed, result)
-                # One pass, and its answer is the cut. The loop this replaces
-                # existed because the review vetoed a finished selection and
-                # the refill it triggered had never been judged; a pass that
-                # makes the cut has nothing to iterate towards.
-                result, analyzed = self.quality.cut(analyzed, result)
+            result = self._verified_editorial_result(analyzed, verify=verify)
+            used_editorial_planner = result is not None
+            if result is None:
+                result = self.refiner.phase_refine(analyzed, self.tracker)
+                if verify:
+                    result, analyzed = self.quality.stabilize(analyzed, result)
+                    # One pass, and its answer is the cut. The loop this replaces
+                    # existed because the review vetoed a finished selection and
+                    # the refill it triggered had never been judged; a pass that
+                    # makes the cut has nothing to iterate towards.
+                    result, analyzed = self.quality.cut(analyzed, result)
+            if used_editorial_planner:
+                active_trace = trace.active()
+                if active_trace is not None:
+                    active_trace.record("editorial final cut", pool, result.selected_clips)
             trace.record_favourite_law(pool, result.selected_clips)
             self.tracker.finish()
             return result
@@ -454,12 +572,131 @@ class SmartPipeline:
             self.tracker.finish()
             raise
 
+    def _verified_editorial_result(
+        self,
+        analyzed: list[ClipWithSegment],
+        *,
+        verify: bool,
+    ) -> PipelineResult | None:
+        """Re-plan after each selected fallback is seen, without using legacy selection."""
+        if self._planner is None:
+            return None
+        max_rounds = max(1, self.config.max_refinement_passes)
+        for round_index in range(max_rounds + 1):
+            self.tracker.start_phase(PipelinePhase.REFINING, 1)
+            self.tracker.start_item("Editing final selection")
+            result = self._result_from_editorial_planner(analyzed)
+            if result is None:
+                return result
+            if not verify:
+                self._complete_editorial_progress()
+                return result
+            selected_ids = tuple(clip.asset.id for clip in result.selected_clips)
+            pending = self.quality.editorial_members_needing_verification(
+                analyzed,
+                selected_ids,
+            )
+            if not pending:
+                self._complete_editorial_progress()
+                return result
+            if round_index == max_rounds:
+                warning = (
+                    "Editorial planner kept introducing unseen selections beyond the "
+                    "verification bound; using legacy selection"
+                )
+                logger.warning(warning)
+                trace.warn(warning)
+                return None
+            self.quality.verify_editorial_members(analyzed, selected_ids)
+        raise AssertionError("bounded editorial verification loop did not terminate")
+
+    def _complete_editorial_progress(self) -> None:
+        self.tracker.complete_item("editorial-selection")
+        self.tracker.complete_phase()
+
+    def _result_from_editorial_planner(
+        self,
+        analyzed: list[ClipWithSegment],
+    ) -> PipelineResult | None:
+        """Return the planner's exact cut, or ``None`` to use legacy selection."""
+        if self._planner is None:
+            return None
+
+        from collections import Counter
+
+        input_ids = tuple(candidate.clip.asset.id for candidate in analyzed)
+        duplicate_input_ids = sorted(
+            asset_id for asset_id, count in Counter(input_ids).items() if count > 1
+        )
+        if duplicate_input_ids:
+            raise ValueError(
+                "Editorial planner received duplicate input asset IDs: "
+                + ", ".join(duplicate_input_ids)
+            )
+
+        active_trace = trace.active()
+        if active_trace is None:
+            raise RuntimeError("Editorial planner requires an active selection trace")
+        plan = self._planner.plan(tuple(analyzed), trace=active_trace)
+        if plan.unavailable_reason is not None:
+            warning = (
+                f"Editorial planner unavailable; using legacy selection: {plan.unavailable_reason}"
+            )
+            logger.warning(warning)
+            trace.warn(warning)
+            return None
+
+        return self._project_editorial_plan(plan, analyzed)
+
+    def _project_editorial_plan(
+        self,
+        plan: EditorialPlan,
+        analyzed: list[ClipWithSegment],
+        *,
+        source_verified: bool = False,
+    ) -> PipelineResult:
+        """Validate final membership/timing without choosing or repairing any carrier."""
+        by_id = editorial_membership(plan, analyzed)
+        selected = [by_id[item.asset_id] for item in plan.selections]
+        clip_segments = {
+            item.asset_id: editorial_clip_segment(item, candidate, source_verified=source_verified)
+            for item, candidate in zip(plan.selections, selected, strict=True)
+        }
+
+        from immich_memories.analysis.selection_coverage import coverage_of
+
+        coverage = coverage_of(analyzed)
+        trace.record_coverage(coverage)
+        return PipelineResult(
+            selected_clips=[candidate.clip for candidate in selected],
+            clip_segments=clip_segments,
+            errors=[
+                {"clip_id": error.item_id, "error": error.error}
+                for error in self.tracker.progress.errors
+            ],
+            stats={
+                "total_analyzed": len(analyzed),
+                "selected_count": len(selected),
+                "error_count": len(self.tracker.progress.errors),
+                "elapsed_seconds": self.tracker.progress.elapsed_seconds,
+            },
+            coverage=coverage,
+            editorial_selections=plan.selections,
+        )
+
     def _phase_cluster(self, clips: list[VideoClipInfo]) -> list[VideoClipInfo]:
         """Phase 1: Cluster clips by thumbnail similarity."""
         from immich_memories.analysis.thumbnail_clustering import deduplicate_by_thumbnails
 
         self.tracker.start_phase(PipelinePhase.CLUSTERING, len(clips))
         self.thumbnail_prefetcher.ensure_cached(clips)
+        if self._triage is not None:
+            # The previews are on disk now; the heads bank a fact per asset and
+            # nothing downstream is removed because of one.
+            self._triage.run(
+                [clip.asset.id for clip in clips],
+                lambda asset_id: cached_preview_bytes(self.thumbnail_cache, asset_id),
+            )
 
         def progress(current: int, total: int) -> None:
             if current <= len(clips) and current > 0:
@@ -507,9 +744,17 @@ class SmartPipeline:
                 f"{min_duration:.1f}s minimum"
             )
 
+        before_visibility = len(eligible)
+        eligible = [clip for clip in eligible if not not_on_the_timeline(clip.asset)]
+        if len(eligible) < before_visibility:
+            logger.info(
+                "Source filter: removed %d clip(s) Immich keeps off the timeline",
+                before_visibility - len(eligible),
+            )
+
         patterns = self._analysis_config.exclude_filename_patterns
         stills_need_a_camera = self._analysis_config.exclude_stills_without_camera_exif
-        if patterns or stills_need_a_camera:
+        if not self.config.accept_any_provenance and (patterns or stills_need_a_camera):
             before = len(eligible)
             eligible = [
                 clip

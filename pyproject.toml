@@ -114,6 +114,15 @@ gpu = [
     "freetype-py>=2.4",  # SDF font rendering
 ]
 # All cross-platform optional features
+# Required when preparing missing editorial public heads and detector facts.
+# Weights and the compact-caption endpoint are separate setup dependencies.
+editorial = [
+    "onnxruntime>=1.28",
+    "torch>=2.0",
+    "timm>=1.0.29",
+    "huggingface-hub>=1.29",
+]
+
 all = [
     "immich-memories[music]",
     "immich-memories[audio]",
@@ -123,6 +132,7 @@ all = [
     "immich-memories[gpu]",
     "immich-memories[speech]",
     "immich-memories[transcribe]",
+    "immich-memories[editorial]",
 ]
 # All features for macOS (includes Apple Vision framework)
 all-mac = [
@@ -134,6 +144,7 @@ all-mac = [
     "immich-memories[gpu]",
     "immich-memories[speech]",
     "immich-memories[transcribe]",
+    "immich-memories[editorial]",
 ]
 dev = [
     "pytest>=9.0.3",
@@ -529,6 +540,7 @@ DEP002 = [
     "pyyaml",                                           # imported as yaml
     "pillow",                                           # imported as PIL
     "watchdog",                                         # runtime scheduler
+    "timm",                                             # editorial extra: imported by the detector subprocess interpreter, not by the package
     "pyobjc-core", "pyobjc-framework-Vision",           # macOS-only, runtime
     "pyobjc-framework-Quartz", "pyobjc-framework-Metal", # macOS GPU
     "torch",                                            # PANNs inference backend
@@ -572,6 +584,9 @@ source_modules = [
     "immich_memories.processing",
     "immich_memories.titles",
     "immich_memories.people",
+    "immich_memories.store",
+    "immich_memories.triage",
+    "immich_memories.operations",
 ]
 forbidden_modules = ["immich_memories.ui"]
 
@@ -585,6 +600,9 @@ source_modules = [
     "immich_memories.titles",
     "immich_memories.audio",
     "immich_memories.people",
+    "immich_memories.store",
+    "immich_memories.triage",
+    "immich_memories.operations",
 ]
 forbidden_modules = ["immich_memories.cli"]
 

@@ -12,11 +12,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from immich_memories.analysis.album_source import (
-    AlbumMedia,
-    album_media_as_clips,
-    album_target_minutes,
-)
+from immich_memories.analysis.album_source import AlbumMedia, album_target_minutes
 from immich_memories.api.album_service import AlbumService
 from immich_memories.api.models import Asset, AssetType, VideoClipInfo
 from immich_memories.ui.state import AppState
@@ -78,38 +74,6 @@ class TestListAlbums:
         assert [a.name for a in await service.list_albums()] == ["Usable"]
 
 
-class TestAlbumMediaAsClips:
-    def test_the_clip_pool_is_video_and_the_photo_pool_is_photographs(self):
-        """Live Photo clips were a third pool flattened in here; there is no
-        third pool now, so a photograph stays in the photo pool whatever it
-        will later render as."""
-        media = AlbumMedia(
-            videos=[_asset("v1", AssetType.VIDEO)],
-            photos=[_asset("p1", AssetType.IMAGE), _asset("live-1", AssetType.IMAGE)],
-        )
-
-        clips, photos = album_media_as_clips(media)
-
-        assert {c.asset.id for c in clips} == {"v1"}
-        assert {p.id for p in photos} == {"p1", "live-1"}
-
-    def test_clips_come_back_in_capture_order(self):
-        first = _asset("v1", AssetType.VIDEO)
-        second = _asset("v2", AssetType.VIDEO)
-        second.file_created_at = datetime(2025, 7, 1, tzinfo=UTC)
-        media = AlbumMedia(videos=[second, first], photos=[])
-
-        clips, _ = album_media_as_clips(media)
-
-        assert [c.asset.id for c in clips] == ["v1", "v2"]
-
-    def test_an_empty_album_yields_empty_pools_rather_than_failing(self):
-        clips, photos = album_media_as_clips(AlbumMedia())
-
-        assert clips == []
-        assert photos == []
-
-
 class TestAlbumModeState:
     """Album mode must not leave the wizard expecting a date range it never set."""
 
@@ -130,7 +94,6 @@ class TestAlbumModeState:
         """Generation still needs a span; it comes from the album, not the picker."""
         from datetime import datetime
 
-        from immich_memories.analysis.album_source import AlbumMedia
         from immich_memories.timeperiod import DateRange
 
         media = AlbumMedia(

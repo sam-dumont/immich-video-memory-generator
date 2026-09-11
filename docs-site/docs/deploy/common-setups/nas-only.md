@@ -4,7 +4,13 @@ sidebar_label: "NAS-Only (Docker)"
 
 # NAS-Only Setup (Docker)
 
-For Synology, QNAP, Unraid, and TrueNAS users running Immich on the same NAS or local network. Docker-only, no LLM, no AI music, CPU encoding.
+For Synology, QNAP, Unraid, and TrueNAS users running Immich on the same NAS or local network.
+The NAS handles the app and CPU encoding; editorial model services may run on another machine.
+
+Before generating, complete [editorial annotation setup](../configuration/editorial-preparation.md).
+The story-first route requires its caption and story providers plus the local head/detector
+artifacts when their facts are missing. Disabling optional clip-content scoring does not
+remove that requirement.
 
 ## Who this is for
 
@@ -92,33 +98,20 @@ If Immich runs on the same Docker network, use the container name (`immich-serve
 - **Scheduling**: set `IMMICH_MEMORIES_AUTOMATION__ENABLED=true` and `IMMICH_MEMORIES_AUTOMATION__DAILY_AT=09:00` (plus `TZ`) in the compose `environment:` — the UI process runs the daily decision itself, so there is no cron to install. `immich-memories auto install` is for host installs and cannot write a cron job inside the container; if you would rather drive it from the NAS host's scheduler, use `docker exec immich-memories immich-memories auto run --quiet --cooldown 24` and leave the built-in timer off. See [Daily automation](../installation/docker.md#daily-automation)
 - **Photo support**: Ken Burns animations, face-aware pan, blur backgrounds
 
-### What still curates without an LLM
+### Editorial work on a NAS
 
-Worth being precise about, because "no LLM" reads like "no curation" and that is not what
-happens. Only the final review is gated on a model — the rest of the loop is arithmetic over
-data Immich and the analyzer already produced:
+The app prepares facts for the whole source period, then uses the configured story model to
+identify stories and distinct moments before allocating duration. The caption and story
+services can run elsewhere on your network. Public context heads and detectors use CPU
+inference on the app host, or the configured detector Python environment.
 
-- **The verify pass.** A clip can reach the cut carrying a metadata *guess* for a score rather
-  than a real one. Verify finds those, analyses them properly, and re-runs selection. This runs
-  regardless of whether an LLM is configured.
-- **The mechanical judge.** A non-favourite scoring below the floor never ships, and the memory
-  cannot end on a clip that is both its weakest and well under the average — a video should not
-  end on its worst shot. Pure thresholds, no model.
-- **Event-vs-catalogue detection.** A dense day is only promoted as an event if Immich
-  recognised people in enough of it. This is what stops 130 photos of an empty apartment (a
-  property viewing) from beating the month's real days. It reads Immich's existing face
-  recognition, so it costs nothing extra.
-- **Favourites first.** Every favourite in range is taken before anything competes on score,
-  and favourites are exempt from the judge's floor.
-- **Adaptive coverage.** Every month or week in range is guaranteed at least one clip, and a
-  sole representative of a period is protected when the cut is scaled down to fit.
-
-What you actually give up is redundancy detection across the finished cut — two near-identical
-moments can both survive, because nothing read their descriptions side by side.
+Complete cached results skip model work. A missing provider stops an uncached run with an
+explicit incomplete result. There is no model-free alternate selector.
 
 ## What doesn't work
 
-- **LLM content analysis**: needs a separate LLM server (mlx-vlm, Ollama, vLLM). Without it the pipeline loses the holistic review — the one pass that reads every clip's description together and spots the same birthday candles twice. Everything else in the curation loop still runs; see below.
+- **Running large models on a small NAS**: configure reachable caption and story services on
+  another machine when the NAS cannot host them. Required missing evidence blocks selection.
 - **AI music generation**: MusicGen and ACE-Step need GPU servers. Use custom music upload instead.
 - **GPU encoding**: NAS CPUs (Celeron, Atom, low-end Xeon) don't have usable GPU encoders. Encoding is CPU-only via libx264.
 - **Taichi GPU title renderer**: falls back to PIL. Title screens still look good, just without particle effects and animated gradients.

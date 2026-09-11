@@ -6,6 +6,10 @@ sidebar_label: "Linux + NVIDIA"
 
 For Linux servers with NVIDIA GPUs. Docker with nvidia-container-toolkit for NVENC encoding, CUDA scene analysis, GPU title rendering, and optional AI music generation.
 
+Complete [editorial annotation setup](../configuration/editorial-preparation.md) before the
+first uncached generation. The pinned public context encoder, detector weights, compact-caption
+endpoint and story model are separate requirements from NVENC and the music backends below.
+
 ## Who this is for
 
 You have a Linux server (Ubuntu, Debian, Fedora) with an NVIDIA GPU (GTX 1050 or newer — Pascal is where NVENC starts). You want hardware-accelerated encoding and optionally want to run MusicGen or ACE-Step for AI-generated background music.

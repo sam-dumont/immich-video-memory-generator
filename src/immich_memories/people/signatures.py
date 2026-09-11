@@ -77,6 +77,10 @@ class PersonEvidence:
     count: int
     active_months: tuple[date, ...]
     birth_date: date | None = None
+    # Share of the library's own photographed days, per declared era — never a
+    # raw count (the annotation-layer gather doctrine). () until a day-grain
+    # scan has run.
+    era_day_shares: tuple[tuple[str, float], ...] = ()
 
     @property
     def month_count(self) -> int:

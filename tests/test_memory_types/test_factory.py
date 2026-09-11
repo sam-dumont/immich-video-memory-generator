@@ -35,8 +35,8 @@ class TestPersonFilterOnEveryType:
     """#683: a memory type that is not about people still narrows to them.
 
     Every factory that takes ``person_names`` kept only the first, so
-    ``--person Alice --person Bob`` fetched what held both while the wizard's
-    preset asked for Alice alone. One rule now, and it is the CLI's.
+    ``--person Riley --person Bob`` fetched what held both while the wizard's
+    preset asked for Riley alone. One rule now, and it is the CLI's.
     """
 
     @pytest.mark.parametrize(
@@ -52,9 +52,9 @@ class TestPersonFilterOnEveryType:
         ids=str,
     )
     def test_every_name_survives_and_intersects(self, memory_type, params) -> None:
-        preset = create_preset(memory_type, person_names=["Alice", "Bob"], **params)
+        preset = create_preset(memory_type, person_names=["Riley", "Bob"], **params)
 
-        assert preset.person_filter.person_names == ["Alice", "Bob"]
+        assert preset.person_filter.person_names == ["Riley", "Bob"]
         assert preset.person_filter.require_co_occurrence
 
     def test_naming_nobody_leaves_the_memory_wide(self) -> None:
@@ -85,9 +85,9 @@ class TestCreatePresetPersonSpotlight:
     """Person spotlight is a year narrowed to one person."""
 
     def test_single_person_filter(self) -> None:
-        preset = create_preset(MemoryType.PERSON_SPOTLIGHT, year=2024, person_names=["Alice"])
+        preset = create_preset(MemoryType.PERSON_SPOTLIGHT, year=2024, person_names=["Riley"])
         assert preset.person_filter.mode == "single"
-        assert preset.person_filter.person_names == ["Alice"]
+        assert preset.person_filter.person_names == ["Riley"]
 
     def test_requires_person(self) -> None:
         with pytest.raises((ValueError, TypeError)):
@@ -95,7 +95,7 @@ class TestCreatePresetPersonSpotlight:
 
     def test_default_uses_calendar_year(self) -> None:
         """Without use_birthday, defaults to Jan 1 - Dec 31."""
-        preset = create_preset(MemoryType.PERSON_SPOTLIGHT, year=2024, person_names=["Alice"])
+        preset = create_preset(MemoryType.PERSON_SPOTLIGHT, year=2024, person_names=["Riley"])
         assert preset.date_ranges[0].start == datetime(2024, 1, 1, 0, 0, 0)
         assert preset.date_ranges[0].end == datetime(2024, 12, 31, 23, 59, 59)
 
@@ -104,7 +104,7 @@ class TestCreatePresetPersonSpotlight:
         preset = create_preset(
             MemoryType.PERSON_SPOTLIGHT,
             year=2024,
-            person_names=["Alice"],
+            person_names=["Riley"],
             use_birthday=True,
             birthday=date(1990, 3, 15),
         )
@@ -115,7 +115,7 @@ class TestCreatePresetPersonSpotlight:
         preset = create_preset(
             MemoryType.PERSON_SPOTLIGHT,
             year=2024,
-            person_names=["Alice"],
+            person_names=["Riley"],
             use_birthday=True,
             birthday=date(1990, 3, 15),
             years_back=2,
@@ -127,7 +127,7 @@ class TestCreatePresetPersonSpotlight:
         preset = create_preset(
             MemoryType.PERSON_SPOTLIGHT,
             year=2024,
-            person_names=["Alice"],
+            person_names=["Riley"],
             use_birthday=True,
         )
         assert preset.date_ranges[0].start == datetime(2024, 1, 1, 0, 0, 0)
@@ -137,9 +137,21 @@ class TestCreatePresetMultiPerson:
     """Multi-person preset requires co-occurrence by default."""
 
     def test_co_occurrence_default(self) -> None:
-        preset = create_preset(MemoryType.MULTI_PERSON, year=2024, person_names=["Alice", "Bob"])
+        preset = create_preset(MemoryType.MULTI_PERSON, year=2024, person_names=["Riley", "Bob"])
         assert preset.person_filter.require_co_occurrence
         assert preset.person_filter.mode == "all_of"
+
+    def test_or_means_any_named_person(self) -> None:
+        preset = create_preset(
+            MemoryType.MULTI_PERSON,
+            year=2024,
+            person_names=["Riley", "Bob"],
+            person_match="or",
+        )
+
+        assert not preset.person_filter.require_co_occurrence
+        assert preset.person_filter.mode == "any"
+        assert preset.name == "Riley or Bob"
 
     def test_requires_multiple_people(self) -> None:
         with pytest.raises((ValueError, TypeError)):
@@ -210,6 +222,9 @@ class TestListMemoryTypes:
             assert "type" in t
             assert "name" in t
             assert "description" in t
+
+    def test_retired_then_and_now_is_not_a_creation_choice(self) -> None:
+        assert "then_and_now" not in {t["type"] for t in list_memory_types()}
 
 
 class TestCreatePresetTrip:

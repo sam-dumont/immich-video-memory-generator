@@ -7,7 +7,9 @@ import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
 
 # Your First Memory
 
-This walks you through creating a video from start to finish. Plan on about 2 minutes to install and 10 for a first short video on a Mac or GPU box; on a CPU-only NAS the analysis and encoding take longer (see the [resource table](https://github.com/sam-dumont/immich-video-memory-generator#resource-requirements)).
+This walks you through creating a video from start to finish. Set up the annotation providers
+before the first run. Cold preparation takes longer than a rerun because the app reads and
+describes the source period; complete facts are cached.
 
 ## Prerequisites
 
@@ -16,7 +18,9 @@ Before you start:
 - **Immich v2 or newer** with an API key (Account Settings > API Keys > New API Key — grant **All**, or at least read access to assets/people/albums/timeline/search plus asset upload + album create/update if you want upload-back)
 - **Docker** or **Python 3.11+** installed
 - **~2 GB free disk** for the video cache (downloaded clips get cached locally)
-- At least 20-30 videos in your Immich library for the time period you want
+- Photos, Live Photos or videos in the period you want
+- [Editorial annotation setup](../deploy/configuration/editorial-preparation.md): the pinned
+  encoder and detector weights, compact-caption endpoint, and configured story model
 
 ## Step 1: Launch
 
@@ -37,7 +41,7 @@ docker compose up -d
 **Or native install:**
 
 ```bash
-uvx immich-memories ui
+uvx --from "immich-memories[editorial]" immich-memories ui
 ```
 
 Open [http://localhost:8080](http://localhost:8080) in your browser. Both routes keep the UI on
@@ -58,7 +62,10 @@ Select the **Year in Review** preset card. Pick the year you want (the one with 
 
 ## Step 4: Review clips
 
-Click **Next: Review Clips**. Step 2 loads every video in the range (all checked) — deselect anything you already know you don't want, then click **Generate Memories**. The pipeline clusters, filters, analyzes and refines; the first run costs about a minute per 10 clips on Apple Silicon or a GPU, 1–2 minutes per clip on a CPU-only box. Later runs reuse the cache.
+Click **Next: Review Clips** and review the source material, then click **Generate Memories**.
+The planner prepares missing facts, reads the period's stories and distinct moments, and chooses
+what to include before allocating duration. Missing required providers are reported before
+selection continues. New runs use the FAMILY audience.
 
 When it finishes, click **Review & Refine Selected Clips** to see what it picked. Untick a clip to drop it, drag the range slider to change the excerpt, then **Continue to Generation**.
 
@@ -88,13 +95,16 @@ When it's done, the built-in player shows your result and "Saved to:" gives the 
 
 ## What just happened?
 
-The pipeline ran four phases: **fetch** (downloaded videos from Immich via its API, read-only), **analyze** (scored each clip on motion, faces, audio, and optionally LLM content understanding), **select** (picked the best segments and distributed them across the time period), **assemble** (encoded everything with FFmpeg using the streaming assembler, which keeps memory under 550 MB even at 4K).
+The app fetched the period's source metadata and previews, prepared missing descriptions and
+image facts, and read the stories those pictures show. It chose distinct moments, allocated the
+requested duration, then assembled the selected material with FFmpeg, titles and music.
 
-The analysis results are cached in a local SQLite database. Next time you generate a video for the same time period, most of the analysis is skipped because the scores are already stored: a warm re-run of the same month lands around 3 minutes against 10 cold. Not instant, but a different order of wait.
+Facts and editorial decisions are cached by their producer and input. A later run reuses matching
+results; changed or missing evidence requires fresh work.
 
 ## Next steps
 
 - Try other memory types: [Trip Memories](./memory-types/trip-memories.mdx) (needs GPS data), [Person Spotlight](./memory-types/monthly-person-season.mdx) (needs face recognition in Immich)
-- Set up [LLM content analysis](./pipeline/llm-content-analysis.md) so scoring knows what is in the frame
+- Review the [editorial annotation setup](../deploy/configuration/editorial-preparation.md) if a provider is missing
 - Automate it: schedule one daily [`auto run`](./cli/auto.md) — see [Automated Generation](./recipes/automated-generation.md)
 - Explore [all CLI options](./cli/generate.md) for fine-grained control

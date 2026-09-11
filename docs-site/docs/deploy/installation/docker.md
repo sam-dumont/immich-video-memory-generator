@@ -60,6 +60,13 @@ creates the folder for you it is owned by root; then either `mkdir -p output` be
 
 ## Resource requirements
 
+Before the first uncached generation, configure the
+[editorial annotation providers](../configuration/editorial-preparation.md): the pinned
+DINO encoder, detector weights, compact-caption endpoint and story model. Model endpoints
+must be reachable from inside the container; `localhost` there names the container itself.
+Mount the model/cache directories or use paths inside the persistent config volume. Starting
+the compose service does not acquire these artifacts or start a caption server.
+
 The container's resource usage depends on what phase it's in:
 
 | Phase | RAM | CPU | When |

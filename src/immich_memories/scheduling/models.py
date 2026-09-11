@@ -6,6 +6,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+DEFAULT_JOB_TIMEOUT_MINUTES = 120
+
 
 class ScheduleEntry(BaseModel):
     """A single scheduled memory generation job."""
@@ -32,7 +34,9 @@ class SchedulerConfig(BaseModel):
     enabled: bool = Field(default=False, description="Enable the scheduler daemon")
     timezone: str = Field(default="UTC", description="Timezone for cron evaluation")
     job_timeout_minutes: int = Field(
-        default=60, description="Max minutes per job before timeout (default 60)"
+        default=DEFAULT_JOB_TIMEOUT_MINUTES,
+        ge=1,
+        description="Max minutes for the complete generation job, including preparation and rendering (default 120)",
     )
     schedules: list[ScheduleEntry] = Field(
         default_factory=list, description="List of scheduled generation jobs"

@@ -61,6 +61,24 @@ def scope_options(command: FC) -> FC:
         ),
         click.option("--person", "-p", type=str, multiple=True, help="Person name (repeatable)"),
         click.option(
+            "--people-expression",
+            "person_expression",
+            type=str,
+            default=None,
+            help='Grouped people condition, e.g. ("Person A" OR "Person B") AND "Person C". '
+            "Use exact library names; each asset must match.",
+        ),
+        click.option(
+            "--person-match",
+            type=click.Choice(["and", "or"]),
+            default="and",
+            show_default=True,
+            help=(
+                "With several --person values, require everyone in each asset "
+                "(and) or accept any named person (or)"
+            ),
+        ),
+        click.option(
             "--memory-type",
             type=click.Choice(
                 [
@@ -72,7 +90,6 @@ def scope_options(command: FC) -> FC:
                     "on_this_day",
                     "trip",
                     "holiday",
-                    "then_and_now",
                     "special_day",
                 ]
             ),
@@ -200,14 +217,17 @@ def output_options(command: FC) -> FC:
 def run_options(command: FC) -> FC:
     """How far the run goes, where the result lands, and what is written over the clips."""
     options = [
-        click.option("--dry-run", is_flag=True, help="Show what would be done without generating"),
+        click.option(
+            "--dry-run",
+            is_flag=True,
+            help="Discover inputs and show preparation needs without selection or generation",
+        ),
         click.option(
             "--no-render",
             is_flag=True,
             help=(
-                "Run the real selection — analysis, verify, judge, review — and stop "
-                "before encoding. Unlike --dry-run, which uses cached analysis only and "
-                "skips the verify pass, this picks the clips it would actually ship"
+                "Run story-first selection and its audience and media checks, then stop "
+                "before encoding. Unlike --dry-run, this picks the clips it would actually ship"
             ),
         ),
         click.option(
@@ -279,6 +299,15 @@ def selection_options(command: FC) -> FC:
             help="Include photos as animated Ken Burns clips (blur background, face-aware pan)",
         ),
         click.option(
+            "--accept-any-provenance",
+            is_flag=True,
+            default=False,
+            help=(
+                "Keep forwarded and re-encoded media for this memory; date, person, "
+                "privacy, and Live Photo boundaries still apply"
+            ),
+        ),
+        click.option(
             "--photo-duration",
             type=float,
             default=None,
@@ -326,13 +355,19 @@ def per_memory_type_options(command: FC) -> FC:
             "--years-back",
             type=int,
             default=None,
-            help="Years to look back for --birthday, on_this_day, holiday or then_and_now",
+            help="Years to look back for --birthday, on_this_day or holiday",
         ),
         click.option(
             "--near-date",
             type=str,
             default=None,
             help="Select trip closest to this date (YYYY-MM-DD, use with --memory-type trip)",
+        ),
+        click.option(
+            "--event-id",
+            type=str,
+            default=None,
+            help="Exact catalogue event ID (use with --memory-type special_day and --day)",
         ),
         click.option(
             "--day",

@@ -10,18 +10,73 @@ The filename is the only thing that settles this before analysis has looked at
 anything, which is what keeps these out of the analysis budget and what makes
 the rule work for anyone with no LLM configured at all. The holistic review is
 the second line, for the cameras whose filenames give nothing away.
+
+It also holds the shape accessors every pool builder reads, so nothing has to
+re-derive which of the two source representations carries the asset.
 """
 
 from __future__ import annotations
 
 import fnmatch
 import logging
+from collections.abc import Iterable
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
+
+from immich_memories.analysis.source_quality import (
+    forwarded_source_refusal,
+    predates_modern_mobile_sharing,
+)
+from immich_memories.api.models import Asset, VideoClipInfo
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
+
+
+def asset_of(source: Asset | VideoClipInfo) -> Asset:
+    """The Asset inside a source, whichever representation the pool carries."""
+    return source.asset if isinstance(source, VideoClipInfo) else source
+
+
+def asset_id_of(source: Asset | VideoClipInfo) -> str:
+    """The asset ID a source stands for, clip representation or not."""
+    return asset_of(source).id
+
+
+def is_editorial_source_asset(
+    asset: Any,
+    *,
+    start_at: datetime | None,
+    end_at: datetime | None,
+) -> bool:
+    """Whether an asset is in the requested editorial scope before Pass 0."""
+    from immich_memories.api.models import AssetType
+
+    if getattr(asset, "type", None) not in (AssetType.IMAGE, AssetType.VIDEO):
+        return False
+    taken_at = getattr(asset, "file_created_at", None)
+    if taken_at is None:
+        return False
+    return (start_at is None or taken_at >= start_at) and (end_at is None or taken_at <= end_at)
+
+
+def live_photo_component_ids(sources: Iterable[Any]) -> frozenset[str]:
+    """The video halves claimed by the stills in this pool.
+
+    Immich lists a Live Photo's motion component as its own video asset, so one
+    query returns both halves of the same photograph. The still is the
+    photograph; the component is how it can be rendered. Reading the pool for
+    the components its own stills claim is what `drop_live_photo_components`
+    does for every other pool builder, expressed as a set the editorial path
+    can put on the record instead of dropping silently.
+    """
+    return frozenset(
+        component
+        for source in sources
+        if (component := getattr(source, "live_photo_video_id", None))
+    )
 
 
 def from_an_excluded_source(name: str | None, patterns: Sequence[str]) -> bool:
@@ -65,6 +120,32 @@ def _a_still_with_no_camera(asset: Any) -> bool:
     return not (exif and getattr(exif, "make", None))
 
 
+def not_on_the_timeline(asset: Any) -> bool:
+    """True for anything Immich does not show on the timeline.
+
+    A privacy gate rather than a provenance one, which is why -- alone among
+    the rules here -- a star does not lift it. `not_shot_here` asks whether
+    anybody wanted this asset, and a favourite answers that directly. This asks
+    whether we may look at the asset at all, which a favourite cannot speak to:
+    a picture in the locked folder is likely to be BOTH starred and flattering
+    to any score, exactly the combination that must never ship.
+
+    The server already refuses `visibility=locked` to an API key with 401
+    "Elevated permission is required", so locked assets do not reach this code
+    today. It is asserted here anyway, because a remote default we do not
+    control is not a gate.
+
+    `hidden` is the live one. The default metadata search returns it unasked --
+    3,303 assets on a real library, all of them Live Photo video components
+    Immich hides so the timeline does not show one shot twice. `isArchived` is
+    false on every one of them, so the older boolean does not cover this.
+    """
+    visibility = getattr(asset, "visibility", None)
+    if visibility is not None and visibility != "timeline":
+        return True
+    return bool(getattr(asset, "is_archived", False))
+
+
 def not_shot_here(
     asset: Any,
     *,
@@ -85,12 +166,40 @@ def not_shot_here(
     """
     if getattr(asset, "is_favorite", False):
         return False
+    if predates_modern_mobile_sharing(getattr(asset, "file_created_at", None)):
+        return False
     if from_an_excluded_source(getattr(asset, "original_file_name", None), patterns):
         return True
     return stills_need_a_camera and _a_still_with_no_camera(asset)
 
 
-def from_the_camera_roll(photo_assets: list[Any], config: Any) -> list[Any]:
+def _minimum_source_short_side(analysis: Any) -> int:
+    value = getattr(analysis, "min_source_short_side", 0)
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _has_allowed_photo_provenance(
+    asset: Any,
+    *,
+    patterns: Sequence[str],
+    legacy_still_exif_veto: bool,
+    min_short_side: int,
+) -> bool:
+    if not_shot_here(
+        asset,
+        patterns=patterns,
+        stills_need_a_camera=legacy_still_exif_veto,
+    ):
+        return False
+    return forwarded_source_refusal(asset, min_short_side=min_short_side) is None
+
+
+def from_the_camera_roll(
+    photo_assets: list[Any],
+    config: Any,
+    *,
+    accept_any_provenance: bool = False,
+) -> list[Any]:
     """Drop the photos nothing says the library's own camera made.
 
     Videos are filtered on the same rule before analysis; photos reached
@@ -102,12 +211,42 @@ def from_the_camera_roll(photo_assets: list[Any], config: Any) -> list[Any]:
     analysis = getattr(config, "analysis", None)
     patterns = getattr(analysis, "exclude_filename_patterns", ())
     stills_need_a_camera = getattr(analysis, "exclude_stills_without_camera_exif", False)
-    if not patterns and not stills_need_a_camera:
+    min_short_side = _minimum_source_short_side(analysis)
+    # Read only to say out loud that it is being ignored. The setting lets
+    # analysis be pointed at the archive on purpose; generation refuses it,
+    # because a gate that depends on remembering a setting is not a gate. A
+    # silent refusal would be worse than no setting at all -- someone would
+    # turn it on and never learn it did nothing here.
+    if getattr(analysis, "include_off_timeline_assets", False):
+        logger.warning(
+            "include_off_timeline_assets is on, and generation ignores it: "
+            "archived, hidden and locked assets stay out of the video."
+        )
+    on_the_timeline = [asset for asset in photo_assets if not not_on_the_timeline(asset)]
+    if len(on_the_timeline) < len(photo_assets):
+        logger.info(
+            "Source filter: %d photo(s) Immich keeps off the timeline",
+            len(photo_assets) - len(on_the_timeline),
+        )
+    photo_assets = on_the_timeline
+    if accept_any_provenance:
+        return photo_assets
+
+    # A resolution-aware provenance read supersedes the blanket still EXIF
+    # veto. Otherwise a 4000x2666 official race photograph with no camera make
+    # dies before its size and named export can vouch for it.
+    legacy_still_exif_veto = stills_need_a_camera and min_short_side <= 0
+    if not patterns and not legacy_still_exif_veto and min_short_side <= 0:
         return photo_assets
     kept = [
         asset
         for asset in photo_assets
-        if not not_shot_here(asset, patterns=patterns, stills_need_a_camera=stills_need_a_camera)
+        if _has_allowed_photo_provenance(
+            asset,
+            patterns=patterns,
+            legacy_still_exif_veto=legacy_still_exif_veto,
+            min_short_side=min_short_side,
+        )
     ]
     if len(kept) < len(photo_assets):
         logger.info(

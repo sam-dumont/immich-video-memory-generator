@@ -14,7 +14,9 @@ from immich_memories.timeperiod import DateRange
 from immich_memories.tracking.models import DeliveryStatus
 
 if TYPE_CHECKING:
+    from immich_memories.analysis.editorial_planner import EditorialSelection
     from immich_memories.api.models import Person, VideoClipInfo
+    from immich_memories.api.person_expression import PersonExpression
     from immich_memories.cache.thumbnail_cache import ThumbnailCache
     from immich_memories.config_loader import Config
     from immich_memories.memory_types.presets import MemoryPreset
@@ -64,6 +66,8 @@ class AppState:
 
     # Clips
     clips: list[VideoClipInfo] = field(default_factory=list)
+    pipeline_selected_clips: list[VideoClipInfo] = field(default_factory=list)
+    editorial_selections: tuple[EditorialSelection, ...] = ()
     selected_clip_ids: set[str] = field(default_factory=set)
     clip_segments: dict[str, tuple[float, float]] = field(default_factory=dict)
     cached_analysis_ids: set[str] = field(default_factory=set)
@@ -96,6 +100,7 @@ class AppState:
     pipeline_result: dict[str, Any] | None = None
     pipeline_config: dict[str, Any] = field(default_factory=dict)
     timeline_plan: TimelinePlan | None = None
+    editorial_render_timing: dict[str, Any] | None = None
 
     # Generation settings
     duration_mode: Literal["auto", "manual"] = "auto"
@@ -108,6 +113,7 @@ class AppState:
     max_non_favorite_ratio: float = 0.25
     include_live_photos: bool = False
     include_photos: bool = False
+    accept_any_provenance: bool = False
     photo_assets: list[Any] = field(default_factory=list)
     selected_photo_ids: set[str] = field(default_factory=set)
     photo_duration: float = 4.0
@@ -124,6 +130,7 @@ class AppState:
     album_id: str | None = None
     album_name: str | None = None
     memory_preset_params: dict[str, Any] = field(default_factory=dict)
+    person_expression_error: str | None = None
 
     # LLM-generated title (shown in Step 3, used in Step 4)
     title_suggestion_title: str | None = None
@@ -187,20 +194,90 @@ class AppState:
         sees the same list the CLI builds from ``--person``: a group of one is
         a filter, not an absence of one.
         """
+        if self.person_expression is not None:
+            return []  # Expression-aware fetches pass the resolved tree separately.
         group = self.memory_preset_params.get("person_ids") or []
         if group:
             return list(group)
         return [self.selected_person.id] if self.selected_person else []
+
+    @property
+    def person_match(self) -> str:
+        """Whether several selected people are intersected or unioned."""
+        return str(self.memory_preset_params.get("person_match", "and"))
+
+    @property
+    def person_expression(self) -> PersonExpression | None:
+        """The exact named condition, never reconstructed from a flat leaf list."""
+        from immich_memories.api.person_expression import PersonExpression
+
+        if self.person_expression_error:
+            raise ValueError(self.person_expression_error)
+        value = self.memory_preset_params.get("person_expression")
+        return PersonExpression.from_dict(value) if value is not None else None
+
+    def validate_person_expression_scope(self, memory_type: str | None = None) -> None:
+        """Refuse unsupported combinations before fetching or using loaded media."""
+        if self.person_expression is None:
+            return
+        product = memory_type if memory_type is not None else self.memory_type
+        if product in {"person_spotlight", "trip", "album"} or (
+            self.memory_preset_params.get("use_birthday") or self.year_type == "birthday"
+        ):
+            raise ValueError(
+                "Grouped people conditions are not supported for person spotlights, "
+                "birthday memories, trips or albums. Choose a date-range memory."
+            )
+
+    def resolved_person_expression(self) -> PersonExpression | None:
+        """Resolve every name to all matching face IDs, preserving AND/OR groups."""
+        expression = self.person_expression
+        if expression is None:
+            return None
+        self.validate_person_expression_scope()
+        from immich_memories.analysis.editorial_source import resolve_named_expression
+
+        return resolve_named_expression(expression, self.people)
+
+    def clear_person_expression(self) -> None:
+        """An explicit flat-picker choice replaces the previous grouped condition."""
+        self.memory_preset_params.pop("person_expression", None)
+        self.person_expression_error = None
+
+    def set_person_expression(self, expression: PersonExpression) -> None:
+        """Store a validated named tree and its display leaves without flattening it."""
+        previous = self.memory_preset_params.get("person_expression")
+        previous_error = self.person_expression_error
+        self.person_expression_error = None
+        self.memory_preset_params["person_expression"] = expression.to_dict()
+        try:
+            self.resolved_person_expression()
+        except ValueError:
+            if previous is None:
+                self.memory_preset_params.pop("person_expression", None)
+            else:
+                self.memory_preset_params["person_expression"] = previous
+            self.person_expression_error = previous_error
+            raise
+        self.memory_preset_params["person_names"] = list(expression.leaf_values)
+        self.memory_preset_params["person_ids"] = []
+        self.selected_person = None
 
     def apply_preset(self, preset: MemoryPreset) -> None:
         """Adopt everything a preset decided: its windows, its length, its people.
 
         The person filter travels on the preset rather than being re-derived per
         card, so a Year in Review narrowed to two people asks Immich exactly
-        what ``--person Alice --person Bob`` asks it -- one rule, both surfaces
+        what ``--person Riley --person Bob`` asks it -- one rule, both surfaces
         (#666, #683). Names resolve against ``people``, the roster Immich
         returned, because a filter is written in names and fetched by id.
         """
+        expression = preset.person_filter.person_expression
+        if expression is not None:
+            self.set_person_expression(expression)
+            self.validate_person_expression_scope(preset.memory_type)
+        else:
+            self.clear_person_expression()
         self.date_ranges = preset.date_ranges.copy()
         if preset.default_duration_seconds:
             self.target_duration = preset.default_duration_seconds / 60
@@ -208,7 +285,12 @@ class AppState:
         elif preset.date_ranges:
             # ~1 min per month, ~8 min per year, for a preset with no opinion.
             self.target_duration = max(1, min(10, round(preset.date_ranges[0].days / 45)))
-        self.narrow_to_people(preset.person_filter.person_names)
+        if expression is None:
+            self.narrow_to_people(preset.person_filter.person_names)
+        if expression is None and len(preset.person_filter.person_names) > 1:
+            self.memory_preset_params["person_match"] = (
+                "and" if preset.person_filter.require_co_occurrence else "or"
+            )
 
     def narrow_to_people(self, person_names: list[str]) -> None:
         """Resolve a filter's names to the ids a fetch queries with.
@@ -217,6 +299,12 @@ class AppState:
         can be built from a year that was never chosen -- and it still has to
         answer the same picker.
         """
+        expression = self.person_expression
+        if expression is not None:
+            if tuple(person_names) != expression.leaf_values:
+                raise ValueError("People names disagree with the grouped condition")
+            self.set_person_expression(expression)
+            return
         by_name = {person.name: person for person in self.people if person.name}
         wanted = [by_name[name] for name in person_names if name in by_name]
         self.memory_preset_params["person_ids"] = [person.id for person in wanted]
@@ -231,6 +319,10 @@ class AppState:
         Album mode is the exception to "a memory is a date range": the album is
         the pool, so it carries no range and must be checked on its own.
         """
+        try:
+            self.resolved_person_expression()
+        except ValueError:
+            return False
         if self.memory_type == "album":
             return self.album_id is not None
         return self.date_range is not None
@@ -239,12 +331,13 @@ class AppState:
         """Switch to a memory type, dropping what the previous card collected.
 
         The person is the one input that used to survive: only two cards show a
-        person widget, so an Alice left behind by a Person Spotlight went on
+        person widget, so an Riley left behind by a Person Spotlight went on
         narrowing a Year in Review with nothing on screen saying so -- the
         wizard's own version of a filter the surface cannot explain.
         """
         self.memory_type = memory_type
         self.memory_preset_params = {}
+        self.person_expression_error = None
         self.selected_person = None
         if memory_type != "album":
             # A left-over album would otherwise satisfy the step 1 scope check.
@@ -254,6 +347,8 @@ class AppState:
     def reset_clips(self) -> None:
         """Reset clip-related state when changing configuration."""
         self.clips = []
+        self.pipeline_selected_clips = []
+        self.editorial_selections = ()
         self.selected_clip_ids = set()
         self.selected_photo_ids = set()
         self.clip_segments = {}
@@ -261,6 +356,7 @@ class AppState:
         self.clip_rotations = {}
         self.pipeline_result = None
         self.timeline_plan = None
+        self.editorial_render_timing = None
         self.review_selected_mode = False
         self._duplicates_processed = False
         self.title_suggestion_title = None
@@ -277,30 +373,17 @@ class AppState:
             shutil.rmtree(previous, ignore_errors=True)
 
     def get_selected_clips(self) -> list[VideoClipInfo]:
-        """The videos kept in review, plus the photos the selection engine admitted.
-
-        Photos never sit in ``clips`` (that list is the video review grid). The
-        engine returns them as IMAGE-type entries in ``pipeline_result``, and
-        this used to read only ``clips``, so a photo the user included and the
-        engine kept still never reached the video (#778). ``selected_photo_ids``
-        is the photo checkbox state, so a photo unticked after the run stays out.
-        """
-        from immich_memories.api.models import AssetType
-
-        selected = [c for c in self.clips if c.asset.id in self.selected_clip_ids]
-        if not self.include_photos or not self.pipeline_result:
-            return selected
-        known = {c.asset.id for c in selected}
-        planned = self.pipeline_result.get("selected_clips") or []
-        selected += [
-            c
-            for c in planned
-            if c.asset.type == AssetType.IMAGE
-            and c.asset.id in self.selected_photo_ids
-            and c.asset.id not in known
+        """Get the list of currently selected clips."""
+        planned = [
+            clip for clip in self.pipeline_selected_clips if clip.asset.id in self.selected_clip_ids
         ]
-        selected.sort(key=lambda c: c.asset.file_created_at)
-        return selected
+        planned_ids = {clip.asset.id for clip in planned}
+        manual = [
+            clip
+            for clip in self.clips
+            if clip.asset.id in self.selected_clip_ids and clip.asset.id not in planned_ids
+        ]
+        return [*planned, *manual]
 
     @property
     def target_duration_seconds(self) -> float:

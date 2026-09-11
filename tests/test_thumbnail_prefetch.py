@@ -109,7 +109,10 @@ def thumbnail_server():
 
 
 def _cli_pipeline(
-    server: _ThumbnailServer, cache_dir: Path, analysis_config: AnalysisConfig | None = None
+    server: _ThumbnailServer,
+    cache_dir: Path,
+    analysis_config: AnalysisConfig | None = None,
+    **extra,
 ) -> SmartPipeline:
     """Build the pipeline the way the CLI does: fresh, empty thumbnail cache."""
     # WHY: the analysis DB is a write boundary; returning no cached analysis
@@ -124,7 +127,33 @@ def _cli_pipeline(
         config=PipelineConfig(target_clips=10, avg_clip_duration=5.0),
         analysis_config=analysis_config or AnalysisConfig(),
         app_config=Config(),
+        **extra,
     )
+
+
+class _RecordingTriage:
+    """Stands in for the triage engine: keeps what it was shown.
+
+    WHY: the real engine needs the 88 MB DINOv2 export; the pipeline's contract is
+    only that every clip's fetched preview reaches it once, before clustering.
+    """
+
+    def __init__(self) -> None:
+        self.seen: dict[str, bytes | None] = {}
+
+    def run(self, asset_ids, images):
+        self.seen = {asset_id: images(asset_id) for asset_id in asset_ids}
+
+
+def test_triage_sees_every_fetched_preview_on_the_cli_path(thumbnail_server, tmp_path):
+    triage = _RecordingTriage()
+    clips = [make_clip("dup-a"), make_clip("dup-b"), make_clip("other")]
+    pipeline = _cli_pipeline(thumbnail_server, tmp_path / "thumbs", triage=triage)
+
+    pipeline.run_planning_analysis(clips)
+
+    assert triage.seen == thumbnail_server.thumbnails
+    assert len(thumbnail_server.requested) == 3, "triage reads the cache, never the server"
 
 
 def test_cli_path_deduplicates_near_duplicates_without_precached_thumbnails(

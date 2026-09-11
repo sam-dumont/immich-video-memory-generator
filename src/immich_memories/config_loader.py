@@ -32,6 +32,7 @@ from immich_memories.config_models_automation import (
     TripsConfig,
     UploadConfig,
 )
+from immich_memories.config_models_editorial import EditorialConfig
 from immich_memories.config_models_llm import LLMConfig  # noqa: F401
 from immich_memories.config_models_render import (
     DefaultsConfig,
@@ -41,6 +42,7 @@ from immich_memories.config_models_render import (
 )
 from immich_memories.config_models_server import WILDCARD_HOST, ServerConfig
 from immich_memories.config_models_soundtrack import ACEStepConfig, AudioConfig, MusicGenConfig
+from immich_memories.config_models_triage import TriageConfig
 from immich_memories.config_presets import PresetName, apply_preset
 from immich_memories.logging_config import install_secret_redaction
 from immich_memories.scheduling.models import SchedulerConfig
@@ -66,6 +68,8 @@ _TIER2_SECTIONS = frozenset(
         "auth",
         "automation",
         "notifications",
+        "triage",
+        "editorial",
     }
 )
 
@@ -205,8 +209,8 @@ class Config(BaseSettings):
                            cache, upload, trips, photos
       Tier 2 (advanced:):  analysis, hardware, llm, musicgen, ace_step,
                            content_analysis, audio_content, speech, transcription,
-                           server
-      Tier 3 (internal):   scheduler, title_llm
+                           server, auth, automation, notifications, triage, editorial
+      Tier 3 (internal):   scheduler, title_llm, description_llm
 
     At runtime, ALL sections are flat fields on Config (config.analysis, etc.).
     The tier grouping only affects YAML serialization.
@@ -235,6 +239,11 @@ class Config(BaseSettings):
     title_llm: LLMConfig | None = Field(
         default=None, description="LLM for title generation (falls back to llm)"
     )
+    description_llm: LLMConfig | None = Field(
+        default=None,
+        description="LLM for the asset-description pass (falls back to llm); "
+        "where the distilled description student is served",
+    )
     audio: AudioConfig = Field(default_factory=AudioConfig)
     musicgen: MusicGenConfig = Field(default_factory=MusicGenConfig)
     ace_step: ACEStepConfig = Field(default_factory=ACEStepConfig)
@@ -250,6 +259,8 @@ class Config(BaseSettings):
     auth: AuthConfig = Field(default_factory=AuthConfig)
     automation: AutomationConfig = Field(default_factory=AutomationConfig)
     notifications: NotificationConfig = Field(default_factory=NotificationConfig)
+    triage: TriageConfig = Field(default_factory=TriageConfig)
+    editorial: EditorialConfig = Field(default_factory=EditorialConfig)
 
     # `${VAR}` forms as written in config.yaml, so Save can put them back
     # instead of the secrets they expanded to.

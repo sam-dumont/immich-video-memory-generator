@@ -14,41 +14,36 @@ real day, 215 photographs read in 14 calls and 22 seconds, against roughly
 from __future__ import annotations
 
 import json
-import math
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, TypeVar
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+from immich_memories.analysis.contact_sheets import (
+    LAYOUT_VERSION,
+    ContactSheetPage,
+    build_contact_sheets,
+)
+from immich_memories.analysis.contact_sheets import (
+    sheet_layout as _sheet_layout,
+)
+from immich_memories.analysis.contact_sheets import (
+    sheets_of as _sheets_of,
+)
+from immich_memories.analysis.contact_sheets import (
+    tile_sheet as _tile_sheet,
+)
+from immich_memories.analysis.visual_atlas import AtlasSource, build_visual_atlas
+
+MAX_SHEET_TILES = 120
+MAX_SHEET_PX = 2100
 
 if TYPE_CHECKING:
     from PIL.Image import Image
 
     from immich_memories.config_models_llm import LLMConfig
-
-# A moment goes on ONE sheet. Split across several, each sheet answers about
-# its own third of an event and the first answer wins by accident: measured on
-# a 37-photograph episode, sheet one said "cyclists and cars at a race track"
-# while later sheets named the circuit and the car.
-#
-# Past this many photographs a single sheet is postage stamps, so a very large
-# moment is split rather than shrunk to nothing.
-MAX_SHEET_TILES = 120
-
-# How wide a sheet may be before the encoder downscales it and tiles lose the
-# detail the reading depends on.
-MAX_SHEET_PX = 2100
-
-# Sheets are laid out WIDE, never tall. The same 37 photographs at 1920x2240
-# read worse than at 2080x1300 with SMALLER tiles — the tall sheet described
-# less and its shortlist collapsed to "keep all 37". A tall image is
-# downscaled harder before the model ever sees it, so shape matters more than
-# how big each tile is.
-_TARGET_ASPECT = 1.6
-_MAX_TILE = 400
-_MIN_TILE = 120
-_SHEET_BACKGROUND = (18, 18, 18)
-
-T = TypeVar("T")
 
 
 @dataclass(frozen=True)
@@ -61,26 +56,18 @@ class SheetReading:
 
 
 def sheet_layout(count: int) -> tuple[int, int]:
-    """Columns and tile size for one wide sheet of `count` photographs."""
-    columns = max(1, round(math.sqrt(count * _TARGET_ASPECT)))
-    tile = min(_MAX_TILE, MAX_SHEET_PX // columns)
-    rows = -(-count // columns)
-    if rows * tile > MAX_SHEET_PX * 1.2:
-        tile = int(MAX_SHEET_PX * 1.2) // rows
-    return columns, max(_MIN_TILE, tile)
+    """Return the shared wide grid dimensions used by legacy moment reading."""
+    return _sheet_layout(count)
 
 
-def sheets_of(items: list[T], per_sheet: int = MAX_SHEET_TILES) -> list[list[tuple[int, T]]]:
-    """Cut a moment into sheets, numbering tiles across the whole moment.
+def sheets_of(items: list[Any], per_sheet: int = MAX_SHEET_TILES) -> list[list[tuple[int, Any]]]:
+    """Split legacy moment assets through the shared global-numbering policy."""
+    return _sheets_of(items, per_sheet)
 
-    The model answers in tile numbers, so numbering has to run across the
-    moment rather than restart on each sheet — otherwise sheet three's "4"
-    and sheet one's "4" are the same answer about different photographs.
-    """
-    return [
-        [(offset + n + 1, item) for n, item in enumerate(items[offset : offset + per_sheet])]
-        for offset in range(0, len(items), per_sheet)
-    ]
+
+def tile_sheet(frames: list[tuple[int, Image | None]]) -> Image | None:
+    """Build a legacy sheet through the shared tile renderer."""
+    return _tile_sheet(frames)
 
 
 def _objects_in(raw: str) -> list[str]:
@@ -142,40 +129,6 @@ def read_sheet_verdict(raw: str | None) -> SheetReading | None:
             keep=_numbers(payload.get("best")),
         )
     return None
-
-
-def tile_sheet(frames: list[tuple[int, Image | None]]) -> Image | None:
-    """Lay numbered frames out as one image, or nothing if there are none.
-
-    The model answers in tile numbers, so every tile carries its number burnt
-    into the corner. A frame that could not be fetched leaves its number on an
-    empty tile rather than shifting every frame after it — a 404 thumbnail
-    would otherwise silently renumber the rest of the sheet and make the
-    answer point at the wrong photographs.
-    """
-    from PIL import Image, ImageDraw
-
-    if not frames:
-        return None
-    columns, tile = sheet_layout(len(frames))
-    rows = -(-len(frames) // columns)
-    sheet = Image.new("RGB", (columns * tile, rows * tile), _SHEET_BACKGROUND)
-    draw = ImageDraw.Draw(sheet)
-    label = max(16, tile // 11)
-    for position, (number, frame) in enumerate(frames):
-        left = (position % columns) * tile
-        top = (position // columns) * tile
-        if frame is not None:
-            thumbnail = frame.copy()
-            thumbnail.thumbnail((tile - 6, tile - 6))
-            sheet.paste(thumbnail, (left + 3, top + 3))
-        text = str(number)
-        draw.rectangle(
-            [left + 3, top + 3, left + 3 + label * (0.6 * len(text) + 0.8), top + 3 + label],
-            fill=(0, 0, 0),
-        )
-        draw.text((left + 7, top + 5), text, fill=(255, 255, 255))
-    return sheet
 
 
 # Ages that change how a person should be described. A newborn read as one of
@@ -292,27 +245,25 @@ class MomentReading:
 
 def _read_one_sheet(
     numbered: list[tuple[int, Any]],
-    frames: dict[str, Image],
+    page: ContactSheetPage,
     llm_config: LLMConfig,
 ) -> SheetReading | None:
     """Ask about one sheet, or return nothing if it could not be read."""
     import asyncio
-    import io
 
     from immich_memories.analysis.llm_query import query_llm
 
-    sheet = tile_sheet([(n, frames.get(getattr(a, "id", ""))) for n, a in numbered])
-    if sheet is None:
+    if page.layout_version != LAYOUT_VERSION or tuple(
+        reference.entity_id for reference in page.tile_refs
+    ) != tuple(getattr(asset, "id", "") for _number, asset in numbered):
         return None
-    buffer = io.BytesIO()
-    sheet.save(buffer, "JPEG", quality=_SHEET_QUALITY)
     answer = asyncio.run(
         query_llm(
             prompt_for([asset for _n, asset in numbered]),
             llm_config,
             temperature=_SHEET_TEMPERATURE,
             max_tokens=SHEET_ANSWER_TOKENS,
-            images=[buffer.getvalue()],
+            images=[page.jpeg_bytes],
         )
     )
     return read_sheet_verdict(answer)
@@ -323,6 +274,9 @@ def read_moment(
     frames: dict[str, Image],
     llm_config: LLMConfig,
     keep_cap: int | None = None,
+    *,
+    sheet_output_dir: Path | None = None,
+    sheet_recorder: Callable[[ContactSheetPage], None] | None = None,
 ) -> MomentReading:
     """Read a whole moment from its sheets, and keep what they chose.
 
@@ -336,10 +290,14 @@ def read_moment(
     a shortlist out of one would spend the deep look on frames chosen at
     random.
     """
+    pages = _moment_pages(assets, frames, sheet_output_dir)
+    if sheet_recorder is not None:
+        for page in pages:
+            sheet_recorder(page)
     readings: list[SheetReading] = []
     kept: list[Any] = []
-    for sheet in sheets_of(assets):
-        reading = _read_one_sheet(sheet, frames, llm_config)
+    for sheet, page in zip(sheets_of(assets), pages, strict=True):
+        reading = _read_one_sheet(sheet, page, llm_config)
         if reading is None:
             continue
         readings.append(reading)
@@ -357,6 +315,31 @@ def read_moment(
         subjects=tuple(subjects),
         keep=tuple(kept[:keep_cap] if keep_cap else kept),
     )
+
+
+def _moment_pages(
+    assets: list[Any], frames: dict[str, Image], output_dir: Path | None
+) -> tuple[ContactSheetPage, ...]:
+    """Encode all pages once so legacy requests attach precisely the traced bytes."""
+    import tempfile
+
+    sources: list[AtlasSource] = []
+    for asset in assets:
+        asset_id = getattr(asset, "id", "")
+        sources.append(AtlasSource(asset=asset, preview_jpeg=_jpeg_for(frames.get(asset_id))))
+    destination = output_dir or Path(tempfile.mkdtemp(prefix="moment-sheets-"))
+    atlas = build_visual_atlas(sources, frame_cache_dir=None)
+    return build_contact_sheets(atlas.tiles, "moment", destination)
+
+
+def _jpeg_for(frame: Image | None) -> bytes | None:
+    if frame is None:
+        return None
+    import io
+
+    buffer = io.BytesIO()
+    frame.save(buffer, "JPEG", quality=_SHEET_QUALITY)
+    return buffer.getvalue()
 
 
 def place_of(assets: list[Any]) -> str | None:

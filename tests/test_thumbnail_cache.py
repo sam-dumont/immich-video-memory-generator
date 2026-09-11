@@ -92,24 +92,28 @@ class TestReadingAThumbnailKeepsItAlive:
 
 
 class TestSelfEvictionIsAnnounced:
-    """A budget smaller than the run's working set degrades selection in
-    silence -- clustering skips, burst dedup skips hashless photos, photo
-    scores fall back to neutral. The run has to say it is happening (#512).
+    """A budget smaller than the run's working set may overflow temporarily;
+    it must not degrade clustering, burst dedup, or photo scoring (#512).
     """
 
     @staticmethod
     def _warnings(caplog):
         return [r for r in caplog.records if r.levelno == logging.WARNING]
 
-    def test_evicting_thumbnails_this_run_fetched_warns_once_per_pass(self, tmp_path, caplog):
+    def test_active_thumbnails_grow_the_budget_without_self_eviction(self, tmp_path, caplog):
+        """The autotune replaced the overflow warning: the budget follows the set."""
         cache = ThumbnailCache(cache_dir=tmp_path / "thumbnails", max_size_mb=0.001)
-        for i in range(4):  # 2.4 KB against a 1 KB budget: three files have to go
-            cache.put(f"asset-{i}", "preview", b"x" * 600)
+        asset_ids = [f"asset-{i}" for i in range(4)]
+        for asset_id in asset_ids:  # 2.4 KB against a 1 KB budget
+            cache.put(asset_id, "preview", b"x" * 600)
 
         with caplog.at_level(logging.WARNING):
-            cache.enforce_budget()
+            freed = cache.begin_working_set(asset_ids, "preview")
 
-        assert len(self._warnings(caplog)) == 1
+        assert freed == 0
+        assert all(cache.has(asset_id, "preview") for asset_id in asset_ids)
+        assert cache.max_size_mb * 1_000_000 >= 2400
+        assert len(self._warnings(caplog)) == 0
 
     def test_reclaiming_an_earlier_run_s_thumbnails_stays_quiet(self, tmp_path, caplog):
         """Evicting a previous run's leftovers is the budget working, not failing."""
@@ -122,3 +126,44 @@ class TestSelfEvictionIsAnnounced:
 
         assert freed > 0  # eviction really happened; it just was not self-eviction
         assert self._warnings(caplog) == []
+
+
+def test_begin_working_set_grows_the_budget_to_fit_the_corpus(tmp_path):
+    """An 8k-asset run must not evict its own live thumbnails: the budget follows the set."""
+    cache = ThumbnailCache(tmp_path, max_size_mb=0.05)  # 50 KB budget
+    ids = [f"asset-{n:03d}" for n in range(10)]
+    for asset_id in ids:
+        cache.put(asset_id, "preview", b"x" * 20_000)  # 200 KB total, 4x the budget
+
+    cache.begin_working_set(ids, "preview")
+
+    assert cache.cached_ids(set(ids), "preview") == set(ids)
+    assert cache.max_size_mb * 1_000_000 >= 200_000
+
+
+def test_unlimited_cache_preserves_existing_and_new_files_across_automatic_checks(tmp_path):
+    earlier = ThumbnailCache(tmp_path)
+    old_path = earlier.put("existing", "preview", b"earlier thumbnail")
+    _set_age(old_path, seconds=3600)
+    cache = ThumbnailCache(tmp_path, max_size_mb=float("inf"))
+    expected = {"existing": b"earlier thumbnail"}
+    for number in range(401):
+        key, data = f"new-{number}", f"thumbnail {number}".encode()
+        cache.put(key, "preview", data)
+        expected[key] = data
+
+    assert cache.enforce_budget() == 0
+    assert cache.begin_working_set(["new-400"], "preview") == 0
+    assert cache.cached_ids(set(expected), "preview") == set(expected)
+    assert {key: cache.get(key, "preview") for key in expected} == expected
+
+
+def test_finite_cache_still_evicts_at_the_automatic_check(tmp_path):
+    cache = ThumbnailCache(tmp_path, max_size_mb=0.001)
+    old_path = cache.put("existing", "preview", b"old" * 200)
+    _set_age(old_path, seconds=3600)
+    for number in range(199):
+        cache.put(f"new-{number}", "preview", b"x" * 600)
+
+    assert not cache.has("existing", "preview")
+    assert 0 < cache.get_stats()["total_size_bytes"] <= 1000

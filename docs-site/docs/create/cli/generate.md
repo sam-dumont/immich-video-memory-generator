@@ -7,6 +7,11 @@ title: generate
 
 The main event. `immich-memories generate` pulls videos from your Immich library, analyzes scenes, picks the best moments, and assembles them into a compilation.
 
+Generation uses story-first selection and the FAMILY audience by default. It prepares missing
+facts for the whole source period before choosing stories and distinct moments, then allocates
+duration. Complete [editorial annotation setup](../../deploy/configuration/editorial-preparation.md)
+before an uncached run; there is no editorial opt-in switch or alternate selector to enable.
+
 ## Usage
 
 ```bash
@@ -31,7 +36,10 @@ immich-memories generate [OPTIONS]
 | `--memory-type` | — | choice | — | `year_in_review`, `season`, `person_spotlight`, `multi_person`, `monthly_highlights`, `on_this_day`, `trip`, `holiday`, `then_and_now`, `special_day` |
 | `--holiday` | — | text | — | Holiday name or `MM-DD` (with `--memory-type holiday`) |
 | `--from-album` | — | string | — | Generate from an Immich album (name or ID) instead of a date range. See [Album Memories](../memory-types/album-memories). Cannot be combined with any time-period or person flag |
-| `--person` | `-p` | string | — | Person name from Immich face recognition (repeatable: `--person "Alice" --person "Bob"`) |
+| `--person` | `-p` | string | — | Person name from Immich face recognition (repeatable: `--person "Riley" --person "Bob"`) |
+| `--person-match` | — | choice | `and` | With repeated `--person`, require everyone in each asset (`and`) or accept any named person (`or`) |
+| `--people-expression` | — | string | — | Combine quoted full names with `AND`, `OR` and parentheses; evaluated within each picture or video. Use separately from `--person` and `--person-match` |
+| `--accept-any-provenance` | — | flag | off | Keep forwarded and low-provenance media for this generation instead of applying the normal messaging/import filter |
 | `--birthday` | `-b` | flag/string | — | Anchor the memory on a birthday. Bare flag reads Immich's birth date; pass `MM-DD` to override |
 | `--season` | — | choice | — | `spring`, `summer`, `fall`, `autumn`, `winter` (use with `--memory-type season`) |
 | `--month` | — | int | — | Month 1-12 (with `--year`, generates that month; selects trip by month) |
@@ -193,15 +201,28 @@ If the person has no birth date in Immich the run stops and says where to add on
 Narrow a person spotlight to just February:
 
 ```bash
-immich-memories generate --memory-type person_spotlight --person "Alice" --year 2026 --month 2
+immich-memories generate --memory-type person_spotlight --person "Riley" --year 2026 --month 2
 ```
+
+### Grouped people conditions
+
+Require a child together with either adult:
+
+```bash
+immich-memories generate --memory-type multi_person --year 2025 \
+  --people-expression '("Alex Smith" OR "Morgan Smith") AND "Riley Smith"'
+```
+
+Use exact full names from Immich. Each picture or video must contain Riley and at least one of the two adults. A crew can use an `OR` list; two couples can use `("Alex Smith" AND "Morgan Smith") OR ("Casey Jones" AND "Jordan Jones")`. `AND` binds more tightly than `OR`; parentheses make the grouping explicit.
+
+Use this option separately from `--person` and `--person-match`. Grouped conditions support date-range memories, including months and years; trips, albums and single-person spotlight or birthday presets currently reject them. The web UI offers the same condition field in its people selection.
 
 ### Override any preset with custom dates
 
 `--start/--end` overrides the date range for any memory type:
 
 ```bash
-immich-memories generate --memory-type person_spotlight --person "Alice" \
+immich-memories generate --memory-type person_spotlight --person "Riley" \
   --start 2025-02-01 --end 2025-03-31
 ```
 
@@ -351,7 +372,7 @@ where you pointed. Album runs name the file after the album rather than after
 Nothing prunes those folders, so reruns accumulate. `immich-memories runs delete`
 removes a run's output along with its record.
 
-If you don't pass `--output`, the file lands in your configured output directory (default `~/Videos/Memories/`), inside a per-run folder, with an auto-generated name of the form `{person}_{memory-type}_{date}.mp4` — for example `all_memories_2024.mp4`, `alice_year_in_review_2024.mp4` or `alice_memories_20240207-20250206.mp4`. (The web UI names its files differently, e.g. `alice_2024_memories.mp4`.)
+If you don't pass `--output`, the file lands in your configured output directory (default `~/Videos/Memories/`), inside a per-run folder, with an auto-generated name of the form `{person}_{memory-type}_{date}.mp4` — for example `all_memories_2024.mp4`, `riley_year_in_review_2024.mp4` or `riley_memories_20240207-20250206.mp4`. (The web UI names its files differently, e.g. `riley_2024_memories.mp4`.)
 
 ## Upload to Immich
 

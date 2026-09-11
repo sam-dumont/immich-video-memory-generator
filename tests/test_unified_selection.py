@@ -4,6 +4,8 @@ Verifies:
 - SmartPipeline.run_analysis() returns analyzed ClipWithSegments (not PipelineResult)
 - SmartPipeline.run_selection() takes analyzed clips and returns PipelineResult
 - SmartPipeline.run() still works as before (backward compat)
+
+The legacy run() round-trip is retired with the route cut: run() now returns the editorial source cut and refuses a pipeline without a planner.
 """
 
 from __future__ import annotations
@@ -562,6 +564,7 @@ class TestExtractClipsHandlesImages:
 
         mock_video_cache = MagicMock()
 
+        # WHY: rendering a still into a clip is an FFmpeg run; the pool logic is what is under test.
         with patch(
             "immich_memories.generate_photos._render_photo_as_clip",
             return_value=mock_assembly_clip,
@@ -607,7 +610,9 @@ class TestExtractClipsHandlesImages:
         fake_segment = tmp_path / "segment.mp4"
         fake_segment.write_bytes(b"\x00" * 500)
 
+        # WHY: both halves of clip preparation are external — an Immich download, then FFmpeg.
         with (
+            # WHY: stands in for the Immich original-file download; the bytes are a local stub.
             patch(
                 "immich_memories.generate_downloads.download_clip",
                 return_value=fake_video,
@@ -626,18 +631,3 @@ class TestExtractClipsHandlesImages:
 
 class TestRunBackwardCompat:
     """run() still works as before — calls run_analysis + run_selection."""
-
-    def test_run_produces_same_result_type(
-        self,
-        mock_immich_client,
-        mock_analysis_cache,
-        mock_thumbnail_cache,
-    ):
-        _setup_cache(mock_analysis_cache)
-        pipeline = _make_pipeline(mock_immich_client, mock_analysis_cache, mock_thumbnail_cache)
-        clips = _make_clips(10)
-
-        result = pipeline.run(clips)
-
-        assert isinstance(result, PipelineResult)
-        assert len(result.selected_clips) > 0

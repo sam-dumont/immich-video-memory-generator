@@ -5,9 +5,15 @@ title: Clip Selection & Scoring
 
 # Clip Selection & Scoring
 
-The whole point of a memory video is picking the *good* parts. Nobody wants to watch 30 seconds of your pocket recording a sidewalk. This page documents the arithmetic — budgets, weights, caps. The judgment those numbers serve — what the model looks at, how the cut is reviewed, and the rules it obeys — is in [The Curator](the-curator).
+Production selection uses the story-first route described in [The Curator](the-curator):
+prepare the whole source, understand stories and distinct moments, then allocate duration.
+Pixel scores and source volume do not choose the period's stories in advance.
 
-## The Density Budget
+The scoring tables and density-budget algorithm below document the earlier selector and
+underlying clip measurements. They are retained as a technical reference, not as controls for
+the current story-first selection policy.
+
+## Legacy density budget
 
 The selection algorithm distributes raw footage quotas across your timeline proportional to how many assets exist in each period. Months with more content (summer vacation, holidays, birthdays) automatically get more clips.
 

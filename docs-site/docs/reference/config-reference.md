@@ -9,7 +9,8 @@ These options have sane defaults and most users don't need to change them. Add a
 
 :::tip Config tiers
 Tier 2 sections — `analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `content_analysis`,
-`audio_content`, `speech`, `transcription`, `server`, `auth`, `automation`, `notifications` — are
+`audio_content`, `speech`, `transcription`, `server`, `auth`, `automation`, `notifications`,
+`triage` — are
 written under an `advanced:` key when the app saves the file:
 
 ```yaml
@@ -107,6 +108,7 @@ analysis:
     - "img-*-wa[0-9][0-9][0-9][0-9]*"
     - "vid-*-wa[0-9][0-9][0-9][0-9]*"
   exclude_stills_without_camera_exif: true   # a photo naming no camera was received, not shot
+  include_off_timeline_assets: false        # archive/hidden/locked stay out; generation forces this off
 
   # Duplicate detection
   duplicate_hash_threshold: 8    # Perceptual hash threshold (0-64)
@@ -286,6 +288,7 @@ llm:
   model: ""                        # e.g. mlx-community/Qwen3.6-27B-8bit
   api_key: ""                      # optional, only for cloud APIs
   timeout_seconds: 300             # increase for slow local models (10-3600)
+  send_image_detail: true          # off: APIs whose strict schema rejects image_url.detail
   thinking: false                  # server has a reasoning switch
   # thinking_params:               # what the switch looks like on your server
   #   chat_template_kwargs:        # (default: the Qwen dialect, vLLM/mlx)
@@ -340,6 +343,11 @@ that reason only when asked (the `openai` and `zai` presets already do). A
 server that rejects the field is detected from its 400 and asked without it
 from then on.
 
+`send_image_detail` covers one more dialect gap: OpenAI's optional
+`image_url.detail` field is sent by default, and some strict vision schemas
+accept only `image_url.url` and reject requests carrying anything more. Set it
+to `false` for those servers — the `zai` preset already does.
+
 Parameter dialects are otherwise handled automatically: OpenAI's reasoning
 models (gpt-5 family) reject `max_tokens` and non-default temperatures, and
 the query layer reads those 400s, adapts the request, and remembers the
@@ -374,12 +382,29 @@ title_llm:
   model: "llama3.2"              # example; the default is empty, which means "use llm"
   api_key: ""
   timeout_seconds: 300
+  send_image_detail: true        # same switch as llm.send_image_detail
 ```
 
 The switch is all-or-nothing on `title_llm.model`: when it is set the whole `title_llm` block is
 used, and any field you leave out takes the *built-in* default (`provider: openai-compatible`,
 `base_url: http://localhost:8080/v1`, empty `api_key`) — it is not inherited from `llm`. When
 `title_llm.model` is empty, `llm` is used. Both entry points resolve it the same way.
+
+A `description_llm` section works the same way for the bulk asset-description
+pass — it is where a distilled description student is served. When
+`description_llm.model` is set, description calls route to that model through
+the editorial gateway while every other pass stays on `llm`. Banked answers
+carry the model that wrote them, so switching arms never replays one model's
+words as the other's.
+
+```yaml
+description_llm:
+  provider: "openai-compatible"
+  base_url: "http://localhost:8090/v1"
+  model: ""                      # empty: descriptions use llm
+  api_key: ""
+  timeout_seconds: 300
+```
 
 ## Content analysis (LLM-based scoring)
 
@@ -519,6 +544,71 @@ Because transcripts change what the model is given, wiring them in bumped the sc
 which invalidated every cached LLM score at that release. Toggling the setting afterwards does not
 bump anything: `SCORING_VERSION` is a fixed constant, not a function of your config.
 
+## Triage heads
+
+```yaml
+triage:
+  enabled: false                 # Legacy standalone triage hook; editorial preparation runs independently
+  encoder: ~/.immich-memories/models/triage/dinov2-small.onnx  # DINOv2-small ONNX export (88 MB)
+  bundle: ""                     # Head weights (.npz); empty = the public bundle in the package
+```
+
+Editorial preparation uses `triage.encoder` with the public six-head bundle configured under
+`editorial.preparation.head_bundle`. Install the `editorial` extra and provide the pinned
+DINOv2-small ONNX export. Its digest is checked on load. Missing required head facts stop
+selection; `triage.enabled: false` does not bypass preparation. The separate legacy triage
+hook still uses `triage.bundle` and `triage.db`.
+
+The public heads provide context. They do not train on your library or independently decide
+whether a picture is suitable for the audience.
+
+## Editorial planner
+
+```yaml
+editorial:
+  annotation_database: ""        # defaults to annotations.sqlite inside the configured cache directory
+  description_model: "smolvlm2-500m-base-public@envelope-v3-compact"
+  pixel_producer_key: "pixel-facts-v1"  # exact producer of pixel facts and thresholds  # gitleaks:allow
+  head_versions:                 # exact producer version selected for each annotation head
+    activity: public-v1
+    children: public-v1
+    doc_docling: det-v1
+    location: public-v1
+    nsfw_marqo: det-v1
+    people: public-v1
+    swim: oi-v3
+    venue: oi-v3
+  preparation:
+    caption_base_url: http://localhost:8092/v1
+    caption_timeout_seconds: 90
+    caption_concurrency: 4
+    batch_size: 32
+    head_bundle: ""              # packaged public six-head bundle
+    detector_python: ""          # current Python interpreter
+    detector_cache_dir: ""       # normal Hugging Face Hub cache
+    allow_model_downloads: false
+```
+
+Tier 2 — lives under `advanced:` when the app writes the file. Story-first selection is the
+production route for UI, CLI and scheduled runs. Old `enabled` and `story_first` keys are
+ignored; there is no opt-in flag or environment switch.
+
+The planner reads the whole source period, identifies its stories and distinct moments,
+then allocates duration and picks representations of those moments. A longer target can
+show more of a story without inventing more events from near-duplicate pictures.
+
+New runs use the **FAMILY** audience. Ordinary family material, including a shirtless baby,
+baby bath time, breastfeeding or a parent holding a newborn in hospital, can be considered.
+Graphic medical procedures, sexual content, exposed adult changing and identifying records
+remain excluded.
+
+Preparation fills missing descriptions, public heads, detectors and pixel measurements in
+the annotation database. Complete facts skip provider calls. Missing previews or providers
+stop selection with an explicit incomplete result. Two verified invalid caption completions
+can be recorded as `caption unavailable`, counted separately from successful descriptions.
+See [Editorial annotation setup](../deploy/configuration/editorial-preparation.md) for the
+runtime extra, exact model artifacts and caption endpoint requirements.
+
 ## Title screens
 
 ```yaml
@@ -624,7 +714,7 @@ upload:
 scheduler:
   enabled: false
   timezone: "UTC"
-  job_timeout_minutes: 60  # Max time per job before timeout (increase for large libraries)
+  job_timeout_minutes: 120  # Whole-job deadline, including preparation and rendering; must be positive
   schedules:
     - name: "yearly-recap"
       memory_type: "year_in_review"

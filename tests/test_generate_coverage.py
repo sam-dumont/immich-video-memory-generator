@@ -775,11 +775,11 @@ class TestBuildMemoryKey:
             memory_type="month",
             date_start=date(2025, 7, 1),
             date_end=date(2025, 7, 31),
-            person_name="Alice",
+            person_name="Riley",
         )
         key = _build_memory_key(params)
         assert key is not None
-        assert "alice" in key.lower()
+        assert "riley" in key.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -984,7 +984,7 @@ class TestGenerateMemoryInner:
     def test_privacy_mode_anonymizes_clips(self, tmp_path):
         from immich_memories.generate import _generate_memory_inner
 
-        params = self._make_params(tmp_path, privacy_mode=True, person_name="Alice")
+        params = self._make_params(tmp_path, privacy_mode=True, person_name="Riley")
         patches, result_path, assembly_clip = self._patch_inner_deps(tmp_path)
 
         with contextlib.ExitStack() as stack:
@@ -1005,7 +1005,7 @@ class TestGenerateMemoryInner:
 
         anon_mock.assert_called_once()
         preset_mock.assert_called_once()
-        name_mock.assert_called_once_with("Alice")
+        name_mock.assert_called_once_with("Riley")
 
     def test_upload_called_when_enabled(self, tmp_path):
         from immich_memories.generate import _generate_memory_inner
@@ -1365,7 +1365,9 @@ class TestRunMusicPhase:
             events.append("resolve")
             return MusicSelection(music_file)
 
+        # WHY: resolve_music and apply_music_file would hit disk, FFmpeg, and music APIs.
         with (
+            # WHY: resolve_music can shell out to MusicGen/ACE-Step and read the bundled library.
             patch(
                 "immich_memories.generate_music.resolve_music",
                 side_effect=record_resolve,
@@ -1463,7 +1465,7 @@ class TestDownloadClip:
         local_file = tmp_path / "local.mp4"
         local_file.write_bytes(b"data")
 
-        clip = MagicMock()
+        clip = MagicMock(editorial_live_manifest=None)
         clip.local_path = str(local_file)
 
         result = download_clip(MagicMock(), MagicMock(), clip, tmp_path)
@@ -1472,7 +1474,7 @@ class TestDownloadClip:
     def test_local_path_nonexistent_proceeds_to_download(self, tmp_path):
         from immich_memories.generate_downloads import download_clip
 
-        clip = MagicMock()
+        clip = MagicMock(editorial_live_manifest=None)
         clip.local_path = str(tmp_path / "nonexistent.mp4")
         clip.live_burst_video_ids = None
         clip.live_burst_trim_points = None
@@ -1488,7 +1490,7 @@ class TestDownloadClip:
     def test_none_client_returns_none(self, tmp_path):
         from immich_memories.generate_downloads import download_clip
 
-        clip = MagicMock()
+        clip = MagicMock(editorial_live_manifest=None)
         clip.local_path = None
 
         result = download_clip(None, MagicMock(), clip, tmp_path)
@@ -1497,7 +1499,7 @@ class TestDownloadClip:
     def test_live_burst_delegates_to_merge(self, tmp_path):
         from immich_memories.generate_downloads import download_clip
 
-        clip = MagicMock()
+        clip = MagicMock(editorial_live_manifest=None)
         clip.local_path = None
         clip.live_burst_video_ids = ["vid-a", "vid-b"]
         clip.live_burst_trim_points = [(0.0, 1.0), (0.0, 1.5)]
@@ -1518,7 +1520,7 @@ class TestDownloadClip:
     def test_no_local_path_no_burst_uses_cache(self, tmp_path):
         from immich_memories.generate_downloads import download_clip
 
-        clip = MagicMock()
+        clip = MagicMock(editorial_live_manifest=None)
         clip.local_path = None
         clip.live_burst_video_ids = None
         clip.live_burst_trim_points = None
@@ -1535,7 +1537,7 @@ class TestDownloadAndMergeBurst:
     def test_cached_merged_file_returned_immediately(self, tmp_path):
         from immich_memories.generate_downloads import _download_and_merge_burst
 
-        clip = MagicMock()
+        clip = MagicMock(editorial_live_manifest=None)
         clip.asset.id = "asset-1"
         clip.live_burst_video_ids = ["v1", "v2"]
         clip.live_burst_trim_points = [(0.0, 1.0), (0.0, 1.5)]
@@ -1552,7 +1554,7 @@ class TestDownloadAndMergeBurst:
     def test_no_burst_clips_downloaded_falls_back_to_cache(self, tmp_path):
         from immich_memories.generate_downloads import _download_and_merge_burst
 
-        clip = MagicMock()
+        clip = MagicMock(editorial_live_manifest=None)
         clip.asset.id = "asset-1"
         clip.live_burst_video_ids = ["v1"]
         clip.live_burst_trim_points = [(0.0, 1.0)]
@@ -1575,7 +1577,7 @@ class TestDownloadAndMergeBurst:
     def test_partial_downloads_aligns_then_merges(self, tmp_path):
         from immich_memories.generate_downloads import _download_and_merge_burst
 
-        clip = MagicMock()
+        clip = MagicMock(editorial_live_manifest=None)
         clip.asset.id = "asset-1"
         clip.live_burst_video_ids = ["v1", "v2"]
         clip.live_burst_trim_points = [(0.0, 1.0), (0.0, 1.5)]
@@ -1589,7 +1591,9 @@ class TestDownloadAndMergeBurst:
         mock_cache.cache_dir = tmp_path / "cache"
         merged = tmp_path / ".live_merges" / "asset-1_merged.mp4"
 
+        # WHY: _download_and_merge_burst calls Immich and FFmpeg; both replaced for the align path.
         with (
+            # WHY: _download_burst_clips wraps the Immich asset download this test must not make.
             patch(
                 "immich_memories.generate_downloads._download_burst_clips",
                 return_value=[v1_path],
@@ -1611,7 +1615,7 @@ class TestDownloadAndMergeBurst:
     def test_merge_failure_falls_back_to_cache(self, tmp_path):
         from immich_memories.generate_downloads import _download_and_merge_burst
 
-        clip = MagicMock()
+        clip = MagicMock(editorial_live_manifest=None)
         clip.asset.id = "asset-1"
         clip.live_burst_video_ids = ["v1"]
         clip.live_burst_trim_points = [(0.0, 1.0)]
@@ -1625,7 +1629,9 @@ class TestDownloadAndMergeBurst:
         fallback = tmp_path / "fallback.mp4"
         mock_cache.download_or_get.return_value = fallback
 
+        # WHY: _download_and_merge_burst calls Immich and FFmpeg; replaced for the fallback path.
         with (
+            # WHY: _download_burst_clips wraps Immich download for the fallback-to-cache path.
             patch(
                 "immich_memories.generate_downloads._download_burst_clips",
                 return_value=[v1_path],
@@ -1773,7 +1779,9 @@ class TestTryMergeBurst:
         clip_path.write_bytes(b"video")
         merged_path = tmp_path / "merged.mp4"
 
+        # WHY: _try_merge_burst would probe real clips and shell to FFmpeg; forced to fail here.
         with (
+            # WHY: filter_valid_clips runs ffprobe on real files; this fixture is fake bytes.
             patch(
                 "immich_memories.processing.live_photo_merger.filter_valid_clips",
                 return_value=([clip_path], [(0.0, 1.0)]),
@@ -1802,7 +1810,9 @@ class TestTryMergeBurst:
         c2.write_bytes(b"v2")
         merged_path = tmp_path / "merged.mp4"
 
+        # WHY: _try_merge_burst would probe real clips and shell to FFmpeg; spectrogram path here.
         with (
+            # WHY: filter_valid_clips runs ffprobe on real files; both fixtures are fake bytes.
             patch(
                 "immich_memories.processing.live_photo_merger.filter_valid_clips",
                 return_value=([c1, c2], [(0.0, 1.0), (0.0, 1.5)]),
@@ -1848,7 +1858,9 @@ class TestTryMergeBurst:
         c2.write_bytes(b"v2")
         merged_path = tmp_path / "merged.mp4"
 
+        # WHY: _try_merge_burst would probe real clips and shell to FFmpeg for the fallback path.
         with (
+            # WHY: filter_valid_clips would probe real files; both are fake bytes, fallback path.
             patch(
                 "immich_memories.processing.live_photo_merger.filter_valid_clips",
                 return_value=([c1, c2], [(0.0, 1.0), (0.0, 1.5)]),
@@ -1890,7 +1902,9 @@ class TestTryMergeBurst:
         clip_path.write_bytes(b"video")
         merged_path = tmp_path / "merged.mp4"
 
+        # WHY: _try_merge_burst would probe real clips and shell to FFmpeg before raising.
         with (
+            # WHY: filter_valid_clips would probe a real file; this one is fake bytes, pre-raise.
             patch(
                 "immich_memories.processing.live_photo_merger.filter_valid_clips",
                 return_value=([clip_path], [(0.0, 1.0)]),
@@ -2050,7 +2064,9 @@ class TestAutoGenerateMusic:
         from immich_memories.generate_music import auto_generate_music
 
         config = Config()
+        # WHY: music_config_available and generate_music_for_video would call real config/APIs.
         with (
+            # WHY: music_config_available is forced True so the optional-music branch is taken.
             patch("immich_memories.generate_music.music_config_available", return_value=True),
             # WHY: generate_music_for_video calls external MusicGen/ACE-Step APIs
             patch(

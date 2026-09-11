@@ -195,6 +195,27 @@ class TestDecidingOnALink:
         written = people_entries(load_document(path))[0]["confirmed"]["links"]
         assert written == [{"kind": "couple", "with": "id-robin", "decision": "confirmed"}]
 
+    def test_two_relationships_to_the_same_person_remain_distinct(self, tmp_path):
+        path = _file(
+            tmp_path,
+            _entry(
+                "Alex Example",
+                "id-alex",
+                confirmed=(
+                    "{role: null, links: [{kind: sibling-of, with: id-robin}, "
+                    "{kind: twin-of, with: id-robin}], notes: null}"
+                ),
+            ),
+            _entry("Robin Placeholder", "id-robin"),
+        )
+
+        links = load_people(path)[0].links
+
+        assert [(link.kind, link.target_name) for link in links] == [
+            ("sibling-of", "Robin Placeholder"),
+            ("twin-of", "Robin Placeholder"),
+        ]
+
 
 class TestNotes:
     def test_a_note_survives_the_round_trip(self, tmp_path):

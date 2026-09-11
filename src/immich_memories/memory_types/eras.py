@@ -26,7 +26,7 @@ def era_of(when: datetime, ranges: Sequence[DateRange]) -> int | None:
     fell in. The memory's own ordering breaks the tie.
     """
     for index, date_range in enumerate(ranges):
-        if date_range.start <= when <= date_range.end:
+        if date_range.contains(when):
             return index
     return None
 

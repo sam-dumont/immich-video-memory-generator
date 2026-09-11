@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 
+from immich_memories.api.asset_service import large_original_size
 from immich_memories.api.immich import ImmichAPIError
 from immich_memories.security import sanitize_error_message
 
@@ -38,6 +39,17 @@ def download_clip(
     ``hardware_enabled`` reaches only the burst merge, which is the one place
     this module encodes video (#504).
     """
+    if clip.editorial_live_manifest is not None:
+        if client is None is prefetched_burst_results:
+            raise ValueError("Certified editorial Live material needs its declared sources")
+        return _download_and_merge_burst(
+            client,
+            video_cache,
+            clip,
+            output_dir,
+            prefetched_burst_results=prefetched_burst_results,
+            hardware_enabled=hardware_enabled,
+        )
     # Use pre-downloaded clip if available (e.g., from analysis cache)
     if clip.local_path and Path(clip.local_path).exists():
         return Path(clip.local_path)
@@ -61,7 +73,7 @@ def download_clip(
 
 
 def _download_and_merge_burst(
-    client: SyncImmichClient,
+    client: SyncImmichClient | None,
     video_cache: CacheBatch | None,
     clip: VideoClipInfo,
     output_dir: Path,
@@ -72,6 +84,26 @@ def _download_and_merge_burst(
     """Download live photo burst videos and merge into one file."""
     burst_ids = clip.live_burst_video_ids or []
     trim_points = clip.live_burst_trim_points or []
+
+    if clip.editorial_live_manifest is not None:
+        from immich_memories.processing.editorial_live_render import (
+            render_certified_live,
+            validate_editorial_live_clip,
+        )
+
+        validate_editorial_live_clip(clip)
+        paths = _certified_burst_sources(
+            client, video_cache, output_dir, burst_ids, prefetched_burst_results
+        )
+        return render_certified_live(
+            clip,
+            paths,
+            output_dir,
+            merge=_try_merge_burst,
+            hardware_enabled=hardware_enabled,
+        )
+
+    assert client is not None  # Legacy download_clip has already handled no-client mode.
 
     merge_dir = output_dir / ".live_merges"
     merge_dir.mkdir(parents=True, exist_ok=True)
@@ -101,6 +133,33 @@ def _download_and_merge_burst(
         hardware_enabled=hardware_enabled,
     )
     return merged or _download_fallback(client, video_cache, clip.asset, output_dir)
+
+
+def _certified_burst_sources(
+    client: SyncImmichClient | None,
+    video_cache: CacheBatch | None,
+    output_dir: Path,
+    burst_ids: list[str],
+    prefetched: Mapping[str, DownloadResult] | None,
+) -> list[Path]:
+    """Every declared companion, in its declared order; a gap is never rendered around."""
+    if prefetched is None:
+        if client is None:
+            raise ValueError("Editorial Live rendering needs its source transport")
+        cache_dir = (
+            video_cache.cache_dir
+            if video_cache is not None
+            else output_dir / ".temporary_downloads"
+        )
+        return _download_burst_clips(client, cache_dir, burst_ids, batch=video_cache)
+    if any(key not in prefetched or prefetched[key].path is None for key in burst_ids):
+        raise ValueError("Editorial Live rendering is missing a declared companion")
+    paths = []
+    for key in burst_ids:
+        path = prefetched[key].path
+        assert path is not None  # Validated above, preserving the declared order.
+        paths.append(path)
+    return paths
 
 
 def _prefetched_burst_subset(
@@ -149,7 +208,11 @@ def _download_temporary_asset(
     path = temporary_dir / subdir / f"{asset_id}{suffix}"
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        client.download_asset(asset_id, path)
+        expected_size = large_original_size(asset)
+        if expected_size is None:
+            client.download_asset(asset_id, path)
+        else:
+            client.download_asset(asset_id, path, expected_size_bytes=expected_size)
         if path.exists() and path.stat().st_size > 0:
             return path
         path.unlink(missing_ok=True)
@@ -175,28 +238,32 @@ def _download_burst_clips(
     """
     clip_paths: list[Path] = []
     for vid in burst_ids:
-        if batch is not None:
-            path = batch.download_video_id(client, vid)
-            if path is not None:
-                clip_paths.append(path)
-            continue
-
-        subdir = vid[:2] if len(vid) >= 2 else "00"
-        destination = cache_dir / subdir / f"{vid}.MOV"
-        if destination.exists() and destination.stat().st_size > 0:
-            clip_paths.append(destination)
-            continue
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            client.download_asset(vid, destination)
-            if destination.exists() and destination.stat().st_size > 0:
-                clip_paths.append(destination)
-        except (ImmichAPIError, httpx.HTTPError, OSError, RuntimeError) as exc:
-            logger.warning(
-                "Failed to download burst video %s: %s", vid, _safe_download_error(exc, client)
-            )
-            destination.unlink(missing_ok=True)
+        path = (
+            batch.download_video_id(client, vid)
+            if batch is not None
+            else _burst_clip_path(client, cache_dir, vid)
+        )
+        if path is not None:
+            clip_paths.append(path)
     return clip_paths
+
+
+def _burst_clip_path(client: SyncImmichClient, cache_dir: Path, vid: str) -> Path | None:
+    subdir = vid[:2] if len(vid) >= 2 else "00"
+    destination = cache_dir / subdir / f"{vid}.MOV"
+    if destination.exists() and destination.stat().st_size > 0:
+        return destination
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        client.download_asset(vid, destination)
+        if destination.exists() and destination.stat().st_size > 0:
+            return destination
+    except (ImmichAPIError, httpx.HTTPError, OSError, RuntimeError) as exc:
+        logger.warning(
+            "Failed to download burst video %s: %s", vid, _safe_download_error(exc, client)
+        )
+        destination.unlink(missing_ok=True)
+    return None
 
 
 def _safe_download_error(exc: Exception, client: SyncImmichClient) -> str:
@@ -238,6 +305,8 @@ def _try_merge_burst(
     shutter_timestamps: list[float] | None = None,
     *,
     hardware_enabled: bool = True,
+    strict_material: bool = False,
+    render_frame_rate: str | None = None,
 ) -> Path | None:
     """Try to merge burst clips with spectrogram-aligned audio/video.
 
@@ -253,7 +322,11 @@ def _try_merge_burst(
     )
 
     # Pre-validate: filter out clips with no valid video stream
-    valid_paths, valid_trims = filter_valid_clips(clip_paths, trim_points)
+    valid_paths, valid_trims = (
+        (clip_paths, trim_points)
+        if strict_material
+        else filter_valid_clips(clip_paths, trim_points)
+    )
     if not valid_paths:
         return None
 
@@ -262,7 +335,7 @@ def _try_merge_burst(
     has_audio = probe_clip_has_audio(valid_paths[0]) if valid_paths else False
     if not has_audio:
         logger.info("Burst clips have no audio — skipping spectrogram alignment")
-    if has_audio and shutter_timestamps and len(valid_paths) > 1:
+    if not strict_material and has_audio and shutter_timestamps and len(valid_paths) > 1:
         try:
             import json
 
@@ -299,6 +372,8 @@ def _try_merge_burst(
         merged_path,
         audio_trim_points=audio_trims,
         hardware_enabled=hardware_enabled,
+        quantize_material=strict_material,
+        render_frame_rate=render_frame_rate,
     )
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)  # noqa: S603

@@ -61,6 +61,8 @@ def handle_album_generation(
     memory_category: str | None = None,
     automation_attempt_id: str | None = None,
     dry_run: bool = False,
+    no_render: bool = False,
+    accept_any_provenance: bool = False,
 ) -> None:
     """Generate one memory from the assets of a single Immich album."""
     import click
@@ -137,6 +139,7 @@ def handle_album_generation(
         memory_type=MemoryType.ALBUM,
         person_names=person_names,
         date_range=media.date_range,
+        date_ranges=(),
         upload_to_immich=upload_to_immich,
         album=album,
         memory_preset_params={"album_name": resolved.name, "album_id": resolved.id},
@@ -145,11 +148,16 @@ def handle_album_generation(
         memory_category=memory_category,
         automation_attempt_id=automation_attempt_id,
         dry_run=dry_run,
+        no_render=no_render,
+        accept_any_provenance=accept_any_provenance,
     )
 
     console.print()
     if dry_run:
         print_success(f"Album plan complete: {resolved.name}")
+        return
+    if no_render:
+        print_success(f"Album selection complete; no video was created: {resolved.name}")
         return
     print_success(f"Album video: {result_path}")
     if should_upload:

@@ -98,7 +98,6 @@ _.row_factory  # unused attribute (src/immich_memories/automation/state_store.py
 _.row_factory  # unused attribute (src/immich_memories/cache/asset_score_cache.py:32)
 _.get_asset_score  # unused method (src/immich_memories/cache/asset_score_cache.py:38)
 _.row_factory  # unused attribute (src/immich_memories/cache/database.py:57)
-_.get_video_metadata  # unused method (src/immich_memories/cache/database.py:476)
 _.delete_analysis  # unused method (src/immich_memories/cache/database.py:725)
 _.needs_reanalysis  # unused method (src/immich_memories/cache/database.py:784)
 _.find_similar_videos  # unused method (src/immich_memories/cache/database.py:812)
@@ -298,3 +297,58 @@ upload_result  # unused variable (src/immich_memories/ui/state.py:128)
 _.photo_budget_result  # unused attribute (src/immich_memories/ui/state.py:162)
 discover_days  # unused function (src/immich_memories/cli/special_days_cmd.py:17)
 days_due  # unused function (src/immich_memories/cli/special_days_cmd.py:88)
+
+# --- story-first selection route (permanent) --------------------------------
+# Everything below is reached, but not by a name vulture can follow. Nothing
+# here is parked. The block of public entry points that used to sit at the end
+# of this section -- 28 symbols whose only callers were their own tests -- is
+# gone: each was deleted along with the tests that existed to exercise it.
+
+# Pydantic builds fields and runs validators from the schema, never by name.
+description_llm  # unused variable (src/immich_memories/config_loader.py:242)
+_.expand_database_environment  # unused method (src/immich_memories/config_models_editorial.py:56)
+_.require_scalar_producer  # unused method (src/immich_memories/config_models_editorial.py:62)
+_.require_head_producers  # unused method (src/immich_memories/config_models_editorial.py:70)
+_.expand_paths  # unused method (src/immich_memories/config_models_editorial_preparation.py:27)
+_.validate_endpoint  # unused method (src/immich_memories/config_models_editorial_preparation.py:32)
+
+# Protocol parameter names, and attributes onnxruntime's SessionOptions owns.
+input_feed  # unused variable (src/immich_memories/triage/encoder.py:33)
+output_names  # unused variable (src/immich_memories/triage/encoder.py:33)
+_.intra_op_num_threads  # unused attribute (src/immich_memories/triage/encoder.py:125)
+_.inter_op_num_threads  # unused attribute (src/immich_memories/triage/encoder.py:126)
+_.graph_optimization_level  # unused attribute (src/immich_memories/triage/encoder.py:127)
+_.intra_op_num_threads  # unused attribute (src/immich_memories/analysis/editorial_preparation_detectors.py:116)
+
+# Frozen record fields written at construction and read back out of the private
+# artifact JSON, so no source line ever names them on the reading side.
+source_index  # unused variable (src/immich_memories/analysis/editorial_episode_documents.py:18)
+taken_start  # unused variable (src/immich_memories/analysis/editorial_episode_documents.py:20)
+taken_end  # unused variable (src/immich_memories/analysis/editorial_episode_documents.py:21)
+person_token  # unused variable (src/immich_memories/analysis/editorial_person_period_facts.py:18)
+current_relationship  # unused variable (src/immich_memories/analysis/editorial_person_period_facts.py:20)
+first_library_month  # unused variable (src/immich_memories/analysis/editorial_person_period_facts.py:23)
+sustained_onset_month  # unused variable (src/immich_memories/analysis/editorial_person_period_facts.py:24)
+grounding_moment_ids  # unused variable (src/immich_memories/analysis/editorial_person_period_facts.py:25)
+period_reading  # unused variable (src/immich_memories/analysis/editorial_structure_contract.py:122)
+reranker_identity  # unused variable (src/immich_memories/analysis/editorial_structure_contract.py:159)
+response_sha256  # unused variable (src/immich_memories/analysis/text_episode_answers.py:48)
+unreadable_or_omitted_pages  # unused variable (src/immich_memories/analysis/text_episode_answers.py:50)
+read_rule  # unused variable (src/immich_memories/people/gather.py:43)
+PACK_DIM  # unused variable (src/immich_memories/triage/encoder.py:23)
+
+# The attempt record the phase-2 review page reads (its status, its plan).
+read_editorial_attempt  # unused function (src/immich_memories/operations/editorial_attempt.py:98)
+
+# The legacy selector, held for the PR that removes it. Nothing in src/ reaches
+# these any more: the CLI's own dead entry points (_planning_analysis,
+# _pool_and_select) went with the story-first route, and the editorial source
+# is now the only path into selection. They are listed rather than deleted
+# because the pool and the pipeline's legacy methods come out together, with
+# the tests that still cover them, in one removal.
+_.run_analysis  # unused method (src/immich_memories/analysis/smart_pipeline.py:384)
+_.run_planning_analysis  # unused method (src/immich_memories/analysis/smart_pipeline.py:481)
+_.run_selection  # unused method (src/immich_memories/analysis/smart_pipeline.py:521)
+_merge_photos_into_pool  # unused function (src/immich_memories/cli/_candidate_pool.py:27)
+_drop_reencoded_sources  # unused function (src/immich_memories/cli/_candidate_pool.py:139)
+_apply_subject_policy  # unused function (src/immich_memories/cli/_candidate_pool.py:183)

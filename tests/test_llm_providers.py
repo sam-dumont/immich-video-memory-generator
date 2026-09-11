@@ -62,6 +62,7 @@ class TestAnthropicProvider:
             thinking=True,
         )
         # WHY: the LLM server is the external boundary this request reaches.
+        # WHY: inspect the wire payload without calling the hosted Z.AI gateway.
         with patch("httpx.AsyncClient.post", return_value=_anthropic_response()) as mock_post:
             await query_llm("Judge this cut", config, thinking=True)
 
@@ -69,6 +70,40 @@ class TestAnthropicProvider:
         assert payload["thinking"]["type"] == "enabled"
         assert payload["thinking"]["budget_tokens"] < payload["max_tokens"]
         assert "temperature" not in payload, "thinking requires the default temperature"
+
+    @pytest.mark.asyncio
+    async def test_compatible_gateway_can_explicitly_disable_default_thinking(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(
+            provider="anthropic",
+            base_url="https://api.z.ai/api/anthropic",
+            model="glm-5.3-flash",
+            api_key="k",
+            no_thinking_params={"thinking": {"type": "disabled"}},
+        )
+
+        # WHY: inspect the wire payload without calling Anthropic from a unit test.
+        with patch("httpx.AsyncClient.post", return_value=_anthropic_response()) as mock_post:
+            await query_llm("Describe this wall", config, thinking=False)
+
+        payload = mock_post.call_args.kwargs["json"]
+        assert payload["thinking"] == {"type": "disabled"}
+        assert payload["temperature"] == 0.0
+
+    @pytest.mark.asyncio
+    async def test_native_anthropic_does_not_receive_qwen_default_params(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(provider="anthropic", model="claude", api_key="k")
+
+        # WHY: inspect the native Anthropic payload without making a hosted request.
+        with patch("httpx.AsyncClient.post", return_value=_anthropic_response()) as mock_post:
+            await query_llm("Describe this wall", config, thinking=False)
+
+        payload = mock_post.call_args.kwargs["json"]
+        assert "thinking" not in payload
+        assert "chat_template_kwargs" not in payload
 
     @pytest.mark.asyncio
     async def test_truncated_thinking_falls_back_to_a_fast_answer(self):

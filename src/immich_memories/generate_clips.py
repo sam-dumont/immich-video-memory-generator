@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -12,6 +13,9 @@ from immich_memories.generate_privacy import clip_location_name
 from immich_memories.processing.assembly_config import AssemblyClip
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
+
+    from immich_memories.analysis.editorial_planner import EditorialSelection
     from immich_memories.cache.video_cache import CacheBatch
     from immich_memories.generate import GenerationParams
     from immich_memories.processing.download_coordinator import (
@@ -27,6 +31,101 @@ logger = logging.getLogger(__name__)
 MIN_CLIP_DURATION = 1.5
 
 
+def _reject(message: str, offenders: Iterable[str]) -> None:
+    named = sorted(offenders)
+    if named:
+        raise ValueError(message + ", ".join(named))
+
+
+def _impossible_motion(directive: EditorialSelection, clip) -> bool:
+    from immich_memories.api.models import AssetType
+
+    return (
+        directive.render_mode == "motion"
+        and clip.asset.type == AssetType.IMAGE
+        and not (
+            clip.live_burst_video_ids
+            and clip.live_burst_trim_points
+            and len(clip.live_burst_video_ids or ()) == len(clip.live_burst_trim_points or ())
+        )
+    )
+
+
+def _video_still(directive: EditorialSelection, clip) -> bool:
+    from immich_memories.api.models import AssetType
+
+    return directive.render_mode == "still" and clip.asset.type == AssetType.VIDEO
+
+
+def _frame_outside_source(directive: EditorialSelection, clip) -> bool:
+    return _video_still(directive, clip) and (
+        directive.render_frame_seconds is not None
+        and (clip.duration_seconds <= 0 or directive.render_frame_seconds >= clip.duration_seconds)
+    )
+
+
+def _validate_certified_directive(
+    params: GenerationParams, clip, directives: tuple[EditorialSelection, ...]
+) -> None:
+    from immich_memories.processing.editorial_live_render import validate_editorial_live_clip
+
+    validate_editorial_live_clip(clip)
+    directive = next((row for row in directives if row.asset_id == clip.asset.id), None)
+    interval = tuple(clip.editorial_live_manifest["selected_interval"])
+    if (
+        directive is None
+        or directive.render_mode != "motion"
+        or (directive.start_time, directive.end_time) != interval
+    ):
+        raise ValueError("Editorial Live directive changed its certified interval")
+    declared = getattr(params, "clip_segments", {}).get(clip.asset.id)
+    if declared is not None and tuple(declared) != interval:
+        raise ValueError("Editorial Live segment overrides its certified interval")
+
+
+def _validated_render_directives(params: GenerationParams) -> dict[str, EditorialSelection]:
+    """Validate the run-level rendering contract before any source work starts."""
+    from collections import Counter
+
+    directives = tuple(getattr(params, "editorial_selections", ()))
+    ids = tuple(directive.asset_id for directive in directives)
+    _reject(
+        "duplicate render directives: ",
+        (asset_id for asset_id, count in Counter(ids).items() if count > 1),
+    )
+    clips_by_id = {clip.asset.id: clip for clip in params.clips}
+    _reject("unknown render directive asset IDs: ", set(ids) - set(clips_by_id))
+    _reject(
+        "IMAGE motion directive needs a Live Photo family: ",
+        (
+            directive.asset_id
+            for directive in directives
+            if _impossible_motion(directive, clips_by_id[directive.asset_id])
+        ),
+    )
+    _reject(
+        "video still rendering needs an exact frame timestamp: ",
+        (
+            directive.asset_id
+            for directive in directives
+            if _video_still(directive, clips_by_id[directive.asset_id])
+            and directive.render_frame_seconds is None
+        ),
+    )
+    _reject(
+        "frame timestamp outside source duration: ",
+        (
+            directive.asset_id
+            for directive in directives
+            if _frame_outside_source(directive, clips_by_id[directive.asset_id])
+        ),
+    )
+    for clip in params.clips:
+        if clip.editorial_live_manifest is not None:
+            _validate_certified_directive(params, clip, directives)
+    return {directive.asset_id: directive for directive in directives}
+
+
 def _probe_file_duration(path: Path, *, probe_cache: ProbeCache | None = None) -> float | None:
     """Probe actual file duration via ffprobe. Returns None on failure."""
     from immich_memories.processing.probe_cache import ProbeCache, ProbeError
@@ -37,14 +136,29 @@ def _probe_file_duration(path: Path, *, probe_cache: ProbeCache | None = None) -
     return None
 
 
-def _prefetch_assets(clips: list) -> list[PrefetchAsset]:
+def _prefetch_assets(
+    clips: list,
+    directives: dict[str, EditorialSelection] | None = None,
+) -> list[PrefetchAsset]:
     """Return network-only video targets, including burst components."""
     from immich_memories.api.models import AssetType
     from immich_memories.processing.download_coordinator import DownloadTarget
 
     targets: list[PrefetchAsset] = []
+    decisions = directives or {}
     for clip in clips:
-        if clip.local_path and Path(clip.local_path).exists():
+        if (
+            clip.editorial_live_manifest is None
+            and clip.local_path
+            and Path(clip.local_path).exists()
+        ):
+            continue
+        directive = decisions.get(clip.asset.id)
+        if (
+            directive is not None
+            and directive.render_mode == "still"
+            and clip.asset.type == AssetType.IMAGE
+        ):
             continue
         if clip.asset.type == AssetType.IMAGE and not clip.live_burst_video_ids:
             continue
@@ -93,6 +207,125 @@ def _download_video_path(
     return download_clip(params.client, video_cache, clip, output_dir)
 
 
+@dataclass(frozen=True)
+class _Extraction:
+    """The one run's sources, caches and progress reporting, shared by every clip."""
+
+    params: GenerationParams
+    video_cache: CacheBatch | None
+    output_dir: Path
+    directives: dict[str, EditorialSelection]
+    prefetched: dict[str, DownloadResult] | None
+    probe_cache: ProbeCache | None
+    report: Callable[[str, float, str], None]
+
+
+def _rendered_photo(extraction: _Extraction, clip, directive: EditorialSelection | None):
+    from immich_memories.generate_photos import _render_photo_as_clip
+
+    params = extraction.params
+    segment = params.clip_segments.get(clip.asset.id) if directive is not None else None
+    return _render_photo_as_clip(
+        clip,
+        params,
+        extraction.output_dir,
+        duration_seconds=None if segment is None else segment[1] - segment[0],
+    )
+
+
+def _extracted_segment(extraction: _Extraction, clip, video_path: Path, progress: float, name: str):
+    from immich_memories.processing.clips import extract_clip
+
+    params = extraction.params
+    start_time, end_time = params.clip_segments.get(
+        clip.asset.id, (0.0, clip.duration_seconds or 5.0)
+    )
+
+    extraction.report("extract", progress, f"Extracting segment: {name}")
+    if clip.editorial_live_manifest is not None:
+        from immich_memories.processing.editorial_live_render import extract_certified_live
+
+        segment_path, duration = extract_certified_live(
+            clip,
+            video_path,
+            extraction.output_dir,
+            extract=extract_clip,
+            config=params.config,
+        )
+    else:
+        segment_path = extract_clip(
+            video_path, start_time=start_time, end_time=end_time, config=params.config
+        )
+
+        # WHY: extract_clip with -c copy can produce files shorter OR longer
+        # than requested due to keyframe boundaries. Use min(actual, nominal)
+        # so we never claim more duration than the file actually has (prevents
+        # frame underruns) but also never more than what was requested
+        # (prevents audio starting early).
+        nominal_duration = end_time - start_time
+        actual_duration = (
+            _probe_file_duration(segment_path, probe_cache=extraction.probe_cache)
+            if extraction.probe_cache is not None
+            else _probe_file_duration(segment_path)
+        )
+        duration = min(actual_duration, nominal_duration) if actual_duration else nominal_duration
+
+    exif = clip.asset.exif_info
+    return AssemblyClip(
+        path=segment_path,
+        duration=duration,
+        date=clip.asset.file_created_at.strftime("%Y-%m-%d"),
+        asset_id=clip.asset.id,
+        rotation_override=params.clip_rotations.get(clip.asset.id),
+        llm_emotion=clip.llm_emotion,
+        latitude=exif.latitude if exif else None,
+        longitude=exif.longitude if exif else None,
+        location_name=clip_location_name(exif),
+        has_music=bool(set(clip.audio_categories or []) & {"music", "singing"}),
+    )
+
+
+def _rendered_clip(extraction: _Extraction, clip, progress: float, name: str):
+    """Render one selected source as the directive demands, or report nothing usable."""
+    from immich_memories.api.models import AssetType
+
+    params = extraction.params
+    directive = extraction.directives.get(clip.asset.id)
+    # IMAGE-type clips from the unified selection pool. The question is
+    # what the candidate CARRIES, not what kind of asset it is: a Live
+    # Photo whose burst was not worth stitching is a photograph, and
+    # asking whether it has a video component at all sent every one of
+    # them off to download a video for a still.
+    if clip.asset.type == AssetType.IMAGE and (
+        not clip.live_burst_video_ids
+        or (directive is not None and directive.render_mode == "still")
+    ):
+        return _rendered_photo(extraction, clip, directive)
+
+    video_path = _download_video_path(
+        params, clip, extraction.video_cache, extraction.output_dir, extraction.prefetched
+    )
+    if not video_path or not video_path.exists():
+        if clip.editorial_live_manifest is not None:
+            raise ValueError("Certified editorial Live source is unavailable")
+        logger.warning(f"Failed to download {clip.asset.id}, skipping")
+        return None
+
+    if directive is not None and directive.render_mode == "still":
+        from immich_memories.generate_photos import _render_video_frame_as_clip
+
+        assert directive.render_frame_seconds is not None
+        return _render_video_frame_as_clip(
+            clip,
+            params,
+            extraction.output_dir,
+            video_path=video_path,
+            frame_seconds=directive.render_frame_seconds,
+        )
+
+    return _extracted_segment(extraction, clip, video_path, progress, name)
+
+
 def _extract_clips(
     params: GenerationParams,
     video_cache: CacheBatch | None,
@@ -102,19 +335,20 @@ def _extract_clips(
     probe_cache: ProbeCache | None = None,
 ) -> list[AssemblyClip]:
     """Download videos and extract clip segments. Renders IMAGE clips as photo animations."""
-    from immich_memories.api.models import AssetType
-    from immich_memories.generate_photos import _render_photo_as_clip
-    from immich_memories.processing.clips import extract_clip
 
     def _report(phase: str, progress: float, msg: str) -> None:
         if params.progress_callback:
             params.progress_callback(phase, progress, msg)
 
+    directives = _validated_render_directives(params)
     assembly_clips: list[AssemblyClip] = []
     total = len(params.clips)
     prefetched: dict[str, DownloadResult] | None = None
     if download_coordinator is not None:
-        prefetched = download_coordinator.prefetch(_prefetch_assets(params.clips))
+        prefetched = download_coordinator.prefetch(_prefetch_assets(params.clips, directives))
+    extraction = _Extraction(
+        params, video_cache, output_dir, directives, prefetched, probe_cache, _report
+    )
 
     for i, clip in enumerate(params.clips):
         progress = (i / total) * 0.7
@@ -122,64 +356,14 @@ def _extract_clips(
         _report("extract", progress, f"Downloading: {clip_name}")
 
         try:
-            # IMAGE-type clips from the unified selection pool. The question is
-            # what the candidate CARRIES, not what kind of asset it is: a Live
-            # Photo whose burst was not worth stitching is a photograph, and
-            # asking whether it has a video component at all sent every one of
-            # them off to download a video for a still.
-            if clip.asset.type == AssetType.IMAGE and not clip.live_burst_video_ids:
-                photo_clip = _render_photo_as_clip(clip, params, output_dir)
-                if photo_clip:
-                    assembly_clips.append(photo_clip)
-                continue
-
-            video_path = _download_video_path(params, clip, video_cache, output_dir, prefetched)
-            if not video_path or not video_path.exists():
-                logger.warning(f"Failed to download {clip.asset.id}, skipping")
-                continue
-
-            start_time, end_time = params.clip_segments.get(
-                clip.asset.id, (0.0, clip.duration_seconds or 5.0)
-            )
-
-            _report("extract", progress, f"Extracting segment: {clip_name}")
-            segment_path = extract_clip(
-                video_path, start_time=start_time, end_time=end_time, config=params.config
-            )
-
-            # WHY: extract_clip with -c copy can produce files shorter OR longer
-            # than requested due to keyframe boundaries. Use min(actual, nominal)
-            # so we never claim more duration than the file actually has (prevents
-            # frame underruns) but also never more than what was requested
-            # (prevents audio starting early).
-            nominal_duration = end_time - start_time
-            actual_duration = (
-                _probe_file_duration(segment_path, probe_cache=probe_cache)
-                if probe_cache is not None
-                else _probe_file_duration(segment_path)
-            )
-            duration = (
-                min(actual_duration, nominal_duration) if actual_duration else nominal_duration
-            )
-
-            exif = clip.asset.exif_info
-            assembly_clips.append(
-                AssemblyClip(
-                    path=segment_path,
-                    duration=duration,
-                    date=clip.asset.file_created_at.strftime("%Y-%m-%d"),
-                    asset_id=clip.asset.id,
-                    rotation_override=params.clip_rotations.get(clip.asset.id),
-                    llm_emotion=clip.llm_emotion,
-                    latitude=exif.latitude if exif else None,
-                    longitude=exif.longitude if exif else None,
-                    location_name=clip_location_name(exif),
-                    has_music=bool(set(clip.audio_categories or []) & {"music", "singing"}),
-                )
-            )
+            rendered = _rendered_clip(extraction, clip, progress, clip_name)
         except (OSError, subprocess.SubprocessError, ValueError) as e:
+            if clip.editorial_live_manifest is not None:
+                raise
             logger.warning(f"Failed to process {clip.asset.id}: {e}")
             continue
+        if rendered:
+            assembly_clips.append(rendered)
 
     return assembly_clips
 

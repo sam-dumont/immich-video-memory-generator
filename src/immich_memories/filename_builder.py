@@ -11,6 +11,8 @@ from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
+from immich_memories.api.person_expression import PersonExpression
+
 if TYPE_CHECKING:
     from immich_memories.timeperiod import DateRange
 
@@ -44,17 +46,43 @@ def build_memory_output_path(
     memory_type: str | None,
     date_range: DateRange,
     container: str,
+    person_match: str = "and",
+    special_event_id: str | None = None,
+    person_expression: PersonExpression | None = None,
 ) -> Path:
     """The CLI's default file name for a memory: who is in it, what it covers."""
     person_slug = (
         "_".join(n.lower().replace(" ", "_") for n in person_names) if person_names else "all"
     )
+    if len(person_names) > 1 and person_match == "or" and memory_type != "multi_person":
+        person_slug = "_or_".join(n.lower().replace(" ", "_") for n in person_names)
     type_slug = memory_type or "memories"
+    if memory_type == "multi_person" and person_match == "or":
+        type_slug = "multi_person_or"
     if date_range.is_calendar_year:
         date_slug = str(date_range.start.year)
     else:
         date_slug = f"{date_range.start.strftime('%Y%m%d')}-{date_range.end.strftime('%Y%m%d')}"
-    return output_dir / f"{person_slug}_{type_slug}_{date_slug}.{container}"
+    event_suffix = _event_filename_suffix(memory_type, special_event_id)
+    expression_suffix = _people_filename_suffix(person_expression)
+    return (
+        output_dir
+        / f"{person_slug}_{type_slug}_{date_slug}{event_suffix}{expression_suffix}.{container}"
+    )
+
+
+def _people_filename_suffix(expression: PersonExpression | None) -> str:
+    if expression is None:
+        return ""
+    canonical = json.dumps(expression.to_dict(), sort_keys=True, separators=(",", ":"))
+    return "_people-" + hashlib.sha256(canonical.encode()).hexdigest()[:10]
+
+
+def _event_filename_suffix(memory_type: str | None, event_id: str | None) -> str:
+    """Separate same-day occasions without publishing their titles or membership."""
+    if memory_type != "special_day" or not event_id:
+        return ""
+    return "_event-" + hashlib.sha256(event_id.encode()).hexdigest()[:10]
 
 
 def build_output_filename(
@@ -88,7 +116,12 @@ def build_output_filename(
     parts = [p for p in (who, when) if p]
     slug = "_".join(parts) if parts else "memories"
 
-    return f"{slug}_memories.{container}"
+    event_suffix = _event_filename_suffix(memory_type, preset_params.get("event_id"))
+    raw_expression = preset_params.get("person_expression")
+    expression_suffix = _people_filename_suffix(
+        PersonExpression.from_dict(raw_expression) if raw_expression is not None else None
+    )
+    return f"{slug}_memories{event_suffix}{expression_suffix}.{container}"
 
 
 def build_title_person_name(
@@ -108,12 +141,19 @@ def build_title_person_name(
     Returns:
         Formatted person name string, or None.
     """
+    if preset_params.get("person_expression") is not None:
+        expression = PersonExpression.from_dict(preset_params["person_expression"])
+        if use_first_name_only:
+            expression = expression.map_leaves(lambda name: name.split()[0])
+        return expression.display_label
     # Multi-person: join names from preset params
     preset_names = preset_params.get("person_names", [])
     if memory_type == "multi_person" and len(preset_names) >= 2:
         names = preset_names
         if use_first_name_only:
             names = [n.split()[0] for n in names]
+        if preset_params.get("person_match", "and") == "or":
+            return " or ".join(names)
         if len(names) == 2:
             return f"{names[0]} & {names[1]}"
         return f"{', '.join(names[:-1])} & {names[-1]}"
@@ -225,9 +265,11 @@ def _build_who_part(
     if memory_type == "multi_person":
         names = preset_params.get("person_names", [])
         if names:
+            joiner = "_or_" if preset_params.get("person_match", "and") == "or" else "_"
             if len(names) <= 3:
-                return "_".join(n.lower() for n in names)
-            return "_".join(n.lower() for n in names[:3]) + "_and_others"
+                return joiner.join(n.lower() for n in names)
+            tail = "_or_others" if joiner == "_or_" else "_and_others"
+            return joiner.join(n.lower() for n in names[:3]) + tail
 
     # Trip: use "trip" as the who part
     if memory_type == "trip":

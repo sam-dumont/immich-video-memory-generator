@@ -22,11 +22,11 @@ def _apply(memory_type: MemoryType, **params) -> AppState:
     return state
 
 
-def test_both_memory_types_are_offered_as_cards() -> None:
+def test_holiday_is_offered_and_retired_then_and_now_is_not() -> None:
     keys = [card[0] for card in _PRESET_CARDS]
 
     assert MemoryType.HOLIDAY in keys
-    assert MemoryType.THEN_AND_NOW in keys
+    assert MemoryType.THEN_AND_NOW not in keys
 
 
 def _render(key: str, **params) -> AppState:

@@ -56,7 +56,7 @@ that holiday rather than the five years between them.
   There is no zero: the contrast is the point, so the two years must differ. Its
   title names both ("2016 & 2026").
 
-The presets also drive the output filename and title screen. A Multi-Person preset with Alice and Bob for March 2025 produces `alice_bob_march_2025_memories.mp4` with "Alice & Bob" as the title subtitle.
+The presets also drive the output filename and title screen. A Multi-Person preset with Riley and Bob for March 2025 produces `riley_bob_march_2025_memories.mp4` with "Riley & Bob" as the title subtitle.
 
 ### Surprise me
 
@@ -94,7 +94,9 @@ Every person dropdown is populated from Immich's face recognition data, so only
 named faces are offered.
 
 Two cards are *about* people and collect them as part of the memory: **Person
-Spotlight** takes one person, and **Multi-Person** takes 2 or more.
+Spotlight** takes one person, and **Multi-Person** takes 2 or more. Multi-Person
+also has a **Together (AND) / Any of (OR)** toggle. Together requires every
+chosen person in each asset; Any of builds the union of their tagged assets.
 
 Every other card that covers a period — Year in Review, Season, Monthly
 Highlights, On This Day, Holiday, Then and Now — carries an optional **Only
@@ -104,7 +106,7 @@ moments with **all** of them are used, which is exactly what repeating
 `--person` does on the CLI:
 
 ```bash
-immich-memories generate --memory-type year_in_review --year 2025 --person "Alice" --person "Bob"
+immich-memories generate --memory-type year_in_review --year 2025 --person "Riley" --person "Bob"
 ```
 
 Three cards carry no person filter, each for its own reason:
