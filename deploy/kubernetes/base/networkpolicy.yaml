@@ -40,7 +40,10 @@ spec:
         - port: 2283
           protocol: TCP
 
-    # Optional: local LLM (Ollama default port) or an OpenAI-compatible server
+    # The two model services selection needs: an OpenAI-compatible reader
+    # (Ollama's default port) and the caption server the docs default to.
     - ports:
         - port: 11434
+          protocol: TCP
+        - port: 8092
           protocol: TCP

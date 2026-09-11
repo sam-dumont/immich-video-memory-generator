@@ -30,6 +30,21 @@ def _logical_instructions(source: str) -> str:
     return re.sub(r"[ \t]+", " ", joined)
 
 
+def _final_stage_instructions(source: str) -> list[str]:
+    """Instructions of the last build stage, in file order — earlier stages are discarded."""
+    lines = [
+        line.strip()
+        for line in _logical_instructions(source).splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    final_stage = max(index for index, line in enumerate(lines) if line.startswith("FROM "))
+    return lines[final_stage:]
+
+
+# `rm` with its flags stripped, leaving the operands it deletes.
+_REMOVED_PATHS = re.compile(r"\brm\b(?:\s+-\S+)*(?P<paths>(?:\s+[^\s;&|]+)+)")
+
+
 def _dry_run_make(target: str, *assignments: str, env: dict[str, str] | None = None) -> str:
     result = subprocess.run(
         ["make", "--no-print-directory", "-n", target, *assignments],
@@ -411,3 +426,84 @@ def test_anything_we_publish_ourselves_is_published_before_the_main_wheel() -> N
 
     assert "pypi-publish-music" in jobs
     assert "pypi-publish-music" in jobs["pypi-publish"]["needs"]
+
+
+def test_every_published_platform_takes_torch_from_the_cpu_wheel_index() -> None:
+    """Nothing in the image runs GPU inference, so the CUDA stack is dead weight.
+
+    Both detectors are CPU by construction, and torch pins its CUDA dependencies on
+    `sys_platform == 'linux'` with no architecture guard, so aarch64 gets the same
+    stack x86_64 does -- measured at 3.3 GB of `nvidia` plus 818 MB of triton in the
+    arm64 image, for a torch that reports cuda_available: False. Adding a release
+    platform without adding it here would quietly hand that platform the CUDA build.
+    """
+    source = _dockerfile()
+    dockerfile = _logical_instructions(source)
+
+    assert re.search(r"(?m)^ARG TARGETARCH\s*$", dockerfile)
+    cpu_wheel = re.search(
+        r'case "\$\{TARGETARCH\}" in (?P<arches>[a-z0-9|]+)\) pip wheel [^\n]*'
+        r"--no-deps [^\n]*--wheel-dir=(?P<dir>/\S+) "
+        r"--index-url https://download\.pytorch\.org/whl/cpu[^\n]* torch",
+        dockerfile,
+    )
+    assert cpu_wheel, "the CPU index must supply torch for the platforms we publish"
+
+    workflow = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "release.yml").read_text())
+    published = {
+        str(entry["platform"]).rsplit("/", maxsplit=1)[-1]
+        for entry in workflow["jobs"]["docker-build"]["strategy"]["matrix"]["include"]
+    }
+    covered = set(cpu_wheel.group("arches").split("|"))
+    assert published <= covered, (
+        f"{sorted(published - covered)} is published but still resolves torch from PyPI"
+    )
+    assert cpu_wheel.group("dir") != "/wheels", (
+        "the CPU wheel must stay out of /wheels so a torch-free extras set never installs it"
+    )
+    install_target = re.search(r'(?m)^.*pip wheel[^\n]*"\$\{INSTALL_TARGET\}".*$', dockerfile)
+    assert install_target and f"--find-links={cpu_wheel.group('dir')}" in install_target.group(0)
+    # Only the builder resolves anything; the runtime stage installs local wheels.
+    assert "download.pytorch.org" not in source.split("# Stage 2:")[1]
+
+
+def test_final_stage_never_deletes_what_an_earlier_layer_copied() -> None:
+    """A COPY writes its bytes into a layer that no later `rm` can reclaim.
+
+    /wheels was copied into the runtime stage and removed after the install, so the
+    published image carried every dependency twice -- once as a wheel, once unpacked
+    into site-packages -- and the tarball ran to ~10 GB.
+    """
+    instructions = _final_stage_instructions(_dockerfile())
+    copied = {
+        instruction.split()[-1].rstrip("/"): index
+        for index, instruction in enumerate(instructions)
+        if instruction.startswith("COPY ")
+    }
+
+    for index, instruction in enumerate(instructions):
+        deleted = {
+            path.rstrip("/").removesuffix("/*")
+            for match in _REMOVED_PATHS.finditer(instruction)
+            for path in match.group("paths").split()
+        }
+        stale = sorted(
+            destination
+            for destination, copied_at in copied.items()
+            if copied_at < index
+            and any(destination == gone or destination.startswith(f"{gone}/") for gone in deleted)
+        )
+        assert not stale, (
+            f"{stale} is copied into the runtime stage and deleted by a later instruction, "
+            f"which frees nothing. Mount it for the command that needs it: {instruction}"
+        )
+
+
+def test_runtime_wheels_are_mounted_for_the_install_rather_than_copied() -> None:
+    """Mounted wheels never enter a layer, so the image holds one copy of each dependency."""
+    final_stage = "\n".join(_final_stage_instructions(_dockerfile()))
+    install = re.search(r"(?m)^RUN[^\n]*pip install[^\n]*/wheels[^\n]*$", final_stage)
+
+    assert install, "the runtime stage must install the wheels the builder produced"
+    assert "--mount=type=bind,from=builder,source=/wheels,target=/wheels" in install.group()
+    assert "COPY --from=builder /wheels" not in final_stage

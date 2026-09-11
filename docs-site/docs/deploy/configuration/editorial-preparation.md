@@ -33,6 +33,7 @@ Hugging Face Hub. Model weights and the caption server need separate setup.
 advanced:
   triage:
     encoder: ~/.immich-memories/models/triage/dinov2-small.onnx
+    encoder_url: https://github.com/sam-dumont/immich-video-memory-generator/releases/download/models-v1/dinov2-small-478164cd.onnx
   editorial:
     annotation_database: ""  # defaults to annotations.sqlite inside the cache directory
     preparation:
@@ -56,8 +57,15 @@ The wheel includes `public-6heads-v3.npz` and its provenance notice. Its four ba
 `public-v1`; venue and swim use `oi-v3`. It contains public training coefficients, no library
 photographs or owner-trained heads.
 
-Place the pinned 88 MB DINOv2-small ONNX export at `triage.encoder`, or point that setting at
-an existing copy. Its expected SHA-256 is:
+Fetch the pinned 88 MB DINOv2-small ONNX export, or point `triage.encoder` at an existing copy:
+
+```bash
+immich-memories models fetch
+```
+
+The command downloads `triage.encoder_url` to a temporary file, hashes it, and only then renames
+it into `triage.encoder`; a download that does not match the pin leaves nothing behind. An export
+that is already correct is a no-op, and `--force` re-downloads it. Its expected SHA-256 is:
 
 ```text
 478164cd290ee78e5ddb4fcc474136eec714b4b8253a3609cc7164b592e958af
@@ -78,10 +86,12 @@ completed batch. It does not upload images to Hugging Face.
 | `Marqo/nsfw-image-detection-384` | `0c26ec22111b83f106d72a55f611ec35962bcb65` | `config.json`, `model.safetensors` |
 | `docling-project/DocumentFigureClassifier-v2.0` | `2a12e02668b98ca40216eab41cdf19530577cba4` | `model.onnx` |
 
-By default these files must already be in the Hugging Face Hub cache. Set
-`detector_cache_dir` to its cache root if it lives elsewhere. Setting
-`allow_model_downloads: true` allows the worker to acquire the pinned files when needed.
-It does not download the DINO encoder or start a caption server.
+By default these files must already be in the Hugging Face Hub cache. `immich-memories models
+fetch` puts them there — it warms every file in the table at its pinned revision, into
+`detector_cache_dir` when that is set, so `allow_model_downloads` can stay `false` and mean what
+it says. `--no-detectors` fetches only the encoder. Setting `allow_model_downloads: true` instead
+allows the worker itself to acquire the pinned files when needed. Neither starts a caption
+server.
 
 A separate `detector_python` needs `timm`, `torch`, `huggingface-hub`, `onnxruntime`, `numpy`
 and `Pillow`. The worker ships with the main package and runs without importing the app's UI

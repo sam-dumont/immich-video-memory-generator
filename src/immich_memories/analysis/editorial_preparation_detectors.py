@@ -28,8 +28,15 @@ from PIL import Image
 VERSION = "det-v1"
 MARQO_REPO = "Marqo/nsfw-image-detection-384"
 MARQO_REVISION = "0c26ec22111b83f106d72a55f611ec35962bcb65"
+MARQO_FILES = ("config.json", "model.safetensors")
 DOCLING_REPO = "docling-project/DocumentFigureClassifier-v2.0"
 DOCLING_REVISION = "2a12e02668b98ca40216eab41cdf19530577cba4"
+DOCLING_FILE = "model.onnx"
+# Everything a cold cache needs before `allow_model_downloads: false` can mean what it says.
+DETECTOR_SNAPSHOTS = (
+    (MARQO_REPO, MARQO_REVISION, MARQO_FILES),
+    (DOCLING_REPO, DOCLING_REVISION, (DOCLING_FILE,)),
+)
 DOCLING_LABELS = (
     "logo",
     "photograph",
@@ -73,7 +80,7 @@ class Marqo:
         from huggingface_hub import hf_hub_download
 
         timm = import_module("timm")
-        for filename in ("config.json", "model.safetensors"):
+        for filename in MARQO_FILES:
             hf_hub_download(
                 MARQO_REPO,
                 filename,
@@ -107,7 +114,7 @@ class Docling:
 
         path = hf_hub_download(
             DOCLING_REPO,
-            "model.onnx",
+            DOCLING_FILE,
             revision=DOCLING_REVISION,
             cache_dir=cache_dir,
             local_files_only=not allow_downloads,

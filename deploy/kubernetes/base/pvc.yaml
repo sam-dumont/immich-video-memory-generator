@@ -31,3 +31,22 @@ spec:
     requests:
       storage: 50Gi
   # storageClassName: local-path
+---
+# Pinned model artifacts, mounted at /models: the digest-checked DINOv2 export
+# and the Hugging Face cache the two detectors read. Both are written by
+# `immich-memories models fetch`; neither can live on the read-only root
+# filesystem, and re-fetching them on every restart is 500 MB of nothing.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: immich-memories-models
+  namespace: immich-memories
+  labels:
+    app.kubernetes.io/name: immich-memories
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  # storageClassName: local-path
