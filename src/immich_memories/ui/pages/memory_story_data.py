@@ -1,9 +1,14 @@
-"""The story a cut tells, read from the attempt's plan and nothing else.
+"""The story a cut tells, read from the attempt directory and nothing else.
 
 This is the only reader of `plan.private.json` on the UI side. It turns the
 planner's record into a frozen view the page renders: the thesis, the stories
 in the order the memory weighs them, each story's carriers in capture order,
 and the one reason the editor wrote for every carrier.
+
+It also reads `preparation.private.json` beside it, for one thing only: which
+preparation tier produced this cut, so the page can say what the reader is and
+is not looking at. That belongs with the run, not with the plan, because the
+plan is a selection record and the tier is a property of the deployment.
 """
 
 from __future__ import annotations
