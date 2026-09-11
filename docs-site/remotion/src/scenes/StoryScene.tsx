@@ -17,13 +17,13 @@ import { ImBadge } from "../components/ImBadge";
 import { ImButton } from "../components/ImButton";
 import { ImSectionHeader } from "../components/ImSectionHeader";
 import { ImSeparator } from "../components/ImSeparator";
+import { MaterialIcon } from "../components/MaterialIcon";
 import { AnimatedCursor } from "../components/AnimatedCursor";
 
 type Carrier = {
   motion: boolean;
   seconds: string;
   taken: string;
-  standing: "remarkable" | "maybe";
   reason: string;
   /** Soft colour block standing in for the thumbnail — never a real picture. */
   tint: string;
@@ -31,8 +31,9 @@ type Carrier = {
 
 type Story = {
   title: string;
+  /** The editor's own word; the badge shows WEIGHT_LABEL[weight] instead. */
   weight: "dominant" | "major" | "glimpse";
-  granted: string;
+  pictures: string;
   day: string;
   purpose: string;
   carriers: Carrier[];
@@ -50,7 +51,7 @@ const STORIES: Story[] = [
   {
     title: "The garden through spring",
     weight: "dominant",
-    granted: "2 granted",
+    pictures: "2 pictures",
     day: "2025-04-19",
     purpose: "Opens the year where most of it actually happened",
     carriers: [
@@ -58,7 +59,6 @@ const STORIES: Story[] = [
         motion: true,
         seconds: "5 s",
         taken: "Apr 19, 10:15",
-        standing: "remarkable",
         reason: "the only capture of the morning",
         tint: "linear-gradient(135deg, #4f6f52 0%, #86a789 55%, #d2e3c8 100%)",
       },
@@ -66,7 +66,6 @@ const STORIES: Story[] = [
         motion: false,
         seconds: "4 s",
         taken: "Apr 19, 17:40",
-        standing: "maybe",
         reason: "the whole table in one frame",
         tint: "linear-gradient(135deg, #6b5b4b 0%, #b08968 60%, #ddb892 100%)",
       },
@@ -75,7 +74,7 @@ const STORIES: Story[] = [
   {
     title: "Moving week",
     weight: "major",
-    granted: "2 granted",
+    pictures: "2 pictures",
     day: "2025-07-02",
     purpose: "Carries the middle of the year and explains the change of rooms",
     carriers: [
@@ -83,7 +82,6 @@ const STORIES: Story[] = [
         motion: false,
         seconds: "4 s",
         taken: "Jul 02, 08:05",
-        standing: "remarkable",
         reason: "boxes to the ceiling and the room already empty behind them",
         tint: "linear-gradient(135deg, #3d405b 0%, #5c6378 55%, #9aa0b5 100%)",
       },
@@ -91,7 +89,6 @@ const STORIES: Story[] = [
         motion: true,
         seconds: "6 s",
         taken: "Jul 02, 15:22",
-        standing: "maybe",
         reason: "the last look back down the hallway",
         tint: "linear-gradient(135deg, #2f3e46 0%, #52796f 60%, #84a98c 100%)",
       },
@@ -100,7 +97,7 @@ const STORIES: Story[] = [
   {
     title: "A week on the coast",
     weight: "glimpse",
-    granted: "2 granted",
+    pictures: "2 pictures",
     day: "2025-08-14",
     purpose: "Closes the year on the one week everyone was in the same place",
     carriers: [
@@ -108,7 +105,6 @@ const STORIES: Story[] = [
         motion: true,
         seconds: "5 s",
         taken: "Aug 14, 19:05",
-        standing: "remarkable",
         reason: "low sun, the whole group walking into it",
         tint: "linear-gradient(135deg, #e07a5f 0%, #f2cc8f 60%, #fdf0d5 100%)",
       },
@@ -116,7 +112,6 @@ const STORIES: Story[] = [
         motion: false,
         seconds: "4 s",
         taken: "Aug 16, 12:30",
-        standing: "maybe",
         reason: "the only picture with all of them looking up",
         tint: "linear-gradient(135deg, #1d3557 0%, #457b9d 55%, #a8dadc 100%)",
       },
@@ -130,9 +125,16 @@ const WEIGHT_VARIANT = {
   glimpse: "warning",
 } as const;
 
+// Display only — the plan keeps the editor's word, which the Details row shows.
+const WEIGHT_LABEL = {
+  dominant: "Main story",
+  major: "Important",
+  glimpse: "Small moment",
+} as const;
+
 const SCROLL_START = 72;
 const SCROLL_END = 250;
-const SCROLL_PX = 305;
+const SCROLL_PX = 400;
 const CLICK_EXPORT = 300;
 
 // Measured against a 1920x1080 still render, with the page scrolled to its end.
@@ -166,13 +168,26 @@ const CarrierRow: React.FC<{ carrier: Carrier }> = ({ carrier }) => (
         <span style={{ fontSize: 12, color: COLORS.textSecondary }}>
           {carrier.taken}
         </span>
-        <ImBadge
-          text={carrier.standing}
-          variant={carrier.standing === "remarkable" ? "success" : "warning"}
-        />
       </div>
       <span style={{ fontSize: 14, color: COLORS.text }}>{carrier.reason}</span>
     </div>
+  </div>
+);
+
+/** Collapsed, as the page opens it: the editor's weight and standings are one click away. */
+const DetailsRow: React.FC = () => (
+  <div
+    style={{
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginTop: 12,
+      fontSize: 12,
+      color: COLORS.textSecondary,
+    }}
+  >
+    <span>Details</span>
+    <MaterialIcon name="expand_more" size={18} color={COLORS.textSecondary} />
   </div>
 );
 
@@ -192,9 +207,12 @@ const StoryCard: React.FC<{ story: Story; reveal: number }> = ({
       <span style={{ fontSize: 16, fontWeight: 600, color: COLORS.text }}>
         {story.title}
       </span>
-      <ImBadge text={story.weight} variant={WEIGHT_VARIANT[story.weight]} />
+      <ImBadge
+        text={WEIGHT_LABEL[story.weight]}
+        variant={WEIGHT_VARIANT[story.weight]}
+      />
       <span style={{ fontSize: 12, color: COLORS.textSecondary }}>
-        {story.granted}
+        {story.pictures}
       </span>
       <span style={{ fontSize: 12, color: COLORS.textSecondary }}>
         {story.day}
@@ -213,6 +231,7 @@ const StoryCard: React.FC<{ story: Story; reveal: number }> = ({
     {story.carriers.map((carrier) => (
       <CarrierRow key={carrier.taken} carrier={carrier} />
     ))}
+    <DetailsRow />
   </ImCard>
 );
 
