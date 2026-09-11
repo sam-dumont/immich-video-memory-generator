@@ -74,13 +74,17 @@ uv run python scripts/benchmark_preparation.py --stages nsfw_marqo nsfw_marqo_on
 
 ### 1.2 The two machines
 
-| | A | B |
-|---|---|---|
-| Machine | Apple M5 Max, 128 GB | Synology DS423+ |
-| CPU | 18 cores | Intel Celeron J4125, 4 cores @ 2.0 GHz |
-| SIMD | NEON | **SSSE3, SSE4.1, SSE4.2 — and nothing above it.** No AVX, no AVX2, no F16C, no FMA |
-| OS | macOS | Linux 4.4.302, Docker 24.0.2 |
-| Runtime | project venv | `python:3.12-slim` container, `torch --index-url .../whl/cpu` |
+| | A | B | C |
+|---|---|---|---|
+| Machine | Apple M5 Max, 128 GB | Synology DS423+ | NVIDIA T1000 8 GB in the owner's cluster |
+| CPU / GPU | 18 cores | Intel Celeron J4125, 4 cores @ 2.0 GHz | Turing, 8 GB VRAM, driver 570.144 |
+| SIMD | NEON | **SSSE3, SSE4.1, SSE4.2 — and nothing above it.** No AVX, no AVX2, no F16C, no FMA | CUDA 12.8 |
+| OS | macOS | Linux 4.4.302, Docker 24.0.2 | RKE2, one-shot Pod, `runtimeClassName: nvidia` |
+| Runtime | project venv | `python:3.12-slim` container, `torch --index-url .../whl/cpu` | ORT 1.26 CUDA EP; `llama.cpp:server-cuda` |
+
+Machine C is **the model seats only**. In topology 3 the NAS keeps the decode-and-resize work and
+the GPU box runs inference, so that is the column worth having; the CPU-side stages were not
+measured on that host and are marked accordingly.
 
 Machine B is the magnifying glass. It is also the honest floor: a DS423+ is the NAS a self-hoster
 most often already owns.
@@ -128,6 +132,41 @@ Adding each machine's own captioner is a separate question with a separate answe
 32.1 against 0.180 is *not* a machine ratio: it is MLX on Apple silicon against `llama.cpp` on a
 CPU with no AVX, which is two variables at once.
 
+### 1.3b The GPU column — topology 3
+
+Measured on machine C with a one-shot Pod, on the same five pictures, from byte-identical weights
+served off the NAS. Three guards had to pass before any number was believed: the pinned encoder's
+sha256 (`478164cd…`), `session.get_providers()` actually reporting `CUDAExecutionProvider`, and
+`nvidia-smi` showing the process holding VRAM. All three seats' outputs matched machine A's CPU
+results to within 5e-4 relative, so this is the same arithmetic, faster.
+
+| seat | A: M5 Max (CPU EP) | B: J4125 | **C: T1000** | comparable? |
+|---|---:|---:|---:|---|
+| DINOv2 embed | 0.0110 | 0.5259 | **0.0097** | yes — same ORT graph, same input tensors |
+| `doc_docling` | 0.0059 | 0.1266 | **0.0023** | yes |
+| `nsfw_marqo` (ONNX) | 0.0187 | 0.469 | **0.0115** | yes |
+| caption, SmolVLM2 Q8\_0 GGUF | n/a | 30.9 | **0.936** | **B vs C only** — same runtime, same quant, byte-identical weights |
+| caption, MLX 4-bit | 0.171 | n/a | n/a | never against the GGUF column |
+
+Peak VRAM: 656 MiB for the captioner, 332 MiB for all three ONNX seats. **A T1000 hosts the whole
+ML service in under 1 GB of its 8**, which is the fact that makes topology 3 cheap.
+
+**The captioner is the only seat a GPU transforms.** B against C is a clean ratio — one runtime,
+one quantisation, the same file — and it is **33×**: 30.9 s becomes 0.936 s. That is the number
+that decides whether a second machine is worth it, and it says yes.
+
+**The ONNX seats barely care.** A T1000 runs DINOv2-small at 0.0097 s against an M5 Max CPU's
+0.0110 — **13 % faster, not an order of magnitude**. A 22 M-parameter ViT over five images does not
+fill a GPU; the batch is too small and the kernel launches dominate. So "put the encoder on a GPU"
+is not a plan, it is a rounding error, and §5.1's single-image `/facts` shape is why.
+
+**One trap, worth a line because it will bite the service.** The captioner's *first* request cost
+**31.3 s** — indistinguishable from the Celeron — while every later one cost 0.94 s. That is CUDA
+PTX compilation for an architecture the shipped binary has no cubin for, and the JIT cache dies
+with the container. A service that unloads on idle (§3, copied from immich-ml) pays that 31 s on
+every reload, so the `cuda` variant needs either a build carrying SM 7.5 or a persistent
+`CUDA_CACHE_PATH` volume. Unmeasured which; named so it is not discovered in production.
+
 Two shapes hide in that table, and they are the whole story:
 
 1. **Python-and-Pillow work is only 3–6× slower on the Celeron.** Decode, resize, hash, Laplacian
@@ -157,6 +196,7 @@ ratio unless they say the same thing on both counts.
 | A — M5 Max | producers + MLX caption | **as shipped today** | 4.3 min | **46 min** | 336,000 |
 | B — J4125 | producers only | as shipped | 21 min | **3 h 41 min** | 70,000 |
 | B — J4125 | producers + GGUF caption | as shipped | 8 h 55 min | **96 h ≈ 4 days** | 2,690 |
+| C — T1000 | model seats only (topology 3) | as measured | 16 min | **2 h 53 min** | 90,000 |
 
 The last two rows are the decision, and they differ in one variable only — the captioner, on one
 machine. Encoder, heads and both detectors on a DS423+ finish a whole library **overnight**.
@@ -287,7 +327,7 @@ machine's optimisation.* On a slow machine the models swamp it.
 |---|---|---|---|---|---|---|---|
 | 1 | **Laptop, all-in-one** | laptop | same host | none (VideoToolbox/NVENC in-process) | same host | Apple Silicon 32 GB+ (the only graded configuration) or amd64 + 24 GB GPU | **32 min** measured on an M5 Max, captions included |
 | 2 | **NAS, all-in-one** | NAS | same host, `cpu` variant | none (software x264/x265) | hosted, or a reduced tier | a DS423+ is a J4125: 4 cores, SSE4.2, no AVX | **3 h 42 min without captions**; 4 days with them (§5.A) |
-| 3 | **NAS + offload** | NAS | GPU box or k8s, `cuda` variant | same GPU box | anywhere | a reachable Service, plus the NetworkPolicy fix in W9 | unmeasured — no CUDA host available to this pass |
+| 3 | **NAS + offload** | NAS | GPU box or k8s, `cuda` variant | same GPU box | anywhere | a reachable Service, plus the NetworkPolicy fix in W9 | **2 h 53 min** of GPU model work, captions included (§1.3b) |
 | 4 | **Hosted seats** | anywhere | our own image behind a URL | optional | any OpenAI-compatible endpoint | an explicit consent gate (§5.5) | reader at 2026-09 prices: EUR 0.02–0.12 per render |
 
 Quick Sync, VAAPI and NVENC decode, scale and encode. **They do not run inference.** That is true
@@ -789,7 +829,12 @@ seven have nothing to do with a NAS at all.
    there is a threshold, not a gradient, so "send a slightly bigger image" is not a slightly bigger
    bill. Any seat that talks to a vision model needs its input size pinned and version-stamped,
    which `TILE_VERSION` already does — the plan just never said it was a cost control.
-8. **A benchmark on a shared box measures the box.** Two knob sweeps here reversed sign between a
+8. **A GPU is worth it for generation and almost nothing else.** The same T1000 that makes the
+   captioner 33× faster makes DINOv2-small 13 % faster than a laptop CPU. Small vision models over
+   small batches do not fill a GPU. Before anyone buys or rents one for a seat, check whether that
+   seat is a 500 M-parameter decoder or a 22 M-parameter ViT, because the answer differs by two
+   orders of magnitude.
+9. **A benchmark on a shared box measures the box.** Two knob sweeps here reversed sign between a
    loaded and a quiesced run, and a caption number was five times too good because the server
    cached image embeddings and the harness fed it the same pictures twice. Both are in the harness
    now: duplicates are dropped, and the caption stage refuses to report anything but its cold pass.
@@ -802,8 +847,14 @@ seven have nothing to do with a NAS at all.
   the NAS) and the decode that follows, not the first HTTP GET from Immich. That is bandwidth-bound,
   depends on someone else's host, and doing it properly would mean pulling family previews through
   a benchmark. It is also the one stage a slow CPU does not make worse.
-- **Anything on a GPU.** No CUDA host was available, so topology 3's column in §2 is empty and
-  W5's exit test is unverified.
+- **The CPU-side stages on the GPU host.** Machine C's column is the model seats only. Decode,
+  resize, hash and tile still have to run somewhere in topology 3, and on that node they were not
+  timed — it has 16 cores, so they should land between machines A and B, but "should" is not a
+  measurement.
+- **Whether the 31 s first-request CUDA JIT can be removed** (§1.3b). It is diagnosed, not fixed:
+  nobody has tried a build carrying SM 7.5 cubins or a persistent JIT cache.
+- **W5's exit test proper.** Topology 3 was measured with one-shot Pods running stock upstream
+  images, not with our own `-cuda` image, which does not exist yet.
 - **The DS423+ render.** §5.B still rests on judgement. `/dev/dri/renderD128` exists on that box,
   so the answer may be better than "software x265 on four Celeron cores", but nobody has timed it.
 - **Whether the GGUF captions are good enough.** §1.5 shows they are peers on `description` and
