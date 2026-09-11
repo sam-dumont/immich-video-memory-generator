@@ -60,7 +60,11 @@ WHITELIST = Path(__file__).resolve().parent.parent / "vulture-whitelist.py"
 # two assets Immich reports differently one evidence key and re-keyed every banked
 # observation of them. It belongs with file_modified_at above: an Immich wire field
 # the loader fills, kept because the digest binds it, not because code reads it.
-MAX_WHITELISTED_SYMBOLS = 268
+# 253, down from 268: pydantic's validators and serializers are the same false
+# positive as @register_preset above -- the schema calls them, never a name vulture
+# can follow -- and they had been accumulating one method at a time. `make dead-code`
+# now names those decorators too, so 16 entries went.
+MAX_WHITELISTED_SYMBOLS = 253
 
 
 def test_the_dead_code_whitelist_never_grows() -> None:

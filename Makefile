@@ -393,8 +393,11 @@ dead-code:
 	# --ignore-decorators: @register_preset puts the function in a dict, so vulture
 	# sees a definition nobody calls. Six presets were whitelisted one by one for
 	# this; telling vulture about the decorator removes the whole class instead.
+	# Pydantic's validators and serializers are the same shape: the schema calls
+	# them, never a name vulture can follow, and they were accumulating in the
+	# whitelist one method at a time.
 	uvx vulture src/ vulture-whitelist.py --min-confidence 60 \
-		--ignore-decorators "@register_preset"
+		--ignore-decorators "@register_preset,@field_validator,@field_serializer,@model_validator"
 
 # Security lint (Bandit)
 security-lint:
