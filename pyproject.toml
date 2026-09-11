@@ -329,22 +329,12 @@ module = [
     "CoreImage.*",
     "Metal.*",
     "objc.*",
-    # PANNs / PyTorch (optional for audio content analysis)
+    # Editorial preparation's encoder and detectors (optional, editorial extra).
+    # CI installs only dev + gpu, so these imports must stay ignorable there
+    # while still type-checking on a machine that has the extra.
     "torch.*",
-    "panns_inference.*",
-    # FireRedVAD's ONNX runtime + feature extractor (optional, speech extra)
     "onnxruntime",
     "onnxruntime.*",
-    "kaldi_native_fbank",
-    "kaldi_native_fbank.*",
-    # whisper.cpp bindings (optional, transcribe extra). CI installs only the dev
-    # extra, so the import must be ignorable or the type check fails there while
-    # passing on any machine that has the extra.
-    "pywhispercpp",
-    "pywhispercpp.*",
-    # smart-turn's Hub download + log-mel extractor (not in any extra)
-    "transformers",
-    "transformers.*",
     "huggingface_hub",
     "huggingface_hub.*",
     # Taichi (GPU rendering)
@@ -456,7 +446,7 @@ disable_error_code = ["union-attr", "arg-type"]
 module = ["immich_memories.titles.rendering_service"]
 disable_error_code = ["assignment", "misc", "attr-defined", "arg-type"]
 
-# Speech/audio-content analysis service (dynamic AudioContentAnalyzer typing)
+# Title generator (dynamic backend typing)
 [[tool.mypy.overrides]]
 module = ["immich_memories.titles.generator"]
 disable_error_code = ["assignment", "misc"]
