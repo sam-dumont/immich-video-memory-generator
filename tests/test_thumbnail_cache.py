@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from immich_memories.cache import thumbnail_cache as thumbnail_cache_module
 from immich_memories.cache.thumbnail_cache import ThumbnailCache
 
 
@@ -159,6 +160,26 @@ class TestAWorkingSetLargerThanTheBudget:
 
         assert not cache.has("last-run", "preview")
         assert cache.has("this-run", "preview")
+
+    def test_a_clock_ahead_of_the_filesystem_still_spares_this_run(self, tmp_path, monkeypatch):
+        """The run boundary and the mtimes it is compared against must come from
+        the same clock. Filesystems that truncate timestamps to the second stamp
+        a preview written a moment from now *earlier* than `time.time()` reads
+        here, and the run then evicts the previews it is about to read back.
+        A clock one second ahead reproduces that mismatch on any filesystem.
+        """
+        ahead = time.time() + 1.0
+        # WHY: the system clock is the boundary this replaces; nothing else in
+        # the cache reads it.
+        monkeypatch.setattr(thumbnail_cache_module.time, "time", lambda: ahead)
+
+        cache = self._cache(tmp_path, max_size_mb=0.001)
+        for i in range(4):
+            cache.put(f"asset-{i}", "preview", b"x" * 600)
+
+        cache.enforce_budget()
+
+        assert all(cache.has(f"asset-{i}", "preview") for i in range(4))
 
     def test_the_overflow_is_announced_once_and_names_the_setting(self, tmp_path, caplog):
         cache = self._cache(tmp_path, max_size_mb=0.001)
