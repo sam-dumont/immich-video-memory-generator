@@ -42,7 +42,7 @@ export const TitleScene: React.FC = () => {
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.bg }}>
       <Img
-        src={staticFile("stock/thumb-1.jpg")}
+        src={staticFile("library/lake-sunset.jpg")}
         style={{
           position: "absolute",
           width: "130%",

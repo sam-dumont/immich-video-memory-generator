@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any, Self
 from urllib.parse import parse_qs, urlsplit
 
+from tests.e2e.fake_library import LIBRARY, Picture
+
 _MONTH_BUCKET = "2024-06-01T00:00:00.000Z"
 
 # WHY these three facts together (#525): selection drops a clip whose short
@@ -23,54 +25,36 @@ _MONTH_BUCKET = "2024-06-01T00:00:00.000Z"
 # test spent every run since #491 reporting "Pipeline selected no clips".
 _CAMERA_EXIF = {"make": "FakeCam", "model": "Hermetic One"}
 _VIDEO_SIZE = (1920, 1080)
-_PHOTO_SIZE = (2016, 1512)
+_PHOTO_SIZE = (1920, 1280)
 _VIDEO_DURATION = 4.0
 
+# A still panned across for its four seconds, the way a phone pans when someone
+# walks a camera along a table. Two thirds of the frame is travelled, so the
+# thumbnail taken at the halfway point still shows the middle of the picture.
+_PAN_HEADROOM = 1.25
 
-@dataclass(frozen=True, slots=True)
-class _Moment:
-    """One synthetic capture: its own scene, its own day of the month."""
-
-    asset_id: str
-    lavfi: str
-    taken_at: str
-    is_favorite: bool = False
+_VIDEOS = tuple(picture for picture in LIBRARY if picture.is_video)
+_PHOTOS = tuple(picture for picture in LIBRARY if not picture.is_video)
 
 
-# Scenes chosen by measurement: every pair of these sources is at least 20 bits
-# apart under the average hash the pipeline dedups with, against a duplicate
-# threshold of 8 and a moment-suppression threshold of 10.
-_VIDEO_MOMENTS = (
-    _Moment("video-1", "testsrc2", "2024-06-08T10:15:00.000Z", is_favorite=True),
-    _Moment("video-2", "mandelbrot", "2024-06-14T16:20:00.000Z"),
-    _Moment("video-3", "testsrc", "2024-06-21T18:40:00.000Z"),
-)
-_PHOTO_MOMENTS = (
-    _Moment("photo-1", "smptehdbars", "2024-06-09T11:30:00.000Z"),
-    _Moment("photo-2", "rgbtestsrc", "2024-06-15T09:05:00.000Z", is_favorite=True),
-    _Moment("photo-3", "colorspectrum", "2024-06-22T14:10:00.000Z"),
-)
-
-
-def _asset_payload(moment: _Moment, asset_type: str) -> dict[str, Any]:
-    is_video = asset_type == "VIDEO"
-    filename = f"{moment.asset_id}.{'mp4' if is_video else 'jpg'}"
+def _asset_payload(picture: Picture) -> dict[str, Any]:
+    is_video = picture.is_video
     width, height = _VIDEO_SIZE if is_video else _PHOTO_SIZE
     return {
-        "id": moment.asset_id,
-        "deviceAssetId": f"fake-device-{moment.asset_id}",
+        "id": picture.asset_id,
+        "deviceAssetId": f"fake-device-{picture.asset_id}",
         "ownerId": "fake-user",
         "deviceId": "fake-device",
-        "type": asset_type,
-        "originalPath": f"/fake-library/{filename}",
-        "originalFileName": filename,
+        "type": "VIDEO" if is_video else "IMAGE",
+        "originalPath": f"/fake-library/{picture.filename}",
+        "originalFileName": picture.filename,
         "originalMimeType": "video/mp4" if is_video else "image/jpeg",
         "thumbhash": None,
-        "fileCreatedAt": moment.taken_at,
-        "fileModifiedAt": moment.taken_at,
-        "localDateTime": moment.taken_at,
-        "updatedAt": moment.taken_at,
-        "isFavorite": moment.is_favorite,
+        "fileCreatedAt": picture.taken_at,
+        "fileModifiedAt": picture.taken_at,
+        "localDateTime": picture.taken_at,
+        "updatedAt": picture.taken_at,
+        "isFavorite": picture.is_favorite,
         "isArchived": False,
         "isTrashed": False,
         "duration": int(_VIDEO_DURATION * 1000) if is_video else None,
@@ -78,19 +62,19 @@ def _asset_payload(moment: _Moment, asset_type: str) -> dict[str, Any]:
         "height": height,
         "exifInfo": {
             **_CAMERA_EXIF,
-            "dateTimeOriginal": moment.taken_at,
+            "dateTimeOriginal": picture.taken_at,
             "fileSizeInByte": 400_000 if is_video else 20_000,
         },
         "people": [],
         "faces": [],
-        "checksum": f"fake-checksum-{moment.asset_id}",
+        "checksum": f"fake-checksum-{picture.asset_id}",
         "livePhotoVideoId": None,
-        "smartInfo": {"objects": ["test-pattern"]},
+        "smartInfo": {"objects": []},
     }
 
 
-TIMELINE_ASSETS = tuple(_asset_payload(moment, "VIDEO") for moment in _VIDEO_MOMENTS) + tuple(
-    _asset_payload(moment, "IMAGE") for moment in _PHOTO_MOMENTS
+TIMELINE_ASSETS = tuple(_asset_payload(picture) for picture in _VIDEOS) + tuple(
+    _asset_payload(picture) for picture in _PHOTOS
 )
 
 
@@ -159,7 +143,7 @@ class FakeImmichServer:
             root,
             httpd,
             thread,
-            video_paths[_VIDEO_MOMENTS[0].asset_id],
+            video_paths[_VIDEOS[0].asset_id],
             photo_paths,
             uploads,
         )
@@ -181,16 +165,19 @@ def _ffmpeg(*args: str) -> None:
 
 
 def _generate_videos(media_dir: Path) -> dict[str, Path]:
+    """Pan across each source photograph for four seconds, with a tone under it."""
     width, height = _VIDEO_SIZE
+    stage_w, stage_h = round(width * _PAN_HEADROOM), round(height * _PAN_HEADROOM)
     videos: dict[str, Path] = {}
-    for index, moment in enumerate(_VIDEO_MOMENTS):
-        video_path = media_dir / f"{moment.asset_id}.mp4"
+    for index, picture in enumerate(_VIDEOS):
+        video_path = media_dir / f"{picture.asset_id}.mp4"
         _ffmpeg(
-            "-f",
-            "lavfi",
-            # WHY -t below rather than a duration= option: mandelbrot has none.
+            "-loop",
+            "1",
+            "-framerate",
+            "30",
             "-i",
-            f"{moment.lavfi}=size={width}x{height}:rate=30",
+            str(picture.source),
             "-f",
             "lavfi",
             # A tone per clip: silence detection reads the audio track too.
@@ -202,12 +189,23 @@ def _generate_videos(media_dir: Path) -> dict[str, Path]:
             "1:a:0",
             "-t",
             str(_VIDEO_DURATION),
+            "-vf",
+            (
+                f"scale={stage_w}:{stage_h}:force_original_aspect_ratio=increase,"
+                f"crop={width}:{height}:"
+                f"x='(in_w-out_w)*t/{_VIDEO_DURATION}',"
+                # WHY: a JPEG decodes full-range, and libx264 would then tag the
+                # clip yuvj420p -- which the production probe reads as unknown.
+                "scale=in_range=full:out_range=tv,format=yuv420p"
+            ),
             "-c:v",
             "libx264",
             "-preset",
             "ultrafast",
             "-pix_fmt",
             "yuv420p",
+            "-color_range",
+            "tv",
             "-color_primaries",
             "bt709",
             "-color_trc",
@@ -223,20 +221,21 @@ def _generate_videos(media_dir: Path) -> dict[str, Path]:
             "+faststart",
             str(video_path),
         )
-        videos[moment.asset_id] = video_path
+        videos[picture.asset_id] = video_path
     return videos
 
 
 def _generate_photos(media_dir: Path) -> dict[str, Path]:
+    """Serve each source photograph at the size its asset record advertises."""
     width, height = _PHOTO_SIZE
     photos: dict[str, Path] = {}
-    for moment in _PHOTO_MOMENTS:
-        photo_path = media_dir / f"{moment.asset_id}.jpg"
+    for picture in _PHOTOS:
+        photo_path = media_dir / f"{picture.asset_id}.jpg"
         _ffmpeg(
-            "-f",
-            "lavfi",
             "-i",
-            f"{moment.lavfi}=size={width}x{height}",
+            str(picture.source),
+            "-vf",
+            (f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}"),
             "-frames:v",
             "1",
             "-q:v",
@@ -245,7 +244,7 @@ def _generate_photos(media_dir: Path) -> dict[str, Path]:
             "1",
             str(photo_path),
         )
-        photos[moment.asset_id] = photo_path
+        photos[picture.asset_id] = photo_path
     return photos
 
 

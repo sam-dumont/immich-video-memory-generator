@@ -2,8 +2,10 @@ import React from "react";
 import {
   AbsoluteFill,
   Easing,
+  Img,
   interpolate,
   spring,
+  staticFile,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
@@ -25,8 +27,8 @@ type Carrier = {
   seconds: string;
   taken: string;
   reason: string;
-  /** Soft colour block standing in for the thumbnail — never a real picture. */
-  tint: string;
+  /** The picture the reason is about, from the same CC0 library the tests use. */
+  picture: string;
 };
 
 type Story = {
@@ -40,8 +42,8 @@ type Story = {
 };
 
 const THESIS =
-  "A year that starts in the garden, empties into a move halfway through, " +
-  "and comes back together on the coast in August with everyone in the same frame again.";
+  "A year that opens at a table in the garden, spends its best day of the " +
+  "summer walking in the woods, and ends camped on a slope above a lake.";
 
 const DURATION_LINE =
   "312 s of pictures and video selected for a 600 s memory, " +
@@ -49,7 +51,7 @@ const DURATION_LINE =
 
 const STORIES: Story[] = [
   {
-    title: "The garden through spring",
+    title: "Lunch in the garden",
     weight: "dominant",
     pictures: "2 pictures",
     day: "2025-04-19",
@@ -58,62 +60,62 @@ const STORIES: Story[] = [
       {
         motion: true,
         seconds: "5 s",
-        taken: "Apr 19, 10:15",
-        reason: "the only capture of the morning",
-        tint: "linear-gradient(135deg, #4f6f52 0%, #86a789 55%, #d2e3c8 100%)",
+        taken: "Apr 19, 12:15",
+        reason: "the table and chairs still out on the lawn",
+        picture: "library/garden-table.jpg",
       },
       {
         motion: false,
         seconds: "4 s",
-        taken: "Apr 19, 17:40",
-        reason: "the whole table in one frame",
-        tint: "linear-gradient(135deg, #6b5b4b 0%, #b08968 60%, #ddb892 100%)",
+        taken: "Apr 19, 16:30",
+        reason: "the cake with the candles still in it",
+        picture: "library/garden-cake.jpg",
       },
     ],
   },
   {
-    title: "Moving week",
+    title: "The day in the woods",
     weight: "major",
     pictures: "2 pictures",
     day: "2025-07-02",
-    purpose: "Carries the middle of the year and explains the change of rooms",
+    purpose: "Carries the middle of the year, the one day spent well away from the house",
     carriers: [
       {
         motion: false,
         seconds: "4 s",
-        taken: "Jul 02, 08:05",
-        reason: "boxes to the ceiling and the room already empty behind them",
-        tint: "linear-gradient(135deg, #3d405b 0%, #5c6378 55%, #9aa0b5 100%)",
+        taken: "Jul 02, 11:05",
+        reason: "the hamper open on the checked cloth",
+        picture: "library/woods-hamper.jpg",
       },
       {
         motion: true,
         seconds: "6 s",
-        taken: "Jul 02, 15:22",
-        reason: "the last look back down the hallway",
-        tint: "linear-gradient(135deg, #2f3e46 0%, #52796f 60%, #84a98c 100%)",
+        taken: "Jul 02, 15:40",
+        reason: "the long green path back to the car",
+        picture: "library/woods-path.jpg",
       },
     ],
   },
   {
-    title: "A week on the coast",
+    title: "Two nights by the lake",
     weight: "glimpse",
     pictures: "2 pictures",
     day: "2025-08-14",
-    purpose: "Closes the year on the one week everyone was in the same place",
+    purpose: "Closes the year on the weekend everyone slept outside",
     carriers: [
       {
         motion: true,
         seconds: "5 s",
-        taken: "Aug 14, 19:05",
-        reason: "low sun, the whole group walking into it",
-        tint: "linear-gradient(135deg, #e07a5f 0%, #f2cc8f 60%, #fdf0d5 100%)",
+        taken: "Aug 14, 18:45",
+        reason: "the tents pitched on the slope above the lake",
+        picture: "library/lake-tents.jpg",
       },
       {
         motion: false,
         seconds: "4 s",
-        taken: "Aug 16, 12:30",
-        reason: "the only picture with all of them looking up",
-        tint: "linear-gradient(135deg, #1d3557 0%, #457b9d 55%, #a8dadc 100%)",
+        taken: "Aug 16, 21:10",
+        reason: "the last of the sun going down over the water",
+        picture: "library/lake-sunset.jpg",
       },
     ],
   },
@@ -132,30 +134,45 @@ const WEIGHT_LABEL = {
   glimpse: "Small moment",
 } as const;
 
-const SCROLL_START = 72;
-const SCROLL_END = 250;
+const SCROLL_START = 60;
+const SCROLL_END = 218;
 const SCROLL_PX = 400;
-const CLICK_EXPORT = 300;
+const CLICK_EXPORT = 268;
+const SCENE_FRAMES = 285;
 
 // Measured against a 1920x1080 still render, with the page scrolled to its end.
 const EXPORT_XY = { x: CONTENT_X + 60, y: CONTENT_Y + 769 };
 
 const cursorSteps = [
-  { frame: 282, ...EXPORT_XY },
+  { frame: 240, ...EXPORT_XY },
   { frame: CLICK_EXPORT, ...EXPORT_XY, click: true },
 ];
 
-const CarrierRow: React.FC<{ carrier: Carrier }> = ({ carrier }) => (
+/** A thumbnail that keeps drifting: the page is alive even while nothing is clicked. */
+const CarrierRow: React.FC<{ carrier: Carrier; drift: number }> = ({
+  carrier,
+  drift,
+}) => (
   <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginTop: 12 }}>
     <div
       style={{
         width: 128,
         height: 72,
         borderRadius: 6,
-        background: carrier.tint,
+        overflow: "hidden",
         flexShrink: 0,
       }}
-    />
+    >
+      <Img
+        src={staticFile(carrier.picture)}
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          transform: `scale(${1.06 + drift * 0.06})`,
+        }}
+      />
+    </div>
     <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <ImBadge
@@ -191,9 +208,10 @@ const DetailsRow: React.FC = () => (
   </div>
 );
 
-const StoryCard: React.FC<{ story: Story; reveal: number }> = ({
+const StoryCard: React.FC<{ story: Story; reveal: number; drift: number }> = ({
   story,
   reveal,
+  drift,
 }) => (
   <ImCard
     style={{
@@ -229,7 +247,7 @@ const StoryCard: React.FC<{ story: Story; reveal: number }> = ({
       {story.purpose}
     </div>
     {story.carriers.map((carrier) => (
-      <CarrierRow key={carrier.taken} carrier={carrier} />
+      <CarrierRow key={carrier.taken} carrier={carrier} drift={drift} />
     ))}
     <DetailsRow />
   </ImCard>
@@ -251,6 +269,11 @@ export const StoryScene: React.FC<Props> = ({ bassIntensity }) => {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
     easing: Easing.inOut(Easing.cubic),
+  });
+  // Every thumbnail creeps for the whole scene, so the longest hold in the demo
+  // still has something moving in it.
+  const drift = interpolate(frame, [0, SCENE_FRAMES], [0, 1], {
+    extrapolateRight: "clamp",
   });
 
   return (
@@ -311,6 +334,7 @@ export const StoryScene: React.FC<Props> = ({ bassIntensity }) => {
                 key={story.title}
                 story={story}
                 reveal={reveal(20 + i * 8)}
+                drift={drift}
               />
             ))}
 

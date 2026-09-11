@@ -1,8 +1,10 @@
 import React from "react";
 import {
   AbsoluteFill,
+  Img,
   interpolate,
   spring,
+  staticFile,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
@@ -23,6 +25,19 @@ const PHASE_TITLES = [
 ];
 
 const DONE = PHASE_TITLES.length - 1;
+
+// The same six pictures the hermetic fixture serves, in capture order. The real
+// page shows this strip while the per-picture pass runs, and names its count.
+const PREVIEWS = [
+  "library/garden-table.jpg",
+  "library/garden-cake.jpg",
+  "library/woods-hamper.jpg",
+  "library/woods-path.jpg",
+  "library/lake-tents.jpg",
+  "library/lake-sunset.jpg",
+];
+const PREVIEW_START = 46;
+const PREVIEW_END = 126;
 
 // Where the cut is, frame by frame. The stage strings are the exact labels the
 // editorial planner reports through on_stage, in the order it reaches them.
@@ -88,9 +103,84 @@ const PhaseRow: React.FC<{
   );
 };
 
+/** The strip of pictures the cut is working on, filling in one at a time. */
+const PreviewStrip: React.FC<{ prepared: number; fps: number; frame: number }> = ({
+  prepared,
+  fps,
+  frame,
+}) => (
+  <div style={{ marginTop: 22 }}>
+    <div style={{ display: "flex", gap: 8 }}>
+      {PREVIEWS.map((picture, i) => {
+        const at = PREVIEW_START + ((PREVIEW_END - PREVIEW_START) / PREVIEWS.length) * i;
+        const entry = spring({
+          frame: frame - at,
+          fps,
+          config: { damping: 22, stiffness: 190 },
+        });
+        return (
+          <div
+            key={picture}
+            style={{
+              width: 104,
+              height: 62,
+              borderRadius: 6,
+              overflow: "hidden",
+              opacity: i < prepared ? entry : 0,
+              transform: `scale(${0.9 + entry * 0.1})`,
+              backgroundColor: COLORS.border,
+            }}
+          >
+            <Img
+              src={staticFile(picture)}
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
+          </div>
+        );
+      })}
+    </div>
+    <div
+      style={{ fontSize: 13, color: COLORS.textSecondary, marginTop: 10 }}
+    >
+      previews {prepared} of {PREVIEWS.length}
+    </div>
+    <div
+      style={{
+        width: 460,
+        height: 4,
+        borderRadius: 2,
+        marginTop: 6,
+        backgroundColor: COLORS.border,
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          width: `${(prepared / PREVIEWS.length) * 100}%`,
+          height: "100%",
+          backgroundColor: COLORS.primary,
+        }}
+      />
+    </div>
+  </div>
+);
+
 export const CuttingScene: React.FC<Props> = ({ bassIntensity }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+
+  const prepared = Math.min(
+    PREVIEWS.length,
+    Math.max(
+      0,
+      Math.floor(
+        interpolate(frame, [PREVIEW_START, PREVIEW_END], [0, PREVIEWS.length + 0.999], {
+          extrapolateLeft: "clamp",
+          extrapolateRight: "clamp",
+        }),
+      ),
+    ),
+  );
 
   const step =
     [...TIMELINE].reverse().find((s) => frame >= s.at) ?? TIMELINE[0];
@@ -152,6 +242,8 @@ export const CuttingScene: React.FC<Props> = ({ bassIntensity }) => {
               />
             ))}
           </div>
+
+          <PreviewStrip prepared={prepared} fps={fps} frame={frame} />
 
           <div
             style={{

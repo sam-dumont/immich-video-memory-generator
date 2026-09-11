@@ -21,13 +21,14 @@ from playwright.sync_api import Page, expect
 
 from tests.e2e.conftest import set_theme
 from tests.e2e.fake_editorial import STAGES
+from tests.e2e.fake_library import THESIS
 from tests.e2e.redaction import redact_page
 from tests.e2e.test_launch_smoke import _choose
 
 pytestmark = [pytest.mark.e2e, pytest.mark.visual]
 
 _THEMES = ("light", "dark")
-_THESIS = re.compile(r"^A month of short test-pattern captures")
+_THESIS = THESIS
 # Any editing stage the fixture announces after preparation: the active phase row
 # shows it, which is the frame the cutting screenshot wants.
 _EDITING_STAGE = re.compile("^(" + "|".join(re.escape(stage) for stage in STAGES[1:]) + ")$")
@@ -112,7 +113,10 @@ def test_capture_memory_walkthrough(
     page.evaluate("window.scrollTo(0, 0)")
 
     page.get_by_role("button", name="Cut", exact=True).click()
-    expect(page.get_by_text(_EDITING_STAGE)).to_be_visible(timeout=60_000)
+    # WHY .cut-phase-rows: the detail panel echoes the same stage string, and an
+    # unscoped match is two elements the moment that panel has caught up.
+    active_stage = page.locator(".cut-phase-rows").get_by_text(_EDITING_STAGE)
+    expect(active_stage).to_be_visible(timeout=60_000)
     _save(page, d, _name("memory-cutting", theme))
 
     expect(page.get_by_text(_THESIS)).to_be_visible(timeout=120_000)

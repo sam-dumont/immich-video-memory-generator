@@ -8,20 +8,20 @@ docs-site/remotion, never a screen recording. Part of `make e2e-full`.
 
 from __future__ import annotations
 
-import re
 import shutil
 from pathlib import Path
 
 import pytest
 from playwright.sync_api import BrowserContext, Page, Playwright, expect
 
+from tests.e2e.fake_library import THESIS
 from tests.e2e.redaction import redact_page
 from tests.e2e.test_launch_smoke import _choose
 
 pytestmark = [pytest.mark.e2e, pytest.mark.slow]
 
 _VIDEO_SIZE = {"width": 1440, "height": 900}
-_THESIS = re.compile(r"^A month of short test-pattern captures")
+_THESIS = THESIS
 
 
 def _recording_context(playwright: Playwright, raw_dir: Path) -> BrowserContext:

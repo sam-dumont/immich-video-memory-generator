@@ -10,21 +10,15 @@ from playwright.sync_api import Page, expect
 
 from immich_memories.ui.pages.memory_brief import MEMORY_TYPE_LABELS
 from tests.e2e.fake_editorial import _EPISODES, PREVIEW_STAGE, STAGES
+from tests.e2e.fake_library import LIBRARY, STORIES, THESIS
 from tests.e2e.test_launch_smoke import _choose
 
 pytestmark = pytest.mark.e2e
 
 # The scripted editor's thesis and its three stories, from the fixture.
-_THESIS = re.compile(r"^A month of short test-pattern captures")
-_STORY_TITLES = ("The first captures", "The midmonth captures", "The closing captures")
-_POOL_FILES = (
-    "video-1.mp4",
-    "video-2.mp4",
-    "video-3.mp4",
-    "photo-1.jpg",
-    "photo-2.jpg",
-    "photo-3.jpg",
-)
+_THESIS = THESIS
+_STORY_TITLES = tuple(story.title for story in STORIES)
+_POOL_FILES = tuple(picture.filename for picture in LIBRARY)
 
 
 # One of the fixture's editing stages, exactly as the active row reports it once the
@@ -95,7 +89,7 @@ def test_a_cut_from_the_brief_shows_the_story_and_offers_export(
     assert [episode["group_id"] for episode in provenance["episodes"]] == [
         episode["key"] for episode in _EPISODES
     ]
-    assert "test pattern" not in json.dumps(provenance)
+    assert "IMG_" not in json.dumps(provenance)
 
 
 def test_a_reload_mid_cut_joins_the_running_cut_instead_of_starting_another(
