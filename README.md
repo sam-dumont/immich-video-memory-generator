@@ -17,7 +17,7 @@
 
 It connects to your self-hosted Immich server and runs a real editor over your library: a small
 vision model captions every picture once, a text model reads the period as a story and weighs its
-stories in words, and every picture in the cut carries the one line that says why it is there — a
+stories in words, and every picture in the cut carries the one line that says why it is there: a
 year in review, a trip with its map, one person across the years. Always chronological, favourites
 as indicators rather than gates, and when it can't name a day honestly it refuses rather than
 faking it. How it decides is documented in
@@ -38,10 +38,10 @@ faking it. How it decides is documented in
 
 ## What it takes to run
 
-This is heavy machinery. The editor reads with two models you host yourself: a **reader** — vision
-and text, ~17 GB resident at 4-bit — that groups the period into stories and looks at the
-candidates whose facts the edit demands, a few dozen per memory, and a **caption server** — 500M,
-1-2 GB — that describes each picture once. On the app's
+This is heavy machinery. The editor reads with two models you host yourself: a **reader** (vision
+and text, ~17 GB resident at 4-bit) that groups the period into stories and looks at the
+candidates whose facts the edit demands, a few dozen per memory, and a **caption server** (500M,
+1-2 GB) that describes each picture once. On the app's
 disk, an 88 MB encoder and ~400 MB of CPU detectors. The app itself is cheap: 2-4 GB and a CPU
 render. It will not cut anything without the models.
 
@@ -49,7 +49,7 @@ The two configurations that work:
 
 - **One Apple Silicon Mac, 32 GB or more.** App, both models, render, all on it. This is the one
   that has actually been graded.
-- **The app anywhere — NAS, mini-PC, Kubernetes — plus one box that can hold the models.** Two
+- **The app anywhere (NAS, mini-PC, Kubernetes) plus one box that can hold the models.** Two
   machines. There is no version of this with one small machine.
 
 A NAS on its own, with no second machine, is not a supported setup. The whole stand-up, in order,
@@ -67,7 +67,7 @@ docker compose up -d     # then open http://localhost:8080
 ```
 
 > **The compose file publishes port 8080 on localhost only.** Authentication is disabled by
-> default, and the app holds an Immich API key to your whole library — anyone who can reach the
+> default, and the app holds an Immich API key to your whole library: anyone who can reach the
 > port can use it. To get to the UI from another machine, enable
 > [authentication](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/configuration/authentication)
 > first, then change the mapping to `"8080:8080"`. The UI is single-user, single-replica; run one
@@ -80,21 +80,21 @@ has been prepared before. Facts and readings are cached, so the first cut over a
 
 | Phase | RAM | CPU | Apple Silicon / GPU | CPU-only (4-core NAS class) |
 |-------|-----|-----|---------------------|-----------------------------|
-| Idle (UI) | ~100MB | minimal | — | — |
+| Idle (UI) | small | minimal | n/a | n/a |
 | Preparing pictures (first cut) | 2-4GB | 2+ cores | one caption request and one encoder pass per picture; not yet measured on this route | same, slower on the encoder |
-| Assembling 1080p | 4GB | 4 cores | ~2 min per 5 min of output | ~10-16 min for a 14-clip monthly (measured) |
-| Assembling 4K | 6-8GB | 4+ cores | ~5 min per 5 min of output | not recommended |
+| Assembling 1080p | 4GB | 4 cores | not measured | ~10-16 min for a 14-clip monthly (measured) |
+| Assembling 4K | 6-8GB | 4+ cores | not measured | not recommended |
 
 Those are the app's numbers. The two model services are the big line item and they are not in that
 table because they are not in that process:
 
 | Service | Resident while it's up | Where |
 |---------|------------------------|-------|
-| Reader (vision + text) | **~17GB** at 4-bit | this box if it has 32GB+, otherwise another one |
+| Reader (vision + text) | **~17GB** at 4-bit (30B parameters, arithmetic not measurement) | this box if it has 32GB+, otherwise another one |
 | Caption server | **1-2GB** | same |
 
 A 4-core, 8GB NAS runs the app and the render perfectly well. It does not run the reader, and no
-media accelerator changes that — see the
+media accelerator changes that. See the
 [self-hosting guide](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/self-hosting#one-machine-or-two).
 
 Most of that assembly time is the title screens, not the encode: measured at 2 CPUs, title
@@ -104,10 +104,10 @@ before you buy a GPU for the encoder.
 
 Measured once for calibration (2026-08-18): a 14-clip monthly at 1080p, cold cache, in the Docker
 image with `--cpus=4 --memory=4g` and no GPU took **10 min with `preset: fast`** and 15.7 min with
-the default profile (4 M5 Max cores; a Celeron-class NAS is 2-3× slower). `preset: fast` swaps in
+the default profile (4 M5 Max cores). Nobody has run the same measurement on a Celeron, so this README will not guess a multiplier. `preset: fast` swaps in
 1080p H.264, a fast encoder and static titles; explicit settings still win over it. The
 [NAS-only guide](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/common-setups/nas-only)
-has the Celeron-class table. Field reports from Synology, Unraid, Proxmox and Raspberry Pi are
+has the measurement in full. Field reports from Synology, Unraid, Proxmox and Raspberry Pi are
 welcome: [open an issue](https://github.com/sam-dumont/immich-video-memory-generator/issues).
 
 ## Without Docker
@@ -148,13 +148,13 @@ generating or uploading anything.
 The editor reads; it does not score. Before its first cut it needs three things, all of which can
 run on your own hardware:
 
-- a **caption server** for a public 500M vision model, on any OpenAI-compatible endpoint — it
+- a **caption server** for a public 500M vision model, on any OpenAI-compatible endpoint: it
   describes every picture once, and the description is kept;
-- the pinned **DINOv2-small encoder** and two CPU **detectors** — `pip install "immich-memories[editorial]"`
+- the pinned **DINOv2-small encoder** and two CPU **detectors**: `pip install "immich-memories[editorial]"`
   plus the pinned weights;
-- a **reader** on any OpenAI-compatible chat endpoint — it reads the period, weighs its stories
+- a **reader** on any OpenAI-compatible chat endpoint: it reads the period, weighs its stories
   and picks the moments, and it is sent an 800 px tile of the candidates whose facts the edit
-  demands — a few dozen per memory — so it needs vision and a 32k context. Graded on `Qwen3-VL-30B-A3B-Instruct-4bit` on oMLX (Apple Silicon);
+  demands (a few dozen per memory), so it needs vision and a 32k context. Graded on `Qwen3-VL-30B-A3B-Instruct-4bit` on oMLX (Apple Silicon);
   other vision models should work, text-only ones cannot.
 
 A cut with one of them missing stops and says which. The whole setup, in order, is the
@@ -178,11 +178,11 @@ advanced:
 
 - Reads the period as a story: every eligible picture gets a caption and facts once, the text
   model weighs the period's stories in words (dominant, major, minor, glimpse), and each story is
-  granted the pictures its weight earns — capped by the moments it actually holds. No clip scores,
+  granted the pictures its weight earns, capped by the moments it actually holds. No clip scores,
   no ranking against a bar; when the moments run out the film is shorter, and it says so.
 - 10 memory types: year in review, monthly, person spotlight, multi-person, season, on this day,
-  album, trip (GPS-detected, with an animated satellite map fly-over), holiday, and surprise me —
-  a day the library itself flagged, found by `discover-days` rather than asked for. The web UI
+  album, trip (GPS-detected, with an animated satellite map fly-over), holiday, and surprise me
+  (a day the library itself flagged, found by `discover-days` rather than asked for). The web UI
   offers the same ten plus a custom date range.
 - Photos share one pool with videos: Ken Burns, face-aware pan, blurred fill behind anything that
   doesn't fill the frame. A Live Photo plays its motion when the editor thinks it earns it, and is
@@ -190,11 +190,10 @@ advanced:
 - Title screens with satellite map fly-overs, month dividers and particles, GPU-rendered through
   Taichi (static PIL titles without it). This is what makes the output look edited, not concatenated.
 - Music: bring your own file, use the 28 bundled tracks (the `music` extra, already in the Docker
-  image), or generate with ACE-Step or MusicGen. Ducking drops the music when someone talks.
-- Runs as a one-page web UI — brief, cut, story, export — (basic auth, OIDC/SSO, or a trusted
-  header proxy) or a headless CLI, in Docker, Kubernetes or a plain venv. Every cut is kept under
-  the cache directory with the plan and the reason for every picture. Privacy mode blurs and mutes
-  everything for demos.
+  image), or generate with ACE-Step or MusicGen. Ducking drops the music under the clip's own audio.
+- Runs as a four-step web UI (Memory, where the brief, the cut and the story live; Clip Review; Options; Export; behind basic auth, OIDC/SSO, or a trusted header proxy) or a headless CLI, in Docker, Kubernetes or a plain venv. Every cut is kept under
+  the cache directory with the plan and the reason for every picture. Privacy mode blurs every frame and scrambles the
+  speech for demos.
 
 ## Daily automation
 
@@ -233,8 +232,8 @@ graph LR
 ```
 
 *One example, not a requirement. The music generator is optional: without it you get your own
-music, or silence. The text model and the caption server are not — the editor reads with them —
-but they speak any OpenAI-compatible endpoint, local ([omlx](https://github.com/nicepkg/omlx)) or not.*
+music, or silence. The text model and the caption server are not (the editor reads with them),
+but they speak any OpenAI-compatible endpoint, local ([oMLX](https://github.com/jundot/omlx)) or not.*
 
 ## Development
 
@@ -244,8 +243,8 @@ Guidelines in [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Built with AI
 
 > This entire codebase was written with AI (Claude) as an experiment in building complex
-> software cleanly with AI assistance. 8,700+ tests (600+ of them integration/E2E),
-> 20 static analysis gates in CI (15 quality, 5 security), 490+ source modules.
+> software cleanly with AI assistance. 7,461 tests (623 of them integration/E2E),
+> 20 static analysis gates in CI (15 quality, 5 security), 454 source modules.
 > See [DISCLAIMER.md](DISCLAIMER.md) for the full story.
 
 ## License

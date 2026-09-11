@@ -7,18 +7,13 @@ title: Tips & Best Practices
 
 Things that save time and produce better results.
 
-## Run Analysis First
+## Warm the banks with a real cut
 
-Analysis is the slow part on a cold library. `analyze` does it on its own, without
-rendering anything:
-
-```bash
-immich-memories analyze --year 2024
-```
-
-Subsequent generate runs read from that cache instead of re-analysing, which is what
-makes iterating on clip selection quick. On a NAS this is the thing to run overnight.
-See [Discovery & utility commands](../cli/discovery-and-utility.md).
+Preparation is the slow part on a cold library, and there is no command that does it on its own:
+`analyze` counts videos, it does not prepare anything. The only thing that fills the banks is a
+cut. So on a NAS, run the cut you want overnight rather than trying to pre-warm it, and take
+advantage of the fact that a second cut over the same period, or an overlapping one, skips the
+work. See [Editorial annotation setup](../../deploy/configuration/editorial-preparation.md).
 
 ## Use Hardware Acceleration
 
@@ -28,7 +23,7 @@ If you have a GPU, use it. The tool auto-detects NVIDIA (NVENC), Apple (VideoToo
 immich-memories hardware
 ```
 
-Encoding 1080p runs at about 2 minutes per 5 minutes of output on Apple Silicon or a GPU; a 30-clip video takes around 15 minutes on a 4-core NAS CPU. See the [resource table](https://github.com/sam-dumont/immich-video-memory-generator#resource-requirements).
+The one measured run is in the [NAS guide](../../deploy/common-setups/nas-only.md#performance-expectations): a 14-clip monthly on four cores with no GPU, 2.7 minutes of render under `preset: fast`. Most of that is title screens, which is the part a GPU actually shortens.
 
 ## Start with Shorter Durations
 

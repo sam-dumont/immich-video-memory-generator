@@ -92,7 +92,7 @@ def handle_album_generation(
     )
     if media.truncated:
         print_info(
-            f"Album exceeds {config.analysis.max_album_assets} assets per type — "
+            f"Album exceeds {config.analysis.max_album_assets} assets per type, "
             "using the most recent ones"
         )
     if media.date_range is None or not (media.videos or media.photos):

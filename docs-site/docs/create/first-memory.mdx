@@ -15,9 +15,9 @@ and everything it reads is kept.
 
 Before you start:
 
-- **Immich v2 or newer** with an API key (Account Settings > API Keys > New API Key — grant **All**, or at least read access to assets/people/albums/timeline/search plus asset upload + album create/update if you want upload-back)
+- **Immich v2 or v3** with an API key (Account Settings > API Keys > New API Key: grant **All**, or at least read access to assets/people/albums/timeline/search plus asset upload, album create/update and asset delete if you want upload-back). v4 is not accepted: the client checks the major version and refuses what it does not know
 - **Docker** or **Python 3.11+** installed
-- **~2 GB free disk** for the video cache (downloaded clips get cached locally)
+- **Disk for the caches.** The shipped budgets are 10 GB of downloaded video (evicted after 7 days), 10 GB of Immich previews and 2 GB of clip previews, so plan for about 22 GB if you leave them alone, less if you lower them
 - Photos, Live Photos or videos in the period you want
 - The three services and two model files the editor reads with: the
   [self-hosting guide](../deploy/self-hosting.md) stands them up in order (the pins and digests
@@ -49,14 +49,14 @@ uvx --from "immich-memories[editorial]" immich-memories ui
 Open [http://localhost:8080](http://localhost:8080) in your browser. Both routes keep the UI on
 localhost: the native install binds loopback, and the compose file publishes the port there. If
 the app runs on a different machine than your browser, see the
-[Docker install page](../deploy/installation/docker.md#quick-start) — it pairs publishing the
+[Docker install page](../deploy/installation/docker.md#quick-start): it pairs publishing the
 port with turning on authentication.
 
 ## Step 2: Connect to Immich
 
 With credentials in the config or the environment the page connects on its own and shows the
 brief. Otherwise it shows only the **Immich Connection** panel: enter the server URL and API key
-and click **Test Connection**. On success the panel collapses to "Immich Connection — *you*" and
+and click **Test Connection**. On success the panel collapses to "Immich Connection: *you*" and
 the brief appears.
 
 <ThemedScreenshot name="memory-brief" alt="The brief, connected to Immich" />
@@ -64,13 +64,14 @@ the brief appears.
 ## Step 3: Pick a month
 
 Choose **Monthly Highlights** as the memory type and pick a month with a fair number of pictures
-in it. A month is the right first cut: one minute of output, and the reading is over in minutes
-rather than the hour a whole year can take on a cold library. Leave **Auto duration** on.
+in it. A month is the right first cut: one minute of output, and preparation is bounded by how many
+pictures the month holds rather than a year. Nobody has timed a cold pass on this route yet, so
+start small enough that you can watch it. Leave **Auto duration** on.
 
 ## Step 4: Cut
 
-Press **Cut**. The page loads the pool for the brief and shows one row per phase — finding media,
-loading thumbnails, reading the pictures, editing, done — with the editor's own stage beside the
+Press **Cut**. The page loads the pool for the brief and shows one row per phase (finding media,
+loading thumbnails, reading the pictures, editing, done) with the editor's own stage beside the
 active row. The first cut prepares a caption and facts for every picture in the month, then reads
 the month's episodes and account, weighs its stories, and picks the moments. A missing producer
 stops the run here and says which one.
@@ -82,7 +83,7 @@ Reloading the page mid-cut is fine: it lands on the same rows.
 ## Step 5: Read the story
 
 When it finishes the page shows what the editor made of the month: a one-paragraph thesis, a
-duration line, and the stories heaviest first — each with its purpose and, under it, every
+duration line, and the stories heaviest first, each with its purpose and, under it, every
 picture in it with a **Still** or **Motion** badge, the seconds it holds, and the reason
 it is there. **Details** under a story shows the editor's own words for it.
 
@@ -96,7 +97,7 @@ pool; **Change the brief** starts over.
 
 Press **Export**. The Preview & Export page shows the summary and the output filename; the
 defaults work for a first video. Music, title and resolution live one click away under **Back to
-Generation Options** — the only one worth changing on a first run is **Background music**, if you
+Generation Options**: the only one worth changing on a first run is **Background music**, if you
 have a specific track you want.
 
 Click **Generate Video**. The status line walks through the run: downloading clips and extracting
@@ -131,5 +132,5 @@ results; changed or missing evidence requires fresh work.
 
 - Try other memory types: [Trip Memories](./memory-types/trip-memories.mdx) (needs GPS data), [Person Spotlight](./memory-types/monthly-person-season.mdx) (needs face recognition in Immich)
 - Read how the editor decides: [The Curator](./pipeline/the-curator.md)
-- Automate it: schedule one daily [`auto run`](./cli/auto.md) — see [Automated Generation](./recipes/automated-generation.md)
+- Automate it: schedule one daily [`auto run`](./cli/auto.md); see [Automated Generation](./recipes/automated-generation.md)
 - Explore [all CLI options](./cli/generate.md) for fine-grained control

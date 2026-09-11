@@ -10,12 +10,18 @@ Automatically detects trips from GPS data in your photos and videos, then genera
 
 ## How trip detection works
 
-The algorithm runs in four stages:
+Three stages, no clustering:
 
-1. **Filter by distance**: all assets with GPS coordinates within `min_distance_km` of your home (default: 50 km) are removed. Everything left is "away from home."
-2. **Cluster by day**: remaining assets are grouped by date. Each day with GPS-tagged content becomes a potential trip day.
-3. **Merge consecutive days**: days within `max_gap_days` (default: 2) of each other are merged into trips. A 2-day gap means a rest day doesn't split a trip.
-4. **Apply minimum duration**: trips shorter than `min_duration_days` (default: 2) are discarded. Day trips don't qualify unless you lower this threshold.
+1. **Keep what is away from home**: an asset survives if it has GPS coordinates *and* they are at
+   least `min_distance_km` from your home (default: 50 km). Assets with no GPS are dropped here.
+2. **Split on gaps**: the survivors are sorted by capture time and a new trip starts wherever more
+   than `max_gap_days` (default: 2) passes between one asset and the next. The gap is measured
+   asset to asset in fractional days, not between calendar days, so a rest day does not split a
+   trip.
+3. **Discard the short ones**: a group survives if the number of *nights* it spans, the difference
+   between its first and last calendar date, is at least `min_duration_days` (default: 2). At the
+   default that means three calendar days. Set it to `1` for a weekend and `0` to keep single-day
+   excursions.
 
 The trip's location name comes from reverse geocoding the centroid of all GPS coordinates in the cluster (via Nominatim/OpenStreetMap).
 
@@ -45,12 +51,16 @@ immich-memories generate --memory-type trip --year 2025 --near-date 2025-07-15
 
 ## Web UI
 
-Pick **Trip** on the [Memory page](../web-ui/memory.mdx) and a year; the page runs trip detection and lists the trips it found. Select one and press **Cut**.
+Pick **Trip** on the [Memory page](../web-ui/memory.mdx) and a year; the page runs trip detection
+and lists the trips it found. Select one and press **Cut**.
+
+One difference from the CLI worth knowing: the page detects trips from **videos only**, while the
+CLI reads every asset type. A trip you only photographed will not appear here. Use the CLI for
+those.
 
 ## What you get
 
 - **Animated satellite map**: the video opens with a satellite map that zooms between your trip locations. If you visited multiple cities, the map animates the route.
-- **Overnight detection**: the algorithm identifies overnight bases (where you slept). This affects map animations and segment distribution.
 - **Location-aware title**: the title screen shows the trip destination name, pulled from reverse geocoding.
 - **Auto duration stays watchable**: Auto starts at 30 seconds plus 10 seconds per active day, bounded to 60–300 seconds when there is enough material. Seven dense days produce about 1:40; 12 dense days produce 2:30. It then checks the selected media's usable excerpts and shortens sparse trips instead of promising time it cannot fill. Turn off the **Auto duration** switch on the Memory page (or pass `--duration` on the CLI) when you want an exact runtime.
 
@@ -74,5 +84,5 @@ The homebase coordinates are required. Without them, the algorithm can't determi
 - **GPS data is required.** If your videos don't have GPS metadata (some cameras strip it, screen recordings never have it), trip detection won't find anything. iPhones and Android phones embed GPS by default.
 - **Set your homebase accurately.** The algorithm filters everything within `min_distance_km` of your home. If your coordinates are wrong, local trips might show up or real trips might get filtered out.
 - **Lower `min_distance_km` for local trips.** Default is 50 km. If you want to capture weekend drives to a nearby city, try 20 km.
-- **Lower `min_duration_days` for day trips.** Set it to 1 to include single-day excursions.
-- **`--person` narrows trip *detection*, not the finished video.** `--person "Alice"` looks for trips among the assets Alice appears in — useful when one person's photos are the ones carrying GPS. Each video is then built from everything shot in that window, so the rest of the group is still in it.
+- **`min_duration_days` counts nights, not days.** The default of 2 needs a trip spanning three calendar dates. `1` catches a weekend away; `0` catches single-day excursions.
+- **`--person` narrows trip *detection*, not the finished video.** `--person "Their Name"` looks for trips among the assets that person appears in: useful when one person's photos are the ones carrying GPS. Each video is then built from everything shot in that window, so the rest of the group is still in it.

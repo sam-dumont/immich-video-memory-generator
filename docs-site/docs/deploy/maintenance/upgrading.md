@@ -11,7 +11,9 @@ docker compose pull
 docker compose up -d
 ```
 
-That's it. The container image includes all dependencies.
+That's it for the app's own dependencies. The editor's model files are not in the image: if the
+release notes move the pinned encoder digest or a detector revision, re-run
+`immich-memories models fetch` afterwards.
 
 ## uv (recommended for native install)
 
@@ -35,7 +37,7 @@ Read the [GitHub release notes](https://github.com/sam-dumont/immich-video-memor
 
 ## Upgrading Immich from v2 to v3
 
-Immich Memories supports Immich v2 and v3 — see
+Immich Memories supports Immich v2 and v3: see
 [Immich API compatibility](../configuration/config-file.md#immich-api-compatibility) for what that
 covers and what is actually tested. Keep the default automatic runtime policy during the server
 upgrade:
@@ -69,15 +71,14 @@ a video, create an album, or upload anything. A successful result includes the r
 
 ## Config compatibility
 
-There is no automatic config migration. Unknown keys **inside** a known section are silently ignored, so a renamed field simply stops doing anything; unknown *top-level* keys and invalid values fail at startup. Renames are documented in the release notes — check them when a setting seems to have stopped taking effect.
+There is no automatic config migration. Unknown keys **inside** a known section are silently ignored, so a renamed field simply stops doing anything; unknown *top-level* keys and invalid values fail at startup. Renames are documented in the release notes: check them when a setting seems to have stopped taking effect.
 
 The removed clip scorer's keys are named rather than merely ignored: `content_analysis`, `audio_content`, `speech`, `transcription`, `analysis.max_refinement_passes`, `analysis.scene_threshold` and the other pacing and detection dials, `photos.max_ratio`, `photos.read_moments`, `photos.moment_gap_seconds`, `photos.moment_hash_threshold` and `hardware.gpu_analysis`. A file that still names one starts normally and logs a warning listing every one it found, with what each used to do. Delete them to silence it; leaving them changes nothing, because the code that read them is gone. The `audio-ml`, `speech` and `transcribe` extras went with it.
 
-In practice, most config fields have been stable since v0.1. Breaking config changes are rare and always called out in the release notes.
 
 ## Data compatibility
 
-**Analysis database** (`cache.db`, `annotations.sqlite`): forward-compatible. Both have schema migrations that run automatically on startup. Upgrading never loses the run history or the editor's banks.
+**Analysis database** (`cache.db`, `cache/annotations.sqlite`): forward-compatible. `cache.db` has a versioned migrator; `annotations.sqlite` creates missing tables and adds columns additively. Both run when the store is first opened, not at startup. Upgrading never loses the run history or the editor's banks.
 
 **Video cache** (downloaded clips): can be cleared safely at any time. If a new version changes the download format or caching structure, the old cache files are still valid but you can clear them without loss by deleting `~/.immich-memories/cache/video-cache` (or via the UI Cache page).
 

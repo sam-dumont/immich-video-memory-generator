@@ -235,7 +235,7 @@ def test_the_picker_puts_anniversaries_first_and_still_offers_the_rest() -> None
     rows = step1_presets._special_day_options([nowhere_near_today, a_decade_ago], date(2026, 6, 12))
 
     assert [label for _, label in rows] == [
-        "10 years ago — A long evening out",
+        "10 years ago: A long evening out",
         "2019-02-02 — Somebody's leap day",
     ]
 

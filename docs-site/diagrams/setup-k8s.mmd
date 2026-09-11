@@ -5,10 +5,14 @@ graph TB
         end
         subgraph NS2["namespace: memories"]
             App["🎬 memories-app<br/>CPU node"]
-            Music["🎵 memories-music<br/>GPU node · nodeSelector"]
+            Reader["🧠 vision reader<br/>GPU node · nodeSelector"]
+            Caption["📝 caption server"]
+            Music["🎵 memories-music<br/>GPU node · optional"]
         end
     end
 
     ImmichPods -->|API| App
+    App --> Reader
+    App --> Caption
     App -.->|optional| Music
     App -->|PVC| Storage[("💾 Persistent<br/>Volume")]

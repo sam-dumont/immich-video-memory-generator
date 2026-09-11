@@ -5,7 +5,7 @@ title: runs
 
 # runs
 
-Every time you generate a video, immich-memories tracks the run: what settings you used, how long it took, how many clips were processed, errors, system info. The `runs` command lets you browse that history.
+Every time you generate a video, immich-memories tracks the run: how long it took, how many clips were processed, the model's call count and cost, errors, system info. Render settings are not recorded. The `runs` command lets you browse that history.
 
 ## runs list
 
@@ -16,8 +16,8 @@ immich-memories runs list [OPTIONS]
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
 | `--limit` | `-n` | int | `20` | Number of runs to show |
-| `--person` | `-p` | string | — | Filter by person name |
-| `--status` | `-s` | choice | — | `completed`, `failed`, `running`, `cancelled`, `interrupted` |
+| `--person` | `-p` | string | n/a | Filter by person name |
+| `--status` | `-s` | choice | n/a | `completed`, `failed`, `running`, `cancelled`, `interrupted` |
 
 Examples:
 
@@ -34,13 +34,13 @@ immich-memories runs list --person "Emma" --limit 5
 
 ## runs show
 
-Detailed view of a single run. Shows status, date range, clip counts, output file size, phase-by-phase timing breakdown, and system info (CPU, GPU, RAM, FFmpeg version).
+Detailed view of a single run. Shows status, clip counts, output file size, phase-by-phase timing breakdown, and system info (CPU, GPU, RAM, FFmpeg version). There is a date-range row in the renderer, but nothing currently fills it, so you will not see it.
 
 ```bash
 immich-memories runs show RUN_ID
 ```
 
-You can use a partial run ID: if it's unambiguous, it'll match:
+You can use a partial run ID: if it's unambiguous among the 100 most recent runs, it'll match. Older than that and a unique prefix still reports "Run not found"; use the full id.
 
 ```bash
 immich-memories runs show 20260105_1430
@@ -48,7 +48,7 @@ immich-memories runs show 20260105_1430
 
 ### Model spend
 
-`runs show` reports what the run spent on the LLM — calls, judgment-cache hits,
+`runs show` reports what the run spent on the LLM: calls, judgment-cache hits,
 tokens, wall time, and any thinking calls truncated at the token budget.
 
 It is reported **per run, not per phase**, and the phase table is labelled
@@ -65,7 +65,7 @@ Aggregate statistics across all your runs:
 immich-memories runs stats
 ```
 
-Shows total runs, completion rate, total video generated, total processing time, average clips per run, etc.
+Shows total runs, completed and failed as raw counts, total video generated, total and average processing time, and average and total clips processed. No completion rate: divide it yourself if you want one.
 
 ## runs delete
 
@@ -86,7 +86,7 @@ You'll get a confirmation prompt before anything is deleted unless you pass `--y
 
 ## runs storage
 
-Report the configured output and cache locations and how much they hold, without changing anything:
+Report where the space went under the output and cache roots, without changing anything. It groups by run status and lists the ten largest directories; it walks directories only, so loose files sitting directly in a root count as nothing:
 
 ```bash
 immich-memories runs storage

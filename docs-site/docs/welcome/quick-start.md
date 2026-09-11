@@ -5,18 +5,22 @@ title: Quick Start
 
 # Quick Start
 
-Three steps to a running app. Should take about 2 minutes; the first cut takes longer, because
-the editor has to read your pictures before it can cut them.
+The app installs in a couple of minutes. Standing up what it reads with takes considerably longer:
+two model services on hardware you own, plus two model files on disk. Step 2 below is where that
+lives, and the [self-hosting guide](../deploy/self-hosting.md) is the honest version of it, in
+order, on one page.
 
 ## 1. Install
 
 The fastest way: no clone needed:
 
 ```bash
-uvx immich-memories --help
+uv tool install "immich-memories[editorial]"     # or [all-mac] on Apple Silicon
+immich-memories --help
 ```
 
-Or clone and install:
+The extra is not optional in practice: without it the context heads and the detectors have no
+runtime and the first cut stops. Or clone and install:
 
 ```bash
 git clone https://github.com/sam-dumont/immich-video-memory-generator.git
@@ -43,11 +47,12 @@ immich:
   api_key: your-api-key-here
 ```
 
-Get your API key from Immich: **Account Settings > API Keys > New API Key**. When Immich asks which permissions to grant, pick **All** — or, for a minimal key: read access to assets, people, albums, timeline and search, plus **asset upload** and **album create/update** if you turn on upload-back to Immich. This tool never deletes or modifies existing assets.
+Get your API key from Immich: **Account Settings > API Keys > New API Key**. When Immich asks which permissions to grant, pick **All**. For a minimal key: read access to assets, people, albums, timeline and search, plus **asset upload**, **album create/update** and **asset delete** if you turn on upload-back to Immich. Your originals are never touched; the delete permission is for one narrow case, where a re-render of the same memory trashes the copy it replaces in its own album.
 
-Then set up the three things the editor reads with — a caption endpoint, the pinned encoder, two
-detectors — following the [self-hosting guide](../deploy/self-hosting.md), which walks the whole
-thing in order. A cut with one of them missing stops and says which.
+Then stand up what the editor reads with: three services (this app, a vision reader, a caption
+server) and two model files on disk (the pinned ONNX encoder and two detector snapshots, both
+fetched by `immich-memories models fetch`). The [self-hosting guide](../deploy/self-hosting.md)
+walks all of it in order. A cut with one of them missing stops and says which.
 
 ## 3. Launch
 
@@ -71,5 +76,5 @@ immich-memories generate --memory-type monthly_highlights --year 2024 --month 6
 immich-memories generate --year 2024
 ```
 
-That's it. Everything after the cut — title, music, output settings — has a sane default and a
+That's it. Everything after the cut (title, music, output settings) has a sane default and a
 page to change it on.
