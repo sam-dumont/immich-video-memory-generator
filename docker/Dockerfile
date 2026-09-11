@@ -88,7 +88,16 @@ LABEL org.opencontainers.image.version="${APP_VERSION}" \
 
 WORKDIR /app
 
-# Install runtime dependencies
+# Install runtime dependencies.
+# WHY the VA-API drivers: FFmpeg lists `vaapi` and `qsv` under -hwaccels because
+# it is compiled with them, but libva needs a backend `*_drv_video.so` to talk to
+# the GPU. The image shipped none, so `vaInitialize` failed with -542398533 on
+# every Linux host and hardware encoding silently never happened. All four are
+# Debian main (MIT): iHD covers Gen8+ Intel including Gemini Lake and Quick Sync,
+# i965 covers pre-Gen8 Intel, mesa covers AMD, and vainfo makes the next such
+# failure diagnosable from inside the container. `dpkg --print-architecture`
+# rather than $TARGETARCH: the latter is empty under the legacy builder, which
+# would silently ship the broken image again.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libgl1 \
@@ -96,6 +105,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsm6 \
     libxext6 \
     libxrender1 \
+    && if [ "$(dpkg --print-architecture)" = "amd64" ]; then \
+         apt-get install -y --no-install-recommends \
+           intel-media-va-driver \
+           i965-va-driver \
+           mesa-va-drivers \
+           vainfo; \
+       fi \
     && rm -rf /var/lib/apt/lists/*
 
 # WHY a mount and not COPY: COPY writes every wheel into a layer of its own, and the

@@ -23,6 +23,7 @@ from immich_memories.processing.encoding_plan import (
     uses_hardware_encoder,
 )
 from immich_memories.processing.ffmpeg_runner import drain_stderr_tail
+from immich_memories.processing.hardware_encode import apply_hardware_encode
 from immich_memories.processing.hdr_utilities import _get_colorspace_filter
 from immich_memories.processing.streaming_audio import (
     _probe_duration,
@@ -149,6 +150,7 @@ class StreamingEncoder:
             "+faststart",
             str(self._output_path),
         ]
+        cmd = apply_hardware_encode(cmd, pixel_format=self._encoding_plan.pixel_format)
         self._proc = subprocess.Popen(  # noqa: S603, S607
             cmd,
             stdin=subprocess.PIPE,

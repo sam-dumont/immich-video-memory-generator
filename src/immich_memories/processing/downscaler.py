@@ -12,6 +12,7 @@ import subprocess
 from pathlib import Path
 
 from immich_memories.processing.hardware import fast_encoder_args
+from immich_memories.processing.hardware_encode import apply_hardware_encode
 from immich_memories.security import validate_video_path
 
 logger = logging.getLogger(__name__)
@@ -121,6 +122,7 @@ def downscale_video(
         "error",
         str(output_path),
     ]
+    cmd = apply_hardware_encode(cmd)
 
     try:
         result = subprocess.run(
