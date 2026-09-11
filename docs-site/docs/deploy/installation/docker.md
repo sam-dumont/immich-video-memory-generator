@@ -81,10 +81,11 @@ Inside assembly, the title screens cost more than the encode does on a CPU-only 
 
 Temporary files during encoding can use 2x the size of your source clips. A 10-minute memory from 50 clips might need 5-10 GB of temp space.
 
-The image itself is not small, and nearly all of it is PyTorch and the annotation stack. Measured
-on arm64: `INSTALL_EXTRAS=all` is 7.08 GB on disk, `INSTALL_EXTRAS=none` is 958 MB. amd64 comes out
-smaller still because torch is taken from the [CPU wheel index](../hardware/nvidia.md) instead of
-PyPI's CUDA build.
+The image is not small. Measured on arm64: `INSTALL_EXTRAS=all` is 2.37 GB on disk,
+`INSTALL_EXTRAS=none` is 958 MB. The difference is the annotation stack, and PyTorch alone is
+656 MB of it. Both published architectures take torch from the
+[CPU wheel index](../hardware/nvidia.md) rather than PyPI's CUDA build, which is what keeps `all`
+off the 7 GB it would otherwise cost.
 
 ## Standalone Docker run
 

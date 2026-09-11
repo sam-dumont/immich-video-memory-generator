@@ -15,7 +15,7 @@ NVIDIA GPUs with NVENC move video encoding off the CPU and onto dedicated silico
 - **CUDA scene analysis**: when OpenCV has CUDA support and `hardware.gpu_analysis` is on, frame differencing for scene detection runs on the GPU. Face detection stays on the CPU (OpenCV Haar cascades) — there is no CUDA face path.
 - **Taichi title rendering**: with the `gpu` extra installed, Taichi picks the CUDA backend (Vulkan second) for animated title screens. This is the phase that costs the most on a CPU-only box.
 
-What the card does *not* get you: the amd64 Docker image installs the CPU build of PyTorch on purpose. The two annotation detectors are CPU-only by construction, no shipped path runs GPU inference, and the CUDA wheels cost ~2.7 GB of image for nothing. If you want torch on the GPU, install from source (`pip install "immich-memories[editorial]"`) on the host instead of using the image.
+What the card does *not* get you: the Docker image installs the CPU build of PyTorch on purpose, on both published architectures. The two annotation detectors are CPU-only by construction and no shipped path runs GPU inference, so the CUDA wheels are pure weight — on arm64 they cost 3.3 GB of `nvidia` libraries plus 818 MB of triton, and the CUDA torch they come with still reports `cuda_available: False` inside the container. If you want torch on the GPU, install from source (`pip install "immich-memories[editorial]"`) on the host instead of using the image.
 
 ## Requirements
 

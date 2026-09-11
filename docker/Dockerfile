@@ -44,19 +44,26 @@ RUN pip install --no-cache-dir --require-hashes -r docker/uv-requirements.txt &&
 RUN grep -E '^[A-Za-z0-9_.[-]+==' /constraints.txt > /constraints.pins && \
     mv /constraints.pins /constraints.txt
 
-# WHY the CPU index on amd64: the PyPI torch wheel drags the whole CUDA stack
-# behind it -- measured at 2.9 GB of wheels for torch 2.14.0 against 197 MB for
-# the same version from the CPU index -- and nothing in this image runs GPU
-# inference. Both detectors are CPU by construction (Docling forces
-# CPUExecutionProvider, Marqo sets torch threads). The wheel is built into its
-# own directory, not /wheels, so a torch-free INSTALL_EXTRAS never installs it,
-# and uv.lock is untouched so Apple development resolves exactly as before.
+# WHY the CPU index: torch's CUDA dependencies are pinned on `sys_platform ==
+# 'linux'` with no architecture guard, so PyPI hands aarch64 the same CUDA stack
+# it hands x86_64 -- measured in this image at 3.3 GB of `nvidia`, 818 MB of
+# triton and a 964 MB CUDA-flavoured torch, none of which a NAS or Pi-class box
+# can use. Nothing here runs GPU inference either way: both detectors are CPU by
+# construction (Docling forces CPUExecutionProvider, Marqo sets torch threads),
+# and the CUDA build reports cuda_available: False in the image it ships in.
+# Measured with INSTALL_EXTRAS=all on arm64: 7.08 GB -> 2.37 GB.
+# The wheel is built into its own directory, not /wheels, so a torch-free
+# INSTALL_EXTRAS never installs it, and uv.lock is untouched so Apple
+# development resolves exactly as before. The case list is what release.yml
+# publishes; any other arch keeps the PyPI resolution rather than failing
+# against an index that may not serve it.
 RUN mkdir -p /torch-cpu && \
-    if [ "${TARGETARCH}" = "amd64" ]; then \
-        pip wheel --no-cache-dir --no-deps --wheel-dir=/torch-cpu \
-            --index-url https://download.pytorch.org/whl/cpu \
-            --constraint /constraints.txt torch; \
-    fi
+    case "${TARGETARCH}" in \
+        amd64|arm64) \
+            pip wheel --no-cache-dir --no-deps --wheel-dir=/torch-cpu \
+                --index-url https://download.pytorch.org/whl/cpu \
+                --constraint /constraints.txt torch ;; \
+    esac
 
 # The bundled-music package is built from the tree so the image does not depend
 # on it being published yet; pip then resolves the `music` extra against it.
