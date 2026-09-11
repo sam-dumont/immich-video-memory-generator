@@ -79,33 +79,3 @@ class TestFindFont:
         """find_font should resolve to an existing file."""
         assert font_path.exists()
         assert font_path.suffix in (".ttf", ".otf", ".ttc")
-
-
-class TestMeasureText:
-    def test_positive_dimensions(self, atlas):
-        from immich_memories.titles.sdf_font_rendering import measure_text
-
-        width, height = measure_text("Hello", atlas, scale=1.0)
-        assert width > 0
-        assert height > 0
-
-    def test_longer_text_is_wider(self, atlas):
-        from immich_memories.titles.sdf_font_rendering import measure_text
-
-        short_w, _ = measure_text("Hi", atlas, scale=1.0)
-        long_w, _ = measure_text("Hello World 123", atlas, scale=1.0)
-        assert long_w > short_w, "Longer text should be wider"
-
-    def test_scale_affects_width(self, atlas):
-        from immich_memories.titles.sdf_font_rendering import measure_text
-
-        w1, h1 = measure_text("Test", atlas, scale=1.0)
-        w2, h2 = measure_text("Test", atlas, scale=2.0)
-        assert w2 > w1, "Doubled scale should produce wider text"
-        assert h2 > h1, "Doubled scale should produce taller text"
-
-    def test_empty_text_zero_width(self, atlas):
-        from immich_memories.titles.sdf_font_rendering import measure_text
-
-        width, height = measure_text("", atlas, scale=1.0)
-        assert width == 0.0

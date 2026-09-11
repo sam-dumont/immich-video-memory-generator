@@ -403,22 +403,3 @@ def infer_selection_type(
         return SelectionType.CALENDAR_YEAR
 
     return SelectionType.CALENDAR_YEAR
-
-
-def calculate_birthday_age(birth_date: date, video_date: date) -> int:
-    """Calculate age in years from birth date to video date.
-
-    Args:
-        birth_date: Person's birth date.
-        video_date: Date of the video.
-
-    Returns:
-        Age in years.
-    """
-    age = video_date.year - birth_date.year
-
-    # Adjust if birthday hasn't occurred yet in the video year
-    if (video_date.month, video_date.day) < (birth_date.month, birth_date.day):
-        age -= 1
-
-    return max(0, age)

@@ -189,32 +189,6 @@ class TestMonthDividerPixels:
 
 
 class TestAllScreensPixels:
-    def test_ending_differs_from_title(self, tmp_path):
-        """Ending should lack bright text pixels that title has."""
-        gen = _make_generator(tmp_path, title_duration=2.0, ending_duration=2.0)
-        screens = gen.generate_all_screens(
-            year=2024,
-            months_in_video=[1, 6],
-        )
-
-        # WHY: Use mid-video frames past fade-in but before fade-out.
-        # At 10fps with 2s duration: fade_in=8 frames, fade_out starts at frame 10.
-        # Frame 9 is the sweet spot (fully revealed, not yet fading out).
-        title_frame = extract_frame_rgb(screens["title"].path, 9, TITLE_W, TITLE_H)
-        ending_frame = extract_frame_rgb(screens["ending"].path, 3, TITLE_W, TITLE_H)
-
-        # WHY: Title has white text (max near 255). Ending is pure background
-        # fade (no text), so max should be much lower. This catches a bug where
-        # ending accidentally renders text or title renders no text.
-        title_max = int(title_frame.max())
-        ending_max = int(ending_frame.max())
-
-        assert title_max > 200, f"Title should have bright text pixels (max={title_max})"
-        assert ending_max < title_max - 50, (
-            f"Ending max ({ending_max}) should be much dimmer than title max ({title_max}) "
-            f"— ending may be rendering text when it shouldn't"
-        )
-
     def test_sdr_no_hdr_metadata(self, tmp_path):
         """SDR title should not have HDR color metadata."""
         gen = _make_generator(tmp_path)

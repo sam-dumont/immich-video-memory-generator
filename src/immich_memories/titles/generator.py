@@ -63,7 +63,6 @@ class TitleScreenConfig:
     show_decorative_lines: bool = False
 
     # Performance
-    use_image_rendering: bool = True
     use_gpu_rendering: bool = True  # Use Taichi GPU when available
 
     # LLM-generated title override (bypasses template generation)
@@ -410,7 +409,6 @@ class TitleScreenGenerator:
 
     def generate_ending_screen(
         self,
-        video_clips: list[Path] | None = None,
         _dominant_color: tuple[int, int, int] | None = None,
         content_clip_path: Path | None = None,
         frame_progress: Callable[[int, int], None] | None = None,
@@ -528,35 +526,3 @@ class TitleScreenGenerator:
             duration=self.config.month_divider_duration,
             screen_type="location_card",
         )
-
-    def generate_all_screens(
-        self,
-        *,
-        year: int | None = None,
-        month: int | None = None,
-        start_date: date | None = None,
-        end_date: date | None = None,
-        person_name: str | None = None,
-        birthday_age: int | None = None,
-        video_clips: list[Path] | None = None,
-        months_in_video: list[int] | None = None,
-    ) -> dict[str, GeneratedScreen]:
-        """Generate all screens (title, month dividers, ending) for a video."""
-        screens: dict[str, GeneratedScreen] = {}
-
-        screens["title"] = self.generate_title_screen(
-            year=year,
-            month=month,
-            start_date=start_date,
-            end_date=end_date,
-            person_name=person_name,
-            birthday_age=birthday_age,
-        )
-
-        if self.config.show_month_dividers and months_in_video and len(months_in_video) > 1:
-            for m in months_in_video:
-                screens[f"month_{m:02d}"] = self.generate_month_divider(m, year=year)
-
-        screens["ending"] = self.generate_ending_screen(video_clips=video_clips)
-
-        return screens

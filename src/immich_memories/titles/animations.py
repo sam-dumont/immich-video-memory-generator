@@ -97,17 +97,6 @@ EASING_FUNCTIONS: dict[str, EasingFunction] = {
 }
 
 
-# FFmpeg expression equivalents for drawtext filter
-FFMPEG_EASING_EXPRESSIONS: dict[str, str] = {
-    "linear": "{t}",
-    "ease_out_quad": "1-pow(1-{t},2)",
-    "ease_out_cubic": "1-pow(1-{t},3)",
-    "ease_in_out_sine": "(1-cos(PI*{t}))/2",
-    "ease_out_sine": "sin({t}*PI/2)",
-    "ease_out_expo": "if(eq({t},1),1,1-pow(2,-10*{t}))",
-}
-
-
 @dataclass
 class AnimationProperty:
     """A single animatable property."""

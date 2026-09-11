@@ -1,16 +1,11 @@
-"""Integration tests for title rendering — PIL and FFmpeg renderers.
+"""Integration tests for title rendering — the PIL renderer.
 
-These tests verify actual image/video output. PIL tests are always run.
-FFmpeg tests require ffmpeg installed (skipped otherwise).
+These tests verify actual image output.
 
 Run: make test-integration-titles
 """
 
 from __future__ import annotations
-
-import shutil
-import subprocess
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -36,7 +31,6 @@ class TestPILTitleRenderer:
             "height": 360,
             "fps": 30.0,
             "duration": 1.0,
-            "animation_duration": 0.3,
         }
         defaults.update(settings_kwargs)
         settings = RenderSettings(**defaults)
@@ -69,29 +63,6 @@ class TestPILTitleRenderer:
         arr = np.array(frame)
         # Should have some non-uniform pixels (text was drawn)
         assert arr.std() > 0, "Frame appears blank (uniform color)"
-
-    def test_render_all_frames_count(self):
-        renderer = self._make_renderer()
-        frames = renderer.render_all_frames("All Frames Test", fade_out_duration=0.3)
-        expected = int(1.0 * 30.0)  # duration * fps
-        assert len(frames) == expected
-
-    def test_render_all_frames_parallel(self):
-        renderer = self._make_renderer(
-            duration=2.0,  # Need enough frames to trigger parallel path
-        )
-        frames = renderer.render_all_frames_parallel(
-            "Parallel Test", max_workers=2, fade_out_duration=0.5
-        )
-        expected = int(2.0 * 30.0)
-        assert len(frames) == expected
-
-    def test_render_all_frames_parallel_small_count_falls_back(self):
-        """With very few frames, parallel render falls back to sequential."""
-        renderer = self._make_renderer(duration=0.1)
-        frames = renderer.render_all_frames_parallel("Tiny", max_workers=8, fade_out_duration=0.05)
-        expected = int(0.1 * 30.0)
-        assert len(frames) == expected
 
     def test_text_transform_uppercase(self):
         from immich_memories.titles.renderer_pil import RenderSettings, TitleRenderer
@@ -266,166 +237,3 @@ class TestRenderTitleFrame:
         style = TitleStyle()
         arr = render_title_frame("Title", "Sub", style, 320, 240, 0.0)
         assert arr.shape == (240, 320, 3)
-
-
-# ---------------------------------------------------------------------------
-# FFmpeg Renderer tests
-# ---------------------------------------------------------------------------
-
-
-def _has_ffmpeg() -> bool:
-    return shutil.which("ffmpeg") is not None
-
-
-@pytest.mark.skipif(not _has_ffmpeg(), reason="FFmpeg not installed")
-class TestFFmpegEscaping:
-    """Test FFmpeg text escaping."""
-
-    def test_escape_colon(self):
-        from immich_memories.titles.renderer_ffmpeg import _escape_ffmpeg_text
-
-        assert "\\:" in _escape_ffmpeg_text("Title: Subtitle")
-
-    def test_escape_percent(self):
-        from immich_memories.titles.renderer_ffmpeg import _escape_ffmpeg_text
-
-        assert "\\%" in _escape_ffmpeg_text("100%")
-
-    def test_escape_brackets(self):
-        from immich_memories.titles.renderer_ffmpeg import _escape_ffmpeg_text
-
-        result = _escape_ffmpeg_text("[test]")
-        assert "\\[" in result
-        assert "\\]" in result
-
-    def test_escape_semicolon(self):
-        from immich_memories.titles.renderer_ffmpeg import _escape_ffmpeg_text
-
-        assert "\\;" in _escape_ffmpeg_text("a;b")
-
-    def test_escape_backslash(self):
-        from immich_memories.titles.renderer_ffmpeg import _escape_ffmpeg_text
-
-        assert "\\\\" in _escape_ffmpeg_text("path\\file")
-
-    def test_strips_control_characters(self):
-        from immich_memories.titles.renderer_ffmpeg import _escape_ffmpeg_text
-
-        result = _escape_ffmpeg_text("Hello\x00World\x07!")
-        assert "\x00" not in result
-        assert "\x07" not in result
-        assert "HelloWorld!" in result.replace("\\", "")
-
-    def test_preserves_spaces(self):
-        from immich_memories.titles.renderer_ffmpeg import _escape_ffmpeg_text
-
-        result = _escape_ffmpeg_text("Hello World")
-        assert "Hello World" in result
-
-
-@pytest.mark.skipif(not _has_ffmpeg(), reason="FFmpeg not installed")
-class TestFFmpegTitleGeneration:
-    """Integration tests for FFmpeg title screen generation.
-
-    Uses create_title_with_effects (filter_complex) which is the primary
-    code path. create_title_ffmpeg uses -vf which has escaping issues
-    with some FFmpeg versions.
-    """
-
-    def test_create_title_with_effects(self, tmp_path: Path):
-        from immich_memories.titles.renderer_ffmpeg import (
-            FFmpegTitleConfig,
-            create_title_with_effects,
-        )
-
-        output = tmp_path / "title_fx.mp4"
-        config = FFmpegTitleConfig(width=320, height=240, fps=30.0, duration=1.5)
-        result = create_title_with_effects("Fancy Title", "With Effects", output, config)
-        assert result.exists()
-        assert result.stat().st_size > 0
-
-    def test_create_title_with_effects_no_subtitle(self, tmp_path: Path):
-        from immich_memories.titles.renderer_ffmpeg import (
-            FFmpegTitleConfig,
-            create_title_with_effects,
-        )
-
-        output = tmp_path / "title_fx_nosub.mp4"
-        config = FFmpegTitleConfig(width=320, height=240, fps=30.0, duration=1.5)
-        result = create_title_with_effects("No Subtitle", None, output, config)
-        assert result.exists()
-        assert result.stat().st_size > 0
-
-    def test_output_is_valid_video(self, tmp_path: Path):
-        """Verify the output is a valid video using ffprobe."""
-        from immich_memories.titles.renderer_ffmpeg import (
-            FFmpegTitleConfig,
-            create_title_with_effects,
-        )
-
-        output = tmp_path / "valid.mp4"
-        config = FFmpegTitleConfig(width=320, height=240, fps=30.0, duration=1.5)
-        create_title_with_effects("Valid?", None, output, config)
-
-        probe = subprocess.run(
-            [
-                "ffprobe",
-                "-v",
-                "error",
-                "-select_streams",
-                "v:0",
-                "-show_entries",
-                "stream=width,height",
-                "-of",
-                "csv=p=0",
-                str(output),
-            ],
-            capture_output=True,
-            text=True,
-        )
-        assert probe.returncode == 0
-        assert "320" in probe.stdout
-        assert "240" in probe.stdout
-
-    def test_creates_parent_directory(self, tmp_path: Path):
-        from immich_memories.titles.renderer_ffmpeg import (
-            FFmpegTitleConfig,
-            create_title_with_effects,
-        )
-
-        output = tmp_path / "subdir" / "nested" / "title.mp4"
-        config = FFmpegTitleConfig(width=320, height=240, fps=30.0, duration=1.5)
-        result = create_title_with_effects("Nested", None, output, config)
-        assert result.exists()
-
-    def test_special_characters_in_title(self, tmp_path: Path):
-        from immich_memories.titles.renderer_ffmpeg import (
-            FFmpegTitleConfig,
-            create_title_with_effects,
-        )
-
-        output = tmp_path / "special.mp4"
-        config = FFmpegTitleConfig(width=320, height=240, fps=30.0, duration=1.5)
-        result = create_title_with_effects("Title: 100% Special", None, output, config)
-        assert result.exists()
-
-
-@pytest.mark.skipif(not _has_ffmpeg(), reason="FFmpeg not installed")
-class TestFFmpegTitleConfig:
-    def test_defaults(self):
-        from immich_memories.titles.renderer_ffmpeg import FFmpegTitleConfig
-
-        cfg = FFmpegTitleConfig()
-        assert cfg.width == 1920
-        assert cfg.height == 1080
-        assert cfg.fps == 30.0
-        assert cfg.duration == 3.5
-        assert cfg.fade_in_duration == 0.6
-        assert cfg.fade_out_duration == 1.0
-
-    def test_custom_config(self):
-        from immich_memories.titles.renderer_ffmpeg import FFmpegTitleConfig
-
-        cfg = FFmpegTitleConfig(width=3840, height=2160, bg_color1="000000")
-        assert cfg.width == 3840
-        assert cfg.bg_color1 == "000000"
