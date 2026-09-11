@@ -30,6 +30,7 @@ from immich_memories.generate import (
 )
 from immich_memories.generate_music import MusicSelection
 from immich_memories.processing.assembly_config import AssemblyClip
+from immich_memories.processing.rate_control import quality_args
 from tests.conftest import make_asset, make_clip
 
 
@@ -702,7 +703,10 @@ class TestBuildAssemblySettingsExtraBranches:
         )
         settings = _build_assembly_settings(params, [])
         args = settings.encoding_plan.encoder_args
-        assert args[args.index("-crf") + 1] == "18"
+        # The requested CRF reaches the encoder translated onto its own scale,
+        # and the plan records the reference number it came from.
+        assert settings.encoding_plan.crf == 18
+        assert args[args.index("-crf") + 1] == quality_args("libx264", 18)[-1]
 
 
 # ---------------------------------------------------------------------------

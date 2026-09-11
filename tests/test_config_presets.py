@@ -13,7 +13,7 @@ class TestFastPreset:
 
         assert config.output.resolution == "1080p"
         assert config.output.codec == "h264"
-        assert config.output.quality == "medium"
+        assert config.output.quality == "fast"
         assert config.hardware.encoder_preset == "fast"
         assert config.speech.enabled is False
         assert config.title_screens.animated_background is False

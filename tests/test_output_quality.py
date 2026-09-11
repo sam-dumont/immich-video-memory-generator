@@ -10,21 +10,25 @@ from immich_memories.processing.hdr_utilities import quality_to_crf
 class TestQualityToCrf:
     """Quality preset maps to encoder-appropriate CRF values."""
 
-    def test_high_quality_low_crf(self):
-        assert quality_to_crf("high") <= 15
+    def test_high_is_better_than_balanced(self):
+        assert quality_to_crf("high") < quality_to_crf("balanced")
 
-    def test_medium_quality_moderate_crf(self):
-        crf = quality_to_crf("medium")
-        assert 16 <= crf <= 23
+    def test_fast_keeps_the_balanced_picture(self):
+        """~0.980 bands on gradients, so `fast` buys speed from the preset."""
+        assert quality_to_crf("fast") == quality_to_crf("balanced")
 
-    def test_low_quality_high_crf(self):
-        assert quality_to_crf("low") >= 24
+    def test_high_stays_on_the_part_of_the_curve_that_still_pays(self):
+        """CRF 12 was past SSIM 0.999 — invisible quality at several times the bits."""
+        assert quality_to_crf("high") >= 18
 
-    def test_default_is_high(self):
+    def test_medium_is_the_retired_name_for_balanced(self):
+        assert quality_to_crf("medium") == quality_to_crf("balanced")
+
+    def test_default_is_balanced(self):
         from immich_memories.config_models_render import OutputConfig
 
         config = OutputConfig()
-        assert config.quality == "high"
+        assert config.quality == "balanced"
 
 
 class TestEncoderArgsQuality:

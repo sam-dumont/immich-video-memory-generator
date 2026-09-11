@@ -155,6 +155,7 @@ _.validate_provider_requirements  # unused method (src/immich_memories/config_mo
 _._normalize_daily_at  # unused method (src/immich_memories/config_models_automation.py:64)
 _.expand_env  # unused method (src/immich_memories/config_models_llm.py:81)
 _.map_legacy_scale_mode  # unused method (src/immich_memories/config_models_render.py:54)
+_.map_legacy_quality  # unused method (src/immich_memories/config_models_render.py:76)
 _.serialize_hdr_mode  # unused method (src/immich_memories/config_models_render.py:71)
 _.expand_env  # unused method (src/immich_memories/config_models_soundtrack.py:68)
 _.expand_env  # unused method (src/immich_memories/config_models_soundtrack.py:137)

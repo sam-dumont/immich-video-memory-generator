@@ -676,6 +676,9 @@ def burst_encoding_plan(*, is_hdr: bool, hardware_enabled: bool = True) -> Encod
         preset="fast",
         crf=BURST_CRF,
         container="mp4",
+        # An intermediate is cached and read back by the assembler, so its codec
+        # must not depend on what this machine can encode today.
+        codec_policy="strict",
     )
     return resolve_encoding_plan(request, capabilities, input_has_hdr=is_hdr)
 

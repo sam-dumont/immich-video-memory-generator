@@ -463,6 +463,7 @@ def test_direct_generation_normalizes_staged_and_final_paths_to_plan_container(
             "output_width": 1920,
             "output_height": 1080,
             "codec": "prores",
+            "codec_requested": None,
             "encoder": "prores_ks",
             "crf": 18,
             "encoder_args": ["-profile:v", "3"],
