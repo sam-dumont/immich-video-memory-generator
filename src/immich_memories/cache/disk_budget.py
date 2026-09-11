@@ -13,16 +13,34 @@ That last part only holds if readers refresh mtime -- otherwise this is write-
 FIFO wearing an LRU label. A caller whose working set exceeds its budget must
 also keep those active files protected: deleting them makes a bounded cache
 silently change analysis results. `run_started_at` is that protection boundary.
+
+The overflow it reports is not logged here. One directory's overflow is a
+missing setting in the user's config file, and only the caller knows which key
+that is, or how often it is worth saying so.
 """
 
 from __future__ import annotations
 
 import contextlib
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 CacheEntry = tuple[float, int, Path]
+
+
+@dataclass(frozen=True)
+class Eviction:
+    """What one pass reclaimed, and what it could not."""
+
+    freed_bytes: int
+    active_files: int
+    overflow_bytes: int
+
+    @property
+    def overflowed(self) -> bool:
+        return self.overflow_bytes > 0
 
 
 def evict_to_budget(
@@ -31,23 +49,24 @@ def evict_to_budget(
     max_bytes: int,
     pattern: str = "*",
     run_started_at: float | None = None,
-) -> int:
+) -> Eviction:
     """Delete the least recently used files until the directory fits.
 
-    Returns the number of bytes freed. Stops as soon as the budget is met --
-    evicting past it throws away work that would have been reused.
+    Stops as soon as the budget is met -- evicting past it throws away work
+    that would have been reused.
 
     Pass `run_started_at` (a wall-clock timestamp) to protect the caller's
     current working set. Older cache entries are still reclaimed first. If the
     active files alone exceed the budget, they temporarily overflow it rather
-    than disappearing underneath the running analysis.
+    than disappearing underneath the running analysis, and the returned
+    `overflow_bytes` says by how much.
     """
     if max_bytes < 0 or not directory.exists():
-        return 0
+        return Eviction(0, 0, 0)
 
     entries, total = _cache_entries(directory, pattern)
     if total <= max_bytes:
-        return 0
+        return Eviction(0, 0, 0)
     freed, active_kept = _evict_oldest(
         entries,
         total=total,
@@ -62,16 +81,12 @@ def evict_to_budget(
             directory.name,
             max_bytes / 1_000_000,
         )
-    if total - freed > max_bytes and active_kept:
-        logger.warning(
-            "Keeping %d active file(s) above the %s budget: the %.0f MB limit "
-            "is smaller than this run's working set. They remain available for "
-            "this analysis and become reclaimable on the next run.",
-            active_kept,
-            directory.name,
-            max_bytes / 1_000_000,
-        )
-    return freed
+    remaining = total - freed
+    return Eviction(
+        freed_bytes=freed,
+        active_files=active_kept,
+        overflow_bytes=remaining - max_bytes if remaining > max_bytes and active_kept else 0,
+    )
 
 
 def _cache_entries(directory: Path, pattern: str) -> tuple[list[CacheEntry], int]:

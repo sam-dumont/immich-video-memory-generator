@@ -425,6 +425,7 @@ def run_pipeline_and_generate(
         cache_dir=config.cache.cache_path / "thumbnails",
         max_size_mb=config.cache.thumbnail_cache_max_size_mb,
     )
+    thumbnail_cache.begin_run()
     pipeline = build_smart_pipeline(
         client=client,
         thumbnail_cache=thumbnail_cache,

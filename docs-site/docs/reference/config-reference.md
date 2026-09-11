@@ -468,15 +468,27 @@ cache:
   video_cache_enabled: true      # Cache downloaded videos locally
   video_cache_max_size_gb: 10.0  # Max disk usage for video cache (1-500 GB)
   video_cache_max_age_days: 7    # Auto-delete cached videos older than this (1-365)
-  thumbnail_cache_max_size_mb: 500.0   # Max disk for Immich thumbnails (50 MB-100 GB)
+  thumbnail_cache_max_size_mb: 10000.0 # Max disk for Immich previews (50 MB-100 GB)
   preview_cache_max_size_mb: 2000.0    # Max disk for clip previews (100 MB-100 GB)
 ```
 
 The video cache defaults to 10 GB. If you're tight on disk, lower `video_cache_max_size_gb` or disable it entirely with `video_cache_enabled: false`.
 
-Thumbnails and clip previews are derived from your library and are cheap to rebuild, so they get their own smaller budgets. Each is evicted least-recently-used once it exceeds its limit — a file you keep opening keeps earning its place, because reading a thumbnail counts as using it.
+### Size the thumbnail cache by your library, not by taste
 
-If a single run needs more thumbnails than `thumbnail_cache_max_size_mb` allows, the cache starts evicting thumbnails that same run is still using and re-fetching them. That is not silent: you get a `WARNING` naming how many files went and telling you to raise the budget. A large yearly memory over a big library can want several GB of thumbnails, so if you see that warning during long runs, raise the limit rather than ignoring it.
+`thumbnail_cache_max_size_mb` is the one cache budget that scales with how big your library is. Every candidate asset in a memory's scope gets an Immich preview fetched and read back several times — sharpness and exposure, the DINOv2 heads, the contact sheets, the caption. Measured on a real library, one preview is about **315 KB**, so:
+
+```
+budget in MB ≈ 0.35 × (assets a memory's scope can reach)
+```
+
+One 10,793-candidate scope wants about 3.4 GB; the `0.35` leaves a little headroom over the measured 0.315 MB. The 10 GB default holds roughly 31,000 previews, which covers three scopes that size.
+
+If the run's working set does not fit, nothing is lost mid-run — previews this run is still using are never deleted, so the cache temporarily overflows the limit instead. But the *next* run reclaims them, so the next overlapping memory re-downloads every preview and re-captions the assets whose banked caption failure no longer matches the bytes. You get one `WARNING` per run saying how far over you are and naming this setting. Raise it rather than ignoring it.
+
+The other two budgets are not library-sized and need no such rule: `preview_cache_max_size_mb` holds the video renditions the wizard's player streams (one cut's clips), and the video cache holds the originals being assembled (also one cut's clips). Both are tens of files per run, however big your library is.
+
+It is the full Immich preview that is cached, not a smaller derived tile, even though no single consumer needs 1440 px. Those bytes are the image the model sees in the contact sheets, and their SHA-256 is that sheet's identity; the DINOv2 transform wants a 256 px short side that a 400 px caption tile does not have on 16:9; and both the duplicate-hash bank and the banked caption failures are keyed on them. Caching something smaller would re-derive all of that and change graded output, so it is a re-grade rather than a setting.
 
 ## Server (UI)
 
