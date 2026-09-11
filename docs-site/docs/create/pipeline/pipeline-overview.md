@@ -68,8 +68,16 @@ thesis, the stories with their weights, every carrier with its reason — what t
 story view reads), `selection-sheet.private.md` (the same, for a human), `render-projection.private.json`
 (what shipped and each interval), `calls/` and `pre-planner-calls/` (every text-model request
 and answer), `derived-decisions/` (the memory-worthy gate, the period story, the story selection,
-each shortlist pass, the timing trim, the audience bank). The banks the next cut reuses are not
-in the attempt: they are in `annotations.sqlite` and `structure-banks/` beside it.
+each shortlist pass, the timing trim, the audience bank), `evidence-hashes.json` (per episode:
+the evidence key its reading was banked under, and one SHA-256 per asset annotation line — ids
+and digests only) with `evidence-lines.private.json` beside it holding those lines themselves.
+The banks the next cut reuses are not in the attempt: they are in `annotations.sqlite` and
+`structure-banks/` beside it.
+
+Two cuts of the same period that land on different carriers are told apart from those hashes:
+`scripts/replay_editorial_routes.py` diffs `evidence-hashes.json` between the newest attempt and
+the accepted one and names the first episode whose evidence moved, with how many of its asset
+lines changed.
 
 ### Where the time goes
 

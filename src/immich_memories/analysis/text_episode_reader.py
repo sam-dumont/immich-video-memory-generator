@@ -15,6 +15,7 @@ from immich_memories.analysis.editorial_contracts import (
     EditorialCandidate,
     RequestTrace,
 )
+from immich_memories.analysis.editorial_evidence_provenance import EpisodeEvidenceLines
 from immich_memories.analysis.selection_source_groups import EditorialGroupProjection
 from immich_memories.analysis.strict_json import bounded_model_text
 from immich_memories.analysis.text_episode_answers import (
@@ -133,6 +134,7 @@ class EpisodeCacheRequestPlan:
 
 
 EpisodeRequestPlanGuard = Callable[[EpisodeCacheRequestPlan], None]
+EpisodeEvidenceRecorder = Callable[[Sequence[EpisodeEvidenceLines]], None]
 
 
 @dataclass(frozen=True)
@@ -218,6 +220,7 @@ class CachedTextEpisodeReader:
         limits: TextEpisodeRequestLimits | None = None,
         request_plan_guard: EpisodeRequestPlanGuard | None = None,
         strict_persistence_readback: bool = False,
+        record_evidence: EpisodeEvidenceRecorder | None = None,
     ) -> None:
         self._store = store
         self._producer = producer
@@ -226,6 +229,7 @@ class CachedTextEpisodeReader:
         self._limits = limits or TextEpisodeRequestLimits()
         self._request_plan_guard = request_plan_guard
         self._strict_persistence_readback = strict_persistence_readback
+        self._record_evidence = record_evidence
 
     @property
     def producer(self) -> EpisodeReadingProducer:
@@ -249,6 +253,8 @@ class CachedTextEpisodeReader:
         _validate_annotation_contract(annotation_batch, self._producer)
         lines = annotation_batch.as_mapping()
         identities_by_group, unavailable_by_group = self._identities(projections, lines)
+        if self._record_evidence is not None:
+            self._record_evidence(_evidence_lines(projections, identities_by_group, lines))
         identities = tuple(identities_by_group.values())
         banked = self._store.readings_for(identities)
         cache_hits = frozenset(banked)
@@ -433,6 +439,23 @@ class CachedTextEpisodeReader:
                 f"(attempted={len(completed)}, read_back={len(recalled)}, "
                 f"matched={matched})"
             )
+
+
+def _evidence_lines(
+    projections: Sequence[EditorialGroupProjection],
+    identities_by_group: Mapping[str, EpisodeReadingIdentity],
+    lines: Mapping[str, str],
+) -> tuple[EpisodeEvidenceLines, ...]:
+    """The exact evidence each keyed episode was read from, in canonical order."""
+    return tuple(
+        EpisodeEvidenceLines(
+            group_id=projection.group.group_id,
+            evidence_key=identity.evidence_key,
+            lines=tuple((asset_id, lines[asset_id]) for asset_id in projection.group.candidate_ids),
+        )
+        for projection in projections
+        if (identity := identities_by_group.get(projection.group.group_id)) is not None
+    )
 
 
 def _unread_scopes(request_scopes, page_readings, failed):

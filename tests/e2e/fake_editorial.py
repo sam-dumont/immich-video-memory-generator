@@ -20,6 +20,7 @@ import contextlib
 import json
 import time
 from collections.abc import Sequence
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -142,8 +143,35 @@ def _intent_report(content: float) -> dict:
     }
 
 
+def _evidence_lines(carriers: Sequence[dict]) -> tuple[Any, ...]:
+    """One rendered line per carrier, grouped into the story it was read under.
+
+    The real reader keys an episode by the exact annotation lines of its members; the
+    fixture has no annotation store, so it renders the same shape from its own metadata.
+    """
+    from immich_memories.analysis.editorial_evidence_provenance import EpisodeEvidenceLines
+
+    by_episode: dict[str, list[tuple[str, str]]] = {episode["key"]: [] for episode in _EPISODES}
+    for row in carriers:
+        by_episode[row["story_episode"]].append(
+            (row["asset_id"], f"{row['asset_id']} | {row['kind']} | {row['taken']}")
+        )
+    return tuple(
+        EpisodeEvidenceLines(
+            group_id=key,
+            evidence_key=sha256(repr(lines).encode()).hexdigest(),
+            lines=tuple(lines),
+        )
+        for key, lines in by_episode.items()
+        if lines
+    )
+
+
 def write_plan_files(attempt_dir: Path, carriers: Sequence[dict], realization: dict) -> None:
     """Leave behind what the structure record and the projection leave after a real run."""
+    from immich_memories.analysis.editorial_evidence_provenance import AttemptEvidenceProvenance
+
+    AttemptEvidenceProvenance().capture(_evidence_lines(carriers), directory=attempt_dir)
     content = round(sum(row["seconds"] for row in carriers), 2)
     write_secret_file(
         attempt_dir / "plan.private.json",

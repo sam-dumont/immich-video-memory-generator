@@ -9,7 +9,10 @@ so a route that needs a fresh judgment fails instead of silently going cold.
 Immich itself stays reachable. The newest attempt written under the cache root is
 then compared with the accepted one: plan bytes, ordered carrier asset ids, and the
 decision projection. Judgment-bank rows are counted before and after; a warm run
-adds none.
+adds none. When the carriers differ and the reference names the accepted attempt's
+directory (`attempt_dir`, or `head_baseline.attempt_dir`), the two attempts'
+`evidence-hashes.json` files are diffed as well, so the report names the first episode
+whose evidence moved and how many of its asset lines changed.
 
 Usage:
     python scripts/replay_editorial_routes.py --reference ~/.immich-memories-matrix/story-first-reference.private.json
@@ -111,6 +114,8 @@ def provider_hosts(config_path: Path) -> set[str]:
 
 
 BANK_TABLE_MARKERS = ("judg", "request", "verdict", "gateway", "reading", "insight", "vote")
+# Public-safe per-episode evidence provenance, written beside the plan in every attempt.
+EVIDENCE_HASHES = "evidence-hashes.json"
 
 
 def _rows_in(path: Path) -> int:
@@ -179,6 +184,68 @@ def baseline_of(route: dict) -> dict | None:
             "carrier_asset_ids": route.get("carrier_asset_ids"),
         }
     return None
+
+
+def baseline_attempt_dir(route: dict) -> Path | None:
+    """Where the accepted attempt still lives, when the reference names it.
+
+    `head_baseline.attempt_dir` wins over the route's own `attempt_dir`, so a route whose
+    HEAD baseline was rebanked diffs against the run its carriers actually came from.
+    """
+    head = route.get("head_baseline")
+    named = (head.get("attempt_dir") if isinstance(head, dict) else None) or route.get(
+        "attempt_dir"
+    )
+    return Path(str(named)).expanduser() if named else None
+
+
+def evidence_rows(directory: Path) -> dict[str, dict]:
+    """One attempt's per-episode evidence hashes, keyed by group, in written order."""
+    try:
+        document = json.loads((directory / EVIDENCE_HASHES).read_text())
+    except (OSError, ValueError):
+        return {}
+    return {
+        str(row["group_id"]): {
+            "evidence_key": str(row.get("evidence_key") or ""),
+            "assets": {
+                str(asset["asset_id"]): str(asset["line_sha256"])
+                for asset in row.get("assets") or ()
+            },
+        }
+        for row in document.get("episodes") or ()
+    }
+
+
+def evidence_drift(newest: Path, baseline: Path) -> str:
+    """Name the first episode whose evidence moved and how many of its lines changed.
+
+    Ids and counts only: the rendered lines stay in the attempt's private sibling.
+    """
+    new_rows, old_rows = evidence_rows(newest), evidence_rows(baseline)
+    if not new_rows or not old_rows:
+        return ""
+    moved = [
+        group
+        for group, row in new_rows.items()
+        if group in old_rows and row["evidence_key"] != old_rows[group]["evidence_key"]
+    ]
+    if not moved:
+        gained = [group for group in new_rows if group not in old_rows]
+        lost = [group for group in old_rows if group not in new_rows]
+        if not gained and not lost:
+            return "evidence identical"
+        return f"episode membership moved: {len(gained)} new, {len(lost)} gone"
+    first = moved[0]
+    new_assets, old_assets = new_rows[first]["assets"], old_rows[first]["assets"]
+    changed = [
+        asset_id for asset_id, digest in new_assets.items() if old_assets.get(asset_id) != digest
+    ]
+    return (
+        f"evidence moved in {len(moved)} episode(s); first {first}: "
+        f"{len(changed)}/{len(new_assets)} line hashes changed"
+        + (f", from {changed[0]}" if changed else " (membership differs)")
+    )
 
 
 def reference_routes(reference: dict) -> dict[str, dict]:
@@ -324,16 +391,19 @@ def run_route(
             "no editorial attempt written",
         )
     plan_sha, count, same, decision = compare_plan(attempt / "plan.private.json", baseline)
+    detail = ""
     if plan_sha == baseline.get("plan_sha256"):
         status = "identical"
     elif same:
         status = "same-carriers"
     else:
         status = "changed"
+        accepted = baseline_attempt_dir(route)
+        detail = "" if accepted is None else evidence_drift(attempt, accepted)
     if added:
         status = f"{status}+bank-growth"
     return RouteOutcome(
-        key, seed, status, seconds, 0, added, str(attempt), plan_sha, count, same, decision
+        key, seed, status, seconds, 0, added, str(attempt), plan_sha, count, same, decision, detail
     )
 
 
