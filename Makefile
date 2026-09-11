@@ -2,7 +2,7 @@
 # Uses uv for fast Python package management
 export PYTHONUNBUFFERED=1
 
-.PHONY: help install dev dev-ci dev-test run preflight parity docs-cli-check docs-config-check test test-extras test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-audio-mixing test-integration-titles test-fast benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci integration-coverage-for-diff ci critique ensure-dev commitlint privacy-gate pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots diagrams capability-matrix
+.PHONY: help install dev dev-ci dev-test run preflight parity docs-cli-check docs-config-check test test-extras test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-audio-mixing test-integration-titles test-fast benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci integration-coverage-for-diff ci critique ensure-dev commitlint privacy-gate pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots demo-output diagrams capability-matrix
 
 # Default target
 help:
@@ -296,8 +296,10 @@ e2e:  ## Run required fake-service contracts and real hermetic browser render
 		-m "e2e and not visual" --log-cli-level=INFO --tb=short \
 		--junitxml=tests/e2e-junit.xml
 
+# `not demo` because the demo clip renders a second video into the same session
+# workspace, and the launch smoke asserts on exactly what is in there.
 e2e-full:  ## Run ALL E2E tests including full generation pipeline (~10min)
-	uv run pytest tests/e2e/ -v -m e2e --log-cli-level=INFO --tb=short \
+	uv run pytest tests/e2e/ -v -m "e2e and not demo" --log-cli-level=INFO --tb=short \
 		--junitxml=tests/e2e-junit.xml
 
 contact-sheets:  ## Render contact sheets for a sweep of memories (SPEC=path OUT=dir)
@@ -812,6 +814,9 @@ demo-cli-sim:  ## Run CLI demo simulation (no recording, for iteration)
 
 demo-cli:  ## Record CLI demo via VHS → GIF + MP4
 	vhs docs-site/scripts/demo-cli.tape
+
+demo-output:  ## Cut the demo's output clip + poster on the hermetic launch
+	uv run pytest tests/e2e/test_demo_assets.py -v -m demo --log-cli-level=INFO --tb=short
 
 demo-ui-install:  ## Install Remotion demo dependencies
 	cd docs-site/remotion && npm ci

@@ -21,19 +21,22 @@ const FADE = 15; // 0.5s
 const SLIDE = 12; // 0.4s
 
 // Scene durations (frames at 30fps). TransitionSeries overlaps each pair by the
-// transition's length, so the video runs sum(D) - sum(transitions) = 1500 frames.
-// Transitions below add up to 129; the D map adds up to 1629.
+// transition's length, so the video runs sum(D) - sum(transitions) = 1350 frames.
+// Transitions below add up to 129; the D map adds up to 1459.
+//
+// Every length here is cut to the frame its own scene stops moving on: the demo
+// used to hold four of them still for a second or more after the last animation.
 const D = {
-  title: 90, // 3.0s — punchy, not lingering
-  brief: 195, // 6.5s — open the type dropdown, pick, click Cut
-  cutting: 195, // 6.5s — the five phase rows and the six stages of the edit
-  story: 330, // 11.0s — the payoff: what the cut produced
-  export: 135, // 4.5s — summary, output path, click Generate
+  title: 75, // 2.5s — punchy, not lingering
+  brief: 168, // 5.6s — open the type dropdown, pick, click Cut
+  cutting: 186, // 6.2s — the phase rows, and the pictures going past under them
+  story: 285, // 9.5s — the payoff: what the cut produced
+  export: 110, // 3.7s — summary lands, cursor arrives, click Generate
   generating: 165, // 5.5s — progress + live preview
-  complete: 60, // 2.0s — success state
-  output: 264, // 8.8s — the ACTUAL output video; absorbs the frame remainder
+  complete: 55, // 1.8s — success state
+  output: 235, // 7.8s — the ACTUAL output video at 3x; absorbs the frame remainder
   cli: 105, // 3.5s — 5x CLI playback
-  outro: 90, // 3.0s — CTA, not lingering
+  outro: 75, // 2.5s — CTA, not lingering
 };
 
 export const DemoVideo: React.FC = () => {

@@ -582,6 +582,7 @@ markers = [
     "e2e: Playwright E2E browser tests (deselect with '-m not e2e')",
     "slow: long-running tests (full generation pipeline, ~10min)",
     "perf: performance benchmarks (run with: make benchmark-perf)",
+    "demo: renders a docs demo asset (run with: make demo-output)",
 ]
 addopts = "-m 'not integration and not e2e'"
 

@@ -1,8 +1,13 @@
 """DOM redaction helpers for screenshot privacy.
 
-Ported from docs-site/scripts/take-screenshots.ts.
-All functions call page.evaluate() with JavaScript to modify the DOM
-before screenshots are captured.
+These rewrite the few places the hermetic launch still prints something
+machine-specific -- a temp path carrying the developer's user name, the port
+the fake service happened to get -- before a screenshot is taken.
+
+There is deliberately no name substitution here. The fake service serves one
+person, "Fake Person", so there is nothing to anonymise; a list of stand-in
+first names only invites relabelling a real person as a fictional one, which is
+how a demo ends up starring someone's family under made-up names.
 """
 
 from __future__ import annotations
@@ -36,52 +41,8 @@ _TEXT_REDACTIONS = [
     ),
     (r"Saved to: .*", "Saved to: /home/user/Videos/Memories/everyone_2025_memories.mp4"),
     (r"Config file: .*", "Config file: /home/user/.immich-memories/config.yaml"),
-    (r"Using \w+'s birthday: .+", "Using Avery's birthday: June 15, 1995"),
+    (r"Using \w+'s birthday: .+", "Using Fake Person's birthday: June 15, 1995"),
     (r"\d+\.\d{4,},\s*-?\d+\.\d{4,}", "48.8566, 2.3522"),
-]
-
-_GENERIC_NAMES = [
-    "All people",
-    "Avery",
-    "Bob",
-    "Carol",
-    "David",
-    "Emma",
-    "Frank",
-    "Grace",
-    "Henry",
-    "Iris",
-    "Jack",
-    "Kate",
-    "Liam",
-    "Mia",
-    "Noah",
-    "Olivia",
-    "Paul",
-    "Quinn",
-    "Rose",
-    "Sam",
-    "Tina",
-    "Uma",
-    "Victor",
-    "Wendy",
-    "Xander",
-    "Yara",
-    "Zane",
-    "Amy",
-    "Ben",
-    "Chloe",
-    "Dylan",
-    "Ella",
-    "Finn",
-    "Gina",
-    "Hugo",
-    "Ivy",
-    "Jules",
-    "Kira",
-    "Leo",
-    "Nora",
-    "Owen",
 ]
 
 
@@ -131,43 +92,6 @@ def redact_text_nodes(page: Page) -> None:
             }""",
             {"pattern": pattern, "repl": replacement},
         )
-
-
-def redact_person_names(page: Page) -> None:
-    """Replace person names in Quasar dropdowns using CSS ::after trick.
-
-    WHY: Direct DOM text changes get overwritten by Vue/Quasar reactivity.
-    The CSS approach hides real text (font-size: 0) and overlays fake names
-    via ::after pseudo-elements, which Vue cannot clobber.
-    """
-    page.evaluate(
-        """(names) => {
-            let css = '';
-            const options = document.querySelectorAll('[role="option"]');
-            options.forEach((opt, i) => {
-                if (i >= names.length) return;
-                opt.setAttribute('data-redact-idx', String(i));
-                const div = opt.querySelector('div');
-                if (div) div.setAttribute('data-redact-idx', String(i));
-            });
-            names.forEach((name, i) => {
-                css += `[role="option"][data-redact-idx="${i}"] > div {
-                    font-size: 0 !important;
-                    line-height: normal !important;
-                }
-                [role="option"][data-redact-idx="${i}"] > div::after {
-                    content: "${name}" !important;
-                    font-size: 14px !important;
-                }
-                `;
-            });
-            const style = document.createElement('style');
-            style.textContent = css;
-            document.head.appendChild(style);
-        }""",
-        _GENERIC_NAMES,
-    )
-    page.wait_for_timeout(100)
 
 
 def redact_page(page: Page) -> None:

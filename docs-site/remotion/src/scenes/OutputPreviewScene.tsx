@@ -9,8 +9,9 @@ import {
 import { fontFamily } from "../fonts";
 
 /**
- * Real rendered memory video at 5x speed, with privacy mode enabled
- * (faces blurred, speech reversed). Shows the actual output of the tool.
+ * The real rendered memory, at 3x speed. It is cut by the product itself on the
+ * hermetic launch, over the six CC0 stock photographs in tests/e2e/fixtures --
+ * see `make demo-output`. Nothing in it is anyone's library.
  */
 export const OutputPreviewScene: React.FC = () => {
   const frame = useCurrentFrame();
@@ -18,13 +19,13 @@ export const OutputPreviewScene: React.FC = () => {
   // 5x speed badge — fade in, hold, fade out at end
   const badgeOpacity = interpolate(
     frame,
-    [5, 15, 330, 350],
+    [5, 15, 195, 225],
     [0, 0.85, 0.85, 0],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
   );
 
   // Thin progress line at bottom
-  const progress = (frame / 360) * 100;
+  const progress = (frame / 235) * 100;
 
   return (
     <AbsoluteFill style={{ backgroundColor: "#000" }}>
@@ -36,7 +37,7 @@ export const OutputPreviewScene: React.FC = () => {
           height: "100%",
           objectFit: "contain",
         }}
-        playbackRate={5}
+        playbackRate={3}
         volume={0}
       />
 
@@ -65,7 +66,7 @@ export const OutputPreviewScene: React.FC = () => {
             letterSpacing: 0.5,
           }}
         >
-          5× speed
+          3× speed
         </span>
       </div>
 
