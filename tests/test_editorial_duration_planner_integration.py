@@ -114,7 +114,6 @@ def source(tmp_path, *, seconds, pictures=50, private_opening=False):
         pixel_facts={},
         shareability_flags={},
         motion_residuals={},
-        period_reading={"thesis": "Moving home"},
         lineage={},
         bank_dir=tmp_path / "banks",
         artifact_dir=tmp_path / f"plan-{seconds}",

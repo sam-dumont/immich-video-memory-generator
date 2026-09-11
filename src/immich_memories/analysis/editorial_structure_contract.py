@@ -119,7 +119,6 @@ class StructurePlanningInput:
     pixel_facts: Mapping[str, tuple[float, float]]
     shareability_flags: Mapping[str, tuple[Any, ...]]
     motion_residuals: Mapping[str, dict[str, Any]]
-    period_reading: Mapping[str, Any]
     lineage: Mapping[str, Any]
     bank_dir: Path
     artifact_dir: Path

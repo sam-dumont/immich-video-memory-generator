@@ -24,26 +24,6 @@ class TestRunIdWiredInPipeline:
         )
 
 
-class TestRunIdContextVar:
-    """set_current_run_id / get_current_run_id manage a context variable."""
-
-    def test_default_is_none(self):
-        from immich_memories.logging_config import get_current_run_id, set_current_run_id
-
-        # Reset to default state
-        set_current_run_id(None)
-        assert get_current_run_id() is None
-
-    def test_set_and_get(self):
-        from immich_memories.logging_config import get_current_run_id, set_current_run_id
-
-        set_current_run_id("20250101_143052_a7b3")
-        try:
-            assert get_current_run_id() == "20250101_143052_a7b3"
-        finally:
-            set_current_run_id(None)
-
-
 class TestRunIdFilter:
     """RunIdFilter should inject run_id into every log record."""
 

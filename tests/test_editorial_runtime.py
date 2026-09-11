@@ -528,7 +528,6 @@ def test_post_card_runtime_projects_selected_wall_rows_in_chronological_order(
             "later",
         }
         assert source.lineage["period_insight"]["evidence_key"]
-        assert source.period_reading["thesis"] == "One shared race resolves in celebration."
         assert len(source.period_evidence) == 1
         support = source.period_evidence[0]
         assert support.observation == "The finish resolves the morning effort."
