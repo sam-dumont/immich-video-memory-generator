@@ -113,7 +113,10 @@ def test_capture_memory_walkthrough(
     page.evaluate("window.scrollTo(0, 0)")
 
     page.get_by_role("button", name="Cut", exact=True).click()
-    expect(page.get_by_text(_EDITING_STAGE)).to_be_visible(timeout=60_000)
+    # WHY .cut-phase-rows: the detail panel echoes the same stage string, and an
+    # unscoped match is two elements the moment that panel has caught up.
+    active_stage = page.locator(".cut-phase-rows").get_by_text(_EDITING_STAGE)
+    expect(active_stage).to_be_visible(timeout=60_000)
     _save(page, d, _name("memory-cutting", theme))
 
     expect(page.get_by_text(_THESIS)).to_be_visible(timeout=120_000)
