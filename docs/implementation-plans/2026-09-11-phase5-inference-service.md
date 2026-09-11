@@ -184,7 +184,7 @@ difference is exactly what W11's grading has to judge — it is a behaviour chan
 
 | knob | effect | verdict |
 |---|---|---|
-| **ORT provider on macOS** (`auto` → CoreML, today's default) | DINOv2 embed **0.0110 s on the CPU EP vs 0.0885 s on CoreML**, and **0.0121 vs 0.0766** on a second run hours later: **6–8× worse**, both times. Session load 0.08 s vs 0.68–0.76 s. CoreML claimed 274 of 513 nodes and got slower at every batch size (1 → 0.068, 16 → 0.094 s) while the CPU EP got faster (1 → 0.020, 16 → 0.012 s). Head labels identical either way. | **Fix it.** This is a live pessimisation on every Mac today, and the only finding here measured twice on purpose. |
+| **ORT provider on macOS** (`auto` → CoreML, today's default) | DINOv2 embed **0.0110 s on the CPU EP vs 0.0885 s on CoreML**, and **0.0121 vs 0.0766** on a second run hours later: **6–8× worse**, both times. Session load 0.08 s vs 0.68–0.76 s, and **peak RSS 314 MB vs 2,856 MB** — 9× the memory for 6× the latency. CoreML claimed 274 of 513 nodes and got slower at every batch size (1 → 0.068, 16 → 0.094 s) while the CPU EP got faster (1 → 0.020, 16 → 0.012 s). Head labels identical either way. | **Fix it.** This is a live pessimisation on every Mac today, and the only finding here measured three times on purpose. |
 | caption concurrency, machine A (MLX) | 1 → 0.173, 2 → 0.127, 4 → 0.117 s/picture | The config default of 4 is right here: 1.5×. |
 | caption concurrency, machine B (`llama-server`) | 1 → 30.9, 4 → **34.2** s/picture, p90 41 s | **Harmful.** `llama-server` runs one slot by default, so concurrency only queues, then pays for the queueing. The default of 4 must become a per-endpoint setting. |
 | caption quantisation, machine B | Q8\_0 **30.9 s**, Q4\_K\_M **61.5 s**, f16 562 s for a single request | **Q4 is twice as slow as Q8, and worse text.** Without AVX2/F16C the K-quant unpack costs more than it saves, while `REPACK` favours Q8\_0. Q4 also degraded the output ("a simple, yet effective, way to create a grid of circles in a single line of code"). Smaller is not faster here. |
@@ -576,7 +576,7 @@ Reordered so that the items §1 showed to be bugs come before the items §1 show
 | # | Item | Size | Exit test |
 |---|---|---|---|
 | **W0** | **Declare `torchvision` in the `editorial` extra, from the same index as torch.** §5.2: without it `nsfw_marqo` dies with `torchvision::nms does not exist` on the documented Linux install. | XS | A clean `linux/amd64` container installing the extra from the CPU index loads `Marqo` and decides a picture. |
-| **W1** | **Provider selection by measurement, not by name.** `triage/encoder.py` `_create_session` picks CoreML whenever it is available; §1.6 measures CoreML at 6–8× the CPU EP for this graph, twice. Add a `provider` field to `TriageConfig` (it has none), default to the CPU EP on macOS, resolve CUDA from `ort.get_available_providers()` where present. | S | On a Mac the default session is `CPUExecutionProvider`; on a CUDA host, `CUDAExecutionProvider`; same input → same `encoder_key` and the same head labels on all three. |
+| **W1** | **Provider selection by measurement, not by name.** `triage/encoder.py` `_create_session` picks CoreML whenever it is available; §1.6 measures CoreML at 6–8× the CPU EP for this graph and at 9× its resident memory. Add a `provider` field to `TriageConfig` (it has none), default to the CPU EP on macOS, resolve CUDA from `ort.get_available_providers()` where present. | S | On a Mac the default session is `CPUExecutionProvider`; on a CUDA host, `CUDAExecutionProvider`; same input → same `encoder_key` and the same head labels on all three. |
 | **W2** | **Thread counts stop being constants.** `torch.set_num_threads(6)`, `intra_op_num_threads = 6` and `OMP_NUM_THREADS=6` are hardcoded for a machine nobody has, while `_create_session` derives its own from `os.cpu_count()`. One setting, honoured by every seat. **Honest ranking: §1.8 found no win on either machine measured** — 6 is harmless on 4 cores and the encoder's derived 3 is already optimal. This is hygiene and a lever for hosts nobody has tried, not a speed-up. | S | Setting it changes what the sweep in §1.8 measures; leaving it unset reproduces today's numbers. |
 | **W3** | Split the `editorial` extra by device: CPU torch index for `cpu`, CUDA wheels only for `cuda`. | S | `docker buildx build --platform linux/amd64` produces a `cpu` image with zero `nvidia-*` wheels. Measured target: the non-torch base is 700 MB and the full CPU image 1.62 GB (§5.2). |
 | **W3b** | **Export the Marqo detector to ONNX and drop the torch family.** `scripts/export_marqo_onnx.py` already does it: a 22.5 MB single-file graph, every label agreeing with torch across the fixtures (max probability delta 1.19e-7 with timm's transform, 1.01e-3 with the torch-free numpy transform in the same script). | M | Label agreement on a held-out sample; the `nsfw_marqo` fact version bumps and re-derives. **Justified by size and dependency hygiene, not speed** — §1.6 measured ONNX at 0.469 s vs torch at 0.440 s on the NAS. What it buys is 920 MB, 11 s of start-up, and W0's whole class of bug. |
@@ -671,9 +671,11 @@ The owner's framing was that anything learned on the NAS applies to the main pro
 seven have nothing to do with a NAS at all.
 
 1. **The Mac's default execution provider is the slowest one available.** `provider="auto"` picks
-   CoreML, which is 6–8× slower than the CPU EP for DINOv2-small and takes 9× longer to load, on the
-   only graded configuration the product has. Every Mac user pays it today. It is W1 and it is the
-   single largest measured win in this document for existing users.
+   CoreML, which is 6–8× slower than the CPU EP for DINOv2-small, takes 9× longer to load, and
+   holds **2,856 MB resident against 314 MB** — on the only graded configuration the product has.
+   Every Mac user pays it today. It is W1 and it is the single largest measured win in this
+   document for existing users. The memory half also travels: an accelerator that quietly wants
+   2.8 GB is the difference between fitting a 4 GB container and not.
 2. **Hardware accelerators are a measurement, not a ranking.** CoreML lost. A CUDA EP might win.
    The rule that falls out: a provider list is ordered by what was timed on that graph, and
    `/health` says which one answered — never "use the fancy one if it exists".
