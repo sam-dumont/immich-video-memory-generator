@@ -161,6 +161,8 @@ def register_config_commands(main: click.Group) -> None:
         - Speech boundaries (FireRedVAD runtime)
         - Speech transcription (whisper.cpp runtime)
         - Title rendering (GPU or PIL fallback)
+        - Pinned DINOv2 encoder export (presence and digest)
+        - Caption endpoint (advertises the accepted alias)
         - Notification delivery health
         - Hardware acceleration
         """

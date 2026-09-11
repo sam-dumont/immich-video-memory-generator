@@ -27,7 +27,7 @@ deploy/kubernetes/
 
 ## Prerequisites
 
-1. A storage class for two `ReadWriteOnce` PVCs (cache/state 20Gi, output 50Gi)
+1. A storage class for three `ReadWriteOnce` PVCs (cache/state 20Gi, output 50Gi, models 5Gi)
 2. Immich reachable from the cluster — in-cluster (`http://immich-server.<ns>.svc.cluster.local:2283`)
    or external
 3. GPU overlay only: the [NVIDIA GPU Operator](https://github.com/NVIDIA/gpu-operator), which
@@ -82,6 +82,7 @@ mount the root filesystem read-only. The three mounts below are the only writabl
 |-------|-----------|-------|
 | `/home/immich/.immich-memories` | PVC `immich-memories-cache` (writable) | `config.yaml`, `cache.db` (analysis scores), video cache, projects, automation history |
 | `/app/output` | PVC `immich-memories-output` | generated videos (`IMMICH_MEMORIES_OUTPUT__DIRECTORY=/app/output`) |
+| `/models` | PVC `immich-memories-models` | the pinned DINOv2 export (`IMMICH_MEMORIES_TRIAGE__ENCODER`) and the detector Hugging Face cache, both written by `immich-memories models fetch` |
 | `/tmp` | emptyDir 4Gi | FFmpeg intermediates — 8Gi for 4K |
 
 There is no ConfigMap. `IMMICH_URL` / `IMMICH_API_KEY` come from the Secret (`envFrom`), so any
@@ -91,11 +92,12 @@ secret setting — `IMMICH_MEMORIES_LLM__API_KEY`, `IMMICH_MEMORIES_STORAGE_SECR
 commented examples for LLM clip analysis and the in-pod daily automation. Settings saved from the
 UI go to `config.yaml` on the PVC; env vars override them.
 
-The NetworkPolicy allows egress to DNS, 80/443, Immich on 2283 and an optional local LLM on 11434.
-Edit it for the actual Immich, caption and story endpoints. The default compact-caption port
-is 8092, which this policy does not currently allow. Follow
-[editorial annotation setup](../configuration/editorial-preparation.md), mount the pinned
-encoder and detector cache, and make the required model services reachable before generating.
+The NetworkPolicy allows egress to DNS, 80/443, Immich on 2283, a local reader model on 11434 and
+the caption server on 8092 — the two model services selection needs. Edit the ports if yours differ.
+The root filesystem is read-only, so the artifacts those services do not provide live on the
+`/models` volume: run `immich-memories models fetch` once (a one-off Job, or `kubectl exec` into the
+pod) before generating, and see
+[editorial annotation setup](../configuration/editorial-preparation.md).
 
 ## GPU
 

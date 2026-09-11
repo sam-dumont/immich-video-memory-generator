@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+import http.server
+import json
+import threading
 from unittest.mock import MagicMock, patch
 
+from immich_memories.analysis.editorial_description_contract import API_MODEL
 from immich_memories.api.immich import ImmichAPIError
 from immich_memories.config_loader import Config
 from immich_memories.preflight import (
     CheckResult,
     CheckStatus,
     check_audio_content,
+    check_caption_endpoint,
+    check_encoder,
     check_immich,
     check_llm,
     check_notifications,
@@ -226,3 +232,79 @@ def test_preflight_run_lists_every_absent_optional_feature() -> None:
 
     degraded = {c.name for c in checks if c.status is CheckStatus.WARNING}
     assert {"Audio content", "Speech boundaries", "Transcription", "Title rendering"} <= degraded
+
+
+class _CaptionEndpoint:
+    """A local stand-in for the caption server's `/models` inventory."""
+
+    def __init__(self, model_ids: list[str]) -> None:
+        body = json.dumps({"data": [{"id": name} for name in model_ids]}).encode()
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler's name
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args: object) -> None:
+                return
+
+        self._httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
+        self._thread.start()
+
+    @property
+    def base_url(self) -> str:
+        host, port = self._httpd.server_address[:2]
+        return f"http://{host}:{port}/v1"
+
+    def close(self) -> None:
+        self._httpd.shutdown()
+        self._httpd.server_close()
+        self._thread.join(timeout=5)
+
+
+def test_encoder_check_names_the_fetch_command_when_the_export_is_absent(tmp_path) -> None:
+    config = Config(triage={"encoder": str(tmp_path / "dinov2-small.onnx")})
+
+    result = check_encoder(config)
+
+    assert result.status is CheckStatus.ERROR
+    assert "models fetch" in (result.details or "")
+
+
+def test_encoder_check_rejects_an_export_that_is_not_the_pinned_one(tmp_path) -> None:
+    path = tmp_path / "dinov2-small.onnx"
+    path.write_bytes(b"some other onnx export")
+    config = Config(triage={"encoder": str(path)})
+
+    result = check_encoder(config)
+
+    assert result.status is CheckStatus.ERROR
+    assert "pinned" in result.message.lower()
+
+
+def test_caption_check_passes_when_the_endpoint_advertises_the_alias() -> None:
+    endpoint = _CaptionEndpoint([API_MODEL])
+    try:
+        config = Config(editorial={"preparation": {"caption_base_url": endpoint.base_url}})
+        result = check_caption_endpoint(config)
+    finally:
+        endpoint.close()
+
+    assert result.status is CheckStatus.OK
+    assert API_MODEL in result.message
+
+
+def test_caption_check_fails_when_the_endpoint_serves_another_model() -> None:
+    endpoint = _CaptionEndpoint(["some-other-vlm"])
+    try:
+        config = Config(editorial={"preparation": {"caption_base_url": endpoint.base_url}})
+        result = check_caption_endpoint(config)
+    finally:
+        endpoint.close()
+
+    assert result.status is CheckStatus.ERROR
+    assert API_MODEL in (result.details or result.message)

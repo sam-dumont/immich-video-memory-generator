@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import logging
 from dataclasses import dataclass
@@ -447,6 +448,67 @@ def check_title_rendering(config: Config) -> CheckResult:
     )
 
 
+def check_encoder(config: Config) -> CheckResult:
+    """Report the digest-pinned DINOv2 export the six context heads run on."""
+    from immich_memories.triage.encoder import DINOV2_SMALL_ONNX_SHA256
+
+    path = config.triage.encoder_path
+    if not path.is_file():
+        return CheckResult(
+            name="Encoder",
+            status=CheckStatus.ERROR,
+            message="Pinned DINOv2 export missing",
+            details=f"{path}; run: immich-memories models fetch",
+        )
+    with path.open("rb") as handle:
+        digest = hashlib.file_digest(handle, "sha256").hexdigest()
+    if digest != DINOV2_SMALL_ONNX_SHA256:
+        return CheckResult(
+            name="Encoder",
+            status=CheckStatus.ERROR,
+            message="Not the pinned DINOv2 export",
+            details=f"{path}: {digest[:12]} is not {DINOV2_SMALL_ONNX_SHA256[:12]}",
+        )
+    return CheckResult(
+        name="Encoder",
+        status=CheckStatus.OK,
+        message="Pinned DINOv2 export verified",
+        details=str(path),
+    )
+
+
+def check_caption_endpoint(config: Config) -> CheckResult:
+    """Report whether the configured caption server advertises the accepted alias."""
+    from immich_memories.analysis.editorial_description_contract import API_MODEL
+
+    base_url = config.editorial.preparation.caption_base_url
+    try:
+        response = httpx.get(f"{base_url}/models", timeout=5.0)
+        response.raise_for_status()
+        rows = response.json().get("data", [])
+    except (httpx.HTTPError, ValueError) as e:
+        return CheckResult(
+            name="Captions",
+            status=CheckStatus.ERROR,
+            message="Caption endpoint unreachable",
+            details=f"{base_url}: {sanitize_error_message(str(e))}",
+        )
+    served = {row.get("id") for row in rows if isinstance(row, dict)}
+    if API_MODEL not in served:
+        return CheckResult(
+            name="Captions",
+            status=CheckStatus.ERROR,
+            message="Caption endpoint serves another model",
+            details=f"{base_url} advertises {sorted(map(str, served))}, not {API_MODEL}",
+        )
+    return CheckResult(
+        name="Captions",
+        status=CheckStatus.OK,
+        message=f"Serving {API_MODEL}",
+        details=base_url,
+    )
+
+
 def run_preflight_checks(config: Config) -> list[CheckResult]:
     """Run all preflight checks.
 
@@ -463,6 +525,8 @@ def run_preflight_checks(config: Config) -> list[CheckResult]:
         check_speech_boundaries(config),
         check_transcription(config),
         check_title_rendering(config),
+        check_encoder(config),
+        check_caption_endpoint(config),
         check_notifications(config),
         check_hardware(),
     ]
