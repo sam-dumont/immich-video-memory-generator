@@ -63,9 +63,15 @@ the same period pays only a preview check.
 
 **What `no_captions` costs you.** No descriptions, so the reason under each picture is the facts
 that funded it rather than a sentence, and the Memory page says so in one line under the title.
-Nothing else changes: `nsfw_marqo`, `swim`, `children`, `exposure` and `doc_docling` are all still
-produced, so the audience gate keeps every piece of evidence it reads and still refuses what it
-would have refused.
+`nsfw_marqo`, `swim`, `children`, `exposure` and `doc_docling` are all still produced, so the
+audience gate refuses everything it would have refused.
+
+What it will not do is **clear** a unit. Eight of the findings that hold a picture to the family —
+bathing, toileting, intimate hygiene, a medical procedure, an identifying record and the rest — are
+named only by a written description. A detector head cannot see them, so a head seeing nothing is
+not a clearance, and the gate may only ever tighten. Every unit therefore stays at family viewing
+with a finding that says the description was missing rather than unreadable. To earn a `sendable`
+export, run the tier that does the reading.
 
 **What `metadata_only` costs you.** Everything above, plus the six heads and both detectors — and
 with them sensitive-content and document detection. Because the gate then has no evidence, that tier

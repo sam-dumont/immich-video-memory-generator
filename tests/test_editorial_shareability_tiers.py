@@ -40,15 +40,32 @@ def flag(name, source="owner", reason="looked at again"):
     return {"solo": (share.FlagRow("solo", name, reason, source),)}
 
 
-def test_an_uncaptioned_picture_no_detector_objects_to_is_shareable():
-    """The model check refuses it for want of a caption; the tier that has none must not."""
+def test_an_uncaptioned_picture_is_held_but_for_a_reason_that_names_the_gap():
+    """Both tiers hold it, and the reduced one says which evidence it lacked.
+
+    Eight of the findings that refuse a unit -- bathing, toileting, a medical
+    procedure and the rest -- are named only by a written description. The heads
+    cannot see them, so "no detector objected" is not a clearance and the rule gate
+    never grants one. What it does add over the model check is a finding that says
+    the description was missing rather than unreadable.
+    """
     evidence = evidence_of(heads=(("nsfw_marqo", "no"), ("people", "one")))
 
     model = share.check_audience(RefusingJudge(), evidence, "unit-1")
     rules = rule_audience(RefusingJudge(), evidence, "unit-1")
 
     assert model["verdict"] == "family_only" and model["finding"] == "unavailable_evidence"
-    assert rules["verdict"] == "share" and rules["finding"] == "none"
+    assert rules["verdict"] == "family_only"
+    assert rules["finding"] == "unread_private_activity"
+
+
+def test_no_tier_without_descriptions_can_ever_clear_a_unit():
+    """The gate may only tighten, so a tier that reads nothing grants nothing."""
+    for heads in ((("nsfw_marqo", "no"),), (("nsfw_marqo", "no"), ("swim", "no"))):
+        evidence = evidence_of(heads=heads)
+
+        assert rule_audience(RefusingJudge(), evidence, "unit-1")["verdict"] != "share"
+        assert withheld_audience(RefusingJudge(), evidence, "unit-1")["verdict"] != "share"
 
 
 def test_a_detector_positive_holds_the_unit_to_the_family():

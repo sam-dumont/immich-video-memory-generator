@@ -8,6 +8,9 @@ The gate may only ever tighten, so each tier answers with the evidence it actual
   flags, ``swim`` with ``children`` -- and reads it with rules instead of sentences. Without
   this the model check refuses every uncaptioned member as ``unavailable_evidence``, which
   holds a whole cut to the family for want of a producer the tier deliberately did not run.
+  It matches the model check on what it refuses and, like the tier below, never clears:
+  eight findings are named only by a description, so a head seeing nothing is not a
+  clearance. What it adds is a finding that says the description was absent.
 * **metadata_only** prepared nothing that looked at the picture, so it holds every unit to the
   family and never says ``share``. "Nothing objected" is not a clearance when nothing looked.
 """
@@ -55,9 +58,14 @@ def _hold(evidence: Mapping[str, Any]) -> str:
 def rule_audience(_judge: Any, evidence: Mapping[str, Any], _stage: str) -> dict[str, Any]:
     """The audience verdict from detector heads and flags alone, with no model asked.
 
-    Identical to the model check on what it refuses -- the same detector positives and the
-    same exposure flags -- and narrower on what it clears, because a private activity that
-    only a caption would name is not visible to it.
+    Identical to the model check on what it *refuses* -- the same detector positives and
+    the same exposure flags. It never clears, because eight of the findings that refuse a
+    unit are named only by a written description: bathing, toileting, intimate hygiene, a
+    medical procedure, an identifying record, and the rest. The heads cannot see them, so
+    "no detector objected" is not a clearance, and the gate may only ever tighten.
+
+    A unit with nothing against it therefore stays `family_only` and says why. To earn a
+    `sendable` export, run the tier that does the reading.
     """
     result: dict[str, Any] = {
         "policy": RULE_AUDIENCE_POLICY,
@@ -73,9 +81,8 @@ def rule_audience(_judge: Any, evidence: Mapping[str, Any], _stage: str) -> dict
     if held:
         return result | {"finding": held, "why": _HELD[held]}
     return result | {
-        "verdict": "share",
-        "finding": "none",
-        "why": "no detector head or flag objected",
+        "finding": "unread_private_activity",
+        "why": "no detector head objected, but no description was read to clear it",
     }
 
 
