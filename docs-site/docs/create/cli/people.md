@@ -24,13 +24,14 @@ somewhere.
 A person with 160 pictures spread over four active months across scattered years was at
 four events with you. A person with the same 160 pictures spread over forty months is
 part of your life. Pictures ÷ active months is the discriminator that volume alone is
-not, and the tiers fall out of it:
+not, and it is what picks out `event`. The other three come from how many months, how
+long a span, and how continuously present:
 
 | tier | shape |
 |---|---|
-| `inner` | dozens of active months, years of span, present in most months between |
-| `recurring` | a dozen months or more, but not most of them |
-| `episodic` | a handful of months across a long stretch |
+| `inner` | dozens of active months, years of span, and present in at least a third of the months between |
+| `recurring` | a dozen months or more, but failing one of the `inner` conditions |
+| `episodic` | everything that is not one of the other three: no span condition of its own |
 | `event` | four active months or fewer at twenty-plus pictures each: a burst |
 
 On top of the tiers the scan looks for four things.
@@ -66,9 +67,10 @@ Measured on a real library: in the quarter the owner met their partner, the part
 appears twenty-five times and they share **zero** frames. The first shared frame comes
 months later, when somebody else takes the picture.
 
-So the owner's pairs are never asked about at all (no query is spent on them), and the
-owner's closest person is found from month curves instead: somebody present at the
-owner's own scale whose active months track the owner's from the day they arrive.
+So co-appearance is not how the owner's closest person is found. The pairs are still
+queried like everyone else's; what changes is that the dyad heuristic ignores the answer
+and reads month curves instead: somebody present at the owner's own scale whose active
+months track the owner's from the day they arrive.
 
 The owner is identified three ways, in descending order of certainty, and the file records
 which one was used:
@@ -151,8 +153,10 @@ in with the evidence behind it in one line, and the edges the scan found.
 | ✓ / ✗ on a link | `confirmed.links[]` | yes they are, or no they are not. Pressing the answer you already gave takes it back: undecided is a real state, and it writes nothing |
 | Notes | `confirmed.notes` | anything you want to remember about this person |
 
-Nothing is saved behind a button: each control writes as you change it, and a rescan then
-copies all of it through untouched.
+Role and Notes save as you type them, and a rescan copies everything through untouched.
+Two things do sit behind a button, because both create something: **Confirm relationship**,
+which names one of 27 directed kinds between two people, and **Add person**, for somebody
+your library has no face for. Both are dialogs with a confirm.
 
 **Birth dates are read-only here.** They are mirrored from Immich and must never diverge
 from it, so the card shows the date with an *edit in Immich* link next to it rather than
@@ -206,7 +210,10 @@ nobody has claimed, and naming them is work that belongs in Immich.
 
 ## What uses it
 
-Nothing yet. The graph ships before its consumers on purpose: selection weights,
-tie-breaks between two equally good moments, person-rotation fairness and the automation's
-person priors are all next, and each of them needs a stable file and a stable contract to
-read from first.
+The editor. Every cut loads `people.yaml` and renders a `people` block onto the wall the
+text model reads: id, name, relationship, where that relationship came from, birth date,
+first appearance, onset and tier. So who somebody is to you is part of what the model
+weighs, not just a label in a settings page.
+
+What does not read it yet: selection weights, tie-breaks between two equally good moments,
+person-rotation fairness and the automation's person priors.

@@ -30,11 +30,11 @@ does not degrade politely into one that can. See
 
 ## LLM Title Generation
 
-Instead of generic "TWO WEEKS IN SPAIN, SUMMER 2025" template titles, the app feeds your trip's raw GPS data to a local LLM and gets back something like "Sous les falaises de grès" or "Odyssée le long de la côte". It works in any language and classifies your trip pattern too.
+Instead of generic "TWO WEEKS IN SPAIN, SUMMER 2025" template titles, the app hands a local LLM a day-by-day summary of where the trip went and gets back something like "Sous les falaises de grès" or "Odyssée le long de la côte". English and French are the two locales the app ships; it classifies the trip pattern at the same time.
 
 ### What the LLM gets
 
-After the analysis phase completes, the LLM receives daily GPS clusters: how many photos you took at each location, each day. From that raw data, it figures out the travel pattern (base camp? road trip? hiking trail?) and generates a title + subtitle in your locale. No pre-processing, no clustering algorithm telling it what to think: just the raw photo distribution and the model's own reasoning.
+The model never sees coordinates. The selected material's GPS points are clustered greedily within 5 km, each cluster is reverse-geocoded to a city name, and what goes into the prompt is one line per day: the place names and how many of the selected pictures fell at each. From that it works out the travel pattern (base camp? road trip? hiking trail?) and writes a title and subtitle in your locale.
 
 ### What it produces
 

@@ -6,7 +6,7 @@ title: FAQ
 
 **Does it modify my Immich library?**
 
-By default, no. It downloads copies of your videos for analysis and processing. If you enable `--upload-to-immich`, the generated compilation video is uploaded as a new asset (optionally into an album). Your original videos are never modified or deleted.
+By default, no. It downloads copies of your videos for analysis and processing. If you enable `--upload-to-immich`, the generated compilation video is uploaded as a new asset (optionally into an album). Your originals are never modified or deleted. The one write beyond the upload: when a re-render of the same memory lands in the same album, the copy it replaces is moved to Immich's trash, so the album does not fill with identical files. Recoverable, and never the asset just uploaded.
 
 **What video formats does it support?**
 
@@ -18,7 +18,7 @@ Yes. Skip the `--person` flag and it'll pull everything eligible from the select
 
 **How long does analysis take?**
 
-Depends on how much of the period has already been prepared, and on where the caption server and the text model run. The first cut over a period captions and measures every eligible picture once and reads the period with the text model; both are cached per producer and per exact request, so a library only pays this once and re-runs over the same period are mostly the render. `preset: fast` is the CPU-only render profile; it does not change what the editor reads. The [README resource table](https://github.com/sam-dumont/immich-video-memory-generator#resource-requirements) has RAM and encoding numbers, and the [NAS-only guide](../deploy/common-setups/nas-only.md) has a measured 4-core run, with a 2-3x multiplier for Celeron-class silicon.
+Depends on how much of the period has already been prepared, and on where the caption server and the text model run. The first cut over a period captions and measures every eligible picture once and reads the period with the text model; both are cached per producer and per exact request, so a library only pays this once and re-runs over the same period are mostly the render. `preset: fast` is the CPU-only render profile; it does not change what the editor reads. Nobody has timed preparation on NAS-class silicon yet, so this page will not invent a figure; the [NAS guide](../deploy/common-setups/nas-only.md#performance-expectations) has the one measured 4-core run and says exactly which column of it still applies.
 
 **Can I run it headless?**
 
@@ -30,7 +30,7 @@ The codebase is AI-written (on purpose, as an experiment) with 7,461 tests (6,83
 
 **Can I generate for multiple people at once?**
 
-Yes. Use `--person "Riley" --person "Bob"` with `--memory-type multi_person`. By default it finds videos where both people appear together. See the [generate CLI docs](../create/cli/generate.md) for all memory type options.
+Yes, and it takes more than a list. `--memory-type multi_person` with repeated `--person` flags defaults to everyone-in-the-same-asset. For anything else, `--people-expression` takes a real condition: quoted names with `AND`, `OR` and parentheses, as in `'"Riley" AND ("Casey" OR "Bob")'`, where `AND` means the same picture or video, not the same afternoon. It replaces `--person` rather than refining it. See the [generate CLI docs](../create/cli/generate.md).
 
 **How much disk space does it need?**
 

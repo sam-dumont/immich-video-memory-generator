@@ -28,16 +28,20 @@ On the app's disk: the pinned **DINOv2-small ONNX export** (88 MB) behind the si
 and two **CPU detector** snapshots (~400 MB). One command fetches both. The head bundle itself is
 in the wheel.
 
-The reader is one model doing two jobs. It needs vision: a text-only model cannot do the picture
-pass, and the run will not degrade politely into one that can. The pictures are a small share of
-its traffic: the graded matrix runs made 31–37 picture requests per route.
+The reader is one model doing two jobs, and it needs vision. Point a text-only model at it and
+you do not get a loud failure: every picture request comes back empty, gets banked as a
+completion failure, and the edit reads `picture observations unavailable` on those assets and
+carries on. You get a finished video made without the evidence it asked for, which is worse than
+a stop. The only blank this seat refuses outright is an empty `llm.model`.
 
 ## Before you start
 
 - **Immich v2 or v3** and an API key (Account Settings → API Keys). Read access to assets, people,
   albums, timeline and search; add asset upload and album create/update if you want upload-back.
-- **A machine that can hold the reader.** 17 GB of weights stay resident for as long as the server
-  is up. See [one machine or two](#one-machine-or-two) before you pick where things run.
+- **A machine that can hold the reader.** The graded model is 30B parameters at 4 bits, so
+  roughly 17 GB of weights stay resident for as long as the server is up. That figure is the
+  arithmetic, not a measurement. See [one machine or two](#one-machine-or-two) before you pick
+  where things run.
 - **Python 3.11+ or Docker** for the app itself.
 
 ## 1. Install the app
@@ -112,6 +116,10 @@ preview. Serve the accepted weights under that name:
 | Repository | `mlx-community/SmolVLM2-500M-Video-Instruct-mlx` |
 | Revision | `fa57db46815177fbdfd65cc85a2b3416a8332268` |
 | Weights SHA-256 | `a9839c8f79ecc93e54a00dc73cc0e68ba477debcd065d50c1c289fbb1075f981` |
+
+The app does not check that revision or that digest. They record what the banked descriptions
+were produced from, so that a future comparison has something to compare against. What it does
+enforce is the alias and the schema controls.
 
 It has to accept the compact description/setting JSON schema at temperature zero, repetition
 penalty 1.1 and a 140-token output cap. Captions are sent as 400 px JPEG tiles at quality 90.

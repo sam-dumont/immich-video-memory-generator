@@ -33,7 +33,7 @@ These three mounts are the only writable paths:
 
 | Mount | Backed by | Holds |
 |-------|-----------|-------|
-| `/home/immich/.immich-memories` | cache PVC (writable) | `config.yaml`, `cache.db` (analysis scores), video cache, projects, automation history |
+| `/home/immich/.immich-memories` | cache PVC (writable) | `config.yaml`, `cache/annotations.sqlite` (the editor's banks), `cache.db` (run history and automation state), video cache, projects |
 | `/app/output` | output PVC | generated videos (`IMMICH_MEMORIES_OUTPUT__DIRECTORY=/app/output`) |
 | `/tmp` | emptyDir (`tmp_size`, 4Gi) | FFmpeg intermediates: 8Gi for 4K |
 
@@ -101,9 +101,15 @@ module "immich_memories" {
 ```
 
 Also configure [editorial annotation preparation](../configuration/editorial-preparation.md)
-through the module's `env` map and persistent model/cache storage. Its compact-caption endpoint
-and pinned encoder/detector artifacts are separate from `llm_base_url`; an uncached generation
-requires both preparation and story providers.
+through the module's `env` map. Its compact-caption endpoint and pinned encoder/detector artifacts
+are separate from `llm_base_url`; an uncached generation requires both preparation and story
+providers.
+
+Unlike the Kustomize manifests, this module creates **no models PVC and no `/models` mount**, and
+the root filesystem is read-only. The encoder and the Hugging Face detector cache therefore have
+to land under `/home/immich/.immich-memories`, which is where their defaults already point. If you
+override `IMMICH_MEMORIES_TRIAGE__ENCODER` or the detector cache directory to a path outside that
+mount, `models fetch` fails and so does the first cut.
 
 ## Variables
 

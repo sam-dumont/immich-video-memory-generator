@@ -36,10 +36,11 @@ Two properties of the looking:
 
 Descriptions do the discriminating work that scores can't:
 
-- **Duplicates are judged on content.** Two clips of the same cake, eight
+- **Duplicates are judged on content.** Two clips of the same cake, a couple of
   minutes apart, are one moment: keep the better one. Two toasts at the same
   party are two moments. Perceptual hashing can't tell these apart; a sentence
-  about each can.
+  about each can. (Five minutes is the hard edge: beyond that, things are
+  separate moments whatever they show.)
 - **Picture choices follow moments.** The planner chooses a representation
   of each selected moment. Extra variants do not count as extra events.
 - **Missing evidence is reported.** Required source and annotation coverage
@@ -63,12 +64,14 @@ included. Eight findings are not, at any audience, and a carrier that draws one 
 replaced rather than shown: breastfeeding or expressing milk, bathing, toileting or
 changing, intimate hygiene, graphic medical procedures, identifying records, sexual
 content, and adult changing. The model is told that newborn care is ordinary family
-content (that keeps it from filing a bath as something worse), and the code still
-holds the last four *and* the first four out of the cut.
+content (that keeps it from filing a bath as something worse), and the code holds
+all eight out of the cut regardless of what the model was told.
 
-**Titles claim only what the evidence shows.** A title is generated from what
-the model actually saw and is not allowed to invent specifics. If the material
-can't support a claim, the title doesn't make it.
+**A day's title claims only what the evidence shows.** The title a special day
+carries is checked against the evidence lines it was written from, and a claim
+those lines do not support is dropped rather than printed. (Trip titles are a
+different path: they are written from dates and place names, with no such
+check.)
 
 **Refuse over fake.** A day the model could not name does not get a generic
 "Memories of June 12th" card: it doesn't render. An empty special-days
@@ -79,7 +82,9 @@ the honest one.
 **Emergent, not queried.** Nothing searches your library for "beach" or "dog".
 The [special days catalogue](../cli/discover-days) is built by looking at what
 your days actually contain and asking whether anything happened, which is how
-it finds the day that mattered with 30 photos, not just the day with 300. A day
+it finds the day that mattered with 30 photos, not just the day with 300. It is
+not asked about everything: a day has to clear 20 photos and six active hours
+before the question is worth a model call. A day
 it found comes back years later as a
 [Special Day memory](../memory-types/special-days.mdx) nobody asked for.
 

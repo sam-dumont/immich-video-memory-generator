@@ -11,7 +11,7 @@ What a media accelerator does **not** buy is the editor's models. NVENC, Quick S
 
 Encoding video in software (libx264) works everywhere but it's slow. A hardware encoder is faster; how much faster depends on your card, codec and preset, and this project has not measured it. The pipeline auto-detects your hardware and picks the best available backend; NVENC, Quick Sync and VAAPI are only selected after a one-frame test encode succeeds, so an FFmpeg build that merely lists them (Debian's does, including inside the Docker image) doesn't send a GPU-less box down the hardware path.
 
-The encode is not where a run spends its time, though. Preparation and title rendering are. Measured at `--cpus=2`, title rendering was ~263 s of a ~339 s assembly ([CPU-Only Mode](./cpu-only.md#title-rendering-is-the-bottleneck-not-encoding)), and in a measured end-to-end run the analysis phase was 7.4 minutes of a 10 min 08 s run ([NAS-Only](../common-setups/nas-only.md#performance-expectations)). Hardware acceleration shortens the last phase; a GPU earns its keep first on titles.
+The encode is not where a run spends its time, though. Measured at `--cpus=2`, title rendering was ~263 s of a ~339 s assembly ([CPU-Only Mode](./cpu-only.md#title-rendering-is-the-bottleneck-not-encoding)). That is the one phase a GPU takes off your hands, and it earns its keep there before it earns it on the encoder. Preparation is the other big block, and nobody has timed it on this route yet ([NAS guide](../common-setups/nas-only.md#preparation-not-measured-yet)); it is CPU work either way, since the heads and the detectors have no GPU path here.
 
 ## Supported backends
 

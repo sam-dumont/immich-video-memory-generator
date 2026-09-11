@@ -11,13 +11,13 @@ The entire codebase was written by Claude (Anthropic). This was a deliberate cho
 
 I don't write code. I make decisions, test results, and debug problems. Claude writes the code. The cycle for every feature looks like this:
 
-1. I research the problem in conversation (3-6 rounds before any code)
+1. I research the problem in conversation, several rounds before any code
 2. I pick the approach
 3. Claude implements it
 4. I test it, it doesn't work
 5. Back to research, then implementation, repeat
 
-The music pipeline went through 6 research rounds before a single line of code. The video assembly pipeline took 9 attempts over 2 months, each one failing differently, before I figured out that encoder non-determinism across separate FFmpeg invocations was the root cause (by looking at individual frames side-by-side and noticing pixel differences).
+The music pipeline went through rounds of that before a single line of code. Video assembly went through more of them, each attempt failing differently, before I worked out that encoder non-determinism across separate FFmpeg invocations was the root cause (by putting individual frames side by side and noticing pixel differences). The assembler is a single streaming pass today because of it.
 
 ## The quality infrastructure
 
@@ -25,14 +25,7 @@ AI-generated code without guardrails is fast garbage. Every PR passes 20 gates b
 
 None of that is a claim you have to take on trust: the gates live in the `Makefile`, and the build stays red until they pass. ([DISCLAIMER.md](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/DISCLAIMER.md) lists them one by one.) They aren't decoration either: they catch real bugs that Claude introduces confidently. The complexity gate alone has blocked dozens of over-engineered functions. The file length cap forced a composition-based architecture (every class under 800 lines, zero mixins) that turned out to be the right call anyway.
 
-## What the velocity actually looks like
+## The pace, as the repository records it
 
-The project went from "I want to make a birthday video" at the end of December 2025 to a shipped v0.1.0 on 6 March 2026: about ten weeks. The repository has been public ever since, and 471 PRs merged between 8 March and 8 September 2026: 184 days, two and a half a day. Each one through the same 20 gates, each one adding to a suite now at 7,461 tests.
-
-A typical feature cycle: I decide on Tuesday morning that trip memories need animated satellite maps. I spend a few hours researching map rendering approaches with Claude.ai (tile providers, zoom interpolation, Van Wijk smooth zoom for long distances vs. linear pan for short hops). By Wednesday I've picked the approach. Claude Code implements it. Thursday it's in the pipeline with tests, passing CI, ready for review.
-
-That cycle used to take me 2-3 weeks when I wrote code myself (I'm a platform/infra person, not a frontend or video processing specialist). The AI doesn't remove the research or the decisions. It removes the "now I have to learn how FFmpeg compositing works well enough to write 400 lines of filter graph code" part.
-
-The hard problems still take time: assembly was those 9 attempts, and audio ducking needed 3 research rounds on stem separation. But the ratio of "thinking about the problem" to "typing code" shifted from maybe 30/70 to 80/20, which is where it should have been all along.
-
-The research conversations, debugging sessions and architectural decisions behind all of this are being written up as a series of blog posts; the [GitHub repo](https://github.com/sam-dumont/immich-video-memory-generator) README will link them as they go out.
+First public commit 6 March 2026. 465 pull requests merged to `main` by 8 September, each one
+through the 20 gates above. `git log origin/main` counts them if you want to check.

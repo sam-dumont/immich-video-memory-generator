@@ -27,12 +27,13 @@ similarity alone would merge the same kitchen photographed a month apart. A phot
 preview never arrived is always kept: redundancy is measured, never assumed.
 
 Measured on one real June library: 64 of 303 photos gone, 21% of the pool, in groups of
-up to five. This runs before anything asks a model a question, so every frame it drops is
-also a model call saved.
+up to five. It does not save any model calls: captions, heads and detectors are paid for
+the whole eligible period before the editor gets here. What it saves is a cut with five
+near-identical frames in it.
 
 A Live Photo burst collapses the same way, to one carrier: the favourite if there is one,
-otherwise the best-scored frame. Its siblings stay in the unit as members; they do not
-come back as separate stills.
+otherwise the sharpest, best-exposed frame. Its siblings stay in the unit as members; they
+do not come back as separate stills.
 
 ## 2. Neighbours, asked as a pair
 

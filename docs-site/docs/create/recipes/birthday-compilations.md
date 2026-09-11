@@ -20,7 +20,7 @@ Without one, a birthday memory refuses rather than guessing a date and quietly r
 | The rolling year | day after the previous birthday → the birthday | The year being celebrated |
 | Each earlier birthday | ±1 day around it | The "look how small you were" cutaways |
 
-Five earlier birthdays by default, the same reach On This Day and Holiday use. `--years-back` changes it, up to thirty.
+Five earlier birthdays by default, the same reach On This Day and Holiday use. `--years-back` changes it, and nothing caps it.
 
 Most of those single days hold nothing, and that is expected: the run prints one summary line for them (`history: 2 of 5 earlier windows hold material`) instead of a warning per year. An empty **rolling year** does still get a warning: that one means something is wrong.
 

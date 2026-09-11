@@ -33,7 +33,9 @@ IMMICH_URL=https://photos.example.com
 IMMICH_API_KEY=your-api-key-here
 ```
 
-Get the API key from Immich: **Account Settings > API Keys > New API Key**. When Immich asks which permissions to grant, pick **All**; or, for a minimal key: read access to assets, people, albums, timeline and search, plus **asset upload** and **album create/update** if you turn on upload-back to Immich. This tool never deletes or modifies existing assets.
+Get the API key from Immich: **Account Settings > API Keys > New API Key**. When Immich asks which permissions to grant, pick **All**; or, for a minimal key: read access to assets, people, albums, timeline and search, plus **asset upload**, **album create/update** and **asset delete** if you turn on upload-back to Immich.
+
+Your originals are never touched. The one write beyond uploading is narrow and worth knowing about: when upload-back puts a new render in an album, any earlier upload with the same filename in that same album is moved to Immich's trash, so the album does not fill with indistinguishable copies of one memory. The filename carries a hash of the recipe, the trash is recoverable, and the asset just uploaded is never a candidate. That is what the delete permission is for; without it you get a warning in the log each run and the old copies stay.
 
 Then grab the compose file from the repo and start it:
 
@@ -88,11 +90,15 @@ The container's resource usage depends on what phase it's in:
 
 | Phase | RAM | CPU | When |
 |-------|-----|-----|------|
-| Idle (UI running, waiting) | ~100 MB | minimal | Most of the time |
-| Analysis (downloading + preparing pictures) | 2-4 GB | 2+ cores | First cut over a period, and where most of the wall time goes |
+| Idle (UI running, waiting) | small | minimal | Most of the time |
+| Preparation (downloading previews, heads, detectors) | 2-4 GB | 2+ cores | First cut over a period |
 | Assembly (title screens + FFmpeg encode) | 4-8 GB | 4+ cores | Final video generation |
 | **Reader model** (not in this container) | **~17 GB resident** at 4-bit | n/a | For as long as its server is up |
 | **Caption server** (not in this container) | **1-2 GB resident** | n/a | For as long as its server is up |
+
+The two container rows are the working sizes the compose limits were set around, not a benchmark:
+nobody has profiled this image's RSS per phase. The reader row is arithmetic (30B parameters at
+4 bits), not a measurement either. Watch your own box before you size a host around any of them.
 
 The quickstart compose file sets `memory: 4G` and `cpus: 4`. That's fine for 1080p, and it sizes
 the app only. The two model services run outside the image (by design, the image's job is the app
@@ -101,11 +107,9 @@ and the render), so their memory is on whatever host you point `llm.base_url` an
 
 Inside assembly, the title screens cost more than the encode does on a CPU-only box: measured at `--cpus=2`, title rendering was ~263 s of a ~339 s assembly. See [CPU-Only Mode](../hardware/cpu-only.md#title-rendering-is-the-bottleneck-not-encoding) before you size a box around the encoder.
 
-Temporary files during encoding can use 2x the size of your source clips. A 10-minute memory from 50 clips might need 5-10 GB of temp space.
-
-The image is not small. Measured on arm64: `INSTALL_EXTRAS=all` is 2.37 GB on disk,
-`INSTALL_EXTRAS=none` is 958 MB. The difference is the annotation stack, and PyTorch alone is
-656 MB of it. Both published architectures take torch from the
+The image is not small. Measured on arm64, `INSTALL_EXTRAS=all` is 2.37 GB on disk, down from
+7.08 GB. The difference is the annotation stack, most of it PyTorch. Both published architectures
+take torch from the
 [CPU wheel index](../hardware/nvidia.md) rather than PyPI's CUDA build, which is what keeps `all`
 off the 7 GB it would otherwise cost.
 
@@ -266,32 +270,22 @@ the readiness code above.
 
 ## Cache persistence
 
-Analysis scores are cached in `~/.immich-memories/cache.db` (SQLite). This avoids re-running LLM analysis on every generation. The config volume already covers it:
+The expensive thing to keep is `~/.immich-memories/cache/annotations.sqlite`: every caption, head
+answer, detector verdict and reading the editor has ever banked, keyed by producer and exact
+input. Lose it and the next cut re-reads the library from scratch. `cache.db` beside it holds run
+history, automation state and the retired score table.
+
+The config volume covers both:
 
 ```yaml
 volumes:
-  - immich-memories-config:/home/immich/.immich-memories  # includes cache.db
+  - immich-memories-config:/home/immich/.immich-memories  # cache.db and cache/annotations.sqlite
 ```
 
-To back up or migrate the cache separately:
-
-```bash
-# Backup
-docker exec immich-memories immich-memories cache backup /app/output/cache-backup.db
-
-# Export to JSON (portable)
-docker exec immich-memories immich-memories cache export /app/output/scores.json
-
-# Import on a new instance
-docker exec immich-memories immich-memories cache import /app/output/scores.json
-
-# Check what's cached
-docker exec immich-memories immich-memories cache stats
-```
-
-:::tip Migration between hosts
-Export to JSON before migrating. The JSON format is portable across SQLite versions and architectures. The binary backup is faster but ties you to the same SQLite version.
-:::
+Moving to a new host: copy that volume. Do not reach for `immich-memories cache backup|export|
+import` to do it. Those three commands read and write `asset_scores`, the per-clip scorer's table,
+which nothing in the current pipeline writes to; they will happily move an empty set and leave the
+banks behind.
 
 ## Custom music
 

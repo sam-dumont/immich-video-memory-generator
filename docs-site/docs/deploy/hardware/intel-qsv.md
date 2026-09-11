@@ -21,9 +21,10 @@ Intel Quick Sync Video (QSV) is built into most Intel CPUs with integrated graph
 
 On Linux, you'll need the `intel-media-va-driver` (or `intel-media-va-driver-non-free` for newer chips) and `libmfx` or `libvpl`.
 
-**In the Docker image these are already installed** (amd64 only). Images up to 0.76.1 shipped
-FFmpeg with QSV compiled in but no VA-API driver at all, so `vaInitialize` failed with
-`-542398533` and every run silently encoded in software. If you are on an older image, upgrade.
+**The Docker image installs these** (amd64 only), and that fix is not in a release yet. Every
+published image up to and including 0.76.1, the newest tag, ships FFmpeg with QSV compiled in and
+no VA-API driver at all, so `vaInitialize` fails with `-542398533` and every run silently encodes
+in software. Build from `main`, or wait for the next release.
 
 Check availability:
 

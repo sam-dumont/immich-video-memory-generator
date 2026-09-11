@@ -133,8 +133,9 @@ ACE-Step's weights have to stay resident for the model to run at all, so memory 
 | 2B + 1.7B planner | ~11 GB |
 | 2B, `use_lm: false` | ~7 GB |
 
-A 16 GB Mac runs the 2B profiles. The numbers above are the check: 21 GB free for XL without the
-planner, 29 GB with it. And that is free memory, not installed. If the profile does not fit,
+A 16 GB Mac runs `2B, use_lm: false` and, on a quiet machine, the 11 GB 2B-plus-planner profile.
+The numbers above are the check, and they are free memory, not installed: 21 GB free for XL
+without the planner, 29 GB with it. Subtract the 2 to 4 GB the app itself is holding. If the profile does not fit,
 `lib` mode says so before loading anything and the run falls back to a bundled track rather than
 being killed mid-render.
 
@@ -148,17 +149,13 @@ The config, the pinned install commands and the full memory notes are in [Fully 
 
 On an M2 Pro (12-core, 32 GB):
 
-| Clips | Resolution | LLM analysis | Total time |
-|-------|-----------|-------------|-----------|
-| 15 | 1080p | ~3 min | ~5 min |
-| 30 | 1080p | ~5 min | ~8 min |
-| 30 | 4K | ~5 min | ~14 min |
-| 50 | 1080p | ~8 min | ~12 min |
+There is no table here. The one that used to be was keyed on clip count and measured a per-clip
+scorer that no longer exists, which makes it worse than nothing to calibrate against. Preparation
+on the current route has [not been measured](./nas-only.md#preparation-not-measured-yet).
 
-Those numbers are from an earlier 7B vision model (2 frames per clip at ~3 seconds per frame) and
-have not been re-measured against the 30B reader: read them as a floor, not a forecast. What
-has not changed is the shape: the model passes are the slowest phase, and they are cached. A
-second cut over the same period skips them entirely.
+What has not changed is the shape: the model passes are the slowest phase, they scale with how
+many candidate pictures the period holds rather than with how long the video is, and they are
+banked. A second cut over the same period skips them entirely.
 
 Memory is the constraint, not time. Immich Memories itself wants 2-4 GB; the models want their
 weights resident for as long as their servers are up: ~17 GB for the reader, 1-2 GB for the

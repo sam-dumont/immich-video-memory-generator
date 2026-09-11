@@ -11,15 +11,23 @@ Apple Silicon Macs (M1, M2, M3, M4, M5) are probably the best platform for this 
 
 - **VideoToolbox encoding**: uses the dedicated media engine on the chip instead of the CPU cores.
 - **Unified memory**: no CPU/GPU transfer overhead. Frames stay in the same memory pool whether the CPU, GPU, or Neural Engine is working on them.
-- **mlx-vlm for local LLMs**: run the editor's model locally with Metal acceleration ([LLM titles and mood](../../create/pipeline/llm-content-analysis.md), [Editorial annotation setup](../configuration/editorial-preparation.md)). No API costs, no data leaving your machine.
+- **A place to put the editor's models**: the graded reader and the caption server both run here,
+  on Metal, which is why this is the only single-machine layout anyone has run end to end. The
+  graded stack is oMLX serving `Qwen3-VL-30B-A3B-Instruct-4bit`; mlx-vlm is the other MLX server
+  people use, and its Qwen support may not reach that model. No API costs, no data leaving your
+  machine. Standing both up is [step 3 and step 4 of the self-hosting
+  guide](../self-hosting.md#3-serve-the-reader), and this page does not replace it.
 
 ## Installation
 
 ```bash
-uv sync --extra mac
+uv tool install "immich-memories[all-mac]"
 ```
 
-The `mac` extra installs the Apple-specific dependencies (pyobjc bindings for Quartz, Metal and Vision).
+`all-mac` is the one that can actually cut: it brings the inference dependencies the six context
+heads and the two detectors need, on top of everything below. The `mac` extra on its own is the
+pyobjc bindings (Quartz, Metal, Vision) and nothing else, so a `mac`-only install stops at the
+heads stage on the first cut.
 
 ## Configuration
 
@@ -41,4 +49,7 @@ All Apple Silicon chips are supported:
 - M4, M4 Pro, M4 Max, M4 Ultra
 - M5 and newer
 
-The media engine and Neural Engine get faster with each generation, but even a base M1 runs the full pipeline comfortably.
+The media engine and Neural Engine get faster with each generation, and a base M1 renders
+comfortably. The models are the constraint, not the chip: the reader's weights alone are around
+17 GB resident, so a single-machine Mac wants 32 GB. An 8 or 16 GB M1 is an app host that needs a
+second box for the models.

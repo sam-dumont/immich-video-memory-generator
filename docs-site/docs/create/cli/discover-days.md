@@ -15,9 +15,8 @@ command you run occasionally, not one that runs per video.
 
 ## What makes a day stand out
 
-Volume does not. In a real library the busiest single day is 166 photos of a work shoot
-taken inside one hour, and the second busiest is 413 of one street performer. Neither is
-an occasion.
+Volume does not. In a real library the densest single day is 166 photos of a work shoot
+taken inside one hour; another day holds 413 of one street performer. Neither is an occasion.
 
 What separates them is how long the day stayed alive:
 
@@ -30,10 +29,12 @@ What separates them is how long the day stayed alive:
 | a street performer | 413 | 3 | no |
 | a work shoot | 166 | 1 | no |
 
-No overlap, but the rule is loose on its own, since about a fifth of days in that library
-clear six hours. So it is a filter, not a verdict: it keeps the model off the other 78% of
-days, which is what makes asking about the rest affordable at all. What passes goes to the
-model with a sample of the day's pictures, and it is asked the question a person would ask.
+No overlap, but the rule is loose on its own, since 22% of days in that library clear six
+hours. So it is a filter, not a verdict: it keeps the model off the other 78% of days, which
+is what makes asking about the rest affordable at all. There is a second bar alongside it, a
+20-photo floor, so a quiet day spread over an afternoon is not asked about either. What passes
+goes to the model with a sample of the day's pictures, and it is asked the question a person
+would ask.
 
 A day also ends when the photographs stop for five hours, not at midnight. A wedding that
 runs past one, or a birth that starts with contractions at ten in the evening, is one
@@ -97,8 +98,9 @@ It also invents less. Where the fast answer named a specific event that had
 not happened, the two-step version gave the same day a title that described
 what was in the pictures instead.
 
-The cost is roughly 40 seconds and about 3,000 completion tokens for each day
-it asks about. The scan asks about a handful of days per year.
+Nobody recorded what that costs per day, so this page will not quote one. What is
+worth knowing is the shape: with thinking on, a day is two calls rather than one,
+plus up to one retitle, and the scan asks about a handful of days per year.
 
 The per-picture lines the judgement read would be the record to check first when a
 day you expected comes back ordinary. They are written to the log at `DEBUG`, and
@@ -134,8 +136,10 @@ The scan takes hours across twenty years, so it resumes by default: years alread
 catalogue are not scanned again, and a run that finds nothing will not replace a catalogue
 that has something in it. `--rescan` is how you say you meant to start over.
 
-Each year costs `--per-year` calls to your model, plus one metadata query per month.
-Raising `--per-year` finds more and costs proportionally more.
+Each year costs up to `--per-year` days' worth of model calls, which with thinking on is two
+calls per day plus a possible retitle, and a paged metadata fetch per month (the densest months
+are exactly the ones a single query would truncate). Raising `--per-year` finds more and costs
+proportionally more.
 
 ## Checking what is due
 

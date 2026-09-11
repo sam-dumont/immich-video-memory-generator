@@ -5,12 +5,11 @@ title: Audio & Music
 
 # Audio & Music
 
-The music pipeline has four stages:
+The music pipeline has three stages:
 
 1. **Mood detection**: A vision LLM looks at keyframes from your video and outputs a structured mood analysis (happy, calm, energetic, etc. plus genre and tempo suggestions).
 2. **Music generation**: The pipeline takes that mood and sends it to the configured music backend. ACE-Step can run directly in the app or through its REST API. MusicGen is the alternative generator when ACE-Step is disabled.
-3. **Audio ducking**: When background music plays over your clips, it automatically gets quieter when someone's talking or when there's an interesting sound in the original audio.
-4. **Music steps aside for music**: when a clip's own audio *is* music (a concert, someone playing piano, a party), the added soundtrack drops to near-silence for that clip instead of playing two songs at once. Detection uses the audio-content analysis (PANNs) `music`/`singing` labels, so it needs the `audio-ml` extra.
+3. **Audio ducking**: a sidechain compressor keyed on the clip's own audio track, so the music drops whenever the footage is louder. It does not know what the sound is; speech, laughter, wind and traffic all duck it.
 
 ## No GPU? Start here
 
@@ -27,11 +26,12 @@ The Docker image and the `all` extra already include it.
 
 Tracks cover five moods (calm, energetic, happy, nostalgic, tender) in acoustic
 and electronic styles, roughly 30 seconds each, and are repeated with a crossfade
-to fill longer videos. Selection follows the memory's detected mood: the per-clip
-emotions the vision LLM reported are aggregated into a dominant mood, and near
-neighbours share a folder: playful draws from happy, peaceful from calm,
-romantic from tender. A mood that maps to no folder at all, and a memory with no
-emotions at all, draw from the whole library rather than falling to silence.
+to fill longer videos. Selection is meant to follow the memory's detected mood, with near neighbours
+sharing a folder (playful draws from happy, peaceful from calm, romantic from
+tender), and a mood that maps to no folder drawing from the whole library rather
+than falling to silence. In practice every pick takes that last branch today:
+the per-clip emotion field the aggregation reads is no longer written by
+anything, so the choice is whole-library and random.
 
 They were generated locally with ACE-Step 1.5: nothing sampled from or derived
 from third-party recordings, so there is no attribution requirement. The models,
@@ -45,7 +45,7 @@ Supplying `--music yourfile.mp3` or configuring a generator overrides the bundle
 
 ### ACE-Step
 
-ACE-Step 1.5 generates higher-quality instrumental tracks than MusicGen. It supports explicit musical parameters (BPM, key, time signature) passed as structured API fields.
+ACE-Step 1.5 takes explicit musical parameters (BPM, key, time signature) as structured API fields, which MusicGen does not. Nobody here has run a listening test between the two, so that is the difference this page will claim.
 
 Two modes:
 
@@ -60,9 +60,12 @@ Production model variants:
 |---------|-----|-------|-----|
 | `turbo` | 2B | 8 | Fast preview on smaller machines |
 | `base` | 2B | 50 | Special tasks and fine-tuning, not the normal soundtrack default |
-| `acestep-v15-xl-turbo` | 4B | 8 | Recommended production soundtrack model on 20GB+ Apple Silicon/CUDA |
+| `acestep-v15-xl-turbo` | 4B | 8 | Recommended production soundtrack model; the memory check wants 21 GB *free* without the planner, 29 GB with it |
 | `acestep-v15-xl-sft` | 4B | 50 | Maximum detail and tunable CFG; see the v0.1.8 warning below |
 | `acestep-v15-xl-base` | 4B | 50 | Extract/lego/complete workflows, not needed for normal text-to-music |
+
+The Steps column describes `lib` mode. In `api` mode the request carries no step count, guidance
+scale or shift: whatever the remote server is configured with is what you get.
 
 The DiT model and LM planner are separate choices. `acestep-v15-xl-turbo` selects the 4B audio
 executor; `lm_model_size: "4B"` selects the 4B planner. For local `lib` mode, use both for the
@@ -117,9 +120,10 @@ cannot drag a serene track up to dance tempo. Where neither holds, the mood wins
 and nothing changes. Videos are never re-timed: they carry speech and laughter
 the pipeline protects, so only photo cadence drives this.
 
-Measured on the 28 bundled tracks, ACE-Step honours a requested tempo to within
-0.4% (median), so asking for an aligned tempo is worth doing, but that residual
-is also why cuts are aligned in *rate*, not yet locked to the beat.
+How closely ACE-Step honours a requested tempo has not been measured, so this page
+does not claim a figure. Asking for an aligned tempo is still worth doing; whatever
+the residual is, it is also why cuts are aligned in *rate* rather than locked to the
+beat.
 
 A bundled track cannot be asked for a tempo; its own is already fixed. So the
 choice runs the other way: the tracks are measured, the ones whose beat lands
@@ -129,10 +133,12 @@ same memory would get the same song every time it was regenerated. When nothing
 lands close enough the pick falls back to any track. With no photos there is no
 rhythm to sync to, and the pick stays random too.
 
-That 0.2 is the detector's floor, not a preference: the onset envelope quantizes
-the beat period to 23 ms frames, so a track built at 120 bpm measures 117.5, and
-a track that really does land on a 4 s cadence can still measure 0.18 beats out.
-A tighter window would throw away tracks that fit and measure only the noise.
+That 0.2 is set by the detector, not by taste: the onset envelope quantizes the
+beat period to 23 ms frames, so a track built at 120 bpm measures 117.5. A tighter
+window would throw away tracks that fit and measure only the noise. It is a loose
+window for a reason beyond quantisation, too: on the bundled corpus the detector
+reads half or double time often enough that the candidate set is partly its own
+error. Alignment narrows the field; it does not promise a track that fits.
 
 Tempo is measured with an onset envelope and autocorrelation over an FFmpeg
 decode, using numpy alone. librosa would be a line, but it is not a dependency
@@ -192,8 +198,10 @@ Install locally: `pip install 'immich-memories[demucs]'` and the pipeline auto-d
 
 ## Fully Local Setup (No Servers)
 
-On Apple Silicon with at least 20GB of unified memory, you can run the shown XL production profile
-in-process. Lower-memory machines should use the 2B `turbo` profile instead:
+On Apple Silicon with at least 24 GB of unified memory, and the machine otherwise quiet, you can
+run the shown XL production profile in-process. The check is on *free* memory, not installed: the
+XL profile below needs 21 GB free without the planner, 29 GB with it. Smaller or busier machines
+should use the 2B `turbo` profile instead:
 
 ```yaml
 ace_step:
@@ -262,21 +270,18 @@ A bare `uv sync` is exact and removes packages this project does not declare, so
 
 ### Memory on Apple Silicon
 
-In `lib` mode the app caps ACE-Step's MLX memory before loading models: the VAE decodes audio in
-~10 s chunks (`ACESTEP_MLX_VAE_CHUNK=256`) and the MLX buffer cache is limited to 4 GiB. Without
-this, ACE-Step's own heuristic picks an 82 s decode chunk on Macs with more than 64 GB and the
-process footprint grows by roughly 0.8 GiB per second of audio in that chunk: a 216 s track hit
-108 GB and macOS killed the UI. With the cap the same track peaks around 53 GB for the XL/4B profile
-(most of that is model weights) at a ~20% slower VAE decode. Set `ACESTEP_MLX_VAE_CHUNK` yourself
-to override the chunk size; ACE-Step's `ACESTEP_SAVE_MEMORY` and `MAX_MPS_VRAM` do not bound this
-allocation.
+In `lib` mode the app limits the MLX buffer cache to 4 GiB before loading models. It does **not**
+clamp the VAE decode chunk: that was tried and removed, because clamping it cost decode speed for
+memory the cache limit was already holding. At ACE-Step's own chunk size, a 300 s render peaks at
+38 GiB of MLX memory and 13 GiB RSS. Set `ACESTEP_MLX_VAE_CHUNK` yourself if you want to bound it
+anyway; ACE-Step's `ACESTEP_SAVE_MEMORY` and `MAX_MPS_VRAM` do not bound this allocation.
 
 The MLX DiT copy runs in bf16 (the same precision ACE-Step uses on CUDA) instead of the fp32
 ACE-Step converts it from on macOS (7.8 GB instead of 15.5 GB for the XL model). Set
 `IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32=1` to keep fp32. Once a music batch finishes, the models are
 dropped and both torch's and MLX's caches are released, so the process falls back to ~1 GB between
-generations instead of holding ~27 GB of parked GPU memory; the next batch reloads the models
-(~25 s).
+generations instead of holding ~27 GB of parked GPU memory. The next batch reloads the models,
+which is not free.
 
 #### The render declines rather than getting killed
 
@@ -320,7 +325,7 @@ Which music plays is decided by three switches:
 | CLI | `--music PATH`, `--no-music`, `--music-volume 0.0-1.0` | Own file, no music at all, or the mix level (default 0.5) |
 | UI options page | **Background music**: None / Upload file / AI Generated, plus the volume slider | Same choices per run |
 
-The music volume slider maps to a base music level of −20 dB (0.0) to 0 dB (1.0) before ducking. Ducking parameters are fixed in the mixer (sidechain threshold 0.02, ratio 4.0, 100 ms attack, 2.5 s release, 2 s fade in, 3 s fade out). The `audio:` section holds exactly one key, `local_music_dir`, used by the `music` command; ducking and fades are fixed in the mixer and have no config surface. If you need custom fades or a dB level, run `immich-memories music add` on the finished file with `--volume`, `--fade-in`, `--fade-out`.
+The CLI's `--music-volume` maps to a base music level of −20 dB (0.0) to 0 dB (1.0) before ducking, with sidechain threshold 0.02, ratio 4.0, 100 ms attack and 2.5 s release, 2 s fade in, 3 s fade out. The UI's stem mixer is a different path with different constants: its slider maps −40 dB (0.0) to 0 dB (1.0), defaults to 0.7 rather than 0.5, and ducks at ratio 6.0 with a 50 ms attack and a 500 ms release. The `audio:` section holds exactly one key, `local_music_dir`, used by the `music` command; ducking and fades are fixed in the mixer and have no config surface. If you need custom fades or a dB level, run `immich-memories music add` on the finished file with `--volume`, `--fade-in`, `--fade-out`.
 
 ## Model Cache & Disk Usage
 

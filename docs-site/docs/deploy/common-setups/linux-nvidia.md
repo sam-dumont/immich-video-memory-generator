@@ -12,7 +12,7 @@ endpoint and story model are separate requirements from NVENC and the music back
 
 ## Who this is for
 
-You have a Linux server (Ubuntu, Debian, Fedora) with an NVIDIA GPU (GTX 1050 or newer: Pascal is where NVENC starts). You want hardware-accelerated encoding and optionally want to run MusicGen or ACE-Step for AI-generated background music.
+You have a Linux server (Ubuntu, Debian, Fedora) with an NVIDIA GPU. NVENC has shipped since Kepler, so almost any card of the last decade encodes; a GTX 1050 is a safe floor. You want hardware-accelerated encoding and optionally want to run MusicGen or ACE-Step for AI-generated background music.
 
 ## Architecture
 
@@ -26,7 +26,7 @@ You have a Linux server (Ubuntu, Debian, Fedora) with an NVIDIA GPU (GTX 1050 or
 │  │  ┌──────────────────┐  ┌────────────────────┐ │  │
 │  │  │ Immich Memories   │  │  MusicGen API      │ │  │
 │  │  │ NVENC encoding   │  │  (optional)        │ │  │
-│  │  │ CUDA analysis    │  │  port 8000         │ │  │
+│  │  │ Taichi titles    │  │  port 8000         │ │  │
 │  │  │ port 8080        │  │                    │ │  │
 │  │  └──────────────────┘  └────────────────────┘ │  │
 │  └────────────────────────────────────────────────┘  │
@@ -113,24 +113,24 @@ IMMICH_API_KEY=your-api-key-here
 - **NVENC encoding**: hardware-accelerated H.264/H.265 encoding. NVIDIA is probed first, so NVENC is used automatically: nothing to configure.
 - **Taichi GPU title renderer**: full particle effects and gradient backgrounds using the NVIDIA GPU.
 - **AI music generation**: if you run a MusicGen or ACE-Step server alongside, configure it in the `musicgen` or `ace_step` config sections.
-- **All memory types and features**: everything works with GPU acceleration.
+- **Every memory type**: all ten, same as anywhere else. What the card accelerates is the encode, the scaling and the titles. Preparation, the heads and the detectors are CPU work here, and the two model services are their own problem.
 
 ## What doesn't work
 
-- **The reader on a small card**: the graded reader is ~17 GB of 4-bit weights and they stay resident for as long as the server is up. A 12 GB card offloads the rest to system RAM and runs slowly; 24 GB (3090, 4090) holds it. Below that, point `llm.base_url` at a box that can: there is no cut without a reader.
+- **The reader on a small card**: the graded reader is 30B parameters at 4 bits, so roughly 17 GB of weights stay resident for as long as the server is up. A 24 GB card (3090, 4090) holds that; what a smaller one does about the overflow is up to whichever serving stack you pick, and nobody has measured it here. Below 24 GB, point `llm.base_url` at a box that can: there is no cut without a reader.
 - **A graded NVIDIA configuration**: there isn't one. The approved matrix ran on Apple Silicon MLX, for both the reader and the captions. Any OpenAI-compatible vision model with a 32k context is expected to work here; nobody has compared its output to the graded run.
 
 ## Performance expectations
 
 No GPU run of this pipeline has been measured end to end, so there is no table here. The one
-measured run is CPU-only ([NAS-only](./nas-only.md#performance-expectations)): 10 minutes for a
-14-clip monthly, of which analysis was 7.4.
+measured run is CPU-only ([NAS-only](./nas-only.md#performance-expectations)), and only its render
+column still describes this product: 2.7 minutes of a 10 minute run, most of it title screens
+rather than the encode. A CUDA Taichi backend is what shortens those.
 
-That shape is what to plan around. Render was 2.7 of those ten minutes and the encode is only part
-of it: the titles are the rest, and a CUDA Taichi backend is what shortens those. The other 7.4
-minutes are analysis and selection: downloading each candidate clip from Immich, scoring it, and
-the LLM passes if you turned them on. Those are bounded by your Immich server and your LLM, not by
-the card. Analysis is cached, so a second run of the same period is much cheaper than the first.
+The rest of a run is preparation and the editor's readings, and that has
+[not been measured](./nas-only.md#preparation-not-measured-yet) on any hardware. What is true by
+construction: it is bounded by your Immich server and your two model services rather than by this
+card, and every producer banks its answer, so a second cut over the same period skips it.
 
 If you measure a run on your own box, [an issue](https://github.com/sam-dumont/immich-video-memory-generator/issues)
 with the numbers is welcome.
@@ -176,5 +176,5 @@ advanced:
 
 - **Check GPU detection**: run `docker exec immich-memories immich-memories hardware` to verify GPU detection inside the container.
 - **Multi-GPU**: pick the card with `NVIDIA_VISIBLE_DEVICES=0` (or `CUDA_VISIBLE_DEVICES`) in the container environment; there is no config knob for it.
-- **VRAM monitoring**: watch `nvidia-smi` during generation. Peak VRAM usage is about 2-3 GB for encoding, 1-2 GB for Taichi title rendering.
+- **VRAM monitoring**: watch `nvidia-smi` during generation. Nobody has recorded peak VRAM for the encode or for Taichi titles, so measure your own before you size a card around them.
 - **Headless Linux**: the CLI works fully on headless servers. Use `immich-memories generate` instead of the UI if you don't need a browser.

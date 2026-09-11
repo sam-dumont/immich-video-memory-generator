@@ -68,7 +68,7 @@ thesis, the stories with their weights, every carrier with its reason, which is 
 story view reads), `selection-sheet.private.md` (the same, for a human), `render-projection.private.json`
 (what shipped and each interval), `calls/` and `pre-planner-calls/` (every text-model request
 and answer), `derived-decisions/` (the memory-worthy gate, the period story, the story selection,
-each shortlist pass, the timing trim, the audience bank), `evidence-hashes.json` (per episode:
+one moment inventory per episode, the subject pool, the timing trim, the audience bank), `evidence-hashes.json` (per episode:
 the evidence key its reading was banked under, and one SHA-256 per asset annotation line, ids
 and digests only) with `evidence-lines.private.json` beside it holding those lines themselves.
 The banks the next cut reuses are not in the attempt: they are in `annotations.sqlite` and
@@ -84,8 +84,10 @@ lines changed.
 A **cold** cut pays for every picture that has never been read (one caption request, one
 encoder pass, the detectors), and for every text-model reading of a period nobody has cut before.
 A **warm** cut over the same period finds all of that banked and is mostly the render. There is
-no depth knob and no shortlist: every eligible source is prepared, because a picture the editor
-never saw is a picture it cannot weigh.
+no depth knob and no source-level shortlist: every eligible source is prepared, because a picture
+the editor never saw is a picture it cannot weigh. (The shortlist that does exist is downstream
+and cheap: once a story knows how many carriers it can fund, it looks at a bounded multiple of
+that number rather than the whole pool. No model call is involved.)
 
 The levers, in order of what they buy:
 
@@ -124,8 +126,9 @@ point needed more than previews. Then:
   FFmpeg encode process. Memory stays flat regardless of clip count, which is what makes 4K output
   possible.
 
-Encoder selection is a real probe, not a capability listing: NVIDIA, then Apple, then QSV, then
-VAAPI, and each candidate has to successfully encode one 256×256 frame before it is used. If a
+Encoder selection is mostly a real probe, not a capability listing: NVIDIA, then Apple, then QSV,
+then VAAPI, and NVIDIA, QSV and VAAPI each have to successfully encode one 256×256 frame before
+they are used. VideoToolbox is the exception: it is taken on FFmpeg's listing alone. If a
 hardware encoder fails mid-run the whole encode is retried once in software with the same codec.
 
 One thing to be clear about, because it changes what hardware helps: **assembly does

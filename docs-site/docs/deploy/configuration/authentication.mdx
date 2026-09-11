@@ -53,10 +53,15 @@ IMMICH_MEMORIES_AUTH_PASSWORD=your-password-here
 ```
 
 Setting both vars automatically enables auth and sets the provider to `basic`. Set **both**: one
-alone is ignored. The shortcut is applied only when the app loads the default config path; with
-`immich-memories --config PATH` (or a scheduler started with an explicit config file) use the
-full form instead: `IMMICH_MEMORIES_AUTH__ENABLED=true`, `IMMICH_MEMORIES_AUTH__PROVIDER=basic`,
-`IMMICH_MEMORIES_AUTH__USERNAME`, `IMMICH_MEMORIES_AUTH__PASSWORD`.
+alone is ignored.
+
+:::warning The UI reads auth from the default config path, always
+`immich-memories --config PATH ui` uses `PATH` to pick the host and port, and then the server reads
+`~/.immich-memories/config.yaml` for every authentication decision. So an `auth:` block that lives
+only in `PATH` is ignored, and the two files can disagree about whether auth is on: the bind
+address comes from one and enforcement from the other. Keep your auth config in the default path,
+or in environment variables, which apply either way.
+:::
 
 **YAML config (under `advanced.auth`):**
 
@@ -145,7 +150,7 @@ still valid, so a redirect would simply loop.
 pip install 'immich-memories[auth]'
 ```
 
-Or with Docker, use the image tag that includes auth extras (the default image includes it).
+With Docker there is nothing to install: both published images are built with all extras, authlib included.
 
 #### Auth0 example
 
@@ -232,7 +237,7 @@ In Keycloak, create a client with client authentication enabled. Set the redirec
 
 For setups where a reverse proxy (Traefik + Authelia, nginx + oauth2-proxy, etc.) handles authentication and forwards the verified user via request headers.
 
-**How it works:** The middleware reads the `Remote-User` header (configurable) and creates a session automatically. Requests from untrusted IPs have the headers stripped before they reach the app.
+**How it works:** The middleware reads the `Remote-User` header (configurable) and creates a session automatically. If the peer is not in `trusted_proxies`, the headers are not read at all and the request is simply unauthenticated. Nothing is stripped, so do not rely on that: an upstream that forwards the header from an untrusted source is your problem to fix, not the app's.
 
 :::caution trusted_proxies is required
 With `provider: header` and an empty `trusted_proxies`, the config fails validation and the app refuses to start (`trusted_proxies must be non-empty when provider is 'header'`). Without the check, any client could forge the headers and gain access. Set this to your proxy's IP or CIDR range.
@@ -302,7 +307,10 @@ Four things to set when the UI sits behind Traefik, Caddy or nginx with TLS:
    honored. Without it every visitor looks like the proxy's IP (five wrong passwords from anyone
    lock the whole household out of login for 10 minutes), and the OIDC `redirect_uri` is built as
    `http://…` instead of `https://…`, which most identity providers reject. `"*"` trusts any
-   peer; only use it when the app is unreachable except through the proxy.
+   peer for uvicorn's purposes; only use it when the app is unreachable except through the proxy.
+   It does **not** work with `provider: header`: the app parses each entry as an IP or CIDR and
+   silently drops what it cannot parse, so `["*"]` passes validation and then trusts nobody,
+   authenticating no one.
 3. **Set `auth.public_url`** to the address users actually type, e.g.
    `https://memories.example.com`. It pins the OIDC `redirect_uri` to that origin rather than
    whatever the request resolves to, and it is what makes callback-origin validation possible:

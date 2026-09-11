@@ -1,12 +1,15 @@
 graph TB
-    subgraph Mac["🍎 Mac · Apple Silicon"]
+    subgraph Mac["🍎 One Mac · Apple Silicon · 32 GB"]
         Immich["📷 Immich<br/>on NAS or local Docker"]
         subgraph Native["immich-memories · native · uv"]
             VT["⚡ VideoToolbox<br/>hardware encoding"]
-            Vision["👁️ Vision Framework<br/>face detection"]
-            MLX["🧠 mlx-vlm<br/>local LLM scoring"]
+            Heads["🔎 DINOv2 heads<br/>+ CPU detectors"]
         end
+        Reader["🧠 vision reader<br/>~17 GB resident"]
+        Caption["📝 caption server"]
     end
 
     Immich -->|API| Native
+    Native -->|localhost| Reader
+    Native -->|localhost| Caption
     Native -->|renders| Output[("📁 ~/Videos/Memories")]

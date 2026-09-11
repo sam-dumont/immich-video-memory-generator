@@ -11,12 +11,16 @@ Every config field can be set via environment variable. The pattern is:
 IMMICH_MEMORIES_<SECTION>__<FIELD>
 ```
 
+The one exception is the top-level `preset`, which has no section and is `IMMICH_MEMORIES_PRESET`.
+
 Note the **double underscore** between section and field. Case does not matter, but uppercase is
 the convention. `<SECTION>` is always the flat runtime name (`LLM`, `AUTH`, `EDITORIAL`…), never
 `ADVANCED__LLM`, even for sections that live under `advanced:` in the YAML file.
 
-List-valued fields (`auth.trusted_proxies`, `notifications.urls`, `scheduler.schedules`,
-`analysis.exclude_filename_patterns`) must be given as JSON:
+List- and dict-valued fields must be given as JSON. That includes `auth.trusted_proxies`,
+`auth.allowed_emails`, `auth.allowed_domains`, `notifications.urls`, `scheduler.schedules`,
+`analysis.exclude_filename_patterns`, `llm.drop_params`, `llm.extra_params`,
+`llm.thinking_params` and `editorial.head_versions`:
 
 ```bash
 export IMMICH_MEMORIES_AUTH__TRUSTED_PROXIES='["10.0.0.0/8"]'
@@ -127,11 +131,16 @@ A few common variables are also supported without the full prefix, for convenien
 | `ACE_STEP_API_KEY` | `ace_step.api_key` |
 | `IMMICH_MEMORIES_AUTH_USERNAME` + `IMMICH_MEMORIES_AUTH_PASSWORD` | `auth.username` / `auth.password`, and sets `auth.enabled=true`, `auth.provider=basic`. **Both** must be set; either alone is ignored. |
 
-:::caution Shorthand vars are skipped with an explicit config path
+:::caution Shorthand vars are skipped with an explicit config path, except in the UI
 The shorthand table is applied only when the app loads its default config path
-(`~/.immich-memories/config.yaml`). `immich-memories --config PATH …` and a scheduler daemon
-started with an explicit config file ignore every row above, including the basic-auth shortcut.
-The `IMMICH_MEMORIES_<SECTION>__<FIELD>` form always works.
+(`~/.immich-memories/config.yaml`). `immich-memories --config PATH generate …` and a scheduler
+daemon started with an explicit config file ignore every row above, including the basic-auth
+shortcut.
+
+`immich-memories --config PATH ui` is the exception, and it cuts the other way: the server reloads
+the default config path for everything except host and port, so the shorthand *does* apply there
+and the `auth:` block in `PATH` does not. The `IMMICH_MEMORIES_<SECTION>__<FIELD>` form always
+works.
 :::
 
 ## Other environment variables

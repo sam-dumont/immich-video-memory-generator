@@ -80,7 +80,7 @@ mount the root filesystem read-only. The four mounts below are the only writable
 
 | Mount | Backed by | Holds |
 |-------|-----------|-------|
-| `/home/immich/.immich-memories` | PVC `immich-memories-cache` (writable) | `config.yaml`, `cache.db` (analysis scores), video cache, projects, automation history |
+| `/home/immich/.immich-memories` | PVC `immich-memories-cache` (writable) | `config.yaml`, `cache/annotations.sqlite` (every banked caption, head, detector verdict and reading), `cache.db` (run history and automation state), video cache, projects |
 | `/app/output` | PVC `immich-memories-output` | generated videos (`IMMICH_MEMORIES_OUTPUT__DIRECTORY=/app/output`) |
 | `/models` | PVC `immich-memories-models` | the pinned DINOv2 export (`IMMICH_MEMORIES_TRIAGE__ENCODER`) and the detector Hugging Face cache, both written by `immich-memories models fetch` |
 | `/tmp` | emptyDir 4Gi | FFmpeg intermediates: 8Gi for 4K |
@@ -104,8 +104,9 @@ pod) before generating, and see
 `overlays/gpu/deployment-gpu.yaml` is a strategic-merge patch on the Deployment: `runtimeClassName:
 nvidia`, one `nvidia.com/gpu` request/limit, `NVIDIA_VISIBLE_DEVICES` / `NVIDIA_DRIVER_CAPABILITIES`,
 a `nodeSelector` on `nvidia.com/gpu.present=true` and a toleration for the `nvidia.com/gpu` taint.
-Change the label or GPU count there. The app auto-detects the GPU (NVENC encoding, CUDA analysis,
-GPU title rendering); no config change is needed.
+Change the label or GPU count there. The app uses the card for two things and only two: NVENC
+encoding and Taichi title rendering. Nothing else in this pod runs on the GPU; the editor's models
+are separate services on their own hardware.
 
 ## Batch Jobs
 
@@ -128,8 +129,8 @@ CPU by default; copy the fields from the GPU patch into the pod spec to run them
 
 ## Storage and backups
 
-Adjust the PVC sizes in `base/pvc.yaml`. `cache.db` is the expensive part: losing it means
-re-analyzing your entire library.
+Adjust the PVC sizes in `base/pvc.yaml`. `cache/annotations.sqlite` on the cache PVC is the
+expensive part: losing it means re-reading your entire library. Back up the PVC, not `cache.db`.
 
 ```bash
 # Backup cache from the running pod

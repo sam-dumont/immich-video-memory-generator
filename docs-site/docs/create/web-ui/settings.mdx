@@ -48,14 +48,18 @@ Two exceptions to "everything is written":
 
 | Cache | Holds | Cost of clearing |
 |-------|-------|------------------|
-| **Analysis** | per-video analysis results, in SQLite | the expensive one: a cleared analysis cache means the next run re-analyses from scratch, LLM calls included |
+| **Analysis** | a SQLite table the retired clip scorer used to fill | nothing: no code writes it any more |
 | **Video** | downloaded source videos | re-download from Immich; bounded by the cache size limit and evicted automatically |
-| **Thumbnail** | preview images used for scoring, contact sheets and the clip review grid | re-fetched from Immich on demand |
+| **Thumbnail** | Immich previews, read back for pixel facts, the context heads, contact sheets, captions and the clip review grid | re-fetched from Immich on demand, and re-captioned where a banked caption failure no longer matches |
 | **Preview** | the `.mp4` previews the wizard plays back | regenerated when you next preview |
 
-Clearing is safe in the sense that nothing generated is lost: every cache is rebuildable from Immich plus compute. The only question is how much time and, if you point `llm.base_url` at a hosted API, how much money you spend rebuilding it.
+The expensive thing on disk is not in that list and not behind those buttons: the editor's banks
+live in `annotations.sqlite` under the cache directory, and hold every caption, head answer,
+detector verdict and reading. **Clear all caches** does not touch it, which is the right default.
+If you do delete it, the next cut re-reads your library from scratch.
 
-Clear the **analysis** cache when you have changed something that would alter how clips are scored and you want the change to actually take effect. Clear the **video** or **thumbnail** caches when you want the disk back.
+Of what the page does clear: nothing generated is lost, every one is rebuildable from Immich plus
+compute. Clear the **video** or **thumbnail** caches when you want the disk back.
 
 ## See also
 

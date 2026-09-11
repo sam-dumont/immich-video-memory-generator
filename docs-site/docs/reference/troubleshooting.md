@@ -62,11 +62,16 @@ relevant Immich server logs. API keys are redacted.
 The first cut over a period is the slow one: every eligible picture gets its caption, context heads and detector facts prepared once, then the text model reads the period. The levers:
 
 - **Put the caption server on the fast box**: captions are one HTTP request per picture (`editorial.preparation.caption_base_url`, `caption_concurrency`), and the encoder and detectors run where the app runs. A missing producer does not slow the run down: it stops it with a count. See [Editorial annotation setup](../deploy/configuration/editorial-preparation.md).
-- **Narrow the period**: a month or a person filter is analyzed in minutes; a whole year of a busy library is an overnight job on a NAS.
+- **Narrow the period**: the cost is linear in eligible pictures, so a month or a person filter is a fraction of a year. Nobody has timed the cold pass on this route, so start with one month and watch what yours does.
 - **Let the store work**: facts are stored per picture and producer in `annotations.sqlite` inside the cache directory, and every reading is banked by its exact request, so the second cut over the same period skips both. Do not clear the cache between runs.
 - **Check the text model**: every reading waits on it, so a slow model server dominates the run. The run summary prints the model's call count and time.
 
 ## Out of Memory (OOM)
+
+Almost always the reader. It holds roughly 17 GB of weights for as long as its server is up, and
+nothing else in this stack is in that class. If the box is also rendering, or also generating
+music, that is where the collision is: stop the model servers before a music-heavy run, or move
+them to their own machine.
 
 ```
 CUDA out of memory

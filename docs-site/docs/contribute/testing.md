@@ -11,6 +11,7 @@ Immich Memories has 7,461 tests: 6,838 fast unit tests that run everywhere, and 
 | Tier | Where it runs | Command | What it needs |
 |------|--------------|---------|---------------|
 | **Unit tests** | CI (Linux + macOS) + local | `make test` | Nothing external |
+| **Extras** | CI + local | `make test-extras` | The torch-family extras (demucs/editorial); CI's job installs `audio`+`gpu` only, so the torch paths are effectively a local tier |
 | **Integration tests** | Local + self-hosted Linux GPU runner | `make test-integration` | FFmpeg + Immich server |
 | **E2E (Playwright)** | CI launch check + local | `make e2e` (`make e2e-full` for the generation flow) | `make playwright-install`, no Immich (fake server) |
 
@@ -19,7 +20,7 @@ Immich Memories has 7,461 tests: 6,838 fast unit tests that run everywhere, and 
 Cover pure logic: selection rules, config parsing, data models, assembly settings, helper functions. No FFmpeg, no Immich, no network.
 
 ```bash
-make test          # Run all unit tests (~2 min)
+make test          # Run all unit tests (~3 min on an M-series Mac, slower on CI)
 make test-fast     # Skip slow tests
 ```
 
@@ -32,7 +33,7 @@ make test-integration            # Every suite except cli, audio and automation
 make test-integration-assembly   # One suite: assembly, audio, audio-mixing, auth, cli, live-photos, photos, pipeline, processing, titles
 ```
 
-Each suite is a folder under `tests/integration/`, and most have their own `make test-integration-<suite>` target with a rough runtime (see the table in `CLAUDE.md`). Three are not in the aggregate target: `cli`, because it re-runs the full pipeline that `pipeline` already covers (~41 min); `audio`, because it wants the demucs and ACE-Step packages; and `automation`, which has no target at all. Run it with `pytest tests/integration/automation` until one exists.
+Each suite is a folder under `tests/integration/`, and most have their own `make test-integration-<suite>` target with a rough runtime (see the table in `CLAUDE.md`). Three are not in the aggregate target: `cli`, because it re-runs the full pipeline that `pipeline` already covers and is the slowest suite in the tree (`make help` prints its estimate); `audio`, because it wants the demucs and ACE-Step packages; and `automation`, which has no target at all. Run it with `pytest tests/integration/automation` until one exists.
 
 **What's tested:**
 - Real FFmpeg assembly (single clip, crossfade, smart transitions)

@@ -51,7 +51,9 @@ immich-memories titles test --year 2024 --locale fr --style vintage_charm
 
 ## titles fonts
 
-Manage the fonts used for title screens. All five are OFL-1.1 licensed and ship inside the package (`titles/bundled_fonts/`); anything downloaded on top comes from the Fontsource CDN and is cached in `~/.immich-memories/fonts/`.
+Manage the fonts that ship for title screens. All five are OFL-1.1 licensed and live inside the package (`titles/bundled_fonts/`); anything downloaded on top comes from the Fontsource CDN and is cached in `~/.immich-memories/fonts/`.
+
+Worth knowing before you spend time here: titles are Montserrat. Every preset and every mood-derived style hardcodes it, and Outfit is used only for the date and place captions burned onto clips. Raleway, Josefin Sans and Quicksand ship and are never selected.
 
 ```bash
 # List fonts and their status (bare command or --list)
@@ -65,6 +67,6 @@ immich-memories titles fonts --download
 immich-memories titles fonts --clear
 ```
 
-You do not have to run any of this. Titles render correctly on a fresh install with no network, because `get_font_path()` checks the bundled copies before the cache and the bundle already carries every weight the renderer asks for. `--download` mirrors the same files from the CDN into `~/.immich-memories/fonts/`; it is there for inspecting or replacing what ships, not for making titles work.
+You do not have to run any of this. Titles render correctly on a fresh install with no network, because `get_font_path()` checks the bundled copies before the cache and the bundle already carries every weight the renderer asks for. `--download` mirrors the same files from the CDN into `~/.immich-memories/fonts/`; it is there for inspecting what ships, not for making titles work, and not for replacing them: for any of the five known families the bundled file wins before the cache is consulted, so a TTF you drop in there is never loaded.
 
-The listing reads the cache directory only, so on a fresh install it says **Not downloaded** for all five while titles render perfectly from the bundle. Read that column as "is there a local override", not as "will this work".
+The listing reads the cache directory only, so on a fresh install it says **Not downloaded** for all five while titles render perfectly from the bundle. Read that column as "is there a copy in the cache", not as "will this work" and not as "is this what renders".

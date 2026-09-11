@@ -11,7 +11,9 @@ docker compose pull
 docker compose up -d
 ```
 
-That's it. The container image includes all dependencies.
+That's it for the app's own dependencies. The editor's model files are not in the image: if the
+release notes move the pinned encoder digest or a detector revision, re-run
+`immich-memories models fetch` afterwards.
 
 ## uv (recommended for native install)
 
@@ -73,11 +75,10 @@ There is no automatic config migration. Unknown keys **inside** a known section 
 
 The one family of keys that is refused rather than ignored is the removed clip scorer's: the whole `content_analysis`, `audio_content`, `speech` and `transcription` sections, `description_llm`, twenty `analysis.*` pacing and detection dials (`max_refinement_passes`, `scene_threshold`, `duplicate_hash_threshold`, `subject_policy_enabled` and the rest), `photos.max_ratio`, `photos.read_moments`, `photos.moment_gap_seconds`, `photos.moment_hash_threshold` and `hardware.gpu_analysis`. Thirty keys in all. A file that still names one stops the app at startup with a message listing them; delete them and start again. The `audio-ml`, `speech` and `transcribe` extras went with the code.
 
-In practice, most config fields have been stable since v0.1. Breaking config changes are rare and always called out in the release notes.
 
 ## Data compatibility
 
-**Analysis database** (`cache.db`, `annotations.sqlite`): forward-compatible. Both have schema migrations that run automatically on startup. Upgrading never loses the run history or the editor's banks.
+**Analysis database** (`cache.db`, `cache/annotations.sqlite`): forward-compatible. `cache.db` has a versioned migrator; `annotations.sqlite` creates missing tables and adds columns additively. Both run when the store is first opened, not at startup. Upgrading never loses the run history or the editor's banks.
 
 **Video cache** (downloaded clips): can be cleared safely at any time. If a new version changes the download format or caching structure, the old cache files are still valid but you can clear them without loss by deleting `~/.immich-memories/cache/video-cache` (or via the UI Cache page).
 

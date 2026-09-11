@@ -32,8 +32,8 @@ CI runs in tiers, cheap to expensive. If lint fails in 10 seconds, there's no po
 
 **Tier 1: Cheap quality gates**; one job, run as steps in order. Each carries `if: !cancelled()`,
 so the first failure doesn't hide the ones behind it and you get the whole list from one run:
-- Commit message linting (Conventional Commits)
 - Ruff lint + format check
+- CLI and config reference drift (the generated pages must match the Click tree and the pydantic schema)
 - mypy type checking
 - Dead code detection (Vulture)
 - Cyclomatic complexity (Xenon grade C)
@@ -43,8 +43,8 @@ so the first failure doesn't hide the ones behind it and you get the whole list 
 - Dependency hygiene (deptry)
 - Architecture layer enforcement (import-linter)
 - Code duplication detection (jscpd)
-- CLI and config reference drift (the generated pages must match the Click tree and the pydantic schema)
 - AI code critique
+- Commit message linting (Conventional Commits), on pull requests only
 
 **Tier 2: Security** (parallel with Tier 1):
 - Bandit static analysis
@@ -56,7 +56,8 @@ so the first failure doesn't hide the ones behind it and you get the whole list 
 **Tier 3: Tests** (runs after both Tier 1 and Tier 2 pass):
 - Full test suite (Ubuntu on 3.11/3.12/3.13; macOS on 3.13 for a pull request, all three on main)
 - `make test-extras`: only the tests marked `extras`, which are what the torch family
-  (demucs/editorial) unlocks
+  (demucs/editorial) unlocks. Note that the CI job installs `audio` and `gpu` and not those two,
+  so what runs there is the subset that survives without torch; the rest is a local target
 
 **Tier 4: Build + Docker** (runs after tests pass):
 - Package build verification
@@ -125,7 +126,7 @@ A PR passes 20 gates: 15 static checks in the quality job and 5 security scans i
 
 ## File Naming Conventions
 
-- `_prefixed.py`: private helpers, meant for their own package. Nothing enforces that (import-linter only guards the core/UI and core/CLI directions), and a couple of cross-package imports have leaked in
+- `_prefixed.py`: private helpers, meant for their own package. Nothing enforces that (import-linter only guards the core/UI and core/CLI directions), and one cross-package import has leaked in (`generate_privacy.py` reaching into `titles._trip_titles`)
 - `*_service.py`: composed service classes
 - `*_models.py`: data models (Pydantic or dataclass)
 - `*_helpers.py`: standalone helper functions

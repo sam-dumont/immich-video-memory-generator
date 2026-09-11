@@ -5,9 +5,9 @@ title: generate
 
 # generate
 
-The main event. `immich-memories generate` pulls videos from your Immich library, analyzes scenes, picks the best moments, and assembles them into a compilation.
+The main event. `immich-memories generate` pulls pictures and video from your Immich library, reads them, weighs the stories the period holds, and assembles a cut.
 
-Generation uses story-first selection and the FAMILY audience by default. It prepares missing
+Generation uses story-first selection, and the audience is FAMILY: it is a fixed literal in the request, not a setting. It prepares missing
 facts for the whole source period before choosing stories and distinct moments, then allocates
 duration. Complete [editorial annotation setup](../../deploy/configuration/editorial-preparation.md)
 before an uncached run; there is no editorial opt-in switch or alternate selector to enable.
@@ -118,8 +118,8 @@ drop `--add-date`.
 When `--resolution` is omitted, the command uses `output.resolution` from the config (1080p by
 default). Pass `--resolution auto` explicitly when you want the source clips to choose the output
 tier. `--quality` changes the effective CRF preset; an explicit `output.crf` in config remains the
-more precise control. The app passes it directly to software H.264/H.265 and translates it for
-Apple VideoToolbox; other hardware backends retain their existing quality policies.
+more precise control. The app passes it directly to software H.264/H.265 and maps it onto each hardware backend's own
+quantiser scale, with a measured offset per backend (VAAPI, QSV and NVENC each take +2).
 
 ### Preset (root option)
 
@@ -148,8 +148,8 @@ explicitly; the flags below still win. Five keys in three sections, and none of 
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--dry-run` | n/a | flag | n/a | Cheap preview: cached analysis only, verify pass skipped, no video |
-| `--no-render` | n/a | flag | n/a | The real selection (analysis, verify, judge, review), stopping before the encode |
+| `--dry-run` | n/a | flag | n/a | Discover inputs and report preparation needs. No selection, no video |
+| `--no-render` | n/a | flag | n/a | Story-first selection and its audience and media checks, stopping before the encode |
 | `--privacy-mode` | n/a | flag | n/a | Demo mode: blur every frame, scramble the audio, fake the names |
 | `--include-live-photos` / `--no-live-photos` | n/a | flag pair | on | Live Photo clips, merged when burst-captured. `analysis.include_live_photos` is already `true` |
 | `--keep-intermediates` | n/a | flag | n/a | Keep intermediate files for debugging |
@@ -303,7 +303,7 @@ of the day, so it means "the memory starts at the circuit, not at the cat on the
 balcony that morning". A day with no window covers the whole calendar day.
 
 Without `--duration` the length comes from how long the day stayed awake:
-roughly a minute plus six seconds an hour, held between 60 and 180 seconds.
+thirty seconds plus six an active hour, held between 60 and 180 seconds.
 `--title` and `--subtitle` still override the catalogue's naming.
 
 ### Trip closest to a date
@@ -378,7 +378,7 @@ upload:
 
 ## Trip Detection
 
-Automatically find trips in your library based on GPS data. Set your home coordinates in config, and the tool finds clusters of videos taken far from home over 2+ days.
+Automatically find trips in your library based on GPS data. Set your home coordinates in config, and the tool finds clusters of GPS-tagged assets taken far from home and spanning at least `min_duration_days` nights (2 by default, so three calendar days).
 
 ```bash
 # Discover trips from 2024 (shows a table, doesn't generate)
@@ -391,7 +391,7 @@ immich-memories generate --memory-type trip --year 2024 --trip-index 2
 immich-memories generate --memory-type trip --year 2024 --all-trips
 ```
 
-Without `--trip-index` or `--all-trips`, the command runs in discovery mode: it scans all GPS-tagged videos for the year, filters to those 50+ km from your homebase, groups them by temporal proximity, and shows you what it found. Cross-year trips (like a New Year's trip spanning Dec to Jan) are detected as a single trip.
+Without `--trip-index` or `--all-trips`, the command runs in discovery mode: it scans every GPS-tagged asset for the year, filters to those 50+ km from your homebase, groups them by temporal proximity, and shows you what it found. Cross-year trips (like a New Year's trip spanning Dec to Jan) are detected as a single trip.
 
 First, set your home coordinates in `config.yaml`:
 
@@ -466,30 +466,41 @@ A run with no LLM configured prints no model line at all.
 
 ### Why did selection drop that clip?
 
-`--trace-selection` writes a funnel: every stage of selection, what it received, what it let
-through, and how many **favourites** survived each step.
+`--trace-selection` writes a funnel: what each recorded stage received, what it let through, and
+what happened to the **favourites** in it.
 
 ```bash
 immich-memories generate --year 2024 --trace-selection ~/selection.txt
 ```
 
-It writes **two** files: the readable funnel at the path you gave, and the same data as JSON at
-the same path with a `.json` suffix, for scripting.
+It writes **two** files: the readable funnel at the path you gave, and the same data as JSON with
+that path's extension replaced by `.json` (so `~/selection.txt` gives you `~/selection.json`, not
+`~/selection.txt.json`).
 
-The report looks like this, and the marker is the point:
+The report has two blocks. The favourites table carries one row per recorded stage, and on the
+story-first route that is a single row, `editorial final cut`, with the marker that matters:
 
 ```
 stage                  kept  lost     favorites
-source gates             38     0      38 -> 38
-cull                     21    17      38 -> 21
 editorial final cut       9    12      21 ->  0  <-- all favorites lost here
 ```
 
-Selection passes a pool through the source gates, the cull, the memory-worthy gate, the story
-weighing and the standing gate before a picture carries. Reading the log and inferring which one
-ate your clips is slow and wrong often enough to matter: a real February started with 38
-favourites and shipped none, and finding the stage responsible took several rounds of guessing.
-This answers it directly; the funnel prints whichever passes the route ran, under their own names.
+Underneath it, the editorial passes, with their own decisions and reasons, and no favourites
+column:
+
+```
+editorial passes
+----------------
+  source-eligibility: 38 kept, 0 rejected, 0 unresolved
+  pass-1-cull: 21 kept, 17 rejected, 0 unresolved
+      <asset-id> — <the reason it was rejected>
+```
+
+Those two are what the route records. The later editorial work, the memory-worthy gate, the story
+weighing and the standing gate, does not write passes here; to see what it did, read the plan and
+the reason on every carrier. The point of the funnel is the question it answers directly: a real
+February started with 38 favourites and shipped none, and finding the stage responsible took
+several rounds of guessing at the log.
 
 :::warning Do not combine this with `--dry-run`
 `--dry-run` runs no selection (it discovers inputs and reports preparation needs), so there is

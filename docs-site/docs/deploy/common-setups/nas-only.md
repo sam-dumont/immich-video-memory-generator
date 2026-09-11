@@ -1,37 +1,39 @@
 ---
-sidebar_label: "NAS-Only (Docker)"
+sidebar_label: "NAS + a model box"
 ---
 
-# NAS-Only Setup (Docker)
+# A NAS, and one machine that can hold the models
 
-For Synology, QNAP, Unraid, and TrueNAS users running Immich on the same NAS or local network.
-The NAS handles the app and CPU encoding; editorial model services may run on another machine.
+For Synology, QNAP, Unraid and TrueNAS users already running Immich on the box.
 
-Before generating, complete [editorial annotation setup](../configuration/editorial-preparation.md).
-The story-first route requires its caption and story providers plus the local head/detector
-artifacts when their facts are missing. Disabling optional clip-content scoring does not
-remove that requirement.
+**A NAS on its own stopped being enough when the editorial engine landed.** The editor reads your
+pictures before it cuts them, and reading them takes a vision model with roughly 17 GB of weights
+resident plus a caption server. No Celeron holds that, and the app refuses to cut rather than guess
+without it. What the NAS is still good at is everything else: talking to Immich over the LAN,
+holding the caches, running the CPU detectors and heads, and encoding the video.
+
+Read [Self-hosting: start here](../self-hosting.md) first. It is the whole stack in order; this
+page is the NAS-shaped version of steps 1, 2 and 7.
 
 ## Who this is for
 
-You have a NAS with Docker support (Synology DSM 7+, Unraid, TrueNAS SCALE, QNAP Container Station). You're already running Immich there. You want memory videos without setting up Python environments or GPU passthrough.
+You have a NAS with Docker support (Synology DSM 7+, Unraid, TrueNAS SCALE, QNAP Container
+Station) and Immich already on it, and you have one other machine on the network that can hold the
+two model services: an Apple Silicon Mac with 32 GB, or a box with a 24 GB GPU. If you do not have
+that second machine, this deployment is [unsupported](../self-hosting.md#one-machine-or-two), not
+slow.
 
-## Architecture
+## What runs where
 
-```
-┌─────────────────────────────────────────┐
-│ NAS (Synology/Unraid/TrueNAS)          │
-│                                         │
-│  ┌─────────────┐  ┌──────────────────┐ │
-│  │   Immich     │  │ Immich Memories  │ │
-│  │  (port 2283) │←─│  (port 8080)    │ │
-│  │             │  │  CPU encoding    │ │
-│  │             │  │  PIL titles      │ │
-│  └─────────────┘  └──────────────────┘ │
-│                                         │
-│  Volumes: config, output, video cache   │
-└─────────────────────────────────────────┘
-```
+| Piece | Where | Why |
+|---|---|---|
+| The app, the web UI, the caches | NAS | Cheap. 2 to 4 GB resident |
+| Immich | NAS | Already there |
+| The vision reader (weighs the period, looks at the pictures the edit asks about) | The other machine | ~17 GB resident at 4-bit |
+| The caption server (one description per picture, banked forever) | The other machine | MLX weights, so Apple Silicon today |
+| The DINOv2-small ONNX encoder (88 MB) and six context heads | NAS | CPU inference, no GPU path |
+| Two detector snapshots (~400 MB) | NAS | CPU only, both |
+| Encoding, title screens, the render | NAS | See [encoding](#encoding-what-the-chip-will-and-will-not-do) below |
 
 ![NAS setup diagram](/img/diagrams/setup-nas.png)
 
@@ -50,6 +52,11 @@ services:
     environment:
       IMMICH_URL: "${IMMICH_URL}"
       IMMICH_API_KEY: "${IMMICH_API_KEY}"
+      # The two model services, on the other machine. Not localhost:
+      # inside a container localhost is the container.
+      IMMICH_MEMORIES_LLM__BASE_URL: "http://model-box.lan:8000/v1"
+      IMMICH_MEMORIES_LLM__MODEL: "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"
+      IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL: "http://model-box.lan:8092/v1"
     restart: unless-stopped
     deploy:
       resources:
@@ -60,6 +67,11 @@ services:
 volumes:
   immich-memories-config:
 ```
+
+`llm.model` has to be the exact string the reader reports at `GET /v1/models`. The caption endpoint
+has to advertise the alias `smolvlm2-500m-base-public` at `/models`; the client checks the
+inventory and three schema controls before it sends a single preview.
+[Editorial annotation setup](../configuration/editorial-preparation.md) has every pin and digest.
 
 ### Reaching the UI
 
@@ -89,41 +101,76 @@ IMMICH_API_KEY=your-api-key-here
 
 If Immich runs on the same Docker network, use the container name (`immich-server`). If it's on a different machine or behind a reverse proxy, use the full URL (`https://photos.example.com`).
 
-## What works
+## Fetch the model files the NAS does own
 
-- **The whole editor**: captions, context heads, detectors and pixel facts all run on CPU. What they cost you is time, not correctness: the cut is the same cut a GPU box would make
-- **Title screens**: PIL-based renderer (works everywhere, no GPU needed)
-- **Custom music**: upload your own MP3/WAV in Step 3
-- **All memory types**: year in review, monthly, person spotlight, trips (if GPS data exists)
-- **Scheduling**: set `IMMICH_MEMORIES_AUTOMATION__ENABLED=true` and `IMMICH_MEMORIES_AUTOMATION__DAILY_AT=09:00` (plus `TZ`) in the compose `environment:`. The UI process runs the daily decision itself, so there is no cron to install. `immich-memories auto install` is for host installs and cannot write a cron job inside the container; if you would rather drive it from the NAS host's scheduler, use `docker exec immich-memories immich-memories auto run --quiet --cooldown 24` and leave the built-in timer off. See [Daily automation](../installation/docker.md#daily-automation)
-- **Photo support**: Ken Burns animations, face-aware pan, blur backgrounds
+```bash
+docker compose exec immich-memories immich-memories models fetch
+```
 
-### Editorial work on a NAS
+That writes the pinned DINOv2-small ONNX export, digest-checked, and warms the two detector
+snapshots into the Hugging Face cache on the config volume. Both run on the CPU. With them cached,
+`allow_model_downloads` stays `false` and means it. `immich-memories preflight` checks Immich, the
+reader, the encoder digest and the caption alias; it does **not** check the detector snapshots, so
+the first cut is where a cold cache shows up, with a count per missing producer.
 
-The app prepares facts for the whole source period, then uses the configured story model to
-identify stories and distinct moments before allocating duration. The caption and story
-services can run elsewhere on your network. Public context heads and detectors use CPU
-inference on the app host, or the configured detector Python environment.
+## What the NAS does well
 
-Complete cached results skip model work. A missing provider stops an uncached run with an
-explicit incomplete result. There is no model-free alternate selector.
+- **Preparation that is not the models**: six context heads over the ONNX encoder, two detectors,
+  and the pixel measurements. All CPU, all banked by producer and exact input, so a second cut over
+  the same period skips them entirely.
+- **Title screens**: the PIL renderer, everywhere, no GPU needed.
+- **Custom music**: upload your own MP3/WAV on the Options page.
+- **All memory types**: year in review, monthly, person spotlight, trips (if GPS data exists).
+- **Scheduling**: set `IMMICH_MEMORIES_AUTOMATION__ENABLED=true` and
+  `IMMICH_MEMORIES_AUTOMATION__DAILY_AT=09:00` (plus `TZ`) in the compose `environment:`. The UI
+  process runs the daily decision itself, so there is no cron to install. `immich-memories auto
+  install` is for host installs and cannot write a cron job inside the container; to drive it from
+  the NAS host's scheduler instead, use
+  `docker exec immich-memories immich-memories auto run --quiet --cooldown 24` and leave the
+  built-in timer off. See [Daily automation](../installation/docker.md#daily-automation).
+- **Photo support**: Ken Burns animations, face-aware pan, blur backgrounds.
 
-## What doesn't work
+## What it cannot do
 
-- **Running large models on a small NAS**: configure reachable caption and story services on
-  another machine when the NAS cannot host them. Required missing evidence blocks selection.
-- **AI music generation**: MusicGen and ACE-Step need GPU servers. Use custom music upload instead.
-- **GPU encoding**: NAS CPUs (Celeron, Atom, low-end Xeon) don't have usable GPU encoders. Encoding is CPU-only via libx264.
-- **Taichi GPU title renderer**: falls back to PIL. Title screens still look good, just without particle effects and animated gradients.
+- **Hold the reader or the caption server.** That is the whole reason for the second machine. A
+  missing provider stops an uncached run with an explicit incomplete result; there is no model-free
+  alternate selector to fall back to.
+- **AI music generation**: MusicGen and ACE-Step want GPU servers. Upload your own music instead.
+- **The Taichi title renderer**: it falls back to PIL. Titles still look right, without the
+  particle effects and animated gradients.
+
+## Encoding: what the chip will and will not do
+
+The old version of this page said NAS chips have no usable hardware encoder. That is wrong on
+Intel silicon. On Gemini Lake (the J4125 class in a lot of Synology and mini-PC boxes) `vainfo`
+lists an H.264 encode entrypoint and no HEVC one, and the project's default output codec is H.265.
+The backend handles the split: it encodes what the device can and sends the rest to libx265, with
+`vaapi cannot encode h265 on this device; encoding it in software` in the log.
+
+So on an Intel NAS, set `output.codec: h264` (or turn on `preset: fast`, which sets it for you) and
+the whole encode runs on the iGPU. Passing the device through takes two things, not one:
+
+```yaml
+    devices:
+      - /dev/dri:/dev/dri
+    group_add:
+      - "937"        # the GID that owns /dev/dri/renderD128 on YOUR host
+```
+
+The container runs as uid 1000 and the render node is usually `root:render` with no world access,
+so without `group_add` the device is present and unopenable. The render GID differs per host: 104
+on Debian, 937 on Synology DSM. `stat -c '%g' /dev/dri/renderD128` on the host prints yours. Full
+detail on [Intel Quick Sync](../hardware/intel-qsv.md). ARM-based NAS models have no QSV path; the
+VA-API drivers ship in the amd64 image only.
 
 ## One switch: `preset: fast`
 
 Add `IMMICH_MEMORIES_PRESET=fast` to the compose `environment:` (or `preset: fast` at the top of
-`config.yaml`) and the CPU-only profile is on: 1080p H.264 with the fast encoder preset and
-medium quality, and static title backgrounds instead of animated ones. That is the whole of it:
-three sections, five keys, nothing about what the editor reads. Every value you set explicitly still wins, and the web
-UI's options page shows a banner when the preset is active. `immich-memories --preset fast generate …`
-does the same for one CLI run.
+`config.yaml`) and the CPU-friendly render profile is on: 1080p H.264 at medium quality with the
+fast encoder preset, and static title backgrounds instead of animated ones. That is the whole of
+it: three sections, five keys, nothing about what the editor reads. Every value you set explicitly
+still wins, and the web UI's options page shows a banner when the preset is active.
+`immich-memories --preset fast generate …` does the same for one CLI run.
 
 ```yaml
     environment:
@@ -134,27 +181,55 @@ does the same for one CLI run.
 
 ## Performance expectations
 
-One measured number (2026-08-18), so you can calibrate: a monthly memory from a real library,
-14 clips (7 videos + 6 photos, HDR iPhone sources), 62 s of 1080p H.264 out, cold cache, the
-Docker image with `--cpus=4 --memory=4g` and no GPU (4 cores of an Apple M5 Max running the
-linux/arm64 image):
+### The render, measured
+
+One measured run (2026-08-18): a monthly memory from a real library, 14 clips (7 videos + 6 photos,
+HDR iPhone sources), 62 s of 1080p H.264 out, cold cache, the Docker image with `--cpus=4
+--memory=4g` and no GPU (4 cores of an Apple M5 Max running the linux/arm64 image):
 
 | Profile | Wall time | Analysis | Render | Output |
 |---------|-----------|----------|--------|--------|
 | `preset: fast` | 10 min 08 s | 7.4 min | 2.7 min | 30 MB |
 | default | 15 min 42 s | 10.1 min | 5.6 min | 87 MB |
 
-That run used the old per-clip scorer; on the story-first route the analysis column is
-preparation (a caption, context heads and detector facts per picture) plus the text model's
-readings, all of it cached, so a second cut of the same month is mostly the render. A Celeron-class NAS core is a good deal slower than an M5 core, so budget 2–3× these
-numbers there.
+**Only the Render column still describes this product.** That run used the retired per-clip
+scorer, so its Analysis column measures work the app no longer does. Read the table for the
+encode and the title screens, nothing else.
+
+### Preparation, not measured yet
+
+Preparation reads every candidate asset in the memory's scope exactly once: an Immich preview
+fetched, pixel measurements, six heads, two detectors, one caption. Nobody has timed that on
+NAS-class silicon yet, and a benchmark is running now. A number will land here when it exists.
+Until then, what is known:
+
+- it is a per-candidate cost, not a per-selected-clip cost, so it scales with how wide your date
+  range is rather than with the length of the video;
+- it is paid once. Every producer banks its answer by exact input, so the second cut over the same
+  period, and any overlapping memory, skips the work entirely;
+- the CPU half of it (heads, detectors, pixels) is what the NAS is doing; the caption and the
+  period reading happen on the other machine.
+
+Start with one month, not a year.
+
+### Memory and disk
+
+The 4 GB limit in the compose file is the one the measured run above used. The streaming assembler
+blends one clip at a time into a single FFmpeg pipe, so render memory does not grow with clip
+count; encoding 4K on NAS hardware is not recommended, and if you try it, raise the limit.
+
+- Keep the video cache enabled (default). It holds downloaded Immich clips locally, so repeat runs
+  skip the download. Defaults: 10 GB, files older than 7 days evicted.
+- **Budget disk for the preview cache by library size, not by taste.**
+  `thumbnail_cache_max_size_mb` holds one Immich preview per candidate asset a memory can reach.
+  Measured on a real library, one preview is about 315 KB, so a 10,793-candidate scope wants around
+  3.4 GB. Rule of thumb: `0.35 × assets in scope`, in MB. The 10 GB default covers roughly 31,000
+  previews. Set it too low and the next overlapping memory re-downloads every preview over your LAN
+  and re-captions the assets whose banked caption failure no longer matches, which on NAS-class
+  hardware is the slow part. A run that does not fit logs one `WARNING` naming the setting.
 
 If the render column is what you want to shrink, start with the title screens rather than the
 encoder: see [title rendering is the bottleneck](../hardware/cpu-only.md#title-rendering-is-the-bottleneck-not-encoding).
-
-Memory usage peaks at about 2-3 GB during encoding. The 4 GB limit in the compose file gives enough headroom. If you're encoding 4K (not recommended on NAS hardware), bump it to 8 GB.
-
-The streaming assembler keeps memory constant regardless of clip count: it processes one clip at a time instead of loading everything into RAM.
 
 ## Tips for NAS users
 
@@ -162,5 +237,3 @@ The streaming assembler keeps memory constant regardless of clip count: it proce
 - **Unraid**: add as a Docker container in the Unraid UI or use Docker Compose Manager plugin.
 - **TrueNAS SCALE**: use the built-in Apps system or deploy via custom Docker compose.
 - **QNAP**: use Container Station with the compose file.
-- Keep the video cache enabled (default). It caches downloaded Immich clips locally, so repeat runs skip the download phase. Default cache limit: 10 GB, evicts files older than 7 days.
-- **Budget disk for the preview cache by library size, not by taste.** `thumbnail_cache_max_size_mb` holds one Immich preview per candidate asset a memory can reach (about 315 KB each, measured), so a 10,793-candidate scope wants around 3.4 GB. Rule of thumb: `0.35 × assets in scope`, in MB. The 10 GB default covers roughly 31,000 previews. Set it too low and the next overlapping memory re-downloads every preview over your LAN and re-captions the assets whose banked caption failure no longer matches, which on NAS-class hardware is the slow part. A run that does not fit logs one `WARNING` naming the setting.

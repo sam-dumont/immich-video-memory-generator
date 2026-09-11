@@ -18,7 +18,7 @@ immich-memories generate --memory-type monthly_highlights --month 7 --year 2025
 
 Default duration: 60 seconds. The title screen shows the month and year (e.g., "July 2025"). No monthly dividers since it's already a single month.
 
-**Best for:** months with 10+ videos. If you shot a lot in one month (vacation, birthday party, holiday), this gives you a tight one-minute highlight.
+**Best for:** a month you actually shot in. A vacation, a birthday, a holiday: one minute, tight.
 
 <ThemedScreenshot name="memory-brief" alt="Monthly Highlights on the Memory page" />
 
@@ -66,6 +66,23 @@ memory from every tagged appearance of any named person:
 immich-memories generate --memory-type multi_person --person "Riley" --person "Bob" \
   --person-match or --year 2025
 ```
+
+AND and OR across the whole list are the two shapes a picker can express. When the
+memory you want is neither, `--people-expression` takes the condition itself:
+quoted library names with `AND`, `OR` and parentheses, `AND` binding tighter than
+`OR`.
+
+```bash
+immich-memories generate --memory-type multi_person --year 2025 \
+  --people-expression '"Riley" AND ("Casey" OR "Bob")'
+```
+
+That one is every picture or video holding Riley and at least one of the two
+adults. `AND` means the same asset, not the same afternoon. The expression names
+its own people, so it replaces `--person` and `--person-match` rather than
+refining them: passing both is a usage error. The web UI has the same field,
+**Grouped people condition**, under the people picker. It covers date-range
+memories; trips, albums and a single-person birthday are refused.
 
 Default duration: the same one-minute-per-month rule as Person Spotlight, capped
 at 10 minutes. Title screens and default filenames say whether the people are

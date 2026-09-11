@@ -80,17 +80,17 @@ has been prepared before. Facts and readings are cached, so the first cut over a
 
 | Phase | RAM | CPU | Apple Silicon / GPU | CPU-only (4-core NAS class) |
 |-------|-----|-----|---------------------|-----------------------------|
-| Idle (UI) | ~100MB | minimal | n/a | n/a |
+| Idle (UI) | small | minimal | n/a | n/a |
 | Preparing pictures (first cut) | 2-4GB | 2+ cores | one caption request and one encoder pass per picture; not yet measured on this route | same, slower on the encoder |
-| Assembling 1080p | 4GB | 4 cores | ~2 min per 5 min of output | ~10-16 min for a 14-clip monthly (measured) |
-| Assembling 4K | 6-8GB | 4+ cores | ~5 min per 5 min of output | not recommended |
+| Assembling 1080p | 4GB | 4 cores | not measured | ~10-16 min for a 14-clip monthly (measured) |
+| Assembling 4K | 6-8GB | 4+ cores | not measured | not recommended |
 
 Those are the app's numbers. The two model services are the big line item and they are not in that
 table because they are not in that process:
 
 | Service | Resident while it's up | Where |
 |---------|------------------------|-------|
-| Reader (vision + text) | **~17GB** at 4-bit | this box if it has 32GB+, otherwise another one |
+| Reader (vision + text) | **~17GB** at 4-bit (30B parameters, arithmetic not measurement) | this box if it has 32GB+, otherwise another one |
 | Caption server | **1-2GB** | same |
 
 A 4-core, 8GB NAS runs the app and the render perfectly well. It does not run the reader, and no
@@ -104,7 +104,7 @@ before you buy a GPU for the encoder.
 
 Measured once for calibration (2026-08-18): a 14-clip monthly at 1080p, cold cache, in the Docker
 image with `--cpus=4 --memory=4g` and no GPU took **10 min with `preset: fast`** and 15.7 min with
-the default profile (4 M5 Max cores; a Celeron-class NAS is 2-3× slower). `preset: fast` swaps in
+the default profile (4 M5 Max cores). Nobody has run the same measurement on a Celeron, so this README will not guess a multiplier. `preset: fast` swaps in
 1080p H.264, a fast encoder and static titles; explicit settings still win over it. The
 [NAS-only guide](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/common-setups/nas-only)
 has the measurement in full. Field reports from Synology, Unraid, Proxmox and Raspberry Pi are
@@ -190,11 +190,10 @@ advanced:
 - Title screens with satellite map fly-overs, month dividers and particles, GPU-rendered through
   Taichi (static PIL titles without it). This is what makes the output look edited, not concatenated.
 - Music: bring your own file, use the 28 bundled tracks (the `music` extra, already in the Docker
-  image), or generate with ACE-Step or MusicGen. Ducking drops the music when someone talks.
-- Runs as a one-page web UI (brief, cut, story, export; basic auth, OIDC/SSO, or a trusted
-  header proxy) or a headless CLI, in Docker, Kubernetes or a plain venv. Every cut is kept under
-  the cache directory with the plan and the reason for every picture. Privacy mode blurs and mutes
-  everything for demos.
+  image), or generate with ACE-Step or MusicGen. Ducking drops the music under the clip's own audio.
+- Runs as a four-step web UI (Memory, where the brief, the cut and the story live; Clip Review; Options; Export; behind basic auth, OIDC/SSO, or a trusted header proxy) or a headless CLI, in Docker, Kubernetes or a plain venv. Every cut is kept under
+  the cache directory with the plan and the reason for every picture. Privacy mode blurs every frame and scrambles the
+  speech for demos.
 
 ## Daily automation
 

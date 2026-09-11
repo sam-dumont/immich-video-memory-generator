@@ -63,23 +63,22 @@ photos:
   burst_hash_threshold: 8    # Hash bits two frames may differ by and still be one burst
 ```
 
-Older configs may still contain `collage_duration`, `animation_mode`, `enable_collage`, `series_gap_seconds` or `zoom_factor`; those keys were removed in 0.41 and are ignored (the zoom amount is randomized per photo, and collages no longer exist).
+Older configs may still contain `collage_duration`, `animation_mode`, `enable_collage`, `series_gap_seconds` or `zoom_factor`; those five were removed in v0.40.3 and are now silently ignored (the zoom amount is randomized per photo, and collages no longer exist).
+
+Four other `photos.*` keys do **not** get ignored: `max_ratio`, `read_moments`, `moment_gap_seconds` and `moment_hash_threshold` went with the clip scorer and are refused outright. A config file that still names one stops the app at startup with a message listing them.
 
 ## One photo per burst
 
-A held shutter produces near-identical frames seconds apart. Before scoring, photos
-within `burst_window_seconds` of each other whose thumbnails are within
-`burst_hash_threshold` bits are treated as one burst, and only the best-scored frame
-survives. On a real June library that removed **64 of 303 photos, 21% of the pool**,
+A held shutter produces near-identical frames seconds apart. Before the editor chooses
+anything, photos within `burst_window_seconds` of each other whose thumbnails are within
+`burst_hash_threshold` bits are treated as one burst, and only the sharpest, best-exposed
+frame survives. On a real June library that removed **64 of 303 photos, 21% of the pool**,
 in groups of up to five.
 
 Both conditions are required. Time alone would collapse a busy minute at a party;
 similarity alone would merge the same kitchen photographed a month apart. A photo with
 no cached thumbnail is always kept: redundancy is measured, never assumed. Set
 `burst_window_seconds: 0` to turn it off.
-
-Because this runs before the LLM shortlist, every photo it removes is also an LLM call
-saved.
 
 ## CLI Flags
 

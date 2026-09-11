@@ -10,7 +10,7 @@ decision; the scheduler daemon and hand-written cron are advanced/legacy alterna
 
 ## Automation (Recommended)
 
-The `auto` system scans your library, detects what's worth turning into a memory video, and generates the best candidate. It runs 8 detectors (monthly, yearly, trips, person spotlights, birthdays, activity bursts, on-this-day, multi-person pairs) and picks the highest-scoring one.
+The `auto` system scans your library, detects what's worth turning into a memory video, and generates one candidate a day. It runs nine detectors (monthly, yearly, trips, person spotlights, birthdays, activity bursts, on-this-day, multi-person pairs, and the special-days catalogue), five of which are behind toggles. The highest scorer wins, but only after variety rules have rejected repeats and per-type caps have applied.
 
 ```bash
 # See what it would generate

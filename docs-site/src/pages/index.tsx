@@ -18,8 +18,9 @@ function HeroSection() {
             </Heading>
             <p className={styles.heroSubtitle}>
               Point it at your Immich server. Pick a year, a person, or a trip.
-              Get a polished video with scene-aware cuts, animated maps, AI music,
-              and title screens. Self-hosted. No subscription.
+              An editor reads the period, weighs its stories and writes down why every
+              picture is in. Then it renders: animated maps, generated music, title
+              screens. Self-hosted. No subscription.
             </p>
             <div className={styles.heroCtas}>
               <Link className={styles.ctaPrimary} to="/docs/welcome/quick-start">
@@ -49,7 +50,7 @@ function QuickstartSection() {
     <section className={styles.quickstart}>
       <div className="container">
         <Heading as="h2" className={styles.sectionTitle}>
-          Running in 2 minutes
+          What it takes to stand up
         </Heading>
         <div className={styles.quickstartGrid}>
           <div className={styles.quickstartCode}>
@@ -61,21 +62,33 @@ function QuickstartSection() {
                 <span className={styles.codeLabel}>terminal</span>
               </div>
               <pre className={styles.codeContent}>
-{`# Create .env with your Immich credentials
-echo 'IMMICH_URL=https://photos.example.com' > .env
-echo 'IMMICH_API_KEY=your-key-here' >> .env
-
-# Start it
+{`# 1. The app itself
+export IMMICH_URL=https://photos.example.com
+export IMMICH_API_KEY=your-key-here
 docker compose up -d
 
-# Open http://localhost:8080`}
+# 2. The model files it checks at every run:
+#    a pinned ONNX encoder and two CPU detectors
+immich-memories models fetch
+
+# 3. Two model servers on hardware you own:
+#    a vision reader (~17 GB resident at 4-bit) and a
+#    caption endpoint. Point config.yaml at both, then:
+immich-memories preflight`}
               </pre>
             </div>
             <p className={styles.quickstartAlt}>
-              Or without Docker: <code>uvx immich-memories ui</code>
+              Step 3 is the real cost: the editor reads your pictures before it cuts them, and it
+              refuses to guess without them. The cheapest thing anyone has run end to end is one
+              32 GB Apple Silicon Mac. The{' '}
+              <Link to="/docs/deploy/self-hosting">self-hosting guide</Link> walks all of it in
+              order.
             </p>
           </div>
           <div className={styles.quickstartSteps}>
+            <p className={styles.quickstartAlt} style={{marginTop: 0}}>
+              Once it is up, every memory is the same four moves:
+            </p>
             <div className={styles.step}>
               <span className={styles.stepNumber}>1</span>
               <div>
@@ -133,13 +146,13 @@ const showcaseItems: ShowcaseItem[] = [
   },
   {
     title: 'Cinematic title screens',
-    description: 'Animated gradients, particle systems, satellite trip maps. Three rendering backends (Taichi GPU, PIL, FFmpeg) pick the best your hardware can do.',
+    description: 'Animated gradients, particle systems, satellite trip maps. Two renderers: Taichi if it finds a Metal, CUDA or Vulkan backend, PIL everywhere else. The log says which one actually ran.',
     image: '/img/screenshots/memory-options.png',
     alt: 'Generation options with title and music settings',
   },
   {
     title: 'AI music generation',
-    description: 'A vision LLM detects the mood of your clips. ACE-Step or MusicGen creates an original soundtrack. Audio ducking lowers music during speech.',
+    description: 'A vision LLM detects the mood of your clips. ACE-Step or MusicGen creates an original soundtrack. A sidechain compressor ducks the music under the clip\'s own audio.',
     image: '/img/screenshots/memory-options.png',
     alt: 'Music preview and generation options',
   },
@@ -194,7 +207,7 @@ function ValuesSection() {
               </svg>
             </div>
             <strong>Read-only by default</strong>
-            <p>Your Immich library is never modified. Upload-back is opt-in.</p>
+            <p>Your originals are never modified. Upload-back is opt-in, and the only thing it ever trashes is its own superseded render of the same memory.</p>
           </div>
           <div className={styles.value}>
             <div className={styles.valueIcon}>
@@ -228,14 +241,14 @@ function CtaSection() {
           Your videos deserve better than a camera roll
         </Heading>
         <p className={styles.ctaDescription}>
-          Install in about 2 minutes. First memory in about 10 on a Mac or GPU box.
+          Three services, all of them yours. The self-hosting guide is one page, in order.
         </p>
         <div className={styles.heroCtas}>
           <Link className={styles.ctaPrimary} to="/docs/welcome/quick-start">
             Get started
           </Link>
-          <Link className={styles.ctaSecondary} to="/docs/deploy/installation/docker">
-            Docker setup
+          <Link className={styles.ctaSecondary} to="/docs/deploy/self-hosting">
+            Self-hosting guide
           </Link>
         </div>
       </div>
@@ -247,7 +260,7 @@ export default function Home(): ReactNode {
   return (
     <Layout
       title="Home"
-      description="Turn your Immich photo library into polished video memories. Scene-aware clips, animated maps, AI music, title screens. Self-hosted, no cloud required.">
+      description="Turn your Immich photo library into video memories. An editor reads the period and writes down why every picture is in. Animated maps, generated music, title screens. Self-hosted, no cloud API.">
       <HeroSection />
       <QuickstartSection />
       <ShowcaseSection />

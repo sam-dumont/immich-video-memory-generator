@@ -26,25 +26,26 @@ immich-memories years
 
 Lists the years that actually contain video, so you are not guessing at `--year`. On a library imported from old backups this is often surprising.
 
-## `analyze`: warm the cache deliberately
+## `analyze`: counts videos, nothing more
 
 ```bash
 immich-memories analyze --year 2024
-immich-memories analyze --year 2024 --force
 ```
 
-Runs analysis over a year and caches the results without generating anything. Generation does this on demand, so `analyze` buys you nothing except **control over when it happens**, which is the whole point on a NAS. A cold year is the expensive part of a run; doing it overnight means the memory you ask for in the morning is a warm run.
+It fetches the videos for a year and prints how many there are. It does not prepare annotations,
+it does not warm any bank, and it never looks at photos. `--force` is accepted and ignored.
 
-`--force` re-analyses videos that are already cached. You want it after changing something that would alter how clips are scored; without it, cached results are reused as-is.
+There is no command that pre-warms the editor's banks: only a cut fills them. On a NAS, run the
+cut you want overnight and let the second one be cheap.
 
-## `export-project`: a snapshot of what would be selected
+## `export-project`: a snapshot of what a scope contains
 
 ```bash
 immich-memories export-project --year 2024 --output project.json
 immich-memories export-project --year 2024 --person "Emma" --output project.json
 ```
 
-Writes a JSON file describing the assets in scope: the year, the person if you named one, and every clip with its asset id, filename, date and duration, each marked `selected: true`.
+Writes a JSON file describing the **videos** in scope (photos are not included): the year, the person if you named one, and every clip with its asset id, filename, date, duration and a full-length `segment`, each marked `selected: true` because no selection ran.
 
 :::note Nothing reads this file back
 There is no import command and no flag that consumes the JSON. `export-project` is a one-way

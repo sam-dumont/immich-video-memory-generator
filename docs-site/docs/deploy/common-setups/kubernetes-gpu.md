@@ -147,12 +147,10 @@ Default PVC sizes:
 There is no ConfigMap: connection details come from the Secret, everything else from
 `IMMICH_MEMORIES_*` env vars or the UI settings page (which writes `config.yaml` on the PVC).
 
-`cache.db` holds the analysis scores from all previous runs. This is the most valuable data: losing it means re-analyzing your entire library. Back it up:
-
-```bash
-kubectl exec -n immich-memories deployment/immich-memories -- \
-  immich-memories cache backup /app/output/cache-backup.db
-```
+`cache/annotations.sqlite` on the cache PVC holds every caption, head answer, detector verdict and
+reading the editor has banked. That is the valuable data: losing it means re-reading your whole
+library. Back up the PVC. Do not use `immich-memories cache backup` for this: it copies
+`cache.db`, which holds run history and the retired scorer's table, not the banks.
 
 ## Secrets management
 
@@ -185,18 +183,17 @@ Point your monitoring (Uptime Kuma, Prometheus blackbox exporter, etc.) at `/hea
 
 ## What works / what doesn't
 
-Same as the [Linux + NVIDIA](./linux-nvidia.md) setup: NVENC encoding, CUDA scene analysis, Taichi GPU titles (face detection is CPU on Linux). The Kubernetes layer adds scheduling and PVC-based storage, not scaling: the UI is single-replica.
+Same as the [Linux + NVIDIA](./linux-nvidia.md) setup: the card does NVENC encoding and Taichi GPU titles, and nothing else in this pod runs on it. The Kubernetes layer adds scheduling and PVC-based storage, not scaling: the UI is single-replica.
 
 ## Performance
 
-Same as bare-metal Linux + NVIDIA. Kubernetes overhead is negligible for this workload.
+Same as bare-metal Linux + NVIDIA.
 
-Do not size the cluster around the encoder. Once NVENC is doing the encode, the encode is not what
-you wait for: the run is dominated by preparation and the editor's readings (a caption, six heads
-and two detectors per picture, then the text model over the period). In the one run measured end to
-end ([NAS-Only](./nas-only.md#performance-expectations)) that column was 7.4 minutes of a 10 min 08 s
-run, and a GPU only shrinks the other 2.7. Immich API throughput and reader latency are the numbers
-to watch.
+Do not size the cluster around the encoder. Once NVENC is doing the encode, what you wait for is
+preparation and the editor's readings: a caption, six heads and two detectors per candidate
+picture, then the text model over the period. None of that runs on this card, and none of it has
+been [measured yet](./nas-only.md#preparation-not-measured-yet). Immich API throughput and reader
+latency are the numbers to watch.
 
 ## Further reading
 

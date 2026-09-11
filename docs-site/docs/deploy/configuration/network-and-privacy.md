@@ -19,9 +19,10 @@ is not listed here, [open an issue](https://github.com/sam-dumont/immich-video-m
 | `nominatim.openstreetmap.org` | trip detection and trip titles | real GPS of trip clusters (lat/lon → place name) | no (runs when trips are detected) | don't use the Trip type; see below |
 | `server.arcgisonline.com` (World Imagery) | satellite map title screens | tile x/y/z requests for the trip area and your home base | no | `title_screens.enabled: false` |
 | `cdn.jsdelivr.net` (Fontsource) | first map / GPU title render **only if** the configured font is not bundled or cached | nothing personal (a font file is downloaded) | n/a | keep the default bundled font (Montserrat); pre-place TTFs in `~/.immich-memories/fonts/` |
+| `editorial.preparation.caption_base_url` | the first cut over a period | **a 400 px JPEG of every eligible picture in the period**, plus a `/models` probe | no: selection requires it | point it at a server on your own network (the default is `localhost:8092`) |
 | `llm.base_url` | the editor's readings, mood detection, LLM titles | frame thumbnails, photos, and for titles: **person names, place names, dates, clip descriptions** | **yes** | leave `llm` unconfigured, or point it at a local model |
 | `ace_step.api_url` / `musicgen.base_url` | AI music via a remote API | mood/genre/tempo text; a generated WAV for stem separation (MusicGen path) | **yes** | in-process ACE-Step (`ace_step.mode: lib`), your own file with `--music`, or `--no-music` |
-| Hugging Face / torch hub | first use of ACE-Step, Demucs, the `editorial` extra's detectors | nothing personal (model weights are downloaded once) | features are opt-in | pre-download models; air-gapped installs should disable those features |
+| Hugging Face / torch hub, and `github.com` for the pinned encoder | `models fetch`, and first use of ACE-Step or Demucs | nothing personal (model weights are downloaded once) | features are opt-in | pre-download models; air-gapped installs should disable those features |
 | Your Apprise / ntfy targets | notifications | memory type, status, duration, output path, error tail; a JPEG frame if `attach_thumbnail: true` | **yes** | `notifications.enabled: false` (default) |
 | Your OIDC provider | login | standard OIDC flow (client id, PKCE, tokens) | **yes** | basic auth or trusted-header auth |
 

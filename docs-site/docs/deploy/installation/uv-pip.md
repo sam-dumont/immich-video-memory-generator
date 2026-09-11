@@ -38,7 +38,8 @@ To get a plain `immich-memories` command instead, install it as a tool: `uv tool
 Install optional features depending on your setup:
 
 ```bash
-# macOS: Apple Vision framework for face detection + GPU rendering
+# macOS: pyobjc bindings (Quartz, Metal, Vision) used for hardware probing.
+# Not enough to cut with on its own: see all-mac below.
 uv sync --extra mac
 
 # Bundled royalty-free music tracks
@@ -93,8 +94,12 @@ Works fine, just slower than uv. Use a virtual environment: don't install into y
 ### From PyPI
 
 ```bash
-pip install immich-memories
+pip install "immich-memories[editorial]"     # or [all-mac] on Apple Silicon
 ```
+
+A bare `pip install immich-memories` gives you the app and the render, but not the inference
+dependencies the six context heads and the two detectors need, so the first cut stops at the heads
+stage. Take the extra.
 
 ### From Source
 
@@ -149,8 +154,9 @@ skip these providers; missing required facts stop selection with an explicit set
 immich-memories preflight
 ```
 
-Every optional feature gets a row saying what it costs when its extra is absent, GPU title
-rendering among them. A missing runtime is a `WARNING`, never a silent no-op.
+GPU title rendering gets a row saying what it costs when Taichi is absent. The other extras do
+not yet, and preflight does not check the detector snapshots at all: the first cut does that, and
+stops with a count per missing producer.
 
 ## Optional System Dependencies
 

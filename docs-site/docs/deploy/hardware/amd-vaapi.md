@@ -20,9 +20,10 @@ VAAPI (Video Acceleration API) provides hardware-accelerated video encoding on A
 - Mesa VA drivers installed (`mesa-va-drivers` on Debian/Ubuntu, `libva-mesa-driver` on Arch)
 - FFmpeg built with VAAPI support
 
-**In the Docker image the drivers are already installed** (amd64 only). Images up to 0.76.1
-shipped FFmpeg with VAAPI compiled in but no VA-API driver at all, so `vaInitialize` failed with
-`-542398533` and every run silently encoded in software. If you are on an older image, upgrade.
+**The Docker image installs the drivers** (amd64 only), and that fix is not in a release yet.
+Every published image up to and including 0.76.1, the newest tag, ships FFmpeg with VAAPI compiled
+in and no VA-API driver at all, so `vaInitialize` fails with `-542398533` and every run silently
+encodes in software. Build from `main`, or wait for the next release.
 
 Check availability:
 
@@ -79,7 +80,6 @@ docker compose exec immich-memories vainfo
 
 - **Linux only**: VAAPI isn't available on macOS or Windows
 - **No face detection at all**: nothing here runs a detector; photo pans read Immich's boxes
-- Encoding quality varies by GPU generation. Newer RDNA chips produce better output than older GCN cards at the same bitrate.
 - A backend that encodes H.264 but not HEVC falls back to libx265 for the H.265 half only, and
   says so in the log. `vainfo` tells you which profiles have an encode entrypoint.
 

@@ -15,7 +15,7 @@ and everything it reads is kept.
 
 Before you start:
 
-- **Immich v2 or newer** with an API key (Account Settings > API Keys > New API Key: grant **All**, or at least read access to assets/people/albums/timeline/search plus asset upload + album create/update if you want upload-back)
+- **Immich v2 or v3** with an API key (Account Settings > API Keys > New API Key: grant **All**, or at least read access to assets/people/albums/timeline/search plus asset upload, album create/update and asset delete if you want upload-back). v4 is not accepted: the client checks the major version and refuses what it does not know
 - **Docker** or **Python 3.11+** installed
 - **Disk for the caches.** The shipped budgets are 10 GB of downloaded video (evicted after 7 days), 10 GB of Immich previews and 2 GB of clip previews, so plan for about 22 GB if you leave them alone, less if you lower them
 - Photos, Live Photos or videos in the period you want
@@ -64,8 +64,9 @@ the brief appears.
 ## Step 3: Pick a month
 
 Choose **Monthly Highlights** as the memory type and pick a month with a fair number of pictures
-in it. A month is the right first cut: one minute of output, and the reading is over in minutes
-rather than the hour a whole year can take on a cold library. Leave **Auto duration** on.
+in it. A month is the right first cut: one minute of output, and preparation is bounded by how many
+pictures the month holds rather than a year. Nobody has timed a cold pass on this route yet, so
+start small enough that you can watch it. Leave **Auto duration** on.
 
 ## Step 4: Cut
 

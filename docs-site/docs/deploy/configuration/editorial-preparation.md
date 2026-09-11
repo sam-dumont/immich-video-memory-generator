@@ -96,8 +96,9 @@ server.
 
 A separate `detector_python` needs `timm`, `torch`, `huggingface-hub`, `onnxruntime`, `numpy`
 and `Pillow`. The worker ships with the main package and runs without importing the app's UI
-or configuration dependencies. The accepted detector environment used timm 1.0.29, Torch
-2.13.0, Hugging Face Hub 1.29.0 and ONNX Runtime 1.29.0.
+or configuration dependencies. The versions `uv.lock` currently pins are timm 1.0.29, Torch
+2.14.0, Hugging Face Hub 1.30.0 and ONNX Runtime 1.28.0; read the lock rather than this sentence
+if they matter to you.
 
 ## Compact captions
 
