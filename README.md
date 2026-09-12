@@ -53,7 +53,21 @@ docker compose exec immich-memories immich-memories preflight      # Immich, mod
 # then open http://localhost:8080
 ```
 
-The compose file publishes port 8080 on localhost only, and authentication is off by default. The app holds an API key to your whole library, so turn on [authentication](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/configuration/authentication) before you expose the port. Immich v2 and v3 are detected at runtime.
+The compose file publishes port 8080 on localhost only, and authentication is disabled by default. The UI is single-user, single-replica: run one instance. The app holds an API key to your whole library, so turn on [authentication](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/configuration/authentication) before you expose the port.
+
+### Supported Immich Versions
+
+Immich v2 and v3, detected at runtime:
+
+```yaml
+immich:
+  api_version: auto  # auto | v2 | v3
+```
+
+Leave this on `auto`. The app detects the server major version and uses the matching API contract;
+you do not choose a version for each run. The explicit `v2` and `v3` values are manual
+troubleshooting overrides: escape hatches for proxies or unusual deployments that hide or rewrite
+the version endpoint. They force that contract, so don't use them as upgrade flags.
 
 Without Docker, on Python 3.11 or later:
 
