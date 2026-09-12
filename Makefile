@@ -821,7 +821,7 @@ demo-music:  ## Generate 12 ACE-Step candidate tracks for demo video
 demo-cli-sim:  ## Run CLI demo simulation (no recording, for iteration)
 	uv run python scripts/simulate-cli-demo.py
 
-demo-cli:  ## Record CLI demo via VHS → GIF + MP4
+demo-cli:  ## Record the CLI demo via VHS → docs-site/remotion/public/cli-demo.mp4 (the Remotion CliScene plays it)
 	vhs docs-site/scripts/demo-cli.tape
 
 demo-output:  ## Cut the demo's output clip + poster on the hermetic launch
