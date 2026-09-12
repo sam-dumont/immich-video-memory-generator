@@ -50,7 +50,7 @@ immich:
 Get your API key from Immich: **Account Settings > API Keys > New API Key**. When Immich asks which permissions to grant, pick **All**. For a minimal key: read access to assets, people, albums, timeline and search, plus **asset upload**, **album create/update** and **asset delete** if you turn on upload-back to Immich. Your originals are never touched; the delete permission is for one narrow case, where a re-render of the same memory trashes the copy it replaces in its own album.
 
 Then stand up what the editor reads with: three services (this app, a vision reader, a caption
-server) and two model files on disk (the pinned ONNX encoder and two detector snapshots, both
+server) and three model files on disk (the pinned ONNX encoder, the pinned sensitive-content ONNX export and the document classifier's snapshot, all
 fetched by `immich-memories models fetch`). The [self-hosting guide](../deploy/self-hosting.md)
 walks all of it in order. A cut with one of them missing stops and says which.
 
