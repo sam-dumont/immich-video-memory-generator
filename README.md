@@ -20,7 +20,7 @@
     <img src="https://sam-dumont.github.io/immich-video-memory-generator/img/demo-hero.gif" alt="Immich Memories demo: the brief, the cut and the story it produced" width="800">
   </a>
   <br/>
-  <sub><a href="https://sam-dumont.github.io/immich-video-memory-generator/docs/welcome/overview">▶ Watch the 60-second demo</a> · <a href="https://sam-dumont.github.io/immich-video-memory-generator/docs/create/first-memory">Make your first memory</a> · <a href="https://sam-dumont.github.io/immich-video-memory-generator/">Full documentation</a></sub>
+  <sub><a href="https://sam-dumont.github.io/immich-video-memory-generator/docs/welcome/overview">▶ Watch the 45-second demo</a> · <a href="https://sam-dumont.github.io/immich-video-memory-generator/docs/create/first-memory">Make your first memory</a> · <a href="https://sam-dumont.github.io/immich-video-memory-generator/">Full documentation</a></sub>
 </p>
 
 You left Google Photos for Immich and lost the year-in-review videos. This brings them back, on your hardware.
@@ -36,7 +36,7 @@ The editor has two independent settings: who reads the period, and how much imag
 | Setup | What you need | What you get |
 |---|---|---|
 | **Rules only** (`reader: rules`, `tier: metadata_only`) | The app alone. A 4-core NAS is enough | All ten memory types from dates, places, favourites and people. No model, $0 in API fees. Measured on a Celeron NAS: 279 s for a month cold, 11 s warm. Simpler cuts: it can skip an occasion or spend time on a mundane object, so look before you share |
-| **Rules plus classifiers** (`tier: no_captions`) | Same box, plus about 500 MB of pinned ONNX models fetched with one command | The sensitive-content and document detectors, so the family-viewing gate has evidence. First pass over 10,793 pictures on a Celeron: 3 h 41 min, then banked |
+| **Rules plus classifiers** (`tier: no_captions`) | Same box, plus about 500 MB of pinned ONNX models fetched with one command | The sensitive-content and document detectors, so the family-viewing gate has evidence. First pass over a library of about ten thousand pictures on a Celeron: 3 h 41 min, then banked |
 | **Model reader** (`reader: model`) | A machine that holds a vision model with a 32k context. Graded on a 30B model at 4-bit, about 17 GB resident, on an Apple Silicon Mac with 32 GB | The full editor: it reads the period as a story, looks at the pictures it needs to, and argues for each one. Add the caption server (1 to 2 GB) for a description under every picture; that first pass costs 30 s a picture |
 
 The reader and the caption server can live on another machine than the app, which needs 2 to 4 GB and renders on CPU. Measured timings, what each degraded mode loses, and what a hosted reader costs are on [Running modes](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/running-modes).
