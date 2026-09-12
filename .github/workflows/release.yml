@@ -21,6 +21,11 @@ on:
           - patch
           - minor
           - major
+      inference_only:
+        description: 'Build and push only the inference images, tagged by commit'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -505,6 +510,123 @@ jobs:
   # into the image, NVENC selected on GPU-less hosts) were image-only problems
   # the unit suite and native E2E cannot see. One CPU-only generation inside
   # the exact amd64 image, against the hermetic fake Immich, gates the tags.
+  inference-build:
+    name: Build Inference Image (${{ matrix.device }}, ${{ matrix.platform }})
+    needs: [analyze, release]
+    # Also runs on a manual dispatch with no release, so a cuda image can be put
+    # in front of a real GPU before anyone cuts a version. The tag is then the
+    # commit rather than a version, so a test build can never shadow a release.
+    if: >-
+      inputs.dry_run != 'true' &&
+      (needs.analyze.outputs.should_release == 'true' || inputs.inference_only == 'true')
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # cpu ships on both architectures a NAS or a laptop might be; cuda is
+        # amd64 only, because the CUDA runtime base this builds on is.
+        include:
+          - runner: ubuntu-latest
+            platform: linux/amd64
+            device: cpu
+          - runner: ubuntu-24.04-arm
+            platform: linux/arm64
+            device: cpu
+          - runner: ubuntu-latest
+            platform: linux/amd64
+            device: cuda
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7
+        with:
+          context: .
+          file: ./docker/Dockerfile.inference
+          push: true
+          platforms: ${{ matrix.platform }}
+          build-args: |
+            DEVICE=${{ matrix.device }}
+            APP_VERSION=${{ needs.analyze.outputs.next_version }}
+            VCS_REF=${{ github.sha }}
+          cache-from: type=gha,scope=inference-${{ matrix.device }}-${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=inference-${{ matrix.device }}-${{ matrix.platform }}
+          outputs: type=image,name=ghcr.io/${{ github.repository }}/inference,push-by-digest=true,name-canonical=true
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${{ steps.build.outputs.digest }}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: inference-digests-${{ matrix.device }}-${{ strategy.job-index }}
+          path: /tmp/digests/*
+
+  inference-manifest:
+    name: Create Inference Manifest
+    needs: [analyze, inference-build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          path: /tmp/digests
+          pattern: inference-digests-*
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Two manifests, not one: cpu spans both architectures, cuda is a separate
+      # tag because a GPU image is a deliberate choice rather than a fallback.
+      - name: Create and push manifests
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}/inference
+          VERSION: ${{ needs.analyze.outputs.next_version }}
+          INFERENCE_ONLY: ${{ inputs.inference_only }}
+        run: |
+          # A dispatch build has no version to claim, so it is tagged by commit
+          # and never moves `latest`. Only a release does that.
+          if [ "$INFERENCE_ONLY" = "true" ]; then
+            base="sha-${GITHUB_SHA:0:12}"
+            cpu_tags="-t $IMAGE:$base"
+            cuda_tags="-t $IMAGE:$base-cuda"
+          else
+            cpu_tags="-t $IMAGE:$VERSION -t $IMAGE:latest"
+            cuda_tags="-t $IMAGE:$VERSION-cuda -t $IMAGE:latest-cuda"
+          fi
+          cpu=$(find /tmp/digests -path '*-cpu-*' -type f -exec basename {} \; | sed "s|^|$IMAGE@|" | tr '\n' ' ')
+          cuda=$(find /tmp/digests -path '*-cuda-*' -type f -exec basename {} \; | sed "s|^|$IMAGE@|" | tr '\n' ' ')
+          docker buildx imagetools create $cpu_tags $cpu
+          docker buildx imagetools create $cuda_tags $cuda
+
   docker-smoke:
     name: Smoke Test Docker Image
     needs: [analyze, docker-build]

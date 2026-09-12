@@ -1,0 +1,31 @@
+# Attaching hardware to the inference service, the way immich's hwaccel.ml.yml does.
+#
+# The inference service in docker-compose.yml extends one of these. Switch
+# backend by changing the `service:` it names, and the image tag with it:
+#
+#   extends:
+#     file: docker/hwaccel.inference.yml
+#     service: cuda          # cpu by default
+#
+# `cuda` also needs the `-cuda` image: set INFERENCE_TAG=latest-cuda (or
+# X.Y.Z-cuda). The cpu image has no CUDA provider in it and will not grow one
+# because a device was reserved.
+#
+# Not shipped: openvino, armnn and rocm. A 12-EU Gemini Lake iGPU is not worth
+# the OpenVINO engineering, per-SoC Mali driver binding cannot be tested here,
+# and there is no AMD card to test ROCm on.
+#
+# Quick Sync, VAAPI and NVENC decode, scale and encode. They do not run
+# inference — that stays true everywhere in these docs.
+services:
+  cpu: {}
+
+  cuda:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities:
+                - gpu

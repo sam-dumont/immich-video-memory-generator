@@ -88,5 +88,44 @@ services:
     # For 4K encoding, increase /tmp to 8G or remove the tmpfs entry
     # and let the container write to disk.
 
+  # ── Optional: the inference service ───────────────────────────────────
+  # The encoder, the six public heads and the two detectors behind one port,
+  # with their own device variant — the shape immich-machine-learning has.
+  # Behind a profile because the app still runs those producers in process and
+  # has no setting yet to point at this service, so starting it by default
+  # would download models nothing asks for:
+  #
+  #   docker compose --profile inference up -d
+  #   curl -s localhost:8092/health
+  #
+  # For a GPU: change `service: cpu` to `service: cuda` below and set
+  # INFERENCE_TAG=latest-cuda. /health then names CUDAExecutionProvider.
+  immich-memories-inference:
+    image: ghcr.io/sam-dumont/immich-video-memory-generator-inference:${INFERENCE_TAG:-latest}
+    container_name: immich-memories-inference
+    profiles:
+      - inference
+    extends:
+      file: docker/hwaccel.inference.yml
+      service: cpu
+    # Localhost only, as with the UI. The service holds no credential, but it
+    # will answer anything that reaches it.
+    ports:
+      - "127.0.0.1:8092:8092"
+    volumes:
+      - immich-memories-model-cache:/cache
+    environment:
+      # A cold cache needs to fetch the two detector snapshots (37 MB) once.
+      IMMICH_MEMORIES_INFERENCE_ALLOW_MODEL_DOWNLOADS: "true"
+      # Drop the weights after five idle minutes. The process stays up.
+      IMMICH_MEMORIES_INFERENCE_IDLE_UNLOAD_SECONDS: "300"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: "4"
+
 volumes:
   immich-memories-config:
+  immich-memories-model-cache:

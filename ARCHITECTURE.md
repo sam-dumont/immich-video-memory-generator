@@ -18,6 +18,18 @@ attempt is durable under `<cache>/editorial-runs/<key>/attempts/<id>/`
 it reads live in `<cache>/annotations.sqlite` (`store/`). The design is summarised in
 `docs/designs/2026-09-10-story-first-selection.md`.
 
+## Two Trees
+
+`src/immich_memories/` is the app. `services/inference/immich_memories_inference/` is a second
+top-level package — the inference service, which serves the encoder, the six public heads and the
+two detectors over HTTP (`/ping`, `/health`, `/facts`) in its own image with its own device
+variant (`docker/Dockerfile.inference`, `docker/hwaccel.inference.yml`). It imports the app's
+triage engine and detector module rather than reimplementing them, which is what keeps a fact
+computed there identical to one computed in process; two import-linter contracts hold the
+direction of that dependency and keep the UI and CLI out of it. The service is not a distribution:
+the image puts it on `PYTHONPATH`, and `pythonpath` in `[tool.pytest.ini_options]` does the same
+for the suite. Design: `docs/implementation-plans/2026-09-11-phase5-inference-service.md`.
+
 ## Build System
 
 The **Makefile** is the single source of truth for all commands:
