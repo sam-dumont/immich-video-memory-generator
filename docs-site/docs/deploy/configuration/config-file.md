@@ -74,8 +74,8 @@ one.
 ## Tiers
 
 `llm`, `ace_step` and the other tuning sections are Tier 2. When the app writes
-the file it groups them under `advanced:`; when reading, both placements work, and if the same key
-appears in both the top-level value wins.
+the file it groups them under `advanced:`; when reading, both placements work and are merged setting by
+setting; if the same setting appears in both, the top-level value wins.
 
 ```yaml
 advanced:
