@@ -365,6 +365,11 @@ def _build_ui_editorial_context(
         for source in full_sources
         if _editorial_source_id(source) not in reviewed_ids
     )
+    # A tick the last cut did not make is a picture the owner wants back in (#778).
+    previous_cut = state.previous_cut_asset_ids
+    owner_required_asset_ids = (
+        tuple(sorted(reviewed_ids - previous_cut)) if previous_cut is not None else ()
+    )
     key = ui_cut_key(state)
     person_match: Literal["and", "or"] = "or" if state.person_match == "or" else "and"
     return EditorialRunContext(
@@ -389,6 +394,7 @@ def _build_ui_editorial_context(
         album_ref=str(state.album_id or "") if product == "album" else None,
         album_sources=full_sources if product == "album" else (),
         owner_excluded_asset_ids=owner_excluded_asset_ids,
+        owner_required_asset_ids=owner_required_asset_ids,
         special_event_id=(
             state.memory_preset_params.get("event_id") if product == "special_day" else None
         ),
@@ -421,7 +427,9 @@ def _adopt_result(state: Any, result: Any) -> None:
 
         state.timeline_plan = read_editorial_timeline(state.editorial_render_timing)
     state.editorial_selections = result.editorial_selections
+    # The ticks now show the cut; the next round of ticks is read against it.
     state.selected_clip_ids = {c.asset.id for c in result.selected_clips}
+    state.previous_cut_asset_ids = frozenset(state.selected_clip_ids)
     state.clip_segments = result.clip_segments
 
     # Photos are now in selected_clips as IMAGE-type assets

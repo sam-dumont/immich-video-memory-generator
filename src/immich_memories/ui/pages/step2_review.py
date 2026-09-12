@@ -29,7 +29,11 @@ from immich_memories.ui.pages.clip_pipeline import render_pipeline_summary
 from immich_memories.ui.pages.clip_review import _render_review_selected_clips
 from immich_memories.ui.pages.memory_duration import duration_label, set_auto, set_manual_minutes
 from immich_memories.ui.pages.memory_run import CUT_ALREADY_RUNNING, arm_cut
-from immich_memories.ui.pages.step2_loading import _load_clips, ensure_caches
+from immich_memories.ui.pages.step2_loading import (
+    _load_clips,
+    _set_initial_selection,
+    ensure_caches,
+)
 from immich_memories.ui.state import AppState, get_app_state
 
 logger = logging.getLogger(__name__)
@@ -41,12 +45,29 @@ logger = logging.getLogger(__name__)
 
 def _start_over_selection(state: AppState) -> None:
     """Discard one editorial result while keeping the loaded source library."""
+    _forget_result(state)
+    state.selected_clip_ids = set()
+    state.previous_cut_asset_ids = None
+
+
+def reset_for_recut(state: AppState) -> None:
+    """Discard the result but keep the ticks: they are the owner's instructions for the next cut.
+
+    A pool nobody ticked (a recovered session, a cleared selection) is ticked whole again,
+    so "Cut again" never runs over an empty pool (#778).
+    """
+    _forget_result(state)
+    if not state.selected_clip_ids and not state.selected_photo_ids:
+        _set_initial_selection(state.clips, state)
+        state.selected_photo_ids = {asset.id for asset in state.photo_assets}
+
+
+def _forget_result(state: AppState) -> None:
     state.pipeline_result = None
     state.pipeline_selected_clips = []
     state.editorial_selections = ()
     state.editorial_attempt_dir = None
     state.review_selected_mode = False
-    state.selected_clip_ids = set()
     state.clip_segments = {}
 
 
@@ -105,6 +126,7 @@ def _render_step2_header(state) -> bool:
         return True
 
     if state.pipeline_result:
+        # The pool stays below, with the cut's ticks: untick to leave out, tick to keep in.
         render_pipeline_summary(state.pipeline_result)
 
         with ui.row().classes("w-full gap-4 mt-4"):
@@ -114,13 +136,20 @@ def _render_step2_header(state) -> bool:
                 state.review_selected_mode = True
                 ui.navigate.to("/step2")
 
+            def cut_again():
+                if not arm_cut(state, before=lambda: reset_for_recut(state)):
+                    ui.notify(CUT_ALREADY_RUNNING, type="warning")
+                    return
+                ui.navigate.to("/")
+
             def start_over():
                 _start_over_selection(state)
                 ui.navigate.to("/step2")
 
+            im_button("Cut again", variant="primary", on_click=cut_again, icon="refresh")
             im_button(
                 "Review & Refine Selected Clips",
-                variant="primary",
+                variant="secondary",
                 on_click=review_clips,
                 icon="edit",
             )
@@ -128,9 +157,8 @@ def _render_step2_header(state) -> bool:
                 "Start Over (Select Different Clips)",
                 variant="secondary",
                 on_click=start_over,
-                icon="refresh",
+                icon="restart_alt",
             )
-        return True
 
     # Check if in review mode
     if state.review_selected_mode and state.selected_clip_ids:
@@ -208,7 +236,8 @@ def _render_step2_controls(state, clips: list[VideoClipInfo]) -> None:
             )
 
         def start_generate():
-            if not arm_cut(state):
+            before = (lambda: reset_for_recut(state)) if state.pipeline_result else None
+            if not arm_cut(state, before=before):
                 ui.notify(CUT_ALREADY_RUNNING, type="warning")
                 return
             ui.navigate.to("/")

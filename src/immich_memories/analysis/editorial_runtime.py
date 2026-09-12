@@ -103,6 +103,7 @@ class EditorialRunContext:
     event_admission: SpecialEventAdmission | None = None
     album_sources: tuple[Asset | VideoClipInfo, ...] = ()
     owner_excluded_asset_ids: tuple[str, ...] = ()
+    owner_required_asset_ids: tuple[str, ...] = ()
     target_source: str = "runtime"
     base_brief: str | None = None
     motion_outcome_replay: MotionOutcomeReplay | None = None
@@ -616,6 +617,7 @@ def build_editorial_planner(
     selection_request = EditorialSelectionRequest(
         scope=scope,
         owner_excluded_asset_ids=context.owner_excluded_asset_ids,
+        owner_required_asset_ids=context.owner_required_asset_ids,
     )
 
     source_snapshot: tuple[Asset | VideoClipInfo, ...] | None = (

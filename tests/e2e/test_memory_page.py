@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+from pathlib import Path
 
 import pytest
 from playwright.sync_api import Page, expect
@@ -189,3 +191,66 @@ def test_the_story_reads_in_reader_words_and_hides_the_answer_schema_behind_deta
 
     expect(lead.get_by_text("dominant", exact=True)).to_be_visible()
     expect(lead.get_by_text(_STANDINGS).first).to_be_visible()
+
+
+def _latest_request(launch_workspace) -> dict:
+    return json.loads((_newest_attempt(launch_workspace) / "status.private.json").read_text())[
+        "request"
+    ]
+
+
+def _evidence(page: Page, name: str) -> None:
+    """Save a walk-through frame when UX_EVIDENCE_DIR is set (the owner's browser-tested rule)."""
+    target = os.environ.get("UX_EVIDENCE_DIR")
+    if target:
+        Path(target).mkdir(parents=True, exist_ok=True)
+        page.screenshot(path=str(Path(target) / f"{name}.png"), full_page=True)
+
+
+def test_a_tick_survives_the_cut_and_cut_again_keeps_the_pool(
+    page: Page, launch_app_url: str, launch_workspace
+) -> None:
+    """Untick one picture, cut again: it is out. Tick it back, cut again: it is required, and in."""
+    _brief_for_june(page, launch_app_url)
+    _evidence(page, "01-brief")
+    page.get_by_role("button", name="Cut", exact=True).click()
+    expect(page.get_by_text("3 stories, 6 pictures", exact=True)).to_be_visible(timeout=120_000)
+    _evidence(page, "02-first-cut-six-pictures")
+
+    # The pool stays reachable after a cut, with the cut's own ticks.
+    page.get_by_role("button", name="Review the pool", exact=True).click()
+    boxes = page.get_by_role("checkbox", name="Include")
+    expect(boxes).to_have_count(6)
+    for index in range(6):
+        expect(boxes.nth(index)).to_be_checked()
+    _evidence(page, "03-pool-after-cut-all-ticked")
+
+    # A NiceGUI checkbox flips after the server round trip: click, then wait for the state.
+    boxes.first.click()
+    expect(boxes.first).not_to_be_checked()
+    _evidence(page, "04-pool-one-unticked")
+    page.get_by_role("button", name="Cut again", exact=True).click()
+    expect(page.get_by_text("3 stories, 5 pictures", exact=True)).to_be_visible(timeout=120_000)
+    _evidence(page, "05-second-cut-five-pictures")
+    request = _latest_request(launch_workspace)
+    assert len(request["requested_assets"]) == 5
+    assert request["required_assets"] == []
+
+    # Tick the one the cut left out: it is required now, and the next cut carries it.
+    page.get_by_role("button", name="Review the pool", exact=True).click()
+    boxes = page.get_by_role("checkbox", name="Include")
+    expect(boxes).to_have_count(6)
+    expect(boxes.first).not_to_be_checked()
+    boxes.first.click()
+    expect(boxes.first).to_be_checked()
+    _evidence(page, "06-pool-ticked-back-in")
+    page.get_by_role("button", name="Cut again", exact=True).click()
+    expect(page.get_by_text("3 stories, 6 pictures", exact=True)).to_be_visible(timeout=120_000)
+    _evidence(page, "07-third-cut-six-pictures")
+    request = _latest_request(launch_workspace)
+    assert len(request["required_assets"]) == 1
+    assert request["required_assets"][0] in request["requested_assets"]
+
+    page.get_by_role("button", name="Export", exact=True).click()
+    expect(page.get_by_text("Preview & Export", exact=True).first).to_be_visible()
+    _evidence(page, "08-export-page")
