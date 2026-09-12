@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import base64
+import sys
 from io import BytesIO
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -90,13 +92,25 @@ def test_ping_answers_without_loading_anything():
     assert loads == []
 
 
-def test_health_names_the_provider_a_session_would_open_on():
+@pytest.mark.parametrize(
+    ("available", "expected"),
+    [(("CPUExecutionProvider",), "CPUExecutionProvider"), (None, None)],
+)
+def test_health_names_the_provider_a_session_would_open_on(monkeypatch, available, expected):
+    # The optional ONNX package is an environment boundary. Health must work
+    # both in the service image and in a lightweight install without it.
+    backend = (
+        SimpleNamespace(get_available_providers=lambda: list(available))
+        if available is not None
+        else None
+    )
+    monkeypatch.setitem(sys.modules, "onnxruntime", backend)
     runtime = ProducerRuntime({HEADS: lambda: CountingProducer([])})
 
     with service(runtime, provider="cpu") as client:
         body = client.get("/health").json()
 
-    assert body["provider"] == "CPUExecutionProvider"
+    assert body["provider"] == expected
     assert body["producers"][HEADS] == {"loaded": False, "versions": None, "encoder_key": None}
     assert body["encoder_key"] is None
 
