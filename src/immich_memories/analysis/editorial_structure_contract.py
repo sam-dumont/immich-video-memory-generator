@@ -148,6 +148,13 @@ class StructurePlanningInput:
             raise ValueError("Live motion request must be boolean")
         if self.audience not in {"sendable", "family"}:
             raise ValueError("unknown structure export audience")
+        if self.audience == "sendable" and not self.config.editorial.preparation.demands_models:
+            # Refusing outright, rather than clearing what nothing looked at. The gate
+            # may only tighten, and this tier has no detector evidence to tighten on.
+            raise ValueError(
+                "a sendable export needs the detector evidence the "
+                f"{self.config.editorial.preparation.tier} preparation tier does not produce"
+            )
 
 
 @dataclass(frozen=True)

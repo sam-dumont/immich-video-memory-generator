@@ -38,6 +38,13 @@ def test_editorial_config_is_available_from_the_public_config_module() -> None:
     assert PublicEditorialConfig is EditorialConfig
 
 
+def test_saved_marqo_version_moves_to_the_current_onnx_producer() -> None:
+    saved = {"nsfw_marqo": "det-v1", "activity": "public-v1"}
+    config = EditorialConfig(head_versions=saved)
+    assert config.head_versions == {"nsfw_marqo": "det-v2", "activity": "public-v1"}
+    assert saved["nsfw_marqo"] == "det-v1"
+
+
 def test_obsolete_route_flags_cannot_choose_another_selector() -> None:
     config = EditorialConfig(enabled=False, story_first=False)
     assert config.model_dump() == EditorialConfig().model_dump()

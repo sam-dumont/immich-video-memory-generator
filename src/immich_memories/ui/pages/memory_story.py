@@ -102,6 +102,8 @@ def render_story(view: StoryView, warning: str | None = None) -> None:
     ui.label(view.thesis or "The editor left no thesis for this cut.").classes("text-lg").style(
         "color: var(--im-text)"
     )
+    if view.preparation:
+        ui.label(view.preparation).classes("text-sm mt-1").style("color: var(--im-text-secondary)")
     if view.duration is not None:
         ui.label(view.duration.line).classes("text-sm mt-1").style(
             "color: var(--im-text-secondary)"

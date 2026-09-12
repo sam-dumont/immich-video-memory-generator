@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import closing
 from dataclasses import asdict, dataclass, replace
@@ -71,6 +72,8 @@ if TYPE_CHECKING:
     from immich_memories.api.sync_client import SyncImmichClient
     from immich_memories.cache.thumbnail_cache import ThumbnailCache
     from immich_memories.config_loader import Config
+
+logger = logging.getLogger(__name__)
 
 _Row = TypeVar("_Row")
 
@@ -447,6 +450,23 @@ class _AnnotationReadings:
         )
 
 
+def _log_preparation(result: Any) -> None:
+    """Name the tier and what it cost, in the terminal, on the machine that paid for it.
+
+    A wall-clock total cannot tell a self-hoster which producer their box cannot
+    afford, and the artifact holding the same numbers is inside the attempt tree.
+    """
+    rates = " ".join(
+        f"{stage} {seconds:.3f}s/pic" for stage, seconds in sorted(result.stage_rates().items())
+    )
+    logger.info(
+        "preparation tier=%s: %d pictures requested%s",
+        result.tier,
+        result.requested,
+        f"; {rates}" if rates else "; nothing to produce",
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class _EvidencePreparation:
     """Produce every annotation the story-first read needs, then gate screen documents."""
@@ -459,9 +479,14 @@ class _EvidencePreparation:
 
     def __call__(self, prepared: Any, on_stage: Callable[[str], None] | None) -> dict[str, Any]:
         result = self._produce(prepared, on_stage)
+        _log_preparation(result)
         write_secret_file(
             self.artifact_dir() / "preparation.private.json",
-            json.dumps(asdict(result), ensure_ascii=False, indent=2),
+            json.dumps(
+                asdict(result) | {"seconds_per_picture": result.stage_rates()},
+                ensure_ascii=False,
+                indent=2,
+            ),
         )
         if not result.complete:
             missing = ", ".join(

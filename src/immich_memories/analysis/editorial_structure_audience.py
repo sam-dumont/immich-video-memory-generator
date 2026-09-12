@@ -30,9 +30,11 @@ class AudienceGate:
         flag_rows,
         lines,
         bank_path: Path,
+        check_audience=_share.check_audience,
     ) -> None:
         self._judge = judge
         self.audience = audience
+        self._check_audience = check_audience
         self._pictures = picture_evidence
         self._flag_rows = flag_rows
         self._lines = lines
@@ -50,7 +52,7 @@ class AudienceGate:
             self.bank[key] = (
                 terminal
                 if terminal is not None
-                else _share.check_audience(
+                else self._check_audience(
                     self._judge, evidence, f"shareability-{len(self.bank) + 1:02d}"
                 )
             )

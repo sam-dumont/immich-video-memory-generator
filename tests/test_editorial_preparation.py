@@ -102,11 +102,29 @@ def run(tmp_path, **kwargs):
         assets=kwargs.pop("assets", [asset("aa1"), asset("bb2")]),
         store_path=tmp_path / "annotations.sqlite",
         thumbnail_cache=kwargs.pop("thumbnail_cache", tmp_path / "previews"),
-        preparation_config=EditorialPreparationConfig(),
+        preparation_config=kwargs.pop("preparation_config", EditorialPreparationConfig()),
         triage_config=TriageConfig(),
         head_versions=kwargs.pop("head_versions", EditorialConfig().head_versions),
         **kwargs,
     )
+
+
+def _refuse(producer):
+    def refuse(**_):
+        pytest.fail(f"{producer} ran under a tier that excludes it")
+
+    return refuse
+
+
+def refusing_ports(*absent):
+    """Producers a tier must not reach fail the test the moment they are called."""
+    calls = []
+    real = successful_ports(calls)
+    seams = {
+        name: _refuse(name) if name in absent else getattr(real, name)
+        for name in ("captions", "heads", "detectors")
+    }
+    return PreparationPorts(**seams), calls
 
 
 def test_cold_full_source_then_warm_has_zero_provider_calls(tmp_path):
@@ -448,3 +466,75 @@ class TestTheThumbnailBudgetMeetsThePreparedScope:
 
         assert len(caplog.records) == 1
         assert "thumbnail_cache_max_size_mb" in caplog.records[0].getMessage()
+
+
+def test_the_no_captions_tier_finishes_without_a_caption_server(tmp_path):
+    """The NAS tier: every producer the audience gate reads, and no caption request."""
+    ports, calls = refusing_ports("captions")
+
+    result = run(
+        tmp_path,
+        ports=ports,
+        fetch_preview=lambda _: preview(),
+        preparation_config=EditorialPreparationConfig(tier="no_captions"),
+    )
+
+    assert result.complete
+    assert result.tier == "no_captions"
+    assert [stage for stage, _ in calls] == ["heads", "detectors"]
+    assert not [key for key in result.missing_by_producer if key.startswith("description:")]
+
+
+def test_the_metadata_only_tier_finishes_with_no_onnx_and_no_captions(tmp_path):
+    ports, calls = refusing_ports("captions", "heads", "detectors")
+
+    result = run(
+        tmp_path,
+        ports=ports,
+        fetch_preview=lambda _: preview(),
+        preparation_config=EditorialPreparationConfig(tier="metadata_only"),
+    )
+
+    assert result.complete
+    assert calls == []
+    assert not result.missing_by_producer and not result.failures
+
+
+def test_an_undemanded_producer_is_never_reported_missing(tmp_path):
+    """A tier that does not ask for captions cannot be blocked by their absence."""
+    full = run(
+        tmp_path / "full",
+        ports=PreparationPorts(
+            captions=lambda **_: {},
+            heads=lambda **_: None,
+            detectors=lambda **_: {},
+        ),
+        fetch_preview=lambda _: preview(),
+    )
+    reduced = run(
+        tmp_path / "reduced",
+        ports=PreparationPorts(
+            captions=lambda **_: {}, heads=lambda **_: None, detectors=lambda **_: {}
+        ),
+        fetch_preview=lambda _: preview(),
+        preparation_config=EditorialPreparationConfig(tier="metadata_only"),
+    )
+
+    assert not full.complete
+    assert set(full.missing_by_producer) > set(reduced.missing_by_producer)
+    assert reduced.complete
+
+
+def test_a_run_reports_what_each_stage_cost_and_how_many_pictures_it_saw(tmp_path):
+    """A wall-clock total cannot size a tier; seconds per producer per picture can."""
+    result = run(
+        tmp_path,
+        ports=successful_ports([]),
+        fetch_preview=lambda _: preview(),
+        preparation_config=EditorialPreparationConfig(tier="no_captions"),
+    )
+
+    rates = result.stage_rates()
+    assert result.pictures_by_stage["previews"] == 2
+    assert set(rates) == {"previews", "pixels", "public_heads", "detectors"}
+    assert all(seconds >= 0 for seconds in rates.values())

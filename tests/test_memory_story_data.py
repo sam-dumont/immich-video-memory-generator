@@ -153,3 +153,17 @@ def test_a_weight_with_no_reader_word_shows_no_badge_at_all() -> None:
 
     unbadged = next(story for story in story_view_from_plan(plan).stories if story.key == "S0002")
     assert (unbadged.weight, unbadged.weight_label) == ("none", "")
+
+
+def test_a_reduced_preparation_tier_says_so_under_the_thesis(tmp_path: Path) -> None:
+    """The owner's ruling: named tiers, stated on the Memory page, never inferred."""
+    from immich_memories.ui.pages.memory_story_data import preparation_note
+
+    (tmp_path / "plan.private.json").write_text(json.dumps(_plan()))
+    assert read_story_view(tmp_path).preparation == ""
+
+    (tmp_path / "preparation.private.json").write_text(json.dumps({"tier": "no_captions"}))
+    assert "classified, not read" in read_story_view(tmp_path).preparation
+
+    (tmp_path / "preparation.private.json").write_text(json.dumps({"tier": "full"}))
+    assert preparation_note(tmp_path) == ""

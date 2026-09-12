@@ -191,13 +191,104 @@ def test_evidence_drift_reports_membership_instead_of_guessing_at_a_missing_epis
     _hashes(tmp_path / "new", [("g2", "k2", {"b": "h-b"})])
 
     assert "1 new" in harness.evidence_drift(tmp_path / "new", tmp_path / "old")
-    assert harness.evidence_drift(tmp_path / "new", tmp_path / "absent") == ""
+
+
+def test_evidence_drift_says_which_side_it_could_not_read_instead_of_nothing(harness, tmp_path):
+    _hashes(tmp_path / "new", [("g1", "k1", {"b": "h-b"})])
+    (tmp_path / "old").mkdir()
+
+    gone = harness.evidence_drift(tmp_path / "new", tmp_path / "absent")
+    hashless = harness.evidence_drift(tmp_path / "new", tmp_path / "old")
+
+    assert gone == "no evidence diff: the baseline attempt is gone from disk"
+    assert hashless == f"no evidence diff: the baseline predates {harness.EVIDENCE_HASHES}"
 
 
 def test_the_baseline_attempt_directory_comes_from_the_reference_when_it_names_one(harness):
     assert harness.baseline_attempt_dir({}) is None
-    named = {"head_baseline": {"attempt_dir": "~/runs/head"}, "attempt_dir": "~/runs/accepted"}
+    named = {
+        "head_baseline": {"attempt_dir": "~/runs/head"},
+        "accepted_attempt_dir": "~/runs/accepted",
+    }
     assert harness.baseline_attempt_dir(named) == Path("~/runs/head").expanduser()
-    assert harness.baseline_attempt_dir({"attempt_dir": "~/runs/accepted"}) == (
+    assert harness.baseline_attempt_dir({"accepted_attempt_dir": "~/runs/accepted"}) == (
         Path("~/runs/accepted").expanduser()
     )
+
+
+def test_the_store_fingerprint_survives_an_insert_that_a_delete_paid_for(harness, tmp_path):
+    import sqlite3
+
+    with sqlite3.connect(tmp_path / "judgments.db") as connection:
+        connection.execute("create table judgments (k text)")
+        connection.execute("create table other (k text)")
+        connection.executemany("insert into judgments values (?)", [("a",), ("b",)])
+        connection.execute("insert into other values ('x')")
+    banked = harness.store_fingerprint(tmp_path)
+    assert set(banked) == {"judgments"}
+    assert banked["judgments"][0] == 2
+
+    with sqlite3.connect(tmp_path / "judgments.db") as connection:
+        connection.execute("delete from judgments where k = 'a'")
+        connection.execute("insert into judgments values ('c')")
+
+    current = harness.store_fingerprint(tmp_path)
+    assert current["judgments"][0] == banked["judgments"][0]
+    assert current != banked
+    assert "judgments" in harness.store_drift(banked, current)
+
+
+def test_a_changed_cut_names_the_store_when_the_store_is_what_moved(harness, tmp_path):
+    banked = {"judgments": [10, 10]}
+    route = {"head_baseline": {"attempt_dir": str(tmp_path / "absent")}}
+    baseline = {"plan_sha256": "accepted", "store_fingerprint": banked}
+    call = {"plan_sha": "other", "same_carriers": False, "route": route, "attempt": tmp_path}
+
+    moved, moved_detail = harness.verdict(baseline=baseline, store={"judgments": [11, 11]}, **call)
+    steady, steady_detail = harness.verdict(baseline=baseline, store=banked, **call)
+    unbanked, blind_detail = harness.verdict(
+        baseline={"plan_sha256": "accepted"}, store=banked, **call
+    )
+
+    assert (moved, steady, unbanked) == ("store-moved", "changed", "changed")
+    assert "+1 rows" in moved_detail
+    assert "store unchanged" in steady_detail
+    assert "not banked" in blind_detail
+
+
+def test_a_pinned_day_lets_a_clock_scoped_route_replay_the_day_it_was_cut(harness):
+    route = {"route_args": ["--memory-type", "on_this_day", "--years-back", "3"]}
+
+    argv = harness.route_argv({**route, "target_date": "2024-07-15"})
+
+    assert argv[:4] == ["--memory-type", "on_this_day", "--years-back", "3"]
+    assert argv[argv.index("--automation-target-date") + 1] == "2024-07-15"
+    assert argv[argv.index("--memory-key") + 1] == "on_this_day:2024-07-15:2024-07-15:"
+    assert harness.route_argv(route) == argv[:4]
+
+
+def _outcome(harness, **overrides):
+    fields = {
+        "route": "r",
+        "seed": "11",
+        "status": "changed",
+        "seconds": 1.0,
+        "blocked_calls": 0,
+        "bank_rows_added": 0,
+        "attempt_dir": "/runs/a",
+        "plan_sha256": "plan",
+        "carriers": 3,
+        "carriers_identical": False,
+        "decision_sha256": "decision",
+    }
+    return harness.RouteOutcome(**{**fields, **overrides})
+
+
+def test_a_bank_needs_the_seeds_to_agree_on_the_decision_not_on_the_plan_bytes(harness):
+    noisy = [_outcome(harness), _outcome(harness, seed="97", plan_sha256="other")]
+    split = [_outcome(harness), _outcome(harness, seed="97", decision_sha256="other")]
+
+    assert harness.bank_refusal(noisy) == ""
+    assert "disagreed" in harness.bank_refusal(split)
+    assert "cold-needed" in harness.bank_refusal([_outcome(harness, status="cold-needed")])
+    assert harness.bank_refusal([_outcome(harness, attempt_dir=None)]) == "no attempt to bank"

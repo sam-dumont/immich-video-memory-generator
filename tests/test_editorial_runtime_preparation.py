@@ -25,7 +25,7 @@ from tests.test_editorial_runtime import _window
 from tests.test_editorial_source_route import photo
 
 
-def build(tmp_path, *, providers, fetched):
+def build(tmp_path, *, providers, fetched, tier="full"):
     window = _window(2020, 5, 2)
     sources = [
         photo("ordinary", at=window.start + timedelta(hours=9)),
@@ -36,6 +36,7 @@ def build(tmp_path, *, providers, fetched):
         llm={"model": "offline-editor"},
         cache={"directory": str(tmp_path / "cache")},
         analysis={"min_source_short_side": 0},
+        editorial={"preparation": {"tier": tier}},
     )
     acquisitions = []
 
@@ -178,3 +179,25 @@ def test_the_attempt_carries_live_numbers_and_recent_pictures_beside_its_stage(
     # The label vocabulary the phase rows depend on is unchanged.
     assert "Preparing source metadata" in stages
     assert any(stage.startswith("Preparing previews: ") for stage in stages)
+
+
+def test_the_no_captions_tier_cuts_without_a_caption_server_and_says_so(
+    tmp_path, monkeypatch, caplog
+):
+    """The NAS tier end to end: no caption request, no block, and the run names the tier."""
+
+    def refuse(**_):
+        pytest.fail("the no_captions tier asked a caption server for a description")
+
+    providers = replace(successful_ports([]), captions=refuse)
+    planner, sources, _ = build(tmp_path, providers=providers, fetched=[], tier="no_captions")
+    monkeypatch.setattr(planner._planner, "plan_prepared", lambda *_, **__: EditorialPlan())
+
+    with caplog.at_level("INFO", logger="immich_memories.analysis.editorial_runtime"):
+        planner.plan_source(sources, trace=Trace())
+
+    report = json.loads((planner.last_attempt_directory / "preparation.private.json").read_text())
+    assert report["tier"] == "no_captions"
+    assert not report["missing_by_producer"] and not report["failures"]
+    assert report["seconds_per_picture"]["previews"] >= 0
+    assert "preparation tier=no_captions" in caplog.text

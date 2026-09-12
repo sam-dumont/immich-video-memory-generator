@@ -10,7 +10,12 @@ the first time, the [self-hosting guide](../self-hosting.md) puts the same piece
 
 Story-first selection prepares descriptions, context labels and pixel measurements for the
 whole source period. It reuses complete facts from the annotation database. Missing previews,
-unavailable providers and incomplete facts stop selection with a count for each missing producer.
+unavailable providers and incomplete facts stop selection with a count for each missing producer —
+for the producers this deployment's `tier` actually demanded. A producer the tier does not ask for
+is never reported missing and never blocks a cut. See
+[preparation tiers](../../reference/config-reference.md#preparation-tiers); the short version is
+that `no_captions` is the tier for a machine that cannot spend 30 seconds a picture on captions,
+and it keeps every producer the audience gate reads.
 
 This is the default route for UI, CLI and scheduled runs. New runs use the FAMILY audience.
 A shirtless baby is ordinary family content. Eight findings are held out of the cut at every
@@ -50,6 +55,7 @@ advanced:
   editorial:
     annotation_database: ""  # defaults to annotations.sqlite inside the cache directory
     preparation:
+      tier: full             # full | no_captions | metadata_only
       caption_base_url: http://localhost:8092/v1
       caption_timeout_seconds: 90
       caption_concurrency: 4
@@ -142,6 +148,9 @@ The configured OpenAI-compatible endpoint must advertise `smolvlm2-500m-base-pub
 | Repository | `mlx-community/SmolVLM2-500M-Video-Instruct-mlx` |
 | Revision | `fa57db46815177fbdfd65cc85a2b3416a8332268` |
 | Weights SHA-256 | `a9839c8f79ecc93e54a00dc73cc0e68ba477debcd065d50c1c289fbb1075f981` |
+
+On the `no_captions` and `metadata_only` tiers nothing on this page's caption section applies:
+no endpoint is contacted, no alias is checked, and an absent description is not a missing fact.
 
 The caption server is a separate service; installing the extra does not start it. It must
 accept the compact description/setting JSON schema, temperature zero, repetition penalty

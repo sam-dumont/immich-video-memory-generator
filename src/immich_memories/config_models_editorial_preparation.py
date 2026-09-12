@@ -1,6 +1,7 @@
 """Providers for the exact public annotation generation used by editorial selection."""
 
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, field_validator
@@ -15,10 +16,14 @@ MARQO_ONNX_URL = (
     "releases/download/models-v1/nsfw-marqo-384-924658f1.onnx"
 )
 
+PreparationTier = Literal["full", "no_captions", "metadata_only"]
+"""Which producers a deployment demands. Named, never inferred from what happens to fail."""
+
 
 class EditorialPreparationConfig(BaseModel):
     """Missing facts are acquired; complete facts never contact a provider."""
 
+    tier: PreparationTier = "full"
     caption_base_url: str = "http://localhost:8092/v1"
     caption_timeout_seconds: float = Field(default=90, gt=0)
     caption_concurrency: int = Field(default=4, ge=1, le=16)
@@ -62,6 +67,15 @@ class EditorialPreparationConfig(BaseModel):
     @property
     def marqo_onnx_path(self) -> Path:
         return Path(self.marqo_onnx).expanduser()
+
+    @property
+    def demands_captions(self) -> bool:
+        return self.tier == "full"
+
+    @property
+    def demands_models(self) -> bool:
+        """Whether the ONNX encoder, the six heads and the two detectors are asked for."""
+        return self.tier in {"full", "no_captions"}
 
     @property
     def head_bundle_path(self) -> Path:

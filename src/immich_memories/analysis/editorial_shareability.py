@@ -28,10 +28,10 @@ from typing import Any
 from immich_memories.analysis.editorial_shareability_audience import (
     _clean,
     _exposure_flag,
-    _exposure_members,
     _parse_exposure_verdict,
     audience_check_prompt,
     audience_exposure_prompt,
+    exposure_members,
     parse_audience_verdict,
 )
 from immich_memories.analysis.editorial_text_failures import TextCompletionFailure
@@ -484,7 +484,7 @@ def check_audience(judge: Any, evidence: Mapping[str, Any], stage: str) -> dict[
                 "unresolved_members": [],
             },
         }
-    positive = sorted(_exposure_members(evidence))
+    positive = sorted(exposure_members(evidence))
     if not positive:
         return result | {"finding": "none"}
     return _review_exposure(judge, evidence, stage, result, positive)

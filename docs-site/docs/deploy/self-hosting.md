@@ -179,8 +179,9 @@ immich-memories generate --memory-type monthly_highlights --year 2024 --month 6
 
 The cold pass describes every eligible picture once, runs six context heads and two detectors over
 it, and reads the month's stories. All of it is banked by producer and exact input, so the second
-cut of that month is mostly the render. **Preparation cost per picture on this route has not been
-measured yet**: we would rather say that than invent a number. The one published end-to-end
+cut of that month is mostly the render. **Measured on a four-core Celeron NAS: 1.23 s per picture
+for every producer except the caption, and 30.9 s for the caption** — which is the whole reason
+[`editorial.preparation.tier`](../reference/config-reference.md#preparation-tiers) exists. The one published end-to-end
 figure (10 min 08 s for a 14-clip monthly on 4 arm64 cores, `preset: fast`) is from the retired
 per-clip scorer and only tells you about the render.
 
@@ -189,7 +190,7 @@ per-clip scorer and only tells you about the render.
 | Layout | What it looks like | Verdict |
 |---|---|---|
 | One Apple Silicon box, 32 GB+ unified memory | App, reader, caption server, render, all local | **Tested.** The only end-to-end configuration anyone has graded |
-| App on a NAS or mini-PC + a second box (24 GB GPU, or a Mac) for the two model services | The app is cheap; the models are not | **Expected to work.** Two machines. There is no way around it |
+| App on a NAS or mini-PC + a second box (24 GB GPU, or a Mac) for the reader | The app and the CPU producers are cheap; the reader is not | **Expected to work.** Two machines. On the `no_captions` tier the second box serves the reader only |
 | One amd64 box, CPU only, small reader | A 4B-class reader will answer; quality unmeasured | **Expected to work, slowly.** Fine for a first look, not for a verdict on the editor |
 | A NAS alone, no second machine, no hosted key | n/a | **Unsupported.** A smaller model would be shipping ungraded output to the tier least able to judge it |
 

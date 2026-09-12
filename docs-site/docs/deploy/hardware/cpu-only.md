@@ -9,10 +9,14 @@ title: CPU-Only Mode
 run without a GPU; what you give up is animated titles and the hardware encoder, not a step of the
 pipeline.
 
-What a CPU-only box cannot do is hold the editor's two model services. A cut needs a vision reader
-(roughly 17 GB resident) and a caption server, and neither is in this container. On a cheap VPS
-that means a second machine, not a slower first one. Read
+What a CPU-only box cannot do is hold the vision reader — roughly 17 GB resident, and not in this
+container. On a cheap VPS that means a second machine, not a slower first one. Read
 [one machine or two](../self-hosting.md#one-machine-or-two) before you size anything.
+
+The *caption* server is a different matter: set
+[`editorial.preparation.tier: no_captions`](../../reference/config-reference.md#preparation-tiers) and
+this box prepares every producer the audience gate reads without one. On a four-core Celeron that
+is 3 h 41 min for a 10,793-picture library instead of four days.
 
 ## What changes without a GPU
 
@@ -71,7 +75,7 @@ a 14-clip monthly, 62 s of 1080p out, cold cache, 4 cores and no GPU took 10 min
 
 Read that for the render, not for preparation: the Analysis column measured the retired per-clip
 scorer, which is not the work this product does any more, and preparation on the current route is
-[not measured yet](../common-setups/nas-only.md#preparation-not-measured-yet). What is true by
+[measured only on a NAS](../common-setups/nas-only.md#preparation-measured). What is true by
 construction rather than by measurement is that the heads and the detectors have no GPU path here,
 so a card does not shorten them, and that every producer banks its answer, so a second cut over
 the same period skips them. Title rendering is the part a GPU would actually take off your hands.

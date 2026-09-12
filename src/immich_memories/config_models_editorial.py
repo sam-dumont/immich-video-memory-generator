@@ -75,6 +75,8 @@ class EditorialConfig(BaseModel):
             not name.strip() or not version.strip() for name, version in value.items()
         ):
             raise ValueError("editorial head versions must be nonblank")
+        if value.get("nsfw_marqo") == "det-v1":
+            value = value | {"nsfw_marqo": "det-v2"}
         return value
 
     @property

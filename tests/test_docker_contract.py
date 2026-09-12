@@ -508,3 +508,16 @@ def test_runtime_wheels_are_mounted_for_the_install_rather_than_copied() -> None
     assert install, "the runtime stage must install the wheels the builder produced"
     assert "--mount=type=bind,from=builder,source=/wheels,target=/wheels" in install.group()
     assert "COPY --from=builder /wheels" not in final_stage
+
+
+def test_cuda_dependency_stays_compatible_with_cuda12() -> None:
+    import tomllib
+
+    from packaging.requirements import Requirement
+
+    config = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
+    requirements = config["project"]["optional-dependencies"]["editorial-cuda"]
+    ort = next(Requirement(value) for value in requirements if value.startswith("onnxruntime-gpu"))
+    assert "1.26.0" in ort.specifier
+    assert "1.27.0" not in ort.specifier
+    assert "1.28.0" not in ort.specifier
