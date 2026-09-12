@@ -1,3 +1,3 @@
 # gitleaks fingerprints (commit:file:rule:line) that are known false positives.
-# A test fixture on a retired probe branch: `mode="token", threshold=0.5` is not a key.
+# A scoring-mode keyword argument in a test fixture on the retired probe branch, not a key.
 9ef78b04e37c1751b4f879157fae1006777cabc8:tests/test_distill_pipeline.py:generic-api-key:323
