@@ -35,8 +35,8 @@ immich-memories analyze --year 2024
 It fetches the videos for a year and prints how many there are. It does not prepare annotations,
 it does not warm any bank, and it never looks at photos. `--force` is accepted and ignored.
 
-There is no command that pre-warms the editor's banks: only a cut fills them. On a NAS, run the
-cut you want overnight and let the second one be cheap.
+To pre-warm the editor's banks without rendering anything, use [`prepare`](./prepare.md). That is
+the command for "do the expensive half overnight, a month at a time".
 
 ## `export-project`: a snapshot of what a scope contains
 
