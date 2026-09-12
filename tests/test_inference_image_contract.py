@@ -2,7 +2,7 @@
 
 Both variants come out of one Dockerfile, and the traps they have to avoid are
 build-time ones a unit test is the only cheap guard against: a CUDA wheel in the
-cpu image, a torchvision from the wrong index, and a fatbin without cubins for
+cpu image, overlapping CPU/GPU runtime packages, and a fatbin without cubins for
 the cards people actually own.
 """
 
@@ -179,3 +179,29 @@ def test_the_quickstart_does_not_start_a_service_nothing_uses_yet() -> None:
     # The app has no facts_base_url switch until W8, and the models are a
     # ~500 MB fetch: `docker compose up` must stay one container.
     assert compose_service()["profiles"] == ["inference"]
+
+
+def test_inference_only_analysis_cannot_create_a_release(tmp_path, monkeypatch):
+    import os
+    import subprocess
+
+    workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/release.yml").read_text())
+    step = next(s for s in workflow["jobs"]["analyze"]["steps"] if s.get("id") == "analyze")
+    fake_git = tmp_path / "git"
+    fake_git.write_text("#!/bin/sh\nexit 0\n")
+    fake_git.chmod(0o755)
+    output = tmp_path / "outputs"
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("INFERENCE_ONLY", "true")
+    monkeypatch.setenv("FORCE_VERSION", "major")
+    monkeypatch.setenv("GITHUB_SHA", "abcdef0123456789")
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    subprocess.run(["bash", "-e", "-c", step["run"]], cwd=tmp_path, check=True, capture_output=True)
+    assert output.read_text().splitlines() == [
+        "should_release=false",
+        "next_version=0+gabcdef0123456789",
+    ]
+    assert step["env"]["INFERENCE_ONLY"] == "${{ inputs.inference_only }}"
+    guard = workflow["jobs"]["inference-build"]["if"]
+    assert "!cancelled()" in guard
+    assert "needs.release.result == 'success'" in guard

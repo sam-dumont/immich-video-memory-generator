@@ -62,7 +62,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FORCE_VERSION: ${{ inputs.force_version }}
+          INFERENCE_ONLY: ${{ inputs.inference_only }}
         run: |
+          if [[ "$INFERENCE_ONLY" == "true" ]]; then
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "next_version=0+g${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           # Get the latest version tag globally (not just reachable from HEAD)
           # git describe only finds tags in commit ancestry — unreliable after merges
           git fetch --tags --force 2>/dev/null || true
@@ -517,8 +524,9 @@ jobs:
     # in front of a real GPU before anyone cuts a version. The tag is then the
     # commit rather than a version, so a test build can never shadow a release.
     if: >-
-      inputs.dry_run != 'true' &&
-      (needs.analyze.outputs.should_release == 'true' || inputs.inference_only == 'true')
+      !cancelled() && needs.analyze.result == 'success' && !inputs.dry_run &&
+      (inputs.inference_only ||
+       (needs.release.result == 'success' && needs.analyze.outputs.should_release == 'true'))
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read

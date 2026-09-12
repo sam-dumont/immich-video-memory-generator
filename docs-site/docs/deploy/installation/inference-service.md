@@ -134,3 +134,5 @@ Provider choice re-keys nothing, so this costs no re-derivation.
   and storing what the service returned verbatim, is the next item.
 - The captioner is not in the image yet, so `/v1/chat/completions` is still your own caption server.
 - The encoder and Marqo exports must already exist. Point `ENCODER` and `MARQO_ONNX` at the digest-pinned files from the app's `models fetch`, or place them at the cache paths above. Docling can fetch its snapshot into `/cache/huggingface` when `ALLOW_MODEL_DOWNLOADS` is on.
+
+For an image check before a release, dispatch the Release workflow with `inference_only: true`. It builds commit-tagged CPU and CUDA images without creating a version or moving `latest`; the CUDA base account is reused at UID/GID 1000 so the cache volume has the same ownership as the CPU image.
