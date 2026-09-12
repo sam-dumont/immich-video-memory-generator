@@ -7,7 +7,7 @@ title: Hardware Acceleration Overview
 
 A GPU buys three things here: animated title screens, faster encoding, and (on Apple Silicon) face detection on the Neural Engine. **Every feature has a CPU fallback**, so it works on any machine. See [CPU-Only Mode](./cpu-only.md) for details on running without a GPU.
 
-What a media accelerator does **not** buy is the editor's models. NVENC, Quick Sync and VAAPI decode, scale and encode; they do not run inference. The reader (~17 GB resident) and the caption server (1-2 GB) are separate services with their own hardware needs — see the [self-hosting guide](../self-hosting.md#one-machine-or-two).
+What a media accelerator does **not** buy is the editor's models. NVENC, Quick Sync and VAAPI decode, scale and encode; they do not run inference. The reader (~17 GB resident) and the caption server (1-2 GB) are separate services with their own hardware needs — see the [self-hosting guide](../self-hosting.md#one-machine-or-two). An NVIDIA card can run the encoder and the classifiers, but through CUDA and in their own container: the [inference service](../installation/inference-service.md).
 
 Encoding video in software (libx264) works everywhere but it's slow. A hardware encoder is faster; how much faster depends on your card, codec and preset, and this project has not measured it. The pipeline auto-detects your hardware and picks the best available backend; NVENC, Quick Sync and VAAPI are only selected after a one-frame test encode succeeds, so an FFmpeg build that merely lists them (Debian's does, including inside the Docker image) doesn't send a GPU-less box down the hardware path.
 

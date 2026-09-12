@@ -95,6 +95,7 @@ const sidebars: SidebarsConfig = {
           items: [
             'deploy/installation/docker',
             'deploy/installation/uv-pip',
+            'deploy/installation/inference-service',
             'deploy/installation/kubernetes',
             'deploy/installation/terraform',
           ],

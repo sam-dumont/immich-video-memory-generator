@@ -14,7 +14,9 @@ NVIDIA GPUs with NVENC move video encoding off the CPU and onto dedicated silico
 - **CUDA scaling**: `scale_cuda` resizes frames on the GPU instead of pulling them back to CPU.
 - **Taichi title rendering**: with the `gpu` extra installed, Taichi picks the CUDA backend (Vulkan second) for animated title screens. This is the phase that costs the most on a CPU-only box.
 
-What the card does *not* get you: the Docker image installs the CPU build of PyTorch on purpose, on both published architectures. The two annotation detectors are CPU-only by construction and no shipped path runs GPU inference, so the CUDA wheels are pure weight: on arm64 they cost 3.3 GB of `nvidia` libraries plus 818 MB of triton, and the CUDA torch they come with still reports `cuda_available: False` inside the container. If you want torch on the GPU, install from source (`pip install "immich-memories[editorial]"`) on the host instead of using the image.
+What the card does *not* get you *in this image*: the app image installs the CPU build of PyTorch on purpose, on both published architectures, and runs no inference on the GPU. The CUDA wheels would be pure weight there — on arm64, 3.3 GB of `nvidia` libraries plus 818 MB of triton, and the CUDA torch they come with still reports `cuda_available: False` inside the container.
+
+GPU inference has its own image instead: the [inference service](../installation/inference-service.md) ships a `-cuda` variant whose ONNX Runtime has a CUDA execution provider, and `docker/hwaccel.inference.yml` is how you attach the card to it. That keeps the app image small for the many people who want NVENC and nothing else.
 
 ## Requirements
 
