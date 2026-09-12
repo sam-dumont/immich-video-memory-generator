@@ -25,7 +25,7 @@ def test_editorial_store_defaults_without_a_selection_switch(tmp_path) -> None:
     assert config.head_versions == {
         "activity": "public-v1",
         "children": "public-v1",
-        "doc_docling": "det-v1",
+        "doc_docling": "det-v2",
         "location": "public-v1",
         "nsfw_marqo": "det-v1",
         "people": "public-v1",
@@ -93,3 +93,25 @@ def test_config_loads_and_saves_editorial_as_an_advanced_section(tmp_path: Path)
     assert payload["advanced"]["editorial"]["annotation_database"] == (
         "/library/annotations.sqlite"
     )
+
+
+def test_saved_legacy_docling_version_is_upgraded_without_changing_other_heads(tmp_path):
+    source = tmp_path / "old-config.yaml"
+    source.write_text(
+        "advanced:\n"
+        "  editorial:\n"
+        "    head_versions:\n"
+        "      doc_docling: det-v1\n"
+        "      nsfw_marqo: det-v1\n"
+        "      activity: custom-v3\n"
+    )
+
+    config = Config.from_yaml(source)
+    saved = tmp_path / "saved-config.yaml"
+    config.save_yaml(saved)
+
+    assert yaml.safe_load(saved.read_text())["advanced"]["editorial"]["head_versions"] == {
+        "doc_docling": "det-v2",
+        "nsfw_marqo": "det-v1",
+        "activity": "custom-v3",
+    }

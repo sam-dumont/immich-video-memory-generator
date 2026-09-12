@@ -13,6 +13,7 @@ from immich_memories.analysis.editorial_contracts import (
     EditorialCandidate,
 )
 from immich_memories.analysis.editorial_planner import EditorialPlan
+from immich_memories.analysis.editorial_rule_episodes import EpisodeReader
 from immich_memories.analysis.moment_cards import MomentCard, build_moment_cards
 from immich_memories.analysis.selection_cull import (
     CULL_PASS_VERSION,
@@ -37,7 +38,6 @@ from immich_memories.analysis.selection_structure import (
 )
 from immich_memories.analysis.selection_trace import Trace
 from immich_memories.analysis.text_episode_reader import (
-    CachedTextEpisodeReader,
     TextEpisodeReadDiagnostics,
     TextEpisodeReadResult,
 )
@@ -87,7 +87,7 @@ class TextEditorialPlanner:
         *,
         selection_request: EditorialSelectionRequest,
         source_dependencies: EditorialDependencies,
-        episode_reader_factory: Callable[[PreparedEditorialSource], CachedTextEpisodeReader],
+        episode_reader_factory: Callable[[PreparedEditorialSource], EpisodeReader],
         period_reader: Callable[[TextEpisodeReadResult], TextPeriodInsightResult],
         backend: PostCardEditorialBackend,
         verdicts: EditorialVerdicts | None = None,
@@ -181,7 +181,7 @@ class TextEditorialPlanner:
         self,
         episode_projections: tuple[EditorialGroupProjection, ...],
         *,
-        reader: CachedTextEpisodeReader,
+        reader: EpisodeReader,
         trace: Trace,
         on_stage: Callable[[str], None] | None,
     ) -> TextEpisodeReadResult:
@@ -215,7 +215,7 @@ class TextEditorialPlanner:
         prepared: PreparedEditorialSource,
         episodes: TextEpisodeReadResult,
         period: TextPeriodInsightResult,
-        reader: CachedTextEpisodeReader,
+        reader: EpisodeReader,
         demanded_ids: tuple[str, ...],
     ) -> TextEditorialWorkprint | None:
         """Return None when the cull left nothing inside the demanded scope."""
@@ -284,7 +284,7 @@ def _stage(on_stage: Callable[[str], None] | None, label: str) -> None:
 
 def _cull_provenance(
     episodes: TextEpisodeReadResult,
-    reader: CachedTextEpisodeReader,
+    reader: EpisodeReader,
 ) -> DecisionProvenance:
     identities = tuple(
         (

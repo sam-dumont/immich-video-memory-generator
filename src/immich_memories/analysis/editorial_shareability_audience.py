@@ -27,7 +27,7 @@ def _exposure_flag(row: Mapping[str, Any]) -> bool:
     )
 
 
-def _exposure_members(evidence: Mapping[str, Any]) -> set[str]:
+def exposure_members(evidence: Mapping[str, Any]) -> set[str]:
     if any(_exposure_flag(row) for row in evidence.get("companion_flags", ())) or any(
         heads.get("nsfw_marqo") == "yes" for heads in evidence.get("companion_detectors", ())
     ):
@@ -171,7 +171,7 @@ def audience_exposure_prompt(
     member_aliases: Sequence[str] | None = None,
 ) -> str:
     """Extract caption attributes; detector activation and audience mapping stay in code."""
-    positive = set(member_aliases) if member_aliases is not None else _exposure_members(evidence)
+    positive = set(member_aliases) if member_aliases is not None else exposure_members(evidence)
     captions = [
         {"picture": member["member"], "caption": member["caption"]}
         for member in evidence.get("members", ())
@@ -205,7 +205,7 @@ def _parse_exposure_verdict(
     if obj is None or not isinstance(obj.get("observations"), dict):
         return None
     members = {member["member"]: member for member in evidence.get("members", ())}
-    positive = set(member_aliases) if member_aliases is not None else _exposure_members(evidence)
+    positive = set(member_aliases) if member_aliases is not None else exposure_members(evidence)
     observations = obj["observations"]
     if set(observations) != positive:
         return None

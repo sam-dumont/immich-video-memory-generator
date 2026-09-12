@@ -205,10 +205,15 @@ class PeriodInsight:
     unavailable_reason: str | None
     revision: int
     provenance: DecisionProvenance
+    reader: Literal["model", "rules"] = "model"
 
     def __post_init__(self) -> None:
         if self.revision < 0:
             raise ValueError("period insight revision cannot be negative")
+        if self.reader == "rules":
+            if self.thesis is not None or self.evidence or self.unavailable_reason is not None:
+                raise ValueError("rules omit a thesis without declaring evidence unavailable")
+            return
         if (self.thesis is None) == (self.unavailable_reason is None):
             raise ValueError("period insight needs exactly one thesis or unavailable reason")
         if self.thesis is not None and (not self.thesis.strip() or not self.evidence):

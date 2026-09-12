@@ -128,7 +128,7 @@ column still describes this product: 2.7 minutes of a 10 minute run, most of it 
 rather than the encode. A CUDA Taichi backend is what shortens those.
 
 The rest of a run is preparation and the editor's readings, and that has
-[not been measured](./nas-only.md#preparation-not-measured-yet) on any hardware. What is true by
+[been measured on a NAS](./nas-only.md#preparation-measured) and nowhere else. What is true by
 construction: it is bounded by your Immich server and your two model services rather than by this
 card, and every producer banks its answer, so a second cut over the same period skips it.
 

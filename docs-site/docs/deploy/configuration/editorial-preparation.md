@@ -10,11 +10,17 @@ the first time, the [self-hosting guide](../self-hosting.md) puts the same piece
 
 Story-first selection prepares descriptions, context labels and pixel measurements for the
 whole source period. It reuses complete facts from the annotation database. Missing previews,
-unavailable providers and incomplete facts stop selection with a count for each missing producer.
+unavailable providers and incomplete facts stop selection with a count for each missing producer —
+for the producers this deployment's `tier` actually demanded. A producer the tier does not ask for
+is never reported missing and never blocks a cut. See
+[preparation tiers](../../reference/config-reference.md#preparation-tiers); the short version is
+that `no_captions` is the tier for a machine that cannot spend 30 seconds a picture on captions,
+and it keeps every producer the audience gate reads.
 
 This is the default route for UI, CLI and scheduled runs. New runs use the FAMILY audience.
-A shirtless baby is ordinary family content. Eight findings are held out of the cut at every
-audience: breastfeeding or expressing milk, bathing, toileting or changing, intimate hygiene,
+A shirtless baby is ordinary family content. When the available evidence identifies them,
+eight findings are held out of the cut at every audience: breastfeeding or expressing milk,
+bathing, toileting or changing, intimate hygiene,
 graphic medical procedures, identifying records, sexual content, and adult changing.
 
 Install the inference dependencies:
@@ -38,6 +44,7 @@ advanced:
   editorial:
     annotation_database: ""  # defaults to annotations.sqlite inside the cache directory
     preparation:
+      tier: full             # full | no_captions | metadata_only
       caption_base_url: http://localhost:8092/v1
       caption_timeout_seconds: 90
       caption_concurrency: 4
@@ -51,6 +58,37 @@ advanced:
 The producer versions remain in `editorial.description_model`, `editorial.head_versions` and
 `editorial.pixel_producer_key`. Changing a version names a different fact generation; it does
 not teach the preparer how to produce it. The packaged producers fill the current defaults.
+
+## Editing without a language model
+
+`advanced.editorial.reader` accepts `auto`, `model` or `rules`. `auto` uses rules when
+`advanced.llm.model` is blank. To choose the path explicitly:
+
+```yaml
+advanced:
+  editorial:
+    reader: rules
+    preparation:
+      tier: metadata_only
+```
+
+This produces cuts for monthly highlights, person spotlight, multiple people, special day,
+trip, year in review, season, holiday, album and on-this-day requests. Custom subjects that
+need semantic interpretation require a model reader. Rules use dates, places, favourites,
+known people and available facts; they do not create a semantic thesis, rerank with a model
+or select Live Photo motion. The normal source, duration and audience mechanisms still apply.
+
+Use `no_captions` instead when the machine can run image classifiers. That adds visual
+context and detector evidence, but does not guarantee a better edit: the measured season
+cut became longer while choosing more household objects. A shortfall remains a shortfall;
+the rules do not stretch weak material just to fill the target.
+
+`metadata_only` requests previews and pixel measurements, with no image-model preparation.
+It does not delete facts already stored in the annotation database. A fresh database is
+needed to compare an inference-free first run against a richer preparation tier.
+The September 12 twelve-case matrix produced repeatable cuts with zero model requests;
+it did not establish equal occasion coverage or audience judgement to the model editor.
+Review the result before sharing it.
 
 ## Public context heads
 
@@ -79,7 +117,9 @@ installation without this exact export still needs that artifact before preparin
 
 ## Detectors
 
-Two CPU detectors produce `det-v1` facts. The worker reads previews locally and commits each
+The CPU detectors use separate fact versions: Marqo uses `det-v1`, while Docling
+uses `det-v2` after the NAS optimizer correction. Old explicit Docling `det-v1`
+settings migrate on load; the corrected facts are recomputed once. The worker reads previews locally and commits each
 completed batch. It does not upload images to Hugging Face.
 
 | Model repository | Pinned revision | Required files |
@@ -110,6 +150,9 @@ The configured OpenAI-compatible endpoint must advertise `smolvlm2-500m-base-pub
 | Repository | `mlx-community/SmolVLM2-500M-Video-Instruct-mlx` |
 | Revision | `fa57db46815177fbdfd65cc85a2b3416a8332268` |
 | Weights SHA-256 | `a9839c8f79ecc93e54a00dc73cc0e68ba477debcd065d50c1c289fbb1075f981` |
+
+On the `no_captions` and `metadata_only` tiers nothing on this page's caption section applies:
+no endpoint is contacted, no alias is checked, and an absent description is not a missing fact.
 
 The caption server is a separate service; installing the extra does not start it. It must
 accept the compact description/setting JSON schema, temperature zero, repetition penalty

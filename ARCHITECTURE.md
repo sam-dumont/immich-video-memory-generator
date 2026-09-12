@@ -124,6 +124,9 @@ src/immich_memories/
 │   ├── smart_pipeline.py       # SmartPipeline: run_editorial_source() is the production entry
 │   ├── editorial_runtime.py    # RuntimeEditorialPlanner + build_smart_pipeline(); _ports.py, _backend.py beside it
 │   ├── editorial_orchestration.py  # TextEditorialPlanner: episodes -> period account -> cards -> edit
+│   ├── editorial_rule_episodes.py  # Factual episode cards / omitted thesis; no semantic-bank writes
+│   ├── editorial_rule_reader.py    # Rules for worthiness, grouping and standing; shared allocation
+│   ├── editorial_shareability_tiers.py  # Audience evidence policy for reduced preparation tiers
 │   ├── editorial_preparation*.py   # Annotation preparation: captions, public heads, detectors, pixel facts
 │   ├── selection_source*.py    # The canonical source model: admission, provenance, groups, invariants
 │   ├── text_episode_reader.py  # Reading event evidence (paged, banked); period_insight*.py = the account

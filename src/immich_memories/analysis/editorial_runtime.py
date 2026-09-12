@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import closing
 from dataclasses import asdict, dataclass, replace
@@ -16,6 +17,11 @@ from immich_memories.analysis.editorial_motion_outcomes import MotionOutcomeRepl
 from immich_memories.analysis.editorial_orchestration import TextEditorialPlanner
 from immich_memories.analysis.editorial_people import adapt_editorial_people
 from immich_memories.analysis.editorial_planner import EditorialPlan
+from immich_memories.analysis.editorial_rule_episodes import (
+    EpisodeReader,
+    RuleEpisodeReader,
+    rule_period,
+)
 from immich_memories.analysis.editorial_runtime_backend import ProductionPostCardBackend
 from immich_memories.analysis.editorial_runtime_ports import EditorialRuntimePorts
 from immich_memories.analysis.editorial_source import FullEditorialSource
@@ -71,6 +77,8 @@ if TYPE_CHECKING:
     from immich_memories.api.sync_client import SyncImmichClient
     from immich_memories.cache.thumbnail_cache import ThumbnailCache
     from immich_memories.config_loader import Config
+
+logger = logging.getLogger(__name__)
 
 _Row = TypeVar("_Row")
 
@@ -447,6 +455,23 @@ class _AnnotationReadings:
         )
 
 
+def _log_preparation(result: Any) -> None:
+    """Name the tier and what it cost, in the terminal, on the machine that paid for it.
+
+    A wall-clock total cannot tell a self-hoster which producer their box cannot
+    afford, and the artifact holding the same numbers is inside the attempt tree.
+    """
+    rates = " ".join(
+        f"{stage} {seconds:.3f}s/pic" for stage, seconds in sorted(result.stage_rates().items())
+    )
+    logger.info(
+        "preparation tier=%s: %d pictures requested%s",
+        result.tier,
+        result.requested,
+        f"; {rates}" if rates else "; nothing to produce",
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class _EvidencePreparation:
     """Produce every annotation the story-first read needs, then gate screen documents."""
@@ -459,9 +484,14 @@ class _EvidencePreparation:
 
     def __call__(self, prepared: Any, on_stage: Callable[[str], None] | None) -> dict[str, Any]:
         result = self._produce(prepared, on_stage)
+        _log_preparation(result)
         write_secret_file(
             self.artifact_dir() / "preparation.private.json",
-            json.dumps(asdict(result), ensure_ascii=False, indent=2),
+            json.dumps(
+                asdict(result) | {"seconds_per_picture": result.stage_rates()},
+                ensure_ascii=False,
+                indent=2,
+            ),
         )
         if not result.complete:
             missing = ", ".join(
@@ -530,6 +560,16 @@ class _EvidencePreparation:
         return exclusions
 
 
+def _reading_requesters(config, ports, reader_mode):
+    if reader_mode == "rules":
+        return "rules-v1", None, None
+    return (
+        semantic_text_model_identity(config.llm, thinking=False),
+        ports.episode_requester_factory(config),
+        ports.period_requester_factory(config),
+    )
+
+
 def build_editorial_planner(
     *,
     client: FullEditorialSource,
@@ -542,8 +582,9 @@ def build_editorial_planner(
     """Build the only production selector from the library's prepared evidence."""
     if dry_run:
         raise ValueError("Dry-run prepares a request without constructing a selector")
-    if not config.llm.model.strip():
-        raise ValueError("editorial runtime needs a nonblank LLM model")
+    reader_mode = config.editorial.resolve_reader(config.llm.model)
+    if reader_mode == "rules" and context.product == "custom":
+        raise ValueError("custom subjects require a model reader; rules use captured metadata only")
     store_path = config.editorial.resolve_annotation_database(config.cache.cache_path)
     _ensure_annotation_store(store_path)
     runtime_ports = ports or EditorialRuntimePorts()
@@ -551,9 +592,9 @@ def build_editorial_planner(
     people = adapt_editorial_people(context_by_id)
     episode_store = runtime_ports.episode_store_factory(store_path)
     period_store = runtime_ports.period_store_factory(store_path)
-    model_id = semantic_text_model_identity(config.llm, thinking=False)
-    episode_requester = runtime_ports.episode_requester_factory(config)
-    period_requester = runtime_ports.period_requester_factory(config)
+    model_id, episode_requester, period_requester = _reading_requesters(
+        config, runtime_ports, reader_mode
+    )
     period_producer = PeriodInsightProducer(
         model_id=model_id,
         prompt_version=TEXT_PERIOD_PROMPT_VERSION,
@@ -598,8 +639,11 @@ def build_editorial_planner(
 
     readings = _AnnotationReadings(store_path=store_path, config=config, people=context_by_id)
 
-    def episode_reader_factory(prepared: Any) -> CachedTextEpisodeReader:
+    def episode_reader_factory(prepared: Any) -> EpisodeReader:
         annotations = readings.reader(prepared)
+        if reader_mode == "rules":
+            return RuleEpisodeReader(annotations)
+        assert episode_requester is not None
         contract = annotations.contract
         producer = EpisodeReadingProducer(
             model_id=model_id,
@@ -619,6 +663,9 @@ def build_editorial_planner(
         )
 
     def period_reader(episodes: Any) -> Any:
+        if reader_mode == "rules":
+            return rule_period(episodes)
+        assert period_requester is not None
         return run_text_period_insight(
             episodes,
             store=period_store,

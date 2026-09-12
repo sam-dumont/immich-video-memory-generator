@@ -114,7 +114,7 @@ def _render_single_photo(
 
         # Stream-render to mp4 (O(1) memory — one frame at a time)
         output_path = work_dir / f"{asset.id}_photo.mp4"
-        # WHY: peak_nits = 2^headroom * 203 — varies per photo, baked into
+        # WHY: peak_nits = headroom * 203 — varies per photo, baked into
         # the 16-bit normalization. zscale npl must match.
         peak_nits = getattr(prepared, "peak_nits", 1000) if prepared.has_gain_map else 203
         _stream_render_to_mp4(

@@ -222,6 +222,8 @@ upload_to_pypi = false  # PyPI publishing handled by GitHub Actions trusted publ
 # Commitizen configuration for conventional commits
 [tool.commitizen]
 name = "cz_conventional_commits"
+# Preserve Commitizen defaults and the release train's historical merge messages.
+allowed_prefixes = ["Merge", "merge:", "Revert", "Pull request", "fixup!", "squash!", "amend!"]
 tag_format = "v$version"
 version_scheme = "semver"
 version_provider = "scm"

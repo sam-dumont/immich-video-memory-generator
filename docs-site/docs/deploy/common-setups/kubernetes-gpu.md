@@ -192,7 +192,8 @@ Same as bare-metal Linux + NVIDIA.
 Do not size the cluster around the encoder. Once NVENC is doing the encode, what you wait for is
 preparation and the editor's readings: a caption, six heads and two detectors per candidate
 picture, then the text model over the period. None of that runs on this card, and none of it has
-been [measured yet](./nas-only.md#preparation-not-measured-yet). Immich API throughput and reader
+been measured here — the [NAS numbers](./nas-only.md#preparation-measured) are the only ones
+there are. Immich API throughput and reader
 latency are the numbers to watch.
 
 ## Further reading

@@ -49,7 +49,7 @@ def test_one_missing_detector_preserves_other_completed_facts(monkeypatch, tmp_p
     with sqlite3.connect(database) as connection:
         assert connection.execute(
             "SELECT head,version,label,confidence,encoder_key FROM head_facts"
-        ).fetchall() == [("doc_docling", "det-v1", "photograph", 0.8, detectors.DOCLING_REPO)]
+        ).fetchall() == [("doc_docling", "det-v2", "photograph", 0.8, detectors.DOCLING_REPO)]
 
 
 def test_cancellation_terminates_detector_process_group(monkeypatch, tmp_path):

@@ -77,6 +77,17 @@ class ProductionPostCardBackend:
         """Run one structure algorithm for product workprints and sealed matrix evidence."""
         source, allowed_ids = self._structure_source(workprint)
         source = self._apply_runtime_policy(source)
+        rules = self._config.editorial.resolve_reader(self._config.llm.model) == "rules"
+        if rules:
+            source = replace(
+                source,
+                allow_live_motion=False,
+                lineage={
+                    **source.lineage,
+                    "reader": "rules-v1",
+                    "render_policy": {"allow_live_motion": False},
+                },
+            )
         request_start = len(trace.requests)
         self.last_companion_assets = dict(source.companion_assets)
         resources = ExitStack()
@@ -92,6 +103,10 @@ class ProductionPostCardBackend:
                 resources.close()
             finally:
                 _write_visual_requests(source.artifact_dir, trace, request_start)
+        if rules:
+            result.plan["reader"] = "rules-v1"
+            result.plan.setdefault("lineage", {})["reader"] = "rules-v1"
+            result.plan["semantic_reuse"] = "none; rules are recomputed from captured facts"
         return self._adopt(result, source.artifact_dir, allowed_ids)
 
     def _structure_source(
@@ -158,7 +173,7 @@ class ProductionPostCardBackend:
     def _production_effects(
         self, source: StructurePlanningInput, *, trace: Trace, resources: ExitStack
     ) -> StructurePlannerPorts:
-        ranker = StructureReranker()
+        rules = self._config.editorial.resolve_reader(self._config.llm.model) == "rules"
         demanded_previews = (
             DemandedPreviewReader(
                 self._thumbnail_cache, self._fetch_preview, allowed_ids=_moment_members(source)
@@ -173,6 +188,21 @@ class ProductionPostCardBackend:
             source.bank_dir.parent / "thumbnail-hashes.sqlite", read_preview
         )
         resources.callback(thumbnail_hasher.close)
+        if rules:
+            from immich_memories.analysis.editorial_rule_reader import (
+                NoModelJudge,
+                RuleStructureReader,
+            )
+
+            return StructurePlannerPorts(
+                judge=NoModelJudge(),
+                thumbnail_hash=thumbnail_hasher,
+                thumbnail_metrics=thumbnail_hasher.metrics,
+                rank=lambda _query, docs: dict.fromkeys(range(len(docs)), 0.0),
+                reranker_identity={"model": "rules-v1", "endpoint": "none"},
+                rules=RuleStructureReader(source),
+            )
+        ranker = StructureReranker()
         picture_facts = PictureFactsProvider(
             llm_config=self._config.llm,
             cache_path=self._store_path,

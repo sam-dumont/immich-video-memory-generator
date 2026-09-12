@@ -1,4 +1,4 @@
-"""Portable det-v1 producers, isolated in a cancellable configured Python worker.
+"""Portable detector producers, isolated in a cancellable configured Python worker.
 
 The worker needs timm, torch, huggingface-hub, onnxruntime, numpy and Pillow.
 Model acquisition is opt-in; cached pinned snapshots are sufficient by default.
@@ -25,7 +25,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-VERSION = "det-v1"
+DETECTOR_HEAD_VERSIONS = {"nsfw_marqo": "det-v1", "doc_docling": "det-v2"}
 MARQO_REPO = "Marqo/nsfw-image-detection-384"
 MARQO_REVISION = "0c26ec22111b83f106d72a55f611ec35962bcb65"
 MARQO_FILES = ("config.json", "model.safetensors")
@@ -121,6 +121,10 @@ class Docling:
         )
         options = ort.SessionOptions()
         options.intra_op_num_threads = 6
+        # ORT 1.28's layout-optimized graph collapses to near-constant "table"
+        # predictions on J4125. Extended agrees with the unfused graph on both
+        # J4125 and arm64, retaining the basic/extended fusions without NCHWc.
+        options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
         self.session = ort.InferenceSession(path, options, providers=["CPUExecutionProvider"])
         self.input_name = self.session.get_inputs()[0].name
 
@@ -205,7 +209,17 @@ def _decided_rows(head: str, detector: Marqo | Docling, keep: Sequence[str], pro
         if not all(np.isfinite(p) and 0 <= p <= 1 for p in scores.values()):
             raise ValueError("detector returned invalid probabilities")
         label, confidence = decide(head, scores)
-        rows.append((asset_id, head, VERSION, label, confidence, detector.encoder_key, _now()))
+        rows.append(
+            (
+                asset_id,
+                head,
+                DETECTOR_HEAD_VERSIONS[head],
+                label,
+                confidence,
+                detector.encoder_key,
+                _now(),
+            )
+        )
     return rows
 
 

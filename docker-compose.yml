@@ -13,9 +13,10 @@
 # For GPU-accelerated title rendering or 4K output, increase limits.
 # For GPU acceleration, see the hardware docs.
 #
-# This container is not the whole stack. The editor also needs two model endpoints
-# you host yourself: a vision reader (~17GB resident) and a caption server. Without
-# them a run stops rather than guessing. Set both below; see the self-hosting guide:
+# This container is not the whole stack. The editor needs a vision reader (~17GB
+# resident) that you host yourself; without it a run stops rather than guessing.
+# The caption server is optional: on a slow box set the no_captions tier below and
+# nothing asks for one. See the self-hosting guide:
 # https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/self-hosting
 services:
   immich-memories:
@@ -34,10 +35,15 @@ services:
       IMMICH_API_KEY: "${IMMICH_API_KEY}"
       # Optional: session secret (auto-generated if not set; set to preserve sessions on restart)
       # IMMICH_MEMORIES_STORAGE_SECRET: "${IMMICH_MEMORIES_STORAGE_SECRET}"
-      # Required to cut at all: the vision reader and the caption server.
+      # Required to cut at all: the vision reader.
       # "localhost" here means this container, so use a real hostname.
       # IMMICH_MEMORIES_LLM__BASE_URL: "http://your-model-box:8000/v1"
       # IMMICH_MEMORIES_LLM__MODEL: "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"
+      # Which producers this box pays for: full | no_captions | metadata_only.
+      # On a NAS use no_captions: 3h41 for a 10,793-picture library against 4 days,
+      # and the audience gate keeps every producer it reads.
+      # IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER: "no_captions"
+      # Only needed on the full tier:
       # IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL: "http://your-model-box:8092/v1"
       # Optional: basic auth
       # IMMICH_MEMORIES_AUTH_USERNAME: "${IMMICH_MEMORIES_AUTH_USERNAME}"

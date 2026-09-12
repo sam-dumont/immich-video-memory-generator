@@ -29,6 +29,7 @@ from immich_memories.analysis.editorial_final_sampled_duplicates import (
 from immich_memories.analysis.editorial_picture_evidence import PictureEvidenceOverlay
 from immich_memories.analysis.editorial_picture_ladders import depth_cap
 from immich_memories.analysis.editorial_sampled_reference import sampled_source_relation
+from immich_memories.analysis.editorial_shareability_tiers import audience_check_for
 from immich_memories.analysis.editorial_story_planner import (
     alternatives_pool,
     select_story_first,
@@ -471,6 +472,11 @@ def _select(
         flag_rows=source.shareability_flags,
         lines=source.annotations,
         bank_path=audit_dir / "shareability.private.json",
+        check_audience=audience_check_for(
+            "no_captions"
+            if ports.rules and source.config.editorial.preparation.demands_models
+            else source.config.editorial.preparation.tier
+        ),
     )
     attached_relation_records: dict[str, dict[str, Any]] = {}
     relation_records = ChainMap(attached_relation_records, material.picture_evidence.records)
@@ -564,6 +570,10 @@ def _worthiness_gate(
     """THE FIRST JUDGEMENT, as litigated: memory-worthy or background, per happening, the v44
     gate verbatim (twelve-row blocks, two orders, the near-home marker from GPS). Its reading
     goes to the synthesis as evidence and weighs whatever the synthesis leaves unplaced."""
+    if ports.rules is not None:
+        tiers, reasons = ports.rules.worthiness(wall, _near_home_test(source, wall))
+        record("memory-worthy-gate", {"version": "rules-v1", "tiers": tiers, "reasons": reasons})
+        return tiers, reasons, ""
     bank_path = source.bank_dir / "memory-worthy.private.json"
     bank = json.loads(bank_path.read_text()) if bank_path.exists() else {}
     criterion, marker = worth_criterion_v44(source.case.product, source.intent.subject)
@@ -612,10 +622,11 @@ def _story_selection(
     partition_limit: int | None,
 ):
     bank_path = source.bank_dir / "picture-stands.private.json"
-    bank = json.loads(bank_path.read_text()) if bank_path.exists() else {}
+    bank = json.loads(bank_path.read_text()) if bank_path.exists() and ports.rules is None else {}
     unit_of = {u["asset_id"]: u for units in material.units.values() for u in units}
     return select_story_first(
         judge=ports.judge,
+        rules=ports.rules,
         tables=wall.tables,
         aliases=wall.aliases,
         factual_rows_fn=pool.rows_fn,

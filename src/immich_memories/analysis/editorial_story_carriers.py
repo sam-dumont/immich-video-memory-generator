@@ -55,8 +55,10 @@ class StandingGate:
         bank: dict | None,
         save: Callable[[], None] | None,
         calls: dict[str, int],
+        score_of: Callable[[str], int] | None = None,
     ) -> None:
         self._judge = judge
+        self._score_of = score_of
         self._contract = contract
         self._period_label = period_label
         self._line_of = line_of
@@ -72,6 +74,9 @@ class StandingGate:
     def ensure(self, assets: Sequence[str]) -> None:
         unknown = [a for a in dict.fromkeys(assets) if a not in self.scores and self._line_of(a)]
         if not unknown:
+            return
+        if self._score_of is not None:
+            self.scores.update({a: self._score_of(a) for a in unknown})
             return
         self._calls["standing_rounds"] += 1
         votes = judge_standing(
@@ -156,8 +161,10 @@ class CarrierAdmission:
         record: Callable[[str, Mapping[str, Any]], None],
         slots: int,
         calls: dict[str, int],
+        mechanical_picks: bool = False,
     ) -> None:
         self._judge = judge
+        self._mechanical_picks = mechanical_picks
         self.stories = stories
         self.choices_of = choices_of
         self._unit_by_asset = unit_by_asset
@@ -440,7 +447,7 @@ class CarrierAdmission:
             if not eligible or not n:
                 continue
             pick_key = s["key"] if self.parts.limit is None else (s["key"], part)
-            if self._picked_before.get(pick_key):
+            if self._mechanical_picks or self._picked_before.get(pick_key):
                 chosen.extend(self._repeat_pick(eligible, n, chosen))
             else:
                 self._picked_before[pick_key] = True

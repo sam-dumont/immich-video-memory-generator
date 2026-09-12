@@ -1,16 +1,21 @@
 """Providers for the exact public annotation generation used by editorial selection."""
 
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, field_validator
 
 from immich_memories.config_models import expand_env_vars
 
+PreparationTier = Literal["full", "no_captions", "metadata_only"]
+"""Which producers a deployment demands. Named, never inferred from what happens to fail."""
+
 
 class EditorialPreparationConfig(BaseModel):
     """Missing facts are acquired; complete facts never contact a provider."""
 
+    tier: PreparationTier = "full"
     caption_base_url: str = "http://localhost:8092/v1"
     caption_timeout_seconds: float = Field(default=90, gt=0)
     caption_concurrency: int = Field(default=4, ge=1, le=16)
@@ -37,6 +42,15 @@ class EditorialPreparationConfig(BaseModel):
         if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username:
             raise ValueError("caption_base_url must be an HTTP(S) endpoint without credentials")
         return value
+
+    @property
+    def demands_captions(self) -> bool:
+        return self.tier == "full"
+
+    @property
+    def demands_models(self) -> bool:
+        """Whether the ONNX encoder, the six heads and the two detectors are asked for."""
+        return self.tier in {"full", "no_captions"}
 
     @property
     def head_bundle_path(self) -> Path:

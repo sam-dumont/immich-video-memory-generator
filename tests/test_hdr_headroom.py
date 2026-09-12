@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import struct
 from unittest.mock import patch
 
@@ -74,23 +75,23 @@ class TestExtractAppleHeadroom:
     def test_non_apple_makernote_returns_default(self, tmp_path):
         """Non-Apple MakerNote returns the default headroom."""
         result = _extract_apple_headroom(b"Samsung\x00\x00\x01MM", tmp_path / "test.heic")
-        assert result == 2.3
+        assert result == 1.0
 
     def test_no_makernote_returns_default(self, tmp_path):
         """None MakerNote returns the default headroom."""
         result = _extract_apple_headroom(None, tmp_path / "test.heic")
-        assert result == 2.3
+        assert result == 1.0
 
     def test_truncated_makernote_returns_default(self, tmp_path):
         """Truncated MakerNote doesn't crash, returns default."""
         result = _extract_apple_headroom(b"Apple iOS\x00\x00\x01MM\x00", tmp_path / "test.heic")
-        assert result == 2.3
+        assert result == 1.0
 
     def test_zero_denominator_returns_default(self, tmp_path):
         """Zero denominator in SRATIONAL doesn't crash."""
         mn = _build_makernote(1058986, 0, 608, 100000)
         result = _extract_apple_headroom(mn, tmp_path / "test.heic")
-        assert result == 2.3
+        assert result == 1.0
 
     def test_a_negative_headroom_tag_still_computes(self, tmp_path):
         """A negative 0x0021 is meaningful now: it selects the maker33 < 1 branch.
@@ -118,7 +119,7 @@ class TestExtractAppleHeadroom:
         # WHY: subprocess.run is the external boundary for exiftool
         with patch("subprocess.run") as mock_run:
             mock_run.return_value.returncode = 0
-            mock_run.return_value.stdout = "HDR Headroom                    : 1.5\n"
+            mock_run.return_value.stdout = json.dumps([{"HDRGainMapHeadroom": 1.5}])
             result = _extract_apple_headroom(mn, source)
 
         assert result == pytest.approx(1.5, abs=0.01)
@@ -137,4 +138,28 @@ class TestExtractAppleHeadroom:
         with patch("subprocess.run", side_effect=FileNotFoundError):
             result = _extract_apple_headroom(mn, source)
 
-        assert result == 2.3
+        assert result == 1.0
+
+
+@pytest.mark.parametrize(
+    ("metadata", "expected"),
+    [
+        ({"HDRHeadroom": 0}, 1.0),
+        ({"HDRHeadroom": 0.5, "HDRGain": 1.5}, 2.7311),
+        ({"HDRHeadroom": 1.01, "HDRGain": 0.00608}, 5.9562),
+        ({"HDRGainMapHeadroom": 4.0, "HDRHeadroom": 0}, 4.0),
+        ({"HDRGainMapHeadroom": 0, "HDRHeadroom": 0.5, "HDRGain": 1.5}, 2.7311),
+        ({"HDRGainMapHeadroom": float("nan")}, 1.0),
+        ({"HDRHeadroom": 0.5, "HDRGain": float("inf")}, 1.0),
+    ],
+)
+def test_exiftool_fallback_uses_a_ratio_or_both_apple_tags(tmp_path, metadata, expected):
+    # The holiday render exposed a raw tag of zero with no second tag. Treating
+    # it as the ratio produced a zero-nit black frame from a normal portrait.
+    with patch("subprocess.run") as command:
+        command.return_value.returncode = 0
+        command.return_value.stdout = json.dumps([metadata])
+        headroom = _extract_apple_headroom(None, tmp_path / "photo.heic")
+
+    assert headroom == pytest.approx(expected, abs=0.01)
+    assert headroom >= 1.0

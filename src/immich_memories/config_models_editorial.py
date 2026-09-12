@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -16,7 +17,7 @@ def _default_head_versions() -> dict[str, str]:
     return {
         "activity": "public-v1",
         "children": "public-v1",
-        "doc_docling": "det-v1",
+        "doc_docling": "det-v2",
         "location": "public-v1",
         "nsfw_marqo": "det-v1",
         "people": "public-v1",
@@ -33,6 +34,16 @@ class EditorialConfig(BaseModel):
     """
 
     preparation: EditorialPreparationConfig = Field(default_factory=EditorialPreparationConfig)
+    reader: Literal["auto", "model", "rules"] = "auto"
+
+    def resolve_reader(self, model: str) -> Literal["model", "rules"]:
+        """A blank model selects the bounded rules reader unless explicitly required."""
+        if self.reader == "rules" or self.reader == "auto" and not model.strip():
+            return "rules"
+        if not model.strip():
+            raise ValueError("editorial runtime needs a nonblank LLM model")
+        return "model"
+
     annotation_database: str = Field(
         default="",
         description=(
@@ -75,6 +86,10 @@ class EditorialConfig(BaseModel):
             not name.strip() or not version.strip() for name, version in value.items()
         ):
             raise ValueError("editorial head versions must be nonblank")
+        # Saved configurations include defaults. Retire the Docling recipe that
+        # banked wrong labels on J4125, even when an old config names it explicitly.
+        if value.get("doc_docling") == "det-v1":
+            return value | {"doc_docling": "det-v2"}
         return value
 
     @property

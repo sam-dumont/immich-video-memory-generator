@@ -73,3 +73,22 @@ def test_a_healthy_llm_run_stays_quiet_about_truncation() -> None:
 
     assert "6 calls" in text
     assert "truncated" not in text
+
+
+def test_a_reduced_tier_says_so_and_the_full_one_reads_as_a_normal_run() -> None:
+    """Named tiers, never silent fallbacks: the run block states which one cut the film."""
+
+    def summary(tier):
+        return render_run_summary(
+            total_seconds=90.0,
+            analysis_seconds=40.0,
+            generation_seconds=50.0,
+            eligible=20,
+            planned=8,
+            counters=LLMCounters(),
+            preparation_tier=tier,
+        )
+
+    assert "TIER" not in summary("full")
+    assert "no_captions" in summary("no_captions")
+    assert "family viewing" in summary("metadata_only")

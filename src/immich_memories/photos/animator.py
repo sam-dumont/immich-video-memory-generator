@@ -1,7 +1,7 @@
 """Photo source preparation — decodes stills into something FFmpeg can read.
 
 Handles HEIC/HEIF decode via pillow-heif, downscaling to the render cap, and
-HDR detection: Apple gain maps (headroom from EXIF MakerNote tag 0x0021),
+HDR detection: Apple gain maps (headroom from both Apple MakerNote tags),
 Android Ultra HDR, and tagged HLG/PQ transfer characteristics.
 
 The animation itself lives in renderer.py — frames are rendered in numpy and
@@ -13,6 +13,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import math
 import struct
 import subprocess
 from dataclasses import dataclass
@@ -35,7 +36,8 @@ _HDR_COLOR_TRC = {
 _FFMPEG_NATIVE_FORMATS = {"JPEG", "PNG", "BMP", "TIFF", "WEBP"}
 
 
-_DEFAULT_HEADROOM = 2.3
+# Missing gain-map metadata must preserve SDR brightness, not invent an HDR boost.
+_DEFAULT_HEADROOM = 1.0
 _APPLE_MAKERNOTE_HEADER = b"Apple iOS"
 _HDR_HEADROOM_TAG = 0x0021
 _HDR_GAIN_TAG = 0x0030
@@ -130,20 +132,47 @@ def _find_ifd_tag(mn: bytes, entry_count: int, tag_id: int, expected_type: int) 
     return None
 
 
+def _metadata_headroom(metadata: dict) -> float:
+    ratio = metadata.get("HDRGainMapHeadroom")
+    if isinstance(ratio, (int, float)) and math.isfinite(ratio) and ratio >= 1.0:
+        return float(ratio)
+    maker33, maker48 = metadata.get("HDRHeadroom"), metadata.get("HDRGain")
+    if (
+        isinstance(maker33, (int, float))
+        and isinstance(maker48, (int, float))
+        and math.isfinite(maker33)
+        and math.isfinite(maker48)
+    ):
+        with contextlib.suppress(OverflowError):
+            ratio = _headroom_from_stops(maker33, maker48)
+            if math.isfinite(ratio):
+                return ratio
+    return _DEFAULT_HEADROOM
+
+
 def _exiftool_headroom(source_path: Path) -> float:
-    """Fallback: extract HDRHeadroom via exiftool subprocess."""
+    """Read a declared ratio or calculate it from both raw Apple tags."""
     try:
         result = subprocess.run(
-            ["exiftool", "-Apple:HDRHeadroom", "-n", str(source_path)],
+            [
+                "exiftool",
+                "-j",
+                "-n",
+                "-Apple:HDRHeadroom",
+                "-Apple:HDRGain",
+                "-XMP:HDRGainMapHeadroom",
+                str(source_path),
+            ],
             capture_output=True,
             text=True,
             timeout=10,
         )
-        if result.returncode == 0 and "HDR Headroom" in result.stdout:
-            value_str = result.stdout.split(":")[-1].strip()
-            headroom = float(value_str)
-            logger.info(f"exiftool headroom for {source_path.name}: {headroom:.2f}")
-            return headroom
+        if result.returncode == 0:
+            rows = json.loads(result.stdout)
+            if isinstance(rows, list) and rows and isinstance(rows[0], dict):
+                headroom = _metadata_headroom(rows[0])
+                logger.info(f"exiftool headroom for {source_path.name}: {headroom:.2f}")
+                return headroom
     except (FileNotFoundError, ValueError, subprocess.TimeoutExpired):
         pass
 
@@ -408,7 +437,7 @@ def _apply_hdr_gain_map(
 
     Apple stores iPhone photos as 8-bit SDR (gamma-encoded) + logarithmic
     gain map. The gain must be applied in LINEAR light, not gamma space.
-    Headroom is extracted per-photo from the EXIF MakerNote (tag 0x0021).
+    Headroom is a per-photo linear ratio derived from both Apple MakerNote tags.
     """
     import numpy as np
     from PIL import Image
