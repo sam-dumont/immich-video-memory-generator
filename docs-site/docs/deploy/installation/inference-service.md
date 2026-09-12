@@ -28,7 +28,14 @@ this service later; today it serves `/facts` only.
 `openvino`, `armnn` and `rocm` are not shipped. Quick Sync, VAAPI and NVENC decode, scale and
 encode — they do not run inference, and that stays true on every page here.
 
-Build either variant from a checkout:
+Both are published by the release, so you pull rather than build:
+
+```bash
+docker pull ghcr.io/sam-dumont/immich-video-memory-generator/inference:latest
+docker pull ghcr.io/sam-dumont/immich-video-memory-generator/inference:latest-cuda
+```
+
+To build either variant from a checkout instead:
 
 ```bash
 docker build -f docker/Dockerfile.inference --build-arg DEVICE=cpu \
