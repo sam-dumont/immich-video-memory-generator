@@ -179,9 +179,14 @@ def _load_yaml_data(path: Path) -> dict:
         data = yaml.safe_load(f) or {}
     if "advanced" in data and isinstance(data["advanced"], dict):
         advanced = data.pop("advanced")
-        for key, value in advanced.items():
-            if key not in data:
-                data[key] = value
+        for section, nested in advanced.items():
+            flat = data.get(section)
+            if isinstance(flat, dict) and isinstance(nested, dict):
+                # Merge setting by setting: one hand-edited flat key must not
+                # silently discard the rest of the app-written block (#765).
+                data[section] = {**nested, **flat}
+            elif section not in data:
+                data[section] = nested
     _drop_app_written_wildcard_host(data, path)
     for key, reason in _REMOVED_TOP_LEVEL_SECTIONS.items():
         if key in data:

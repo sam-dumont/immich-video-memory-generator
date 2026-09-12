@@ -410,6 +410,17 @@ class TestConfig:
         loaded = Config.from_yaml(config_path)
         assert loaded.analysis.max_album_assets == 9900
 
+    def test_flat_section_keeps_the_rest_of_its_advanced_block(self, tmp_path):
+        """One flat setting must not discard the other settings of the same section under advanced: (#765)."""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            "analysis:\n  max_album_assets: 9900\n"
+            "advanced:\n  analysis:\n    max_album_assets: 100\n    min_source_short_side: 720\n"
+        )
+        loaded = Config.from_yaml(config_path)
+        assert loaded.analysis.max_album_assets == 9900
+        assert loaded.analysis.min_source_short_side == 720
+
 
 class TestRemovedSections:
     def test_old_scoring_priority_section_is_ignored_with_a_warning(self, tmp_path, caplog):
