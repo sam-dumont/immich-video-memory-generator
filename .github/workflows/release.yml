@@ -21,6 +21,11 @@ on:
           - patch
           - minor
           - major
+      inference_only:
+        description: 'Build and push only the inference images, tagged by commit'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -508,7 +513,12 @@ jobs:
   inference-build:
     name: Build Inference Image (${{ matrix.device }}, ${{ matrix.platform }})
     needs: [analyze, release]
-    if: inputs.dry_run != 'true' && needs.analyze.outputs.should_release == 'true'
+    # Also runs on a manual dispatch with no release, so a cuda image can be put
+    # in front of a real GPU before anyone cuts a version. The tag is then the
+    # commit rather than a version, so a test build can never shadow a release.
+    if: >-
+      inputs.dry_run != 'true' &&
+      (needs.analyze.outputs.should_release == 'true' || inputs.inference_only == 'true')
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -522,15 +532,12 @@ jobs:
           - runner: ubuntu-latest
             platform: linux/amd64
             device: cpu
-            tag: ${{ needs.analyze.outputs.next_version }}
           - runner: ubuntu-24.04-arm
             platform: linux/arm64
             device: cpu
-            tag: ${{ needs.analyze.outputs.next_version }}
           - runner: ubuntu-latest
             platform: linux/amd64
             device: cuda
-            tag: ${{ needs.analyze.outputs.next_version }}-cuda
 
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -603,11 +610,22 @@ jobs:
         env:
           IMAGE: ghcr.io/${{ github.repository }}/inference
           VERSION: ${{ needs.analyze.outputs.next_version }}
+          INFERENCE_ONLY: ${{ inputs.inference_only }}
         run: |
+          # A dispatch build has no version to claim, so it is tagged by commit
+          # and never moves `latest`. Only a release does that.
+          if [ "$INFERENCE_ONLY" = "true" ]; then
+            base="sha-${GITHUB_SHA:0:12}"
+            cpu_tags="-t $IMAGE:$base"
+            cuda_tags="-t $IMAGE:$base-cuda"
+          else
+            cpu_tags="-t $IMAGE:$VERSION -t $IMAGE:latest"
+            cuda_tags="-t $IMAGE:$VERSION-cuda -t $IMAGE:latest-cuda"
+          fi
           cpu=$(find /tmp/digests -path '*-cpu-*' -type f -exec basename {} \; | sed "s|^|$IMAGE@|" | tr '\n' ' ')
           cuda=$(find /tmp/digests -path '*-cuda-*' -type f -exec basename {} \; | sed "s|^|$IMAGE@|" | tr '\n' ' ')
-          docker buildx imagetools create -t "$IMAGE:$VERSION" -t "$IMAGE:latest" $cpu
-          docker buildx imagetools create -t "$IMAGE:$VERSION-cuda" -t "$IMAGE:latest-cuda" $cuda
+          docker buildx imagetools create $cpu_tags $cpu
+          docker buildx imagetools create $cuda_tags $cuda
 
   docker-smoke:
     name: Smoke Test Docker Image
