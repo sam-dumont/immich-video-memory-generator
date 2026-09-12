@@ -1104,13 +1104,14 @@
     "capability_ci_tests_passed": 6819,
     "service_ci_tests_passed": 6730,
     "docs_build": "passed",
-    "stage": "local CI and published CUDA execution verified; final release integration pending",
+    "stage": "local CI, films, captions, and published CUDA execution verified",
     "onnx_integration_tests_passed": 6773,
     "preflight_mode_tests_passed": 28,
     "processing_integration": {
       "passed": 94,
       "skipped": 1
-    }
+    },
+    "release_pr": "https://github.com/sam-dumont/immich-video-memory-generator/pull/813"
   },
   "selection_before_marqo_onnx": [
     {

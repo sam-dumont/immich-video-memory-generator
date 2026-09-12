@@ -1,6 +1,6 @@
 ---
 date: 2026-09-12
-status: selection and films verified; release integration in progress
+status: selection, films, captions, and published CUDA execution verified
 ---
 
 # Reader capability matrix
@@ -174,7 +174,7 @@ The February reader now accepts all ten standard products. Preflight follows the
 
 The obsolete triage-constructor test was removed; existing preparation/runtime tests already cover banking in the library cache and warm producer reuse through the current API. The new comparison regression proves that a different asset in a complete reference inventory still retains its occasion. It also distinguishes missing inventories from proven losses.
 
-Local `make ci` passed: **6,819 tests** for the combined capability branch and **6,773 tests** for the ONNX/service integration, with seven skips each. The documentation builds passed; the staged privacy check precedes publication. Release integration and its final CI remain in progress. Historical merge-message lint now accepts the existing lowercase merge prefix, and the inference health test covers both available and absent optional ONNX Runtime. The new rules path is a measured degraded option; the findings above do not satisfy the design’s equal-quality release bar. The caption follow-up is included; the broader UX rework remains the next phase.
+Local `make ci` passed: **6,819 tests** for the combined capability branch and **6,773 tests** for the ONNX/service integration, with seven skips each. The documentation builds and staged privacy checks passed. Final release integration is tracked in [PR #813](https://github.com/sam-dumont/immich-video-memory-generator/pull/813). Historical merge-message lint now accepts the existing lowercase merge prefix, and the inference health test covers both available and absent optional ONNX Runtime. The new rules path is a measured degraded option; the findings above do not satisfy the design’s equal-quality release bar. The caption follow-up is included; the broader UX rework remains the next phase.
 
 ## Caption follow-up
 
