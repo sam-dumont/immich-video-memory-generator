@@ -13,6 +13,8 @@ guard unless the hermetic editorial route is mounted into the container.
 from __future__ import annotations
 
 import ast
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -92,7 +94,7 @@ def test_the_release_smoke_drives_the_story_first_route_inside_the_image(tmp_pat
     )
 
     fixture = _SCRIPT.parent.parent / "tests" / "e2e" / "fake_editorial.py"
-    assert (injected / fixture.name).read_text() == fixture.read_text()
+    assert (injected / "tests" / "e2e" / fixture.name).read_text() == fixture.read_text()
     assert f"{injected}:{docker_smoke.SMOKE_MOUNT}:ro" in argv
     entry = argv.index("ghcr.io/example/app@sha256:cafe")
     assert argv[entry + 1 : entry + 3] == [
@@ -110,3 +112,33 @@ def test_the_release_smoke_stops_when_the_editorial_fixture_is_gone(tmp_path, mo
 
     with pytest.raises(FileNotFoundError):
         docker_smoke.prepare_editorial_fixture(tmp_path)
+
+
+def test_mounted_bootstrap_imports_without_the_repository_tests_package(tmp_path: Path) -> None:
+    """An image has the installed app and mounted fixtures, not this checkout."""
+    injected = docker_smoke.prepare_editorial_fixture(tmp_path)
+    # Supply the host equivalent of /smoke while -I excludes the checkout and
+    # PYTHONPATH. Running the real bootstrap catches missing fixture imports.
+    bootstrap = (
+        "import runpy, sys; sys.path.insert(0, sys.argv[1]); "
+        "sys.argv = sys.argv[2:]; runpy.run_path(sys.argv[0], run_name='__main__')"
+    )
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-c",
+            bootstrap,
+            str(injected),
+            str(injected / "smoke_bootstrap.py"),
+            "--help",
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "generate" in proc.stdout

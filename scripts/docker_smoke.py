@@ -48,7 +48,7 @@ os.environ.setdefault("ENABLE_TAICHI_HEADER_PRINT", "0")
 os.environ.setdefault("TI_LOG_LEVEL", "error")
 sys.path.insert(0, "{SMOKE_MOUNT}")
 
-from fake_editorial import install_fake_editorial_route
+from tests.e2e.fake_editorial import install_fake_editorial_route
 
 install_fake_editorial_route(stage_seconds=0.0)
 
@@ -63,13 +63,18 @@ def prepare_editorial_fixture(root: Path) -> Path:
     if not FIXTURE.is_file():
         raise FileNotFoundError(f"{FIXTURE} is missing; the smoke cannot stand up a cut")
     directory = root / "editorial"
-    directory.mkdir()
-    shutil.copy(FIXTURE, directory / FIXTURE.name)
+    package = directory / "tests" / "e2e"
+    package.mkdir(parents=True)
+    (package.parent / "__init__.py").touch()
+    (package / "__init__.py").touch()
+    # Preserve the fixture's package imports, including its shared library.
+    for fixture in (FIXTURE, FIXTURE.with_name("fake_library.py")):
+        shutil.copy(fixture, package / fixture.name)
     (directory / "smoke_bootstrap.py").write_text(_BOOTSTRAP)
     # The container runs as UID 1000 and only reads these.
     directory.chmod(0o755)
-    for entry in directory.iterdir():
-        entry.chmod(0o644)
+    for entry in directory.rglob("*"):
+        entry.chmod(0o755 if entry.is_dir() else 0o644)
     return directory
 
 
