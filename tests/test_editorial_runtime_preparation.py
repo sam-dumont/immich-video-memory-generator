@@ -136,6 +136,30 @@ def test_missing_required_producer_blocks_all_editing_and_records_failed_attempt
     assert all(len(ids) == 3 for ids in report["missing_by_producer"].values())
 
 
+def test_a_refusing_producer_puts_its_own_reason_in_the_message_that_stops_the_run(
+    tmp_path, monkeypatch
+):
+    """A count of missing facts is the symptom; the producer's sentence is the cause.
+
+    A detector that could not load its model used to leave only
+    `head:doc_docling@det-v1: 1440` behind, with the reason written to
+    preparation.private.json and nowhere a reader would look.
+    """
+    reason = "doc_docling has no model: run `immich-memories models fetch`"
+    providers = replace(successful_ports([]), detectors=lambda **_: {"doc_docling": reason})
+    planner, sources, _ = build(tmp_path, providers=providers, fetched=[])
+    monkeypatch.setattr(
+        planner._planner,
+        "plan_prepared",
+        lambda *_, **__: pytest.fail("editing began with a refusing producer"),
+    )
+
+    with pytest.raises(EditorialInputsRequired, match="models fetch") as raised:
+        planner.plan_source(sources, trace=Trace())
+
+    assert "head:doc_docling@det-v1" in str(raised.value)
+
+
 def test_the_attempt_carries_live_numbers_and_recent_pictures_beside_its_stage(
     tmp_path, monkeypatch
 ):

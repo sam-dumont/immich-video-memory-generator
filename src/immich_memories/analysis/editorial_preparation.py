@@ -51,6 +51,20 @@ class PreparationResult:
     def complete(self) -> bool:
         return not self.missing_by_producer and not self.failures
 
+    @property
+    def producer_failures(self) -> tuple[str, ...]:
+        """Failures that name a producer rather than one picture.
+
+        The per-asset entries are keyed by asset id and there can be thousands
+        of them; these are the ones worth putting in a message, because they say
+        why a whole producer contributed nothing.
+        """
+        return tuple(
+            reason
+            for key, reason in sorted(self.failures.items())
+            if not key.startswith(("preview:", "pixel:", "caption:"))
+        )
+
 
 @dataclass(frozen=True)
 class PreparationPorts:
