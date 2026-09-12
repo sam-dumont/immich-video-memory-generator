@@ -46,7 +46,6 @@ from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from matrix_routes import pinned_day_args  # noqa: E402
 
 DECISION_FIELDS = (
     "contract_key",
@@ -380,7 +379,7 @@ def route_argv(route: dict) -> list[str]:
             continue
         argv.append(token)
     day = route.get(PINNED_DAY)
-    return argv if not day else argv + pinned_day_args(str(day))
+    return argv if not day else argv + ["--day", str(day)]
 
 
 def verdict(

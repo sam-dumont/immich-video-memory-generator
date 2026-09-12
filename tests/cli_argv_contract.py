@@ -98,6 +98,6 @@ def memory_scope(params: dict[str, Any]) -> tuple[DateRange, list[DateRange]]:
         month=params["month"],
         hemisphere=params["hemisphere"],
         years_back=params["years_back"],
-        on_this_day_target=None,
+        on_this_day_target=params["day"] if params["memory_type"] == "on_this_day" else None,
         holiday=params["holiday"],
     )

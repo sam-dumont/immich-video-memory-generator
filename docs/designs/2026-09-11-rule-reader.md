@@ -1,6 +1,28 @@
 # The rule reader: editing without a language model
 
-Status: designed, not built. Sequenced after the scorer removal lands.
+Status: all ten standard products now have a measured rules path (September 12, 2026).
+See [the capability matrix](../research/2026-09-12-capability-matrix.md) for 48 successful
+selection runs, 36 contact sheets and the quality losses. February deployment measurements
+remain in [the phase 5 review](../research/2026-09-12-phase5-readiness.md).
+
+The implementation uses `RuleEpisodeReader` and `rule_period` for the two upstream readings,
+with `RuleStructureReader` on the existing planner ports. It reuses weight floors,
+capture-group inventory, mechanical picks, admission and timing. It does not add the
+proposed seven-delegation `ModelReader` abstraction. `NoModelJudge` rejects accidental
+model-only calls; rules bypass semantic banks. Plans identify `rules-v1`, with an empty
+thesis and Live Photos kept as stills. Custom semantic subjects require a model reader.
+
+The album route now treats the owner's album choice as curation, after source, audience and
+technical gates. The broader design below still contains proposals: adjacent-away extension,
+about-candidate nomination, dominant journey weighting and cross-group hash collapse have
+not been added to this implementation. Rules currently group consecutive photographed days;
+long runs can skew allocation. UI redesign remains outside this work.
+
+The ten-route matrix does **not** establish the declared 100% occasion-recall and zero-audience-
+regression bar: reference inventories are incomplete, and some rules picks were refused by
+the reference model. Those are explicit review questions, not passing quality results. The
+following description of the blank-model crash is historical; blank models now select rules
+when `editorial.reader` is `auto`.
 
 A self-hoster who will not send pictures to a hosted model and cannot run a 30B text model at
 home is not a fringe case. Today they get a crash: `build_editorial_planner` raises

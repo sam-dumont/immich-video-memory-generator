@@ -269,11 +269,11 @@ def test_default_store_is_initialized_in_the_library_cache(tmp_path):
     planner.close()
 
 
-def test_enabled_runtime_rejects_a_blank_text_model_before_opening_the_store(
+def test_explicit_model_runtime_rejects_blank_model_before_opening_the_store(
     tmp_path,
 ) -> None:
     store = tmp_path / "annotations.sqlite"
-    config = Config(editorial={"enabled": True, "annotation_database": str(store)})
+    config = Config(editorial={"reader": "model", "annotation_database": str(store)})
     context = EditorialRunContext(
         key="month",
         label="August 2026",

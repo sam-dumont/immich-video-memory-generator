@@ -9,20 +9,26 @@ sidebar_label: "Self-hosting: start here"
 Everything you have to stand up, in the order you have to stand it up, on one page. All of it
 runs on your own hardware; none of it calls a cloud API.
 
-**It is heavy machinery.** Two of the three services are models, one of them wants 17 GB of memory
-to itself, and the app refuses to cut rather than guess without them. The cheapest thing that works
-is one Apple Silicon Mac with 32 GB; the next cheapest is the app wherever you like plus one box
-that can hold the models. Nothing here runs on a NAS alone.
+Choose the **rules reader** for the smallest deployment, or a **model reader** for semantic
+editing. A NAS can make the rules cut on its own. The model-assisted walkthrough below uses
+a reader with roughly 17 GB of weights; serve that on a suitable Mac or GPU machine.
+
+For the no-inference option, set `advanced.editorial.reader: rules` and
+`advanced.editorial.preparation.tier: metadata_only`. Start with
+[the NAS-only configuration](./common-setups/nas-only.md#nas-alone-without-inference) and
+[the capability limits](./configuration/editorial-preparation.md#editing-without-a-language-model).
+It supports the ten standard memory products, but does not preserve all model judgements,
+semantic stories or Live Photo motion choices.
 
 ## What you are standing up
 
-Three services and two files on disk.
+The app, plus the model services and files required by the reader and preparation tier you choose.
 
 | Piece | What it does | Listens on | Resident memory |
 |---|---|---|---|
 | **The app** | Talks to Immich, prepares facts, renders the video, serves the web UI | `8080` | 2–4 GB |
-| **The reader** | Groups the period's days into stories, weighs them, picks the pictures, and *looks* at some of them: it is sent an 800 px tile of the candidates whose facts the edit demands, a few dozen per memory | wherever you serve it (oMLX defaults to `8000`) | ~17 GB at 4-bit |
-| **The caption server** | One 140-token description and setting per picture, once, then it is banked forever | `8092` by default | 1–2 GB |
+| **The reader** (optional with `rules`) | Groups the period's days into stories, weighs them, picks the pictures, and *looks* at some of them: it is sent an 800 px tile of the candidates whose facts the edit demands, a few dozen per memory | wherever you serve it (oMLX defaults to `8000`) | ~17 GB at 4-bit |
+| **The caption server** (`full` preparation only) | One 140-token description and setting per picture, once, then it is banked forever | `8092` by default | 1–2 GB |
 
 On the app's disk: the pinned **DINOv2-small ONNX export** (88 MB) behind the six context heads,
 and two **CPU detector** snapshots (~400 MB). One command fetches both. The head bundle itself is
@@ -32,13 +38,13 @@ The reader is one model doing two jobs, and it needs vision. Point a text-only m
 you do not get a loud failure: every picture request comes back empty, gets banked as a
 completion failure, and the edit reads `picture observations unavailable` on those assets and
 carries on. You get a finished video made without the evidence it asked for, which is worse than
-a stop. The only blank this seat refuses outright is an empty `llm.model`.
+a stop. An explicit `editorial.reader: model` requires a nonblank `llm.model`; `auto` selects rules when the model is blank.
 
 ## Before you start
 
 - **Immich v2 or v3** and an API key (Account Settings → API Keys). Read access to assets, people,
   albums, timeline and search; add asset upload and album create/update if you want upload-back.
-- **A machine that can hold the reader.** The graded model is 30B parameters at 4 bits, so
+- **For model editing, a machine that can hold the reader.** The graded model is 30B parameters at 4 bits, so
   roughly 17 GB of weights stay resident for as long as the server is up. That figure is the
   arithmetic, not a measurement. See [one machine or two](#one-machine-or-two) before you pick
   where things run.
@@ -67,6 +73,8 @@ library. Details on both routes are on the [Docker page](./installation/docker.m
 
 ## 2. Fetch the model files
 
+Skip this step for `metadata_only`, which does not demand image-model facts.
+
 ```bash
 immich-memories models fetch
 ```
@@ -84,6 +92,8 @@ there is no other source for the encoder, and preparation stops at the heads sta
 :::
 
 ## 3. Serve the reader
+
+Skip this step with `editorial.reader: rules`.
 
 Any OpenAI-compatible `/chat/completions` endpoint that takes images, honours
 `response_format: json_schema` and has **at least a 32k-token context**. Every request is bounded
@@ -190,9 +200,9 @@ per-clip scorer and only tells you about the render.
 | Layout | What it looks like | Verdict |
 |---|---|---|
 | One Apple Silicon box, 32 GB+ unified memory | App, reader, caption server, render, all local | **Tested.** The only end-to-end configuration anyone has graded |
-| App on a NAS or mini-PC + a second box (24 GB GPU, or a Mac) for the reader | The app and the CPU producers are cheap; the reader is not | **Expected to work.** Two machines. On the `no_captions` tier the second box serves the reader only |
+| App on a NAS or mini-PC + a second box (24 GB GPU, or a Mac) for the reader | The app and the CPU producers are cheap; the reader is not | **Selection measured** on the NAS with a Mac reader. On `no_captions`, the second box serves the reader only; full render throughput remains unmeasured |
 | One amd64 box, CPU only, small reader | A 4B-class reader will answer; quality unmeasured | **Expected to work, slowly.** Fine for a first look, not for a verdict on the editor |
-| A NAS alone, no second machine, no hosted key | n/a | **Unsupported.** A smaller model would be shipping ungraded output to the tier least able to judge it |
+| A NAS alone, no second machine, no hosted key | `reader: rules`, `tier: metadata_only` | **Selection measured**: February took 279 s cold and 11.1 s warm on a DS423+. Simpler editing; review the result. Rendering excluded |
 
 Two things bite people on the split layout: `localhost` inside a container means the container, so
 `caption_base_url` and `llm.base_url` need real hostnames; and the shipped Kubernetes
@@ -201,7 +211,7 @@ oMLX's 8000). Serve the reader anywhere else and you edit
 [`deploy/kubernetes/base/networkpolicy.yaml`](./installation/kubernetes.md) first.
 
 **VAAPI, Quick Sync and NVENC are media accelerators.** They decode, scale and encode. They do not
-run inference, and no amount of them removes the reader.
+run inference. Choosing the rules reader removes language-model editing; choosing a hardware encoder only changes media processing.
 
 ## What has actually been tested
 

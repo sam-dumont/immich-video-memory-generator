@@ -139,6 +139,24 @@ def test_cold_full_source_then_warm_has_zero_provider_calls(tmp_path):
     assert stat.S_IMODE((tmp_path / "annotations.sqlite").stat().st_mode) == 0o600
 
 
+def test_old_docling_facts_are_replaced_without_repeating_other_producers(tmp_path):
+    calls = []
+    assert run(tmp_path, ports=successful_ports(calls), fetch_preview=lambda _: preview()).complete
+    with sqlite3.connect(tmp_path / "annotations.sqlite") as connection:
+        connection.execute(
+            "UPDATE head_facts SET version='det-v1', label='table', confidence=0.05295 "
+            "WHERE head='doc_docling'"
+        )
+    calls.clear()
+
+    result = run(tmp_path, ports=successful_ports(calls))
+
+    assert result.complete
+    assert calls == [("detectors", ("doc_docling",))]
+    assert result.produced == {"head:doc_docling@det-v2": 2}
+    assert run(tmp_path, ports=refusing_ports("heads", "detectors", "captions")[0]).complete
+
+
 def test_the_pass_names_each_picture_it_finishes_so_a_watcher_can_show_them(tmp_path):
     """A count cannot carry a picture: a surface watching a long stage needs the ids."""
     seen: list[str] = []

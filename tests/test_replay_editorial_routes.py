@@ -262,8 +262,7 @@ def test_a_pinned_day_lets_a_clock_scoped_route_replay_the_day_it_was_cut(harnes
     argv = harness.route_argv({**route, "target_date": "2024-07-15"})
 
     assert argv[:4] == ["--memory-type", "on_this_day", "--years-back", "3"]
-    assert argv[argv.index("--automation-target-date") + 1] == "2024-07-15"
-    assert argv[argv.index("--memory-key") + 1] == "on_this_day:2024-07-15:2024-07-15:"
+    assert argv[4:] == ["--day", "2024-07-15"]
     assert harness.route_argv(route) == argv[:4]
 
 

@@ -48,8 +48,12 @@ def resolve_special_day(
         # The missing half of the pair is reported where the scope is resolved,
         # beside --season's and --holiday's identical rule.
         return None
+    if memory_type == "on_this_day":
+        # There the day is the anniversary being looked back from, not an
+        # occasion the catalogue has a name for, so there is nothing to read.
+        return None
     if memory_type != "special_day":
-        raise click.UsageError("--day requires --memory-type special_day")
+        raise click.UsageError("--day requires --memory-type special_day or on_this_day")
 
     path = default_catalogue_path()
     entry = _catalogued_event(path, day, event_id)

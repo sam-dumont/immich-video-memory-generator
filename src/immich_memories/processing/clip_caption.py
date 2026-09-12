@@ -30,10 +30,9 @@ def resolve_caption_locale(value: str | None) -> str:
 
 
 # Caption metrics as a share of the frame's short side, so the date reads the
-# same on a 4K memory and a 720p one. Ratios validated on the 2026-08-21
-# proof-sheet review (v4): title-scale bold uppercase, corners hugged the
-# same way in both orientations.
-_FONT_RATIO = 0.062
+# same on a 4K memory and a 720p one. Captions provide quiet context;
+# title cards carry the large typography.
+_FONT_RATIO = 0.0444
 _MARGIN_RATIO = 0.055
 
 # 0xBF is 75% of full range: HLG graphics white. Measured, plain white@0.85
@@ -60,7 +59,7 @@ class ClipCaption:
 def captions_for_timeline(
     clips: list[Any], *, place: bool = False, locale_code: str = "en"
 ) -> list[ClipCaption]:
-    """Captions for a clip sequence, shown-place deduplicated.
+    """Captions for a clip sequence, with dates and places independently deduplicated.
 
     The interesting information in a place caption is the CHANGE of place, so
     it appears when it differs from the last known place and stays silent while
@@ -77,19 +76,26 @@ def captions_for_timeline(
 
     captions: list[ClipCaption] = []
     last_place: str | None = None
+    last_date: date | None = None
     for clip, taken in zip(clips, dates, strict=True):
         shown_place = ""
         if place:
-            where = getattr(clip, "location_name", None)
-            if where and str(where) != last_place:
+            where = getattr(clip, "caption_location_name", None)
+            if where is None:
+                where = getattr(clip, "location_name", None)
+            if where is not None and str(where) != last_place:
                 shown_place = str(where)
                 last_place = shown_place
         captions.append(
             ClipCaption(
                 place=shown_place,
-                date=_worded(taken, same_month, same_year, locale_code),
+                date=_worded(taken, same_month, same_year, locale_code)
+                if taken != last_date
+                else "",
             )
         )
+        if taken is not None:
+            last_date = taken
     return captions
 
 
@@ -150,11 +156,8 @@ def caption_filters(
 ) -> list[str]:
     """FFmpeg drawtext filters: the place top-left, the date bottom-right.
 
-    Bold uppercase at title scale, hugging the corners the same way in both
-    orientations, anchored at constant y so nothing drifts with descenders.
-    A heavy dark outline plus shadow keeps white text legible over bright
-    content — validated frame-by-frame on light, dark, colorful and busy
-    backgrounds in the 2026-08-21 proof-sheet review.
+    Small translucent uppercase, anchored at constant y in both orientations.
+    A light outline preserves readability without making every clip a title.
     """
     short_side = min(width, height)
     font_size = max(12, round(short_side * _FONT_RATIO))
@@ -163,10 +166,10 @@ def caption_filters(
     colour = _HDR_COLOUR if is_hdr else _SDR_COLOUR
     common = (
         f":fontsize={font_size}"
-        f":fontcolor={colour}"
-        f":borderw={max(2, font_size // 10)}:bordercolor=black@0.75"
-        f":shadowcolor=black@0.6"
-        f":shadowx={max(2, font_size // 20)}:shadowy={max(2, font_size // 20)}"
+        f":fontcolor={colour}@0.85"
+        f":borderw={max(1, font_size // 24)}:bordercolor=black@0.45"
+        ":shadowcolor=black@0.35"
+        f":shadowx={max(1, font_size // 32)}:shadowy={max(1, font_size // 32)}"
     )
     if font_path:
         common = f":fontfile='{font_path}'" + common
@@ -204,7 +207,7 @@ def timeline_captions(
 ) -> tuple[list[ClipCaption] | None, str | None]:
     """Captions for the whole sequence, or nothing when neither flag is set.
 
-    Timeline-aware (place dedupe, span-relative dates), so computed once for
+    Timeline-aware (independent dedupe, span-relative dates), so computed once for
     the sequence rather than per decoder.
     """
     if not (date_overlay or place_overlay):

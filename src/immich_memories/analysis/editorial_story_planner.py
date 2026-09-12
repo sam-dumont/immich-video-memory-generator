@@ -376,6 +376,7 @@ def select_story_first(
     partition_limit: int | None = None,
     picture_line: Callable[[dict], str] | None = None,
     motion_line: Callable[[dict], str] | None = None,
+    rules=None,
 ) -> StorySelection:
     """Read the period into weighed stories, fund them, inventory them, choose standing pictures.
 
@@ -406,7 +407,8 @@ def select_story_first(
     )
     for row in evidence:
         row.pop("episode_context", None)  # the story must stand on descriptions alone
-    story = read_period_story(
+    read_story = rules.read_story if rules is not None else read_period_story
+    story = read_story(
         judge,
         evidence=evidence,
         contract=contract,
@@ -430,25 +432,26 @@ def select_story_first(
     granted, partition_grants = parts.allocate(stories, choices_of, slots)
 
     # 4. The model inventory, per day episode inside a funded story.
-    _inventory_funded_stories(
-        _DayInventory(
-            judge,
-            unit_by_asset=unit_by_asset,
-            label_line=label_line,
-            record=record,
-            flagged=flagged,
-            life=life,
-            calls=calls,
-        ),
-        stories=stories,
-        granted=granted,
-        partition_grants=partition_grants,
-        choices_of=choices_of,
-        episode_of={e.key: e for e in story.episodes},
-        units=units,
-        parts=parts,
-        capture_groups=lambda day_units: _capture_group_moments(day_units, **picking),
-    )
+    if rules is None:
+        _inventory_funded_stories(
+            _DayInventory(
+                judge,
+                unit_by_asset=unit_by_asset,
+                label_line=label_line,
+                record=record,
+                flagged=flagged,
+                life=life,
+                calls=calls,
+            ),
+            stories=stories,
+            granted=granted,
+            partition_grants=partition_grants,
+            choices_of=choices_of,
+            episode_of={e.key: e for e in story.episodes},
+            units=units,
+            parts=parts,
+            capture_groups=lambda day_units: _capture_group_moments(day_units, **picking),
+        )
 
     # 5. Pick the moments that tell each story, then one picture per moment that stands by
     #    itself and is shareable.
@@ -460,6 +463,7 @@ def select_story_first(
         life=life,
         unit_by_asset=unit_by_asset,
         pictures_of={s["key"]: s["seen"]["pictures"] for s in stories},
+        score_of=rules.standing if rules is not None else None,
         bank=standing_bank,
         save=standing_save,
         calls=calls,
@@ -478,6 +482,7 @@ def select_story_first(
         excluded=dict(excluded or {}),
         shareable=shareable,
         kind_marker=_kind_marker_of(unit_by_asset, story_lines),
+        mechanical_picks=rules is not None,
         picture_line=picture_line,
         motion_line=motion_line,
         contract=contract,

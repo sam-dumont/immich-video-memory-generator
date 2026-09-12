@@ -18,8 +18,9 @@ that `no_captions` is the tier for a machine that cannot spend 30 seconds a pict
 and it keeps every producer the audience gate reads.
 
 This is the default route for UI, CLI and scheduled runs. New runs use the FAMILY audience.
-A shirtless baby is ordinary family content. Eight findings are held out of the cut at every
-audience: breastfeeding or expressing milk, bathing, toileting or changing, intimate hygiene,
+A shirtless baby is ordinary family content. When the available evidence identifies them,
+eight findings are held out of the cut at every audience: breastfeeding or expressing milk,
+bathing, toileting or changing, intimate hygiene,
 graphic medical procedures, identifying records, sexual content, and adult changing.
 
 Install the inference dependencies:
@@ -72,6 +73,37 @@ The producer versions remain in `editorial.description_model`, `editorial.head_v
 `editorial.pixel_producer_key`. Changing a version names a different fact generation; it does
 not teach the preparer how to produce it. The packaged producers fill the current defaults.
 
+## Editing without a language model
+
+`advanced.editorial.reader` accepts `auto`, `model` or `rules`. `auto` uses rules when
+`advanced.llm.model` is blank. To choose the path explicitly:
+
+```yaml
+advanced:
+  editorial:
+    reader: rules
+    preparation:
+      tier: metadata_only
+```
+
+This produces cuts for monthly highlights, person spotlight, multiple people, special day,
+trip, year in review, season, holiday, album and on-this-day requests. Custom subjects that
+need semantic interpretation require a model reader. Rules use dates, places, favourites,
+known people and available facts; they do not create a semantic thesis, rerank with a model
+or select Live Photo motion. The normal source, duration and audience mechanisms still apply.
+
+Use `no_captions` instead when the machine can run image classifiers. That adds visual
+context and detector evidence, but does not guarantee a better edit: the measured season
+cut became longer while choosing more household objects. A shortfall remains a shortfall;
+the rules do not stretch weak material just to fill the target.
+
+`metadata_only` requests previews and pixel measurements, with no image-model preparation.
+It does not delete facts already stored in the annotation database. A fresh database is
+needed to compare an inference-free first run against a richer preparation tier.
+The September 12 twelve-case matrix produced repeatable cuts with zero model requests;
+it did not establish equal occasion coverage or audience judgement to the model editor.
+Review the result before sharing it.
+
 ## Public context heads
 
 The wheel includes `public-6heads-v3.npz` and its provenance notice. Its four base heads use
@@ -97,6 +129,8 @@ The package verifies the export digest and its match with the head bundle. The e
 bundled, downloaded automatically, or interchangeable with another ONNX conversion. An
 installation without this exact export still needs that artifact before preparing new facts.
 
+Preflight follows the selected reader and preparation tier: rules skip the reader endpoint, `no_captions` skips the caption endpoint, and `metadata_only` also skips model-file checks. An explicit model reader without a model name is still an error.
+
 ## Detectors
 
 Two CPU detectors, both ONNX graphs on ONNX Runtime's CPU provider. The worker reads previews
@@ -105,7 +139,7 @@ locally and commits each completed batch. It does not upload images to Hugging F
 | Producer | Artifact | How it is pinned | Facts |
 | --- | --- | --- | --- |
 | `nsfw_marqo` | a 22.5 MB single-file ONNX export of `Marqo/nsfw-image-detection-384@0c26ec22111b83f106d72a55f611ec35962bcb65` | `marqo_onnx`, SHA-256 `924658f1ac638d96e9126ecb29de047dc8d31c9c9defcab77a26a5c96ed69e11`, checked on load | `det-v2` |
-| `doc_docling` | `model.onnx` from `docling-project/DocumentFigureClassifier-v2.0` | revision `2a12e02668b98ca40216eab41cdf19530577cba4` in the Hugging Face cache | `det-v1` |
+| `doc_docling` | `model.onnx` from `docling-project/DocumentFigureClassifier-v2.0` | revision `2a12e02668b98ca40216eab41cdf19530577cba4` in the Hugging Face cache | `det-v2` |
 
 `immich-memories models fetch` supplies both in one command: it downloads `marqo_onnx_url` to a
 temporary file, hashes it and only then renames it into `marqo_onnx`, and it warms the Docling
@@ -124,6 +158,8 @@ nsfw_marqo has no model: Marqo/nsfw-image-detection-384@0c26ec22/onnx-384 is not
 ~/.immich-memories/models/detectors/nsfw-marqo-384.onnx. Run `immich-memories models fetch`
 to download it, or point advanced.editorial.preparation.marqo_onnx at your copy of the export.
 ```
+
+Docling also uses `det-v2`: its layout optimizer produced incorrect labels on the NAS J4125. The corrected extended-optimization graph is portable across that CPU and arm64. Saved `det-v1` settings for either detector migrate on load; the next run recomputes those facts and dependent readings.
 
 **Why `nsfw_marqo` produces `det-v2`.** It used to be a timm vision transformer under torch. A
 different artifact is a different producer, so the ONNX export carries its own fact version and

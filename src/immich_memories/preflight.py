@@ -273,6 +273,14 @@ def check_llm(config: Config) -> CheckResult:
     Returns:
         CheckResult with status and details.
     """
+    try:
+        reader = config.editorial.resolve_reader(config.llm.model)
+    except ValueError as exc:
+        return CheckResult(name="LLM", status=CheckStatus.ERROR, message=str(exc))
+    if reader == "rules":
+        return CheckResult(
+            name="LLM", status=CheckStatus.SKIPPED, message="Rules reader does not use an LLM"
+        )
     provider = config.llm.provider
     base_url = config.llm.base_url
     model = config.llm.model
@@ -382,6 +390,10 @@ def check_title_rendering(config: Config) -> CheckResult:
 
 def check_encoder(config: Config) -> CheckResult:
     """Report the digest-pinned DINOv2 export the six context heads run on."""
+    if not config.editorial.preparation.demands_models:
+        return CheckResult(
+            name="Encoder", status=CheckStatus.SKIPPED, message="Not required by metadata_only"
+        )
     from immich_memories.triage.encoder import DINOV2_SMALL_ONNX_SHA256
 
     path = config.triage.encoder_path
@@ -415,6 +427,12 @@ def check_detector_export(config: Config) -> CheckResult:
     It is checked here because the alternative is finding out during the cut:
     the detector worker is a separate process reached hours into preparation.
     """
+    if not config.editorial.preparation.demands_models:
+        return CheckResult(
+            name="Sensitive-content detector",
+            status=CheckStatus.SKIPPED,
+            message="Not required by metadata_only",
+        )
     from immich_memories.analysis.editorial_preparation_detectors import (
         MARQO_ONNX_ID,
         MARQO_ONNX_SHA256,
@@ -447,6 +465,12 @@ def check_detector_export(config: Config) -> CheckResult:
 
 def check_caption_endpoint(config: Config) -> CheckResult:
     """Report whether the configured caption server advertises the accepted alias."""
+    if not config.editorial.preparation.demands_captions:
+        return CheckResult(
+            name="Captions",
+            status=CheckStatus.SKIPPED,
+            message=f"Not required by {config.editorial.preparation.tier}",
+        )
     from immich_memories.analysis.editorial_description_contract import API_MODEL
 
     base_url = config.editorial.preparation.caption_base_url

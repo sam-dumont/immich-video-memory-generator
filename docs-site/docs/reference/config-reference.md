@@ -414,13 +414,14 @@ whether a picture is suitable for the audience.
 
 ```yaml
 editorial:
+  reader: auto                  # auto | model | rules
   annotation_database: ""        # defaults to annotations.sqlite inside the configured cache directory
   description_model: "smolvlm2-500m-base-public@envelope-v3-compact"
   pixel_producer_key: "pixel-facts-v1"  # exact producer of pixel facts and thresholds  # gitleaks:allow
   head_versions:                 # exact producer version selected for each annotation head
     activity: public-v1
     children: public-v1
-    doc_docling: det-v1
+    doc_docling: det-v2
     location: public-v1
     nsfw_marqo: det-v2
     people: public-v1
@@ -443,6 +444,27 @@ editorial:
 Tier 2: lives under `advanced:` when the app writes the file. Story-first selection is the
 production route for UI, CLI and scheduled runs. Old `enabled` and `story_first` keys are
 ignored; there is no opt-in flag or environment switch.
+
+Docling uses `det-v2` to avoid incorrect document labels from ONNX layout optimization on
+the Celeron J4125. Saved `doc_docling: det-v1` settings upgrade on load. The next run
+recomputes that head's facts and refreshes dependent readings; other head facts remain reusable.
+
+`reader: auto` uses the model when `llm.model` is set and rules when it is blank.
+`reader: model` requires a model; `reader: rules` skips model editing and reranking even
+when a model is configured. Rules support the ten standard memory products, including
+albums and recurring dates. Custom free-text subjects require the model reader: rules
+cannot interpret a request such as "pictures about perseverance".
+
+Rules use dates, places, favourites, people metadata and available preparation facts.
+They reuse the normal allocation, spacing, audience and timing checks, omit a thesis,
+keep unsampled Live Photos as stills, and do not write semantic model banks. Saved plans
+identify the producer as `rules-v1`; the dedicated UI disclosure remains outside this slice.
+
+Preparation remains a separate choice: `rules` plus `no_captions` retains image
+classifiers; `rules` plus `metadata_only` produces only previews and pixel measurements.
+For a **no-inference comparison**, use `metadata_only` with a fresh annotation database;
+changing the tier does not erase model facts already stored there. The default `full`
+tier still requires its caption producer, even with rules editing.
 
 ### Preparation tiers
 

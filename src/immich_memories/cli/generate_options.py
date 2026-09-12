@@ -348,9 +348,11 @@ def per_memory_type_options(command: FC) -> FC:
             callback=calendar_day,
             default=None,
             help=(
-                "The catalogued day to generate (YYYY-MM-DD, use with --memory-type "
-                "special_day). Its title comes from the catalogue, not from here: run "
-                "`immich-memories days-due` to see which days are in it"
+                "The day this memory is about (YYYY-MM-DD). With --memory-type "
+                "special_day it names a catalogued day, whose title comes from the "
+                "catalogue rather than from here (`immich-memories days-due` lists "
+                "them). With --memory-type on_this_day it is the anniversary to look "
+                "back from, so the cut is reproducible; without it, today"
             ),
         ),
     ]
@@ -369,6 +371,5 @@ def automation_options(command: FC) -> FC:
         click.option("--memory-key", type=str, default=None, hidden=True),
         click.option("--memory-category", type=str, default=None, hidden=True),
         click.option("--automation-attempt-id", type=str, default=None, hidden=True),
-        click.option("--automation-target-date", type=str, default=None, hidden=True),
     ]
     return _apply(command, options)

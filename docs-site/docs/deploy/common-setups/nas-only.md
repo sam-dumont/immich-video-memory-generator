@@ -6,12 +6,11 @@ sidebar_label: "NAS + a model box"
 
 For Synology, QNAP, Unraid and TrueNAS users already running Immich on the box.
 
-**A NAS runs the whole picture-understanding half of this. What it cannot hold is the reader.**
-The editor reads your pictures before it cuts them, and that reading takes a vision model with
-roughly 17 GB of weights resident. No Celeron holds that, and the app refuses to cut rather than
-guess without it. Everything else is comfortably NAS work: talking to Immich over the LAN, holding
-the caches, running the ONNX encoder, the six context heads and the two CPU detectors, and encoding
-the video.
+**The NAS can make a cut on its own with the rules reader, or use a model on another machine.**
+The model-assisted setup below uses a vision reader with roughly 17 GB of weights resident.
+That model needs more memory than the tested DS423+ provides. The NAS handles Immich access,
+caches, image preparation and encoding. The rules option skips the language-model editor and
+makes a simpler cut from dates, places, favourites, people and available image facts.
 
 **The caption server is no longer part of that list.** Set
 [`editorial.preparation.tier: no_captions`](#preparation-tiers-what-the-nas-actually-pays) and the
@@ -27,10 +26,31 @@ page is the NAS-shaped version of steps 1, 2 and 7.
 You have a NAS with Docker support (Synology DSM 7+, Unraid, TrueNAS SCALE, QNAP Container
 Station) and Immich already on it, and you have one other machine on the network that can hold the
 two model services: an Apple Silicon Mac with 32 GB, or a box with a 24 GB GPU. If you do not have
-that second machine, this deployment is [unsupported](../self-hosting.md#one-machine-or-two), not
-slow.
+that second machine, use the rules option below; the model-assisted setup needs a reachable
+reader provider.
 
-## What runs where
+## NAS alone, without inference
+
+```yaml
+advanced:
+  editorial:
+    reader: rules
+    preparation:
+      tier: metadata_only
+```
+
+This supports the ten standard memory products, including albums and person memories.
+Custom semantic subjects require a model reader. In the February benchmark on the DS423+,
+selection took **279 seconds with cold pixel facts and 11.1 seconds on repeat**, with zero
+model requests. Those times exclude rendering and music. The rules cut can omit occasions,
+spend slots on mundane objects and lose model audience judgements; inspect it before sharing.
+
+Use `no_captions` with `reader: rules` if you want image classifiers without a language-model
+editor. A populated annotation store retains previously computed facts; changing tiers does
+not erase them. See [editing without a language model](../configuration/editorial-preparation.md#editing-without-a-language-model)
+for the evidence and capability limits.
+
+## What runs where, with a model reader
 
 | Piece | Where | Why |
 |---|---|---|
@@ -247,10 +267,9 @@ There is no background backfill job yet; this is the supported way to do it toda
 
 ## What it cannot do
 
-- **Hold the reader.** That is the whole reason for the second machine, and the `no_captions` tier
-  does not change it: the editor still needs a vision model to read the month. A missing provider
-  stops an uncached run with an explicit incomplete result; there is no model-free alternate
-  selector to fall back to yet.
+- **Hold the tested 30B reader.** Use another machine for that model, or choose `reader: rules`.
+  `no_captions` changes preparation; it does not disable a configured model reader. An explicitly
+  selected model reader still stops if its provider is unavailable.
 - **Hold the caption server** — but on `no_captions` it does not need to, and nothing asks for one.
 - **AI music generation**: MusicGen and ACE-Step want GPU servers. Upload your own music instead.
 - **The Taichi title renderer**: it falls back to PIL. Titles still look right, without the

@@ -131,6 +131,20 @@ immich-memories generate --memory-type on_this_day --years-back 3
 
 Default duration: 45 seconds. No `--year` needed: it automatically looks back from today's date. By default, it searches all years with data (up to 30 years back).
 
+### Pinning the day
+
+Left to itself this memory asks a different question every day, which is fine for a
+daily nostalgia clip and useless for anything you want to run twice. `--day` names the
+anniversary to look back from:
+
+```bash
+immich-memories generate --memory-type on_this_day --day 2026-08-31 --years-back 20
+```
+
+Same day, same years, same cut — so the run can be repeated, compared against an earlier
+one, or handed to someone else. Without the flag nothing changes: the run covers the day
+it fires.
+
 **Best for:** daily nostalgia, "what were we doing last year" moments. Works best if you've been shooting video for 3+ years. Can be combined with the scheduler for an automatic daily memory.
 
 ## One UI and CLI default still disagrees

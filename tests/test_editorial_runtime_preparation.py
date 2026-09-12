@@ -158,7 +158,7 @@ def test_a_refusing_producer_puts_its_own_reason_in_the_message_that_stops_the_r
     with pytest.raises(EditorialInputsRequired, match="models fetch") as raised:
         planner.plan_source(sources, trace=Trace())
 
-    assert "head:doc_docling@det-v1" in str(raised.value)
+    assert "head:doc_docling@det-v2" in str(raised.value)
 
 
 def test_the_attempt_carries_live_numbers_and_recent_pictures_beside_its_stage(

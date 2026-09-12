@@ -579,7 +579,8 @@ jobs:
       - name: Export digest
         run: |
           mkdir -p /tmp/digests
-          touch "/tmp/digests/${{ steps.build.outputs.digest }}"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
 
       - name: Upload digest
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
@@ -590,6 +591,9 @@ jobs:
   inference-manifest:
     name: Create Inference Manifest
     needs: [analyze, inference-build]
+    if: >-
+      !cancelled() && needs.analyze.result == 'success' &&
+      needs.inference-build.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -630,8 +634,8 @@ jobs:
             cpu_tags="-t $IMAGE:$VERSION -t $IMAGE:latest"
             cuda_tags="-t $IMAGE:$VERSION-cuda -t $IMAGE:latest-cuda"
           fi
-          cpu=$(find /tmp/digests -path '*-cpu-*' -type f -exec basename {} \; | sed "s|^|$IMAGE@|" | tr '\n' ' ')
-          cuda=$(find /tmp/digests -path '*-cuda-*' -type f -exec basename {} \; | sed "s|^|$IMAGE@|" | tr '\n' ' ')
+          cpu=$(find /tmp/digests -path '*-cpu-*' -type f -exec basename {} \; | sed "s|^|$IMAGE@sha256:|" | tr '\n' ' ')
+          cuda=$(find /tmp/digests -path '*-cuda-*' -type f -exec basename {} \; | sed "s|^|$IMAGE@sha256:|" | tr '\n' ' ')
           docker buildx imagetools create $cpu_tags $cpu
           docker buildx imagetools create $cuda_tags $cuda
 

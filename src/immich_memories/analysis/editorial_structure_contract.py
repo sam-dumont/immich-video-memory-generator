@@ -22,6 +22,7 @@ from immich_memories.security import write_secret_file
 
 if TYPE_CHECKING:
     from immich_memories.analysis.editorial_final_attached import AttachedMaterialEvidence
+    from immich_memories.analysis.editorial_rule_reader import RuleStructureReader
 
 
 class StructureJudge(Protocol):
@@ -186,6 +187,7 @@ class StructurePlannerPorts:
         None
     )
     attached_material_metrics: Callable[[], Mapping[str, Any]] | None = None
+    rules: RuleStructureReader | None = None
 
 
 @dataclass(frozen=True)

@@ -648,6 +648,10 @@ def _generate_memory_inner(
         assembly_clips = _apply_final_content_budget(params, assembly_clips)
         validate_certified_content(params, assembly_clips)
 
+        from immich_memories.generate_captions import prepare_location_captions
+
+        assembly_clips = prepare_location_captions(params, assembly_clips)
+
         # Phase 2: Assemble (includes title generation + streaming encode)
         _t = _time.monotonic()
         assembly_cb = pp.assembly_callback()

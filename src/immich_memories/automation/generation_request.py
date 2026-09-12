@@ -130,7 +130,10 @@ class GenerationRequest:
                 argv.extend(["--year", str(self.start.year)])
                 argv.extend(f"--person={name}" for name in self.people)
             case CandidateCategory.ON_THIS_DAY:
-                argv.append(f"--automation-target-date={self.start.isoformat()}")
+                # The day travels explicitly: a child that starts after midnight
+                # would otherwise look back from a different anniversary than the
+                # candidate the runner chose.
+                argv.extend(["--day", self.start.isoformat()])
             case CandidateCategory.TRIP:
                 argv.extend(
                     [

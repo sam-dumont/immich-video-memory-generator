@@ -57,7 +57,7 @@ def test_one_missing_detector_preserves_other_completed_facts(monkeypatch, tmp_p
         assert connection.execute(
             "SELECT head,version,label,confidence,encoder_key FROM head_facts"
         ).fetchall() == [
-            ("doc_docling", "det-v1", "photograph", 0.8, detectors.DOCLING_REPO),
+            ("doc_docling", "det-v2", "photograph", 0.8, detectors.DOCLING_REPO),
         ]
 
 

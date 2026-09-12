@@ -28,17 +28,17 @@ memory type, plus a repeat of the monthly route. Each entry names a memory type,
 ```
 
 **One route needs a date pinned.** `on_this_day` is scoped to whatever today is, so on any other
-day it asks a different question and cannot replay off the bank. Give it a `target_date` and the
-case becomes reproducible:
+day it asks a different question and cannot replay off the bank. Give it a `day` and the case
+becomes reproducible:
 
 ```json
 {"id": "on-this-day", "memory_type": "on_this_day",
- "scope": {"years_back": "@years_back", "target_date": "@on_this_day_date"}}
+ "scope": {"years_back": "@years_back", "day": "@on_this_day_date"}}
 ```
 
 Pick a day the bank already holds and the route replays with no provider calls, like the other
-ten. `generate` accepts a chosen date only from the automation runner, and only alongside the rest
-of that runner's identity, so the driver expands the pin into all four flags rather than one.
+ten. `day` is [`generate`'s own `--day`](../memory-types/monthly-person-season#on-this-day), so the
+pin is one flag and the run is filed under the same name as an unpinned one.
 
 **The values are private.** Which year, which person, which album: those never enter the
 repository. They live in an overlay file of your own, anywhere outside it:

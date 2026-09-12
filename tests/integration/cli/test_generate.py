@@ -461,7 +461,6 @@ class TestCLIGenerate:
         assert "--source" not in result.output
         assert "--memory-key" not in result.output
         assert "--memory-category" not in result.output
-        assert "--automation-target-date" not in result.output
 
     def test_automation_identity_options_reach_pipeline(self, tmp_path) -> None:
         from click.testing import CliRunner
@@ -510,8 +509,9 @@ class TestCLIGenerate:
         assert mock_pipeline.call_args.kwargs["memory_key"] == "candidate:key"
         assert mock_pipeline.call_args.kwargs["memory_category"] == "birthday"
 
-    def test_automation_on_this_day_uses_candidate_date_in_child(self, tmp_path) -> None:
-        """A child starting after midnight must retain the parent's target day."""
+    def test_on_this_day_looks_back_from_the_named_day(self, tmp_path) -> None:
+        """A chosen day makes the cut reproducible; a child that starts after
+        midnight keeps the anniversary its parent chose."""
         from click.testing import CliRunner
 
         from immich_memories.cli import main
@@ -542,11 +542,7 @@ class TestCLIGenerate:
                     "generate",
                     "--memory-type",
                     "on_this_day",
-                    "--automation-target-date=2026-02-03",
-                    "--source=auto",
-                    "--memory-key=on-this-day:2026-02-03",
-                    "--memory-category=on_this_day",
-                    "--automation-attempt-id=attempt-123",
+                    "--day=2026-02-03",
                     "--no-music",
                     "--output",
                     str(output),
@@ -559,8 +555,9 @@ class TestCLIGenerate:
         assert {(item.start.month, item.start.day) for item in date_ranges} == {(2, 2)}
         assert {(item.end.month, item.end.day) for item in date_ranges} == {(2, 4)}
 
-    def test_automation_target_date_rejects_manual_context(self, tmp_path) -> None:
-        """The hidden exact-date selector cannot change public manual semantics."""
+    def test_a_day_needs_a_memory_type_that_has_one(self, tmp_path) -> None:
+        """Only special_day and on_this_day are about a day; the rest refuse it
+        rather than accepting a flag they would silently ignore."""
         from click.testing import CliRunner
 
         from immich_memories.cli import main
@@ -573,15 +570,17 @@ class TestCLIGenerate:
                 [
                     "generate",
                     "--memory-type",
-                    "on_this_day",
-                    "--automation-target-date=2026-02-03",
+                    "year_in_review",
+                    "--year",
+                    "2025",
+                    "--day=2026-02-03",
                     "--output",
                     str(tmp_path / "manual.mp4"),
                 ],
             )
 
         assert result.exit_code != 0
-        assert "requires complete on_this_day automation identity" in result.output
+        assert "--day requires --memory-type special_day or on_this_day" in result.output
 
     @requires_immich
     def test_cli_generate_nonexistent_person(self, tmp_path):

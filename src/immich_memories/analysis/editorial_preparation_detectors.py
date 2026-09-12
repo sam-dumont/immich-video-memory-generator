@@ -45,7 +45,7 @@ MARQO_VERSION = "det-v2"
 DOCLING_REPO = "docling-project/DocumentFigureClassifier-v2.0"
 DOCLING_REVISION = "2a12e02668b98ca40216eab41cdf19530577cba4"
 DOCLING_FILE = "model.onnx"
-DOCLING_VERSION = "det-v1"
+DOCLING_VERSION = "det-v2"
 DETECTOR_VERSIONS = {"nsfw_marqo": MARQO_VERSION, "doc_docling": DOCLING_VERSION}
 # Everything a cold Hugging Face cache needs before `allow_model_downloads:
 # false` can mean what it says. The Marqo seat is no longer here: it reads one
@@ -117,18 +117,23 @@ class Docling:
 
     def __init__(self, *, allow_downloads: bool, cache_dir: str | None) -> None:
         self.session, self.input_name = _cpu_session(
-            _docling_snapshot(allow_downloads=allow_downloads, cache_dir=cache_dir)
+            _docling_snapshot(allow_downloads=allow_downloads, cache_dir=cache_dir),
+            disable_layout_optimizer=True,
         )
 
     def batch(self, images: list[Image.Image]) -> np.ndarray:
         return _softmax(self.session.run(None, {self.input_name: docling_pixels(images)})[0])
 
 
-def _cpu_session(model_path: Path) -> tuple[Any, str]:
+def _cpu_session(model_path: Path, *, disable_layout_optimizer: bool = False) -> tuple[Any, str]:
     import onnxruntime as ort
 
     options = ort.SessionOptions()
     options.intra_op_num_threads = 6
+    if disable_layout_optimizer:
+        # Docling collapses to near-constant table predictions with the NCHWc
+        # layout fusion on J4125. Extended matches the unfused graph on x86/arm64.
+        options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
     session = ort.InferenceSession(str(model_path), options, providers=["CPUExecutionProvider"])
     return session, session.get_inputs()[0].name
 

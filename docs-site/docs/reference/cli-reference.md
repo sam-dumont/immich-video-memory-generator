@@ -303,7 +303,7 @@ immich-memories generate [OPTIONS]
 | `--years-back` | integer | - | Years to look back for --birthday, on_this_day or holiday |
 | `--near-date` | text | - | Select trip closest to this date (YYYY-MM-DD, use with --memory-type trip) |
 | `--event-id` | text | - | Exact catalogue event ID (use with --memory-type special_day and --day) |
-| `--day` | datetime | - | The catalogued day to generate (YYYY-MM-DD, use with --memory-type special_day). Its title comes from the catalogue, not from here: run `immich-memories days-due` to see which days are in it |
+| `--day` | datetime | - | The day this memory is about (YYYY-MM-DD). With --memory-type special_day it names a catalogued day, whose title comes from the catalogue rather than from here (`immich-memories days-due` lists them). With --memory-type on_this_day it is the anniversary to look back from, so the cut is reproducible; without it, today |
 | `--quiet` | boolean | false | Suppress interactive progress, emit log lines |
 
 ## `hardware`
