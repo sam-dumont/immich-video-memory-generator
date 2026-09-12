@@ -191,7 +191,6 @@ def test_resaving_stale_run_cannot_replace_authoritative_state_or_delete_phases(
     [
         "start_phase",
         "complete_phase",
-        "update_phase_progress",
         "complete_run",
         "complete_artifact",
         "mark_delivery_pending",
@@ -235,8 +234,6 @@ def test_duplicate_tracker_cannot_claim_or_mutate_existing_run(
             duplicate.start_phase("intruder")
         elif operation == "complete_phase":
             duplicate.complete_phase()
-        elif operation == "update_phase_progress":
-            duplicate.update_phase_progress(1)
         elif operation == "complete_run":
             duplicate.complete_run(duplicate_output)
         elif operation == "complete_artifact":
@@ -304,36 +301,6 @@ def test_populated_v12_migrates_additively_without_changing_attempt_identity(
     assert migrated.immich_asset_id is None
     assert migrated.delivery_album is None
     assert migrated.warnings == []
-
-
-def test_v13_delivery_migration_keeps_v12_analysis_cache_current(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A delivery-only schema migration cannot force expensive video reanalysis."""
-    from immich_memories.cache import database as cache_database
-    from tests.conftest import make_asset
-
-    db_path = tmp_path / "populated-analysis-v12.db"
-    asset = make_asset("analysis-v12")
-    monkeypatch.setattr(cache_database, "SCHEMA_VERSION", 12)
-    v12_cache = VideoAnalysisCache(db_path)
-    v12_cache.save_analysis(asset, segments=[])
-
-    monkeypatch.setattr(cache_database, "SCHEMA_VERSION", 13)
-    migrated_cache = VideoAnalysisCache(db_path)
-
-    with sqlite3.connect(db_path) as conn:
-        schema_version = conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
-        analysis_version = conn.execute(
-            "SELECT analysis_version FROM video_analysis WHERE asset_id = ?",
-            (asset.id,),
-        ).fetchone()[0]
-    assert schema_version == 13
-    # The claim is that a delivery-only schema migration leaves the analysis
-    # generation alone -- not that it happens to be any particular number.
-    assert analysis_version == cache_database.ANALYSIS_VERSION
-    assert migrated_cache.needs_reanalysis(asset, max_age_days=365) is False
 
 
 def test_database_marks_delivery_pending_atomically_without_changing_artifact(

@@ -9,15 +9,14 @@ Finds the days in your library that something happened on, and writes them down 
 memory can arrive years later without you asking for it.
 
 Every other memory type answers a question you posed: this month, that trip, that person.
-This one is for the memory nobody requested — ten years to the day since the wedding,
+This one is for the memory nobody requested: ten years to the day since the wedding,
 five since the race. That only works if the days were found in advance, so this is a
 command you run occasionally, not one that runs per video.
 
 ## What makes a day stand out
 
-Volume does not. In a real library the busiest single day is 166 photos of a work shoot
-taken inside one hour, and the second busiest is 413 of one street performer. Neither is
-an occasion.
+Volume does not. In a real library the densest single day is 166 photos of a work shoot
+taken inside one hour; another day holds 413 of one street performer. Neither is an occasion.
 
 What separates them is how long the day stayed alive:
 
@@ -30,10 +29,12 @@ What separates them is how long the day stayed alive:
 | a street performer | 413 | 3 | no |
 | a work shoot | 166 | 1 | no |
 
-No overlap — but the rule is loose on its own, since about a fifth of days in that library
-clear six hours. So it is a filter, not a verdict: it keeps the model off the other 78% of
-days, which is what makes asking about the rest affordable at all. What passes goes to the
-model with a sample of the day's pictures, and it is asked the question a person would ask.
+No overlap, but the rule is loose on its own, since 22% of days in that library clear six
+hours. So it is a filter, not a verdict: it keeps the model off the other 78% of days, which
+is what makes asking about the rest affordable at all. There is a second bar alongside it, a
+20-photo floor, so a quiet day spread over an afternoon is not asked about either. What passes
+goes to the model with a sample of the day's pictures, and it is asked the question a person
+would ask.
 
 A day also ends when the photographs stop for five hours, not at midnight. A wedding that
 runs past one, or a birth that starts with contractions at ten in the evening, is one
@@ -42,20 +43,20 @@ occasion; the calendar disagrees.
 Two things are skipped: days inside a detected trip, because a trip memory already tells
 that story end to end, and holidays, which have their own memory type.
 
-A holiday is only skipped when the day's pictures agree that it was one — that is, when
+A holiday is only skipped when the day's pictures agree that it was one: that is, when
 they were taken around home, where the holiday is actually kept. A day that merely lands
 on the same date and was spent 67 km away at a race circuit is not that holiday, and it
 goes to the model like any other candidate. A day that recorded no coordinates at all is
 skipped on the date alone, as it always was.
 
-Both filters read the thresholds under `trips:` — your homebase, how far from it counts as
-away, and how trips are grouped — so this command and the rest of the app agree on what
+Both filters read the thresholds under `trips:` (your homebase, how far from it counts as
+away, and how trips are grouped), so this command and the rest of the app agree on what
 "away" means.
 
 ## The part of the day that was the event
 
 Some days are an event; some days contain one. A track day put most of its pictures in one
-place inside a couple of hours of a long day — the rest of that day is a cat on a balcony —
+place inside a couple of hours of a long day (the rest of that day is a cat on a balcony),
 and the memory should start at the circuit. So a discovered day can carry a window: the
 hours the thing that happened actually ran.
 
@@ -64,14 +65,14 @@ event ran between. It reads those off the per-picture lines, which is why it can
 all: a circuit's coordinates are identical from the moment the car is parked to the moment
 it leaves, so the map cannot tell arrival from the start of the race and the pictures can.
 
-Where the model declines, the geometry is the fallback — the first and last picture of the
+Where the model declines, the geometry is the fallback: the first and last picture of the
 place that dominates the day. That window is kept only when trimming to it removes at least
 45 minutes and at least 15% of the day, and only when what is left runs at least half an
 hour.
 
 Both bounds are there for a measured failure. Without the floor, a dense burst in one place
-produced a 69-second window on a 12.6-hour day. And the rule that came before — drop the
-window whenever the dominant place covers half the day or more — punished the days
+produced a 69-second window on a 12.6-hour day. And the rule that came before (drop the
+window whenever the dominant place covers half the day or more) punished the days
 photographed best: a race covered from arrival to podium filled two thirds of its day and
 was given no window at all.
 
@@ -90,15 +91,16 @@ Splitting it is not a preference. Measured across 14 candidate days, one
 vision call answered "special" to all fourteen, and a single call that both
 looked and reasoned truncated 6 of them past the point of parsing, because the
 reasoning runs into the answer. Two calls was the only shape that told an
-occasion from an ordinary Tuesday — and the one it called ordinary turned out
+occasion from an ordinary Tuesday, and the one it called ordinary turned out
 to be right.
 
 It also invents less. Where the fast answer named a specific event that had
 not happened, the two-step version gave the same day a title that described
 what was in the pictures instead.
 
-The cost is roughly 40 seconds and about 3,000 completion tokens for each day
-it asks about. The scan asks about a handful of days per year.
+Nobody recorded what that costs per day, so this page will not quote one. What is
+worth knowing is the shape: with thinking on, a day is two calls rather than one,
+plus up to one retitle, and the scan asks about a handful of days per year.
 
 The per-picture lines the judgement read would be the record to check first when a
 day you expected comes back ordinary. They are written to the log at `DEBUG`, and
@@ -134,8 +136,10 @@ The scan takes hours across twenty years, so it resumes by default: years alread
 catalogue are not scanned again, and a run that finds nothing will not replace a catalogue
 that has something in it. `--rescan` is how you say you meant to start over.
 
-Each year costs `--per-year` calls to your model, plus one metadata query per month.
-Raising `--per-year` finds more and costs proportionally more.
+Each year costs up to `--per-year` days' worth of model calls, which with thinking on is two
+calls per day plus a possible retitle, and a paged metadata fetch per month (the densest months
+are exactly the ones a single query would truncate). Raising `--per-year` finds more and costs
+proportionally more.
 
 ## Checking what is due
 
@@ -144,7 +148,7 @@ immich-memories days-due
 ```
 
 Prints the discovered days whose anniversary falls within three days of today, roundest
-first — ten years reads louder than nine, which is the whole appeal of arriving
+first: ten years reads louder than nine, which is the whole appeal of arriving
 unannounced.
 
 ```
@@ -152,7 +156,7 @@ unannounced.
 ```
 
 The clock times are the day's window, when it found one. The `9h` is how many hours of
-the clock the day put pictures in — the number the scan measured to decide the day was
+the clock the day put pictures in: the number the scan measured to decide the day was
 worth asking about at all, now kept in the catalogue with the times the day's run started
 and ended. A run is grouped by the date it began and ends when the pictures stop for five
 hours, so a night that ran to three in the morning ends on the following date, and its
@@ -170,12 +174,11 @@ becomes a video three ways:
 
 - **Automation proposes it on its anniversary.** `auto run` reads the catalogue like any
   other detector and puts a due day in the queue, scored by how round the anniversary is,
-  one per run at most. It passes a date and nothing else — the title stays in the file.
+  one per run at most. It passes a date and nothing else: the title stays in the file.
   See [auto](./auto.md#the-anniversary-that-would-otherwise-score-lowest).
-- **The wizard's Surprise me card offers all of them.** Due anniversaries first, then
+- **The Memory page's Surprise me type offers all of them.** Due anniversaries first, then
   every other day the catalogue holds, because you asked for it rather than being
-  interrupted. See
-  [Step 1: Configuration](../web-ui/step1-configuration.mdx#surprise-me).
+  interrupted. See [the Memory page](../web-ui/memory.mdx#memory-types-and-their-parameters).
 - **You name one yourself**:
   `immich-memories generate --memory-type special_day --day 2016-06-12`.
 
@@ -186,25 +189,25 @@ under a generic date. See [Special Days](../memory-types/special-days.mdx).
 
 ## What you need
 
-An LLM configured under `llm:` — see [Configuration](/docs/deploy/configuration/config-file).
+An LLM configured under `llm:`; see [Configuration](/docs/deploy/configuration/config-file).
 A vision model is worth having: with pictures the model sees the day, and without them it
 reasons from times, places and recognised names alone. That is the difference between
 "Driving through somewhere" and knowing what was being driven.
 
 Titles are checked against what the day actually recorded before they are kept. A title
 naming a place the day was never in is dropped rather than shown, and so is one claiming a
-distance or a race — "the 10K" — that nothing the model was shown mentions. A title card is
+distance or a race ("the 10K") that nothing the model was shown mentions. A title card is
 the wrong place for a plausible invention, and a number reads exactly as true as a real one.
 
 A dropped title is asked for once more, with the claim it just made quoted back and the
 rule stated as what a title *may* say rather than as another prohibition. That is usually
-enough — the model can generally write a grounded title on the second try — and it costs
+enough (the model can generally write a grounded title on the second try), and it costs
 one extra call on the handful of days a year where it happens. Never a third.
 
 If the second attempt is no better, the day falls back to the plainest true thing left:
 `A day in <place>` where its pictures recorded one, or what the model said the day was
 where that reads as a title ("Children's camp activities") rather than as a description of
 it. A day where neither is available is left out of the catalogue rather than written down
-with an empty title — because every reader of the file falls back to the description when
+with an empty title, because every reader of the file falls back to the description when
 the title is empty, which is how "Six images captured between 07:32 and 16:06, tracing a
 route from weathered apar" ended up on a card in place of a name.

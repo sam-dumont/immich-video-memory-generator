@@ -10,19 +10,37 @@ Eviction is least-recently-used by mtime rather than by age alone: a cap answers
 file that is still being read keeps earning its place.
 
 That last part only holds if readers refresh mtime -- otherwise this is write-
-FIFO wearing an LRU label, and a caller whose working set exceeds its budget
-evicts the very files it is still reading. `ThumbnailCache.get` had to be taught
-to touch on read for that reason (#512); callers that pass `run_started_at` also
-get told when the budget is too small to hold what they are working on.
+FIFO wearing an LRU label. A caller whose working set exceeds its budget must
+also keep those active files protected: deleting them makes a bounded cache
+silently change analysis results. `run_started_at` is that protection boundary.
+
+The overflow it reports is not logged here. One directory's overflow is a
+missing setting in the user's config file, and only the caller knows which key
+that is, or how often it is worth saying so.
 """
 
 from __future__ import annotations
 
 import contextlib
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+CacheEntry = tuple[float, int, Path]
+
+
+@dataclass(frozen=True)
+class Eviction:
+    """What one pass reclaimed, and what it could not."""
+
+    freed_bytes: int
+    active_files: int
+    overflow_bytes: int
+
+    @property
+    def overflowed(self) -> bool:
+        return self.overflow_bytes > 0
 
 
 def evict_to_budget(
@@ -31,45 +49,30 @@ def evict_to_budget(
     max_bytes: int,
     pattern: str = "*",
     run_started_at: float | None = None,
-) -> int:
+) -> Eviction:
     """Delete the least recently used files until the directory fits.
 
-    Returns the number of bytes freed. Stops as soon as the budget is met --
-    evicting past it throws away work that would have been reused.
+    Stops as soon as the budget is met -- evicting past it throws away work
+    that would have been reused.
 
-    Pass `run_started_at` (a wall-clock timestamp) to have the caller's own
-    working set watched: evicting anything used since the run began means the
-    budget is smaller than what the run needs, and it will re-fetch what it
-    just deleted. That is worth saying out loud rather than degrading quietly.
+    Pass `run_started_at` (a wall-clock timestamp) to protect the caller's
+    current working set. Older cache entries are still reclaimed first. If the
+    active files alone exceed the budget, they temporarily overflow it rather
+    than disappearing underneath the running analysis, and the returned
+    `overflow_bytes` says by how much.
     """
     if max_bytes < 0 or not directory.exists():
-        return 0
+        return Eviction(0, 0, 0)
 
-    entries = []
-    total = 0
-    for path in directory.rglob(pattern):
-        if not path.is_file():
-            continue
-        with contextlib.suppress(OSError):
-            stat = path.stat()
-            entries.append((stat.st_mtime, stat.st_size, path))
-            total += stat.st_size
-
+    entries, total = _cache_entries(directory, pattern)
     if total <= max_bytes:
-        return 0
-
-    freed = 0
-    still_wanted = 0
-    for mtime, size, path in sorted(entries):
-        if total - freed <= max_bytes:
-            break
-        try:
-            path.unlink()
-        except OSError:  # noqa: PERF203 - a file that vanished is already evicted
-            continue
-        freed += size
-        if run_started_at is not None and mtime >= run_started_at:
-            still_wanted += 1
+        return Eviction(0, 0, 0)
+    freed, active_kept = _evict_oldest(
+        entries,
+        total=total,
+        max_bytes=max_bytes,
+        run_started_at=run_started_at,
+    )
 
     if freed:
         logger.info(
@@ -78,13 +81,45 @@ def evict_to_budget(
             directory.name,
             max_bytes / 1_000_000,
         )
-    if still_wanted:
-        logger.warning(
-            "Evicted %d file(s) this run is still using from %s: the %.0f MB "
-            "budget is smaller than this run's working set, so cached work is "
-            "being deleted and re-fetched. Raise the budget for large runs.",
-            still_wanted,
-            directory.name,
-            max_bytes / 1_000_000,
-        )
-    return freed
+    remaining = total - freed
+    return Eviction(
+        freed_bytes=freed,
+        active_files=active_kept,
+        overflow_bytes=remaining - max_bytes if remaining > max_bytes and active_kept else 0,
+    )
+
+
+def _cache_entries(directory: Path, pattern: str) -> tuple[list[CacheEntry], int]:
+    entries: list[CacheEntry] = []
+    total = 0
+    for path in directory.rglob(pattern):
+        if not path.is_file():
+            continue
+        with contextlib.suppress(OSError):
+            stat = path.stat()
+            entries.append((stat.st_mtime, stat.st_size, path))
+            total += stat.st_size
+    return entries, total
+
+
+def _evict_oldest(
+    entries: list[CacheEntry],
+    *,
+    total: int,
+    max_bytes: int,
+    run_started_at: float | None,
+) -> tuple[int, int]:
+    freed = 0
+    active_kept = 0
+    for mtime, size, path in sorted(entries):
+        if total - freed <= max_bytes:
+            break
+        if run_started_at is not None and mtime >= run_started_at:
+            active_kept += 1
+            continue
+        try:
+            path.unlink()
+        except OSError:  # noqa: PERF203 - a file that vanished is already evicted
+            continue
+        freed += size
+    return freed, active_kept

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import logging
 from dataclasses import dataclass
@@ -272,6 +273,14 @@ def check_llm(config: Config) -> CheckResult:
     Returns:
         CheckResult with status and details.
     """
+    try:
+        reader = config.editorial.resolve_reader(config.llm.model)
+    except ValueError as exc:
+        return CheckResult(name="LLM", status=CheckStatus.ERROR, message=str(exc))
+    if reader == "rules":
+        return CheckResult(
+            name="LLM", status=CheckStatus.SKIPPED, message="Rules reader does not use an LLM"
+        )
     provider = config.llm.provider
     base_url = config.llm.base_url
     model = config.llm.model
@@ -342,40 +351,6 @@ def check_hardware() -> CheckResult:
         )
 
 
-def check_audio_content(config: Config) -> CheckResult:
-    """Report semantic-audio capability without importing Torch or loading a model."""
-    audio = config.audio_content
-    if not audio.enabled:
-        return CheckResult(
-            name="Audio content",
-            status=CheckStatus.SKIPPED,
-            message="Audio-content analysis disabled",
-        )
-    if not audio.use_panns:
-        return CheckResult(
-            name="Audio content",
-            status=CheckStatus.OK,
-            message="Energy-only audio analysis enabled",
-            details="Semantic labels such as laughter and speech are unavailable",
-        )
-    if (
-        importlib.util.find_spec("torch") is not None
-        and importlib.util.find_spec("panns_inference") is not None
-    ):
-        return CheckResult(
-            name="Audio content",
-            status=CheckStatus.OK,
-            message="Semantic PANNs audio classification ready",
-            details="Laughter, baby, speech, music, and other AudioSet labels are available",
-        )
-    return CheckResult(
-        name="Audio content",
-        status=CheckStatus.WARNING,
-        message="PANNs unavailable; using energy-only fallback",
-        details="Install the audio-ml extra for semantic laughter, baby, speech, and music labels",
-    )
-
-
 def _optional_runtime_check(
     name: str, modules: tuple[str, ...], *, extra: str, ready: str, cost: str
 ) -> CheckResult:
@@ -396,40 +371,6 @@ def _optional_runtime_check(
     )
 
 
-def check_speech_boundaries(config: Config) -> CheckResult:
-    """Report whether speech-aware cut boundaries can actually run."""
-    if not config.speech.enabled:
-        return CheckResult(
-            name="Speech boundaries",
-            status=CheckStatus.SKIPPED,
-            message="Speech boundaries disabled",
-        )
-    return _optional_runtime_check(
-        "Speech boundaries",
-        ("onnxruntime", "kaldi_native_fbank"),
-        extra="speech",
-        ready="Speech-aware cut boundaries ready",
-        cost="Speech boundaries unavailable; cuts may land mid-sentence",
-    )
-
-
-def check_transcription(config: Config) -> CheckResult:
-    """Report whether speech transcription can actually run."""
-    if not config.transcription.enabled:
-        return CheckResult(
-            name="Transcription",
-            status=CheckStatus.SKIPPED,
-            message="Speech transcription disabled",
-        )
-    return _optional_runtime_check(
-        "Transcription",
-        ("pywhispercpp",),
-        extra="transcribe",
-        ready="Speech transcription ready",
-        cost="Speech transcription unavailable; clips are chosen without what was said",
-    )
-
-
 def check_title_rendering(config: Config) -> CheckResult:
     """Report whether title screens get the GPU renderer or the PIL fallback."""
     if not config.title_screens.enabled:
@@ -447,6 +388,119 @@ def check_title_rendering(config: Config) -> CheckResult:
     )
 
 
+def check_encoder(config: Config) -> CheckResult:
+    """Report the digest-pinned DINOv2 export the six context heads run on."""
+    if not config.editorial.preparation.demands_models:
+        return CheckResult(
+            name="Encoder", status=CheckStatus.SKIPPED, message="Not required by metadata_only"
+        )
+    from immich_memories.triage.encoder import DINOV2_SMALL_ONNX_SHA256
+
+    path = config.triage.encoder_path
+    if not path.is_file():
+        return CheckResult(
+            name="Encoder",
+            status=CheckStatus.ERROR,
+            message="Pinned DINOv2 export missing",
+            details=f"{path}; run: immich-memories models fetch",
+        )
+    with path.open("rb") as handle:
+        digest = hashlib.file_digest(handle, "sha256").hexdigest()
+    if digest != DINOV2_SMALL_ONNX_SHA256:
+        return CheckResult(
+            name="Encoder",
+            status=CheckStatus.ERROR,
+            message="Not the pinned DINOv2 export",
+            details=f"{path}: {digest[:12]} is not {DINOV2_SMALL_ONNX_SHA256[:12]}",
+        )
+    return CheckResult(
+        name="Encoder",
+        status=CheckStatus.OK,
+        message="Pinned DINOv2 export verified",
+        details=str(path),
+    )
+
+
+def check_detector_export(config: Config) -> CheckResult:
+    """Report the digest-pinned sensitive-content export the flag detector runs on.
+
+    It is checked here because the alternative is finding out during the cut:
+    the detector worker is a separate process reached hours into preparation.
+    """
+    if not config.editorial.preparation.demands_models:
+        return CheckResult(
+            name="Sensitive-content detector",
+            status=CheckStatus.SKIPPED,
+            message="Not required by metadata_only",
+        )
+    from immich_memories.analysis.editorial_preparation_detectors import (
+        MARQO_ONNX_ID,
+        MARQO_ONNX_SHA256,
+    )
+
+    path = config.editorial.preparation.marqo_onnx_path
+    if not path.is_file():
+        return CheckResult(
+            name="Sensitive-content detector",
+            status=CheckStatus.ERROR,
+            message=f"Pinned {MARQO_ONNX_ID} export missing",
+            details=f"{path}; run: immich-memories models fetch",
+        )
+    with path.open("rb") as handle:
+        digest = hashlib.file_digest(handle, "sha256").hexdigest()
+    if digest != MARQO_ONNX_SHA256:
+        return CheckResult(
+            name="Sensitive-content detector",
+            status=CheckStatus.ERROR,
+            message=f"Not the pinned {MARQO_ONNX_ID} export",
+            details=f"{path}: {digest[:12]} is not {MARQO_ONNX_SHA256[:12]}",
+        )
+    return CheckResult(
+        name="Sensitive-content detector",
+        status=CheckStatus.OK,
+        message="Pinned sensitive-content export verified",
+        details=str(path),
+    )
+
+
+def check_caption_endpoint(config: Config) -> CheckResult:
+    """Report whether the configured caption server advertises the accepted alias."""
+    if not config.editorial.preparation.demands_captions:
+        return CheckResult(
+            name="Captions",
+            status=CheckStatus.SKIPPED,
+            message=f"Not required by {config.editorial.preparation.tier}",
+        )
+    from immich_memories.analysis.editorial_description_contract import API_MODEL
+
+    base_url = config.editorial.preparation.caption_base_url
+    try:
+        response = httpx.get(f"{base_url}/models", timeout=5.0)
+        response.raise_for_status()
+        rows = response.json().get("data", [])
+    except (httpx.HTTPError, ValueError) as e:
+        return CheckResult(
+            name="Captions",
+            status=CheckStatus.ERROR,
+            message="Caption endpoint unreachable",
+            details=f"{base_url}: {sanitize_error_message(str(e))}",
+        )
+    served = {row.get("id") for row in rows if isinstance(row, dict)}
+    if API_MODEL not in served:
+        return CheckResult(
+            name="Captions",
+            status=CheckStatus.ERROR,
+            message="Caption endpoint serves another model",
+            details=f"{base_url} advertises {sorted(map(str, served))}, not {API_MODEL}",
+        )
+    return CheckResult(
+        name="Captions",
+        status=CheckStatus.OK,
+        message=f"Serving {API_MODEL}",
+        details=base_url,
+    )
+
+
 def run_preflight_checks(config: Config) -> list[CheckResult]:
     """Run all preflight checks.
 
@@ -459,10 +513,10 @@ def run_preflight_checks(config: Config) -> list[CheckResult]:
     return [
         check_immich(config),
         check_llm(config),
-        check_audio_content(config),
-        check_speech_boundaries(config),
-        check_transcription(config),
         check_title_rendering(config),
+        check_encoder(config),
+        check_detector_export(config),
+        check_caption_endpoint(config),
         check_notifications(config),
         check_hardware(),
     ]

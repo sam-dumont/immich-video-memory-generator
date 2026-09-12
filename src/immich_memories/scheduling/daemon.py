@@ -15,9 +15,10 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+from immich_memories.operations.bounded_process import ProcessCancelled, run_bounded_process
 from immich_memories.scheduling.engine import PendingJob, Scheduler
 from immich_memories.scheduling.executor import resolve_schedule_params
-from immich_memories.scheduling.models import SchedulerConfig
+from immich_memories.scheduling.models import DEFAULT_JOB_TIMEOUT_MINUTES, SchedulerConfig
 from immich_memories.security import sanitize_filename
 
 logger = logging.getLogger(__name__)
@@ -72,7 +73,7 @@ def run_daemon_loop(
             next_job = jobs[0]
             logger.info(
                 f"Next: '{next_job.schedule.name}' at "
-                f"{next_job.fire_time.strftime('%Y-%m-%d %H:%M UTC')} "
+                f"{next_job.fire_time.strftime('%Y-%m-%d %H:%M %Z')} "
                 f"(in {wait:.0f}s)"
             )
 
@@ -98,22 +99,30 @@ def run_daemon_loop(
 _STREAM_TAIL = 500
 
 
-def describe_process_failure(stdout: str | None, stderr: str | None) -> str:
+def describe_process_failure(stdout: str | bytes | None, stderr: str | bytes | None) -> str:
     """Summarise why a child process failed, from whichever stream carries it.
 
     The child logs to stdout -- `setup_logging` installs a StreamHandler there
     and `print_error` goes through Rich, also stdout -- so reading only stderr
     reported "no stderr" for every failure while the cause sat in the stream
-    being discarded.
+    being discarded. A deadline exception may hand over raw bytes instead of
+    the decoded capture.
     """
+    out, err = _decoded(stdout), _decoded(stderr)
     parts = []
-    if stderr and stderr.strip():
-        parts.append(f"stderr: {stderr.strip()[-_STREAM_TAIL:]}")
-    if stdout and stdout.strip():
-        parts.append(f"stdout: {stdout.strip()[-_STREAM_TAIL:]}")
+    if err.strip():
+        parts.append(f"stderr: {err.strip()[-_STREAM_TAIL:]}")
+    if out.strip():
+        parts.append(f"stdout: {out.strip()[-_STREAM_TAIL:]}")
     if not parts:
         return "no output on stdout or stderr"
     return " | ".join(parts)
+
+
+def _decoded(stream: str | bytes | None) -> str:
+    if isinstance(stream, bytes):
+        return stream.decode("utf-8", errors="replace")
+    return stream or ""
 
 
 def _child_log_path(schedule_name: str) -> Path:
@@ -127,9 +136,122 @@ def _child_log_path(schedule_name: str) -> Path:
     return Path.home() / ".immich-memories" / "logs" / f"generate-{safe}.log"
 
 
+_SECONDS_PER_MINUTE = 60
+
+# Params that come from the ScheduleEntry's own fields; each has its own flag
+# below rather than a scope option.
+_ENTRY_PARAMS = frozenset(
+    {"memory_type", "person_names", "duration_minutes", "upload_to_immich", "album_name"}
+)
+
+# Every scope or selector a schedule can resolve, and the `generate` option
+# that carries it. A param outside this table cannot reach the child at all.
+_SCOPE_FLAGS = {
+    "year": "--year",
+    "month": "--month",
+    "season": "--season",
+    "holiday": "--holiday",
+    "years_back": "--years-back",
+    "trip_index": "--trip-index",
+    "near_date": "--near-date",
+    "from_album": "--from-album",
+}
+
+# A memory type whose window no cron expression can name, and why.
+_UNSCHEDULABLE_TYPES = {
+    "special_day": (
+        "its window comes from the catalogue rather than from flags; "
+        "`auto run` generates the special days that are due"
+    ),
+}
+
+# Any of these tells trip generation which trip to render; without one it lists
+# what it found and renders nothing.
+_TRIP_SELECTORS = ("trip_index", "month", "near_date")
+
+
+class UnschedulableJob(ValueError):
+    """Something in the schedule that no `generate` invocation can carry out."""
+
+
+def _scope_arguments(params: dict) -> list[str]:
+    """Translate the resolved scope into options, refusing to drop any of it."""
+    arguments: list[str] = []
+    for key, value in params.items():
+        if key in _ENTRY_PARAMS:
+            continue
+        flag = _SCOPE_FLAGS.get(key)
+        if flag is None:
+            raise UnschedulableJob(
+                f"schedule param '{key}' has no matching generate option, "
+                f"so the run would silently ignore it"
+            )
+        arguments.extend([flag, str(value)])
+    return arguments
+
+
+def _generate_command(params: dict, config_path: Path | None) -> list[str]:
+    cmd = ["immich-memories"]
+    if config_path is not None:
+        cmd.extend(["--config", str(config_path)])
+    cmd.append("generate")
+    memory_type = params["memory_type"]
+    if memory_type in _UNSCHEDULABLE_TYPES:
+        raise UnschedulableJob(
+            f"memory type '{memory_type}' cannot be scheduled: {_UNSCHEDULABLE_TYPES[memory_type]}"
+        )
+    cmd.extend(["--memory-type", memory_type])
+    cmd.extend(_scope_arguments(params))
+    if memory_type == "trip" and not any(key in params for key in _TRIP_SELECTORS):
+        # WHY: a trip run with no selector prints the trips it detected, renders
+        # none of them and exits zero -- a scheduled trip that reports success
+        # and produces nothing.
+        cmd.append("--all-trips")
+    if params.get("upload_to_immich"):
+        cmd.append("--upload-to-immich")
+    if params.get("album_name"):
+        cmd.extend(["--album", params["album_name"]])
+    if params.get("duration_minutes"):
+        # WHY: the schedule states minutes and --duration takes seconds, so
+        # `duration_minutes: 3` used to ask for a three-second video.
+        cmd.extend(["--duration", str(params["duration_minutes"] * _SECONDS_PER_MINUTE)])
+    for name in params.get("person_names", []):
+        # WHY: `=` syntax prevents names starting with `-` from being parsed as flags
+        cmd.append(f"--person={name}")
+    return cmd
+
+
+def _run_generation(
+    cmd: list[str], *, name: str, timeout_seconds: int, child_env: dict[str, str]
+) -> tuple[bool, str | None]:
+    """Run one scheduled generation, returning whether it worked and why not."""
+    try:
+        result = run_bounded_process(
+            cmd,
+            timeout=timeout_seconds,
+            env=child_env,
+            cancel_check=lambda: _shutdown_requested,
+        )
+    except subprocess.TimeoutExpired as exc:
+        error_msg = f"Timed out after {timeout_seconds // 60} minutes"
+        if exc.stdout or exc.stderr:
+            error_msg += f"; {describe_process_failure(exc.stdout, exc.stderr)}"
+        logger.error(f"Job '{name}' {error_msg}")
+        return False, error_msg
+    except ProcessCancelled as exc:
+        logger.info(f"Job '{name}' {exc}")
+        return False, str(exc)
+    if result.returncode == 0:
+        logger.info(f"Job '{name}' completed successfully")
+        return True, None
+    error_msg = describe_process_failure(result.stdout, result.stderr)
+    logger.error(f"Job '{name}' failed (exit {result.returncode}): {error_msg}")
+    return False, error_msg
+
+
 def execute_job(
     job: PendingJob,
-    timeout_seconds: int = 3600,
+    timeout_seconds: int = DEFAULT_JOB_TIMEOUT_MINUTES * 60,
     *,
     config_path: Path | None = None,
 ) -> None:
@@ -137,32 +259,19 @@ def execute_job(
     params = resolve_schedule_params(job.schedule, job.fire_time)
     logger.info(f"Executing '{job.schedule.name}': {params}")
 
-    cmd = ["immich-memories"]
-    if config_path is not None:
-        cmd.extend(["--config", str(config_path)])
-    cmd.append("generate")
-    cmd.extend(["--memory-type", params["memory_type"]])
-
-    if "year" in params:
-        cmd.extend(["--year", str(params["year"])])
-    if "month" in params:
-        cmd.extend(["--month", str(params["month"])])
-    if "target_date" in params:
-        cmd.extend(["--target-date", str(params["target_date"])])
-    if params.get("upload_to_immich"):
-        cmd.append("--upload-to-immich")
-    if params.get("album_name"):
-        cmd.extend(["--album", params["album_name"]])
-    if params.get("duration_minutes"):
-        cmd.extend(["--duration", str(params["duration_minutes"])])
-    for name in params.get("person_names", []):
-        # WHY: `=` syntax prevents names starting with `-` from being parsed as flags
-        cmd.append(f"--person={name}")
-
+    try:
+        cmd = _generate_command(params, config_path)
+    except UnschedulableJob as exc:
+        logger.error(f"Job '{job.schedule.name}' cannot run: {exc}")
+        _notify_if_configured(
+            memory_type=params["memory_type"],
+            success=False,
+            error=str(exc),
+            config_path=config_path,
+        )
+        return
     logger.info(f"Running: {' '.join(cmd)}")
     start = time.monotonic()
-    error_msg: str | None = None
-    success = False
 
     # The child logs to its own file as well as to the pipes: the tail the
     # daemon keeps says what failed, this says why.
@@ -172,32 +281,16 @@ def execute_job(
         log_path.parent.mkdir(parents=True, exist_ok=True)
         child_env["IMMICH_MEMORIES_LOG_FILE"] = str(log_path)
 
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout_seconds,
-            env=child_env,
-        )
-    except subprocess.TimeoutExpired:
-        error_msg = f"Timed out after {timeout_seconds // 60} minutes"
-        logger.error(f"Job '{job.schedule.name}' {error_msg}")
-    else:
-        if result.returncode == 0:
-            success = True
-            logger.info(f"Job '{job.schedule.name}' completed successfully")
-        else:
-            error_msg = describe_process_failure(result.stdout, result.stderr)
-            logger.error(
-                f"Job '{job.schedule.name}' failed (exit {result.returncode}): {error_msg}"
-            )
-
-    elapsed = time.monotonic() - start
+    success, error_msg = _run_generation(
+        cmd,
+        name=job.schedule.name,
+        timeout_seconds=timeout_seconds,
+        child_env=child_env,
+    )
     _notify_if_configured(
         memory_type=params["memory_type"],
         success=success,
-        duration_seconds=elapsed,
+        duration_seconds=time.monotonic() - start,
         error=error_msg,
         config_path=config_path,
     )

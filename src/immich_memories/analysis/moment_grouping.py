@@ -23,6 +23,7 @@ threads, which is what the timeline was hiding.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from typing import Any
 
 # How far apart two photographs can be and still be one moment. Wide enough for
@@ -45,12 +46,17 @@ _EARTH_RADIUS_METRES = 6_371_000.0
 
 
 def _coordinates(asset: Any) -> tuple[float, float] | None:
-    exif = getattr(asset, "exif_info", None)
+    source = getattr(asset, "source", asset)
+    exif = getattr(source, "exif_info", None)
     latitude = getattr(exif, "latitude", None) if exif else None
     longitude = getattr(exif, "longitude", None) if exif else None
     if latitude is None or longitude is None:
         return None
     return float(latitude), float(longitude)
+
+
+def _taken_at(asset: Any) -> Any:
+    return getattr(asset, "taken_at", None) or getattr(asset, "file_created_at", None)
 
 
 def metres_between(first: tuple[float, float], second: tuple[float, float]) -> float:
@@ -65,8 +71,8 @@ def metres_between(first: tuple[float, float], second: tuple[float, float]) -> f
 
 def _belongs_with(asset: Any, moment: list[Any], window_minutes: float, radius: float) -> bool:
     """Whether this asset continues that moment, in time and in place."""
-    when = getattr(asset, "file_created_at", None)
-    last_when = getattr(moment[-1], "file_created_at", None)
+    when = _taken_at(asset)
+    last_when = _taken_at(moment[-1])
     if when is None or last_when is None:
         return False
     if abs((when - last_when).total_seconds()) > window_minutes * 60:
@@ -98,8 +104,8 @@ def _group_by_time_and_place(
     alternation.
     """
     ordered = sorted(
-        (a for a in assets if getattr(a, "file_created_at", None) is not None),
-        key=lambda a: a.file_created_at,
+        (a for a in assets if _taken_at(a) is not None),
+        key=lambda a: (_taken_at(a), str(getattr(a, "asset_id", getattr(a, "id", "")))),
     )
     moments: list[list[Any]] = []
     for asset in ordered:
@@ -112,27 +118,17 @@ def _group_by_time_and_place(
     return moments
 
 
-def moments_to_read(
-    assets: list[Any],
-    config: Any,
-    window_minutes: float = EPISODE_WINDOW_MINUTES,
+def group_by_time_and_place(
+    assets: Sequence[Any],
+    window_minutes: float,
     radius_metres: float = MOMENT_RADIUS_METRES,
-) -> list[list[Any]]:
-    """Assets grouped for reading, with foreign media dropped before tiling.
-
-    Received media is often the most striking thing in an episode. A period
-    read from unfiltered sheets reported a wedding, a fresh tattoo and a grid
-    comparing chihuahuas to muffins as its remarkable days; they were forwarded
-    messages, screenshots and a meme. Nothing about them was photographed here.
-
-    source_filter already says where this belongs — gone "before it is sampled
-    into a prompt" — so it sits at the one door into grouping-for-reading, and
-    every reader downstream inherits it rather than remembering to ask.
-    """
-    from immich_memories.analysis.source_filter import from_the_camera_roll
-
-    return _group_by_time_and_place(
-        from_the_camera_roll(assets, config),
-        window_minutes=window_minutes,
-        radius_metres=radius_metres,
+) -> tuple[tuple[Any, ...], ...]:
+    """Group already-admitted assets without applying the legacy source filter."""
+    return tuple(
+        tuple(group)
+        for group in _group_by_time_and_place(
+            list(assets),
+            window_minutes=window_minutes,
+            radius_metres=radius_metres,
+        )
     )

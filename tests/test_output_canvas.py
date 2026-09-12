@@ -10,6 +10,7 @@ from immich_memories.generate import GenerationParams
 from immich_memories.generate_photos import _detect_photo_resolution
 from immich_memories.generate_settings import _build_assembly_settings
 from immich_memories.processing.output_canvas import OutputCanvas, resolve_output_canvas
+from tests.conftest import make_clip
 
 
 def _clip(width: int, height: int) -> SimpleNamespace:
@@ -73,7 +74,10 @@ def test_square_canvas_uses_short_edge_of_resolution_tier() -> None:
 def test_photo_and_assembly_consume_the_same_explicit_canvas() -> None:
     """Photo intermediates cannot silently use config/source geometry."""
     params = GenerationParams(
-        clips=[_clip(1080, 1920), _clip(1080, 1920)],
+        clips=[
+            make_clip("portrait-1", width=1080, height=1920),
+            make_clip("portrait-2", width=1080, height=1920),
+        ],
         output_path=Path("/tmp/out.mp4"),
         config=Config(output={"resolution": "4k"}),
         output_resolution="1080p",

@@ -98,7 +98,6 @@ Full rules in [CLAUDE.md](CLAUDE.md) (yes, the AI reads it too).
 src/immich_memories/
 ├── api/          # Immich API client (ImmichClient + 5 composed services)
 ├── analysis/     # Video analysis, scoring, clip selection (SmartPipeline + services)
-├── speech/       # VAD + transcription for cut placement
 ├── photos/       # Photo-to-video animation (Ken Burns, face-aware pan, blurred fill)
 ├── processing/   # Video assembly (VideoAssembler + 6 composed services)
 ├── titles/       # Title screens, map fly-overs (TitleScreenGenerator + services)

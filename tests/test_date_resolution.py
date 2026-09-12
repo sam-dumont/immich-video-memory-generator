@@ -104,6 +104,64 @@ class TestMonthNarrowsYearlyTypes:
 class TestStartEndOverridesPreset:
     """--start/--end should override any memory type's default date range."""
 
+    @pytest.mark.parametrize(
+        "memory_type",
+        ["year_in_review", "person_spotlight", "multi_person", "season", "monthly_highlights"],
+    )
+    def test_complete_manual_range_does_not_require_unused_preset_dates(self, memory_type):
+        result = resolve_date_range(
+            year=None,
+            start="2024-01-01",
+            end="2024-06-30",
+            period=None,
+            birthday=None,
+            memory_type=memory_type,
+        )
+
+        assert result == DateRange(datetime(2024, 1, 1), datetime(2024, 6, 30, 23, 59, 59))
+
+    @pytest.mark.parametrize(
+        "start,end", [(None, None), ("2024-01-01", None), (None, "2024-06-30")]
+    )
+    def test_missing_or_partial_manual_range_still_needs_a_preset_year(self, start, end):
+        with pytest.raises(click.UsageError, match="--year is required"):
+            resolve_date_range(
+                year=None,
+                start=start,
+                end=end,
+                period=None,
+                birthday=None,
+                memory_type="multi_person",
+            )
+
+    @pytest.mark.parametrize(
+        "start,end", [("not-a-date", "2024-06-30"), ("2024-07-01", "2024-06-30")]
+    )
+    def test_invalid_complete_manual_range_is_rejected(self, start, end):
+        with pytest.raises(click.UsageError):
+            resolve_date_range(
+                year=None,
+                start=start,
+                end=end,
+                period=None,
+                birthday=None,
+                memory_type="multi_person",
+            )
+
+    @pytest.mark.parametrize(
+        "memory_type,error", [("trip", "--year is required"), ("special_day", "--day is required")]
+    )
+    def test_manual_dates_do_not_bypass_discovered_scope_requirements(self, memory_type, error):
+        with pytest.raises(click.UsageError, match=error):
+            resolve_date_range(
+                year=None,
+                start="2024-01-01",
+                end="2024-06-30",
+                period=None,
+                birthday=None,
+                memory_type=memory_type,
+            )
+
     def test_person_spotlight_with_start_end_override(self):
         result = resolve_date_range(
             year=2026,
@@ -561,20 +619,6 @@ class TestMultiYearDefaultDuration:
 
         assert default_duration_for_type("holiday", span) == 60.0
 
-    def test_then_and_now_default_duration_is_the_preset_length_not_the_floor(self):
-        ranges = resolve_date_range(
-            year=2026,
-            start=None,
-            end=None,
-            period=None,
-            birthday=None,
-            memory_type="then_and_now",
-        )
-        assert isinstance(ranges, list)
-        span = self._display_span(ranges)
-
-        assert default_duration_for_type("then_and_now", span) == 45.0
-
     def test_a_single_month_still_scales_off_its_span(self):
         """The span curve keeps the range it was fitted for: one month ~= 60s."""
         span = resolve_date_range(
@@ -588,4 +632,25 @@ class TestMultiYearDefaultDuration:
         )
         assert isinstance(span, DateRange)
 
-        assert default_duration_for_type("monthly_highlights", span) == pytest.approx(62.3, abs=0.1)
+        assert default_duration_for_type("monthly_highlights", span) == 60.0
+
+    def test_february_is_one_complete_month_not_a_shorter_memory(self):
+        span = resolve_date_range(
+            year=2025,
+            start=None,
+            end=None,
+            period=None,
+            birthday=None,
+            memory_type="monthly_highlights",
+            month=2,
+        )
+        assert isinstance(span, DateRange)
+
+        assert default_duration_for_type("monthly_highlights", span) == 60.0
+
+    def test_ten_months_and_longer_stay_at_the_ten_minute_ceiling(self):
+        ten_months = DateRange(datetime(2025, 1, 1), datetime(2025, 10, 31, 23, 59, 59))
+        lifetime = DateRange(datetime(2000, 1, 1), datetime(2026, 8, 28, 23, 59, 59))
+
+        assert default_duration_for_type("person_spotlight", ten_months) == 600.0
+        assert default_duration_for_type("person_spotlight", lifetime) == 600.0

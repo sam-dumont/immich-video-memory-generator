@@ -49,7 +49,7 @@ def _restore_completed_ui_state(state, completed, fallback_output_path: Path | N
     state.output_path = (
         Path(completed.output_path) if completed.output_path else fallback_output_path
     )
-    state.generation_warning = completed.warnings[-1] if completed.warnings else None
+    state.generation_warning = "\n".join(completed.warnings) or None
     state.delivery_status = completed.delivery_status
 
 
@@ -196,13 +196,6 @@ def normalize_ui_output_path(state, output_path: Path) -> Path:
     return normalize_output_path(output_path, selection.container)
 
 
-def _filter_selected_photos(state) -> list | None:
-    """Return only photo assets whose IDs are in the selected set."""
-    if not state.include_photos or not state.photo_assets:
-        return None
-    return [p for p in state.photo_assets if p.id in state.selected_photo_ids]
-
-
 def _build_generation_params(state, selected_clips, output_path):
     """Build GenerationParams from UI AppState."""
     from immich_memories.api.immich import SyncImmichClient
@@ -211,22 +204,19 @@ def _build_generation_params(state, selected_clips, output_path):
     gen_options = state.generation_options
     person = state.selected_person
     date_range = state.date_range
+    selected_ids = {clip.asset.id for clip in selected_clips}
+    editorial_selections = tuple(
+        selection for selection in state.editorial_selections if selection.asset_id in selected_ids
+    )
 
     # Apply photo duration from UI to config
     if state.include_photos and state.config:
         state.config.photos.duration = state.photo_duration
 
-    client = SyncImmichClient(
-        base_url=state.immich_url,
-        api_key=state.immich_api_key,
-        api_version=state.immich_api_version,
-    )
-
-    return GenerationParams(
+    params = GenerationParams(
         clips=selected_clips,
         output_path=output_path,
         config=state.config,
-        client=client,
         transition=_TRANSITION_MAP.get(
             gen_options.get("transition", "Smart (mix of fades & cuts)"), "crossfade"
         ),
@@ -248,6 +238,7 @@ def _build_generation_params(state, selected_clips, output_path):
         subtitle=state.title_suggestion_subtitle,
         clip_segments=state.clip_segments,
         clip_rotations=state.clip_rotations,
+        editorial_selections=editorial_selections,
         # WHY: Photos are already in selected_clips as IMAGE-type assets
         # from the unified selection pool. Setting include_photos=False
         # prevents _add_photos_if_enabled from re-adding them.
@@ -255,6 +246,17 @@ def _build_generation_params(state, selected_clips, output_path):
         photo_assets=None,
         target_duration_seconds=state.target_duration_seconds,
         timeline_plan=state.timeline_plan,
+        editorial_render_timing=getattr(state, "editorial_render_timing", None),
+        editorial_duration_realization=(
+            (getattr(state, "pipeline_result", None) or {})
+            .get("stats", {})
+            .get("editorial_duration_realization")
+        ),
+        **(
+            {"transition_duration": state.config.defaults.transition_duration}
+            if getattr(state, "editorial_render_timing", None) is not None
+            else {}
+        ),
         selected_photo_ids=None,
         # Music runs in the shared phase after assembly, on the same run
         # lifecycle; "None" stays silent because resolve_music checks no_music
@@ -265,6 +267,47 @@ def _build_generation_params(state, selected_clips, output_path):
         upload_enabled=state.upload_enabled,
         upload_album=state.upload_album_name,
     )
+    if params.editorial_render_timing is not None:
+        import json
+
+        from immich_memories.processing.editorial_owner_edits import project_editorial_owner_edits
+        from immich_memories.processing.editorial_timing import timing_policy_for_params
+        from immich_memories.security import write_secret_file
+
+        projection = project_editorial_owner_edits(
+            original_clips=state.pipeline_selected_clips,
+            original_selections=state.editorial_selections,
+            original_binding=params.editorial_render_timing,
+            selected_ids=[clip.asset.id for clip in selected_clips],
+            requested_segments=state.clip_segments,
+            policy=timing_policy_for_params(params),
+        )
+        params.clips = list(projection.clips)
+        params.editorial_selections = projection.selections
+        params.clip_segments = projection.segments
+        params.timeline_plan = projection.timeline
+        params.editorial_render_timing = projection.binding
+        params.editorial_owner_edits = projection.record
+        if projection.record is not None:
+            from uuid import uuid4
+
+            edit_path = output_path.with_name(
+                f"{output_path.stem}.owner-edits-{uuid4().hex}.private.json"
+            )
+            params.editorial_owner_edits = {
+                **projection.record,
+                "artifact_name": edit_path.name,
+            }
+            write_secret_file(
+                edit_path,
+                json.dumps(params.editorial_owner_edits, indent=2),
+            )
+    params.client = SyncImmichClient(
+        base_url=state.immich_url,
+        api_key=state.immich_api_key,
+        api_version=state.immich_api_version,
+    )
+    return params
 
 
 async def execute_ui_generation(
@@ -311,7 +354,6 @@ async def run_generation(
     from immich_memories.tracking import DeliveryStatus
 
     state.delivery_status = DeliveryStatus.NOT_REQUESTED
-    state.upload_result = None
     state.output_path = None
     run_tracker = None
     # Mutable ref so the lambda closure can access the button after creation
@@ -480,10 +522,19 @@ async def finalize_ui_generation(
             message=music_result.warning or "Music ready",
         )
     final_probe = await io_bound_result(validate_output, prepared.path, prepared.encoding_plan)
+    from immich_memories.analysis.editorial_duration_advisory import editorial_duration_warning
     from immich_memories.generate_timeline import validate_final_duration
 
     duration_warning = validate_final_duration(params, final_probe.duration_seconds)
-    warnings = [w for w in (duration_warning, music_result.warning) if w]
+    warnings = [
+        w
+        for w in (
+            editorial_duration_warning(params.editorial_duration_realization),
+            duration_warning,
+            music_result.warning,
+        )
+        if w
+    ]
     completed = run_tracker.complete_artifact(
         prepared.path,
         final_probe,
@@ -493,7 +544,7 @@ async def finalize_ui_generation(
         clips_analyzed=prepared.clips_analyzed,
         clips_selected=prepared.clips_selected,
     )
-    state.generation_warning = music_result.warning or duration_warning
+    state.generation_warning = "\n".join(warnings) or None
     state.delivery_status = completed.delivery_status
     emit_operational_phase(
         params,

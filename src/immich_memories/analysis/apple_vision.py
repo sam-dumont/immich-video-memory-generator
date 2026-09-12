@@ -26,7 +26,7 @@ _Quartz = None
 
 @dataclass
 class FaceDetection:
-    """A detected face with bounding box and landmarks."""
+    """A detected face with its bounding box."""
 
     # Bounding box (normalized 0-1 coordinates, origin bottom-left in Vision)
     x: float
@@ -35,12 +35,6 @@ class FaceDetection:
     height: float
     confidence: float = 1.0
 
-    # Optional landmarks
-    left_eye: tuple[float, float] | None = None
-    right_eye: tuple[float, float] | None = None
-    nose: tuple[float, float] | None = None
-    mouth: tuple[float, float] | None = None
-
     @property
     def center(self) -> tuple[float, float]:
         """Get center point (normalized, origin top-left for compatibility)."""
@@ -48,11 +42,6 @@ class FaceDetection:
         center_x = self.x + self.width / 2
         center_y = 1.0 - (self.y + self.height / 2)  # Flip Y
         return (center_x, center_y)
-
-    @property
-    def center_vision(self) -> tuple[float, float]:
-        """Get center point in Vision coordinates (bottom-left origin)."""
-        return (self.x + self.width / 2, self.y + self.height / 2)
 
     @property
     def area(self) -> float:
@@ -105,21 +94,12 @@ class VisionFaceDetector:
     """Face detector using Apple Vision framework.
 
     Uses the Neural Engine on Apple Silicon for fast, GPU-accelerated
-    face detection with optional landmark detection.
+    face detection.
     """
 
-    def __init__(self, detect_landmarks: bool = False):
-        """Initialize the Vision face detector.
-
-        Args:
-            detect_landmarks: Whether to detect facial landmarks.
-        """
+    def __init__(self) -> None:
         if not is_vision_available():
             raise RuntimeError("Apple Vision framework not available")
-
-        self.detect_landmarks = detect_landmarks
-        self._request = None
-        self._handler = None
 
     def detect_faces(
         self,
@@ -147,10 +127,7 @@ class VisionFaceDetector:
         handler = Vision.VNImageRequestHandler.alloc().initWithCGImage_options_(cg_image, None)
 
         # Create face detection request
-        if self.detect_landmarks:
-            request = Vision.VNDetectFaceLandmarksRequest.alloc().init()
-        else:
-            request = Vision.VNDetectFaceRectanglesRequest.alloc().init()
+        request = Vision.VNDetectFaceRectanglesRequest.alloc().init()
 
         # Perform detection
         success, error = handler.performRequests_error_([request], None)
@@ -189,12 +166,6 @@ class VisionFaceDetector:
                 confidence=confidence,
             )
 
-            # Extract landmarks if available
-            if self.detect_landmarks and hasattr(observation, "landmarks"):
-                landmarks = observation.landmarks()
-                if landmarks:
-                    face = self._extract_landmarks(face, landmarks)
-
             faces.append(face)
 
         # Explicit cleanup of Vision framework objects to prevent memory leaks
@@ -204,180 +175,3 @@ class VisionFaceDetector:
         del cg_image
 
         return faces
-
-    def _extract_landmarks(
-        self,
-        face: FaceDetection,
-        landmarks,
-    ) -> FaceDetection:
-        """Extract landmark positions from Vision landmarks.
-
-        Args:
-            face: Face detection to update.
-            landmarks: VNFaceLandmarks2D object.
-
-        Returns:
-            Updated face detection with landmarks.
-        """
-        # Left eye
-        if landmarks.leftEye():
-            points = landmarks.leftEye().normalizedPoints()
-            if points:
-                # Get center of eye region
-                center = self._get_landmark_center(points)
-                face.left_eye = center
-
-        # Right eye
-        if landmarks.rightEye():
-            points = landmarks.rightEye().normalizedPoints()
-            if points:
-                center = self._get_landmark_center(points)
-                face.right_eye = center
-
-        # Nose
-        if landmarks.nose():
-            points = landmarks.nose().normalizedPoints()
-            if points:
-                center = self._get_landmark_center(points)
-                face.nose = center
-
-        # Mouth (outer lips)
-        if landmarks.outerLips():
-            points = landmarks.outerLips().normalizedPoints()
-            if points:
-                center = self._get_landmark_center(points)
-                face.mouth = center
-
-        return face
-
-    def _get_landmark_center(self, points) -> tuple[float, float]:
-        """Get center point of landmark region.
-
-        Args:
-            points: Array of CGPoint objects.
-
-        Returns:
-            Center (x, y) normalized coordinates.
-        """
-        if not points:
-            return (0.5, 0.5)
-
-        # Points is a tuple of CGPoint
-        x_sum = sum(p.x for p in points)
-        y_sum = sum(p.y for p in points)
-        count = len(points)
-
-        return (x_sum / count, y_sum / count)
-
-
-class VisionFaceDetectorCV:
-    """OpenCV-compatible face detector using Apple Vision.
-
-    Provides the same interface as OpenCV's CascadeClassifier but
-    uses Vision framework for GPU acceleration.
-    """
-
-    def __init__(self):
-        """Initialize the Vision-backed detector."""
-        if not is_vision_available():
-            raise RuntimeError("Apple Vision framework not available")
-        self._detector = VisionFaceDetector(detect_landmarks=False)
-
-    def detectMultiScale(
-        self,
-        image: np.ndarray,
-        _scaleFactor: float = 1.1,  # noqa: ARG002, N803
-        _minNeighbors: int = 5,  # noqa: ARG002, N803
-        minSize: tuple[int, int] = (30, 30),
-        **_kwargs: object,
-    ) -> np.ndarray:
-        """Detect faces compatible with OpenCV CascadeClassifier interface.
-
-        Args:
-            image: Grayscale or BGR image.
-            scaleFactor: Ignored (Vision handles internally).
-            minNeighbors: Ignored (Vision handles internally).
-            minSize: Minimum face size in pixels.
-            **kwargs: Additional ignored arguments.
-
-        Returns:
-            numpy array of (x, y, w, h) rectangles.
-        """
-        # Ensure we have a color image for Vision
-        if len(image.shape) == 2:
-            import cv2
-
-            image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
-
-        height, width = image.shape[:2]
-
-        faces = self._detector.detect_faces(image, min_confidence=0.3)
-
-        # Convert to OpenCV format (x, y, w, h in pixels)
-        results = []
-        for face in faces:
-            # Convert normalized coords to pixels
-            # Note: Vision uses bottom-left origin, OpenCV uses top-left
-            x = int(face.x * width)
-            y = int((1.0 - face.y - face.height) * height)  # Flip Y
-            w = int(face.width * width)
-            h = int(face.height * height)
-
-            # Check minimum size
-            if w >= minSize[0] and h >= minSize[1]:
-                results.append([x, y, w, h])
-
-        if results:
-            return np.array(results, dtype=np.int32)
-        return np.array([], dtype=np.int32).reshape(0, 4)
-
-
-def detect_faces_vision(
-    image: np.ndarray,
-    min_size: tuple[int, int] = (30, 30),
-    detect_landmarks: bool = False,
-) -> list[FaceDetection]:
-    """Detect faces using Apple Vision framework.
-
-    Args:
-        image: BGR image from OpenCV.
-        min_size: Minimum face size in pixels.
-        detect_landmarks: Whether to detect facial landmarks.
-
-    Returns:
-        List of face detections.
-    """
-    if not is_vision_available():
-        return []
-
-    height, width = image.shape[:2]
-    min_area = (min_size[0] * min_size[1]) / (width * height)
-
-    faces = VisionFaceDetector(detect_landmarks=detect_landmarks).detect_faces(
-        image, min_confidence=0.3
-    )
-
-    # Filter by minimum size
-    return [f for f in faces if f.area >= min_area]
-
-
-def create_face_detector() -> object:
-    """Create the best available face detector for the platform.
-
-    On macOS, returns a Vision-backed detector.
-    On other platforms, returns OpenCV CascadeClassifier.
-
-    Returns:
-        Face detector with detectMultiScale method.
-    """
-    if is_vision_available():
-        try:
-            return VisionFaceDetectorCV()
-        except (ImportError, RuntimeError, OSError) as e:
-            logger.warning(f"Failed to create Vision detector: {e}")
-
-    # Fallback to OpenCV
-    import cv2
-
-    cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-    return cv2.CascadeClassifier(cascade_path)

@@ -7,10 +7,13 @@ title: Config File
 
 Location: `~/.immich-memories/config.yaml`
 
-The file is written the first time you save the connection settings — from Step 1 of the web UI or
+The file is written the first time you save the connection settings, either from Advanced on the web UI's Memory page or
 with `immich-memories config`. Permissions are set to `600` (owner read/write only) since it
 contains API keys. Sections are grouped in two tiers: everyday options at the top level, and the
 rest under `advanced:` (see [Tiers](#tiers) below).
+
+A complete annotated example lives in the repository at
+[`examples/config.example.yaml`](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/examples/config.example.yaml).
 
 ## Quick start config
 
@@ -34,17 +37,15 @@ defaults:
   scale_mode: "blur"             # blur background, or fit for black bars
   transition: "smart"            # cut, crossfade, smart, none
 
-# ── AI analysis (any OpenAI-compatible vision model) ──────
-# Both sections are needed: `llm` says where the model is,
-# `content_analysis.enabled` turns scoring with it on.
-# Tested against Qwen3.6-27B and Qwen3.6-35B-A3B.
+# ── The editor's model (OpenAI-compatible, must take images) ─
+# The reader is graded on Qwen3-VL-30B-A3B-Instruct-4bit (oMLX).
+# It is sent pictures, so a text-only model cannot take this
+# seat. What it reads is prepared per Configuration →
+# Editorial annotation setup.
 llm:
   provider: "openai-compatible"
   base_url: "http://localhost:8000/v1"
-  model: "mlx-community/Qwen3.6-27B-8bit"
-
-content_analysis:
-  enabled: true
+  model: "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"
 
 # ── AI background music (optional) ───────────────────────
 # Music is on when one generator is enabled. Per run you can
@@ -63,14 +64,16 @@ always SDR. If you select `codec: h264`, detected HDR is tone-mapped to SDR even
 `hdr_mode: auto` is set. Use H.264 when broad playback compatibility matters more than HDR.
 
 The target duration you pick per run (UI slider or `--duration`) applies to the complete result,
-including titles and the time removed by overlapping fades. When eligible material exists, the
-optimizer backfills unused clips before accepting a short result. The encoded duration may differ by
-less than one transition because cuts land on video frame boundaries. There is no config default for
-it: the memory type preset supplies one.
+including titles and the time removed by overlapping fades. There is no backfill pass: the editor
+grants seconds to the stories it weighed, and if that adds up short the run says so ("Selected
+41.2s of pictures and video for a 60.0s memory"), rather than padding with material it had already
+decided against. The encoded duration may differ by less than one transition because cuts land on
+video frame boundaries. There is no config default for the target: the memory type preset supplies
+one.
 
 ## Tiers
 
-`llm`, `content_analysis`, `ace_step` and the other tuning sections are Tier 2. When the app writes
+`llm`, `ace_step` and the other tuning sections are Tier 2. When the app writes
 the file it groups them under `advanced:`; when reading, both placements work, and if the same key
 appears in both the top-level value wins.
 
@@ -78,23 +81,26 @@ appears in both the top-level value wins.
 advanced:
   llm:
     base_url: "http://localhost:8080/v1"
-  content_analysis:
-    enabled: true
+  hardware:
+    encoder_preset: quality
 ```
 
-Tier 2 sections: `analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `content_analysis`,
-`audio_content`, `speech`, `transcription`, `server`, `auth`, `automation`, `notifications`.
-Everything else (`immich`, `defaults`, `output`, `audio`, `title_screens`, `title_llm`, `cache`,
-`upload`, `trips`, `photos`, `scheduler`) stays at the top level.
+Tier 2 sections: `analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `server`, `auth`,
+`automation`, `notifications`, `triage`, `editorial`. Everything else (`immich`, `defaults`,
+`output`, `audio`, `title_screens`, `title_llm`, `cache`, `upload`, `trips`, `photos`,
+`scheduler`) stays at the top level.
 
-Unknown keys inside a section are silently ignored — a typo does not fail the load, it just does
-nothing. Unknown top-level keys and invalid values (`codec: av1`, `llm.provider: gemini`) do fail
-with a validation error at startup.
+Unknown keys inside a section are silently ignored (a typo does not fail the load; it just does
+nothing), with one exception: the thirty keys of the removed clip scorer (`content_analysis`,
+`audio_content`, `speech`, `transcription`, `description_llm`, `analysis.max_refinement_passes`, `photos.max_ratio`
+and the rest of that family) are refused at startup with a message naming them, so an old file
+cannot keep loading while its settings do nothing. Unknown top-level keys and invalid values
+(`codec: av1`, `llm.provider: gemini`) also fail with a validation error at startup.
 
 ## Footage the camera roll did not shoot
 
 Doorbells, security cameras, screen recorders and messaging apps all upload into the same
-timeline as your phone. None of it was shot to be remembered, and some of it scores well —
+timeline as your phone. None of it was shot to be remembered, and some of it scores well:
 a doorbell is a perfectly stable camera pointed at a place people walk through.
 
 Source files matching these patterns never reach selection:
@@ -128,17 +134,17 @@ advanced:
 Measured across four months of a real library: of 1541 stills with no EXIF make, 1498
 arrived through a messaging app and 34 were downloads, against 9 camera originals that had
 lost their make somewhere. Turn it off if your library is mostly exported or edited
-originals, which lose their make the same way. Videos are exempt either way — 25 of 224
+originals, which lose their make the same way. Videos are exempt either way: 25 of 224
 make-less videos in that library were genuine phone clips, so the rule cannot judge them.
 
 Both rules run before anything is analysed, which is also what keeps this material out of
 the analysis budget, and `discover-days` applies the same rules before it counts a day's
-photographs — a day should not clear the bar on pictures nobody in the library took.
+photographs: a day should not clear the bar on pictures nobody in the library took.
 
-This runs before analysis, so an excluded file costs nothing to skip, and it works with no
-LLM configured at all. With one configured, the holistic review is a second line of defence:
-it drops footage nobody chose to shoot whatever the picture quality, which covers the
-cameras whose filenames give nothing away.
+Both rules are pure metadata, so an excluded file costs nothing to skip and never reaches a
+model. The camera whose filename gives nothing away is caught later and differently: the
+memory-worthy gate is asked whether each happening is remarkable, background, or a maybe, and a
+doorbell's afternoon is background.
 
 ## Immich API compatibility
 
@@ -165,37 +171,18 @@ This check is read-only.
 Both majors have run against live servers, not just against tests. The project was developed
 day-to-day against a live Immich v2 server until the v3 migration in mid-2026, and has run
 day-to-day against live v3 since. This is one library and one server at a time, not a version
-matrix — but it is real usage, not a compatibility layer that only its own tests have seen.
+matrix, but it is real usage, not a compatibility layer that only its own tests have seen.
 
 | Server major | Under `auto` | How it is covered |
 |--------------|--------------|-------------------|
 | 2 | v2 contract | months of live-server development, plus contract tests pinning the v2/v3 wire differences |
 | 3 | v3 contract | daily live-server use since the migration, the hermetic E2E suite and the release smoke test (both run a faithful v3 service), plus the same contract tests |
-| anything else | the run stops with `UnsupportedImmichVersion` | — |
+| anything else | the run stops with `UnsupportedImmichVersion` | n/a |
 
 Nothing here promises that every point release of both majors was exercised before a release.
 What it does promise is that an unknown major fails immediately and says so, rather than sending
 requests of the wrong shape and failing somewhere less obvious. If yours breaks, that is a bug
 worth an issue.
-
-## Clip pacing
-
-Control how clips are cut with a single option:
-
-```yaml
-analysis:
-  clip_style: "balanced"    # fast-cuts | balanced | long-cuts
-```
-
-| Style | Feel | Clip duration | Extraction ratio |
-|-------|------|---------------|-----------------|
-| *(unset)* | Default: natural pacing, conservative extraction | 5-10s | 15% |
-| `fast-cuts` | Energetic, music-video style | 3-6s | 30% |
-| `balanced` | Same durations as the default, pulls more footage per source | 5-10s | 40% |
-| `long-cuts` | Cinematic, slow | 8-15s | 50% |
-
-A preset only fills in the five duration parameters you have not set yourself; explicit values win.
-See the [Config Reference](../../reference/config-reference.md#video-analysis) for the individual knobs.
 
 ## Environment variable substitution
 
@@ -206,12 +193,14 @@ A handful of secret-bearing fields expand `${VAR_NAME}` at load time:
 | `immich` | `url`, `api_key` |
 | `llm` / `title_llm` | `api_key` |
 | `musicgen` | `base_url`, `api_key` |
-| `ace_step` | `api_url` (not `api_key`) |
+| `ace_step` | `api_url`, `api_key` |
 | `auth` | `password`, `client_secret`, `issuer_url`, `client_id` |
+| `editorial` | `annotation_database` |
+| `editorial.preparation` | `head_bundle`, `detector_python`, `detector_cache_dir` |
 
 Only the braced form expands. A bare `$VAR_NAME` is left exactly as written,
 because these fields hold passwords and API keys and a `$` in a secret is
-ordinary — `S3cret$USER!` would otherwise pick up your login name and the only
+ordinary: `S3cret$USER!` would otherwise pick up your login name and the only
 symptom would be a rejected password. If a value contains a bare `$NAME` that
 matches a variable you have set, a warning says so at load time.
 
@@ -223,7 +212,7 @@ llm:
   api_key: ${OPENAI_API_KEY}
 ```
 
-Every other string is stored literally — `output.directory: ${HOME}/x` is not expanded. To set any
+Every other string is stored literally; `output.directory: ${HOME}/x` is not expanded. To set any
 other field from the environment, use the `IMMICH_MEMORIES_<SECTION>__<FIELD>` form described in
 [Environment Variables](environment-variables.md).
 
@@ -250,4 +239,4 @@ upload:
 
 ## All options
 
-For the full list of options (analysis tuning, hardware acceleration, speech and transcription, title screens, scheduler, notifications, etc.), see the [Config Reference](../../reference/config-reference.md).
+For the full list of options (source admission, hardware acceleration, title screens, scheduler, notifications, etc.), see the [Config Reference](../../reference/config-reference.md).

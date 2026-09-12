@@ -12,8 +12,6 @@ Performance optimizations:
 from __future__ import annotations
 
 import logging
-import os
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,7 +23,6 @@ from .animations import (
     AnimationPreset,
     compute_staggered_animation,
     get_animation_preset,
-    reverse_preset,
 )
 from .backgrounds import create_background_for_style
 from .backgrounds_animated import create_animated_background
@@ -49,8 +46,6 @@ class TextMetrics:
 
     width: int
     height: int
-    ascent: int
-    descent: int
 
 
 @dataclass
@@ -61,7 +56,6 @@ class RenderSettings:
     height: int = 1080
     fps: float = 60.0  # 60fps for smooth animations
     duration: float = 3.5
-    animation_duration: float = 0.5
     animated_background: bool = True  # Enable animated backgrounds by default
     # Frames stay 8-bit either way; this only ceilings text to graphics white (#506)
     hdr: bool = False
@@ -92,10 +86,6 @@ class TitleRenderer:
         self.settings = settings or RenderSettings()
         self.fonts_dir = fonts_dir or Path(__file__).parent.parent / "fonts"
         self._background_image = background_image
-
-        # Load fonts
-        self._title_font: ImageFont.FreeTypeFont | None = None
-        self._subtitle_font: ImageFont.FreeTypeFont | None = None
 
     def _get_font(self, size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
         """Get font at specified size."""
@@ -138,12 +128,7 @@ class TitleRenderer:
         width = bbox[2] - bbox[0]
         height = bbox[3] - bbox[1]
 
-        return TextMetrics(
-            width=width,
-            height=height,
-            ascent=abs(bbox[1]),
-            descent=abs(bbox[3] - height),
-        )
+        return TextMetrics(width=width, height=height)
 
     def _apply_text_transform(self, text: str) -> str:
         """Apply text transformation based on style."""
@@ -239,78 +224,6 @@ class TitleRenderer:
             frame = self._render_decorative_line(frame, title_font, title, title_anim)
 
         return frame
-
-    def render_all_frames(
-        self,
-        title: str,
-        subtitle: str | None = None,
-        fade_out_duration: float = 1.0,
-    ) -> list[Image.Image]:
-        """Render all frames for a title screen with fade-out."""
-        total_frames = int(self.settings.duration * self.settings.fps)
-        preset = get_animation_preset(self.style.animation_preset)
-        reversed_preset = reverse_preset(preset)
-
-        fade_out_frames = int(fade_out_duration * self.settings.fps)
-        fade_out_start_frame = total_frames - fade_out_frames
-        animation_frames = int(preset.duration_ms / 1000 * self.settings.fps)
-
-        frames = []
-        for i in range(total_frames):
-            if i >= fade_out_start_frame:
-                fade_out_progress = (i - fade_out_start_frame) / fade_out_frames
-                fade_out_frame = int(fade_out_progress * animation_frames)
-                frame = self.render_frame(title, subtitle, fade_out_frame, reversed_preset)
-            else:
-                frame = self.render_frame(title, subtitle, i, preset)
-            frames.append(frame)
-
-        return frames
-
-    def render_all_frames_parallel(
-        self,
-        title: str,
-        subtitle: str | None = None,
-        fade_out_duration: float = 1.0,
-        max_workers: int | None = None,
-    ) -> list[Image.Image]:
-        """Render all frames in parallel using threading."""
-        total_frames = int(self.settings.duration * self.settings.fps)
-        preset = get_animation_preset(self.style.animation_preset)
-        reversed_preset = reverse_preset(preset)
-
-        fade_out_frames = int(fade_out_duration * self.settings.fps)
-        fade_out_start_frame = total_frames - fade_out_frames
-        animation_frames = int(preset.duration_ms / 1000 * self.settings.fps)
-
-        frame_specs = []
-        for i in range(total_frames):
-            if i >= fade_out_start_frame:
-                fade_out_progress = (i - fade_out_start_frame) / fade_out_frames
-                fade_out_frame = int(fade_out_progress * animation_frames)
-                frame_specs.append((i, reversed_preset, fade_out_frame))
-            else:
-                frame_specs.append((i, preset, i))
-
-        if max_workers is None:
-            max_workers = min(os.cpu_count() or 4, 8)
-
-        if total_frames < max_workers * 2:
-            return self.render_all_frames(title, subtitle, fade_out_duration)
-
-        def render_single(spec: tuple) -> tuple[int, Image.Image]:
-            idx, used_preset, frame_num = spec
-            frame = self.render_frame(title, subtitle, frame_num, used_preset)
-            return (idx, frame)
-
-        frames: list[Image.Image | None] = [None] * total_frames
-
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            results = executor.map(render_single, frame_specs)
-            for idx, frame in results:
-                frames[idx] = frame
-
-        return frames  # type: ignore
 
     # =========================================================================
     # Text Rendering (from TextRenderingMixin)

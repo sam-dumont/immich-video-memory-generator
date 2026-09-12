@@ -47,13 +47,14 @@ from immich_memories.generate_settings import (
 from immich_memories.generate_timeline import (
     apply_final_content_budget as _apply_final_content_budget,
 )
-from immich_memories.generate_timeline import publish_and_check_duration
+from immich_memories.generate_timeline import publish_and_check_duration, validate_certified_content
 from immich_memories.operations.phases import OperationalPhase, PhaseEvent
 from immich_memories.processing.clip_validation import validate_clips
 from immich_memories.processing.output_canvas import OutputCanvas
 from immich_memories.processing.output_contract import validate_output
 
 if TYPE_CHECKING:
+    from immich_memories.analysis.editorial_planner import EditorialSelection
     from immich_memories.api.immich import SyncImmichClient
     from immich_memories.api.models import VideoClipInfo
     from immich_memories.config_loader import Config
@@ -142,6 +143,7 @@ class GenerationParams:
     # Clip overrides from review step
     clip_segments: dict[str, tuple[float, float]] = field(default_factory=dict)
     clip_rotations: dict[str, int | None] = field(default_factory=dict)
+    editorial_selections: tuple[EditorialSelection, ...] = ()
 
     # Output format and display
     scale_mode: str | None = None
@@ -160,6 +162,10 @@ class GenerationParams:
     # Duration budget for unified photo+video selection
     target_duration_seconds: float | None = None
     timeline_plan: TimelinePlan | None = None
+    editorial_render_timing: dict | None = None
+    editorial_duration_realization: dict | None = None
+    # Explicit review changes; the original editorial plan remains unchanged.
+    editorial_owner_edits: dict | None = None
 
     # Pre-selected photo IDs from UI (skip re-scoring when set)
     selected_photo_ids: set[str] | None = None
@@ -478,6 +484,70 @@ def _emit_download_phase(
         operational.emit(OperationalPhase.DOWNLOAD, current, total, message)
 
 
+def _extracted_sources(
+    params: GenerationParams, run_output_dir: Path, *, probe_cache: ProbeCache
+) -> list:
+    """Own the persistent video-cache lifecycle across exactly one extraction."""
+    from immich_memories.cache.video_cache import VideoDownloadCache
+
+    if not params.config.cache.video_cache_enabled:
+        # Disabled cache means no interaction with the configured persistent
+        # video cache. Extraction uses disposable run-local downloads.
+        return _extract_clips_with_optional_prefetch(
+            params, None, run_output_dir, probe_cache=probe_cache
+        )
+    video_cache = VideoDownloadCache(
+        cache_dir=params.config.cache.video_cache_path,
+        max_size_gb=params.config.cache.video_cache_max_size_gb,
+        max_age_days=params.config.cache.video_cache_max_age_days,
+    )
+    # One cache lifecycle owns all persistent-cache downloads for this
+    # generation. It scans once, then evicts from the manifest on exit.
+    with video_cache.begin_batch() as cache_batch:
+        return _extract_clips_with_optional_prefetch(
+            params, cache_batch, run_output_dir, probe_cache=probe_cache
+        )
+
+
+def _anonymized_params(params: GenerationParams) -> GenerationParams:
+    return replace(
+        params,
+        person_name=anonymize_name(params.person_name),
+        memory_preset_params=anonymize_preset_params(params.memory_preset_params),
+    )
+
+
+def _artifact_warnings(
+    params: GenerationParams, duration_warning: str | None, music_warning: str | None
+) -> list[str]:
+    from immich_memories.analysis.editorial_duration_advisory import editorial_duration_warning
+
+    return [
+        warning
+        for warning in (
+            editorial_duration_warning(params.editorial_duration_realization),
+            duration_warning,
+            music_warning,
+        )
+        if warning
+    ]
+
+
+def _clear_run_intermediates(
+    params: GenerationParams, assembly_clips: list, run_output_dir: Path
+) -> None:
+    """Cleanup never masks the outcome of the run it is closing."""
+    try:
+        _cleanup_temp_clips(assembly_clips)
+    except OSError:
+        logger.debug("Temp clip cleanup failed", exc_info=True)
+    try:
+        if not params.debug_preserve_intermediates:
+            _cleanup_temp_dirs(run_output_dir)
+    except OSError:
+        logger.debug("Temp dir cleanup failed", exc_info=True)
+
+
 def _generate_memory_inner(
     params: GenerationParams,
     *,
@@ -485,7 +555,9 @@ def _generate_memory_inner(
     defer_finalization: bool = False,
 ) -> Path | PreparedGeneration:
     """Inner pipeline — runs under PipelineLock."""
-    from immich_memories.cache.video_cache import VideoDownloadCache
+    from immich_memories.processing.editorial_timing import prepare_certified_timeline
+
+    prepare_certified_timeline(params)
     from immich_memories.security import sanitize_filename
     from immich_memories.tracking import RunTracker, generate_run_id
 
@@ -547,30 +619,7 @@ def _generate_memory_inner(
             "Preparing source downloads",
         )
 
-        if params.config.cache.video_cache_enabled:
-            video_cache = VideoDownloadCache(
-                cache_dir=params.config.cache.video_cache_path,
-                max_size_gb=params.config.cache.video_cache_max_size_gb,
-                max_age_days=params.config.cache.video_cache_max_age_days,
-            )
-            # One cache lifecycle owns all persistent-cache downloads for this
-            # generation. It scans once, then evicts from the manifest on exit.
-            with video_cache.begin_batch() as cache_batch:
-                assembly_clips = _extract_clips_with_optional_prefetch(
-                    params,
-                    cache_batch,
-                    run_output_dir,
-                    probe_cache=probe_cache,
-                )
-        else:
-            # Disabled cache means no interaction with the configured persistent
-            # video cache. Extraction uses disposable run-local downloads.
-            assembly_clips = _extract_clips_with_optional_prefetch(
-                params,
-                None,
-                run_output_dir,
-                probe_cache=probe_cache,
-            )
+        assembly_clips = _extracted_sources(params, run_output_dir, probe_cache=probe_cache)
         run_tracker.complete_phase(items_processed=len(assembly_clips))
         _emit_download_phase(
             operational,
@@ -586,6 +635,7 @@ def _generate_memory_inner(
 
         # Pre-assembly validation: skip clips with missing/empty files
         assembly_clips, skipped = validate_clips(assembly_clips)
+        validate_certified_content(params, assembly_clips)
 
         if not assembly_clips:
             raise GenerationError("No clips could be processed")
@@ -593,14 +643,14 @@ def _generate_memory_inner(
         # Privacy mode: anonymize GPS + names before title/assembly
         if params.privacy_mode:
             assembly_clips = anonymize_clips_for_privacy(assembly_clips)
-            anon_preset = anonymize_preset_params(params.memory_preset_params)
-            params = replace(
-                params,
-                person_name=anonymize_name(params.person_name),
-                memory_preset_params=anon_preset,
-            )
+            params = _anonymized_params(params)
 
         assembly_clips = _apply_final_content_budget(params, assembly_clips)
+        validate_certified_content(params, assembly_clips)
+
+        from immich_memories.generate_captions import prepare_location_captions
+
+        assembly_clips = prepare_location_captions(params, assembly_clips)
 
         # Phase 2: Assemble (includes title generation + streaming encode)
         _t = _time.monotonic()
@@ -670,7 +720,7 @@ def _generate_memory_inner(
         _phase_times["music"] = _time.monotonic() - _t
 
         final_probe = validate_output(result_path, settings.encoding_plan)
-        artifact_warnings = [w for w in (duration_warning, music_result.warning) if w]
+        artifact_warnings = _artifact_warnings(params, duration_warning, music_result.warning)
         run_tracker.complete_artifact(
             result_path,
             final_probe,
@@ -706,15 +756,7 @@ def _generate_memory_inner(
         _fail_run_if_running(run_tracker, safe_msg)
         pending_error = GenerationError(f"Generation failed: {safe_msg}")
     finally:
-        try:
-            _cleanup_temp_clips(assembly_clips)
-        except OSError:
-            logger.debug("Temp clip cleanup failed", exc_info=True)
-        try:
-            if not params.debug_preserve_intermediates:
-                _cleanup_temp_dirs(run_output_dir)
-        except OSError:
-            logger.debug("Temp dir cleanup failed", exc_info=True)
+        _clear_run_intermediates(params, assembly_clips, run_output_dir)
         set_current_run_id(None)
 
     assert pending_error is not None  # one of the non-delivery exception branches set it

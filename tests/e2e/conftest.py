@@ -94,13 +94,10 @@ def launch_workspace(
                     "hardware": {
                         "enabled": False,
                         "backend": "none",
-                        "gpu_analysis": False,
                         "gpu_decode": False,
                     },
                     "musicgen": {"enabled": False},
                     "ace_step": {"enabled": False},
-                    "content_analysis": {"enabled": False},
-                    "audio_content": {"enabled": False},
                 },
             },
             sort_keys=False,
@@ -127,6 +124,12 @@ state_dir = Path(sys.argv[2])
 config_loader.Config.get_default_path = classmethod(lambda cls: config_path)
 config_loader.init_config_dir = lambda: state_dir
 
+from tests.e2e.fake_editorial import install_fake_editorial_route
+
+# WHY 1.5 s per stage: a browser reload takes a second or two, and the reload
+# test has to land while the six stages are still running.
+install_fake_editorial_route(stage_seconds=1.5)
+
 from immich_memories.ui.app import main
 
 main(port=int(sys.argv[3]), host="127.0.0.1", reload=False)
@@ -147,7 +150,7 @@ _PRODUCTION_SHORTCUT_ENV = frozenset(
 )
 
 
-def _build_launch_environment() -> dict[str, str]:
+def _build_launch_environment(home: Path | None = None) -> dict[str, str]:
     """Return a subprocess environment isolated from every provider override."""
     env = {
         key: value
@@ -164,6 +167,12 @@ def _build_launch_environment() -> dict[str, str]:
             "TI_LOG_LEVEL": "error",
         }
     )
+    if home is not None:
+        # Not every path resolves through the config directory: the people
+        # roster is read from `Path.home()` per call, so a launch that keeps
+        # the developer's HOME reads the developer's real family file.
+        env["HOME"] = str(home)
+        env["USERPROFILE"] = str(home)
     return env
 
 
@@ -175,7 +184,7 @@ def launch_app_url(
     """Run the app against only the fake service and disposable local state."""
     port = unused_tcp_port_factory()
     url = f"http://127.0.0.1:{port}"
-    env = _build_launch_environment()
+    env = _build_launch_environment(launch_workspace.root)
 
     venv_python = _REPO_ROOT / ".venv" / "bin" / "python"
     with launch_workspace.log_path.open("w") as log_file:

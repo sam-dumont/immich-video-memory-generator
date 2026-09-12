@@ -8,7 +8,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from immich_memories.filename_builder import build_music_output_path
 from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
 
 
@@ -43,7 +42,7 @@ def test_shared_music_stage_is_cleared_before_mix_and_after_failure(
     music_path = tmp_path / "music.wav"
     video_path.write_bytes(b"validated-base")
     music_path.write_bytes(b"music")
-    staged_path = build_music_output_path(video_path)
+    staged_path = tmp_path / "memory.with_music.mp4"
     staged_path.write_bytes(b"stale-valid-mix")
     absent_at_entry: list[bool] = []
 
@@ -77,7 +76,7 @@ def test_noop_mixer_cannot_publish_a_stale_music_stage(
     music_path = tmp_path / "music.wav"
     video_path.write_bytes(b"validated-base")
     music_path.write_bytes(b"music")
-    staged_path = build_music_output_path(video_path)
+    staged_path = tmp_path / "memory.with_music.mp4"
     staged_path.write_bytes(b"stale-valid-mix")
     monkeypatch.setattr(
         "immich_memories.audio.mixer.mix_audio_with_ducking",
@@ -111,7 +110,7 @@ def test_initial_stale_stage_cleanup_remains_fail_closed(
     music_path = tmp_path / "music.wav"
     video_path.write_bytes(b"validated-base")
     music_path.write_bytes(b"music")
-    staged_path = build_music_output_path(video_path)
+    staged_path = tmp_path / "memory.with_music.mp4"
     staged_path.write_bytes(b"stale-valid-mix")
     mixer = MagicMock()
     real_unlink = Path.unlink

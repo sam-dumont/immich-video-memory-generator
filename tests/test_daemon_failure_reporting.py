@@ -13,7 +13,6 @@ original bug.
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock
 
 from immich_memories.scheduling.daemon import describe_process_failure
 
@@ -62,8 +61,11 @@ class TestTheChildsLogHasSomewhereToGo:
 
     def test_the_child_is_given_a_log_file(self, tmp_path, monkeypatch):
         import subprocess
+        from datetime import UTC, datetime
 
         from immich_memories.scheduling import daemon
+        from immich_memories.scheduling.engine import PendingJob
+        from immich_memories.scheduling.models import ScheduleEntry
 
         captured = {}
 
@@ -72,15 +74,19 @@ class TestTheChildsLogHasSomewhereToGo:
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
         # WHY: spawns a real generation; the point of the test is the env it gets.
-        monkeypatch.setattr(daemon.subprocess, "run", fake_run)
+        monkeypatch.setattr(daemon, "run_bounded_process", fake_run)
         monkeypatch.setattr(daemon, "_notify_if_configured", lambda **_kwargs: None)
         monkeypatch.setattr(
             daemon, "resolve_schedule_params", lambda *_a: {"memory_type": "monthly_highlights"}
         )
         monkeypatch.setattr(Path, "home", classmethod(lambda _cls: tmp_path))
 
-        job = MagicMock()
-        job.schedule.name = "nightly"
+        job = PendingJob(
+            schedule=ScheduleEntry(
+                name="nightly", memory_type="monthly_highlights", cron="0 6 1 * *"
+            ),
+            fire_time=datetime(2026, 9, 1, 6, tzinfo=UTC),
+        )
 
         daemon.execute_job(job, timeout_seconds=60)
 

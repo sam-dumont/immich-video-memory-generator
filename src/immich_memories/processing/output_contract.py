@@ -58,6 +58,11 @@ class OutputProbe:
             "output_width": self.width,
             "output_height": self.height,
             "codec": plan.codec.value,
+            # Present only when the machine could not encode what was asked for,
+            # so a smaller-than-expected codec in a run record is explained.
+            "codec_requested": (
+                plan.codec_substituted_from.value if plan.codec_substituted_from else None
+            ),
             "encoder": plan.encoder,
             "crf": plan.crf,
             "encoder_args": list(plan.encoder_args),

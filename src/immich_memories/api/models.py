@@ -72,42 +72,6 @@ class ExifInfo(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
-class VideoInfo(BaseModel):
-    """Video-specific information."""
-
-    duration_seconds: float | None = Field(default=None, alias="durationSeconds")
-    bitrate: int | None = None
-    width: int | None = None
-    height: int | None = None
-    codec: str | None = None
-    audio_codec: str | None = Field(default=None, alias="audioCodec")
-    frame_rate: float | None = Field(default=None, alias="frameRate")
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    @property
-    def resolution(self) -> tuple[int, int] | None:
-        """Get resolution as (width, height) tuple."""
-        if self.width and self.height:
-            return (self.width, self.height)
-        return None
-
-    @property
-    def megapixels(self) -> float | None:
-        """Calculate megapixels."""
-        if self.width and self.height:
-            return (self.width * self.height) / 1_000_000
-        return None
-
-
-class PersonThumbnail(BaseModel):
-    """Thumbnail info for a person."""
-
-    asset_id: str = Field(alias="assetId")
-
-    model_config = ConfigDict(populate_by_name=True)
-
-
 class Person(BaseModel):
     """Person identified in Immich."""
 
@@ -142,16 +106,6 @@ class AssetFace(BaseModel):
     image_height: int = Field(default=0, alias="imageHeight")
 
     model_config = ConfigDict(populate_by_name=True)
-
-    @property
-    def bounding_box(self) -> tuple[int, int, int, int]:
-        """Get bounding box as (x1, y1, x2, y2) tuple."""
-        return (
-            self.bounding_box_x1,
-            self.bounding_box_y1,
-            self.bounding_box_x2,
-            self.bounding_box_y2,
-        )
 
     @property
     def center(self) -> tuple[float, float]:
@@ -194,6 +148,12 @@ class Asset(BaseModel):
     updated_at: datetime = Field(alias="updatedAt")
     is_favorite: bool = Field(default=False, alias="isFavorite")
     is_archived: bool = Field(default=False, alias="isArchived")
+    # WHY: Immich's four-way visibility (timeline/archive/hidden/locked) is not
+    # the same gate as isArchived, which stays false for hidden assets. The
+    # default metadata search returns `hidden` unasked. Defaults to "timeline"
+    # so a server too old to send the field is read as ordinary, which is what
+    # it is -- the locked folder postdates it.
+    visibility: str = Field(default="timeline")
     is_trashed: bool = Field(default=False, alias="isTrashed")
     duration_seconds: float | None = None
     # WHY: width/height from search API — needed for resolution filtering
@@ -261,13 +221,6 @@ class Asset(BaseModel):
         """Get the month this asset was created."""
         return self.file_created_at.month
 
-    @property
-    def file_size_mb(self) -> float | None:
-        """Get file size in megabytes."""
-        if self.exif_info and self.exif_info.file_size_in_byte:
-            return self.exif_info.file_size_in_byte / (1024 * 1024)
-        return None
-
 
 class SearchResult(BaseModel):
     """Search result from Immich API."""
@@ -317,19 +270,6 @@ class UserInfo(BaseModel):
     id: str
     email: str
     name: str = ""
-    is_admin: bool = Field(default=False, alias="isAdmin")
-    avatar_color: str | None = Field(default=None, alias="avatarColor")
-    profile_image_path: str = Field(default="", alias="profileImagePath")
-
-    model_config = ConfigDict(populate_by_name=True)
-
-
-class SmartSearchResult(BaseModel):
-    """Result from smart/semantic search."""
-
-    assets: dict[str, list[Asset]] = Field(default_factory=dict)
-    next_page: str | None = Field(default=None, alias="nextPage")
-
     model_config = ConfigDict(populate_by_name=True)
 
 
@@ -390,24 +330,19 @@ class VideoClipInfo(BaseModel):
     live_burst_trim_points: list[tuple[float, float]] | None = None
     live_burst_shutter_timestamps: list[float] | None = None  # epoch seconds per clip
     live_burst_still_ids: list[str] | None = None  # still assets merged into this clip
+    # Complete still lineage may include empty source slices omitted from the render arrays.
+    live_burst_material: dict[str, Any] | None = None
+    # Explicit editorial certification; legacy merging retains its existing behavior.
+    editorial_live_manifest: dict[str, Any] | None = None
 
     # Audio categories detected (populated during pipeline analysis)
     audio_categories: list[str] | None = None  # e.g. ["laughter", "speech", "engine"]
-
-    # Where a cut may land in this source: the spans between protected audio,
-    # from the analysis that chose the segment's boundaries. None means this
-    # run never measured it — the analysis cache restores boundaries without
-    # the evidence behind them.
-    safe_cut_gaps: list[tuple[float, float]] | None = None
 
     # LLM Content Analysis results (populated during pipeline analysis)
     llm_description: str | None = None  # Brief description of what's happening
     llm_category: str | None = None  # people | animal | landscape | object
     llm_emotion: str | None = None  # Detected emotional tone (happy, calm, excited, etc.)
-    llm_setting: str | None = None  # Where it takes place (indoor, outdoor, beach, etc.)
     llm_subjects: list[str] | None = None  # Who/what is in the video
-    llm_activities: list[str] | None = None  # Pastimes/sports named, e.g. ["cycling"]
-    llm_interestingness: float | None = None  # Score 0-1 for how interesting
     llm_quality: float | None = None  # Score 0-1 for visual quality
 
     @property
@@ -420,21 +355,9 @@ class VideoClipInfo(BaseModel):
         return self.asset.live_photo_video_id or self.asset.id
 
     @property
-    def has_llm_analysis(self) -> bool:
-        """Check if LLM analysis results are available."""
-        return self.llm_description is not None or self.llm_emotion is not None
-
-    @property
     def resolution(self) -> tuple[int, int]:
         """Get resolution as (width, height) tuple."""
         return (self.width, self.height)
-
-    @property
-    def aspect_ratio(self) -> float:
-        """Calculate aspect ratio."""
-        if self.height == 0:
-            return 0
-        return self.width / self.height
 
     @property
     def displayed_width(self) -> int:
@@ -456,30 +379,6 @@ class VideoClipInfo(BaseModel):
         return self.displayed_height > self.displayed_width
 
     @property
-    def is_landscape(self) -> bool:
-        """Check if video is landscape orientation (accounting for rotation)."""
-        return self.displayed_width > self.displayed_height
-
-    @property
-    def quality_score(self) -> float:
-        """Calculate a quality score based on resolution, bitrate, etc."""
-        # Weight factors
-        resolution_weight = 0.4
-        bitrate_weight = 0.4
-        duration_weight = 0.2
-
-        # Normalize values (assuming max 4K, 50Mbps, 60s)
-        resolution_score = min((self.width * self.height) / (3840 * 2160), 1.0)
-        bitrate_score = min(self.bitrate / 50_000_000, 1.0) if self.bitrate else 0.5
-        duration_score = min(self.duration_seconds / 60, 1.0)
-
-        return (
-            resolution_score * resolution_weight
-            + bitrate_score * bitrate_weight
-            + duration_score * duration_weight
-        )
-
-    @property
     def is_hdr(self) -> bool:
         """Check if video is HDR based on color transfer function."""
         hdr_transfers = {"smpte2084", "arib-std-b67", "smpte428"}  # HDR10, HLG, DCI-P3
@@ -495,15 +394,3 @@ class VideoClipInfo(BaseModel):
             "arib-std-b67": "HLG",
             "smpte428": "DCI-P3",
         }.get(self.color_transfer, "SDR")
-
-    @property
-    def is_camera_original(self) -> bool:
-        """Check if video is original camera footage (not a compilation/processed video).
-
-        Videos from phones/cameras have EXIF make/model metadata.
-        Compilations (FamilyAlbum, etc.) typically lack this metadata.
-        """
-        if not self.asset.exif_info:
-            return False
-        # Must have either make or model to be considered original camera footage
-        return bool(self.asset.exif_info.make or self.asset.exif_info.model)

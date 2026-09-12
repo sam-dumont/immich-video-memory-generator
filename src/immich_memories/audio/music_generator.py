@@ -188,7 +188,6 @@ async def generate_music_for_video(
 
             versions.append(
                 GeneratedMusic(
-                    version_id=i,
                     full_mix=music_path,
                     stems=stems,
                     duration=float(total_duration),

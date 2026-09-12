@@ -7,18 +7,13 @@ title: Tips & Best Practices
 
 Things that save time and produce better results.
 
-## Run Analysis First
+## Warm the banks with a real cut
 
-Analysis is the slow part on a cold library. `analyze` does it on its own, without
-rendering anything:
-
-```bash
-immich-memories analyze --year 2024
-```
-
-Subsequent generate runs read from that cache instead of re-analysing, which is what
-makes iterating on clip selection quick. On a NAS this is the thing to run overnight.
-See [Discovery & utility commands](../cli/discovery-and-utility.md).
+Preparation is the slow part on a cold library, and there is no command that does it on its own:
+`analyze` counts videos, it does not prepare anything. The only thing that fills the banks is a
+cut. So on a NAS, run the cut you want overnight rather than trying to pre-warm it, and take
+advantage of the fact that a second cut over the same period, or an overlapping one, skips the
+work. See [Editorial annotation setup](../../deploy/configuration/editorial-preparation.md).
 
 ## Use Hardware Acceleration
 
@@ -28,19 +23,7 @@ If you have a GPU, use it. The tool auto-detects NVIDIA (NVENC), Apple (VideoToo
 immich-memories hardware
 ```
 
-Encoding 1080p runs at about 2 minutes per 5 minutes of output on Apple Silicon or a GPU; a 30-clip video takes around 15 minutes on a 4-core NAS CPU. See the [resource table](https://github.com/sam-dumont/immich-video-memory-generator#resource-requirements).
-
-## Adjust Scene Detection Threshold
-
-The default threshold (`27.0`) works for most content, but you might need to tune it:
-
-- **Lower threshold** (e.g., `20.0`) = more scene cuts detected. Good for fast-paced content with lots of action.
-- **Higher threshold** (e.g., `35.0`) = fewer cuts. Better for slow, steady footage like landscapes.
-
-```yaml
-analysis:
-  scene_threshold: 27.0
-```
+The one measured run is in the [NAS guide](../../deploy/common-setups/nas-only.md#performance-expectations): a 14-clip monthly on four cores with no GPU, 2.7 minutes of render under `preset: fast`. Most of that is title screens, which is the part a GPU actually shortens.
 
 ## Start with Shorter Durations
 
@@ -52,31 +35,16 @@ Your first video should be 3-5 minutes, not 30. Shorter durations mean:
 
 Once you're happy with the results, scale up.
 
-## Review Clips Before Generating
+## Exclude Before You Cut
 
-Step 2 exists for a reason. Spend 2 minutes deselecting clips that don't belong: that shaky hallway video, the accidental recording of your pocket, the 45-second clip of a wall. The tool's scoring is good but not perfect.
+The media pool (**Advanced → Open the media pool** on the Memory page) exists for a reason. Spend 2 minutes unticking what may never be used: the accidental recording of your pocket, the 45-second clip of a wall. The editor judges twins and bursts itself; what it cannot know is what you would never show.
 
-## Enable LLM Analysis for Large Libraries
+## Set Up the Annotation Producers First
 
-For libraries with hundreds of videos, LLM content analysis makes a real difference in clip selection. It adds a few seconds per video to analysis time but catches things that motion/face detection misses: a quiet but meaningful conversation, a funny reaction shot, etc.
+The story-first route needs its caption endpoint, the pinned encoder and the two detectors before its first cut; a missing producer stops the run with a count rather than quietly narrowing what the editor sees. Do the [Editorial annotation setup](../../deploy/configuration/editorial-preparation.md) once, then forget about it.
 
-```yaml
-content_analysis:
-  enabled: true
-  weight: 0.35
-```
+## Nothing Reads the 4K Source Until the Render
 
-## Downscaling for Analysis
-
-Already on. `enable_downscaling` defaults to `true` and `analysis_resolution` to 480, so
-every run already scores clips off a 480p proxy rather than the 4K source — the tool does
-not need full-resolution frames to detect scenes or rank clips.
-
-```yaml
-analysis:
-  enable_downscaling: true   # default
-  analysis_resolution: 480   # default
-```
-
-The only reason to touch these is to go the other way: raise `analysis_resolution` if you
-think scoring is missing small faces in wide shots, and accept the slower analysis.
+Captions are read from 400 px tiles and pixel facts from one fixed JPEG recipe; the editor
+never needs full-resolution frames to know what a picture shows. The originals are downloaded
+once, for the clips that made the cut, at render time.

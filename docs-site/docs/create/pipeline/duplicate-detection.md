@@ -1,33 +1,80 @@
 ---
 sidebar_position: 4
-title: Duplicate Detection
+title: Twins and Near-Duplicates
 ---
 
-# Duplicate Detection
+# Twins and Near-Duplicates
 
-If you imported the same video twice, or have near-identical clips from burst mode, you don't want both in your memory video. Duplicate detection catches these before they waste slots.
+You held the shutter down. You imported the same clip twice. You shot the cake from two
+steps left. None of that should cost three slots in a two-minute film.
 
-## Perceptual hashing
+Sameness is decided in three places, cheapest first, and only the last one asks a model.
 
-Each video gets a perceptual hash: a fingerprint based on what the video *looks like*, not its file contents. Two videos with different codecs, resolutions, or compression levels but the same visual content will produce similar hashes.
+## 1. Bursts, on capture time and pixels
 
-The hamming distance between hashes determines similarity. A distance of 0 means identical. Higher values mean more different.
-
-Hashes are computed on Immich's preview thumbnails, not the full videos. The web UI caches those in Step 1. `generate` and `auto run` fetch whatever is missing at the start of the clustering phase, using `analysis.download_workers` parallel clients (3 by default), so the automated path de-duplicates the same way the UI does. Previews are cached on disk, so a second run over the same clips fetches nothing. If a preview can't be fetched, that clip skips duplicate detection, a warning is logged, and the run continues.
-
-## Configuration
+Photos taken within `photos.burst_window_seconds` of each other **and** within
+`photos.burst_hash_threshold` bits on an average hash of their Immich previews are one
+burst. Only the best frame survives it.
 
 ```yaml
-analysis:
-  duplicate_hash_threshold: 8  # default
+photos:
+  burst_window_seconds: 300   # 0 disables burst de-duplication
+  burst_hash_threshold: 8     # hash bits two frames may differ by
 ```
 
-The threshold controls how aggressively duplicates are matched:
+Both conditions are required. Time alone would collapse a busy minute at a party;
+similarity alone would merge the same kitchen photographed a month apart. A photo whose
+preview never arrived is always kept: redundancy is measured, never assumed.
 
-- **Lower values** (e.g., 4): only catches near-exact duplicates
-- **Default (8)**: good balance, catches re-encodes and slight crops
-- **Higher values** (e.g., 12): more aggressive, might false-positive on similar-but-different clips
+Measured on one real June library: 64 of 303 photos gone, 21% of the pool, in groups of
+up to five. It does not save any model calls: captions, heads and detectors are paid for
+the whole eligible period before the editor gets here. What it saves is a cut with five
+near-identical frames in it.
 
-## How duplicates are resolved
+A Live Photo burst collapses the same way, to one carrier: the favourite if there is one,
+otherwise the sharpest, best-exposed frame. Its siblings stay in the unit as members; they
+do not come back as separate stills.
 
-When a group of duplicates is found, they're ranked by favorite status first, then resolution, bitrate and duration, and only the top one is kept for selection. A favorited duplicate therefore wins even at a lower resolution — you flagged that copy on purpose. The others are silently dropped: they still exist in your library, they just won't appear in the generated video.
+## 2. Neighbours, asked as a pair
+
+Two pictures side by side, two numbered tiles, judged in **both** arrangements: only the
+two orders agreeing counts as one picture. The verdict belongs to the pair, not to
+whichever pass presented them, so a verdict bought once is a cache hit everywhere.
+
+Perceptual distance is the second vote here, never the only one. Measured on 653 real
+pairs: the model contradicted itself on 39, and only 4 of those were pixel-close; its
+uncertainty lives on pixel-*distant* pairs. At a corroboration distance of 10 the rule
+reproduced all 653 decisions exactly while removing 30% of the calls. The first changed
+decision appears at 12. That 10 is a cap, not a setting: every run recalibrates it on a
+sample of your own library and may only lower it.
+
+## 3. The final film, over what actually shipped
+
+Once the cut exists, the pictures in it are checked against each other again. A pair is
+*nominated* when either signal fires: hashes within 10 bits, or descriptions that read as
+the same thing (Jaccard over words of four letters or more, at 0.60).
+
+That 0.60 is the knee of a measured curve over 1,124,250 real pairs from the cache: 0.60
+collapses 33 pairs, 0.55 collapses 74, 0.50 collapses 135. The count triples per step
+below it, which is where genuinely different shots start merging. Above it, real
+duplicates survive: the same child in the same hallway scored 0.70, differing only on a
+t-shirt.
+
+Nominated pairs are then asked as pairs, by the same question as step 2.
+
+## Which one survives
+
+Ranked, in order: protected carriers, then favourites, then pictures with a known quality
+figure, then quality itself, then capture time, then asset id as a tiebreak.
+
+So a favourited copy wins even at a lower resolution: you flagged that one on purpose.
+
+Removals are recorded, not silent: each one writes which picture went, which one kept its
+slot, the hamming distance, and which signal nominated the pair.
+
+## What there is no knob for
+
+There is no `duplicate_hash_threshold`. The key existed for the retired clip scorer and
+the loader now refuses a config file that names it: you get a startup error naming the
+key rather than a setting that loads and does nothing. The two thresholds you can still
+set are the burst pair above; the other two numbers are measured caps in the code.

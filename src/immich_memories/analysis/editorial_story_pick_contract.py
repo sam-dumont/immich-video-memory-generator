@@ -1,0 +1,103 @@
+"""Truthful source kinds and complete, bounded moment-pick responses."""
+
+import math
+from collections.abc import Callable, Mapping
+from typing import Any, cast
+
+from immich_memories.analysis.strict_json import final_json_object
+
+
+def source_kind_marker(unit: Mapping[str, Any]) -> str:
+    """A proposed carrier length is not the duration of its original recording."""
+    kind = str(unit.get("kind") or "")
+    if kind == "video":
+        for key in ("raw_seconds", "source_seconds", "duration"):
+            value = unit.get(key)
+            # An exact int/float only: a bool or a numeric string is not a measured duration.
+            if type(value) in (int, float):
+                seconds = cast(float, value)
+                if math.isfinite(seconds) and seconds > 0:
+                    return f" | video {seconds:g} s source"
+        return " | video (source duration unknown)"
+    return " | live photo" if kind.startswith("live") else ""
+
+
+def _repair_question(prompt: str, *, error: str, count: int, allow_fewer: bool) -> str:
+    size_rule = "at most" if allow_fewer else "exactly"
+    shortfall_rule = (
+        f'"unused_slots" must equal {count} minus the number of kept labels '
+        f"(0 when keeping {count}); it is not the number of rejected candidates. "
+        'If fewer, explain "why_fewer" in one sentence. '
+        if allow_fewer
+        else ""
+    )
+    return prompt + (
+        f"\n\nThe previous answer was invalid: {error}. "
+        f'Return a complete JSON object with "keep": {size_rule} {count} distinct supplied labels. '
+        f"{shortfall_rule}"
+        "Do not add labels, prose or a second object."
+    )
+
+
+def _read_pick(
+    raw: str, *, labels: set[str], count: int, allow_fewer: bool
+) -> tuple[list[str], int, str]:
+    """The kept labels, the declared shortfall and its explanation, or ValueError."""
+    answer = final_json_object(raw)
+    if answer is None:
+        raise ValueError("answer must be one complete JSON object")
+    kept = answer.get("keep")
+    if not isinstance(kept, list) or any(not isinstance(label, str) for label in kept):
+        raise ValueError("keep must be an array of labels")
+    if len(kept) > count or len(set(kept)) != len(kept):
+        raise ValueError(f"keep must contain at most {count} distinct labels")
+    unused = count - len(kept)
+    if unused and not allow_fewer:
+        raise ValueError(f"keep must contain exactly {count} distinct labels")
+    if set(kept) - labels:
+        raise ValueError("keep contains labels absent from the offered rows")
+    declared = answer.get("unused_slots", 0)
+    if type(declared) is not int or declared != unused:
+        raise ValueError(
+            f"unused_slots must equal the grant minus the number kept: "
+            f"{count} - {len(kept)} = {unused}, not the number of rejected candidates"
+        )
+    why = answer.get("why_fewer", "")
+    if unused and (not isinstance(why, str) or not why.strip()):
+        raise ValueError("an intentional shortfall requires why_fewer")
+    return kept, unused, why
+
+
+def ask_moment_pick(
+    judge,
+    stage: str,
+    prompt: str,
+    *,
+    labels: set[str],
+    count: int,
+    allow_fewer: bool = False,
+    record: Callable[[dict], None] | None = None,
+) -> list[str]:
+    """One whole-answer repair; never turn an invalid list into an apparent vote."""
+    error = ""
+    for attempt in range(2):
+        question = (
+            _repair_question(prompt, error=error, count=count, allow_fewer=allow_fewer)
+            if attempt
+            else prompt
+        )
+        raw = judge.ask(
+            stage + ("-repair" if attempt else ""),
+            question,
+            max_tokens=max(300, 100 + 10 * count),
+            **({"json_object": True} if allow_fewer else {}),
+        )
+        try:
+            kept, unused, why = _read_pick(raw, labels=labels, count=count, allow_fewer=allow_fewer)
+        except ValueError as exc:
+            error = str(exc)
+            continue
+        if record is not None:
+            record({"keep": kept, "unused_slots": unused, "why_fewer": why if unused else ""})
+        return kept
+    raise ValueError(f"Invalid moment pick after bounded repair: {error}")

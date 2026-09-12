@@ -91,30 +91,6 @@ class TestGenerateTitleScreen:
         assert call_kwargs.kwargs["width"] == 720
         assert call_kwargs.kwargs["height"] == 1280
 
-    def test_then_and_now_is_titled_by_its_two_ends(
-        self, tmp_output, mock_rendering, mock_ending, mock_trip
-    ):
-        """The card named the decade the memory type deliberately skips.
-
-        With only dates to go on the generator inferred a plain date range and
-        rendered "January 2016 to December 2026" — the years in between being
-        exactly what a then-and-now leaves out. The type has to reach it.
-        """
-        from datetime import date
-
-        gen = _make_generator(
-            tmp_output,
-            mock_rendering,
-            mock_ending,
-            mock_trip,
-            memory_type="then_and_now",
-        )
-        gen.generate_title_screen(start_date=date(2016, 1, 1), end_date=date(2026, 12, 31))
-
-        call_kwargs = mock_rendering.create_title_video.call_args.kwargs
-        assert call_kwargs["title"] == "2016 & 2026"
-        assert call_kwargs["subtitle"] == "Then and Now"
-
     def test_passes_correct_duration(self, tmp_output, mock_rendering, mock_ending, mock_trip):
         gen = _make_generator(
             tmp_output,
@@ -407,65 +383,6 @@ class TestGenerateEndingScreen:
 
         assert result.screen_type == "ending"
         assert result.path.name == "ending_screen.mp4"
-
-
-class TestGenerateAllScreens:
-    """Tests for the batch screen generation orchestrator."""
-
-    def test_always_produces_title_and_ending(
-        self, tmp_output, mock_rendering, mock_ending, mock_trip
-    ):
-        gen = _make_generator(tmp_output, mock_rendering, mock_ending, mock_trip)
-        screens = gen.generate_all_screens(year=2024)
-
-        assert "title" in screens
-        assert "ending" in screens
-        assert screens["title"].screen_type == "title"
-        assert screens["ending"].screen_type == "ending"
-
-    def test_multiple_months_produce_dividers(
-        self, tmp_output, mock_rendering, mock_ending, mock_trip
-    ):
-        gen = _make_generator(tmp_output, mock_rendering, mock_ending, mock_trip)
-        screens = gen.generate_all_screens(
-            year=2024,
-            months_in_video=[1, 3, 6],
-        )
-
-        assert "month_01" in screens
-        assert "month_03" in screens
-        assert "month_06" in screens
-        assert len(screens) == 5  # title + 3 dividers + ending
-
-    def test_single_month_no_dividers(self, tmp_output, mock_rendering, mock_ending, mock_trip):
-        gen = _make_generator(tmp_output, mock_rendering, mock_ending, mock_trip)
-        screens = gen.generate_all_screens(
-            year=2024,
-            months_in_video=[6],
-        )
-
-        assert len(screens) == 2  # title + ending only
-
-    def test_dividers_disabled(self, tmp_output, mock_rendering, mock_ending, mock_trip):
-        gen = _make_generator(
-            tmp_output,
-            mock_rendering,
-            mock_ending,
-            mock_trip,
-            show_month_dividers=False,
-        )
-        screens = gen.generate_all_screens(
-            year=2024,
-            months_in_video=[1, 3, 6],
-        )
-
-        assert len(screens) == 2  # title + ending only
-
-    def test_no_months_list_no_dividers(self, tmp_output, mock_rendering, mock_ending, mock_trip):
-        gen = _make_generator(tmp_output, mock_rendering, mock_ending, mock_trip)
-        screens = gen.generate_all_screens(year=2024, months_in_video=None)
-
-        assert len(screens) == 2  # title + ending only
 
 
 class TestStyleSelection:

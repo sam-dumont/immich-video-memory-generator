@@ -24,8 +24,11 @@ class TestPhotoOnlyTripNotSkipped:
     def test_pipeline_does_not_exit_when_photos_available(self):
         """run_pipeline_and_generate should not sys.exit when clips=[] but photos exist."""
 
+        # WHY: assets_to_clips (below) is stubbed empty so only the content gate is exercised
         with (
+            # WHY: print_error is the CLI error sink; captured to prove the gate stayed silent
             patch("immich_memories.cli._pipeline_runner.print_error") as mock_error,
+            # WHY: sys.exit would kill the test process; patched to raise a catchable SystemExit
             patch(
                 "immich_memories.cli._pipeline_runner.sys.exit",
                 side_effect=SystemExit(1),
@@ -65,8 +68,11 @@ class TestPhotoOnlyTripNotSkipped:
 
     def test_pipeline_exits_when_nothing_available(self):
         """run_pipeline_and_generate should sys.exit when no clips AND no photos."""
+        # WHY: assets_to_clips (below) is stubbed empty so the no-content path is reachable
         with (
+            # WHY: print_error is captured to confirm the "No usable content" message fires
             patch("immich_memories.cli._pipeline_runner.print_error") as mock_error,
+            # WHY: sys.exit is patched to a catchable SystemExit instead of killing pytest
             patch(
                 "immich_memories.cli._pipeline_runner.sys.exit",
                 side_effect=SystemExit(1),
@@ -125,7 +131,9 @@ class TestTripGenerationPhotoFetch:
         mock_photo.exif_info.longitude = 7.3
         mock_client.get_photos_for_date_range.return_value = [mock_photo]
 
+        # WHY: trip display/render calls are patched so only the photo-fetch gate is tested
         with (
+            # WHY: fetch_videos hits Immich for videos; stubbed empty to leave only photos
             patch(
                 "immich_memories.cli._trip_generation.fetch_videos",
                 return_value=[],
@@ -165,7 +173,6 @@ class TestTripGenerationPhotoFetch:
                 output_path=MagicMock(),
                 use_live_photos=False,
                 use_photos=True,
-                effective_analysis_depth="fast",
                 transition="smart",
                 music=None,
                 music_volume=0.5,
@@ -193,6 +200,9 @@ class TestTripGenerationPhotoFetch:
             mock_generate.assert_called_once()
             assert mock_generate.call_args.kwargs["automation_attempt_id"] == "attempt-trip-1"
             assert mock_generate.call_args.kwargs["dry_run"] is True
+            assert mock_generate.call_args.kwargs["date_ranges"] == (
+                mock_generate.call_args.kwargs["date_range"],
+            )
 
     def test_empty_trip_skipped_gracefully(self):
         """Trip with no videos, no live photos, and no photos → skipped with error."""
@@ -210,7 +220,9 @@ class TestTripGenerationPhotoFetch:
         mock_client = MagicMock()
         mock_client.get_photos_for_date_range.return_value = []
 
+        # WHY: photos are empty here too, so trip display/render patches reach the skip path
         with (
+            # WHY: fetch_videos stubbed empty; combined with no photos this hits the skip path
             patch(
                 "immich_memories.cli._trip_generation.fetch_videos",
                 return_value=[],
@@ -247,7 +259,6 @@ class TestTripGenerationPhotoFetch:
                 output_path=MagicMock(),
                 use_live_photos=False,
                 use_photos=True,
-                effective_analysis_depth="fast",
                 transition="smart",
                 music=None,
                 music_volume=0.5,

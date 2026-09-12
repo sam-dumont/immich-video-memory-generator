@@ -6,7 +6,6 @@ one source clip is HDR. When all sources are SDR, titles should be SDR too.
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -248,43 +247,3 @@ class TestTitleScreenConfigPlan:
 
         config = TitleScreenConfig(encoding_plan=_hardware_h265_hdr_plan())
         assert config.hdr
-
-
-class TestHDRDetection:
-    """has_any_hdr_clip detects HDR from source clips."""
-
-    def test_returns_false_for_empty_list(self):
-        from immich_memories.processing.hdr_utilities import has_any_hdr_clip
-
-        assert not has_any_hdr_clip([])
-
-    def test_returns_false_for_sdr_clips(self):
-        """When _detect_hdr_type returns None for all clips, result is False."""
-        from unittest.mock import patch
-
-        from immich_memories.processing.assembly_config import AssemblyClip
-        from immich_memories.processing.hdr_utilities import has_any_hdr_clip
-
-        clips = [
-            AssemblyClip(path=Path("/tmp/a.mp4"), duration=3.0),
-            AssemblyClip(path=Path("/tmp/b.mp4"), duration=3.0),
-        ]
-        with patch("immich_memories.processing.hdr_utilities._detect_hdr_type", return_value=None):
-            assert not has_any_hdr_clip(clips)
-
-    def test_returns_true_when_one_clip_is_hdr(self):
-        """When at least one clip is HDR, result is True."""
-        from unittest.mock import patch
-
-        from immich_memories.processing.assembly_config import AssemblyClip
-        from immich_memories.processing.hdr_utilities import has_any_hdr_clip
-
-        clips = [
-            AssemblyClip(path=Path("/tmp/a.mp4"), duration=3.0),
-            AssemblyClip(path=Path("/tmp/b.mp4"), duration=3.0),
-        ]
-        with patch(
-            "immich_memories.processing.hdr_utilities._detect_hdr_type",
-            side_effect=[None, "hlg"],
-        ):
-            assert has_any_hdr_clip(clips)

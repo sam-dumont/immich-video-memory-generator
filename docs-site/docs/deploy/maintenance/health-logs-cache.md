@@ -15,7 +15,7 @@ are usable, or `status: degraded` with HTTP `503` when configuration is missing 
 be reached. `GET /health` always returns HTTP `200` for compatibility; it rewrites a ready payload
 to `ok` and leaves a degraded payload as `degraded`. Do not use `/health` as a readiness probe.
 
-`/health/ready` returns JSON with the current system status (abridged — the real payload also
+`/health/ready` returns JSON with the current system status (abridged; the real payload also
 carries automation, pending-delivery, scheduler and Immich blocks):
 
 ```json
@@ -77,7 +77,7 @@ addition to stdout (same format as chosen above). In Docker, point it at a mount
 
 ### Log level
 
-`INFO`. There is no user-facing switch for the log level yet — no env var, no CLI flag. If you
+`INFO`. There is no user-facing switch for the log level yet, no env var, no CLI flag. If you
 need `DEBUG` output for a bug report, run from a checkout and call
 `configure_logging(level="DEBUG")` in code.
 
@@ -94,7 +94,7 @@ The cache uses a two-level directory structure: `{id[:2]}/{id}{ext}`. When you r
 Two eviction strategies run automatically:
 
 1. **Age-based eviction**: removes files older than `video_cache_max_age_days` (default: 7 days). Runs at the start of every generation.
-2. **Size-based eviction**: removes oldest files (by modification time, LRU) until the cache is under `video_cache_max_size_gb` (default: 10 GB). Runs after each download during a run — files the current run already handed out are spared until it finishes, so a large prefetch can temporarily exceed the cap — and once more at the end of the run.
+2. **Size-based eviction**: removes oldest files (by modification time, LRU) until the cache is under `video_cache_max_size_gb` (default: 10 GB). Runs after each download during a run, where files the current run already handed out are spared, so a large prefetch can temporarily exceed the cap. It runs once more at the end of the run with nothing spared, which is what makes the cap actually bind.
 
 ### Configuration
 
@@ -102,36 +102,46 @@ Two eviction strategies run automatically:
 cache:
   directory: ~/.immich-memories/cache
   database: ~/.immich-memories/cache.db
-  max_age_days: 30                  # Analysis cache age (not video cache)
+  max_age_days: 30                  # vestigial: nothing reads this
   video_cache_enabled: true
   video_cache_max_size_gb: 10.0     # Max disk usage for downloaded videos
   video_cache_max_age_days: 7       # Evict videos older than this
-  thumbnail_cache_max_size_mb: 500  # Max disk for Immich thumbnails
-  preview_cache_max_size_mb: 2000   # Max disk for clip previews
+  thumbnail_cache_max_size_mb: 10000  # Max disk for Immich previews
+  preview_cache_max_size_mb: 2000     # Max disk for clip previews
 ```
 
-### Thumbnails and previews
+### Thumbnails: the budget that scales with your library
 
-Thumbnails (`thumbnails/`) and clip previews (`preview-cache/`, `previews/`) are
-derived from your library rather than downloaded from it, so they are cheap to
-rebuild and get smaller budgets than the video cache. Each is evicted
-least-recently-used once it goes over its limit — for thumbnails, reading one
-counts as using it, so a thumbnail the current run keeps coming back to is not
-the one thrown away.
+`thumbnails/` holds one Immich preview per candidate asset a memory's scope can
+reach, not per clip in the finished cut. Generating a memory reads each of
+those previews back several times: sharpness and exposure, the DINOv2 heads, the
+contact sheets, the caption. Measured on a real library, a preview is about
+**315 KB**, so a 10,793-candidate scope wants roughly 3.4 GB and a real cache
+held 12,159 previews for 3.92 GB.
 
-If a run's working set does not fit the thumbnail budget at all, the cache ends
-up deleting thumbnails that run is still using and fetching them again. You will
-see a `WARNING` per eviction pass saying how many files this run is still using
-went, which is your cue to raise `thumbnail_cache_max_size_mb` — a yearly memory
-over a large library can want several GB. Left alone it degrades selection
-quietly: duplicate clustering and burst dedup skip assets whose thumbnail
-vanished, and those photos score neutral instead of on their merits.
+Size it by your library:
+
+```
+thumbnail_cache_max_size_mb ≈ 0.35 × (assets a memory's scope can reach)
+```
+
+The 10 GB default holds about 31,000 previews. Previews this run is still using
+are never evicted, so a run whose working set does not fit overflows the limit
+rather than losing facts halfway through. What you pay instead is on the *next*
+run, which reclaims them: the next overlapping memory re-downloads every preview
+and re-captions the assets whose banked caption failure no longer matches the
+bytes it was recorded against. That is model work, not just bandwidth, which is
+why one `WARNING` per run says how far over you are and names the setting.
+
+Clip previews (`preview-cache/`, `previews/`) are different: their working set is
+one cut's clips (tens of files per run however big your library is), so 2 GB
+stays a plain cap and needs no rule of thumb. The video cache is the same shape.
 
 Before these limits existed neither directory had a cap or an expiry, so both
-grew for as long as the app ran — on one real library, 5.2 GB of previews and
-3.5 GB of thumbnails.
+grew for as long as the app ran: on one real library, 5.2 GB of clip previews
+and 3.5 GB of thumbnails.
 
-The `max_age_days` at the top level controls the analysis database cache (SQLite), not the video file cache. The `video_cache_*` fields control the file-based video cache.
+The top-level `max_age_days` is vestigial: no code path reads it. Only `video_cache_max_age_days` evicts anything.
 
 ### Cache stats and management
 
@@ -142,13 +152,11 @@ From the CLI:
 immich-memories cache stats
 ```
 
-`cache stats` reports **scored assets** and **banked looks** separately. They
-differ because a look is stored against the model and prompt version that
-produced it: when either changes, the new answer is banked *beside* the old one
-rather than replacing it, so an asset can hold several. That is deliberate —
-the previous behaviour made every stored answer unreadable on a prompt edit, and
-re-analysed the whole library from scratch. The cost is a few MB; the benefit is
-that a rollback is free and the corpus keeps growing instead of resetting.
+`cache stats` reports the legacy photo scorer's table, which nothing writes any
+more. So do `cache backup`, `cache export` and `cache import`. The editor's facts and banks are
+in `~/.immich-memories/cache/annotations.sqlite`, one directory down from `cache.db` and untouched
+by any of those four commands (see
+[Editorial annotation setup](../configuration/editorial-preparation.md)).
 
 The CLI has no `clear` command. To clear caches:
 
@@ -163,22 +171,26 @@ The CLI has no `clear` command. To clear caches:
   # Docker: docker exec immich-memories rm -rf /home/immich/.immich-memories/cache/video-cache
   ```
 
-  The analysis cache lives in `~/.immich-memories/cache.db`; deleting it forces a full
-  re-analysis on the next run, so back it up first (`immich-memories cache backup`).
+  Do not point `rm -rf` at `~/.immich-memories/cache` itself. The editor's banks are
+  `~/.immich-memories/cache/annotations.sqlite`, inside that directory, and deleting it re-asks
+  the model everything about your library. `~/.immich-memories/cache.db`, one level up, holds run
+  history and automation state.
 
-### Analysis cache
+### Analysis database
 
-Separate from the video cache. Analysis scores, face detections, and LLM content results are stored in a SQLite database (`cache.db`). This is the most valuable cache: re-analyzing a library of 500 videos takes 20+ minutes, but cache hits are instant.
+Separate from the video cache. `cache.db` holds the run history, the automation state and the
+tables the legacy scorer used to fill. What the editor learned about your library (captions,
+head facts, readings and banked answers) is in `annotations.sqlite`, which persists across video
+cache evictions. You can safely clear the video cache without losing any of it.
 
-The analysis cache persists across video cache evictions. You can safely clear the video cache without losing analysis results.
+`cache.db` has a versioned schema migrator that runs when the store is first opened.
+`annotations.sqlite` has none: it creates tables if they are missing and adds columns additively.
+Neither runs at process startup.
 
 ### Disk space planning
 
-| Content | Storage needed |
-|---------|---------------|
-| Video cache (30 clips, 1080p) | ~3-5 GB |
-| Video cache (100 clips, 4K) | ~15-25 GB |
-| Analysis database (1000 videos) | ~50 MB |
-| Generated output (30 clips, 1080p) | ~500 MB per video |
-
-For NAS users: set `video_cache_max_size_gb` to something your disk can handle. The default 10 GB is reasonable for most setups.
+The only cache whose size you can predict is the preview cache, from the 315 KB figure above:
+`0.35 × (assets a memory's scope can reach)`, in MB. Everything else is capped rather than
+predicted, so set the caps to what your disk can spare and let eviction do the rest: the video
+cache defaults to 10 GB, clip previews to 2 GB. Output size depends entirely on codec, resolution
+and length; the one measured run put 62 s of 1080p H.264 at 87 MB, or 30 MB under `preset: fast`.

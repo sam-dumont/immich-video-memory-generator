@@ -6,7 +6,6 @@ import contextlib
 import hashlib
 import logging
 import subprocess
-import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,16 +14,14 @@ from immich_memories.config_loader import Config
 from immich_memories.processing.clip_probing import (
     get_video_duration,
 )
-from immich_memories.processing.clip_transitions import (
-    TRANSITION_BUFFER,
-    TransitionPlan,
-)
+from immich_memories.processing.clip_transitions import TRANSITION_BUFFER
 from immich_memories.processing.hardware import (
     HWAccelCapabilities,
     detect_hardware_acceleration,
     get_ffmpeg_encoder,
     get_ffmpeg_hwaccel_args,
 )
+from immich_memories.processing.hardware_encode import apply_hardware_encode
 from immich_memories.security import private_temp_dir, validate_video_path
 
 logger = logging.getLogger(__name__)
@@ -80,22 +77,6 @@ class ClipExtractor:
             output_dir = private_temp_dir("clips")
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-
-    def cleanup_old_clips(self, max_age_hours: int = 24) -> int:
-        if not self.output_dir.exists():
-            return 0
-
-        cutoff = time.time() - (max_age_hours * 3600)
-        removed = 0
-        for path in self.output_dir.iterdir():
-            if path.is_file() and path.suffix == ".mp4":
-                with contextlib.suppress(OSError):
-                    if path.stat().st_mtime < cutoff:
-                        path.unlink()
-                        removed += 1
-        if removed:
-            logger.info(f"Cleaned up {removed} old clip(s) from {self.output_dir}")
-        return removed
 
     def extract(
         self,
@@ -223,67 +204,6 @@ class ClipExtractor:
             logger.error(f"FFmpeg error: {result.stderr}")
             raise RuntimeError(f"Failed to extract clip: {result.stderr}")
 
-    def batch_extract(
-        self,
-        segments: list[ClipSegment],
-        reencode: bool = False,
-        progress_callback: Callable[[int, int], None] | None = None,
-        with_buffer: bool = False,
-        buffer_seconds: float = TRANSITION_BUFFER,
-        transition_plan: TransitionPlan | None = None,
-    ) -> list[Path]:
-        """Extract multiple clip segments.
-
-        Args:
-            segments: List of segments to extract.
-            reencode: Whether to re-encode clips.
-            progress_callback: Callback with (current, total) counts.
-            with_buffer: If True, add buffer footage for transitions (legacy).
-            buffer_seconds: Amount of buffer to add (default 0.5s each side).
-            transition_plan: Pre-decided transition plan with per-clip buffer flags.
-
-        Returns:
-            List of paths to extracted clips.
-        """
-        self.cleanup_old_clips()
-
-        results = []
-        failures: list[tuple[str, str]] = []
-
-        for i, segment in enumerate(segments):
-            try:
-                if transition_plan is not None:
-                    path = self.extract(
-                        segment,
-                        reencode=reencode,
-                        buffer_seconds=buffer_seconds,
-                        buffer_start=transition_plan.buffer_start[i],
-                        buffer_end=transition_plan.buffer_end[i],
-                    )
-                else:
-                    path = self.extract(
-                        segment,
-                        reencode=reencode,
-                        with_buffer=with_buffer,
-                        buffer_seconds=buffer_seconds,
-                    )
-                results.append(path)
-            except (OSError, subprocess.SubprocessError, ValueError) as e:
-                logger.error(f"Failed to extract segment {segment.asset_id}: {e}")
-                failures.append((segment.asset_id, str(e)))
-                continue
-
-            if progress_callback:
-                progress_callback(i + 1, len(segments))
-
-        if failures:
-            logger.warning(
-                f"{len(failures)}/{len(segments)} clips failed extraction: "
-                f"{', '.join(asset_id for asset_id, _ in failures[:5])}"
-            )
-
-        return results
-
     # =========================================================================
     # Encoding (from ClipEncodingMixin)
     # =========================================================================
@@ -321,7 +241,7 @@ class ClipExtractor:
         cmd.extend(["-movflags", "+faststart"])
         cmd.append(str(output_path))
 
-        return cmd
+        return apply_hardware_encode(cmd)
 
     def _append_encoder_args(
         self,
@@ -381,8 +301,11 @@ class ClipExtractor:
         progress_callback: Callable[[float], None],
         hw_caps: HWAccelCapabilities | None,
     ) -> None:
-        if hw_caps and hw_caps.has_encoding and "nvenc" in stderr.lower():
-            logger.warning("Hardware encoding failed, falling back to software")
+        if hw_caps and hw_caps.has_encoding:
+            logger.warning(
+                "Hardware encoding failed (%s); falling back to software",
+                stderr.strip()[-200:],
+            )
             self._extract_with_reencode(segment, output_path, progress_callback, use_hw_accel=False)
             return
         raise RuntimeError(f"Failed to extract clip: {stderr}")

@@ -8,7 +8,7 @@ for pure storage operations.
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -91,8 +91,11 @@ def _invoke(args: list[str], config: Config | None = None) -> object:
     """Invoke the CLI with mocked config and init_config_dir."""
     config = config or Config()
     runner = CliRunner()
+    # WHY: CliRunner exercises the real Click tree, but these external calls are stubbed
     with (
+        # WHY: init_config_dir would create real config directories on disk; skipped here
         patch("immich_memories.cli.init_config_dir"),
+        # WHY: get_config would load the user's real config file; replaced with the test Config
         patch("immich_memories.cli.get_config", return_value=config),
         # WHY: runs/stats/config commands import get_config inline from immich_memories.config
         patch("immich_memories.config.get_config", return_value=config),
@@ -112,8 +115,11 @@ def _invoke_planned_generation(args: list[str], config: Config) -> object:
         birth_date=None,
     )
     asset = MagicMock(duration_seconds=10.0)
+    # WHY: exercises generate's argument resolution without touching a real Immich library
     with (
+        # WHY: SyncImmichClient is the Immich HTTP client; replaced so no server connection is made
         patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
+        # WHY: fetch_videos would call Immich for real assets; stubbed to return the test asset
         patch(
             "immich_memories.cli.generate.fetch_videos",
             return_value=[asset],
@@ -131,189 +137,6 @@ def _invoke_planned_generation(args: list[str], config: Config) -> object:
 # =========================================================================
 
 
-class TestVideoMetadataCRUD:
-    """save_video_metadata / get_video_metadata round-trip."""
-
-    @pytest.fixture
-    def cache(self, tmp_path):
-        return VideoAnalysisCache(tmp_path / "test.db")
-
-    def test_save_and_retrieve_metadata(self, cache):
-        """Saved metadata can be retrieved with all fields intact."""
-        cache.save_video_metadata(
-            asset_id="v1",
-            checksum="c1",
-            duration_seconds=12.5,
-            width=3840,
-            height=2160,
-            bitrate=20_000_000,
-            fps=60.0,
-            codec="hevc",
-            color_space="bt2020nc",
-            color_transfer="smpte2084",
-            color_primaries="bt2020",
-            bit_depth=10,
-            rotation=90,
-        )
-        meta = cache.get_video_metadata("v1")
-        assert meta is not None
-        assert meta["duration_seconds"] == 12.5
-        assert meta["width"] == 3840
-        assert meta["height"] == 2160
-        assert meta["codec"] == "hevc"
-        assert meta["color_space"] == "bt2020nc"
-        assert meta["bit_depth"] == 10
-        assert isinstance(meta["rotation"], int)
-
-    def test_get_missing_metadata_returns_none(self, cache):
-        """Requesting metadata for an absent asset returns None."""
-        assert cache.get_video_metadata("nonexistent") is None
-
-    def test_save_metadata_overwrites(self, cache):
-        """Saving metadata for the same asset_id replaces the old record."""
-        cache.save_video_metadata(asset_id="v1", codec="h264")
-        cache.save_video_metadata(asset_id="v1", codec="hevc")
-        assert cache.get_video_metadata("v1")["codec"] == "hevc"
-
-    def test_rotation_defaults_to_zero(self, cache):
-        """When rotation is None, it defaults to 0."""
-        cache.save_video_metadata(asset_id="v1", rotation=None)
-        assert cache.get_video_metadata("v1")["rotation"] == 0
-
-
-class TestVideoMetadataBatch:
-    """get_video_metadata_batch behavior."""
-
-    @pytest.fixture
-    def cache(self, tmp_path):
-        return VideoAnalysisCache(tmp_path / "test.db")
-
-    def test_batch_returns_only_existing(self, cache):
-        """Batch query returns metadata only for assets that exist."""
-        cache.save_video_metadata(asset_id="a", codec="h264")
-        cache.save_video_metadata(asset_id="b", codec="hevc")
-        result = cache.get_video_metadata_batch(["a", "b", "c"])
-        assert set(result.keys()) == {"a", "b"}
-        assert result["a"]["codec"] == "h264"
-        assert result["b"]["codec"] == "hevc"
-
-    def test_batch_empty_input(self, cache):
-        """Empty list returns empty dict."""
-        assert cache.get_video_metadata_batch([]) == {}
-
-
-class TestAnalysisSaveWithScenes:
-    """save_analysis with scenes (not moments) and get_analysis retrieval."""
-
-    @pytest.fixture
-    def cache(self, tmp_path):
-        return VideoAnalysisCache(tmp_path / "test.db")
-
-    def test_save_with_scenes_stores_segments(self, cache):
-        """Saving with Scene objects stores segments accessible via get_analysis."""
-        from immich_memories.analysis.scenes import Scene
-
-        asset = _make_asset()
-        scenes = [
-            Scene(start_time=0.0, end_time=5.0, start_frame=0, end_frame=150),
-            Scene(
-                start_time=5.0,
-                end_time=10.0,
-                start_frame=150,
-                end_frame=300,
-                keyframe_path="/tmp/kf.jpg",
-            ),
-        ]
-        cache.save_analysis(asset=asset, scenes=scenes)
-        analysis = cache.get_analysis(asset.id, include_segments=True)
-        assert analysis is not None
-        assert len(analysis.segments) == 2
-        assert analysis.segments[0].start_frame == 0
-        assert analysis.segments[1].keyframe_path == "/tmp/kf.jpg"
-
-    def test_get_analysis_without_segments(self, cache):
-        """include_segments=False skips segment loading."""
-        asset = _make_asset()
-        cache.save_analysis(asset=asset, video_info=_make_video_info())
-        analysis = cache.get_analysis(asset.id, include_segments=False)
-        assert analysis is not None
-        assert analysis.segments == []
-
-
-class TestNeedsReanalysisVersioning:
-    """needs_reanalysis version and age checks."""
-
-    @pytest.fixture
-    def cache(self, tmp_path):
-        return VideoAnalysisCache(tmp_path / "test.db")
-
-    def test_fresh_does_not_need_reanalysis(self, cache):
-        """Analysis saved just now does not need reanalysis."""
-        asset = _make_asset()
-        cache.save_analysis(asset=asset, video_info=_make_video_info())
-        # max_age_days=30: analysis from now is 0 days old, not > 30
-        assert not cache.needs_reanalysis(asset, max_age_days=30)
-
-    def test_stale_by_file_modification(self, cache):
-        """Modified file triggers reanalysis even if checksum is None."""
-        asset = _make_asset(checksum=None)
-        cache.save_analysis(asset=asset, video_info=_make_video_info())
-        # Advance file_modified_at to the future
-        asset.file_modified_at = datetime.now() + timedelta(days=1)
-        asset.checksum = None
-        assert cache.needs_reanalysis(asset, max_age_days=365)
-
-
-class TestFindSimilarExclusion:
-    """find_similar_videos exclude_asset_id behavior."""
-
-    @pytest.fixture
-    def cache(self, tmp_path):
-        return VideoAnalysisCache(tmp_path / "test.db")
-
-    def test_exclude_self_from_results(self, cache):
-        """A video should not appear in its own similarity results."""
-        a = _make_asset("a")
-        cache.save_analysis(asset=a, perceptual_hash="abcd1234abcd5678")
-        similar = cache.find_similar_videos("abcd1234abcd5678", exclude_asset_id="a")
-        assert all(s.asset_id != "a" for s in similar)
-
-    def test_no_exclude(self, cache):
-        """Without exclude_asset_id, self can appear."""
-        a = _make_asset("a")
-        cache.save_analysis(asset=a, perceptual_hash="abcd1234abcd5678")
-        similar = cache.find_similar_videos("abcd1234abcd5678")
-        assert any(s.asset_id == "a" for s in similar)
-
-
-class TestUncachedWithChecksums:
-    """get_uncached_asset_ids with checksum comparison."""
-
-    @pytest.fixture
-    def cache(self, tmp_path):
-        return VideoAnalysisCache(tmp_path / "test.db")
-
-    def test_stale_checksum_marks_uncached(self, cache):
-        """Asset with changed checksum shows up as uncached."""
-        a = _make_asset("a", checksum="old-chk")
-        cache.save_analysis(asset=a, video_info=_make_video_info())
-        uncached = cache.get_uncached_asset_ids(
-            ["a"],
-            checksums={"a": "new-chk"},
-        )
-        assert "a" in uncached
-
-    def test_matching_checksum_stays_cached(self, cache):
-        """Asset with same checksum is not marked uncached."""
-        a = _make_asset("a", checksum="same-chk")
-        cache.save_analysis(asset=a, video_info=_make_video_info())
-        uncached = cache.get_uncached_asset_ids(
-            ["a"],
-            checksums={"a": "same-chk"},
-        )
-        assert "a" not in uncached
-
-
 class TestMigrationsIdempotent:
     """Opening the same DB twice doesn't fail (migrations are idempotent)."""
 
@@ -321,47 +144,6 @@ class TestMigrationsIdempotent:
         db_path = tmp_path / "m.db"
         VideoAnalysisCache(db_path)
         VideoAnalysisCache(db_path)  # should not raise
-
-
-class TestSaveAnalysisWithLLMSegments:
-    """Segments with LLM fields round-trip through save/load."""
-
-    @pytest.fixture
-    def cache(self, tmp_path):
-        return VideoAnalysisCache(tmp_path / "test.db")
-
-    def test_llm_fields_persisted(self, cache):
-        """LLM description, emotion and setting survive a save/load cycle."""
-        from immich_memories.analysis.scoring import MomentScore
-
-        asset = _make_asset()
-        segment = MomentScore(
-            start_time=0.0,
-            end_time=5.0,
-            total_score=0.9,
-            face_score=0.8,
-            motion_score=0.7,
-            stability_score=0.6,
-            audio_score=0.5,
-        )
-        segment.llm_description = "Kids playing in park"
-        segment.llm_emotion = "joyful"
-        segment.llm_setting = "outdoor"
-        segment.llm_subjects = ["child", "dog"]
-        segment.llm_interestingness = 0.85
-        segment.llm_quality = 0.9
-        segment.audio_categories = ["speech", "laughter"]
-
-        cache.save_analysis(asset=asset, segments=[segment])
-        analysis = cache.get_analysis(asset.id, include_segments=True)
-        seg = analysis.segments[0]
-        assert seg.llm_description == "Kids playing in park"
-        assert seg.llm_emotion == "joyful"
-        assert seg.llm_setting == "outdoor"
-        assert seg.llm_subjects == ["child", "dog"]
-        assert seg.llm_interestingness == pytest.approx(0.85)
-        assert seg.llm_quality == pytest.approx(0.9)
-        assert seg.audio_categories == ["laughter", "speech"]  # sorted
 
 
 # =========================================================================
@@ -586,55 +368,12 @@ class TestRunDatabaseAggregateStats:
         assert stats["avg_clips"] == 7.5
 
 
-class TestRunDatabasePeopleWithRuns:
-    """get_people_with_runs behavior."""
-
-    @pytest.fixture
-    def db(self, tmp_path):
-        return RunDatabase(tmp_path / "runs.db")
-
-    def test_returns_distinct_names(self, db):
-        """Returns sorted list of unique person names."""
-        db.save_run(_make_run(run_id="r1", person_name="Bob"))
-        db.save_run(_make_run(run_id="r2", person_name="Alice"))
-        db.save_run(_make_run(run_id="r3", person_name="Bob"))
-        db.save_run(_make_run(run_id="r4", person_name=None))
-        people = db.get_people_with_runs()
-        assert people == ["Alice", "Bob"]
-
-
 class TestRunDatabaseDedup:
     """Memory deduplication queries."""
 
     @pytest.fixture
     def db(self, tmp_path):
         return RunDatabase(tmp_path / "runs.db")
-
-    def test_has_memory_been_generated_true(self, db):
-        """Returns True when a completed run exists with the key."""
-        db.save_run(
-            _make_run(
-                run_id="r1",
-                status="completed",
-                memory_key="year_review:2025",
-            )
-        )
-        assert db.has_memory_been_generated("year_review:2025")
-
-    def test_has_memory_been_generated_false_when_failed(self, db):
-        """Returns False when the only run with the key is failed."""
-        db.save_run(
-            _make_run(
-                run_id="r1",
-                status="failed",
-                memory_key="year_review:2025",
-            )
-        )
-        assert not db.has_memory_been_generated("year_review:2025")
-
-    def test_has_memory_empty_key(self, db):
-        """Empty key always returns False."""
-        assert not db.has_memory_been_generated("")
 
     def test_get_last_run_of_type(self, db):
         """Returns the most recent completed run of a given type."""
@@ -779,27 +518,6 @@ class TestRunTrackerCompleteRun:
         assert metadata_file.exists()
         data = json.loads(metadata_file.read_text())
         assert data["run_id"] == run.run_id
-
-
-class TestRunTrackerUpdatePhaseProgress:
-    """update_phase_progress logging behavior."""
-
-    # WHY: RunDatabase opens a SQLite connection
-    @patch("immich_memories.tracking.run_tracker.RunDatabase")
-    def test_update_phase_progress_no_crash(self, mock_db_cls):
-        """update_phase_progress logs but does not crash."""
-        tracker = RunTracker(db_path=Path("/tmp/t.db"))
-        tracker.start_run()
-        tracker.start_phase("analysis", total_items=10)
-        tracker.update_phase_progress(5)  # should not raise
-
-    # WHY: RunDatabase opens a SQLite connection
-    @patch("immich_memories.tracking.run_tracker.RunDatabase")
-    def test_update_phase_progress_noop_without_phase(self, mock_db_cls):
-        """update_phase_progress is a no-op when no phase is active."""
-        tracker = RunTracker(db_path=Path("/tmp/t.db"))
-        tracker.start_run()
-        tracker.update_phase_progress(5)  # should not raise
 
 
 class TestRunTrackerCancelWithPhase:
@@ -1008,6 +726,7 @@ class TestConfigShowCommand:
             details="Server: http://photos.test:2283; API: v3",
         )
 
+        # WHY: check_immich would probe a real Immich server; stubbed to control the CheckResult
         with patch("immich_memories.preflight.check_immich", return_value=check_result) as check:
             result = _invoke(["config", "test"], config=config)
 
@@ -1027,6 +746,7 @@ class TestConfigShowCommand:
             details="Unsupported Immich major version 4",
         )
 
+        # WHY: check_immich would need a live Immich server; stubbed to return an error result
         with patch("immich_memories.preflight.check_immich", return_value=check_result):
             result = _invoke(["config", "test"], config=config)
 

@@ -27,6 +27,7 @@ COPY docker/uv-requirements.txt ./docker/uv-requirements.txt
 # The caller must provide the release identity explicitly.
 ARG APP_VERSION
 ARG INSTALL_EXTRAS=all
+ARG TARGETARCH
 RUN if [ -z "${APP_VERSION}" ]; then echo "APP_VERSION build argument is required" >&2; exit 1; fi
 ENV SETUPTOOLS_SCM_PRETEND_VERSION=${APP_VERSION}
 
@@ -43,12 +44,38 @@ RUN pip install --no-cache-dir --require-hashes -r docker/uv-requirements.txt &&
 RUN grep -E '^[A-Za-z0-9_.[-]+==' /constraints.txt > /constraints.pins && \
     mv /constraints.pins /constraints.txt
 
+# WHY the CPU index: torch's CUDA dependencies are pinned on `sys_platform ==
+# 'linux'` with no architecture guard, so PyPI hands aarch64 the same CUDA stack
+# it hands x86_64 -- measured in this image at 3.3 GB of `nvidia`, 818 MB of
+# triton and a 964 MB CUDA-flavoured torch, none of which a NAS or Pi-class box
+# can use. Nothing in this image runs GPU inference: the model seats are ONNX
+# Runtime on the CPU provider, and the only thing left that wants torch at all
+# is local Demucs stem separation.
+# Measured with INSTALL_EXTRAS=all on arm64: 7.08 GB -> 2.37 GB.
+# `torchvision` is deliberately absent: nothing resolves it any more, now that
+# the sensitive-content detector is an ONNX graph rather than a timm model. That
+# retires the failure where a CPU-index torch met a PyPI torchvision, the C++
+# operators never registered, and the detector died on import with `operator
+# torchvision::nms does not exist` (#805, #806).
+# The wheels are built into their own directory, not /wheels, so a torch-free
+# INSTALL_EXTRAS never installs them, and uv.lock is untouched so Apple
+# development resolves exactly as before. The case list is what release.yml
+# publishes; any other arch keeps the PyPI resolution rather than failing
+# against an index that may not serve it.
+RUN mkdir -p /torch-cpu && \
+    case "${TARGETARCH}" in \
+        amd64|arm64) \
+            pip wheel --no-cache-dir --no-deps --wheel-dir=/torch-cpu \
+                --index-url https://download.pytorch.org/whl/cpu \
+                --constraint /constraints.txt torch ;; \
+    esac
+
 # The bundled-music package is built from the tree so the image does not depend
 # on it being published yet; pip then resolves the `music` extra against it.
 RUN pip wheel --no-cache-dir --wheel-dir=/wheels --constraint /constraints.txt ./packages/immich-memories-music
 
 RUN INSTALL_TARGET="$(python docker/validate_install_extras.py "${INSTALL_EXTRAS}")" && \
-    pip wheel --no-cache-dir --wheel-dir=/wheels --find-links=/wheels --constraint /constraints.txt "${INSTALL_TARGET}"
+    pip wheel --no-cache-dir --wheel-dir=/wheels --find-links=/wheels --find-links=/torch-cpu --constraint /constraints.txt "${INSTALL_TARGET}"
 
 
 # Stage 2: Runtime image
@@ -66,7 +93,16 @@ LABEL org.opencontainers.image.version="${APP_VERSION}" \
 
 WORKDIR /app
 
-# Install runtime dependencies
+# Install runtime dependencies.
+# WHY the VA-API drivers: FFmpeg lists `vaapi` and `qsv` under -hwaccels because
+# it is compiled with them, but libva needs a backend `*_drv_video.so` to talk to
+# the GPU. The image shipped none, so `vaInitialize` failed with -542398533 on
+# every Linux host and hardware encoding silently never happened. All four are
+# Debian main (MIT): iHD covers Gen8+ Intel including Gemini Lake and Quick Sync,
+# i965 covers pre-Gen8 Intel, mesa covers AMD, and vainfo makes the next such
+# failure diagnosable from inside the container. `dpkg --print-architecture`
+# rather than $TARGETARCH: the latter is empty under the legacy builder, which
+# would silently ship the broken image again.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libgl1 \
@@ -74,14 +110,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsm6 \
     libxext6 \
     libxrender1 \
+    && if [ "$(dpkg --print-architecture)" = "amd64" ]; then \
+         apt-get install -y --no-install-recommends \
+           intel-media-va-driver \
+           i965-va-driver \
+           mesa-va-drivers \
+           vainfo; \
+       fi \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy wheels from builder
-COPY --from=builder /wheels /wheels
-
-# Install the application
-RUN pip install --no-cache-dir /wheels/*.whl && \
-    rm -rf /wheels
+# WHY a mount and not COPY: COPY writes every wheel into a layer of its own, and the
+# `rm -rf /wheels` that used to follow the install lands in a later layer, so it
+# reclaimed nothing -- the image shipped each dependency twice, once compressed as a
+# wheel and once unpacked into site-packages. A mount is never committed. Measured on
+# arm64 with INSTALL_EXTRAS=all: 10.5 GB -> 7.08 GB, one fewer layer.
+RUN --mount=type=bind,from=builder,source=/wheels,target=/wheels \
+    pip install --no-cache-dir /wheels/*.whl
 
 # Create non-root user for security. UID/GID 1000 on purpose: it matches the first
 # Linux user on most home servers (bind mounts of ./output and ./config are

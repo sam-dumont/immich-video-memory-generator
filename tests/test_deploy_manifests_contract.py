@@ -25,6 +25,9 @@ TF_DIR = REPO_ROOT / "deploy" / "terraform"
 CONFIG_DIR = "/home/immich/.immich-memories"
 OUTPUT_DIR = "/app/output"
 IMMICH_PORT = 2283
+# The caption server default (editorial.preparation.caption_base_url).
+CAPTION_PORT = 8092
+MODELS_DIR = "/models"
 
 
 def _yaml_docs(path: Path) -> list[dict]:
@@ -222,6 +225,7 @@ def test_no_stale_config_keys_or_paths_survive_in_deploy_files() -> None:
         "ollama_url",
         "ollama_model",
         "content_analysis.provider",
+        "CONTENT_ANALYSIS__ENABLED",
         'provider = "auto"',
         "hardware_backend",
         "target_duration_seconds",
@@ -298,3 +302,27 @@ def test_kustomize_renders_with_a_secret_created_from_the_example(
     )
     has_gpu = "nvidia.com/gpu" in container["resources"]["limits"]
     assert has_gpu == (target == "overlays/gpu")
+
+
+def test_every_pod_can_reach_the_pinned_encoder_and_the_detector_cache() -> None:
+    """A first cut stops without the encoder, and the root filesystem is read-only."""
+    for label, pod in _pod_specs():
+        container = pod["containers"][0]
+        mounts = {mount["name"]: mount["mountPath"] for mount in container["volumeMounts"]}
+        env = {entry["name"]: entry.get("value") for entry in container["env"]}
+
+        assert mounts.get("models") == MODELS_DIR, label
+        assert env["IMMICH_MEMORIES_TRIAGE__ENCODER"].startswith(f"{MODELS_DIR}/"), label
+        assert env["IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR"].startswith(
+            f"{MODELS_DIR}/"
+        ), label
+
+
+def test_network_policy_allows_the_caption_endpoint() -> None:
+    """The shipped policy used to block the caption port this app documents by default."""
+    policy = _yaml_docs(K8S_DIR / "networkpolicy.yaml")[0]
+    egress_ports = {
+        port["port"] for rule in policy["spec"]["egress"] for port in rule.get("ports", [])
+    }
+
+    assert {CAPTION_PORT, 11434} <= egress_ports

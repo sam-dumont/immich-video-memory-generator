@@ -17,6 +17,10 @@ from immich_memories.ui.pages.step2_helpers import (
 )
 from immich_memories.ui.state import get_app_state
 
+# A planner carrier arrives with its excerpt; a clip that has none starts with its
+# first five seconds, which is what the retired "average seconds per clip" dial defaulted to.
+_DEFAULT_EXCERPT_SECONDS = 5.0
+
 
 def _render_clip_thumbnail(clip: VideoClipInfo) -> None:
     """Render the initial thumbnail for a clip (sync, placeholder)."""
@@ -363,7 +367,7 @@ def _render_review_nav(state) -> None:
             state.review_selected_mode = False
             ui.navigate.to("/step2")
 
-        def rerun_analysis():
+        def reload_pool():
             state.review_selected_mode = False
             state.selected_clip_ids = set()
             state.clip_segments = {}
@@ -380,7 +384,7 @@ def _render_review_nav(state) -> None:
         ui.button("Back to Selection", on_click=go_back_selection, icon="arrow_back").props(
             "outline"
         )
-        ui.button("Re-run Analysis", on_click=rerun_analysis, icon="refresh").props("outline")
+        ui.button("Reload the pool", on_click=reload_pool, icon="refresh").props("outline")
         ui.button(
             "Continue to Generation",
             on_click=continue_to_generation,
@@ -412,12 +416,10 @@ def _render_review_selected_clips(clips: list[VideoClipInfo]) -> None:
         ui.button("Back to Clip Selection", on_click=go_back, icon="arrow_back")
         return
 
-    avg_clip_duration = state.avg_clip_duration
     for clip in selected_clips:
         if clip.asset.id not in state.clip_segments:
             duration = clip.duration_seconds or 10
-            end_time = min(duration, float(avg_clip_duration))
-            state.clip_segments[clip.asset.id] = (0.0, end_time)
+            state.clip_segments[clip.asset.id] = (0.0, min(duration, _DEFAULT_EXCERPT_SECONDS))
 
     def calc_total_duration():
         return sum(

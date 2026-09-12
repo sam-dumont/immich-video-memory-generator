@@ -17,10 +17,8 @@ import sys
 import tempfile
 import time
 from collections.abc import Callable
-from functools import partial
 from pathlib import Path
 from typing import Any, TypedDict, cast
-from unittest.mock import patch
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCENARIOS = {
@@ -355,44 +353,6 @@ def _assemble(
     )
 
 
-def _analyze(video_path: Path, *, temp_dir: Path) -> None:
-    """Run hermetic visual and audio analysis without LLM or network clients."""
-    from immich_memories.analysis.scenes import SceneDetector
-    from immich_memories.analysis.segment_generation import detect_audio_boundaries
-    from immich_memories.config_models_analysis import AnalysisConfig
-
-    config = AnalysisConfig()
-    SceneDetector(analysis_config=config).detect(video_path, extract_keyframes=False)
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    named_temporary_file = partial(tempfile.NamedTemporaryFile, dir=temp_dir)
-    with patch(
-        "immich_memories.analysis.silence_detection.tempfile.NamedTemporaryFile",
-        named_temporary_file,
-    ):
-        detect_audio_boundaries(
-            video_path,
-            silence_threshold_db=config.silence_threshold_db,
-            min_silence_duration=config.min_silence_duration,
-        )
-
-
-def _analysis_config() -> dict[str, object]:
-    from immich_memories.config_models_analysis import AnalysisConfig
-
-    config = AnalysisConfig()
-    return {
-        "audio_boundaries": True,
-        "adaptive_scene_detector": True,
-        "extract_keyframes": False,
-        "llm_clients_constructed": False,
-        "scene_detector": "SceneDetector",
-        "silence_threshold_db": config.silence_threshold_db,
-        "min_silence_duration_seconds": config.min_silence_duration,
-        "min_scene_duration_seconds": config.min_scene_duration,
-        "scene_threshold": config.scene_threshold,
-    }
-
-
 def _write_table(profile_path: Path, output_path: Path, sort: str) -> None:
     with output_path.open("w") as stream:
         pstats.Stats(str(profile_path), stream=stream).strip_dirs().sort_stats(sort).print_stats(50)
@@ -452,10 +412,7 @@ def _run_warmup(
     assembled_path = work_dir / "assembled.mp4"
     started = time.perf_counter()
     _assemble(clips, assembled_path, duration=duration, assembler=assembler)
-    assembly_seconds = time.perf_counter() - started
-    started = time.perf_counter()
-    _analyze(assembled_path, temp_dir=work_dir / "analysis-tmp")
-    return {"assembly": assembly_seconds, "analysis": time.perf_counter() - started}
+    return {"assembly": time.perf_counter() - started}
 
 
 def main() -> int:
@@ -478,7 +435,7 @@ def main() -> int:
             duration=details["duration"],
             assembler=warm_assembler,
         )
-        stage_timings: dict[str, list[tuple[float, float]]] = {"assembly": [], "analysis": []}
+        stage_timings: dict[str, list[tuple[float, float]]] = {"assembly": []}
         for index in range(1, arguments.repetitions + 1):
             work_dir = output_dir / "work" / f"{arguments.scenario}-{index}"
             work_dir.mkdir(parents=True, exist_ok=True)
@@ -505,22 +462,6 @@ def main() -> int:
                     operation=assemble_stage,
                 )
             )
-
-            def analysis_stage(
-                assembled_path: Path = assembled_path,
-                work_dir: Path = work_dir,
-            ) -> None:
-                _analyze(assembled_path, temp_dir=work_dir / "analysis-tmp")
-
-            stage_timings["analysis"].append(
-                _profile_stage(
-                    scenario=arguments.scenario,
-                    index=index,
-                    stage="analysis",
-                    output_dir=output_dir,
-                    operation=analysis_stage,
-                )
-            )
     except (OSError, RuntimeError, subprocess.SubprocessError, ValueError) as error:
         print(f"profile failed: {error}", file=sys.stderr)
         return 2
@@ -532,7 +473,6 @@ def main() -> int:
             "clip_count": details["clip_count"],
             "duration_seconds": details["duration"],
             "assembly": ASSEMBLY_CONFIG,
-            "analysis": _analysis_config(),
             **CONFIG,
         },
         "cprofile_note": (

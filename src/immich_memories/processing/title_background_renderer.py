@@ -12,6 +12,7 @@ from immich_memories.processing.assembly_config import AssemblyClip, AssemblySet
 from immich_memories.processing.encoding_plan import HdrTransfer
 from immich_memories.processing.ffmpeg_prober import FFmpegProber
 from immich_memories.processing.ffmpeg_runner import write_frames_to_ffmpeg
+from immich_memories.processing.hardware_encode import apply_hardware_encode
 from immich_memories.processing.hdr_utilities import _get_colorspace_filter
 from immich_memories.titles.ffmpeg_pipe import StderrDrain
 
@@ -69,7 +70,7 @@ class TitleBackgroundRenderer:
             "-an", "-movflags", "+faststart",
             str(output_path),
         ]  # fmt: skip
-        return cmd
+        return apply_hardware_encode(cmd, pixel_format=plan.pixel_format)
 
     def render_first_clip(
         self,

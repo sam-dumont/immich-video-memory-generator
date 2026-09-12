@@ -192,8 +192,8 @@ immich-memories days-due [OPTIONS]
 Find days something happened on, and remember them for later.
 
 Meant to run occasionally rather than per generation: the point of a
-catalogue is a memory nobody asked for — five years to the day since
-the wedding — and that needs the days found in advance.
+catalogue is a memory nobody asked for (five years to the day since
+the wedding), and that needs the days found in advance.
 
 Days inside a trip are skipped, since a trip memory already tells that
 story, and so are holidays, which have their own.
@@ -236,8 +236,8 @@ Generate a video compilation.
 ```text
 Memory type presets:
   --memory-type season --season summer --year 2024
-  --memory-type person_spotlight --person "Alice" --year 2024
-  --memory-type multi_person --person "Alice" --person "Bob" --year 2024
+  --memory-type person_spotlight --person "Riley" --year 2024
+  --memory-type multi_person --person "Riley" --person "Bob" --year 2024
   --memory-type monthly_highlights --month 7 --year 2024
   --memory-type on_this_day
 ```
@@ -245,7 +245,7 @@ Memory type presets:
 ```text
 Manual time period options:
   --year 2024                    Calendar year
-  --year 2024 --birthday 02/07   Birthday-based year
+  --year 2024 --birthday 02-07   Birthday-based year
   --start 2024-01-01 --end 2024-06-30   Custom range
   --start 2024-01-01 --period 6m        Period from start
 ```
@@ -263,7 +263,9 @@ immich-memories generate [OPTIONS]
 | `--birthday`, `-b` | text | - | Run the year up to a birthday, plus earlier birthdays (reads Immich's birth date, or override with MM-DD, e.g. 03-15) |
 | `--from-album` | text | - | Generate from an Immich album (name or ID) instead of a date range |
 | `--person`, `-p` | text | - | Person name (repeatable) |
-| `--memory-type` | choice: `year_in_review` \| `season` \| `person_spotlight` \| `multi_person` \| `monthly_highlights` \| `on_this_day` \| `trip` \| `holiday` \| `then_and_now` \| `special_day` | - | Memory type preset |
+| `--people-expression` | text | - | Grouped people condition, e.g. ("Person A" OR "Person B") AND "Person C". Use exact library names; each asset must match. |
+| `--person-match` | choice: `and` \| `or` | and | With several --person values, require everyone in each asset (and) or accept any named person (or) |
+| `--memory-type` | choice: `year_in_review` \| `season` \| `person_spotlight` \| `multi_person` \| `monthly_highlights` \| `on_this_day` \| `album` \| `trip` \| `holiday` \| `special_day` | - | Memory type preset (album takes its pool from --from-album) |
 | `--holiday` | text | - | Holiday name or MM-DD (use with --memory-type holiday) |
 | `--season` | choice: `spring` \| `summer` \| `fall` \| `autumn` \| `winter` | - | Season (use with --memory-type season) |
 | `--month` | integer | - | Month 1-12 (with --year, generates that month; selects trip by month) |
@@ -272,7 +274,7 @@ immich-memories generate [OPTIONS]
 | `--short-form` | choice: `15` \| `30` \| `60` \| `90` | - | Short-form preset: sets the duration and makes the video vertical |
 | `--orientation` | choice: `landscape` \| `portrait` \| `square` | landscape | Output orientation |
 | `--scale-mode`, `-s` | choice: `fit` \| `blur` | - | How to fill an aspect mismatch: blurred background or black bars (default: from config, else blur) |
-| `--transition`, `-t` | choice: `smart` \| `cut` \| `crossfade` \| `none` | smart | Transition style (default: smart — mix of fades & cuts) |
+| `--transition`, `-t` | choice: `smart` \| `cut` \| `crossfade` \| `none` | smart | Transition style (default: smart, a mix of fades and cuts) |
 | `--resolution`, `-r` | choice: `auto` \| `4k` \| `1080p` \| `720p` | - | Output resolution (default: config value, 'auto' to match source clips) |
 | `--music-volume` | float | 0.5 | Music volume 0.0-1.0 (default: 0.5) |
 | `--format` | choice: `mp4` \| `h265` \| `prores` | - | Output format override (default: config value) |
@@ -280,28 +282,28 @@ immich-memories generate [OPTIONS]
 | `--output`, `-o`, `-O` | path | - | Output file path |
 | `--music`, `-m` | text | - | Music: path to audio file, 'auto' to generate from config, or omit for default behavior |
 | `--no-music` | boolean | false | Disable all music (skip both provided files and AI generation) |
-| `--dry-run` | boolean | false | Show what would be done without generating |
-| `--no-render` | boolean | false | Run the real selection — analysis, verify, judge, review — and stop before encoding. Unlike --dry-run, which uses cached analysis only and skips the verify pass, this picks the clips it would actually ship |
+| `--dry-run` | boolean | false | Discover inputs and show preparation needs without selection or generation |
+| `--no-render` | boolean | false | Run story-first selection and its audience and media checks, then stop before encoding. Unlike --dry-run, this picks the clips it would actually ship |
 | `--trace-selection` | file | - | Write a stage-by-stage report of how the clips were chosen |
 | `--upload-to-immich` | boolean | false | Upload generated video back to Immich |
 | `--album` | text | - | Immich album name for uploaded video |
 | `--add-date` | boolean | false | Caption each clip with its date |
 | `--add-place` | boolean | false | Caption each clip with its place |
 | `--keep-intermediates` | boolean | false | Keep intermediate files for debugging |
-| `--privacy-mode` | boolean | false | Blur faces and mute speech |
+| `--privacy-mode` | boolean | false | Demo mode: blur every clip frame, scramble the audio, fake the person names |
 | `--title` | text | - | Override video title text |
 | `--llm-title` | boolean | false | Ask the LLM for the title instead of using a template (--title still wins) |
 | `--subtitle` | text | - | Override video subtitle text |
 | `--include-live-photos` | boolean | - | Include Live Photo video clips (3s iPhone clips, merged when burst-captured) |
 | `--include-photos` | boolean | - | Include photos as animated Ken Burns clips (blur background, face-aware pan) |
+| `--accept-any-provenance` | boolean | false | Keep forwarded and re-encoded media for this memory; date, person, privacy, and Live Photo boundaries still apply |
 | `--photo-duration` | float | - | Duration per photo clip in seconds (default: 4.0) |
-| `--refinement-passes` | integer range | - | How many times selection may verify, judge and review before settling (default: 10). The biggest dial on warm-run time, and on the bill when llm.base_url points at a paid API |
-| `--analysis-depth` | choice: `auto` \| `fast` \| `thorough` | - | Analysis depth: auto (full analysis for manageable pools), fast (favorites first), or thorough (every eligible clip) |
 | `--trip-index` | integer | - | Select a specific trip by index (use with --memory-type trip) |
 | `--all-trips` | boolean | false | Generate a video for every detected trip (use with --memory-type trip) |
-| `--years-back` | integer | - | Years to look back for --birthday, on_this_day, holiday or then_and_now |
+| `--years-back` | integer | - | Years to look back for --birthday, on_this_day or holiday |
 | `--near-date` | text | - | Select trip closest to this date (YYYY-MM-DD, use with --memory-type trip) |
-| `--day` | datetime | - | The catalogued day to generate (YYYY-MM-DD, use with --memory-type special_day). Its title comes from the catalogue, not from here: run `immich-memories days-due` to see which days are in it |
+| `--event-id` | text | - | Exact catalogue event ID (use with --memory-type special_day and --day) |
+| `--day` | datetime | - | The day this memory is about (YYYY-MM-DD). With --memory-type special_day it names a catalogued day, whose title comes from the catalogue rather than from here (`immich-memories days-due` lists them). With --memory-type on_this_day it is the anniversary to look back from, so the cut is reproducible; without it, today |
 | `--quiet` | boolean | false | Suppress interactive progress, emit log lines |
 
 ## `hardware`
@@ -311,6 +313,27 @@ Show hardware acceleration information.
 ```bash
 immich-memories hardware [OPTIONS]
 ```
+
+## `models`
+
+Fetch the pinned model artifacts selection needs.
+
+```bash
+immich-memories models [OPTIONS]
+```
+
+### `models fetch`
+
+Download every pinned model artifact a first cut needs, in one command.
+
+```bash
+immich-memories models fetch [OPTIONS]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--force` | boolean | false | Re-download even when the file is already right |
+| `--detectors` | boolean | true | Also fetch the pinned detector export and warm the pinned detector snapshot |
 
 ## `music`
 
@@ -393,7 +416,7 @@ Build or refresh the people file from Immich.
 
 Reads every named person's count and month curve, then asks about each
 remaining pair to find who appears with whom. Nothing here looks at a
-pixel and nothing here asks you a question — the library's own
+pixel and nothing here asks you a question: the library's own
 distribution is the whole input.
 
 Safe to re-run: everything under `confirmed:` in the file is copied
@@ -429,10 +452,9 @@ Run preflight checks to validate all provider connections.
 Checks:
 - Immich server connection and API key
 - LLM availability (Ollama or OpenAI-compatible)
-- Semantic audio analysis (PANNs or energy fallback)
-- Speech boundaries (FireRedVAD runtime)
-- Speech transcription (whisper.cpp runtime)
 - Title rendering (GPU or PIL fallback)
+- Pinned DINOv2 encoder export (presence and digest)
+- Caption endpoint (advertises the accepted alias)
 - Notification delivery health
 - Hardware acceleration
 
@@ -443,6 +465,30 @@ immich-memories preflight [OPTIONS]
 | Flag | Type | Default | Description |
 | --- | --- | --- | --- |
 | `--verbose`, `-v` | boolean | false | Show detailed output |
+
+## `prepare`
+
+Prepare a scope's annotations, print what each producer cost, and stop.
+
+```text
+No selection and no render happen. Preparation is banked per picture, so
+a scope prepared today is free for every later cut:
+  immich-memories prepare --year 2024 --month 6
+  immich-memories prepare --start 2024-01-01 --period 1y
+```
+
+```bash
+immich-memories prepare [OPTIONS]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--year`, `-y` | integer | - | Calendar year to prepare |
+| `--month` | integer | - | Month 1-12, with --year: one month at a time |
+| `--start` | text | - | Start date (YYYY-MM-DD) |
+| `--end` | text | - | End date (use with --start) |
+| `--period` | text | - | Period from the start date (e.g. 6m, 1y, 2w) |
+| `--library-size` | integer | 1000 | Project the measured rate onto a library of this many pictures |
 
 ## `runs`
 
@@ -593,8 +639,9 @@ immich-memories titles [OPTIONS]
 
 Manage title screen fonts.
 
-Downloads OFL-licensed fonts from Google Fonts and caches
-them locally in ~/.immich-memories/fonts/.
+Five OFL-1.1 families ship inside the wheel. Anything else is fetched
+from the Fontsource CDN into ~/.immich-memories/fonts/, which is also
+where you can drop your own TTFs.
 
 ```bash
 immich-memories titles fonts [OPTIONS]
@@ -604,7 +651,7 @@ immich-memories titles fonts [OPTIONS]
 | --- | --- | --- | --- |
 | `--download`, `-d` | boolean | false | Download all fonts |
 | `--clear` | boolean | false | Clear font cache |
-| `--list` | boolean | false | List cached fonts |
+| `--list` | boolean | false | List cached fonts (the default) |
 
 ### `titles test`
 

@@ -23,6 +23,17 @@ def cache(tmp_path: Path) -> AssetScoreCache:
     return AssetScoreCache(db_path)
 
 
+def _read_row(cache: AssetScoreCache, asset_id: str) -> dict | None:
+    """Read a banked row back the way `cache export` does — a raw SELECT."""
+    with cache._get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM asset_scores WHERE asset_id = ?"
+            " ORDER BY analyzed_at DESC, rowid DESC LIMIT 1",
+            (asset_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
 class TestAssetScoreCache:
     def test_save_and_get(self, cache: AssetScoreCache):
         cache.save_asset_score(
@@ -32,52 +43,14 @@ class TestAssetScoreCache:
             combined_score=0.85,
             llm_interest=0.9,
         )
-        result = cache.get_asset_score("abc")
+        result = _read_row(cache, "abc")
         assert result is not None
         assert result["asset_id"] == "abc"
         assert result["combined_score"] == 0.85
         assert result["llm_interest"] == 0.9
 
     def test_get_missing_returns_none(self, cache: AssetScoreCache):
-        assert cache.get_asset_score("nonexistent") is None
-
-    def test_batch_lookup(self, cache: AssetScoreCache):
-        cache.save_asset_score("a1", "VIDEO", 0.5, 0.6)
-        cache.save_asset_score("a2", "IMAGE", 0.3, 0.4)
-
-        result = cache.get_asset_scores_batch(["a1", "a2", "a3"])
-        assert "a1" in result
-        assert "a2" in result
-        assert "a3" not in result
-
-    def test_batch_lookup_for_model_excludes_stale_and_unversioned_scores(
-        self, cache: AssetScoreCache
-    ) -> None:
-        cache.save_asset_score("current", "IMAGE", 0.5, 0.8, model_version="qwen-3.6")
-        cache.save_asset_score("stale", "IMAGE", 0.5, 0.9, model_version="qwen-3.5")
-        cache.save_asset_score("unknown", "IMAGE", 0.5, 0.95)
-
-        result = cache.get_asset_scores_batch(
-            ["current", "stale", "unknown"], model_version="qwen-3.6"
-        )
-
-        assert set(result) == {"current"}
-        assert result["current"]["combined_score"] == 0.8
-
-    def test_a_banked_look_is_still_served_after_a_later_version_exists(
-        self, cache: AssetScoreCache
-    ) -> None:
-        cache.save_asset_score("photo-1", "IMAGE", 0.5, 0.81, model_version="qwen#look1")
-        cache.save_asset_score("photo-1", "IMAGE", 0.5, 0.42, model_version="qwen#look2")
-
-        under_old = cache.get_asset_scores_batch(["photo-1"], model_version="qwen#look1")
-        under_new = cache.get_asset_scores_batch(["photo-1"], model_version="qwen#look2")
-
-        assert under_old["photo-1"]["combined_score"] == 0.81
-        assert under_new["photo-1"]["combined_score"] == 0.42
-
-    def test_batch_empty_ids(self, cache: AssetScoreCache):
-        assert cache.get_asset_scores_batch([]) == {}
+        assert _read_row(cache, "nonexistent") is None
 
     def test_cache_stats(self, cache: AssetScoreCache):
         cache.save_asset_score("v1", "VIDEO", 0.5, 0.6)
@@ -109,6 +82,6 @@ class TestAssetScoreCache:
         cache.save_asset_score("abc", "VIDEO", 0.5, 0.6)
         cache.save_asset_score("abc", "VIDEO", 0.9, 0.95)
 
-        result = cache.get_asset_score("abc")
+        result = _read_row(cache, "abc")
         assert result is not None
         assert result["combined_score"] == 0.95

@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 
+from immich_memories.api.asset_service import large_original_size
 from immich_memories.api.immich import ImmichAPIError
 from immich_memories.processing.hardware import HWAccelCapabilities
 from immich_memories.processing.probe_cache import ProbeCache, ProbeError
@@ -155,8 +156,6 @@ class CacheBatch:
     A batch snapshots the cache once at creation, records successful downloads
     in memory, and evicts from that manifest after each download (sparing files
     it already handed out) and once more, unconditionally, when it finishes.
-    Call :meth:`invalidate_manifest` only when another actor changed the cache;
-    that deliberately permits one replacement scan at finish.
     """
 
     def __init__(self, cache: VideoDownloadCache) -> None:
@@ -164,7 +163,6 @@ class CacheBatch:
         self._condition = threading.Condition(cache._batch_lock)
         self._manifest: dict[Path, _ManifestEntry] = {}
         self._handed_out: set[Path] = set()
-        self._invalidated = False
         self._closing = False
         self._finished = False
         self._active_operations = 0
@@ -172,12 +170,6 @@ class CacheBatch:
     def _initialize_manifest(self) -> None:
         """Capture the initial manifest before this batch is returned to callers."""
         self._manifest = self._cache._scan_manifest()
-
-    @property
-    def finished(self) -> bool:
-        """Whether the batch has completed its final size maintenance."""
-        with self._condition:
-            return self._finished
 
     @property
     def cache_dir(self) -> Path:
@@ -192,12 +184,6 @@ class CacheBatch:
 
     def __exit__(self, *exc: object) -> None:
         self.finish()
-
-    def invalidate_manifest(self) -> None:
-        """Require a replacement scan before finish after an external mutation."""
-        with self._condition:
-            self._require_open_locked()
-            self._invalidated = True
 
     def download_or_get(self, client: SyncImmichClient, asset: Asset) -> Path | None:
         """Return a cached video or download it, updating only this manifest."""
@@ -243,12 +229,7 @@ class CacheBatch:
             self._closing = True
             while self._active_operations:
                 self._condition.wait()
-            invalidated = self._invalidated
         try:
-            if invalidated:
-                refreshed_manifest = self._cache._scan_manifest()
-                with self._condition:
-                    self._manifest = refreshed_manifest
             with self._condition:
                 manifest = self._manifest.copy()
             return self._cache._evict_manifest(manifest)
@@ -392,7 +373,9 @@ class VideoDownloadCache:
         ext = Path(asset.original_file_name or "video.mp4").suffix or ".mp4"
         if asset.live_photo_video_id:
             ext = ".MOV"  # Live photo videos are always MOV
-        return self._download_id(client, download_id, ext, batch)
+        return self._download_id(
+            client, download_id, ext, batch, expected_size_bytes=large_original_size(asset)
+        )
 
     def _download_id(
         self,
@@ -400,6 +383,8 @@ class VideoDownloadCache:
         download_id: str,
         extension: str,
         batch: CacheBatch,
+        *,
+        expected_size_bytes: int | None = None,
     ) -> Path | None:
         """Download one resolved video ID and update the active manifest."""
         cached = self._find_cached(download_id)
@@ -418,7 +403,10 @@ class VideoDownloadCache:
         part = dest.with_name(f"{dest.name}{_PARTIAL_SUFFIX}")
 
         try:
-            client.download_asset(download_id, part)
+            if expected_size_bytes is None:
+                client.download_asset(download_id, part)
+            else:
+                client.download_asset(download_id, part, expected_size_bytes=expected_size_bytes)
             if part.exists() and part.stat().st_size > 0:
                 os.replace(part, dest)
                 batch._record_manifest_entry(dest)
@@ -627,46 +615,4 @@ class VideoDownloadCache:
                 with contextlib.suppress(OSError):
                     d.rmdir()
 
-        return count
-
-    def evict_old(self) -> int:
-        """Remove files older than max_age_days. Returns count removed."""
-        if not self.cache_dir.exists():
-            return 0
-
-        cutoff = time.time() - (self.max_age_days * 86400)
-        count = 0
-        for f in self.cache_dir.rglob("*"):
-            if f.is_file() and f.stat().st_mtime < cutoff:
-                f.unlink(missing_ok=True)
-                count += 1
-        return count
-
-    def evict_if_over_limit(self) -> int:
-        """Remove oldest files until cache is under max_size_gb. Returns count removed."""
-        if not self.cache_dir.exists():
-            return 0
-
-        max_bytes = self.max_size_gb * 1_073_741_824  # 1 GB in bytes
-        files = [f for f in self.cache_dir.rglob("*") if f.is_file()]
-        total_size = sum(f.stat().st_size for f in files)
-
-        if total_size <= max_bytes:
-            return 0
-
-        # WHY: evict oldest first (LRU by mtime) to keep recently-used files
-        files.sort(key=lambda f: f.stat().st_mtime)
-        count = 0
-        for f in files:
-            if total_size <= max_bytes:
-                break
-            fsize = f.stat().st_size
-            f.unlink(missing_ok=True)
-            total_size -= fsize
-            count += 1
-
-        if count:
-            logger.info(
-                "Cache eviction: removed %d files to stay under %.1f GB", count, self.max_size_gb
-            )
         return count

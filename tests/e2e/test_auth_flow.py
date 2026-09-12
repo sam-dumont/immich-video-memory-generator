@@ -140,7 +140,7 @@ def test_login_and_auth_controls(
     assert sign_out.is_visible(timeout=3000)
 
     redact_page(page)
-    page.screenshot(path=str(screenshot_dir / "step1-with-auth.png"))
+    page.screenshot(path=str(screenshot_dir / "memory-with-auth.png"))
 
 
 def test_demo_mode_toggle(

@@ -27,7 +27,6 @@ from pathlib import Path
 from typing import Any
 
 from immich_memories.audio.generators.ace_step_captions import (
-    build_ace_caption,
     build_ace_caption_structured,
 )
 from immich_memories.audio.generators.ace_step_runtime import (
@@ -76,11 +75,6 @@ def _detect_season(mood: str) -> str | None:
     if "autumn" in mood_lower or "fall" in mood_lower or "cozy" in mood_lower:
         return "autumn"
     return None
-
-
-def _mood_to_ace_prompt(mood: str, prompt: str = "") -> tuple[str, str]:
-    """Convert a mood string to ACE-Step tags and lyrics format."""
-    return build_ace_caption(mood, season=_detect_season(mood))
 
 
 def _mood_to_structured_prompt(

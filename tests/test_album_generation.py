@@ -93,7 +93,6 @@ def _run_album(monkeypatch, videos, images, **overrides):
         "output_path": Path("/out/all_memories.mp4"),
         "use_live_photos": False,
         "use_photos": True,
-        "effective_analysis_depth": "auto",
         "transition": "fade",
         "music": None,
         "music_volume": 0.5,
@@ -127,6 +126,11 @@ def test_the_album_supplies_the_pool_the_title_and_the_span(monkeypatch):
     assert captured["title_override"] == "Trip 2025"
     assert captured["date_range"].start == datetime(2025, 7, 1, tzinfo=UTC)
     assert captured["date_range"].end == datetime(2025, 7, 9, tzinfo=UTC)
+    assert captured["date_ranges"] == ()
+    assert captured["memory_preset_params"] == {
+        "album_name": "Trip 2025",
+        "album_id": "a-1",
+    }
     assert captured["output_path"] == Path("/out/album_trip_2025.mp4")
 
 
@@ -136,6 +140,16 @@ def test_an_explicit_title_still_wins_over_the_album_name(monkeypatch):
     captured = _run_album(monkeypatch, videos, [], title_override="Something Else")
 
     assert captured["title_override"] == "Something Else"
+
+
+def test_album_no_render_reaches_shared_pipeline_without_reporting_a_video(monkeypatch, capsys):
+    video = _asset("v1", AssetType.VIDEO, datetime(2025, 7, 1, tzinfo=UTC))
+    captured = _run_album(monkeypatch, [video], [], no_render=True)
+    assert captured["no_render"] is True
+    assert captured["dry_run"] is False
+    output = capsys.readouterr().out
+    assert "Album selection complete; no video was created" in output
+    assert "Album video:" not in output
 
 
 def test_an_album_with_no_usable_media_stops_the_run(monkeypatch):

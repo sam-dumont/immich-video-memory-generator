@@ -1,8 +1,8 @@
 """A multi-window memory has to say what each window contributed.
 
 The fetch loop queried every range, concatenated, deduped and printed one
-combined total. A then-and-now whose older half returned nothing rendered as
-a memory of the recent half alone, and the run looked clean.
+combined total. A holiday whose oldest year returned nothing rendered as a
+memory of the other years alone, and the run looked clean.
 """
 
 from __future__ import annotations
@@ -87,7 +87,7 @@ def test_each_window_reports_what_it_contributed(caplog) -> None:
 
 
 def test_a_window_that_returned_nothing_is_a_warning(caplog) -> None:
-    """The half that makes it a then-and-now came back empty."""
+    """The window that makes it a multi-window memory came back empty."""
     by_range = {NOW: [_asset("a", datetime(2026, 3, 1))], THEN: []}
 
     _, output = _fetch(by_range, caplog)
@@ -132,7 +132,7 @@ def _fetch_for_person(by_range, caplog, person_ids):
 
 
 def test_a_person_missing_from_an_era_is_called_out_by_name(caplog) -> None:
-    """A then-and-now anchored on someone absent from "then" is just a now.
+    """A memory anchored on someone absent from its older window is just the newer one.
 
     Neither window is empty, so the per-window counts look healthy. Only the
     person's own spread shows the memory cannot do what its title claims.

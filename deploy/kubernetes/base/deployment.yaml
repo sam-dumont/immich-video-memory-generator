@@ -56,12 +56,15 @@ spec:
           env:
             - name: IMMICH_MEMORIES_OUTPUT__DIRECTORY
               value: /app/output
+            - name: IMMICH_MEMORIES_TRIAGE__ENCODER
+              value: /models/triage/dinov2-small.onnx
+            - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR
+              value: /models/huggingface
             # Optional: LLM clip content analysis (any OpenAI-compatible API)
             # - name: IMMICH_MEMORIES_LLM__BASE_URL
             #   value: "http://your-llm.llm.svc.cluster.local:8080/v1"
             # - name: IMMICH_MEMORIES_LLM__MODEL
             #   value: "qwen2.5-vl"
-            # - name: IMMICH_MEMORIES_CONTENT_ANALYSIS__ENABLED
             #   value: "true"
             # Optional: daily automation inside the pod (no CronJob needed)
             # - name: IMMICH_MEMORIES_AUTOMATION__ENABLED
@@ -86,6 +89,8 @@ spec:
               mountPath: /home/immich/.immich-memories
             - name: output
               mountPath: /app/output
+            - name: models
+              mountPath: /models
             - name: tmp
               mountPath: /tmp
 
@@ -116,6 +121,9 @@ spec:
         - name: output
           persistentVolumeClaim:
             claimName: immich-memories-output
+        - name: models
+          persistentVolumeClaim:
+            claimName: immich-memories-models
         # FFmpeg intermediates: 2Gi is enough for 1080p, use 8Gi for 4K.
         - name: tmp
           emptyDir:

@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from immich_memories.automation.special_day_scan import DiscoveredDay
 from immich_memories.memory_types.registry import MemoryType
 from immich_memories.ui.pages import step1_presets
-from immich_memories.ui.pages.step1_presets import _PRESET_CARDS
+from immich_memories.ui.pages.memory_brief import MEMORY_TYPE_LABELS
 from immich_memories.ui.state import AppState
 
 BRUSSELS = timezone(timedelta(hours=2))
@@ -56,7 +56,7 @@ def _render_card(monkeypatch, home: Path, pick: int | None = None) -> tuple[AppS
         patch.object(step1_presets, "ui", ui_stub),
         patch.object(step1_presets, "im_card", MagicMock()),
     ):
-        step1_presets._render_params(MemoryType.SPECIAL_DAY)
+        step1_presets.render_type_params(MemoryType.SPECIAL_DAY)
         ui_stub.timer.call_args.args[1]()
         if pick is not None:
             ui_stub.select.call_args.kwargs["on_change"](SimpleNamespace(value=pick))
@@ -78,10 +78,8 @@ def _drawn_text(ui_stub: MagicMock) -> str:
     return " ".join(str(call) for call in ui_stub.label.call_args_list)
 
 
-def test_the_catalogue_is_offered_as_a_card() -> None:
-    keys = [card[0] for card in _PRESET_CARDS]
-
-    assert MemoryType.SPECIAL_DAY in keys
+def test_the_catalogue_is_offered_as_a_memory_type() -> None:
+    assert MemoryType.SPECIAL_DAY in MEMORY_TYPE_LABELS
 
 
 def test_choosing_a_day_scopes_the_wizard_to_the_hours_it_happened_in(
@@ -237,7 +235,7 @@ def test_the_picker_puts_anniversaries_first_and_still_offers_the_rest() -> None
     rows = step1_presets._special_day_options([nowhere_near_today, a_decade_ago], date(2026, 6, 12))
 
     assert [label for _, label in rows] == [
-        "10 years ago — A long evening out",
+        "10 years ago: A long evening out",
         "2019-02-02 — Somebody's leap day",
     ]
 

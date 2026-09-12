@@ -2,7 +2,6 @@
 
 Orchestrates scalable and strategy-based assembly pipelines.
 Includes assembly context building (resolution, HDR, colorspace resolution).
-Concat/xfade/batch operations are in ffmpeg_filter_graph.py.
 """
 
 from __future__ import annotations
@@ -18,10 +17,8 @@ from immich_memories.processing.assembly_config import (
 )
 from immich_memories.processing.clip_caption import resolve_caption_locale
 from immich_memories.processing.clip_encoder import ClipEncoder
-from immich_memories.processing.ffmpeg_filter_graph import ConcatService
 from immich_memories.processing.ffmpeg_prober import FFmpegProber
 from immich_memories.processing.ffmpeg_runner import AssemblyContext
-from immich_memories.processing.filter_builder import FilterBuilder
 from immich_memories.processing.hdr_utilities import (
     _detect_color_primaries,
     _get_clip_hdr_types,
@@ -172,13 +169,10 @@ class AssemblyEngine:
         settings: AssemblySettings,
         prober: FFmpegProber,
         encoder: ClipEncoder,
-        filter_builder: FilterBuilder,
     ) -> None:
         self.settings = settings
         self.prober = prober
         self.encoder = encoder
-        self.filter_builder = filter_builder
-        self.concat = ConcatService(settings, prober, encoder, filter_builder)
 
     def assemble_scalable(
         self,
@@ -193,10 +187,12 @@ class AssemblyEngine:
         and pipes frames to a single FFmpeg encode process. Memory stays
         constant regardless of clip count (~550 MB at 4K).
         """
-        if len(clips) < 2:
-            if len(clips) == 1:
-                return self._assemble_single_clip(clips[0], output_path)
+        if not clips:
             raise ValueError("No clips to assemble")
+        if len(clips) == 1 and not (
+            self.settings.add_date_overlay or self.settings.add_place_overlay
+        ):
+            return self._assemble_single_clip(clips[0], output_path)
 
         # Resolve target resolution ONCE for all clips — prevents each chunk
         # from auto-detecting a different resolution/orientation
@@ -250,6 +246,10 @@ class AssemblyEngine:
         def record_effective_plan(effective_plan) -> None:
             self.settings.encoding_plan = effective_plan
 
+        caption_locale = self.settings.caption_locale
+        if caption_locale is None and self.settings.title_screens:
+            caption_locale = self.settings.title_screens.locale
+
         streaming_assemble_full(
             clips=clips,
             transitions=transitions,
@@ -264,9 +264,7 @@ class AssemblyEngine:
             privacy_mode=self.settings.privacy_mode,
             date_overlay=self.settings.add_date_overlay,
             place_overlay=self.settings.add_place_overlay,
-            caption_locale=resolve_caption_locale(
-                self.settings.title_screens.locale if self.settings.title_screens else None
-            ),
+            caption_locale=resolve_caption_locale(caption_locale),
             scale_mode=self.settings.scale_mode,
             progress_callback=progress_callback,
             frame_preview_callback=frame_preview_callback,
@@ -286,174 +284,6 @@ class AssemblyEngine:
         if effective_plan is not None:  # compatibility with injected encoders
             self.settings.encoding_plan = effective_plan
         return output_path
-
-    def assemble_with_cuts(
-        self,
-        clips: list[AssemblyClip],
-        output_path: Path,
-        progress_callback: Callable[[float, str], None] | None = None,
-    ) -> Path:
-        """Assemble clips with hard cuts."""
-        if not clips:
-            raise ValueError("No clips to assemble")
-        target_w, target_h = resolve_target_resolution(self.settings, self.prober, clips)
-        ctx = create_assembly_context(self.settings, self.prober, clips, target_w, target_h)
-        out_fps = self.settings.target_framerate or self.prober.detect_max_framerate(clips)
-        logger.info(f"Cuts assembly: {len(clips)} clips, {target_w}x{target_h} @ {out_fps}fps")
-        input_args: list[str] = []
-        for clip in clips:
-            input_args.extend(["-i", str(clip.path)])
-        filter_parts = []
-        for i in range(len(clips)):
-            hdr_conversion = self.filter_builder.get_clip_hdr_conversion(i, ctx)
-            filter_parts.append(
-                f"[{i}:v]setpts=PTS-STARTPTS,"
-                f"scale={target_w}:{target_h}:"
-                f"force_original_aspect_ratio=decrease:flags=lanczos,"
-                f"pad={target_w}:{target_h}:(ow-iw)/2:(oh-ih)/2:black,"
-                f"fps={out_fps},settb=1/{out_fps},"
-                f"format={ctx.pix_fmt}{hdr_conversion}{ctx.colorspace_filter},"
-                f"setsar=1[v{i}]"
-            )
-        video_inputs = "".join(f"[v{i}]" for i in range(len(clips)))
-        audio_inputs = "".join(f"[{i}:a]" for i in range(len(clips)))
-        filter_parts.extend(
-            (
-                f"{video_inputs}concat=n={len(clips)}:v=1:a=0[vout]",
-                f"{audio_inputs}concat=n={len(clips)}:v=0:a=1[aout]",
-            )
-        )
-        filter_complex = ";".join(filter_parts)
-        result = self.encoder.run_ffmpeg_assembly(
-            input_args,
-            filter_complex,
-            "[vout]",
-            "[aout]",
-            output_path,
-            clips,
-            ctx,
-            progress_callback,
-        )
-        if result.returncode != 0:
-            raise RuntimeError(f"Failed to assemble video with cuts: {result.stderr}")
-        return output_path
-
-    def assemble_with_crossfade(
-        self,
-        clips: list[AssemblyClip],
-        output_path: Path,
-        progress_callback: Callable[[float, str], None] | None = None,
-    ) -> Path:
-        """Assemble clips with crossfade transitions."""
-        if len(clips) < 2:
-            raise ValueError("Need at least 2 clips for crossfade")
-        target_w, target_h = resolve_target_resolution(self.settings, self.prober, clips)
-        ctx = create_assembly_context(self.settings, self.prober, clips, target_w, target_h)
-        inputs: list[str] = []
-        for clip in clips:
-            inputs.extend(["-i", str(clip.path)])
-        filter_parts = [
-            self.filter_builder.build_clip_video_filter(i, clip, ctx)
-            for i, clip in enumerate(clips)
-        ]
-        audio_filter_parts, audio_labels = self.filter_builder.build_audio_prep_filters(clips)
-        filter_parts.extend(audio_filter_parts)
-        xfade_parts, final_video, final_audio, _ = self.filter_builder.build_xfade_chain(
-            clips,
-            ctx,
-            audio_labels,
-        )
-        filter_parts.extend(xfade_parts)
-        filter_complex = ";".join(filter_parts)
-        result = self.encoder.run_ffmpeg_assembly(
-            inputs,
-            filter_complex,
-            final_video,
-            final_audio,
-            output_path,
-            clips,
-            ctx,
-            progress_callback,
-        )
-        if result.returncode != 0:
-            logger.warning(f"Crossfade failed (code {result.returncode}), falling back to cuts.")
-            return self.assemble_with_cuts(clips, output_path, progress_callback)
-        return output_path
-
-    def assemble_with_smart_transitions(
-        self,
-        clips: list[AssemblyClip],
-        output_path: Path,
-        progress_callback: Callable[[float, str], None] | None = None,
-    ) -> Path:
-        """Assemble clips with a mix of crossfades and cuts."""
-        if len(clips) < 2:
-            raise ValueError("Need at least 2 clips for smart transitions")
-        transitions = self.decide_transitions(clips)
-        target_w, target_h = resolve_target_resolution(self.settings, self.prober, clips)
-        ctx = create_assembly_context(self.settings, self.prober, clips, target_w, target_h)
-        inputs: list[str] = []
-        for clip in clips:
-            inputs.extend(["-i", str(clip.path)])
-        filter_parts = [
-            self.filter_builder.build_clip_video_filter(
-                i, clip, ctx, use_aspect_ratio_handling=False
-            )
-            for i, clip in enumerate(clips)
-        ]
-        audio_filter_parts, audio_labels = self.filter_builder.build_audio_prep_filters(
-            clips,
-            use_amix_fallback=False,
-        )
-        filter_parts.extend(audio_filter_parts)
-        transition_parts, final_video, final_audio = (
-            self.filter_builder.build_smart_transition_chain(
-                clips,
-                transitions,
-                ctx,
-                audio_labels,
-            )
-        )
-        filter_parts.extend(transition_parts)
-        filter_complex = ";".join(filter_parts)
-        result = self.encoder.run_ffmpeg_assembly(
-            inputs,
-            filter_complex,
-            final_video,
-            final_audio,
-            output_path,
-            clips,
-            ctx,
-            progress_callback,
-        )
-        if result.returncode != 0:
-            logger.warning(
-                f"Smart transitions failed (code {result.returncode}), falling back to crossfade."
-            )
-            return self.assemble_with_crossfade(clips, output_path, progress_callback)
-        return output_path
-
-    def decide_transitions(self, clips: list[AssemblyClip]) -> list[str]:
-        """Decide which transition type to use between each pair of clips."""
-        if len(clips) < 2:
-            return []
-        transitions = []
-        consecutive_fades = 0
-        consecutive_cuts = 0
-        predecided_used = 0
-        for i in range(len(clips) - 1):
-            t, consecutive_fades, consecutive_cuts = _pick_transition(
-                clips[i], clips[i + 1], consecutive_fades, consecutive_cuts
-            )
-            transitions.append(t)
-            if clips[i].outgoing_transition is not None and not clips[i].is_title_screen:
-                predecided_used += 1
-        logger.info(
-            f"Smart transitions: {transitions.count('fade')} crossfades, "
-            f"{transitions.count('cut')} cuts"
-            + (f" ({predecided_used} pre-decided)" if predecided_used > 0 else "")
-        )
-        return transitions
 
     def get_transition_types(self, clips: list[AssemblyClip]) -> list[str]:
         """Get the transition type for each clip boundary."""

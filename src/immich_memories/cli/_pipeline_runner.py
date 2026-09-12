@@ -1,14 +1,12 @@
 """Pipeline orchestration for the generate command.
 
-Bridges CLI to SmartPipeline + generate_memory: runs analysis over the assets
-the CLI fetched, selects from the candidate pool, and generates the final
-video.
+Bridges CLI to SmartPipeline + generate_memory: runs the editorial route over
+the assets the CLI fetched, then generates the final video from its cut.
 """
 
 from __future__ import annotations
 
 import logging
-import math
 import sqlite3
 import sys
 import time
@@ -16,79 +14,29 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from immich_memories.analysis import llm_metrics
-from immich_memories.cli._candidate_pool import (
-    _apply_subject_policy,
-    _drop_reencoded_sources,
-    _merge_photos_into_pool,
+from immich_memories.analysis.editorial_duration_advisory import editorial_duration_warning
+from immich_memories.cli._editorial_context import (
+    build_editorial_context,
+    narrow_to_special_event,
 )
-from immich_memories.cli._helpers import console, print_error, print_success
-from immich_memories.cli._pool_coverage import report_pool_coverage
+from immich_memories.cli._helpers import console, print_error, print_success, print_warning
 from immich_memories.cli._run_inputs import ResolvedRunInputs
 from immich_memories.cli._run_summary import render_run_summary
+from immich_memories.cli._run_timeline import configure_timeline, final_timeline
 from immich_memories.timeperiod import DateRange
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from immich_memories.analysis.smart_pipeline import (
-        PipelineConfig,
-        PipelineResult,
-        SmartPipeline,
-    )
+    from rich.progress import TaskID
+
+    from immich_memories.analysis.editorial_planner import EditorialSelection
+    from immich_memories.analysis.smart_pipeline import PipelineResult
     from immich_memories.api.immich import SyncImmichClient
     from immich_memories.cli._live_display import ProgressDisplay
     from immich_memories.config_loader import Config
-    from immich_memories.processing.assembly_config import TitleScreenSettings
     from immich_memories.processing.output_canvas import OutputCanvas
     from immich_memories.processing.timeline_budget import TimelinePlan
-
-
-def _configure_timeline(
-    pipeline_config: PipelineConfig,
-    *,
-    clips: list,
-    photo_assets: list | None,
-    output_path: Path,
-    config: Config,
-    memory_type: str | None,
-    person_names: list[str],
-    date_range: DateRange,
-    memory_preset_params: dict | None,
-    duration: float,
-    transition: str,
-) -> tuple[TimelinePlan, TitleScreenSettings | None]:
-    """Resolve one plan and apply its strict content budget to selection."""
-    from immich_memories.generate import GenerationParams
-    from immich_memories.generate_settings import _build_title_settings
-    from immich_memories.processing.timeline_budget import plan_timeline
-
-    planning_params = GenerationParams(
-        clips=clips,
-        output_path=output_path,
-        config=config,
-        memory_type=memory_type,
-        person_name=person_names[0] if person_names else None,
-        date_start=date_range.start,
-        date_end=date_range.end,
-        memory_preset_params=memory_preset_params or {},
-    )
-    planning_titles = _build_title_settings(planning_params, config, [])
-    planning_sources = [*clips, *(list(photo_assets) if photo_assets else [])]
-    timeline = plan_timeline(
-        planning_sources,
-        planning_titles,
-        duration,
-        memory_type,
-        expected_clip_duration=pipeline_config.avg_clip_duration,
-        transition_mode=transition,
-        transition_duration=config.defaults.transition_duration,
-    )
-    pipeline_config.target_duration_seconds = timeline.content_budget
-    pipeline_config.target_clips = max(
-        1,
-        math.ceil(timeline.content_budget / pipeline_config.avg_clip_duration),
-    )
-    return timeline, planning_titles
 
 
 def _resolve_requested_duration(
@@ -131,21 +79,7 @@ def _resolve_requested_duration(
     return result.total_seconds
 
 
-def _planning_analysis(
-    pipeline: SmartPipeline,
-    clips: list,
-    progress_callback,
-    *,
-    dry_run: bool,
-) -> list:
-    """Choose the cached-only planning path or normal source analysis."""
-    if dry_run:
-        return pipeline.run_planning_analysis(clips, progress_callback=progress_callback)
-    return pipeline.run_analysis(clips, progress_callback=progress_callback)
-
-
 def _configure_output_canvas(
-    pipeline_config: PipelineConfig,
     *,
     clips: list,
     photo_assets: list | None,
@@ -153,27 +87,23 @@ def _configure_output_canvas(
     output_resolution: str | None,
     output_orientation: str | None,
 ) -> OutputCanvas:
-    """Resolve one canvas and align selection quality gates with it."""
+    """Resolve the one pixel canvas this run renders to."""
     from immich_memories.processing.output_canvas import resolve_output_canvas
 
     planning_sources = [*clips, *(photo_assets or [])]
-    canvas = resolve_output_canvas(
+    return resolve_output_canvas(
         resolution=output_resolution,
         orientation=output_orientation,
         configured_resolution=config.output.resolution_tuple,
         clips=planning_sources,
     )
-    # PipelineConfig expresses output resolution as the short-edge tier.
-    pipeline_config.output_resolution = min(canvas.width, canvas.height)
-    return canvas
 
 
 def _stops_before_rendering(*, dry_run: bool, no_render: bool) -> bool:
     """Whether this run ends at the plan instead of producing a file.
 
-    Two callers, one boundary. --dry-run has always stopped here as a side
-    effect of being cheap; --no-render asks for the same stop directly, having
-    run the real analysis and the verify pass on the way.
+    Dry-run normally returns before selection. No-render reaches this boundary
+    after the same story-first selection that a rendered memory uses.
     """
     return dry_run or no_render
 
@@ -198,10 +128,8 @@ def _finish_without_rendering(
 ) -> tuple[Path, bool, str | None]:
     """Print the resolved plan and return without crossing the render boundary.
 
-    Reached two ways, and the difference matters. --dry-run gets here having
-    used only cached analysis and skipped the verify pass, so its selection is
-    a cheap approximation. --no-render gets here having run the real thing;
-    only the encode is missing.
+    Selection has completed through the production story-first route; only the
+    encode is missing.
     """
     from immich_memories.api.models import AssetType
     from immich_memories.cli._generation_preview import (
@@ -229,6 +157,46 @@ def _finish_without_rendering(
     )
     print_generation_preview(preview)
     progress.update(task, completed=100)
+    return output_path, should_upload, album_name
+
+
+def _finish_preparation(
+    *,
+    context,
+    assets,
+    photos,
+    output_canvas,
+    output_path,
+    config,
+    music,
+    no_music,
+    should_upload,
+    album_name,
+) -> tuple[Path, bool, str | None]:
+    """Describe discovered inputs without making a different, approximate selection."""
+    import click
+
+    from immich_memories.cli._generation_preview import music_policy
+
+    store = config.editorial.resolve_annotation_database(config.cache.cache_path)
+    click.echo("Dry-run preparation (selection was not run; no video will be created)")
+    click.echo(f"Memory: {context.product}")
+    click.echo(f"Date range: {context.label}")
+    click.echo(f"Candidates: {len(assets)} video, {len(photos)} photo")
+    click.echo(f"Target duration: {context.target_seconds:.1f}s")
+    readiness = (
+        "store available; coverage checked at selection"
+        if store.is_file()
+        else "preparation required"
+    )
+    click.echo(f"Annotations: {readiness}")
+    click.echo("Selection: pending (use --no-render to run story-first selection)")
+    click.echo(
+        f"Canvas: {output_canvas.width}x{output_canvas.height} ({output_canvas.orientation})"
+    )
+    click.echo(f"Music: {music_policy(config=config, music=music, no_music=no_music)}")
+    click.echo(f"Output (planned): {output_path}")
+    click.echo(f"Upload: {'planned' if should_upload else 'disabled'}")
     return output_path, should_upload, album_name
 
 
@@ -260,57 +228,33 @@ class _AttemptPhaseReporter:
         self._progress.update(self._task, description=event.message)
 
 
-@llm_metrics.collects
-def _pool_and_select(
-    pipeline,
-    analyzed_videos: list,
-    *,
-    phases,
-    photo_assets: list | None,
-    include_photos: bool,
-    use_live_photos: bool,
-    config,
-    client,
-    work_dir: Path,
-    dry_run: bool,
-    thumbnail_cache,
-    content_budget_seconds: float,
-) -> tuple[list, object]:
-    """Build the pool, then choose from it, with ONE trace over both.
+class _SourceProgressReporter:
+    """Analysis owns 0-20% of the bar; an indeterminate source stage owns all of it."""
 
-    The trace is opened here rather than inside `run_selection` because the
-    pool's own filters run before the pipeline is entered. Recorded from in
-    there they land in no context at all, which is how a stage that removed
-    eleven candidates — including a life-event photograph — stayed invisible
-    in the funnel across four renders. The pipeline still opens a context of
-    its own for callers that have not (the UI); nesting joins rather than
-    starting a second trace.
-    """
-    from immich_memories.analysis import selection_trace as trace
-    from immich_memories.operations.phases import OperationalPhase
+    def __init__(self, progress: ProgressDisplay, task: TaskID) -> None:
+        self._progress = progress
+        self._task = task
+        self._started = False
 
-    with trace.tracing(trace.path_from_env()):
-        candidates = _merge_photos_into_pool(
-            analyzed_videos,
-            photo_assets=photo_assets,
-            include_photos=include_photos,
-            use_live_photos=use_live_photos,
-            config=config,
-            client=client,
-            work_dir=work_dir,
-            provider_circuit=pipeline.provider_circuit,
-            dry_run=dry_run,
-            thumbnail_cache=thumbnail_cache,
+    def __call__(self, status: dict) -> None:
+        if status.get("indeterminate"):
+            self._unbounded_stage(status)
+            return
+        pct = status.get("overall_progress", 0)
+        phase_name = status.get("current_phase", "")
+        self._progress.update(
+            self._task,
+            completed=int(pct * 20),
+            description=f"Analyzing: {phase_name}",
         )
-        candidates = _drop_reencoded_sources(candidates, config=config)
-        candidates = _apply_subject_policy(
-            candidates,
-            config=config,
-            content_budget_seconds=content_budget_seconds,
-            photo_assets=photo_assets,
-        )
-        phases.emit(OperationalPhase.SELECTION, 0, len(candidates), "Selecting clips")
-        return candidates, pipeline.run_selection(candidates, verify=not dry_run)
+
+    def _unbounded_stage(self, status: dict) -> None:
+        if not self._started:
+            self._progress.reset(self._task, total=None)
+            self._started = True
+        self._progress.update(self._task, description=status["phase_label"])
+        if status.get("status") == "complete":
+            self._progress.reset(self._task, total=100)
 
 
 def run_pipeline_and_generate(
@@ -319,7 +263,6 @@ def run_pipeline_and_generate(
     photo_assets: list | None = None,
     include_photos: bool = False,
     use_live_photos: bool = True,
-    analysis_depth: str = "auto",
     client: SyncImmichClient,
     config: Config,
     progress: ProgressDisplay,
@@ -343,6 +286,7 @@ def run_pipeline_and_generate(
     memory_type: str | None,
     person_names: list[str],
     date_range: DateRange,
+    date_ranges: tuple[DateRange, ...] | list[DateRange] | None = None,
     upload_to_immich: bool,
     album: str | None,
     memory_preset_params: dict | None = None,
@@ -352,17 +296,25 @@ def run_pipeline_and_generate(
     automation_attempt_id: str | None = None,
     dry_run: bool = False,
     no_render: bool = False,
+    accept_any_provenance: bool = False,
 ) -> tuple[Path, bool, str | None]:
     """Run smart pipeline analysis + video generation.
 
     Returns (result_path, should_upload, album_name).
     """
-    from immich_memories.analysis.smart_pipeline import PipelineConfig, SmartPipeline
-    from immich_memories.cache.database import VideoAnalysisCache
+    from immich_memories.analysis.editorial_runtime import build_smart_pipeline
+    from immich_memories.analysis.smart_pipeline import PipelineConfig
     from immich_memories.cache.thumbnail_cache import ThumbnailCache
     from immich_memories.generate import GenerationParams, assets_to_clips, generate_memory
     from immich_memories.operations.phases import OperationalPhase
     from immich_memories.tracking.models import normalize_memory_people
+
+    assets, photo_assets = narrow_to_special_event(
+        memory_type=memory_type,
+        assets=assets,
+        photo_assets=photo_assets,
+        memory_preset_params=memory_preset_params,
+    )
 
     resolved = ResolvedRunInputs.from_arguments(
         include_photos=include_photos,
@@ -377,7 +329,7 @@ def run_pipeline_and_generate(
     )
 
     clips = assets_to_clips(assets)
-    if not clips and not resolved.has_photos:
+    if not assets and not resolved.has_photos:
         print_error("No usable content (no video clips or photos)")
         sys.exit(1)
 
@@ -412,22 +364,15 @@ def run_pipeline_and_generate(
     phases.emit(OperationalPhase.DISCOVERY, len(clips), len(clips), "Discovery complete")
     phases.emit(OperationalPhase.DOWNLOAD, 0, len(clips), "Preparing source downloads")
 
-    pipeline_config = PipelineConfig.from_app_config(
-        config,
-        hdr_only=False,
-        prioritize_favorites=True,
-        analysis_depth=analysis_depth,
-    )
+    pipeline_config = PipelineConfig(hdr_only=False)
     output_canvas = _configure_output_canvas(
-        pipeline_config,
         clips=clips,
         photo_assets=resolved.photo_assets,
         config=config,
         output_resolution=output_resolution,
         output_orientation=output_orientation,
     )
-    timeline_plan, planning_titles = _configure_timeline(
-        pipeline_config,
+    timeline_plan, planning_titles = configure_timeline(
         clips=clips,
         photo_assets=photo_assets,
         output_path=output_path,
@@ -447,51 +392,60 @@ def run_pipeline_and_generate(
         timeline_plan.target_duration,
     )
 
-    analysis_cache = VideoAnalysisCache(db_path=config.cache.database_path)
+    editorial_context = build_editorial_context(
+        resolved=resolved,
+        config=config,
+        memory_type=memory_type,
+        memory_key=memory_key,
+        output_stem=output_path.stem,
+        assets=assets,
+        date_range=date_range,
+        date_ranges=date_ranges,
+        duration=duration,
+        transition=transition,
+        title_override=title_override,
+        person_names=person_names,
+        accept_any_provenance=accept_any_provenance,
+    )
+    if dry_run:
+        return _finish_preparation(
+            context=editorial_context,
+            assets=assets,
+            photos=(resolved.photo_assets or []) if include_photos else [],
+            output_canvas=output_canvas,
+            output_path=output_path,
+            config=config,
+            music=music,
+            no_music=no_music,
+            should_upload=resolved.should_upload,
+            album_name=album or config.upload.album_name,
+        )
+
     thumbnail_cache = ThumbnailCache(
         cache_dir=config.cache.cache_path / "thumbnails",
         max_size_mb=config.cache.thumbnail_cache_max_size_mb,
     )
-    pipeline = SmartPipeline(
+    thumbnail_cache.begin_run()
+    pipeline = build_smart_pipeline(
         client=client,
-        analysis_cache=analysis_cache,
         thumbnail_cache=thumbnail_cache,
         config=pipeline_config,
-        analysis_config=config.analysis,
         app_config=config,
+        editorial_context=editorial_context,
+        dry_run=False,
     )
 
-    def pipeline_progress(status: dict) -> None:
-        pct = status.get("overall_progress", 0)
-        phase_name = status.get("current_phase", "")
-        progress.update(
-            task,
-            completed=int(pct * 20),
-            description=f"Analyzing: {phase_name}",
-        )
-
-    # Phase 1-3: Analyze video clips
-    phases.emit(OperationalPhase.ANALYSIS, 0, len(clips), "Analyzing clips")
-    analyzed_videos = _planning_analysis(
-        pipeline,
-        clips,
-        pipeline_progress,
-        dry_run=dry_run,
+    phases.emit(
+        OperationalPhase.SELECTION,
+        0,
+        len(assets) + len(photo_assets or ()),
+        "Preparing canonical editorial evidence",
     )
-
-    all_candidates, pipeline_result = _pool_and_select(
-        pipeline,
-        analyzed_videos,
-        phases=phases,
-        photo_assets=photo_assets,
-        include_photos=include_photos,
-        use_live_photos=use_live_photos,
-        config=config,
-        client=client,
-        work_dir=output_path.parent,
-        dry_run=dry_run,
-        thumbnail_cache=thumbnail_cache,
-        content_budget_seconds=timeline_plan.content_budget,
+    source_photos = (photo_assets or []) if include_photos else []
+    all_candidates, pipeline_result = pipeline.run_editorial_source(
+        [*assets, *source_photos],
+        progress_callback=_SourceProgressReporter(progress, task),
+        include_live_photos=use_live_photos and config.analysis.include_live_photos,
     )
     _analysis_time = _time.monotonic() - _pipeline_start
     selected_clips = pipeline_result.selected_clips
@@ -501,48 +455,32 @@ def run_pipeline_and_generate(
         print_error("Pipeline selected no clips")
         sys.exit(1)
 
-    from immich_memories.processing.timeline_budget import finalize_selected_timeline
-
-    selected_duration = sum(end - start for start, end in clip_segments.values())
-    timeline_plan = finalize_selected_timeline(
+    timing_binding = pipeline_result.stats.get("editorial_render_timing")
+    timeline_plan = final_timeline(
         timeline_plan,
-        selected_clips,
-        selected_duration=selected_duration,
-        title_settings=planning_titles,
+        timing_binding=timing_binding,
+        selected_clips=selected_clips,
+        clip_segments=clip_segments,
+        planning_titles=planning_titles,
         memory_type=memory_type,
-        transition_mode=transition,
-        transition_duration=config.defaults.transition_duration,
+        transition=transition,
+        config=config,
     )
-    if timeline_plan.divider_policy in {"all", "none"}:
-        _runner_logger.info(
-            "Final timeline: month dividers=%s (%d/%d), %.1fs estimated, %.1fs soft maximum",
-            timeline_plan.divider_policy,
-            timeline_plan.max_dividers,
-            timeline_plan.eligible_dividers,
-            min(selected_duration, timeline_plan.content_budget)
-            + timeline_plan.title_budget
-            - timeline_plan.transition_budget,
-            timeline_plan.soft_max_duration,
-        )
-    else:
-        _runner_logger.info(
-            "Final timeline: %.1fs content + %.1fs titles (%d dividers capped)",
-            selected_duration,
-            timeline_plan.title_budget,
-            timeline_plan.max_dividers,
-        )
 
     output_path = _name_after_recipe(
         output_path,
         selected_clips=selected_clips,
         clip_segments=clip_segments,
+        editorial_selections=pipeline_result.editorial_selections,
         memory_type=memory_type,
         date_range=date_range,
         target_duration=timeline_plan.target_duration,
     )
 
     print_success(f"Selected {len(selected_clips)} clips for final video")
-    report_pool_coverage(pipeline_result.coverage)
+    duration_realization = pipeline_result.stats.get("editorial_duration_realization")
+    if duration_warning := editorial_duration_warning(duration_realization):
+        print_warning(duration_warning)
 
     should_upload = resolved.should_upload
     album_name = album or config.upload.album_name
@@ -614,6 +552,7 @@ def run_pipeline_and_generate(
         upload_enabled=should_upload,
         upload_album=album_name,
         clip_segments=clip_segments,
+        editorial_selections=pipeline_result.editorial_selections,
         memory_type=memory_type,
         person_name=person_name,
         date_start=date_range.start,
@@ -627,6 +566,8 @@ def run_pipeline_and_generate(
         photo_assets=None,
         target_duration_seconds=duration,
         timeline_plan=timeline_plan,
+        editorial_render_timing=timing_binding,
+        editorial_duration_realization=duration_realization,
         progress_callback=gen_progress,
         phase_callback=generation_phase,
         completed_operational_phase=OperationalPhase.SELECTION,
@@ -655,9 +596,9 @@ def run_pipeline_and_generate(
             analysis_seconds=_analysis_time,
             generation_seconds=_gen_time,
             eligible=len(all_candidates),
-            deeply_analyzed=pipeline.last_deep_analysis_count,
             planned=len(selected_clips),
             counters=llm_metrics.active(),
+            preparation_tier=config.editorial.preparation.tier,
         )
     )
 
@@ -705,6 +646,7 @@ def _name_after_recipe(
     *,
     selected_clips: list,
     clip_segments: dict,
+    editorial_selections: tuple[EditorialSelection, ...] = (),
     memory_type: str | None,
     date_range,
     target_duration: float,
@@ -721,6 +663,10 @@ def _name_after_recipe(
         asset_id = clip.asset.id
         start, end = clip_segments.get(asset_id, (0.0, 0.0))
         clips.append((asset_id, start, end))
+    rendering = tuple(
+        (selection.asset_id, selection.render_mode, selection.render_frame_seconds)
+        for selection in editorial_selections
+    )
 
     digest = recipe_hash(
         memory_type=memory_type,
@@ -728,5 +674,6 @@ def _name_after_recipe(
         date_end=date_range.end.date() if date_range else None,
         target_duration=target_duration,
         clips=clips,
+        extras={"editorial_rendering": rendering} if rendering else None,
     )
     return apply_recipe_hash(output_path, digest)

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from immich_memories.api.models import Asset, AssetType, VideoClipInfo
-from immich_memories.ui.pages.clip_grid import grid_item_date, grid_item_id
+from immich_memories.ui.pages.clip_grid import grid_item_date
 from immich_memories.ui.state import AppState
 
 
@@ -57,7 +57,7 @@ class TestPhotoSelectionState:
 
 
 class TestGridItemHelpers:
-    """Test grid_item_date and grid_item_id with both types."""
+    """Test grid_item_date with both types."""
 
     def test_grid_item_date_for_clip(self):
         from tests.conftest import make_clip
@@ -70,16 +70,6 @@ class TestGridItemHelpers:
         dt = datetime(2024, 6, 15, tzinfo=UTC)
         photo = make_photo_asset("p1", file_created_at=dt)
         assert grid_item_date(photo) == dt
-
-    def test_grid_item_id_for_clip(self):
-        from tests.conftest import make_clip
-
-        clip = make_clip("v1")
-        assert grid_item_id(clip) == "v1"
-
-    def test_grid_item_id_for_photo(self):
-        photo = make_photo_asset("p1")
-        assert grid_item_id(photo) == "p1"
 
 
 class TestPhotoGridItemSorting:
@@ -161,53 +151,3 @@ class TestBuildHeaderLabel:
         state.photo_assets = [make_photo_asset("p1"), make_photo_asset("p2")]
         clips = [make_clip("v1")]
         assert _build_header_label(clips, state) == "1 Videos, 2 Photos Found"
-
-
-class TestFilterSelectedPhotos:
-    """Photos filtered by selected_photo_ids before passing to generation."""
-
-    def test_only_selected_photos_passed(self):
-        from immich_memories.ui.pages._step4_generate import _filter_selected_photos
-
-        state = AppState()
-        photos = [make_photo_asset("p1"), make_photo_asset("p2"), make_photo_asset("p3")]
-        state.photo_assets = photos
-        state.selected_photo_ids = {"p1", "p3"}
-        state.include_photos = True
-
-        filtered = _filter_selected_photos(state)
-        assert filtered is not None
-        assert len(filtered) == 2
-        assert {p.id for p in filtered} == {"p1", "p3"}
-
-    def test_empty_selection_yields_empty_list(self):
-        from immich_memories.ui.pages._step4_generate import _filter_selected_photos
-
-        state = AppState()
-        state.photo_assets = [make_photo_asset("p1")]
-        state.selected_photo_ids = set()
-        state.include_photos = True
-
-        filtered = _filter_selected_photos(state)
-        assert filtered is not None
-        assert filtered == []
-
-    def test_photos_disabled_yields_none(self):
-        from immich_memories.ui.pages._step4_generate import _filter_selected_photos
-
-        state = AppState()
-        state.photo_assets = [make_photo_asset("p1")]
-        state.include_photos = False
-
-        result = _filter_selected_photos(state)
-        assert result is None
-
-    def test_no_photo_assets_yields_none(self):
-        from immich_memories.ui.pages._step4_generate import _filter_selected_photos
-
-        state = AppState()
-        state.include_photos = True
-        state.photo_assets = []
-
-        result = _filter_selected_photos(state)
-        assert result is None

@@ -34,7 +34,6 @@ def _make_engine(settings=None):
     from immich_memories.processing.assembly_engine import AssemblyEngine
     from immich_memories.processing.clip_encoder import ClipEncoder
     from immich_memories.processing.ffmpeg_prober import FFmpegProber
-    from immich_memories.processing.filter_builder import FilterBuilder
 
     def _no_face(_path: Path) -> tuple[float, float] | None:
         return None
@@ -43,12 +42,10 @@ def _make_engine(settings=None):
         settings = _make_settings()
     prober = FFmpegProber(settings)
     encoder = ClipEncoder(settings=settings, prober=prober, face_center_fn=_no_face)
-    filter_builder = FilterBuilder(settings=settings, prober=prober, face_center_fn=_no_face)
     return AssemblyEngine(
         settings=settings,
         prober=prober,
         encoder=encoder,
-        filter_builder=filter_builder,
     )
 
 
@@ -264,25 +261,3 @@ class TestCreateAssemblyContext:
 
         assert ctx.target_w > 0
         assert ctx.target_h > 0
-
-
-# ---------------------------------------------------------------------------
-# decide_transitions
-# ---------------------------------------------------------------------------
-
-
-class TestDecideTransitions:
-    def test_two_clips_produce_one_transition(self, test_clip_720p: Path):
-        engine = _make_engine()
-        clips = [
-            _make_clip(test_clip_720p, duration=3.0),
-            _make_clip(test_clip_720p, duration=3.0),
-        ]
-        transitions = engine.decide_transitions(clips)
-        assert len(transitions) == 1
-        assert transitions[0] in ("fade", "cut")
-
-    def test_single_clip_empty_transitions(self, test_clip_720p: Path):
-        engine = _make_engine()
-        transitions = engine.decide_transitions([_make_clip(test_clip_720p)])
-        assert transitions == []

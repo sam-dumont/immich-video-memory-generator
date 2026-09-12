@@ -13,25 +13,19 @@ class TestPhotoConfig:
     """Tests for PhotoConfig Pydantic model."""
 
     def test_defaults(self):
-        """Sensible defaults: enabled, auto mode, 50% cap, 4s duration."""
+        """Sensible defaults: enabled, 4s duration."""
         cfg = PhotoConfig()
         assert cfg.enabled is True
-        assert cfg.max_ratio == 0.50
         assert cfg.duration == 4.0
 
     def test_boundary_values_accepted(self):
         """Boundary values at min/max are accepted."""
-        cfg = PhotoConfig(max_ratio=0.0, duration=1.0)
-        assert cfg.max_ratio == 0.0
-
-        cfg = PhotoConfig(max_ratio=1.0, duration=10.0)
-        assert cfg.max_ratio == 1.0
+        assert PhotoConfig(duration=1.0).duration == 1.0
+        assert PhotoConfig(duration=10.0).duration == 10.0
 
     @pytest.mark.parametrize(
         "field,value,match",
         [
-            pytest.param("max_ratio", -0.1, "greater than", id="ratio-negative"),
-            pytest.param("max_ratio", 1.1, "less than", id="ratio-over-1"),
             pytest.param("duration", 0.5, "greater than", id="duration-too-short"),
             pytest.param("duration", 20.0, "less than", id="duration-too-long"),
         ],
@@ -51,7 +45,6 @@ class TestPhotoConfigInConfig:
 
         config = Config()
         assert config.photos.enabled is True
-        assert config.photos.max_ratio == 0.50
 
     def test_yaml_roundtrip_with_photos(self, tmp_path):
         """PhotoConfig survives a YAML save → load cycle."""
@@ -69,10 +62,10 @@ class TestPhotoConfigInConfig:
         from immich_memories.config_loader import Config
 
         config_path = tmp_path / "config.yaml"
-        config_path.write_text("photos:\n  enabled: true\n  max_ratio: 0.5\n")
+        config_path.write_text("photos:\n  enabled: true\n  duration: 5.0\n")
         loaded = Config.from_yaml(config_path)
         assert loaded.photos.enabled is True
-        assert loaded.photos.max_ratio == 0.5
+        assert loaded.photos.duration == 5.0
 
 
 class TestAssemblyClipIsPhoto:

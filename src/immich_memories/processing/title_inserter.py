@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
@@ -34,6 +35,47 @@ class TitleInserter:
         self.settings = settings
         self.prober = prober
         self.background_renderer = TitleBackgroundRenderer(settings, prober)
+        self._certified_intervals = settings.certified_content_intervals.copy()
+
+    def _validate_certified_content(self, clips: list[AssemblyClip]) -> None:
+        """Check source identity and exact extracted length after title composition."""
+        for asset_id, interval in self._certified_intervals.items():
+            if (
+                not isinstance(asset_id, str)
+                or not asset_id
+                or len(interval) != 2
+                or any(
+                    isinstance(value, bool)
+                    or not isinstance(value, (int, float))
+                    or not math.isfinite(value)
+                    for value in interval
+                )
+                or not 0 <= interval[0] < interval[1]
+            ):
+                raise ValueError("Invalid certified editorial Live assembly interval")
+            matches = [clip for clip in clips if clip.asset_id == asset_id]
+            if len(matches) != 1 or matches[0].is_title_screen:
+                raise ValueError("Certified editorial Live source was lost or duplicated by titles")
+            clip = matches[0]
+            if (
+                isinstance(clip.duration, bool)
+                or not math.isfinite(clip.duration)
+                or clip.duration != interval[1] - interval[0]
+                or clip.input_seek != 0.0
+            ):
+                raise ValueError(
+                    "Certified editorial Live interval changed during title composition"
+                )
+
+    def _assemble_certified_content(
+        self,
+        clips: list[AssemblyClip],
+        output_path: Path,
+        assemble_fn: AssembleFn,
+        progress_callback: Callable[[float, str], None] | None,
+    ) -> Path:
+        self._validate_certified_content(clips)
+        return assemble_fn(clips, output_path, progress_callback)
 
     @staticmethod
     def _trim_first_clip(clips: list[AssemblyClip], trim_seconds: float) -> None:
@@ -45,7 +87,7 @@ class TitleInserter:
             # WHY replace(): AssemblyClip carries sixteen fields and rebuilding
             # it by hand copied eight, silently dropping a user-set
             # rotation_override, the has_music flag the ducking pass depends on,
-            # has_speech, is_photo and the planned outgoing_transition. Trimming
+            # is_photo and the planned outgoing_transition. Trimming
             # a clip should change its start and its length, nothing else.
             clips[0] = replace(
                 first,
@@ -158,7 +200,9 @@ class TitleInserter:
             last = final_clips[-1]
             trim_dur = (
                 last.duration - source_seconds
-                if ending_clip and last.duration > source_seconds + 1.0
+                if ending_clip
+                and last.asset_id not in self._certified_intervals
+                and last.duration > source_seconds + 1.0
                 else last.duration
             )
             # Same here: the hand-built copy also lost the clip's place, so a
@@ -180,39 +224,6 @@ class TitleInserter:
         logger.info(f"Generated ending screen: {ending_screen.path}")
 
     # ------------------------------------------------------------------
-    # Orientation / resolution detection
-    # ------------------------------------------------------------------
-
-    def get_orientation_from_clips(self, clips: list[AssemblyClip]) -> str:
-        """Detect dominant video orientation from first 10 clips."""
-        portrait_count = 0
-        landscape_count = 0
-        for clip in clips[:10]:
-            res = self.prober.get_video_resolution(clip.path)
-            if res:
-                w, h = res
-                if h > w:
-                    portrait_count += 1
-                elif w > h:
-                    landscape_count += 1
-        if portrait_count > landscape_count:
-            return "portrait"
-        return "landscape"
-
-    def get_resolution_tier(self, clips: list[AssemblyClip]) -> str:
-        """Detect resolution tier from first 10 clips."""
-        max_height = 0
-        for clip in clips[:10]:
-            res = self.prober.get_video_resolution(clip.path)
-            if res:
-                max_height = max(max_height, max(res))
-        if max_height >= 2160:
-            return "4k"
-        elif max_height >= 1080:
-            return "1080p"
-        return "720p"
-
-    # ------------------------------------------------------------------
     # Main entry point
     # ------------------------------------------------------------------
 
@@ -230,6 +241,60 @@ class TitleInserter:
         ctx = create_assembly_context(self.settings, self.prober, clips, target_w, target_h)
         hdr_type = ctx.hdr_type if self.settings.encoding_plan.hdr else None
         return target_w, target_h, detected_fps, hdr_type
+
+    def _opening_title(
+        self,
+        clips: list[AssemblyClip],
+        generator: Any,
+        title_settings: Any,
+        title_output_dir: Path,
+        canvas: tuple[int, int, int, str | None],
+        progress_callback: Callable[[float, str], None] | None,
+    ) -> tuple[Any, bool, Path | None]:
+        """A trip map or the standard opening; only the standard one is content-backed."""
+        target_w, target_h, detected_fps, hdr_type = canvas
+        use_content_bg = (
+            getattr(title_settings, "title_background", "content_backed") == "content_backed"
+        )
+        is_trip = getattr(title_settings, "memory_type", None) == "trip"
+        if is_trip and title_settings.trip_locations and title_settings.trip_title_text:
+            title_screen = generator.generate_trip_map_screen(
+                locations=title_settings.trip_locations,
+                title_text=title_settings.trip_title_text,
+                home_lat=getattr(title_settings, "home_lat", None),
+                home_lon=getattr(title_settings, "home_lon", None),
+                location_names=getattr(title_settings, "trip_location_names", None) or None,
+            )
+            logger.info(f"Generated trip map intro: {title_screen.path}")
+            return title_screen, False, None  # trip maps don't use content-backed
+
+        content_clip = None
+        if use_content_bg:
+            content_clip = self.background_renderer.render_first_clip(
+                clips,
+                title_output_dir,
+                target_w,
+                target_h,
+                detected_fps,
+                hdr_type,
+            )
+
+        def _title_frame_progress(frame: int, total: int) -> None:
+            if progress_callback:
+                progress_callback(0.35 * frame / max(total, 1), "Generating title screen...")
+
+        title_screen = generator.generate_title_screen(
+            year=title_settings.year,
+            month=title_settings.month,
+            start_date=title_settings.start_date,
+            end_date=title_settings.end_date,
+            person_name=title_settings.person_name,
+            birthday_age=title_settings.birthday_age,
+            content_clip_path=content_clip,
+            frame_progress=_title_frame_progress,
+        )
+        logger.info(f"Generated title screen: {title_screen.path}")
+        return title_screen, use_content_bg, content_clip
 
     def assemble_with_titles(
         self,
@@ -249,18 +314,23 @@ class TitleInserter:
         Returns:
             Path to assembled video.
         """
+        self._validate_certified_content(clips)
         if not clips:
             raise ValueError("No clips provided")
 
         title_settings = self.settings.title_screens
         if title_settings is None or not title_settings.enabled:
-            return assemble_fn(clips, output_path, progress_callback)
+            return self._assemble_certified_content(
+                clips, output_path, assemble_fn, progress_callback
+            )
 
         try:
             from immich_memories.titles import TitleScreenGenerator
         except ImportError as e:
             logger.warning(f"Title screens not available: {e}")
-            return assemble_fn(clips, output_path, progress_callback)
+            return self._assemble_certified_content(
+                clips, output_path, assemble_fn, progress_callback
+            )
 
         target_w, target_h, detected_fps, hdr_type = self._resolve_assembly_params(clips)
         title_config = self._build_title_config(title_settings, target_w, target_h, detected_fps)
@@ -294,46 +364,14 @@ class TitleInserter:
             progress_callback(0.0, "Generating title screen...")
 
         is_trip = getattr(title_settings, "memory_type", None) == "trip"
-        use_content_bg = (
-            getattr(title_settings, "title_background", "content_backed") == "content_backed"
+        title_screen, use_content_bg, content_clip = self._opening_title(
+            clips,
+            generator,
+            title_settings,
+            title_output_dir,
+            (target_w, target_h, detected_fps, hdr_type),
+            progress_callback,
         )
-        content_clip = None
-        if is_trip and title_settings.trip_locations and title_settings.trip_title_text:
-            title_screen = generator.generate_trip_map_screen(
-                locations=title_settings.trip_locations,
-                title_text=title_settings.trip_title_text,
-                home_lat=getattr(title_settings, "home_lat", None),
-                home_lon=getattr(title_settings, "home_lon", None),
-                location_names=getattr(title_settings, "trip_location_names", None) or None,
-            )
-            use_content_bg = False  # trip maps don't use content-backed
-            logger.info(f"Generated trip map intro: {title_screen.path}")
-        else:
-            if use_content_bg:
-                content_clip = self.background_renderer.render_first_clip(
-                    clips,
-                    title_output_dir,
-                    target_w,
-                    target_h,
-                    detected_fps,
-                    hdr_type,
-                )
-
-            def _title_frame_progress(frame: int, total: int) -> None:
-                if progress_callback:
-                    progress_callback(0.35 * frame / max(total, 1), "Generating title screen...")
-
-            title_screen = generator.generate_title_screen(
-                year=title_settings.year,
-                month=title_settings.month,
-                start_date=title_settings.start_date,
-                end_date=title_settings.end_date,
-                person_name=title_settings.person_name,
-                birthday_age=title_settings.birthday_age,
-                content_clip_path=content_clip,
-                frame_progress=_title_frame_progress,
-            )
-            logger.info(f"Generated title screen: {title_screen.path}")
 
         final_clips: list[AssemblyClip] = [
             AssemblyClip(
@@ -349,7 +387,7 @@ class TitleInserter:
         ]
 
         # Trim 0.5s from first clip (used in title slow-mo)
-        if use_content_bg and content_clip:
+        if use_content_bg and content_clip and clips[0].asset_id not in self._certified_intervals:
             self._trim_first_clip(clips, 0.5)
 
         _t_title_done = _time.monotonic()
@@ -389,7 +427,29 @@ class TitleInserter:
         if progress_callback:
             progress_callback(0.50, "Encoding video...")
         logger.info(f"Assembling {len(final_clips)} clips (including title screens)")
+        result = self._encode_composed_clips(
+            final_clips, output_path, assemble_fn, progress_callback, (target_w, target_h)
+        )
+        _t_encode_done = _time.monotonic()
+        title_dur = _t_title_done - _t_title_start
+        ending_dur = _t_ending_done - _t_title_done
+        encode_dur = _t_encode_done - _t_ending_done
+        total_dur = _t_encode_done - _t_title_start
+        logger.info(
+            f"Assembly timing ({len(final_clips)} clips, {total_dur:.1f}s): "
+            f"title={title_dur:.1f}s, ending={ending_dur:.1f}s, encode={encode_dur:.1f}s"
+        )
+        return result
 
+    def _encode_composed_clips(
+        self,
+        final_clips: list[AssemblyClip],
+        output_path: Path,
+        assemble_fn: AssembleFn,
+        progress_callback: Callable[[float, str], None] | None,
+        resolution: tuple[int, int],
+    ) -> Path:
+        """Encode the composed sequence, leaving the caller's settings as they were."""
         # WHY: pre-decide transitions for the full clip list so the assembler
         # doesn't call get_transition_types (which rebuilds HDR context from
         # the extended clip list, causing HDR type index mismatches).
@@ -405,7 +465,7 @@ class TitleInserter:
             self.settings.predecided_transitions,
         )
         self.settings.transition = TransitionType.SMART
-        self.settings.target_resolution = (target_w, target_h)
+        self.settings.target_resolution = resolution
         self.settings.auto_resolution = False
         self.settings.predecided_transitions = transitions
 
@@ -416,17 +476,9 @@ class TitleInserter:
                 progress_callback(0.50 + pct * 0.50, msg)
 
         try:
-            result = assemble_fn(final_clips, output_path, _scaled_encode_cb)
-            _t_encode_done = _time.monotonic()
-            title_dur = _t_title_done - _t_title_start
-            ending_dur = _t_ending_done - _t_title_done
-            encode_dur = _t_encode_done - _t_ending_done
-            total_dur = _t_encode_done - _t_title_start
-            logger.info(
-                f"Assembly timing ({len(final_clips)} clips, {total_dur:.1f}s): "
-                f"title={title_dur:.1f}s, ending={ending_dur:.1f}s, encode={encode_dur:.1f}s"
+            return self._assemble_certified_content(
+                final_clips, output_path, assemble_fn, _scaled_encode_cb
             )
-            return result
         finally:
             (
                 self.settings.transition,

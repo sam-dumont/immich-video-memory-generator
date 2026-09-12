@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from enum import StrEnum
 from typing import NamedTuple
 
@@ -57,10 +57,14 @@ class DateRange(NamedTuple):
         )
 
     def contains(self, dt: datetime | date) -> bool:
-        """Check if a datetime falls within this range."""
+        """Compare inclusive instants, assuming naive values and dates are UTC."""
         if isinstance(dt, date) and not isinstance(dt, datetime):
             dt = datetime.combine(dt, datetime.min.time())
-        return self.start <= dt <= self.end
+
+        def as_utc(value: datetime) -> datetime:
+            return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+        return as_utc(self.start) <= as_utc(dt) <= as_utc(self.end)
 
 
 @dataclass

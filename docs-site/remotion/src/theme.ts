@@ -10,6 +10,7 @@ export const COLORS = {
   success: "#5eea9a",
   warning: "#fcc848",
   error: "#ff7878",
+  analysis: "#c084fc",
   border: "rgba(255, 255, 255, 0.10)",
   borderLight: "rgba(255, 255, 255, 0.07)",
   titleBar: "#1e1e32",
@@ -18,17 +19,8 @@ export const COLORS = {
 
 export const FPS = 30;
 
-// Beat map: bar number → frame (95.7 BPM, ~2.5s/bar)
-export const BEATS = {
-  bar1: 0,
-  bar3: 158, // 5.3s — Config
-  bar5: 310, // 10.3s — Grid
-  bar8: 538, // 17.9s — Analysis
-  bar10: 689, // 23.0s — Options
-  bar11: 765, // 25.5s — Generating
-  bar13: 916, // 30.5s — Complete
-  bar14: 1006, // 33.5s — CLI
-  bar15: 1156, // 38.5s — Outro
-  end: 1350, // 45.0s — Music fade
-  musicEnd: 1500, // 50.0s
-} as const;
+// The whole demo, in frames. Scene lengths live in Composition.tsx's D map.
+export const TOTAL_FRAMES = 1330;
+
+// Music fades out over the last 5 seconds.
+export const MUSIC_FADE_START = 1180;

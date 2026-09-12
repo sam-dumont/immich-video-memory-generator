@@ -16,6 +16,7 @@ import click
 
 from immich_memories.cli._flags import calendar_day, output_path
 from immich_memories.cli.generate_resolution import SHORT_FORM_SECONDS
+from immich_memories.memory_types.registry import OFFERED_MEMORY_TYPES
 
 FC = TypeVar("FC", bound=Callable[..., Any])
 
@@ -61,23 +62,28 @@ def scope_options(command: FC) -> FC:
         ),
         click.option("--person", "-p", type=str, multiple=True, help="Person name (repeatable)"),
         click.option(
-            "--memory-type",
-            type=click.Choice(
-                [
-                    "year_in_review",
-                    "season",
-                    "person_spotlight",
-                    "multi_person",
-                    "monthly_highlights",
-                    "on_this_day",
-                    "trip",
-                    "holiday",
-                    "then_and_now",
-                    "special_day",
-                ]
-            ),
+            "--people-expression",
+            "person_expression",
+            type=str,
             default=None,
-            help="Memory type preset",
+            help='Grouped people condition, e.g. ("Person A" OR "Person B") AND "Person C". '
+            "Use exact library names; each asset must match.",
+        ),
+        click.option(
+            "--person-match",
+            type=click.Choice(["and", "or"]),
+            default="and",
+            show_default=True,
+            help=(
+                "With several --person values, require everyone in each asset "
+                "(and) or accept any named person (or)"
+            ),
+        ),
+        click.option(
+            "--memory-type",
+            type=click.Choice([memory_type.value for memory_type in OFFERED_MEMORY_TYPES]),
+            default=None,
+            help="Memory type preset (album takes its pool from --from-album)",
         ),
         click.option(
             "--holiday",
@@ -142,7 +148,7 @@ def output_options(command: FC) -> FC:
             "-t",
             type=click.Choice(["smart", "cut", "crossfade", "none"]),
             default="smart",
-            help="Transition style (default: smart — mix of fades & cuts)",
+            help="Transition style (default: smart, a mix of fades and cuts)",
         ),
         click.option(
             "--resolution",
@@ -200,14 +206,17 @@ def output_options(command: FC) -> FC:
 def run_options(command: FC) -> FC:
     """How far the run goes, where the result lands, and what is written over the clips."""
     options = [
-        click.option("--dry-run", is_flag=True, help="Show what would be done without generating"),
+        click.option(
+            "--dry-run",
+            is_flag=True,
+            help="Discover inputs and show preparation needs without selection or generation",
+        ),
         click.option(
             "--no-render",
             is_flag=True,
             help=(
-                "Run the real selection — analysis, verify, judge, review — and stop "
-                "before encoding. Unlike --dry-run, which uses cached analysis only and "
-                "skips the verify pass, this picks the clips it would actually ship"
+                "Run story-first selection and its audience and media checks, then stop "
+                "before encoding. Unlike --dry-run, this picks the clips it would actually ship"
             ),
         ),
         click.option(
@@ -237,7 +246,10 @@ def run_options(command: FC) -> FC:
             help="Keep intermediate files for debugging",
         ),
         click.option(
-            "--privacy-mode", is_flag=True, default=False, help="Blur faces and mute speech"
+            "--privacy-mode",
+            is_flag=True,
+            default=False,
+            help="Demo mode: blur every clip frame, scramble the audio, fake the person names",
         ),
         click.option(
             "--title",
@@ -264,7 +276,7 @@ def run_options(command: FC) -> FC:
 
 
 def selection_options(command: FC) -> FC:
-    """What the candidate pool may hold, and how hard selection works on it."""
+    """What the candidate pool may hold."""
     options = [
         click.option(
             "--include-live-photos/--no-live-photos",
@@ -279,29 +291,19 @@ def selection_options(command: FC) -> FC:
             help="Include photos as animated Ken Burns clips (blur background, face-aware pan)",
         ),
         click.option(
+            "--accept-any-provenance",
+            is_flag=True,
+            default=False,
+            help=(
+                "Keep forwarded and re-encoded media for this memory; date, person, "
+                "privacy, and Live Photo boundaries still apply"
+            ),
+        ),
+        click.option(
             "--photo-duration",
             type=float,
             default=None,
             help="Duration per photo clip in seconds (default: 4.0)",
-        ),
-        click.option(
-            "--refinement-passes",
-            type=click.IntRange(1, 20),
-            default=None,
-            help=(
-                "How many times selection may verify, judge and review before settling "
-                "(default: 10). The biggest dial on warm-run time, and on the bill when "
-                "llm.base_url points at a paid API"
-            ),
-        ),
-        click.option(
-            "--analysis-depth",
-            type=click.Choice(["auto", "fast", "thorough"]),
-            default=None,
-            help=(
-                "Analysis depth: auto (full analysis for manageable pools), "
-                "fast (favorites first), or thorough (every eligible clip)"
-            ),
         ),
     ]
     return _apply(command, options)
@@ -326,7 +328,7 @@ def per_memory_type_options(command: FC) -> FC:
             "--years-back",
             type=int,
             default=None,
-            help="Years to look back for --birthday, on_this_day, holiday or then_and_now",
+            help="Years to look back for --birthday, on_this_day or holiday",
         ),
         click.option(
             "--near-date",
@@ -335,14 +337,22 @@ def per_memory_type_options(command: FC) -> FC:
             help="Select trip closest to this date (YYYY-MM-DD, use with --memory-type trip)",
         ),
         click.option(
+            "--event-id",
+            type=str,
+            default=None,
+            help="Exact catalogue event ID (use with --memory-type special_day and --day)",
+        ),
+        click.option(
             "--day",
             type=click.DateTime(formats=["%Y-%m-%d"]),
             callback=calendar_day,
             default=None,
             help=(
-                "The catalogued day to generate (YYYY-MM-DD, use with --memory-type "
-                "special_day). Its title comes from the catalogue, not from here: run "
-                "`immich-memories days-due` to see which days are in it"
+                "The day this memory is about (YYYY-MM-DD). With --memory-type "
+                "special_day it names a catalogued day, whose title comes from the "
+                "catalogue rather than from here (`immich-memories days-due` lists "
+                "them). With --memory-type on_this_day it is the anniversary to look "
+                "back from, so the cut is reproducible; without it, today"
             ),
         ),
     ]
@@ -361,6 +371,5 @@ def automation_options(command: FC) -> FC:
         click.option("--memory-key", type=str, default=None, hidden=True),
         click.option("--memory-category", type=str, default=None, hidden=True),
         click.option("--automation-attempt-id", type=str, default=None, hidden=True),
-        click.option("--automation-target-date", type=str, default=None, hidden=True),
     ]
     return _apply(command, options)

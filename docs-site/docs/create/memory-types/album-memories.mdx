@@ -5,7 +5,7 @@ sidebar_label: "Album Memories"
 # Album Memories
 
 Generate a memory from one Immich album instead of a date range. The album *is* the
-selection — nothing outside it is considered, and nothing inside it is filtered out by
+selection: nothing outside it is considered, and nothing inside it is filtered out by
 date.
 
 This is the right mode when you have already curated the moments: a birthday, a wedding,
@@ -13,18 +13,18 @@ a single trip, a school year.
 
 ## Web UI
 
-Pick **Album** on step 1 and choose from the dropdown. It lists every album that
-has assets in it, largest first, with the item count beside each name — real
+Pick **Album** on the [Memory page](../web-ui/memory.mdx) and choose from the dropdown. It lists every album that
+has assets in it, largest first, with the item count beside each name: real
 libraries carry several albums with the same name, so the count tells them apart
 and the selection is stored by ID rather than by name.
 
 No date range is chosen: the album's own assets define the span, and the target
 duration is scaled to how much is in the album (roughly 4 seconds an item,
-capped at 10 minutes). Turn off **Auto** on step 2 to set your own.
+capped at 10 minutes). Turn off **Auto duration** to set your own.
 
-The title defaults to the album's name, same as the CLI — the LLM title
+The title defaults to the album's name, same as the CLI: the LLM title
 suggestion is skipped, since a name you typed yourself beats one it invents.
-Edit it on step 3 if you want something else.
+Edit it on the options page if you want something else.
 
 ## CLI
 
@@ -39,35 +39,40 @@ immich-memories generate --from-album 59080965-22f0-46a4-be67-135692a9f584
 The video is titled after the album, and named `album_<slug>.mp4` in your output
 directory. `--title` still overrides the title if you want something else.
 
+`--from-album` already makes this an album memory, so `--memory-type album` is
+optional: it is accepted, and it is the only memory type that can accompany the
+flag. On its own it is an error: an album memory has no window to fall back on.
+
 Because the album defines its own contents, `--from-album` cannot be combined with
-`--year`, `--start`/`--end`, `--period`, `--birthday`, `--season`, `--month`,
-`--memory-type` or `--person`. Everything else — `--duration`, `--orientation`,
-`--music`, `--no-music`, `--upload-to-immich`, `--dry-run` — works as usual.
+`--year`, `--start`/`--end`, `--period`, `--birthday`, `--season`, `--month`, any
+other `--memory-type` or `--person`. Everything else (`--duration`,
+`--orientation`, `--music`, `--no-music`, `--upload-to-immich`, `--dry-run`)
+works as usual.
 
 ## What gets used
 
 | Asset in the album | How it is used |
 |---|---|
-| Video | Analyzed and cut like any other clip |
+| Video | Read and cut like any other source |
 | Live Photo | Bursts merged into one moving clip (as everywhere else) |
-| Photo | Animated still, subject to the usual photo share of the runtime |
-| A Live Photo's video component | Ignored — it is already part of the merged clip |
+| Photo | Animated still, held for the seconds the editor grants it |
+| A Live Photo's video component | Ignored: it is already part of the merged clip |
 
 With Live Photo merging turned off, a Live Photo is used as a still rather than being
 dropped: you picked these assets by hand, so nothing silently disappears.
 
 ## Shared albums
 
-An album someone shared with you works exactly like one of your own — Immich lists
+An album someone shared with you works exactly like one of your own: Immich lists
 shared albums alongside yours, so pass the name or ID as usual:
 
 ```bash
-immich-memories generate --from-album "Paris-Roubaix Challenge 2026"
+immich-memories generate --from-album "Summer 2025"
 ```
 
 ## Duration
 
-Without `--duration`, the runtime is planned from the album's own media — the same
+Without `--duration`, the runtime is planned from the album's own media: the same
 media-aware planner trips use, bounded to 60–300 s and capped by what the album can
 honestly fill. A 10-asset album will not be stretched into a five-minute video.
 
@@ -93,7 +98,7 @@ Immich returns newest assets first, so a larger album is truncated to its most r
 assets, and the run says so:
 
 ```
-Album exceeds 10000 assets per type — using the most recent ones
+Album exceeds 10000 assets per type, using the most recent ones
 ```
 
 If you hit that line, you probably want a date range rather than an album. Raise the
@@ -105,5 +110,5 @@ advanced:
     max_album_assets: 25000
 ```
 
-For reference, on a real library: a 1,052-asset trip album reads in 0.1 s and ~12 MB; a
-37,318-asset *Recents* album reads in 5.6 s and ~110 MB with the default limit.
+The 9 KB is the measured figure; multiply it by your album size for the memory. The read times
+that used to be quoted here had no provenance, so they are gone.

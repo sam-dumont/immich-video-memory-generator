@@ -1,14 +1,18 @@
 graph TB
-    subgraph Linux["🐧 Linux Server"]
+    subgraph Linux["🐧 Linux Server · NVIDIA GPU"]
         subgraph Docker["Docker + nvidia-container-toolkit"]
             Immich["📷 Immich"]
             subgraph Memories["🎬 Immich Memories"]
                 NVENC["⚡ NVENC<br/>hardware encoding"]
-                CUDA["🔲 CUDA<br/>face detection"]
+                Heads["🔎 DINOv2 heads<br/>+ CPU detectors"]
             end
             MusicGen["🎵 MusicGen API<br/>optional"]
         end
+        Reader["🧠 vision reader<br/>on the GPU"]
+        Caption["📝 caption server"]
     end
 
     Immich -->|API| Memories
+    Memories --> Reader
+    Memories --> Caption
     Memories -.->|optional| MusicGen

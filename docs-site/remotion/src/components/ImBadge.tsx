@@ -5,8 +5,9 @@ import { MaterialIcon } from "./MaterialIcon";
 
 type Props = {
   text: string;
-  variant: "success" | "warning" | "error" | "info";
+  variant: "success" | "warning" | "error" | "info" | "analysis";
   icon?: string;
+  style?: React.CSSProperties;
 };
 
 const BADGE_COLORS = {
@@ -14,9 +15,10 @@ const BADGE_COLORS = {
   warning: { bg: "rgba(251, 191, 36, 0.15)", text: COLORS.warning },
   error: { bg: "rgba(248, 113, 113, 0.15)", text: COLORS.error },
   info: { bg: "rgba(107, 143, 232, 0.15)", text: COLORS.primary },
+  analysis: { bg: "rgba(192, 132, 252, 0.15)", text: COLORS.analysis },
 };
 
-export const ImBadge: React.FC<Props> = ({ text, variant, icon }) => {
+export const ImBadge: React.FC<Props> = ({ text, variant, icon, style }) => {
   const c = BADGE_COLORS[variant];
   return (
     <span
@@ -31,6 +33,7 @@ export const ImBadge: React.FC<Props> = ({ text, variant, icon }) => {
         display: "inline-flex",
         alignItems: "center",
         gap: 6,
+        ...style,
       }}
     >
       {icon && <MaterialIcon name={icon} size={14} color={c.text} />}

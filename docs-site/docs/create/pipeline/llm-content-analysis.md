@@ -1,57 +1,40 @@
 ---
 sidebar_position: 7
-title: LLM Content Analysis
+title: LLM Titles and Mood
 ---
 
-# LLM Content Analysis
+# LLM Titles and Mood
 
-Optional feature that uses a vision LLM to understand *what's actually happening* in your clips. A birthday party scores differently than a parking lot. Face detection can tell you someone's there; an LLM can tell you they're blowing out candles.
+The `llm` section names one OpenAI-compatible model and three things read it: the editor's
+period readings (see [The Curator](./the-curator.md) and
+[Editorial annotation setup](../../deploy/configuration/editorial-preparation.md)), the trip
+titles below, and the mood detection the music pipeline uses. This page covers the last two.
 
 ## Any OpenAI-compatible API
 
-This works with anything that speaks the OpenAI chat completions API:
+Five provider values, three code paths. `ollama` speaks Ollama's native API, `anthropic` speaks
+`/v1/messages`, and `openai-compatible`, `openai` and `zai` all speak `/v1/chat/completions`,
+so anything that serves that endpoint works: mlx-vlm, [oMLX](https://github.com/jundot/omlx),
+vLLM, Ollama's compatibility layer, Groq, OpenAI itself.
 
-- **[mlx-vlm](https://github.com/Blaizzy/mlx-vlm)**: local on Apple Silicon, no API costs
-- **[Ollama](https://ollama.ai)**: local, supports vision models like LLaVA
-- **[vLLM](https://vllm.ai)**: self-hosted, great for NVIDIA GPUs
-- **[Groq](https://groq.com)**: cloud, fast inference
-- **Any other provider** with an OpenAI-compatible endpoint
+`openai` and `zai` are the same code path with the vendor's base URL and reasoning dialect filled
+in, and only where you left the field at its default. `openai-compatible` fills in nothing: its
+`base_url` stays `http://localhost:8080/v1`, which is the app's own port, so set it.
 
-## How it works
-
-1. For each video segment, 1-4 frames are extracted (configurable)
-2. Frames are sent to the vision LLM with a prompt asking for content description and interest rating
-3. The LLM response is parsed into a score
-4. That score is weighted and added to the overall [interest score](./clip-selection-scoring.md)
-
-### What the model returns per segment
-
-| field | what it is |
-|---|---|
-| `description` | what is happening in the scene |
-| `category` | exactly one of `people`, `animal`, `landscape`, `object`, `screen` — drives the subject policy |
-| `subjects` | short lowercase nouns in frame (`["child", "dog", "beach"]`) |
-| `setting` | exactly one of `indoor_home`, `indoor_public`, `outdoor_nature`, `outdoor_urban`, `vehicle`, `water` |
-| `activities` | recognisable pastimes or sports (`["cycling"]`), empty when none — most clips have none |
-| `emotion` | one word mood, used for music selection |
-| `interestingness`, `quality` | 0.0–1.0 |
-
-`setting` is a closed vocabulary on purpose: it describes *what kind of period* a memory covers,
-which free text cannot answer reliably. A value outside the list is dropped rather than stored, so
-a model that ignores the vocabulary cannot reintroduce free text. `activities` is deliberately
-sparse — it fires on a recognisable pastime and stays empty otherwise, which is the correct answer
-for most clips.
-
-Analysis is per-period and on demand: when the fields change, `ANALYSIS_VERSION` is bumped and each
-pool re-analyzes itself the next time a memory covers it. Nothing sweeps the whole library.
+:::warning The reader needs eyes
+The model named in `llm` is sent pictures: 800 px JPEG tiles of the candidates whose facts the
+edit demands, plus contact sheets. A text-only model will not do the picture pass, and the run
+does not degrade politely into one that can. See
+[the self-hosting guide](../../deploy/self-hosting.md#what-has-actually-been-tested).
+:::
 
 ## LLM Title Generation
 
-Instead of generic "TWO WEEKS IN SPAIN, SUMMER 2025" template titles, the app feeds your trip's raw GPS data to a local LLM and gets back something like "Sous les falaises de grès" or "Odyssée le long de la côte". It works in any language and classifies your trip pattern too.
+Instead of generic "TWO WEEKS IN SPAIN, SUMMER 2025" template titles, the app hands a local LLM a day-by-day summary of where the trip went and gets back something like "Sous les falaises de grès" or "Odyssée le long de la côte". English and French are the two locales the app ships; it classifies the trip pattern at the same time.
 
 ### What the LLM gets
 
-After the analysis phase completes, the LLM receives daily GPS clusters: how many photos you took at each location, each day. From that raw data, it figures out the travel pattern (base camp? road trip? hiking trail?) and generates a title + subtitle in your locale. No pre-processing, no clustering algorithm telling it what to think: just the raw photo distribution and the model's own reasoning.
+The model never sees coordinates. The selected material's GPS points are clustered greedily within 5 km, each cluster is reverse-geocoded to a city name, and what goes into the prompt is one line per day: the place names and how many of the selected pictures fell at each. From that it works out the travel pattern (base camp? road trip? hiking trail?) and writes a title and subtitle in your locale.
 
 ### What it produces
 
@@ -62,18 +45,32 @@ After the analysis phase completes, the LLM receives daily GPS clusters: how man
 
 You see everything in Step 3 of the UI and can edit before rendering. Hit the regenerate button to try again with the same GPS data.
 
-### Model recommendations
+### Thinking mode has to be off
 
-**Qwen3.5-9B-MLX-4bit with thinking disabled** is what you want for titles. 5.5GB, 7-17 seconds per title on Apple Silicon, 100% JSON reliability, and genuinely creative multilingual output.
+On a server whose chat template reasons by default, a bulk call reasons at its small token budget,
+truncates mid-thought and returns nothing parseable. That is what `llm.no_thinking_params` is for,
+and its default is already the Qwen dialect:
 
-One catch: you MUST disable thinking mode in the omlx admin panel (`/admin`). Set `chat_template_kwargs` to `{"enable_thinking": false}` for the Qwen3.5 model. With thinking enabled, the model burns 2000-8000 tokens on chain-of-thought before it even starts the JSON, and most requests time out.
+```yaml
+llm:
+  thinking: false                 # default
+  no_thinking_params:             # merged into every non-thinking call
+    chat_template_kwargs:
+      enable_thinking: false
+```
 
-| Model | Size | Speed | Quality | Reliability | Notes |
-|-------|------|-------|---------|-------------|-------|
-| **Qwen3.5-9B (no think)** | 5.5GB | 7-17s | Great | 100% | Best overall |
-| Qwen3.5-4B (no think) | 2.9GB | ~10s | Good | ~90% | Lighter alternative |
-| Qwen2.5-VL-7B | 4.5GB | 4-5s | OK | T=0.1 only | Vision model doing text: works but generic |
-| Qwen3.5-9B (thinking ON) | 5.5GB | 300s+ | Great | ~30% | Don't. Disable thinking. |
+A server that reasons only when asked wants `no_thinking_params: {}` instead. Turning `thinking:
+true` back on runs two calls in reasoning mode (title generation and the special-day question in
+`discover-days`), while everything else stays fast, and it is refused outright alongside images; `thinking_params` carries the fields those calls send, defaulting to the
+same Qwen dialect. OpenAI's reasoning models want `{"reasoning_effort": "medium"}` there, which
+`provider: openai` fills in for you.
+
+### Which model
+
+The only configuration whose output has been graded is
+`mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit` on oMLX. Everything else is expected to work and
+ungraded: there is no per-model speed or reliability table here, because nobody has measured one
+on this route and inventing one would be worse than saying so.
 
 ## Mood Detection for Music
 
@@ -99,54 +96,34 @@ ollama serve
 
 ## Configuration
 
-Content analysis needs TWO config sections: `content_analysis` controls the feature itself, and `llm` tells it which model to talk to.
+One section names the model; the editor, titles and mood detection all read it.
 
 ```yaml
-# Which LLM to use (shared with title generation)
-# Tested against Qwen3.6-27B and Qwen3.6-35B-A3B
-llm:
-  base_url: "http://localhost:8000/v1"
-  model: "mlx-community/Qwen3.6-27B-8bit"
-  api_key: "not-needed"        # for local models
-  provider: "openai-compatible"  # or "ollama"
-  timeout_seconds: 300
-
-# Content analysis settings
-content_analysis:
-  enabled: false               # opt-in, off by default
-  weight: 0.35                 # how much LLM score influences final ranking
-  analyze_frames: 2            # 1-4 frames analyzed per segment
-  min_confidence: 0.5          # ignore scores below this threshold
-  frame_max_height: 480        # downscale frames before sending (480=fast, 720=balanced)
-  openai_image_detail: low     # low=85 tokens/cheap, high=1889 tokens/detailed
+advanced:
+  llm:
+    base_url: "http://localhost:8000/v1"   # example: oMLX. The default is 8080, the app's own port
+    model: "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"
+    api_key: ""                            # local servers ignore it
+    provider: "openai-compatible"          # or ollama | openai | zai | anthropic
+    timeout_seconds: 300                   # the default
 ```
 
-A separate `title_llm` section can override these for trip title generation (useful if you want a different model for titles vs. content analysis):
+`model` has to be the string the server reports at `GET /v1/models`, not the name you typed
+somewhere else.
+
+A separate `title_llm` section can point trip titles at a different model:
 
 ```yaml
-title_llm:
-  base_url: "http://localhost:11434/v1"
-  model: "llama3.2"
+advanced:
+  title_llm:
+    provider: "openai-compatible"
+    base_url: "http://localhost:11434/v1"
+    model: "llama3.2"
+    timeout_seconds: 300
 ```
 
-Any field not set in `title_llm` falls back to the `llm` values.
-
-### Weight
-
-The `weight` parameter (0.0 to 1.0) controls how much the LLM score matters relative to the other scoring factors (faces, motion, stability). At 0.35, it's a meaningful input but won't override a clip that scores well on everything else.
-
-### Frames per segment
-
-`analyze_frames` controls how many frames per segment get sent to the LLM. More frames = better understanding but slower and more expensive. 2 is the sweet spot: one near the start, one near the end.
-
-### Frame optimization
-
-`frame_max_height` downscales frames before sending them. At 480px, API costs are low and most vision models still understand the scene. Bump to 720 or 1080 if your model benefits from detail.
-
-`openai_image_detail` maps to the OpenAI `detail` parameter: `low` uses a fixed 85-token budget per image, `high` tiles the image for up to 1889 tokens. For clip scoring, `low` is usually enough.
-
-## Cost considerations
-
-If you're using a cloud provider, every segment analyzed costs API calls. A library with 500 video segments at 2 frames each = 1,000 image API calls. Local models (mlx-vlm, Ollama) have zero marginal cost but are slower.
-
-For large libraries, consider running with LLM analysis disabled first, then enabling it for a curated subset.
+**Fields do not fall back to `llm`.** The switch is all-or-nothing on `title_llm.model`: set it
+and the whole `title_llm` block is used, with every field you left out taking its *built-in*
+default; `provider: openai-compatible`, `base_url: http://localhost:8080/v1`, empty `api_key`.
+Leave `title_llm.model` empty and `llm` is used instead. Write out every field you care about, or
+the two-line version above silently resets five others.

@@ -11,21 +11,20 @@ from pathlib import Path
 import httpx
 import pytest
 
-from immich_memories.analysis.density_budget import AssetEntry
 from immich_memories.analysis.duplicate_hashing import compute_thumbnail_hash, hamming_distance
-from immich_memories.analysis.smart_pipeline import PipelineConfig, SmartPipeline
 from immich_memories.api.compatibility import ResolvedApiVersion
 from immich_memories.api.immich import ImmichAuthError, SyncImmichClient
-from immich_memories.api.models import AssetType, VideoClipInfo
-from immich_memories.config_models_analysis import AnalysisConfig
+from immich_memories.api.models import AssetType
+from immich_memories.generate_clips import MIN_CLIP_DURATION
 from immich_memories.timeperiod import calendar_year
-from immich_memories.ui.pages.step2_loading import MIN_CLIP_DURATION, _build_clips
+from immich_memories.ui.pages.step2_loading import _build_clips
 from tests.e2e.fake_immich import FakeImmichServer
+from tests.e2e.fake_library import LIBRARY
 
 pytestmark = pytest.mark.e2e
 
-_VIDEO_IDS = ["video-1", "video-2", "video-3"]
-_PHOTO_IDS = ["photo-1", "photo-2", "photo-3"]
+_VIDEO_IDS = [p.asset_id for p in LIBRARY if p.is_video]
+_PHOTO_IDS = [p.asset_id for p in LIBRARY if not p.is_video]
 
 
 def _probe_video(path: Path) -> dict:
@@ -131,6 +130,7 @@ def test_step1_connection_chain_returns_user_people_and_available_years(
 
 def test_wrong_api_key_is_rejected(fake_immich_server) -> None:
     """The fake catches browser tests that forgot or corrupted the API key."""
+    # WHY: nothing is replaced here — the real client speaks to the in-process fake Immich.
     with (
         SyncImmichClient(fake_immich_server.base_url, "wrong-key", api_version="v3") as client,
         pytest.raises(ImmichAuthError, match="Invalid API key"),
@@ -227,43 +227,6 @@ def test_real_step2_duration_filter_keeps_selectable_fake_clips(fake_immich_serv
     assert all(clip.duration_seconds >= MIN_CLIP_DURATION for clip in clips)
 
 
-def test_default_2160p_budget_gate_keeps_every_fake_video(fake_immich_server) -> None:
-    """No fake video may depend on a star to reach analysis (#525).
-
-    The gate reads camera EXIF and resolution off the asset, so the fixture
-    only survives it by carrying both — which is exactly what it stopped doing.
-    """
-    with SyncImmichClient(
-        fake_immich_server.base_url,
-        fake_immich_server.api_key,
-        api_version="v3",
-    ) as client:
-        assets = client.search_metadata(asset_type=AssetType.VIDEO).all_assets
-
-    entries = [
-        AssetEntry(
-            asset_id=asset.id,
-            asset_type="video",
-            date=asset.file_created_at,
-            duration=asset.duration_seconds or 0,
-            is_favorite=asset.is_favorite,
-            score=0.0,
-            width=asset.width,
-            height=asset.height,
-            is_camera_original=VideoClipInfo(asset=asset).is_camera_original,
-        )
-        for asset in assets
-    ]
-    pipeline = SmartPipeline.__new__(SmartPipeline)
-    pipeline.config = PipelineConfig()
-
-    survivors = pipeline._apply_budget_quality_gate(entries)
-
-    assert pipeline.config.output_resolution == 2160
-    assert [entry.asset_id for entry in survivors] == _VIDEO_IDS
-    assert [entry.asset_id for entry in survivors if entry.is_favorite] == ["video-1"]
-
-
 def test_original_and_playback_downloads_are_valid_h264_sdr_media(
     fake_immich_server,
     tmp_path: Path,
@@ -278,8 +241,8 @@ def test_original_and_playback_downloads_are_valid_h264_sdr_media(
         fake_immich_server.api_key,
         api_version="v3",
     ) as client:
-        client.download_asset("video-1", original_path)
-        playback_path.write_bytes(client.get_video_playback("video-1"))
+        client.download_asset(_VIDEO_IDS[0], original_path)
+        playback_path.write_bytes(client.get_video_playback(_VIDEO_IDS[0]))
 
     for path in (original_path, playback_path):
         probe = _probe_video(path)
@@ -315,7 +278,7 @@ def test_photo_originals_are_generated_jpegs(fake_immich_server, tmp_path: Path)
 
     for path in downloaded:
         assert _probe_image(path)["streams"] == [
-            {"codec_name": "mjpeg", "codec_type": "video", "width": 2016, "height": 1512}
+            {"codec_name": "mjpeg", "codec_type": "video", "width": 1920, "height": 1280}
         ]
 
 
@@ -331,7 +294,8 @@ def test_every_asset_thumbnail_shows_its_own_scene(fake_immich_server) -> None:
             for asset_id in _VIDEO_IDS + _PHOTO_IDS
         }
 
-    threshold = AnalysisConfig().duplicate_hash_threshold
+    # The editor's duplicate gate: a thumbnail pair within 8 hash bits reads as one scene.
+    threshold = 8
     distances = {
         (left, right): hamming_distance(hashes[left], hashes[right])
         for left, right in combinations(sorted(hashes), 2)
@@ -353,8 +317,9 @@ def test_real_auto_client_uploads_and_fake_records_v3_multipart(fake_immich_serv
     assert len(fake_immich_server.uploads) == 1
     upload = fake_immich_server.uploads[0]
     assert set(upload.fields) == {"filename", "fileCreatedAt", "fileModifiedAt"}
-    assert upload.fields["filename"] == "video-1.mp4"
-    assert upload.filename == "video-1.mp4"
+    source_name = fake_immich_server.source_video.name
+    assert upload.fields["filename"] == source_name
+    assert upload.filename == source_name
     assert upload.content_type == "video/mp4"
     assert upload.data == fake_immich_server.source_video.read_bytes()
 

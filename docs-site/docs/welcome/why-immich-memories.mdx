@@ -27,7 +27,7 @@ If you're running Immich, you already made the decision to own your data. This t
 
 ## What I built instead
 
-A tool that does the boring part for me. It connects to Immich (read-only by default; `--upload-to-immich` is the one thing that writes back), looks at a time period I pick, and figures out which clips are worth keeping. It scores them on motion, faces, audio content, and optionally runs an LLM to understand what's actually happening in the scene. Then it assembles everything into a video with title screens, transitions, and music.
+A tool that does the boring part for me. It connects to Immich (read-only by default; `--upload-to-immich` is the one thing that writes back), looks at a time period I pick, and figures out which clips are worth keeping. Nothing is scored. A small vision model writes one description per picture, once. A text model then reads the whole period, decides what the stories in it are, weighs them against each other and hands each story the pictures it earns, with a written reason for every one. Then it assembles the result into a video with title screens, transitions, and music.
 
 The key: I still get to review what it picked and remove anything I don't want. But I'm reviewing 30 pre-selected clips instead of scrolling through 400.
 
@@ -35,13 +35,12 @@ The key: I still get to review what it picked and remove anything I don't want. 
 
 Every feature traces back to "remove a manual step from making a memory video":
 
-- **Clip scoring**: so I don't have to watch 400 clips to find the 25 good ones
-- **Face detection + recognition**: so clips with my kid in frame score higher than clips of the parking lot
-- **Scene detection**: so the tool picks the interesting 8-second segment, not the full 45-second recording
-- **Duplicate detection**: so I don't get three versions of the same moment from burst recordings
+- **An editor, not a scorer**: so I don't have to watch 400 clips to find the 25 that tell the story
+- **Face recognition**: so I can ask for a memory of one person and get one, and so a photo's Ken Burns move lands on a face rather than a wall
+- **Sameness, judged**: so I don't get three versions of the same moment from a held shutter or a re-import
 - **Live photo stitching**: so those 3-second iPhone live photos get merged into usable clips
 - **AI music generation**: so I don't spend 45 minutes on YouTube Audio Library looking for a track that fits
-- **Audio ducking**: so music gets quieter when someone's talking or laughing in a clip
+- **Audio ducking**: so music drops under the clip's own sound instead of talking over it
 - **Title screens**: so the output looks like something, not just "clip 1, clip 2, clip 3"
 - **Trip maps**: so a travel video starts with an animated satellite zoom showing where we went
 - **Photo support**: so still photos get mixed in with video (Ken Burns, blur background, face-aware pan)
@@ -52,8 +51,8 @@ The result is a video that looks like I spent a weekend in Premiere Pro, except 
 ## Limitations
 
 - **No mobile app.** Web UI and CLI. Works in mobile browsers but there's no native app.
-- **Not instant, and the wait is analysis rather than encoding.** The one run measured end to end, 14 clips on 4 CPU cores with no GPU, took 10 to 16 minutes, most of it scoring candidate clips. Minutes on Apple Silicon or a GPU. A second run of the same month reuses the cached scores and takes about a third as long. Batch process. See the [measured table](../deploy/common-setups/nas-only.md#performance-expectations).
+- **Not instant, and the wait is reading rather than encoding.** The first cut over a period captions and measures every picture in it and has the text model read the period; both are cached, so a second cut over the same period is mostly the render. Batch process.
 - **Not a video editor.** Select/deselect clips and adjust segments, but no timeline.
 - **Requires Immich.** Companion tool, not a standalone photo manager.
 
-<ThemedScreenshot name="step4-complete" alt="Finished memory video playing in the Step 4 video player" />
+<ThemedScreenshot name="memory-story" alt="The story the editor cut, with a reason for every picture" />

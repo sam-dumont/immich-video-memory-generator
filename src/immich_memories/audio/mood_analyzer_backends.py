@@ -204,25 +204,3 @@ async def get_mood_analyzer(
         return OpenAICompatibleMoodAnalyzer(model=model, base_url=base_url, api_key=api_key)
 
     raise RuntimeError(f"Unknown LLM provider: {provider}")
-
-
-async def get_mood_analyzer_from_config(llm_config: LLMConfig) -> MoodAnalyzer:
-    """Get a mood analyzer using settings from config.
-
-    Uses the shared LLM settings for provider selection.
-
-    Args:
-        llm_config: LLM configuration with provider, base_url, model, api_key.
-
-    Returns:
-        MoodAnalyzer instance
-
-    Raises:
-        RuntimeError: If no analyzer is available
-    """
-    return await get_mood_analyzer(
-        provider=llm_config.provider,
-        base_url=llm_config.base_url,
-        model=llm_config.model,
-        api_key=llm_config.api_key,
-    )

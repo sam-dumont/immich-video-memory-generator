@@ -18,13 +18,7 @@ from pydantic import Field, PrivateAttr, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 from immich_memories.config_models import CacheConfig, HardwareAccelConfig, ImmichConfig
-from immich_memories.config_models_analysis import (
-    AnalysisConfig,
-    AudioContentConfig,
-    ContentAnalysisConfig,
-    SpeechConfig,
-    TranscriptionConfig,
-)
+from immich_memories.config_models_analysis import AnalysisConfig
 from immich_memories.config_models_auth import AuthConfig
 from immich_memories.config_models_automation import (
     AutomationConfig,
@@ -32,6 +26,7 @@ from immich_memories.config_models_automation import (
     TripsConfig,
     UploadConfig,
 )
+from immich_memories.config_models_editorial import EditorialConfig
 from immich_memories.config_models_llm import LLMConfig  # noqa: F401
 from immich_memories.config_models_render import (
     DefaultsConfig,
@@ -41,6 +36,7 @@ from immich_memories.config_models_render import (
 )
 from immich_memories.config_models_server import WILDCARD_HOST, ServerConfig
 from immich_memories.config_models_soundtrack import ACEStepConfig, AudioConfig, MusicGenConfig
+from immich_memories.config_models_triage import TriageConfig
 from immich_memories.config_presets import PresetName, apply_preset
 from immich_memories.logging_config import install_secret_redaction
 from immich_memories.scheduling.models import SchedulerConfig
@@ -58,14 +54,12 @@ _TIER2_SECTIONS = frozenset(
         "llm",
         "musicgen",
         "ace_step",
-        "content_analysis",
-        "audio_content",
-        "speech",
-        "transcription",
         "server",
         "auth",
         "automation",
         "notifications",
+        "triage",
+        "editorial",
     }
 )
 
@@ -75,6 +69,83 @@ _TIER2_SECTIONS = frozenset(
 _REMOVED_TOP_LEVEL_SECTIONS = {
     "scoring_priority": "removed in 0.41 — it was never read by the scorer",
 }
+
+_WENT_WITH_THE_SCORER = "went with the legacy clip scorer; story-first selection never read it"
+
+# Keys that went with the legacy clip scorer. Unlike the sections above these are
+# refused, not dropped: section models ignore unknown keys, so a file that still
+# sets one would keep loading while the setting silently did nothing.
+_REMOVED_CONFIG_KEYS: dict[str, str] = {
+    "content_analysis": _WENT_WITH_THE_SCORER,
+    "audio_content": _WENT_WITH_THE_SCORER,
+    "speech": "speech boundaries " + _WENT_WITH_THE_SCORER + " (the speech extra is gone)",
+    "transcription": "transcription " + _WENT_WITH_THE_SCORER + " (the transcribe extra is gone)",
+    "description_llm": "nothing read it; the editor's descriptions come from editorial.description_model",
+    "hardware.gpu_analysis": _WENT_WITH_THE_SCORER,
+    "photos.max_ratio": _WENT_WITH_THE_SCORER,
+    "photos.read_moments": _WENT_WITH_THE_SCORER,
+    "photos.moment_gap_seconds": _WENT_WITH_THE_SCORER,
+    "photos.moment_hash_threshold": _WENT_WITH_THE_SCORER,
+    **{
+        f"analysis.{field}": _WENT_WITH_THE_SCORER
+        for field in (
+            "max_refinement_passes",
+            "include_off_timeline_assets",
+            "scene_threshold",
+            "min_scene_duration",
+            "duplicate_hash_threshold",
+            "clip_style",
+            "use_scene_detection",
+            "max_segment_duration",
+            "min_segment_duration",
+            "max_optimal_duration",
+            "target_extraction_ratio",
+            "enable_downscaling",
+            "analysis_resolution",
+            "use_unified_analysis",
+            "cut_point_merge_tolerance",
+            "silence_threshold_db",
+            "min_silence_duration",
+            "subject_policy_enabled",
+            "max_animal_ratio",
+            "max_object_ratio",
+        )
+    },
+}
+
+
+def _names_removed_key(data: dict, key: str) -> bool:
+    section, _, field = key.partition(".")
+    if not field:
+        return section in data
+    block = data.get(section)
+    return isinstance(block, dict) and field in block
+
+
+def _drop_removed_keys(data: dict, path: Path) -> None:
+    """Ignore keys whose feature is gone, and name every one of them once.
+
+    The value is dead either way. Refusing to start locked an upgrade out of
+    its own app over a line that no longer means anything, and the operator
+    still had to edit the file to learn that. Warning says the same thing and
+    lets the run continue; retired sections have always been handled this way.
+    """
+    named = []
+    for key, reason in _REMOVED_CONFIG_KEYS.items():
+        if not _names_removed_key(data, key):
+            continue
+        section, _, field = key.partition(".")
+        if field:
+            data[section].pop(field)
+        else:
+            data.pop(section)
+        named.append(f"  {key}: {reason}")
+    if named:
+        logging.getLogger(__name__).warning(
+            "Ignoring config keys that no longer exist in %s; delete them to silence this:\n%s",
+            path,
+            "\n".join(named),
+        )
 
 
 def _drop_app_written_wildcard_host(data: dict, path: Path) -> None:
@@ -118,6 +189,7 @@ def _load_yaml_data(path: Path) -> dict:
             logging.getLogger(__name__).warning(
                 "Ignoring config section '%s' (%s); delete it from %s", key, reason, path
             )
+    _drop_removed_keys(data, path)
     return data
 
 
@@ -204,8 +276,7 @@ class Config(BaseSettings):
       Tier 1 (top level): immich, defaults, output, audio, title_screens,
                            cache, upload, trips, photos
       Tier 2 (advanced:):  analysis, hardware, llm, musicgen, ace_step,
-                           content_analysis, audio_content, speech, transcription,
-                           server
+                           server, auth, automation, notifications, triage, editorial
       Tier 3 (internal):   scheduler, title_llm
 
     At runtime, ALL sections are flat fields on Config (config.analysis, etc.).
@@ -238,10 +309,6 @@ class Config(BaseSettings):
     audio: AudioConfig = Field(default_factory=AudioConfig)
     musicgen: MusicGenConfig = Field(default_factory=MusicGenConfig)
     ace_step: ACEStepConfig = Field(default_factory=ACEStepConfig)
-    content_analysis: ContentAnalysisConfig = Field(default_factory=ContentAnalysisConfig)
-    audio_content: AudioContentConfig = Field(default_factory=AudioContentConfig)
-    speech: SpeechConfig = Field(default_factory=SpeechConfig)
-    transcription: TranscriptionConfig = Field(default_factory=TranscriptionConfig)
     title_screens: TitleScreenConfig = Field(default_factory=TitleScreenConfig)
     upload: UploadConfig = Field(default_factory=UploadConfig)
     photos: PhotoConfig = Field(default_factory=PhotoConfig)
@@ -250,6 +317,8 @@ class Config(BaseSettings):
     auth: AuthConfig = Field(default_factory=AuthConfig)
     automation: AutomationConfig = Field(default_factory=AutomationConfig)
     notifications: NotificationConfig = Field(default_factory=NotificationConfig)
+    triage: TriageConfig = Field(default_factory=TriageConfig)
+    editorial: EditorialConfig = Field(default_factory=EditorialConfig)
 
     # `${VAR}` forms as written in config.yaml, so Save can put them back
     # instead of the secrets they expanded to.

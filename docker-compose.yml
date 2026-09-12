@@ -5,15 +5,19 @@
 # Reaching it from another machine is a deliberate two-step change — see the ports block.
 # The stateful UI supports one user flow in one replica.
 #
-# Resource requirements:
-#   Idle (UI): ~100MB RAM
-#   Analysis:  2-4GB RAM, 2+ cores (downloads + scores clips)
-#   Encoding:  4-8GB RAM, 4+ cores (FFmpeg assembly, depends on resolution)
+# Resource requirements for THIS container:
+#   Idle (UI):    ~100MB RAM
+#   Preparation:  2-4GB RAM, 2+ cores (Immich previews, the ONNX heads, two CPU detectors)
+#   Encoding:     4-8GB RAM, 4+ cores (FFmpeg assembly, depends on resolution)
 #
 # For GPU-accelerated title rendering or 4K output, increase limits.
 # For GPU acceleration, see the hardware docs.
 #
-# For LLM-based clip analysis, set LLM env vars below.
+# This container is not the whole stack. The editor needs a vision reader (~17GB
+# resident) that you host yourself; without it a run stops rather than guessing.
+# The caption server is optional: on a slow box set the no_captions tier below and
+# nothing asks for one. See the self-hosting guide:
+# https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/self-hosting
 services:
   immich-memories:
     image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
@@ -31,9 +35,16 @@ services:
       IMMICH_API_KEY: "${IMMICH_API_KEY}"
       # Optional: session secret (auto-generated if not set; set to preserve sessions on restart)
       # IMMICH_MEMORIES_STORAGE_SECRET: "${IMMICH_MEMORIES_STORAGE_SECRET}"
-      # Optional: LLM for clip content analysis (any OpenAI-compatible API)
-      # IMMICH_MEMORIES_LLM__BASE_URL: "http://your-llm:8080/v1"
-      # IMMICH_MEMORIES_LLM__MODEL: "qwen2.5-vl"
+      # Required to cut at all: the vision reader.
+      # "localhost" here means this container, so use a real hostname.
+      # IMMICH_MEMORIES_LLM__BASE_URL: "http://your-model-box:8000/v1"
+      # IMMICH_MEMORIES_LLM__MODEL: "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"
+      # Which producers this box pays for: full | no_captions | metadata_only.
+      # On a NAS use no_captions: 3h41 for a 10,793-picture library against 4 days,
+      # and the audience gate keeps every producer it reads.
+      # IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER: "no_captions"
+      # Only needed on the full tier:
+      # IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL: "http://your-model-box:8092/v1"
       # Optional: basic auth
       # IMMICH_MEMORIES_AUTH_USERNAME: "${IMMICH_MEMORIES_AUTH_USERNAME}"
       # IMMICH_MEMORIES_AUTH_PASSWORD: "${IMMICH_MEMORIES_AUTH_PASSWORD}"
@@ -47,6 +58,19 @@ services:
         limits:
           memory: 4G
           cpus: "4"
+
+    # ── Intel Quick Sync / VAAPI hardware encoding (uncomment on Linux) ──
+    # The image ships the VA-API drivers; what it cannot ship is access to your
+    # GPU. Pass the render node through AND add the group that owns it — the
+    # container runs as uid 1000, and /dev/dri/renderD128 is usually root:render
+    # with no world access, so without group_add the device is there and
+    # unopenable. The render GID differs per host (104 on Debian, 937 on
+    # Synology DSM): `stat -c '%g' /dev/dri/renderD128` on the host prints yours.
+    #
+    # devices:
+    #   - /dev/dri:/dev/dri
+    # group_add:
+    #   - "104"
 
     # ── Security hardening (uncomment for production) ──────────────────
     # Prevents privilege escalation, drops all capabilities, and makes
@@ -64,5 +88,44 @@ services:
     # For 4K encoding, increase /tmp to 8G or remove the tmpfs entry
     # and let the container write to disk.
 
+  # ── Optional: the inference service ───────────────────────────────────
+  # The encoder, the six public heads and the two detectors behind one port,
+  # with their own device variant — the shape immich-machine-learning has.
+  # Behind a profile because the app still runs those producers in process and
+  # has no setting yet to point at this service, so starting it by default
+  # would download models nothing asks for:
+  #
+  #   docker compose --profile inference up -d
+  #   curl -s localhost:8092/health
+  #
+  # For a GPU: change `service: cpu` to `service: cuda` below and set
+  # INFERENCE_TAG=latest-cuda. /health then names CUDAExecutionProvider.
+  immich-memories-inference:
+    image: ghcr.io/sam-dumont/immich-video-memory-generator-inference:${INFERENCE_TAG:-latest}
+    container_name: immich-memories-inference
+    profiles:
+      - inference
+    extends:
+      file: docker/hwaccel.inference.yml
+      service: cpu
+    # Localhost only, as with the UI. The service holds no credential, but it
+    # will answer anything that reaches it.
+    ports:
+      - "127.0.0.1:8092:8092"
+    volumes:
+      - immich-memories-model-cache:/cache
+    environment:
+      # A cold cache needs to fetch the two detector snapshots (37 MB) once.
+      IMMICH_MEMORIES_INFERENCE_ALLOW_MODEL_DOWNLOADS: "true"
+      # Drop the weights after five idle minutes. The process stays up.
+      IMMICH_MEMORIES_INFERENCE_IDLE_UNLOAD_SECONDS: "300"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: "4"
+
 volumes:
   immich-memories-config:
+  immich-memories-model-cache:

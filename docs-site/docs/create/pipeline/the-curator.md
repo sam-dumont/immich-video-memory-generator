@@ -6,55 +6,45 @@ title: The Curator
 # The Curator
 
 Every photo app has an automatic memories feature, and they all work the same
-way: rank the pixels — sharpness, faces, smiles — pick the winners, add music.
+way: rank the pixels (sharpness, faces, smiles), pick the winners, add music.
 The result is a highlight reel. Technically fine, emotionally random, and
 after the third one you stop watching them.
 
-This pipeline is built on a different premise: **selection is an editing job,
-not a ranking job.** Before anything is scored, a vision model looks at your
-material and describes what is actually happening in it. Every decision after
-that — what makes the cut, what counts as a duplicate, what the title is
-allowed to claim — is made against those descriptions, not against pixel
-statistics. This page explains how that works and the rules it follows. It is
-the core of the product; everything else is delivery.
+The production selector reads the period as a story. It prepares descriptions,
+people and place context, and picture facts for the whole source. It then decides
+which stories matter and which distinct moments show them, before allocating the
+film's duration. This is the route used by the UI, CLI and scheduled runs.
 
 ## It looks before it picks
 
-Candidates are grouped into **moments** — photos and clips taken together —
-and the model looks at one representative per moment rather than a fixed
-handful of metadata winners. Before this worked properly, a month with 295
-photos would get exactly 3 of them in front of the model, chosen by metadata,
-so the model could only confirm what the metadata already decided. Now the
-looking is sized by how many moments the month actually contains.
+Descriptions and image facts cover the whole source period. Capture groups help
+organize it, then the model distinguishes what happened: two toasts at a party
+can be separate moments, while several pictures of the same toast are variants.
+The story reading comes before the duration allocation. A short and a long
+memory can therefore share an understanding of the period while showing different
+amounts of it.
 
 Two properties of the looking:
 
-- **A favourite fronts its moment.** If you flagged a photo in Immich, it is
-  the one the model sees for that moment. Your flag is the strongest signal in
-  the library — the pipeline treats it as your judgment already made, not as
-  one weight among many.
-- **Every look is paid once, ever.** Descriptions are cached per asset. The
-  first run over a library is the slow one; every later memory reuses what is
-  already known. See [LLM Content Analysis](llm-content-analysis) for the
-  model setup.
+- **Favourites carry your judgment.** They help establish a story's importance
+  and lead choices within a moment, subject to source and audience eligibility.
+- **Matching facts are reused.** Descriptions and model decisions are cached
+  by their producer and input. New or changed evidence can require fresh work.
+  See [Editorial annotation setup](../../deploy/configuration/editorial-preparation.md).
 
 ## It judges what things show, not how they look
 
 Descriptions do the discriminating work that scores can't:
 
-- **Duplicates are judged on content.** Two clips of the same cake, eight
-  minutes apart, are one moment — keep the better one. Two toasts at the same
+- **Duplicates are judged on content.** Two clips of the same cake, a couple of
+  minutes apart, are one moment: keep the better one. Two toasts at the same
   party are two moments. Perceptual hashing can't tell these apart; a sentence
-  about each can.
-- **The final review sees the whole cut.** After selection, the model reads
-  the full set and removes what weakens it, with a stated reason per drop.
-  These are real reasons from real runs — one clip went because it
-  *"records an object rather than a moment."* That is an editor's sentence,
-  and it is the level the review works at.
-- **Nothing fails silently.** If the reviewer is unreachable, the run says so
-  loudly instead of quietly shipping an unreviewed cut, and every run prints
-  how much of the candidate pool was actually looked at — so "the model chose"
-  and "the model never saw it" are never confused.
+  about each can. (Five minutes is the hard edge: beyond that, things are
+  separate moments whatever they show.)
+- **Picture choices follow moments.** The planner chooses a representation
+  of each selected moment. Extra variants do not count as extra events.
+- **Missing evidence is reported.** Required source and annotation coverage
+  is checked before selection, and an incomplete run is not reported as complete.
 
 ## The rules
 
@@ -64,48 +54,59 @@ These are constraints the pipeline obeys, not preferences it weighs.
 model may resequence a cut for drama: chronology is the one thing you can
 check against your own recollection, and a reordered memory is subtly a lie
 about the day. The editorial decisions are what to include and how long to
-dwell — never when.
+dwell, never when.
 
 **Favourites win their moment.** Where you have flagged a photo, the pipeline
 does not overrule you with a score.
 
-**Titles claim only what the evidence shows.** A title is generated from what
-the model actually saw and is not allowed to invent specifics. If the material
-can't support a claim, the title doesn't make it.
+**The audience is FAMILY.** A shirtless baby is ordinary family content and can be
+included. Eight findings are not, at any audience, and a carrier that draws one is
+replaced rather than shown: breastfeeding or expressing milk, bathing, toileting or
+changing, intimate hygiene, graphic medical procedures, identifying records, sexual
+content, and adult changing. The model is told that newborn care is ordinary family
+content (that keeps it from filing a bath as something worse), and the code holds
+all eight out of the cut regardless of what the model was told.
+
+**A day's title claims only what the evidence shows.** The title a special day
+carries is checked against the evidence lines it was written from, and a claim
+those lines do not support is dropped rather than printed. (Trip titles are a
+different path: they are written from dates and place names, with no such
+check.)
 
 **Refuse over fake.** A day the model could not name does not get a generic
-"Memories of June 12th" card — it doesn't render. An empty special-days
+"Memories of June 12th" card: it doesn't render. An empty special-days
 catalogue produces instructions for building one, not an invented occasion.
 When the honest option and the impressive option differ, the pipeline takes
 the honest one.
 
 **Emergent, not queried.** Nothing searches your library for "beach" or "dog".
 The [special days catalogue](../cli/discover-days) is built by looking at what
-your days actually contain and asking whether anything happened — which is how
-it finds the day that mattered with 30 photos, not just the day with 300. A day
+your days actually contain and asking whether anything happened, which is how
+it finds the day that mattered with 30 photos, not just the day with 300. It is
+not asked about everything: a day has to clear 20 photos and six active hours
+before the question is worth a model call. A day
 it found comes back years later as a
 [Special Day memory](../memory-types/special-days.mdx) nobody asked for.
 
 ## The craft you don't see
 
-Cuts land on musical beats. Speech is never cut mid-sentence — voice-activity
-detection moved mid-speech cuts from 34% of clips to 9%, measured on real
-libraries. HDR footage stays HDR end to end. A monthly memory opens with a
-month title, a yearly gets month dividers, a single day gets one intro card —
+Selected videos and Live Photos use available source motion windows. HDR
+footage stays HDR end to end. A monthly memory opens with a
+month title, a yearly gets month dividers, a single day gets one intro card,
 because those are different shapes of story.
 
-## Where this is heading
+## How a longer film gets more depth
 
-The current work — visible in the open issues — is event-level understanding:
-the model reads a whole moment as one contact sheet, names the event, and
-ranks photos by how well they show *that* rather than by generic priors like
-"has a face". The goal is stated in one line: curation based on moment →
-entirety. Follow along in
-[#707](https://github.com/sam-dumont/immich-video-memory-generator/issues/707).
+More time lets an important story show more distinct moments: arrival, the main
+activity, people together and how the day ended. It does not make every extra
+frame a new event. Picture choice follows the moment inventory, and the final
+material stays in chronological order.
 
 ## The mechanics
 
-The arithmetic that serves these judgments — budgets, weights, and caps — is
-documented in [Clip Selection & Scoring](clip-selection-scoring), and the
-runtime cost of every stage in the
+The shipped design (the source model, the annotation store and its banks, the
+six stages, the two readings, the structure and story planners, carriers and
+durable attempts) is written up in
+[Story-first selection: the shipped design](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/docs/designs/2026-09-10-story-first-selection.md)
+in the repository. The runtime cost of every stage is in the
 [Pipeline Overview](pipeline-overview).

@@ -9,7 +9,7 @@ from __future__ import annotations
 import calendar
 from datetime import date, datetime, timedelta
 
-from immich_memories.timeperiod import DateRange, birthday_year, calendar_year, same_day_in_year
+from immich_memories.timeperiod import DateRange, birthday_year, same_day_in_year
 
 # Northern hemisphere season definitions: season -> (start_month, end_month)
 # Winter spans two calendar years (Dec of year to Feb of year+1).
@@ -232,34 +232,6 @@ def _last_occurrence(birthday: date, reference: date) -> date:
     if this_year <= reference:
         return this_year
     return same_day_in_year(birthday, reference.year - 1)
-
-
-def build_then_and_now(year: int, years_back: int) -> list[DateRange]:
-    """Build the two eras of a then-and-now, most recent first.
-
-    Two whole calendar years rather than two narrow windows: a short window in a
-    year long past is usually empty, and the contrast needs enough material on
-    both sides to read.
-
-    Callers must treat the result as an ordered list of eras and key off the
-    ranges themselves, never off ``range.start.year`` — the two eras are equal
-    calendar years today, but nothing in the memory type requires them to be.
-
-    Args:
-        year: The recent end of the pair.
-        years_back: The gap to the other end, in years. Must be at least 1.
-
-    Returns:
-        ``[now, then]`` — most recent first, matching the other multi-range
-        types, whose callers derive a display span as ``ranges[-1].start`` to
-        ``ranges[0].end``.
-
-    Raises:
-        ValueError: If years_back is zero or negative.
-    """
-    if years_back <= 0:
-        raise ValueError("years_back must be at least 1 for a then-and-now memory")
-    return [calendar_year(year), calendar_year(year - years_back)]
 
 
 def _subtract_one_day(d: date) -> date:

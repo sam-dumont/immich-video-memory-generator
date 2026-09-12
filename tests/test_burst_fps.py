@@ -12,36 +12,44 @@ from pathlib import Path
 from unittest.mock import patch
 
 from immich_memories.processing.live_photo_merger import build_merge_command, burst_fps
+from immich_memories.processing.probe_cache import ProbeError
 
 
 def test_a_burst_normalises_to_its_fastest_clip() -> None:
     # WHY: ffprobe is the external boundary — no fixture files at four rates.
     with patch(
-        "immich_memories.processing.live_photo_merger.probe_clip_fps",
-        side_effect=[29.97, 120.0, 23.94],
+        "immich_memories.processing.probe_cache.ProbeCache.render_frame_rate",
+        side_effect=[{"fps": 29.97}, {"fps": 120.0}, {"fps": 23.94}],
     ):
         assert burst_fps([Path("a.mov"), Path("b.mov"), Path("c.mov")]) == 120.0
 
 
 def test_an_unreadable_clip_does_not_drag_the_burst_down() -> None:
-    # WHY: same boundary; None is what a failed probe returns.
+    # The legacy caller retains its explicitly degraded fallback.
+    # WHY: the frame-rate probe is the FFmpeg boundary; an unreadable clip is simulated there
     with patch(
-        "immich_memories.processing.live_photo_merger.probe_clip_fps",
-        side_effect=[None, 60.0],
+        "immich_memories.processing.probe_cache.ProbeCache.render_frame_rate",
+        side_effect=[ProbeError("missing PTS"), {"fps": 60.0}],
     ):
         assert burst_fps([Path("a.mov"), Path("b.mov")]) == 60.0
 
 
 def test_falls_back_when_nothing_can_be_probed() -> None:
     # WHY: same boundary; every probe failing is the degraded case.
-    with patch("immich_memories.processing.live_photo_merger.probe_clip_fps", return_value=None):
+    with patch(
+        "immich_memories.processing.probe_cache.ProbeCache.render_frame_rate",
+        side_effect=ProbeError("missing PTS"),
+    ):
         assert burst_fps([Path("a.mov")]) == 30.0
 
 
 def test_the_merge_command_carries_the_measured_rate() -> None:
     # WHY: three ffprobe boundaries — fps, audio and HDR detection.
     with (
-        patch("immich_memories.processing.live_photo_merger.probe_clip_fps", return_value=60.0),
+        patch(
+            "immich_memories.processing.probe_cache.ProbeCache.render_frame_rate",
+            return_value={"fps": 60.0},
+        ),
         patch(
             "immich_memories.processing.live_photo_merger.probe_clip_has_audio",
             return_value=False,

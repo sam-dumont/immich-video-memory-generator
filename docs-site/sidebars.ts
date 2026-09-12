@@ -23,10 +23,7 @@ const sidebars: SidebarsConfig = {
           type: 'category',
           label: 'Using the Web UI',
           items: [
-            'create/web-ui/step1-configuration',
-            'create/web-ui/step2-clip-review',
-            'create/web-ui/step3-generation-options',
-            'create/web-ui/step4-preview-export',
+            'create/web-ui/memory',
             'create/web-ui/settings',
           ],
         },
@@ -35,6 +32,7 @@ const sidebars: SidebarsConfig = {
           label: 'Using the CLI',
           items: [
             'create/cli/generate',
+            'create/cli/prepare',
             'create/cli/auto',
             'create/cli/music',
             'create/cli/titles',
@@ -51,7 +49,7 @@ const sidebars: SidebarsConfig = {
           items: [
             'create/memory-types/year-in-review',
             'create/memory-types/monthly-person-season',
-            'create/memory-types/holiday-then-and-now',
+            'create/memory-types/holiday',
             'create/memory-types/trip-memories',
             'create/memory-types/album-memories',
             'create/memory-types/special-days',
@@ -65,6 +63,7 @@ const sidebars: SidebarsConfig = {
             'create/recipes/automated-generation',
             'create/recipes/trigger-endpoint',
             'create/recipes/tips-and-best-practices',
+            'create/recipes/matrix-routes',
           ],
         },
         {
@@ -72,9 +71,8 @@ const sidebars: SidebarsConfig = {
           label: 'Understanding the Pipeline',
           items: [
             'create/pipeline/pipeline-overview',
-            'create/pipeline/clip-selection-scoring',
+            'create/pipeline/the-curator',
             'create/pipeline/face-aware-cropping',
-            'create/pipeline/scene-detection',
             'create/pipeline/duplicate-detection',
             'create/pipeline/live-photos',
             'create/pipeline/photo-support',
@@ -90,6 +88,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Deploy & Operate',
       items: [
+        'deploy/self-hosting',
         {
           type: 'category',
           label: 'Installation',
@@ -97,6 +96,7 @@ const sidebars: SidebarsConfig = {
           items: [
             'deploy/installation/docker',
             'deploy/installation/uv-pip',
+            'deploy/installation/inference-service',
             'deploy/installation/kubernetes',
             'deploy/installation/terraform',
           ],
@@ -109,6 +109,7 @@ const sidebars: SidebarsConfig = {
             'deploy/configuration/environment-variables',
             'deploy/configuration/authentication',
             'deploy/configuration/network-and-privacy',
+            'deploy/configuration/editorial-preparation',
           ],
         },
         {

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, tzinfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from croniter import croniter
 
@@ -27,20 +28,43 @@ class Scheduler:
     def __init__(self, config: SchedulerConfig) -> None:
         self.config = config
 
+    def _zone(self) -> tzinfo:
+        """The zone the cron expressions are written in.
+
+        The config validates the name, so reaching the fallback means the box
+        has no tz database rather than that the user mistyped it.
+        """
+        try:
+            return ZoneInfo(self.config.timezone)
+        except (ZoneInfoNotFoundError, ValueError):
+            logger.warning(
+                f"Timezone '{self.config.timezone}' is unknown on this system; "
+                f"evaluating cron in UTC"
+            )
+            return UTC
+
     def get_next_jobs(self, now: datetime | None = None) -> list[PendingJob]:
         """Calculate next fire time for each enabled schedule, sorted earliest first."""
         if now is None:
             now = datetime.now(tz=UTC)
+
+        # WHY: a cron expression is written in wall-clock terms -- "9am" means
+        # 9am where the library lives. Evaluated in UTC, every schedule outside
+        # UTC fired at the wrong hour, and a new year's or month's job could
+        # resolve the wrong period. The fire time stays in that zone so the
+        # params are resolved from the calendar date the user meant.
+        zone = self._zone()
+        local_now = now.astimezone(zone)
 
         jobs: list[PendingJob] = []
         for entry in self.config.schedules:
             if not entry.enabled:
                 continue
 
-            cron = croniter(entry.cron, now)
+            cron = croniter(entry.cron, local_now)
             fire_time = cron.get_next(datetime)
             if fire_time.tzinfo is None:
-                fire_time = fire_time.replace(tzinfo=UTC)
+                fire_time = fire_time.replace(tzinfo=zone)
 
             jobs.append(PendingJob(schedule=entry, fire_time=fire_time))
 

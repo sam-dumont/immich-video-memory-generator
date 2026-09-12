@@ -20,6 +20,45 @@ def _clip(date: str | None, place: str | None = None) -> AssemblyClip:
 
 
 class TestPlaceShowsOnChange:
+    def test_missing_gps_keeps_a_named_place_and_unknown_home_keeps_country(self):
+        from immich_memories.analysis.familiar_places import PlaceHistory
+        from immich_memories.generate_captions import apply_location_captions
+
+        clips = [_clip("2025-08-01", "Brussels, Belgium")]
+        prepared = apply_location_captions(clips, PlaceHistory([]))
+
+        assert captions_for_timeline(prepared, place=True)[0].place == "Brussels, Belgium"
+
+    def test_hidden_home_resets_place_but_missing_metadata_does_not(self):
+        from datetime import date
+
+        from immich_memories.analysis.familiar_places import PlaceHistory, PlaceObservation
+        from immich_memories.generate_captions import apply_location_captions
+
+        # The test home is the Royal Palace in Brussels, a public landmark.
+        home = (50.843, 4.362)
+        history = PlaceHistory([PlaceObservation(*home, date(2024, 1, 1), "Belgium")])
+        clips = [
+            _clip("2025-08-01", "De Haan, Belgium"),
+            _clip("2025-08-02", "Brussels, Belgium"),
+            _clip("2025-08-03", "De Haan, Belgium"),
+            _clip("2025-08-03", None),
+            _clip("2025-08-03", "De Haan, Belgium"),
+            _clip("2025-08-04", "Nice, France"),
+        ]
+        clips[1].latitude, clips[1].longitude = home
+        prepared = apply_location_captions(clips, history, home=home)
+
+        assert clips[1].location_name == "Brussels, Belgium", "maps keep the original name"
+        assert [c.place for c in captions_for_timeline(prepared, place=True)] == [
+            "De Haan",
+            "",
+            "De Haan",
+            "",
+            "",
+            "Nice, France",
+        ]
+
     def test_a_repeated_place_is_shown_once(self):
         clips = [
             _clip("2025-08-02", "Nice, France"),
@@ -67,6 +106,11 @@ class TestDateWordingFollowsTheSpan:
     """ "10 Aug 2025" inside an August-2025 memory restates the video's own
     premise; "Sunday 10" carries the actual information (#465)."""
 
+    def test_repeated_dates_stay_silent_across_metadata_gaps(self):
+        clips = [_clip("2025-08-10"), _clip(None), _clip("2025-08-10"), _clip("2025-08-11")]
+
+        assert [c.date for c in captions_for_timeline(clips)] == ["Sunday 10", "", "", "Monday 11"]
+
     def test_a_single_month_span_uses_weekday_and_day(self):
         clips = [_clip("2025-08-02"), _clip("2025-08-10"), _clip("2025-08-29")]
 
@@ -113,9 +157,7 @@ class TestDateWordingFollowsTheSpan:
 
 
 class TestCaptionFilters:
-    """#464 v4 (proof-sheet approved): title-font bold uppercase, place TOP-left,
-    date BOTTOM-right, corners hugged identically in both orientations, heavy
-    outline for bright content, constant y so nothing drifts with descenders."""
+    """Readable translucent context, with consistent corners in both orientations."""
 
     def _filters(self, caption=None, w=1920, h=1080, **kw):
         from immich_memories.processing.clip_caption import ClipCaption, caption_filters
@@ -127,9 +169,9 @@ class TestCaptionFilters:
     def test_place_top_left_and_date_bottom_right(self):
         place_f, date_f = self._filters()
 
-        # 1080 short side: inset = round(1080*0.055) = 59, line = round(67*1.05) = 70
+        # 1080 short side: inset = round(1080*0.055) = 59, line = round(48*1.05) = 50
         assert place_f.endswith(":x=59:y=59")
-        assert date_f.endswith(":x=w-tw-59:y=h-59-70")
+        assert date_f.endswith(":x=w-tw-59:y=h-59-50")
 
     def test_the_text_is_uppercase(self):
         place_f, date_f = self._filters()
@@ -143,8 +185,8 @@ class TestCaptionFilters:
         port = self._filters(w=1080, h=1920)
 
         assert land[0].endswith(":x=59:y=59") and port[0].endswith(":x=59:y=59")
-        assert land[1].endswith(":x=w-tw-59:y=h-59-70")
-        assert port[1].endswith(":x=w-tw-59:y=h-59-70")
+        assert land[1].endswith(":x=w-tw-59:y=h-59-50")
+        assert port[1].endswith(":x=w-tw-59:y=h-59-50")
 
     def test_an_empty_side_is_not_drawn(self):
         from immich_memories.processing.clip_caption import ClipCaption
@@ -169,7 +211,7 @@ class TestCaptionFilters:
         for f in self._filters():
             assert "borderw=" in f and "bordercolor=black@" in f
 
-    def test_the_caption_reads_at_title_scale(self):
+    def test_the_caption_is_smaller_than_a_title(self):
         import re
 
         (date_f,) = self._filters(
@@ -178,4 +220,4 @@ class TestCaptionFilters:
             ).ClipCaption(date="Sunday 10")
         )
 
-        assert int(re.search(r"fontsize=(\d+)", date_f).group(1)) >= 60
+        assert int(re.search(r"fontsize=(\d+)", date_f).group(1)) == 48

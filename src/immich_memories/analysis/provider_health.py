@@ -30,30 +30,6 @@ class ProviderHealth:
         return self.state is ProviderState.READY
 
 
-class ProviderCircuit:
-    """Mutable run-level circuit shared by content-analysis consumers."""
-
-    def __init__(self) -> None:
-        self.health = ProviderHealth(ProviderState.READY, "ready")
-
-    @property
-    def available(self) -> bool:
-        return self.health.available
-
-    def set_health(self, health: ProviderHealth) -> bool:
-        """Store health and return True only when the circuit changed state."""
-        changed = health != self.health
-        self.health = health
-        return changed
-
-    def disable(
-        self,
-        message: str,
-        state: ProviderState = ProviderState.DISABLED,
-    ) -> bool:
-        return self.set_health(ProviderHealth(state, message))
-
-
 def classify_openai_response(status_code: int, body: Any, model: str) -> ProviderHealth:
     """Classify an OpenAI-compatible response without retaining its body."""
     if 200 <= status_code < 300:

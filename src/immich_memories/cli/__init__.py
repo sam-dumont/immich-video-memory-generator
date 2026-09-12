@@ -52,8 +52,9 @@ def _warn_about_unauthenticated_external_bind(config: Config, host: str) -> None
     "--preset",
     type=click.Choice(["fast"]),
     default=None,
-    help="Config preset for this run: fast = CPU-only/NAS profile (1080p h264, fast encoder, "
-    "no speech analysis, static titles, fewer photos, favorites-first analysis)",
+    help="Config preset for this run: fast = CPU-only/NAS profile (1080p h264, medium quality, "
+    "fast encoder preset, static title backgrounds). It changes nothing about what the editor "
+    "reads. Anything you set explicitly wins",
 )
 @click.pass_context
 def main(ctx: click.Context, config: str | None, preset: str | None) -> None:
@@ -129,8 +130,10 @@ from immich_memories.cli.cache_cmd import register_cache_commands  # noqa: E402
 from immich_memories.cli.config_cmd import register_config_commands  # noqa: E402
 from immich_memories.cli.generate import register_generate_commands  # noqa: E402
 from immich_memories.cli.hardware_cmd import register_hardware_commands  # noqa: E402
+from immich_memories.cli.models_cmd import register_models_commands  # noqa: E402
 from immich_memories.cli.music_cmd import register_music_commands  # noqa: E402
 from immich_memories.cli.people_cmd import register_people_commands  # noqa: E402
+from immich_memories.cli.prepare_cmd import register_prepare_commands  # noqa: E402
 from immich_memories.cli.runs import register_runs_commands  # noqa: E402
 from immich_memories.cli.scheduler_cmd import register_scheduler_commands  # noqa: E402
 from immich_memories.cli.special_days_cmd import register_special_day_commands  # noqa: E402
@@ -145,7 +148,9 @@ register_runs_commands(main)
 register_scheduler_commands(main)
 register_special_day_commands(main)
 register_people_commands(main)
+register_prepare_commands(main)
 register_cache_commands(main)
+register_models_commands(main)
 register_auto_commands(main)
 
 

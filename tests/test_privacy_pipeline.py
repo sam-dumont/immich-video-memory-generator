@@ -1,7 +1,7 @@
 """Behavioral tests for privacy pipeline components.
 
-Tests actual behavior: torchcodec validation, output suppression,
-temp file cleanup, quiet mode routing. No mocks — real objects only.
+Tests actual behavior: output suppression, temp file cleanup, quiet mode
+routing. No mocks — real objects only.
 """
 
 from __future__ import annotations
@@ -13,46 +13,9 @@ import pytest
 
 from immich_memories.processing.assembly_config import AssemblyClip
 
-
-def _has_torch_and_torchcodec() -> bool:
-    try:
-        import torch  # noqa: F401
-        import torchcodec  # noqa: F401
-
-        return True
-    except ImportError:
-        return False
-
-
 # Selected by the Test Extras CI job; these bodies only execute when the
 # torch family is installed, which is the whole point of that job.
 pytestmark = pytest.mark.extras
-
-
-# ---------------------------------------------------------------------------
-# _validate_torchcodec — real version check (skipped when torch not installed)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.skipif(
-    not _has_torch_and_torchcodec(),
-    reason="torch + torchcodec not installed",
-)
-class TestValidateTorchcodec:
-    """Real torchcodec validation with actually-installed packages."""
-
-    def test_passes_when_versions_match(self):
-        from immich_memories.audio.generators.ace_step_runtime import _validate_torchcodec
-
-        _validate_torchcodec()
-
-    def test_version_extraction(self):
-        import torch  # type: ignore[import-not-found]
-        import torchcodec  # type: ignore[import-not-found]
-
-        torch_minor = torch.__version__.split(".")[1]
-        tc_minor = torchcodec.__version__.split(".")[1]
-        assert torch_minor == tc_minor
 
 
 # ---------------------------------------------------------------------------

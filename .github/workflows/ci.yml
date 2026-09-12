@@ -1,8 +1,10 @@
 name: CI
 
 on:
+  # Every pull request, not only the ones aimed at main. A stacked PR targets the
+  # branch below it, and a main-only filter meant those never ran CI at all —
+  # they showed green because nothing had run.
   pull_request:
-    branches: [main]
   workflow_call:  # Called from release.yml on push to main (provides Codecov baseline)
 
 permissions:
@@ -249,16 +251,29 @@ jobs:
           done
           uvx diff-cover $COVERAGE_FILES --compare-branch=origin/main --format markdown:diff-cover-report.md || true
           if [ -s diff-cover-report.md ]; then
+            # GitHub caps a comment body at 65,536 characters; a wide PR's per-file
+            # report exceeds it, so keep the summary lines and cut the middle.
             {
               echo "## Diff Coverage Report"
               echo ""
-              cat diff-cover-report.md
+              if [ "$(wc -c < diff-cover-report.md)" -gt 60000 ]; then
+                head -c 50000 diff-cover-report.md
+                echo ""
+                echo ""
+                echo "_… report truncated; full output is in the job log …_"
+                echo ""
+                tail -n 8 diff-cover-report.md
+              else
+                cat diff-cover-report.md
+              fi
             } > diff-cover-comment.md
-            # --edit-last updates existing comment instead of spamming new ones
+            # --edit-last updates existing comment instead of spamming new ones.
+            # The gate already passed above; a failed comment must not fail the job.
             gh pr comment "${{ github.event.pull_request.number }}" \
               --body-file diff-cover-comment.md --edit-last \
               || gh pr comment "${{ github.event.pull_request.number }}" \
-              --body-file diff-cover-comment.md
+              --body-file diff-cover-comment.md \
+              || echo "::warning::could not post the diff-cover comment"
           else
             echo "diff-cover-report.md is empty, skipping PR comment"
           fi
@@ -294,13 +309,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # speech (onnxruntime/kaldi-native-fbank, the default and only
-          # engine) runs in the main `test` job -- it doesn't need torch.
-          # This job now only covers the torch-heavy audio-ml extras.
+          # Only the extras with tests marked `extras` (the torch family);
+          # everything else runs in the main `test` job.
           - os: ubuntu-latest
-            extras: "dev,audio,audio-ml,gpu"
+            extras: "dev,audio,gpu"
           - os: macos-latest
-            extras: "dev,mac,audio,audio-ml,gpu"
+            extras: "dev,mac,audio,gpu"
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
       - name: Create LFS cache key

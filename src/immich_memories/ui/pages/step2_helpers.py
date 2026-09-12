@@ -162,7 +162,8 @@ def _download_immich_preview(asset_id: str, *, config=None) -> Path | None:
             preview_path.write_bytes(video_bytes)
             # This directory had no cap and no TTL; it reached 5.2 GB on a
             # real library. Enforced on write because that is the only
-            # moment it grows.
+            # moment it grows. No run boundary: unlike thumbnails, the working
+            # set here is the clips of one cut, not every candidate in scope.
             evict_to_budget(
                 preview_dir,
                 max_bytes=int(config.cache.preview_cache_max_size_mb * 1_000_000),

@@ -7,7 +7,6 @@ from immich_memories.photos.renderer import (
     render_ken_burns_streaming,
     render_split,
 )
-from immich_memories.photos.scoring import score_photo
 
 __all__ = [
     "KenBurnsParams",
@@ -15,5 +14,4 @@ __all__ = [
     "face_aware_pan",
     "render_ken_burns_streaming",
     "render_split",
-    "score_photo",
 ]

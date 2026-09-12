@@ -334,39 +334,3 @@ def extract_keyframes_from_video(
         except (OSError, ValueError):
             continue
     return frames
-
-
-def create_color_fade_frames(
-    start_color: tuple[int, int, int],
-    end_color: tuple[int, int, int],
-    frame_count: int,
-    width: int,
-    height: int,
-) -> list[Image.Image]:
-    """Create a series of frames fading from one color to another.
-
-    Args:
-        start_color: Starting RGB color.
-        end_color: Ending RGB color.
-        frame_count: Number of frames in the fade.
-        width: Frame width.
-        height: Frame height.
-
-    Returns:
-        List of PIL Images for the fade transition.
-    """
-    if not HAS_PIL:
-        raise ImportError("PIL/Pillow is required for color fade")
-
-    frames = []
-
-    for i in range(frame_count):
-        t = i / max(frame_count - 1, 1)
-
-        # Interpolate color
-        color = tuple(int(start_color[j] + (end_color[j] - start_color[j]) * t) for j in range(3))
-
-        frame = Image.new("RGB", (width, height), color)
-        frames.append(frame)
-
-    return frames

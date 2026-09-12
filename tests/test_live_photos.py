@@ -370,56 +370,6 @@ class TestTemporalClustering:
         assert trims[1] == pytest.approx((1.5, 3.0), abs=0.01)
         assert trims[2] == pytest.approx((1.5, 3.0), abs=0.01)
 
-    def test_estimated_duration(self):
-        """Total duration = sum of all non-overlapping trim segments."""
-        from immich_memories.processing.live_photo_merger import cluster_live_photos
-
-        # Photos at t=0, t=0.5, t=2 → trims (0,2.0) + (1.5,3.0) + (1.5,3.0) = 2.0+1.5+1.5 = 5.0s
-        assets = [
-            Asset(
-                **_make_asset(
-                    id="a", fileCreatedAt="2024-07-15T10:30:00.000Z", livePhotoVideoId="v1"
-                )
-            ),
-            Asset(
-                **_make_asset(
-                    id="b", fileCreatedAt="2024-07-15T10:30:00.500Z", livePhotoVideoId="v2"
-                )
-            ),
-            Asset(
-                **_make_asset(
-                    id="c", fileCreatedAt="2024-07-15T10:30:02.000Z", livePhotoVideoId="v3"
-                )
-            ),
-        ]
-
-        clusters = cluster_live_photos(assets, merge_window_seconds=10, clip_duration=3.0)
-
-        assert clusters[0].estimated_duration == pytest.approx(5.0, abs=0.01)
-
-    def test_is_burst(self):
-        """A cluster with 2+ photos is considered a burst."""
-        from immich_memories.processing.live_photo_merger import cluster_live_photos
-
-        pair = [
-            Asset(
-                **_make_asset(id="a", fileCreatedAt="2024-07-15T10:30:00Z", livePhotoVideoId="v1")
-            ),
-            Asset(
-                **_make_asset(id="b", fileCreatedAt="2024-07-15T10:30:02Z", livePhotoVideoId="v2")
-            ),
-        ]
-        single = [
-            Asset(
-                **_make_asset(id="c", fileCreatedAt="2024-07-15T11:00:00Z", livePhotoVideoId="v3")
-            ),
-        ]
-
-        clusters = cluster_live_photos(pair + single, merge_window_seconds=10)
-
-        assert clusters[0].is_burst  # 2 photos = burst
-        assert not clusters[1].is_burst  # 1 photo = not burst
-
     def test_cluster_is_favorite_if_any_photo_favorite(self):
         """Cluster should be favorite if ANY photo in it is favorited."""
         from immich_memories.processing.live_photo_merger import LivePhotoCluster

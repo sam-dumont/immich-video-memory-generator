@@ -627,7 +627,7 @@ class TestMegaFlowStreamingAssembly:
 
 
 # ---------------------------------------------------------------------------
-# Test E: Clip Extraction Batch with Buffer + Reencode
+# Test E: Clip Extraction with Buffer + Reencode
 # ---------------------------------------------------------------------------
 
 
@@ -635,15 +635,15 @@ class TestMegaFlowStreamingAssembly:
 @requires_ffmpeg
 @requires_immich
 class TestMegaFlowClipExtraction:
-    """Batch clip extraction: copy mode, reencode mode, all buffer combos, progress.
+    """Clip extraction: copy mode, reencode mode, all buffer combos.
 
-    Exercises: ClipExtractor.batch_extract, extract (copy + reencode),
-    _make_buffered_segment (all 4 buffer combos), _extract_copy,
-    _extract_with_reencode, hw accel detection, progress parsing, cleanup.
+    Exercises: extract_clip (copy + reencode), _make_buffered_segment
+    (all 4 buffer combos), _extract_copy, _extract_with_reencode,
+    hw accel detection, progress parsing, cleanup.
     """
 
-    def test_batch_extraction_with_real_clip(self, immich_short_clips, tmp_path):
-        from immich_memories.processing.clips import ClipExtractor, ClipSegment, extract_clip
+    def test_clip_extraction_with_real_clip(self, immich_short_clips, tmp_path):
+        from immich_memories.processing.clips import extract_clip
 
         clips, config, client = immich_short_clips
         clip = clips[0]
@@ -691,39 +691,8 @@ class TestMegaFlowClipExtraction:
         assert dur_buf >= dur_no * 0.9, "Buffered should be at least as long"
         assert get_duration(ffprobe_json(reencoded)) > 0.3
 
-        # Part 2: Batch extract with progress (exercises batch_extract + progress)
-        segments = [
-            ClipSegment(
-                asset_id=clip.asset.id,
-                source_path=video_path,
-                start_time=0.0,
-                end_time=min(dur * 0.4, 3.0),
-            ),
-            ClipSegment(
-                asset_id=clip.asset.id,
-                source_path=video_path,
-                start_time=max(0, dur * 0.5),
-                end_time=min(dur, dur * 0.5 + 2.0),
-            ),
-        ]
-
-        extractor = ClipExtractor(output_dir=tmp_path / "clips", config=config)
-        progress_calls: list[float] = []
-
-        results = extractor.batch_extract(
-            segments,
-            progress_callback=lambda cur, tot: progress_calls.append(cur / tot),
-        )
-
-        assert len(results) >= 1
-        for r in results:
-            assert r.exists()
-            assert get_duration(ffprobe_json(r)) > 0.3
-        assert len(progress_calls) > 0
-
         logger.info(
-            f"Clip extraction mega flow: {len(results)} batch + 3 direct extracts, "
-            f"{len(progress_calls)} progress calls, buffer diff={dur_buf - dur_no:.2f}s"
+            f"Clip extraction mega flow: 3 direct extracts, buffer diff={dur_buf - dur_no:.2f}s"
         )
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from immich_memories.processing.encoding_plan import HdrTransfer
 from immich_memories.security import validate_video_path
@@ -23,6 +23,7 @@ __all__ = [
     "_get_clip_hdr_types",
     "_resolve_clip_hdr",
     "detect_dominant_hdr_transfer",
+    "quality_encoder_preset",
     "quality_to_crf",
 ]
 
@@ -182,29 +183,6 @@ def detect_dominant_hdr_transfer(
         logger.info("Detected HLG format (iPhone) - %d clips", counts[HdrTransfer.HLG])
         return HdrTransfer.HLG
     return HdrTransfer.NONE
-
-
-def has_any_hdr_clip(clips: list, *, probe_cache: ProbeCache | None = None) -> bool:
-    """Check if at least one clip has HDR metadata.
-
-    Used to decide whether title screens should be HDR or SDR.
-
-    Args:
-        clips: List of clips (AssemblyClip or Path objects).
-
-    Returns:
-        True if at least one clip is HDR (HLG or PQ), False otherwise.
-    """
-    for clip in clips:
-        path = clip.path if hasattr(clip, "path") else clip
-        hdr_type = (
-            _detect_hdr_type(path, probe_cache=probe_cache)
-            if probe_cache is not None
-            else _detect_hdr_type(path)
-        )
-        if hdr_type is not None:
-            return True
-    return False
 
 
 def _get_colorspace_filter(hdr_type: str) -> str:
@@ -374,13 +352,59 @@ def _get_clip_hdr_types(clips: list, *, probe_cache: ProbeCache | None = None) -
     return hdr_types
 
 
-def quality_to_crf(quality: str) -> int:
-    """Map quality preset to CRF value.
+# Points on the libx265 reference curve, measured on the owner's film at 1080p60
+# and — for balanced — confirmed by eye on gradients. See rate_control.py for how
+# every other encoder is calibrated to reproduce the same picture.
+#
+#   high      CRF 18   SSIM 0.99169   4.6 Mbps   ~35 MB/min
+#   balanced  CRF 24   SSIM 0.98451   1.6 Mbps   ~12 MB/min
+#
+# `high` used to mean CRF 12, which is not a quality choice: SSIM is already past
+# 0.999 by CRF 18, so CRF 12 bought nothing visible and asked VideoToolbox for
+# 76 Mbps. That is where the 645 MB two-minute films came from. A memory film is
+# watched, not archived for remastering, so the ladder tops out where the curve
+# stops paying.
+#
+# There is deliberately no tier below balanced. The obvious candidate, ~0.980,
+# bands on gradients on real content, and a preset that visibly breaks up skies
+# is not worth shipping to save a few megabytes. `fast` therefore keeps the
+# balanced picture and buys its speed from the encoder preset instead, which is
+# what the name promises and the only thing it can honestly trade.
+_QUALITY_CRF = {
+    "high": 18,
+    "balanced": 24,
+    "fast": 24,
+    # Retired names, kept loading.
+    "medium": 24,
+    "low": 24,
+}
 
-    Lower CRF = higher quality = bigger file.
-    These values are calibrated for near-transparent quality at "high".
+_DEFAULT_QUALITY_CRF = _QUALITY_CRF["balanced"]
+
+# `output.quality: fast` means the balanced picture as quickly as the backend
+# can produce it, so it drives the encoder effort preset too. A table rather
+# than a branch, to match `_QUALITY_CRF` beside it: both answer "what does this
+# tier imply", and a tier with no opinion is simply absent.
+EncoderPreset = Literal["fast", "balanced", "quality"]
+_QUALITY_ENCODER_PRESET: dict[str, EncoderPreset] = {"fast": "fast"}
+
+
+def quality_encoder_preset(quality: str, configured_preset: EncoderPreset) -> EncoderPreset:
+    """The encoder effort preset a quality tier implies.
+
+    Only `fast` has an opinion: it is the one tier defined by speed rather than
+    by a point on the quality curve, so it overrides the configured preset.
     """
-    return {"high": 12, "medium": 18, "low": 28}.get(quality, 12)
+    return _QUALITY_ENCODER_PRESET.get(quality, configured_preset)
+
+
+def quality_to_crf(quality: str) -> int:
+    """Map a quality preset to its point on the libx265 reference CRF scale.
+
+    Lower CRF = higher quality = bigger file. `medium` and `low` are retired
+    names that now resolve to the balanced picture.
+    """
+    return _QUALITY_CRF.get(quality, _DEFAULT_QUALITY_CRF)
 
 
 def _resolve_clip_hdr(

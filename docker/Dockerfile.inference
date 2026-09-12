@@ -1,0 +1,176 @@
+# Immich Memories — the inference service
+#
+# One Dockerfile, two images: `cpu` (linux/amd64 + linux/arm64) and `cuda`
+# (linux/amd64). The shape is immich-machine-learning's — builder-${DEVICE} →
+# prod-${DEVICE} → prod — so the variants cannot drift apart, and the tags read
+# the way immich's do: `:X.Y.Z` and `:X.Y.Z-cuda`.
+#
+#   docker build -f docker/Dockerfile.inference --build-arg DEVICE=cpu \
+#     --build-arg APP_VERSION=X.Y.Z -t ghcr.io/…/inference:X.Y.Z .
+#   docker build -f docker/Dockerfile.inference --build-arg DEVICE=cuda \
+#     --build-arg APP_VERSION=X.Y.Z -t ghcr.io/…/inference:X.Y.Z-cuda .
+#
+# Nothing is baked but the head bundle, which is 2.2 MB and ours. The encoder,
+# the detector snapshots and (later) the caption weights are fetched into
+# /cache at first use, digest-verified, exactly as immich populates model-cache.
+
+ARG DEVICE=cpu
+# WHY digests: a mutable tag is a supply-chain hole, and the app image pins the
+# same python base — bump the two together.
+ARG PYTHON_BASE=python:3.11-slim@sha256:b1b81d67b8df73bf6067191790c233ef9e598b863fc1ccf447956138ca466d99
+# Must provide CUDA 12 and cuDNN 9: that is what the onnxruntime-gpu wheels are
+# built against.
+ARG CUDA_BASE=nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04@sha256:ac55d124da4882b497f732d8dfd9a702d5447a5f29d08d56da6f64f0a1eb34bc
+
+
+# ─── builders ────────────────────────────────────────────────────────────────
+FROM ${PYTHON_BASE} AS builder-cpu
+
+ENV INFERENCE_EXTRA=editorial
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+
+FROM ${CUDA_BASE} AS builder-cuda
+
+# The CUDA images ship no Python at all.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    python3 \
+    python3-dev \
+    python3-venv \
+    && rm -rf /var/lib/apt/lists/*
+# The device extra locks a CUDA 12 / cuDNN 9-compatible runtime.
+ENV INFERENCE_EXTRA=editorial-cuda
+# Every CUDA kernel compiled in this image is built for these architectures.
+# Measured cause: the stock llama.cpp CUDA image carries cubins for sm_86,
+# sm_89 and sm_120a only and ships everything else as PTX, so a Turing card
+# compiled 858 modules on its first request — 31.3 s against 0.94 s warm, with
+# a JIT cache that dies with the container. A service that unloads on idle pays
+# that on every reload. `61` is the commonest old home-server card (P40s are
+# bought for cheap VRAM), `75` covers T4/T1000, `86` and `89` the current home
+# and datacentre generations, `120` the RTX 50 series; the virtual entries keep
+# PTX for anything unlisted, which then pays one JIT per process and still
+# runs. The ONNX seats do not have this problem — 0.0 MB of JIT cache and a
+# 0.42 s first inference on the same card — so this is llama.cpp packaging.
+ENV CMAKE_CUDA_ARCHITECTURES="61-real;75-real;86-real;89-real;120-real;50-virtual;70-virtual;80-virtual;90-virtual;120-virtual"
+
+
+FROM builder-${DEVICE} AS builder
+
+WORKDIR /app
+
+COPY pyproject.toml README.md uv.lock ./
+COPY src/ ./src/
+COPY packages/ ./packages/
+COPY docker/uv-requirements.txt ./docker/uv-requirements.txt
+
+# hatch-vcs reads the version from git history, which a build context has not
+# got. The caller states the release identity instead.
+ARG APP_VERSION
+RUN if [ -z "${APP_VERSION}" ]; then echo "APP_VERSION build argument is required" >&2; exit 1; fi
+ENV SETUPTOOLS_SCM_PRETEND_VERSION=${APP_VERSION}
+
+# uv lives in its own environment so it is not part of what ships: /opt/venv is
+# copied into the runtime image whole.
+# WHY constraints from uv.lock (#345): a bare `pip install` re-resolves every
+# dependency at build time, so the image could ship a set CI never tested —
+# that is how OpenCV 5 landed in a release (#339/#340).
+RUN python3 -m venv /opt/uv && \
+    /opt/uv/bin/pip install --no-cache-dir --require-hashes -r docker/uv-requirements.txt && \
+    /opt/uv/bin/uv export --frozen --all-extras --no-emit-project \
+        --no-emit-package immich-memories-music --no-hashes \
+        --format requirements-txt -o /constraints.txt && \
+    grep -E '^[A-Za-z0-9_.[-]+==' /constraints.txt > /constraints.pins && \
+    mv /constraints.pins /constraints.txt
+
+RUN python3 -m venv /opt/venv
+ENV PATH=/opt/venv/bin:$PATH
+
+# Both detector seats are ONNX. Install exactly one runtime distribution through
+# the selected extra, constrained by the lock; never overwrite the same package
+# files by installing CPU and GPU wheels together.
+RUN pip install --no-cache-dir --constraint /constraints.txt ".[${INFERENCE_EXTRA}]" && \
+    pip check
+
+
+# ─── runtime ─────────────────────────────────────────────────────────────────
+FROM ${PYTHON_BASE} AS prod-cpu
+
+
+FROM ${CUDA_BASE} AS prod-cuda
+# The virtual environment copied below refers to its interpreter by path, and
+# the CUDA images ship none. Same base as the builder, so same interpreter.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    && rm -rf /var/lib/apt/lists/*
+# The safety net for cards the architecture list above does not cover: keep the
+# driver's JIT cache on the model-cache volume so it outlives the container,
+# bounded at 512 MB because an unbounded cache on a NAS or a shared node is how
+# a disk-pressure eviction happens. Inert on the cpu variant, so it is set here.
+ENV CUDA_CACHE_PATH=/cache/cuda-jit
+ENV CUDA_CACHE_MAXSIZE=536870912
+
+
+FROM prod-${DEVICE} AS prod
+
+ARG APP_VERSION
+ARG VCS_REF=unknown
+ARG SOURCE_URL=https://github.com/sam-dumont/immich-video-memory-generator
+
+LABEL maintainer="Immich Memories Contributors"
+LABEL description="Head and detector facts for Immich Memories, as a service"
+LABEL org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.source="${SOURCE_URL}"
+
+WORKDIR /app
+
+# OpenCV is in the application's dependency set, and it dlopens these two.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /opt/venv /opt/venv
+# The service is not a distribution: it imports the application package, which
+# is what makes a fact computed here indistinguishable from one computed in
+# process. It travels as source on PYTHONPATH.
+COPY services/inference /app/services/inference
+
+# UID/GID 1000 on purpose: it matches the app image, the first Linux user on
+# most home servers, and the shipped Kubernetes manifests (runAsUser: 1000).
+RUN existing_group="$(getent group 1000 | cut -d: -f1)" && \
+    if [ -n "$existing_group" ]; then groupmod -n immich "$existing_group"; \
+    else groupadd -g 1000 immich; fi && \
+    existing_user="$(getent passwd 1000 | cut -d: -f1)" && \
+    if [ -n "$existing_user" ]; then \
+        usermod -l immich -d /home/immich -m -g immich "$existing_user"; \
+    else useradd -u 1000 -g immich -d /home/immich -m immich; fi && \
+    mkdir -p /cache && chown -R immich:immich /cache
+
+ENV PATH=/opt/venv/bin:$PATH
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app/services/inference
+# Published on the port `caption_base_url` already defaults to, and reachable:
+# the service's own default is loopback so an unconfigured laptop run does not
+# put a model server on the LAN, which is not what a container wants.
+ENV IMMICH_MEMORIES_INFERENCE_HOST=0.0.0.0
+ENV IMMICH_MEMORIES_INFERENCE_PORT=8092
+ENV IMMICH_MEMORIES_INFERENCE_CACHE_DIR=/cache
+# The detector snapshots belong on the same volume as everything else fetched,
+# or a restart re-downloads them and `allow_model_downloads: false` can never
+# mean what it says. Outside a container the service keeps the app's default,
+# which is the Hugging Face cache, so this is the image's business.
+ENV IMMICH_MEMORIES_INFERENCE_DETECTOR_CACHE_DIR=/cache/huggingface
+
+USER immich
+
+EXPOSE 8092
+
+# No curl in either base; python is right there.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8092/ping')" || exit 1
+
+CMD ["python", "-m", "immich_memories_inference"]

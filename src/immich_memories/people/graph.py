@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import itertools
 import logging
-from collections.abc import Sequence
+from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Protocol
 
+from immich_memories.people.gather import era_day_shares, suspicious_date
 from immich_memories.people.signatures import (
     EXIF_NOISE_FLOOR,
     Link,
@@ -70,12 +72,24 @@ class PersonNode:
 
 
 @dataclass(frozen=True)
+class Cooccurrence:
+    """One measured pair, before anybody guesses what the pair means."""
+
+    one_id: str
+    other_id: str
+    shared_assets: int
+    one_share: float
+    other_share: float
+
+
+@dataclass(frozen=True)
 class PeopleGraph:
     """Everyone the library has an opinion about, and how they connect."""
 
     people: tuple[PersonNode, ...]
     owner: Owner | None = None
     built_at: datetime | None = None
+    cooccurrences: tuple[Cooccurrence, ...] = ()
 
 
 def build_graph(
@@ -84,6 +98,7 @@ def build_graph(
     min_assets: int = DEFAULT_MIN_ASSETS,
     owner_name: str | None = None,
     today: date | None = None,
+    include_person_ids: Collection[str] = (),
 ) -> PeopleGraph:
     """Read the whole roster, then read what its numbers mean.
 
@@ -91,13 +106,20 @@ def build_graph(
     together; the pairwise pass then costs one small query per pair, which is
     why the roster is bounded to people the library actually holds.
     """
-    evidence = _roster(source, min_assets=min_assets)
+    evidence = _roster(
+        source,
+        min_assets=min_assets,
+        include_person_ids=include_person_ids,
+        library_days=_photographed_days(source),
+    )
     owner = identify_owner(source, evidence, owner_name=owner_name)
-    links = _all_links(source, evidence, owner)
+    shared = _shared_counts(source, evidence)
+    links = _all_links(evidence, owner, shared)
     return PeopleGraph(
         people=tuple(_nodes(evidence, links, today=today)),
         owner=owner,
         built_at=datetime.now(),
+        cooccurrences=tuple(_cooccurrences(evidence, shared)),
     )
 
 
@@ -167,13 +189,13 @@ def _twin_of(
 
 
 def _all_links(
-    source: PeopleSource, evidence: Sequence[PersonEvidence], owner: Owner | None
+    evidence: Sequence[PersonEvidence],
+    owner: Owner | None,
+    shared: Mapping[tuple[str, str], int],
 ) -> list[Link]:
     owner_id = owner.person_id if owner else None
     links = twin_links(evidence) + duplicate_links(evidence)
-    links += tight_dyad_links(
-        evidence, _shared_counts(source, evidence, owner_id), owner_id=owner_id
-    )
+    links += tight_dyad_links(evidence, shared, owner_id=owner_id)
 
     owner_person = next((p for p in evidence if p.person_id == owner_id), None)
     if owner_person is not None:
@@ -195,18 +217,17 @@ def _all_links(
 
 
 def _shared_counts(
-    source: PeopleSource, evidence: Sequence[PersonEvidence], owner_id: str | None
+    source: PeopleSource, evidence: Sequence[PersonEvidence]
 ) -> dict[tuple[str, str], int]:
     """How many assets hold both of each pair, one small query per pair.
 
-    Pairs containing the owner are not asked about at all: the owner is behind
-    the camera, so the answer would be a floor rather than a measurement, and
-    it would still cost a query.
+    Owner pairs are floors rather than full relationship measurements because
+    the owner is often behind the camera. They are still factual positive
+    evidence, so the generated evidence graph retains them while the dyad
+    heuristic continues to ignore them.
     """
     counts: dict[tuple[str, str], int] = {}
     for one, other in itertools.combinations(evidence, 2):
-        if owner_id in (one.person_id, other.person_id):
-            continue
         try:
             counts[pair_key(one.person_id, other.person_id)] = source.count_assets_with_people(
                 [one.person_id, other.person_id]
@@ -216,7 +237,37 @@ def _shared_counts(
     return counts
 
 
-def _roster(source: PeopleSource, *, min_assets: int) -> list[PersonEvidence]:
+def _cooccurrences(
+    evidence: Sequence[PersonEvidence],
+    shared: Mapping[tuple[str, str], int],
+) -> list[Cooccurrence]:
+    """Positive pair measurements with both denominators made explicit."""
+    by_id = {person.person_id: person for person in evidence}
+    found: list[Cooccurrence] = []
+    for (one_id, other_id), together in sorted(shared.items()):
+        if together <= 0 or one_id not in by_id or other_id not in by_id:
+            continue
+        one = by_id[one_id]
+        other = by_id[other_id]
+        found.append(
+            Cooccurrence(
+                one_id=one_id,
+                other_id=other_id,
+                shared_assets=together,
+                one_share=together / one.count if one.count else 0.0,
+                other_share=together / other.count if other.count else 0.0,
+            )
+        )
+    return found
+
+
+def _roster(
+    source: PeopleSource,
+    *,
+    min_assets: int,
+    include_person_ids: Collection[str] = (),
+    library_days: AbstractSet[date] = frozenset(),
+) -> list[PersonEvidence]:
     """Every named person the library holds more than a handful of pictures of.
 
     Unnamed people are left out on purpose: the graph cannot say anything
@@ -229,7 +280,7 @@ def _roster(source: PeopleSource, *, min_assets: int) -> list[PersonEvidence]:
             continue
         months = _active_months(source, person.id)
         count = sum(months.values())
-        if count < min_assets:
+        if count < min_assets and person.id not in include_person_ids:
             continue
         roster.append(
             PersonEvidence(
@@ -238,9 +289,35 @@ def _roster(source: PeopleSource, *, min_assets: int) -> list[PersonEvidence]:
                 count=count,
                 active_months=tuple(sorted(months)),
                 birth_date=_as_date(person.birth_date),
+                era_day_shares=era_day_shares(_photographed_days(source, person.id), library_days),
             )
         )
     return roster
+
+
+def _photographed_days(source: PeopleSource, person_id: str | None = None) -> set[date]:
+    """Distinct day-grain buckets, with default-looking days quarantined.
+
+    One timeline call at DAY size — the same endpoint the month curve uses.
+    A January-first bucket is dropped on both sides of every share: a default
+    date never minted a photographed day (annotation-layer gather doctrine).
+    """
+    days: set[date] = set()
+    for bucket in source.get_time_buckets(size="DAY", person_id=person_id):
+        day = _as_day(bucket.time_bucket)
+        if day is not None and day >= EXIF_NOISE_FLOOR and suspicious_date(day) is None:
+            days.add(day)
+    return days
+
+
+def _as_day(raw: object) -> date | None:
+    if not isinstance(raw, str):
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).date()
+    except ValueError:
+        logger.warning("Ignoring an unreadable timeline bucket: %r", raw)
+        return None
 
 
 def _active_months(source: PeopleSource, person_id: str) -> dict[date, int]:

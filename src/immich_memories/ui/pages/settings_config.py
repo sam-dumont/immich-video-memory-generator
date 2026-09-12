@@ -65,8 +65,6 @@ def _section_icon(section: str) -> str:
         "audio": "music_note",
         "musicgen": "queue_music",
         "ace_step": "piano",
-        "content_analysis": "visibility",
-        "audio_content": "mic",
         "title_screens": "title",
         "upload": "cloud_upload",
         "scheduler": "schedule",

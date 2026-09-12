@@ -5,11 +5,9 @@ Found by the capability matrix: after 409 seconds of analysis a single
 of tens of thousands of assets something is always mid-import or just deleted,
 so this is routine rather than exceptional.
 
-Both photo call sites already meant to be tolerant — the comment at the moment
-suppression site says a bad thumbnail "must cost this photo its comparison, not
-the run" — but they catch `(OSError, RuntimeError, ValueError)`, and Immich
-raises `ImmichNotFoundError`, which inherits from `ImmichAPIError` and none of
-those.
+The photo call site already meant to be tolerant, but it caught
+`(OSError, RuntimeError, ValueError)`, and Immich raises `ImmichNotFoundError`,
+which inherits from `ImmichAPIError` and none of those.
 """
 
 from __future__ import annotations
@@ -20,7 +18,7 @@ from pathlib import Path
 import pytest
 
 from immich_memories.api.immich import ImmichNotFoundError
-from immich_memories.photos import moment_suppression, photo_pipeline
+from immich_memories.photos import photo_pipeline
 
 # Every place these modules reach Immich. Enumerated rather than pattern-matched,
 # because one of them had no guard at all.
@@ -29,14 +27,6 @@ _NETWORK_CALLS = ("thumbnail_fn(", "download_fn(")
 
 def _raise_404(*args: object, **kwargs: object) -> bytes:
     raise ImmichNotFoundError("Resource not found", status_code=404)
-
-
-def test_the_hash_resolver_skips_a_missing_thumbnail() -> None:
-    resolve = moment_suppression._thumbnail_hash_resolver(
-        thumbnail_cache=None, thumbnail_fn=_raise_404
-    )
-
-    assert resolve("gone") is None
 
 
 def test_rendering_skips_a_photo_whose_original_is_gone(tmp_path: Path) -> None:
@@ -66,7 +56,7 @@ def test_every_immich_call_is_guarded_against_a_missing_asset() -> None:
     decoding should stay narrow, and swallowing an API error there would hide a
     real fault rather than tolerate an expected one.
     """
-    for module in (moment_suppression, photo_pipeline):
+    for module in (photo_pipeline,):
         lines = inspect.getsource(module).splitlines()
         calls = [
             i

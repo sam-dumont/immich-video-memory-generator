@@ -9,6 +9,8 @@ from __future__ import annotations
 import hashlib
 import logging
 import random
+from dataclasses import replace
+from math import fsum, hypot
 
 from immich_memories.processing.assembly_config import AssemblyClip
 
@@ -40,6 +42,10 @@ _PRIVACY_FAKE_CITIES = [
     ("Prague, Czech Republic", 50.0755, 14.4378),
     ("Stockholm, Sweden", 59.3293, 18.0686),
 ]
+# WHY: a relocated pin has to stay in the fake city's own area -- a quarter of a
+# degree, roughly 25 km -- because a wide memory moved whole lands offshore, and
+# a destination fuzzed into the sea reads worse than no map at all.
+_PRIVACY_SPREAD_LIMIT_DEGREES = 0.25
 
 
 def anonymize_name(name: str | None) -> str | None:
@@ -58,31 +64,73 @@ def pick_fake_city() -> tuple[str, float, float]:
 
 
 def anonymize_preset_params(preset_params: dict) -> dict:
-    """Anonymize trip home base only — keep real destination location."""
+    """Move both ends of the trip: the home base and the named destination."""
     result = preset_params.copy()
-    _, fake_lat, fake_lon = pick_fake_city()
+    fake_name, fake_lat, fake_lon = pick_fake_city()
 
-    # WHY: only shift the HOME origin so the map fly-in starts from a fake
-    # city. The destination (location_name, trip locations) stays real —
-    # that's the whole point of a trip memory.
-    if "home_lat" in result and result["home_lat"] is not None:
+    if result.get("home_lat") is not None:
         result["home_lat"] = fake_lat - 1.5  # Offset from city so route is visible
         result["home_lon"] = fake_lon - 1.0
+    if result.get("location_name"):
+        result["location_name"] = fake_name
 
     return result
+
+
+def _relocation(clips: list[AssemblyClip]) -> tuple[float, float, float]:
+    """Where the memory currently sits, and how much to shrink it to fit."""
+    points = [
+        (clip.latitude, clip.longitude)
+        for clip in clips
+        if clip.latitude is not None and clip.longitude is not None
+    ]
+    if not points:
+        return 0.0, 0.0, 1.0
+    centre_lat = fsum(lat for lat, _ in points) / len(points)
+    centre_lon = fsum(lon for _, lon in points) / len(points)
+    spread = max(hypot(lat - centre_lat, lon - centre_lon) for lat, lon in points)
+    scale = (
+        1.0 if spread <= _PRIVACY_SPREAD_LIMIT_DEGREES else _PRIVACY_SPREAD_LIMIT_DEGREES / spread
+    )
+    return centre_lat, centre_lon, scale
 
 
 def anonymize_clips_for_privacy(
     clips: list[AssemblyClip],
 ) -> list[AssemblyClip]:
-    """Privacy mode: keep real clip locations, only home base is faked.
+    """Move the whole memory onto the fake city, keeping the shape it had.
 
-    WHY: clip GPS and location_name stay real so trip maps, location cards,
-    and titles show the actual destination. Only the home base (preset params)
-    is shifted to a fake city — that's handled by anonymize_preset_params.
+    Privacy mode used to blur the frames and then hand the map, the location
+    cards and the place captions the real destination, which says where the
+    family was more precisely than the footage ever did. The memory is moved as
+    one piece -- its centre onto the fake city, every pin keeping its bearing
+    and distance from that centre -- so the route still reads as a trip while
+    the place is gone. The move is a function of the memory rather than of the
+    run, so two renders of the same trip agree and repeated renders leave
+    nothing to average away.
+
     Face blur and speech mute are handled separately by the assembler.
     """
-    return clips
+    fake_name, city_lat, city_lon = pick_fake_city()
+    centre_lat, centre_lon, scale = _relocation(clips)
+
+    anonymized = []
+    for clip in clips:
+        # A clip that carried no place name must not gain one: an invented
+        # caption changes what the render shows.
+        name = fake_name if clip.location_name else None
+        if clip.latitude is None or clip.longitude is None:
+            anonymized.append(replace(clip, location_name=name))
+            continue
+        anonymized.append(
+            replace(
+                clip,
+                latitude=city_lat + (clip.latitude - centre_lat) * scale,
+                longitude=city_lon + (clip.longitude - centre_lon) * scale,
+                location_name=name,
+            )
+        )
+    return anonymized
 
 
 def clip_location_name(exif) -> str | None:

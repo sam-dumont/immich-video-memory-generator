@@ -7,16 +7,22 @@ import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
 
 # Your First Memory
 
-This walks you through creating a video from start to finish. Plan on about 2 minutes to install and 10 for a first short video on a Mac or GPU box; on a CPU-only NAS the analysis and encoding take longer (see the [resource table](https://github.com/sam-dumont/immich-video-memory-generator#resource-requirements)).
+This walks you through one video from start to finish. Set up the annotation producers before
+the first run: a cold cut reads and describes every picture in the period, which is the slow part,
+and everything it reads is kept.
 
 ## Prerequisites
 
 Before you start:
 
-- **Immich v2 or newer** with an API key (Account Settings > API Keys > New API Key — grant **All**, or at least read access to assets/people/albums/timeline/search plus asset upload + album create/update if you want upload-back)
+- **Immich v2 or v3** with an API key (Account Settings > API Keys > New API Key: grant **All**, or at least read access to assets/people/albums/timeline/search plus asset upload, album create/update and asset delete if you want upload-back). v4 is not accepted: the client checks the major version and refuses what it does not know
 - **Docker** or **Python 3.11+** installed
-- **~2 GB free disk** for the video cache (downloaded clips get cached locally)
-- At least 20-30 videos in your Immich library for the time period you want
+- **Disk for the caches.** The shipped budgets are 10 GB of downloaded video (evicted after 7 days), 10 GB of Immich previews and 2 GB of clip previews, so plan for about 22 GB if you leave them alone, less if you lower them
+- Photos, Live Photos or videos in the period you want
+- The three services and two model files the editor reads with: the
+  [self-hosting guide](../deploy/self-hosting.md) stands them up in order (the pins and digests
+  themselves are on
+  [Editorial annotation setup](../deploy/configuration/editorial-preparation.md))
 
 ## Step 1: Launch
 
@@ -37,64 +43,94 @@ docker compose up -d
 **Or native install:**
 
 ```bash
-uvx immich-memories ui
+uvx --from "immich-memories[editorial]" immich-memories ui
 ```
 
 Open [http://localhost:8080](http://localhost:8080) in your browser. Both routes keep the UI on
 localhost: the native install binds loopback, and the compose file publishes the port there. If
 the app runs on a different machine than your browser, see the
-[Docker install page](../deploy/installation/docker.md#quick-start) — it pairs publishing the
+[Docker install page](../deploy/installation/docker.md#quick-start): it pairs publishing the
 port with turning on authentication.
 
 ## Step 2: Connect to Immich
 
-Enter your Immich server URL and API key in the **Immich Connection** panel of the Configuration step and click **Test Connection** (it connects on its own if the config already has credentials). On success the panel collapses to "Immich Connection — *you*" and the memory type cards appear.
+With credentials in the config or the environment the page connects on its own and shows the
+brief. Otherwise it shows only the **Immich Connection** panel: enter the server URL and API key
+and click **Test Connection**. On success the panel collapses to "Immich Connection: *you*" and
+the brief appears.
 
-<ThemedScreenshot name="step1-config-connected" alt="Connected to Immich" />
+<ThemedScreenshot name="memory-brief" alt="The brief, connected to Immich" />
 
-## Step 3: Pick "Year in Review"
+## Step 3: Pick a month
 
-Select the **Year in Review** preset card. Pick the year you want (the one with the most videos works best for a first try). This preset covers an entire calendar year and creates monthly title dividers in the output.
+Choose **Monthly Highlights** as the memory type and pick a month with a fair number of pictures
+in it. A month is the right first cut: one minute of output, and preparation is bounded by how many
+pictures the month holds rather than a year. Nobody has timed a cold pass on this route yet, so
+start small enough that you can watch it. Leave **Auto duration** on.
 
-## Step 4: Review clips
+## Step 4: Cut
 
-Click **Next: Review Clips**. Step 2 loads every video in the range (all checked) — deselect anything you already know you don't want, then click **Generate Memories**. The pipeline clusters, filters, analyzes and refines; the first run costs about a minute per 10 clips on Apple Silicon or a GPU, 1–2 minutes per clip on a CPU-only box. Later runs reuse the cache.
+Press **Cut**. The page loads the pool for the brief and shows one row per phase (finding media,
+loading thumbnails, reading the pictures, editing, done) with the editor's own stage beside the
+active row. The first cut prepares a caption and facts for every picture in the month, then reads
+the month's episodes and account, weighs its stories, and picks the moments. A missing producer
+stops the run here and says which one.
 
-When it finishes, click **Review & Refine Selected Clips** to see what it picked. Untick a clip to drop it, drag the range slider to change the excerpt, then **Continue to Generation**.
+Reloading the page mid-cut is fine: it lands on the same rows.
 
-<ThemedScreenshot name="step2-clip-review" alt="Reviewing selected clips" />
+<ThemedScreenshot name="memory-cutting" alt="The cut in progress" />
 
-## Step 5: Set options
+## Step 5: Read the story
 
-Move to Step 3 (Generation Options). The defaults work well for a first video:
+When it finishes the page shows what the editor made of the month: a one-paragraph thesis, a
+duration line, and the stories heaviest first, each with its purpose and, under it, every
+picture in it with a **Still** or **Motion** badge, the seconds it holds, and the reason
+it is there. **Details** under a story shows the editor's own words for it.
 
-- **Resolution:** Auto (match clips) — the default
-- **Transition:** "Smart (mix of fades & cuts)" — the default; it picks per cut point
-- **Background music:** **AI Generated** is the default when a music backend is configured; otherwise **None**. Pick **Upload file** for your own MP3/M4A/WAV
+<ThemedScreenshot name="memory-story" alt="The story the cut produced" />
 
-You can leave everything at defaults. The only setting worth changing on your first run: if you have a specific MP3 you want as background music, upload it here.
+If a picture should not be in it, **Review the pool** opens the media pool with the cut's picks,
+where you untick it and trim excerpts. **Cut again** runs the editor once more over the same
+pool; **Change the brief** starts over.
 
-## Step 6: Generate
+## Step 6: Export
 
-Click **Generate Video** in Step 4. The status line walks through the run: downloading clips and extracting segments (cached for next time), assembling with transitions and title screens, "Applying music" (or "Music disabled"), "Uploading to Immich" (or "Delivery not requested"), then "Complete".
+Press **Export**. The Preview & Export page shows the summary and the output filename; the
+defaults work for a first video. Music, title and resolution live one click away under **Back to
+Generation Options**: the only one worth changing on a first run is **Background music**, if you
+have a specific track you want.
 
-<ThemedScreenshot name="step4-generating" alt="Generation in progress" />
+Click **Generate Video**. The status line walks through the run: downloading clips and extracting
+segments, assembling with transitions and title screens, "Applying music" (or "Music disabled"),
+"Uploading to Immich" (or "Delivery not requested"), then "Complete".
 
-Most of the wait is analysis, not encoding. Measured on 4 CPU cores with no GPU and a cold cache, a 14-clip monthly memory took 10 to 16 minutes end to end and most of that was scoring clips: [the table](../deploy/common-setups/nas-only.md#performance-expectations). On Apple Silicon or a GPU the same run is a couple of minutes; 4K roughly doubles the assembly on a GPU and is not recommended on a NAS. Of the assembly that is left, the title screens cost more than the encoder does: at 2 cores, titles were ~263 s of a ~339 s assembly ([CPU-Only Mode](../deploy/hardware/cpu-only.md#title-rendering-is-the-bottleneck-not-encoding)).
+<ThemedScreenshot name="memory-export" alt="Export: output filename and Generate Video" />
+
+Most of the wait on a first run is the cut, not the encode; on the second cut over the same
+month the reading is already banked. Of the render that is left, the title screens cost more
+than the encoder: at 2 cores, titles were ~263 s of a ~339 s assembly
+([CPU-Only Mode](../deploy/hardware/cpu-only.md#title-rendering-is-the-bottleneck-not-encoding)).
 
 ## Step 7: Watch
 
-When it's done, the built-in player shows your result and "Saved to:" gives the file path (a per-run folder under `~/Videos/Memories` by default). If you turned on **Upload after generation**, it is also in the Immich album you named.
+When it's done, the built-in player shows your result and "Saved to:" gives the file path (a
+per-run folder under `~/Videos/Memories` by default). If you turned on **Upload after
+generation**, it is also in the Immich album you named.
 
 ## What just happened?
 
-The pipeline ran four phases: **fetch** (downloaded videos from Immich via its API, read-only), **analyze** (scored each clip on motion, faces, audio, and optionally LLM content understanding), **select** (picked the best segments and distributed them across the time period), **assemble** (encoded everything with FFmpeg using the streaming assembler, which keeps memory under 550 MB even at 4K).
+The app fetched the month's source metadata and previews, prepared a description and facts for
+every eligible picture, and read the stories those pictures show. It weighed the stories against
+the month's account, gave each the pictures its weight earned, and assembled them in
+chronological order with FFmpeg, titles and music. Every attempt is kept under the cache
+directory, with the plan and the reason for every picture.
 
-The analysis results are cached in a local SQLite database. Next time you generate a video for the same time period, most of the analysis is skipped because the scores are already stored: a warm re-run of the same month lands around 3 minutes against 10 cold. Not instant, but a different order of wait.
+Facts and readings are cached by their producer and exact input. A later cut reuses matching
+results; changed or missing evidence requires fresh work.
 
 ## Next steps
 
 - Try other memory types: [Trip Memories](./memory-types/trip-memories.mdx) (needs GPS data), [Person Spotlight](./memory-types/monthly-person-season.mdx) (needs face recognition in Immich)
-- Set up [LLM content analysis](./pipeline/llm-content-analysis.md) so scoring knows what is in the frame
-- Automate it: schedule one daily [`auto run`](./cli/auto.md) — see [Automated Generation](./recipes/automated-generation.md)
+- Read how the editor decides: [The Curator](./pipeline/the-curator.md)
+- Automate it: schedule one daily [`auto run`](./cli/auto.md); see [Automated Generation](./recipes/automated-generation.md)
 - Explore [all CLI options](./cli/generate.md) for fine-grained control

@@ -43,11 +43,6 @@ def set_current_run_id(run_id: str | None) -> None:
     _current_run_id.set(run_id)
 
 
-def get_current_run_id() -> str | None:
-    """Get the current run_id, or None if not in a pipeline run."""
-    return _current_run_id.get()
-
-
 class RunIdFilter(logging.Filter):
     """Inject run_id from contextvars into every log record."""
 

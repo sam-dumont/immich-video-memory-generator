@@ -1,7 +1,7 @@
 """Photo source preparation — decodes stills into something FFmpeg can read.
 
 Handles HEIC/HEIF decode via pillow-heif, downscaling to the render cap, and
-HDR detection: Apple gain maps (headroom from EXIF MakerNote tag 0x0021),
+HDR detection: Apple gain maps (headroom from both Apple MakerNote tags),
 Android Ultra HDR, and tagged HLG/PQ transfer characteristics.
 
 The animation itself lives in renderer.py — frames are rendered in numpy and
@@ -13,6 +13,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import math
 import struct
 import subprocess
 from dataclasses import dataclass
@@ -20,6 +21,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    import numpy as np
     from PIL import Image as PILImage
 
 logger = logging.getLogger(__name__)
@@ -30,25 +32,31 @@ _HDR_COLOR_TRC = {
     "pq": "smpte2084",
 }
 
-# Extensions that FFmpeg can read directly as images
-_FFMPEG_NATIVE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".webp"}
-
-# Extensions that need pillow-heif conversion
-_HEIF_EXTENSIONS = {".heic", ".heif", ".avif"}
+# Pillow format names that FFmpeg can read directly as images.
+_FFMPEG_NATIVE_FORMATS = {"JPEG", "PNG", "BMP", "TIFF", "WEBP"}
 
 
-_DEFAULT_HEADROOM = 2.3
+# Missing gain-map metadata must preserve SDR brightness, not invent an HDR boost.
+_DEFAULT_HEADROOM = 1.0
 _APPLE_MAKERNOTE_HEADER = b"Apple iOS"
 _HDR_HEADROOM_TAG = 0x0021
+_HDR_GAIN_TAG = 0x0030
 _SRATIONAL_TYPE = 10
 
 
 def _extract_apple_headroom(makernote: bytes | None, source_path: Path) -> float:
-    """Extract HDR headroom from Apple EXIF MakerNote, with exiftool fallback.
+    """The headroom a photo's gain map may reach, as a LINEAR RATIO.
 
-    Apple stores per-photo headroom in MakerNote tag 0x0021 (SRATIONAL).
-    This value varies by scene (not device) — e.g. 0.74 for low-light,
-    1.69 for bright sunlight. Falls back to exiftool, then to 2.3.
+    Apple derives it from two MakerNote tags together -- 0x0021 HDRHeadroom and
+    0x0030 HDRGain -- through a piecewise function, not from either alone. This
+    code previously read 0x0021 by itself and used it as stops, which on a real
+    photograph gave 2.01x where the true answer was 5.955x.
+
+    Validated against 11 photographs: the value below reproduces the file's own
+    `XMP:HDRGainMapHeadroom` to four decimal places on every one, across
+    headrooms from 3.50 to 6.91.
+
+    Constants from Apple's "Applying Apple HDR effect to your photos".
     """
     if makernote and makernote.startswith(_APPLE_MAKERNOTE_HEADER):
         result = _parse_makernote_headroom(makernote)
@@ -58,8 +66,24 @@ def _extract_apple_headroom(makernote: bytes | None, source_path: Path) -> float
     return _exiftool_headroom(source_path)
 
 
+def _eotf_srgb(v: np.ndarray) -> np.ndarray:
+    """sRGB electro-optical transfer -- Display P3 shares it."""
+    import numpy
+
+    return numpy.where(v <= 0.04045, v / 12.92, numpy.power((v + 0.055) / 1.055, 2.4))
+
+
+def _headroom_from_stops(maker33: float, maker48: float) -> float:
+    """Apple's piecewise map from the two MakerNote values to a linear ratio."""
+    if maker33 < 1.0:
+        stops = -20.0 * maker48 + 1.8 if maker48 <= 0.01 else -0.101 * maker48 + 1.601
+    else:
+        stops = -70.0 * maker48 + 3.0 if maker48 <= 0.01 else -0.303 * maker48 + 2.303
+    return float(2.0 ** max(stops, 0.0))
+
+
 def _parse_makernote_headroom(mn: bytes) -> float | None:
-    """Parse HDRHeadroom (tag 0x0021) from Apple MakerNote TIFF IFD.
+    """Read tags 0x0021 and 0x0030 from the Apple MakerNote TIFF IFD.
 
     Apple MakerNote layout:
       - 14-byte header: 'Apple iOS\\x00\\x00\\x01MM'
@@ -74,16 +98,23 @@ def _parse_makernote_headroom(mn: bytes) -> float | None:
     except struct.error:
         return None
 
-    pos = _find_ifd_tag(mn, entry_count, _HDR_HEADROOM_TAG, _SRATIONAL_TYPE)
+    maker33 = _read_srational(mn, entry_count, _HDR_HEADROOM_TAG)
+    maker48 = _read_srational(mn, entry_count, _HDR_GAIN_TAG)
+    if maker33 is None or maker48 is None:
+        return None
+    return _headroom_from_stops(maker33, maker48)
+
+
+def _read_srational(mn: bytes, entry_count: int, tag: int) -> float | None:
+    """One SRATIONAL value from the MakerNote IFD, or None if absent."""
+    pos = _find_ifd_tag(mn, entry_count, tag, _SRATIONAL_TYPE)
     if pos is None:
         return None
-
     offset = struct.unpack(">I", mn[pos + 8 : pos + 12])[0]
     if offset + 8 > len(mn):
         return None
     num, den = struct.unpack(">ii", mn[offset : offset + 8])
-    # WHY: SRATIONAL allows negative — reject nonsensical headroom
-    if den == 0 or num / den <= 0:
+    if den == 0:
         return None
     return num / den
 
@@ -101,20 +132,47 @@ def _find_ifd_tag(mn: bytes, entry_count: int, tag_id: int, expected_type: int) 
     return None
 
 
+def _metadata_headroom(metadata: dict) -> float:
+    ratio = metadata.get("HDRGainMapHeadroom")
+    if isinstance(ratio, (int, float)) and math.isfinite(ratio) and ratio >= 1.0:
+        return float(ratio)
+    maker33, maker48 = metadata.get("HDRHeadroom"), metadata.get("HDRGain")
+    if (
+        isinstance(maker33, (int, float))
+        and isinstance(maker48, (int, float))
+        and math.isfinite(maker33)
+        and math.isfinite(maker48)
+    ):
+        with contextlib.suppress(OverflowError):
+            ratio = _headroom_from_stops(maker33, maker48)
+            if math.isfinite(ratio):
+                return ratio
+    return _DEFAULT_HEADROOM
+
+
 def _exiftool_headroom(source_path: Path) -> float:
-    """Fallback: extract HDRHeadroom via exiftool subprocess."""
+    """Read a declared ratio or calculate it from both raw Apple tags."""
     try:
         result = subprocess.run(
-            ["exiftool", "-Apple:HDRHeadroom", "-n", str(source_path)],
+            [
+                "exiftool",
+                "-j",
+                "-n",
+                "-Apple:HDRHeadroom",
+                "-Apple:HDRGain",
+                "-XMP:HDRGainMapHeadroom",
+                str(source_path),
+            ],
             capture_output=True,
             text=True,
             timeout=10,
         )
-        if result.returncode == 0 and "HDR Headroom" in result.stdout:
-            value_str = result.stdout.split(":")[-1].strip()
-            headroom = float(value_str)
-            logger.info(f"exiftool headroom for {source_path.name}: {headroom:.2f}")
-            return headroom
+        if result.returncode == 0:
+            rows = json.loads(result.stdout)
+            if isinstance(rows, list) and rows and isinstance(rows[0], dict):
+                headroom = _metadata_headroom(rows[0])
+                logger.info(f"exiftool headroom for {source_path.name}: {headroom:.2f}")
+                return headroom
     except (FileNotFoundError, ValueError, subprocess.TimeoutExpired):
         pass
 
@@ -130,6 +188,11 @@ class PreparedPhoto:
     height: int
     has_gain_map: bool = False
     peak_nits: int = 203  # SDR default; gain-mapped HDR sets actual peak
+    # WHY: the video path reads the source's own primaries and passes them to
+    # zscale; photos hardcoded bt709. pillow-heif hands back RAW Display P3 for
+    # an iPhone HEIC, so that hardcoding described P3 values as the narrower
+    # gamut and desaturated every saturated colour. "smpte432" is P3-D65.
+    primaries: str = "bt709"
 
 
 def prepare_photo_source(
@@ -141,8 +204,8 @@ def prepare_photo_source(
     three float32 copies of the decoded image, so a 24 MP HEIC peaks near 0.9 GB
     and a 48 MP one exceeds a 4 GB container. Ken Burns never samples more than
     about twice the output resolution, so anything beyond that is memory spent
-    on detail the encoder discards. Photos already inside the cap are returned
-    untouched rather than re-encoded.
+    on detail the encoder discards. Photos already inside the cap and requiring
+    no EXIF pixel transform are returned untouched rather than re-encoded.
 
     Extracts HDR gain maps when present:
     - Apple HEIC: gain map via pillow-heif auxiliary image
@@ -152,18 +215,28 @@ def prepare_photo_source(
     Returns PreparedPhoto with the path to the FFmpeg-compatible file,
     plus dimensions and has_gain_map flag.
     """
-    ext = source_path.suffix.lower()
+    from PIL import Image
 
-    if ext in _HEIF_EXTENSIONS:
-        return _convert_heif(source_path, work_dir, max_size=max_size)
+    # Library filenames can retain an old suffix after the image was converted.
+    # Identify the container before invoking a format-specific decoder.
+    try:
+        import pillow_heif  # type: ignore[import-untyped]
+    except ImportError:
+        pass
+    else:
+        if pillow_heif.is_supported(source_path):
+            return _convert_heif(source_path, work_dir, max_size=max_size)
+
+    with Image.open(source_path) as image:
+        image_format = image.format
 
     # Check for UltraHDR JPEG gain map (Android/Pixel/Samsung)
-    if ext in (".jpg", ".jpeg"):
+    if image_format == "JPEG":
         result = _try_ultrahdr_extraction(source_path, work_dir, max_size=max_size)
         if result is not None:
             return result
 
-    if ext in _FFMPEG_NATIVE_EXTENSIONS:
+    if image_format in _FFMPEG_NATIVE_FORMATS:
         return _prepare_native(source_path, work_dir, max_size)
 
     # Unknown format — try Pillow as fallback
@@ -173,18 +246,25 @@ def prepare_photo_source(
 def _prepare_native(
     source_path: Path, work_dir: Path, max_size: tuple[int, int] | None
 ) -> PreparedPhoto:
-    """FFmpeg reads these directly; only re-encode when the cap actually bites."""
-    w, h = _get_image_dimensions(source_path)
-    if max_size is None or (w <= max_size[0] and h <= max_size[1]):
-        return PreparedPhoto(path=source_path, width=w, height=h)
-
-    from PIL import Image
+    """Normalize displayed pixels before the cap and the EXIF-blind array reader."""
+    from PIL import Image, ImageOps
 
     with Image.open(source_path) as opened:
-        opened.draft("RGB", max_size)
-        capped = opened.convert("RGB")
-    capped.thumbnail(max_size, Image.Resampling.LANCZOS)
-    out_path = work_dir / f"{source_path.stem}_capped.jpg"
+        orientation = opened.getexif().get(274, 1)
+        transformed = orientation in range(2, 9)
+        swaps_axes = orientation in (5, 6, 7, 8)
+        w, h = opened.size[::-1] if swaps_axes else opened.size
+        needs_cap = max_size is not None and (w > max_size[0] or h > max_size[1])
+        if not transformed and not needs_cap:
+            return PreparedPhoto(path=source_path, width=w, height=h)
+        if max_size is not None:
+            # JPEG draft operates on stored axes; the cap applies to displayed axes.
+            opened.draft("RGB", max_size[::-1] if swaps_axes else max_size)
+        capped = ImageOps.exif_transpose(opened).convert("RGB")
+    if max_size is not None:
+        capped.thumbnail(max_size, Image.Resampling.LANCZOS)
+    suffix = "capped" if needs_cap else "oriented"
+    out_path = work_dir / f"{source_path.stem}_{suffix}.jpg"
     capped.save(out_path, "JPEG", quality=95)
     return PreparedPhoto(path=out_path, width=capped.width, height=capped.height)
 
@@ -284,7 +364,7 @@ def _convert_heif(
     saves as high-quality JPEG.
     """
     try:
-        import pillow_heif  # type: ignore[import-untyped]
+        import pillow_heif
 
         pillow_heif.register_heif_opener()
     except ImportError:
@@ -315,9 +395,14 @@ def _convert_heif(
         # Extract per-photo headroom from Apple MakerNote
         makernote = img.getexif().get_ifd(0x8769).get(0x927C)
         headroom = _extract_apple_headroom(makernote, source_path)
+        # WHY: no P3->sRGB here on purpose. The 16-bit PNG keeps the source
+        # gamut and the renderer is told what it is, so BT.2020 -- which
+        # contains P3 -- receives the wide colours instead of clipped ones.
+        icc = img.info.get("icc_profile")
+        primaries = "smpte432" if icc and _is_display_p3(icc) else "bt709"
         try:
             return _apply_hdr_gain_map(
-                img, primary, gain_map_item_id, w, h, work_dir, source_path, headroom
+                img, primary, gain_map_item_id, w, h, work_dir, source_path, headroom, primaries
             )
         except (ValueError, OSError) as e:
             logger.warning(f"Gain map extraction failed, falling back to SDR: {e}")
@@ -346,12 +431,13 @@ def _apply_hdr_gain_map(
     work_dir: Path,
     source_path: Path,
     headroom: float = _DEFAULT_HEADROOM,
+    primaries: str = "bt709",
 ) -> PreparedPhoto:
     """Apply Apple HDR gain map to SDR base → 16-bit linear HDR PNG.
 
     Apple stores iPhone photos as 8-bit SDR (gamma-encoded) + logarithmic
     gain map. The gain must be applied in LINEAR light, not gamma space.
-    Headroom is extracted per-photo from the EXIF MakerNote (tag 0x0021).
+    Headroom is a per-photo linear ratio derived from both Apple MakerNote tags.
     """
     import numpy as np
     from PIL import Image
@@ -361,23 +447,29 @@ def _apply_hdr_gain_map(
 
     sdr_arr = np.array(sdr_img, dtype=np.float32) / 255.0
     gain_arr = np.array(gain_resized, dtype=np.float32) / 255.0
+    if gain_arr.ndim == 3:
+        gain_arr = gain_arr[:, :, 0]
 
-    # Step 1: inverse sRGB gamma → linear light
-    # WHY: SDR pixels are gamma-encoded. Gain must be applied in linear space,
-    # otherwise highlights get crushed and the PQ transfer looks washed out.
-    sdr_linear = np.where(
-        sdr_arr <= 0.04045,
-        sdr_arr / 12.92,
-        np.power((sdr_arr + 0.055) / 1.055, 2.4),
-    )
+    # WHY: BOTH layers are sRGB-encoded and both must be linearised. Skipping it
+    # on the gain map was worth a factor of two on this library -- raw values
+    # average 0.51 where their linear counterparts average 0.23 -- so mid-tones
+    # were lifted about twice as far as Apple lifts them, which reads as a flat,
+    # over-bright picture rather than as a bright highlight.
+    # Display P3 and sRGB share an EOTF, so one function serves both.
+    sdr_linear = _eotf_srgb(sdr_arr)
+    gain_linear = _eotf_srgb(gain_arr)
 
-    # Step 2: apply gain in linear space
-    hdr_gain = np.power(2.0, gain_arr * headroom)
-    hdr_linear = sdr_linear * hdr_gain[:, :, np.newaxis]
+    # WHY: Apple interpolates linearly between 1.0 and the headroom -- it never
+    # darkens. The exponential 2**(gain * headroom) used before is the ISO
+    # 21496-1 / Ultra HDR shape, which belongs to a different file format.
+    # Validated against CoreImage's own kCIImageExpandToHDR output on 11
+    # photographs: median error 1-2% on most, 10% worst of those that converged.
+    scale = 1.0 + (headroom - 1.0) * gain_linear
+    hdr_linear = sdr_linear * scale[:, :, np.newaxis]
 
     # Normalize for uint16 storage: map HDR range into 0-1
-    # WHY: peak_linear = 2^headroom; npl = peak_linear * 203 nits
-    peak_linear = 2**headroom
+    # WHY: headroom IS the peak multiple of SDR white; npl = peak * 203 nits
+    peak_linear = headroom
     hdr_arr = np.clip(hdr_linear / peak_linear, 0, 1)
 
     # Save as 16-bit PNG (cv2 handles 16-bit natively)
@@ -402,7 +494,14 @@ def _apply_hdr_gain_map(
         f"headroom={headroom:.2f}, peak={peak_nits} nits"
     )
 
-    return PreparedPhoto(path=out_path, width=w, height=h, has_gain_map=True, peak_nits=peak_nits)
+    return PreparedPhoto(
+        path=out_path,
+        width=w,
+        height=h,
+        has_gain_map=True,
+        peak_nits=peak_nits,
+        primaries=primaries,
+    )
 
 
 def _convert_via_pillow(
@@ -424,14 +523,6 @@ def _convert_via_pillow(
     img.save(out_path, "JPEG", **save_kwargs)
 
     return PreparedPhoto(path=out_path, width=w, height=h)
-
-
-def _get_image_dimensions(path: Path) -> tuple[int, int]:
-    """Get image dimensions via Pillow (fast — only reads header)."""
-    from PIL import Image
-
-    with Image.open(path) as img:
-        return img.size
 
 
 def _is_display_p3(icc_profile: bytes) -> bool:

@@ -17,21 +17,19 @@ from immich_memories.ui.components import (
 )
 from immich_memories.ui.pages.clip_grid import (
     GridItem,
-    _detect_duplicates,
-    _group_clips_by_datetime,
-    _render_clip_grid_paginated,
-    _render_compact_grid_paginated,
-    _render_compact_mixed_grid_paginated,
-    _render_mixed_grid_paginated,
+    _render_clip_grid,
+    _render_compact_grid,
+    _render_compact_mixed_grid,
+    _render_mixed_grid,
+    _render_paginated,
     _update_duration_summary,
     grid_item_date,
 )
-from immich_memories.ui.pages.clip_pipeline import (
-    _render_pipeline_progress_ui,
-    render_pipeline_summary,
-)
+from immich_memories.ui.pages.clip_pipeline import render_pipeline_summary
 from immich_memories.ui.pages.clip_review import _render_review_selected_clips
-from immich_memories.ui.pages.step2_loading import _load_clips
+from immich_memories.ui.pages.memory_duration import duration_label, set_auto, set_manual_minutes
+from immich_memories.ui.pages.memory_run import CUT_ALREADY_RUNNING, arm_cut
+from immich_memories.ui.pages.step2_loading import _load_clips, ensure_caches
 from immich_memories.ui.state import AppState, get_app_state
 
 logger = logging.getLogger(__name__)
@@ -41,43 +39,25 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 
-def _duration_mode_label(state) -> str:
-    """Return compact copy for the currently resolved duration mode."""
-    total_seconds = round(state.target_duration_seconds)
-    minutes, seconds = divmod(total_seconds, 60)
-    return f"Auto · {minutes}m {seconds:02d}s"
-
-
-def _set_manual_target_minutes(state, value: float) -> None:
-    """Apply an exact manual duration from the Step 2 number input."""
-    state.target_duration = value
-    state.duration_mode = "manual"
-
-
-def _set_auto_duration_mode(state, enabled: bool) -> None:
-    """Toggle Auto mode without changing its last resolved value."""
-    state.duration_mode = "auto" if enabled else "manual"
+def _start_over_selection(state: AppState) -> None:
+    """Discard one editorial result while keeping the loaded source library."""
+    state.pipeline_result = None
+    state.pipeline_selected_clips = []
+    state.editorial_selections = ()
+    state.editorial_attempt_dir = None
+    state.review_selected_mode = False
+    state.selected_clip_ids = set()
+    state.clip_segments = {}
 
 
 def _handle_duration_mode_change(state: AppState, event: Any) -> None:
     """Apply the Auto switch and refresh the controls for the new mode."""
     value = event.value if hasattr(event, "value") else event
-    _set_auto_duration_mode(state, bool(value))
+    if value:
+        set_auto(state)
+    else:
+        set_manual_minutes(state, state.target_duration)
     ui.navigate.to("/step2")
-
-
-def _render_pool_coverage_notice(pipeline_result: dict) -> None:
-    """Say so when the selection ranked most of its pool without looking (#489).
-
-    Silent on a well-analyzed run: the point is to mark the runs where the
-    review below is doing the real work, not to decorate every one of them.
-    """
-    from immich_memories.analysis.selection_coverage import thin_coverage_notice
-
-    coverage = pipeline_result.get("coverage")
-    notice = thin_coverage_notice(coverage) if coverage else None
-    if notice:
-        im_info_card(notice, variant="warning")
 
 
 def _render_step2_header(state) -> bool:
@@ -93,30 +73,14 @@ def _render_step2_header(state) -> bool:
             variant="warning",
         )
         im_button(
-            "Back to Configuration",
+            "Back to the brief",
             variant="secondary",
             on_click=lambda: ui.navigate.to("/"),
             icon="arrow_back",
         )
         return True
 
-    # Initialize caches if not done
-    if state.analysis_cache is None:
-        from immich_memories.cache import VideoAnalysisCache
-        from immich_memories.config import get_config
-
-        _cfg = get_config()
-        state.analysis_cache = VideoAnalysisCache(db_path=_cfg.cache.database_path)
-
-    if state.thumbnail_cache is None:
-        from immich_memories.cache.thumbnail_cache import ThumbnailCache
-        from immich_memories.config import get_config
-
-        _cfg = get_config()
-        state.thumbnail_cache = ThumbnailCache(
-            cache_dir=_cfg.cache.cache_path / "thumbnails",
-            max_size_mb=_cfg.cache.thumbnail_cache_max_size_mb,
-        )
+    ensure_caches(state)
 
     # Load clips if not already loaded
     if not state.clips:
@@ -132,17 +96,16 @@ def _render_step2_header(state) -> bool:
             state.step = 1
             ui.navigate.to("/")
 
-        im_button("Back to Configuration", variant="secondary", on_click=go_back, icon="arrow_back")
+        im_button("Back to the brief", variant="secondary", on_click=go_back, icon="arrow_back")
         return True
 
-    # Check pipeline state
+    # A running cut lives on the Memory page, whatever page armed it.
     if state.pipeline_running:
-        _render_pipeline_progress_ui(clips)
+        ui.navigate.to("/")
         return True
 
     if state.pipeline_result:
         render_pipeline_summary(state.pipeline_result)
-        _render_pool_coverage_notice(state.pipeline_result)
 
         with ui.row().classes("w-full gap-4 mt-4"):
 
@@ -152,10 +115,7 @@ def _render_step2_header(state) -> bool:
                 ui.navigate.to("/step2")
 
             def start_over():
-                state.pipeline_result = None
-                state.review_selected_mode = False
-                state.selected_clip_ids = set()
-                state.clip_segments = {}
+                _start_over_selection(state)
                 ui.navigate.to("/step2")
 
             im_button(
@@ -174,7 +134,7 @@ def _render_step2_header(state) -> bool:
 
     # Check if in review mode
     if state.review_selected_mode and state.selected_clip_ids:
-        _render_review_selected_clips(clips)
+        _render_review_selected_clips(state.get_selected_clips())
         return True
 
     return False
@@ -208,7 +168,6 @@ def _render_step2_controls(state, clips: list[VideoClipInfo]) -> None:
     """Render the Generate Memories controls in a collapsible panel."""
     hdr_count = sum(1 for c in clips if c.is_hdr)
     fav_count = sum(1 for c in clips if c.asset.is_favorite)
-    clips_needed = max(1, int((state.target_duration * 60) / state.avg_clip_duration))
 
     with ui.expansion("Generate Memories", icon="auto_awesome", value=True).classes("w-full"):
         # All controls in one flowing row
@@ -222,7 +181,7 @@ def _render_step2_controls(state, clips: list[VideoClipInfo]) -> None:
                 "and shortens sparse memories automatically"
             )
             if state.duration_mode == "auto":
-                ui.label(_duration_mode_label(state)).classes("text-base font-semibold mb-2")
+                ui.label(duration_label(state)).classes("text-base font-semibold mb-2")
             else:
                 ui.number(
                     "Target duration (min)",
@@ -231,35 +190,16 @@ def _render_step2_controls(state, clips: list[VideoClipInfo]) -> None:
                     max=60,
                     step=0.25,
                 ).classes("w-40").on_value_change(
-                    lambda e: _set_manual_target_minutes(
+                    lambda e: set_manual_minutes(
                         state,
                         e.value if hasattr(e, "value") else e,
                     )
                 )
-            ui.number("Avg seconds per clip", value=state.avg_clip_duration, min=2, max=30).classes(
-                "w-32"
-            ).on_value_change(
-                lambda e: setattr(
-                    state, "avg_clip_duration", int(e.value if hasattr(e, "value") else e)
-                )
-            )
-            with ui.column().classes("items-center"):
-                ui.label("Clips needed").classes("text-sm").style("color: var(--im-text-secondary)")
-                ui.label(str(clips_needed)).classes("text-lg font-bold").style(
-                    "color: var(--im-text)"
-                )
             ui.label(f"{len(clips)} clips ({hdr_count} HDR, {fav_count} favorites)").classes(
                 "text-sm"
             ).style("color: var(--im-text-secondary)")
-
-            # Checkboxes inline in the same row
             ui.checkbox("HDR clips only", value=state.hdr_only).on_value_change(
                 lambda e: setattr(state, "hdr_only", e.value if hasattr(e, "value") else e)
-            )
-            ui.checkbox("Prioritize favorites", value=state.prioritize_favorites).on_value_change(
-                lambda e: setattr(
-                    state, "prioritize_favorites", e.value if hasattr(e, "value") else e
-                )
             )
 
         if state.hdr_only and hdr_count == 0:
@@ -267,46 +207,11 @@ def _render_step2_controls(state, clips: list[VideoClipInfo]) -> None:
                 "No HDR clips found. Disable 'HDR clips only' to select clips.", variant="warning"
             )
 
-        if state.prioritize_favorites:
-            with ui.row().classes("w-full items-center gap-4 mt-1"):
-                ui.label("Preferred max non-favorites:").classes("text-sm").tooltip(
-                    "Auto can exceed this preference when the selected media would otherwise "
-                    "leave the requested duration unfilled."
-                )
-                max_nonfav_slider = ui.slider(
-                    min=0, max=100, step=5, value=state.max_non_favorite_pct
-                ).classes("flex-1")
-
-                def on_nonfav_change(e):
-                    value = e.value if hasattr(e, "value") else e
-                    state.max_non_favorite_pct = int(value)
-                    state.max_non_favorite_ratio = value / 100.0
-
-                max_nonfav_slider.on_value_change(on_nonfav_change)
-                ui.label(f"{state.max_non_favorite_pct}%").bind_text_from(
-                    max_nonfav_slider, "value", lambda v: f"{int(v)}%"
-                )
-
-        total_available_duration = sum(c.duration_seconds or 0 for c in clips)
-        if state.target_duration * 60 > total_available_duration:
-            available_min = total_available_duration / 60
-            im_info_card(
-                f"Target ({state.target_duration} min) exceeds available content "
-                f"({available_min:.1f} min). Consider reducing the target duration.",
-                variant="warning",
-            )
-
         def start_generate():
-            clips_needed_now = max(1, int((state.target_duration * 60) / state.avg_clip_duration))
-            state.pipeline_running = True
-            state.pipeline_config = {
-                "target_clips": clips_needed_now,
-                "avg_clip_duration": float(state.avg_clip_duration),
-                "hdr_only": state.hdr_only,
-                "prioritize_favorites": state.prioritize_favorites,
-                "max_non_favorite_ratio": state.max_non_favorite_ratio,
-            }
-            ui.navigate.to("/step2")
+            if not arm_cut(state):
+                ui.notify(CUT_ALREADY_RUNNING, type="warning")
+                return
+            ui.navigate.to("/")
 
         im_button(
             "Generate Memories",
@@ -316,25 +221,9 @@ def _render_step2_controls(state, clips: list[VideoClipInfo]) -> None:
         ).classes("w-full mt-2")
 
 
-def _auto_deselect_duplicates(state, lower_quality_ids: set[str]) -> None:
-    """Deselect lower-quality duplicate clips if not already processed."""
-    if not lower_quality_ids or state._duplicates_processed:
-        return
-    deselected_count = 0
-    for asset_id in lower_quality_ids:
-        if asset_id in state.selected_clip_ids:
-            state.selected_clip_ids.discard(asset_id)
-            deselected_count += 1
-    state._duplicates_processed = True
-    if deselected_count > 0:
-        ui.notify(f"Auto-deselected {deselected_count} lower-quality duplicates", type="info")
-
-
 def _make_lazy_loader(
     exp: ui.expansion,
     clips_list: list[VideoClipInfo],
-    dup_ids: set[str],
-    lq_ids: set[str],
     summary_ctr: ui.element,
 ) -> None:
     """Wire a lazy-load handler onto an expansion panel."""
@@ -349,15 +238,15 @@ def _make_lazy_loader(
             with exp:
                 container = ui.column().classes("w-full")
                 with container:
-                    _render_clip_grid_paginated(clips_list, dup_ids, lq_ids, summary_ctr)
+                    _render_paginated(
+                        clips_list, lambda page: _render_clip_grid(list(page), summary_ctr)
+                    )
 
     exp.on_value_change(on_expand)
 
 
 def _render_period_expansions(
     clips: list[VideoClipInfo],
-    duplicate_ids: set[str],
-    lower_quality_ids: set[str],
     summary_container: ui.element,
 ) -> None:
     """Render one expansion panel per (year, month)."""
@@ -385,13 +274,11 @@ def _render_period_expansions(
         if is_first:
             # Render first month eagerly (lazy loader won't fire for initial value=True)
             with expansion:
-                _render_clip_grid_paginated(
-                    period_clips, duplicate_ids, lower_quality_ids, summary_container
+                _render_paginated(
+                    period_clips, lambda page: _render_clip_grid(list(page), summary_container)
                 )
         else:
-            _make_lazy_loader(
-                expansion, period_clips, duplicate_ids, lower_quality_ids, summary_container
-            )
+            _make_lazy_loader(expansion, period_clips, summary_container)
 
 
 def _render_view_toggle(state) -> None:
@@ -438,44 +325,7 @@ def _render_step2_content(
     """Render the clip grid and navigation section."""
     im_section_header(_build_header_label(clips, state), icon="video_library")
 
-    duplicate_ids, lower_quality_ids = _detect_duplicates(clips)
-    _auto_deselect_duplicates(state, lower_quality_ids)
-
-    if duplicate_ids:
-        clips_by_datetime = _group_clips_by_datetime(clips)
-        num_duplicate_groups = len([g for g in clips_by_datetime.values() if len(g) > 1])
-        im_info_card(
-            f"Duplicate Detection: Found {num_duplicate_groups} duplicate groups "
-            f"({len(lower_quality_ids)} lower-quality copies auto-deselected). "
-            f"Best versions are marked with green check.",
-            variant="info",
-        )
-
-    # Toolbar row: bulk actions + view toggle
     with ui.row().classes("w-full items-center gap-2 mb-2"):
-
-        def select_all():
-            state.selected_clip_ids = {c.asset.id for c in clips}
-            if state.include_photos and state.photo_assets:
-                state.selected_photo_ids = {a.id for a in state.photo_assets}
-            ui.navigate.to("/step2")
-
-        def deselect_all():
-            state.selected_clip_ids = set()
-            state.selected_photo_ids = set()
-            ui.navigate.to("/step2")
-
-        def invert_selection():
-            all_ids = {c.asset.id for c in clips}
-            state.selected_clip_ids = all_ids - state.selected_clip_ids
-            if state.include_photos and state.photo_assets:
-                all_photo_ids = {a.id for a in state.photo_assets}
-                state.selected_photo_ids = all_photo_ids - state.selected_photo_ids
-            ui.navigate.to("/step2")
-
-        im_button("Select All", variant="secondary", on_click=select_all).props("dense")
-        im_button("Deselect All", variant="secondary", on_click=deselect_all).props("dense")
-        im_button("Invert Selection", variant="secondary", on_click=invert_selection).props("dense")
         ui.element("div").classes("flex-grow")
         _render_view_toggle(state)
 
@@ -484,15 +334,17 @@ def _render_step2_content(
     if has_photos:
         mixed_items = _build_mixed_items(clips, state)
         if state.clip_view_mode == "grid":
-            _render_compact_mixed_grid_paginated(mixed_items, summary_container)
+            _render_paginated(
+                mixed_items, lambda page: _render_compact_mixed_grid(list(page), summary_container)
+            )
         else:
-            _render_mixed_grid_paginated(
-                mixed_items, duplicate_ids, lower_quality_ids, summary_container
+            _render_paginated(
+                mixed_items, lambda page: _render_mixed_grid(list(page), summary_container)
             )
     elif state.clip_view_mode == "grid":
-        _render_compact_grid_paginated(clips, summary_container)
+        _render_paginated(clips, lambda page: _render_compact_grid(list(page), summary_container))
     else:
-        _render_period_expansions(clips, duplicate_ids, lower_quality_ids, summary_container)
+        _render_period_expansions(clips, summary_container)
 
     # Show included photos if enabled
     if state.include_photos and state.photo_assets:
@@ -541,15 +393,7 @@ def _render_step2_nav(state) -> None:
             state.step = 1
             ui.navigate.to("/")
 
-        def go_next():
-            if state.selected_clip_ids or state.selected_photo_ids:
-                state.review_selected_mode = True
-                ui.navigate.to("/step2")
-            else:
-                ui.notify("Please select at least one clip or photo", type="warning")
-
-        im_button("Back to Configuration", variant="secondary", on_click=go_back, icon="arrow_back")
-        im_button("Next: Refine Moments", variant="primary", on_click=go_next, icon="arrow_forward")
+        im_button("Back to the brief", variant="secondary", on_click=go_back, icon="arrow_back")
 
 
 def render_step2() -> None:

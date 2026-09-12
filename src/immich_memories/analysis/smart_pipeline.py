@@ -1,10 +1,8 @@
-"""Smart pipeline for one-click video memory generation.
+"""The pipeline surface the CLI and the UI drive.
 
-Orchestrates the 4-phase pipeline:
-1. Clustering - Group similar clips by thumbnail
-2. Filtering - Apply HDR/favorites filters, pre-select candidates
-3. Analyzing - Download and analyze selected clips
-4. Refining - Pick final clips and optimal segments
+One route: `run_editorial_source()` hands the requested sources to the editorial
+planner and projects its plan into a `PipelineResult`. Nothing here scores,
+filters or ranks; the planner decides every carrier.
 """
 
 from __future__ import annotations
@@ -13,132 +11,32 @@ import contextlib
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from immich_memories.analysis import selection_trace as trace
-from immich_memories.analysis.clip_analyzer import ClipAnalyzer
-from immich_memories.analysis.clip_refiner import ClipRefiner
-from immich_memories.analysis.clip_scaler import ClipScaler
-from immich_memories.analysis.preview_builder import PreviewBuilder
-from immich_memories.analysis.progress import PipelinePhase, ProgressTracker
-from immich_memories.analysis.selection_coverage import AnalysisCoverage
-from immich_memories.analysis.selection_quality import SelectionQuality
-from immich_memories.analysis.source_filter import not_shot_here
-from immich_memories.analysis.thumbnail_prefetch import ThumbnailPrefetcher
-from immich_memories.config_presets import resolve_analysis_depth
+from immich_memories.analysis.editorial_projection import (
+    EditorialStageReporter,
+    editorial_clip_segment,
+    editorial_membership,
+)
+from immich_memories.analysis.progress import ProgressTracker
 
 if TYPE_CHECKING:
-    from immich_memories.api.immich import SyncImmichClient
-    from immich_memories.api.models import VideoClipInfo
-    from immich_memories.cache.database import VideoAnalysisCache
-    from immich_memories.cache.thumbnail_cache import ThumbnailCache
-    from immich_memories.cache.video_cache import VideoDownloadCache
-    from immich_memories.config_loader import Config
-    from immich_memories.config_models_analysis import AnalysisConfig
+    from immich_memories.analysis.editorial_planner import (
+        EditorialPlan,
+        EditorialPlanner,
+        EditorialSelection,
+    )
+    from immich_memories.api.models import Asset, VideoClipInfo
 
 logger = logging.getLogger(__name__)
-
-AUTO_FULL_ANALYSIS_MAX_CACHE_MISSES = 60
-
-
-def _cap_analysis_candidates(
-    selected: list[VideoClipInfo], target_clips: int
-) -> list[VideoClipInfo]:
-    """Cap selected clips at 1.5x target to prevent over-analysis.
-
-    Favorites are always preserved. Non-favorites are trimmed by resolution
-    (highest resolution kept first).
-    """
-    max_candidates = int(target_clips * 1.5)
-    if len(selected) <= max_candidates:
-        return selected
-
-    fav = [c for c in selected if c.asset.is_favorite]
-    non_fav = [c for c in selected if not c.asset.is_favorite]
-    # Asset id breaks resolution ties. Without it the sort is stable over an
-    # order that came from iterating a set, so on a library where nearly every
-    # clip is the same resolution "which clips get analyzed" changed between
-    # runs on identical input.
-    non_fav.sort(key=lambda c: (-(c.width * c.height if c.width and c.height else 0), c.asset.id))
-    keep = max(0, max_candidates - len(fav))
-    result = fav + non_fav[:keep] if keep > 0 else fav[:max_candidates]
-    logger.info(f"Capped analysis candidates to {len(result)} (1.5x target {target_clips})")
-    return result
 
 
 @dataclass
 class PipelineConfig:
-    """Configuration for the smart pipeline."""
+    """The per-run switches the editorial route reads. None of them comes from config.yaml."""
 
-    # Selection settings
-    target_clips: int = 120  # Target number of clips to select
-    # Verify passes (#468): re-analyze shipped fallback-scored clips and
-    # re-select, until nothing shipping is a guess or the budget is spent.
-    max_refinement_passes: int = 10
-    # The judge (#468/#463): a selected clip below the floor never ships,
-    # and the chronological ending cannot be the one weak clip in the
-    # timeline (weakest member AND below this share of the mean score).
-    judge_floor_score: float = 0.30
-    judge_boundary_ratio: float = 0.6
-    avg_clip_duration: float = 5.0  # Average clip duration in final video
-    target_duration_seconds: float | None = None  # Explicit strict content budget
-    hdr_only: bool = False  # Only select HDR clips
-    prioritize_favorites: bool = True  # Prioritize favorite clips
-    max_non_favorite_ratio: float = 0.70  # Max ratio of non-favorites (0.70 = at most 70%)
-
-    output_resolution: int = 2160  # Output resolution (2160=4K, 1080=HD)
-
-    # Analysis settings
-    analyze_all: bool = False  # Analyze all clips (slow but better selection)
-    segment_duration: float = 3.0  # Duration for segment sampling
-
-    # Duplicate detection
-    # Higher threshold = more lenient clustering (catches different framings of same scene)
-    # 6 = very strict (only near-identical), 8-10 = strict, 12-16 = moderate, 20+ = aggressive
-    cluster_threshold: int = 10  # Hamming distance threshold - balanced
-
-    # Temporal deduplication - when multiple favorites are within this time window,
-    # keep only the best-scored one (they're likely the same moment)
-    temporal_dedup_window_minutes: float = 5.0  # Time window in minutes (0 to disable)
-
-    # Birthday boost - if set, clips from this month get extra priority
-    # Used to ensure birthday week is well represented
-    birthday_month: int | None = None  # 1-12 for month, None to disable
-
-    # Trip segment distribution - if set, clips are distributed proportionally
-    # across overnight stop segments instead of purely by date
-    overnight_bases: list | None = None  # list[OvernightBase] from trip detection
-
-    # Photo ratio cap — max fraction of selected clips that can be photos
-    photo_max_ratio: float = 0.50  # 0.50 = at most 50% photos
-
-    # Analysis depth: auto budgets misses, fast favors speed, thorough analyzes all.
-    analysis_depth: str = "auto"
-
-    @classmethod
-    def from_app_config(cls, config: Config, **overrides: object) -> PipelineConfig:
-        """Build a pipeline config, taking its dials from user configuration.
-
-        Every field here is one a user sets in YAML and the pipeline enforces.
-        They live on this classmethod rather than at the call sites because
-        there are two of those — CLI and UI — and photos.max_ratio spent its
-        life documented as a dial while neither site plumbed it, so the
-        enforced cap was the dataclass default whatever the YAML said.
-        Anything the caller decides instead arrives as an override.
-        """
-        return cls(
-            photo_max_ratio=config.photos.max_ratio,
-            max_refinement_passes=config.analysis.max_refinement_passes,
-            **overrides,
-        )
-
-    @property
-    def duration_target(self) -> float:
-        """Return explicit seconds when final planning supplied them."""
-        if self.target_duration_seconds is not None:
-            return self.target_duration_seconds
-        return self.target_clips * self.avg_clip_duration
+    hdr_only: bool = False
 
 
 @dataclass
@@ -149,8 +47,9 @@ class PipelineResult:
     clip_segments: dict[str, tuple[float, float]]  # asset_id -> (start, end)
     errors: list[dict]  # List of {clip_id, error}
     stats: dict = field(default_factory=dict)
-    # How much of the pool this selection was drawn from had a real look (#489).
-    coverage: AnalysisCoverage = field(default_factory=lambda: AnalysisCoverage(0, 0))
+    # Kept separate from mutable API models: the final editor may deliberately
+    # render a video as a still or a Live Photo as motion.
+    editorial_selections: tuple[EditorialSelection, ...] = ()
 
 
 @dataclass
@@ -161,494 +60,137 @@ class ClipWithSegment:
     start_time: float
     end_time: float
     score: float
-    # WHY: the verify pass (#468) must tell real analysis from a metadata
-    # guess — a fallback score is a placeholder, not a rank.
     analyzed: bool = True
 
 
 class SmartPipeline:
-    """Smart pipeline for one-click memory generation.
-
-    Composes 5 services via constructor injection:
-    - ClipAnalyzer: downloads, analyzes, and scores clips
-    - PreviewBuilder: extracts preview segments
-    - ClipRefiner: selects and distributes final clips
-    - ClipScaler: scales to target duration and deduplicates
-    - SelectionQuality: verifies, judges and reviews the finished cut
-
-    Runs 4 phases:
-    1. Cluster thumbnails to detect duplicates
-    2. Filter and pre-select candidate clips
-    3. Analyze selected clips (download + score)
-    4. Refine final selection with optimal segments
-    """
+    """Run the editorial planner over the requested sources and project its cut."""
 
     def __init__(
         self,
-        client: SyncImmichClient,
-        analysis_cache: VideoAnalysisCache,
-        thumbnail_cache: ThumbnailCache,
         config: PipelineConfig | None = None,
-        run_id: str | None = None,
         *,
-        analysis_config: AnalysisConfig,
-        app_config: Config,
+        planner: EditorialPlanner | None = None,
     ):
-        self.client = client
-        self.analysis_cache = analysis_cache
-        self.thumbnail_cache = thumbnail_cache
         self.config = config or PipelineConfig()
-        self.tracker = ProgressTracker(total_phases=4)
-        self.run_id = run_id
-        self._analysis_config = analysis_config
-        self._app_config = app_config
-        from immich_memories.analysis.provider_health import ProviderCircuit
-
-        self.provider_circuit = ProviderCircuit()
-        self.last_deep_analysis_count = 0
-        self._video_cache: VideoDownloadCache | None = None
-        cache_config = app_config.cache
-        if cache_config.video_cache_enabled and isinstance(cache_config.video_cache_path, Path):
-            from immich_memories.cache.video_cache import VideoDownloadCache
-
-            self._video_cache = VideoDownloadCache(
-                cache_dir=cache_config.video_cache_path,
-                max_size_gb=cache_config.video_cache_max_size_gb,
-                max_age_days=cache_config.video_cache_max_age_days,
-            )
-
-        # Wire composed services
-        self.previewer = PreviewBuilder(
-            client,
-            cache_config=app_config.cache,
-            analysis_config=analysis_config,
-            content_analysis_config=app_config.content_analysis,
-            video_cache=self._video_cache,
-            hardware_enabled=app_config.hardware.enabled,
-        )
-        self.analyzer = ClipAnalyzer(
-            self.config,
-            client,
-            analysis_cache,
-            self.previewer,
-            app_config=app_config,
-            video_cache=self._video_cache,
-            provider_circuit=self.provider_circuit,
-        )
-        self.scaler = ClipScaler()
-        self.refiner = ClipRefiner(self.config, self.scaler)
-        self.thumbnail_prefetcher = ThumbnailPrefetcher.from_client(
-            client,
-            thumbnail_cache,
-            api_policy=app_config.immich.api_version,
-            max_workers=analysis_config.download_workers,
-        )
-        self.quality = SelectionQuality(
-            config=self.config,
-            app_config=app_config,
-            analyzer=self.analyzer,
-            refiner=self.refiner,
-            tracker=self.tracker,
-            client=client,
-            provider_circuit=self.provider_circuit,
-        )
+        self.tracker = ProgressTracker()
+        self._planner = planner
 
     def run(
         self,
         clips: list[VideoClipInfo],
         progress_callback: Callable[[dict], None] | None = None,
     ) -> PipelineResult:
-        """Run the full pipeline (phases 1-4)."""
-        analyzed = self.run_analysis(clips, progress_callback)
-        result = self.run_selection(analyzed)
+        """Return the final cut from the sole production editorial source route."""
+        _, result = self.run_editorial_source(clips, progress_callback)
         return result
 
-    def run_analysis(
+    def run_editorial_source(
         self,
-        clips: list[VideoClipInfo],
+        sources: list[Asset | VideoClipInfo],
         progress_callback: Callable[[dict], None] | None = None,
-    ) -> list[ClipWithSegment]:
-        """Run phases 1-3 (cluster, filter, analyze). Returns analyzed clips.
+        *,
+        include_live_photos: bool = True,
+    ) -> tuple[list[ClipWithSegment], PipelineResult]:
+        """Plan from full requested metadata, with no legacy analysis or fallback."""
+        from immich_memories.analysis.editorial_source_route import EditorialSourcePlanner
+        from immich_memories.operations.cancellation import PipelineCancelled, cancellation_scope
 
-        Does NOT call tracker.finish() — the caller (run() or external code)
-        is responsible for finishing the tracker after run_selection().
-        """
-        if progress_callback:
-            self.tracker.add_callback(
-                lambda _: progress_callback(self.tracker.get_status_summary())
-            )
-
-        self.tracker.start()
-
+        if not isinstance(self._planner, EditorialSourcePlanner):
+            raise RuntimeError("pipeline has no production editorial source route")
+        report_stage = EditorialStageReporter(self.tracker, progress_callback)
         try:
-            # Phase 1: Cluster by thumbnail
-            deduplicated = self._phase_cluster(clips)
-
-            # Phase 2: hard eligibility + a cost-bounded analysis shortlist.
-            eligible = self._hard_eligible_clips(deduplicated)
-            candidates = self._analysis_candidates(eligible)
-            self.last_deep_analysis_count = len(candidates)
-
-            # Phase 3: one cache batch covers every candidate download.
-            analyzed = self._analyze_with_cache_batch(candidates)
-            candidate_ids = {clip.asset.id for clip in candidates}
-            leftovers = [clip for clip in eligible if clip.asset.id not in candidate_ids]
-            fallbacks = self.analyzer.plan_cached_or_metadata(leftovers)
-
-            return [*analyzed, *fallbacks]
-
-        except (
-            Exception
-        ) as e:  # WHY: top-level pipeline boundary — logs + cleans up tracker before re-raise
-            logger.error(f"Pipeline failed: {e}")
-            raise
-        finally:
-            # Analysis owns native captures/models regardless of cache mode or failure.
-            with contextlib.suppress(Exception):
-                self.analyzer.close()
-            with contextlib.suppress(Exception):
-                self.previewer.close()
-
-    def _analysis_candidates(self, eligible: list[VideoClipInfo]) -> list[VideoClipInfo]:
-        """Resolve user-facing analysis depth into the concrete candidate set."""
-        requested_depth = resolve_analysis_depth(
-            self.config.analysis_depth, self._app_config.preset
-        )
-        # The analyzer reads the same PipelineConfig, so the resolved depth has to land there.
-        self.config.analysis_depth = requested_depth
-        if requested_depth == "thorough":
-            logger.info("Thorough mode: analyzing all %d eligible clips", len(eligible))
-            self._complete_passthrough_filter("Thorough", len(eligible))
-            return eligible
-
-        if requested_depth == "auto":
-            cache_misses = self._semantic_cache_miss_count(eligible)
-            self.config.analysis_depth = "thorough"
-            if cache_misses <= AUTO_FULL_ANALYSIS_MAX_CACHE_MISSES:
-                logger.info(
-                    "Auto mode: %d eligible clips, %d current-model cache misses; "
-                    "analyzing every eligible clip",
-                    len(eligible),
-                    cache_misses,
+            self.tracker.start()
+            with (
+                cancellation_scope(report_stage.repeat),
+                trace.tracing(trace.path_from_env()),
+            ):
+                candidates, result = self._planned_editorial_source(
+                    sources, report_stage, include_live_photos=include_live_photos
                 )
-                self._complete_passthrough_filter("Auto", len(eligible))
-                return eligible
-            logger.info(
-                "Auto mode: %d current-model cache misses exceeds %d; "
-                "using density shortlist with LLM analysis",
-                cache_misses,
-                AUTO_FULL_ANALYSIS_MAX_CACHE_MISSES,
-            )
-
-        return self._phase_filter(eligible, hard_filtered=True)
-
-    def _complete_passthrough_filter(self, mode: str, candidate_count: int) -> None:
-        """Keep four-phase progress truthful when a mode deliberately skips shortlisting."""
-        self.tracker.start_phase(PipelinePhase.FILTERING, 1)
-        self.tracker.start_item(f"{mode} mode: keeping all {candidate_count} eligible clips")
-        self.tracker.complete_item("filters")
-        self.tracker.complete_phase()
-
-    def _semantic_cache_miss_count(self, clips: list[VideoClipInfo]) -> int:
-        """Count clips that need work under the exact active semantic model."""
-        from immich_memories.analysis.cache_projection import is_compatible_analysis_cache
-
-        return sum(
-            not is_compatible_analysis_cache(
-                self.analysis_cache.get_analysis(clip.asset.id), self._app_config
-            )
-            for clip in clips
-        )
-
-    def run_planning_analysis(
-        self,
-        clips: list[VideoClipInfo],
-        progress_callback: Callable[[dict], None] | None = None,
-    ) -> list[ClipWithSegment]:
-        """Run normal metadata filters with cached-only segment analysis."""
-        if progress_callback:
-            self.tracker.add_callback(
-                lambda _: progress_callback(self.tracker.get_status_summary())
-            )
-        self.tracker.start()
-        try:
-            deduplicated = self._phase_cluster(clips)
-            eligible = self._hard_eligible_clips(deduplicated)
-            candidates = self._phase_filter(eligible, hard_filtered=True)
-            self.last_deep_analysis_count = len(candidates)
-            planned = self.analyzer.phase_plan_cached(candidates, self.tracker)
-            candidate_ids = {clip.asset.id for clip in candidates}
-            leftovers = [clip for clip in eligible if clip.asset.id not in candidate_ids]
-            return [*planned, *self.analyzer.plan_cached_or_metadata(leftovers)]
-        finally:
-            with contextlib.suppress(Exception):
-                self.analyzer.close()
-            with contextlib.suppress(Exception):
-                self.previewer.close()
-
-    def _analyze_with_cache_batch(self, candidates: list[VideoClipInfo]) -> list[ClipWithSegment]:
-        """Run analysis with one shared cache manifest when file caching is enabled."""
-        if self._video_cache is None:
-            return self.analyzer.phase_analyze(candidates, self.tracker)
-
-        with self._video_cache.begin_batch() as batch:
-            self.analyzer.bind_cache_batch(batch)
-            self.previewer.bind_cache_batch(batch)
-            try:
-                return self.analyzer.phase_analyze(candidates, self.tracker)
-            finally:
-                self.analyzer.bind_cache_batch(None)
-                self.previewer.bind_cache_batch(None)
-
-    def run_selection(
-        self,
-        analyzed: list[ClipWithSegment],
-        progress_callback: Callable[[dict], None] | None = None,
-        *,
-        verify: bool = True,
-    ) -> PipelineResult:
-        """Run phase 4 (refine) on pre-analyzed clips. Finishes the tracker.
-
-        With ``verify`` (the default), selection runs the #468 verify loop:
-        any selected clip whose score is a metadata guess is analyzed for
-        real and selection re-runs, so nothing ships unseen. ``verify=False``
-        is for planning/dry-run paths that must stay local.
-        """
-        if progress_callback:
-            self.tracker.add_callback(
-                lambda _: progress_callback(self.tracker.get_status_summary())
-            )
-
-        # WHY an environment variable rather than an argument: every caller of
-        # this method — CLI, UI, scripts — would otherwise need a parameter it
-        # does not use, to carry a debugging concern four layers down.
-        with trace.tracing(trace.path_from_env()):
-            return self._run_selection(analyzed, verify=verify)
-
-    def _run_selection(
-        self,
-        analyzed: list[ClipWithSegment],
-        *,
-        verify: bool,
-    ) -> PipelineResult:
-        # What selection was given, before any stage narrowed it. The one rule
-        # it may not break is measured against this, not against whatever
-        # survived to the end.
-        pool = analyzed.copy()
-        try:
-            result = self.refiner.phase_refine(analyzed, self.tracker)
-            if verify:
-                result, analyzed = self.quality.stabilize(analyzed, result)
-                # One pass, and its answer is the cut. The loop this replaces
-                # existed because the review vetoed a finished selection and
-                # the refill it triggered had never been judged; a pass that
-                # makes the cut has nothing to iterate towards.
-                result, analyzed = self.quality.cut(analyzed, result)
-            trace.record_favourite_law(pool, result.selected_clips)
-            self.tracker.finish()
-            return result
-        except (
-            Exception
-        ) as e:  # WHY: top-level pipeline boundary — logs + cleans up tracker before re-raise
-            logger.error(f"Selection failed: {e}")
-            self.tracker.finish()
+                report_stage("Editorial selection complete", status="complete")
+                # Only a successful cut completes the tracker. Its display
+                # callbacks cannot turn an already finished selection into failure.
+                with contextlib.suppress(Exception, PipelineCancelled):
+                    self.tracker.finish()
+                return candidates, result
+        except PipelineCancelled:
+            with contextlib.suppress(PipelineCancelled):
+                report_stage("Editorial selection cancelled", status="cancelled")
+            raise
+        except Exception:
+            # A stop requested by a terminal display callback must not replace
+            # the source failure that caused this notification.
+            with contextlib.suppress(PipelineCancelled):
+                report_stage("Editorial selection failed", status="failed")
             raise
 
-    def _phase_cluster(self, clips: list[VideoClipInfo]) -> list[VideoClipInfo]:
-        """Phase 1: Cluster clips by thumbnail similarity."""
-        from immich_memories.analysis.thumbnail_clustering import deduplicate_by_thumbnails
-
-        self.tracker.start_phase(PipelinePhase.CLUSTERING, len(clips))
-        self.thumbnail_prefetcher.ensure_cached(clips)
-
-        def progress(current: int, total: int) -> None:
-            if current <= len(clips) and current > 0:
-                clip = clips[current - 1]
-                self.tracker.start_item(clip.asset.original_file_name or clip.asset.id[:8])
-                self.tracker.complete_item(clip.asset.id)
-
-        deduplicated = deduplicate_by_thumbnails(
-            clips=clips,
-            thumbnail_cache=self.thumbnail_cache,
-            threshold=self.config.cluster_threshold,
-            progress_callback=progress,
-            duplicate_hash_threshold=self._analysis_config.duplicate_hash_threshold,
-        )
-
-        self.tracker.complete_phase()
-
-        duplicates_removed = len(clips) - len(deduplicated)
-        logger.info(
-            f"Phase 1: Clustered {len(clips)} -> {len(deduplicated)} clips "
-            f"({duplicates_removed} duplicates)"
-        )
-
-        return deduplicated
-
-    def _adapt_target_for_content(self, clips: list[VideoClipInfo]) -> None:
-        """Reduce target_clips when available content is sparse."""
-        unique_count = len(clips)
-        if unique_count < self.config.target_clips * 0.5:
-            original = self.config.target_clips
-            self.config.target_clips = max(unique_count, 5)
-            logger.info(
-                f"Sparse content: adapted target {original} -> {self.config.target_clips} "
-                f"({unique_count} clips available)"
-            )
-
-    def _hard_eligible_clips(self, clips: list[VideoClipInfo]) -> list[VideoClipInfo]:
-        """Apply only rules that must permanently exclude a source clip."""
-        min_duration = self._analysis_config.min_segment_duration
-        eligible = [c for c in clips if (c.duration_seconds or 0) >= min_duration]
-        too_short_count = len(clips) - len(eligible)
-        if too_short_count > 0:
-            logger.info(
-                f"Duration filter: removed {too_short_count} clips shorter than "
-                f"{min_duration:.1f}s minimum"
-            )
-
-        patterns = self._analysis_config.exclude_filename_patterns
-        stills_need_a_camera = self._analysis_config.exclude_stills_without_camera_exif
-        if patterns or stills_need_a_camera:
-            before = len(eligible)
-            eligible = [
-                clip
-                for clip in eligible
-                if not not_shot_here(
-                    clip.asset,
-                    patterns=patterns,
-                    stills_need_a_camera=stills_need_a_camera,
-                )
-            ]
-            if len(eligible) < before:
-                logger.info(
-                    "Source filter: removed %d clip(s) from excluded sources",
-                    before - len(eligible),
-                )
-
-        if self.config.hdr_only:
-            before = len(eligible)
-            eligible = [clip for clip in eligible if clip.is_hdr]
-            logger.info("HDR eligibility filter: %d -> %d clips", before, len(eligible))
-        return eligible
-
-    def _phase_filter(
+    def _planned_editorial_source(
         self,
-        clips: list[VideoClipInfo],
+        sources: list[Asset | VideoClipInfo],
+        report_stage: EditorialStageReporter,
         *,
-        hard_filtered: bool = False,
-    ) -> list[VideoClipInfo]:
-        """Phase 2: Select clips for analysis using density-proportional budget.
-
-        Uses density budget to distribute raw footage quotas across time
-        buckets. Favorites fill first, gap-fillers fill remaining quotas.
-        Analyze-all mode bypasses the budget entirely.
-        """
-        from immich_memories.analysis.density_budget import (
-            AssetEntry,
-            compute_density_budget,
-            log_budget_summary,
+        include_live_photos: bool,
+    ) -> tuple[list[ClipWithSegment], PipelineResult]:
+        """Ask the planner for the cut, then put its provenance on the result."""
+        active_trace = trace.active()
+        if active_trace is None:
+            raise RuntimeError("editorial source route requires an active trace")
+        planned = self._planner.plan_source(  # type: ignore[union-attr]
+            sources,
+            trace=active_trace,
+            include_live_photos=include_live_photos,
+            hdr_only=self.config.hdr_only,
+            on_stage=report_stage,
         )
-
-        self.tracker.start_phase(PipelinePhase.FILTERING, 1)
-        self.tracker.start_item("Computing density budget")
-
-        if not hard_filtered:
-            clips = self._hard_eligible_clips(clips)
-
-        self._adapt_target_for_content(clips)
-
-        # Analyze-all mode: skip budget, send everything
-        if self.config.analyze_all:
-            self.tracker.complete_item("filters")
-            self.tracker.complete_phase()
-            logger.info(f"Phase 2: Analyze-all mode — sending all {len(clips)} clips to analysis")
-            return clips
-
-        # Build asset entries for density budget
-        entries = [
-            AssetEntry(
-                asset_id=c.asset.id,
-                asset_type="video",
-                date=c.asset.file_created_at,
-                duration=min(
-                    c.duration_seconds or self.config.avg_clip_duration,
-                    self.config.avg_clip_duration,
-                ),
-                is_favorite=c.asset.is_favorite,
-                score=c.quality_score,
-                width=c.width,
-                height=c.height,
-                is_camera_original=c.is_camera_original,
-            )
-            for c in clips
-        ]
-
-        entries = self._apply_budget_quality_gate(entries)
-
-        # Compute density budget
-        target_seconds = self.config.duration_target
-        buckets = compute_density_budget(
-            assets=entries,
-            target_duration_seconds=target_seconds,
-            raw_multiplier=1.3,
+        if planned.plan.unavailable_reason is not None:
+            raise RuntimeError("editorial source route returned unavailable evidence")
+        candidates = list(planned.candidates)
+        result = self._project_editorial_plan(planned.plan, candidates, source_verified=True)
+        result.stats.update(
+            {
+                "selection_route": "editorial-source",
+                "source_evidence": "canonical annotations and native editorial checks",
+                "legacy_deep_analysis_count": 0,
+                "total_analyzed": 0,
+                "source_candidate_count": len(candidates),
+                "editorial_render_adjustments": list(planned.render_adjustments),
+                "editorial_duration_realization": planned.duration_realization,
+            }
         )
+        attempt_dir = getattr(self._planner, "last_attempt_directory", None)
+        if attempt_dir is not None:
+            result.stats["editorial_attempt_directory"] = str(attempt_dir)
+        active_trace.record("editorial final cut", candidates, result.selected_clips)
+        if planned.render_timing is not None:
+            result.stats["editorial_render_timing"] = planned.render_timing
+        trace.record_favourite_law(candidates, result.selected_clips)
+        result.stats["elapsed_seconds"] = self.tracker.progress.elapsed_seconds
+        return candidates, result
 
-        effective_raw_budget = sum(bucket.quota_seconds for bucket in buckets)
-        log_budget_summary(buckets, effective_raw_budget)
-
-        # Collect selected asset IDs from budget
-        selected_ids: set[str] = set()
-        for bucket in buckets:
-            selected_ids.update(bucket.favorite_ids)
-            selected_ids.update(bucket.gap_fill_ids)
-
-        # Build clip lists
-        clip_map = {c.asset.id: c for c in clips}
-        # sorted, not set order: string hashing is randomised per process, so
-        # the unsorted list differs run to run and the cap below then trims a
-        # different set of equally-good clips each time.
-        selected = [clip_map[aid] for aid in sorted(selected_ids) if aid in clip_map]
-        selected = _cap_analysis_candidates(selected, self.config.target_clips)
-
-        fav_count = sum(1 for c in selected if c.asset.is_favorite)
-        gap_count = len(selected) - fav_count
-
-        self.tracker.complete_item("filters")
-        self.tracker.complete_phase()
-
-        logger.info(
-            f"Phase 2: Density budget selected {len(selected)} clips "
-            f"({fav_count} favorites + {gap_count} gap-fillers)"
+    def _project_editorial_plan(
+        self,
+        plan: EditorialPlan,
+        analyzed: list[ClipWithSegment],
+        *,
+        source_verified: bool = False,
+    ) -> PipelineResult:
+        """Validate final membership/timing without choosing or repairing any carrier."""
+        by_id = editorial_membership(plan, analyzed)
+        selected = [by_id[item.asset_id] for item in plan.selections]
+        clip_segments = {
+            item.asset_id: editorial_clip_segment(item, candidate, source_verified=source_verified)
+            for item, candidate in zip(plan.selections, selected, strict=True)
+        }
+        return PipelineResult(
+            selected_clips=[candidate.clip for candidate in selected],
+            clip_segments=clip_segments,
+            errors=[],
+            stats={
+                "total_analyzed": len(analyzed),
+                "selected_count": len(selected),
+                "error_count": 0,
+                "elapsed_seconds": self.tracker.progress.elapsed_seconds,
+            },
+            editorial_selections=plan.selections,
         )
-
-        return selected
-
-    def _apply_budget_quality_gate(self, entries: list) -> list:
-        """Filter non-camera and low-res clips from density budget entries.
-
-        Favorites always pass. Non-favorites must have camera EXIF and meet
-        the resolution threshold (1/2 of output height, floor 540px).
-        Clips with unknown resolution (0x0, common for live photo video
-        components) pass the resolution check — their parent photo is hi-res.
-        """
-        before = len(entries)
-        min_res = max(540, int(self.config.output_resolution * 0.50))
-        filtered = [
-            e
-            for e in entries
-            if e.is_favorite
-            or (
-                e.is_camera_original
-                # WHY: 0x0 = unknown resolution (live photo video components).
-                # These come from real camera shots — don't filter them.
-                and (max(e.width, e.height) >= min_res or max(e.width, e.height) == 0)
-            )
-        ]
-        removed = before - len(filtered)
-        if removed > 0:
-            logger.info(
-                f"Quality gate: removed {removed} clips from density budget "
-                f"(non-camera or below {min_res}px for {self.config.output_resolution}p output)"
-            )
-        return filtered

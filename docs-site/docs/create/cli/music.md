@@ -9,7 +9,7 @@ Three subcommands for finding, analyzing, and adding music to your videos.
 
 ## music search
 
-Search your local music library by mood, genre, and tempo.
+Search your local music library by mood, or by any word in a track's title, artist or folder name.
 
 ```bash
 immich-memories music search [OPTIONS]
@@ -17,10 +17,10 @@ immich-memories music search [OPTIONS]
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--mood` | `-m` | string | — | Mood filter (`happy`, `calm`, `energetic`, etc.) |
-| `--genre` | `-g` | string | — | Genre filter (`acoustic`, `electronic`, `cinematic`, etc.) |
-| `--tempo` | `-t` | choice | — | `slow`, `medium`, or `fast` |
-| `--min-duration` | — | float | `60` | Minimum track duration in seconds |
+| `--mood` | `-m` | string | n/a | Mood filter (`happy`, `calm`, `energetic`, etc.) |
+| `--genre` | `-g` | string | n/a | Genre filter (`acoustic`, `electronic`, `cinematic`, etc.) |
+| `--tempo` | `-t` | choice | n/a | `slow`, `medium`, or `fast` |
+| `--min-duration` | n/a | float | `60` | Minimum track duration in seconds |
 | `--limit` | `-n` | int | `10` | Number of results to return |
 
 Example:
@@ -31,9 +31,13 @@ immich-memories music search --mood happy --genre acoustic --limit 5
 
 The local music directory defaults to `~/Music/Memories` (configurable via `audio.local_music_dir` in config).
 
+Two things the flags do not tell you: `--tempo` is accepted and does not filter local results, and
+the search hard-codes a 10-minute maximum, so longer tracks never appear and there is no flag to
+raise it.
+
 ## music analyze
 
-Analyzes a video file to determine its mood. Uses your configured LLM (Ollama or OpenAI-compatible) to extract keyframes and figure out the overall vibe: energy level, color palette, tempo suggestion, genre recommendations.
+Analyzes a video file to determine its mood. Uses your configured LLM to extract keyframes and figure out the overall vibe: energy level, color palette, tempo suggestion, genre recommendations.
 
 ```bash
 immich-memories music analyze VIDEO_PATH [OPTIONS]
@@ -63,13 +67,16 @@ immich-memories music add VIDEO_PATH OUTPUT_PATH [OPTIONS]
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
 | `--music` | `-m` | path | auto-select | Music file to use |
-| `--mood` | — | string | — | Override mood for auto music selection |
-| `--genre` | `-g` | string | — | Override genre for auto music selection |
+| `--mood` | n/a | string | n/a | Override mood for auto music selection |
+| `--genre` | `-g` | string | n/a | Override genre for auto music selection |
 | `--volume` | `-v` | float | `-6.0` | Music volume in dB |
-| `--fade-in` | — | float | `2.0` | Fade in duration in seconds |
-| `--fade-out` | — | float | `3.0` | Fade out duration in seconds |
+| `--fade-in` | n/a | float | `2.0` | Fade in duration in seconds |
+| `--fade-out` | n/a | float | `3.0` | Fade out duration in seconds |
 
-If you don't provide `--music`, it auto-selects a track based on the video's mood.
+If you don't provide `--music`, it tries to auto-select a track by mood, and that path does **not**
+read your `llm` config: it asks an OpenAI-compatible endpoint at `http://localhost:8080/v1` with an
+empty model name. With nothing listening there the command fails rather than falling back to a
+random track. Pass `--music` explicitly, or run `music search` first and pick one.
 
 Examples:
 

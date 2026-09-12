@@ -67,6 +67,10 @@ spec:
           env:
             - name: IMMICH_MEMORIES_OUTPUT__DIRECTORY
               value: /app/output
+            - name: IMMICH_MEMORIES_TRIAGE__ENCODER
+              value: /models/triage/dinov2-small.onnx
+            - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR
+              value: /models/huggingface
 
           resources:
             requests:
@@ -81,6 +85,8 @@ spec:
               mountPath: /home/immich/.immich-memories
             - name: output
               mountPath: /app/output
+            - name: models
+              mountPath: /models
             - name: tmp
               mountPath: /tmp
 
@@ -91,6 +97,9 @@ spec:
         - name: output
           persistentVolumeClaim:
             claimName: immich-memories-output
+        - name: models
+          persistentVolumeClaim:
+            claimName: immich-memories-models
         - name: tmp
           emptyDir:
             sizeLimit: 4Gi
@@ -157,6 +166,10 @@ spec:
               env:
                 - name: IMMICH_MEMORIES_OUTPUT__DIRECTORY
                   value: /app/output
+                - name: IMMICH_MEMORIES_TRIAGE__ENCODER
+                  value: /models/triage/dinov2-small.onnx
+                - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR
+                  value: /models/huggingface
 
               resources:
                 requests:
@@ -171,6 +184,8 @@ spec:
                   mountPath: /home/immich/.immich-memories
                 - name: output
                   mountPath: /app/output
+                - name: models
+                  mountPath: /models
                 - name: tmp
                   mountPath: /tmp
 
@@ -181,6 +196,9 @@ spec:
             - name: output
               persistentVolumeClaim:
                 claimName: immich-memories-output
+            - name: models
+              persistentVolumeClaim:
+                claimName: immich-memories-models
             - name: tmp
               emptyDir:
                 sizeLimit: 4Gi
@@ -244,6 +262,10 @@ spec:
               env:
                 - name: IMMICH_MEMORIES_OUTPUT__DIRECTORY
                   value: /app/output
+                - name: IMMICH_MEMORIES_TRIAGE__ENCODER
+                  value: /models/triage/dinov2-small.onnx
+                - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR
+                  value: /models/huggingface
 
               resources:
                 requests:
@@ -258,6 +280,8 @@ spec:
                   mountPath: /home/immich/.immich-memories
                 - name: output
                   mountPath: /app/output
+                - name: models
+                  mountPath: /models
                 - name: tmp
                   mountPath: /tmp
 
@@ -268,6 +292,9 @@ spec:
             - name: output
               persistentVolumeClaim:
                 claimName: immich-memories-output
+            - name: models
+              persistentVolumeClaim:
+                claimName: immich-memories-models
             - name: tmp
               emptyDir:
                 sizeLimit: 4Gi

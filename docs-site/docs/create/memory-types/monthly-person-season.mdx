@@ -6,7 +6,7 @@ import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
 
 # Monthly, Person, Season & On This Day
 
-Four memory types that share a similar structure: pick a time range, optionally filter by person, generate. They differ in scope and scoring emphasis.
+Four memory types that share a similar structure: pick a time range, optionally filter by person, generate. They differ in scope.
 
 ## Monthly Highlights
 
@@ -18,56 +18,84 @@ immich-memories generate --memory-type monthly_highlights --month 7 --year 2025
 
 Default duration: 60 seconds. The title screen shows the month and year (e.g., "July 2025"). No monthly dividers since it's already a single month.
 
-**Best for:** months with 10+ videos. If you shot a lot in one month (vacation, birthday party, holiday), this gives you a tight one-minute highlight.
+**Best for:** a month you actually shot in. A vacation, a birthday, a holiday: one minute, tight.
 
-<ThemedScreenshot name="type-monthly" alt="Monthly Highlights preset" />
+<ThemedScreenshot name="memory-brief" alt="Monthly Highlights on the Memory page" />
 
 ## Person Spotlight
 
-A year focused on one person. Filters clips to only those containing the named person (requires face recognition enabled in Immich). Every memory type is scored the same way — see [Clip Selection & Scoring](../pipeline/clip-selection-scoring.md); what makes this one a spotlight is the filter, not a different set of weights.
+A year focused on one person. Filters the pool to what contains the named person (requires face recognition enabled in Immich). Every memory type is edited the same way: see [The Curator](../pipeline/the-curator.md). What makes this one a spotlight is the filter, not a different editor.
 
 ```bash
-immich-memories generate --memory-type person_spotlight --person "Alice" --year 2025
+immich-memories generate --memory-type person_spotlight --person "Riley" --year 2025
 ```
 
 Narrow to a single month with `--month`:
 
 ```bash
-immich-memories generate --memory-type person_spotlight --person "Alice" --year 2025 --month 7
+immich-memories generate --memory-type person_spotlight --person "Riley" --year 2025 --month 7
 ```
 
 Anchor it on the person's birthday instead, reading the birth date from Immich:
 
 ```bash
-immich-memories generate --memory-type person_spotlight --person "Alice" --year 2025 --birthday
+immich-memories generate --memory-type person_spotlight --person "Riley" --year 2025 --birthday
 ```
 
 That is a different memory: the year **ending** on the 2025 birthday, plus each of the five previous birthdays as a ±1 day cutaway. It asks for 10 minutes on both surfaces. See [Birthday Compilations](../recipes/birthday-compilations.md).
 
-Default duration for the calendar-year version: the CLI scales it with the date range — about 60 seconds for a single month, 10 minutes for a full year. (The web UI's Person Spotlight card defaults to 2 minutes regardless of range; see [the note below](#ui-and-cli-defaults-disagree).) You can also override the date range entirely with `--start/--end`.
+Default duration: about 60 seconds per month, capped at 10 minutes. A full calendar year therefore asks for 10 minutes on both the CLI and web UI. You can also override the date range entirely with `--start/--end`.
 
 **Best for:** parent-child compilations, partner videos, or any relationship where you want to see just that person's moments. Needs Immich face recognition to be set up and the person tagged.
 
-<ThemedScreenshot name="type-person" alt="Person Spotlight preset" />
-
 ## Multi-Person
 
-Moments featuring multiple people together. A clip, Live Photo, or photo only qualifies when every named person is in it — two people who were never in the same frame produce an empty memory, not two solo reels.
+Moments featuring several people. The default is **Together (AND)**: a clip,
+Live Photo, or photo qualifies only when every named person is tagged in it.
+Two people who were never in the same frame produce an empty memory, not two
+solo reels.
 
 ```bash
-immich-memories generate --memory-type multi_person --person "Alice" --person "Bob" --year 2025
+immich-memories generate --memory-type multi_person --person "Riley" --person "Bob" --year 2025
 ```
 
-Default duration: same range-scaled curve as Person Spotlight, so 10 minutes for a full year. (The web UI card says 5 minutes; see [the note below](#ui-and-cli-defaults-disagree).) Title screen shows "Alice & Bob" as the subtitle.
+Use **Any of (OR)** in the web UI (or `--person-match or` on the CLI) to make one
+memory from every tagged appearance of any named person:
+
+```bash
+immich-memories generate --memory-type multi_person --person "Riley" --person "Bob" \
+  --person-match or --year 2025
+```
+
+AND and OR across the whole list are the two shapes a picker can express. When the
+memory you want is neither, `--people-expression` takes the condition itself:
+quoted library names with `AND`, `OR` and parentheses, `AND` binding tighter than
+`OR`.
+
+```bash
+immich-memories generate --memory-type multi_person --year 2025 \
+  --people-expression '"Riley" AND ("Casey" OR "Bob")'
+```
+
+That one is every picture or video holding Riley and at least one of the two
+adults. `AND` means the same asset, not the same afternoon. The expression names
+its own people, so it replaces `--person` and `--person-match` rather than
+refining them: passing both is a usage error. The web UI has the same field,
+**Grouped people condition**, under the people picker. It covers date-range
+memories; trips, albums and a single-person birthday are refused.
+
+Default duration: the same one-minute-per-month rule as Person Spotlight, capped
+at 10 minutes. Title screens and default filenames say whether the people are
+joined by AND or OR, so the two runs cannot overwrite one another.
 
 **Best for:** couples, families, friend groups. The co-occurrence filter means you'll get clips where they're actually together, not separate appearances.
 
-The same rule applies wherever you name several people. Repeating `--person` on
-any memory type, or picking more than one in the wizard's **Only with** box,
-keeps what holds all of them:
+The same AND default applies wherever you name several people. Repeating
+`--person` on any CLI memory type can be changed to a union with
+`--person-match or`; the Memory page's ordinary **Only with** picker remains AND:
 
 ```bash
-immich-memories generate --memory-type season --season summer --year 2025 --person "Alice" --person "Bob"
+immich-memories generate --memory-type season --season summer --year 2025 --person "Riley" --person "Bob"
 ```
 
 ## Season
@@ -78,7 +106,7 @@ Highlights from a specific season (spring, summer, fall, winter).
 immich-memories generate --memory-type season --season summer --year 2025
 ```
 
-Default duration: the range curve again, so about 3 minutes 15 seconds for a three-month season. (The web UI card says 2 minutes 15; see [the note below](#ui-and-cli-defaults-disagree).) The hemisphere flag controls which calendar months map to which season:
+Default duration: the range curve again, so about 3 minutes 15 seconds for a three-month season. (The web UI says 2 minutes 15; see [the note below](#one-ui-and-cli-default-still-disagrees).) The hemisphere flag controls which calendar months map to which season:
 
 ```bash
 # Southern hemisphere: summer = December-February
@@ -103,27 +131,30 @@ immich-memories generate --memory-type on_this_day --years-back 3
 
 Default duration: 45 seconds. No `--year` needed: it automatically looks back from today's date. By default, it searches all years with data (up to 30 years back).
 
+### Pinning the day
+
+Left to itself this memory asks a different question every day, which is fine for a
+daily nostalgia clip and useless for anything you want to run twice. `--day` names the
+anniversary to look back from:
+
+```bash
+immich-memories generate --memory-type on_this_day --day 2026-08-31 --years-back 20
+```
+
+Same day, same years, same cut — so the run can be repeated, compared against an earlier
+one, or handed to someone else. Without the flag nothing changes: the run covers the day
+it fires.
+
 **Best for:** daily nostalgia, "what were we doing last year" moments. Works best if you've been shooting video for 3+ years. Can be combined with the scheduler for an automatic daily memory.
 
-## UI and CLI defaults disagree
+## One UI and CLI default still disagrees
 
-For three of the four types on this page, the number the web UI puts in the duration box is
-not the number the CLI computes for the same request. The CLI runs `default_duration_for_type()`
-in `cli/_date_resolution.py`, which fits a curve through the date range (1 month → 60 s,
-12 months → 600 s). The web UI's preset cards carry a fixed value from
-`memory_types/factory.py` and ignore the range.
+Person Spotlight and Multi-Person now use the same full-year 10-minute default
+on both surfaces. Season retains an older fixed web UI value while the CLI
+uses its date-range curve:
 
-| type | web UI card | CLI |
+| type | web UI | CLI |
 |---|---|---|
-| Monthly Highlights | 1 min | ~1 min for the month |
-| Person Spotlight | 2 min | ~1 min for a month, 10 min for a year |
-| Multi-Person | 5 min | ~1 min for a month, 10 min for a year |
 | Season | 2 min 15 | ~3 min 15 for a three-month season |
-| On This Day | 45 s | 45 s |
 
-Monthly Highlights and On This Day agree because their fixed value and their curve value
-land in the same place. The other three do not, and for Person Spotlight the gap is 5x.
-Neither number is wrong for the surface it belongs to — the CLI's is range-aware and the
-UI's is a card default you can edit before you start — but they are not the same product
-decision, and this page documents the CLI unless it says otherwise. Every duration on any
-surface is an editable default, not a cap.
+Every duration is an editable default, not a cap.

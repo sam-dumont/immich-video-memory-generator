@@ -26,6 +26,7 @@ from immich_memories.analysis.special_day import (
     run_extent,
     sample_across_day,
 )
+from immich_memories.analysis.special_event_scope import SpecialEventAdmission
 from immich_memories.analysis.trip_detection import detect_trips, haversine_km
 from immich_memories.config_models_automation import TripsConfig
 from immich_memories.memory_types.date_builders import KNOWN_HOLIDAYS, resolve_holiday
@@ -54,6 +55,9 @@ class DiscoveredDay:
     active_hours: int = 0
     run_start: datetime | None = None
     run_end: datetime | None = None
+    event_id: str | None = None
+    asset_ids: tuple[str, ...] = ()
+    event_admission: SpecialEventAdmission | None = None
 
 
 def holidays_in(year: int, extra: Iterable[str] = ()) -> set[date]:

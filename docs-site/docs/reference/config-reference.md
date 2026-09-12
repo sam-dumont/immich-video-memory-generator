@@ -8,14 +8,14 @@ sidebar_label: Config Reference
 These options have sane defaults and most users don't need to change them. Add any of these to your `~/.immich-memories/config.yaml` to override. Values shown below are the built-in defaults (placeholders like URLs and example schedules aside).
 
 :::tip Config tiers
-Tier 2 sections — `analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `content_analysis`,
-`audio_content`, `speech`, `transcription`, `server`, `auth`, `automation`, `notifications` — are
+Tier 2 sections (`analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `server`, `auth`,
+`automation`, `notifications`, `triage`, `editorial`) are
 written under an `advanced:` key when the app saves the file:
 
 ```yaml
 advanced:
   analysis:
-    scene_threshold: 25.0
+    max_album_assets: 5000
   hardware:
     encoder_preset: "quality"
 ```
@@ -23,36 +23,37 @@ advanced:
 When reading, both placements work; if a section appears in both places the top-level one wins.
 Everything else stays at the top level: `immich`, `defaults`, `output`, `audio`, `title_screens`,
 `cache`, `upload`, `trips`, `photos`, `preset`, and the two the loader calls internal rather than
-Tier 1, `scheduler` and `title_llm`. The rule is mechanical — anything outside the Tier 2 set is
+Tier 1, `scheduler` and `title_llm`. The rule is mechanical: anything outside the Tier 2 set is
 left where it is.
-Unknown keys *inside* a section are silently ignored; unknown top-level keys and invalid values
-fail validation at startup.
+Unknown keys *inside* a section are silently ignored, with one exception: the thirty keys of the
+removed clip scorer (`analysis.max_refinement_passes`, `photos.max_ratio`, `description_llm`, the
+whole `content_analysis`, `audio_content`, `speech` and `transcription` sections, and the rest of
+that family). A file that still sets one is refused at startup with a message naming the key,
+because a setting that loads and does nothing is worse than one that fails. Unknown top-level keys and invalid values fail
+validation at startup.
 :::
 
 ## Preset
 
 One top-level switch that fills several knobs at once. `fast` is the CPU-only / NAS profile.
-Anything you set yourself — a key in the file, an `IMMICH_MEMORIES_…` env var, a CLI flag, a
-choice in the web UI — wins over the preset, exactly like `clip_style`.
+Anything you set yourself (a key in the file, an `IMMICH_MEMORIES_…` env var, a CLI flag, a
+choice in the web UI) wins over the preset.
 
 ```yaml
 preset: null                       # null | fast
 ```
 
 `fast` sets, unless you set them yourself: `output.resolution: 1080p`, `output.codec: h264`,
-`output.quality: medium`, `hardware.encoder_preset: fast`, `speech.enabled: false` (no per-clip
-voice-activity pass), `title_screens.animated_background: false` (static title backgrounds),
-`photos.max_ratio: 0.25`, `analysis.max_refinement_passes: 3` (three refinement rounds rather
-than ten); and an analysis depth of `auto` runs as `fast` (favorites first).
-The heavy optional features (LLM scoring, music generation, audio-content tagging, transcription)
-are already off by default and stay wherever you put them.
+`output.quality: fast`, `hardware.encoder_preset: fast` and
+`title_screens.animated_background: false` (static title backgrounds). Music generation is already
+off by default and stays wherever you put it.
 
 Env: `IMMICH_MEMORIES_PRESET=fast`. One-off on the CLI: `immich-memories --preset fast generate …`
-(root option, before the subcommand). The settings page names the active preset; Step 3 defaults
+(root option, before the subcommand). The settings page names the active preset; the options page defaults
 its resolution to the preset's and says so.
 
-Caveat: **Step 1's "Save Config"** writes every value to `config.yaml`, not just the connection
-fields it appears to be about — after which they all count as "set by you", and the preset has
+Caveat: **the Memory page's "Save Config"** (under Advanced) writes every value to `config.yaml`, not just the connection
+fields it appears to be about, after which they all count as "set by you", and the preset has
 nothing left to fill in. Remove the keys you want the preset to own again. (`server.host` is the
 single exception; see [Server (UI)](#server-ui).) The `/settings/config` page is read-only and
 does not save; see [Settings](../create/web-ui/settings.mdx).
@@ -82,21 +83,6 @@ credentials and see the resolved API contract without generating or uploading a 
 
 ```yaml
 analysis:
-  # Clip pacing preset (fills in the five duration params below; explicit values win)
-  clip_style: null               # fast-cuts | balanced | long-cuts (null = use individual values)
-
-  # Scene detection
-  scene_threshold: 27.0          # Scene change sensitivity (1-100, lower = more scenes)
-  min_scene_duration: 1.0        # Minimum scene length in seconds (0.5-10)
-  use_scene_detection: true      # Use scene detection for natural cut points
-
-  # Clip duration tuning (or use clip_style above)
-  max_segment_duration: 15.0     # Long scenes get subdivided (2-30s)
-  min_segment_duration: 2.0      # Clips shorter than this are discarded (0.5-5s)
-  optimal_clip_duration: 5.0     # Sweet spot clip duration (2-15s)
-  max_optimal_duration: 10.0     # Max optimal duration for long sources (5-30s)
-  target_extraction_ratio: 0.15  # Target ratio of clip to source (0.15 = use 15%; 0.05-0.5)
-
   # Media the camera roll did not shoot (see Configuration → Footage the
   # camera roll did not shoot). Setting the list replaces it; [] turns it off.
   exclude_filename_patterns:     # case-insensitive globs on the source filename
@@ -107,38 +93,26 @@ analysis:
     - "img-*-wa[0-9][0-9][0-9][0-9]*"
     - "vid-*-wa[0-9][0-9][0-9][0-9]*"
   exclude_stills_without_camera_exif: true   # a photo naming no camera was received, not shot
-
-  # Duplicate detection
-  duplicate_hash_threshold: 8    # Perceptual hash threshold (0-64)
   min_source_short_side: 1080    # Drop smaller clips unless they carry camera EXIF
-  subject_policy_enabled: true   # Prefer clips of people over things
-  max_animal_ratio: 0.10         # Share of the video that may be animal clips
-  max_object_ratio: 0.05         # Share that may be object clips (must also score well)
 
   # Album source
   max_album_assets: 10000        # Most assets read from one album, per media type (min 1)
 
-  # Performance
-  max_refinement_passes: 10      # Verify/judge/review rounds before selection settles (1-20)
+  # Downloads
   download_workers: 3            # Parallel download clients for video and thumbnail prefetching (1-8)
-  enable_downscaling: true       # Downscale for analysis (~3-5x faster)
-  analysis_resolution: 480       # Target height for analysis (240-1080)
+
+  # Duration sizing
+  optimal_clip_duration: 5.0     # Expected seconds per clip when a trip or album sizes its own duration (2-15s)
 
   # Live Photos (iPhone 3s video clips)
   include_live_photos: true      # Include Live Photo clips (ON by default)
   live_photo_merge_window_seconds: 10.0  # Max gap to group as burst (1-60s)
   live_photo_min_clip_seconds: 3.5       # Below this a burst ships as a photo (0-30s)
-
-  # Audio-aware boundaries
-  use_unified_analysis: true     # Avoid mid-sentence cuts
-  cut_point_merge_tolerance: 0.5 # Window for merging nearby boundaries (0.1-2s)
-  silence_threshold_db: -40.0    # Silence detection threshold (-60 to -10 dB)
-  min_silence_duration: 0.3      # Minimum silence gap duration (0.1-1s)
 ```
 
-Presets: `fast-cuts` = 3–6 s clips, 30% extraction; `balanced` = 5–10 s, 40%; `long-cuts` =
-8–15 s, 50%. With no preset the defaults above apply (5–10 s, 15%). Any Live Photo cluster of two
-or more within the merge window is treated as a burst — the count is not configurable.
+Any Live Photo cluster of two or more within the merge window is treated as a burst; the count
+is not configurable. Where a clip is cut, and how long it runs, is the editor's decision per
+carrier; there is no pacing preset any more.
 
 `max_album_assets` applies per media type, so the default reads up to 10,000 videos and 10,000
 photos from one album. Smart albums reach tens of thousands; Immich returns newest first, so a
@@ -149,19 +123,19 @@ album, raise the cap, or use a date range instead.
 
 ```yaml
 defaults:
-  scale_mode: "blur"             # blur | fit (black bars) — used when --scale-mode is not given
+  scale_mode: "blur"             # blur | fit (black bars); used when --scale-mode is not given
   transition: "smart"            # cut, crossfade, smart, none (used when --transition is left on smart)
   transition_duration: 0.5       # 0-2 seconds
 ```
 
-Target duration and orientation are chosen per run — the UI slider / `--duration` (seconds) and
-`--orientation` — with the memory type preset supplying the default duration; there is no config
+Target duration and orientation are chosen per run: the UI slider / `--duration` (seconds) and
+`--orientation`, with the memory type preset supplying the default duration; there is no config
 default for either. The target duration describes the finished video, not just the selected source
 clips. The planner budgets opening/title/ending cards, then adds back the time the fades overlap
-away — so the content budget ends up larger than the timeline left over, not smaller. Month
+away, so the content budget ends up larger than the timeline left over, not smaller. Month
 dividers use an all-or-none policy, and trip location cards are counted only after the final media
-selection. If filtering leaves usable time on the table, the optimizer backfills eligible leftovers
-and can relax the preferred photo ratio; hard eligibility and deduplication rules remain enforced.
+selection. There is no backfill: if the stories the editor funded do not fill the budget, the run
+reports the shortfall instead of padding it with material it had already decided against.
 Treat the target as a target: frame and transition boundaries mean the encoded file lands near the
 requested duration, not exactly on it.
 
@@ -173,17 +147,42 @@ output:
   format: "mp4"                  # mp4 or mov
   resolution: "1080p"            # 720p, 1080p, 4k
   codec: h264                     # h264 (default), h265 (HDR-capable), prores
+  codec_policy: prefer_hardware   # prefer_hardware (default) or strict
   hdr_mode: auto                  # auto, sdr, hdr
-  quality: "high"                # high, medium, low (shorthand for CRF presets)
+  quality: "balanced"            # high, balanced, fast (shorthand for CRF presets)
   crf: null                      # unset = derived from quality; 0-51 overrides (lower = better)
 ```
 
 CRF is the image-quality authority. `quality` is only a shorthand used when `crf` is omitted;
-an explicit `crf` wins. Software H.264/H.265 encoders receive CRF directly. FFmpeg's
-VideoToolbox encoders do not implement CRF, so the app translates the same 0-51 setting to
-VideoToolbox's 1-100 quality scale (for example, CRF 18 becomes `-q:v 75`). Lower CRF still means
-higher quality for software H.264/H.265 and Apple VideoToolbox. NVENC, VAAPI, QSV, and ProRes use
-their existing backend policies; `output.crf` is not currently translated for those encoders.
+an explicit `crf` wins. The number is on **libx265's CRF scale**, which is the reference every
+other encoder is calibrated against: each backend gets whatever setting reproduces the same
+picture, measured by SSIM, rather than the same integer. See
+[the hardware overview](../deploy/hardware/overview.md#quality-what-crf-means-on-each-backend)
+for the measured table. Lower CRF still means higher quality everywhere.
+
+The presets are points on that curve, measured on 1080p60 film and — for `balanced` — judged by
+eye on gradients:
+
+| `quality` | reference CRF | SSIM | software bitrate | per minute |
+|---|---|---|---|---|
+| `high` | 18 | 0.99169 | 4.6 Mbps | ~35 MB |
+| `balanced` (default) | 24 | 0.98451 | 1.6 Mbps | ~12 MB |
+| `fast` | 24 | 0.98451 | 1.6 Mbps | ~12 MB, encoded as fast as the backend can |
+
+`high` used to mean CRF 12, which is past SSIM 0.999 — quality nobody can see, at several times
+the bits, and the reason exports were hundreds of megabytes.
+
+There is deliberately no tier below `balanced`: around 0.980 gradients start to band, and a preset
+that visibly breaks up a sky is not worth a few megabytes. `fast` keeps the balanced picture and
+buys its speed from the encoder effort preset instead, overriding `hardware.encoder_preset`.
+`medium` and `low` are retired names that still load, resolving to `balanced` and `fast`.
+
+`codec_policy` decides what happens when the machine has no hardware encoder for the codec you
+asked for but does have one for the other. `prefer_hardware` (the default) switches codec and says
+so in the log and the run record, which on a chip like Intel Gemini Lake — H.264 encode entrypoint,
+no HEVC one — is the difference between a film finishing and the CPU doing all of it. The file is
+bigger and plays on more things. `strict` always honours `output.codec` and accepts the CPU cost.
+The switch never applies to ProRes, and never to an HDR output, because H.264 carries no HDR.
 
 The final encoding plan permits only `mp4` and `mov` containers with `h264`, `h265`, or `prores`
 codecs. `generate --format` accepts only `mp4`, `h265`, and `prores`: they select H.264/MP4,
@@ -202,11 +201,7 @@ tone-maps detected HDR sources and logs the reason. Use `hdr_mode: sdr` when SDR
 ```yaml
 photos:
   enabled: true                  # Include photos in memories
-  read_moments: false            # Read each moment from a contact sheet first
-  max_ratio: 0.50               # Max 50% of clips can be photos (0-1)
   duration: 4.0                  # Seconds per photo clip (1-10)
-  moment_gap_seconds: 120        # Window for "same moment as a video" (0-3600)
-  moment_hash_threshold: 10      # Hash bits allowed between photo and that video (0-64)
   burst_window_seconds: 300      # Near-identical photos this close apart are one burst (0-3600)
   burst_hash_threshold: 8        # Hash bits two photos may differ by and still be one burst (0-64)
 ```
@@ -217,7 +212,6 @@ photo's content; it is not configurable.
 Burst de-duplication keeps only the best-scored frame of a run of near-identical photos, so the
 fifteen shots of the same jump do not become fifteen clips. `burst_window_seconds: 0` all but turns
 it off: photos sharing an identical timestamp still group.
-It is separate from `moment_gap_seconds`, which is about a photo and a *video* of the same moment.
 
 ## Hardware acceleration
 
@@ -225,7 +219,6 @@ It is separate from `moment_gap_seconds`, which is about a photo and a *video* o
 hardware:
   enabled: true                  # false = CPU encoding, no GPU probing at all
   encoder_preset: "balanced"     # fast, balanced, quality
-  gpu_analysis: true             # CUDA frame differencing for scene analysis when available
   gpu_decode: true               # Hardware video decoding
 ```
 
@@ -243,7 +236,7 @@ Background music needs `ace_step.enabled` or `musicgen.enabled`. With neither, t
 to build rather than running silent. With both on, ACE-Step generates, and MusicGen is both the
 fallback generator and the stem separator used for ducking. With MusicGen off, stems come from a
 local Demucs install if there is one. Per run you can still override that: `--music PATH` uses your
-own file, `--no-music` skips music, and Step 3 in the UI offers None / Upload file / AI Generated,
+own file, `--no-music` skips music, and the options page in the UI offers None / Upload file / AI Generated,
 plus Bundled when the `music` extra is installed. Music volume is a per-run setting too
 (`--music-volume` or the UI slider); ducking under speech and the 2 s / 3 s fades are fixed.
 
@@ -273,7 +266,7 @@ audio:
 ```
 
 `audio.local_music_dir` only feeds the `immich-memories music` helper commands; generation never
-picks music from it on its own — pass the file with `--music`.
+picks music from it on its own: pass the file with `--music`.
 
 ## LLM (vision model)
 
@@ -283,9 +276,10 @@ Used by content analysis and title generation. Any OpenAI-compatible endpoint wo
 llm:
   provider: "openai-compatible"   # openai-compatible | openai | zai | anthropic | ollama
   base_url: "http://localhost:8080/v1"
-  model: ""                        # e.g. mlx-community/Qwen3.6-27B-8bit
+  model: ""                        # e.g. mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit
   api_key: ""                      # optional, only for cloud APIs
   timeout_seconds: 300             # increase for slow local models (10-3600)
+  send_image_detail: true          # off: APIs whose strict schema rejects image_url.detail
   thinking: false                  # server has a reasoning switch
   # thinking_params:               # what the switch looks like on your server
   #   chat_template_kwargs:        # (default: the Qwen dialect, vLLM/mlx)
@@ -295,10 +289,10 @@ llm:
   #     enable_thinking: false
 ```
 
-**The goal of this product is a fully local process** — your photos analyzed
+**The goal of this product is a fully local process**: your photos analyzed
 on your own hardware, nothing leaving your network. A local server (mlx,
 vLLM, Ollama) is the intended setup. The cloud providers below exist for one
-reason: so that people without the means — or the desire — to run a local
+reason: so that people without the means (or the desire) to run a local
 model can still use the product. Using one sends each analyzed clip's frames
 or thumbnails and the derived descriptions to that provider; see the
 "data leaving your network" page before choosing this route.
@@ -308,31 +302,30 @@ Two adapters cover every provider: `openai-compatible` speaks
 and `anthropic` speaks the native `/v1/messages` API (Claude, or z.ai's
 Anthropic-compatible endpoint) with its own reasoning dialect handled
 natively. `openai` and `zai` are named presets: the generic adapter with the
-provider's URL and reasoning dialect pre-filled — set `provider: openai`,
+provider's URL and reasoning dialect pre-filled; set `provider: openai`,
 `model: gpt-5.6-terra` and an API key, and thinking works with nothing else
 to configure. Explicit `base_url`/`thinking_params` always win over a preset.
 
-`thinking: true` runs the model in reasoning mode for the judgement calls
-only — the holistic selection review, title generation, and the special-day
-question in `discover-days`. Measured on the live endpoint, a thinking call
-ran 30-134 s where the same model answered in 4-7 s without it, and it needs
-a 4000-token ceiling to finish reasoning — which matters on a paid API. Bulk
-work (per-clip content analysis, photo scoring) always runs in fast mode:
-reasoning over multiple images is unreliable on current models, and the volume
-would make it unaffordable anyway.
+`thinking: true` runs the model in reasoning mode for two calls: title
+generation, and the special-day question in `discover-days`. Measured on the
+live endpoint, a thinking call ran 30-134 s where the same model answered in
+4-7 s without it, and it needs a 4000-token ceiling to finish reasoning, which
+matters on a paid API. Everything else runs fast, and the switch is refused
+outright alongside images: reasoning over multiple pictures is a measured
+runaway, so the editor's picture passes never see it whatever this is set to.
 
 `thinking_params` is merged verbatim into a thinking request, so the switch
 matches your server's dialect: the default is Qwen's
 `chat_template_kwargs: {"enable_thinking": true}` (vLLM, mlx, SGLang); for
 the OpenAI API use `{"reasoning_effort": "medium"}`. Leave `thinking` off
-unless you know the server supports your chosen switch — some
+unless you know the server supports your chosen switch: some
 OpenAI-compatible servers reject unknown request fields.
 
 `no_thinking_params` is the other half, and it matters on servers whose chat
 template reasons by default: not asking for reasoning is not the same as
 asking for none, so bulk analysis reasons anyway, at the small token budget
 those calls ask for, and comes back truncated mid-thought with nothing
-parseable in it. This field is sent on every non-thinking call — it hangs off
+parseable in it. This field is sent on every non-thinking call: it hangs off
 the switch, not off `thinking`, because a server that reasons by default does
 so whether or not you turned reasoning on. The default is Qwen's
 `chat_template_kwargs: {"enable_thinking": false}`; set it to `{}` for servers
@@ -340,10 +333,15 @@ that reason only when asked (the `openai` and `zai` presets already do). A
 server that rejects the field is detected from its 400 and asked without it
 from then on.
 
+`send_image_detail` covers one more dialect gap: OpenAI's optional
+`image_url.detail` field is sent by default, and some strict vision schemas
+accept only `image_url.url` and reject requests carrying anything more. Set it
+to `false` for those servers: the `zai` preset already does.
+
 Parameter dialects are otherwise handled automatically: OpenAI's reasoning
 models (gpt-5 family) reject `max_tokens` and non-default temperatures, and
 the query layer reads those 400s, adapts the request, and remembers the
-answer per server and model — validated against the live OpenAI API. One
+answer per server and model, validated against the live OpenAI API. One
 provider note: z.ai's OpenAI-compatible endpoint accepts image content only
 on its dedicated vision models, so point `llm.model` at one of those if you
 use it for content analysis.
@@ -360,7 +358,7 @@ llm:
 `max_tokens_param` and `drop_params` describe the OpenAI dialect and are read
 only there. `extra_params` applies on the Ollama provider too, where anything
 you put under `options` (`num_ctx`, `num_predict`) is merged into Ollama's own
-options block rather than replacing it — content analysis already asks for a
+options block rather than replacing it: content analysis already asks for a
 4096-token window that way, since Ollama's 2048 default does not hold the
 prompt plus several frames.
 
@@ -374,150 +372,138 @@ title_llm:
   model: "llama3.2"              # example; the default is empty, which means "use llm"
   api_key: ""
   timeout_seconds: 300
+  send_image_detail: true        # same switch as llm.send_image_detail
 ```
 
 The switch is all-or-nothing on `title_llm.model`: when it is set the whole `title_llm` block is
 used, and any field you leave out takes the *built-in* default (`provider: openai-compatible`,
-`base_url: http://localhost:8080/v1`, empty `api_key`) — it is not inherited from `llm`. When
+`base_url: http://localhost:8080/v1`, empty `api_key`); it is not inherited from `llm`. When
 `title_llm.model` is empty, `llm` is used. Both entry points resolve it the same way.
 
-## Content analysis (LLM-based scoring)
+## Triage heads
 
 ```yaml
-content_analysis:
-  enabled: false
-  weight: 0.35                   # Score weight (0-1)
-  analyze_frames: 2              # Frames per segment (1-4)
-  min_confidence: 0.5
-  frame_max_height: 480
-  openai_image_detail: "low"     # low (85 tokens), high (1889 tokens), or auto
-
-audio_content:
-  enabled: false
-  weight: 0.15
-  use_panns: true                # Semantic labels via optional audio-ml extra
-  min_confidence: 0.3
-  laughter_confidence: 0.1       # Lower threshold for laughter/baby sounds (0.1-0.5)
-  laughter_bonus: 0.1            # Score added to a segment with laughter (0-0.3)
-  protect_laughter: true         # Avoid cutting through laughter events
-  protect_speech: true           # Avoid cutting through speech regions
+triage:
+  enabled: false                 # Legacy standalone triage hook; editorial preparation runs independently
+  encoder: ~/.immich-memories/models/triage/dinov2-small.onnx  # DINOv2-small ONNX export (88 MB)
+  encoder_url: https://github.com/...    # where `models fetch` downloads that export from
+  bundle: ""                     # Head weights (.npz); empty = the public bundle in the package
+  provider: auto                 # ONNX Runtime provider for the encoder: auto, cpu, cuda, coreml
 ```
 
-`use_panns: true` uses PANNs to label laughter, babies, speech, music, cheering, engines, and
-other AudioSet events. Install it with `uv sync --extra audio-ml` or
-`pip install 'immich-memories[audio-ml]'`. If the extra is missing, generation continues with the
-energy-only analyzer. That fallback can find loud and quiet structure, but it cannot reliably tell
-laughter from speech, music, or background noise.
+`provider: auto` takes CUDA where that provider is present and CPU everywhere else. It never
+takes CoreML. Measured on the pinned export, the CoreML provider claims 274 of its 513 nodes and
+splits the graph into 87 partitions, so a tensor crosses the accelerator boundary dozens of times
+per image: it runs 6 to 8 times slower than the CPU provider, holds 9 times the resident memory,
+and gets worse as the batch grows while the CPU provider gets better. Set `provider: coreml` to
+re-measure it. The choice is operational, never identity: it does not enter the encoder key, so
+changing it invalidates no banked fact and re-derives nothing.
 
-## Speech boundaries
+Editorial preparation uses `triage.encoder` with the public six-head bundle configured under
+`editorial.preparation.head_bundle`. Install the `editorial` extra and provide the pinned
+DINOv2-small ONNX export. Its digest is checked on load. Missing required head facts stop
+selection; `triage.enabled: false` does not bypass preparation.
+
+Only `encoder` and `encoder_url` are read. `enabled` and `bundle` are left over from the
+standalone triage hook and nothing looks at them: they load, they validate, they do nothing.
+
+The public heads provide context. They do not train on your library or independently decide
+whether a picture is suitable for the audience.
+
+## Editorial planner
 
 ```yaml
-speech:
-  enabled: true
-  vad_threshold: 0.25            # Frame speech probability that counts as voice (0.1-0.9)
-  min_silence_ms: 200            # Silence needed to close a speech region (50-2000)
+editorial:
+  reader: auto                  # auto | model | rules
+  annotation_database: ""        # defaults to annotations.sqlite inside the configured cache directory
+  description_model: "smolvlm2-500m-base-public@envelope-v3-compact"
+  pixel_producer_key: "pixel-facts-v1"  # exact producer of pixel facts and thresholds  # gitleaks:allow
+  head_versions:                 # exact producer version selected for each annotation head
+    activity: public-v1
+    children: public-v1
+    doc_docling: det-v2
+    location: public-v1
+    nsfw_marqo: det-v2
+    people: public-v1
+    swim: oi-v3
+    venue: oi-v3
+  preparation:
+    tier: full                   # full | no_captions | metadata_only
+    caption_base_url: http://localhost:8092/v1
+    caption_timeout_seconds: 90
+    caption_concurrency: 4
+    batch_size: 32
+    head_bundle: ""              # packaged public six-head bundle
+    detector_python: ""          # current Python interpreter
+    detector_cache_dir: ""       # normal Hugging Face Hub cache
+    marqo_onnx: ~/.immich-memories/models/detectors/nsfw-marqo-384.onnx  # digest-pinned sensitive-content export
+    marqo_onnx_url: https://github.com/sam-dumont/immich-video-memory-generator/releases/download/models-v1/nsfw-marqo-384-924658f1.onnx
+    allow_model_downloads: false
 ```
 
-Requires the `speech` extra (`uv sync --extra speech`, included in `all` and `all-mac`). The
-FireRedVAD weights ship inside the package — nothing is downloaded at runtime.
+Tier 2: lives under `advanced:` when the app writes the file. Story-first selection is the
+production route for UI, CLI and scheduled runs. Old `enabled` and `story_first` keys are
+ignored; there is no opt-in flag or environment switch.
 
-How this interacts with PANNs, and why cut placement still works without `audio_content`, is in
-[Audio and music → Speech boundaries](../create/pipeline/audio-and-music.md#speech-boundaries).
+Docling uses `det-v2` to avoid incorrect document labels from ONNX layout optimization on
+the Celeron J4125. Saved `doc_docling: det-v1` settings upgrade on load. The next run
+recomputes that head's facts and refreshes dependent readings; other head facts remain reusable.
 
-`vad_threshold` is below FireRedVAD upstream's 0.4 on purpose: measured across 143 clips, 0.25
-detected speech in 49 more of them with no false positives on clips below -40 dBFS. Raise it if
-background chatter is being protected; lower it if quiet speech is being cut through.
+`reader: auto` uses the model when `llm.model` is set and rules when it is blank.
+`reader: model` requires a model; `reader: rules` skips model editing and reranking even
+when a model is configured. Rules support the ten standard memory products, including
+albums and recurring dates. Custom free-text subjects require the model reader: rules
+cannot interpret a request such as "pictures about perseverance".
 
-`min_silence_ms` does double duty: it is the pause width that closes a speech region, and it
-caps how far each protected range is widened before boundary adjustment. Widening by half that
-pause or more would merge the regions back together and undo the split.
+Rules use dates, places, favourites, people metadata and available preparation facts.
+They reuse the normal allocation, spacing, audience and timing checks, omit a thesis,
+keep unsampled Live Photos as stills, and do not write semantic model banks. Saved plans
+identify the producer as `rules-v1`; the dedicated UI disclosure remains outside this slice.
 
-Set `enabled: false` to turn voice activity off entirely — there is no alternative engine.
+Preparation remains a separate choice: `rules` plus `no_captions` retains image
+classifiers; `rules` plus `metadata_only` produces only previews and pixel measurements.
+For a **no-inference comparison**, use `metadata_only` with a fresh annotation database;
+changing the tier does not erase model facts already stored there. The default `full`
+tier still requires its caption producer, even with rules editing.
 
-## Transcription
+### Preparation tiers
 
-```yaml
-transcription:
-  enabled: false                 # Transcribe speech in the top candidate clips
-  languages: []                  # Languages your library contains, e.g. [fr, en]
-  model: medium                  # tiny / base / small / medium / large, or a path
-  min_voiced_seconds: 1.0        # Voice activity required before transcribing
-  min_confidence: 0.0            # Mean token probability floor (see below)
-  use_gpu: true                  # Metal on macOS; Linux wheels are CPU-only
-```
+`preparation.tier` names which producers a deployment asks for. It is a named choice, never a
+fallback: a producer the tier demands and cannot reach still stops the run.
 
-Requires the `transcribe` extra (`uv sync --extra transcribe`, included in `all` and `all-mac`)
-and `speech.enabled: true` — voice activity is what decides whether a clip is transcribed at all,
-so with speech off there is no gate and nothing is transcribed.
+| `tier` | What runs | First pass over 10,793 pictures on a Celeron J4125 NAS |
+| --- | --- | --- |
+| `full` | pixels, encoder + six heads, both detectors, captions | 4 days |
+| `no_captions` | pixels, encoder + six heads, both detectors | 3 h 41 min |
+| `metadata_only` | pixels and Immich metadata; no ONNX, no captions | minutes |
 
-`languages` is the one setting you have to fill in. Leave it empty and nothing is transcribed,
-which is deliberate: automatic detection across all 99 languages put French audio in Japanese and
-in German on both attempts, and a transcript in the wrong language is worse than no transcript.
-One entry forces that language and skips detection entirely. Several restrict detection to those
-languages, so the model chooses between the two or three your library actually contains instead of
-guessing among 99.
+`no_captions` is the tier for a low-power NAS. The captioner costs 25 times the rest of the
+pipeline put together, and dropping it keeps every producer the audience gate reads
+(`nsfw_marqo`, `swim`, `children`, `exposure`, `doc_docling`), so the gate is unchanged.
+Reasons under each picture become facts rather than sentences.
 
-Transcripts are stored on the top five candidate segments of each video, and the vision model reads
-them — see [What the transcript is used for](#what-the-transcript-is-used-for) below. They move
-LLM-derived scores.
+`metadata_only` also drops the six heads and both detectors, so the gate loses its evidence.
+It therefore holds **every** unit to `family_only` and refuses a `sendable` export outright.
+Use it only on a machine that cannot run ONNX at all.
 
-Unlike the FireRedVAD weights, which ship inside the package, whisper models are downloaded from
-HuggingFace on first use — about 1.5 GB for the `medium` default. In Docker, mount the model
-directory as a volume or every container start downloads it again. Set `model: base` (~148 MB) if
-that download matters more to you than accuracy; measured on real family audio, `base` returned
-fragments where `medium` returned whole sentences.
+Captions are banked per picture, so a `no_captions` deployment can add them later and switch
+the tier to `full` when it finishes.
 
-### A 30-second window, not the clip
+The planner reads the whole source period, identifies its stories and distinct moments,
+then allocates duration and picks representations of those moments. A longer target can
+show more of a story without inventing more events from near-duplicate pictures.
 
-Whisper is transcribed over a **30-second window centred on the clip**, not the clip itself. It is
-trained on 30-second windows and pads shorter input with silence, which triggers hallucination: on
-short slices the same moments returned "- Dear." and "La papa." where a full window returned
-"Il est mignon. Tu veux lui faire une petite douce ? Pas la tête, pas le ventre."
+New runs use the **FAMILY** audience. Ordinary family material, including a shirtless baby,
+baby bath time, breastfeeding or a parent holding a newborn in hospital, can be considered.
+Graphic medical procedures, sexual content, exposed adult changing and identifying records
+remain excluded.
 
-The stored transcript is therefore speech heard *around* the clip, and neighbouring candidates of
-one moment share it. Audio context distinguishes between videos, not between the top candidates
-of a single video.
-
-`min_voiced_seconds` is still measured on the clip itself — the question "is there speech here"
-is unchanged, only the audio handed to the model widens.
-
-### What the gate can and cannot catch
-
-Measured over 80 clips from a real family library:
-
-| | |
-|---|---|
-| Whisper calls saved by reusing overlapping candidates | 46% |
-| Cost per segment, `medium` | ~0.6 s |
-
-`min_voiced_seconds` does most of the filtering. Surviving transcripts are also rejected if they
-are a repetition loop — whisper emitting one phrase several times over — or contain no words at
-all, such as the `...` it returns on digital silence. Both arrive at confidence 0.83 and above and
-so are invisible to `min_confidence`.
-
-`min_confidence` defaults to **0.0** because the signal is inverted on this audio: correct
-transcripts measured 0.63–0.71 while fluent nonsense measured 0.84–0.95. Raising the floor removes
-good transcripts before bad ones. It stays configurable if your library is quieter than a house
-with children in it.
-
-The signal that would separate the two is `no_speech_prob`, and whisper.cpp does not expose it:
-the getter exists in the C API but neither the CLI's JSON output nor the Python bindings surface
-it.
-
-### What the transcript is used for
-
-Transcripts are given to the vision model alongside the frames, marked as possibly inaccurate,
-with an instruction to ignore them when they do not match the image. The vision model is the only
-component that sees both, so it is the only available check on a wrong transcript — and it works:
-a clip whose transcript was about refuelling a car, over footage of a beach, produced exactly the
-same description as the frames alone.
-
-Because the model reads the speech, spoken names can end up in the stored description. Enabling
-transcription therefore changes what the analysis cache records about the people in your videos.
-
-Because transcripts change what the model is given, wiring them in bumped the scoring version once,
-which invalidated every cached LLM score at that release. Toggling the setting afterwards does not
-bump anything: `SCORING_VERSION` is a fixed constant, not a function of your config.
+Preparation fills missing descriptions, public heads, detectors and pixel measurements in
+the annotation database. Complete facts skip provider calls. Missing previews or providers
+stop selection with an explicit incomplete result. Two verified invalid caption completions
+can be recorded as `caption unavailable`, counted separately from successful descriptions.
+See [Editorial annotation setup](../deploy/configuration/editorial-preparation.md) for the
+runtime extra, exact model artifacts and caption endpoint requirements.
 
 ## Title screens
 
@@ -533,13 +519,13 @@ title_screens:
   show_decorative_lines: false   # Line accents around the title text
   show_month_dividers: true      # When the video spans several months (all-or-none)
   month_divider_threshold: 2     # Min clips in a month to show its divider (1-10)
-  use_first_name_only: true      # "Alice" instead of "Alice Smith" in titles
+  use_first_name_only: true      # "Riley" instead of "Riley Smith" in titles
 ```
 
 `animated_background` and `show_decorative_lines` are all the look-and-feel the config file
 exposes; the colour palette and custom fonts are not configurable today.
 `animated_background: false` keeps the gradient still
-— no rotation, colour pulse or vignette pulse — which is what `preset: fast` selects. The
+ (no rotation, colour pulse or vignette pulse), which is what `preset: fast` selects. The
 `immich-memories titles` command exposes more of the look as flags for previewing.
 
 ## Trip detection
@@ -565,15 +551,27 @@ cache:
   video_cache_enabled: true      # Cache downloaded videos locally
   video_cache_max_size_gb: 10.0  # Max disk usage for video cache (1-500 GB)
   video_cache_max_age_days: 7    # Auto-delete cached videos older than this (1-365)
-  thumbnail_cache_max_size_mb: 500.0   # Max disk for Immich thumbnails (50 MB-100 GB)
+  thumbnail_cache_max_size_mb: 10000.0 # Max disk for Immich previews (50 MB-100 GB)
   preview_cache_max_size_mb: 2000.0    # Max disk for clip previews (100 MB-100 GB)
 ```
 
 The video cache defaults to 10 GB. If you're tight on disk, lower `video_cache_max_size_gb` or disable it entirely with `video_cache_enabled: false`.
 
-Thumbnails and clip previews are derived from your library and are cheap to rebuild, so they get their own smaller budgets. Each is evicted least-recently-used once it exceeds its limit — a file you keep opening keeps earning its place, because reading a thumbnail counts as using it.
+### Size the thumbnail cache by your library, not by taste
 
-If a single run needs more thumbnails than `thumbnail_cache_max_size_mb` allows, the cache starts evicting thumbnails that same run is still using and re-fetching them. That is not silent: you get a `WARNING` naming how many files went and telling you to raise the budget. A large yearly memory over a big library can want several GB of thumbnails, so if you see that warning during long runs, raise the limit rather than ignoring it.
+`thumbnail_cache_max_size_mb` is the one cache budget that scales with how big your library is. Every candidate asset in a memory's scope gets an Immich preview fetched and read back several times: sharpness and exposure, the DINOv2 heads, the contact sheets, the caption. Measured on a real library, one preview is about **315 KB**, so:
+
+```
+budget in MB ≈ 0.35 × (assets a memory's scope can reach)
+```
+
+One 10,793-candidate scope wants about 3.4 GB; the `0.35` leaves a little headroom over the measured 0.315 MB. The 10 GB default holds roughly 31,000 previews, which covers three scopes that size.
+
+If the run's working set does not fit, nothing is lost mid-run: previews this run is still using are never deleted, so the cache temporarily overflows the limit instead. But the *next* run reclaims them, so the next overlapping memory re-downloads every preview and re-captions the assets whose banked caption failure no longer matches the bytes. You get one `WARNING` per run saying how far over you are and naming this setting. Raise it rather than ignoring it.
+
+The other two budgets are not library-sized and need no such rule: `preview_cache_max_size_mb` holds the video renditions the wizard's player streams (one cut's clips), and the video cache holds the originals being assembled (also one cut's clips). Both are tens of files per run, however big your library is.
+
+It is the full Immich preview that is cached, not a smaller derived tile, even though no single consumer needs 1440 px. Those bytes are the image the model sees in the contact sheets, and their SHA-256 is that sheet's identity; the DINOv2 transform wants a 256 px short side that a 400 px caption tile does not have on 16:9; and both the duplicate-hash bank and the banked caption failures are keyed on them. Caching something smaller would re-derive all of that and change graded output, so it is a re-grade rather than a setting.
 
 ## Server (UI)
 
@@ -586,7 +584,7 @@ server:
   secure_cookies: false          # Mark the session cookie Secure (turn on behind an HTTPS reverse proxy)
   trigger_token: ""              # Shared secret for POST /api/trigger. Empty, and with auth
                                  # off, the trigger API is not served at all
-  allow_unauthenticated_lan: false  # Listen beyond localhost with auth disabled —
+  allow_unauthenticated_lan: false  # Listen beyond localhost with auth disabled:
                                  # anyone reaching the port can use the UI and the
                                  # Immich library behind it
 ```
@@ -594,17 +592,19 @@ server:
 `host` and `port` also have CLI flags: `immich-memories ui --host 127.0.0.1 --port 9090`. The rest
 of the section is config-only.
 
-`trigger_token` turns on the HTTP trigger — one POST that runs whatever `auto run` would have
+`trigger_token` turns on the HTTP trigger: one POST that runs whatever `auto run` would have
 decided, so an Immich workflow (or a cron, or a phone shortcut) can start a memory. See
 [Trigger from Immich or anything else](../create/recipes/trigger-endpoint.md). Keep it out of
-`config.yaml` with `IMMICH_MEMORIES_SERVER__TRIGGER_TOKEN` or a `${VAR}` reference; either way it
-is redacted from `/health`, the config viewer, and the logs. Log redaction is armed at config
-load, so the handful of lines printed before the config exists — startup, a config file that
-fails to parse — cannot be covered by it.
+`config.yaml` with `IMMICH_MEMORIES_SERVER__TRIGGER_TOKEN`: `server` is not one of the sections
+that expand a `${VAR}` reference, so writing one here stores the six literal characters `${VAR}`
+as your token. Either way the value is redacted from `/health`, the config viewer, and the logs.
+Log redaction is armed at config
+load, so the handful of lines printed before the config exists (startup, a config file that
+fails to parse) cannot be covered by it.
 
 `host` is the one value "save" leaves out of `config.yaml` when you never set it. Writing the
 `0.0.0.0` default would make the next load treat it as your decision and quietly retire the
-localhost bind — which is exactly what older versions did, so a `server.host: 0.0.0.0` already
+localhost bind, which is exactly what older versions did, so a `server.host: 0.0.0.0` already
 sitting in your file is ignored with a warning and disappears the next time the file is saved.
 Any other address is yours and is kept; so are `--host` and `IMMICH_MEMORIES_SERVER__HOST`, which
 nothing but a human ever wrote. To keep a LAN bind with authentication off, use
@@ -624,7 +624,7 @@ upload:
 scheduler:
   enabled: false
   timezone: "UTC"
-  job_timeout_minutes: 60  # Max time per job before timeout (increase for large libraries)
+  job_timeout_minutes: 120  # Whole-job deadline, including preparation and rendering; must be positive
   schedules:
     - name: "yearly-recap"
       memory_type: "year_in_review"
@@ -639,7 +639,7 @@ scheduler:
 
 ## Automation
 
-Controls what `immich-memories auto suggest` and `auto run` detect and generate. See the [auto CLI docs](../create/cli/auto.md) for the full command reference. Tier 2 — lives under `advanced:` when the app writes the file.
+Controls what `immich-memories auto suggest` and `auto run` detect and generate. See the [auto CLI docs](../create/cli/auto.md) for the full command reference. Tier 2: lives under `advanced:` when the app writes the file.
 
 ```yaml
 automation:
@@ -696,7 +696,7 @@ Place under `advanced:` in your config file (like all Tier 2 sections).
 
 ## Notifications
 
-Get notified when auto-generation or scheduled jobs complete. Uses [Apprise](https://github.com/caronc/apprise) (130+ services: ntfy, Discord, Telegram, Slack, email, webhooks). Apprise ships with the base package — no extra to install. Tier 2 — lives under `advanced:` when the app writes the file.
+Get notified when auto-generation or scheduled jobs complete. Uses [Apprise](https://github.com/caronc/apprise) (130+ services: ntfy, Discord, Telegram, Slack, email, webhooks). Apprise ships with the base package, no extra to install. Tier 2: lives under `advanced:` when the app writes the file.
 
 ```yaml
 notifications:

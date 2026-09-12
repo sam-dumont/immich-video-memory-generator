@@ -65,6 +65,51 @@ def test_no_cap_means_no_downscale(tmp_path) -> None:
     assert (result.width, result.height) == (6000, 4000)
 
 
+@pytest.mark.parametrize("max_size", [None, (1024, 1024), (320, 180)])
+@pytest.mark.parametrize(
+    "orientation,corners",
+    [(2, "GRYB"), (3, "YBGR"), (4, "BYRG"), (5, "RBGY"), (6, "BRYG"), (7, "YGBR"), (8, "GYRB")],
+)
+def test_renderer_pixels_follow_exif_before_the_cap(tmp_path, max_size, orientation, corners):
+    import cv2
+    import numpy as np
+    from PIL import ImageDraw
+
+    colours = {"R": (255, 0, 0), "G": (0, 255, 0), "B": (0, 0, 255), "Y": (255, 255, 0)}
+    picture = Image.new("RGB", (720, 480))
+    draw = ImageDraw.Draw(picture)
+    for colour, box in zip(
+        "RGBY",
+        [(0, 0, 359, 239), (360, 0, 719, 239), (0, 240, 359, 479), (360, 240, 719, 479)],
+        strict=True,
+    ):
+        draw.rectangle(box, fill=colours[colour])
+    exif = Image.Exif()
+    exif[274] = orientation
+    source = tmp_path / "rotated.jpg"
+    picture.save(source, quality=98, exif=exif)
+    original = source.read_bytes()
+
+    prepared = prepare_photo_source(source, tmp_path, max_size=max_size)
+
+    # The animator uses IMREAD_UNCHANGED: verify pixels, not a viewer's EXIF correction.
+    pixels = cv2.cvtColor(cv2.imread(str(prepared.path), cv2.IMREAD_UNCHANGED), cv2.COLOR_BGR2RGB)
+    height, width = pixels.shape[:2]
+    assert (prepared.width, prepared.height) == (width, height)
+    assert width / height == pytest.approx(2 / 3 if orientation >= 5 else 3 / 2, rel=0.01)
+    if max_size:
+        assert width <= max_size[0] and height <= max_size[1]
+    else:
+        assert sorted((width, height)) == [480, 720]
+    for colour, (x, y) in zip(
+        corners, [(0.25, 0.25), (0.75, 0.25), (0.25, 0.75), (0.75, 0.75)], strict=True
+    ):
+        np.testing.assert_allclose(pixels[int(y * height), int(x * width)], colours[colour], atol=5)
+    with Image.open(prepared.path) as stored:
+        assert stored.getexif().get(274, 1) == 1
+    assert source.read_bytes() == original
+
+
 @pytest.mark.skipif(
     not (FIXTURES / "gain_mapped-photo-tokyo.jpg").exists(), reason="fixture not available"
 )

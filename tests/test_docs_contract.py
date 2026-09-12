@@ -408,8 +408,11 @@ def test_output_docs_explain_effective_resolution_and_hardware_quality() -> None
     cli = " ".join(_read("docs-site/docs/create/cli/generate.md").split())
 
     assert "CRF is the image-quality authority" in reference
-    assert "VideoToolbox" in reference
-    assert "NVENC, VAAPI, QSV, and ProRes use their existing backend policies" in reference
+    assert "VideoToolbox" not in reference or "libx265's CRF scale" in reference
+    # The page used to say NVENC, VAAPI and QSV were left to their own backend
+    # policies. That was the defect, not the design: every family is calibrated.
+    assert "NVENC, VAAPI, QSV, and ProRes use their existing backend policies" not in reference
+    assert "codec_policy" in reference
     assert "encoder_preset" in reference
     assert "config value; `auto` matches source clips" in cli
     assert "When `--resolution` is omitted, the command uses `output.resolution`" in cli

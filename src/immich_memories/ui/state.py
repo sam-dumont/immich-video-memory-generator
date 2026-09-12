@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+import threading
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -14,7 +15,9 @@ from immich_memories.timeperiod import DateRange
 from immich_memories.tracking.models import DeliveryStatus
 
 if TYPE_CHECKING:
+    from immich_memories.analysis.editorial_planner import EditorialSelection
     from immich_memories.api.models import Person, VideoClipInfo
+    from immich_memories.api.person_expression import PersonExpression
     from immich_memories.cache.thumbnail_cache import ThumbnailCache
     from immich_memories.config_loader import Config
     from immich_memories.memory_types.presets import MemoryPreset
@@ -34,7 +37,6 @@ class AppState:
 
     # Configuration
     config: Config | None = None
-    config_saved: bool = False
     immich_url: str = ""
     immich_api_key: str = ""
     # What the user typed into the API key field. Separate from the stored
@@ -48,13 +50,12 @@ class AppState:
     selected_year: int | None = None
     year_type: str = "calendar"  # "calendar" or "birthday"
     birthday: date | None = None
-    pending_birthday: date | None = None
     period_value: int = 1
     period_unit: str = "years"  # "months" or "years"
     custom_start: date | None = None
     custom_end: date | None = None
     # Every window the memory covers. On This Day and Holiday build one per
-    # year, Then and Now builds two far apart; the rest build exactly one.
+    # year; the rest build exactly one.
     date_ranges: list[DateRange] = field(default_factory=list)
 
     # Person selection
@@ -64,14 +65,14 @@ class AppState:
 
     # Clips
     clips: list[VideoClipInfo] = field(default_factory=list)
+    pipeline_selected_clips: list[VideoClipInfo] = field(default_factory=list)
+    editorial_selections: tuple[EditorialSelection, ...] = ()
     selected_clip_ids: set[str] = field(default_factory=set)
     clip_segments: dict[str, tuple[float, float]] = field(default_factory=dict)
-    cached_analysis_ids: set[str] = field(default_factory=set)
     clip_rotations: dict[str, int | None] = field(default_factory=dict)
 
     # Generation options
     generation_options: dict[str, Any] = field(default_factory=dict)
-    processing: bool = False
     output_path: Path | None = None
     # WHY: survives a page reload (state is cookie-keyed) so Step 4 can find a run
     # that finished, or is still running, while the browser page was gone.
@@ -84,36 +85,39 @@ class AppState:
     # Kept so the previous preview's stems can be removed when a new one is
     # generated: a full mix plus four stems is 50-300 MB per click.
     music_preview_dir: Path | None = None
-    music_generating: bool = False
 
     # Cancel support
     cancel_requested: bool = False
 
     # Pipeline state
-    auto_analyze_pending: bool = False
     review_selected_mode: bool = False
     pipeline_running: bool = False
     pipeline_result: dict[str, Any] | None = None
-    pipeline_config: dict[str, Any] = field(default_factory=dict)
     timeline_plan: TimelinePlan | None = None
+    editorial_render_timing: dict[str, Any] | None = None
+    # Where the last cut wrote its plan; the story page reads it from there.
+    editorial_attempt_dir: Path | None = None
+    # The armed cut's identity, set before its worker starts. A reload polls the
+    # attempt tree under this key instead of starting a second run. Sessions that
+    # cut the same brief share a key, so only attempts started after the arming
+    # count as this cut's.
+    active_cut_key: str | None = None
+    cut_armed_at: datetime | None = None
+    # The stage lines this session has watched go by, bounded. Kept here rather
+    # than in the widget so a reload mid-cut rebuilds the detail panel with what
+    # the session already saw, the way the phase rows rebuild from the attempt.
+    cut_stage_log: list[str] = field(default_factory=list)
 
     # Generation settings
     duration_mode: Literal["auto", "manual"] = "auto"
     target_duration: float = 10.0  # minutes; fractional values preserve exact seconds
-    avg_clip_duration: int = 5  # seconds per clip
     hdr_only: bool = False
-    prioritize_favorites: bool = True
-    analyze_all: bool = False
-    max_non_favorite_pct: int = 25
-    max_non_favorite_ratio: float = 0.25
     include_live_photos: bool = False
     include_photos: bool = False
+    accept_any_provenance: bool = False
     photo_assets: list[Any] = field(default_factory=list)
     selected_photo_ids: set[str] = field(default_factory=set)
     photo_duration: float = 4.0
-
-    # Analysis depth (auto, fast, or thorough)
-    analysis_depth: str = "auto"
 
     # Connection
     connected_user: str | None = None
@@ -124,6 +128,7 @@ class AppState:
     album_id: str | None = None
     album_name: str | None = None
     memory_preset_params: dict[str, Any] = field(default_factory=dict)
+    person_expression_error: str | None = None
 
     # LLM-generated title (shown in Step 3, used in Step 4)
     title_suggestion_title: str | None = None
@@ -131,13 +136,9 @@ class AppState:
     title_suggestion_trip_type: str | None = None
     title_suggestion_map_mode: str | None = None
 
-    # Trip detection results (populated dynamically in Step 1 for trip preset)
-    detected_trips: list[Any] = field(default_factory=list)
-
     # Upload-back-to-Immich settings
     upload_enabled: bool = False
     upload_album_name: str = "Memories"
-    upload_result: dict[str, Any] | None = None
 
     # Demo/privacy mode: blur thumbnails + video, mute speech
     demo_mode: bool = False
@@ -145,27 +146,24 @@ class AppState:
     # Step 2 view mode: "list" (detailed cards) or "grid" (compact thumbnails)
     clip_view_mode: str = "list"
 
-    # Duplicate tracking
-    _duplicates_processed: bool = False
-
     # Session tracking
     last_accessed: datetime | None = None
 
+    # One session, one cut at a time: the worker writes its result back under
+    # this lock, and arming a second cut while one runs is refused under it.
+    # Every tab of a browser still shares this object; per-tab state is not
+    # attempted here.
+    lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
+
     # Caches (initialized at runtime)
     thumbnail_cache: ThumbnailCache | None = None
-    # Perceptual hashes keyed by asset id. Duplicate detection re-runs on
-    # every Step 2 render, and a thumbnail's hash cannot change while the
-    # file does not.
-    thumbnail_hashes: dict[str, str] = field(default_factory=dict)
-    analysis_cache: Any = None  # AnalysisCache
 
     @property
     def date_range(self) -> DateRange | None:
         """The whole period the memory covers — for titles, filenames and labels.
 
-        Anything that *fetches* must use `date_ranges` instead. The span of a
-        Then and Now is a decade it has no interest in, and the span of an On
-        This Day is years it wants three days out of.
+        Anything that *fetches* must use `date_ranges` instead: the span of an
+        On This Day is years it wants three days out of.
         """
         if not self.date_ranges:
             return None
@@ -187,20 +185,90 @@ class AppState:
         sees the same list the CLI builds from ``--person``: a group of one is
         a filter, not an absence of one.
         """
+        if self.person_expression is not None:
+            return []  # Expression-aware fetches pass the resolved tree separately.
         group = self.memory_preset_params.get("person_ids") or []
         if group:
             return list(group)
         return [self.selected_person.id] if self.selected_person else []
+
+    @property
+    def person_match(self) -> str:
+        """Whether several selected people are intersected or unioned."""
+        return str(self.memory_preset_params.get("person_match", "and"))
+
+    @property
+    def person_expression(self) -> PersonExpression | None:
+        """The exact named condition, never reconstructed from a flat leaf list."""
+        from immich_memories.api.person_expression import PersonExpression
+
+        if self.person_expression_error:
+            raise ValueError(self.person_expression_error)
+        value = self.memory_preset_params.get("person_expression")
+        return PersonExpression.from_dict(value) if value is not None else None
+
+    def validate_person_expression_scope(self, memory_type: str | None = None) -> None:
+        """Refuse unsupported combinations before fetching or using loaded media."""
+        if self.person_expression is None:
+            return
+        product = memory_type if memory_type is not None else self.memory_type
+        if product in {"person_spotlight", "trip", "album"} or (
+            self.memory_preset_params.get("use_birthday") or self.year_type == "birthday"
+        ):
+            raise ValueError(
+                "Grouped people conditions are not supported for person spotlights, "
+                "birthday memories, trips or albums. Choose a date-range memory."
+            )
+
+    def resolved_person_expression(self) -> PersonExpression | None:
+        """Resolve every name to all matching face IDs, preserving AND/OR groups."""
+        expression = self.person_expression
+        if expression is None:
+            return None
+        self.validate_person_expression_scope()
+        from immich_memories.analysis.editorial_source import resolve_named_expression
+
+        return resolve_named_expression(expression, self.people)
+
+    def clear_person_expression(self) -> None:
+        """An explicit flat-picker choice replaces the previous grouped condition."""
+        self.memory_preset_params.pop("person_expression", None)
+        self.person_expression_error = None
+
+    def set_person_expression(self, expression: PersonExpression) -> None:
+        """Store a validated named tree and its display leaves without flattening it."""
+        previous = self.memory_preset_params.get("person_expression")
+        previous_error = self.person_expression_error
+        self.person_expression_error = None
+        self.memory_preset_params["person_expression"] = expression.to_dict()
+        try:
+            self.resolved_person_expression()
+        except ValueError:
+            if previous is None:
+                self.memory_preset_params.pop("person_expression", None)
+            else:
+                self.memory_preset_params["person_expression"] = previous
+            self.person_expression_error = previous_error
+            raise
+        self.memory_preset_params["person_names"] = list(expression.leaf_values)
+        self.memory_preset_params["person_ids"] = []
+        self.selected_person = None
 
     def apply_preset(self, preset: MemoryPreset) -> None:
         """Adopt everything a preset decided: its windows, its length, its people.
 
         The person filter travels on the preset rather than being re-derived per
         card, so a Year in Review narrowed to two people asks Immich exactly
-        what ``--person Alice --person Bob`` asks it -- one rule, both surfaces
+        what ``--person Riley --person Bob`` asks it -- one rule, both surfaces
         (#666, #683). Names resolve against ``people``, the roster Immich
         returned, because a filter is written in names and fetched by id.
         """
+        expression = preset.person_filter.person_expression
+        if expression is not None:
+            self.set_person_expression(expression)
+            self.validate_person_expression_scope(preset.memory_type)
+        else:
+            self.clear_person_expression()
         self.date_ranges = preset.date_ranges.copy()
         if preset.default_duration_seconds:
             self.target_duration = preset.default_duration_seconds / 60
@@ -208,7 +276,12 @@ class AppState:
         elif preset.date_ranges:
             # ~1 min per month, ~8 min per year, for a preset with no opinion.
             self.target_duration = max(1, min(10, round(preset.date_ranges[0].days / 45)))
-        self.narrow_to_people(preset.person_filter.person_names)
+        if expression is None:
+            self.narrow_to_people(preset.person_filter.person_names)
+        if expression is None and len(preset.person_filter.person_names) > 1:
+            self.memory_preset_params["person_match"] = (
+                "and" if preset.person_filter.require_co_occurrence else "or"
+            )
 
     def narrow_to_people(self, person_names: list[str]) -> None:
         """Resolve a filter's names to the ids a fetch queries with.
@@ -217,6 +290,12 @@ class AppState:
         can be built from a year that was never chosen -- and it still has to
         answer the same picker.
         """
+        expression = self.person_expression
+        if expression is not None:
+            if tuple(person_names) != expression.leaf_values:
+                raise ValueError("People names disagree with the grouped condition")
+            self.set_person_expression(expression)
+            return
         by_name = {person.name: person for person in self.people if person.name}
         wanted = [by_name[name] for name in person_names if name in by_name]
         self.memory_preset_params["person_ids"] = [person.id for person in wanted]
@@ -231,6 +310,10 @@ class AppState:
         Album mode is the exception to "a memory is a date range": the album is
         the pool, so it carries no range and must be checked on its own.
         """
+        try:
+            self.resolved_person_expression()
+        except ValueError:
+            return False
         if self.memory_type == "album":
             return self.album_id is not None
         return self.date_range is not None
@@ -239,12 +322,13 @@ class AppState:
         """Switch to a memory type, dropping what the previous card collected.
 
         The person is the one input that used to survive: only two cards show a
-        person widget, so an Alice left behind by a Person Spotlight went on
+        person widget, so an Riley left behind by a Person Spotlight went on
         narrowing a Year in Review with nothing on screen saying so -- the
         wizard's own version of a filter the surface cannot explain.
         """
         self.memory_type = memory_type
         self.memory_preset_params = {}
+        self.person_expression_error = None
         self.selected_person = None
         if memory_type != "album":
             # A left-over album would otherwise satisfy the step 1 scope check.
@@ -254,19 +338,23 @@ class AppState:
     def reset_clips(self) -> None:
         """Reset clip-related state when changing configuration."""
         self.clips = []
+        self.photo_assets = []
+        self.pipeline_selected_clips = []
+        self.editorial_selections = ()
         self.selected_clip_ids = set()
         self.selected_photo_ids = set()
         self.clip_segments = {}
-        self.cached_analysis_ids = set()
         self.clip_rotations = {}
         self.pipeline_result = None
         self.timeline_plan = None
+        self.editorial_render_timing = None
+        self.editorial_attempt_dir = None
+        self.active_cut_key = None
+        self.cut_armed_at = None
         self.review_selected_mode = False
-        self._duplicates_processed = False
         self.title_suggestion_title = None
         self.title_suggestion_subtitle = None
         self.cancel_requested = False
-        self.thumbnail_hashes = {}
         self.discard_music_preview()
 
     def discard_music_preview(self) -> None:
@@ -277,30 +365,17 @@ class AppState:
             shutil.rmtree(previous, ignore_errors=True)
 
     def get_selected_clips(self) -> list[VideoClipInfo]:
-        """The videos kept in review, plus the photos the selection engine admitted.
-
-        Photos never sit in ``clips`` (that list is the video review grid). The
-        engine returns them as IMAGE-type entries in ``pipeline_result``, and
-        this used to read only ``clips``, so a photo the user included and the
-        engine kept still never reached the video (#778). ``selected_photo_ids``
-        is the photo checkbox state, so a photo unticked after the run stays out.
-        """
-        from immich_memories.api.models import AssetType
-
-        selected = [c for c in self.clips if c.asset.id in self.selected_clip_ids]
-        if not self.include_photos or not self.pipeline_result:
-            return selected
-        known = {c.asset.id for c in selected}
-        planned = self.pipeline_result.get("selected_clips") or []
-        selected += [
-            c
-            for c in planned
-            if c.asset.type == AssetType.IMAGE
-            and c.asset.id in self.selected_photo_ids
-            and c.asset.id not in known
+        """Get the list of currently selected clips."""
+        planned = [
+            clip for clip in self.pipeline_selected_clips if clip.asset.id in self.selected_clip_ids
         ]
-        selected.sort(key=lambda c: c.asset.file_created_at)
-        return selected
+        planned_ids = {clip.asset.id for clip in planned}
+        manual = [
+            clip
+            for clip in self.clips
+            if clip.asset.id in self.selected_clip_ids and clip.asset.id not in planned_ids
+        ]
+        return [*planned, *manual]
 
     @property
     def target_duration_seconds(self) -> float:

@@ -32,7 +32,6 @@ from immich_memories.processing.hdr_utilities import (
     _get_hdr_conversion_filter,
     _get_hdr_to_hdr_filter,
     _get_sdr_to_hdr_filter,
-    has_any_hdr_clip,
     quality_to_crf,
 )
 
@@ -617,203 +616,6 @@ class TestBuildClipOutputPath:
         assert "_enc" in result.name
 
 
-class TestSelectDistributed:
-    """Lines 231-252: temporal distribution of photos."""
-
-    def test_returns_all_when_under_limit(self):
-        from immich_memories.photos.photo_pipeline import _select_distributed
-
-        a1 = _make_asset(id="a1", fileCreatedAt=datetime(2025, 1, 1, tzinfo=UTC))
-        a2 = _make_asset(id="a2", fileCreatedAt=datetime(2025, 2, 1, tzinfo=UTC))
-        scored = [(a1, 0.8), (a2, 0.9)]
-
-        result = _select_distributed(scored, max_count=5)
-        assert len(result) == 2
-
-    def test_picks_best_per_bucket(self):
-        from immich_memories.photos.photo_pipeline import _select_distributed
-
-        assets = [
-            _make_asset(id=f"a{i}", fileCreatedAt=datetime(2025, 1, i + 1, tzinfo=UTC))
-            for i in range(10)
-        ]
-        scored = [(a, float(i)) for i, a in enumerate(assets)]
-
-        result = _select_distributed(scored, max_count=3)
-        assert len(result) == 3
-        # Each bucket picks the highest score
-        for _, score in result:
-            assert score > 0
-
-
-class TestEnhanceWithLlm:
-    """Lines 255-303: LLM scoring with cache."""
-
-    def test_cache_hit_skips_llm(self, tmp_path):
-        from immich_memories.config_loader import Config
-        from immich_memories.config_models_render import PhotoConfig
-        from immich_memories.photos.scoring import _enhance_with_llm
-
-        asset = _make_asset(id="cached-001")
-        scored = [(asset, 0.5)]
-        config = PhotoConfig()
-        app_config = Config(llm={"model": "qwen-test"}, content_analysis={"enabled": True})
-
-        mock_cache = MagicMock()
-        mock_cache.get_asset_scores_batch.return_value = {
-            "cached-001": {"combined_score": 0.95, "llm_category": "people"}
-        }
-
-        # WHY: _get_score_cache imports from cache module — mock to avoid DB
-        with patch(
-            "immich_memories.photos.scoring._get_score_cache",
-            return_value=mock_cache,
-        ):
-            result, _payloads = _enhance_with_llm(
-                scored,
-                config,
-                tmp_path,
-                MagicMock(),
-                db_path=tmp_path / "db.sqlite",
-                app_config=app_config,
-            )
-
-        assert result[0][1] == 0.95
-
-    def test_cache_miss_calls_llm(self, tmp_path):
-        from immich_memories.config_loader import Config
-        from immich_memories.config_models_render import PhotoConfig
-        from immich_memories.photos.scoring import PhotoLook, _enhance_with_llm
-
-        asset = _make_asset(id="uncached-001")
-        scored = [(asset, 0.5)]
-        config = PhotoConfig()
-        app_config = Config(llm={"model": "qwen-test"}, content_analysis={"enabled": True})
-
-        mock_cache = MagicMock()
-        mock_cache.get_asset_scores_batch.return_value = {}
-
-        with (
-            patch(
-                "immich_memories.photos.scoring._get_score_cache",
-                return_value=mock_cache,
-            ),
-            patch(
-                "immich_memories.photos.scoring._llm_score_photo",
-                return_value=PhotoLook(score=0.85, payload={"description": "a photograph"}),
-            ),
-        ):
-            result, _payloads = _enhance_with_llm(
-                scored,
-                config,
-                tmp_path,
-                MagicMock(),
-                db_path=tmp_path / "db.sqlite",
-                app_config=app_config,
-            )
-
-        assert result[0][1] == 0.85
-        mock_cache.save_asset_score.assert_called_once()
-
-
-class TestLlmScorePhoto:
-    """Lines 306-354: LLM photo scoring with thumbnail optimization."""
-
-    def test_thumbnail_path_used_when_available(self, tmp_path):
-        from immich_memories.config_models_render import PhotoConfig
-        from immich_memories.photos.scoring import _llm_score_photo
-
-        asset = _make_asset(id="thumb-001")
-        config = PhotoConfig()
-        thumb_path = tmp_path / "thumb-001_thumb.jpg"
-        thumb_path.write_bytes(b"\xff\xd8\xff" + b"\x00" * 100)
-
-        thumb_fn = MagicMock(return_value=b"\xff\xd8\xff" + b"\x00" * 100)
-
-        # WHY: score_photo_with_llm calls the LLM API
-        with patch(
-            "immich_memories.photos.scoring.score_photo_with_llm",
-            return_value=0.92,
-        ):
-            result = _llm_score_photo(
-                asset, 0.5, config, tmp_path, MagicMock(), None, thumbnail_fn=thumb_fn
-            )
-
-        assert result == 0.92
-
-    def test_llm_error_is_not_reported_as_a_semantic_score(self, tmp_path):
-        from immich_memories.config_models_render import PhotoConfig
-        from immich_memories.photos.scoring import LookFailed, _llm_score_photo
-
-        asset = _make_asset(id="err-001")
-        config = PhotoConfig()
-        thumb_path = tmp_path / "err-001_thumb.jpg"
-        thumb_path.write_bytes(b"\xff\xd8\xff" + b"\x00" * 100)
-
-        with patch(
-            "immich_memories.photos.scoring.score_photo_with_llm",
-            side_effect=RuntimeError("LLM down"),
-        ):
-            result = _llm_score_photo(
-                asset,
-                0.6,
-                config,
-                tmp_path,
-                MagicMock(),
-                None,
-                thumbnail_fn=MagicMock(return_value=b"\xff"),
-            )
-
-        assert result == LookFailed("download_failed")
-
-    def test_falls_back_to_full_download(self, tmp_path):
-        from immich_memories.config_models_render import PhotoConfig
-        from immich_memories.photos.scoring import _llm_score_photo
-
-        asset = _make_asset(id="no-thumb-001", originalFileName="IMG.HEIC")
-        config = PhotoConfig()
-
-        def fake_download(asset_id, path):
-            path.write_bytes(b"\x00" * 50)
-
-        # WHY: prepare_photo_source does HEIC decode + gain map extraction
-        mock_prepared = MagicMock()
-        mock_prepared.path = tmp_path / "prepared.jpg"
-        mock_prepared.path.write_bytes(b"\xff\xd8\xff" + b"\x00" * 100)
-
-        # WHY: local import at line 349 resolves from animator module, not photo_pipeline
-        with (
-            patch(
-                "immich_memories.photos.animator.prepare_photo_source",
-                return_value=mock_prepared,
-            ),
-            patch(
-                "immich_memories.photos.scoring.score_photo_with_llm",
-                return_value=0.88,
-            ),
-        ):
-            result = _llm_score_photo(
-                asset, 0.4, config, tmp_path, fake_download, None, thumbnail_fn=None
-            )
-
-        assert result == 0.88
-
-    def test_download_failure_is_not_reported_as_a_semantic_score(self, tmp_path):
-        from immich_memories.config_models_render import PhotoConfig
-        from immich_memories.photos.scoring import LookFailed, _llm_score_photo
-
-        asset = _make_asset(id="dl-fail-001")
-        config = PhotoConfig()
-
-        def fail_download(asset_id, path):
-            raise ConnectionError("offline")
-
-        result = _llm_score_photo(
-            asset, 0.3, config, tmp_path, fail_download, None, thumbnail_fn=None
-        )
-        assert result == LookFailed("download_failed")
-
-
 class TestRenderSinglePhoto:
     """Lines 367-446: single photo render pipeline."""
 
@@ -1039,59 +841,6 @@ class TestGetPhotoEncoderArgs:
 # ============================================================================
 
 
-class TestParseResolutionFromStream:
-    """Pure parsing logic — no subprocess needed."""
-
-    def setup_method(self):
-        self.prober = FFmpegProber(
-            settings=AssemblySettings(encoding_plan=standalone_assembly_encoding_plan())
-        )
-
-    def test_landscape_no_rotation(self):
-        stream = {"width": 1920, "height": 1080}
-        assert self.prober.parse_resolution_from_stream(stream) == (1920, 1080)
-
-    def test_swaps_for_90_degree_rotation(self):
-        stream = {"width": 1920, "height": 1080, "side_data_list": [{"rotation": -90}]}
-        assert self.prober.parse_resolution_from_stream(stream) == (1080, 1920)
-
-    def test_swaps_for_270_degree_rotation(self):
-        stream = {"width": 3840, "height": 2160, "side_data_list": [{"rotation": 270}]}
-        assert self.prober.parse_resolution_from_stream(stream) == (2160, 3840)
-
-    def test_no_swap_for_180(self):
-        stream = {"width": 1920, "height": 1080, "side_data_list": [{"rotation": 180}]}
-        assert self.prober.parse_resolution_from_stream(stream) == (1920, 1080)
-
-    def test_returns_none_for_zero_dimensions(self):
-        stream = {"width": 0, "height": 0}
-        assert self.prober.parse_resolution_from_stream(stream) is None
-
-    def test_returns_none_for_missing_dimensions(self):
-        stream = {}
-        assert self.prober.parse_resolution_from_stream(stream) is None
-
-
-class TestParseFpsStr:
-    """Pure string parsing — no subprocess."""
-
-    def test_fraction(self):
-        assert FFmpegProber.parse_fps_str("30/1") == 30.0
-
-    def test_ntsc_fraction(self):
-        result = FFmpegProber.parse_fps_str("60000/1001")
-        assert result == pytest.approx(59.94, abs=0.01)
-
-    def test_plain_number(self):
-        assert FFmpegProber.parse_fps_str("60") == 60.0
-
-    def test_empty_string(self):
-        assert FFmpegProber.parse_fps_str("") is None
-
-    def test_zero_denominator(self):
-        assert FFmpegProber.parse_fps_str("30/0") is None
-
-
 class TestPickResolutionTier:
     """Pure logic — resolution tier selection from counts."""
 
@@ -1281,34 +1030,6 @@ class TestGetDominantHdrType:
             assert _get_dominant_hdr_type(clips) == "hlg"
 
 
-class TestHasAnyHdrClip:
-    def test_returns_true_when_hdr_present(self, tmp_path):
-        @dataclass
-        class FakeClip:
-            path: Path
-
-        clips = [FakeClip(path=tmp_path / "a.mp4"), FakeClip(path=tmp_path / "b.mp4")]
-
-        with patch(
-            "immich_memories.processing.hdr_utilities._detect_hdr_type",
-            side_effect=[None, "hlg"],
-        ):
-            assert has_any_hdr_clip(clips) is True
-
-    def test_returns_false_when_all_sdr(self, tmp_path):
-        @dataclass
-        class FakeClip:
-            path: Path
-
-        clips = [FakeClip(path=tmp_path / "a.mp4")]
-
-        with patch(
-            "immich_memories.processing.hdr_utilities._detect_hdr_type",
-            return_value=None,
-        ):
-            assert has_any_hdr_clip(clips) is False
-
-
 class TestSdrToHdrFilter:
     def test_hlg_conversion(self):
         f = _get_sdr_to_hdr_filter("hlg", "bt709", has_zscale=True)
@@ -1383,12 +1104,11 @@ class TestGetHdrConversionFilter:
 
 class TestQualityToCrf:
     def test_known_presets(self):
-        assert quality_to_crf("high") == 12
-        assert quality_to_crf("medium") == 18
-        assert quality_to_crf("low") == 28
+        assert quality_to_crf("high") < quality_to_crf("balanced")
+        assert quality_to_crf("fast") == quality_to_crf("balanced")
 
-    def test_unknown_defaults_to_12(self):
-        assert quality_to_crf("ultra") == 12
+    def test_unknown_defaults_to_balanced(self):
+        assert quality_to_crf("ultra") == quality_to_crf("balanced")
 
 
 class TestCheckZscaleAvailable:

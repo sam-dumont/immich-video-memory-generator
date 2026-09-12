@@ -11,7 +11,6 @@ from datetime import date
 from enum import StrEnum
 from pathlib import Path
 
-from immich_memories.processing.clips import ClipSegment
 from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
 
 __all__ = [
@@ -123,8 +122,6 @@ class AssemblySettings:
     music_other_path: Path | None = None  # Other instruments stem
     add_date_overlay: bool = False
     add_place_overlay: bool = False
-    preserve_framerate: bool = True  # Keep original frame rate (e.g., 60fps)
-    target_framerate: int | None = None  # Force specific frame rate (None = auto)
     # Resolution settings
     auto_resolution: bool = True  # Auto-detect resolution from clips
     target_resolution: tuple[int, int] | None = None  # Override resolution (width, height)
@@ -134,7 +131,6 @@ class AssemblySettings:
     # included): timeline windows where a clip's own audio is music, so the
     # music phase can step the soundtrack aside (#466).
     music_mute_windows: list[tuple[float, float]] | None = None
-    # Pre-decided transitions (from clips.plan_transitions)
     # If provided, these override the automatic transition decisions
     # Format: list of "fade" or "cut" for each transition between clips
     predecided_transitions: list[str] | None = None
@@ -150,6 +146,12 @@ class AssemblySettings:
     # Fallback resolution when auto_resolution is False and target_resolution is None
     # Set by the caller from config.output.resolution_tuple
     default_resolution: tuple[int, int] | None = None
+    # Exact source intervals already inspected and extracted by the editorial route.
+    # Titles may use their pixels but cannot consume part of the content interval.
+    certified_content_intervals: dict[str, tuple[float, float]] = field(default_factory=dict)
+    # Captions keep their configured language even when title cards are disabled.
+    # None preserves the title-settings locale for standalone assembly callers.
+    caption_locale: str | None = None
 
 
 @dataclass
@@ -160,7 +162,6 @@ class AssemblyClip:
     duration: float
     date: str | None = None
     asset_id: str = ""
-    original_segment: ClipSegment | None = None
     # Rotation override: None = auto-detect, 0/90/180/270 = force rotation
     rotation_override: int | None = None
     # LLM analysis results for mood detection
@@ -172,8 +173,6 @@ class AssemblyClip:
     longitude: float | None = None
     location_name: str | None = None
     # Audio analysis results for targeted ducking
-    has_speech: bool = False  # Segment contains speech (from audio analysis)
-    # Pre-decided outgoing transition (from clips.plan_transitions)
     # "fade" = crossfade to next clip, "cut" = hard cut to next clip
     # None = let assembler decide (title screens always use fade)
     outgoing_transition: str | None = None
@@ -184,6 +183,9 @@ class AssemblyClip:
     # Source audio contains music (PANNs 'music'/'singing'); the added
     # soundtrack steps aside over this clip's window (#466).
     has_music: bool = False
+    # None uses the original EXIF place; "" explicitly hides a familiar place.
+    # Kept separate so maps retain their real location names and coordinates.
+    caption_location_name: str | None = None
 
 
 def _get_rotation_filter(rotation: int) -> str:

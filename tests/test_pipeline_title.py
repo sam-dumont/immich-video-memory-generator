@@ -9,7 +9,6 @@ import pytest
 
 from immich_memories.timeperiod import DateRange
 from immich_memories.ui.state import AppState
-from tests.conftest import make_clip
 
 
 class TestTemplateFallbackTitle:
@@ -138,7 +137,6 @@ class TestTitleFallbackIntegration:
             _make_date_range(datetime(2024, 1, 1, tzinfo=UTC), datetime(2024, 12, 31, tzinfo=UTC))
         ]
         state.memory_type = "year_in_review"
-        state.analysis_cache = None
         state.config = _make_config(llm_model="omlx")
 
         suggestion = TitleSuggestion(title="The Best Year")
@@ -163,7 +161,6 @@ class TestTitleFallbackIntegration:
             _make_date_range(datetime(2024, 1, 1, tzinfo=UTC), datetime(2024, 12, 31, tzinfo=UTC))
         ]
         state.memory_type = "year_in_review"
-        state.analysis_cache = None
         state.config = _make_config(llm_model="omlx")
 
         # LLM returns a suggestion with whitespace-only title
@@ -190,7 +187,6 @@ class TestTitleFallbackIntegration:
             _make_date_range(datetime(2024, 1, 1, tzinfo=UTC), datetime(2024, 12, 31, tzinfo=UTC))
         ]
         state.memory_type = "year_in_review"
-        state.analysis_cache = None
         state.config = _make_config(llm_model="omlx")
 
         with patch(
@@ -202,59 +198,6 @@ class TestTitleFallbackIntegration:
 
         assert state.title_suggestion_title is not None
         assert "2024" in state.title_suggestion_title
-
-
-class TestCollectClipDescriptions:
-    """Extract LLM descriptions from analysis cache."""
-
-    def test_returns_empty_when_no_cache(self):
-        from immich_memories.ui.pages.pipeline_title import _collect_clip_descriptions
-
-        state = AppState()
-        state.analysis_cache = None
-        assert not _collect_clip_descriptions(state)
-
-    def test_returns_empty_when_no_selected_clips(self):
-        from immich_memories.ui.pages.pipeline_title import _collect_clip_descriptions
-
-        state = AppState()
-        state.analysis_cache = MagicMock()
-        state.selected_clip_ids = set()
-        assert not _collect_clip_descriptions(state)
-
-    def test_returns_descriptions_from_best_segment(self):
-        from immich_memories.ui.pages.pipeline_title import _collect_clip_descriptions
-
-        state = AppState()
-        clip = make_clip("a1")
-        state.clips = [clip]
-        state.selected_clip_ids = {"a1"}
-
-        seg = MagicMock()
-        seg.llm_description = "kids playing on beach"
-
-        analysis = MagicMock()
-        analysis.segments = [seg]
-        analysis.get_best_segment.return_value = seg
-
-        state.analysis_cache = MagicMock()
-        state.analysis_cache.get_analysis.return_value = analysis
-
-        result = _collect_clip_descriptions(state)
-        assert result == ["kids playing on beach"]
-
-    def test_skips_clip_with_no_analysis(self):
-        from immich_memories.ui.pages.pipeline_title import _collect_clip_descriptions
-
-        state = AppState()
-        state.clips = [make_clip("a1"), make_clip("a2")]
-        state.selected_clip_ids = {"a1", "a2"}
-
-        state.analysis_cache = MagicMock()
-        state.analysis_cache.get_analysis.return_value = None
-
-        result = _collect_clip_descriptions(state)
-        assert not result
 
 
 class TestGenerateTitleAfterPipeline:
@@ -302,7 +245,6 @@ class TestGenerateTitleAfterPipeline:
         state = AppState()
         state.date_ranges = [_make_date_range()]
         state.memory_type = "year"
-        state.analysis_cache = None
         state.config = _make_config(llm_model="omlx")
 
         suggestion = TitleSuggestion(
@@ -332,7 +274,6 @@ class TestGenerateTitleAfterPipeline:
         state = AppState()
         state.date_ranges = [_make_date_range()]
         state.memory_type = "year"
-        state.analysis_cache = None
         state.config = _make_config(llm_model="omlx")
 
         with patch(
@@ -355,7 +296,6 @@ class TestGenerateTitleAfterPipeline:
         state = AppState()
         state.date_ranges = [_make_date_range()]
         state.memory_type = "person"
-        state.analysis_cache = None
         state.config = _make_config(llm_model="omlx")
 
         person = MagicMock()
@@ -384,7 +324,6 @@ class TestGenerateTitleAfterPipeline:
         state.date_ranges = [_make_date_range()]
         state.memory_type = "trip"
         state.clips = []
-        state.analysis_cache = None
         state.config = _make_config(title_llm=None, llm_model="omlx")
 
         suggestion = TitleSuggestion(

@@ -28,6 +28,20 @@ def _openai_response(content='{"ok": true}', finish_reason="stop", usage=None):
     return response
 
 
+def _anthropic_response(usage):
+    response = AsyncMock()
+    response.status_code = 200
+    response.json = MagicMock(
+        return_value={
+            "content": [{"type": "text", "text": '{"ok": true}'}],
+            "stop_reason": "end_turn",
+            "usage": usage,
+        }
+    )
+    response.raise_for_status = lambda: None
+    return response
+
+
 def _thinking_config(**overrides) -> LLMConfig:
     fields = {
         "provider": "openai-compatible",
@@ -71,13 +85,42 @@ async def test_token_usage_is_recorded_when_the_server_reports_it() -> None:
     """Servers that omit `usage` must not break counting — tokens stay zero."""
     from immich_memories.analysis.llm_query import query_llm
 
-    reply = _openai_response(usage={"prompt_tokens": 1200, "completion_tokens": 34})
+    reply = _openai_response(
+        usage={
+            "prompt_tokens": 1200,
+            "prompt_tokens_details": {"cached_tokens": 800},
+            "completion_tokens": 34,
+        }
+    )
     # WHY: the LLM server is the external boundary reporting its own usage.
     with collecting() as counters, patch("httpx.AsyncClient.post", return_value=reply):
         await query_llm("Describe this", _thinking_config(thinking=False))
 
     assert counters.prompt_tokens == 1200
+    assert counters.cached_prompt_tokens == 800
     assert counters.completion_tokens == 34
+
+
+@pytest.mark.asyncio
+async def test_anthropic_cache_tokens_are_in_the_total_and_discount_subset() -> None:
+    from immich_memories.analysis.llm_query import query_llm
+
+    config = LLMConfig(provider="anthropic", model="glm", api_key="k")
+    reply = _anthropic_response(
+        {
+            "input_tokens": 6,
+            "cache_read_input_tokens": 15296,
+            "cache_creation_input_tokens": 100,
+            "output_tokens": 889,
+        }
+    )
+
+    with collecting() as counters, patch("httpx.AsyncClient.post", return_value=reply):
+        await query_llm("Describe this", config)
+
+    assert counters.prompt_tokens == 15402
+    assert counters.cached_prompt_tokens == 15296
+    assert counters.completion_tokens == 889
 
 
 @pytest.mark.asyncio

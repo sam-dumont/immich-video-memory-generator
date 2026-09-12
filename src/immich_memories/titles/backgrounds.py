@@ -10,7 +10,6 @@ This module provides:
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
 from enum import Enum
 
 import numpy as np
@@ -55,16 +54,6 @@ class BackgroundType(Enum):
     SOFT_GRADIENT = "soft_gradient"
     RADIAL_GRADIENT = "radial_gradient"
     VIGNETTE = "vignette"
-    SOLID = "solid"
-    CONTENT_BACKED = "content_backed"
-
-
-@dataclass
-class GradientStop:
-    """A color stop in a gradient."""
-
-    position: float  # 0.0 to 1.0
-    color: tuple[int, int, int]  # RGB
 
 
 def hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
@@ -92,24 +81,6 @@ def rgb_to_hex(rgb: tuple[int, int, int]) -> str:
         Hex color string (e.g., "#FFF5E6").
     """
     return f"#{rgb[0]:02X}{rgb[1]:02X}{rgb[2]:02X}"
-
-
-def interpolate_color(
-    color1: tuple[int, int, int],
-    color2: tuple[int, int, int],
-    t: float,
-) -> tuple[int, int, int]:
-    """Linearly interpolate between two colors.
-
-    Args:
-        color1: Starting RGB color.
-        color2: Ending RGB color.
-        t: Interpolation factor (0.0 to 1.0).
-
-    Returns:
-        Interpolated RGB color.
-    """
-    return tuple(int(color1[i] + (color2[i] - color1[i]) * t) for i in range(3))  # type: ignore
 
 
 def create_gradient_background(
@@ -367,26 +338,3 @@ def create_background_for_style(
 
     # Default to soft gradient
     return create_soft_gradient(width, height, colors)
-
-
-def create_background_array(
-    width: int,
-    height: int,
-    background_type: str,
-    colors: list[str],
-    angle: int = 135,
-) -> np.ndarray:
-    """Create background as numpy array for video processing.
-
-    Args:
-        width: Image width.
-        height: Image height.
-        background_type: Type from BackgroundType enum.
-        colors: List of color hex strings.
-        angle: Gradient angle.
-
-    Returns:
-        Numpy array of shape (height, width, 3) with RGB values.
-    """
-    image = create_background_for_style(width, height, background_type, colors, angle)
-    return np.array(image)

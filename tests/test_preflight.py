@@ -2,20 +2,26 @@
 
 from __future__ import annotations
 
+import hashlib
+import http.server
+import json
+import threading
 from unittest.mock import MagicMock, patch
 
+from immich_memories.analysis import editorial_preparation_detectors as detectors
+from immich_memories.analysis.editorial_description_contract import API_MODEL
 from immich_memories.api.immich import ImmichAPIError
 from immich_memories.config_loader import Config
 from immich_memories.preflight import (
     CheckResult,
     CheckStatus,
-    check_audio_content,
+    check_caption_endpoint,
+    check_detector_export,
+    check_encoder,
     check_immich,
     check_llm,
     check_notifications,
-    check_speech_boundaries,
     check_title_rendering,
-    check_transcription,
     run_preflight_checks,
 )
 
@@ -72,7 +78,6 @@ def test_llm_preflight_reports_missing_configured_model() -> None:
             "base_url": "http://localhost:9999/v1",
             "model": "removed-vlm",
         },
-        content_analysis={"enabled": True},
     )
     response = MagicMock()
     response.status_code = 404
@@ -99,7 +104,6 @@ def test_llm_preflight_reports_missing_chat_route() -> None:
             "base_url": "http://localhost:9999/v1",
             "model": "vlm",
         },
-        content_analysis={"enabled": True},
     )
     response = MagicMock()
     response.status_code = 404
@@ -115,36 +119,6 @@ def test_llm_preflight_reports_missing_chat_route() -> None:
     assert result.status is CheckStatus.WARNING
     assert result.message == "Chat-completions route unavailable"
     assert "localhost:9999" not in (result.details or "")
-
-
-def test_audio_preflight_warns_when_panns_requested_but_extra_absent() -> None:
-    config = Config(audio_content={"enabled": True, "use_panns": True})
-
-    with patch("importlib.util.find_spec", return_value=None):
-        result = check_audio_content(config)
-
-    assert result.status is CheckStatus.WARNING
-    assert "energy-only fallback" in result.message
-    assert "audio-ml" in (result.details or "")
-
-
-def test_audio_preflight_reports_semantic_panns_ready() -> None:
-    config = Config(audio_content={"enabled": True, "use_panns": True})
-
-    with patch("importlib.util.find_spec", return_value=MagicMock()):
-        result = check_audio_content(config)
-
-    assert result.status is CheckStatus.OK
-    assert result.message == "Semantic PANNs audio classification ready"
-
-
-def test_audio_preflight_skips_when_disabled() -> None:
-    config = Config(audio_content={"enabled": False})
-
-    result = check_audio_content(config)
-
-    assert result.status is CheckStatus.SKIPPED
-    assert result.message == "Audio-content analysis disabled"
 
 
 def test_notification_preflight_warns_on_sanitized_failure_cooldown(tmp_path) -> None:
@@ -177,32 +151,6 @@ def test_notification_preflight_is_optional_when_disabled() -> None:
     assert result.message == "Notifications disabled"
 
 
-def test_speech_boundaries_preflight_names_the_feature_lost_without_the_extra() -> None:
-    """A bare install must see the cost, not just a missing package name."""
-    # WHY: replaces the installed-package probe with what a bare pip install sees.
-    with patch("immich_memories.preflight.importlib.util.find_spec", return_value=None):
-        result = check_speech_boundaries(Config())
-
-    assert result.status is CheckStatus.WARNING
-    assert result.message == "Speech boundaries unavailable; cuts may land mid-sentence"
-    assert "onnxruntime" in (result.details or "")
-    assert "immich-memories[speech]" in (result.details or "")
-
-
-def test_transcription_preflight_names_the_feature_lost_without_the_extra() -> None:
-    config = Config(transcription={"enabled": True, "languages": ["en"]})
-
-    # WHY: replaces the installed-package probe with what a no-transcribe install sees.
-    with patch("immich_memories.preflight.importlib.util.find_spec", return_value=None):
-        result = check_transcription(config)
-
-    assert result.status is CheckStatus.WARNING
-    assert result.message == (
-        "Speech transcription unavailable; clips are chosen without what was said"
-    )
-    assert "immich-memories[transcribe]" in (result.details or "")
-
-
 def test_title_rendering_preflight_reports_the_pil_fallback_without_taichi() -> None:
     # WHY: replaces the installed-package probe with what a no-gpu install sees.
     with patch("immich_memories.preflight.importlib.util.find_spec", return_value=None):
@@ -215,14 +163,120 @@ def test_title_rendering_preflight_reports_the_pil_fallback_without_taichi() -> 
 
 def test_preflight_run_lists_every_absent_optional_feature() -> None:
     """The degraded-install summary is the whole point: one line per lost feature."""
-    config = Config(
-        audio_content={"enabled": True},
-        transcription={"enabled": True, "languages": ["en"]},
-    )
-
     # WHY: replaces the installed-package probe with what a bare pip install sees.
     with patch("immich_memories.preflight.importlib.util.find_spec", return_value=None):
-        checks = run_preflight_checks(config)
+        checks = run_preflight_checks(Config())
 
     degraded = {c.name for c in checks if c.status is CheckStatus.WARNING}
-    assert {"Audio content", "Speech boundaries", "Transcription", "Title rendering"} <= degraded
+    assert {"Title rendering"} <= degraded
+
+
+class _CaptionEndpoint:
+    """A local stand-in for the caption server's `/models` inventory."""
+
+    def __init__(self, model_ids: list[str]) -> None:
+        body = json.dumps({"data": [{"id": name} for name in model_ids]}).encode()
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler's name
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args: object) -> None:
+                return
+
+        self._httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
+        self._thread.start()
+
+    @property
+    def base_url(self) -> str:
+        host, port = self._httpd.server_address[:2]
+        return f"http://{host}:{port}/v1"
+
+    def close(self) -> None:
+        self._httpd.shutdown()
+        self._httpd.server_close()
+        self._thread.join(timeout=5)
+
+
+def test_encoder_check_names_the_fetch_command_when_the_export_is_absent(tmp_path) -> None:
+    config = Config(triage={"encoder": str(tmp_path / "dinov2-small.onnx")})
+
+    result = check_encoder(config)
+
+    assert result.status is CheckStatus.ERROR
+    assert "models fetch" in (result.details or "")
+
+
+def test_encoder_check_rejects_an_export_that_is_not_the_pinned_one(tmp_path) -> None:
+    path = tmp_path / "dinov2-small.onnx"
+    path.write_bytes(b"some other onnx export")
+    config = Config(triage={"encoder": str(path)})
+
+    result = check_encoder(config)
+
+    assert result.status is CheckStatus.ERROR
+    assert "pinned" in result.message.lower()
+
+
+def test_detector_check_names_the_fetch_command_when_the_export_is_absent(tmp_path) -> None:
+    config = Config(editorial={"preparation": {"marqo_onnx": str(tmp_path / "marqo.onnx")}})
+
+    result = check_detector_export(config)
+
+    assert result.status is CheckStatus.ERROR
+    assert "models fetch" in (result.details or "")
+
+
+def test_detector_check_rejects_an_export_that_is_not_the_pinned_one(tmp_path) -> None:
+    path = tmp_path / "marqo.onnx"
+    path.write_bytes(b"some other onnx export")
+    config = Config(editorial={"preparation": {"marqo_onnx": str(path)}})
+
+    result = check_detector_export(config)
+
+    assert result.status is CheckStatus.ERROR
+    assert "pinned" in result.message.lower()
+
+
+def test_detector_check_accepts_the_pinned_export(tmp_path, monkeypatch) -> None:
+    path = tmp_path / "marqo.onnx"
+    path.write_bytes(b"the pinned onnx export")
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    # WHY: the real 22.5 MB export cannot live in the repo, so this file's own
+    # digest stands in for the pin; the check itself is the production one.
+    monkeypatch.setattr(detectors, "MARQO_ONNX_SHA256", digest)
+    config = Config(editorial={"preparation": {"marqo_onnx": str(path)}})
+
+    result = check_detector_export(config)
+
+    assert result.status is CheckStatus.OK
+    assert result.details == str(path)
+
+
+def test_caption_check_passes_when_the_endpoint_advertises_the_alias() -> None:
+    endpoint = _CaptionEndpoint([API_MODEL])
+    try:
+        config = Config(editorial={"preparation": {"caption_base_url": endpoint.base_url}})
+        result = check_caption_endpoint(config)
+    finally:
+        endpoint.close()
+
+    assert result.status is CheckStatus.OK
+    assert API_MODEL in result.message
+
+
+def test_caption_check_fails_when_the_endpoint_serves_another_model() -> None:
+    endpoint = _CaptionEndpoint(["some-other-vlm"])
+    try:
+        config = Config(editorial={"preparation": {"caption_base_url": endpoint.base_url}})
+        result = check_caption_endpoint(config)
+    finally:
+        endpoint.close()
+
+    assert result.status is CheckStatus.ERROR
+    assert API_MODEL in (result.details or result.message)

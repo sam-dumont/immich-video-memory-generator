@@ -8,6 +8,8 @@ type Props = {
   description?: string;
   checked?: boolean;
   icon?: string;
+  /** Rendered on the same line as the label — the brief's resolved duration sits here. */
+  trailing?: React.ReactNode;
 };
 
 export const ImToggle: React.FC<Props> = ({
@@ -15,6 +17,7 @@ export const ImToggle: React.FC<Props> = ({
   description,
   checked = false,
   icon,
+  trailing,
 }) => (
   <div
     style={{
@@ -72,6 +75,7 @@ export const ImToggle: React.FC<Props> = ({
         >
           {label}
         </span>
+        {trailing}
       </div>
       {description && (
         <span

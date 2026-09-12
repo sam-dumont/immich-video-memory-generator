@@ -14,14 +14,25 @@ The system runs 9 detectors against your library, applies hard rotation rules, t
 A suggestion list can look like this:
 
 ```
- #  Type                 Period                  Score  Reason
- 1  monthly_highlights   Jul 2026                0.776  683 assets, latest completed month
- 2  person_spotlight     2025 (Lucas)            0.700  Completed birthday year, 16464 assets
- 3  year_in_review       2025                    0.672  13151 assets, never generated
- 4  multi_person         2025 (Lucas & Alex)     0.514  ~2564 shared moments
- 5  trip                 Jul 26 - Aug 10 2025    0.449  16-day trip, 960 assets
- 6  on_this_day          Aug 11                  0.349  Memories across 20 years
+ #  Type                 Category          Date Range                 Score  Reason                                        Assets
+ 1  monthly_highlights   monthly_review    2026-07-01 to 2026-07-31   0.776  683 assets, most recent month                    683
+ 2  person_spotlight     birthday          2025-03-04 to 2026-03-03   0.700  Birthday (7 years old), 16464 assets           16464
+    (a name)
+ 3  year_in_review       year_in_review    2025-01-01 to 2025-12-31   0.672  13151 assets across the year, never generated  13151
+ 4  multi_person         multi_person      2025-01-01 to 2025-12-31   0.514  A & B together, ~2564 shared moments            2564
+    (two names)
+ 5  trip                 trip              2025-07-26 to 2025-08-10   0.449  16-day trip to (a place), 960 assets             960
+ 6  on_this_day          on_this_day       2026-08-11 to 2026-08-11   0.349  Memories from this date across 20 years
+                                                                             (2006-2025)                                      20
 ```
+
+That list is illustrative, not a transcript: each row is only reachable on a different "today",
+because the scorer decays candidates from the end of what they cover. No single run prints all six.
+
+Seven columns, not six: `Category` is the detector that proposed the row, which is not always the
+memory type; `person_spotlight` arrives from either the birthday detector or the spotlight one,
+and the rotation rules key on the category. A candidate that came from somewhere other than the
+calendar gets a second reason line, `via <source>`.
 
 Monthly review is deliberately boring in one specific way: it proposes only the latest completed month. It does not dump six old reviews into the queue, and it does not fall back to an older month when the latest one is already generated or blocked by rotation.
 
@@ -30,7 +41,7 @@ Before scoring, automation rejects candidates that would make the output repetit
 - The previous category cannot repeat.
 - A category cannot appear more than twice in the last six completed automatic runs.
 - A monthly review cannot run twice in the same calendar month.
-- A person cannot reappear if they were in either of the last two person-bearing runs.
+- A person cannot reappear if they were in either of the last two person-bearing runs. The rule only sees the last six completed runs, so a person from seven runs ago is invisible to it.
 
 These are hard rules. If every candidate is rejected, the run is skipped. Automation does not quietly relax the rules just to produce another video.
 
@@ -74,7 +85,7 @@ trips:
 
 ### Multi-person pairs
 
-The system takes your top 10 people by asset count and generates all 45 possible pairs. For each pair, it estimates shared content as 30% of the smaller count (a rough co-occurrence proxy). Pairs with fewer than 50 estimated shared assets get filtered out.
+The system takes the first 10 named people Immich returns (that cut happens before any counting, so it is Immich's order, not an asset-count ranking), counts those, and generates all 45 possible pairs. For each pair, it estimates shared content as 30% of the smaller count (a rough co-occurrence proxy). Pairs with fewer than 50 estimated shared assets get filtered out, and at most the top 3 pairs are ever proposed; the scorer then caps `multi_person` at 2 per suggestion list.
 
 Real example: if Person A has 16,464 assets and Person B has 8,549, the estimated shared content is `min(16464, 8549) * 0.3 = 2,564`. That's enough for a "together through the years" video.
 
@@ -90,26 +101,26 @@ immich-memories auto suggest [OPTIONS]
 | `--limit` | int | `10` | Max candidates to show |
 | `--type` | string | all | Filter by memory type |
 
-Connects to Immich, fetches library stats + people + GPS assets, runs all detectors, scores and ranks. Takes about 30 seconds (GPS fetch for trip detection is the slow part).
+Connects to Immich, fetches library stats + people + GPS assets, runs all detectors, scores and ranks. The GPS fetch is cached on disk for 7 days, so most runs are a preflight round trip plus one statistics call per counted person.
 
 ### Uploads that keep failing
 
 A pending Immich upload is retried before anything else on each wake, and that
-retry ends the invocation. An upload that can never succeed — an API key without
-upload scope, an album that no longer accepts writes — would therefore consume
+retry ends the invocation. An upload that can never succeed (an API key without
+upload scope, an album that no longer accepts writes) would therefore consume
 every night and generate nothing.
 
 After `max_delivery_attempts` failures (default 5) the upload is abandoned: the
 run is marked `abandoned` rather than `pending`, a notification is sent with the
 original error, and the next wake goes back to making memories. The video itself
-is untouched and still on disk — only its delivery gave up.
+is untouched and still on disk: only its delivery gave up.
 
 ### Candidates that keep failing
 
 A candidate that fails twice in a row is held back for a while instead of being
 proposed again the next night, so one memory that cannot render stops consuming
-every nightly run. The wait grows with the streak — 24 hours after two failures,
-3 days after three, capped at 7 days — and always expires, so a memory broken by
+every nightly run. The wait grows with the streak (24 hours after two failures,
+3 days after three, capped at 7 days), and always expires, so a memory broken by
 something temporary (a server that was down, an asset that gets re-uploaded)
 comes back on its own.
 
@@ -120,7 +131,7 @@ the streak immediately.
 mistaken for an empty library:
 
 ```
-Backing off monthly_highlights:2026-06 — failed 3x, retrying after 3d
+Backing off monthly_highlights:2026-06-01:2026-06-30: (failed 3x, retrying after 3d)
 ```
 
 ### Detectors
@@ -132,13 +143,13 @@ the floor is what the detector's own admission rules allow through.
 | Detector | What it finds | Score | Scaled by |
 |----------|---------------|-------|-----------|
 | **YearlyDetector** | Past years with content (only after Jan 15) | 0.24-0.72 | recency, 10% per year, floored at 0.3 |
-| **BirthdayDetector** | People whose birthday was 2-60 days ago | 0.75 | nothing — fixed |
-| **MonthlyDetector** | Latest completed month, if not already generated | 0.21-0.7 | recency, 10% per month back, floored at 0.3 |
-| **ActivityBurstDetector** | Months with >2x the rolling average (last 12 months) | 0.7 | nothing — a month that clears the threshold gets the full score |
+| **BirthdayDetector** | People whose birthday was 2-60 days ago | 0.75 | nothing: fixed |
+| **MonthlyDetector** | Latest completed month, if not already generated | 0.7 | nothing: it only ever looks one month back, so the decay never fires |
+| **ActivityBurstDetector** | Months with >2x the rolling average (last 12 months) | 0.7 | nothing: a month that clears the threshold gets the full score |
 | **TripDetector** | GPS-detected trips from the past year | up to 0.75 | trip length up to 14 days × asset count up to 200 |
 | **PersonSpotlightDetector** | Top 5 people by asset count | 0.12-0.6 | that person's share of the top person's asset count, floored at 0.2 |
-| **MultiPersonDetector** | Pairs who appear together frequently | 0.06-0.55 | estimated shared assets up to 500 (50 minimum to qualify) |
-| **OnThisDayDetector** | Dates with content across 5+ years | 0.18-0.35 | how many years the date has content in, up to 10 |
+| **MultiPersonDetector** | Pairs who appear together frequently | 0.055-0.55 | estimated shared assets up to 500 (50 minimum to qualify) |
+| **OnThisDayDetector** | Dates with content across 5+ years | 0.175-0.35 | how many years the same *month* has content in, up to 10. It never sees day-level data; the month is a proxy |
 | **SpecialDayDetector** | Catalogued days whose anniversary is within 3 days | 0.48-0.8 | roundness of the anniversary (decade / half-decade / other) |
 
 ### The anniversary that would otherwise score lowest
@@ -153,7 +164,7 @@ The scoring adjustments then land it where the ladder wants it. For a 200-photo 
 | 5, 15, 25 years | 0.85 | 0.68 | **0.759** (`0.68 × 1.2 × 1.0 × 0.930`) |
 | anything else | 0.60 | 0.48 | **0.536** (`0.48 × 1.2 × 1.0 × 0.930`) |
 
-Against the rest of the ladder — monthly 0.776, birthday 0.700, yearly 0.672, multi-person 0.514, trip 0.449, on-this-day 0.349 — a decade goes first, a half-decade sits between monthly and birthday, and a seventh anniversary competes rather than pre-empts.
+Against the rest of the ladder in the sample list above, a decade goes first, a half-decade sits between monthly and birthday, and a seventh anniversary competes rather than pre-empts.
 
 Recency is the reason this detector needs a rule of its own. The scorer decays a candidate from the end of what it covers, so a ten-year-old day would take the 0.5 floor: the memory most worth arriving would be punished hardest by a rule meant to prefer fresh content. `OnThisDayDetector` avoids that by reporting today as its date range and putting the real years in its reason, which makes `auto suggest` print a period the memory does not cover. A special day instead reports its real date and tells the scorer separately when it is timely, so what you see in the table is what gets generated.
 
@@ -191,7 +202,9 @@ invocation. Exactly one action per invocation, then it exits.
 
 The typed terminal outcomes are `skipped`, `dry_run`, `completed`, and `failed`. `skipped`,
 `dry_run`, and `completed` exit 0; `failed` exits 1. Quiet output is a stable JSON object, not a
-bare path. Its `action` is `generation` or `delivery_retry` when work was selected:
+bare path, and always carries `runtime` as its first key. Do not key a wrapper script on `action`:
+it defaults to `generation` on every terminal path, so a cooldown skip and a zero-candidate skip
+both report `generation` with a null `category`. Read `outcome`.
 
 `error` carries the cause of a failure and is always present, so a wrapper
 script never has to tell "no error" from "field missing".
@@ -232,7 +245,7 @@ immich-memories auto install [OPTIONS]
 Sets up your OS scheduler. Detects the platform and generates the right config file.
 
 Running in Docker (or wanting the web UI process to do it)? Skip this command and set
-`automation.enabled: true` + `automation.daily_at` instead — the UI process then runs `auto run`
+`automation.enabled: true` + `automation.daily_at` instead: the UI process then runs `auto run`
 once a day itself. See [automated generation](../recipes/automated-generation.md#docker-and-the-web-ui-built-in-daily-timer).
 
 | Flag | Type | Default | Description |
@@ -267,22 +280,22 @@ nightly job picks it up; no reinstall of the scheduler is needed.
 Nothing updates a checkout on your behalf, and a scheduled job re-runs whatever that checkout holds
 every night while the logs look completely normal. `auto install` refuses two cases:
 
-- **A linked git worktree** (`git worktree add`) — its root holds a `.git` *file* rather than a
+- **A linked git worktree** (`git worktree add`): its root holds a `.git` *file* rather than a
   directory. A worktree stays frozen on the commit it was left at, or gets pruned.
-- **A checkout already behind its tracking branch** — measured with `git rev-list HEAD..@{upstream}`
+- **A checkout already behind its tracking branch**: measured with `git rev-list HEAD..@{upstream}`
   against refs you have already fetched. `auto install` never fetches, so this only sees drift your
   own `git pull` or `git fetch` recorded.
 
 Both name the offending path and the drift. Update the checkout and re-run, or pass `--force` to
 schedule it as it is.
 
-Every `auto run` also states which code it is executing, and `auto status` shows the same thing —
+Every `auto run` also states which code it is executing, and `auto status` shows the same thing:
 see [auto status](#auto-status).
 
 ### What environment the scheduled job sees
 
 A scheduled job does **not** inherit your interactive shell. launchd and cron start it from a
-login-less environment, so anything you `export` in `.zshrc` is absent at 03:00 — which is how a
+login-less environment, so anything you `export` in `.zshrc` is absent at 03:00, which is how a
 scheduled ACE-Step render ends up tuned differently from the one you tested by hand.
 
 `auto install` captures these variables from the shell you install from and writes them into the
@@ -297,7 +310,7 @@ plist or unit alongside `PATH`:
 | `PYTORCH_MPS_HIGH_WATERMARK_RATIO` | torch MPS allocator ceiling |
 
 Nothing else is copied. `IMMICH_MEMORIES_*` also holds the Immich API key and the UI password, and
-a plist in `~/Library` is not a secret store — put credentials in your config file or a `.env` the
+a plist in `~/Library` is not a secret store: put credentials in your config file or a `.env` the
 app reads, not in the scheduler. Change any of these and re-run `auto install` to update the job.
 
 Crontab entries carry no environment; set what you need in the crontab itself.
@@ -396,7 +409,7 @@ advanced:
     on_success: true
     on_failure: true
     attach_thumbnail: false         # opt in to FFmpeg extraction + attachment upload
-    cooldown_hours: 24              # pause after provider/auth/quota failures
+    cooldown_hours: 24              # pause after ANY notification failure, transport included
 ```
 
 Notification health is durable and visible in `auto status`, `preflight`, and `/health`.

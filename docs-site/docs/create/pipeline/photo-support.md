@@ -9,16 +9,12 @@ Include photos alongside videos in your memory compilations. Photos are converte
 
 ## How It Works
 
-Photos compete in the same selection pool as videos and live photos. There's no separate "photo pipeline" — everything goes through unified selection.
+Photos compete in the same selection pool as videos and live photos. There's no separate "photo pipeline": everything goes through unified selection.
 
-1. **Fetch**: Photos (IMAGE assets, excluding live photos) are fetched from Immich
-2. **Score**: Metadata scoring (favorites, faces, camera) + optional LLM visual analysis on thumbnails
-3. **Merge**: Scored photos are converted to clip candidates and merged with analyzed video clips
-4. **Select**: Unified Phase 4 picks from the combined pool — temporal dedup, duration scaling, and coverage guarantees apply to photos AND videos equally
-5. **Render**: Selected photos are animated as Ken Burns clips at assembly time
-6. **Interleave**: No more than 2 consecutive clips of the same type (photo or video)
-
-Photos are capped at 50% of the final video when videos are plentiful. Scarcity is measured against the target, not against the selection: when the video candidates available cannot fill even half the target duration, the cap is bypassed and photos fill the rest.
+1. **Fetch**: every IMAGE asset in range is fetched from Immich, Live Photo stills included; a Live Photo's still is a photograph, and whether its burst is worth showing as motion is a rendering question asked later, about an asset that already won its place
+2. **Read**: each photo gets its caption, context heads, detector facts and pixel facts prepared once; see [Editorial annotation setup](../../deploy/configuration/editorial-preparation.md)
+3. **Edit**: photos and videos are one pool; the editor weighs the period's stories and grants pictures by weight, and a still is held for the seconds it earns
+4. **Render**: selected photos are animated as Ken Burns clips at assembly time
 
 ## Animation Effects
 
@@ -62,50 +58,27 @@ Android Ultra HDR JPEGs (ISO 21496-1) embed a gain map as an MPF secondary image
 ```yaml
 photos:
   enabled: true           # Include photos in memories
-  max_ratio: 0.50         # Max 50% of clips can be photos
   duration: 4.0           # Seconds per photo clip
   burst_window_seconds: 300  # Photos this close and near-identical are one burst
   burst_hash_threshold: 8    # Hash bits two frames may differ by and still be one burst
-  moment_gap_seconds: 120 # Window for "same moment as a video" (seconds)
-  moment_hash_threshold: 10  # Bits a photo may differ from that video and still match
 ```
 
-Older configs may still contain `collage_duration`, `animation_mode`, `enable_collage`, `series_gap_seconds` or `zoom_factor`; those keys were removed in 0.41 and are ignored (the zoom amount is randomized per photo, and collages no longer exist).
+Older configs may still contain `collage_duration`, `animation_mode`, `enable_collage`, `series_gap_seconds` or `zoom_factor`; those five were removed in v0.40.3 and are now silently ignored (the zoom amount is randomized per photo, and collages no longer exist).
+
+Four other `photos.*` keys do **not** get ignored: `max_ratio`, `read_moments`, `moment_gap_seconds` and `moment_hash_threshold` went with the clip scorer and are refused outright. A config file that still names one stops the app at startup with a message listing them.
 
 ## One photo per burst
 
-A held shutter produces near-identical frames seconds apart. Before scoring, photos
-within `burst_window_seconds` of each other whose thumbnails are within
-`burst_hash_threshold` bits are treated as one burst, and only the best-scored frame
-survives. On a real June library that removed **64 of 303 photos — 21% of the pool**,
+A held shutter produces near-identical frames seconds apart. Before the editor chooses
+anything, photos within `burst_window_seconds` of each other whose thumbnails are within
+`burst_hash_threshold` bits are treated as one burst, and only the sharpest, best-exposed
+frame survives. On a real June library that removed **64 of 303 photos, 21% of the pool**,
 in groups of up to five.
 
 Both conditions are required. Time alone would collapse a busy minute at a party;
 similarity alone would merge the same kitchen photographed a month apart. A photo with
-no cached thumbnail is always kept — redundancy is measured, never assumed. Set
+no cached thumbnail is always kept: redundancy is measured, never assumed. Set
 `burst_window_seconds: 0` to turn it off.
-
-Because this runs before the LLM shortlist, every photo it removes is also an LLM call
-saved.
-
-## Photos a video already shows
-
-A still shot seconds before a video of the same thing puts that instant on screen
-twice — once as motion, once as a Ken Burns pan. Before scoring, photos are grouped
-with the video clips by capture time and dropped when a clip already covers them:
-
-- **Same scene.** A photo within `moment_gap_seconds` of a clip whose thumbnail is
-  within `moment_hash_threshold` bits of it is dropped as redundant. On a 5,128-photo
-  year, 802 photos fell inside a clip's window and 101 of them were dropped.
-- **Same asset.** A Live Photo's still and its motion clip are one asset, so a still
-  that reaches the photo pool by ID — including every still merged into a burst — is
-  removed outright. Immich normally keeps Live Photo stills out of the photo pool on
-  its own; this is a guard for when it doesn't.
-
-A photo with no cached thumbnail is always kept — redundancy is measured, never
-assumed. Thumbnails are only fetched for photos that fall inside a clip's window, so
-photos nowhere near a video cost nothing. Set `moment_gap_seconds: 0` to leave
-everything but the exact-asset case alone.
 
 ## CLI Flags
 

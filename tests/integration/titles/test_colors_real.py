@@ -15,7 +15,6 @@ import pytest
 
 from immich_memories.titles.colors import (
     brighten_color,
-    create_color_fade_frames,
     extract_dominant_color,
     extract_keyframes_from_video,
     get_brightness,
@@ -65,28 +64,6 @@ class TestBrightness:
         dark = (40, 60, 80)
         bright = brighten_color(dark, factor=2.0)
         assert get_brightness(bright) > get_brightness(dark)
-
-
-class TestColorFadeFrames:
-    def test_frame_count(self):
-        frames = create_color_fade_frames((255, 0, 0), (0, 0, 255), 10, 64, 64)
-        assert len(frames) == 10
-
-    def test_first_frame_is_start_color(self):
-        frames = create_color_fade_frames((255, 0, 0), (0, 0, 255), 10, 64, 64)
-        first_arr = np.array(frames[0])
-        mean_r = first_arr[:, :, 0].mean()
-        mean_b = first_arr[:, :, 2].mean()
-        assert mean_r > 200, "First frame should be mostly red"
-        assert mean_b < 50
-
-    def test_last_frame_is_end_color(self):
-        frames = create_color_fade_frames((255, 0, 0), (0, 0, 255), 10, 64, 64)
-        last_arr = np.array(frames[-1])
-        mean_r = last_arr[:, :, 0].mean()
-        mean_b = last_arr[:, :, 2].mean()
-        assert mean_b > 200, "Last frame should be mostly blue"
-        assert mean_r < 50
 
 
 # ---- FFmpeg-dependent tests (real video extraction) ----

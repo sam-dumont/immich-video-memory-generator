@@ -68,17 +68,13 @@ def _occasion_title(
     Returns None for the types whose span *is* the answer.
     """
     if memory_type == "on_this_day":
-        return f"On This Day — {_MONTH_NAMES[start.month]} {start.day}", None
+        return f"On This Day: {_MONTH_NAMES[start.month]} {start.day}", None
 
     if memory_type == "holiday":
         from immich_memories.memory_types.factory import holiday_label
 
         holiday = (preset_params or {}).get("holiday", "christmas")
         return holiday_label(holiday, end.year), "Through the Years"
-
-    if memory_type == "then_and_now":
-        # Both ends, in the order the memory plays them.
-        return f"{start.year} & {end.year}", "Then and Now"
 
     if memory_type == "special_day":
         # The catalogue named this day from the day's own photos, months before
@@ -151,21 +147,6 @@ def generate_template_title(
 class _TripContext:
     daily_locations: list[str] | None = None  # raw daily GPS data for LLM
     country: str | None = None
-
-
-def _collect_clip_descriptions(state: AppState) -> list[str]:
-    """Extract LLM descriptions from analysis cache for selected clips."""
-    if not state.analysis_cache or not state.selected_clip_ids:
-        return []
-
-    descriptions: list[str] = []
-    for asset_id in state.selected_clip_ids:
-        analysis = state.analysis_cache.get_analysis(asset_id)
-        if analysis and analysis.segments:
-            best = analysis.get_best_segment()
-            if best and best.llm_description:
-                descriptions.append(best.llm_description)
-    return descriptions
 
 
 def _gather_person_names(state: AppState) -> list[str]:
@@ -329,7 +310,10 @@ async def generate_title_after_pipeline(state: AppState) -> None:
             daily_locations=trip.daily_locations,
             country=trip.country,
             person_names=person_names,
-            clip_descriptions=_collect_clip_descriptions(state) or None,
+            clip_descriptions=[
+                d for c in state.get_selected_clips() if (d := getattr(c, "llm_description", None))
+            ]
+            or None,
             llm_config=llm_cfg,
         )
     except Exception:  # WHY: UI graceful degradation

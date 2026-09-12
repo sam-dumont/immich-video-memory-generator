@@ -55,7 +55,7 @@ def register_scheduler_commands(main: click.Group) -> None:
 
         for entry in schedules:
             next_run = next_jobs.get(entry.name)
-            next_str = next_run.strftime("%Y-%m-%d %H:%M UTC") if next_run else "—"
+            next_str = next_run.strftime("%Y-%m-%d %H:%M %Z") if next_run else "—"
             table.add_row(
                 entry.name,
                 entry.memory_type,
@@ -95,7 +95,7 @@ def register_scheduler_commands(main: click.Group) -> None:
                 next_job = jobs[0]
                 print_info(
                     f"Next: '{next_job.schedule.name}' at "
-                    f"{next_job.fire_time.strftime('%Y-%m-%d %H:%M UTC')} "
+                    f"{next_job.fire_time.strftime('%Y-%m-%d %H:%M %Z')} "
                     f"(in {wait / 3600:.1f}h)"
                 )
 

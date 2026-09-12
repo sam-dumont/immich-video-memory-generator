@@ -18,8 +18,9 @@ function HeroSection() {
             </Heading>
             <p className={styles.heroSubtitle}>
               Point it at your Immich server. Pick a year, a person, or a trip.
-              Get a polished video with scene-aware cuts, animated maps, AI music,
-              and title screens. Self-hosted. No subscription.
+              An editor reads the period, weighs its stories and writes down why every
+              picture is in. Then it renders: animated maps, generated music, title
+              screens. Self-hosted. No subscription.
             </p>
             <div className={styles.heroCtas}>
               <Link className={styles.ctaPrimary} to="/docs/welcome/quick-start">
@@ -32,8 +33,8 @@ function HeroSection() {
           </div>
           <div className={styles.heroVisual}>
             <img
-              src={useBaseUrl('/img/screenshots/step2-clip-review.png')}
-              alt="Clip review interface showing scored video segments"
+              src={useBaseUrl('/img/screenshots/memory-story.png')}
+              alt="The story view: thesis, stories in weight order, and the pictures each was granted, with reasons"
               className={styles.heroScreenshot}
               loading="eager"
             />
@@ -49,7 +50,7 @@ function QuickstartSection() {
     <section className={styles.quickstart}>
       <div className="container">
         <Heading as="h2" className={styles.sectionTitle}>
-          Running in 2 minutes
+          What it takes to stand up
         </Heading>
         <div className={styles.quickstartGrid}>
           <div className={styles.quickstartCode}>
@@ -61,40 +62,52 @@ function QuickstartSection() {
                 <span className={styles.codeLabel}>terminal</span>
               </div>
               <pre className={styles.codeContent}>
-{`# Create .env with your Immich credentials
-echo 'IMMICH_URL=https://photos.example.com' > .env
-echo 'IMMICH_API_KEY=your-key-here' >> .env
-
-# Start it
+{`# 1. The app itself
+export IMMICH_URL=https://photos.example.com
+export IMMICH_API_KEY=your-key-here
 docker compose up -d
 
-# Open http://localhost:8080`}
+# 2. The model files it checks at every run:
+#    a pinned ONNX encoder and two CPU detectors
+immich-memories models fetch
+
+# 3. Two model servers on hardware you own:
+#    a vision reader (~17 GB resident at 4-bit) and a
+#    caption endpoint. Point config.yaml at both, then:
+immich-memories preflight`}
               </pre>
             </div>
             <p className={styles.quickstartAlt}>
-              Or without Docker: <code>uvx immich-memories ui</code>
+              Step 3 is the real cost: the editor reads your pictures before it cuts them, and it
+              refuses to guess without them. The cheapest thing anyone has run end to end is one
+              32 GB Apple Silicon Mac. The{' '}
+              <Link to="/docs/deploy/self-hosting">self-hosting guide</Link> walks all of it in
+              order.
             </p>
           </div>
           <div className={styles.quickstartSteps}>
+            <p className={styles.quickstartAlt} style={{marginTop: 0}}>
+              Once it is up, every memory is the same four moves:
+            </p>
             <div className={styles.step}>
               <span className={styles.stepNumber}>1</span>
               <div>
-                <strong>Configuration</strong>
-                <p>Pick memory type, time period, person</p>
+                <strong>Brief</strong>
+                <p>Pick a memory type, its period or person, one duration</p>
               </div>
             </div>
             <div className={styles.step}>
               <span className={styles.stepNumber}>2</span>
               <div>
-                <strong>Clip Review</strong>
-                <p>Scores and ranks your best moments; you refine the picks</p>
+                <strong>Cut</strong>
+                <p>The editor reads the period and weighs its stories</p>
               </div>
             </div>
             <div className={styles.step}>
               <span className={styles.stepNumber}>3</span>
               <div>
-                <strong>Options</strong>
-                <p>Edit title, pick music, adjust settings</p>
+                <strong>Story</strong>
+                <p>Read what it chose and why; trim or exclude if you like</p>
               </div>
             </div>
             <div className={styles.step}>
@@ -120,27 +133,27 @@ type ShowcaseItem = {
 
 const showcaseItems: ShowcaseItem[] = [
   {
-    title: '11 memory types',
-    description: 'Year in Review, Season, Person Spotlight, Multi-Person, Monthly Highlights, On This Day, Holiday, Then and Now, Trip, Album, and Surprise Me — a day your library says something happened on. Pick a preset and it handles the rest, or take the Custom card and set the date range yourself.',
-    image: '/img/screenshots/step1-preset-cards.png',
-    alt: 'Memory type preset selection cards',
+    title: '10 memory types',
+    description: 'Year in Review, Season, Person Spotlight, Multi-Person, Monthly Highlights, On This Day, Album, Trip, Holiday, and Surprise Me (a day your library says something happened on). Pick a type and it handles the rest, or take Custom date range and set the dates yourself.',
+    image: '/img/screenshots/memory-brief.png',
+    alt: 'The brief: memory type, its parameters and the duration line',
   },
   {
     title: 'A curator, not a filter',
-    description: 'A vision model looks at your material and describes what is happening in it. Selection, duplicate judgment, and a final review of the whole cut all work from those descriptions — with real drop reasons, favourites treated as law, and strictly chronological order. The pipeline is the product.',
-    image: '/img/screenshots/step2-refine-moments.png',
-    alt: 'Clip review grid with scored video segments',
+    description: 'A small vision model captions every picture once. A text model then reads the period as a story, weighs its stories in words and grants each the pictures it earns, with a written reason for every one, favourites as indicators, and strictly chronological order. The editor is the product.',
+    image: '/img/screenshots/memory-story.png',
+    alt: 'The story the cut produced, with a reason for every picture',
   },
   {
     title: 'Cinematic title screens',
-    description: 'Animated gradients, particle systems, satellite trip maps. Three rendering backends (Taichi GPU, PIL, FFmpeg) pick the best your hardware can do.',
-    image: '/img/screenshots/step3-options.png',
+    description: 'Animated gradients, particle systems, satellite trip maps. Two renderers: Taichi if it finds a Metal, CUDA or Vulkan backend, PIL everywhere else. The log says which one actually ran.',
+    image: '/img/screenshots/memory-options.png',
     alt: 'Generation options with title and music settings',
   },
   {
     title: 'AI music generation',
-    description: 'A vision LLM detects the mood of your clips. ACE-Step or MusicGen creates an original soundtrack. Audio ducking lowers music during speech.',
-    image: '/img/screenshots/step3-options.png',
+    description: 'A vision LLM detects the mood of your clips. ACE-Step or MusicGen creates an original soundtrack. A sidechain compressor ducks the music under the clip\'s own audio.',
+    image: '/img/screenshots/memory-options.png',
     alt: 'Music preview and generation options',
   },
 ];
@@ -194,7 +207,7 @@ function ValuesSection() {
               </svg>
             </div>
             <strong>Read-only by default</strong>
-            <p>Your Immich library is never modified. Upload-back is opt-in.</p>
+            <p>Your originals are never modified. Upload-back is opt-in, and the only thing it ever trashes is its own superseded render of the same memory.</p>
           </div>
           <div className={styles.value}>
             <div className={styles.valueIcon}>
@@ -228,14 +241,14 @@ function CtaSection() {
           Your videos deserve better than a camera roll
         </Heading>
         <p className={styles.ctaDescription}>
-          Install in about 2 minutes. First memory in about 10 on a Mac or GPU box.
+          Three services, all of them yours. The self-hosting guide is one page, in order.
         </p>
         <div className={styles.heroCtas}>
           <Link className={styles.ctaPrimary} to="/docs/welcome/quick-start">
             Get started
           </Link>
-          <Link className={styles.ctaSecondary} to="/docs/deploy/installation/docker">
-            Docker setup
+          <Link className={styles.ctaSecondary} to="/docs/deploy/self-hosting">
+            Self-hosting guide
           </Link>
         </div>
       </div>
@@ -247,7 +260,7 @@ export default function Home(): ReactNode {
   return (
     <Layout
       title="Home"
-      description="Turn your Immich photo library into polished video memories. Scene-aware clips, animated maps, AI music, title screens. Self-hosted, no cloud required.">
+      description="Turn your Immich photo library into video memories. An editor reads the period and writes down why every picture is in. Animated maps, generated music, title screens. Self-hosted, no cloud API.">
       <HeroSection />
       <QuickstartSection />
       <ShowcaseSection />

@@ -1,11 +1,6 @@
 """Video analysis caching system."""
 
 from immich_memories.cache.database import VideoAnalysisCache
-from immich_memories.cache.database_models import (
-    CachedSegment,
-    CachedVideoAnalysis,
-    SimilarVideo,
-)
 from immich_memories.cache.thumbnail_cache import ThumbnailCache
 from immich_memories.cache.video_cache import (
     CacheBatch,
@@ -14,10 +9,7 @@ from immich_memories.cache.video_cache import (
 )
 
 __all__ = [
-    # Analysis cache
-    "CachedSegment",
-    "CachedVideoAnalysis",
-    "SimilarVideo",
+    # Analysis database
     "VideoAnalysisCache",
     # Video file cache
     "CacheBatch",

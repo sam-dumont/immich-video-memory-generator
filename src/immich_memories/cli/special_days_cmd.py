@@ -6,6 +6,7 @@ import calendar
 import json
 from datetime import date
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import click
 
@@ -15,6 +16,9 @@ from immich_memories.automation.catalogue import (
     load_catalogue,
 )
 from immich_memories.cli._helpers import console, print_success
+
+if TYPE_CHECKING:
+    from immich_memories.automation.special_day_scan import DiscoveredDay
 
 
 def register_special_day_commands(main: click.Group) -> None:
@@ -56,8 +60,8 @@ def _register_discover(main: click.Group) -> None:
         """Find days something happened on, and remember them for later.
 
         Meant to run occasionally rather than per generation: the point of a
-        catalogue is a memory nobody asked for — five years to the day since
-        the wedding — and that needs the days found in advance.
+        catalogue is a memory nobody asked for (five years to the day since
+        the wedding), and that needs the days found in advance.
 
         Days inside a trip are skipped, since a trip memory already tells that
         story, and so are holidays, which have their own.
@@ -93,16 +97,22 @@ def _register_due(main: click.Group) -> None:
         entries = entries_from(catalogue)
 
         for entry, years in anniversaries_due(entries, when):
-            line = f"[bold]{years} years ago[/bold]  {entry.day}  {entry.title or entry.what}"
-            if entry.window:
-                start, end = entry.window
-                line += f"  [dim]{start:%H:%M}-{end:%H:%M}[/dim]"
-            if entry.active_hours:
-                line += f"  [dim]{entry.active_hours}h[/dim]"
-            console.print(line)
-            if entry.subtitle:
-                console.print(f"                {entry.subtitle}")
+            _print_anniversary(entry, years)
         print_success(f"{len(entries)} days in the catalogue, checked against {when}")
+
+
+def _print_anniversary(entry: DiscoveredDay, years: int) -> None:
+    line = f"[bold]{years} years ago[/bold]  {entry.day}  {entry.title or entry.what}"
+    if entry.window:
+        start, end = entry.window
+        line += f"  [dim]{start:%H:%M}-{end:%H:%M}[/dim]"
+    if entry.active_hours:
+        line += f"  [dim]{entry.active_hours}h[/dim]"
+    console.print(line)
+    if entry.event_id is not None:
+        console.print(f"                --event-id {entry.event_id}")
+    if entry.subtitle:
+        console.print(f"                {entry.subtitle}")
 
 
 def _years_in(catalogue: list[dict]) -> set[int]:

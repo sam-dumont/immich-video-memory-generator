@@ -13,8 +13,13 @@ so no asset can be lost between two pools: there is only one.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from math import isfinite
+from typing import Any, cast
+
+from immich_memories.api.models import Asset
+from immich_memories.processing.live_material import LiveRenderMaterial, LiveSourceEntry
 
 
 @dataclass(frozen=True)
@@ -27,6 +32,7 @@ class MotionRendering:
     duration_seconds: float
     still_ids: tuple[str, ...]
     minimum_seconds: float
+    material: LiveRenderMaterial | None = None
 
     @property
     def beats_a_still(self) -> bool:
@@ -45,7 +51,9 @@ class MotionRendering:
         return self.duration_seconds >= self.minimum_seconds
 
 
-def motion_renderings(assets: list[Any], config: Any) -> dict[str, MotionRendering]:
+def motion_renderings(
+    assets: list[Any], config: Any, *, companion_assets: Mapping[str, Asset] | None = None
+) -> dict[str, MotionRendering]:
     """The motion each photograph could show, keyed by every still in its burst.
 
     Keyed by every still rather than by the first, because any of them may be
@@ -54,6 +62,10 @@ def motion_renderings(assets: list[Any], config: Any) -> dict[str, MotionRenderi
     from immich_memories.processing.live_photo_merger import cluster_live_photos
 
     live = [a for a in assets if getattr(a, "live_photo_video_id", None)]
+    durations = None
+    if companion_assets is not None:
+        durations = _companion_durations(live, companion_assets)
+        live = [asset for asset in live if asset.id in durations]
     if not live:
         return {}
 
@@ -62,15 +74,76 @@ def motion_renderings(assets: list[Any], config: Any) -> dict[str, MotionRenderi
     minimum = analysis.live_photo_min_clip_seconds
 
     found: dict[str, MotionRendering] = {}
-    for cluster in cluster_live_photos(live, merge_window_seconds=window):
+    for cluster in cluster_live_photos(
+        sorted(live, key=lambda asset: (asset.file_created_at, asset.id)),
+        merge_window_seconds=window,
+        clip_durations=durations,
+    ):
+        material, members = _cluster_material(cluster)
+        if material is None:
+            continue
         rendering = MotionRendering(
-            video_ids=tuple(cluster.video_asset_ids),
-            trim_points=tuple(cluster.trim_points()),
-            shutter_timestamps=tuple(a.file_created_at.timestamp() for a in cluster.assets),
-            duration_seconds=cluster.estimated_duration,
-            still_ids=tuple(a.id for a in cluster.assets),
+            video_ids=material.video_ids,
+            trim_points=material.trim_points,
+            shutter_timestamps=material.shutter_timestamps,
+            duration_seconds=material.duration_seconds,
+            still_ids=material.still_ids,
             minimum_seconds=minimum,
+            material=material,
         )
-        for asset in cluster.assets:
+        for asset in members:
             found[asset.id] = rendering
     return found
+
+
+def _companion_durations(
+    live: list[Any], companion_assets: Mapping[str, Asset]
+) -> dict[str, float]:
+    """The playable length each Live still's companion offers, when it offers one."""
+    durations: dict[str, float] = {}
+    for asset in live:
+        companion = companion_assets.get(asset.live_photo_video_id)
+        if companion is None:
+            continue  # No motion offer; the ordinary photograph stays selectable.
+        if companion.id != asset.live_photo_video_id or not companion.is_video:
+            raise ValueError("Live companion metadata disagrees with its source link")
+        duration = companion.duration_seconds
+        if duration is None:
+            continue
+        if type(duration) not in {int, float} or not isfinite(duration) or duration < 0:
+            raise ValueError("Live companion duration must be finite and positive")
+        if duration == 0:
+            continue
+        durations[asset.id] = duration
+    return durations
+
+
+def _cluster_material(cluster: Any) -> tuple[LiveRenderMaterial | None, list[Any]]:
+    """The stitchable material of one burst, or ``None`` when it offers none.
+
+    One picture, two files: a shared album can hold a second still of the same Live Photo,
+    pointing at the same video. The video is offered once, by its earliest still; the later
+    still stays an ordinary photograph. A cluster the material guard still refuses is skipped
+    rather than ending the plan: its stills remain selectable, without a motion offer.
+    """
+    entries: list[LiveSourceEntry] = []
+    offered_videos: set[str] = set()
+    members: list[Any] = []
+    for a, (start, end) in zip(cluster.assets, cluster.trim_points(), strict=True):
+        video_id = cast(str, a.live_photo_video_id)
+        if video_id in offered_videos and end > start:
+            continue
+        try:
+            entry = LiveSourceEntry(a.id, video_id, a.file_created_at.timestamp(), start, end)
+        except ValueError:
+            continue  # a reversed or negative interval: no motion offer, the still stays a photograph
+        # An empty shutter slice retains its still alias but has not offered
+        # the companion's footage; a later positive slice must still play.
+        if end > start:
+            offered_videos.add(video_id)
+        entries.append(entry)
+        members.append(a)
+    try:
+        return LiveRenderMaterial(tuple(entries)), members
+    except ValueError:
+        return None, members

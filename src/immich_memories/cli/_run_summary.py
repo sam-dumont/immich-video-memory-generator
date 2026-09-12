@@ -2,8 +2,8 @@
 
 Two things a reader has to be able to tell apart, so the block labels them:
 
-*Measured this run* -- the CLI wraps `run_analysis` and `run_selection`, so
-their wall-clock is honest local arithmetic. It is not in the run database:
+*Measured this run* -- the CLI wraps `run_editorial_source`, so its
+wall-clock is honest local arithmetic. It is not in the run database:
 `RunTracker` records only clip_extraction, assembly and music, all inside
 `generate_memory`. Claiming a phase breakdown the database does not hold is
 how a partial picture starts reading as the whole one.
@@ -63,15 +63,31 @@ def _llm_lines(counters: LLMCounters) -> list[str]:
     return lines
 
 
+_TIER_LINES = {
+    "no_captions": "no_captions — every producer but the caption; reasons are facts, not sentences",
+    "metadata_only": "metadata_only — no ONNX, no captions; every picture held to family viewing",
+}
+
+
+def _tier_lines(tier: str) -> list[str]:
+    """What a reduced preparation tier changed about this cut, or nothing on the full one.
+
+    The default tier prints no line for the same reason a run with no model prints
+    no model line: a normal run should read as normal, not as one missing a section.
+    """
+    described = _TIER_LINES.get(tier)
+    return ["", "  TIER  " + described] if described else []
+
+
 def render_run_summary(
     *,
     total_seconds: float,
     analysis_seconds: float,
     generation_seconds: float,
     eligible: int,
-    deeply_analyzed: int,
     planned: int,
     counters: LLMCounters | None,
+    preparation_tier: str = "full",
 ) -> str:
     """The end-of-run block, as printable text.
 
@@ -84,10 +100,11 @@ def render_run_summary(
         f"Memory generated in {_clock(total_seconds)}",
         "",
         "  measured this run",
-        f"    analysis + selection   {_clock(analysis_seconds):>8}   "
-        f"{deeply_analyzed} of {eligible} deeply analyzed, {planned} planned",
+        f"    selection              {_clock(analysis_seconds):>8}   "
+        f"{planned} planned from {eligible} candidates",
         f"    generation             {_clock(generation_seconds):>8}",
     ]
+    lines.extend(_tier_lines(preparation_tier))
     lines.extend(_llm_lines(counters))
     return "\n".join(lines)
 

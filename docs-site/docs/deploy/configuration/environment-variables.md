@@ -11,16 +11,20 @@ Every config field can be set via environment variable. The pattern is:
 IMMICH_MEMORIES_<SECTION>__<FIELD>
 ```
 
+The one exception is the top-level `preset`, which has no section and is `IMMICH_MEMORIES_PRESET`.
+
 Note the **double underscore** between section and field. Case does not matter, but uppercase is
-the convention. `<SECTION>` is always the flat runtime name (`LLM`, `AUTH`, `SPEECH`…) — never
+the convention. `<SECTION>` is always the flat runtime name (`LLM`, `AUTH`, `EDITORIAL`…), never
 `ADVANCED__LLM`, even for sections that live under `advanced:` in the YAML file.
 
-List-valued fields (`auth.trusted_proxies`, `notifications.urls`, `transcription.languages`,
-`scheduler.schedules`) must be given as JSON:
+List- and dict-valued fields must be given as JSON. That includes `auth.trusted_proxies`,
+`auth.allowed_emails`, `auth.allowed_domains`, `notifications.urls`, `scheduler.schedules`,
+`analysis.exclude_filename_patterns`, `llm.drop_params`, `llm.extra_params`,
+`llm.thinking_params` and `editorial.head_versions`:
 
 ```bash
 export IMMICH_MEMORIES_AUTH__TRUSTED_PROXIES='["10.0.0.0/8"]'
-export IMMICH_MEMORIES_TRANSCRIPTION__LANGUAGES='["fr", "en"]'
+export IMMICH_MEMORIES_ANALYSIS__EXCLUDE_FILENAME_PATTERNS='["RingVideo_*", "Screenshot*"]'
 ```
 
 ## Examples
@@ -37,13 +41,17 @@ export IMMICH_MEMORIES_IMMICH__API_VERSION="auto"
 See [Immich API compatibility](./config-file.md#immich-api-compatibility) for what is supported and
 what is tested. `immich-memories config test` is read-only and prints the resolved API version.
 
-### Analysis settings
+### Source admission
 
 ```bash
-export IMMICH_MEMORIES_ANALYSIS__SCENE_THRESHOLD="30.0"
-export IMMICH_MEMORIES_ANALYSIS__MIN_SCENE_DURATION="1.5"
-export IMMICH_MEMORIES_ANALYSIS__ANALYSIS_RESOLUTION="720"
+export IMMICH_MEMORIES_ANALYSIS__DOWNLOAD_WORKERS="3"
+export IMMICH_MEMORIES_ANALYSIS__MIN_SOURCE_SHORT_SIDE="1080"
+export IMMICH_MEMORIES_ANALYSIS__EXCLUDE_STILLS_WITHOUT_CAMERA_EXIF="true"
 ```
+
+The scene-detection and segment-length knobs that used to live here went with the clip scorer.
+A config file that still names one is refused at startup; the environment-variable form is
+ignored in silence instead, so delete both.
 
 ### LLM provider
 
@@ -52,8 +60,23 @@ export IMMICH_MEMORIES_LLM__PROVIDER="openai-compatible"
 export IMMICH_MEMORIES_LLM__BASE_URL="https://api.openai.com/v1"
 export IMMICH_MEMORIES_LLM__MODEL="gpt-4.1-nano"
 export IMMICH_MEMORIES_LLM__API_KEY="sk-..."
-export IMMICH_MEMORIES_CONTENT_ANALYSIS__ENABLED="true"   # without this the LLM is never called for scoring
 ```
+
+### Editorial annotation preparation
+
+Story-first selection runs by default. These variables configure its preparation providers:
+
+```bash
+export IMMICH_MEMORIES_EDITORIAL__ANNOTATION_DATABASE="/mnt/cache/annotations.sqlite"
+export IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL="http://localhost:8092/v1"
+export IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR="/mnt/models/huggingface/hub"
+export IMMICH_MEMORIES_EDITORIAL__PREPARATION__ALLOW_MODEL_DOWNLOADS="false"
+export IMMICH_MEMORIES_TRIAGE__ENCODER="/mnt/models/triage/dinov2-small.onnx"
+```
+
+Nested preparation fields use another double underscore. There is no editorial opt-in
+environment variable. New runs use the FAMILY audience. See
+[Editorial annotation setup](editorial-preparation.md) before the first uncached run.
 
 ### Hardware
 
@@ -75,7 +98,7 @@ export IMMICH_MEMORIES_OUTPUT__CRF="20"
 ```
 
 `DIRECTORY` defaults to `~/Videos/Memories`. The Docker image overrides it to `/app/output` in the
-Dockerfile, so you only set it in a container to write somewhere else — and because it is an
+Dockerfile, so you only set it in a container to write somewhere else, and because it is an
 environment variable it beats `output.directory` in `config.yaml`.
 
 ### Music generation
@@ -108,11 +131,16 @@ A few common variables are also supported without the full prefix, for convenien
 | `ACE_STEP_API_KEY` | `ace_step.api_key` |
 | `IMMICH_MEMORIES_AUTH_USERNAME` + `IMMICH_MEMORIES_AUTH_PASSWORD` | `auth.username` / `auth.password`, and sets `auth.enabled=true`, `auth.provider=basic`. **Both** must be set; either alone is ignored. |
 
-:::caution Shorthand vars are skipped with an explicit config path
+:::caution Shorthand vars are skipped with an explicit config path, except in the UI
 The shorthand table is applied only when the app loads its default config path
-(`~/.immich-memories/config.yaml`). `immich-memories --config PATH …` and a scheduler daemon
-started with an explicit config file ignore every row above — including the basic-auth shortcut.
-The `IMMICH_MEMORIES_<SECTION>__<FIELD>` form always works.
+(`~/.immich-memories/config.yaml`). `immich-memories --config PATH generate …` and a scheduler
+daemon started with an explicit config file ignore every row above, including the basic-auth
+shortcut.
+
+`immich-memories --config PATH ui` is the exception, and it cuts the other way: the server reloads
+the default config path for everything except host and port, so the shorthand *does* apply there
+and the `auth:` block in `PATH` does not. The `IMMICH_MEMORIES_<SECTION>__<FIELD>` form always
+works.
 :::
 
 ## Other environment variables
@@ -128,7 +156,7 @@ Not config fields, but read by the app:
 | `ACESTEP_CHECKPOINTS_DIR` | ACE-Step `lib` mode: where model checkpoints are downloaded (default `~/.cache/ace-step/checkpoints`). |
 | `ACESTEP_MLX_VAE_CHUNK` | ACE-Step `lib` mode on Apple Silicon: VAE decode chunk size in latent frames (minimum 192). Lower it if MLX runs out of memory. |
 | `IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32` | ACE-Step `lib` mode on Apple Silicon: `1` keeps the MLX decoder in fp32 instead of casting to bf16 (roughly doubles decoder memory). |
-| `FORWARDED_ALLOW_IPS` | uvicorn: proxies whose `X-Forwarded-*` headers are trusted. Wins over `auth.trusted_proxies` when set — see [Authentication](authentication.mdx). |
+| `FORWARDED_ALLOW_IPS` | uvicorn: proxies whose `X-Forwarded-*` headers are trusted. Wins over `auth.trusted_proxies` when set. See [Authentication](authentication.mdx). |
 
 There is no environment variable for the log *level*.
 
@@ -136,7 +164,7 @@ There is no environment variable for the log *level*.
 A launchd or cron job starts from a login-less environment, so nothing you `export` interactively
 reaches it. `auto install` copies `PATH`, `ACESTEP_CHECKPOINTS_DIR`, `ACESTEP_MLX_VAE_CHUNK`,
 `IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32`, and `PYTORCH_MPS_HIGH_WATERMARK_RATIO` from the shell you
-install from into the plist or unit — and nothing else, since `IMMICH_MEMORIES_*` also holds
+install from into the plist or unit, and nothing else, since `IMMICH_MEMORIES_*` also holds
 credentials. Change one of them and re-run `auto install`. See
 [`auto install`](../../create/cli/auto.md#what-environment-the-scheduled-job-sees).
 :::
@@ -146,7 +174,7 @@ credentials. Change one of them and re-run `auto install`. See
 Highest wins:
 
 1. CLI flags (`--duration`, `--output`, …) for the options they cover
-2. Shorthand environment variables (`IMMICH_URL`, `OPENAI_API_KEY`, `MUSICGEN_*`, `ACE_STEP_*`, the auth pair) — applied last, on top of everything below
+2. Shorthand environment variables (`IMMICH_URL`, `OPENAI_API_KEY`, `MUSICGEN_*`, `ACE_STEP_*`, the auth pair), applied last, on top of everything below
 3. `IMMICH_MEMORIES_<SECTION>__<FIELD>` environment variables
 4. Config file (`~/.immich-memories/config.yaml`)
 5. Built-in defaults

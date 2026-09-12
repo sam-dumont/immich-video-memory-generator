@@ -2,7 +2,7 @@
 # Uses uv for fast Python package management
 export PYTHONUNBUFFERED=1
 
-.PHONY: help install dev dev-ci dev-test run preflight docs-cli-check docs-config-check test test-extras test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-audio-mixing test-integration-titles test-fast benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci integration-coverage-for-diff ci critique ensure-dev commitlint privacy-gate pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots diagrams capability-matrix
+.PHONY: help install dev dev-ci dev-test run preflight parity docs-cli-check docs-config-check test test-extras test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-audio-mixing test-integration-titles test-fast benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci integration-coverage-for-diff ci critique ensure-dev commitlint privacy-gate pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots demo-output diagrams capability-matrix
 
 # Default target
 help:
@@ -95,17 +95,18 @@ install-acestep:  ## Install the tested ACE-Step 1.5 inference stack (music gene
 	  'vector-quantize-pytorch>=1.27.15'
 	@uv run python -c "from immich_memories.audio.generators.ace_step_backend import ACEStepBackend; import torch, torchvision.ops as o; o.nms(torch.zeros((0,4)), torch.zeros((0,)), 0.5); print('ACE-Step stack OK')"
 
-# Install dev tools only (no GPU/CUDA/audio-ml/face deps — for CI quality gates).
+# Install dev tools only (no GPU/CUDA/editorial deps — for CI quality gates).
 # --locked: CI must install exactly what uv.lock pins, since that is what
 # `make pip-audit` audits. Without it a fresh resolve can install something
 # the audit never saw.
 dev-ci:
 	uv sync --extra dev --locked
 
-# Install dev + GPU + speech extras for CI test jobs (taichi/freetype/onnxruntime,
-# no torch/nvidia -- FireRedVAD is the only speech engine and needs neither)
+# Install dev + GPU extras for CI test jobs (taichi/freetype). The editorial
+# extra stays out: onnxruntime and torch are imported inside the functions that
+# need them, so the unit suite runs without either.
 dev-test:
-	uv sync --extra dev --extra gpu --extra speech --locked
+	uv sync --extra dev --extra gpu --locked
 
 # Install with macOS-specific extras (Apple Vision, Metal GPU, etc.)
 dev-mac:
@@ -255,7 +256,7 @@ test-integration:  ## Run ALL integration tests per-suite (requires FFmpeg/Immic
 	$(MAKE) test-integration-photos
 	$(MAKE) test-integration-pipeline
 	$(MAKE) test-integration-live-photos
-	@# CLI tests excluded — they re-run the full pipeline (~41 min) which is
+	@# CLI tests excluded — they re-run the full pipeline, which is
 	@# already covered by test-integration-pipeline. Run separately: make test-integration-cli
 	@# Merge per-suite JUnit XMLs into one (no re-run needed)
 	@python3 scripts/merge_junit_xml.py tests/integration-junit.xml \
@@ -290,16 +291,19 @@ playwright-install:  ## Install Playwright browsers for E2E tests
 	uv run playwright install chromium
 
 e2e:  ## Run required fake-service contracts and real hermetic browser render
-	uv run pytest tests/e2e/test_fake_immich.py tests/e2e/test_launch_smoke.py -v \
+	uv run pytest tests/e2e/test_fake_immich.py tests/e2e/test_launch_smoke.py \
+		tests/e2e/test_memory_page.py -v \
 		-m "e2e and not visual" --log-cli-level=INFO --tb=short \
 		--junitxml=tests/e2e-junit.xml
 
+# `not demo` because the demo clip renders a second video into the same session
+# workspace, and the launch smoke asserts on exactly what is in there.
 e2e-full:  ## Run ALL E2E tests including full generation pipeline (~10min)
-	uv run pytest tests/e2e/ -v -m e2e --log-cli-level=INFO --tb=short \
+	uv run pytest tests/e2e/ -v -m "e2e and not demo" --log-cli-level=INFO --tb=short \
 		--junitxml=tests/e2e-junit.xml
 
 contact-sheets:  ## Render contact sheets for a sweep of memories (SPEC=path OUT=dir)
-	@test -n "$(SPEC)" || (echo "SPEC=path/to/spec.json required — see scripts/sweep-spec.example.json"; exit 1)
+	@test -n "$(SPEC)" || (echo "SPEC=path/to/spec.json required — see examples/sweep-spec.example.json"; exit 1)
 	uv run python scripts/sweep_contact_sheets.py --spec "$(SPEC)" --out "$(or $(OUT),output/contact-sheets)"
 
 screenshots:  ## Capture UI screenshots in light + dark mode (coverage from server subprocess)
@@ -316,11 +320,11 @@ diagrams:  ## Render architecture diagrams from Mermaid source files
 	@echo "Diagrams saved to docs-site/static/img/diagrams/"
 
 test-cov:
-	uv run pytest --cov=src/immich_memories --cov-report=html --cov-report=term-missing
+	uv run pytest $(COVERAGE_FLAGS) --cov-report=html --cov-report=term-missing
 	@echo "Coverage report: htmlcov/index.html"
 
 test-cov-xml:  ## Run tests with XML coverage + JUnit results (for CI upload)
-	uv run pytest --cov=src/immich_memories --cov-branch --cov-report=xml --junitxml=junit.xml -o junit_family=legacy -v
+	uv run pytest $(COVERAGE_FLAGS) --cov-report=xml --junitxml=junit.xml -o junit_family=legacy -v
 
 test-fast:
 	uv run pytest -v -m "not slow"
@@ -342,27 +346,34 @@ test-scoring:
 # Code Quality
 # =============================================================================
 
+# Every Python tree the gates cover. The inference service ships as its own
+# image and is its own top-level package, so naming it once here is what keeps
+# it inside the same lint, type, complexity and dead-code gates as the app.
+SERVICE_TREES := services/inference
+SERVICE_PACKAGES := services/inference/immich_memories_inference
+COVERAGE_FLAGS := --cov=src/immich_memories --cov=$(SERVICE_PACKAGES) --cov-branch
+
 lint:
-	uv run ruff check src tests
+	uv run ruff check src tests $(SERVICE_TREES)
 
 lint-fix:
-	uv run ruff check --fix src tests
+	uv run ruff check --fix src tests $(SERVICE_TREES)
 
 format:
-	uv run ruff format src tests
+	uv run ruff format src tests $(SERVICE_TREES)
 
 format-check:
-	uv run ruff format --check src tests
+	uv run ruff format --check src tests $(SERVICE_TREES)
 
 typecheck:
-	uv run mypy src/immich_memories
+	uv run mypy src/immich_memories $(SERVICE_PACKAGES)
 
 # File length gate: 800 soft (warning), 1000 hard (error)
 SOFT_LINES := 800
 HARD_LINES := 1000
 file-length:
 	@FAILED=0; \
-	for f in $$(find src/ -name '*.py'); do \
+	for f in $$(find src/ $(SERVICE_TREES) -name '*.py'); do \
 		count=$$(wc -l < "$$f"); \
 		if [ "$$count" -gt $(HARD_LINES) ]; then \
 			echo "ERROR: $$f has $$count lines (hard limit $(HARD_LINES))"; \
@@ -381,30 +392,45 @@ file-length:
 
 # Cyclomatic complexity gate (Xenon grade C)
 complexity:
-	cd /tmp && uvx xenon --max-absolute C --max-modules D --max-average C $(CURDIR)/src/
+	cd /tmp && uvx xenon --max-absolute C --max-modules D --max-average C \
+		$(CURDIR)/src/ $(addprefix $(CURDIR)/,$(SERVICE_PACKAGES))
 
 # Dead code detection
 dead-code:
 	# 60, not 90: at 90 vulture only reports unused imports and found nothing,
 	# while eight genuinely dead functions sat in src/ kept alive by their own
 	# tests. The whitelist freezes what was already there; anything new fails.
-	# --ignore-decorators: @register_preset puts the function in a dict, so vulture
-	# sees a definition nobody calls. Six presets were whitelisted one by one for
-	# this; telling vulture about the decorator removes the whole class instead.
-	uvx vulture src/ vulture-whitelist.py --min-confidence 60 \
-		--ignore-decorators "@register_preset"
+	# --ignore-decorators names the registration mechanisms vulture cannot follow,
+	# each of which makes a definition reachable without any source line calling it
+	# by name. Told once here, they stop producing whitelist lines forever:
+	#   @register_preset          puts the function in a preset dict
+	#   @*.command / @*.group     Click registers the callback on a group
+	#   @ui.page / @app.middleware NiceGUI/Starlette register the route
+	#   @field_validator, @model_validator, @field_serializer
+	#                             pydantic runs these off the schema, never by name
+	# --ignore-names model_config: pydantic reads the ConfigDict class attribute
+	# off the model; nothing in src/ is meant to name it.
+	uvx vulture src/ $(SERVICE_TREES) vulture-whitelist.py --min-confidence 60 \
+		--ignore-names "model_config" \
+		--ignore-decorators "@register_preset,@*.command,@*.group,@ui.page,@app.middleware,@app.get,@app.post,@field_validator,@model_validator,@field_serializer"
 
 # Security lint (Bandit)
 security-lint:
-	uvx bandit -r src/ --severity-level high -q
+	uvx bandit -r src/ $(SERVICE_TREES) --severity-level high -q
 
 # Bandit with JSON report and HIGH severity gate (for CI)
 bandit-ci:
-	@uvx bandit -r src/ --severity-level medium -f json -o bandit-report.json || true
+	@uvx bandit -r src/ $(SERVICE_TREES) --severity-level medium -f json -o bandit-report.json || true
 	@python3 -c "import json,sys; r=json.load(open('bandit-report.json')); \
 	high=[i for i in r['results'] if i['issue_severity']=='HIGH']; \
 	[print(f\"  {i['filename']}:{i['line_number']} [{i['test_id']}] {i['issue_text']}\") for i in high]; \
 	sys.exit(len(high))"
+
+# Editorial parity: replay the reference routes warm through the public CLI with the
+# model providers blocked; needs the owner's library, store and reference file, so it is
+# a post-slice check and deliberately not part of `make ci`.
+parity:  ## Replay reference editorial routes warm; fail on provider calls or changed carriers
+	uv run python scripts/replay_editorial_routes.py --reference $${PARITY_REFERENCE:-~/.immich-memories-matrix/story-first-reference.private.json} $(PARITY_ARGS)
 
 # Private terms gate: the denylist itself lives outside the repo (see
 # scripts/private_terms_gate.py), so this only ever scans -- it never commits
@@ -423,7 +449,7 @@ commitlint:
 # diagnosing by hand cannot absorb the violation into the baseline. A passing
 # run keeps the rewrite — that is the ratchet tightening.
 cognitive-complexity:
-	@OUTPUT=$$(uvx complexipy==5.2.0 src/ --max-complexity-allowed 15 2>&1); \
+	@OUTPUT=$$(uvx complexipy==5.2.0 src/ $(SERVICE_TREES) --max-complexity-allowed 15 2>&1); \
 	ANALYZER_STATUS=$$?; \
 	if echo "$$OUTPUT" | grep -q "Snapshot watermark passed"; then \
 		echo "Cognitive complexity: snapshot watermark passed (no new violations)"; \
@@ -443,11 +469,12 @@ cognitive-complexity:
 
 # Code duplication detection
 duplication:
-	npx --yes jscpd@5.0.14 src/ --threshold 5 --min-lines 5 --min-tokens 50 --format python
+	npx --yes jscpd@5.0.14 src/ $(SERVICE_TREES) --threshold 5 --min-lines 5 --min-tokens 50 --format python
 
 # Modernization lint (cd src avoids duplicate module detection, --config-file reads ignores)
 refurb:
 	cd src && uv run refurb immich_memories/ --quiet --config-file ../pyproject.toml
+	cd services/inference && uv run refurb immich_memories_inference/ --quiet --config-file ../../pyproject.toml
 
 # Semgrep SAST (cross-file security analysis)
 # Excludes sqlalchemy-execute-raw-query: our SQL uses ?-parameterized values,
@@ -455,7 +482,7 @@ refurb:
 semgrep:
 	uvx semgrep scan --config auto --config p/python --error --severity ERROR \
 		--exclude-rule python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query \
-		src/
+		src/ $(SERVICE_TREES)
 
 # Dependency hygiene (hallucinated/unused/transitive deps)
 dep-check:
@@ -465,11 +492,11 @@ dep-check:
 
 # Architectural boundary enforcement
 arch-check:
-	uv run lint-imports
+	PYTHONPATH=$(SERVICE_TREES) uv run lint-imports
 
 # Diff coverage (for PRs: new code must be ≥95% covered)
 diff-cover:
-	uv run pytest --cov=src/immich_memories --cov-branch --cov-report=xml -q
+	uv run pytest $(COVERAGE_FLAGS) --cov-report=xml -q
 	uvx diff-cover coverage.xml --compare-branch=origin/main --fail-under=80
 
 # Dependency vulnerability audit
@@ -491,7 +518,7 @@ pip-audit:  ## Check dependencies for known vulnerabilities (warns on unfixable,
 
 diff-cover-local:  ## Check diff-cover locally before pushing (runs tests + merges integration coverage)
 	@echo "Running unit tests with coverage..."
-	@uv run pytest --cov=src/immich_memories --cov-branch --cov-report=xml -q
+	@uv run pytest $(COVERAGE_FLAGS) --cov-report=xml -q
 	@echo "Checking diff coverage against main..."
 	@COVERAGE_FILES="coverage.xml"; \
 	for f in tests/*-coverage.xml; do \
@@ -594,16 +621,16 @@ ci: ensure-dev lint format-check typecheck file-length complexity cognitive-comp
 critique:  ## Run self-critique checks for AI code smells
 	@echo "=== AI Smell Audit ==="
 	@echo "Checking for remaining mixins..."
-	@MIXINS=$$(grep -rn "class.*Mixin" src/ --include="*.py" | grep -v __pycache__ | wc -l | tr -d ' '); \
+	@MIXINS=$$(grep -rn "class.*Mixin" src/ $(SERVICE_TREES) --include="*.py" | grep -v __pycache__ | wc -l | tr -d ' '); \
 	if [ "$$MIXINS" -gt 0 ]; then \
-		grep -rn "class.*Mixin" src/ --include="*.py" | grep -v __pycache__; \
+		grep -rn "class.*Mixin" src/ $(SERVICE_TREES) --include="*.py" | grep -v __pycache__; \
 		echo "FAIL: $$MIXINS mixin classes found — use composition"; \
 		exit 1; \
 	fi
 	@echo "Checking for mechanical split comments..."
-	@! grep -rn "to stay within\|to keep.*under.*line\|keep files under" src/ --include="*.py" || (echo "FAIL: Fix these splits" && exit 1)
+	@! grep -rn "to stay within\|to keep.*under.*line\|keep files under" src/ $(SERVICE_TREES) --include="*.py" || (echo "FAIL: Fix these splits" && exit 1)
 	@echo "Checking for wildcard re-exports (outside __init__)..."
-	@! grep -rn "from .* import \*" src/ --include="*.py" | grep -v __init__ || (echo "WARN: Wildcard re-exports found" && exit 1)
+	@! grep -rn "from .* import \*" src/ $(SERVICE_TREES) --include="*.py" | grep -v __init__ || (echo "WARN: Wildcard re-exports found" && exit 1)
 	@echo "Checking test quality (mock ratios, mock-only assertions, excessive patches)..."
 	@uv run python scripts/critique_tests.py
 	@echo "Self-critique complete."
@@ -797,6 +824,9 @@ demo-cli-sim:  ## Run CLI demo simulation (no recording, for iteration)
 demo-cli:  ## Record CLI demo via VHS → GIF + MP4
 	vhs docs-site/scripts/demo-cli.tape
 
+demo-output:  ## Cut the demo's output clip + poster on the hermetic launch
+	uv run pytest tests/e2e/test_demo_assets.py -v -m demo --log-cli-level=INFO --tb=short
+
 demo-ui-install:  ## Install Remotion demo dependencies
 	cd docs-site/remotion && npm ci
 
@@ -805,4 +835,15 @@ demo-ui-dev: demo-ui-install  ## Start Remotion Studio for live demo preview
 
 demo-ui: demo-ui-install  ## Render Remotion demo → docs-site/static/demo/demo.mp4
 	@mkdir -p docs-site/static/demo
-	cd docs-site/remotion && npx remotion render src/index.ts DemoVideo ../../static/demo/demo.mp4 --codec h264 --crf 18
+	cd docs-site/remotion && npx remotion render src/index.ts DemoVideo ../static/demo/demo.mp4 --codec h264 --crf 18
+
+# The README hero is the brief → cut → story stretch of the Remotion demo (seconds
+# 2.6 to 20.6 of the composition), 800 px wide at 12 fps with a two-pass palette so
+# the UI's flat colours stay crisp. Re-run after `make demo-ui`.
+demo-hero:  ## Cut the README hero GIF from docs-site/static/demo/demo.mp4
+	ffmpeg -y -loglevel error -ss 2.6 -t 18 -i docs-site/static/demo/demo.mp4 \
+	  -vf "fps=12,scale=800:-1:flags=lanczos,palettegen=stats_mode=diff" docs-site/static/demo/hero-palette.png
+	ffmpeg -y -loglevel error -ss 2.6 -t 18 -i docs-site/static/demo/demo.mp4 -i docs-site/static/demo/hero-palette.png \
+	  -lavfi "fps=12,scale=800:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle" \
+	  docs-site/static/img/demo-hero.gif
+	@rm -f docs-site/static/demo/hero-palette.png

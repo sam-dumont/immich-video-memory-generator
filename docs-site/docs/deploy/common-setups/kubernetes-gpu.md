@@ -27,7 +27,7 @@ You run a Kubernetes cluster with NVIDIA GPU nodes (on-prem, cloud, or hybrid). 
 │  │  └────────────┘  └────────────┘              │   │
 │  │                                               │   │
 │  │  Secret: IMMICH_URL, IMMICH_API_KEY           │   │
-│  │  PVCs: cache (20Gi), output (50Gi)            │   │
+│  │  PVCs: cache 20Gi, output 50Gi, models 5Gi    │   │
 │  └──────────────────────────────────────────────┘   │
 │                                                     │
 │  ┌─────────────────┐                                │
@@ -76,10 +76,10 @@ kubectl apply -k overlays/gpu
 ```
 
 `kubectl kustomize overlays/gpu` shows the rendered result. `base/kustomization.yaml` pins the
-image tag (no `v` prefix: release `vX.Y.Z` is tag `X.Y.Z`). The checked-in pin trails the current
-release — check it against the
-[releases page](https://github.com/sam-dumont/immich-video-memory-generator/releases) and bump it
-when you upgrade.
+image tag (no `v` prefix: release `vX.Y.Z` is tag `X.Y.Z`). The checked-in pin is only current as
+of whenever someone last bumped it, so check it against the
+[releases page](https://github.com/sam-dumont/immich-video-memory-generator/releases) before you
+apply.
 
 ## Access the UI
 
@@ -131,7 +131,7 @@ kubectl logs -n immich-memories -f job/immich-memories-generate
 
 `--duration` is in **seconds** (the example job uses `600`). The jobs are CPU-only as shipped;
 copy the fields from `overlays/gpu/deployment-gpu.yaml` into the pod spec for GPU nodes. They
-share the Deployment's `ReadWriteOnce` PVCs, so the job pod has to land on the same node — or
+share the Deployment's `ReadWriteOnce` PVCs, so the job pod has to land on the same node, or
 skip the CronJobs and set `IMMICH_MEMORIES_AUTOMATION__ENABLED=true` on the Deployment instead.
 
 ## Storage
@@ -142,16 +142,15 @@ Default PVC sizes:
 |-----|------|---------|
 | Cache PVC | 20Gi | mounted at `/home/immich/.immich-memories`: `config.yaml`, `cache.db` (analysis scores), video cache, projects, automation history |
 | Output PVC | 50Gi | mounted at `/app/output`: generated videos |
+| Models PVC | 5Gi | mounted at `/models`: the pinned DINOv2 export and the detector Hugging Face cache, both written by `immich-memories models fetch`. Every pod binds it: skip it and nothing starts |
 
-There is no ConfigMap — connection details come from the Secret, everything else from
+There is no ConfigMap: connection details come from the Secret, everything else from
 `IMMICH_MEMORIES_*` env vars or the UI settings page (which writes `config.yaml` on the PVC).
 
-`cache.db` holds the analysis scores from all previous runs. This is the most valuable data: losing it means re-analyzing your entire library. Back it up:
-
-```bash
-kubectl exec -n immich-memories deployment/immich-memories -- \
-  immich-memories cache backup /app/output/cache-backup.db
-```
+`cache/annotations.sqlite` on the cache PVC holds every caption, head answer, detector verdict and
+reading the editor has banked. That is the valuable data: losing it means re-reading your whole
+library. Back up the PVC. Do not use `immich-memories cache backup` for this: it copies
+`cache.db`, which holds run history and the retired scorer's table, not the banks.
 
 ## Secrets management
 
@@ -177,24 +176,25 @@ kubectl apply -f base/sealed-secret.yaml
 ```
 
 `/health/live` only says the process is up. `/health` returns the same JSON as `/health/ready` but
-always with HTTP `200` (`status: ok`), so it is useless as a probe — the manifests use
+always with HTTP `200` (`status: ok`), so it is useless as a probe: the manifests use
 `/health/live` for liveness and `/health/ready` for readiness.
 
 Point your monitoring (Uptime Kuma, Prometheus blackbox exporter, etc.) at `/health/ready` on port 8080.
 
 ## What works / what doesn't
 
-Same as the [Linux + NVIDIA](./linux-nvidia.md) setup: NVENC encoding, CUDA scene analysis, Taichi GPU titles (face detection is CPU on Linux). The Kubernetes layer adds scheduling and PVC-based storage — not scaling: the UI is single-replica.
+Same as the [Linux + NVIDIA](./linux-nvidia.md) setup: the card does NVENC encoding and Taichi GPU titles, and nothing else in this pod runs on it. The Kubernetes layer adds scheduling and PVC-based storage, not scaling: the UI is single-replica.
 
 ## Performance
 
-Same as bare-metal Linux + NVIDIA. Kubernetes overhead is negligible for this workload.
+Same as bare-metal Linux + NVIDIA.
 
-Do not size the cluster around the encoder. Once NVENC is doing the encode, the encode is not what
-you wait for: the run is dominated by analysis and selection, meaning downloading every candidate
-clip from Immich, scoring it, and the LLM passes if you enabled them. In the one run measured end
-to end ([NAS-Only](./nas-only.md#performance-expectations)) analysis was 7.4 minutes of 10.1, and a
-GPU only shrinks the other 2.7. Immich API throughput and LLM latency are the numbers to watch.
+Do not size the cluster around the encoder. Once NVENC is doing the encode, what you wait for is
+preparation and the editor's readings: a caption, six heads and two detectors per candidate
+picture, then the text model over the period. None of that runs on this card, and none of it has
+been measured here — the [NAS numbers](./nas-only.md#preparation-measured) are the only ones
+there are. Immich API throughput and reader
+latency are the numbers to watch.
 
 ## Further reading
 

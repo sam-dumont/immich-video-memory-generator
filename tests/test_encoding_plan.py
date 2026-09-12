@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 
 import pytest
 
@@ -417,7 +417,11 @@ def test_software_encoder_args_include_requested_crf() -> None:
         input_has_hdr=False,
     )
 
-    assert plan.encoder_args == ("-preset", "medium", "-crf", "21")
+    from immich_memories.processing.rate_control import quality_args
+
+    # libx264 is calibrated against the libx265 reference rather than copying its
+    # number, so the requested CRF arrives translated onto x264's own scale.
+    assert plan.encoder_args == ("-preset", "medium", *quality_args("libx264", 21))
 
 
 def test_standalone_assembly_plan_records_its_effective_crf() -> None:
@@ -429,28 +433,28 @@ def test_standalone_assembly_plan_records_its_effective_crf() -> None:
     assert plan.encoder_args[-2:] == ("-crf", "28")
 
 
-@pytest.mark.parametrize(
-    ("crf", "expected_quality"),
-    [
-        pytest.param(0, "100", id="lossless-boundary"),
-        pytest.param(12, "87", id="high"),
-        pytest.param(18, "75", id="medium"),
-        pytest.param(23, "65", id="common-default"),
-        pytest.param(51, "9", id="lowest-boundary"),
-    ],
-)
-def test_videotoolbox_quality_is_derived_from_requested_crf(
-    crf: int,
-    expected_quality: str,
-) -> None:
+def _videotoolbox_quality(crf: int) -> int:
     plan = resolve_encoding_plan(
         _request(OutputCodec.H265, hardware_enabled=True, crf=crf),
         _apple_capabilities(),
         input_has_hdr=True,
     )
+    return int(plan.encoder_args[plan.encoder_args.index("-q:v") + 1])
 
-    quality_index = plan.encoder_args.index("-q:v")
-    assert plan.encoder_args[quality_index + 1] == expected_quality
+
+@pytest.mark.parametrize("crf", [0, 12, 18, 23, 51])
+def test_videotoolbox_quality_is_derived_from_requested_crf(crf: int) -> None:
+    assert 1 <= _videotoolbox_quality(crf) <= 100
+
+
+def test_videotoolbox_quality_falls_as_the_requested_crf_rises() -> None:
+    assert _videotoolbox_quality(12) > _videotoolbox_quality(18) > _videotoolbox_quality(23)
+
+
+def test_videotoolbox_no_longer_overshoots_the_software_encode_it_matches() -> None:
+    """`111 - 2*crf` asked for 37.3 Mbps at CRF 18 where libx265 spent 4.6."""
+    assert _videotoolbox_quality(18) < 75
+    assert _videotoolbox_quality(12) < 87
 
 
 def test_software_fallback_preserves_requested_crf() -> None:
@@ -474,10 +478,12 @@ def test_crf_boundary_values_are_preserved(crf: int) -> None:
         input_has_hdr=False,
     )
 
-    assert plan.encoder_args[-2:] == ("-crf", str(crf))
+    from immich_memories.processing.rate_control import quality_args
+
+    assert plan.encoder_args[-2:] == ("-crf", quality_args("libx264", crf)[-1])
 
 
-def test_unsupported_hardware_encoder_falls_back_within_requested_codec() -> None:
+def test_unsupported_hardware_encoder_keeps_the_codec_under_a_strict_policy() -> None:
     capabilities = HWAccelCapabilities(
         backend=HWAccelBackend.APPLE,
         supports_h264_encode=True,
@@ -485,7 +491,7 @@ def test_unsupported_hardware_encoder_falls_back_within_requested_codec() -> Non
     )
 
     plan = resolve_encoding_plan(
-        _request(OutputCodec.H265, hardware_enabled=True),
+        replace(_request(OutputCodec.H265, hardware_enabled=True), codec_policy="strict"),
         capabilities,
         input_has_hdr=False,
     )
