@@ -431,7 +431,8 @@ def test_anything_we_publish_ourselves_is_published_before_the_main_wheel() -> N
 def test_every_published_platform_takes_torch_from_the_cpu_wheel_index() -> None:
     """Nothing in the image runs GPU inference, so the CUDA stack is dead weight.
 
-    Both detectors are CPU by construction, and torch pins its CUDA dependencies on
+    Both model seats are ONNX Runtime on the CPU provider, and the only remaining
+    consumer of torch is local Demucs. torch pins its CUDA dependencies on
     `sys_platform == 'linux'` with no architecture guard, so aarch64 gets the same
     stack x86_64 does -- measured at 3.3 GB of `nvidia` plus 818 MB of triton in the
     arm64 image, for a torch that reports cuda_available: False. Adding a release
