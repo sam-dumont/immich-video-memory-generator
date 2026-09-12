@@ -9,14 +9,25 @@ so a route that needs a fresh judgment fails instead of silently going cold.
 Immich itself stays reachable. The newest attempt written under the cache root is
 then compared with the accepted one: plan bytes, ordered carrier asset ids, and the
 decision projection. Judgment-bank rows are counted before and after; a warm run
-adds none. When the carriers differ and the reference names the accepted attempt's
-directory (`attempt_dir`, or `head_baseline.attempt_dir`), the two attempts'
+adds none. When the carriers differ and the reference names the attempt the baseline
+came from (`head_baseline.attempt_dir`, else `accepted_attempt_dir`), the two attempts'
 `evidence-hashes.json` files are diffed as well, so the report names the first episode
 whose evidence moved and how many of its asset lines changed.
+
+A cut has two ways to move, and the harness separates them. Every baseline carries a
+fingerprint of the judgment banks as they stood when it was banked, so a replay whose
+carriers differ reports `store-moved` — naming the tables that grew — instead of
+`changed`, which would read as a code regression. `--bank` writes that record: it
+replaces the replayed routes' HEAD baselines with what the session produced, keeping a
+timestamped copy of the reference it replaced.
+
+A route scoped to "today" can only replay when the reference pins it to the day the
+accepted run was cut, with `"target_date": "YYYY-MM-DD"` on the route entry.
 
 Usage:
     python scripts/replay_editorial_routes.py --reference ~/.immich-memories-matrix/story-first-reference.private.json
     python scripts/replay_editorial_routes.py --reference ... --routes monthly,year --seeds 11
+    python scripts/replay_editorial_routes.py --reference ... --routes year --seeds 11 --bank
 """
 
 from __future__ import annotations
@@ -32,6 +43,10 @@ import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from urllib.parse import urlparse
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from matrix_routes import pinned_day_args  # noqa: E402
 
 DECISION_FIELDS = (
     "contract_key",
@@ -118,21 +133,34 @@ BANK_TABLE_MARKERS = ("judg", "request", "verdict", "gateway", "reading", "insig
 EVIDENCE_HASHES = "evidence-hashes.json"
 
 
-def _rows_in(path: Path) -> int:
+def _table_shape(connection: sqlite3.Connection, table: str) -> list[int]:
+    """How many rows the table holds, and how far its rowids have run.
+
+    The high-water mark is the half that survives churn: a run that inserts a row
+    and deletes another leaves the count alone, and the replay would read a store
+    it cannot tell apart from the banked one.
+    """
+    count = connection.execute(f"select count(*) from {table}").fetchone()[0]  # noqa: S608
+    try:
+        top = connection.execute(f"select coalesce(max(rowid), 0) from {table}").fetchone()[  # noqa: S608
+            0
+        ]
+    except sqlite3.OperationalError:  # a WITHOUT ROWID table has no such column
+        top = 0
+    return [int(count), int(top)]
+
+
+def _shapes_in(path: Path) -> dict[str, list[int]]:
     with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as connection:
-        tables = [
-            row[0]
+        return {
+            row[0]: _table_shape(connection, row[0])
             for row in connection.execute("select name from sqlite_master where type='table'")
             if any(marker in row[0] for marker in BANK_TABLE_MARKERS)
-        ]
-        return sum(
-            connection.execute(f"select count(*) from {table}").fetchone()[0]  # noqa: S608
-            for table in tables
-        )
+        }
 
 
-def bank_rows(cache_root: Path, config_path: Path | None = None) -> int:
-    """Rows in every judgment bank a warm replay must leave untouched."""
+def bank_paths(cache_root: Path, config_path: Path | None = None) -> list[Path]:
+    """Every judgment bank a warm replay reads and must leave untouched."""
     paths = [cache_root / "judgments.db"]
     if config_path is not None:
         import yaml
@@ -144,7 +172,44 @@ def bank_rows(cache_root: Path, config_path: Path | None = None) -> int:
             paths.append(
                 Path(os.path.expandvars(str(editorial["annotation_database"]))).expanduser()
             )
-    return sum(_rows_in(path) for path in paths if path.exists())
+    return [path for path in paths if path.exists()]
+
+
+def store_fingerprint(cache_root: Path, config_path: Path | None = None) -> dict[str, list[int]]:
+    """What the banks looked like, by table name: `{table: [rows, highest rowid]}`.
+
+    Banked beside a baseline so a later replay can separate the two ways a cut can
+    move. Table names are schema, so the fingerprint is safe to print and to diff;
+    nothing it carries comes from the library. Counts are cheap enough to take on
+    every route — a digest of the rows themselves would cost minutes per run and
+    answer the same question.
+    """
+    fingerprint: dict[str, list[int]] = {}
+    for path in bank_paths(cache_root, config_path):
+        for table, shape in _shapes_in(path).items():
+            # Two banks may name a table alike; the sum is still the honest total.
+            previous = fingerprint.get(table)
+            fingerprint[table] = (
+                shape if previous is None else [previous[0] + shape[0], max(previous[1], shape[1])]
+            )
+    return fingerprint
+
+
+def bank_rows(cache_root: Path, config_path: Path | None = None) -> int:
+    return sum(shape[0] for shape in store_fingerprint(cache_root, config_path).values())
+
+
+def store_drift(banked: dict[str, list[int]], current: dict[str, list[int]]) -> str:
+    """Name the bank tables that moved between banking and this replay, and by how much."""
+    moved = [
+        f"{table} {current.get(table, [0, 0])[0] - shape[0]:+d} rows"
+        for table, shape in sorted(banked.items())
+        if current.get(table) != shape
+    ]
+    gained = sorted(set(current) - set(banked))
+    if gained:
+        moved.append(f"{len(gained)} new table(s): {', '.join(gained)}")
+    return "store moved since the baseline was banked: " + ("; ".join(moved) or "shape unchanged")
 
 
 def newest_attempt(cache_root: Path, started_after: float) -> Path | None:
@@ -182,19 +247,22 @@ def baseline_of(route: dict) -> dict | None:
         return {
             "plan_sha256": route.get("accepted_plan_sha256"),
             "carrier_asset_ids": route.get("carrier_asset_ids"),
+            "store_fingerprint": route.get("store_fingerprint"),
         }
     return None
 
 
 def baseline_attempt_dir(route: dict) -> Path | None:
-    """Where the accepted attempt still lives, when the reference names it.
+    """Where the attempt behind the baseline still lives, when the reference names it.
 
-    `head_baseline.attempt_dir` wins over the route's own `attempt_dir`, so a route whose
-    HEAD baseline was rebanked diffs against the run its carriers actually came from.
+    `head_baseline.attempt_dir` wins over the accepted run's own directory, so a route
+    whose HEAD baseline was rebanked diffs against the run its carriers actually came
+    from. The accepted run spells it `accepted_attempt_dir`, which is the only name a
+    route without a HEAD baseline has to offer.
     """
     head = route.get("head_baseline")
     named = (head.get("attempt_dir") if isinstance(head, dict) else None) or route.get(
-        "attempt_dir"
+        "accepted_attempt_dir"
     )
     return Path(str(named)).expanduser() if named else None
 
@@ -217,14 +285,30 @@ def evidence_rows(directory: Path) -> dict[str, dict]:
     }
 
 
+def _evidence_gap(newest: Path, baseline: Path) -> str | None:
+    """Why these two attempts cannot be diffed at all, or None when they can."""
+    if not baseline.exists():
+        return "the baseline attempt is gone from disk"
+    if not (baseline / EVIDENCE_HASHES).exists():
+        return f"the baseline predates {EVIDENCE_HASHES}"
+    if not (newest / EVIDENCE_HASHES).exists():
+        return f"this attempt wrote no {EVIDENCE_HASHES}"
+    return None
+
+
 def evidence_drift(newest: Path, baseline: Path) -> str:
     """Name the first episode whose evidence moved and how many of its lines changed.
 
     Ids and counts only: the rendered lines stay in the attempt's private sibling.
+    A side that cannot be read says so — an empty detail would read as "nothing
+    moved", which is exactly the wrong thing to tell someone chasing a changed cut.
     """
+    gap = _evidence_gap(newest, baseline)
+    if gap is not None:
+        return f"no evidence diff: {gap}"
     new_rows, old_rows = evidence_rows(newest), evidence_rows(baseline)
     if not new_rows or not old_rows:
-        return ""
+        return f"no evidence diff: an {EVIDENCE_HASHES} is present but unreadable"
     moved = [
         group
         for group, row in new_rows.items()
@@ -272,6 +356,11 @@ def compare_plan(plan_path: Path, baseline: dict) -> tuple[str, int, bool, str]:
 
 _HARNESS_OWNED = {"--no-render", "--no-music", "--quiet"}
 
+# A route scoped to "today" asks a different question on every run and can never
+# replay. The reference may pin it to the day the accepted sheet was cut, under the
+# same key the matrix driver uses, and the pin expands the same way.
+PINNED_DAY = "target_date"
+
 
 def route_argv(route: dict) -> list[str]:
     """The route's own `generate` arguments, without what the harness sets itself."""
@@ -290,7 +379,42 @@ def route_argv(route: dict) -> list[str]:
         if token in _HARNESS_OWNED:
             continue
         argv.append(token)
-    return argv
+    day = route.get(PINNED_DAY)
+    return argv if not day else argv + pinned_day_args(str(day))
+
+
+def verdict(
+    *,
+    plan_sha: str,
+    same_carriers: bool,
+    baseline: dict,
+    route: dict,
+    attempt: Path,
+    store: dict[str, list[int]],
+) -> tuple[str, str]:
+    """The status this attempt earns, and the one line that says why it is not identical.
+
+    A cut can move because the code moved or because the store underneath it did, and
+    the two call for opposite responses. `store-moved` says which one this was instead
+    of handing back `changed` and letting someone bisect the code for a week.
+    """
+    if plan_sha == baseline.get("plan_sha256"):
+        return "identical", ""
+    if same_carriers:
+        return "same-carriers", ""
+    banked = baseline.get("store_fingerprint")
+    if not banked:
+        status, note = (
+            "changed",
+            "store fingerprint not banked; store and code cannot be told apart",
+        )
+    elif banked != store:
+        status, note = "store-moved", store_drift(banked, store)
+    else:
+        status, note = "changed", "store unchanged since the baseline was banked"
+    accepted = baseline_attempt_dir(route)
+    drift = "" if accepted is None else evidence_drift(attempt, accepted)
+    return status, f"{note}; {drift}" if drift else note
 
 
 def run_route(
@@ -319,7 +443,8 @@ def run_route(
         "PYTHONHASHSEED": seed,
         "IMMICH_MEMORIES_PARITY_BLOCK_HOSTS": ",".join(sorted(hosts)),
     }
-    rows_before = bank_rows(cache_root, config_path)
+    store_before = store_fingerprint(cache_root, config_path)
+    rows_before = sum(shape[0] for shape in store_before.values())
     started = time.time()
     log = out / f"{key}-seed{seed}.log"
     command = [
@@ -391,20 +516,85 @@ def run_route(
             "no editorial attempt written",
         )
     plan_sha, count, same, decision = compare_plan(attempt / "plan.private.json", baseline)
-    detail = ""
-    if plan_sha == baseline.get("plan_sha256"):
-        status = "identical"
-    elif same:
-        status = "same-carriers"
-    else:
-        status = "changed"
-        accepted = baseline_attempt_dir(route)
-        detail = "" if accepted is None else evidence_drift(attempt, accepted)
+    status, detail = verdict(
+        plan_sha=plan_sha,
+        same_carriers=same,
+        baseline=baseline,
+        route=route,
+        attempt=attempt,
+        store=store_before,
+    )
     if added:
         status = f"{status}+bank-growth"
     return RouteOutcome(
         key, seed, status, seconds, 0, added, str(attempt), plan_sha, count, same, decision, detail
     )
+
+
+# A rebank replaces the record a later replay must reproduce, so only a run that
+# proved itself warm and reached a plan is allowed to become one.
+BANKABLE = frozenset({"identical", "same-carriers", "changed", "store-moved"})
+
+
+def banked_baseline(route: dict, outcome: RouteOutcome) -> dict:
+    """What this warm replay produced, in the shape the next one reads back.
+
+    The store fingerprint travels with the carriers: without it the next replay can
+    only say the cut changed, never whether anything but the code was different.
+    """
+    attempt = Path(str(outcome.attempt_dir))
+    raw = (attempt / "plan.private.json").read_bytes()
+    plan = json.loads(raw)
+    ids = carrier_ids(plan)
+    return {
+        "attempt_dir": str(attempt),
+        "banked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "carrier_asset_ids": ids,
+        "carrier_count": len(ids),
+        "content_seconds": plan.get("content_seconds"),
+        "plan_sha256": sha256_bytes(raw),
+        "provider_calls": outcome.blocked_calls,
+        "seconds": outcome.seconds,
+        "store_fingerprint": store_fingerprint(
+            Path(route["cache_root"]).expanduser(), Path(route["config_path"]).expanduser()
+        ),
+    }
+
+
+def bank_refusal(outcomes: list[RouteOutcome]) -> str:
+    """Why this route's runs cannot become a baseline, or "" when they can."""
+    if not outcomes or any(o.attempt_dir is None for o in outcomes):
+        return "no attempt to bank"
+    bad = [o.status for o in outcomes if o.status not in BANKABLE]
+    if bad:
+        return f"status {', '.join(sorted(set(bad)))}"
+    # The decision projection, not the plan bytes: a plan carries per-run noise that
+    # no seed controls, so comparing bytes would refuse every bank there is.
+    if len({o.decision_sha256 for o in outcomes}) > 1:
+        return "the seeds disagreed on the decision"
+    return ""
+
+
+def write_reference(path: Path, reference: dict) -> Path:
+    """Rewrite the private reference, keeping a timestamped copy of what it replaced."""
+    backup = path.with_name(f"{path.name}.backup-{time.strftime('%Y%m%dT%H%M%S')}")
+    backup.write_bytes(path.read_bytes())
+    backup.chmod(0o600)
+    path.write_text(json.dumps(reference, indent=2, ensure_ascii=False) + "\n")
+    path.chmod(0o600)
+    return backup
+
+
+def bank_routes(path: Path, reference: dict, banked: dict) -> None:
+    """Replace each named route's HEAD baseline with what this session just replayed."""
+    for key, baseline in banked.items():
+        entry = reference.get("routes", reference)[key]
+        entry["head_baseline"] = baseline
+        # A route that once could not produce a baseline now has one; leaving the old
+        # failure record beside it would read as though it still cannot.
+        entry.pop("head_baseline_failed", None)
+    backup = write_reference(path, reference)
+    print(f"banked {', '.join(sorted(banked))}; previous reference kept at {backup}")
 
 
 def main() -> int:
@@ -424,22 +614,40 @@ def main() -> int:
         action="store_true",
         help="before the route cut, the CLI writes no attempt",
     )
+    parser.add_argument(
+        "--bank",
+        action="store_true",
+        help="replace each replayed route's HEAD baseline with what this session produced",
+    )
     args = parser.parse_args()
 
-    reference = json.loads(args.reference.expanduser().read_text())
+    reference_path = args.reference.expanduser()
+    reference = json.loads(reference_path.read_text())
     routes = reference_routes(reference)
     wanted = [key for key in args.routes.split(",") if key] or list(routes)
     args.out.mkdir(parents=True, exist_ok=True, mode=0o700)
     outcomes: list[RouteOutcome] = []
+    banked: dict[str, dict] = {}
     for key in wanted:
-        for seed in args.seeds.split(","):
-            outcome = run_route(
+        route_outcomes = [
+            run_route(
                 key, routes[key], seed=seed, python=args.python, out=args.out, timeout=args.timeout
             )
-            outcomes.append(outcome)
+            for seed in args.seeds.split(",")
+        ]
+        for outcome in route_outcomes:
             print(
-                f"{outcome.route:14s} seed={seed:3s} {outcome.status:18s} {outcome.seconds:7.1f}s blocked={outcome.blocked_calls} bank+={outcome.bank_rows_added} carriers={outcome.carriers} {outcome.detail}"
+                f"{outcome.route:14s} seed={outcome.seed:3s} {outcome.status:18s} {outcome.seconds:7.1f}s blocked={outcome.blocked_calls} bank+={outcome.bank_rows_added} carriers={outcome.carriers} {outcome.detail}"
             )
+        outcomes.extend(route_outcomes)
+        if args.bank:
+            refusal = bank_refusal(route_outcomes)
+            if refusal:
+                print(f"{key:14s} not banked: {refusal}")
+            else:
+                banked[key] = banked_baseline(routes[key], route_outcomes[-1])
+    if banked:
+        bank_routes(reference_path, reference, banked)
     report = args.out / f"report-{time.strftime('%Y%m%dT%H%M%S')}.private.json"
     report.write_text(json.dumps([asdict(o) for o in outcomes], indent=2) + "\n")
     report.chmod(0o600)
