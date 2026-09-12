@@ -55,6 +55,16 @@ def test_the_caption_is_actually_drawn(grey_clip: Path) -> None:
     assert not np.array_equal(plain, captioned), "overlay changed nothing"
 
 
+def test_caption_is_small_and_translucent_over_the_picture(grey_clip: Path) -> None:
+    plain = _first_frame(grey_clip)
+    captioned = _first_frame(grey_clip, caption=ClipCaption(date="5 Jan 2026"))
+    changed = np.argwhere(np.any(plain != captioned, axis=-1))
+
+    assert changed.size
+    assert np.ptp(changed[:, 0]) < 20, "caption still uses title-sized text"
+    assert captioned.max() < 230, "opaque white hides the picture beneath the letters"
+
+
 def test_the_caption_lands_in_the_bottom_corner(grey_clip: Path) -> None:
     """Bottom-right, inset — not centred over the subject's face."""
     plain = _first_frame(grey_clip)

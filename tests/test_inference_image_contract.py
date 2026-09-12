@@ -205,6 +205,11 @@ def test_inference_only_analysis_cannot_create_a_release(tmp_path, monkeypatch):
     guard = workflow["jobs"]["inference-build"]["if"]
     assert "!cancelled()" in guard
     assert "needs.release.result == 'success'" in guard
+    # The intentionally skipped release ancestor must not skip successful
+    # inference manifests through GitHub's implicit success() condition.
+    manifest_guard = workflow["jobs"]["inference-manifest"].get("if", "")
+    assert "!cancelled()" in manifest_guard
+    assert "needs.inference-build.result == 'success'" in manifest_guard
 
 
 def test_inference_digest_artifacts_round_trip_to_separate_manifests(tmp_path, monkeypatch):

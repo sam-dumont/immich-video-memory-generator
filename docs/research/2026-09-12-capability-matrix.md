@@ -154,7 +154,19 @@ The [phase 5 report](2026-09-12-phase5-readiness.md) retains the measured Februa
 
 The earlier NAS external-reader run spent **1,278.2 of 1,512.5 seconds** waiting through reading/selection, with 198 successful reader responses. Offloading model execution does not remove that wait. Kubernetes external reading completed in **985.7 seconds**, with 188 responses and matching people context. The earlier NAS reader run lacked people context. The copied people file does not retroactively fix that old run.
 
-Kubernetes proved actual CUDA DINO inference and a short NVENC encode. Its benchmark used a temporary source/dependency overlay, not a reproducible release image. The temporary Pod and credential Secret were removed after collecting evidence. The ONNX/service combination now passes local CI. Actual CPU and CUDA images build and run as UID/GID 1000 without PyTorch; the CPU image is 816,461,586 bytes and the CUDA image is 5,671,291,490 bytes. The CUDA image uses ONNX Runtime GPU 1.26 with CUDA 12/cuDNN 9. Execution of the published image on the cluster remains the next check.
+Kubernetes proved actual CUDA DINO inference and a short NVENC encode. Its benchmark used a temporary source/dependency overlay, not a reproducible release image. The temporary Pod and credential Secret were removed after collecting evidence. The ONNX/service combination now passes local CI. Actual CPU and CUDA images build and run as UID/GID 1000 without PyTorch; the CPU image is 816,461,586 bytes and the CUDA image is 5,671,291,490 bytes. The CUDA image uses ONNX Runtime GPU 1.26 with CUDA 12/cuDNN 9. The published CUDA image was subsequently verified by immutable digest on `rancher-worker-couronne-03`: CUDAExecutionProvider, ORT GPU 1.26.0, both det-v2 detectors, six heads, no PyTorch, and successful cold/warm HTTP requests using seeded synthetic pixels. This checks execution, not semantic accuracy or real-library throughput.
+
+| Published CUDA producer | First request, seconds | Repeat, seconds |
+| --- | ---: | ---: |
+| DINO + six heads | 0.961 | 0.018 |
+| Marqo | 0.299 | 0.127 |
+| Docling | 1.038 | 0.035 |
+
+Models were staged before these requests; download and image-pull time are excluded.
+The tested image was `ghcr.io/sam-dumont/immich-video-memory-generator/inference@sha256:8a954937003cd79d9f5f120e451296881a7416753f477b4b03259ffb4f54f7ee`.
+Two attempts on couronne-01 were evicted for node ephemeral-storage pressure before execution. The successful retry used a 256 MiB memory-backed model cache; all temporary pods were deleted. No credentials or private photographs were needed for this check. Existing application cache/output claims use `proxmox-data-xfs`; container images still occupy node-local storage.
+
+Image publication also exposed two release-workflow errors: digest artifact filenames contained a forbidden colon, and the intentionally skipped version-release ancestor skipped the inference manifest. Digest export/import now round-trips portable filenames, and the manifest explicitly requires successful image builds while allowing the intentionally skipped ancestor.
 
 ## Implementation and release review
 
@@ -162,7 +174,24 @@ The February reader now accepts all ten standard products. Preflight follows the
 
 The obsolete triage-constructor test was removed; existing preparation/runtime tests already cover banking in the library cache and warm producer reuse through the current API. The new comparison regression proves that a different asset in a complete reference inventory still retains its occasion. It also distinguishes missing inventories from proven losses.
 
-Local `make ci` passed: **6,804 tests** for the combined capability branch and **6,773 tests** for the ONNX/service integration, with seven skips each. The documentation builds passed; the staged privacy check precedes publication. Release integration and its final CI remain in progress. Historical merge-message lint now accepts the existing lowercase merge prefix, and the inference health test covers both available and absent optional ONNX Runtime. The new rules path is a measured degraded option; the findings above do not satisfy the design’s equal-quality release bar. UX implementation remains the next phase.
+Local `make ci` passed: **6,819 tests** for the combined capability branch and **6,773 tests** for the ONNX/service integration, with seven skips each. The documentation builds passed; the staged privacy check precedes publication. Release integration and its final CI remain in progress. Historical merge-message lint now accepts the existing lowercase merge prefix, and the inference health test covers both available and absent optional ONNX Runtime. The new rules path is a measured degraded option; the findings above do not satisfy the design’s equal-quality release bar. The caption follow-up is included; the broader UX rework remains the next phase.
+
+## Caption follow-up
+
+The requested caption change uses 35 px text at 1080p (previously 67 px), 65% opacity,
+and a lighter outline. Dates and places are deduplicated independently. Known hidden
+locations reset place changes; missing metadata does not. Original EXIF names and GPS
+remain available to maps.
+
+Familiarity uses a 250 m circle around each asset and attendance spread across years,
+not city names or photo volume. Monthly recurrence over two years or sparser recurrence
+across five years qualifies; an annual holiday burst does not. The full local metadata
+scan covered 111,029 assets, 84,959 with GPS, in 112.5 seconds. That scan is separate
+from the earlier matrix timings. A private, credential-scoped seven-day cache avoids
+repeating it for each film. The configured home circle supplies the home country from
+GPS history; unknown country evidence retains the original label. Tests and the caption
+preview use the Royal Palace in Brussels as their home fixture, never a personal address.
+The ten benchmark films above preserve the pre-change presentation and timing evidence.
 
 ## Questions parked for review
 

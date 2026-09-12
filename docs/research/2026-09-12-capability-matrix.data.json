@@ -1101,12 +1101,16 @@
   "verification": {
     "rules_focused_tests": 17,
     "hdr_focused_tests": 33,
-    "capability_ci_tests_passed": 6804,
+    "capability_ci_tests_passed": 6819,
     "service_ci_tests_passed": 6730,
     "docs_build": "passed",
-    "stage": "combined code verified; GitHub CI and cluster image check pending",
+    "stage": "local CI and published CUDA execution verified; final release integration pending",
     "onnx_integration_tests_passed": 6773,
-    "preflight_mode_tests_passed": 28
+    "preflight_mode_tests_passed": 28,
+    "processing_integration": {
+      "passed": 94,
+      "skipped": 1
+    }
   },
   "selection_before_marqo_onnx": [
     {
@@ -2023,5 +2027,57 @@
     }
   ],
   "post_onnx_selection_identical_for_all_12_routes": true,
-  "verified_zero_llm_runs": 72
+  "verified_zero_llm_runs": 72,
+  "published_cuda_check": {
+    "image": "ghcr.io/sam-dumont/immich-video-memory-generator/inference@sha256:8a954937003cd79d9f5f120e451296881a7416753f477b4b03259ffb4f54f7ee",
+    "node": "rancher-worker-couronne-03",
+    "provider": "CUDAExecutionProvider",
+    "onnxruntime_gpu": "1.26.0",
+    "torch_installed": false,
+    "fixture": "seeded synthetic pixels; models already staged",
+    "requests": [
+      {
+        "producer": "heads",
+        "phase": "cold",
+        "seconds": 0.9610362220555544
+      },
+      {
+        "producer": "heads",
+        "phase": "warm",
+        "seconds": 0.017611801624298096
+      },
+      {
+        "producer": "nsfw_marqo",
+        "phase": "cold",
+        "seconds": 0.298902815207839
+      },
+      {
+        "producer": "nsfw_marqo",
+        "phase": "warm",
+        "seconds": 0.12665333785116673
+      },
+      {
+        "producer": "doc_docling",
+        "phase": "cold",
+        "seconds": 1.03822117485106
+      },
+      {
+        "producer": "doc_docling",
+        "phase": "warm",
+        "seconds": 0.03518017567694187
+      }
+    ],
+    "temporary_pod": "deleted"
+  },
+  "caption_followup": {
+    "font_px_1080p": 35,
+    "opacity": 0.65,
+    "radius_metres": 250,
+    "library_metadata_scan_seconds": 112.5,
+    "scanned_assets": 111029,
+    "gps_assets": 84959,
+    "cache_days": 7,
+    "test_home": "Royal Palace, Brussels",
+    "original_matrix_films_preserved": true
+  }
 }

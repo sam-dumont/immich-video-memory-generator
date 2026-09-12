@@ -183,6 +183,9 @@ class AssemblyClip:
     # Source audio contains music (PANNs 'music'/'singing'); the added
     # soundtrack steps aside over this clip's window (#466).
     has_music: bool = False
+    # None uses the original EXIF place; "" explicitly hides a familiar place.
+    # Kept separate so maps retain their real location names and coordinates.
+    caption_location_name: str | None = None
 
 
 def _get_rotation_filter(rotation: int) -> str:

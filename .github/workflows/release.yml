@@ -591,6 +591,9 @@ jobs:
   inference-manifest:
     name: Create Inference Manifest
     needs: [analyze, inference-build]
+    if: >-
+      !cancelled() && needs.analyze.result == 'success' &&
+      needs.inference-build.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: read

@@ -7,6 +7,33 @@ title: titles
 
 Title screens are the intro cards, month dividers, and ending screens that get inserted into your generated videos. The `titles` command group lets you preview styles and manage fonts.
 
+## Date and place captions
+
+`generate --date-overlay --place-overlay` adds small, translucent context to clips:
+35 px on a 1080p frame, at 65% opacity. Date and place appear independently when
+they change. Missing metadata does not restart a repeated caption.
+
+Home and familiar locations stay unlabelled. Familiarity uses GPS observations
+within **250 m of the asset**, across the accessible library's history. It never
+suppresses an entire city. A place qualifies with either:
+
+- At least 12 distinct visit weeks across six months in each of two years.
+- At least three distinct visit weeks across three months in each of five years.
+
+Repeated photos in one week do not add visits. An annual summer holiday alone
+does not qualify. These are conservative recurrence rules, not proof of residence.
+The configured `trips.homebase_latitude` and `trips.homebase_longitude` also identify
+the home circle. Its GPS history supplies the home country, which is omitted from
+domestic captions; foreign countries remain visible. If the country is unknown
+or conflicting, the original caption remains. Missing GPS cannot identify a
+familiar place by city name alone. Maps retain the original location data.
+
+The first geographic-caption render reads library metadata, without downloading
+photos for this step. A private cache under `cache.directory/familiar-places/`
+separates server and credential scopes and lasts seven days. Delete that directory
+to refresh sooner after metadata edits or removals. Repeat renders read the cache.
+Privacy mode and renders without place captions skip this scan.
+
 ## titles test
 
 Generate a standalone title screen to preview how it looks before committing to a full video generation.
