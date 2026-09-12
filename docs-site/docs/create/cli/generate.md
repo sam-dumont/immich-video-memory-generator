@@ -170,7 +170,7 @@ explicitly; the flags below still win. Five keys in three sections, and none of 
 | `--trip-index` | n/a | int | n/a | Select a specific trip by index (use with `--memory-type trip`) |
 | `--all-trips` | n/a | flag | n/a | Generate a video for every detected trip (use with `--memory-type trip`) |
 | `--near-date` | n/a | string | n/a | Select trip closest to this date (`YYYY-MM-DD`, use with `--memory-type trip`) |
-| `--day` | n/a | datetime | n/a | The catalogued day to generate (`YYYY-MM-DD`, use with `--memory-type special_day`) |
+| `--day` | n/a | datetime | today | The day the memory is about (`YYYY-MM-DD`). With `--memory-type special_day`, a catalogued day; with `--memory-type on_this_day`, the anniversary to look back from |
 
 ## Examples
 
@@ -249,6 +249,14 @@ immich-memories generate --memory-type on_this_day
 ```
 
 Or limit to the last 3 years: `--years-back 3`.
+
+Without `--day` this covers the day it runs on, which means it asks a different
+question every day and no two runs can be compared. `--day` names the anniversary
+instead, and the cut becomes repeatable:
+
+```bash
+immich-memories generate --memory-type on_this_day --day 2026-08-31 --years-back 20
+```
 
 ### The same holiday, across the years
 

@@ -1147,3 +1147,58 @@ class TestBirthdayFlagNamesTheWindowItRenders:
         assert result.exit_code == 1
         assert "People" in result.output
         assert "birth" in result.output
+
+
+class TestChosenDayNamesTheAnniversary:
+    """`on_this_day` is scoped to the clock unless --day says otherwise."""
+
+    def _windows_for(self, tmp_path: Path, *args: str) -> list:
+        from click.testing import CliRunner
+
+        from immich_memories.cli import main
+
+        config = Config(immich={"url": "https://immich.example.com", "api_key": "k"})
+        config.output.directory = str(tmp_path)
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+
+        # WHY: config on disk and the Immich HTTP client are external.
+        with (
+            patch("immich_memories.cli.get_config", return_value=config),
+            patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
+            # WHY: asset discovery needs a live Immich library; the windows it is
+            # asked for are the whole point of the test.
+            patch(
+                "immich_memories.cli.generate.fetch_videos",
+                return_value=[make_asset("a1")],
+            ) as fetch,
+            # WHY: rendering a real video is minutes of FFmpeg.
+            patch(
+                "immich_memories.cli.generate.run_pipeline_and_generate",
+                return_value=(tmp_path / "out.mp4", False, None),
+            ),
+        ):
+            result = CliRunner().invoke(
+                main, ["generate", "--memory-type", "on_this_day", "--no-music", *args]
+            )
+
+        assert result.exit_code == 0, result.output
+        return fetch.call_args.kwargs["date_ranges"]
+
+    def test_the_named_day_is_the_one_looked_back_from(self, tmp_path: Path) -> None:
+        windows = self._windows_for(tmp_path, "--day", "2026-02-03", "--years-back", "2")
+
+        assert [(w.start.year, w.start.month, w.start.day) for w in windows] == [
+            (2025, 2, 2),
+            (2024, 2, 2),
+        ]
+        assert {(w.end.month, w.end.day) for w in windows} == {(2, 4)}
+
+    def test_without_the_flag_the_run_still_covers_the_day_it_fires(self, tmp_path: Path) -> None:
+        unpinned = self._windows_for(tmp_path, "--years-back", "2")
+        pinned_to_today = self._windows_for(
+            tmp_path, "--day", date.today().isoformat(), "--years-back", "2"
+        )
+
+        assert [(w.start, w.end) for w in unpinned] == [(w.start, w.end) for w in pinned_to_today]

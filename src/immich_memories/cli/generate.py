@@ -46,7 +46,7 @@ from immich_memories.cli.generate_resolution import (
 from immich_memories.filename_builder import build_memory_output_path, normalize_output_path
 from immich_memories.memory_types.date_builders import BIRTHDAY_HISTORY_FROM, birthday_anchor
 from immich_memories.processing.encoding_plan import resolve_output_selection
-from immich_memories.timeperiod import DateRange, parse_date
+from immich_memories.timeperiod import DateRange
 
 
 def register_generate_commands(main: click.Group) -> None:
@@ -115,7 +115,6 @@ def register_generate_commands(main: click.Group) -> None:
         memory_key: str | None,
         memory_category: str | None,
         automation_attempt_id: str | None,
-        automation_target_date: str | None,
         quiet: bool,
     ) -> None:
         """Generate a video compilation.
@@ -167,22 +166,6 @@ def register_generate_commands(main: click.Group) -> None:
 
         if automation_attempt_id is not None and source != "auto":
             raise click.UsageError("--automation-attempt-id requires --source=auto")
-
-        exact_on_this_day: date | None = None
-        if automation_target_date is not None:
-            trusted_on_this_day = (
-                source == "auto"
-                and bool(memory_key)
-                and memory_category == memory_type == "on_this_day"
-            )
-            if not trusted_on_this_day:
-                raise click.UsageError(
-                    "--automation-target-date requires complete on_this_day automation identity"
-                )
-            try:
-                exact_on_this_day = parse_date(automation_target_date)
-            except ValueError as exc:
-                raise click.UsageError(str(exc)) from exc
 
         _validate_album_scope(
             from_album=from_album,
@@ -248,6 +231,9 @@ def register_generate_commands(main: click.Group) -> None:
         title_override, subtitle_override = name_from_catalogue(
             special_day, title_override, subtitle_override
         )
+        # An on_this_day run is otherwise scoped to whatever today is, so it asks a
+        # different question every day and can never be replayed or compared.
+        exact_on_this_day = day if memory_type == "on_this_day" else None
 
         date_range, date_ranges = _resolve_generation_scope(
             from_album=from_album,

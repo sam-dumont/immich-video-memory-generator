@@ -71,7 +71,8 @@ There is no generic "Memories from 12 June 2016" card. A day the model could not
 a day that should not be rendered, so four cases error instead:
 
 - `--memory-type special_day` with no `--day`
-- `--day` with any other memory type
+- `--day` with a memory type that has no day: only `special_day` and
+  [`on_this_day`](./monthly-person-season#pinning-the-day) take one
 - a `--day` the catalogue has never heard of: the error names the file it read
 - a catalogued entry with neither a title nor a description of what the day was
 
