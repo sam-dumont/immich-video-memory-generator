@@ -151,6 +151,7 @@ Not config fields, but read by the app:
 |----------|--------|
 | `IMMICH_MEMORIES_STORAGE_SECRET` | Secret for the web UI session store. Priority: this var > `~/.immich-memories/.storage_secret` file > generated on first start. Set it in Docker so sessions survive container recreation. |
 | `IMMICH_MEMORIES_LOG_FORMAT` | `text` (default) or `json`. |
+| `IMMICH_MEMORIES_LOG_LEVEL` | `INFO` (default), `DEBUG`, `WARNING` or `ERROR`. The CLI flags `-v` and `--log-level` win over it for one run. |
 | `IMMICH_MEMORIES_LOG_FILE` | When set, logs are written to this file in addition to stdout. |
 | `IMMICH_FORCE_CPU` | `1`/`true`/`yes` forces the Taichi title renderer onto CPU even when a GPU is available. |
 | `ACESTEP_CHECKPOINTS_DIR` | ACE-Step `lib` mode: where model checkpoints are downloaded (default `~/.cache/ace-step/checkpoints`). |

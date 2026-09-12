@@ -56,15 +56,35 @@ def _warn_about_unauthenticated_external_bind(config: Config, host: str) -> None
     "fast encoder preset, static title backgrounds). It changes nothing about what the editor "
     "reads. Anything you set explicitly wins",
 )
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    help="Log at DEBUG level. Shorthand for --log-level DEBUG",
+)
+@click.option(
+    "--log-level",
+    type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False),
+    default=None,
+    help="Log level for this run (default: IMMICH_MEMORIES_LOG_LEVEL or INFO)",
+)
 @click.pass_context
-def main(ctx: click.Context, config: str | None, preset: str | None) -> None:
+def main(
+    ctx: click.Context,
+    config: str | None,
+    preset: str | None,
+    verbose: bool,
+    log_level: str | None,
+) -> None:
     """Immich Memories - Create video compilations from your Immich library."""
     ctx.ensure_object(dict)
 
     # Configure logging early
     from immich_memories.logging_config import configure_logging
 
-    configure_logging()
+    level = "DEBUG" if verbose else (log_level.upper() if log_level else None)
+    configure_logging(level=level)
+    ctx.obj["log_level"] = level
 
     # Initialize config directory
     init_config_dir()
@@ -119,7 +139,7 @@ def ui(ctx: click.Context, port: int | None, host: str | None, reload: bool) -> 
     from immich_memories.ui.app import main as ui_main  # noqa: F401
 
     try:
-        ui_main(port=port, host=host, reload=reload)
+        ui_main(port=port, host=host, reload=reload, log_level=ctx.obj.get("log_level"))
     except KeyboardInterrupt:
         print_info("Shutting down...")
 

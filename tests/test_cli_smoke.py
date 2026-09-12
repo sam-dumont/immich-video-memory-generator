@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from datetime import date
 from pathlib import Path
 from types import ModuleType
 from unittest.mock import MagicMock, patch
 
+import pytest
 from click.testing import CliRunner, Result
 
 import immich_memories
@@ -36,6 +38,47 @@ def _invoke(args: list[str], config: Config | None = None) -> Result:
         patch("immich_memories.cli.get_config", return_value=config),
     ):
         return runner.invoke(main, args, catch_exceptions=False)
+
+
+class TestVerbosity:
+    """The root -v / --log-level options set the logging level for every subcommand."""
+
+    @pytest.fixture(autouse=True)
+    def _restore_root_logger(self):
+        root = logging.getLogger()
+        level, handlers = root.level, root.handlers.copy()
+        yield
+        root.setLevel(level)
+        for handler in root.handlers.copy():
+            root.removeHandler(handler)
+        for handler in handlers:
+            root.addHandler(handler)
+
+    def test_default_level_is_info(self):
+        _invoke(["ui", "--help"])
+        assert logging.getLogger().level == logging.INFO
+
+    def test_verbose_flag_sets_debug(self):
+        _invoke(["-v", "ui", "--help"])
+        assert logging.getLogger().level == logging.DEBUG
+
+    def test_log_level_option_sets_warning(self):
+        _invoke(["--log-level", "WARNING", "ui", "--help"])
+        assert logging.getLogger().level == logging.WARNING
+
+    def test_verbose_reaches_the_ui_process(self):
+        fake_app = ModuleType("immich_memories.ui.app")
+        fake_main = MagicMock()
+        fake_app.main = fake_main  # type: ignore[attr-defined]
+        # WHY: the real ui.app.main starts a NiceGUI server; the flag's job ends at this call.
+        with patch.dict(sys.modules, {"immich_memories.ui.app": fake_app}):
+            _invoke(["-v", "ui"], config=Config(server={"host": "127.0.0.1"}))
+        assert fake_main.call_args.kwargs["log_level"] == "DEBUG"
+
+    def test_verbose_is_listed_in_root_help(self):
+        result = _invoke(["--help"])
+        assert "--verbose" in result.output
+        assert "--log-level" in result.output
 
 
 def _invoke_planned_generation(args: list[str], config: Config) -> Result:
@@ -162,7 +205,7 @@ class TestUIExposureWarning:
         assert result.exit_code == 0
         assert "Warning: authentication is disabled" in result.stderr
         assert "single-user, single-replica" in result.stderr
-        fake_main.assert_called_once_with(port=8080, host="0.0.0.0", reload=False)  # noqa: S104
+        fake_main.assert_called_once_with(port=8080, host="0.0.0.0", reload=False, log_level=None)  # noqa: S104
 
     def test_ui_does_not_warn_for_loopback_bind(self) -> None:
         config = Config(server={"host": "127.0.0.1"})
