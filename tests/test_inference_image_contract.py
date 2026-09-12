@@ -205,3 +205,47 @@ def test_inference_only_analysis_cannot_create_a_release(tmp_path, monkeypatch):
     guard = workflow["jobs"]["inference-build"]["if"]
     assert "!cancelled()" in guard
     assert "needs.release.result == 'success'" in guard
+
+
+def test_inference_digest_artifacts_round_trip_to_separate_manifests(tmp_path, monkeypatch):
+    import os
+    import subprocess
+
+    workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/release.yml").read_text())
+    export = next(
+        s for s in workflow["jobs"]["inference-build"]["steps"] if s.get("name") == "Export digest"
+    )
+    digests = tmp_path / "digests"
+    expected = {"cpu": [], "cuda": []}
+    image = "ghcr.io/example/inference"
+    for index, device in enumerate(("cpu", "cpu", "cuda")):
+        digest = "sha256:" + str(index) * 64
+        directory = digests / f"inference-digests-{device}-{index}"
+        script = export["run"].replace("/tmp/digests", str(directory))
+        script = script.replace("${{ steps.build.outputs.digest }}", digest)
+        subprocess.run(["bash", "-e", "-c", script], check=True, capture_output=True)
+        names = [p.name for p in directory.iterdir()]
+        assert names == [digest.removeprefix("sha256:")], "Artifact filenames must be portable"
+        expected[device].append(f"{image}@{digest}")
+
+    calls = tmp_path / "docker-calls"
+    docker = tmp_path / "docker"
+    docker.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$DOCKER_CALLS"\n')
+    docker.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("DOCKER_CALLS", str(calls))
+    monkeypatch.setenv("IMAGE", image)
+    monkeypatch.setenv("INFERENCE_ONLY", "true")
+    monkeypatch.setenv("GITHUB_SHA", "abcdef0123456789")
+    manifest = next(
+        s
+        for s in workflow["jobs"]["inference-manifest"]["steps"]
+        if s.get("name") == "Create and push manifests"
+    )
+    script = manifest["run"].replace("/tmp/digests", str(digests))
+    subprocess.run(["bash", "-e", "-c", script], check=True, capture_output=True)
+    cpu, cuda = [line.split() for line in calls.read_text().splitlines()]
+    assert cpu[:5] == ["buildx", "imagetools", "create", "-t", f"{image}:sha-abcdef012345"]
+    assert cuda[:5] == ["buildx", "imagetools", "create", "-t", f"{image}:sha-abcdef012345-cuda"]
+    assert sorted(cpu[5:]) == expected["cpu"]
+    assert cuda[5:] == expected["cuda"]

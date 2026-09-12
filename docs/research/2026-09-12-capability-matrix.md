@@ -78,6 +78,35 @@ The season classifier selection shares **zero of the 33 accepted model assets**.
 
 Some rules selections include assets the reference model marked `do_not_show`: **9 occurrences across the ten metadata products**, versus **6 with classifiers** (controls counted separately below). This is a concrete audience-review flag, not proof those pictures are unsafe: the old judgement can be wrong and the scopes need checking. The private comparison records the exact assets and reference occasions for review. The longer February control adds four such flags with metadata and three with classifiers. The June control adds none. The design’s zero-audience-regression bar has therefore not been established.
 
+## Visual review and product positioning
+
+All 36 current source sheets and all ten finished-film sheets were inspected and shown in
+the private review conversation. These are qualitative judgements about this library, not
+blind ratings or a claim that the historical model reference is always better.
+
+| Product | What works without inference | What the sheets actually lose |
+| --- | --- | --- |
+| Person | Visits, feeding, walks and the child growing through the year remain recognisable. | Some tighter portraits and interactions become weaker alternatives from the same occasion. |
+| Multiple people | The relationship itself supplies a strong theme; most major gatherings survive. | Some extra scenes weaken subject focus; semantic interpretation and Live Photo motion remain absent. |
+| Album | Owner curation supplies intent. The brewing album retains a readable process from grain to fermentation. | Two near-duplicate process frames remain; the model reference is much shorter, not clearly more informative. |
+| Special day | The festival still has performers, the crowd and personal selfies across the day. | Classifiers reduce the cut from 54 to 40 seconds and lose both-person selfies and the final performance. |
+| Trip | Metadata keeps the travellers and an intelligible journey; classifiers restore caves, architecture and landscapes. | Metadata overweights repeated portraits; classifiers shift too far toward scenery in places. The model mixes people and setting more evenly. |
+| Monthly | The birthday, hospital stay and first days at home remain visible. | The short cut opens with incidental objects and ends on the 18th; the model reference reaches the 26th. |
+| June control | Individual family and baby photos are attractive. | Both rules cuts spend all 15 slots by June 8, omitting the later cycling and month-end gathering visible in the reference. This is a temporal allocation problem, not an inherent need for an LLM. |
+| Longer February | More room restores coverage through month-end and a recognisable birth-and-homecoming sequence. | Incidental objects remain. The classifier sheet includes a medical-chart photo and a dirty nappy; detection alone does not supply audience judgement. |
+| Year | Metadata spans the year and retains several outings and family events. | It also selects a photographed identity card. Classifiers exclude that frame but add household and administrative clutter. |
+| Season | The shorter metadata cut retains people, outings, a concert and a birthday. | The full-length classifier cut is dominated by household objects, garden progress and car pictures. Longer is worse here. |
+| Holiday | Family, play and familiar holiday activities remain. | Several reference outings and interactions disappear; an empty-room video preview survives. The five-year title range obscures the recurring-holiday premise. |
+| On this day | Both rules modes retain evidence of all six known reference occasions, sometimes through alternative photos. | Classifiers add stairs, a meter, a tool and food. These fill time without strengthening the memory. |
+
+The useful product distinction is **prefiltered memories versus broad recaps**. Person,
+album and event requests already constrain meaning; trips constrain both place and time.
+Rules are a credible fast option there. Broad month/year/season recaps need the intelligence
+layer to triage a mixed camera roll and make sense of it. This matrix does not support
+marketing classifiers as a consistent editorial upgrade. Nor does it establish unattended
+sharing for either reduced mode. Temporal coverage, favourite retention, sensitive records
+and the balance of people versus scenery are recorded decisions for a later editorial pass.
+
 ## Actual films
 **All ten 1080p H.265 films with bundled music passed full video and audio decoding.**
 Each film uses exactly the ordered selection in its metadata-only review sheet. Every saved
