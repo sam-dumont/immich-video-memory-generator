@@ -30,8 +30,20 @@ pip install "immich-memories[editorial]"
 uv sync --extra editorial
 ```
 
-The `all` and `all-mac` extras include `editorial`. This installs ONNX Runtime, Torch, timm and
-Hugging Face Hub. Model weights and the caption server need separate setup.
+The `all` and `all-mac` extras include `editorial`. This installs ONNX Runtime and Hugging Face
+Hub, and nothing else: every model seat here is an ONNX graph, so the extra is torch-free and a
+CPU install resolves no `nvidia-*` wheel at all. Model weights and the caption server need
+separate setup.
+
+On a CUDA host, install `editorial-cuda` **instead of** `editorial`. It is the same two seats
+against `onnxruntime-gpu`, which is the only build that carries the CUDA execution provider:
+
+```bash
+pip install "immich-memories[editorial-cuda]"
+```
+
+Never install both. `onnxruntime-gpu` already contains the CPU provider, and the two
+distributions own the same import name, so `all` and `all-mac` deliberately keep the CPU one.
 
 ## Configuration
 
@@ -51,6 +63,8 @@ advanced:
       head_bundle: ""        # packaged public six-head bundle
       detector_python: ""    # current Python; may point to a separate detector environment
       detector_cache_dir: "" # normal Hugging Face Hub cache
+      marqo_onnx: ~/.immich-memories/models/detectors/nsfw-marqo-384.onnx
+      marqo_onnx_url: https://github.com/sam-dumont/immich-video-memory-generator/releases/download/models-v1/nsfw-marqo-384-924658f1.onnx
       allow_model_downloads: false
 ```
 
@@ -85,26 +99,44 @@ installation without this exact export still needs that artifact before preparin
 
 ## Detectors
 
-Two CPU detectors produce `det-v1` facts. The worker reads previews locally and commits each
-completed batch. It does not upload images to Hugging Face.
+Two CPU detectors, both ONNX graphs on ONNX Runtime's CPU provider. The worker reads previews
+locally and commits each completed batch. It does not upload images to Hugging Face.
 
-| Model repository | Pinned revision | Required files |
-| --- | --- | --- |
-| `Marqo/nsfw-image-detection-384` | `0c26ec22111b83f106d72a55f611ec35962bcb65` | `config.json`, `model.safetensors` |
-| `docling-project/DocumentFigureClassifier-v2.0` | `2a12e02668b98ca40216eab41cdf19530577cba4` | `model.onnx` |
+| Producer | Artifact | How it is pinned | Facts |
+| --- | --- | --- | --- |
+| `nsfw_marqo` | a 22.5 MB single-file ONNX export of `Marqo/nsfw-image-detection-384@0c26ec22111b83f106d72a55f611ec35962bcb65` | `marqo_onnx`, SHA-256 `924658f1ac638d96e9126ecb29de047dc8d31c9c9defcab77a26a5c96ed69e11`, checked on load | `det-v2` |
+| `doc_docling` | `model.onnx` from `docling-project/DocumentFigureClassifier-v2.0` | revision `2a12e02668b98ca40216eab41cdf19530577cba4` in the Hugging Face cache | `det-v1` |
 
-By default these files must already be in the Hugging Face Hub cache. `immich-memories models
-fetch` puts them there: it warms every file in the table at its pinned revision, into
-`detector_cache_dir` when that is set, so `allow_model_downloads` can stay `false` and mean what
-it says. `--no-detectors` fetches only the encoder. Setting `allow_model_downloads: true` instead
-allows the worker itself to acquire the pinned files when needed. Neither starts a caption
-server.
+`immich-memories models fetch` supplies both in one command: it downloads `marqo_onnx_url` to a
+temporary file, hashes it and only then renames it into `marqo_onnx`, and it warms the Docling
+snapshot at its pinned revision into `detector_cache_dir` when that is set — so
+`allow_model_downloads` can stay `false` and mean what it says. `--no-detectors` fetches only the
+encoder. Setting `allow_model_downloads: true` instead lets the worker acquire the Docling
+snapshot itself; the sensitive-content export is never fetched from inside a run. Neither starts
+a caption server.
 
-A separate `detector_python` needs `timm`, `torch`, `huggingface-hub`, `onnxruntime`, `numpy`
-and `Pillow`. The worker ships with the main package and runs without importing the app's UI
-or configuration dependencies. The versions `uv.lock` currently pins are timm 1.0.29, Torch
-2.14.0, Hugging Face Hub 1.30.0 and ONNX Runtime 1.28.0; read the lock rather than this sentence
-if they matter to you.
+`immich-memories preflight` checks both digest-pinned exports, so a missing model is named before
+a cut starts rather than after preparation has read every picture. A producer that cannot load
+says which model is missing and what would supply it, at load:
+
+```text
+nsfw_marqo has no model: Marqo/nsfw-image-detection-384@0c26ec22/onnx-384 is not at
+~/.immich-memories/models/detectors/nsfw-marqo-384.onnx. Run `immich-memories models fetch`
+to download it, or point advanced.editorial.preparation.marqo_onnx at your copy of the export.
+```
+
+**Why `nsfw_marqo` produces `det-v2`.** It used to be a timm vision transformer under torch. A
+different artifact is a different producer, so the ONNX export carries its own fact version and
+re-derives. It is not a speed change: measured on a Celeron J4125 the ONNX graph runs at 0.469 s
+a picture against torch's 0.440 s. What it removes is 920 MB of dependencies from a CPU image,
+11 s of interpreter start-up before the first detector picture, and the class of failure where
+`torch` and `torchvision` resolve from different indexes and the detector dies on import.
+
+A separate `detector_python` needs `onnxruntime`, `huggingface-hub`, `numpy` and `Pillow` — and
+no part of the torch family. The worker ships with the main package and runs without importing
+the app's UI or configuration dependencies. The versions `uv.lock` currently pins are Hugging
+Face Hub 1.30.0 and ONNX Runtime 1.28.0; read the lock rather than this sentence if they matter
+to you.
 
 ## Compact captions
 

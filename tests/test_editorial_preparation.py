@@ -25,7 +25,11 @@ from immich_memories.analysis.editorial_preparation import (
     prepare_editorial_annotations,
 )
 from immich_memories.analysis.editorial_preparation_captions import _remember_caption
-from immich_memories.analysis.editorial_preparation_detectors import decide, docling_pixels
+from immich_memories.analysis.editorial_preparation_detectors import (
+    DETECTOR_VERSIONS,
+    decide,
+    docling_pixels,
+)
 from immich_memories.analysis.editorial_preparation_pixels import pixel_facts
 from immich_memories.api.models import Asset, Person
 from immich_memories.cache.thumbnail_cache import ThumbnailCache
@@ -76,7 +80,7 @@ def successful_ports(calls):
                 for asset_id in ids:
                     connection.execute(
                         "INSERT OR REPLACE INTO head_facts VALUES (?,?,?,?,?,?,?)",
-                        (asset_id, head, "det-v1", "no", 0.1, "test", "now"),
+                        (asset_id, head, DETECTOR_VERSIONS[head], "no", 0.1, "test", "now"),
                     )
         return {}
 

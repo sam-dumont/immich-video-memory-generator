@@ -18,7 +18,7 @@ def _default_head_versions() -> dict[str, str]:
         "children": "public-v1",
         "doc_docling": "det-v1",
         "location": "public-v1",
-        "nsfw_marqo": "det-v1",
+        "nsfw_marqo": "det-v2",
         "people": "public-v1",
         "swim": "oi-v3",
         "venue": "oi-v3",
@@ -75,6 +75,8 @@ class EditorialConfig(BaseModel):
             not name.strip() or not version.strip() for name, version in value.items()
         ):
             raise ValueError("editorial head versions must be nonblank")
+        if value.get("nsfw_marqo") == "det-v1":
+            value = value | {"nsfw_marqo": "det-v2"}
         return value
 
     @property

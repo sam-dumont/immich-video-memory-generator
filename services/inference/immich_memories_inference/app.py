@@ -57,11 +57,13 @@ def default_loaders(settings: InferenceSettings) -> dict[str, Callable[[], Produ
             NSFW_MARQO,
             allow_downloads=settings.allow_model_downloads,
             cache_dir=settings.detector_cache,
+            marqo_onnx=settings.marqo_onnx_path,
         ),
         DOC_DOCLING: detector_loader(
             DOC_DOCLING,
             allow_downloads=settings.allow_model_downloads,
             cache_dir=settings.detector_cache,
+            marqo_onnx=settings.marqo_onnx_path,
         ),
     }
 

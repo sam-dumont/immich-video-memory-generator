@@ -2,7 +2,7 @@
 
 Both variants come out of one Dockerfile, and the traps they have to avoid are
 build-time ones a unit test is the only cheap guard against: a CUDA wheel in the
-cpu image, a torchvision from the wrong index, and a fatbin without cubins for
+cpu image, overlapping CPU/GPU runtime packages, and a fatbin without cubins for
 the cards people actually own.
 """
 
@@ -62,33 +62,17 @@ def test_each_device_selects_a_builder_and_a_runtime_stage(device: str) -> None:
     assert "FROM prod-${DEVICE} AS prod" in lines
 
 
-def test_the_cpu_variant_takes_torch_and_torchvision_from_the_cpu_index() -> None:
-    # Mixed indexes leave torchvision's operators unregistered and nsfw_marqo
-    # dies on import (#805, #806): both wheels, one index.
-    index = next(line for line in stage("builder-cpu") if "TORCH_INDEX" in line)
-    fetch = next(line for line in stage("builder") if "pip wheel" in line)
-    install = next(
-        line for line in stage("builder") if "pip install" in line and "editorial" in line
-    )
-
-    assert "download.pytorch.org/whl/cpu" in index
-    assert '--index-url "${TORCH_INDEX}"' in fetch
-    assert "torch torchvision" in fetch
-    # Fetched without resolution, then resolved locally, or the index's missing
-    # pins make the build unsolvable.
-    assert "--no-deps" in fetch
-    assert "--find-links=/torch-wheels" in install
-
-
-def test_the_cpu_variant_never_swaps_in_a_gpu_runtime() -> None:
+def test_each_variant_installs_only_its_device_extra() -> None:
     cpu = " ".join(stage("builder-cpu"))
-
-    assert 'ORT_GPU_PACKAGE=""' in cpu
-    assert "onnxruntime-gpu" not in cpu
-
-
-def test_the_cuda_variant_gets_an_onnx_runtime_with_a_cuda_provider() -> None:
-    assert "onnxruntime-gpu" in " ".join(stage("builder-cuda"))
+    cuda = " ".join(stage("builder-cuda"))
+    build = " ".join(stage("builder"))
+    assert "INFERENCE_EXTRA=editorial" in cpu
+    assert "INFERENCE_EXTRA=editorial-cuda" in cuda
+    assert '".[${INFERENCE_EXTRA}]"' in build
+    assert "--constraint /constraints.txt" in build
+    assert "pip check" in build
+    assert "torch" not in build
+    assert "pip uninstall" not in build
 
 
 def test_the_cuda_variant_is_built_on_a_cuda_runtime_with_cudnn() -> None:
@@ -195,3 +179,29 @@ def test_the_quickstart_does_not_start_a_service_nothing_uses_yet() -> None:
     # The app has no facts_base_url switch until W8, and the models are a
     # ~500 MB fetch: `docker compose up` must stay one container.
     assert compose_service()["profiles"] == ["inference"]
+
+
+def test_inference_only_analysis_cannot_create_a_release(tmp_path, monkeypatch):
+    import os
+    import subprocess
+
+    workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/release.yml").read_text())
+    step = next(s for s in workflow["jobs"]["analyze"]["steps"] if s.get("id") == "analyze")
+    fake_git = tmp_path / "git"
+    fake_git.write_text("#!/bin/sh\nexit 0\n")
+    fake_git.chmod(0o755)
+    output = tmp_path / "outputs"
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("INFERENCE_ONLY", "true")
+    monkeypatch.setenv("FORCE_VERSION", "major")
+    monkeypatch.setenv("GITHUB_SHA", "abcdef0123456789")
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    subprocess.run(["bash", "-e", "-c", step["run"]], cwd=tmp_path, check=True, capture_output=True)
+    assert output.read_text().splitlines() == [
+        "should_release=false",
+        "next_version=0+gabcdef0123456789",
+    ]
+    assert step["env"]["INFERENCE_ONLY"] == "${{ inputs.inference_only }}"
+    guard = workflow["jobs"]["inference-build"]["if"]
+    assert "!cancelled()" in guard
+    assert "needs.release.result == 'success'" in guard

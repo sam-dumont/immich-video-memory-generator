@@ -85,16 +85,30 @@ gpu = [
     "taichi>=1.7.0; sys_platform != 'linux' or (platform_machine != 'aarch64' and platform_machine != 'arm64')",
     "freetype-py>=2.4",  # SDF font rendering
 ]
-# All cross-platform optional features
 # Required when preparing missing editorial public heads and detector facts.
 # Weights and the compact-caption endpoint are separate setup dependencies.
-# `timm` requires `torchvision`, so it is not named here. What matters is not
-# that it is present but that it comes from the same index as `torch` -- see
-# docker/Dockerfile, where the two are built together from the CPU index.
+#
+# Every seat here is an ONNX graph on ONNX Runtime, so this extra is torch-free
+# and resolves with no `nvidia-*` wheel at all. That is what the ONNX detector
+# bought: the sensitive-content seat used to be a timm/torch model, which cost
+# 920 MB in a CPU image, 11 s of interpreter start-up, and the whole class of
+# bug where `torch` and `torchvision` resolve from different indexes (#805,
+# #806).
 editorial = [
     "onnxruntime>=1.28",
-    "torch>=2.0",
-    "timm>=1.0.29",
+    "huggingface-hub>=1.29",
+]
+# The same seats on a CUDA host. Split by device rather than by feature, the way
+# immich-machine-learning splits its own image: only this variant pulls the CUDA
+# wheels, and the CPU one must never contain them.
+#
+# It REPLACES `editorial`, never joins it: `onnxruntime-gpu` ships the CPU
+# provider too, and installing both distributions puts two copies of the same
+# import name in one environment. `all` and `all-mac` therefore keep the CPU
+# variant, and the marker keeps a Linux-only wheel out of a macOS resolution.
+editorial-cuda = [
+    # 1.27+ requires CUDA 13; the supported image uses CUDA 12 / cuDNN 9.
+    "onnxruntime-gpu>=1.26,<1.27; sys_platform == 'linux'",
     "huggingface-hub>=1.29",
 ]
 
@@ -497,10 +511,8 @@ DEP002 = [
     "pyyaml",                                           # imported as yaml
     "pillow",                                           # imported as PIL
     "watchdog",                                         # runtime scheduler
-    "timm",                                             # editorial extra: imported by the detector subprocess interpreter, not by the package
     "pyobjc-core", "pyobjc-framework-Vision",           # macOS-only, runtime
     "pyobjc-framework-Quartz", "pyobjc-framework-Metal", # macOS GPU
-    "torch",                                            # editorial extra: the detector subprocess interpreter
     "freetype-py",                                      # imported as freetype
     "pytest", "pytest-cov", "pytest-asyncio",           # dev tools (CLI usage)
     "pytest-benchmark", "pytest-xdist", "pytest-playwright", # dev tools
@@ -515,11 +527,15 @@ DEP002 = [
     "authlib",                                          # auth: used in upcoming OIDC client task
     "oidc-provider-mock",                               # auth: used in upcoming OIDC tests task
     "demucs",                                           # optional: local stem separation
+    "onnxruntime-gpu",                                  # editorial-cuda: the CUDA variant of the ONNX seats
 ]
 DEP001 = [
     "cv2", "Quartz", "Vision", "Metal", "CoreImage",   # Platform/alt-name imports
     "yaml", "acestep", "soundfile", "scipy",            # Optional deps imported conditionally
-    "torchaudio", "demucs", "torchcodec", "loguru",      # Optional: local audio pipeline
+    # Optional: local audio pipeline. `torch` arrives with `demucs` and with the
+    # ACE-Step stack installed out of band; nothing in this project declares it
+    # any more, now that both detector seats are ONNX graphs.
+    "torch", "torchaudio", "demucs", "torchcodec", "loguru",
     "mlx",                                              # Optional: Apple Silicon ACE-Step path
     "transformers", "huggingface_hub",                  # Optional: smart-turn, off by default
     "PIL", "av", "freetype", "streamlit",               # Alt package names (Pillow→PIL, pyav→av)

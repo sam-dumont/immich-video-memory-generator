@@ -492,8 +492,12 @@ class _EvidencePreparation:
             missing = ", ".join(
                 f"{key}: {len(ids)}" for key, ids in result.missing_by_producer.items()
             )
+            # A count of missing facts is a symptom. When a producer refused --
+            # no model, no endpoint -- its own sentence says why, so it goes in
+            # the message rather than only into preparation.private.json.
             raise EditorialInputsRequired(
-                self.readings.store_path, detail=missing or "; ".join(result.failures.values())
+                self.readings.store_path,
+                detail="; ".join(filter(None, (missing, *result.producer_failures))),
             )
         if not prepared.candidate_ids:
             return {}

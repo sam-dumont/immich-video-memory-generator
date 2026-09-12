@@ -29,6 +29,7 @@ class InferenceSettings(BaseSettings):
     port: int = Field(default=8092, ge=1, le=65535)
     cache_dir: Path = Path("/cache")
     encoder: Path | None = None
+    marqo_onnx: Path | None = None
     bundle: Path | None = None
     provider: Literal["auto", "cpu", "cuda", "coreml"] = "auto"
     request_threads: int = Field(default=4, ge=1, le=64)
@@ -43,6 +44,10 @@ class InferenceSettings(BaseSettings):
     @property
     def encoder_path(self) -> Path:
         return (self.encoder or self.cache_dir / "dinov2-small.onnx").expanduser()
+
+    @property
+    def marqo_onnx_path(self) -> Path:
+        return (self.marqo_onnx or self.cache_dir / "nsfw-marqo-384.onnx").expanduser()
 
     @property
     def bundle_path(self) -> Path:

@@ -26,13 +26,7 @@ ARG CUDA_BASE=nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04@sha256:ac55d124da4882
 # ─── builders ────────────────────────────────────────────────────────────────
 FROM ${PYTHON_BASE} AS builder-cpu
 
-# WHY the CPU wheel index: torch pins its CUDA dependencies on `sys_platform ==
-# 'linux'` with no architecture guard, so PyPI hands every Linux box 2.5 GB of
-# `nvidia-*` wheels. Nothing in this variant can use them. torchvision comes
-# from the same index and must: mixed indexes leave its C++ operators
-# unregistered and `nsfw_marqo` dies on import (#805, #806).
-ENV TORCH_INDEX=https://download.pytorch.org/whl/cpu
-ENV ORT_GPU_PACKAGE=""
+ENV INFERENCE_EXTRA=editorial
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
@@ -47,11 +41,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-dev \
     python3-venv \
     && rm -rf /var/lib/apt/lists/*
-ENV TORCH_INDEX=https://pypi.org/simple
-# The `editorial` extra declares `onnxruntime`, which has no CUDA provider.
-# Until that extra is split by device this stage swaps the wheel; the version
-# floor tracks pyproject's.
-ENV ORT_GPU_PACKAGE="onnxruntime-gpu>=1.28"
+# The device extra locks a CUDA 12 / cuDNN 9-compatible runtime.
+ENV INFERENCE_EXTRA=editorial-cuda
 # Every CUDA kernel compiled in this image is built for these architectures.
 # Measured cause: the stock llama.cpp CUDA image carries cubins for sm_86,
 # sm_89 and sm_120a only and ships everything else as PTX, so a Turing card
@@ -97,22 +88,11 @@ RUN python3 -m venv /opt/uv && \
 RUN python3 -m venv /opt/venv
 ENV PATH=/opt/venv/bin:$PATH
 
-# WHY --no-deps into a wheel directory rather than a plain install from the
-# index: the CPU index serves torch and little else, so resolving the whole
-# dependency set against it fails on the first pin it does not carry
-# (`setuptools==80.10.2`, measured). The wheels are fetched without resolution
-# and the install below finds them locally — a `+cpu` local version sorts above
-# the plain PyPI one, so it is what pip picks.
-RUN mkdir -p /torch-wheels && \
-    pip wheel --no-cache-dir --no-deps --wheel-dir=/torch-wheels \
-        --index-url "${TORCH_INDEX}" --constraint /constraints.txt torch torchvision
-
-RUN pip install --no-cache-dir --find-links=/torch-wheels \
-        --constraint /constraints.txt ".[editorial]" && \
-    if [ -n "${ORT_GPU_PACKAGE}" ]; then \
-        pip uninstall -y onnxruntime && \
-        pip install --no-cache-dir "${ORT_GPU_PACKAGE}"; \
-    fi
+# Both detector seats are ONNX. Install exactly one runtime distribution through
+# the selected extra, constrained by the lock; never overwrite the same package
+# files by installing CPU and GPU wheels together.
+RUN pip install --no-cache-dir --constraint /constraints.txt ".[${INFERENCE_EXTRA}]" && \
+    pip check
 
 
 # ─── runtime ─────────────────────────────────────────────────────────────────
@@ -161,7 +141,13 @@ COPY services/inference /app/services/inference
 
 # UID/GID 1000 on purpose: it matches the app image, the first Linux user on
 # most home servers, and the shipped Kubernetes manifests (runAsUser: 1000).
-RUN groupadd -g 1000 immich && useradd -u 1000 -g immich -d /home/immich -m immich && \
+RUN existing_group="$(getent group 1000 | cut -d: -f1)" && \
+    if [ -n "$existing_group" ]; then groupmod -n immich "$existing_group"; \
+    else groupadd -g 1000 immich; fi && \
+    existing_user="$(getent passwd 1000 | cut -d: -f1)" && \
+    if [ -n "$existing_user" ]; then \
+        usermod -l immich -d /home/immich -m -g immich "$existing_user"; \
+    else useradd -u 1000 -g immich -d /home/immich -m immich; fi && \
     mkdir -p /cache && chown -R immich:immich /cache
 
 ENV PATH=/opt/venv/bin:$PATH

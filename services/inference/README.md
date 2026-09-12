@@ -81,3 +81,5 @@ The service is not a distribution. It imports the application package — the sa
 triage engine and the same detector module preparation uses — which is what
 makes a fact computed here indistinguishable from one computed in process. Its
 web stack (fastapi, uvicorn) comes from the application's own dependency set.
+
+The service uses the same per-detector versions as in-process preparation. Marqo loads the digest-pinned ONNX export from `/cache/nsfw-marqo-384.onnx` (override with `IMMICH_MEMORIES_INFERENCE_MARQO_ONNX`); Docling uses the configured Hugging Face cache. Neither detector requires PyTorch. CPU and CUDA images install separate extras, and CUDA uses ONNX Runtime GPU 1.26 with CUDA 12/cuDNN 9.

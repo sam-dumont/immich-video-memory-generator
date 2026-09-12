@@ -137,11 +137,14 @@ class DetectorModel(Protocol):
     @property
     def encoder_key(self) -> str: ...
 
+    @property
+    def version(self) -> str: ...
+
     def batch(self, images: list[Image.Image]) -> np.ndarray: ...
 
 
 class DetectorProducer:
-    """One det-v1 detector, deciding with the detector module's own rule."""
+    """One versioned detector, deciding with the detector module's own rule."""
 
     def __init__(self, name: str, detector: DetectorModel) -> None:
         self.name = name
@@ -153,7 +156,7 @@ class DetectorProducer:
 
     @property
     def versions(self) -> Mapping[str, str]:
-        return {self.name: detectors.VERSION}
+        return {self.name: self._detector.version}
 
     def decide(self, image: bytes) -> ProducerFacts:
         with Image.open(BytesIO(image)) as handle:
@@ -169,7 +172,7 @@ class DetectorProducer:
             facts=(
                 Fact(
                     head=self.name,
-                    version=detectors.VERSION,
+                    version=self._detector.version,
                     label=label,
                     confidence=confidence,
                 ),
@@ -191,15 +194,17 @@ def heads_loader(encoder_path: Path, bundle_path: Path, *, provider: str) -> Cal
 
 
 def detector_loader(
-    name: str, *, allow_downloads: bool, cache_dir: str | None
+    name: str, *, allow_downloads: bool, cache_dir: str | None, marqo_onnx: Path
 ) -> Callable[[], Producer]:
-    models: dict[str, type[detectors.Marqo] | type[detectors.Docling]] = {
-        NSFW_MARQO: detectors.Marqo,
-        DOC_DOCLING: detectors.Docling,
-    }
-    model = models[name]
+    if name not in {NSFW_MARQO, DOC_DOCLING}:
+        raise KeyError(name)
 
     def load() -> Producer:
-        return DetectorProducer(name, model(allow_downloads=allow_downloads, cache_dir=cache_dir))
+        model = (
+            detectors.Marqo(model_path=marqo_onnx)
+            if name == NSFW_MARQO
+            else detectors.Docling(allow_downloads=allow_downloads, cache_dir=cache_dir)
+        )
+        return DetectorProducer(name, model)
 
     return load

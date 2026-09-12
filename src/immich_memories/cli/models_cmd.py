@@ -10,11 +10,15 @@ from urllib.parse import urlparse
 
 import click
 
-from immich_memories.analysis.editorial_preparation_detectors import DETECTOR_SNAPSHOTS
+from immich_memories.analysis.editorial_preparation_detectors import (
+    DETECTOR_SNAPSHOTS,
+    MARQO_ONNX_SHA256,
+)
 from immich_memories.triage.encoder import DINOV2_SMALL_ONNX_SHA256
 
-# The pinned export is 88 MB; the cap only exists so a wrong URL cannot fill a disk.
-MAX_ENCODER_BYTES = 256 * 1024 * 1024
+# The largest pinned artifact is the 88 MB encoder; the cap only exists so a
+# wrong URL cannot fill a disk.
+MAX_MODEL_BYTES = 256 * 1024 * 1024
 DOWNLOAD_TIMEOUT_SECONDS = 300.0
 _CHUNK_BYTES = 1024 * 1024
 
@@ -31,37 +35,49 @@ def register_models_commands(cli_group: click.Group) -> None:
     @click.option(
         "--detectors/--no-detectors",
         default=True,
-        help="Also warm the two pinned Hugging Face detector snapshots",
+        help="Also fetch the pinned detector export and warm the pinned detector snapshot",
     )
     @click.pass_context
     def fetch(ctx: click.Context, force: bool, detectors: bool) -> None:
-        """Download the pinned encoder export and warm the pinned detector snapshots."""
+        """Download every pinned model artifact a first cut needs, in one command."""
         config = ctx.obj["config"]
-        destination = config.triage.encoder_path
-        try:
-            outcome = fetch_encoder(
-                url=config.triage.encoder_url,
-                destination=destination,
-                sha256=DINOV2_SMALL_ONNX_SHA256,
-                force=force,
-            )
-        except (OSError, ValueError, urllib.error.URLError) as exc:
-            click.echo(f"encoder: {exc}", err=False)
-            raise SystemExit(1) from exc
-        verb = "already present at" if outcome == "present" else "downloaded to"
-        click.echo(f"encoder: {verb} {destination}")
+        preparation = config.editorial.preparation
+        _fetch_pinned(
+            label="encoder",
+            url=config.triage.encoder_url,
+            destination=config.triage.encoder_path,
+            sha256=DINOV2_SMALL_ONNX_SHA256,
+            force=force,
+        )
         if not detectors:
             return
+        _fetch_pinned(
+            label="detector nsfw_marqo",
+            url=preparation.marqo_onnx_url,
+            destination=preparation.marqo_onnx_path,
+            sha256=MARQO_ONNX_SHA256,
+            force=force,
+        )
         try:
-            for repo in warm_detectors(config.editorial.preparation.detector_cache_dir):
+            for repo in warm_detectors(preparation.detector_cache_dir):
                 click.echo(f"detector: cached {repo}")
         except (ImportError, OSError, ValueError) as exc:
             click.echo(f"detectors: {exc}")
             raise SystemExit(1) from exc
 
 
+def _fetch_pinned(*, label: str, url: str, destination: Path, sha256: str, force: bool) -> None:
+    try:
+        outcome = fetch_pinned_model(url=url, destination=destination, sha256=sha256, force=force)
+    except (OSError, ValueError, urllib.error.URLError) as exc:
+        click.echo(f"{label}: {exc}")
+        raise SystemExit(1) from exc
+    verb = "already present at" if outcome == "present" else "downloaded to"
+    click.echo(f"{label}: {verb} {destination}")
+
+
 def warm_detectors(cache_dir: str) -> list[str]:
-    """Pull every pinned detector file into the cache the worker reads offline.
+    """Pull every pinned Hugging Face detector file into the cache the worker reads offline.
 
     Returns one ``repo@revision`` label per warmed snapshot. The worker runs with
     ``HF_HUB_OFFLINE=1`` unless `allow_model_downloads` is on, so this is what
@@ -83,15 +99,15 @@ def warm_detectors(cache_dir: str) -> list[str]:
     return warmed
 
 
-def fetch_encoder(
+def fetch_pinned_model(
     *,
     url: str,
     destination: Path,
     sha256: str,
     force: bool = False,
-    max_bytes: int = MAX_ENCODER_BYTES,
+    max_bytes: int = MAX_MODEL_BYTES,
 ) -> str:
-    """Put the digest-pinned encoder at ``destination``; return what it took.
+    """Put a digest-pinned model artifact at ``destination``; return what it took.
 
     ``"present"`` when the file already carries the pinned digest, ``"downloaded"``
     when it was fetched. The bytes are hashed in a temporary file and only renamed

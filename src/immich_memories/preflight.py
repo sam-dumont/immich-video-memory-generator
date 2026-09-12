@@ -409,6 +409,42 @@ def check_encoder(config: Config) -> CheckResult:
     )
 
 
+def check_detector_export(config: Config) -> CheckResult:
+    """Report the digest-pinned sensitive-content export the flag detector runs on.
+
+    It is checked here because the alternative is finding out during the cut:
+    the detector worker is a separate process reached hours into preparation.
+    """
+    from immich_memories.analysis.editorial_preparation_detectors import (
+        MARQO_ONNX_ID,
+        MARQO_ONNX_SHA256,
+    )
+
+    path = config.editorial.preparation.marqo_onnx_path
+    if not path.is_file():
+        return CheckResult(
+            name="Sensitive-content detector",
+            status=CheckStatus.ERROR,
+            message=f"Pinned {MARQO_ONNX_ID} export missing",
+            details=f"{path}; run: immich-memories models fetch",
+        )
+    with path.open("rb") as handle:
+        digest = hashlib.file_digest(handle, "sha256").hexdigest()
+    if digest != MARQO_ONNX_SHA256:
+        return CheckResult(
+            name="Sensitive-content detector",
+            status=CheckStatus.ERROR,
+            message=f"Not the pinned {MARQO_ONNX_ID} export",
+            details=f"{path}: {digest[:12]} is not {MARQO_ONNX_SHA256[:12]}",
+        )
+    return CheckResult(
+        name="Sensitive-content detector",
+        status=CheckStatus.OK,
+        message="Pinned sensitive-content export verified",
+        details=str(path),
+    )
+
+
 def check_caption_endpoint(config: Config) -> CheckResult:
     """Report whether the configured caption server advertises the accepted alias."""
     from immich_memories.analysis.editorial_description_contract import API_MODEL
@@ -455,6 +491,7 @@ def run_preflight_checks(config: Config) -> list[CheckResult]:
         check_llm(config),
         check_title_rendering(config),
         check_encoder(config),
+        check_detector_export(config),
         check_caption_endpoint(config),
         check_notifications(config),
         check_hardware(),

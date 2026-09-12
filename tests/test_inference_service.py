@@ -65,10 +65,11 @@ class CountingProducer:
 
 class StubDetector:
     """# WHY: stands in for the Marqo/Docling weights, which are ~37 MB of
-    downloads and a torch import. The rule under test is the decision, which
+    downloads. The rule under test is the decision, which
     the detector module owns and this service must not restate."""
 
-    encoder_key = detectors.MARQO_REPO
+    encoder_key = detectors.MARQO_ONNX_ID
+    version = detectors.MARQO_VERSION
     classes = ("NSFW", "SFW")
 
     def __init__(self, nsfw: float) -> None:
@@ -151,11 +152,11 @@ def test_a_detector_answers_at_the_version_and_key_the_bank_stores():
         body = client.post("/facts", json={"image": base64.b64encode(photograph()).decode()}).json()
 
     assert body["producers"][NSFW_MARQO] == {
-        "encoder_key": detectors.MARQO_REPO,
+        "encoder_key": detectors.MARQO_ONNX_ID,
         "facts": [
             {
                 "head": NSFW_MARQO,
-                "version": detectors.VERSION,
+                "version": detectors.MARQO_VERSION,
                 "label": "yes",
                 "confidence": 0.9,
             }
@@ -317,3 +318,16 @@ def test_the_default_loaders_serve_every_producer_the_client_asks_for():
 )
 def test_the_advertised_provider_is_the_one_a_session_would_take(choice, available, expected):
     assert would_use_provider(choice, available) == expected
+
+
+def test_missing_marqo_export_names_the_configured_path(tmp_path):
+    settings = InferenceSettings(cache_dir=tmp_path)
+    runtime = ProducerRuntime({NSFW_MARQO: default_loaders(settings)[NSFW_MARQO]})
+    with service(runtime) as client:
+        response = client.post(
+            "/facts",
+            json={"image": base64.b64encode(photograph()).decode(), "producers": [NSFW_MARQO]},
+        )
+    assert response.status_code == 503
+    assert str(tmp_path / "nsfw-marqo-384.onnx") in response.json()["detail"]
+    assert "no model" in response.json()["detail"]

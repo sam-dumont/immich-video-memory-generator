@@ -106,13 +106,14 @@ Every setting is an environment variable prefixed `IMMICH_MEMORIES_INFERENCE_`:
 | `HOST` / `PORT` | `127.0.0.1` / `8092` | where to listen. The image sets the host to `0.0.0.0` |
 | `CACHE_DIR` | `/cache` | the model cache volume |
 | `ENCODER` | `$CACHE_DIR/dinov2-small.onnx` | the pinned DINOv2 export, digest-verified on load |
+| `MARQO_ONNX` | `$CACHE_DIR/nsfw-marqo-384.onnx` | the pinned sensitive-content ONNX export |
 | `BUNDLE` | the packaged public bundle | head bundle `.npz` |
 | `PROVIDER` | `auto` | `auto`, `cpu`, `cuda` or `coreml`. `auto` takes CUDA where the provider is present and CPU otherwise |
 | `REQUEST_THREADS` | `4` | the thread pool in front of ONNX Runtime |
 | `IDLE_UNLOAD_SECONDS` | `300` | drop idle weights; `0` holds them |
 | `PRELOAD` | `false` | load every producer at boot instead of on first use |
 | `DETECTOR_CACHE_DIR` | the Hugging Face cache | where the detector snapshots live |
-| `ALLOW_MODEL_DOWNLOADS` | `false` | let a cold cache fetch the detector snapshots |
+| `ALLOW_MODEL_DOWNLOADS` | `false` | let a cold cache fetch the Docling snapshot |
 | `MAX_IMAGE_BYTES` | `16777216` | refuse anything larger |
 
 Idle unload drops the weights and **keeps the process**: the next request reloads them.
@@ -132,6 +133,6 @@ Provider choice re-keys nothing, so this costs no re-derivation.
 - The app has no setting to point at this service; preparation still runs in process. That switch,
   and storing what the service returned verbatim, is the next item.
 - The captioner is not in the image yet, so `/v1/chat/completions` is still your own caption server.
-- The encoder is not fetched for you yet. The two detector snapshots are, into
-  `/cache/huggingface`, when `ALLOW_MODEL_DOWNLOADS` is on; for the encoder, point `ENCODER` at a
-  file you already have or let the app's `models fetch` populate a volume you mount.
+- The encoder and Marqo exports must already exist. Point `ENCODER` and `MARQO_ONNX` at the digest-pinned files from the app's `models fetch`, or place them at the cache paths above. Docling can fetch its snapshot into `/cache/huggingface` when `ALLOW_MODEL_DOWNLOADS` is on.
+
+For an image check before a release, dispatch the Release workflow with `inference_only: true`. It builds commit-tagged CPU and CUDA images without creating a version or moving `latest`; the CUDA base account is reused at UID/GID 1000 so the cache volume has the same ownership as the CPU image.
