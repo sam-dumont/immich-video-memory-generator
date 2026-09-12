@@ -64,8 +64,15 @@ launch-readiness 4.1 and makes `models fetch` true for the first time.
 
 **What is still owed before release, beyond the table.** Both NAS profiles were ruled mandatory:
 the hosted-reader profile and the no-LLM profile. The no-LLM profile is the rule reader, which is a
-design (`docs/designs/2026-09-11-rule-reader.md`) with no implementation. W13's consent gate is
-owed the moment any picture leaves the box, which topology 3 does by construction.
+design (`docs/designs/2026-09-11-rule-reader.md`) with no implementation.
+
+**W13 is declined, on 2026-09-12, by the owner:** *"Don't gate anything. People choosing to use an
+external hosted llm know their data goes out."* Someone who configures an external endpoint has
+already chosen to send their data there, and a consent prompt in front of a choice they have
+already made is friction, not protection. §5.5's description of what each seat sends stands and is
+still true — it belongs in the documentation as a plain statement, which is where it now lives
+(`docs-site/docs/deploy/configuration/network-and-privacy.md`). There is no gate, no grant store
+and no per-host opt-in to build. Do not re-propose one.
 
 **The one packaging trap to carry into W5.** The stock `llama.cpp` CUDA image ships cubins for
 `sm_86`, `sm_89` and `sm_120a` and PTX for everything else, so a Turing card compiles 858 modules
@@ -413,7 +420,7 @@ machine's optimisation.* On a slow machine the models swamp it.
 | 1 | **Laptop, all-in-one** | laptop | same host | none (VideoToolbox/NVENC in-process) | same host | Apple Silicon 32 GB+ (the only graded configuration) or amd64 + 24 GB GPU | **32 min** measured on an M5 Max, captions included |
 | 2 | **NAS, all-in-one** | NAS | same host, `cpu` variant | none (software x264/x265) | hosted, or a reduced tier | a DS423+ is a J4125: 4 cores, SSE4.2, no AVX | **3 h 42 min without captions**; 4 days with them (§5.A) |
 | 3 | **NAS + offload** | NAS | GPU box or k8s, `cuda` variant | same GPU box | anywhere | a reachable Service, plus the NetworkPolicy fix in W9 | **2 h 53 min** of GPU model work, captions included (§1.3b) |
-| 4 | **Hosted seats** | anywhere | our own image behind a URL | optional | any OpenAI-compatible endpoint | an explicit consent gate (§5.5) | reader at 2026-09 prices: EUR 0.02–0.12 per render |
+| 4 | **Hosted seats** | anywhere | our own image behind a URL | optional | any OpenAI-compatible endpoint | nothing beyond the URL (W13 declined) | reader at 2026-09 prices: EUR 0.02–0.12 per render |
 
 Quick Sync, VAAPI and NVENC decode, scale and encode. **They do not run inference.** That is true
 on every page in the docs today and must stay true. OpenVINO could in principle use the UHD 600 in
@@ -686,16 +693,21 @@ work does not make them affordable on a NAS. That is §5.A.
 ### 5.5 Hosted inference
 
 **Recommendation: the reader may be hosted third-party. The pixel seats may only be hosted on our
-own image. Both sit behind one explicit per-destination consent gate.**
+own image.** The per-destination consent gate this section proposed was **declined on 2026-09-12**
+(W13) — configuring an external endpoint is already the user's choice, and asking again in front of
+it is friction rather than protection. What follows is still the honest description of what each
+seat sends, and it is stated plainly in the Network & Privacy page instead of enforced.
 
 What leaves the machine differs sharply by seat. Captions send 400 px tiles (median **41 KB**
 measured) and pixel facts send preview-derived tensors, both without metadata; the reader gets
-800 px tiles **and** annotation lines carrying real people's names and place names — and nothing
-about editing a `base_url` tells a user that. So the gate is a first-run opt-in per destination
-host naming the seats going off-box and what each sends, not a config field that quietly starts
-uploading a family album. The run records the host, which seats went remote, the asset count and
-the consent version, beside the existing model attestation. No names, ids or album titles in that
-record.
+800 px tiles **and** annotation lines carrying real people's names and place names. Those two
+payloads are not interchangeable, and a reader deciding where to point each setting should be told
+which is which — so they are named, per seat, in the Network & Privacy page.
+
+The draft that became W13 turned that into a per-host opt-in with a grant store and a run record.
+That was declined (see §0): the person editing `llm.base_url` to a hosted endpoint has already
+decided their pictures go there, and a prompt in front of that decision buys nothing. The seat
+table ships as documentation.
 
 ### 5.6 Kubernetes
 
@@ -846,12 +858,13 @@ Reordered so that the items §1 showed to be bugs come before the items §1 show
 | **W10** | **The captioner in the service**: bundled `llama-server` child, GGUF **Q8\_0** fetched to the cache, `--alias smolvlm2-500m-base-public`, json-schema output, proxied under `/v1`. New bank token for the GGUF artifact; the MLX token grandfathered. A per-backend concurrency setting (§5.1). | L | `check_provider` passes all three schema controls unchanged; a GGUF-captioned asset and an MLX-captioned asset occupy distinct bank rows. Most of the risk is already retired by §1.5. |
 | **W11** | Grade the GGUF captioner: one route, owner's eyes, against the approved plan. §1.5 flags `setting` as the field most likely to have moved. | M | Either it is approved and becomes the Linux default, or Linux ships the no-captions tier and the docs say why. No third outcome. |
 | **W12** | `immich-memories prepare --scope <period>`: run preparation, print seconds per picture per producer, stop. | S | On a cold scope it prepares and exits 0 without rendering; its numbers agree with §1.3. |
-| **W13** | Consent gate for off-box destinations: per-host opt-in naming the seats and their payloads; record host, seats, asset count, consent version. | M | Pointing the reader at a remote host without consent refuses with a message naming what would be sent. The record contains no names, ids or album titles. |
+| ~~**W13**~~ | ~~Consent gate for off-box destinations: per-host opt-in naming the seats and their payloads; record host, seats, asset count, consent version.~~ **Declined 2026-09-12 by the owner:** *"Don't gate anything. People choosing to use an external hosted llm know their data goes out."* Configuring an external endpoint is already the choice; a prompt in front of it is friction, not protection. What each seat sends (§5.5) is documented as a plain statement instead. | — | None. Nothing to build. |
 | **W14** | **The reduced tiers** (§5.A): tolerate every absent producer; the no-captions tier keeps the normal audience gate, the metadata-only tier defaults to `family_only` and refuses `sendable`; fact-shaped reasons; the Memory-page line; captions offered as a rate-stated background backfill. | M | With no captions, a cut completes and no unit loses its gate evidence. With no encoder, no detectors and no captions either, a cut still completes; every approved occasion from the graded routes keeps at least one picture; no unit is marked `share`. |
 | **W15** | **One decode per picture.** Hoist the JPEG decode out of the six producers that each repeat it (§1.9) and pass the decoded image down. | M | The producers' facts are unchanged; the non-caption per-picture cost drops by 27 % on machine A. Worth doing *after* W0–W3b, because it saves nothing a slow box would notice. |
 | **W16** | **GPU encoder service** (§5.B): plan in, film out, own FFmpeg, `/health` reports its major; local fallback on absence or failure. | L | Same plan rendered locally and remotely gives films of the same duration, structure and titles; killing the service mid-render still produces a film locally. |
 
-Order: W0, W1, W2 → W3, W3b → W4, W5, W6 → W7 → W8 → W9 → W10 → W11 → W12, W13 → W14 → W15 → W16.
+Order: W0, W1, W2 → W3, W3b → W4, W5, W6 → W7 → W8 → W9 → W10 → W11 → W12 → W14 → W15 → W16.
+W13 is declined and is not in the order.
 W14 can be built in parallel by anyone; it touches none of the service work.
 
 W0, W1 and W2 are three days of work between them and they are the only items in this table that
