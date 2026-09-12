@@ -81,19 +81,29 @@ The preparation pass counts its work, so while it runs you also get a progress b
 
 One session runs one cut at a time: **Cut**, **Cut again** and the pool page's **Generate Memories** are refused while a cut is running. The run belongs to the session, not the tab. Reload the page mid-cut and it lands on the same rows: the page polls the attempt the run writes under the cache directory (`editorial-runs/<key>/latest-attempt.private.json`), and when the run finishes the story appears without a second run. A cut that was cancelled, failed, or interrupted (the process that ran it is gone, which the attempt's released lease tells apart from a slow live run) is reported on the page with **Cut again**. A cut that finished while the session held no result for it is read back from the attempt, and **Re-load media to export** fetches the pool again and rebuilds the selection from the attempt's projection so Export works.
 
-## The story
+## The result: the storyboard, then the story
 
-When the cut finishes the page shows the story the editor told, read from the plan the run wrote:
+When the cut finishes the page opens on the **Storyboard**: the cut in the order the video plays it, read from the plan the run wrote and the intervals the renderer will hold.
 
-<ThemedScreenshot name="memory-story" alt="The story: thesis, stories in weight order, and each story's pictures with their reasons" />
+<ThemedScreenshot name="memory-story" alt="The storyboard: the thesis, then one shot per picture in capture order with its day, story and running timecode" />
 
 - the **thesis**: the editor's one-paragraph reading of the period;
+- one line with the number of shots and the content time they add up to (transitions come on top at render);
+- a **chapter** label each time the month changes, the way the finished video gets one divider per month shown;
+- one **shot** per picture, in capture order: the running timecode where it starts, a small thumbnail, the capture day (in bold when the day changes), a camera or photo icon, the seconds it holds, the story it was granted to, the moment it depicts when the editor recorded one, and the editor's one-line reason.
+
+Read a story's day labels down the list. Two pictures under one story title on the same day is a moment; six pictures under one title across three bold days is a grouping that went loose, and this is where you see it.
+
+The **Story** tab is the same cut the way the editor weighed it:
+
+<ThemedScreenshot name="memory-story-ranked" alt="The story tab: stories in weight order, each with its pictures and their reasons" />
+
 - one **duration line**: how many seconds of pictures and video were selected for the memory asked for, how much of that was available for content, and whether the cut landed near target or fell short;
 - the **stories**, heaviest first (Main story, Important, Supporting, Small moment), each with its purpose and how many pictures it holds;
 - under each story its **pictures** in capture order, with a **Still** or **Motion** badge (the final-cut rendering decision, or the source kind when none was made), the seconds it holds, when it was taken, and the editor's one-line reason;
 - **Details**, under each story, opens the editor's own vocabulary for it: the weight it wrote (`dominant`, `major`, `minor`, `glimpse`) and the standing it gave each picture (`remarkable`, `maybe`). The badges above are a reader-facing mapping of the same words: what is stored, and what the CLI and the plan file show, does not change.
 
-A cut that left no plan behind shows its counts instead. Below the story, four buttons:
+A cut that left no plan behind shows its counts instead. Below both tabs, four buttons:
 
 - **Export**: straight to Preview & Export, below.
 - **Review the pool**: the media pool with the cut's picks, and the excerpt editor.
