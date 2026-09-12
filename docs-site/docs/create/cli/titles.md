@@ -10,7 +10,7 @@ Title screens are the intro cards, month dividers, and ending screens that get i
 ## Date and place captions
 
 `generate --date-overlay --place-overlay` adds small, translucent context to clips:
-35 px on a 1080p frame, at 65% opacity. Date and place appear independently when
+48 px on a 1080p frame, at 85% opacity. Date and place appear independently when
 they change. Missing metadata does not restart a repeated caption.
 
 Home and familiar locations stay unlabelled. Familiarity uses GPS observations

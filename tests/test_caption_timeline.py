@@ -157,9 +157,7 @@ class TestDateWordingFollowsTheSpan:
 
 
 class TestCaptionFilters:
-    """#464 v4 (proof-sheet approved): title-font bold uppercase, place TOP-left,
-    date BOTTOM-right, corners hugged identically in both orientations, heavy
-    outline for bright content, constant y so nothing drifts with descenders."""
+    """Readable translucent context, with consistent corners in both orientations."""
 
     def _filters(self, caption=None, w=1920, h=1080, **kw):
         from immich_memories.processing.clip_caption import ClipCaption, caption_filters
@@ -171,9 +169,9 @@ class TestCaptionFilters:
     def test_place_top_left_and_date_bottom_right(self):
         place_f, date_f = self._filters()
 
-        # 1080 short side: inset = round(1080*0.055) = 59, line = round(35*1.05) = 37
+        # 1080 short side: inset = round(1080*0.055) = 59, line = round(48*1.05) = 50
         assert place_f.endswith(":x=59:y=59")
-        assert date_f.endswith(":x=w-tw-59:y=h-59-37")
+        assert date_f.endswith(":x=w-tw-59:y=h-59-50")
 
     def test_the_text_is_uppercase(self):
         place_f, date_f = self._filters()
@@ -187,8 +185,8 @@ class TestCaptionFilters:
         port = self._filters(w=1080, h=1920)
 
         assert land[0].endswith(":x=59:y=59") and port[0].endswith(":x=59:y=59")
-        assert land[1].endswith(":x=w-tw-59:y=h-59-37")
-        assert port[1].endswith(":x=w-tw-59:y=h-59-37")
+        assert land[1].endswith(":x=w-tw-59:y=h-59-50")
+        assert port[1].endswith(":x=w-tw-59:y=h-59-50")
 
     def test_an_empty_side_is_not_drawn(self):
         from immich_memories.processing.clip_caption import ClipCaption
@@ -222,4 +220,4 @@ class TestCaptionFilters:
             ).ClipCaption(date="Sunday 10")
         )
 
-        assert int(re.search(r"fontsize=(\d+)", date_f).group(1)) == 35
+        assert int(re.search(r"fontsize=(\d+)", date_f).group(1)) == 48

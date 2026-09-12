@@ -2070,14 +2070,22 @@
     "temporary_pod": "deleted"
   },
   "caption_followup": {
-    "font_px_1080p": 35,
-    "opacity": 0.65,
+    "font_px_1080p": 48,
+    "opacity": 0.85,
     "radius_metres": 250,
     "library_metadata_scan_seconds": 112.5,
     "scanned_assets": 111029,
     "gps_assets": 84959,
     "cache_days": 7,
     "test_home": "Royal Palace, Brussels",
-    "original_matrix_films_preserved": true
+    "original_matrix_films_preserved": true,
+    "full_cli_album_verification": {
+      "status": "ready",
+      "llm_calls": 0,
+      "selection_unchanged": true,
+      "seconds_with_first_history_scan": 184.1,
+      "warm_history_load_seconds": 0.03,
+      "history_observations": 38881
+    }
   }
 }

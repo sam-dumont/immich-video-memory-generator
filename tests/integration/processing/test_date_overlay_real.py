@@ -62,7 +62,10 @@ def test_caption_is_small_and_translucent_over_the_picture(grey_clip: Path) -> N
 
     assert changed.size
     assert np.ptp(changed[:, 0]) < 20, "caption still uses title-sized text"
-    assert captioned.max() < 230, "opaque white hides the picture beneath the letters"
+    # The translucent outline is drawn beneath the glyph too; visibility is
+    # contrast against the picture, not alpha multiplied by white in isolation.
+    assert int(captioned.max()) - int(plain.max()) > 80, "caption is too faint against the picture"
+    assert captioned.max() < 250, "the letters should retain some transparency"
 
 
 def test_the_caption_lands_in_the_bottom_corner(grey_clip: Path) -> None:

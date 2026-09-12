@@ -178,7 +178,7 @@ Local `make ci` passed: **6,819 tests** for the combined capability branch and *
 
 ## Caption follow-up
 
-The requested caption change uses 35 px text at 1080p (previously 67 px), 65% opacity,
+The requested caption change uses 48 px text at 1080p (previously 67 px), 85% opacity,
 and a lighter outline. Dates and places are deduplicated independently. Known hidden
 locations reset place changes; missing metadata does not. Original EXIF names and GPS
 remain available to maps.
@@ -191,6 +191,10 @@ from the earlier matrix timings. A private, credential-scoped seven-day cache av
 repeating it for each film. The configured home circle supplies the home country from
 GPS history; unknown country evidence retains the original label. Tests and the caption
 preview use the Royal Palace in Brussels as their home fixture, never a personal address.
+The full CLI album follow-up passed complete decoding with the identical selection and
+zero LLM calls: 184.1 seconds including its first GPS history scan. A subsequent history
+load took 0.03 seconds for 38,881 deduplicated observations. Its smaller first-draft text
+was rejected in visual review; the revised 48 px / 85% proof was rendered separately.
 The ten benchmark films above preserve the pre-change presentation and timing evidence.
 
 ## Questions parked for review

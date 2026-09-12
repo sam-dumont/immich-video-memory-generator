@@ -32,7 +32,7 @@ def resolve_caption_locale(value: str | None) -> str:
 # Caption metrics as a share of the frame's short side, so the date reads the
 # same on a 4K memory and a 720p one. Captions provide quiet context;
 # title cards carry the large typography.
-_FONT_RATIO = 0.032
+_FONT_RATIO = 0.0444
 _MARGIN_RATIO = 0.055
 
 # 0xBF is 75% of full range: HLG graphics white. Measured, plain white@0.85
@@ -59,7 +59,7 @@ class ClipCaption:
 def captions_for_timeline(
     clips: list[Any], *, place: bool = False, locale_code: str = "en"
 ) -> list[ClipCaption]:
-    """Captions for a clip sequence, shown-place deduplicated.
+    """Captions for a clip sequence, with dates and places independently deduplicated.
 
     The interesting information in a place caption is the CHANGE of place, so
     it appears when it differs from the last known place and stays silent while
@@ -166,9 +166,9 @@ def caption_filters(
     colour = _HDR_COLOUR if is_hdr else _SDR_COLOUR
     common = (
         f":fontsize={font_size}"
-        f":fontcolor={colour}@0.65"
-        f":borderw={max(1, font_size // 24)}:bordercolor=black@0.3"
-        ":shadowcolor=black@0.25"
+        f":fontcolor={colour}@0.85"
+        f":borderw={max(1, font_size // 24)}:bordercolor=black@0.45"
+        ":shadowcolor=black@0.35"
         f":shadowx={max(1, font_size // 32)}:shadowy={max(1, font_size // 32)}"
     )
     if font_path:
@@ -207,7 +207,7 @@ def timeline_captions(
 ) -> tuple[list[ClipCaption] | None, str | None]:
     """Captions for the whole sequence, or nothing when neither flag is set.
 
-    Timeline-aware (place dedupe, span-relative dates), so computed once for
+    Timeline-aware (independent dedupe, span-relative dates), so computed once for
     the sequence rather than per decoder.
     """
     if not (date_overlay or place_overlay):
