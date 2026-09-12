@@ -19,7 +19,7 @@ def _default_head_versions() -> dict[str, str]:
         "children": "public-v1",
         "doc_docling": "det-v2",
         "location": "public-v1",
-        "nsfw_marqo": "det-v1",
+        "nsfw_marqo": "det-v2",
         "people": "public-v1",
         "swim": "oi-v3",
         "venue": "oi-v3",
@@ -86,10 +86,10 @@ class EditorialConfig(BaseModel):
             not name.strip() or not version.strip() for name, version in value.items()
         ):
             raise ValueError("editorial head versions must be nonblank")
-        # Saved configurations include defaults. Retire the Docling recipe that
-        # banked wrong labels on J4125, even when an old config names it explicitly.
-        if value.get("doc_docling") == "det-v1":
-            return value | {"doc_docling": "det-v2"}
+        # Saved defaults must request the current producer after an upgrade.
+        for head in ("doc_docling", "nsfw_marqo"):
+            if value.get(head) == "det-v1":
+                value = value | {head: "det-v2"}
         return value
 
     @property

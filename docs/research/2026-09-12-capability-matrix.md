@@ -5,9 +5,9 @@ status: selection and films verified; release integration in progress
 
 # Reader capability matrix
 
-**All ten standard products and both controls now produce a rules selection. Forty-eight successful public-CLI runs made zero model requests and wrote zero semantic-bank rows. Every profile/product pair selected the same ordered assets under two hash seeds. This establishes repeatability, not equal editorial quality.**
+**All ten standard products and both controls now produce a rules selection. Seventy-two successful public-CLI runs made zero model requests and wrote zero semantic-bank rows. Every profile/product pair selected the same ordered assets under two hash seeds. This establishes repeatability, not equal editorial quality.**
 
-The private review contains **36 contact sheets**: each accepted model reference beside the rules-only and rules-plus-classifiers selections. The sheets use saved final plans and source previews, without reselection. They are not exact video trim frames. Private evidence stays under `output/reader-matrix-20260912.private/`; public aggregate numbers are in [the data file](2026-09-12-capability-matrix.data.json).
+The private review contains **48 source contact sheets**: each accepted model reference beside the rules-only and current rules-plus-classifiers selections, plus twelve preserved sheets from before the Marqo export upgrade. The sheets use saved final plans and source previews, without reselection. They are not exact video trim frames. Private evidence stays under `output/reader-matrix-20260912.private/`; public aggregate numbers are in [the data file](2026-09-12-capability-matrix.data.json).
 
 ## What each configuration can do
 
@@ -30,26 +30,28 @@ Rules reuse the existing allocation, admission, source and audience gates. They 
 
 ## Selection time, seconds
 
-The first two columns are new runs on the Mac. “First” means first invocation of that route in a serial matrix: the first metadata route paid a cold preview/pixel pass, and later overlapping routes could reuse it. The classifier arm began with existing classifier facts and paid a Docling-v2 backfill. Neither column is a universal cold-start estimate. Repeat includes discovery and the real CLI; person discovery still takes about 30 seconds.
+The first two columns are new runs on the Mac. “First” means first invocation of that route in a serial matrix: the first metadata route paid a cold preview/pixel pass, and later overlapping routes could reuse it. The final classifier arm began with existing context/Docling facts and paid a Marqo ONNX det-v2 backfill. The earlier Docling-v2 backfill run is retained in the data file. Neither column is a universal cold-start estimate. Repeat includes discovery and the real CLI; person discovery still takes about 30 seconds.
 
 The last column is the historical accepted model invocation. Its preparation and semantic caches were mixed, so it is context rather than a controlled speedup ratio. No new hosted inference was purchased for this matrix.
 
 | Product / control | Metadata first / repeat | Classifiers first / repeat | Historical accepted model |
 | --- | ---: | ---: | ---: |
-| monthly | 49.2 / 1.8 | 26.2 / 3.1 | 8.3 |
-| person | 432.9 / 30.7 | 186.1 / 31.2 | 40.6 |
-| multi_person | 32.1 / 31.4 | 33.6 / 33.2 | 282.7 |
-| special_day | 5.5 / 0.7 | 4.2 / 1.7 | 191.9 |
-| trip | 15.9 / 1.8 | 7.5 / 2.9 | 645.7 |
-| year | 39.3 / 1.9 | 20.0 / 3.0 | 1680.6 |
-| season | 18.1 / 1.1 | 10.1 / 2.1 | 1507.0 |
-| holiday | 17.8 / 1.3 | 9.6 / 2.3 | 1132.7 |
-| on_this_day | 12.8 / 1.9 | 7.8 / 2.9 | 540.7 |
-| album | 0.8 / 0.8 | 2.5 / 1.7 | 101.4 |
+| monthly | 49.2 / 1.8 | 54.5 / 3.4 | 8.3 |
+| person | 432.9 / 30.7 | 473.0 / 34.4 | 40.6 |
+| multi_person | 32.1 / 31.4 | 35.8 / 34.8 | 282.7 |
+| special_day | 5.5 / 0.7 | 6.1 / 1.8 | 191.9 |
+| trip | 15.9 / 1.8 | 12.0 / 2.7 | 645.7 |
+| year | 39.3 / 1.9 | 35.0 / 3.0 | 1680.6 |
+| season | 18.1 / 1.1 | 16.9 / 2.1 | 1507.0 |
+| holiday | 17.8 / 1.3 | 17.5 / 2.3 | 1132.7 |
+| on_this_day | 12.8 / 1.9 | 12.1 / 2.9 | 540.7 |
+| album | 0.8 / 0.8 | 3.1 / 1.6 | 101.4 |
 | june_control | 4.9 / 1.8 | 6.0 / 2.8 | 4.3 |
-| february_long_control | 2.0 / 2.0 | 3.1 / 3.2 | 33.1 |
+| february_long_control | 2.0 / 2.0 | 3.2 / 3.2 | 33.1 |
 
 All rules rows cost **$0 in model API charges**. Electricity was not metered. To price it honestly, use measured average watts × wall seconds ÷ 3,600,000 × local currency/kWh; add hardware and storage separately. The [earlier February comparison](2026-09-12-deployment-costs.md#local-versus-hosted-reading) measured a hosted GPT-4.1-mini selection at **537.4 s and approximately $0.256** from recorded tokens. That one monthly price must not be multiplied blindly across trips or year reviews. The other hosted product prices remain unmeasured.
+
+The final ONNX recheck selected exactly the same ordered assets for all twelve routes as the earlier classifier arm. Both hash seeds agreed, with zero LLM calls. The extra first-run cost is fact rebuilding, not a different edit; the quality findings below are unchanged.
 
 ## What is lost
 
@@ -123,15 +125,15 @@ The [phase 5 report](2026-09-12-phase5-readiness.md) retains the measured Februa
 
 The earlier NAS external-reader run spent **1,278.2 of 1,512.5 seconds** waiting through reading/selection, with 198 successful reader responses. Offloading model execution does not remove that wait. Kubernetes external reading completed in **985.7 seconds**, with 188 responses and matching people context. The earlier NAS reader run lacked people context. The copied people file does not retroactively fix that old run.
 
-Kubernetes proved actual CUDA DINO inference and a short NVENC encode. Its benchmark used a temporary source/dependency overlay, not a reproducible release image. The temporary Pod and credential Secret were removed after collecting evidence. The inference-service and ONNX packaging PRs still need integration and CI before an image can be called ready.
+Kubernetes proved actual CUDA DINO inference and a short NVENC encode. Its benchmark used a temporary source/dependency overlay, not a reproducible release image. The temporary Pod and credential Secret were removed after collecting evidence. The ONNX/service combination now passes local CI. Actual CPU and CUDA images build and run as UID/GID 1000 without PyTorch; the CPU image is 816,461,586 bytes and the CUDA image is 5,671,291,490 bytes. The CUDA image uses ONNX Runtime GPU 1.26 with CUDA 12/cuDNN 9. Execution of the published image on the cluster remains the next check.
 
 ## Implementation and release review
 
-The February reader now accepts all ten standard products. A runtime test exercises their real selector and render projection without constructing model ports. A custom semantic request is refused before opening a store. The album matrix exposed a root cause: the owner’s album choice was not treated as editorial intent, so an unstarred album could select nothing. Album curation now supplies worthiness and ordinary standing after technical/source/audience gates. Its saved matrix cut contains ten clips.
+The February reader now accepts all ten standard products. Preflight follows the same reader and preparation tier, so metadata-only rules neither probe model endpoints nor require unused model files; an explicitly requested model reader still needs a model name. A runtime test exercises their real selector and render projection without constructing model ports. A custom semantic request is refused before opening a store. The album matrix exposed a root cause: the owner’s album choice was not treated as editorial intent, so an unstarred album could select nothing. Album curation now supplies worthiness and ordinary standing after technical/source/audience gates. Its saved matrix cut contains ten clips.
 
 The obsolete triage-constructor test was removed; existing preparation/runtime tests already cover banking in the library cache and warm producer reuse through the current API. The new comparison regression proves that a different asset in a complete reference inventory still retains its occasion. It also distinguishes missing inventories from proven losses.
 
-Local `make ci` passed: **6,733 tests** for this capability branch and **6,730 tests** for the service repair, with seven skips each. The documentation build passed; the final staged privacy check precedes publication. Release integration and its final CI remain in progress. Historical merge-message lint now accepts the existing lowercase merge prefix, and the inference health test covers both available and absent optional ONNX Runtime. The new rules path is a measured degraded option; the findings above do not satisfy the design’s equal-quality release bar. UX implementation remains the next phase.
+Local `make ci` passed: **6,804 tests** for the combined capability branch and **6,773 tests** for the ONNX/service integration, with seven skips each. The documentation builds passed; the staged privacy check precedes publication. Release integration and its final CI remain in progress. Historical merge-message lint now accepts the existing lowercase merge prefix, and the inference health test covers both available and absent optional ONNX Runtime. The new rules path is a measured degraded option; the findings above do not satisfy the design’s equal-quality release bar. UX implementation remains the next phase.
 
 ## Questions parked for review
 
@@ -139,6 +141,7 @@ Local `make ci` passed: **6,733 tests** for this capability branch and **6,730 t
 - Should rules bias harder toward favourites and later-period coverage? June and long February expose the current tradeoff.
 - Review assets the model refused before claiming audience parity. Keep the raw decisions private.
 - Decide whether the declared 100% occasion-recall bar is a requirement for the optional rules mode, or a goal for a later editor revision. Missing inventories need human review.
+- The standalone inference service serves facts, but application wiring to consume those facts remains its planned next slice. This release does not claim remote classifier preparation through that service.
 - Measure hosted cost on the remaining products and render throughput on NAS/Kubernetes before publishing those cells as supported performance claims.
 - The multi-person opening displays its raw Boolean request and overlaps the year. Holiday/on-this-day date ranges and mixed-language trip titles also need the planned UX/localization review.
 - Recheck gain-map transfer curves against Apple's Rec.709 reconstruction guidance in a later colour review. This pass fixes metadata units and missing-data handling; it does not replace the previously validated reconstruction algorithm.

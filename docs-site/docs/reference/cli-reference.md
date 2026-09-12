@@ -324,7 +324,7 @@ immich-memories models [OPTIONS]
 
 ### `models fetch`
 
-Download the pinned encoder export and warm the pinned detector snapshots.
+Download every pinned model artifact a first cut needs, in one command.
 
 ```bash
 immich-memories models fetch [OPTIONS]
@@ -333,7 +333,7 @@ immich-memories models fetch [OPTIONS]
 | Flag | Type | Default | Description |
 | --- | --- | --- | --- |
 | `--force` | boolean | false | Re-download even when the file is already right |
-| `--detectors` | boolean | true | Also warm the two pinned Hugging Face detector snapshots |
+| `--detectors` | boolean | true | Also fetch the pinned detector export and warm the pinned detector snapshot |
 
 ## `music`
 
@@ -465,6 +465,30 @@ immich-memories preflight [OPTIONS]
 | Flag | Type | Default | Description |
 | --- | --- | --- | --- |
 | `--verbose`, `-v` | boolean | false | Show detailed output |
+
+## `prepare`
+
+Prepare a scope's annotations, print what each producer cost, and stop.
+
+```text
+No selection and no render happen. Preparation is banked per picture, so
+a scope prepared today is free for every later cut:
+  immich-memories prepare --year 2024 --month 6
+  immich-memories prepare --start 2024-01-01 --period 1y
+```
+
+```bash
+immich-memories prepare [OPTIONS]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--year`, `-y` | integer | - | Calendar year to prepare |
+| `--month` | integer | - | Month 1-12, with --year: one month at a time |
+| `--start` | text | - | Start date (YYYY-MM-DD) |
+| `--end` | text | - | End date (use with --start) |
+| `--period` | text | - | Period from the start date (e.g. 6m, 1y, 2w) |
+| `--library-size` | integer | 1000 | Project the measured rate onto a library of this many pictures |
 
 ## `runs`
 

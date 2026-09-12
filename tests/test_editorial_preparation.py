@@ -26,7 +26,7 @@ from immich_memories.analysis.editorial_preparation import (
 )
 from immich_memories.analysis.editorial_preparation_captions import _remember_caption
 from immich_memories.analysis.editorial_preparation_detectors import (
-    DETECTOR_HEAD_VERSIONS,
+    DETECTOR_VERSIONS,
     decide,
     docling_pixels,
 )
@@ -80,7 +80,7 @@ def successful_ports(calls):
                 for asset_id in ids:
                     connection.execute(
                         "INSERT OR REPLACE INTO head_facts VALUES (?,?,?,?,?,?,?)",
-                        (asset_id, head, DETECTOR_HEAD_VERSIONS[head], "no", 0.1, "test", "now"),
+                        (asset_id, head, DETECTOR_VERSIONS[head], "no", 0.1, "test", "now"),
                     )
         return {}
 

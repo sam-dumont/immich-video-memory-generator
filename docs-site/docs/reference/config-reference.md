@@ -423,7 +423,7 @@ editorial:
     children: public-v1
     doc_docling: det-v2
     location: public-v1
-    nsfw_marqo: det-v1
+    nsfw_marqo: det-v2
     people: public-v1
     swim: oi-v3
     venue: oi-v3
@@ -436,6 +436,8 @@ editorial:
     head_bundle: ""              # packaged public six-head bundle
     detector_python: ""          # current Python interpreter
     detector_cache_dir: ""       # normal Hugging Face Hub cache
+    marqo_onnx: ~/.immich-memories/models/detectors/nsfw-marqo-384.onnx  # digest-pinned sensitive-content export
+    marqo_onnx_url: https://github.com/sam-dumont/immich-video-memory-generator/releases/download/models-v1/nsfw-marqo-384-924658f1.onnx
     allow_model_downloads: false
 ```
 

@@ -59,7 +59,7 @@ for the evidence and capability limits.
 | The vision reader (weighs the period, looks at the pictures the edit asks about) | The other machine | ~17 GB resident at 4-bit |
 | The caption server (one description per picture, banked forever) | Nobody, on the `no_captions` tier | 25× the cost of every other producer together. Optional, and backfillable later |
 | The DINOv2-small ONNX encoder (88 MB) and six context heads | NAS | CPU inference, no GPU path |
-| Two detector snapshots (~400 MB) | NAS | CPU only, both |
+| Two detectors: a 22.5 MB sensitive-content ONNX export and the document classifier's snapshot | NAS | ONNX Runtime on the CPU provider, both |
 | Encoding, title screens, the render | NAS | See [encoding](#encoding-what-the-chip-will-and-will-not-do) below |
 
 ![NAS setup diagram](/img/diagrams/setup-nas.png)
@@ -176,13 +176,21 @@ If Immich runs on the same Docker network, use the container name (`immich-serve
 docker compose exec immich-memories immich-memories models fetch
 ```
 
-That writes the pinned DINOv2-small ONNX export, digest-checked, and warms the two detector
-snapshots into the Hugging Face cache on the config volume. Both run on the CPU, both are in the
-published image's dependency set, and together they are everything the `no_captions` tier needs.
-With them cached, `allow_model_downloads` stays `false` and means it. `immich-memories preflight`
-checks Immich, the reader, the encoder digest and the caption alias; it does **not** check the
-detector snapshots, so the first cut is where a cold cache shows up, with a count per missing
-producer.
+That writes the two digest-pinned ONNX exports — the DINOv2-small encoder and the
+sensitive-content detector — and warms the document classifier's snapshot into the Hugging Face
+cache on the config volume. All three run on the CPU. With them in place, `allow_model_downloads`
+stays `false` and means it. `immich-memories preflight` checks Immich, the reader, both export
+digests and the caption alias.
+
+A producer that cannot load its model now says so by name in the first seconds of the detector
+stage, and names the command that would fix it. It used to contribute nothing silently and
+surface only at the end of preparation, as a count of missing facts.
+
+**The NAS image carries no PyTorch for the detectors.** Both seats are ONNX graphs, so the CPU
+install resolves no `nvidia-*` wheel and no torch, torchvision or timm — 920 MB and 11 s of
+start-up off a 2 GB box. It is not faster: measured on a J4125, the ONNX sensitive-content graph
+runs at 0.469 s a picture against torch's 0.440 s. What it buys is a smaller image that installs
+the same way every time.
 
 ## The first run on a NAS, start to finish
 
@@ -242,7 +250,7 @@ There is no background backfill job yet; this is the supported way to do it toda
 
 ## What the NAS does well
 
-- **Preparation that is not the models**: six context heads over the ONNX encoder, two detectors,
+- **Preparation that is not the reader**: six context heads over the ONNX encoder, two ONNX detectors,
   and the pixel measurements. All CPU, all banked by producer and exact input, so a second cut over
   the same period skips them entirely.
 - **Title screens**: the PIL renderer, everywhere, no GPU needed.

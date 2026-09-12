@@ -48,14 +48,15 @@ RUN grep -E '^[A-Za-z0-9_.[-]+==' /constraints.txt > /constraints.pins && \
 # 'linux'` with no architecture guard, so PyPI hands aarch64 the same CUDA stack
 # it hands x86_64 -- measured in this image at 3.3 GB of `nvidia`, 818 MB of
 # triton and a 964 MB CUDA-flavoured torch, none of which a NAS or Pi-class box
-# can use. Nothing here runs GPU inference either way: both detectors are CPU by
-# construction (Docling forces CPUExecutionProvider, Marqo sets torch threads),
-# and the CUDA build reports cuda_available: False in the image it ships in.
+# can use. Nothing in this image runs GPU inference: the model seats are ONNX
+# Runtime on the CPU provider, and the only thing left that wants torch at all
+# is local Demucs stem separation.
 # Measured with INSTALL_EXTRAS=all on arm64: 7.08 GB -> 2.37 GB.
-# torchvision comes from the same index, and must: `timm` pulls it in, and a
-# PyPI torchvision is compiled against the CUDA-flavoured torch. Mixed, the C++
-# operators never register and `Marqo` dies on import with `operator
-# torchvision::nms does not exist` -- which is every shipped image today.
+# `torchvision` is deliberately absent: nothing resolves it any more, now that
+# the sensitive-content detector is an ONNX graph rather than a timm model. That
+# retires the failure where a CPU-index torch met a PyPI torchvision, the C++
+# operators never registered, and the detector died on import with `operator
+# torchvision::nms does not exist` (#805, #806).
 # The wheels are built into their own directory, not /wheels, so a torch-free
 # INSTALL_EXTRAS never installs them, and uv.lock is untouched so Apple
 # development resolves exactly as before. The case list is what release.yml
@@ -66,7 +67,7 @@ RUN mkdir -p /torch-cpu && \
         amd64|arm64) \
             pip wheel --no-cache-dir --no-deps --wheel-dir=/torch-cpu \
                 --index-url https://download.pytorch.org/whl/cpu \
-                --constraint /constraints.txt torch torchvision ;; \
+                --constraint /constraints.txt torch ;; \
     esac
 
 # The bundled-music package is built from the tree so the image does not depend

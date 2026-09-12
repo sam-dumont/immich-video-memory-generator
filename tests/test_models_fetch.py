@@ -17,11 +17,9 @@ from click.testing import CliRunner, Result
 from immich_memories.analysis.editorial_preparation_detectors import (
     DOCLING_REPO,
     DOCLING_REVISION,
-    MARQO_REPO,
-    MARQO_REVISION,
 )
 from immich_memories.cli import main, models_cmd
-from immich_memories.cli.models_cmd import fetch_encoder
+from immich_memories.cli.models_cmd import fetch_pinned_model
 from immich_memories.config_loader import Config
 
 
@@ -77,7 +75,7 @@ def test_fetch_writes_the_export_only_when_the_digest_matches(
 ) -> None:
     destination = tmp_path / "models" / "dinov2-small.onnx"
 
-    outcome = fetch_encoder(url=served.url, destination=destination, sha256=EXPORT_SHA256)
+    outcome = fetch_pinned_model(url=served.url, destination=destination, sha256=EXPORT_SHA256)
 
     assert outcome == "downloaded"
     assert destination.read_bytes() == EXPORT
@@ -87,7 +85,7 @@ def test_a_wrong_digest_leaves_nothing_on_disk(served: _Fixture, tmp_path: Path)
     destination = tmp_path / "models" / "dinov2-small.onnx"
 
     with pytest.raises(ValueError, match="is not the pinned"):
-        fetch_encoder(url=served.url, destination=destination, sha256="0" * 64)
+        fetch_pinned_model(url=served.url, destination=destination, sha256="0" * 64)
 
     assert not destination.exists()
     assert list(destination.parent.iterdir()) == []
@@ -97,10 +95,13 @@ def test_an_existing_export_is_a_no_op_until_forced(served: _Fixture, tmp_path: 
     destination = tmp_path / "dinov2-small.onnx"
     destination.write_bytes(EXPORT)
 
-    assert fetch_encoder(url=served.url, destination=destination, sha256=EXPORT_SHA256) == "present"
+    assert (
+        fetch_pinned_model(url=served.url, destination=destination, sha256=EXPORT_SHA256)
+        == "present"
+    )
     assert served.requests == 0
 
-    forced = fetch_encoder(
+    forced = fetch_pinned_model(
         url=served.url, destination=destination, sha256=EXPORT_SHA256, force=True
     )
 
@@ -113,7 +114,7 @@ def test_a_body_over_the_cap_is_refused(tmp_path: Path) -> None:
     try:
         destination = tmp_path / "dinov2-small.onnx"
         with pytest.raises(ValueError, match="refused past"):
-            fetch_encoder(
+            fetch_pinned_model(
                 url=fixture.url,
                 destination=destination,
                 sha256=EXPORT_SHA256,
@@ -180,39 +181,74 @@ def _recording_hub(calls: list[tuple[str, str, str]]) -> ModuleType:
     return module
 
 
-def test_models_fetch_warms_every_pinned_detector_file(
+def _pinned_everywhere(served: _Fixture, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Config:
+    """One config whose every pinned artifact resolves to the local fixture.
+
+    WHY: the real pins are an 88 MB encoder and a 22.5 MB detector export that
+    cannot live in the repo, so the fixture's own digest stands in for both.
+    """
+    monkeypatch.setattr(models_cmd, "DINOV2_SMALL_ONNX_SHA256", EXPORT_SHA256)
+    monkeypatch.setattr(models_cmd, "MARQO_ONNX_SHA256", EXPORT_SHA256)
+    return Config(
+        triage={"encoder": str(tmp_path / "dinov2.onnx"), "encoder_url": served.url},
+        editorial={
+            "preparation": {
+                "marqo_onnx": str(tmp_path / "nsfw-marqo-384.onnx"),
+                "marqo_onnx_url": served.url,
+            }
+        },
+    )
+
+
+def test_models_fetch_lands_every_artifact_a_first_run_needs(
     served: _Fixture, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls: list[tuple[str, str, str]] = []
     # WHY: hf_hub_download reaches Hugging Face, and huggingface-hub is an
     # `editorial`-extra dependency the unit environment does not install.
     monkeypatch.setitem(sys.modules, "huggingface_hub", _recording_hub(calls))
-    # WHY: the pinned 88 MB export cannot live in the repo.
-    monkeypatch.setattr(models_cmd, "DINOV2_SMALL_ONNX_SHA256", EXPORT_SHA256)
-    config = Config(
-        triage={"encoder": str(tmp_path / "dinov2.onnx"), "encoder_url": served.url},
-    )
+    config = _pinned_everywhere(served, tmp_path, monkeypatch)
 
     result = _invoke(["models", "fetch"], config)
 
     assert result.exit_code == 0
-    assert calls == [
-        (MARQO_REPO, MARQO_REVISION, "config.json"),
-        (MARQO_REPO, MARQO_REVISION, "model.safetensors"),
-        (DOCLING_REPO, DOCLING_REVISION, "model.onnx"),
-    ]
+    assert (tmp_path / "dinov2.onnx").read_bytes() == EXPORT
+    assert (tmp_path / "nsfw-marqo-384.onnx").read_bytes() == EXPORT
+    assert calls == [(DOCLING_REPO, DOCLING_REVISION, "model.onnx")]
 
 
-def test_no_detectors_leaves_the_snapshots_alone(
+def test_models_fetch_refuses_a_detector_export_that_is_not_the_pinned_one(
+    served: _Fixture, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(models_cmd, "DINOV2_SMALL_ONNX_SHA256", EXPORT_SHA256)
+    config = Config(
+        triage={"encoder": str(tmp_path / "dinov2.onnx"), "encoder_url": served.url},
+        editorial={
+            "preparation": {
+                "marqo_onnx": str(tmp_path / "nsfw-marqo-384.onnx"),
+                "marqo_onnx_url": served.url,
+            }
+        },
+    )
+
+    result = _invoke(["models", "fetch"], config)
+
+    assert result.exit_code == 1
+    assert not (tmp_path / "nsfw-marqo-384.onnx").exists()
+    assert "nsfw_marqo" in result.output
+    assert "not the pinned" in result.output
+
+
+def test_no_detectors_leaves_the_detector_artifacts_alone(
     served: _Fixture, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls: list[tuple[str, str, str]] = []
     # WHY: the same two boundaries as above — the Hub and the optional extra.
     monkeypatch.setitem(sys.modules, "huggingface_hub", _recording_hub(calls))
-    monkeypatch.setattr(models_cmd, "DINOV2_SMALL_ONNX_SHA256", EXPORT_SHA256)
-    config = Config(triage={"encoder": str(tmp_path / "dinov2.onnx"), "encoder_url": served.url})
+    config = _pinned_everywhere(served, tmp_path, monkeypatch)
 
     result = _invoke(["models", "fetch", "--no-detectors"], config)
 
     assert result.exit_code == 0
     assert calls == []
+    assert not (tmp_path / "nsfw-marqo-384.onnx").exists()

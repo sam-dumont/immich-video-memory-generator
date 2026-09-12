@@ -320,11 +320,11 @@ diagrams:  ## Render architecture diagrams from Mermaid source files
 	@echo "Diagrams saved to docs-site/static/img/diagrams/"
 
 test-cov:
-	uv run pytest --cov=src/immich_memories --cov-report=html --cov-report=term-missing
+	uv run pytest $(COVERAGE_FLAGS) --cov-report=html --cov-report=term-missing
 	@echo "Coverage report: htmlcov/index.html"
 
 test-cov-xml:  ## Run tests with XML coverage + JUnit results (for CI upload)
-	uv run pytest --cov=src/immich_memories --cov-branch --cov-report=xml --junitxml=junit.xml -o junit_family=legacy -v
+	uv run pytest $(COVERAGE_FLAGS) --cov-report=xml --junitxml=junit.xml -o junit_family=legacy -v
 
 test-fast:
 	uv run pytest -v -m "not slow"
@@ -346,27 +346,34 @@ test-scoring:
 # Code Quality
 # =============================================================================
 
+# Every Python tree the gates cover. The inference service ships as its own
+# image and is its own top-level package, so naming it once here is what keeps
+# it inside the same lint, type, complexity and dead-code gates as the app.
+SERVICE_TREES := services/inference
+SERVICE_PACKAGES := services/inference/immich_memories_inference
+COVERAGE_FLAGS := --cov=src/immich_memories --cov=$(SERVICE_PACKAGES) --cov-branch
+
 lint:
-	uv run ruff check src tests
+	uv run ruff check src tests $(SERVICE_TREES)
 
 lint-fix:
-	uv run ruff check --fix src tests
+	uv run ruff check --fix src tests $(SERVICE_TREES)
 
 format:
-	uv run ruff format src tests
+	uv run ruff format src tests $(SERVICE_TREES)
 
 format-check:
-	uv run ruff format --check src tests
+	uv run ruff format --check src tests $(SERVICE_TREES)
 
 typecheck:
-	uv run mypy src/immich_memories
+	uv run mypy src/immich_memories $(SERVICE_PACKAGES)
 
 # File length gate: 800 soft (warning), 1000 hard (error)
 SOFT_LINES := 800
 HARD_LINES := 1000
 file-length:
 	@FAILED=0; \
-	for f in $$(find src/ -name '*.py'); do \
+	for f in $$(find src/ $(SERVICE_TREES) -name '*.py'); do \
 		count=$$(wc -l < "$$f"); \
 		if [ "$$count" -gt $(HARD_LINES) ]; then \
 			echo "ERROR: $$f has $$count lines (hard limit $(HARD_LINES))"; \
@@ -385,7 +392,8 @@ file-length:
 
 # Cyclomatic complexity gate (Xenon grade C)
 complexity:
-	cd /tmp && uvx xenon --max-absolute C --max-modules D --max-average C $(CURDIR)/src/
+	cd /tmp && uvx xenon --max-absolute C --max-modules D --max-average C \
+		$(CURDIR)/src/ $(addprefix $(CURDIR)/,$(SERVICE_PACKAGES))
 
 # Dead code detection
 dead-code:
@@ -402,17 +410,17 @@ dead-code:
 	#                             pydantic runs these off the schema, never by name
 	# --ignore-names model_config: pydantic reads the ConfigDict class attribute
 	# off the model; nothing in src/ is meant to name it.
-	uvx vulture src/ vulture-whitelist.py --min-confidence 60 \
+	uvx vulture src/ $(SERVICE_TREES) vulture-whitelist.py --min-confidence 60 \
 		--ignore-names "model_config" \
-		--ignore-decorators "@register_preset,@*.command,@*.group,@ui.page,@app.middleware,@field_validator,@model_validator,@field_serializer"
+		--ignore-decorators "@register_preset,@*.command,@*.group,@ui.page,@app.middleware,@app.get,@app.post,@field_validator,@model_validator,@field_serializer"
 
 # Security lint (Bandit)
 security-lint:
-	uvx bandit -r src/ --severity-level high -q
+	uvx bandit -r src/ $(SERVICE_TREES) --severity-level high -q
 
 # Bandit with JSON report and HIGH severity gate (for CI)
 bandit-ci:
-	@uvx bandit -r src/ --severity-level medium -f json -o bandit-report.json || true
+	@uvx bandit -r src/ $(SERVICE_TREES) --severity-level medium -f json -o bandit-report.json || true
 	@python3 -c "import json,sys; r=json.load(open('bandit-report.json')); \
 	high=[i for i in r['results'] if i['issue_severity']=='HIGH']; \
 	[print(f\"  {i['filename']}:{i['line_number']} [{i['test_id']}] {i['issue_text']}\") for i in high]; \
@@ -441,7 +449,7 @@ commitlint:
 # diagnosing by hand cannot absorb the violation into the baseline. A passing
 # run keeps the rewrite — that is the ratchet tightening.
 cognitive-complexity:
-	@OUTPUT=$$(uvx complexipy==5.2.0 src/ --max-complexity-allowed 15 2>&1); \
+	@OUTPUT=$$(uvx complexipy==5.2.0 src/ $(SERVICE_TREES) --max-complexity-allowed 15 2>&1); \
 	ANALYZER_STATUS=$$?; \
 	if echo "$$OUTPUT" | grep -q "Snapshot watermark passed"; then \
 		echo "Cognitive complexity: snapshot watermark passed (no new violations)"; \
@@ -461,11 +469,12 @@ cognitive-complexity:
 
 # Code duplication detection
 duplication:
-	npx --yes jscpd@5.0.14 src/ --threshold 5 --min-lines 5 --min-tokens 50 --format python
+	npx --yes jscpd@5.0.14 src/ $(SERVICE_TREES) --threshold 5 --min-lines 5 --min-tokens 50 --format python
 
 # Modernization lint (cd src avoids duplicate module detection, --config-file reads ignores)
 refurb:
 	cd src && uv run refurb immich_memories/ --quiet --config-file ../pyproject.toml
+	cd services/inference && uv run refurb immich_memories_inference/ --quiet --config-file ../../pyproject.toml
 
 # Semgrep SAST (cross-file security analysis)
 # Excludes sqlalchemy-execute-raw-query: our SQL uses ?-parameterized values,
@@ -473,7 +482,7 @@ refurb:
 semgrep:
 	uvx semgrep scan --config auto --config p/python --error --severity ERROR \
 		--exclude-rule python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query \
-		src/
+		src/ $(SERVICE_TREES)
 
 # Dependency hygiene (hallucinated/unused/transitive deps)
 dep-check:
@@ -483,11 +492,11 @@ dep-check:
 
 # Architectural boundary enforcement
 arch-check:
-	uv run lint-imports
+	PYTHONPATH=$(SERVICE_TREES) uv run lint-imports
 
 # Diff coverage (for PRs: new code must be ≥95% covered)
 diff-cover:
-	uv run pytest --cov=src/immich_memories --cov-branch --cov-report=xml -q
+	uv run pytest $(COVERAGE_FLAGS) --cov-report=xml -q
 	uvx diff-cover coverage.xml --compare-branch=origin/main --fail-under=80
 
 # Dependency vulnerability audit
@@ -509,7 +518,7 @@ pip-audit:  ## Check dependencies for known vulnerabilities (warns on unfixable,
 
 diff-cover-local:  ## Check diff-cover locally before pushing (runs tests + merges integration coverage)
 	@echo "Running unit tests with coverage..."
-	@uv run pytest --cov=src/immich_memories --cov-branch --cov-report=xml -q
+	@uv run pytest $(COVERAGE_FLAGS) --cov-report=xml -q
 	@echo "Checking diff coverage against main..."
 	@COVERAGE_FILES="coverage.xml"; \
 	for f in tests/*-coverage.xml; do \
@@ -612,16 +621,16 @@ ci: ensure-dev lint format-check typecheck file-length complexity cognitive-comp
 critique:  ## Run self-critique checks for AI code smells
 	@echo "=== AI Smell Audit ==="
 	@echo "Checking for remaining mixins..."
-	@MIXINS=$$(grep -rn "class.*Mixin" src/ --include="*.py" | grep -v __pycache__ | wc -l | tr -d ' '); \
+	@MIXINS=$$(grep -rn "class.*Mixin" src/ $(SERVICE_TREES) --include="*.py" | grep -v __pycache__ | wc -l | tr -d ' '); \
 	if [ "$$MIXINS" -gt 0 ]; then \
-		grep -rn "class.*Mixin" src/ --include="*.py" | grep -v __pycache__; \
+		grep -rn "class.*Mixin" src/ $(SERVICE_TREES) --include="*.py" | grep -v __pycache__; \
 		echo "FAIL: $$MIXINS mixin classes found — use composition"; \
 		exit 1; \
 	fi
 	@echo "Checking for mechanical split comments..."
-	@! grep -rn "to stay within\|to keep.*under.*line\|keep files under" src/ --include="*.py" || (echo "FAIL: Fix these splits" && exit 1)
+	@! grep -rn "to stay within\|to keep.*under.*line\|keep files under" src/ $(SERVICE_TREES) --include="*.py" || (echo "FAIL: Fix these splits" && exit 1)
 	@echo "Checking for wildcard re-exports (outside __init__)..."
-	@! grep -rn "from .* import \*" src/ --include="*.py" | grep -v __init__ || (echo "WARN: Wildcard re-exports found" && exit 1)
+	@! grep -rn "from .* import \*" src/ $(SERVICE_TREES) --include="*.py" | grep -v __init__ || (echo "WARN: Wildcard re-exports found" && exit 1)
 	@echo "Checking test quality (mock ratios, mock-only assertions, excessive patches)..."
 	@uv run python scripts/critique_tests.py
 	@echo "Self-critique complete."

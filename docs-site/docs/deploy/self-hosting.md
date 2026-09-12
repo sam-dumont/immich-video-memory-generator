@@ -224,7 +224,7 @@ run inference. Choosing the rules reader removes language-model editing; choosin
 | Captions | `mlx-community/SmolVLM2-500M-Video-Instruct-mlx@fa57db46` | **Accepted**: the digest the banked descriptions came from |
 | Captions | The same generation served by vLLM or llama.cpp | **Untested** |
 | Encoder | The pinned DINOv2-small ONNX export | **Required, exact** |
-| Detectors | Marqo + Docling at the pinned revisions | **Tested.** CPU only, both |
+| Detectors | The pinned sensitive-content ONNX export (`det-v2`) + Docling at its pinned revision | **Tested.** ONNX Runtime on the CPU provider, both |
 
 ## When it stops
 
@@ -234,7 +234,7 @@ run inference. Choosing the rules reader removes language-model editing; choosin
 | `caption endpoint must advertise smolvlm2-500m-base-public` | The caption server serves the right weights under the wrong name. Alias it |
 | `caption endpoint failed the compact-v3 schema control` | It does not honour the JSON schema, or it is the wrong model |
 | `public heads need the pinned DINOv2 ONNX export at …` | Step 2, or `triage.encoder` points at the wrong path |
-| `Required detector setup: timm, torch, …` | Cold Hugging Face cache. Run `models fetch`, or set `allow_model_downloads: true` once |
+| `nsfw_marqo has no model: …` or `doc_docling has no model: …` | A missing pinned export or a cold Hugging Face cache. Run `models fetch`; the message names the model and the fix |
 | `Story-first selection needs prepared annotations at …` | The annotation store moved. Point `editorial.annotation_database` at it |
 
 ## Next

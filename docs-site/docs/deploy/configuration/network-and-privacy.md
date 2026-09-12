@@ -86,6 +86,20 @@ leave `base_url` at that default: `openai` → `https://api.openai.com/v1`, `zai
 
 **Opt out:** don't configure `llm`, or point it at a local server.
 
+### The two picture seats, side by side
+
+Two settings can send your photographs to a server, and they send very different things:
+
+| Seat | Setting | What it is shown |
+|---|---|---|
+| reader | `llm.base_url` | 800 px picture tiles, **and the annotation lines beside them, which carry the names of people and places** |
+| captioner | `editorial.preparation.caption_base_url` | 400 px picture tiles, with no metadata attached |
+
+Both default to a server on this machine (`localhost:8080` and `localhost:8092`). Point either at
+another host — a GPU box on your LAN, a container, a hosted endpoint — and that is where those
+bytes go, onto its disk and into its logs. Nothing asks you to confirm it a second time:
+configuring an external endpoint *is* the choice.
+
 ### Music generation
 
 **When:** `ace_step.enabled: true` in API mode (`ace_step.mode: api`), or `musicgen.enabled: true`.

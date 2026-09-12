@@ -32,6 +32,7 @@ const sidebars: SidebarsConfig = {
           label: 'Using the CLI',
           items: [
             'create/cli/generate',
+            'create/cli/prepare',
             'create/cli/auto',
             'create/cli/music',
             'create/cli/titles',
@@ -95,6 +96,7 @@ const sidebars: SidebarsConfig = {
           items: [
             'deploy/installation/docker',
             'deploy/installation/uv-pip',
+            'deploy/installation/inference-service',
             'deploy/installation/kubernetes',
             'deploy/installation/terraform',
           ],

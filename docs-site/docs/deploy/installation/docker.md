@@ -17,10 +17,14 @@ render. A cut needs two services you host, and they are the expensive half.
 | **Reader** | Vision + text. Groups the period into stories, weighs them, and is sent an 800 px tile of the candidates whose facts the edit demands: a few dozen per memory | ~17 GB at 4-bit |
 | **Caption server** | 500M vision model. One description per picture, once, then banked | 1-2 GB |
 
-Plus an 88 MB encoder and ~400 MB of CPU detectors on the app's disk. The container itself wants
+Plus an 88 MB encoder and ~40 MB of CPU detectors on the app's disk. The container itself wants
 2-4 GB. So the cheapest things that work are one Apple Silicon Mac with 32 GB+ running everything,
 or this container anywhere plus one box that can hold the models. And remember that `localhost`
 inside a container is the container, so those endpoints need real hostnames.
+
+The encoder, the heads and the detectors can also move off this container and into the
+[inference service](./inference-service.md), which has a CUDA variant. That is optional: by
+default the app runs them itself.
 
 The [self-hosting guide](../self-hosting.md) stands all of it up in order.
 

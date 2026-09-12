@@ -98,7 +98,7 @@ pip install "immich-memories[editorial]"     # or [all-mac] on Apple Silicon
 ```
 
 A bare `pip install immich-memories` gives you the app and the render, but not the inference
-dependencies the six context heads and the two detectors need, so the first cut stops at the heads
+dependencies the six context heads and the two ONNX detectors need, so the first cut stops at the heads
 stage. Take the extra.
 
 ### From Source

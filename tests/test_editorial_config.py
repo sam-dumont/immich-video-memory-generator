@@ -27,7 +27,7 @@ def test_editorial_store_defaults_without_a_selection_switch(tmp_path) -> None:
         "children": "public-v1",
         "doc_docling": "det-v2",
         "location": "public-v1",
-        "nsfw_marqo": "det-v1",
+        "nsfw_marqo": "det-v2",
         "people": "public-v1",
         "swim": "oi-v3",
         "venue": "oi-v3",
@@ -36,6 +36,13 @@ def test_editorial_store_defaults_without_a_selection_switch(tmp_path) -> None:
 
 def test_editorial_config_is_available_from_the_public_config_module() -> None:
     assert PublicEditorialConfig is EditorialConfig
+
+
+def test_saved_marqo_version_moves_to_the_current_onnx_producer() -> None:
+    saved = {"nsfw_marqo": "det-v1", "activity": "public-v1"}
+    config = EditorialConfig(head_versions=saved)
+    assert config.head_versions == {"nsfw_marqo": "det-v2", "activity": "public-v1"}
+    assert saved["nsfw_marqo"] == "det-v1"
 
 
 def test_obsolete_route_flags_cannot_choose_another_selector() -> None:
@@ -95,7 +102,7 @@ def test_config_loads_and_saves_editorial_as_an_advanced_section(tmp_path: Path)
     )
 
 
-def test_saved_legacy_docling_version_is_upgraded_without_changing_other_heads(tmp_path):
+def test_saved_legacy_detector_versions_upgrade_without_changing_custom_heads(tmp_path):
     source = tmp_path / "old-config.yaml"
     source.write_text(
         "advanced:\n"
@@ -112,6 +119,6 @@ def test_saved_legacy_docling_version_is_upgraded_without_changing_other_heads(t
 
     assert yaml.safe_load(saved.read_text())["advanced"]["editorial"]["head_versions"] == {
         "doc_docling": "det-v2",
-        "nsfw_marqo": "det-v1",
+        "nsfw_marqo": "det-v2",
         "activity": "custom-v3",
     }

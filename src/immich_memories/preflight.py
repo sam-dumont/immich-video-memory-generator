@@ -273,6 +273,14 @@ def check_llm(config: Config) -> CheckResult:
     Returns:
         CheckResult with status and details.
     """
+    try:
+        reader = config.editorial.resolve_reader(config.llm.model)
+    except ValueError as exc:
+        return CheckResult(name="LLM", status=CheckStatus.ERROR, message=str(exc))
+    if reader == "rules":
+        return CheckResult(
+            name="LLM", status=CheckStatus.SKIPPED, message="Rules reader does not use an LLM"
+        )
     provider = config.llm.provider
     base_url = config.llm.base_url
     model = config.llm.model
@@ -382,6 +390,10 @@ def check_title_rendering(config: Config) -> CheckResult:
 
 def check_encoder(config: Config) -> CheckResult:
     """Report the digest-pinned DINOv2 export the six context heads run on."""
+    if not config.editorial.preparation.demands_models:
+        return CheckResult(
+            name="Encoder", status=CheckStatus.SKIPPED, message="Not required by metadata_only"
+        )
     from immich_memories.triage.encoder import DINOV2_SMALL_ONNX_SHA256
 
     path = config.triage.encoder_path
@@ -409,8 +421,56 @@ def check_encoder(config: Config) -> CheckResult:
     )
 
 
+def check_detector_export(config: Config) -> CheckResult:
+    """Report the digest-pinned sensitive-content export the flag detector runs on.
+
+    It is checked here because the alternative is finding out during the cut:
+    the detector worker is a separate process reached hours into preparation.
+    """
+    if not config.editorial.preparation.demands_models:
+        return CheckResult(
+            name="Sensitive-content detector",
+            status=CheckStatus.SKIPPED,
+            message="Not required by metadata_only",
+        )
+    from immich_memories.analysis.editorial_preparation_detectors import (
+        MARQO_ONNX_ID,
+        MARQO_ONNX_SHA256,
+    )
+
+    path = config.editorial.preparation.marqo_onnx_path
+    if not path.is_file():
+        return CheckResult(
+            name="Sensitive-content detector",
+            status=CheckStatus.ERROR,
+            message=f"Pinned {MARQO_ONNX_ID} export missing",
+            details=f"{path}; run: immich-memories models fetch",
+        )
+    with path.open("rb") as handle:
+        digest = hashlib.file_digest(handle, "sha256").hexdigest()
+    if digest != MARQO_ONNX_SHA256:
+        return CheckResult(
+            name="Sensitive-content detector",
+            status=CheckStatus.ERROR,
+            message=f"Not the pinned {MARQO_ONNX_ID} export",
+            details=f"{path}: {digest[:12]} is not {MARQO_ONNX_SHA256[:12]}",
+        )
+    return CheckResult(
+        name="Sensitive-content detector",
+        status=CheckStatus.OK,
+        message="Pinned sensitive-content export verified",
+        details=str(path),
+    )
+
+
 def check_caption_endpoint(config: Config) -> CheckResult:
     """Report whether the configured caption server advertises the accepted alias."""
+    if not config.editorial.preparation.demands_captions:
+        return CheckResult(
+            name="Captions",
+            status=CheckStatus.SKIPPED,
+            message=f"Not required by {config.editorial.preparation.tier}",
+        )
     from immich_memories.analysis.editorial_description_contract import API_MODEL
 
     base_url = config.editorial.preparation.caption_base_url
@@ -455,6 +515,7 @@ def run_preflight_checks(config: Config) -> list[CheckResult]:
         check_llm(config),
         check_title_rendering(config),
         check_encoder(config),
+        check_detector_export(config),
         check_caption_endpoint(config),
         check_notifications(config),
         check_hardware(),

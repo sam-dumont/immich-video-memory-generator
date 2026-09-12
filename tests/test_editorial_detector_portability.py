@@ -9,7 +9,10 @@ import unittest
 import numpy as np
 from PIL import Image
 
-from immich_memories.analysis.editorial_preparation_detectors import Docling
+from immich_memories.analysis.editorial_preparation_detectors import (
+    DetectorModelUnavailable,
+    Docling,
+)
 
 
 class DoclingPortabilityTests(unittest.TestCase):
@@ -21,8 +24,10 @@ class DoclingPortabilityTests(unittest.TestCase):
             self.skipTest("requires the editorial inference dependencies")
         try:
             detector = Docling(allow_downloads=False, cache_dir=None)
-        except LocalEntryNotFoundError:
-            self.skipTest("requires the pinned Docling model already in the HF cache")
+        except DetectorModelUnavailable as exc:
+            if isinstance(exc.__cause__, LocalEntryNotFoundError):
+                self.skipTest("requires the pinned Docling model already in the HF cache")
+            raise
 
         rng = np.random.default_rng(42)
         images = [
