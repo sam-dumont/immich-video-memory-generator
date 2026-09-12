@@ -8,8 +8,8 @@ from pathlib import Path
 from immich_memories.operations.cut_progress import (
     PROGRESS_FILE,
     RECENT_ASSET_LIMIT,
-    StageProgress,
     StageProgressWriter,
+    StageUpdate,
     read_stage_progress,
 )
 
@@ -22,7 +22,7 @@ def test_a_published_stage_reads_back_as_numbers_and_recent_pictures(tmp_path: P
     writer.publish("previews", 2, 10)
 
     progress = read_stage_progress(tmp_path)
-    assert progress == StageProgress("previews", 2, 10, ("asset-1", "asset-2"))
+    assert progress == StageUpdate("previews", "analysis", 2, 10, ("asset-1", "asset-2"))
     assert progress.fraction == 0.2
     # One formatter for the sentence, so a reader can match it against the row.
     assert progress.stage_label == "Preparing previews: 2/10"

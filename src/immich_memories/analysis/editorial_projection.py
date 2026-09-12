@@ -15,6 +15,8 @@ from collections.abc import Callable
 from math import isfinite
 from typing import TYPE_CHECKING
 
+from immich_memories.operations.cut_progress import StageUpdate
+
 if TYPE_CHECKING:
     from immich_memories.analysis.editorial_planner import EditorialPlan, EditorialSelection
     from immich_memories.analysis.progress import ProgressTracker
@@ -24,7 +26,7 @@ if TYPE_CHECKING:
 class EditorialStageReporter:
     """Announce the current editorial stage without letting the display decide anything.
 
-    Holds the last label so a cancellation can re-announce it, and swallows
+    Holds the last record so a cancellation can re-announce it, and swallows
     every display failure: a broken progress callback must not turn a finished
     editorial decision into a failed one.
     """
@@ -34,24 +36,31 @@ class EditorialStageReporter:
     ) -> None:
         self._tracker = tracker
         self._progress_callback = progress_callback
-        self.stage = "Preparing editorial evidence"
+        self.stage = StageUpdate("Preparing editorial evidence", "analysis")
 
-    def __call__(self, label: str, *, status: str = "running") -> None:
-        self.stage = label
+    def __call__(self, update: StageUpdate | str, *, status: str = "running") -> None:
+        if isinstance(update, str):
+            update = StageUpdate(update)
+        self.stage = update
         if self._progress_callback is None:
             return
-        with contextlib.suppress(Exception):
-            self._progress_callback(
-                {
-                    "phase_label": label,
-                    "current_phase": label,
-                    "indeterminate": True,
-                    "status": status,
-                    "started_at": self._tracker.progress.start_time,
-                    "elapsed_seconds": self._tracker.progress.elapsed_seconds,
-                    "elapsed": self._tracker.format_elapsed(),
-                }
+        payload: dict = {
+            "phase_label": update.stage_label,
+            "current_phase": update.phase,
+            "indeterminate": not update.counted,
+            "status": status,
+            "started_at": self._tracker.progress.start_time,
+            "elapsed_seconds": self._tracker.progress.elapsed_seconds,
+            "elapsed": self._tracker.format_elapsed(),
+        }
+        if update.counted:
+            payload.update(
+                progress_fraction=update.fraction,
+                current_index=update.done,
+                total_items=update.total,
             )
+        with contextlib.suppress(Exception):
+            self._progress_callback(payload)
 
     def repeat(self) -> None:
         """Re-announce the stage a cancellation interrupted."""
