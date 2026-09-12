@@ -1,13 +1,21 @@
 #!/usr/bin/env python3
 """Export the pinned Marqo NSFW detector to ONNX and prove it still decides the same.
 
-The `nsfw_marqo` producer is the only seat that needs torch at run time, and on
-Linux torch drags in fifteen CUDA wheels a CPU box never loads. It is a plain
-timm vision transformer, so it exports. This writes the graph, then compares
-ONNX Runtime against torch on the images it is pointed at and refuses to leave a
-file behind if the two disagree about any label.
+This is the maintainer tool that produced the artifact the product ships:
+`nsfw_marqo` runs the export through ONNX Runtime, and nothing in the installed
+package imports torch, torchvision or timm. Rerun it only to re-cut the export,
+then publish the file and set `MARQO_ONNX_SHA256` to the digest printed here.
 
-    uv run python scripts/export_marqo_onnx.py --out /tmp/nsfw-marqo-384.onnx
+It writes the graph, compares ONNX Runtime against torch on the images it is
+pointed at, and refuses to leave a file behind if the two disagree about any
+label. `--verify-pixels` feeds the graph the product's own torch-free transform
+instead of timm's, which is the lane the shipped detector actually uses.
+
+The torch family is deliberately not a declared dependency any more, so bring it
+for the length of the export only:
+
+    uv run --with torch --with torchvision --with timm --with onnxscript \
+        python scripts/export_marqo_onnx.py --out /tmp/nsfw-marqo-384.onnx
 """
 
 from __future__ import annotations
@@ -15,20 +23,48 @@ from __future__ import annotations
 import argparse
 import hashlib
 import sys
-from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 from immich_memories.analysis.editorial_preparation_detectors import (
     MARQO_REPO,
     MARQO_REVISION,
-    Marqo,
     decide,
+    marqo_pixels,
 )
 
 DEFAULT_IMAGES = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "hdr_samples"
 OPSET = 17
-SIDE = 384
+
+
+class TorchMarqo:
+    """The timm/torch detector this export replaces, kept here as the reference."""
+
+    def __init__(self, *, allow_downloads: bool, cache_dir: str | None) -> None:
+        import timm
+        import torch
+        from huggingface_hub import hf_hub_download
+
+        for filename in ("config.json", "model.safetensors"):
+            hf_hub_download(
+                MARQO_REPO,
+                filename,
+                revision=MARQO_REVISION,
+                cache_dir=cache_dir,
+                local_files_only=not allow_downloads,
+            )
+        self.torch = torch
+        self.model = timm.create_model(
+            f"hf_hub:{MARQO_REPO}@{MARQO_REVISION}", pretrained=True
+        ).eval()
+        config = timm.data.resolve_data_config({}, model=self.model)
+        self.transform = timm.data.create_transform(**config, is_training=False)
+        self.classes = self.model.pretrained_cfg["label_names"]
+
+    def batch(self, images: list[Any]) -> Any:
+        pixels = self.torch.stack([self.transform(image) for image in images])
+        with self.torch.no_grad():
+            return self.model(pixels).softmax(-1).numpy()
 
 
 def load_images(directory: Path) -> list[Any]:
@@ -40,34 +76,7 @@ def load_images(directory: Path) -> list[Any]:
     return [Image.open(path).convert("RGB") for path in paths]
 
 
-def marqo_pixels(images: Sequence[Any]) -> Any:
-    """timm's resolved transform for this model, without timm or torch.
-
-    Resize the short side to 384 bicubic, centre crop, scale to [0,1] and
-    normalise by 0.5/0.5 — the config the pinned checkpoint carries. Written in
-    numpy so the ONNX seat can drop the torch family entirely; `--verify-pixels`
-    proves it against the timm pipeline before anyone relies on it.
-    """
-    import numpy as np
-    from PIL import Image
-
-    tensors = []
-    for image in images:
-        width, height = image.size
-        scale = SIDE / min(width, height)
-        resized = image.resize(
-            (max(SIDE, round(width * scale)), max(SIDE, round(height * scale))),
-            Image.Resampling.BICUBIC,
-        )
-        left = (resized.width - SIDE) // 2
-        top = (resized.height - SIDE) // 2
-        cropped = resized.crop((left, top, left + SIDE, top + SIDE))
-        pixels = np.asarray(cropped, dtype=np.float32) / 255.0
-        tensors.append(((pixels - 0.5) / 0.5).transpose(2, 0, 1))
-    return np.ascontiguousarray(np.stack(tensors), dtype=np.float32)
-
-
-def export(detector: Marqo, out: Path, images: list[Any]) -> None:
+def export(detector: TorchMarqo, out: Path, images: list[Any]) -> None:
     torch = detector.torch
     example = torch.stack([detector.transform(images[0])])
     with torch.no_grad():
@@ -86,7 +95,7 @@ def export(detector: Marqo, out: Path, images: list[Any]) -> None:
 
 
 def agreement(
-    detector: Marqo, out: Path, images: list[Any], *, own_pixels: bool
+    detector: TorchMarqo, out: Path, images: list[Any], *, own_pixels: bool
 ) -> tuple[float, list[str]]:
     import numpy as np
     import onnxruntime as ort
@@ -120,11 +129,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--verify-pixels",
         action="store_true",
-        help="feed the ONNX graph the torch-free numpy transform instead of timm's",
+        help="feed the ONNX graph the shipped torch-free transform instead of timm's",
     )
     options = parser.parse_args(argv)
 
-    detector = Marqo(allow_downloads=options.allow_downloads, cache_dir=options.cache_dir or None)
+    detector = TorchMarqo(
+        allow_downloads=options.allow_downloads, cache_dir=options.cache_dir or None
+    )
     images = load_images(Path(options.images).expanduser())
     out = Path(options.out).expanduser()
     out.parent.mkdir(parents=True, exist_ok=True)

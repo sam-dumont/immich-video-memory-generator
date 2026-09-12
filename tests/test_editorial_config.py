@@ -27,7 +27,7 @@ def test_editorial_store_defaults_without_a_selection_switch(tmp_path) -> None:
         "children": "public-v1",
         "doc_docling": "det-v1",
         "location": "public-v1",
-        "nsfw_marqo": "det-v1",
+        "nsfw_marqo": "det-v2",
         "people": "public-v1",
         "swim": "oi-v3",
         "venue": "oi-v3",

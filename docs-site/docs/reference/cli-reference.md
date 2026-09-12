@@ -324,7 +324,7 @@ immich-memories models [OPTIONS]
 
 ### `models fetch`
 
-Download the pinned encoder export and warm the pinned detector snapshots.
+Download every pinned model artifact a first cut needs, in one command.
 
 ```bash
 immich-memories models fetch [OPTIONS]
@@ -333,7 +333,7 @@ immich-memories models fetch [OPTIONS]
 | Flag | Type | Default | Description |
 | --- | --- | --- | --- |
 | `--force` | boolean | false | Re-download even when the file is already right |
-| `--detectors` | boolean | true | Also warm the two pinned Hugging Face detector snapshots |
+| `--detectors` | boolean | true | Also fetch the pinned detector export and warm the pinned detector snapshot |
 
 ## `music`
 

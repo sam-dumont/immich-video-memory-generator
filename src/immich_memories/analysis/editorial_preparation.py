@@ -16,7 +16,10 @@ from PIL import Image
 from immich_memories.analysis.editorial_description_contract import DESCRIPTION_MODEL
 from immich_memories.analysis.editorial_description_outcomes import cached_preview
 from immich_memories.analysis.editorial_preparation_captions import prepare_captions
-from immich_memories.analysis.editorial_preparation_detectors import prepare_detectors
+from immich_memories.analysis.editorial_preparation_detectors import (
+    DETECTOR_VERSIONS,
+    prepare_detectors,
+)
 from immich_memories.analysis.editorial_preparation_heads import PUBLIC_HEAD_VERSIONS, prepare_heads
 from immich_memories.analysis.editorial_preparation_pixels import (
     PRODUCER_KEY,
@@ -176,6 +179,7 @@ class _Acquisition:
                 preview_paths=preview_paths,
                 python=self.preparation_config.detector_python,
                 cache_dir=self.preparation_config.detector_cache_dir,
+                marqo_onnx=self.preparation_config.marqo_onnx_path,
                 allow_downloads=self.preparation_config.allow_model_downloads,
                 batch_size=self.preparation_config.batch_size,
                 check_cancelled=self.check,
@@ -351,7 +355,7 @@ def _detector_pending(
     demanded = {
         head: pending(f"head:{head}@{version}")
         for head, version in head_versions.items()
-        if head in {"nsfw_marqo", "doc_docling"} and version == "det-v1"
+        if DETECTOR_VERSIONS.get(head) == version
     }
     return {head: values for head, values in demanded.items() if values}
 
@@ -361,7 +365,7 @@ def _record_unpackaged_heads(
     head_versions: Mapping[str, str],
     failures: dict[str, str],
 ) -> None:
-    supported = PUBLIC_HEAD_VERSIONS | {"nsfw_marqo": "det-v1", "doc_docling": "det-v1"}
+    supported = PUBLIC_HEAD_VERSIONS | DETECTOR_VERSIONS
     for head, version in head_versions.items():
         if pending(f"head:{head}@{version}") and supported.get(head) != version:
             failures[f"head_provider:{head}"] = f"no packaged producer for {head}@{version}"

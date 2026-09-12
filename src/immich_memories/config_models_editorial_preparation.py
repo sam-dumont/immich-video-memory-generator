@@ -7,6 +7,14 @@ from pydantic import BaseModel, Field, field_validator
 
 from immich_memories.config_models import expand_env_vars
 
+# The one place the sensitive-content export's host is named; `models fetch`
+# verifies the digest pinned in analysis/editorial_preparation_detectors.py
+# whatever this points at.
+MARQO_ONNX_URL = (
+    "https://github.com/sam-dumont/immich-video-memory-generator/"
+    "releases/download/models-v1/nsfw-marqo-384-924658f1.onnx"
+)
+
 
 class EditorialPreparationConfig(BaseModel):
     """Missing facts are acquired; complete facts never contact a provider."""
@@ -22,9 +30,22 @@ class EditorialPreparationConfig(BaseModel):
         default="", description="Blank uses the current Python interpreter"
     )
     detector_cache_dir: str = Field(default="", description="Blank uses the Hugging Face cache")
+    marqo_onnx: str = Field(
+        default="~/.immich-memories/models/detectors/nsfw-marqo-384.onnx",
+        description=(
+            "ONNX export of the pinned sensitive-content detector (22.5 MB, digest-pinned in "
+            "code); `models fetch` downloads it here"
+        ),
+    )
+    marqo_onnx_url: str = Field(
+        default=MARQO_ONNX_URL,
+        description="Where `models fetch` downloads the pinned sensitive-content export from",
+    )
     allow_model_downloads: bool = False
 
-    @field_validator("head_bundle", "detector_python", "detector_cache_dir", mode="before")
+    @field_validator(
+        "head_bundle", "detector_python", "detector_cache_dir", "marqo_onnx", mode="before"
+    )
     @classmethod
     def expand_paths(cls, value: object) -> object:
         return expand_env_vars(value) if isinstance(value, str) else value
@@ -37,6 +58,10 @@ class EditorialPreparationConfig(BaseModel):
         if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username:
             raise ValueError("caption_base_url must be an HTTP(S) endpoint without credentials")
         return value
+
+    @property
+    def marqo_onnx_path(self) -> Path:
+        return Path(self.marqo_onnx).expanduser()
 
     @property
     def head_bundle_path(self) -> Path:

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import http.server
 import json
 import threading
 from unittest.mock import MagicMock, patch
 
+from immich_memories.analysis import editorial_preparation_detectors as detectors
 from immich_memories.analysis.editorial_description_contract import API_MODEL
 from immich_memories.api.immich import ImmichAPIError
 from immich_memories.config_loader import Config
@@ -14,6 +16,7 @@ from immich_memories.preflight import (
     CheckResult,
     CheckStatus,
     check_caption_endpoint,
+    check_detector_export,
     check_encoder,
     check_immich,
     check_llm,
@@ -218,6 +221,41 @@ def test_encoder_check_rejects_an_export_that_is_not_the_pinned_one(tmp_path) ->
 
     assert result.status is CheckStatus.ERROR
     assert "pinned" in result.message.lower()
+
+
+def test_detector_check_names_the_fetch_command_when_the_export_is_absent(tmp_path) -> None:
+    config = Config(editorial={"preparation": {"marqo_onnx": str(tmp_path / "marqo.onnx")}})
+
+    result = check_detector_export(config)
+
+    assert result.status is CheckStatus.ERROR
+    assert "models fetch" in (result.details or "")
+
+
+def test_detector_check_rejects_an_export_that_is_not_the_pinned_one(tmp_path) -> None:
+    path = tmp_path / "marqo.onnx"
+    path.write_bytes(b"some other onnx export")
+    config = Config(editorial={"preparation": {"marqo_onnx": str(path)}})
+
+    result = check_detector_export(config)
+
+    assert result.status is CheckStatus.ERROR
+    assert "pinned" in result.message.lower()
+
+
+def test_detector_check_accepts_the_pinned_export(tmp_path, monkeypatch) -> None:
+    path = tmp_path / "marqo.onnx"
+    path.write_bytes(b"the pinned onnx export")
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    # WHY: the real 22.5 MB export cannot live in the repo, so this file's own
+    # digest stands in for the pin; the check itself is the production one.
+    monkeypatch.setattr(detectors, "MARQO_ONNX_SHA256", digest)
+    config = Config(editorial={"preparation": {"marqo_onnx": str(path)}})
+
+    result = check_detector_export(config)
+
+    assert result.status is CheckStatus.OK
+    assert result.details == str(path)
 
 
 def test_caption_check_passes_when_the_endpoint_advertises_the_alias() -> None:

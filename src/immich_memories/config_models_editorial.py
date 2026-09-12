@@ -18,7 +18,7 @@ def _default_head_versions() -> dict[str, str]:
         "children": "public-v1",
         "doc_docling": "det-v1",
         "location": "public-v1",
-        "nsfw_marqo": "det-v1",
+        "nsfw_marqo": "det-v2",
         "people": "public-v1",
         "swim": "oi-v3",
         "venue": "oi-v3",
