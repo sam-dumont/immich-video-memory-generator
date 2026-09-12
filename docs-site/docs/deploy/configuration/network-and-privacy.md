@@ -127,6 +127,14 @@ tail. With `notifications.attach_thumbnail: true`, a JPEG frame from the finishe
 attached. Think about who runs your notification service (ntfy.sh, Discord, Telegram…) before
 turning that on.
 
+## Thumbnails inside the web UI
+
+The pages do not embed pictures in the HTML any more. Every thumbnail is an `<img>` the browser
+fetches from the app itself at `/media/thumb/<asset id>` on the same port, served from the cache
+the analysis already filled. Nothing new leaves your network: the route answers only for assets the
+current session prepared, sits behind the same login as every page, and derives a 320 px grid
+thumbnail from the cached preview on first request. In privacy mode the same blur applies to it.
+
 ## Privacy mode
 
 Privacy mode (`--privacy-mode` / `server.enable_demo_mode: true`) is a **demo/screenshot**

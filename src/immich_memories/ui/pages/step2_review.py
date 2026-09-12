@@ -353,9 +353,8 @@ def _render_step2_content(
 
 def _render_photo_preview(state) -> None:
     """Show a compact preview grid of photos that will be included."""
-    import base64
 
-    from immich_memories.ui.pages.step2_helpers import get_thumbnail
+    from immich_memories.ui.pages.step2_helpers import render_thumbnail
 
     photos = state.photo_assets
     im_section_header(f"{len(photos)} Photos Included", icon="photo_library")
@@ -367,15 +366,9 @@ def _render_photo_preview(state) -> None:
         .style("grid-template-columns: repeat(auto-fill, minmax(80px, 1fr))")
     ):
         for photo in photos[:max_preview]:
-            thumb = get_thumbnail(photo.id)
-            if thumb:
-                b64 = base64.b64encode(thumb).decode()
-                ui.image(f"data:image/jpeg;base64,{b64}").classes("w-full rounded").style(
-                    "aspect-ratio: 1; object-fit: cover"
-                ).tooltip(photo.original_file_name or photo.id)
-            else:
-                ui.element("div").classes("w-full rounded").style(
-                    "aspect-ratio: 1; background: var(--im-bg-surface)"
+            with ui.element("div").tooltip(photo.original_file_name or photo.id):
+                render_thumbnail(
+                    photo.id, classes="w-full rounded", style="aspect-ratio: 1; object-fit: cover"
                 )
 
     if len(photos) > max_preview:
