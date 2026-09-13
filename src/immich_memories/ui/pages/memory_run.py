@@ -243,6 +243,7 @@ def restore_cut_from_attempt(state: AppState, attempt_dir: Path, record: Mapping
     state.editorial_selections = tuple(selections)
     state.selected_clip_ids = set(segments)
     state.selected_photo_ids = {c.asset.id for c in selected if c.asset.type == AssetType.IMAGE}
+    state.previous_cut_asset_ids = frozenset(segments)
     state.clip_segments = segments
     state.editorial_attempt_dir = attempt_dir
     state.pipeline_result = {
