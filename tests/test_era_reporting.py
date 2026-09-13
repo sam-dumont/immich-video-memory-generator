@@ -82,8 +82,7 @@ def test_each_window_reports_what_it_contributed(caplog) -> None:
     assets, output = _fetch(by_range, caplog)
 
     assert len(assets) == 3
-    assert "2 " in output and "1 " in output
-    assert "2026" in output and "2016" in output
+    assert "2026: 2" in output and "2016: 1" in output
 
 
 def test_a_window_that_returned_nothing_is_a_warning(caplog) -> None:
