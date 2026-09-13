@@ -70,12 +70,6 @@ place that dominates the day. That window is kept only when trimming to it remov
 45 minutes and at least 15% of the day, and only when what is left runs at least half an
 hour.
 
-Both bounds are there for a measured failure. Without the floor, a dense burst in one place
-produced a 69-second window on a 12.6-hour day. And the rule that came before (drop the
-window whenever the dominant place covers half the day or more) punished the days
-photographed best: a race covered from arrival to podium filled two thirds of its day and
-was given no window at all.
-
 A day that was all one thing has nothing to trim and gets no window, which is the right
 answer for a wedding that ran fifteen hours in one place.
 
@@ -87,25 +81,15 @@ text-only call that reasons over those lines together with the times, places
 and recognised names. Without `thinking`, it stays the single vision call it
 has always been, so nothing changes on a server that cannot reason.
 
-Splitting it is not a preference. Measured across 14 candidate days, one
-vision call answered "special" to all fourteen, and a single call that both
-looked and reasoned truncated 6 of them past the point of parsing, because the
-reasoning runs into the answer. Two calls was the only shape that told an
-occasion from an ordinary Tuesday, and the one it called ordinary turned out
-to be right.
+Measured across 14 candidate days, one vision call said "special" to all fourteen, and one call
+that both looked and reasoned truncated 6 of them past parsing. Two calls was the only shape that
+told an occasion from an ordinary Tuesday, and it invents less: the two-step title describes what
+is in the pictures. With thinking on, a day costs two calls plus at most one retitle, and the scan
+asks about a handful of days per year.
 
-It also invents less. Where the fast answer named a specific event that had
-not happened, the two-step version gave the same day a title that described
-what was in the pictures instead.
-
-Nobody recorded what that costs per day, so this page will not quote one. What is
-worth knowing is the shape: with thinking on, a day is two calls rather than one,
-plus up to one retitle, and the scan asks about a handful of days per year.
-
-The per-picture lines the judgement read would be the record to check first when a
-day you expected comes back ordinary. They are written to the log at `DEBUG`, and
-the CLI has no flag or environment variable that raises the log level that far, so
-today there is no way to see them without editing `configure_logging()`.
+The per-picture lines the judgement read are the record to check first when a day you
+expected comes back ordinary. They are logged at `DEBUG`: run `immich-memories -v discover-days`
+to see them.
 
 ## Running it
 
@@ -175,7 +159,7 @@ becomes a video three ways:
 - **Automation proposes it on its anniversary.** `auto run` reads the catalogue like any
   other detector and puts a due day in the queue, scored by how round the anniversary is,
   one per run at most. It passes a date and nothing else: the title stays in the file.
-  See [auto](./auto.md#the-anniversary-that-would-otherwise-score-lowest).
+  See [auto](./auto.md#how-a-candidate-is-chosen).
 - **The Memory page's Surprise me type offers all of them.** Due anniversaries first, then
   every other day the catalogue holds, because you asked for it rather than being
   interrupted. See [the Memory page](../web-ui/memory.mdx#memory-types-and-their-parameters).

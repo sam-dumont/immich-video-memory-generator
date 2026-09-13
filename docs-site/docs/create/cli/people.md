@@ -136,53 +136,12 @@ The contract, which the builder is not allowed to break:
 Fill `confirmed:` by editing the file, or from the settings page below. Both write the
 same schema, through the same writer.
 
-## The editor: Settings → People
+## The editor
 
-The web UI has the same file as a page, at **Settings → People** (`/settings/people`).
-It is the file, not a second copy of it: everything the page writes lands in
-`people.yaml` immediately, and everything you have edited by hand shows up there.
-
-Each person is one card: their Immich face crop, their name, the tier the scan put them
-in with the evidence behind it in one line, and the edges the scan found.
-
-**What you can confirm.**
-
-| control | writes | what it means |
-|---|---|---|
-| Role | `confirmed.role` | pick from partner, child, parent, sibling, family, friend or acquaintance; or type your own. The list is only what inference can suggest; a role only you can name is what the free text is for |
-| ✓ / ✗ on a link | `confirmed.links[]` | yes they are, or no they are not. Pressing the answer you already gave takes it back: undecided is a real state, and it writes nothing |
-| Notes | `confirmed.notes` | anything you want to remember about this person |
-
-Role and Notes save as you type them, and a rescan copies everything through untouched.
-Two things do sit behind a button, because both create something: **Confirm relationship**,
-which names one of 27 directed kinds between two people, and **Add person**, for somebody
-your library has no face for. Both are dialogs with a confirm.
-
-**Birth dates are read-only here.** They are mirrored from Immich and must never diverge
-from it, so the card shows the date with an *edit in Immich* link next to it rather than
-a field. The same link opens any person's record in your Immich install.
-
-**Curation, at the top of the page.** Two things the scan can spot but only Immich can
-fix, so the page names them and points you there:
-
-- **Twins**: same family name, same birth date. Face recognition merges identical faces,
-  so one record ends up holding nearly all the pictures and the other almost none
-  (measured on a real library: 576 against 20). Neither count means anything alone, and
-  both cards carry a *counts unreliable* badge. Merge them in Immich or keep them apart:
-  it is your call, and the graph reads the pair as one unit either way.
-- **Same-name duplicates**: one name on two person records is a split face cluster.
-  Merge those records in Immich.
-
-Both are guesses, and both can be wrong: two people really can share a surname and a
-birthday, or a name. Press ✗ on the link in either person's card and the flag stops
-appearing: a prompt you have already answered is nagging, not curation.
-
-**Rescan the library** runs exactly what `people scan` runs, in the background, and
-redraws the page when it finishes. Your confirmations survive it: that is the whole
-contract above.
-
-Unnamed faces do not appear here at all, however often they show up: the graph skips
-them, because naming a face is work that belongs in Immich.
+The same file is a page in the web UI, **Settings → People**: one card per person with their
+face crop, tier and evidence, a role select, notes, and the links the scan found with a ✓ / ✗ on
+each. Everything the page writes lands in `people.yaml`; everything you edit by hand shows up
+there. See [Settings](../web-ui/settings.mdx#people-confirming-whos-who).
 
 ## Options
 
@@ -201,12 +160,9 @@ them, because naming a face is work that belongs in Immich.
 | `--file` | `~/.immich-memories/people.yaml` | the file to read |
 | `--tier` | all | show only `inner`, `recurring`, `episodic` or `event` |
 
-`people scan` prints tier counts and the file path, not the roster: a real inner circle
-is your household by name, and a scan should not read it out into a terminal that might be
-a log or a shared session. `people show` prints it because you asked.
-
-Unnamed faces are skipped entirely. The graph has nothing useful to say about a face
-nobody has claimed, and naming them is work that belongs in Immich.
+`people scan` prints tier counts and the file path, not the roster: a terminal may be a log.
+`people show` prints it because you asked. Unnamed faces are skipped; naming them is work that
+belongs in Immich.
 
 ## What uses it
 
