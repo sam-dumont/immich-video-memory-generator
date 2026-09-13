@@ -43,7 +43,7 @@ The model never sees coordinates. The selected material's GPS points are cluster
 - **Map mode** recommendation for the animated map intro
 - A one-line **reason** explaining why it picked that classification
 
-You see everything in Step 3 of the UI and can edit before rendering. Hit the regenerate button to try again with the same GPS data.
+You see everything on the Generation Options page and can edit before rendering. Hit the regenerate button to try again with the same GPS data.
 
 ### Thinking mode has to be off
 

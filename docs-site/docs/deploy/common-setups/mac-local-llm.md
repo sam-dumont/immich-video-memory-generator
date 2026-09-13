@@ -139,7 +139,7 @@ without the planner, 29 GB with it. Subtract the 2 to 4 GB the app itself is hol
 `lib` mode says so before loading anything and the run falls back to a bundled track rather than
 being killed mid-render.
 
-The config, the pinned install commands and the full memory notes are in [Fully Local Setup](../../create/pipeline/audio-and-music.md#fully-local-setup-no-servers).
+The config, the pinned install commands and the full memory notes are in [Fully Local Setup](../../create/pipeline/audio-and-music.md#running-it-in-process-on-apple-silicon).
 
 ## What doesn't work locally
 

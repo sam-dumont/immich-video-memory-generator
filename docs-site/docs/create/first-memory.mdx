@@ -7,130 +7,100 @@ import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
 
 # Your First Memory
 
-This walks you through one video from start to finish. Set up the annotation producers before
-the first run: a cold cut reads and describes every picture in the period, which is the slow part,
-and everything it reads is kept.
+One month, start to finish. A month is the right first cut: one minute of video, and the slow
+part (reading every picture once) is bounded by what one month holds.
 
-## Prerequisites
+## Before you start
 
-Before you start:
+- **Immich v2 or v3** and an API key (Account Settings > API Keys; grant **All**, or at least read
+  access to assets, people, albums, timeline and search, plus upload and album rights if you want
+  the video back in Immich).
+- **Docker**, or **Python 3.11 or later**.
+- About **22 GB of disk** for the caches at their default budgets (10 GB of downloaded video kept
+  7 days, 10 GB of previews, 2 GB of clip previews).
+- One of the three ways to run: rules only needs nothing else; the classifiers need
+  `immich-memories models fetch`; the model reader needs a caption server and a reader. The
+  [self-hosting guide](../deploy/self-hosting.md) stands them up in order.
 
-- **Immich v2 or v3** with an API key (Account Settings > API Keys > New API Key: grant **All**, or at least read access to assets/people/albums/timeline/search plus asset upload, album create/update and asset delete if you want upload-back). v4 is not accepted: the client checks the major version and refuses what it does not know
-- **Docker** or **Python 3.11+** installed
-- **Disk for the caches.** The shipped budgets are 10 GB of downloaded video (evicted after 7 days), 10 GB of Immich previews and 2 GB of clip previews, so plan for about 22 GB if you leave them alone, less if you lower them
-- Photos, Live Photos or videos in the period you want
-- The three services and two model files the editor reads with: the
-  [self-hosting guide](../deploy/self-hosting.md) stands them up in order (the pins and digests
-  themselves are on
-  [Editorial annotation setup](../deploy/configuration/editorial-preparation.md))
+## Launch
 
-## Step 1: Launch
-
-**Docker** (recommended):
+Docker:
 
 ```bash
-# Create a .env file
 cat > .env << 'EOF'
 IMMICH_URL=https://photos.example.com
 IMMICH_API_KEY=your-api-key-here
 EOF
-
-# Download and start
 curl -O https://raw.githubusercontent.com/sam-dumont/immich-video-memory-generator/main/docker-compose.yml
 docker compose up -d
 ```
 
-**Or native install:**
+Or without Docker:
 
 ```bash
 uvx --from "immich-memories[editorial]" immich-memories ui
 ```
 
-Open [http://localhost:8080](http://localhost:8080) in your browser. Both routes keep the UI on
-localhost: the native install binds loopback, and the compose file publishes the port there. If
-the app runs on a different machine than your browser, see the
-[Docker install page](../deploy/installation/docker.md#quick-start): it pairs publishing the
-port with turning on authentication.
+Open [http://localhost:8080](http://localhost:8080). Both routes keep the UI on localhost. If the
+app and your browser are on different machines, read the
+[Docker page](../deploy/installation/docker.md#quick-start) first: it pairs publishing the port
+with turning on authentication.
 
-## Step 2: Connect to Immich
+## Connect and pick a month
 
 With credentials in the config or the environment the page connects on its own and shows the
-brief. Otherwise it shows only the **Immich Connection** panel: enter the server URL and API key
-and click **Test Connection**. On success the panel collapses to "Immich Connection: *you*" and
-the brief appears.
+brief. Otherwise fill the **Immich Connection** panel and press **Test Connection**.
+
+Choose **Monthly Highlights** and a month with a fair number of pictures. Leave **Auto duration**
+on.
 
 <ThemedScreenshot name="memory-brief" alt="The brief, connected to Immich" />
 
-## Step 3: Pick a month
+## Cut
 
-Choose **Monthly Highlights** as the memory type and pick a month with a fair number of pictures
-in it. A month is the right first cut: one minute of output, and preparation is bounded by how many
-pictures the month holds rather than a year. Nobody has timed a cold pass on this route yet, so
-start small enough that you can watch it. Leave **Auto duration** on.
-
-## Step 4: Cut
-
-Press **Cut**. The page loads the pool for the brief and shows one row per phase (finding media,
-loading thumbnails, reading the pictures, editing, done) with the editor's own stage beside the
-active row. The first cut prepares a caption and facts for every picture in the month, then reads
-the month's episodes and account, weighs its stories, and picks the moments. A missing producer
-stops the run here and says which one.
-
-Reloading the page mid-cut is fine: it lands on the same rows.
+Press **Cut**. The page shows one row per phase (finding media, loading thumbnails, reading the
+pictures, editing, done). Stages that count their work draw a bar with an estimate, and the
+reading passes show the last pictures they finished. If a model server is not answering, the
+Editing row says so within a second, with its address. Reloading the page mid-cut lands on the
+same rows.
 
 <ThemedScreenshot name="memory-cutting" alt="The cut in progress" />
 
-## Step 5: Read the story
+## Read the storyboard
 
-When it finishes the page shows what the editor made of the month: a one-paragraph thesis, a
-duration line, and the stories heaviest first, each with its purpose and, under it, every
-picture in it with a **Still** or **Motion** badge, the seconds it holds, and the reason
-it is there. **Details** under a story shows the editor's own words for it.
+When it finishes, the page opens on the **Storyboard**: the cut in the order it plays, one shot
+per picture with its timecode, day, the story it belongs to and the editor's one-line reason.
+The **Story** tab shows the same cut the way the editor weighed it, heaviest story first.
 
-<ThemedScreenshot name="memory-story" alt="The story the cut produced" />
+<ThemedScreenshot name="memory-story" alt="The storyboard of the first cut" />
 
-If a picture should not be in it, **Review the pool** opens the media pool with the cut's picks,
-where you untick it and trim excerpts. **Cut again** runs the editor once more over the same
-pool; **Change the brief** starts over.
+If a picture should not be there, **Review the pool** opens the media pool with the cut's picks:
+untick it, or tick one the editor dropped, and press **Cut again**. Your ticks hold.
 
-## Step 6: Export
+## Export and watch
 
-Press **Export**. The Preview & Export page shows the summary and the output filename; the
-defaults work for a first video. Music, title and resolution live one click away under **Back to
-Generation Options**: the only one worth changing on a first run is **Background music**, if you
-have a specific track you want.
-
-Click **Generate Video**. The status line walks through the run: downloading clips and extracting
-segments, assembling with transitions and title screens, "Applying music" (or "Music disabled"),
-"Uploading to Immich" (or "Delivery not requested"), then "Complete".
+Press **Export**, then **Generate Video**. The status line walks through downloading the clips,
+assembling with transitions and titles, music, and delivery. Music, title and resolution are one
+click away under **Back to Generation Options**; the defaults are fine for a first run.
 
 <ThemedScreenshot name="memory-export" alt="Export: output filename and Generate Video" />
 
-Most of the wait on a first run is the cut, not the encode; on the second cut over the same
-month the reading is already banked. Of the render that is left, the title screens cost more
-than the encoder: at 2 cores, titles were ~263 s of a ~339 s assembly
-([CPU-Only Mode](../deploy/hardware/cpu-only.md#title-rendering-is-the-bottleneck-not-encoding)).
+The player shows the result and **Saved to** gives the path (a per-run folder under
+`~/Videos/Memories` by default). With **Upload after generation** on, it is also in the Immich
+album you named.
 
-## Step 7: Watch
+## What just happened
 
-When it's done, the built-in player shows your result and "Saved to:" gives the file path (a
-per-run folder under `~/Videos/Memories` by default). If you turned on **Upload after
-generation**, it is also in the Immich album you named.
+The app fetched the month's metadata and previews, prepared facts for every eligible picture,
+read the stories those pictures show, gave each story the pictures its weight earned, and
+assembled them in chronological order with FFmpeg, titles and music. Everything it read is
+banked, so the second cut over the same month is mostly the render. Every attempt is kept under
+the cache directory with the plan and the reason for every picture, and `immich-memories runs
+story` prints the same storyboard in the terminal.
 
-## What just happened?
+## Next
 
-The app fetched the month's source metadata and previews, prepared a description and facts for
-every eligible picture, and read the stories those pictures show. It weighed the stories against
-the month's account, gave each the pictures its weight earned, and assembled them in
-chronological order with FFmpeg, titles and music. Every attempt is kept under the cache
-directory, with the plan and the reason for every picture.
-
-Facts and readings are cached by their producer and exact input. A later cut reuses matching
-results; changed or missing evidence requires fresh work.
-
-## Next steps
-
-- Try other memory types: [Trip Memories](./memory-types/trip-memories.mdx) (needs GPS data), [Person Spotlight](./memory-types/monthly-person-season.mdx) (needs face recognition in Immich)
-- Read how the editor decides: [The Curator](./pipeline/the-curator.md)
-- Automate it: schedule one daily [`auto run`](./cli/auto.md); see [Automated Generation](./recipes/automated-generation.md)
-- Explore [all CLI options](./cli/generate.md) for fine-grained control
+- Other types: [Trip](./memory-types/trip-memories.mdx) (needs GPS), [Person spotlight](./memory-types/monthly-person-season.mdx) (needs face recognition in Immich).
+- How the editor decides: [The Curator](./pipeline/the-curator.md).
+- Automate it: one daily [`auto run`](./cli/auto.md).
+- Every flag: [generate](./cli/generate.md).
