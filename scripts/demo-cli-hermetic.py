@@ -69,7 +69,8 @@ def main() -> None:
     try:
         cache = root / "cache"
         cache.mkdir()
-        out = root / "output"
+        # Where a person would put it: the recording prints ~/Videos/june-2024.mp4.
+        out = _HOME / "Videos"
         out.mkdir()
         (root / "state").mkdir()
         config_path = root / "config.yaml"
@@ -113,7 +114,7 @@ def main() -> None:
 
         _prompt(
             "immich-memories generate --memory-type monthly_highlights",
-            "--year 2024 --month 6 --no-music",
+            "--year 2024 --month 6 --no-music --output ~/Videos/june-2024.mp4",
         )
         _run(
             [
@@ -126,7 +127,7 @@ def main() -> None:
                 "6",
                 "--no-music",
                 "--output",
-                str(out / "june.mp4"),
+                str(out / "june-2024.mp4"),
             ]
         )
 
@@ -142,6 +143,11 @@ def main() -> None:
             asset = carriers[0]["asset_id"]
             _prompt("immich-memories runs why", asset)
             _run(["runs", "why", asset])
+        # Typed, not run: VHS cannot show a video player. The demo cuts from
+        # this line to the film itself. The name is the file the run wrote.
+        written = sorted(out.rglob("*.mp4"), key=lambda p: p.stat().st_mtime)
+        if written:
+            _prompt("open", "~/" + str(written[-1].relative_to(_HOME)))
     finally:
         server.close()
 

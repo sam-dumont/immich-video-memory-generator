@@ -83,23 +83,35 @@ def test_the_quiet_flags_say_what_they_silence_and_point_to_verbose() -> None:
     assert "-v" in auto_help.split("--quiet", 1)[1].split("\n\n")[0]
 
 
-def test_the_saved_path_gets_its_own_line(caplog) -> None:
+def _saved_messages(caplog, path) -> list[str]:
     import logging
-    from pathlib import Path
 
     from immich_memories.cli._generate_display import _print_generation_result
 
     with caplog.at_level(logging.INFO, logger="immich_memories.cli"):
         _print_generation_result(
-            dry_run=False,
-            no_render=False,
-            result_path=Path("/tmp/a/very/long/path/june_ec6210e5.mp4"),
-            should_upload=False,
-            album_name=None,
+            dry_run=False, no_render=False, result_path=path, should_upload=False, album_name=None
         )
-    messages = [record.getMessage() for record in caplog.records]
-    assert "Video saved to:" in messages
-    assert (
-        messages[messages.index("Video saved to:") + 1].strip()
-        == "/tmp/a/very/long/path/june_ec6210e5.mp4"
-    )
+    return [record.getMessage() for record in caplog.records]
+
+
+def test_a_short_saved_path_shares_the_label_line(caplog) -> None:
+    from pathlib import Path
+
+    messages = _saved_messages(caplog, Path("/tmp/a/very/long/path/june_ec6210e5.mp4"))
+    assert "Video saved to: /tmp/a/very/long/path/june_ec6210e5.mp4" in messages
+
+
+def test_a_long_saved_path_is_indented_under_the_label(caplog) -> None:
+    from pathlib import Path
+
+    long_path = Path("/tmp/" + "deep/" * 14 + "june_ec6210e5.mp4")
+    messages = _saved_messages(caplog, long_path)
+    assert f"Video saved to:\n  {long_path}" in messages
+
+
+def test_a_saved_path_under_home_is_shown_with_a_tilde(caplog) -> None:
+    from pathlib import Path
+
+    messages = _saved_messages(caplog, Path.home() / "Videos" / "june-2024.mp4")
+    assert "Video saved to: ~/Videos/june-2024.mp4" in messages

@@ -18,4 +18,4 @@ Set TypingSpeed 40ms
 
 Type "uv run python scripts/demo-cli-hermetic.py"
 Enter
-Sleep 64s
+Sleep 66s

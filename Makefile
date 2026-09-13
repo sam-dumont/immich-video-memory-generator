@@ -858,10 +858,8 @@ demo-ui: demo-ui-install  ## Render Remotion demo → docs-site/static/demo/demo
 # The README hero is the brief → cut → story stretch of the Remotion demo (seconds
 # 2.6 to 20.6 of the composition), 800 px wide at 12 fps with a two-pass palette so
 # the UI's flat colours stay crisp. Re-run after `make demo-ui`.
-demo-hero:  ## Cut the README hero GIF from docs-site/static/demo/demo.mp4
-	ffmpeg -y -loglevel error -ss 2.6 -t 18 -i docs-site/static/demo/demo.mp4 \
-	  -vf "fps=12,scale=800:-1:flags=lanczos,palettegen=stats_mode=diff" docs-site/static/demo/hero-palette.png
-	ffmpeg -y -loglevel error -ss 2.6 -t 18 -i docs-site/static/demo/demo.mp4 -i docs-site/static/demo/hero-palette.png \
-	  -lavfi "fps=12,scale=800:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle" \
+demo-hero:  ## Cut the README hero GIF from docs-site/static/demo/demo.mp4: the brief, the cut and the storyboard, then the film it made
+	$(eval DEMO_END := $(shell ffprobe -v error -show_entries format=duration -of csv=p=0 docs-site/static/demo/demo.mp4))
+	ffmpeg -y -loglevel error -i docs-site/static/demo/demo.mp4 \
+	  -filter_complex "[0:v]trim=2.6:16.6,setpts=PTS-STARTPTS[a];[0:v]trim=start=$$(python3 -c 'print($(DEMO_END)-4.0)'),setpts=PTS-STARTPTS[b];[a][b]concat=n=2:v=1:a=0,fps=10,scale=800:-1:flags=lanczos,split[x][y];[y]palettegen=stats_mode=diff[p];[x][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle" \
 	  docs-site/static/img/demo-hero.gif
-	@rm -f docs-site/static/demo/hero-palette.png
