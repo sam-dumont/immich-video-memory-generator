@@ -527,6 +527,11 @@ def test_a_packed_extract_survives_into_a_later_solo_lookup(tmp_path: Path) -> N
     assert solo.descriptions[0].provenance.cache_hit is True
 
 
+# A loaded runner can be slow to start the second worker thread; the wait below only
+# has to outlast that, and it ends the moment the second request arrives.
+_OVERLAP_ARRIVAL_TIMEOUT_SECONDS = 30.0
+
+
 def test_independent_descriptions_overlap_without_reordering_results(tmp_path: Path) -> None:
     """oMLX concurrency changes wall time, never the source chronology.
 
@@ -543,6 +548,7 @@ def test_independent_descriptions_overlap_without_reordering_results(tmp_path: P
     ]
     prepared = _prepared(*assets)
     lock = threading.Lock()
+    both_in_flight = threading.Event()
     active = 0
     peak = 0
 
@@ -551,7 +557,13 @@ def test_independent_descriptions_overlap_without_reordering_results(tmp_path: P
         with lock:
             active += 1
             peak = max(peak, active)
-        await asyncio.sleep(0.05)
+            if active == 2:
+                both_in_flight.set()
+        # WHY: the endpoint holds each request until its partner has arrived, so the
+        # overlap is structural rather than a race a busy machine can lose. The wait
+        # runs off this request's own event loop, and its timeout turns a pool that
+        # genuinely cannot open two requests at once into a failed assertion, not a hang.
+        await asyncio.to_thread(both_in_flight.wait, _OVERLAP_ARRIVAL_TIMEOUT_SECONDS)
         with lock:
             active -= 1
         images = kwargs["images"]
@@ -576,7 +588,7 @@ def test_independent_descriptions_overlap_without_reordering_results(tmp_path: P
             concurrency=2,
         )
 
-    assert peak == 2
+    assert peak == 2, "the description pool never held two requests open at once"
     assert tuple(item.asset_id for item in result.descriptions) == tuple(
         asset.id for asset in assets
     )
