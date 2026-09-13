@@ -456,6 +456,12 @@ class TestSyncImmichClient:
         finally:
             client.close()
 
+    @pytest.mark.asyncio
+    async def test_usable_while_a_loop_already_runs_on_this_thread(self, _mock_config):
+        """Playwright's sync API leaves a loop running on the calling thread (#848)."""
+        with SyncImmichClient(_TEST_URL, _TEST_KEY, api_version="v2") as client:
+            assert client.get_api_version() is ResolvedApiVersion.V2
+
 
 class TestSearchPagination:
     """Tests for search/pagination methods."""
