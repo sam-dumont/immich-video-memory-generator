@@ -734,6 +734,16 @@ def _expand() -> tuple[Picture, ...]:
                     sequence=index + 1,
                 )
             )
+    if not pictures:
+        # WHY loudly: this module IS its directory -- the scenes above are only
+        # captions until a glob of LIBRARY_DIR says which files exist. A consumer
+        # that stages the module without the pictures (the release smoke mounted
+        # fake_library.py alone, #881) used to read an empty month and drop every
+        # candidate, which surfaces far downstream as "selected no clips".
+        raise RuntimeError(
+            f"no pictures under {LIBRARY_DIR}: the library is its files, so this "
+            "module cannot be used apart from the directory next to it"
+        )
     return tuple(pictures)
 
 
