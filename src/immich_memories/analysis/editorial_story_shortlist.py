@@ -313,10 +313,14 @@ def _pick_prompt(
 ) -> str:
     # A single representative cannot have repetitive depth. Preserve that
     # established question exactly; only additional depth gets a ceiling.
+    #
+    # A hosted 30B answered with a whole row instead of its label (#908), so the
+    # vocabulary is named where the rows are, not only in the format rule.
+    shape = 'each row starts with its label (e.g. "M01")'
     introduction = (
-        f"This story gets {count} picture(s) at most in the memory, one per contribution. Its candidate moments:\n\n{listing}\n\n"
+        f"This story gets {count} picture(s) at most in the memory, one per contribution. Its candidate moments, {shape}:\n\n{listing}\n\n"
         if allow_fewer
-        else f"This story gets {count} picture(s) in the memory, one per moment. Its distinct moments:\n\n{listing}\n\n"
+        else f"This story gets {count} picture(s) in the memory, one per moment. Its distinct moments, {shape}:\n\n{listing}\n\n"
     )
     task = "Keep only the moments" if allow_fewer else f"Keep the {count} moments"
     prompt = (

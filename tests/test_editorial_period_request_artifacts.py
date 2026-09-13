@@ -255,3 +255,37 @@ def test_production_period_recording_follows_each_active_attempt_even_on_failure
         assert json.loads((attempt / "status.private.json").read_text())["status"] == "failed"
     assert not (context.artifact_dir / "pre-planner-calls").exists()
     planner.close()
+
+
+def test_the_episode_stage_keeps_its_own_prompt_transcript(tmp_path, monkeypatch):
+    context = runtime.EditorialRunContext(
+        "episode-control",
+        "A period",
+        "monthly_highlights",
+        (_window(2024, 7, 12),),
+        30,
+        tmp_path / "artifacts",
+    )
+    config = Config(llm={"model": "test-model"}, cache={"directory": str(tmp_path / "cache")})
+    planner = runtime.build_editorial_planner(
+        client=object(),
+        thumbnail_cache=object(),
+        context=context,
+        config=config,
+        ports=runtime.EditorialRuntimePorts(load_people=lambda: {}),
+    )
+
+    async def query(_prompt, *_args, **_kwargs):
+        return "exact invalid episode reply"
+
+    monkeypatch.setattr(gateway, "query_llm", query)
+    reader = planner._planner._episode_reader_factory(SimpleNamespace(candidates=()))
+    try:
+        assert reader._requester("Read these episodes.") == "exact invalid episode reply"
+    finally:
+        planner.close()
+    [record] = records(context.artifact_dir)
+    assert record["stage"] == "episodes"
+    assert [
+        p.read_text() for p in context.artifact_dir.glob("pre-planner-calls/*.request.private.txt")
+    ] == ["Read these episodes."]

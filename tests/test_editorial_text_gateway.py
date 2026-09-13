@@ -234,3 +234,47 @@ def test_sync_prompt_requester_honors_a_smaller_budget_but_never_doubles_past_ce
 
     with pytest.raises(ValueError, match="configured ceiling"):
         requester.request_with_budget("too much", max_tokens=1201)
+
+
+def test_an_answer_the_caller_refuses_is_asked_again_instead_of_replayed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    answers = iter(['{"keep":["M01 | 2024-06-01T08:15 | ..."]}', '{"keep":["M01"]}'])
+    asked: list[str] = []
+
+    async def fake_query(prompt: str, llm_config: Any, **kwargs: Any) -> str:
+        asked.append(prompt)
+        return next(answers)
+
+    monkeypatch.setattr(gateway, "query_llm", fake_query)
+    request = _request(tmp_path)
+    requester = gateway.QueryTextRequester()
+    refused = asyncio.run(requester.request(request, accepts=lambda raw: "|" not in raw))
+    repeated = asyncio.run(requester.request(request, accepts=lambda raw: "|" not in raw))
+    replayed = asyncio.run(requester.request(request, accepts=lambda raw: "|" not in raw))
+
+    assert refused.raw == '{"keep":["M01 | 2024-06-01T08:15 | ..."]}'
+    assert (repeated.raw, repeated.cache_hit) == ('{"keep":["M01"]}', False)
+    assert (replayed.raw, replayed.cache_hit) == ('{"keep":["M01"]}', True)
+    assert len(asked) == 2
+
+
+def test_a_poisoned_bank_from_an_earlier_run_is_forgotten_and_asked_again(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_query(prompt: str, llm_config: Any, **kwargs: Any) -> str:
+        return '{"keep":["M01"]}'
+
+    monkeypatch.setattr(gateway, "query_llm", fake_query)
+    request = _request(tmp_path)
+    cache = JudgmentCache(request.cache_path)
+    cache.remember(request.judgment_key, "not a pick this contract can read")
+    cache.close()
+
+    call = asyncio.run(
+        gateway.QueryTextRequester().request(request, accepts=lambda raw: raw.startswith("{"))
+    )
+
+    assert (call.raw, call.cache_hit) == ('{"keep":["M01"]}', False)
