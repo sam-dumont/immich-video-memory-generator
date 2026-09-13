@@ -28,6 +28,7 @@ import resource
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
@@ -60,6 +61,7 @@ from setup_matrix_plan import (  # noqa: E402
     CellPlan,
     Plan,
     PlanError,
+    Step,
     build_plan,
     dry_run_text,
     inference_overlay_steps,
@@ -68,7 +70,12 @@ from setup_matrix_plan import (  # noqa: E402
     overlay_path,
     read_cells,
 )
-from setup_matrix_summary import build_markdown, build_summary  # noqa: E402
+from setup_matrix_summary import (  # noqa: E402
+    build_markdown,
+    build_summary,
+    read_cell_records,
+    write_cell_record,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_ENV_FILES = (
@@ -114,12 +121,31 @@ def lan_address() -> str:
 
 
 def serve_fixture(root: Path) -> tuple[object, str]:
-    """Put the stock June 2024 library on the LAN and return the URL to point cells at."""
+    """Put the stock June 2024 library on the LAN and return the URL to point cells at.
+
+    Building it renders a thumbnail per picture and takes about fifteen seconds
+    before anything is bound, so this says what it is doing first and only comes
+    back once the socket actually answers.
+    """
     sys.path.insert(0, str(REPO_ROOT))
     from tests.e2e.fake_immich import FakeImmichServer
 
+    print("building the fixture library (one thumbnail per picture, about 15s)...", flush=True)
     server = FakeImmichServer.start(root, host="0.0.0.0", port=FIXTURE_PORT)  # noqa: S104
+    _await_listener(FIXTURE_PORT)
     return server, f"http://{lan_address()}:{FIXTURE_PORT}"
+
+
+def _await_listener(port: int, timeout_s: float = 15.0) -> None:
+    deadline = time.monotonic() + timeout_s
+    while True:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=1.0):
+                return
+        except OSError:
+            if time.monotonic() >= deadline:
+                raise SystemExit(f"the fixture library never answered on port {port}") from None
+            time.sleep(0.2)
 
 
 def _substitute(part: str, environment: dict[str, str]) -> str:
@@ -130,18 +156,64 @@ def _substitute(part: str, environment: dict[str, str]) -> str:
     return part
 
 
-def _run_step(command: tuple[str, ...], plan: Plan, item: CellPlan) -> subprocess.CompletedProcess:
-    resolved = [_substitute(part, plan.environment) for part in command]
+def _run_step(step: Step, plan: Plan, item: CellPlan) -> subprocess.CompletedProcess:
+    resolved = [_substitute(part, plan.environment) for part in step.command]
     passthrough = {
         name: plan.environment[name] for name in item.app_credentials if name in plan.environment
     }
+    environment = {**os.environ, **passthrough}
+    if step.pipe_to:
+        sink = [_substitute(part, plan.environment) for part in step.pipe_to]
+        return _run_pipe(resolved, sink, environment)
     return subprocess.run(  # noqa: S603
         resolved,
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
-        env={**os.environ, **passthrough},
+        env=environment,
         check=False,
+    )
+
+
+def _run_pipe(
+    source_command: list[str], sink_command: list[str], environment: dict[str, str]
+) -> subprocess.CompletedProcess:
+    """Two commands joined by a pipe, run without a shell in between.
+
+    What flows across the pipe is a tar stream, so nothing decodes it on the way
+    through; only what the two halves say for the log is decoded. The upstream
+    stderr goes to a file rather than a pipe nobody drains while we wait on the
+    downstream half, which is how that half would wedge behind a full buffer.
+    """
+    with tempfile.TemporaryFile() as upstream_errors:
+        source = subprocess.Popen(  # noqa: S603
+            source_command,
+            cwd=REPO_ROOT,
+            stdout=subprocess.PIPE,
+            stderr=upstream_errors,
+            env=environment,
+        )
+        with source:
+            sink = subprocess.Popen(  # noqa: S603
+                sink_command,
+                cwd=REPO_ROOT,
+                stdin=source.stdout,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=environment,
+            )
+            if source.stdout is not None:
+                source.stdout.close()  # the sink holds the read end now
+            with sink:
+                out, sink_errors = sink.communicate()
+            source.wait()
+        upstream_errors.seek(0)
+        errors = upstream_errors.read() + sink_errors
+    return subprocess.CompletedProcess(
+        args=[*source_command, "|", *sink_command],
+        returncode=sink.returncode or source.returncode,
+        stdout=out.decode(errors="replace"),
+        stderr=errors.decode(errors="replace"),
     )
 
 
@@ -167,7 +239,7 @@ def run_local_cell(item: CellPlan, plan: Plan, out_dir: Path) -> dict:
 
     for step in item.steps:
         started = time.monotonic()
-        proc = _run_step(step.command, plan, item)
+        proc = _run_step(step, plan, item)
         elapsed = time.monotonic() - started
         (cell_dir / f"{step.name}.stdout.log").write_text(proc.stdout or "")
         (cell_dir / f"{step.name}.stderr.log").write_text(proc.stderr or "")
@@ -196,7 +268,7 @@ def run_remote_cell(item: CellPlan, plan: Plan, out_dir: Path) -> dict:
     cell_dir.mkdir(parents=True, exist_ok=True)
     record = _new_record(item, primed=None)
     for step in item.steps:
-        proc = _run_step(step.command, plan, item)
+        proc = _run_step(step, plan, item)
         (cell_dir / f"{step.name}.stdout.log").write_text(proc.stdout or "")
         (cell_dir / f"{step.name}.stderr.log").write_text(proc.stderr or "")
         if proc.returncode != 0 and step.name not in {"logs", "delete"}:
@@ -367,13 +439,16 @@ def _write_cell_config(item: CellPlan, plan: Plan, out_dir: Path, config: Path |
 
 
 def run_lane(lane: str, items: list[CellPlan], plan: Plan, out_dir: Path) -> list[dict]:
+    # One heavy job at a time, because a lane is one host and every number this
+    # matrix publishes is a timing taken on it. The Mac kernel-panicked under
+    # parallel load and is the only lane allowed to call the local model server.
+    # The NAS pins each cell to `--cpus 4 --memory 4g` and has exactly 4 cores,
+    # so two cells there measure contention, not the setup. The cluster cells
+    # share one inference service and can land on the same node, which does the
+    # same thing. Lanes still run against each other: different hosts contend
+    # for nothing.
     runner = run_local_cell if lane == "mac" else run_remote_cell
-    if lane == "mac":
-        # One heavy job at a time, and the only lane allowed to call the local
-        # model server: the Mac kernel-panicked under parallel load.
-        return [runner(item, plan, out_dir) for item in items]
-    with ThreadPoolExecutor(max_workers=len(items)) as pool:
-        return list(pool.map(lambda item: runner(item, plan, out_dir), items))
+    return [runner(item, plan, out_dir) for item in items]
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -394,6 +469,11 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--config", type=Path, default=None, help="config to copy for credentials")
     parser.add_argument(
         "--anonymize", action="store_true", help="strip ids and text from the summary"
+    )
+    parser.add_argument(
+        "--summarize-only",
+        action="store_true",
+        help="rebuild the summary from the cells already under --out, and run nothing",
     )
     parser.add_argument(
         "--serve-fixture", action="store_true", help="serve the fixture library on the LAN"
@@ -483,6 +563,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
+    if opts.summarize_only:
+        return _summarize(plan, opts, out_dir)
+
     try:
         return _execute(plan, opts, out_dir, overlay)
     finally:
@@ -516,7 +599,7 @@ def _execute(plan: Plan, opts: argparse.Namespace, out_dir: Path, overlay: tuple
     for item in plan.runnable:
         by_lane.setdefault(item.cell.lane, []).append(item)
 
-    # Lanes run together; inside the mac lane, cells do not.
+    # Lanes run together; inside a lane, cells do not.
     with ThreadPoolExecutor(max_workers=max(len(by_lane), 1)) as pool:
         futures = [
             pool.submit(run_lane, lane, items, plan, out_dir) for lane, items in by_lane.items()
@@ -529,16 +612,48 @@ def _execute(plan: Plan, opts: argparse.Namespace, out_dir: Path, overlay: tuple
             _apply_overlay(plan, LAN_OVERLAY, up=False)
         _apply_overlay(plan, overlay_path(device), up=False)
 
-    order = [cell.cell.id for cell in plan.cells]
-    records.sort(key=lambda row: order.index(row["id"]))
-    summary = build_summary(library=plan.library, month=plan.month, image=plan.image, rows=records)
+    _publish_summary(plan, opts, out_dir, _collect_rows(out_dir, records))
+    _report_skips(plan)
+    return 0 if all(row.get("error") is None for row in records) else 1
+
+
+def _collect_rows(out_dir: Path, fresh: list[dict]) -> list[dict]:
+    """This invocation's cells, merged with every cell an earlier one left behind.
+
+    One lane is one invocation into the same `--out`, so a table built from this
+    invocation alone would drop every lane that has already run. A cell record on
+    disk wins over a skip here: not asking for a lane this time does not unmeasure it.
+    """
+    for row in fresh:
+        if not row.get("skip_reason"):
+            write_cell_record(out_dir, row)
+    rows = {row["id"]: row for row in fresh if row.get("skip_reason")}
+    rows.update({row["id"]: row for row in read_cell_records(out_dir)})
+    order = [cell.id for cell in read_cells(load_manifest())]
+    return sorted(rows.values(), key=lambda row: _manifest_rank(order, row["id"]))
+
+
+def _manifest_rank(order: list[str], cell_id: str) -> int:
+    return order.index(cell_id) if cell_id in order else len(order)
+
+
+def _publish_summary(plan: Plan, opts: argparse.Namespace, out_dir: Path, rows: list[dict]) -> None:
+    summary = build_summary(library=plan.library, month=plan.month, image=plan.image, rows=rows)
     if opts.anonymize:
         summary = anonymize(summary)
     (out_dir / "summary.data.json").write_text(json.dumps(summary, indent=2) + "\n")
     (out_dir / "summary.md").write_text(build_markdown(summary))
     print(f"\n{out_dir / 'summary.md'}")
-    _report_skips(plan)
-    return 0 if all(row.get("error") is None for row in records) else 1
+
+
+def _summarize(plan: Plan, opts: argparse.Namespace, out_dir: Path) -> int:
+    """Rebuild the two published files from the cells already on disk, running nothing."""
+    rows = _collect_rows(out_dir, [])
+    if not rows:
+        print(f"error: no cell has run under {out_dir}", file=sys.stderr)
+        return 2
+    _publish_summary(plan, opts, out_dir, rows)
+    return 0
 
 
 def _apply_overlay(plan: Plan, path: str, *, up: bool) -> None:

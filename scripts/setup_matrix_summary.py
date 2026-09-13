@@ -11,9 +11,14 @@ earns a line in `unmeasured`.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 SCHEMA = "setup-matrix-v1"
+
+# One cell's own record, written beside its logs the moment that cell finishes.
+CELL_RECORD = "timing.json"
 
 # Everything is compared against the Mac running the local model: it is the
 # setup the editorial passes were written and graded against.
@@ -73,6 +78,22 @@ def _usage_gaps(row: dict) -> list[str]:
     if usage.get("counted_exactly") is False:
         gaps.append(f"{row['id']}: exact token counts. The run summary rounds at or above 1000.")
     return gaps
+
+
+def write_cell_record(out_dir: Path, row: dict) -> None:
+    """Leave a cell's record beside its own logs, where a later invocation can find it."""
+    path = out_dir / row["id"] / CELL_RECORD
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(row, indent=2) + "\n")
+
+
+def read_cell_records(out_dir: Path) -> list[dict]:
+    """Every cell that has landed in this output directory, whichever run put it there.
+
+    A lane is one invocation, so the rows any single invocation holds are its own
+    lane and nothing else. What is on disk is the run.
+    """
+    return [json.loads(path.read_text()) for path in sorted(out_dir.glob(f"*/{CELL_RECORD}"))]
 
 
 def build_summary(*, library: str, month: str, image: str, rows: list[dict]) -> dict:

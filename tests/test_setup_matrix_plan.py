@@ -30,6 +30,7 @@ from setup_matrix_plan import (  # noqa: E402
 
 FULL_ENV = {
     "MATRIX_OMLX_BASE_URL": "http://omlx.invalid:8000/v1",
+    "MATRIX_CAPTION_BASE_URL": "http://captions.invalid:8092/v1",
     "OPENAI_API_KEY": "secret-omlx-key",
     "MATRIX_NAS_SSH": "someone@a-nas.invalid",
     "MATRIX_NAS_DOCKER": "/usr/local/bin/docker",
@@ -295,6 +296,45 @@ def test_the_nas_script_reaches_the_remote_shell_as_one_argument(
     assert len(run.command) == 3, "ssh, the destination, and one command string"
     assert run.command[2].startswith("$MATRIX_NAS_DOCKER run")
     assert "/bin/bash -lc '" in run.command[2]
+
+
+def test_the_nas_moves_its_files_with_tar_over_ssh(manifest: dict, tmp_path: Path) -> None:
+    """The NAS ssh server has the SFTP subsystem off, and a modern scp speaks only SFTP."""
+    item = next(
+        cell
+        for cell in _plan(manifest, tmp_path, FULL_ENV).cells
+        if cell.cell.id == "nas-rules-local"
+    )
+    steps = {step.name: step for step in item.steps}
+
+    assert steps["push-config"].command[0] == "tar"
+    assert steps["push-config"].pipe_to[:2] == ("ssh", "$MATRIX_NAS_SSH")
+    assert steps["pull-results"].command[:2] == ("ssh", "$MATRIX_NAS_SSH")
+    assert steps["pull-results"].pipe_to[0] == "tar"
+    assert not [step for step in item.steps if "scp" in str(step)]
+
+
+def test_a_piped_step_prints_as_one_pipeline(manifest: dict, tmp_path: Path) -> None:
+    item = next(
+        cell
+        for cell in _plan(manifest, tmp_path, FULL_ENV).cells
+        if cell.cell.id == "nas-rules-local"
+    )
+    push = next(step for step in item.steps if step.name == "push-config")
+    upstream, _, downstream = str(push).partition(" | ")
+    assert upstream.startswith("tar -C ")
+    assert downstream.startswith("ssh $MATRIX_NAS_SSH ")
+
+
+def test_an_ssh_command_line_in_the_destination_variable_is_refused(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """It is substituted where ssh expects `[user@]host`; a command there dies far from here."""
+    environment = {**FULL_ENV, "MATRIX_NAS_SSH": "ssh -i /nowhere/key someone@a-nas.invalid"}
+    with pytest.raises(PlanError) as error:
+        _plan(manifest, tmp_path, environment)
+    assert "MATRIX_NAS_SSH" in str(error.value)
+    assert "~/.ssh/config" in str(error.value)
 
 
 def test_a_printed_step_is_a_line_a_shell_could_actually_run(

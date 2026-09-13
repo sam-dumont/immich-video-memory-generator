@@ -26,6 +26,11 @@ the overlap against the reference cut, and the film.
 | `k8s-hosted-zai` | Kubernetes | hosted | inference service | no_captions |
 | `k8s-rules-local` | Kubernetes | rules | in process | no_captions |
 
+"Picture facts" is where the detectors and the encoder run, in process or in the inference service.
+Captions are a third endpoint again, set per cell by `editorial.preparation.caption_base_url`, and
+only tier `full` asks for any: a cell can read its facts in process and still send its captions out.
+Only the two Mac cells caption at all.
+
 ## Start with the dry run
 
 ```bash
@@ -43,12 +48,29 @@ Two files outside the repo, neither of them tracked:
 | File | Holds |
 |---|---|
 | `~/.immich-memories-matrix/.env` | `MELIOUS_AI_BASE_URL`, `MELIOUS_AI_KEY`, `ZAI_BASE_URL`, `ZAI_API_KEY` |
-| `~/.immich-memories-matrix/matrix.env` | `MATRIX_NAS_SSH`, `MATRIX_NAS_DOCKER`, `MATRIX_NAS_CACHE`, `MATRIX_NAS_OUT`, `MATRIX_K8S_CONTEXT`, `MATRIX_K8S_NAMESPACE`, `MATRIX_OMLX_BASE_URL` |
+| `~/.immich-memories-matrix/matrix.env` | `MATRIX_NAS_SSH`, `MATRIX_NAS_DOCKER`, `MATRIX_NAS_CACHE`, `MATRIX_NAS_OUT`, `MATRIX_K8S_CONTEXT`, `MATRIX_K8S_NAMESPACE`, `MATRIX_OMLX_BASE_URL`, `MATRIX_CAPTION_BASE_URL` |
 
 `MATRIX_INFERENCE_BASE_URL` is the one optional entry: see below.
 
 Point at others with `--env-file`, repeatable. The Mac cells also want `OPENAI_API_KEY` in the
 shell, which is the alias the config loader maps to `llm.api_key`.
+
+`MATRIX_NAS_SSH` is an ssh destination, not an ssh command line. The runner puts it where ssh
+expects `[user@]host`, so `ssh -i key admin@nas` in there reaches ssh as a username and the first
+step dies with "remote username contains invalid characters". Best is a `Host` alias in
+`~/.ssh/config` that carries the key, the user, `BatchMode yes` and a `ConnectTimeout`, with only
+the alias name in the variable. The runner refuses a value with whitespace in it, dry run included.
+
+The NAS lane moves its files with tar over ssh rather than `scp`. A Synology runs an OpenSSH 8.2
+server with the SFTP subsystem off, and a modern `scp` client speaks SFTP, so every copy closed
+the connection. tar asks the far side for nothing but a shell.
+
+`MATRIX_CAPTION_BASE_URL` is where the caption pass sends its pictures: whichever
+OpenAI-compatible server holds `smolvlm2-500m`. On the owner's Mac that is oMLX, which serves the
+caption model beside the reader, so the same URL goes in both variables. Elsewhere it is
+[the inference service](../deploy/installation/inference-service.md) on `localhost:8092`, or a
+remote one. The Mac cells send `OPENAI_API_KEY` to that endpoint as
+`editorial.preparation.caption_api_key`, and to no other.
 
 The NAS cells that read picture facts from the inference service need an address the NAS can reach,
 and `http://inference:8092` is not one: it resolves inside the cluster only. The runner handles it.
@@ -84,14 +106,21 @@ piece of text the reader wrote. Overlap stays computable after the strip; nothin
 
 ## Lanes
 
-Lanes run at the same time. Inside the Mac lane cells run one at a time, and it is the only lane
-allowed to call the local model server: one machine, one resident model, and it panicked under
-parallel load.
+Lanes run at the same time. Inside a lane cells run one at a time, because a lane is one host and
+everything the matrix publishes is a timing taken on it. The Mac is the only lane allowed to call
+the local model server: one machine, one resident model, and it panicked under parallel load. The
+NAS pins each cell to 4 CPUs and has exactly 4, and the cluster cells share one inference service
+and can land on the same node, so a second cell there would measure contention rather than the
+setup.
 
 ```bash
 uv run python scripts/setup_matrix.py --lane mac --library demo --serve-fixture
-uv run python scripts/setup_matrix.py --lane nas --lane k8s --library demo
+uv run python scripts/setup_matrix.py --lane nas --lane k8s --library demo --out <the same dir>
 ```
+
+Point the second invocation at the first one's `--out` and the table covers both: every invocation
+reads the cell records already there and republishes one summary over all of them. `--summarize-only`
+does that and nothing else, which is how to rebuild the table after a lane was rerun by hand.
 
 `--cell <id>` is repeatable and narrows further. `--image-tag` picks the published image the remote
 lanes pull; it defaults to the last published tag rather than the source version, because the
@@ -106,7 +135,8 @@ the GPU operator's label. `--keep-service` leaves it running.
 
 Everything goes under `output/setup-matrix/<library>/<timestamp>/`, which is gitignored because a
 real run carries real footage. Per cell: the pinned config, every command's stdout and stderr, the
-video and its `ffprobe` read, and `timing.json` values folded into the record.
+video and its `ffprobe` read, and `timing.json`, which is that cell's own record. A cell dir
+holding a `timing.json` is a cell that ran, which is what lets separate lane invocations add up.
 
 Two files at the top: `summary.data.json` (schema `setup-matrix-v1`, shaped like the research data
 files under `docs/research/`) and `summary.md`, the one table a person reads.

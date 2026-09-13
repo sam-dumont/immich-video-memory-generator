@@ -27,6 +27,11 @@ SCHEMA = "setup-matrix-v1"
 _ENV_REFERENCE = re.compile(r"^\$env:([A-Z][A-Z0-9_]*)$")
 _APP_REFERENCE = re.compile(r"^\$\{([A-Z][A-Z0-9_]*)\}$")
 
+# Where the NAS lane is told to connect. This is an ssh DESTINATION — what ssh
+# and nothing else would accept as `[user@]host`, ideally a Host alias out of
+# ~/.ssh/config carrying the key, the user, BatchMode and ConnectTimeout.
+NAS_SSH_ENV = "MATRIX_NAS_SSH"
+
 # The fixture library binds here so the NAS and the cluster can reach the Mac.
 FIXTURE_PORT = 8078
 FIXTURE_ENV = "MATRIX_FIXTURE_BASE_URL"
@@ -72,10 +77,16 @@ class Cell:
 
 @dataclass(frozen=True)
 class Step:
-    """One command in a cell's sequence, rendered with variable names not values."""
+    """One command in a cell's sequence, rendered with variable names not values.
+
+    `pipe_to` is a second command fed from the first one's stdout. It stays two
+    argv lists rather than becoming a shell string so nothing here has to be
+    quoted for a shell that never runs.
+    """
 
     name: str
     command: tuple[str, ...]
+    pipe_to: tuple[str, ...] = ()
 
     def __str__(self) -> str:
         """The command as a shell would have to be given it.
@@ -84,7 +95,8 @@ class Step:
         a quoted script inside its argument, and single quotes do not nest. Naive
         wrapping printed a line that looked runnable and was not.
         """
-        return " ".join(part if _plain(part) else shlex.quote(part) for part in self.command)
+        rendered = _render(self.command)
+        return f"{rendered} | {_render(self.pipe_to)}" if self.pipe_to else rendered
 
 
 @dataclass(frozen=True)
@@ -267,7 +279,7 @@ def _credential_flags(cell: Cell) -> list[str]:
 
 
 def _nas_steps(cell: Cell, memory: dict, month: str, out_dir: Path, image: str) -> tuple[Step, ...]:
-    """ssh, one docker run, scp back.
+    """ssh, one docker run, and the results tarred back.
 
     WHY the single quoted string: `ssh host a b c` concatenates its arguments and
     hands the result to the remote shell, which re-splits them. Passing the docker
@@ -302,11 +314,24 @@ def _nas_steps(cell: Cell, memory: dict, month: str, out_dir: Path, image: str) 
         "-lc",
         shlex.quote(_container_script(cell, memory, month)),
     ]
+    # WHY tar over ssh instead of scp: the NAS runs an OpenSSH 8.2 server with
+    # the SFTP subsystem turned off, and a modern scp client speaks SFTP by
+    # default, so every copy died with "Connection closed". `scp -O` would also
+    # work; tar needs nothing of the remote but a shell, which is the one thing
+    # the ssh destination is guaranteed to give us.
     return (
         Step("make-remote-dir", ("ssh", "$MATRIX_NAS_SSH", f"mkdir -p {remote}")),
-        Step("push-config", ("scp", str(local / "config.yaml"), f"$MATRIX_NAS_SSH:{remote}/")),
+        Step(
+            "push-config",
+            ("tar", "-C", str(local), "-cf", "-", "config.yaml"),
+            pipe_to=("ssh", "$MATRIX_NAS_SSH", f"mkdir -p {remote} && tar -C {remote} -xf -"),
+        ),
         Step("run", ("ssh", "$MATRIX_NAS_SSH", " ".join(docker))),
-        Step("pull-results", ("scp", "-r", f"$MATRIX_NAS_SSH:{remote}/.", str(local))),
+        Step(
+            "pull-results",
+            ("ssh", "$MATRIX_NAS_SSH", f"tar -C {remote} -cf - ."),
+            pipe_to=("tar", "-C", str(local), "-xf", "-"),
+        ),
     )
 
 
@@ -660,6 +685,23 @@ def nested(pins: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _check_ssh_destination(environment: dict[str, str]) -> None:
+    """The NAS variable is a destination, not a command line.
+
+    It is substituted where ssh expects `[user@]host`, so a value like
+    `ssh -i key admin@nas` reaches ssh as a username and the first step dies with
+    "remote username contains invalid characters", naming nothing useful.
+    Checking it here means `--dry-run` says so too, before anything connects.
+    """
+    value = (environment.get(NAS_SSH_ENV) or "").strip()
+    if value and any(character.isspace() for character in value):
+        raise PlanError(
+            f"{NAS_SSH_ENV} contains whitespace, so it is being set to a command. It is an ssh "
+            "destination: `user@host`, or better a Host alias from ~/.ssh/config that carries the "
+            "key, the user, BatchMode and ConnectTimeout."
+        )
+
+
 def build_plan(
     *,
     manifest: dict,
@@ -672,6 +714,7 @@ def build_plan(
     environment: dict[str, str],
 ) -> Plan:
     """The whole request as a plan, skipped cells included."""
+    _check_ssh_destination(environment)
     libraries = manifest.get("libraries") or {}
     if library not in libraries:
         raise PlanError(f"unknown library {library!r}; the manifest knows {sorted(libraries)}")
@@ -753,3 +796,7 @@ def dry_run_text(plan: Plan, *, overlay: tuple[Step, ...] = ()) -> str:
 
 def _plain(part: str) -> bool:
     return bool(re.fullmatch(r"[A-Za-z0-9_@%+=:,./$-]+", part))
+
+
+def _render(command: tuple[str, ...]) -> str:
+    return " ".join(part if _plain(part) else shlex.quote(part) for part in command)
