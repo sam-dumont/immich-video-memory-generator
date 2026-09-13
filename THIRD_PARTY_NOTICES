@@ -177,6 +177,28 @@ Originally sourced via Fontsource CDN (https://fontsource.org/, MIT license)
 Now bundled in the package — CDN download only used as fallback for custom fonts
 
 
+Bundled Models (src/immich_memories/processing/bundled_models/)
+---------------------------------------------------------------
+
+YuNet face detector — face_detection_yunet_2023mar.onnx
+  License: MIT
+  Copyright: 2020 Shiqi Yu <shiqi.yu@gmail.com>
+  URL: https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet
+  Note: Copied byte-for-byte from OpenCV Zoo (itself Apache-2.0); the model
+        directory carries the narrower MIT notice reproduced here.
+        Run by cv2.FaceDetectorYN for smart-zoom face centering.
+        Provenance and SHA-256 in face_detection_yunet_2023mar.md.
+
+
+Test Fixtures (tests/fixtures/faces/)
+-------------------------------------
+
+Friends Picnic (StockSnap.io, via the Openverse index)
+  License: CC0 1.0 (public domain dedication)
+  Copyright: Helena Lopes
+  URL: https://stocksnap.io/photo/friends-picnic-3IVBNKC2JH
+
+
 Test Fixtures (tests/fixtures/hdr_samples/)
 -------------------------------------------
 
