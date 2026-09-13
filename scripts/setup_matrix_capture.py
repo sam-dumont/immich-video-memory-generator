@@ -184,6 +184,18 @@ def parse_prepare_seconds(text: str) -> float | None:
     return _elapsed_seconds(*match.groups()) if match else None
 
 
+def parse_models_fetch_seconds(text: str) -> float | None:
+    """The container's own stopwatch over `models fetch`, one whole-second count.
+
+    Written by the container rather than timed from here because the ssh round
+    trip and the pod's scheduling are not part of what a download cost. A file
+    with anything else in it means the fetch died before the echo and the phase
+    stays unmeasured, which is the truth.
+    """
+    stripped = text.strip()
+    return float(stripped) if stripped.isdigit() else None
+
+
 def parse_prepared_producers(text: str) -> list[dict]:
     """Each producer's row of the rate table, in the order preparation ran them.
 

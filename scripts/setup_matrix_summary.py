@@ -29,6 +29,9 @@ CONDITIONS = (
     "Single observations. This is a comparison of setups, not a quality study.",
     "Every cell banks in a cache of its own, so nothing one cell derived or decided"
     " reaches the next. Model files are the exception and stay shared.",
+    "The models column is what `models fetch` cost that cell's container, on its own"
+    " and never inside preparation: a remote lane starts with an empty models volume,"
+    " and the cells that fetch nothing say so in unmeasured.",
     "Preparation cold is the first prepare of the scope into this cell's own cache,"
     " warm the second immediately after. A cell re-run over its own cache is named"
     " in unmeasured.",
@@ -165,6 +168,7 @@ _HEADERS = (
     "tier",
     "reader",
     "facts",
+    "models",
     "prep cold",
     "prep warm",
     "selection",
@@ -194,12 +198,13 @@ def _row_cells(row: dict) -> list[str]:
     usage = row.get("hosted_usage") or {}
     video = row.get("video") or {}
     if row.get("skip_reason"):
-        return [row["id"], row["tier"], row["reader"], row["facts"], *(["skipped"] * 9)]
+        return [row["id"], row["tier"], row["reader"], row["facts"], *(["skipped"] * 10)]
     return [
         row["id"],
         row["tier"],
         row["reader"],
         row["facts"],
+        _seconds(timing.get("models_fetch_s")),
         _seconds(timing.get("prepare_cold_s")),
         _seconds(timing.get("prepare_warm_s")),
         _seconds(timing.get("selection_s")),

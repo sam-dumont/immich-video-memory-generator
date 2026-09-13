@@ -17,6 +17,7 @@ from setup_matrix_capture import (  # noqa: E402
     clock_seconds,
     parse_cgroup_cpu_seconds,
     parse_cgroup_peak_rss_mb,
+    parse_models_fetch_seconds,
     parse_prepare_seconds,
     parse_prepared_pictures,
     parse_prepared_producers,
@@ -239,3 +240,16 @@ def test_a_real_cold_prepare_yields_its_count_and_every_producer_row() -> None:
             "seconds": 15.0,
         },
     ]
+
+
+def test_the_models_fetch_phase_is_read_from_the_container_s_own_stopwatch() -> None:
+    """The container echoes whole seconds; the runner never times the ssh round trip."""
+    assert parse_models_fetch_seconds("412\n") == 412.0
+    assert parse_models_fetch_seconds("0") == 0.0
+
+
+def test_a_fetch_that_died_before_the_echo_stays_unmeasured() -> None:
+    """`set -u` and a pipe mean the file can hold a shell error, or nothing at all."""
+    assert parse_models_fetch_seconds("") is None
+    assert parse_models_fetch_seconds("bash: SECONDS: unbound variable") is None
+    assert parse_models_fetch_seconds("-12") is None

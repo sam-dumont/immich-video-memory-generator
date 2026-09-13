@@ -69,6 +69,24 @@ REMOTE_OUT = "/out"
 # calling a one-second re-read a cold preparation.
 REMOTE_CACHE = "/cache"
 CELL_CACHE_DIR = "cache"
+# The shared models volume, and every pinned artifact placed under it by name.
+# Pinned rather than left to HOME: the cluster Job's HOME is /home/immich, a path
+# in the pod's own layer, so the first real run had the encoder on the volume
+# (pinned by env), the Hugging Face cache on the volume (same), and the Marqo
+# export under /home/immich — three roots, one of them gone with the pod, and
+# nothing fetching any of them. One root, named in the config both lanes read.
+REMOTE_MODELS = "/models"
+REMOTE_MODEL_PINS: dict[str, Any] = {
+    "triage.encoder": f"{REMOTE_MODELS}/triage/dinov2-small.onnx",
+    "editorial.preparation.marqo_onnx": f"{REMOTE_MODELS}/detectors/nsfw-marqo-384.onnx",
+    "editorial.preparation.detector_cache_dir": f"{REMOTE_MODELS}/huggingface",
+    # `models fetch` warms all three first, so this only covers what a pinned
+    # snapshot adds between the release and the run.
+    "editorial.preparation.allow_model_downloads": True,
+}
+MODELS_FETCH_LOG = "models-fetch.log"
+MODELS_FETCH_SECONDS = "models-fetch-seconds.txt"
+REMOTE_LANES = frozenset({"nas", "k8s"})
 # The two mounts of the cluster's one data claim: models shared, cache per cell.
 MODELS_SUBPATH = "models"
 CACHE_SUBPATH = "cache"
@@ -141,8 +159,8 @@ class Step:
 class CellPlan:
     """What one cell will do, as text a person can read and a shell could run.
 
-    `diagnostic` is not part of the sequence: it is what to ask when a step in it
-    gives up, so a cell that failed says why in its own record.
+    `diagnostics` are not part of the sequence: they are what to ask when a step
+    in it gives up, so a cell that failed says why in its own record.
     """
 
     cell: Cell
@@ -155,7 +173,7 @@ class CellPlan:
     # Only a NAS cell has any: the other two lanes are not capped by a container.
     container_limits: str = ""
     skip_reason: str | None = None
-    diagnostic: Step | None = None
+    diagnostics: tuple[Step, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -253,11 +271,23 @@ def cache_pins(cache_dir: str) -> dict[str, str]:
     }
 
 
+def fetches_models(cell: Cell) -> bool:
+    """Whether this cell's container has to acquire the pinned models itself.
+
+    The Mac lane runs on an install that fetched them long ago. A remote container
+    starts against a models volume that is empty until some cell fills it, and a
+    cell taking its picture facts off the service runs no local model at all.
+    """
+    return cell.lane in REMOTE_LANES and cell.facts == "local"
+
+
 def _pins_for(cell: Cell, manifest: dict, library: dict) -> dict[str, Any]:
     pins: dict[str, Any] = dict(manifest.get("baseline_config") or {})
     pins.update(library.get("config") or {})
     pins["editorial.preparation.tier"] = cell.tier
     pins.update(cell.config)
+    if fetches_models(cell):
+        pins.update(REMOTE_MODEL_PINS)
     return {key: _render_pin(value) for key, value in pins.items()}
 
 
@@ -294,8 +324,22 @@ def _mac_steps(cell: Cell, memory: dict, month: str, out_dir: Path) -> tuple[Ste
     )
 
 
+def _models_fetch_lines(root: str) -> list[str]:
+    """Acquire the pinned artifacts, on the container's own stopwatch.
+
+    Its own phase, never folded into the cold preparation: on a new models volume
+    this is a download of hundreds of megabytes, and charging that to preparation
+    would publish a number about someone's network as if it were about a NAS.
+    """
+    return [
+        "models_started=$SECONDS",
+        f"{root} models fetch 2>&1 | tee {REMOTE_OUT}/{MODELS_FETCH_LOG}",
+        f"echo $((SECONDS - models_started)) > {REMOTE_OUT}/{MODELS_FETCH_SECONDS}",
+    ]
+
+
 def _container_script(cell: Cell, memory: dict, month: str) -> str:
-    """What a remote container runs: prepare twice, cut, then report its own cost.
+    """What a remote container runs: fetch, prepare twice, cut, then report its own cost.
 
     The published image is `python:3.11-slim` underneath, which carries no
     `/usr/bin/time`. The kernel already counts what we want, so the script reads
@@ -314,6 +358,7 @@ def _container_script(cell: Cell, memory: dict, month: str) -> str:
     return "; ".join(
         [
             "set -u",
+            *(_models_fetch_lines(root) if fetches_models(cell) else []),
             f"{root} prepare {scope} 2>&1 | tee {REMOTE_OUT}/{PREPARE_COLD_LOG}",
             f"{root} prepare {scope} 2>&1 | tee {REMOTE_OUT}/{PREPARE_WARM_LOG}",
             f"{cut} 2>&1 | tee {REMOTE_OUT}/{GENERATE_LOG}",
@@ -404,8 +449,14 @@ def _nas_steps(
     # default, so every copy died with "Connection closed". `scp -O` would also
     # work; tar needs nothing of the remote but a shell, which is the one thing
     # the ssh destination is guaranteed to give us.
+    # Both directories, because docker creates neither: a bind mount of a path
+    # that is not there is "Bind mount failed: ... does not exist", and the whole
+    # cell dies before the container starts.
     return (
-        Step("make-remote-dir", ("ssh", "$MATRIX_NAS_SSH", f"mkdir -p {remote}")),
+        Step(
+            "make-remote-dir",
+            ("ssh", "$MATRIX_NAS_SSH", f"mkdir -p {remote} {remote}/{CELL_CACHE_DIR}"),
+        ),
         Step(
             "push-config",
             ("tar", "-C", str(local), "-cf", "-", "config.yaml"),
@@ -455,12 +506,29 @@ def _k8s_steps(cell: Cell, out_dir: Path) -> tuple[Step, ...]:
     WHY two waits: a pod that cannot be scheduled, for a missing claim or for a
     node with no room, is Pending and never reaches `complete`. One wait meant
     three hours of watching a pod that was never going to start.
+
+    WHY the drops: a Job's `spec.template` is immutable, so `apply` over one an
+    interrupted run left behind is rejected outright — "field is immutable" — and
+    a leftover collector Pod is the same story. Every cell starts from nothing.
     """
     context = KUBECTL
     name = f"setup-matrix-{cell.id}"
     collector = f"{name}-collect"
     local = out_dir / cell.id
     return (
+        Step(
+            "drop-job",
+            (*context, "delete", f"job/{name}", f"configmap/{name}-config", *DELETE_FLAGS),
+        ),
+        # WHY a bounded delete and not `kubectl wait --for=delete`: wait has no
+        # --ignore-not-found, and "nothing matches" — the healthy case — is an
+        # error to it. This waits for the same thing and also clears a pod some
+        # other cell's interrupted run left holding the ReadWriteOnce claim,
+        # which is what had `k8s-hosted-zai` Pending with no events at all.
+        Step(
+            "drain-pods",
+            (*context, "delete", "pod", "-l", MATRIX_POD_LABEL, *DELETE_FLAGS, DRAIN_TIMEOUT),
+        ),
         *_secret_steps(cell, context),
         Step("apply-claims", (*context, "apply", "-f", str(local / "claims.yaml"))),
         Step(
@@ -485,6 +553,7 @@ def _k8s_steps(cell: Cell, out_dir: Path) -> tuple[Step, ...]:
         # under the same three-hour ceiling.
         Step("wait", (*context, "get", f"job/{name}", "-o", f"jsonpath={JOB_STATUS_PATH}")),
         Step("logs", (*context, "logs", f"job/{name}", "--tail=-1")),
+        Step("drop-collector", (*context, "delete", f"pod/{collector}", *DELETE_FLAGS)),
         Step("apply-collector", (*context, "apply", "-f", str(local / "collector.yaml"))),
         Step(
             "wait-collector",
@@ -503,9 +572,18 @@ def _k8s_steps(cell: Cell, out_dir: Path) -> tuple[Step, ...]:
     )
 
 
-def k8s_diagnostic(cell: Cell) -> Step:
-    """What to ask the cluster when a cluster cell's step gives up."""
-    return Step("describe", (*KUBECTL, "describe", "pod", "-l", f"job-name=setup-matrix-{cell.id}"))
+def k8s_diagnostics(cell: Cell) -> tuple[Step, ...]:
+    """What to ask the cluster when a cluster cell's step gives up.
+
+    The events are asked for separately, and namespace-wide, because they outlive
+    the pod they are about: the pod a `wait` gave up on is routinely gone by the
+    time anyone describes it, and the describe then says `Events: <none>` and
+    nothing else. `--sort-by` puts the newest last, which is the tail that prints.
+    """
+    return (
+        Step("describe", (*KUBECTL, "describe", "pod", "-l", f"job-name=setup-matrix-{cell.id}")),
+        Step("events", (*KUBECTL, "get", "events", "--sort-by=.lastTimestamp")),
+    )
 
 
 def purge_claims_command() -> tuple[str, ...]:
@@ -543,6 +621,14 @@ SCHEDULING_TIMEOUT = "5m"
 JOB_STATUS_PATH = "succeeded={.status.succeeded} failed={.status.failed}"
 
 KUBECTL = ("kubectl", "--context", "$MATRIX_K8S_CONTEXT", "-n", "$MATRIX_K8S_NAMESPACE")
+# `--wait` so the next step's `apply` cannot race the deletion it depends on: a
+# Job's pods take a moment to go, and the name is taken until they have.
+DELETE_FLAGS = ("--ignore-not-found", "--wait=true")
+# What every matrix Job's pods are labelled, so one selector clears them all.
+MATRIX_POD_LABEL = "app.kubernetes.io/component=setup-matrix"
+# Long enough for a terminating pod to release a ReadWriteOnce claim, short
+# enough that a cell fails saying so instead of waiting out the three-hour cap.
+DRAIN_TIMEOUT = "--timeout=3m"
 # `.ip` on most controllers, `.hostname` on the ones that hand out a name.
 LB_ADDRESS_PATH = "{.status.loadBalancer.ingress[0].ip}"
 
@@ -748,6 +834,10 @@ spec:
   backoffLimit: 0
   ttlSecondsAfterFinished: 86400
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: immich-memories
+        app.kubernetes.io/component: setup-matrix
     spec:
       restartPolicy: Never
       securityContext:
@@ -770,12 +860,7 @@ spec:
             - -lc
             - |
 {script}
-{secrets}          env:
-            - name: IMMICH_MEMORIES_TRIAGE__ENCODER
-              value: /models/triage/dinov2-small.onnx
-            - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR
-              value: /models/huggingface
-          volumeMounts:
+{secrets}          volumeMounts:
             - name: config
               mountPath: {config}
               subPath: config.yaml
@@ -882,7 +967,7 @@ def build_cell_plan(
     config_yaml = yaml.safe_dump(nested(pins), sort_keys=False)
     memory = manifest.get("memory") or {}
     manifests: dict[str, str] = {}
-    diagnostic: Step | None = None
+    diagnostics: tuple[Step, ...] = ()
     container_limits = ""
     if cell.lane == "mac":
         steps = _mac_steps(cell, memory, month, out_dir)
@@ -893,7 +978,7 @@ def build_cell_plan(
     elif cell.lane == "k8s":
         steps = _k8s_steps(cell, out_dir)
         manifests = _k8s_manifests(cell, memory, month, image, config_yaml)
-        diagnostic = k8s_diagnostic(cell)
+        diagnostics = k8s_diagnostics(cell)
     else:
         raise PlanError(f"{cell.id}: unknown lane {cell.lane!r}")
 
@@ -907,7 +992,7 @@ def build_cell_plan(
         cache_dir=cache,
         container_limits=container_limits,
         skip_reason=skip,
-        diagnostic=diagnostic,
+        diagnostics=diagnostics,
     )
 
 
@@ -1024,8 +1109,7 @@ def dry_run_text(plan: Plan, *, overlay: tuple[Step, ...] = ()) -> str:
         lines.append("   pinned config:")
         lines += [f"     {line}" for line in item.config_yaml.rstrip().splitlines()]
         lines += [f"   {step.name:<19} {step}" for step in item.steps]
-        if item.diagnostic:
-            lines.append(f"   {'on failure':<19} {item.diagnostic}")
+        lines += [f"   {'on failure':<19} {step}" for step in item.diagnostics]
         for name, body in item.manifests.items():
             lines.append(f"   manifest {name}:")
             lines += [f"     {line}" for line in body.rstrip().splitlines()]

@@ -7,6 +7,8 @@ right one, and that it can be read out loud without leaking a host or a key.
 
 from __future__ import annotations
 
+import re
+import shlex
 import sys
 from pathlib import Path
 
@@ -459,6 +461,45 @@ def test_the_nas_moves_its_files_with_tar_over_ssh(manifest: dict, tmp_path: Pat
     assert not [step for step in item.steps if "scp" in str(step)]
 
 
+_MKDIR = re.compile(r"mkdir -p ([^&|;]+)")
+
+
+def _made_dirs(steps) -> set[str]:
+    """Every directory these steps' remote shells create with `mkdir -p`."""
+    return {
+        directory
+        for step in steps
+        for text in (*step.command, *step.pipe_to)
+        for match in _MKDIR.finditer(text)
+        for directory in match.group(1).split()
+    }
+
+
+def _mount_sources(run: str) -> list[str]:
+    """The host side of every `-v host:container` in a rendered `docker run`."""
+    parts = shlex.split(run)
+    pairs = zip(parts, parts[1:], strict=False)
+    return [after.split(":", 1)[0] for flag, after in pairs if flag == "-v"]
+
+
+def test_a_nas_cell_mounts_nothing_it_did_not_make(manifest: dict, tmp_path: Path) -> None:
+    """Docker creates no bind source: a missing one is "Bind mount failed" and a dead cell."""
+    nas = [item for item in _plan(manifest, tmp_path, FULL_ENV).cells if item.cell.lane == "nas"]
+    assert nas
+
+    for item in nas:
+        names = [step.name for step in item.steps]
+        run = next(step for step in item.steps if step.name == "run")
+        owned = {
+            source
+            for source in _mount_sources(run.command[2])
+            if source.startswith("$MATRIX_NAS_OUT")
+        }
+        assert owned, item.cell.id
+        unmade = owned - _made_dirs(item.steps[: names.index("run")])
+        assert not unmade, f"{item.cell.id} mounts {unmade}, which no earlier step creates"
+
+
 def test_a_piped_step_prints_as_one_pipeline(manifest: dict, tmp_path: Path) -> None:
     item = next(
         cell
@@ -516,6 +557,69 @@ def test_the_claims_are_applied_before_the_job_that_mounts_them(
     assert not [name for name in names if name == "delete-data-claim"]
 
 
+def test_a_leftover_job_is_dropped_before_the_cell_applies_its_own(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """A Job's `spec.template` is immutable, so `apply` over an interrupted run is rejected."""
+    item = _k8s_cell(manifest, tmp_path)
+    names = [step.name for step in item.steps]
+    drop = str(next(step for step in item.steps if step.name == "drop-job"))
+
+    assert names.index("drop-job") < names.index("apply-claims") < names.index("apply")
+    assert "job/setup-matrix-k8s-rules-local" in drop
+    assert "configmap/setup-matrix-k8s-rules-local-config" in drop
+    assert "--ignore-not-found" in drop
+    # Without the wait the next `apply` races a name the going pods still hold.
+    assert "--wait=true" in drop
+    # The drop is for what a crash left behind; the tear-down after the run stays.
+    assert names.index("delete") > names.index("apply")
+
+
+def test_a_leftover_collector_is_dropped_before_the_cell_applies_its_own(
+    manifest: dict, tmp_path: Path
+) -> None:
+    item = _k8s_cell(manifest, tmp_path)
+    names = [step.name for step in item.steps]
+    drop = str(next(step for step in item.steps if step.name == "drop-collector"))
+
+    assert names.index("drop-collector") < names.index("apply-collector") < names.index("copy-out")
+    assert "pod/setup-matrix-k8s-rules-local-collect" in drop
+    assert "--ignore-not-found" in drop
+    assert "--wait=true" in drop
+    assert names.index("delete-collector") > names.index("copy-out")
+
+
+def test_no_pod_of_an_interrupted_run_is_left_holding_the_claim(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """The claims are ReadWriteOnce: a pod still terminating keeps the next cell Pending."""
+    item = _k8s_cell(manifest, tmp_path)
+    names = [step.name for step in item.steps]
+    drain = str(next(step for step in item.steps if step.name == "drain-pods"))
+
+    assert names.index("drop-job") < names.index("drain-pods") < names.index("apply-claims")
+    assert "app.kubernetes.io/component=setup-matrix" in drain
+    # `kubectl wait --for=delete` has no --ignore-not-found, and no pod at all is
+    # the healthy case, so the drain is a bounded delete of the same selector.
+    assert "--ignore-not-found" in drain
+    assert "--timeout=3m" in drain
+
+
+def test_the_pods_carry_the_label_the_drain_selects_on(manifest: dict, tmp_path: Path) -> None:
+    """A label on the Job alone selects nothing: the drain matches pods, not Jobs."""
+    job = yaml.safe_load(_k8s_cell(manifest, tmp_path).manifests["job.yaml"])
+    labels = job["spec"]["template"]["metadata"]["labels"]
+    assert labels["app.kubernetes.io/component"] == "setup-matrix"
+
+
+def test_a_cell_that_gave_up_asks_for_events_as_well_as_the_pod(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """Events outlive the pod; a describe of a pod that is gone says `Events: <none>`."""
+    names = [step.name for step in _k8s_cell(manifest, tmp_path).diagnostics]
+    assert names == ["describe", "events"]
+
+
 def test_a_cluster_cell_watches_for_a_failed_job_as_well_as_a_finished_one(
     manifest: dict, tmp_path: Path
 ) -> None:
@@ -541,8 +645,8 @@ def test_a_cluster_cell_stops_waiting_on_a_pod_that_never_scheduled(
     assert names.index("wait-scheduled") < names.index("wait")
     assert "--for=condition=PodScheduled" in steps["wait-scheduled"].command
     assert "--timeout=5m" in steps["wait-scheduled"].command
-    assert item.diagnostic is not None
-    assert "describe" in item.diagnostic.command
+    assert item.diagnostics
+    assert "describe" in item.diagnostics[0].command
 
 
 def test_a_cluster_cell_asks_for_what_the_nas_cell_is_capped_at(
@@ -600,3 +704,61 @@ def test_the_runner_supplies_the_inference_address_so_no_cell_skips_for_it(
     assert INFERENCE_ENV not in printed.err, "no cell may be skipped for an address it derives"
     assert f"{INFERENCE_ENV}={DERIVED_ADDRESS}" in printed.out
     assert "nas-rules-service" in printed.out
+
+
+def test_a_remote_cell_with_local_facts_fetches_the_pinned_models_first(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """Nothing else puts a model on a remote host, and a new models volume is empty."""
+    plan = _plan(manifest, tmp_path, FULL_ENV)
+    nas = next(item for item in plan.cells if item.cell.id == "nas-rules-local")
+    script = nas.steps[[step.name for step in nas.steps].index("run")].command[2]
+
+    fetch = script.index("models fetch")
+    assert fetch < script.index("prepare --year"), "the fetch is what makes preparation possible"
+    # Its own phase: a first fetch is hundreds of megabytes, and charging that to
+    # preparation would publish a number about a network as a number about a NAS.
+    assert "models_started=$SECONDS" in script
+    assert "models-fetch-seconds.txt" in script
+
+
+def test_a_remote_cell_taking_its_facts_off_the_service_fetches_nothing(
+    manifest: dict, tmp_path: Path
+) -> None:
+    for cell_id in ("nas-rules-service", "k8s-hosted-zai"):
+        item = next(i for i in _plan(manifest, tmp_path, FULL_ENV).cells if i.cell.id == cell_id)
+        rendered = " ".join(str(step) for step in item.steps) + " ".join(item.manifests.values())
+        assert "models fetch" not in rendered, cell_id
+
+
+def test_every_model_root_of_a_local_facts_cell_is_on_the_shared_volume(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """Three roots is how the first run fetched into one place and read from another."""
+    for cell_id in ("nas-rules-local", "k8s-rules-local"):
+        pins = next(
+            item for item in _plan(manifest, tmp_path, FULL_ENV).cells if item.cell.id == cell_id
+        ).pins
+        roots = [
+            pins["triage.encoder"],
+            pins["editorial.preparation.marqo_onnx"],
+            pins["editorial.preparation.detector_cache_dir"],
+        ]
+        assert all(root.startswith("/models/") for root in roots), (cell_id, roots)
+        assert pins["editorial.preparation.allow_model_downloads"] is True
+
+
+def test_the_cluster_job_takes_its_model_roots_from_the_config_and_nowhere_else(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """Two sources for one path is how the Marqo export ended up off the volume."""
+    item = next(
+        cell
+        for cell in _plan(manifest, tmp_path, FULL_ENV).cells
+        if cell.cell.id == "k8s-rules-local"
+    )
+    job = yaml.safe_load(item.manifests["job.yaml"])
+    container = job["spec"]["template"]["spec"]["containers"][0]
+
+    assert "env" not in container
+    assert "/models/detectors/nsfw-marqo-384.onnx" in item.config_yaml
