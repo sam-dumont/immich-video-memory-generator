@@ -11,6 +11,10 @@ from __future__ import annotations
 
 import hashlib
 import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
 
 from tests.e2e.fake_library import (
     CARRIERS,
@@ -95,3 +99,30 @@ def test_every_picture_has_a_reason_to_be_in_or_out() -> None:
         assert (picture.story_key is None) != (
             picture.drop_reason is None
         ) or picture.sequence > 1, picture.asset_id
+
+
+def test_the_module_refuses_to_stand_apart_from_its_pictures(tmp_path: Path) -> None:
+    """A copy without the directory must fail loudly, not read as an empty month (#881)."""
+    package = tmp_path / "tests" / "e2e"
+    package.mkdir(parents=True)
+    (package.parent / "__init__.py").touch()
+    (package / "__init__.py").touch()
+    shutil.copy(LIBRARY_DIR.parent.parent / "fake_library.py", package / "fake_library.py")
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-c",
+            "import sys; sys.path.insert(0, sys.argv[1]); import tests.e2e.fake_library",
+            str(tmp_path),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert proc.returncode != 0
+    assert "the library is its files" in proc.stderr
