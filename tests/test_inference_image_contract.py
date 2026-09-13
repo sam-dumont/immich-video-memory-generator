@@ -164,6 +164,14 @@ def test_the_model_cache_is_a_volume_the_service_user_can_write() -> None:
     assert compose_service()["volumes"] == ["immich-memories-model-cache:/cache"]
 
 
+def test_compose_keeps_the_hugging_face_caches_on_the_model_volume() -> None:
+    # Left to itself huggingface_hub puts its hub, xet and assets caches under
+    # $HOME, which here is the container's writable layer: every recreate
+    # re-downloads the snapshot the volume was supposed to hold. The Kubernetes
+    # overlay sets the same variable, where $HOME is read-only and it is fatal.
+    assert compose_service()["environment"]["HF_HOME"] == "/cache/huggingface"
+
+
 def test_the_backends_are_cpu_and_a_cuda_device_reservation() -> None:
     backends = yaml.safe_load(HWACCEL.read_text())["services"]
 

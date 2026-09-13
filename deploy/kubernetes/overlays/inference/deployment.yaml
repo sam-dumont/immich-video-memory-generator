@@ -56,9 +56,21 @@ spec:
           # app's IMMICH_MEMORIES_<SECTION>__<KEY> nesting. The image already
           # sets HOST (every interface), PORT, CACHE_DIR and DETECTOR_CACHE_DIR.
           env:
-            # A cold cache fetches the two detector snapshots (37 MB) once.
+            # A cold cache fetches the pinned encoder, the pinned Marqo export
+            # and the Docling snapshot once, on first use.
             - name: IMMICH_MEMORIES_INFERENCE_ALLOW_MODEL_DOWNLOADS
               value: "true"
+            # readOnlyRootFilesystem means $HOME is not writable, and that is
+            # where huggingface_hub puts its hub, xet and assets caches by
+            # default: the download failed with errno 30 and every /facts
+            # request answered 503. One variable moves all three onto the cache
+            # volume, because hub derives them from HF_HOME when they are unset.
+            - name: HF_HOME
+              value: "/cache/huggingface"
+            # Same reason for anything that writes a temporary file: /tmp is the
+            # emptyDir below, not the read-only image.
+            - name: TMPDIR
+              value: "/tmp"
             # Drop the weights after five idle minutes. The process stays up.
             - name: IMMICH_MEMORIES_INFERENCE_IDLE_UNLOAD_SECONDS
               value: "300"

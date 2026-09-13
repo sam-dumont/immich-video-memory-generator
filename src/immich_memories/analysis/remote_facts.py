@@ -84,7 +84,8 @@ class RemoteFactsClient(AbstractContextManager):
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             raise RemoteFactsError(
-                f"Remote classifiers returned HTTP {exc.response.status_code}; check service logs"
+                f"Remote classifiers returned HTTP {exc.response.status_code}: "
+                f"{_detail(exc.response)}"
             ) from None
         except httpx.HTTPError:
             raise RemoteFactsError("Remote classifiers could not be reached or timed out") from None
@@ -94,6 +95,22 @@ class RemoteFactsClient(AbstractContextManager):
             raise RemoteFactsError("Remote classifiers returned malformed facts") from None
         _validate_contract(result, names, head_versions)
         return result
+
+
+# The service names the producer and the missing artifact in its `detail`, and
+# that is the only place an operator ever sees it: without it the failure said
+# "check service logs" about a service that logged nothing.
+_DETAIL_CEILING = 300
+
+
+def _detail(response: httpx.Response) -> str:
+    """The service's own explanation, bounded, or where to go looking without one."""
+    try:
+        body = response.json()
+    except ValueError:
+        return "check service logs"
+    detail = body.get("detail") if isinstance(body, dict) else None
+    return str(detail)[:_DETAIL_CEILING] if detail else "check service logs"
 
 
 def _validate_contract(

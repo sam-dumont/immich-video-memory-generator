@@ -2,11 +2,14 @@
 
 import base64
 import json
+import re
 import sqlite3
 
 import httpx
+import pytest
 
 from immich_memories.analysis.editorial_preparation_heads import PUBLIC_HEAD_VERSIONS
+from immich_memories.analysis.remote_facts import RemoteFactsClient, RemoteFactsError
 from immich_memories.config_models_editorial import EditorialConfig
 from immich_memories.config_models_editorial_preparation import EditorialPreparationConfig
 from immich_memories.config_models_inference import InferenceConfig
@@ -164,3 +167,31 @@ def test_the_local_path_is_untouched_when_no_endpoint_is_configured(tmp_path):
     )
     assert result.complete
     assert {name for name, _ in calls} == {"heads", "detectors"}
+
+
+def fake_service(response: httpx.Response) -> RemoteFactsClient:
+    # WHY: the HTTP boundary only. Nothing else about the client is replaced.
+    return RemoteFactsClient(
+        InferenceConfig(facts_base_url=ENDPOINT),
+        httpx.Client(transport=httpx.MockTransport(lambda _request: response)),
+    )
+
+
+def test_a_503_carries_the_service_detail_into_the_failure():
+    """The detail was dropped for "check service logs", and the service logged
+    nothing: whichever model was missing, the operator could not find out."""
+    detail = "doc_docling: DetectorModelUnavailable: model.onnx is not in /cache/huggingface"
+
+    with (
+        fake_service(httpx.Response(503, json={"detail": detail})) as client,
+        pytest.raises(RemoteFactsError, match=re.escape(f"HTTP 503: {detail}")),
+    ):
+        client.facts(preview(), EditorialConfig().head_versions)
+
+
+def test_an_answer_with_no_detail_still_points_at_the_service():
+    with (
+        fake_service(httpx.Response(500, text="upstream said no")) as client,
+        pytest.raises(RemoteFactsError, match="HTTP 500: check service logs"),
+    ):
+        client.facts(preview(), EditorialConfig().head_versions)

@@ -18,9 +18,11 @@ import numpy as np
 from PIL import Image
 
 from immich_memories.analysis import editorial_preparation_detectors as detectors
+from immich_memories.pinned_models import ENCODER, MARQO_ONNX
 from immich_memories.triage.encoder import DinoEncoder
 from immich_memories.triage.engine import TriageEngine
 from immich_memories.triage.heads import HeadBundle, HeadFact
+from immich_memories_inference.seeding import seed
 
 HEADS = "heads"
 NSFW_MARQO = "nsfw_marqo"
@@ -180,8 +182,11 @@ class DetectorProducer:
         )
 
 
-def heads_loader(encoder_path: Path, bundle_path: Path, *, provider: str) -> Callable[[], Producer]:
+def heads_loader(
+    encoder_path: Path, bundle_path: Path, *, provider: str, allow_downloads: bool = False
+) -> Callable[[], Producer]:
     def load() -> Producer:
+        seed(ENCODER, encoder_path, allow_downloads=allow_downloads)
         if not encoder_path.is_file():
             raise FileNotFoundError(
                 f"the pinned DINOv2 ONNX export is not at {encoder_path}; {ENCODER_HINT}"
@@ -200,11 +205,13 @@ def detector_loader(
         raise KeyError(name)
 
     def load() -> Producer:
-        model = (
-            detectors.Marqo(model_path=marqo_onnx)
-            if name == NSFW_MARQO
-            else detectors.Docling(allow_downloads=allow_downloads, cache_dir=cache_dir)
+        if name == NSFW_MARQO:
+            seed(MARQO_ONNX, marqo_onnx, allow_downloads=allow_downloads)
+            return DetectorProducer(name, detectors.Marqo(model_path=marqo_onnx))
+        # Docling is a Hugging Face snapshot rather than a release asset, so the
+        # hub does its own fetching under the same flag.
+        return DetectorProducer(
+            name, detectors.Docling(allow_downloads=allow_downloads, cache_dir=cache_dir)
         )
-        return DetectorProducer(name, model)
 
     return load

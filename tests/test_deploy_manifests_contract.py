@@ -304,19 +304,20 @@ def test_kustomize_renders_with_a_secret_created_from_the_example(
     assert has_gpu == (target == "overlays/gpu")
 
 
+def _kustomize(path: Path) -> list[dict]:
+    result = subprocess.run(
+        ["kubectl", "kustomize", str(path)], check=False, capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stderr
+    return [doc for doc in yaml.safe_load_all(result.stdout) if doc]
+
+
 @pytest.mark.skipif(shutil.which("kubectl") is None, reason="kubectl not installed")
 @pytest.mark.parametrize("target", ["overlays/inference", "overlays/inference-cuda"])
 def test_inference_overlays_build_without_the_secret(target: str) -> None:
     """The inference service holds no credential, so its overlay must not need base/secret.yaml."""
-    result = subprocess.run(
-        ["kubectl", "kustomize", str(K8S_ROOT / target)],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    rendered = _kustomize(K8S_ROOT / target)
 
-    assert result.returncode == 0, result.stderr
-    rendered = list(yaml.safe_load_all(result.stdout))
     assert "Secret" not in {doc["kind"] for doc in rendered}
     deployment = next(doc for doc in rendered if doc["kind"] == "Deployment")
     container = deployment["spec"]["template"]["spec"]["containers"][0]
@@ -327,17 +328,31 @@ def test_inference_overlays_build_without_the_secret(target: str) -> None:
 
 
 @pytest.mark.skipif(shutil.which("kubectl") is None, reason="kubectl not installed")
+@pytest.mark.parametrize("target", ["overlays/inference", "overlays/inference-cuda"])
+def test_the_inference_pod_can_write_everywhere_it_downloads_to(target: str) -> None:
+    """readOnlyRootFilesystem plus a Hugging Face cache under $HOME is how a cold
+    PVC answered 503 to every request: the snapshot download had nowhere to land."""
+    deployment = next(doc for doc in _kustomize(K8S_ROOT / target) if doc["kind"] == "Deployment")
+    pod = deployment["spec"]["template"]["spec"]
+    container = pod["containers"][0]
+    env = {entry["name"]: entry.get("value") for entry in container["env"]}
+    mounts = {mount["mountPath"]: mount["name"] for mount in container["volumeMounts"]}
+    volumes = {volume["name"]: volume for volume in pod["volumes"]}
+
+    assert container["securityContext"]["readOnlyRootFilesystem"] is True
+    assert env["TMPDIR"] == "/tmp"
+    assert "emptyDir" in volumes[mounts["/tmp"]]
+    # One variable covers the hub, xet and assets caches: huggingface_hub derives
+    # all three from HF_HOME unless each is named separately.
+    assert env["HF_HOME"] == "/cache/huggingface"
+    assert "persistentVolumeClaim" in volumes[mounts["/cache"]]
+
+
+@pytest.mark.skipif(shutil.which("kubectl") is None, reason="kubectl not installed")
 def test_the_lan_overlay_adds_a_service_and_changes_nothing_else() -> None:
     """A patch on the ClusterIP Service would put every in-cluster caller on an external address."""
-    result = subprocess.run(
-        ["kubectl", "kustomize", str(K8S_ROOT / "overlays/inference-lan")],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    rendered = _kustomize(K8S_ROOT / "overlays/inference-lan")
 
-    assert result.returncode == 0, result.stderr
-    rendered = list(yaml.safe_load_all(result.stdout))
     assert [doc["kind"] for doc in rendered] == ["Service"]
     service = rendered[0]
     assert service["metadata"]["name"] == "inference-lan"

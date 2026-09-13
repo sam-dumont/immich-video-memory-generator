@@ -39,6 +39,11 @@ logger = logging.getLogger(__name__)
 
 # How often the idle sweep runs, whatever the TTL is.
 SWEEP_SECONDS = 15.0
+# How many distinct 503 details are remembered as already said. A message that
+# carries a varying substring would otherwise grow that set for the life of a
+# process that is meant to stay up for months; forgetting the lot and saying
+# them again costs one repeated line.
+WARNED_CEILING = 64
 
 
 class FactsRequest(BaseModel):
@@ -51,7 +56,10 @@ class FactsRequest(BaseModel):
 def default_loaders(settings: InferenceSettings) -> dict[str, Callable[[], Producer]]:
     return {
         HEADS: heads_loader(
-            settings.encoder_path, settings.bundle_path, provider=settings.provider
+            settings.encoder_path,
+            settings.bundle_path,
+            provider=settings.provider,
+            allow_downloads=settings.allow_model_downloads,
         ),
         NSFW_MARQO: detector_loader(
             NSFW_MARQO,
@@ -93,6 +101,9 @@ def create_app(
         default_loaders(settings), idle_unload_seconds=settings.idle_unload_seconds
     )
     app = FastAPI(title="immich-memories inference", lifespan=_lifespan(settings, runtime))
+    # Every 503 detail already said. A wedged producer in a 4000-picture run is
+    # one line worth reading and 3999 worth nothing.
+    app.state.warned = set()
     _routes(app, settings, runtime)
     return app
 
@@ -155,11 +166,10 @@ def _routes(app: FastAPI, settings: InferenceSettings, runtime: ProducerRuntime)
     @app.post("/facts")
     async def facts(request: FactsRequest) -> dict[str, Any]:
         image = _decode(request.image, settings.max_image_bytes)
-        loop = asyncio.get_running_loop()
         # One producer at a time: three CPU-bound seats over one picture contend
         # rather than overlap. The pool is what keeps the loop answering.
         decided = [
-            await _decide(loop, app.state.pool, runtime, name, image)
+            await _decide(app, runtime, name, image)
             for name in _requested(request.producers, runtime.names)
         ]
         return {
@@ -173,21 +183,30 @@ def _routes(app: FastAPI, settings: InferenceSettings, runtime: ProducerRuntime)
         }
 
 
-async def _decide(
-    loop: asyncio.AbstractEventLoop,
-    pool: ThreadPoolExecutor,
-    runtime: ProducerRuntime,
-    name: str,
-    image: bytes,
-) -> ProducerFacts:
+async def _decide(app: FastAPI, runtime: ProducerRuntime, name: str, image: bytes) -> ProducerFacts:
+    loop = asyncio.get_running_loop()
     try:
-        return await loop.run_in_executor(pool, runtime.decide, name, image)
+        return await loop.run_in_executor(app.state.pool, runtime.decide, name, image)
     except ProducerUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise _unavailable(app, str(exc)) from exc
     except (OSError, ValueError) as exc:
         raise HTTPException(
             status_code=400, detail=f"{name} could not read this picture: {exc}"
         ) from exc
+
+
+def _unavailable(app: FastAPI, detail: str) -> HTTPException:
+    """The 503 the client gets, and the log line the operator gets with it.
+
+    Said once per distinct message: this runs on the event loop thread, so the
+    set needs no lock.
+    """
+    if detail not in app.state.warned:
+        if len(app.state.warned) >= WARNED_CEILING:
+            app.state.warned.clear()
+        app.state.warned.add(detail)
+        logger.warning("inference: %s", detail)
+    return HTTPException(status_code=503, detail=detail)
 
 
 def _health(settings: InferenceSettings, runtime: ProducerRuntime) -> dict[str, Any]:

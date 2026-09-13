@@ -14,6 +14,14 @@ from time import monotonic
 
 from immich_memories_inference.producers import Producer, ProducerFacts
 
+# How long a producer that failed to load waits before trying again, doubling
+# per consecutive failure up to the ceiling. A download that fails because the
+# volume is missing fails the same way for every picture in the run, so the
+# first wait is short enough to pick up a fix and long enough not to retry once
+# per request.
+RETRY_BACKOFF_SECONDS = 10.0
+MAX_RETRY_BACKOFF_SECONDS = 120.0
+
 
 class UnknownProducer(LookupError):
     """A producer this service does not serve."""
@@ -31,6 +39,15 @@ class ProducerStatus:
 
 
 @dataclass
+class _Failure:
+    """The last load failure, and when the next attempt is allowed."""
+
+    message: str
+    retry_at: float
+    waited: float
+
+
+@dataclass
 class _Slot:
     load: Callable[[], Producer]
     # One lock per producer: a sweep must never free a session another thread is
@@ -38,6 +55,7 @@ class _Slot:
     lock: threading.Lock = field(default_factory=threading.Lock)
     producer: Producer | None = None
     last_used: float = 0.0
+    failure: _Failure | None = None
 
 
 class ProducerRuntime:
@@ -76,12 +94,25 @@ class ProducerRuntime:
 
     def _resident(self, slot: _Slot, name: str) -> Producer:
         if slot.producer is None:
-            try:
-                slot.producer = slot.load()
-            except Exception as exc:
-                raise ProducerUnavailable(f"{name}: {type(exc).__name__}: {exc}") from exc
+            slot.producer = self._attempt(slot, name)
         slot.last_used = self._clock()
         return slot.producer
+
+    def _attempt(self, slot: _Slot, name: str) -> Producer:
+        """Load, unless a recent failure says to wait. Either way, say which producer."""
+        now = self._clock()
+        if slot.failure is not None and now < slot.failure.retry_at:
+            raise ProducerUnavailable(f"{name}: {slot.failure.message}")
+        try:
+            producer = slot.load()
+        except Exception as exc:
+            waited = _next_wait(slot.failure)
+            slot.failure = _Failure(
+                message=f"{type(exc).__name__}: {exc}", retry_at=now + waited, waited=waited
+            )
+            raise ProducerUnavailable(f"{name}: {slot.failure.message}") from exc
+        slot.failure = None
+        return producer
 
     def status(self) -> dict[str, ProducerStatus]:
         status = {}
@@ -129,3 +160,9 @@ class ProducerRuntime:
             return self._slots[name]
         except KeyError:
             raise UnknownProducer(name) from None
+
+
+def _next_wait(previous: _Failure | None) -> float:
+    if previous is None:
+        return RETRY_BACKOFF_SECONDS
+    return min(previous.waited * 2, MAX_RETRY_BACKOFF_SECONDS)

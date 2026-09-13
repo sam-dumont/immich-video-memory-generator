@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import logging
 import sys
 from io import BytesIO
 from types import SimpleNamespace
@@ -13,10 +14,13 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from immich_memories.analysis import editorial_preparation_detectors as detectors
+from immich_memories.pinned_models import ENCODER, MARQO_ONNX, PinnedModel
 from immich_memories_inference import __main__ as entrypoint
+from immich_memories_inference import seeding
 from immich_memories_inference.app import create_app, default_loaders, would_use_provider
 from immich_memories_inference.producers import (
     DOC_DOCLING,
+    ENCODER_HINT,
     HEADS,
     NSFW_MARQO,
     DetectorProducer,
@@ -24,6 +28,8 @@ from immich_memories_inference.producers import (
     ProducerFacts,
 )
 from immich_memories_inference.runtime import (
+    MAX_RETRY_BACKOFF_SECONDS,
+    RETRY_BACKOFF_SECONDS,
     ProducerRuntime,
     ProducerUnavailable,
     UnknownProducer,
@@ -331,3 +337,152 @@ def test_missing_marqo_export_names_the_configured_path(tmp_path):
     assert response.status_code == 503
     assert str(tmp_path / "nsfw-marqo-384.onnx") in response.json()["detail"]
     assert "no model" in response.json()["detail"]
+
+
+def _record_fetches(monkeypatch, fetched: list[tuple[str, str]], body: bytes = b"weights") -> None:
+    """# WHY: replaces the release download, the one network boundary in a seed.
+    What is under test is which artifact is asked for, not urllib."""
+
+    def record(*, url: str, destination, sha256: str, force: bool = False) -> str:
+        fetched.append((url, sha256))
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(body)
+        return "downloaded"
+
+    monkeypatch.setattr(seeding, "fetch_pinned_model", record)
+
+
+@pytest.mark.parametrize(
+    ("producer", "pin", "filename"),
+    [(HEADS, ENCODER, "dinov2-small.onnx"), (NSFW_MARQO, MARQO_ONNX, "nsfw-marqo-384.onnx")],
+)
+def test_a_cold_cache_fetches_the_pinned_artifact_on_first_use(
+    tmp_path, monkeypatch, producer: str, pin: PinnedModel, filename: str
+):
+    """A fresh PVC arrives empty, and `kubectl cp` is not a deployment step."""
+    fetched: list[tuple[str, str]] = []
+    _record_fetches(monkeypatch, fetched)
+    settings = InferenceSettings(cache_dir=tmp_path, allow_model_downloads=True)
+
+    # The stand-in bytes are not the pinned export, so the loader refuses them
+    # on the digest: what is under test is that the fetch happened at all.
+    with pytest.raises(RuntimeError, match="not the pinned"):
+        default_loaders(settings)[producer]()
+
+    assert fetched == [(pin.url, pin.sha256)]
+    assert (tmp_path / filename).read_bytes() == b"weights"
+
+
+@pytest.mark.parametrize("producer", [HEADS, NSFW_MARQO])
+def test_with_downloads_off_nothing_is_fetched_and_the_message_stands(
+    tmp_path, monkeypatch, producer: str
+):
+    """`allow_model_downloads: false` has to go on meaning what it says."""
+    fetched: list[tuple[str, str]] = []
+    _record_fetches(monkeypatch, fetched)
+    settings = InferenceSettings(cache_dir=tmp_path)
+    runtime = ProducerRuntime({producer: default_loaders(settings)[producer]})
+
+    with service(runtime) as client:
+        response = client.post(
+            "/facts",
+            json={"image": base64.b64encode(photograph()).decode(), "producers": [producer]},
+        )
+
+    assert fetched == []
+    assert response.status_code == 503
+    assert str(tmp_path) in response.json()["detail"]
+
+
+def test_a_seed_that_cannot_reach_the_release_names_the_artifact(tmp_path, monkeypatch):
+    """The operator sees which download failed, not a bare OSError."""
+
+    def refuse(**_kwargs: object) -> str:
+        raise OSError("Name or service not known")
+
+    # WHY: stands in for the release download; the failure is what is under test.
+    monkeypatch.setattr(seeding, "fetch_pinned_model", refuse)
+    settings = InferenceSettings(cache_dir=tmp_path, allow_model_downloads=True)
+    runtime = ProducerRuntime({HEADS: default_loaders(settings)[HEADS]})
+
+    with service(runtime) as client:
+        response = client.post(
+            "/facts",
+            json={"image": base64.b64encode(photograph()).decode(), "producers": [HEADS]},
+        )
+
+    assert response.status_code == 503
+    detail = response.json()["detail"]
+    assert ENCODER.label in detail
+    assert ENCODER.url in detail
+
+
+def test_a_producer_whose_load_failed_is_retried_rather_than_replayed():
+    """A wedged producer answered every later request with its first error, for
+    the life of the pod: the fix that made the load work needed a restart to land."""
+    now = [0.0]
+    attempts: list[int] = []
+
+    def load() -> CountingProducer:
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise OSError("Read-only file system (os error 30)")
+        return CountingProducer([])
+
+    runtime = ProducerRuntime({HEADS: load}, clock=lambda: now[0])
+
+    with pytest.raises(ProducerUnavailable, match="Read-only file system"):
+        runtime.decide(HEADS, b"")
+    # Inside the backoff window nothing is re-attempted: a 4000-picture run must
+    # not re-download 88 MB once per picture while the cause is still there.
+    with pytest.raises(ProducerUnavailable, match="Read-only file system"):
+        runtime.decide(HEADS, b"")
+    assert attempts == [1]
+
+    now[0] += RETRY_BACKOFF_SECONDS
+    runtime.decide(HEADS, b"")
+
+    assert len(attempts) == 2
+    assert runtime.status()[HEADS].loaded is True
+
+
+def test_the_wait_between_attempts_never_grows_past_its_ceiling():
+    now = [0.0]
+    attempts: list[int] = []
+
+    def load() -> CountingProducer:
+        attempts.append(1)
+        raise OSError("still read-only")
+
+    runtime = ProducerRuntime({HEADS: load}, clock=lambda: now[0])
+    for _ in range(10):
+        with pytest.raises(ProducerUnavailable):
+            runtime.decide(HEADS, b"")
+        now[0] += MAX_RETRY_BACKOFF_SECONDS
+
+    assert len(attempts) == 10
+
+
+def test_every_503_is_logged_once_per_distinct_message(tmp_path, caplog):
+    """The service said nothing at all while it answered 503 to every request:
+    the operator had no log on either side of the wire."""
+    settings = InferenceSettings(cache_dir=tmp_path)
+    runtime = ProducerRuntime({HEADS: default_loaders(settings)[HEADS]})
+
+    with (
+        caplog.at_level(logging.WARNING, logger="immich_memories_inference.app"),
+        TestClient(create_app(settings, runtime=runtime)) as client,
+    ):
+        for _ in range(3):
+            client.post(
+                "/facts",
+                json={"image": base64.b64encode(photograph()).decode(), "producers": [HEADS]},
+            )
+
+    # Once, not once per picture: a wedged producer in a 4000-picture run would
+    # otherwise be 4000 identical lines.
+    assert [record.getMessage() for record in caplog.records].count(
+        f"inference: heads: FileNotFoundError: the pinned DINOv2 ONNX export is not at "
+        f"{settings.encoder_path}; {ENCODER_HINT}"
+    ) == 1
+    assert len(caplog.records) == 1
