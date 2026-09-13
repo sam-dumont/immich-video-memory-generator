@@ -59,6 +59,8 @@ def test_query_text_requester_preserves_the_exact_request_contract(
     assert result.wall_seconds == 2.5
     assert result.cache_hit is False
     assert result.thinking is True
+    # The reader is watched: a dropped connection is announced with its endpoint.
+    assert callable(seen[0][2].pop("transport_observer"))
     assert seen == [
         (
             request.prompt,

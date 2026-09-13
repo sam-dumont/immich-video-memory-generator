@@ -61,7 +61,7 @@ from immich_memories.analysis.thumbnail_prefetch import cached_preview_bytes
 from immich_memories.api.models import Asset, VideoClipInfo
 from immich_memories.api.person_expression import PersonExpression
 from immich_memories.cache.editorial_verdicts import EditorialVerdicts
-from immich_memories.operations.cut_progress import ANALYSIS_PHASE, StageUpdate
+from immich_memories.operations.cut_progress import ANALYSIS_PHASE, StageUpdate, announcing_stages
 from immich_memories.people.context import PersonPromptContext
 from immich_memories.processing.editorial_timing import EditorialTimingPolicy
 from immich_memories.security import write_secret_file
@@ -353,22 +353,25 @@ class RuntimeEditorialPlanner:
         try:
             sources = self._narrowed(sources, _asset)
             if on_stage is not None:
-                on_stage(StageUpdate("Preparing source metadata", ANALYSIS_PHASE))
-            prepared = self._prepared_source(trace=trace, on_stage=on_stage)
-            candidates = metadata_demand(
-                prepared,
-                sources,
-                photo_seconds=config.photos.duration,
-                hdr_only=hdr_only,
-            )
-            backend.last_structure_result = None
-            plan = self._planner.plan_prepared(
-                candidates,
-                prepared=prepared,
-                trace=trace,
-                verified_segments=False,
-                on_stage=on_stage,
-            )
+                on_stage(StageUpdate("Reading dates, places and people", ANALYSIS_PHASE))
+            # The readers and the structure planner announce through the
+            # context, since the callback never reaches that deep.
+            with announcing_stages(on_stage):
+                prepared = self._prepared_source(trace=trace, on_stage=on_stage)
+                candidates = metadata_demand(
+                    prepared,
+                    sources,
+                    photo_seconds=config.photos.duration,
+                    hdr_only=hdr_only,
+                )
+                backend.last_structure_result = None
+                plan = self._planner.plan_prepared(
+                    candidates,
+                    prepared=prepared,
+                    trace=trace,
+                    verified_segments=False,
+                    on_stage=on_stage,
+                )
             if plan.unavailable_reason is not None:
                 raise RuntimeError(
                     f"editorial source evidence unavailable: {plan.unavailable_reason}"

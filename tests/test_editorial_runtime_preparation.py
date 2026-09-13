@@ -177,7 +177,7 @@ def test_the_attempt_carries_live_numbers_and_recent_pictures_beside_its_stage(
     assert set(progress.recent_asset_ids) <= {s.id for s in sources}
     assert progress.fraction == 1.0
     # The label vocabulary the phase rows depend on is unchanged.
-    assert "Preparing source metadata" in [stage.stage_label for stage in stages]
+    assert "Reading dates, places and people" in [stage.stage_label for stage in stages]
     assert any(stage.stage_label.startswith("Preparing previews: ") for stage in stages)
 
 
