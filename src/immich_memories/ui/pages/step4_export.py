@@ -83,9 +83,7 @@ def _render_photo_preview(state, photos_count: int) -> None:
     if not photos_count:
         return
 
-    import base64
-
-    from immich_memories.ui.pages.step2_helpers import get_thumbnail
+    from immich_memories.ui.pages.step2_helpers import render_thumbnail
 
     with ui.expansion(
         f"{photos_count} Photos Available (auto-selected at generation)",
@@ -99,12 +97,9 @@ def _render_photo_preview(state, photos_count: int) -> None:
             .style("grid-template-columns: repeat(auto-fill, minmax(80px, 1fr))")
         ):
             for photo in state.photo_assets[:max_preview]:
-                thumb = get_thumbnail(photo.id)
-                if thumb:
-                    b64 = base64.b64encode(thumb).decode()
-                    ui.image(f"data:image/jpeg;base64,{b64}").classes("w-full rounded").style(
-                        "aspect-ratio: 1; object-fit: cover"
-                    )
+                render_thumbnail(
+                    photo.id, classes="w-full rounded", style="aspect-ratio: 1; object-fit: cover"
+                )
         if photos_count > max_preview:
             ui.label(f"+ {photos_count - max_preview} more").classes("text-sm mt-1").style(
                 "color: var(--im-text-secondary)"
