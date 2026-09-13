@@ -70,8 +70,8 @@ def test_final_actual_planner_removes_un_nominated_repetition_after_completion(t
     assert plan["selection_stages"]["after_final_duplicate_review"] == 3
     # The same counts are announced while the edit runs, so a watcher sees the
     # long "Editing the memory" stretch move instead of a record nobody reads.
-    assert "Editing the memory: 4 pictures into the audience gate" in announced
-    assert "Editing the memory: 4 pictures into the picture review" in announced
+    assert "Editing the memory: 4 pictures going into the family-viewing check" in announced
+    assert "Editing the memory: 4 pictures going into the picture review" in announced
     assert "Editing the memory: 3 pictures after the duplicate review" in announced
     assert [c["asset_id"] for c in plan["carriers"]] == [
         "picture-000",

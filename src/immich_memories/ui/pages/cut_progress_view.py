@@ -104,9 +104,11 @@ class LiveStrip:
         self._read = read_thumbnail
         self._ring = PictureRing(slots)
         self._cells: list[ui.image] = []
+        self._fading = False
         with ui.row().classes("gap-1 mb-3 flex-wrap items-center"):
             for _ in range(slots):
                 cell = ui.image().classes("w-16 h-16 rounded object-cover")
+                cell.style("transition: opacity 0.6s")
                 cell.set_visibility(False)
                 self._cells.append(cell)
 
@@ -114,7 +116,20 @@ class LiveStrip:
         for cell in self._cells:
             cell.set_visibility(False)
 
+    def fade_out(self) -> None:
+        """Let the last pictures go quietly once the edit starts, instead of vanishing mid-tick."""
+        if self._fading:
+            return
+        self._fading = True
+        for cell in self._cells:
+            cell.style("opacity: 0")
+        ui.timer(0.7, self.hide, once=True)
+
     def show(self, asset_ids: Sequence[str]) -> None:
+        if self._fading:
+            self._fading = False
+            for cell in self._cells:
+                cell.style("opacity: 1")
         for index, asset_id in self._ring.admit(asset_ids, limit=STRIP_ARRIVALS_PER_TICK):
             # A slot the ring has handed out stays spent even when the picture
             # cannot be read, so an unreadable thumbnail is skipped once rather
