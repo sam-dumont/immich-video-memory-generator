@@ -10,13 +10,14 @@ from nicegui import ui
 
 from immich_memories.api.models import Asset, VideoClipInfo
 from immich_memories.ui.components import im_badge
+from immich_memories.ui.pages.paging import DEFAULT_PAGE_SIZE, render_paged
 from immich_memories.ui.pages.step2_helpers import (
     format_duration,
     render_thumbnail,
 )
 from immich_memories.ui.state import get_app_state
 
-CLIPS_PER_PAGE = 20
+CLIPS_PER_PAGE = DEFAULT_PAGE_SIZE
 
 # Union type for items in the mixed grid
 GridItem = VideoClipInfo | Asset
@@ -219,6 +220,61 @@ def _render_photo_card(
         checkbox.on_value_change(make_photo_toggle(photo.id))
 
 
+def _render_selected_overlay() -> None:
+    ui.element("div").classes("absolute inset-0").style("background: rgba(66, 80, 175, 0.25)")
+    ui.icon("check_circle", color="white", size="20px").classes("absolute top-1 right-1").style(
+        "filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5))"
+    )
+
+
+def _render_compact_cell(
+    asset_id: str,
+    selected_ids: set[str],
+    tooltip: str,
+    all_clips: list[VideoClipInfo],
+    summary_container: ui.element,
+    *,
+    is_photo: bool,
+) -> None:
+    """One compact cell that toggles its own tick and redraws itself in place.
+
+    The old cell navigated to /step2 after every click, which rebuilt the whole
+    page and every thumbnail on it, and dropped the pager back to page one (#824).
+    """
+    holder = ui.element("div").classes("w-full")
+
+    def toggle() -> None:
+        if asset_id in selected_ids:
+            selected_ids.discard(asset_id)
+        else:
+            selected_ids.add(asset_id)
+        _update_duration_summary(all_clips, summary_container)
+        draw()
+
+    def draw() -> None:
+        holder.clear()
+        is_selected = asset_id in selected_ids
+        border = "2px solid var(--im-primary)" if is_selected else "1px solid var(--im-border)"
+        with (
+            holder,
+            ui.element("div")
+            .classes("relative cursor-pointer aspect-video rounded-lg overflow-hidden")
+            .style(f"border: {border}")
+            .tooltip(tooltip)
+            .on("click", toggle),
+        ):
+            render_thumbnail(asset_id, classes="w-full h-full object-cover", style="")
+            if is_photo:
+                # Camera icon badge in top-left to distinguish from videos
+                ui.icon("photo_camera", color="white", size="16px").classes(
+                    "absolute top-1 left-1"
+                ).style("filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5))")
+            if is_selected:
+                _render_selected_overlay()
+
+    draw()
+
+
 def _render_compact_photo_thumbnail(
     photo: Asset,
     state,
@@ -226,42 +282,10 @@ def _render_compact_photo_thumbnail(
     summary_container: ui.element,
 ) -> None:
     """Render a single compact photo thumbnail cell with selection overlay."""
-    is_selected = photo.id in state.selected_photo_ids
     tooltip = f"Photo | {photo.file_created_at.strftime('%b %d, %Y %H:%M')}"
-
-    def make_click_handler(photo_id: str):
-        def toggle():
-            if photo_id in state.selected_photo_ids:
-                state.selected_photo_ids.discard(photo_id)
-            else:
-                state.selected_photo_ids.add(photo_id)
-            _update_duration_summary(all_clips, summary_container)
-            ui.navigate.to("/step2")
-
-        return toggle
-
-    border = "2px solid var(--im-primary)" if is_selected else "1px solid var(--im-border)"
-    with (
-        ui.element("div")
-        .classes("relative cursor-pointer aspect-video rounded-lg overflow-hidden")
-        .style(f"border: {border}")
-        .tooltip(tooltip)
-        .on("click", make_click_handler(photo.id))
-    ):
-        render_thumbnail(photo.id, classes="w-full h-full object-cover", style="")
-
-        # Camera icon badge in top-left to distinguish from videos
-        ui.icon("photo_camera", color="white", size="16px").classes("absolute top-1 left-1").style(
-            "filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5))"
-        )
-
-        if is_selected:
-            ui.element("div").classes("absolute inset-0").style(
-                "background: rgba(66, 80, 175, 0.25)"
-            )
-            ui.icon("check_circle", color="white", size="20px").classes(
-                "absolute top-1 right-1"
-            ).style("filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5))")
+    _render_compact_cell(
+        photo.id, state.selected_photo_ids, tooltip, all_clips, summary_container, is_photo=True
+    )
 
 
 def _build_clip_tooltip(clip: VideoClipInfo) -> str:
@@ -282,38 +306,14 @@ def _render_compact_thumbnail(
     summary_container: ui.element,
 ) -> None:
     """Render a single compact thumbnail cell with selection overlay."""
-    is_selected = clip.asset.id in state.selected_clip_ids
-    tooltip = _build_clip_tooltip(clip)
-
-    def make_click_handler(asset_id: str):
-        def toggle():
-            if asset_id in state.selected_clip_ids:
-                state.selected_clip_ids.discard(asset_id)
-            else:
-                state.selected_clip_ids.add(asset_id)
-            _update_duration_summary(all_clips, summary_container)
-            ui.navigate.to("/step2")
-
-        return toggle
-
-    border = "2px solid var(--im-primary)" if is_selected else "1px solid var(--im-border)"
-    with (
-        ui.element("div")
-        .classes("relative cursor-pointer aspect-video rounded-lg overflow-hidden")
-        .style(f"border: {border}")
-        .tooltip(tooltip)
-        .on("click", make_click_handler(clip.asset.id))
-    ):
-        render_thumbnail(clip.asset.id, classes="w-full h-full object-cover", style="")
-
-        if is_selected:
-            # Selection overlay: semi-transparent tint + check icon
-            ui.element("div").classes("absolute inset-0").style(
-                "background: rgba(66, 80, 175, 0.25)"
-            )
-            ui.icon("check_circle", color="white", size="20px").classes(
-                "absolute top-1 right-1"
-            ).style("filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5))")
+    _render_compact_cell(
+        clip.asset.id,
+        state.selected_clip_ids,
+        _build_clip_tooltip(clip),
+        all_clips,
+        summary_container,
+        is_photo=False,
+    )
 
 
 def _render_compact_grid(
@@ -326,7 +326,7 @@ def _render_compact_grid(
 
     with (
         ui.element("div")
-        .classes("w-full grid gap-2")
+        .classes("media-pool-grid w-full grid gap-2")
         .style("grid-template-columns: repeat(auto-fill, minmax(140px, 1fr))")
     ):
         for clip in clips:
@@ -343,7 +343,7 @@ def _render_clip_grid(
 
     with (
         ui.element("div")
-        .classes("w-full grid gap-3")
+        .classes("media-pool-grid w-full grid gap-3")
         .style("grid-template-columns: repeat(auto-fill, minmax(200px, 1fr))")
     ):
         for clip in clips:
@@ -359,7 +359,7 @@ def _render_mixed_grid(
     all_clips = state.clips
 
     with ui.element("div").classes(
-        "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4"
+        "media-pool-grid grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4"
     ):
         for item in items:
             if isinstance(item, VideoClipInfo):
@@ -376,7 +376,9 @@ def _render_compact_mixed_grid(
     state = get_app_state()
     all_clips = state.clips
 
-    with ui.element("div").classes("grid grid-cols-4 sm:grid-cols-5 lg:grid-cols-6 gap-2"):
+    with ui.element("div").classes(
+        "media-pool-grid grid grid-cols-4 sm:grid-cols-5 lg:grid-cols-6 gap-2"
+    ):
         for item in items:
             if isinstance(item, VideoClipInfo):
                 _render_compact_thumbnail(item, state, all_clips, summary_container)
@@ -389,29 +391,5 @@ def _render_paginated(
     render_page: Callable[[Sequence[Item]], None],
     page_size: int = CLIPS_PER_PAGE,
 ) -> None:
-    """Render the first page now and the rest behind "Show more" buttons, a page at a time."""
-    if len(items) <= page_size:
-        render_page(items)
-        return
-
-    grid_container = ui.column().classes("w-full")
-    with grid_container:
-        render_page(items[:page_size])
-    button_container = ui.row().classes("w-full justify-center mt-2")
-
-    def load_more(remaining: Sequence[Item]) -> None:
-        button_container.clear()
-        with grid_container:
-            render_page(remaining[:page_size])
-        still_remaining = remaining[page_size:]
-        if still_remaining:
-            offer(still_remaining)
-
-    def offer(remaining: Sequence[Item]) -> None:
-        with button_container:
-            ui.button(
-                f"Show more ({len(remaining)} remaining)",
-                on_click=lambda: load_more(remaining),
-            ).props("outline")
-
-    offer(items[page_size:])
+    """One page of the pool at a time; see paging.render_paged."""
+    render_paged(items, render_page, page_size)

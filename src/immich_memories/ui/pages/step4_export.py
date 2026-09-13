@@ -64,18 +64,29 @@ def _render_recovered_run(state) -> None:
             variant="info",
         )
 
-        def poll() -> None:
-            current = recover_active_run(state)
-            if current is None or current.status != "running":
-                ui.navigate.reload()
-
-        ui.timer(5.0, poll)
+        timer = ui.timer(5.0, lambda: _poll_recovered_run(state, timer))
         return
     if recovered.status == "stale":
         message = f"Run {run_id} was still marked running hours later — it did not finish. "
     else:
         message = f"The last generation (run {run_id}) {recovered.status}. "
     im_info_card(message + "Check the server log, then generate again.", variant="warning")
+
+
+def _poll_recovered_run(state, timer) -> bool:
+    """Reload the page once the run has left "running", and stop the timer with it.
+
+    The old timer kept firing after the reload it triggered, so a finished run
+    reloaded the page every five seconds for as long as it stayed open (#824).
+    """
+    from immich_memories.ui.pages.step4_recovery import recover_active_run
+
+    current = recover_active_run(state)
+    if current is not None and current.status == "running":
+        return False
+    timer.deactivate()
+    ui.navigate.reload()
+    return True
 
 
 def _render_photo_preview(state, photos_count: int) -> None:

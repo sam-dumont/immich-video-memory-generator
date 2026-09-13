@@ -45,6 +45,9 @@ services:
       # IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER: "no_captions"
       # Only needed on the full tier:
       # IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL: "http://your-model-box:8092/v1"
+      # Optional: run the heads and detectors in the inference service below
+      # instead of in this container (start it with --profile inference).
+      # IMMICH_MEMORIES_INFERENCE__FACTS_BASE_URL: "http://immich-memories-inference:8092"
       # Optional: basic auth
       # IMMICH_MEMORIES_AUTH_USERNAME: "${IMMICH_MEMORIES_AUTH_USERNAME}"
       # IMMICH_MEMORIES_AUTH_PASSWORD: "${IMMICH_MEMORIES_AUTH_PASSWORD}"
@@ -91,17 +94,20 @@ services:
   # ── Optional: the inference service ───────────────────────────────────
   # The encoder, the six public heads and the two detectors behind one port,
   # with their own device variant — the shape immich-machine-learning has.
-  # Behind a profile because the app still runs those producers in process and
-  # has no setting yet to point at this service, so starting it by default
-  # would download models nothing asks for:
+  # Behind a profile because the app runs those producers in process by default,
+  # so starting it unasked would download ~500 MB of models nothing wants yet:
   #
   #   docker compose --profile inference up -d
   #   curl -s localhost:8092/health
   #
+  # To make the app use it, uncomment IMMICH_MEMORIES_INFERENCE__FACTS_BASE_URL
+  # in the app service above and restart it. The facts banked are the same rows
+  # the in-process producers write, so turning it on or off re-derives nothing.
+  #
   # For a GPU: change `service: cpu` to `service: cuda` below and set
   # INFERENCE_TAG=latest-cuda. /health then names CUDAExecutionProvider.
   immich-memories-inference:
-    image: ghcr.io/sam-dumont/immich-video-memory-generator-inference:${INFERENCE_TAG:-latest}
+    image: ghcr.io/sam-dumont/immich-video-memory-generator/inference:${INFERENCE_TAG:-latest}
     container_name: immich-memories-inference
     profiles:
       - inference
