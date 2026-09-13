@@ -546,7 +546,7 @@ onnxruntime-gpu 1.26.0
   License: MIT
   URL: https://onnxruntime.ai
 
-opencv-python 4.13.0.92
+opencv-python 5.0.0.93
   License: Apache-2.0
   URL: https://github.com/opencv/opencv-python
 
