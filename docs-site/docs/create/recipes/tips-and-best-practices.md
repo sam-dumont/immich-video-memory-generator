@@ -23,7 +23,7 @@ If you have a GPU, use it. The tool auto-detects NVIDIA (NVENC), Apple (VideoToo
 immich-memories hardware
 ```
 
-The one measured run is in the [NAS guide](../../deploy/common-setups/nas-only.md#performance-expectations): a 14-clip monthly on four cores with no GPU, 2.7 minutes of render under `preset: fast`. Most of that is title screens, which is the part a GPU actually shortens.
+The one measured run is in the [NAS guide](../../deploy/common-setups/nas-only.md#preparation-tiers-what-the-nas-pays): a 14-clip monthly on four cores with no GPU, 2.7 minutes of render under `preset: fast`. Most of that is title screens, which is the part a GPU actually shortens.
 
 ## Start with Shorter Durations
 
