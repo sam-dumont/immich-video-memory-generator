@@ -5,6 +5,7 @@ import pytest
 from immich_memories.analysis.editorial_structure_contract import StructurePlannerPorts
 from immich_memories.analysis.editorial_structure_planner import plan_structure
 from immich_memories.analysis.selection_same_picture import SamePicturePairDecision
+from immich_memories.operations.cut_progress import announcing_stages
 from tests.editorial_story_fixtures import ControlledStoryJudge
 from tests.test_editorial_duration_planner_integration import source
 from tests.test_editorial_visual_body_audience import picture_record
@@ -49,22 +50,29 @@ def test_final_actual_planner_removes_un_nominated_repetition_after_completion(t
         return (SamePicturePairDecision(*pairs[0], True),), {"scope": "controlled pixel relation"}
 
     judge = ControlledStoryJudge()
-    plan = plan_structure(
-        captured,
-        StructurePlannerPorts(
-            judge=judge,
-            thumbnail_hash=lambda _: None,
-            rank=lambda _query, documents: dict.fromkeys(range(len(documents)), 1.0),
-            reranker_identity={"endpoint": "test://local", "model": "controlled-ranker"},
-            observe_picture=observe,
-            confirm_sampled_pairs=confirm,
-            sampled_preview_hashes=get_hashes,
-        ),
-    ).plan
+    announced: list[str] = []
+    with announcing_stages(lambda update: announced.append(update.label)):
+        plan = plan_structure(
+            captured,
+            StructurePlannerPorts(
+                judge=judge,
+                thumbnail_hash=lambda _: None,
+                rank=lambda _query, documents: dict.fromkeys(range(len(documents)), 1.0),
+                reranker_identity={"endpoint": "test://local", "model": "controlled-ranker"},
+                observe_picture=observe,
+                confirm_sampled_pairs=confirm,
+                sampled_preview_hashes=get_hashes,
+            ),
+        ).plan
     assert compared == [("picture-000", "picture-001")]
     assert hash_requests == [tuple(sorted(captured.assets))]
     assert plan["selection_stages"]["before_picture_review"] == 4
     assert plan["selection_stages"]["after_final_duplicate_review"] == 3
+    # The same counts are announced while the edit runs, so a watcher sees the
+    # long "Editing the memory" stretch move instead of a record nobody reads.
+    assert "Editing the memory: 4 pictures into the audience gate" in announced
+    assert "Editing the memory: 4 pictures into the picture review" in announced
+    assert "Editing the memory: 3 pictures after the duplicate review" in announced
     assert [c["asset_id"] for c in plan["carriers"]] == [
         "picture-000",
         "picture-002",
