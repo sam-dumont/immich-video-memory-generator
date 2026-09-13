@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 from collections.abc import Callable, Sequence
 from datetime import datetime
 from typing import TypeVar
@@ -13,7 +12,7 @@ from immich_memories.api.models import Asset, VideoClipInfo
 from immich_memories.ui.components import im_badge
 from immich_memories.ui.pages.step2_helpers import (
     format_duration,
-    get_thumbnail,
+    render_thumbnail,
 )
 from immich_memories.ui.state import get_app_state
 
@@ -116,16 +115,9 @@ def _render_clip_badges(badges: list[str]) -> None:
 
 def _render_clip_thumbnail(asset_id: str) -> None:
     """Render the thumbnail image or placeholder for a clip card."""
-    thumb = get_thumbnail(asset_id)
-    if thumb:
-        b64 = base64.b64encode(thumb).decode()
-        ui.image(f"data:image/jpeg;base64,{b64}").classes("w-full rounded-lg").style(
-            "aspect-ratio: 16/9; object-fit: cover"
-        )
-    else:
-        ui.element("div").classes("w-full rounded-lg").style(
-            "aspect-ratio: 16/9; background: var(--im-bg-surface)"
-        )
+    render_thumbnail(
+        asset_id, classes="w-full rounded-lg", style="aspect-ratio: 16/9; object-fit: cover"
+    )
 
 
 def _render_clip_metadata(clip: VideoClipInfo) -> None:
@@ -256,14 +248,7 @@ def _render_compact_photo_thumbnail(
         .tooltip(tooltip)
         .on("click", make_click_handler(photo.id))
     ):
-        thumb = get_thumbnail(photo.id)
-        if thumb:
-            b64 = base64.b64encode(thumb).decode()
-            ui.image(f"data:image/jpeg;base64,{b64}").classes("w-full h-full object-cover")
-        else:
-            ui.element("div").classes("w-full h-full flex items-center justify-center").style(
-                "background-color: var(--im-bg-surface)"
-            )
+        render_thumbnail(photo.id, classes="w-full h-full object-cover", style="")
 
         # Camera icon badge in top-left to distinguish from videos
         ui.icon("photo_camera", color="white", size="16px").classes("absolute top-1 left-1").style(
@@ -319,14 +304,7 @@ def _render_compact_thumbnail(
         .tooltip(tooltip)
         .on("click", make_click_handler(clip.asset.id))
     ):
-        thumb = get_thumbnail(clip.asset.id)
-        if thumb:
-            b64 = base64.b64encode(thumb).decode()
-            ui.image(f"data:image/jpeg;base64,{b64}").classes("w-full h-full object-cover")
-        else:
-            ui.element("div").classes("w-full h-full flex items-center justify-center").style(
-                "background-color: var(--im-bg-surface)"
-            )
+        render_thumbnail(clip.asset.id, classes="w-full h-full object-cover", style="")
 
         if is_selected:
             # Selection overlay: semi-transparent tint + check icon

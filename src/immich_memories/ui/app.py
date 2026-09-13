@@ -35,8 +35,9 @@ from immich_memories.ui.auth import (
     trigger_token_authorizes,
 )
 from immich_memories.ui.health_api import register_health_routes
+from immich_memories.ui.media_route import register_media_route
 from immich_memories.ui.reverse_proxy import reverse_proxy_run_kwargs
-from immich_memories.ui.state import ensure_config, get_app_state
+from immich_memories.ui.state import ensure_config, get_app_state, peek_app_state
 from immich_memories.ui.theme import apply_theme, render_theme_toggle
 from immich_memories.ui.trigger_api import register_trigger_routes
 
@@ -349,6 +350,16 @@ register_health_routes(app)
 # The URL an Immich workflow (or anything else) POSTs to. Off unless authentication
 # or `server.trigger_token` is configured — see ui/trigger_api.py.
 register_trigger_routes(app)
+
+
+def _session_thumbnail_cache():
+    session = peek_app_state()
+    return session.thumbnail_cache if session else None
+
+
+# /media/thumb/{asset_id}: every thumbnail the pages show, served from the session's
+# cache instead of inlined as a data URI — see ui/media_route.py.
+register_media_route(app, _session_thumbnail_cache)
 
 
 # ============================================================================

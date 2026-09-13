@@ -198,6 +198,26 @@ def test_the_media_pool_stays_reachable_from_advanced(page: Page, launch_app_url
         expect(page.get_by_text(filename, exact=True).first).to_be_visible()
 
 
+def test_the_media_pool_loads_its_pictures_through_the_media_route(
+    page: Page, launch_app_url: str
+) -> None:
+    """No base64 data URI in the DOM: every thumbnail is an <img> the browser fetches and caches."""
+    _brief_for_june(page, launch_app_url)
+    page.get_by_text("Advanced", exact=True).click()
+    page.get_by_role("button", name="Open the media pool").click()
+    expect(page.get_by_text("3 Videos, 3 Photos Found", exact=True)).to_be_visible(timeout=60_000)
+
+    routed = page.locator("img[src^='/media/thumb/']")
+    expect(routed.first).to_be_visible(timeout=30_000)
+    assert page.locator("img[src^='data:']").count() == 0
+    assert routed.count() >= len(_POOL_FILES)
+    loaded = page.evaluate(
+        "() => Array.from(document.querySelectorAll(\"img[src^='/media/thumb/']\"))"
+        ".filter(img => img.complete && img.naturalWidth > 0).length"
+    )
+    assert loaded == routed.count(), "every routed thumbnail decoded in the browser"
+
+
 def test_the_story_reads_in_reader_words_and_hides_the_answer_schema_behind_details(
     page: Page, launch_app_url: str
 ) -> None:
