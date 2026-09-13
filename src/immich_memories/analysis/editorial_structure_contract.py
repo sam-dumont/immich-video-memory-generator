@@ -137,6 +137,8 @@ class StructurePlanningInput:
     # Attached evidence is separate from selectable primaries and canonical context.
     companion_assets: Mapping[str, Asset] = field(default_factory=dict)
     attached_outcome_replay: AttachedOutcomeReplay | None = None
+    # Owner ticks after a cut: admitted after the read, so no prompt or digest input changes.
+    owner_required_asset_ids: tuple[str, ...] = ()
     render_timing: EditorialTimingPolicy | None = None
 
     def __post_init__(self) -> None:
