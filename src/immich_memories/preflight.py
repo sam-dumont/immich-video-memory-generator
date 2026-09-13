@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import logging
+import sys
 from dataclasses import dataclass
 from enum import Enum
 
@@ -351,26 +352,6 @@ def check_hardware() -> CheckResult:
         )
 
 
-def _optional_runtime_check(
-    name: str, modules: tuple[str, ...], *, extra: str, ready: str, cost: str
-) -> CheckResult:
-    """OK when the extra's runtime imports, else a WARNING naming what is lost.
-
-    `cost` is the point: an install missing an extra otherwise learns nothing
-    until the feature silently does nothing, so the WARNING states the feature
-    that is gone rather than the package that is absent.
-    """
-    missing = [module for module in modules if importlib.util.find_spec(module) is None]
-    if not missing:
-        return CheckResult(name=name, status=CheckStatus.OK, message=ready)
-    return CheckResult(
-        name=name,
-        status=CheckStatus.WARNING,
-        message=cost,
-        details=f"Missing {', '.join(missing)}; install with pip install 'immich-memories[{extra}]'",
-    )
-
-
 def check_title_rendering(config: Config) -> CheckResult:
     """Report whether title screens get the GPU renderer or the PIL fallback."""
     if not config.title_screens.enabled:
@@ -379,12 +360,45 @@ def check_title_rendering(config: Config) -> CheckResult:
             status=CheckStatus.SKIPPED,
             message="Title screens disabled",
         )
-    return _optional_runtime_check(
-        "Title rendering",
-        ("taichi",),
-        extra="gpu",
-        ready="GPU-accelerated title rendering available",
-        cost="GPU-accelerated title rendering unavailable; titles use the PIL fallback",
+    return _kernel_library_check()
+
+
+def _kernel_library_check() -> CheckResult:
+    """Name the title renderer this machine will use, and why.
+
+    By `find_spec`, never by importing: this runs on every `preflight` and the
+    kernel library costs the better part of a second to load. It says the
+    outcome rather than the package because a self-hoster on a platform with no
+    wheel should learn it here, not from flat titles after a long run.
+    """
+    from immich_memories.titles.gpu_kernel_backend import KERNEL_LIBRARY
+
+    if importlib.util.find_spec(KERNEL_LIBRARY) is not None:
+        return CheckResult(
+            name="Title rendering",
+            status=CheckStatus.OK,
+            message=f"GPU kernels ({KERNEL_LIBRARY}): animated title screens",
+        )
+    return CheckResult(
+        name="Title rendering",
+        status=CheckStatus.WARNING,
+        message="PIL renderer: static title screens, no animation and no SDF text",
+        details=(
+            f"{KERNEL_LIBRARY} publishes no wheel for {_platform_tag()}. "
+            "Wheels exist for Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 "
+            "on Python 3.10-3.13; everywhere else title screens are PIL-rendered, "
+            "which the log says once at startup."
+        ),
+    )
+
+
+def _platform_tag() -> str:
+    """This interpreter as the two things a wheel is chosen by."""
+    import platform
+
+    return (
+        f"{sys.platform}/{platform.machine()} on Python "
+        f"{sys.version_info.major}.{sys.version_info.minor}"
     )
 
 

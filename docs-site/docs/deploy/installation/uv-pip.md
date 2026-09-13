@@ -57,15 +57,16 @@ uv sync --extra auth
 # Local Demucs stem separation for music ducking (Torch, ~80 MB model)
 uv sync --extra demucs
 
-# GPU-accelerated title rendering (Metal, CUDA, Vulkan)
-uv sync --extra gpu
-
 # Everything (cross-platform)
 uv sync --extra all
 
 # Everything on macOS
 uv sync --extra all-mac
 ```
+
+GPU-accelerated title rendering (Metal, CUDA, Vulkan) needs no extra: the kernel library is a base
+dependency wherever it publishes a wheel. See
+[Title kernels](../hardware/cpu-only.md#title-kernels) for the platforms that have one.
 
 The `music` extra is the bundled royalty-free track library (in both `all` and `all-mac`). AI music
 generation (ACE-Step, MusicGen) is a different thing and is not a pip extra: it talks to a server
@@ -133,9 +134,6 @@ pip install "immich-memories[auth]"
 # Local Demucs stem separation
 pip install "immich-memories[demucs]"
 
-# GPU-accelerated rendering
-pip install "immich-memories[gpu]"
-
 # Everything (cross-platform)
 pip install "immich-memories[all]"
 
@@ -154,7 +152,7 @@ skip these providers; missing required facts stop selection with an explicit set
 immich-memories preflight
 ```
 
-GPU title rendering gets a row saying what it costs when Taichi is absent. The other extras do
+GPU title rendering gets a row saying what it costs where the kernel library has no wheel. The other extras do
 not yet, and preflight does not check the detector snapshots at all: the first cut does that, and
 stops with a count per missing producer.
 

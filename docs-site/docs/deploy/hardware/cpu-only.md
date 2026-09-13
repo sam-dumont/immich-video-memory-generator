@@ -22,9 +22,9 @@ is 3 h 41 min for a library of about ten thousand pictures instead of four days.
 
 | Feature | With GPU | Without GPU | Impact |
 |---------|----------|-------------|--------|
-| Title screens | Animated GPU-rendered (Taichi: bokeh particles, gradient animation, SDF text) | Static PIL-rendered (gradient background, text overlay) | Simpler visuals, same text. And the dominant cost of a run (see below) |
+| Title screens | Animated GPU-rendered (bokeh particles, gradient animation, SDF text) | Static PIL-rendered (gradient background, text overlay) | Simpler visuals, same text. And the dominant cost of a run (see below) |
 | Video encoding | NVENC / VideoToolbox / VAAPI / QSV | libx264 / libx265 (software) | Slower encoding: the smaller half of a run |
-| SDF text rendering | Taichi GPU kernels + FreeType atlas | PIL text drawing | No SDF glow/shadow effects |
+| SDF text rendering | GPU kernels + FreeType atlas | PIL text drawing | No SDF glow/shadow effects |
 | Video scaling | GPU-accelerated (scale_cuda, scale_vaapi) | FFmpeg swscale (CPU) | Slower for resolution changes |
 
 **What runs on this CPU, identically to a GPU box:**
@@ -48,23 +48,53 @@ hardware:
   enabled: false
 ```
 
-## Taichi (optional GPU dependency)
+## Title kernels
 
-Taichi powers the animated title screen renderer (particle effects, gradient animations, SDF text). It is an **optional** dependency:
+The animated title screen renderer (particle effects, gradient animations, SDF text) runs its work
+on the GPU through [Quadrants](https://github.com/Genesis-Embodied-AI/quadrants), which installs
+with the app. There is no extra to remember and nothing to configure:
 
 ```bash
-# Install with GPU title support
-pip install "immich-memories[gpu]"
-
-# Or install without it (CPU-only titles)
 pip install immich-memories
 ```
 
-When Taichi is not installed, title screens are rendered with PIL (static gradient + text). The video output is functionally identical: same title text, same timing, same encoding.
+One line at the start of a render says what the titles are being drawn by:
 
-Taichi also has a CPU backend. To keep Taichi but force it off the GPU (a broken driver, or
-comparing timings), set `IMMICH_FORCE_CPU=1`. On `linux/arm64` (Raspberry Pi, the arm64 Docker
-image) the `gpu` extra skips Taichi altogether: titles are always PIL-rendered there.
+```
+Title kernels: quadrants 1.3.0 on the Metal backend
+```
+
+Metal on Apple Silicon, CUDA or Vulkan on a card, and a CPU backend everywhere else. To keep the
+GPU renderer but force it onto the processor (a broken driver, or comparing timings), set
+`IMMICH_FORCE_CPU=1`.
+
+### Where the GPU kernels exist
+
+Verified against PyPI for Quadrants 1.3.0 (`pip index versions quadrants`, and the `urls` list in
+its PyPI JSON). There is **no source distribution**, so a platform without a wheel gets no kernels
+at all rather than a long build:
+
+| Platform | Wheels |
+| --- | --- |
+| Linux x86_64 (manylinux 2.27+) | Python 3.10, 3.11, 3.12, 3.13 |
+| Linux aarch64 (manylinux 2.27+) | Python 3.10, 3.11, 3.12, 3.13 |
+| macOS arm64 (macOS 13+) | Python 3.10, 3.11, 3.12, 3.13 |
+| Windows AMD64 | Python 3.10, 3.11, 3.12, 3.13 |
+| **macOS x86_64 (Intel)** | **none** |
+| **Python 3.14 and later** | **none** |
+
+This app needs Python 3.11 or later, so the usable range here is **3.11 to 3.13**.
+
+On the two platforms with no wheel, title screens fall back to the PIL renderer. That loses the
+animated kernels (bokeh particles, the gradient animation, the slow-motion deblur of a
+content-backed card) and the SDF text path; you still get the same title text, the same timing and
+the same encoding on a static gradient. The fallback is logged once at startup, and
+`immich-memories preflight` says which renderer a machine will use before you start a long run:
+
+```
+Title rendering       PIL renderer: static title screens, no animation and no SDF text
+                      quadrants publishes no wheel for darwin/x86_64 on Python 3.12.
+```
 
 ## Performance expectations
 

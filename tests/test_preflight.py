@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import http.server
 import json
+import platform
+import sys
 import threading
 from unittest.mock import MagicMock, patch
 
@@ -151,14 +153,31 @@ def test_notification_preflight_is_optional_when_disabled() -> None:
     assert result.message == "Notifications disabled"
 
 
-def test_title_rendering_preflight_reports_the_pil_fallback_without_taichi() -> None:
-    # WHY: replaces the installed-package probe with what a no-gpu install sees.
+def test_title_rendering_preflight_says_what_the_pil_fallback_costs() -> None:
+    """A self-hoster on a platform with no wheel must learn it here, not after a run.
+
+    Quadrants 1.3.0 publishes wheels for Linux x86_64, Linux aarch64, macOS arm64
+    and Windows AMD64 on cp310-cp313, and no sdist. An Intel Mac or Python 3.14
+    therefore gets the PIL renderer, and this line is where that is said.
+    """
+    # WHY: replaces the installed-package probe with what such a platform sees.
     with patch("immich_memories.preflight.importlib.util.find_spec", return_value=None):
         result = check_title_rendering(Config())
 
     assert result.status is CheckStatus.WARNING
-    assert "PIL fallback" in result.message
-    assert "immich-memories[gpu]" in (result.details or "")
+    assert result.message == "PIL renderer: static title screens, no animation and no SDF text"
+    details = result.details or ""
+    assert "quadrants publishes no wheel" in details
+    assert "Python 3.10-3.13" in details
+    # The platform it could not find a wheel for, so the reader knows it is theirs.
+    assert f"{sys.platform}/{platform.machine()}" in details
+
+
+def test_title_rendering_preflight_names_the_renderer_it_will_use() -> None:
+    result = check_title_rendering(Config())
+
+    assert result.status is CheckStatus.OK
+    assert result.message == "GPU kernels (quadrants): animated title screens"
 
 
 def test_preflight_run_lists_every_absent_optional_feature() -> None:

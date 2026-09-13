@@ -1,10 +1,10 @@
-"""Taichi GPU kernel definitions, initialization, and helper functions.
+"""GPU kernel definitions, initialization, and helper functions.
 
-Backend selection lives in taichi_backend_probe.py; this module owns the
-kernels themselves and the lazy compilation that init_taichi() drives.
+Backend selection lives in kernel_backend_probe.py; this module owns the
+kernels themselves and the lazy compilation that init_kernels() drives.
 
 Note: This module does NOT use 'from __future__ import annotations'
-because Taichi kernels require actual type objects, not string annotations.
+because kernel signatures need actual type objects, not string annotations.
 """
 
 import contextlib
@@ -13,15 +13,15 @@ from pathlib import Path
 
 import numpy as np
 
-# WHY: importing this first is what sets ENABLE_TAICHI_HEADER_PRINT/TI_LOG_LEVEL
-# before any module in this package pulls in Taichi's C++ runtime — including
-# the SDF modules below, which import Taichi themselves.
-from .taichi_backend_probe import (
-    TAICHI_AVAILABLE,
+# WHY: importing the seam first is what silences the library's banner before its
+# C++ runtime loads, including for the SDF modules below, which take `ti` from
+# the same place. KERNELS_AVAILABLE is re-exported here because this module is
+# where the rest of the package asks whether there is a GPU renderer at all.
+from .gpu_kernel_backend import KERNEL_LIBRARY, KERNELS_AVAILABLE, ti
+from .kernel_backend_probe import (
     _backend_dispatches,
     _candidate_backends,
     _silent_init,
-    ti,
 )
 
 try:
@@ -39,19 +39,19 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-_taichi_initialized = False
-_taichi_backend = None
+_kernels_initialized = False
+_kernel_arch = None
 _kernels_compiled = False
 
 
-def init_taichi() -> str | None:
-    """Initialize Taichi with the best available GPU backend."""
-    global _taichi_initialized, _taichi_backend
-    if not TAICHI_AVAILABLE:
-        logger.warning("Taichi not installed. Install with: pip install taichi")
+def init_kernels() -> str | None:
+    """Initialize the kernel library on the best available GPU backend."""
+    global _kernels_initialized, _kernel_arch
+    if not KERNELS_AVAILABLE:
+        logger.warning("No GPU kernel library on this platform; title screens use the PIL renderer")
         return None
-    if _taichi_initialized:
-        return _taichi_backend
+    if _kernels_initialized:
+        return _kernel_arch
 
     import os
     import platform
@@ -70,27 +70,42 @@ def init_taichi() -> str | None:
             continue
         try:
             _silent_init(arch=backend, offline_cache=True)
-            logger.info(f"Taichi initialized with {name} backend")
+            # The one line that says what this run's titles are rendered by.
+            # init_kernels() is idempotent, so it is printed once per process.
+            logger.info(
+                "Title kernels: %s %s on the %s backend",
+                KERNEL_LIBRARY,
+                _kernel_library_version(),
+                name,
+            )
             _compile_kernels()
             if SDF_AVAILABLE and init_sdf_kernels:
                 init_sdf_kernels()
-            _taichi_initialized = True
-            _taichi_backend = name
+            _kernels_initialized = True
+            _kernel_arch = name
             return name
         except (RuntimeError, OSError) as e:
             last_error = e
-            logger.debug(f"Failed to init Taichi with {name}: {e}")
+            logger.debug(f"Failed to init {KERNEL_LIBRARY} with {name}: {e}")
             continue
 
-    logger.error(f"Failed to initialize Taichi with any backend. Last error: {last_error}")
+    logger.error(
+        f"Failed to initialize {KERNEL_LIBRARY} with any backend. Last error: {last_error}"
+    )
     return None
 
 
-def is_taichi_available() -> bool:
-    """Check if Taichi is available and can be initialized."""
-    if not TAICHI_AVAILABLE:
+def _kernel_library_version() -> str:
+    """The loaded library's version, however it chooses to expose it."""
+    version = getattr(ti, "__version__", None)
+    return ".".join(str(part) for part in version) if isinstance(version, tuple) else str(version)
+
+
+def kernels_available() -> bool:
+    """Whether the kernel library is installed and can be initialized."""
+    if not KERNELS_AVAILABLE:
         return False
-    return init_taichi() is not None
+    return init_kernels() is not None
 
 
 # Compiled kernel references (populated by _compile_kernels)
@@ -166,10 +181,10 @@ def _compile_catmull_rom():
 
 
 def _compile_kernels():
-    """Compile all Taichi kernels. Must be called AFTER ti.init()."""
+    """Compile every title kernel. Must be called AFTER ti.init()."""
     global _kernels_compiled, _catmull_rom_blend, _generate_linear_gradient, _generate_radial_gradient, _gaussian_blur_h, _gaussian_blur_v, _apply_vignette, _render_bokeh_particles, _apply_noise_grain, _generate_aurora_gradient, _composite_rgba_over, _composite_text_with_offset, _apply_color_pulse, _render_sdf_text, _copy_field_3, _zero_field_4, _blend_fields, _finalize_to_output_u8, _finalize_to_output_u16, _apply_vignette_and_noise  # noqa: PLW0603, E501
 
-    if _kernels_compiled or not TAICHI_AVAILABLE:
+    if _kernels_compiled or not KERNELS_AVAILABLE:
         return
 
     @ti.kernel
@@ -602,7 +617,7 @@ def _compile_kernels():
     _apply_vignette_and_noise = apply_vignette_and_noise
 
     _kernels_compiled = True
-    logger.debug("Taichi kernels compiled")
+    logger.debug("Title kernels compiled")
 
 
 def _create_gaussian_kernel(radius: int, sigma: float | None = None) -> np.ndarray:

@@ -42,7 +42,7 @@ def pytest_runtest_teardown(item):
     if tmp_path and tmp_path.exists():
         _cleanup_large_files(tmp_path)
 
-    # WHY: FFmpeg/OpenCV/Taichi hold large buffers. Force gc between tests
+    # WHY: FFmpeg/OpenCV/GPU kernels hold large buffers. Force gc between tests
     # to prevent OOMKilled on memory-constrained K8s runners.
     gc.collect()
 

@@ -58,7 +58,7 @@ class SlowmoBackgroundReader:
 
     Pre-reads all source frames (typically 15 at 0.5s/30fps), then
     generates interpolated intermediate frames on demand. Linear blending
-    creates motion-blur-like ghosting that merges with the Taichi
+    creates motion-blur-like ghosting that merges with the GPU
     renderer's heavy Gaussian blur — no optical flow needed.
 
     HDR content remains in its source transfer. The title encoder receives

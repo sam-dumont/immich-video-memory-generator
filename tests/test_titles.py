@@ -491,14 +491,14 @@ class TestGraphicsWhiteCeiling:
         colour into text_rgb must apply it, or an HDR run glows anyway."""
         from typing import Any, cast
 
-        from immich_memories.titles.renderer_taichi import TaichiTitleConfig
-        from immich_memories.titles.taichi_text import TitleTextRenderer
+        from immich_memories.titles.kernel_text import TitleTextRenderer
+        from immich_memories.titles.renderer_kernels import KernelTitleConfig
 
         # WHY None buffers: the constructor only stores them; no GPU work
         # happens until a frame is rendered, which this test never does.
         buffers = cast(Any, None)
-        hdr = TitleTextRenderer(TaichiTitleConfig(hdr=True), buffers)
-        sdr = TitleTextRenderer(TaichiTitleConfig(hdr=False), buffers)
+        hdr = TitleTextRenderer(KernelTitleConfig(hdr=True), buffers)
+        sdr = TitleTextRenderer(KernelTitleConfig(hdr=False), buffers)
 
         assert max(hdr.text_rgb) <= 0xBF / 255 + 1e-6
         assert max(sdr.text_rgb) == 1.0

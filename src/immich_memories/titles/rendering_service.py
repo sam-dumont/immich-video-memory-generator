@@ -1,6 +1,6 @@
 """Rendering service for title screen video creation.
 
-Provides renderer selection logic (GPU Taichi vs CPU PIL) and
+Provides renderer selection logic (GPU kernels vs CPU PIL) and
 video creation methods for titles and map backgrounds.
 """
 
@@ -25,65 +25,65 @@ if TYPE_CHECKING:
 
 # Try to import GPU-accelerated renderer
 try:
-    from .renderer_taichi import (
-        TaichiTitleConfig,
-        init_taichi,
+    from .kernel_video import create_title_video_gpu
+    from .renderer_kernels import (
+        KernelTitleConfig,
+        init_kernels,
     )
-    from .taichi_video import create_title_video_taichi
 
-    TAICHI_AVAILABLE = True
+    KERNELS_AVAILABLE = True
 except ImportError:
-    TAICHI_AVAILABLE = False
-    create_title_video_taichi = None
-    TaichiTitleConfig = None
-    init_taichi = None
+    KERNELS_AVAILABLE = False
+    create_title_video_gpu = None
+    KernelTitleConfig = None
+    init_kernels = None
 
 logger = logging.getLogger(__name__)
 
 
-# Taichi backends that are actually a GPU. "CPU" is a legitimate return from
-# init_taichi(), so anything not listed here means the Taichi renderer is
+# Kernel backends that are actually a GPU. "CPU" is a legitimate return from
+# init_kernels(), so anything not listed here means the GPU renderer is
 # running on the processor.
 _GPU_BACKENDS = frozenset({"Metal", "CUDA", "Vulkan"})
 
 
 class RenderingService:
-    """Selects the Taichi or PIL renderer and creates title/map videos."""
+    """Selects the GPU or PIL renderer and creates title/map videos."""
 
     def __init__(self, config: TitleScreenConfig) -> None:
         self.config = config
         self._use_gpu = False
         self.backend: str | None = None
-        if config.use_gpu_rendering and TAICHI_AVAILABLE:
-            self.backend = init_taichi()
+        if config.use_gpu_rendering and KERNELS_AVAILABLE:
+            self.backend = init_kernels()
             self._use_gpu = self.backend is not None
             self._log_backend()
 
     def _log_backend(self) -> None:
         """Say what is really about to render, not what was hoped for.
 
-        init_taichi() falls back to its CPU backend when Metal, CUDA and
+        init_kernels() falls back to its CPU backend when Metal, CUDA and
         Vulkan all fail to start, and returns the string "CPU". The old line
         printed "GPU rendering enabled: CPU", so a container quietly rendering
         titles on the processor looked identical in the log to one using the
         card — and titles are the most expensive stage there is.
         """
         if self.backend is None:
-            logger.info("Taichi unavailable, falling back to the PIL renderer")
+            logger.info("Kernel library unavailable, falling back to the PIL renderer")
         elif self.backend in _GPU_BACKENDS:
             logger.info("Title rendering on GPU: %s", self.backend)
         else:
             logger.warning(
-                "Title rendering on CPU: Taichi found no GPU backend and fell back to %s. "
+                "Title rendering on CPU: the kernel library found no GPU backend and fell back to %s. "
                 "Titles will be markedly slower than the footage around them.",
                 self.backend,
             )
 
     @property
     def use_gpu(self) -> bool:
-        """Whether the Taichi renderer is in use — not whether it has a GPU.
+        """Whether the GPU renderer is in use, not whether it has a GPU.
 
-        Kept as-is because it selects the renderer, and the Taichi path is the
+        Kept as-is because it selects the renderer, and the kernel path is the
         right choice even on CPU: it is the only one that can do the animated
         slow-mo deblur. Read `backend` to find out what is underneath.
         """
@@ -113,7 +113,7 @@ class RenderingService:
         The immutable encoding plan is read from the title config.
         """
         encoding_plan = self.config.encoding_plan
-        if self._use_gpu and create_title_video_taichi is not None:
+        if self._use_gpu and create_title_video_gpu is not None:
             return self._create_gpu_title(
                 title,
                 subtitle,
@@ -179,7 +179,7 @@ class RenderingService:
         fade_to_white: bool = False,
         frame_progress: Callable[[int, int], None] | None = None,
     ) -> Path:
-        """Create title video using GPU-accelerated Taichi renderer."""
+        """Create title video using the GPU-accelerated renderer."""
         gradient_type = "linear" if style.background_type != "radial" else "radial"
         has_content = background_image is not None or content_clip_path is not None
 
@@ -200,7 +200,7 @@ class RenderingService:
                 slowmo_reader = None
                 logger.info("Slowmo pipe failed, falling back to static frame")
 
-        config = TaichiTitleConfig(
+        config = KernelTitleConfig(
             width=width,
             height=height,
             fps=fps,
@@ -237,7 +237,7 @@ class RenderingService:
             reverse_blur=is_ending,
         )
         try:
-            return create_title_video_taichi(
+            return create_title_video_gpu(
                 title,
                 subtitle,
                 output_path,
@@ -303,7 +303,7 @@ class RenderingService:
                 return None
 
             frame = np.frombuffer(result.stdout, dtype=np.uint8).reshape(height, width, 3)
-            # Darken to 40% so white text pops (same as Taichi path)
+            # Darken to 40% so white text pops (same as the GPU path)
             return frame.astype(np.float32) / 255.0 * 0.4
         except (OSError, subprocess.SubprocessError, ValueError) as e:
             logger.debug(f"Failed to extract blurred frame for PIL fallback: {e}")
@@ -322,18 +322,18 @@ class RenderingService:
     ) -> Path:
         """Create a map video using a pre-rendered map as background.
 
-        Uses Taichi GPU for text animation/encoding if available,
+        Uses the GPU kernels for text animation/encoding if available,
         falls back to PIL rendering with the map as static background.
         No bokeh/particles -- clean map aesthetic.
         """
         encoding_plan = self.config.encoding_plan
-        if self._use_gpu and create_title_video_taichi is not None:
+        if self._use_gpu and create_title_video_gpu is not None:
             # Dim the map so white text pops
             dimmed = background_array * 0.55
             # Target same absolute font size regardless of orientation
             # 0.09 of min(w,h), converted to height-relative ratio
             map_title_ratio = 0.135 * min(width, height) / height
-            config = TaichiTitleConfig(
+            config = KernelTitleConfig(
                 width=width,
                 height=height,
                 fps=fps,
@@ -359,7 +359,7 @@ class RenderingService:
                 vignette_strength=0.15,
                 vignette_pulse=0.0,
             )
-            return create_title_video_taichi(
+            return create_title_video_gpu(
                 title,
                 subtitle,
                 output_path,

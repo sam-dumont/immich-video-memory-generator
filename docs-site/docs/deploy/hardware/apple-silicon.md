@@ -5,7 +5,7 @@ title: Apple Silicon
 
 # Apple Silicon
 
-Apple Silicon Macs (M1, M2, M3, M4, M5) are probably the best platform for this tool: video encoding, Taichi title rendering and local model inference all accelerate, and unified memory means the reader's 17 GB of weights and the render share one pool instead of copying between two.
+Apple Silicon Macs (M1, M2, M3, M4, M5) are probably the best platform for this tool: video encoding, GPU title rendering and local model inference all accelerate, and unified memory means the reader's 17 GB of weights and the render share one pool instead of copying between two.
 
 ## What you get
 
@@ -53,3 +53,7 @@ The media engine and Neural Engine get faster with each generation, and a base M
 comfortably. The models are the constraint, not the chip: the reader's weights alone are around
 17 GB resident, so a single-machine Mac wants 32 GB. An 8 or 16 GB M1 is an app host that needs a
 second box for the models.
+
+## Title rendering
+
+GPU title rendering runs on Quadrants, which has wheels for Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 on Python 3.11-3.13. On macOS x86_64 and on Python 3.14 there is none, and title screens fall back to the PIL renderer (static gradient and text, no animated kernels, no SDF text); `immich-memories preflight` says which you will get. See [Title kernels](./cpu-only.md#title-kernels). Apple Silicon is one of the four platforms with a wheel; an Intel Mac is the one that is not.

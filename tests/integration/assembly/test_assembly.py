@@ -147,7 +147,7 @@ class TestTitleScreenPIL:
 
         output = tmp_path / "title.mp4"
 
-        # WHY: convenience.generate_title_screen uses PIL fallback when Taichi unavailable
+        # WHY: convenience.generate_title_screen uses the PIL fallback with no kernel library
         generate_title_screen(
             title="Test Title 2024",
             output_path=output,

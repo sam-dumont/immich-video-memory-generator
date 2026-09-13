@@ -190,4 +190,5 @@ scale and encode; none of them runs inference.
 
 - [Your first memory](../create/first-memory.mdx): the same thing through the web UI
 - [Editorial annotation setup](./configuration/editorial-preparation.md): every pin and contract
+- [Title kernels](./hardware/cpu-only.md#title-kernels): GPU title rendering runs on Quadrants (Linux x86_64, Linux aarch64, macOS arm64, Windows AMD64, Python 3.11-3.13). An Intel Mac or Python 3.14 has no wheel and renders titles with PIL instead: same text and timing, no animated kernels and no SDF text. `immich-memories preflight` prints which one your machine will use.
 - [CPU-only](./hardware/cpu-only.md): why the title screens, not the encoder, decide render time
