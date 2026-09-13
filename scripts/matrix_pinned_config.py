@@ -17,6 +17,20 @@ from immich_memories.config_loader import _TIER2_SECTIONS, Config
 from immich_memories.config_presets import PRESETS
 
 
+class _Drop:
+    """A pin that takes a field OUT of the copied config instead of writing one over it."""
+
+    def __repr__(self) -> str:
+        return "<drop>"
+
+
+# Both preset mechanisms in the app fill a field only where it is still at the
+# model's default (`apply_preset`, and `_PROVIDER_PRESETS` in
+# `analysis/llm_query.py`), so a value the copied config happens to carry
+# silently outranks them. Removing the key is the only way to let one apply.
+DROP = _Drop()
+
+
 def _section(data: dict, name: str) -> dict:
     """The dict a pin's first path segment names, wherever the file happens to keep it.
 
@@ -36,6 +50,9 @@ def _section(data: dict, name: str) -> dict:
 
 def _write_pin(data: dict, dotted: str, value: Any) -> None:
     head, _, rest = dotted.partition(".")
+    if value is DROP:
+        _drop_pin(data, head, rest)
+        return
     if not rest:
         data[head] = value
         return
@@ -44,6 +61,20 @@ def _write_pin(data: dict, dotted: str, value: Any) -> None:
     for branch in branches:
         target = target.setdefault(branch, {})
     target[leaf] = value
+
+
+def _drop_pin(data: dict, head: str, rest: str) -> None:
+    """Remove a field wherever the file keeps it, and never create a section to do it."""
+    if not rest:
+        data.pop(head, None)
+        return
+    *branches, leaf = rest.split(".")
+    for holder in (data, data.get("advanced") or {}):
+        target = holder.get(head)
+        for branch in branches:
+            target = target.get(branch) if isinstance(target, dict) else None
+        if isinstance(target, dict):
+            target.pop(leaf, None)
 
 
 def _clear_preset_fields(data: dict, preset: str) -> None:
@@ -118,3 +149,19 @@ def remote_path_pins(*, out: str, models: str) -> dict[str, str]:
         "editorial.preparation.detector_cache_dir": f"{models}/huggingface",
         "editorial.preparation.marqo_onnx": f"{models}/detectors/nsfw-marqo-384.onnx",
     }
+
+
+def hosted_reader_pins() -> dict[str, Any]:
+    """What a cell reading off somebody else's API must not inherit from the operator's `llm:`.
+
+    That block describes the server on the operator's desk. `no_thinking_params`
+    is oMLX's own chat-template switch, and z.ai answers a request carrying it
+    with a 200 whose body is a 404 (`KeyError: 'choices'`). `base_url` is the
+    same story one level up: a named provider carries its own, and z.ai's
+    Anthropic-compatible endpoint is not where `/chat/completions` lives.
+
+    Dropped rather than overwritten, because `_PROVIDER_PRESETS` fills each of
+    these only where the field is still at the model's default. A cell that names
+    one of them itself still wins: these are applied before the cell's own pins.
+    """
+    return {"llm.base_url": DROP, "llm.no_thinking_params": DROP}

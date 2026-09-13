@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from matrix_pinned_config import remote_path_pins
+from matrix_pinned_config import DROP, hosted_reader_pins, remote_path_pins
 
 MANIFEST = Path(__file__).resolve().parent / "setup_matrix.yaml"
 SCHEMA = "setup-matrix-v1"
@@ -278,6 +278,8 @@ def _pins_for(cell: Cell, manifest: dict, library: dict) -> dict[str, Any]:
     pins: dict[str, Any] = dict(manifest.get("baseline_config") or {})
     pins.update(library.get("config") or {})
     pins["editorial.preparation.tier"] = cell.tier
+    if cell.hosted:
+        pins.update(hosted_reader_pins())
     pins.update(cell.config)
     if cell.lane in REMOTE_LANES:
         pins.update(remote_path_pins(out=REMOTE_OUT, models=REMOTE_MODELS))
@@ -370,14 +372,37 @@ def _container_script(cell: Cell, memory: dict, month: str) -> str:
     )
 
 
-def _credential_flags(cell: Cell) -> list[str]:
-    """`-e NAME` per credential: docker takes the value from the ssh session's env.
+def _credential_flags(remote: str, credentials: tuple[str, ...]) -> list[str]:
+    """`--env-file`, because a bare `-e NAME` on the far side of ssh sends an empty value.
 
-    The value never enters the command, so a rendered plan carries no key even
-    when it is executed for real.
+    docker fills `-e NAME` from the environment of the shell running it, and a
+    non-interactive ssh session carries none of the runner's variables. Both NAS
+    hosted cells reached their provider with an empty key: Melious answered 401
+    while the same key worked from the cluster, where the runner makes a Secret
+    out of its own environment. `push-env` writes the file 0600, `pull-results`
+    leaves it behind and `drop-env` removes it.
     """
-    _, credentials = _variables(cell.config)
-    return [flag for name in credentials for flag in ("-e", name)]
+    return ["--env-file", f"{remote}/env"] if credentials else []
+
+
+def _push_env_steps(remote: str, credentials: tuple[str, ...]) -> tuple[Step, ...]:
+    """The cell's credentials into a file on the NAS, with no copy on this machine.
+
+    A value exists in the argv of the local `printf` for as long as it runs,
+    which is the exposure `kubectl create secret --from-literal` already accepts
+    on the other lane. It never reaches the NAS's command line, a file here, or a
+    log: the step writes through a pipe and its own stdout is empty. The rendered
+    plan carries `NAME=$NAME`, so a dry run can go in a pull request.
+    """
+    if not credentials:
+        return ()
+    return (
+        Step(
+            "push-env",
+            ("printf", "%s\\n", *[f"{name}=${name}" for name in credentials]),
+            pipe_to=("ssh", "$MATRIX_NAS_SSH", f"umask 077 && cat > {remote}/env"),
+        ),
+    )
 
 
 def nas_docker_limits(environment: dict[str, str]) -> tuple[str, ...]:
@@ -417,6 +442,7 @@ def _nas_steps(
     """
     remote = f"$MATRIX_NAS_OUT/{cell.id}"
     local = out_dir / cell.id
+    _, credentials = _variables(cell.config)
     docker = [
         "$MATRIX_NAS_DOCKER",
         "run",
@@ -436,7 +462,7 @@ def _nas_steps(
         f"{remote}:{REMOTE_OUT}",
         "-v",
         f"{remote}/{CELL_CACHE_DIR}:{REMOTE_CACHE}",
-        *_credential_flags(cell),
+        *_credential_flags(remote, credentials),
         image,
         "/bin/bash",
         "-lc",
@@ -460,6 +486,7 @@ def _nas_steps(
             ("tar", "-C", str(local), "-cf", "-", "config.yaml"),
             pipe_to=("ssh", "$MATRIX_NAS_SSH", f"mkdir -p {remote} && tar -C {remote} -xf -"),
         ),
+        *_push_env_steps(remote, credentials),
         Step("run", ("ssh", "$MATRIX_NAS_SSH", " ".join(docker))),
         # The cell's cache is not pulled: it is previews and thumbnails by the
         # gigabyte, it means nothing off the NAS, and leaving it there is what
@@ -469,9 +496,15 @@ def _nas_steps(
             (
                 "ssh",
                 "$MATRIX_NAS_SSH",
-                f"tar -C {remote} --exclude=./{CELL_CACHE_DIR} -cf - .",
+                f"tar -C {remote} --exclude=./{CELL_CACHE_DIR} --exclude=./env -cf - .",
             ),
             pipe_to=("tar", "-C", str(local), "-xf", "-"),
+        ),
+        # The credentials leave the NAS with the cell, whether or not it worked.
+        *(
+            (Step("drop-env", ("ssh", "$MATRIX_NAS_SSH", f"rm -f {remote}/env")),)
+            if credentials
+            else ()
         ),
     )
 
@@ -1014,9 +1047,16 @@ def build_cell_plan(
 
 
 def nested(pins: dict[str, Any]) -> dict[str, Any]:
-    """Dotted pins as the nested mapping a config file holds."""
+    """Dotted pins as the nested mapping a config file holds.
+
+    A `DROP` names a field to take out of the copied config, so it has nothing to
+    write here and the cluster's ConfigMap is left without the key at all, which
+    is the same outcome.
+    """
     out: dict[str, Any] = {}
     for dotted, value in sorted(pins.items()):
+        if value is DROP:
+            continue
         *branches, leaf = dotted.split(".")
         target = out
         for branch in branches:

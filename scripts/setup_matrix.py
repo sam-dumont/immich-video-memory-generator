@@ -337,8 +337,9 @@ def run_remote_cell(item: CellPlan, plan: Plan, out_dir: Path) -> dict:
 
 # What a cell still runs after it has failed: what it has to say, and whatever it
 # created. A pod left Pending holds the output claim open, and the next cluster
-# cell's teardown would then wait on a claim this one will never release.
-_AFTER_FAILURE = ("logs", "delete-collector", "delete", "delete-output-claim")
+# cell's teardown would then wait on a claim this one will never release, and a
+# NAS cell that died before `drop-env` would leave its credentials on the NAS.
+_AFTER_FAILURE = ("logs", "drop-env", "delete-collector", "delete", "delete-output-claim")
 
 
 def _finish_failed_cell(item: CellPlan, plan: Plan, cell_dir: Path) -> None:
