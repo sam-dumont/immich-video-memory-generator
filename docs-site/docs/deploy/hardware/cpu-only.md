@@ -66,6 +66,32 @@ Taichi also has a CPU backend. To keep Taichi but force it off the GPU (a broken
 comparing timings), set `IMMICH_FORCE_CPU=1`. On `linux/arm64` (Raspberry Pi, the arm64 Docker
 image) the `gpu` extra skips Taichi altogether: titles are always PIL-rendered there.
 
+### Quadrants (experimental)
+
+Taichi 1.7.4 (July 2025) is the last release upstream will make. [Quadrants](https://github.com/Genesis-Embodied-AI/quadrants)
+is a maintained fork of it with the same kernel API, so the title renderer runs on either one
+unchanged. Two reasons to care: it is where bug fixes now happen, and it publishes
+`linux/arm64` wheels — which is exactly the platform the `gpu` extra has to skip, so a Pi or an
+arm64 Docker host gets GPU-rendered titles back instead of the PIL fallback.
+
+```bash
+pip install "immich-memories[titles-quadrants]"
+```
+
+```yaml
+advanced:
+  hardware:
+    title_kernel_backend: quadrants
+```
+
+`IMMICH_MEMORIES_TITLE_KERNELS=quadrants` does the same for a single run. An install that asks for
+Quadrants without the extra logs one line and renders with Taichi, so the flag is safe to leave in
+a config you copy between machines.
+
+Taichi remains the default and is not going anywhere until Quadrants has soaked. Only one of the two
+is ever loaded — they each carry their own copy of LLVM and a process that imports both dies — so
+this is a per-run choice, not a mix.
+
 ## Performance expectations
 
 The one end-to-end measurement is in the [NAS-only guide](../common-setups/nas-only.md#performance-expectations):

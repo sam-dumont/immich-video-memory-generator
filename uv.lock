@@ -1641,6 +1641,10 @@ mac = [
 music = [
     { name = "immich-memories-music", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
+titles-quadrants = [
+    { name = "freetype-py", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
+    { name = "quadrants", marker = "(python_full_version < '3.14' and platform_machine != 'x86_64' and sys_platform == 'darwin') or (python_full_version < '3.14' and sys_platform == 'linux') or (python_full_version < '3.14' and sys_platform == 'win32')" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -1658,6 +1662,7 @@ requires-dist = [
     { name = "freetype-py", marker = "extra == 'all'", specifier = ">=2.4" },
     { name = "freetype-py", marker = "extra == 'all-mac'", specifier = ">=2.4" },
     { name = "freetype-py", marker = "extra == 'gpu'", specifier = ">=2.4" },
+    { name = "freetype-py", marker = "extra == 'titles-quadrants'", specifier = ">=2.4" },
     { name = "geopy", specifier = ">=2.4" },
     { name = "grimp", marker = "extra == 'dev'", specifier = ">=3.0" },
     { name = "httpx", specifier = ">=0.27" },
@@ -1702,6 +1707,7 @@ requires-dist = [
     { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.5" },
     { name = "python-semantic-release", marker = "extra == 'dev'", specifier = ">=9.0" },
     { name = "pyyaml", specifier = ">=6.0" },
+    { name = "quadrants", marker = "(python_full_version < '3.14' and platform_machine != 'x86_64' and extra == 'titles-quadrants') or (python_full_version < '3.14' and sys_platform != 'darwin' and extra == 'titles-quadrants')", specifier = ">=1.3.0" },
     { name = "refurb", marker = "extra == 'dev'", specifier = ">=2.0" },
     { name = "rich", specifier = ">=13.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1" },
@@ -1714,7 +1720,7 @@ requires-dist = [
     { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0" },
     { name = "watchdog", specifier = ">=3.0" },
 ]
-provides-extras = ["all", "all-mac", "audio", "auth", "demucs", "dev", "editorial", "editorial-cuda", "gpu", "mac", "music"]
+provides-extras = ["all", "all-mac", "audio", "auth", "demucs", "dev", "editorial", "editorial-cuda", "gpu", "mac", "music", "titles-quadrants"]
 
 [[package]]
 name = "immich-memories-music"
@@ -3573,6 +3579,35 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/da/92/1446574745d74df0c92e6aa4a7b0b3130706a4142b2d1a5869f2eaa423c6/pyyaml-6.0.3-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:16249ee61e95f858e83976573de0f5b2893b3677ba71c9dd36b9cf8be9ac6d65", size = 829923, upload-time = "2025-09-25T21:32:54.537Z" },
     { url = "https://files.pythonhosted.org/packages/f0/7a/1c7270340330e575b92f397352af856a8c06f230aa3e76f86b39d01b416a/pyyaml-6.0.3-cp314-cp314t-win_amd64.whl", hash = "sha256:4ad1906908f2f5ae4e5a8ddfce73c320c2a1429ec52eafd27138b7f1cbe341c9", size = 174062, upload-time = "2025-09-25T21:32:55.767Z" },
     { url = "https://files.pythonhosted.org/packages/f1/12/de94a39c2ef588c7e6455cfbe7343d3b2dc9d6b6b2f40c4c6565744c873d/pyyaml-6.0.3-cp314-cp314t-win_arm64.whl", hash = "sha256:ebc55a14a21cb14062aa4162f906cd962b28e2e9ea38f9b4391244cd8de4ae0b", size = 149341, upload-time = "2025-09-25T21:32:56.828Z" },
+]
+
+[[package]]
+name = "quadrants"
+version = "1.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cffi", marker = "(python_full_version < '3.14' and sys_platform == 'darwin') or (python_full_version < '3.14' and sys_platform == 'linux') or (python_full_version < '3.14' and sys_platform == 'win32')" },
+    { name = "colorama", marker = "(python_full_version < '3.14' and sys_platform == 'darwin') or (python_full_version < '3.14' and sys_platform == 'linux') or (python_full_version < '3.14' and sys_platform == 'win32')" },
+    { name = "dill", version = "0.3.8", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.13' and sys_platform == 'darwin') or (python_full_version < '3.13' and sys_platform == 'linux') or (python_full_version < '3.13' and sys_platform == 'win32')" },
+    { name = "dill", version = "0.4.1", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version == '3.13.*' and sys_platform == 'darwin') or (python_full_version == '3.13.*' and sys_platform == 'linux') or (python_full_version == '3.13.*' and sys_platform == 'win32')" },
+    { name = "numpy", marker = "(python_full_version < '3.14' and sys_platform == 'darwin') or (python_full_version < '3.14' and sys_platform == 'linux') or (python_full_version < '3.14' and sys_platform == 'win32')" },
+    { name = "pydantic", marker = "(python_full_version < '3.14' and sys_platform == 'darwin') or (python_full_version < '3.14' and sys_platform == 'linux') or (python_full_version < '3.14' and sys_platform == 'win32')" },
+    { name = "rich", marker = "(python_full_version < '3.14' and sys_platform == 'darwin') or (python_full_version < '3.14' and sys_platform == 'linux') or (python_full_version < '3.14' and sys_platform == 'win32')" },
+    { name = "setuptools", marker = "(python_full_version < '3.14' and sys_platform == 'darwin') or (python_full_version < '3.14' and sys_platform == 'linux') or (python_full_version < '3.14' and sys_platform == 'win32')" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ce/cb/a537c1360b8185c1c6e62837f25347736ed450f20457691aca7836578934/quadrants-1.3.0-cp311-cp311-macosx_13_0_arm64.whl", hash = "sha256:46bed8c9ddfd2a787f68e77e09961752155684f49615315b3aa1f75f97ed2369", size = 26682035, upload-time = "2026-08-12T14:25:46.714Z" },
+    { url = "https://files.pythonhosted.org/packages/40/f6/b59101a6c35dbb420da2d5c5fb76db813c11330772c6055b68307d47e939/quadrants-1.3.0-cp311-cp311-manylinux_2_27_aarch64.manylinux_2_34_aarch64.whl", hash = "sha256:b25b16e13e7ab77c2c3ea8e4863dcd8e41efdbc91788a56c11c04f03dbb6c585", size = 38294125, upload-time = "2026-08-11T21:08:01.45Z" },
+    { url = "https://files.pythonhosted.org/packages/7e/3a/cb96b77751e7ed8d0dc74e5a83229f29d2bda2bb6799b8e9f06091b61c20/quadrants-1.3.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:908bb35442b27de346fa17aa7d6458fc782a668dcfb4c6192dec08a7808509bb", size = 40979986, upload-time = "2026-08-11T21:07:56.668Z" },
+    { url = "https://files.pythonhosted.org/packages/c9/27/1ae772c0328ee191040ac99e6c2d27c396f9b85a7cc06dd0aa9c5a965876/quadrants-1.3.0-cp311-cp311-win_amd64.whl", hash = "sha256:bed8fcf39738fe68890d60233287f2cb338f1ca20141c3072c87f8ab14b290a3", size = 30987172, upload-time = "2026-08-11T19:52:08.714Z" },
+    { url = "https://files.pythonhosted.org/packages/74/3c/8bf3d846b0e385b6fcdfb0ef9760a6f99b73e9fc9d5f7052a644add6b7d3/quadrants-1.3.0-cp312-cp312-macosx_13_0_arm64.whl", hash = "sha256:83c9f4fa87b1d70ff279e8e1a1e8cf65344880802b792655a7ef49535dd780c2", size = 26681677, upload-time = "2026-08-12T14:25:46.491Z" },
+    { url = "https://files.pythonhosted.org/packages/1c/e0/15cdcea47a587db6ccc03e04eb16cf2983ad7bef6557bce4a4de85019284/quadrants-1.3.0-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_34_aarch64.whl", hash = "sha256:edfbd97648e3a0d23b4bb592b51352ddcc4cfb186c11535002c171316321fe29", size = 38293972, upload-time = "2026-08-11T21:07:58.482Z" },
+    { url = "https://files.pythonhosted.org/packages/56/48/68405594c33062faa77d349d5f320300c7bca3a7e6b6f332c8f7e22bde9e/quadrants-1.3.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:79b09a7af4df51f4733dec6b755491ef2b8418cbda3ec042130c555f89e8003a", size = 40973824, upload-time = "2026-08-11T21:08:01.92Z" },
+    { url = "https://files.pythonhosted.org/packages/68/d6/d1b72956a40016260d2197fef80ec27a5611bb1d57f3fcf0bde22f3180e4/quadrants-1.3.0-cp312-cp312-win_amd64.whl", hash = "sha256:c1e5ede6dff01afab65c22b33ce0a651753743dddd1fb99041af0c7059e67e68", size = 30988310, upload-time = "2026-08-11T19:52:05.92Z" },
+    { url = "https://files.pythonhosted.org/packages/62/56/822c0b2d8f61b44d272941ad2e137a54cdf3f5ea107bb494f0e5ca511043/quadrants-1.3.0-cp313-cp313-macosx_13_0_arm64.whl", hash = "sha256:f078eaa672d7b7793e3d045287b2caa1bc2ed56dbe9dc4577ebf3ce6f721fe8b", size = 26681512, upload-time = "2026-08-12T14:25:43.407Z" },
+    { url = "https://files.pythonhosted.org/packages/ef/5f/fd875f16b75e3f021e9fd6f89cbd5a862e2b2b32de275044ffee3fb40544/quadrants-1.3.0-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_34_aarch64.whl", hash = "sha256:e84d152b6bcb7ace8604918f157023f1890703d591ba3dda235d52ea71667688", size = 38293514, upload-time = "2026-08-11T21:07:59.306Z" },
+    { url = "https://files.pythonhosted.org/packages/59/dc/ab888de75da5604d8a604822a32be2761d5716195d04e467347681215f53/quadrants-1.3.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:f2593e5a1078c511dd33e22225da8ea024023564feac331f17820d71ce577194", size = 40974418, upload-time = "2026-08-11T21:07:57.525Z" },
+    { url = "https://files.pythonhosted.org/packages/0c/2f/f6ab0908b931e347789634b2f65bc5f1fd07137bc847376fb2abe982bacd/quadrants-1.3.0-cp313-cp313-win_amd64.whl", hash = "sha256:70c2985fa986b908b1e12564f9ed40b3cd45bae8986d0e5bd41d033d7cf48daf", size = 30988240, upload-time = "2026-08-11T19:52:12.915Z" },
 ]
 
 [[package]]

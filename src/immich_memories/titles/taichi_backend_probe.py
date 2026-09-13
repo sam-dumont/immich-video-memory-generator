@@ -1,9 +1,9 @@
-"""Taichi backend availability: which arch can actually dispatch a kernel here.
+"""Kernel backend availability: which arch can actually dispatch a kernel here.
 
-Owns the `taichi` import guard, so importing this module (directly or via
-taichi_kernels) is what sets the banner-suppression env vars before Taichi's
-C++ runtime loads. Nothing here knows about title kernels; taichi_kernels
-drives the selection loop with `_candidate_backends` and `_backend_dispatches`.
+Which library those kernels compile against — Taichi or Quadrants — is decided
+in gpu_kernel_backend.py, and this module probes whichever one it picked.
+Nothing here knows about title kernels; taichi_kernels drives the selection loop
+with `_candidate_backends` and `_backend_dispatches`.
 
 Note: This module does NOT use 'from __future__ import annotations'
 because Taichi kernels require actual type objects, not string annotations.
@@ -19,24 +19,12 @@ from enum import StrEnum
 
 import numpy as np
 
+# WHY absolute, in a module that otherwise uses relative imports: the dispatch
+# probe runs this file as its own program in a child interpreter, where it is
+# `__main__` with no package and a relative import cannot resolve.
+from immich_memories.titles.gpu_kernel_backend import KERNEL_BACKEND, ti
+
 logger = logging.getLogger(__name__)
-
-# WHY: Taichi's C++ runtime prints to stdout, corrupting Rich Live display.
-# ENABLE_TAICHI_HEADER_PRINT="0" — suppresses import-time version banner (taichi#8334)
-# TI_LOG_LEVEL — belt-and-suspenders for C++ log messages
-# These must be set before `import taichi` below, and before any sibling module
-# that imports Taichi is loaded.
-# The main fix is verbose=False on ti.init() calls (see init_taichi and _check_taichi)
-os.environ.setdefault("ENABLE_TAICHI_HEADER_PRINT", "0")
-os.environ.setdefault("TI_LOG_LEVEL", "error")
-
-try:
-    import taichi as ti
-
-    TAICHI_AVAILABLE = True
-except ImportError:
-    TAICHI_AVAILABLE = False
-    ti = None
 
 _TAICHI_PROBE_TIMEOUT_SECONDS = 10.0
 _TAICHI_PROBE_STOP_TIMEOUT_SECONDS = 1.0
@@ -199,7 +187,8 @@ def _backend_dispatches(name: str, probe_name: str | None) -> bool:
     if probe.outcome is TaichiProbeOutcome.SUCCESS:
         return True
     logger.debug(
-        "Taichi %s dispatch probe failed (%s: %s)",
+        "%s %s dispatch probe failed (%s: %s)",
+        KERNEL_BACKEND,
         name,
         probe.outcome.value,
         probe.detail or "no detail",

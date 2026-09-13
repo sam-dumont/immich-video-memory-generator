@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import builtins
 import subprocess as _subprocess
 from unittest.mock import MagicMock, patch
 
@@ -34,31 +33,24 @@ class TestCheckTaichi:
             assert _check_taichi() is True
 
     def test_missing_optional_package_is_unavailable(self, monkeypatch: pytest.MonkeyPatch):
-        """A base/dev install without Taichi can still record a pipeline run."""
-        real_import = builtins.__import__
+        """A base/dev install with no kernel library can still record a pipeline run."""
+        from immich_memories.titles import taichi_kernels
 
-        def import_without_taichi(name, *args, **kwargs):
-            if name == "taichi":
-                raise ModuleNotFoundError("No module named 'taichi'", name="taichi")
-            return real_import(name, *args, **kwargs)
-
-        monkeypatch.setattr(builtins, "__import__", import_without_taichi)
+        monkeypatch.setattr(taichi_kernels, "TAICHI_AVAILABLE", False)
 
         assert _check_taichi() is False
 
     def test_broken_taichi_dependency_is_not_hidden(self, monkeypatch: pytest.MonkeyPatch):
         """A corrupt optional install remains actionable instead of becoming false."""
-        real_import = builtins.__import__
+        from immich_memories.titles import taichi_kernels
 
-        def import_broken_taichi(name, *args, **kwargs):
-            if name == "taichi":
-                raise ModuleNotFoundError(
-                    "No module named 'taichi_runtime'",
-                    name="taichi_runtime",
-                )
-            return real_import(name, *args, **kwargs)
+        def raise_missing_runtime() -> bool:
+            raise ModuleNotFoundError(
+                "No module named 'taichi_runtime'",
+                name="taichi_runtime",
+            )
 
-        monkeypatch.setattr(builtins, "__import__", import_broken_taichi)
+        monkeypatch.setattr(taichi_kernels, "is_taichi_available", raise_missing_runtime)
 
         with pytest.raises(ModuleNotFoundError, match="taichi_runtime"):
             _check_taichi()

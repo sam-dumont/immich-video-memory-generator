@@ -97,6 +97,14 @@ class HardwareAccelConfig(BaseModel):
     # Decode on GPU (can speed up processing significantly)
     gpu_decode: bool = Field(default=True, description="Use hardware video decoding")
 
+    # Which kernel library the title renderer compiles against. Taichi 1.7.4 is
+    # terminal upstream; Quadrants is a live fork with the same `ti.*` surface
+    # and linux-aarch64 wheels, so it is the only way to get GPU titles on an
+    # arm64 host. Experimental: Taichi stays the default until it has soaked.
+    title_kernel_backend: Literal["taichi", "quadrants"] = Field(
+        default="taichi", description="GPU kernel library for title rendering"
+    )
+
 
 class CacheConfig(BaseModel):
     """Cache settings."""

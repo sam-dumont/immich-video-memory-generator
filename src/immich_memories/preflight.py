@@ -379,11 +379,20 @@ def check_title_rendering(config: Config) -> CheckResult:
             status=CheckStatus.SKIPPED,
             message="Title screens disabled",
         )
+    # Name the library this install actually renders with: under the Quadrants
+    # backend, "install taichi" is the wrong advice and a present Taichi is not
+    # the thing being loaded.
+    from immich_memories.titles.kernel_backend_choice import (
+        KERNEL_BACKEND_EXTRAS,
+        requested_kernel_backend,
+    )
+
+    backend = requested_kernel_backend()
     return _optional_runtime_check(
         "Title rendering",
-        ("taichi",),
-        extra="gpu",
-        ready="GPU-accelerated title rendering available",
+        (backend,),
+        extra=KERNEL_BACKEND_EXTRAS[backend],
+        ready=f"GPU-accelerated title rendering available ({backend})",
         cost="GPU-accelerated title rendering unavailable; titles use the PIL fallback",
     )
 

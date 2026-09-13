@@ -139,7 +139,10 @@ class TaichiTitleRenderer:
     def __init__(self, config: TaichiTitleConfig | None = None):
         """Initialize renderer with configuration."""
         if not is_taichi_available():
-            raise RuntimeError("Taichi not available. Install with: pip install taichi")
+            raise RuntimeError(
+                "No title kernel library available. "
+                "Install with: pip install 'immich-memories[gpu]'"
+            )
 
         self.config = config or TaichiTitleConfig()
         self.total_frames = int(self.config.fps * self.config.duration)

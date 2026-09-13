@@ -11,18 +11,11 @@ import logging
 
 import numpy as np
 
+from .gpu_kernel_backend import KERNEL_LIBRARY_AVAILABLE as TAICHI_AVAILABLE
+from .gpu_kernel_backend import ti
 from .sdf_font import SDFFontAtlas
 
 logger = logging.getLogger(__name__)
-
-# Optional dependency
-try:
-    import taichi as ti
-
-    TAICHI_AVAILABLE = True
-except ImportError:
-    TAICHI_AVAILABLE = False
-    ti = None
 
 
 # =============================================================================

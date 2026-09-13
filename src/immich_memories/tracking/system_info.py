@@ -273,20 +273,21 @@ def _get_opencv_version() -> str | None:
 
 
 def _check_taichi() -> bool:
-    """Check if Taichi is available and working."""
+    """Whether the title kernel library is present and can initialize.
+
+    An absent library reports False; one that is installed but cannot load its
+    own runtime raises, because that is a broken machine and must stay
+    actionable instead of looking like "this box has no GPU".
+    """
+    # WHY: ti.init() resets the kernel library's process-wide runtime. Title
+    # rendering owns that lifecycle and its compiled kernel references, so system
+    # capture must use the same idempotent initializer instead of resetting the
+    # GPU underneath it. It also must not `import taichi` to find out whether
+    # Taichi is here: under the Quadrants backend a second kernel library import
+    # aborts the interpreter. The seam behind this import loads exactly one.
+    from immich_memories.titles.taichi_kernels import is_taichi_available
+
     try:
-        import taichi  # noqa: F401
-
-        # WHY: ti.init() resets Taichi's process-wide runtime. Title rendering
-        # owns that lifecycle and its compiled kernel references, so system
-        # capture must use the same idempotent initializer instead of resetting
-        # the GPU underneath it.
-        from immich_memories.titles.taichi_kernels import is_taichi_available
-
         return is_taichi_available()
-    except ModuleNotFoundError as exc:
-        if exc.name != "taichi":
-            raise
-        return False
     except (RuntimeError, OSError):
         return False

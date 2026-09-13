@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 # Direct `from .taichi_kernels import _func` would capture None at import time,
 # so we access them as `taichi_kernels._func` at call time instead.
 from . import taichi_kernels
+from .gpu_kernel_backend import ti
 from .taichi_kernels import (
     SDF_AVAILABLE,
     _get_system_font,
@@ -332,8 +333,6 @@ class TitleTextRenderer:
         self._sdf_atlas = get_cached_atlas(font_path, atlas_size)
         self._sdf_atlas_float = self._sdf_atlas.texture.astype(np.float32) / 255.0
         # Cache SDF atlas on GPU — loaded once, reused every frame
-        import taichi as ti
-
         self._sdf_atlas_gpu = ti.ndarray(dtype=ti.f32, shape=self._sdf_atlas_float.shape)
         self._sdf_atlas_gpu.from_numpy(self._sdf_atlas_float)
         logger.info(f"SDF atlas loaded: {self._sdf_atlas.texture.shape}")
@@ -447,8 +446,6 @@ class TitleTextRenderer:
         """Pre-render text layers (cached on GPU)."""
         if self._cached_text == (title, subtitle):
             return
-
-        import taichi as ti
 
         base = min(self.config.width, self.config.height)
         ratio = self.config.title_size_ratio * 0.65 if subtitle else self.config.title_size_ratio

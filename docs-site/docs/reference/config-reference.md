@@ -220,6 +220,7 @@ hardware:
   enabled: true                  # false = CPU encoding, no GPU probing at all
   encoder_preset: "balanced"     # fast, balanced, quality
   gpu_decode: true               # Hardware video decoding
+  title_kernel_backend: "taichi" # taichi (default) or quadrants — see below
 ```
 
 The backend is detected automatically (NVIDIA NVENC → Apple VideoToolbox → Intel QSV → VAAPI, first
@@ -229,6 +230,11 @@ Linux hosts pick the card with `CUDA_VISIBLE_DEVICES` / `NVIDIA_VISIBLE_DEVICES`
 `encoder_preset` controls encoder speed/effort; it does not replace `output.crf`. On Apple,
 `fast` enables VideoToolbox's speed-priority mode while `balanced` and `quality` leave it disabled.
 Image quality still comes from the CRF translation described above.
+
+`title_kernel_backend` picks the GPU kernel library the title renderer compiles against — nothing
+else in the pipeline. `taichi` is the default; `quadrants` is experimental and needs the
+`titles-quadrants` extra. `IMMICH_MEMORIES_TITLE_KERNELS=quadrants` sets it for one run. See
+[Quadrants (experimental)](../deploy/hardware/cpu-only.md#quadrants-experimental).
 
 ## Audio and music
 

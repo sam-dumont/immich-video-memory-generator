@@ -24,6 +24,8 @@ from pathlib import Path
 
 import numpy as np
 
+from .gpu_kernel_backend import KERNEL_LIBRARY_AVAILABLE as TAICHI_AVAILABLE
+
 logger = logging.getLogger(__name__)
 
 # Optional dependencies
@@ -34,15 +36,6 @@ try:
 except ImportError:
     FREETYPE_AVAILABLE = False
     freetype = None
-
-try:
-    import taichi as ti
-
-    TAICHI_AVAILABLE = True
-except ImportError:
-    TAICHI_AVAILABLE = False
-    ti = None
-
 
 # =============================================================================
 # Glyph and Atlas Data Structures
