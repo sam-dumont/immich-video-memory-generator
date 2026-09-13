@@ -16,7 +16,7 @@ NVIDIA GPUs with NVENC move video encoding off the CPU and onto dedicated silico
 
 What the card does *not* get you: the Docker image installs the CPU build of PyTorch on purpose, on both published architectures. The two annotation detectors are ONNX graphs on ONNX Runtime's CPU provider and want no torch at all (the only thing left in the image that does is local Demucs stem separation) so the CUDA wheels are pure weight: on arm64 they cost 3.3 GB of `nvidia` libraries plus 818 MB of triton, and the CUDA torch they come with still reports `cuda_available: False` inside the container. To run the ONNX seats against the CUDA execution provider, install `pip install "immich-memories[editorial-cuda]"` on the host instead of using the image; it replaces `editorial` rather than joining it.
 
-GPU inference also has a separate [inference service image](../installation/inference-service.md). Its `-cuda` variant uses the same device extra; attach the GPU through `docker/hwaccel.inference.yml`. The app image remains usable for NVENC without running model inference.
+GPU inference also has a separate [inference service image](../installation/inference-service.md). Its `-cuda` variant uses the same device extra; attach the GPU with the device reservation that ships commented out on the inference service in `docker-compose.yml`. The app image remains usable for NVENC without running model inference.
 
 ## Requirements
 

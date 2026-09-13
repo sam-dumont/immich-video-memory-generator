@@ -9,6 +9,7 @@ the cards people actually own.
 from __future__ import annotations
 
 import re
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -50,6 +51,20 @@ def stage(name: str) -> list[str]:
 
 def compose_service() -> dict:
     return yaml.safe_load(COMPOSE.read_text())["services"][SERVICE]
+
+
+def commented_gpu_reservation() -> dict:
+    """The GPU block docker-compose.yml ships commented out, read as YAML."""
+    lines = COMPOSE.read_text().splitlines()
+    start = next(i for i, line in enumerate(lines) if line.strip() == "# reservations:")
+    block = []
+    for line in lines[start:]:
+        stripped = line.strip()
+        if not stripped.startswith("#") or stripped == "#":
+            break
+        indent = " " * (len(line) - len(line.lstrip()))
+        block.append(indent + stripped.removeprefix("# "))
+    return yaml.safe_load(textwrap.dedent("\n".join(block)))
 
 
 def compose_image(service: str) -> str:
@@ -166,11 +181,21 @@ def test_the_backends_are_cpu_and_a_cuda_device_reservation() -> None:
     }
 
 
-def test_the_compose_service_attaches_hardware_through_the_hwaccel_file() -> None:
-    extends = compose_service()["extends"]
+def test_the_published_compose_file_reads_no_file_beside_itself() -> None:
+    # `extends:` is resolved when compose loads the file, whatever profiles are
+    # on, so naming docker/hwaccel.inference.yml here broke the documented
+    # `curl -O … && docker compose up` in an empty directory before any profile
+    # was considered (#882). `make compose-check` proves the parse; this says
+    # which line would break it again.
+    assert "extends" not in compose_service()
 
-    assert extends["file"] == "docker/hwaccel.inference.yml"
-    assert extends["service"] in yaml.safe_load(HWACCEL.read_text())["services"]
+
+def test_the_commented_gpu_block_says_what_the_hwaccel_overlay_says() -> None:
+    # The CUDA reservation now exists twice: the overlay for checkouts, and a
+    # commented block in the published file. They have to stay one answer.
+    cuda = yaml.safe_load(HWACCEL.read_text())["services"]["cuda"]
+
+    assert commented_gpu_reservation() == cuda["deploy"]["resources"]
 
 
 def test_the_compose_service_publishes_inference_on_loopback_only() -> None:

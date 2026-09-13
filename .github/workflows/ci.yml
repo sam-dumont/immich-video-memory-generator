@@ -105,6 +105,12 @@ jobs:
       - name: AI Smell Audit
         if: '!cancelled()'
         run: make critique
+      # Here rather than in the Docker job: that one is pull_request only and
+      # would leave the push-to-main path unguarded. ubuntu-latest ships the
+      # compose plugin, and `config` parses without touching the daemon.
+      - name: Compose file stands alone
+        if: '!cancelled()'
+        run: make compose-check
       - name: Commit Messages
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         run: COMMIT_RANGE="origin/${{ github.base_ref }}..HEAD" make commitlint

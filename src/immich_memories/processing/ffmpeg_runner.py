@@ -12,8 +12,8 @@ import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from threading import Thread
-from typing import IO
+from threading import Event, Thread, Timer
+from typing import IO, Any
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +28,25 @@ __all__ = [
     "ffmpeg_exit_reason",
     "ffmpeg_major_version",
     "filter_complex_from_file",
+    "stop_owned_process",
     "write_frames_to_ffmpeg",
 ]
 
 FFMPEG_STDERR_TAIL_BYTES = 64 * 1024
+
+# How long a thread this module started gets to end once its work is over: a
+# reader noticing EOF, a cancelled watchdog waking up.
+_THREAD_JOIN_SECONDS = 10.0
+
+# What a child that means to stop on SIGTERM is given: FFmpeg finishes the file
+# it is writing, then exits. The second grace is the kernel's, for delivering
+# SIGKILL and letting us reap what is left.
+TERMINATE_GRACE_SECONDS = 5.0
+KILL_GRACE_SECONDS = 5.0
+
+# The feed loop does real work per frame (Ken Burns rendering, decoding), so its
+# budget has to be a multiple of the wait that follows it, not the same number.
+_TOTAL_TIMEOUT_FACTOR = 10
 
 # What FFmpeg rewrites in place while it runs; never the reason it stopped.
 _PROGRESS_PREFIXES = ("size=", "frame=", "time=")
@@ -136,11 +151,80 @@ def drain_stderr_tail(
             del tail[:-limit]
 
 
+def stop_owned_process(
+    process: subprocess.Popen[Any],
+    *,
+    terminate_grace: float | None = None,
+    kill_grace: float | None = None,
+) -> None:
+    """End a child we own and reap it: terminate, bounded wait, kill, reap.
+
+    Every owned FFmpeg gets the same ending, and the half that keeps getting
+    forgotten is the reap: a ``wait(timeout=...)`` that raises leaves the child
+    running, unreaped and holding its pipes (#883). SIGTERM first, so FFmpeg can
+    close the file it was writing; SIGKILL only for one that ignores it.
+    """
+    if process.poll() is not None:
+        return
+    terminate_grace = TERMINATE_GRACE_SECONDS if terminate_grace is None else terminate_grace
+    kill_grace = KILL_GRACE_SECONDS if kill_grace is None else kill_grace
+    with contextlib.suppress(OSError):
+        process.terminate()
+    try:
+        process.wait(timeout=terminate_grace)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    with contextlib.suppress(OSError):
+        process.kill()
+    try:
+        process.wait(timeout=kill_grace)
+    except subprocess.TimeoutExpired:
+        logger.error("Child pid %s survived SIGKILL; it stays unreaped", process.pid)
+
+
+def _feed_frames(stdin: IO[bytes], frames: Iterable[bytes]) -> None:
+    """Write every frame, and close stdin whatever happened.
+
+    FFmpeg only finishes its output file once stdin reaches EOF, so a frame
+    source that raises still owes the child its close.
+    """
+    try:
+        for frame in frames:
+            stdin.write(frame)
+    finally:
+        with contextlib.suppress(OSError):
+            stdin.close()
+
+
+def _arm_kill_watchdog(process: subprocess.Popen[Any], deadline: float) -> tuple[Timer, Event]:
+    """Kill the child once the whole operation outlives ``deadline``.
+
+    One timer for the call rather than a check per frame: a write blocked on a
+    full pipe cannot look at a clock, and nothing but the child's end of that
+    pipe going away will wake it.
+    """
+    expired = Event()
+
+    def _expire() -> None:
+        if process.poll() is not None:
+            return
+        expired.set()
+        with contextlib.suppress(OSError):
+            process.kill()
+
+    watchdog = Timer(deadline, _expire)
+    watchdog.daemon = True
+    watchdog.start()
+    return watchdog, expired
+
+
 def write_frames_to_ffmpeg(
     cmd: list[str],
     frames: Iterable[bytes],
     *,
     wait_timeout: float,
+    total_timeout: float | None = None,
     stderr_limit: int = FFMPEG_STDERR_TAIL_BYTES,
 ) -> tuple[int, str]:
     """Feed frames to FFmpeg's stdin while draining its stderr, and report both.
@@ -151,10 +235,19 @@ def write_frames_to_ffmpeg(
     full, and the writer blocks forever at 0% CPU. Reading stderr after wait()
     is too late by definition.
 
+    Two deadlines, because they bound different things. ``wait_timeout`` bounds
+    the wait after the last frame, when only FFmpeg is still working.
+    ``total_timeout`` bounds the whole operation including the feed loop, where
+    a blocked ``write`` would otherwise wait forever (#883); it defaults to ten
+    times ``wait_timeout``, since feeding frames is the long part. Exceeding
+    either one raises ``subprocess.TimeoutExpired``, and the child is killed and
+    reaped first.
+
     Returns the exit code and the tail of stderr. stdin is closed and the reader
     joined even when the frame iterator raises, so a failure part-way through
     cannot leak the process.
     """
+    deadline = wait_timeout * _TOTAL_TIMEOUT_FACTOR if total_timeout is None else total_timeout
     process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
     assert process.stdin is not None
     assert process.stderr is not None
@@ -167,16 +260,24 @@ def write_frames_to_ffmpeg(
         daemon=True,
     )
     reader.start()
+    watchdog, expired = _arm_kill_watchdog(process, deadline)
 
     try:
-        for frame in frames:
-            process.stdin.write(frame)
-    finally:
-        with contextlib.suppress(OSError):
-            process.stdin.close()
+        _feed_frames(process.stdin, frames)
         process.wait(timeout=wait_timeout)
-        reader.join(timeout=10)
+    except OSError:
+        # Writing to the child the watchdog just killed fails with EPIPE. The
+        # deadline is the honest story, and it is told below.
+        if not expired.is_set():
+            raise
+    finally:
+        watchdog.cancel()
+        watchdog.join(timeout=_THREAD_JOIN_SECONDS)
+        stop_owned_process(process)
+        reader.join(timeout=_THREAD_JOIN_SECONDS)
 
+    if expired.is_set():
+        raise subprocess.TimeoutExpired(cmd, deadline)
     return process.returncode, bytes(tail).decode(errors="replace").strip()
 
 
@@ -403,11 +504,10 @@ def _run_ffmpeg_with_progress(
     try:
         process.wait(timeout=3600)
     except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait()
         raise RuntimeError("FFmpeg process timed out after 1 hour")
     finally:
-        stderr_thread.join(timeout=10)
+        stop_owned_process(process)
+        stderr_thread.join(timeout=_THREAD_JOIN_SECONDS)
 
     return subprocess.CompletedProcess(
         args=cmd,

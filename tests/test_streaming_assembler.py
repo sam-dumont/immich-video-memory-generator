@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import signal
 import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -220,6 +222,14 @@ def _has_ffmpeg() -> bool:
 
 requires_ffmpeg = pytest.mark.skipif(not _has_ffmpeg(), reason="FFmpeg not available")
 
+# Hands the parent EOF straight away, then refuses to die on anything but SIGKILL.
+_CLOSES_STDOUT_THEN_IGNORES_SIGTERM = (
+    "import os, signal, time;"
+    "signal.signal(signal.SIGTERM, signal.SIG_IGN);"
+    "os.close(1);"
+    "time.sleep(60)"
+)
+
 
 @requires_ffmpeg
 class TestFrameDecoder:
@@ -259,6 +269,29 @@ class TestFrameDecoder:
         for frame in frames:
             assert frame.shape == (240, 320, 3)
             assert frame.dtype == np.uint8
+
+
+def test_a_decoder_child_that_ignores_sigterm_is_killed_and_reaped(monkeypatch, tmp_path) -> None:
+    """#883: the decoder's cleanup must end a child that will not take SIGTERM."""
+    from immich_memories.processing import ffmpeg_runner, streaming_frame_decoder
+    from immich_memories.processing.streaming_frame_decoder import FrameDecoder
+
+    monkeypatch.setattr(ffmpeg_runner, "TERMINATE_GRACE_SECONDS", 0.2)
+    spawned: list[subprocess.Popen] = []
+    real_popen = subprocess.Popen
+
+    # WHY: FFmpeg is the boundary. A stand-in child really runs, closes the frame
+    # pipe at once and then ignores SIGTERM, which is the decode this cleanup owes.
+    def _swap_in_a_deaf_child(_cmd, **kwargs):
+        process = real_popen([sys.executable, "-c", _CLOSES_STDOUT_THEN_IGNORES_SIGTERM], **kwargs)
+        spawned.append(process)
+        return process
+
+    monkeypatch.setattr(streaming_frame_decoder.subprocess, "Popen", _swap_in_a_deaf_child)
+
+    assert list(FrameDecoder(tmp_path / "clip.mp4", width=2, height=2, fps=30)) == []
+
+    assert spawned[-1].returncode == -signal.SIGKILL
 
 
 @requires_ffmpeg

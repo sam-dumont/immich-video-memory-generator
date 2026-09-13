@@ -6,11 +6,21 @@ Verifies slow-motion source streaming and its static-background fallback.
 from __future__ import annotations
 
 import shutil
+import signal
 import subprocess
+import sys
 from pathlib import Path
 
 import numpy as np
 import pytest
+
+# Hands the parent EOF straight away, then refuses to die on anything but SIGKILL.
+_CLOSES_STDOUT_THEN_IGNORES_SIGTERM = (
+    "import os, signal, time;"
+    "signal.signal(signal.SIGTERM, signal.SIG_IGN);"
+    "os.close(1);"
+    "time.sleep(60)"
+)
 
 
 @pytest.fixture
@@ -130,3 +140,42 @@ class TestFailedDecodeFallsBackToStatic:
         reader = self._reader(returncode=0, frame_count=3)
 
         assert not reader.is_active
+
+
+class TestAWedgedDecodeIsKilledAndReaped:
+    """#883: the failure branch killed the child and never waited on it, so a
+    decode that hung left a zombie behind for every title it tried."""
+
+    def test_a_child_that_ignores_sigterm_is_killed_and_reaped(self, monkeypatch):
+        from unittest.mock import MagicMock, patch
+
+        from immich_memories.processing import ffmpeg_runner
+        from immich_memories.titles import content_background
+        from immich_memories.titles.content_background import SlowmoBackgroundReader
+
+        monkeypatch.setattr(ffmpeg_runner, "TERMINATE_GRACE_SECONDS", 0.2)
+        monkeypatch.setattr(content_background, "_SOURCE_DECODE_TIMEOUT_SECONDS", 0.3)
+        spawned: list[subprocess.Popen] = []
+        real_popen = subprocess.Popen
+
+        def _swap_in_a_deaf_child(_cmd, **kwargs):
+            process = real_popen(
+                [sys.executable, "-c", _CLOSES_STDOUT_THEN_IGNORES_SIGTERM], **kwargs
+            )
+            spawned.append(process)
+            return process
+
+        mod = "immich_memories.titles.content_background"
+        # WHY: ffprobe and ffmpeg are the boundary. The stand-in really runs, hands
+        # back no frames and then refuses SIGTERM, which is the decode that hangs.
+        with (
+            patch(f"{mod}.shutil.which", return_value="ffmpeg"),
+            patch(f"{mod}.subprocess.run", side_effect=[MagicMock(stdout="2.0", returncode=0)]),
+            patch(f"{mod}.subprocess.Popen", side_effect=_swap_in_a_deaf_child),
+        ):
+            reader = SlowmoBackgroundReader(
+                Path("/nonexistent/content.mp4"), width=2, height=2, fps=2, title_duration=1.0
+            )
+
+        assert not reader.is_active
+        assert spawned[-1].returncode == -signal.SIGKILL
