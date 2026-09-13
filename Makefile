@@ -2,7 +2,7 @@
 # Uses uv for fast Python package management
 export PYTHONUNBUFFERED=1
 
-.PHONY: docs-voice notices notices-check help install dev dev-ci dev-test run preflight parity docs-cli-check docs-config-check test test-extras test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-audio-mixing test-integration-titles test-fast benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci integration-coverage-for-diff ci critique ensure-dev commitlint privacy-gate pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots demo-output diagrams capability-matrix
+.PHONY: docs-voice notices notices-check help install dev dev-ci dev-test run preflight parity docs-cli-check docs-config-check test test-extras test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-audio-mixing test-integration-titles test-fast benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci integration-coverage-for-diff ci critique ensure-dev commitlint privacy-gate pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots demo-output demo-output-trip diagrams capability-matrix
 
 # Default target
 help:
@@ -844,7 +844,15 @@ demo-cli:  ## Record the CLI demo via VHS → docs-site/remotion/public/cli-demo
 	vhs docs-site/scripts/demo-cli.tape
 
 demo-output:  ## Cut the demo's output clip + poster on the hermetic launch
-	uv run pytest tests/e2e/test_demo_assets.py -v -m demo --log-cli-level=INFO --tb=short
+	uv run pytest tests/e2e/test_demo_assets.py::test_cut_the_demo_output_clip -v -m demo \
+		--log-cli-level=INFO --tb=short
+
+# Needs the network: the fly-over's satellite tiles come from ArcGIS World Imagery
+# and the trip's name from Nominatim. Neither has an offline stand-in, and the
+# test's assertion on the fly-over frame is what catches a run made without them.
+demo-output-trip:  ## Cut the trip film + its map fly-over on the hermetic CLI (needs the network)
+	uv run pytest tests/e2e/test_demo_assets.py::test_cut_the_trip_memory_and_its_map -v -m demo \
+		--log-cli-level=INFO --tb=short
 
 demo-ui-install:  ## Install Remotion demo dependencies
 	cd docs-site/remotion && npm ci

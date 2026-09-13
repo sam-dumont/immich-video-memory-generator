@@ -137,6 +137,8 @@ docs-site/static/demo/music-candidates/
 !docs-site/remotion/public/output-preview.mp4
 # Rendered demo video (embedded on docs landing page, tracked in LFS)
 !docs-site/static/demo/demo.mp4
+# The trip film the trip memory page plays (make demo-output-trip, tracked in LFS)
+!docs-site/static/demo/trip-preview.mp4
 
 # Playwright diagnostics (may contain unredacted frames from a real library)
 test-results/

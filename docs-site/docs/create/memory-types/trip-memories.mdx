@@ -3,10 +3,31 @@ sidebar_label: "Trip Memories"
 ---
 
 import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
+import Video from '@site/src/components/Video';
 
 # Trip Memories
 
 Automatically detects trips from GPS data in your photos and videos, then generates a video for each one with animated satellite maps showing your route.
+
+<Video
+  src="/demo/trip-preview.mp4"
+  poster="/img/trip-map-flyover.jpg"
+  controls
+  muted
+  loop
+  playsInline
+  width="100%"
+  style={{borderRadius: '12px', marginBottom: '1.5rem'}}
+/>
+
+That film came out of the real renderer, over the CC0 test library in `tests/e2e/fixtures/library`:
+a week camped by a lake in Upper Savoy, 590 km from the test home, cut by `immich-memories
+generate --memory-type trip`. It opens on the map. The view starts wide over home, travels down
+to where you went, and drops a pin on every distinct GPS cluster in the cut, each one labelled
+with the place name your library already has for it. The tiles are ArcGIS World Imagery, fetched
+while the title renders, which makes the opening the one part of the pipeline that wants the
+network even when the rest of it runs on your own machine. With no tiles there is no fly-over,
+only the title on a flat panel. `make demo-output-trip` cuts this clip again.
 
 ## How trip detection works
 
