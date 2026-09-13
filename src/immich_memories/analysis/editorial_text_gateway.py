@@ -21,6 +21,7 @@ from immich_memories.analysis.editorial_text_artifacts import TextPromptArtifact
 from immich_memories.analysis.editorial_text_failures import TextCompletionFailure
 from immich_memories.analysis.llm_query import LLMIncompleteResponse, query_llm, resolved_llm_config
 from immich_memories.analysis.llm_text_identity import text_model_identity
+from immich_memories.analysis.provider_status import watch_provider
 from immich_memories.cache.judgment_cache import JudgmentCache
 from immich_memories.config_models_llm import LLMConfig
 from immich_memories.operations.cancellation import check_cancelled
@@ -119,6 +120,7 @@ class QueryTextRequester:
             timeout_seconds=request.timeout_seconds,
             thinking=request.thinking,
             cache_path=None,  # The gateway banks the complete bounded-recovery request.
+            transport_observer=watch_provider("reader", request.llm_config),
             require_complete=not request.json_object,
         )
         if request.json_object:
@@ -221,6 +223,7 @@ class SyncTextPromptRequester:
                 timeout_seconds=self.timeout_seconds,
                 thinking=self.thinking,
                 cache_path=None,
+                transport_observer=watch_provider("reader", self.llm_config),
                 require_complete=True,
             )
         except BaseException as exc:

@@ -349,8 +349,20 @@ count and an estimate:
 ```
 
 The estimate is elapsed time scaled by the fraction done, so it appears once a stage is past 5 %
-and it is only as good as the pass is even. Stages that count nothing (*Reading event evidence*,
-*Editing the memory*) keep the spinner and the elapsed time. The stage sequence and the counts are
+and it is only as good as the pass is even. The reader's requests count too (*Reading event
+evidence: 3/12*), and the edit says how many pictures it is holding at each gate (*Editing the
+memory: 22 pictures into the audience gate*). Stages with nothing to count (*Building editorial
+cards*, *Validating selected source timing*) keep the spinner and the elapsed time.
+
+If the reader stops answering, the line names it instead of going quiet:
+
+```text
+⠿ Waiting for the reader at omlx.local:9999: connection dropped, retry 1 of 3
+  ⏱ 0:14 elapsed
+```
+
+Three drops, two then four seconds apart, and the run fails with the same endpoint in the error.
+A model server that is restarting survives that; one that is off is named within a second. The stage sequence and the counts are
 the same record the web UI draws its bar from; `--quiet` replaces all of it with log lines.
 
 ## Time Period Options
