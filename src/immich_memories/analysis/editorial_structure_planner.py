@@ -69,6 +69,7 @@ from immich_memories.analysis.editorial_structure_record import (
     provider_metrics,
     shave_content_duration,
 )
+from immich_memories.operations.cut_progress import StageUpdate, announce_stage
 from immich_memories.processing.editorial_timing import bind_editorial_timeline
 from immich_memories.security import write_secret_file
 
@@ -190,6 +191,11 @@ def _evidence_partitions(intent, wall: Wall, tier: dict) -> set[str]:
     return parts
 
 
+def _announce_count(pictures: int, point: str) -> None:
+    """The edit's own counts, said out loud instead of only written to a record."""
+    announce_stage(StageUpdate(f"Editing the memory: {pictures} pictures {point}"))
+
+
 @dataclass
 class _Run:
     """The mutable result of one planning run, before it is written down."""
@@ -218,6 +224,7 @@ def _resolve_motion_and_timing(
     retained_motion = RetainedMotion(ports.resolve_motion)
     run.carriers = retained_motion(run.carriers)
     run.selection_stages["before_picture_review"] = len(run.carriers)
+    _announce_count(len(run.carriers), "into the picture review")
     # Audience-eligible funded pictures and completion additions reuse prior results.
     run.carriers = retained_motion(run.carriers)
     run.motion_metrics = retained_motion.metrics
@@ -539,6 +546,7 @@ def _select(
         "after_funded_acquisition": len(run.carriers),
         "before_shareability": len(run.carriers),
     }
+    _announce_count(len(run.carriers), "into the audience gate")
     share_log = _apply_audience_gate(run, gate, selection, material, wall)
     if required - {c["asset_id"] for c in run.carriers}:
         # The safety gate keeps its authority over an owner tick; say so where the owner can read it.
@@ -563,6 +571,7 @@ def _select(
         owner_required=source.owner_required_asset_ids,
     )
     run.selection_stages["after_final_duplicate_review"] = len(run.carriers)
+    _announce_count(len(run.carriers), "after the duplicate review")
     _check_empty_attached(ports, observed)
     return PlanOutcome(
         contract=contract,

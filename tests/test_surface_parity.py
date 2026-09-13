@@ -617,9 +617,15 @@ class TestProgressParity:
     def _run(self, on_stage) -> None:
         from immich_memories.operations.cut_progress import StageUpdate
 
-        on_stage(StageUpdate("Preparing source metadata", phase="analysis"))
+        on_stage(StageUpdate("Reading dates, places and people", phase="analysis"))
         on_stage(StageUpdate("previews", phase="analysis", done=2, total=6))
         on_stage(StageUpdate("previews", phase="analysis", done=6, total=6))
+        on_stage(StageUpdate("event evidence", done=1, total=2, verb="Reading"))
+        on_stage(
+            StageUpdate(
+                "Waiting for the reader at omlx.local:9999: connection dropped, retry 1 of 3"
+            )
+        )
         on_stage(StageUpdate("Editing the memory"))
 
     def test_both_surfaces_see_the_same_stage_sequence_and_counts(self) -> None:
@@ -645,9 +651,15 @@ class TestProgressParity:
         self._run(EditorialStageReporter(ProgressTracker(), _SourceProgressReporter(display, task)))
 
         expected = [
-            ("Preparing source metadata", None, None),
+            ("Reading dates, places and people", None, None),
             ("Preparing previews: 2/6", 2, 6),
             ("Preparing previews: 6/6", 6, 6),
+            ("Reading event evidence: 1/2", 1, 2),
+            (
+                "Waiting for the reader at omlx.local:9999: connection dropped, retry 1 of 3",
+                None,
+                None,
+            ),
             ("Editing the memory", None, None),
         ]
         assert page_seen == expected
