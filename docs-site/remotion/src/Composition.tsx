@@ -9,7 +9,8 @@ import { useBassIntensity } from "./hooks/useBassIntensity";
 import { TitleScene } from "./scenes/TitleScene";
 import { BriefScene } from "./scenes/BriefScene";
 import { CuttingScene } from "./scenes/CuttingScene";
-import { StoryScene } from "./scenes/StoryScene";
+import { StoryboardScene } from "./scenes/StoryboardScene";
+import { MediaPoolScene, UNTICKED } from "./scenes/MediaPoolScene";
 import { ExportScene } from "./scenes/ExportScene";
 import { GeneratingScene } from "./scenes/GeneratingScene";
 import { CompleteScene } from "./scenes/CompleteScene";
@@ -21,22 +22,23 @@ const FADE = 15; // 0.5s
 const SLIDE = 12; // 0.4s
 
 // Scene durations (frames at 30fps). TransitionSeries overlaps each pair by the
-// transition's length, so the video runs sum(D) - sum(transitions) = 1350 frames.
-// Transitions below add up to 129; the D map adds up to 1459.
+// transition's length, so the video runs sum(D) - sum(transitions):
+// 1499 - 156 = 1343 frames, which is TOTAL_FRAMES in theme.ts.
 //
-// Every length here is cut to the frame its own scene stops moving on: the demo
-// used to hold four of them still for a second or more after the last animation.
+// Every length is cut to the frame its own scene stops moving on.
 const D = {
-  title: 75, // 2.5s — punchy, not lingering
+  title: 75, // 2.5s
   brief: 168, // 5.6s — open the type dropdown, pick, click Cut
-  cutting: 186, // 6.2s — the phase rows, and the pictures going past under them
-  story: 285, // 9.5s — the payoff: what the cut produced
-  export: 110, // 3.7s — summary lands, cursor arrives, click Generate
-  generating: 165, // 5.5s — progress + live preview
-  complete: 55, // 1.8s — success state
-  output: 235, // 7.8s — the ACTUAL output video at 3x; absorbs the frame remainder
-  cli: 105, // 3.5s — 5x CLI playback
-  outro: 75, // 2.5s — CTA, not lingering
+  cutting: 186, // 6.2s — the phase rows, the bar with its count, the strip
+  storyboard: 210, // 7.0s — the cut in the order it plays; then Review the pool
+  pool: 110, // 3.7s — untick one picture, Cut again
+  storyboardAgain: 75, // 2.5s — the second cut, one picture fewer; click Export
+  export: 100, // 3.3s — summary lands, cursor arrives, click Generate
+  generating: 150, // 5.0s — progress + live preview
+  complete: 50, // 1.7s — success state
+  output: 140, // 4.7s — the ACTUAL output video at 3x
+  cli: 180, // 6.0s — the real terminal at 8x: the bar, the estimate, the cut, runs story
+  outro: 55, // 1.8s — CTA
 };
 
 export const DemoVideo: React.FC = () => {
@@ -55,7 +57,7 @@ export const DemoVideo: React.FC = () => {
       <Audio src={staticFile("demo-music.wav")} volume={musicVolume} />
 
       <TransitionSeries>
-        {/* 1. Title — 3s, punchy */}
+        {/* 1. Title */}
         <TransitionSeries.Sequence durationInFrames={D.title}>
           <TitleScene />
         </TransitionSeries.Sequence>
@@ -75,7 +77,7 @@ export const DemoVideo: React.FC = () => {
           timing={linearTiming({ durationInFrames: SLIDE })}
         />
 
-        {/* 3. Cutting — phases advance, the editor's own stage strings */}
+        {/* 3. Cutting — phases advance, the bar counts, the strip fills */}
         <TransitionSeries.Sequence durationInFrames={D.cutting}>
           <CuttingScene bassIntensity={bass} />
         </TransitionSeries.Sequence>
@@ -85,9 +87,15 @@ export const DemoVideo: React.FC = () => {
           timing={linearTiming({ durationInFrames: FADE })}
         />
 
-        {/* 4. Story — the thesis, its stories, the pictures each one holds */}
-        <TransitionSeries.Sequence durationInFrames={D.story}>
-          <StoryScene bassIntensity={bass} />
+        {/* 4. Storyboard — the cut in the order it plays, then Review the pool */}
+        <TransitionSeries.Sequence durationInFrames={D.storyboard}>
+          <StoryboardScene
+            bassIntensity={bass}
+            frames={D.storyboard}
+            clickTarget="pool"
+            clickAt={192}
+            scrollPx={380}
+          />
         </TransitionSeries.Sequence>
 
         <TransitionSeries.Transition
@@ -95,7 +103,34 @@ export const DemoVideo: React.FC = () => {
           timing={linearTiming({ durationInFrames: SLIDE })}
         />
 
-        {/* 5. Export — summary, output path, click Generate */}
+        {/* 5. Media pool — untick one picture, Cut again */}
+        <TransitionSeries.Sequence durationInFrames={D.pool}>
+          <MediaPoolScene bassIntensity={bass} />
+        </TransitionSeries.Sequence>
+
+        <TransitionSeries.Transition
+          presentation={fade()}
+          timing={linearTiming({ durationInFrames: FADE })}
+        />
+
+        {/* 6. Storyboard again — one picture fewer, then Export */}
+        <TransitionSeries.Sequence durationInFrames={D.storyboardAgain}>
+          <StoryboardScene
+            bassIntensity={bass}
+            without={[UNTICKED]}
+            frames={D.storyboardAgain}
+            clickTarget="export"
+            clickAt={60}
+            scrollPx={340}
+          />
+        </TransitionSeries.Sequence>
+
+        <TransitionSeries.Transition
+          presentation={slide({ direction: "from-right" })}
+          timing={linearTiming({ durationInFrames: SLIDE })}
+        />
+
+        {/* 7. Export — summary, output path, click Generate */}
         <TransitionSeries.Sequence durationInFrames={D.export}>
           <ExportScene bassIntensity={bass} />
         </TransitionSeries.Sequence>
@@ -105,7 +140,7 @@ export const DemoVideo: React.FC = () => {
           timing={linearTiming({ durationInFrames: FADE })}
         />
 
-        {/* 6. Generating — progress + preview */}
+        {/* 8. Generating — progress + preview */}
         <TransitionSeries.Sequence durationInFrames={D.generating}>
           <GeneratingScene bassIntensity={bass} />
         </TransitionSeries.Sequence>
@@ -115,7 +150,7 @@ export const DemoVideo: React.FC = () => {
           timing={linearTiming({ durationInFrames: FADE })}
         />
 
-        {/* 7. Complete — success! */}
+        {/* 9. Complete */}
         <TransitionSeries.Sequence durationInFrames={D.complete}>
           <CompleteScene bassIntensity={bass} />
         </TransitionSeries.Sequence>
@@ -125,7 +160,7 @@ export const DemoVideo: React.FC = () => {
           timing={linearTiming({ durationInFrames: FADE })}
         />
 
-        {/* 8. Output Preview — THE ACTUAL VIDEO at 5x (placeholder) */}
+        {/* 10. Output preview — the actual video it made */}
         <TransitionSeries.Sequence durationInFrames={D.output}>
           <OutputPreviewScene />
         </TransitionSeries.Sequence>
@@ -135,7 +170,7 @@ export const DemoVideo: React.FC = () => {
           timing={linearTiming({ durationInFrames: FADE })}
         />
 
-        {/* 9. CLI — terminal demo at 5x */}
+        {/* 11. CLI — the same run in a terminal */}
         <TransitionSeries.Sequence durationInFrames={D.cli}>
           <CliScene />
         </TransitionSeries.Sequence>
@@ -145,7 +180,7 @@ export const DemoVideo: React.FC = () => {
           timing={linearTiming({ durationInFrames: FADE })}
         />
 
-        {/* 10. Outro — CTA */}
+        {/* 12. Outro — CTA */}
         <TransitionSeries.Sequence durationInFrames={D.outro}>
           <OutroScene />
         </TransitionSeries.Sequence>

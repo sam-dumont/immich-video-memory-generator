@@ -1,13 +1,15 @@
 # The Remotion demo
 
-The 60-second product demo on the docs landing page and the README hero GIF are rendered from
-this project. The UI is recreated in React (see `src/scenes/`), never screenshotted.
+The 45-second product demo on the docs landing page and the README hero GIF are rendered from
+this project. The UI is recreated in React (see `src/scenes/`), never screenshotted: the brief,
+the cut with its progress bar, the storyboard, the media pool with a tick removed, the second cut,
+the export, the film it made, and the same run in a terminal.
 
 | Command (from the repo root) | Produces |
 |---|---|
 | `make demo-ui` | `docs-site/static/demo/demo.mp4`, the full composition, 1920×1080 H.264 |
 | `make demo-hero` | `docs-site/static/img/demo-hero.gif`, seconds 2.6 to 20.6 of `demo.mp4` at 800 px, 12 fps |
-| `make demo-cli` | `public/cli-demo.mp4`, the terminal recording `CliScene` plays, via VHS |
+| `make demo-cli` | `public/cli-demo.mp4`, VHS recording the real CLI (`scripts/demo-cli-hermetic.py`: `generate`, `runs story`, `runs why` against the hermetic fakes from `tests/e2e`) |
 | `make demo-output` | `public/output-preview.mp4` and `public/output-frame.jpg`, cut on the hermetic launch |
 | `make demo-music` | ACE-Step candidates for `public/demo-music.wav` |
 | `make demo-ui-dev` | Remotion Studio for live preview |

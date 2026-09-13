@@ -44,14 +44,18 @@ const PREVIEW_END = 126;
 const TIMELINE = [
   { at: 0, phase: 0, detail: "" },
   { at: 28, phase: 1, detail: "" },
-  { at: 52, phase: 2, detail: "Preparing source metadata" },
-  { at: 80, phase: 3, detail: "Reading event evidence" },
-  { at: 102, phase: 3, detail: "Reading the period account" },
-  { at: 124, phase: 3, detail: "Building editorial cards" },
-  { at: 138, phase: 3, detail: "Editing the memory" },
-  { at: 154, phase: 3, detail: "Validating selected source timing" },
-  { at: 168, phase: DONE, detail: "" },
+  { at: 52, phase: 2, detail: "Preparing previews: 2/6" },
+  { at: 80, phase: 2, detail: "Reading dates, places and people" },
+  { at: 100, phase: 3, detail: "Reading event evidence: 3/9" },
+  { at: 120, phase: 3, detail: "Reading the period account" },
+  { at: 136, phase: 3, detail: "Building editorial cards" },
+  { at: 150, phase: 3, detail: "Editing the memory" },
+  { at: 162, phase: 3, detail: "Validating selected source timing" },
+  { at: 172, phase: DONE, detail: "" },
 ];
+
+// The strip of pictures belongs to the per-picture passes; once the edit starts it fades.
+const STRIP_FADE_AT = 100;
 
 type Props = { bassIntensity?: number };
 
@@ -184,6 +188,11 @@ export const CuttingScene: React.FC<Props> = ({ bassIntensity }) => {
 
   const step =
     [...TIMELINE].reverse().find((s) => frame >= s.at) ?? TIMELINE[0];
+  // While the previews are being prepared, the row detail carries the live count.
+  const liveDetail =
+    step.detail.startsWith("Preparing previews")
+      ? `Preparing previews: ${prepared}/${PREVIEWS.length}`
+      : step.detail;
   const finished = step.phase === DONE;
 
   // The stage string swaps in rather than jumping.
@@ -236,14 +245,23 @@ export const CuttingScene: React.FC<Props> = ({ bassIntensity }) => {
                       ? "active"
                       : "upcoming"
                 }
-                detail={i === step.phase ? step.detail : ""}
+                detail={i === step.phase ? liveDetail : ""}
                 detailOpacity={detailOpacity}
                 reveal={rowReveal(i)}
               />
             ))}
           </div>
 
-          <PreviewStrip prepared={prepared} fps={fps} frame={frame} />
+          <div
+            style={{
+              opacity: interpolate(frame, [STRIP_FADE_AT, STRIP_FADE_AT + 10], [1, 0], {
+                extrapolateLeft: "clamp",
+                extrapolateRight: "clamp",
+              }),
+            }}
+          >
+            <PreviewStrip prepared={prepared} fps={fps} frame={frame} />
+          </div>
 
           <div
             style={{

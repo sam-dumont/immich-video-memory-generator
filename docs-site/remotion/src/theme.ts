@@ -20,7 +20,7 @@ export const COLORS = {
 export const FPS = 30;
 
 // The whole demo, in frames. Scene lengths live in Composition.tsx's D map.
-export const TOTAL_FRAMES = 1330;
+export const TOTAL_FRAMES = 1343;
 
 // Music fades out over the last 5 seconds.
-export const MUSIC_FADE_START = 1180;
+export const MUSIC_FADE_START = 1193;
