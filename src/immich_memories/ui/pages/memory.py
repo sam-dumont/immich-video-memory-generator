@@ -113,15 +113,19 @@ def _render_views(view: StoryView, board: Storyboard | None, warning: str | None
     if board is None:
         render_story(view, warning=warning)
         return
+    # The thesis once, above both readings of the same cut.
+    ui.label(view.thesis or "The editor left no thesis for this cut.").classes(
+        "text-lg cut-thesis"
+    ).style("color: var(--im-text)")
     with ui.tabs().classes("w-full") as tabs:
         storyboard_tab = ui.tab("Storyboard", icon="view_timeline")
         story_tab = ui.tab("Story", icon="auto_stories")
     # No slide between the two readings of one cut: a screenshot mid-animation shows both.
     with ui.tab_panels(tabs, value=storyboard_tab, animated=False).classes("w-full"):
         with ui.tab_panel(storyboard_tab):
-            render_storyboard(board, note=view.preparation, warning=warning)
+            render_storyboard(board, note=view.preparation, warning=warning, show_thesis=False)
         with ui.tab_panel(story_tab):
-            render_story(view, warning=warning)
+            render_story(view, warning=warning, show_thesis=False)
 
 
 def _render_cut_result(state: AppState, result: dict) -> None:

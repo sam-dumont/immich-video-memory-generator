@@ -72,7 +72,7 @@ immich-memories auto run [OPTIONS]
 | `--force` | boolean | false | Skip cooldown check |
 | `--cooldown` | integer | - | Min hours since last auto-run |
 | `--upload` | boolean | false | Upload to Immich |
-| `--quiet` | boolean | false | Machine-friendly output |
+| `--quiet` | boolean | false | One machine-readable line per decision, no progress display; -v adds log detail |
 
 ### `auto status`
 
@@ -306,7 +306,7 @@ immich-memories generate [OPTIONS]
 | `--near-date` | text | - | Select trip closest to this date (YYYY-MM-DD, use with --memory-type trip) |
 | `--event-id` | text | - | Exact catalogue event ID (use with --memory-type special_day and --day) |
 | `--day` | datetime | - | The day this memory is about (YYYY-MM-DD). With --memory-type special_day it names a catalogued day, whose title comes from the catalogue rather than from here (`immich-memories days-due` lists them). With --memory-type on_this_day it is the anniversary to look back from, so the cut is reproducible; without it, today |
-| `--quiet` | boolean | false | Suppress interactive progress, emit log lines |
+| `--quiet` | boolean | false | Silence the live progress display and print log lines instead (cron, logs); -v sets the log level |
 
 ## `hardware`
 

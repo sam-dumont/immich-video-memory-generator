@@ -120,7 +120,7 @@ def _storyboard_lines(board: Storyboard | None, run_id: str | None) -> list[str]
     """The first shots of the cut in the order they play, and where to read the rest."""
     if board is None or not board.shots:
         return []
-    lines = ["", f"  the cut, in order ({len(board.shots)} shots, {board.total_label})"]
+    lines = ["", f"  the cut, in order ({board.summary_label})"]
     lines.extend(storyboard_lines(board, limit=_SUMMARY_SHOTS))
     if len(board.shots) > _SUMMARY_SHOTS:
         rest = len(board.shots) - _SUMMARY_SHOTS

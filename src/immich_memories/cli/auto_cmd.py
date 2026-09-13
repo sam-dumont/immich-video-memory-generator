@@ -212,7 +212,11 @@ def suggest(ctx: click.Context, as_json: bool, limit: int, memory_type: str | No
 @click.option("--force", is_flag=True, help="Skip cooldown check")
 @click.option("--cooldown", type=int, default=None, help="Min hours since last auto-run")
 @click.option("--upload", is_flag=True, help="Upload to Immich")
-@click.option("--quiet", is_flag=True, help="Machine-friendly output")
+@click.option(
+    "--quiet",
+    is_flag=True,
+    help="One machine-readable line per decision, no progress display; -v adds log detail",
+)
 @click.pass_context
 def run_cmd(
     ctx: click.Context,

@@ -17,7 +17,7 @@ from immich_memories.operations.storyboard import (
     read_storyboard,
     storyboard_from_plan,
 )
-from immich_memories.ui.components import im_card, im_section_header
+from immich_memories.ui.components import im_badge, im_card, im_section_header
 from immich_memories.ui.state import get_app_state
 
 __all__ = [
@@ -69,9 +69,7 @@ def _render_shot(shot: Shot) -> None:
                     ui.label(shot.day).classes(
                         "text-sm font-semibold storyboard-day" if shot.new_day else "text-sm"
                     ).style("color: var(--im-text)")
-                    ui.icon("videocam" if shot.motion else "photo").classes("text-sm").style(
-                        "color: var(--im-text-secondary)"
-                    )
+                    im_badge(shot.kind_label, variant="analysis" if shot.motion else "info")
                     ui.label(f"{shot.seconds:g} s").classes("text-xs").style(
                         "color: var(--im-text-secondary)"
                     )
@@ -87,17 +85,23 @@ def _render_shot(shot: Shot) -> None:
                     ui.label(shot.reason).classes("text-xs").style("color: var(--im-text)")
 
 
-def render_storyboard(board: Storyboard, note: str = "", warning: str | None = None) -> None:
-    """The thesis, then the cut as it will play: chapters, days and shots in order."""
+def render_storyboard(
+    board: Storyboard, note: str = "", warning: str | None = None, *, show_thesis: bool = True
+) -> None:
+    """The cut as it will play: chapters, days and pictures in order."""
     im_section_header("The storyboard", icon="view_timeline")
-    ui.label(board.thesis or "The editor left no thesis for this cut.").classes("text-lg").style(
-        "color: var(--im-text)"
-    )
+    if show_thesis:
+        ui.label(board.thesis or "The editor left no thesis for this cut.").classes(
+            "text-lg"
+        ).style("color: var(--im-text)")
     if note:
         ui.label(note).classes("text-sm mt-1").style("color: var(--im-text-secondary)")
     if warning:
         ui.label(warning).classes("text-sm").style("color: var(--im-warning)")
-    im_section_header(f"{len(board.shots)} shots, {board.total_label} of content", icon="movie")
+    im_section_header(board.summary_label, icon="movie")
+    ui.label("Titles and transitions make up the rest of the film.").classes("text-xs mb-2").style(
+        "color: var(--im-text-secondary)"
+    )
     for shot in board.shots:
         if shot.chapter:
             ui.label(shot.chapter).classes("text-sm font-semibold mt-2 storyboard-chapter").style(

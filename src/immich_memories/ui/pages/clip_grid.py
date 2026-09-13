@@ -1,4 +1,4 @@
-"""Clip grid rendering for Step 2: Clip Review."""
+"""Clip grid rendering for Step 2: the media pool."""
 
 from __future__ import annotations
 
@@ -32,29 +32,10 @@ def grid_item_date(item: GridItem) -> datetime:
 
 
 def _update_duration_summary(clips: list[VideoClipInfo], container: ui.element) -> None:
-    """Update the duration summary display."""
-    from immich_memories.ui.pages.step2_helpers import render_duration_summary
+    """Redraw the pool page's one counters line after a tick."""
+    from immich_memories.ui.pages.step2_helpers import render_pool_counters
 
-    state = get_app_state()
-
-    selected_duration = 0.0
-    for c in clips:
-        if c.asset.id in state.selected_clip_ids:
-            if c.asset.id in state.clip_segments:
-                start, end = state.clip_segments[c.asset.id]
-                selected_duration += end - start
-            else:
-                selected_duration += c.duration_seconds
-
-    selected_count = len(state.selected_clip_ids)
-    if state.include_photos:
-        # WHY: photos ticked "Include" counted for nothing here, so 59 included
-        # photos read as "Selected Clips: 1" beside the one video (#778).
-        selected_count = len(state.selected_clip_ids | state.selected_photo_ids)
-        selected_duration += len(state.selected_photo_ids) * state.photo_duration
-    render_duration_summary(
-        selected_duration, state.target_duration * 60, selected_count, container
-    )
+    render_pool_counters(clips, container)
 
 
 def _get_clip_badges(clip: VideoClipInfo) -> list[str]:

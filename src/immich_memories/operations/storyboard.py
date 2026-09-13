@@ -57,6 +57,11 @@ class Shot:
         whole = int(self.start)
         return f"{whole // 60}:{whole % 60:02d}"
 
+    @property
+    def kind_label(self) -> str:
+        """The badge word: a moving picture is a Video, everything else is held as a Still."""
+        return "Video" if self.motion else "Still"
+
 
 @dataclass(frozen=True)
 class Storyboard:
@@ -71,6 +76,13 @@ class Storyboard:
     def total_label(self) -> str:
         whole = int(self.total_seconds)
         return f"{whole // 60}:{whole % 60:02d}"
+
+    @property
+    def summary_label(self) -> str:
+        """What the seconds are: pictures and video, before titles and transitions fill the film."""
+        count = len(self.shots)
+        noun = "picture" if count == 1 else "pictures"
+        return f"{count} {noun}, {self.total_label} of pictures and video"
 
 
 def _month(taken: str) -> str:

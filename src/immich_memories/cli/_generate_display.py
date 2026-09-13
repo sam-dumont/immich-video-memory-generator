@@ -136,6 +136,8 @@ def _print_generation_result(
     if no_render:
         print_success("Selection complete; no video was created (--no-render)")
         return
-    print_success(f"Video saved to: {result_path}")
+    # The path gets its own line: a long temp path wrapped mid-word on an 80-column terminal.
+    print_success("Video saved to:")
+    print_success(f"  {result_path}")
     if should_upload:
         print_success(f"Uploaded to Immich (album: {album_name or 'none'})")
