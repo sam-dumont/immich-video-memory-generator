@@ -62,6 +62,8 @@ def build_editorial_context(
     title_override: str | None,
     person_names: list[str],
     accept_any_provenance: bool,
+    owner_required_asset_ids: tuple[str, ...] = (),
+    owner_excluded_asset_ids: tuple[str, ...] = (),
 ) -> EditorialRunContext:
     """Bind the run's identity, scope and timing before any source is touched."""
     from immich_memories.processing.editorial_timing import build_editorial_timing_policy
@@ -100,6 +102,8 @@ def build_editorial_context(
         person_match=_person_match(resolved),
         person_expression=person_expression,
         accept_any_provenance=accept_any_provenance,
+        owner_required_asset_ids=owner_required_asset_ids,
+        owner_excluded_asset_ids=owner_excluded_asset_ids,
         trip=product == "trip",
         album_ref=album_ref,
         album_sources=album_sources,

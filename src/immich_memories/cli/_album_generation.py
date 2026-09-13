@@ -62,6 +62,8 @@ def handle_album_generation(
     dry_run: bool = False,
     no_render: bool = False,
     accept_any_provenance: bool = False,
+    owner_required_asset_ids: tuple[str, ...] = (),
+    owner_excluded_asset_ids: tuple[str, ...] = (),
 ) -> None:
     """Generate one memory from the assets of a single Immich album."""
     import click
@@ -148,6 +150,8 @@ def handle_album_generation(
         dry_run=dry_run,
         no_render=no_render,
         accept_any_provenance=accept_any_provenance,
+        owner_required_asset_ids=owner_required_asset_ids,
+        owner_excluded_asset_ids=owner_excluded_asset_ids,
     )
 
     console.print()

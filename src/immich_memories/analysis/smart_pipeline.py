@@ -8,9 +8,11 @@ filters or ranks; the planner decides every carrier.
 from __future__ import annotations
 
 import contextlib
+import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from immich_memories.analysis import selection_trace as trace
@@ -20,6 +22,7 @@ from immich_memories.analysis.editorial_projection import (
     editorial_membership,
 )
 from immich_memories.analysis.progress import ProgressTracker
+from immich_memories.operations.storyboard import TRACE_FILE
 
 if TYPE_CHECKING:
     from immich_memories.analysis.editorial_planner import (
@@ -162,6 +165,10 @@ class SmartPipeline:
         if attempt_dir is not None:
             result.stats["editorial_attempt_directory"] = str(attempt_dir)
         active_trace.record("editorial final cut", candidates, result.selected_clips)
+        if attempt_dir is not None:
+            # Every run keeps its decision log beside its plan, so `runs why <asset>`
+            # can answer without the run having been started with --trace-selection.
+            _write_selection_trace(Path(attempt_dir), active_trace)
         if planned.render_timing is not None:
             result.stats["editorial_render_timing"] = planned.render_timing
         trace.record_favourite_law(candidates, result.selected_clips)
@@ -194,3 +201,10 @@ class SmartPipeline:
             },
             editorial_selections=plan.selections,
         )
+
+
+def _write_selection_trace(attempt_dir: Path, active_trace: trace.Trace) -> None:
+    try:
+        (attempt_dir / TRACE_FILE).write_text(json.dumps(active_trace.as_dict(), indent=2) + "\n")
+    except OSError:  # WHY: a full disk must not turn a finished cut into a failed run
+        logger.warning("Could not write the selection trace to %s", attempt_dir)
