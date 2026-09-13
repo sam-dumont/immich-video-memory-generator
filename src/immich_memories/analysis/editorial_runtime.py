@@ -61,6 +61,7 @@ from immich_memories.analysis.thumbnail_prefetch import cached_preview_bytes
 from immich_memories.api.models import Asset, VideoClipInfo
 from immich_memories.api.person_expression import PersonExpression
 from immich_memories.cache.editorial_verdicts import EditorialVerdicts
+from immich_memories.operations.cut_progress import ANALYSIS_PHASE, StageUpdate
 from immich_memories.people.context import PersonPromptContext
 from immich_memories.processing.editorial_timing import EditorialTimingPolicy
 from immich_memories.security import write_secret_file
@@ -288,7 +289,7 @@ class RuntimeEditorialPlanner:
         trace: Trace,
         include_live_photos: bool = True,
         hdr_only: bool = False,
-        on_stage: Callable[[str], None] | None = None,
+        on_stage: Callable[[StageUpdate], None] | None = None,
     ) -> EditorialSourcePlan:
         """Keep a durable attempt and isolate artifacts before doing any source work."""
         from immich_memories.operations.editorial_attempt import EditorialAttempt
@@ -311,10 +312,10 @@ class RuntimeEditorialPlanner:
             self.last_attempt_directory = attempt.directory
             self._backend._context = replace(context, artifact_dir=attempt.directory)
 
-            def stage(label: str) -> None:
-                attempt.stage(label)
+            def stage(update: StageUpdate) -> None:
+                attempt.stage(update)
                 if on_stage is not None:
-                    on_stage(label)
+                    on_stage(update)
 
             try:
                 result = self._plan_source(
@@ -340,7 +341,7 @@ class RuntimeEditorialPlanner:
         trace: Trace,
         include_live_photos: bool = True,
         hdr_only: bool = False,
-        on_stage: Callable[[str], None] | None = None,
+        on_stage: Callable[[StageUpdate], None] | None = None,
     ) -> EditorialSourcePlan:
         """Read canonical evidence directly; never fall back to subjective pool analysis."""
         if self._config is None or self._backend is None:
@@ -351,7 +352,7 @@ class RuntimeEditorialPlanner:
         try:
             sources = self._narrowed(sources, _asset)
             if on_stage is not None:
-                on_stage("Preparing source metadata")
+                on_stage(StageUpdate("Preparing source metadata", ANALYSIS_PHASE))
             prepared = self._prepared_source(trace=trace, on_stage=on_stage)
             candidates = metadata_demand(
                 prepared,
@@ -383,7 +384,7 @@ class RuntimeEditorialPlanner:
             if result is None:
                 raise RuntimeError("editorial source route has no completed structure result")
             if on_stage is not None:
-                on_stage("Validating selected source timing")
+                on_stage(StageUpdate("Validating selected source timing"))
             return _projected_rendering(
                 result,
                 candidates,
@@ -396,7 +397,9 @@ class RuntimeEditorialPlanner:
             backend.allow_live_motion = previous_live_motion
             self.close()
 
-    def _prepared_source(self, *, trace: Trace, on_stage: Callable[[str], None] | None) -> Any:
+    def _prepared_source(
+        self, *, trace: Trace, on_stage: Callable[[StageUpdate], None] | None
+    ) -> Any:
         if self._prepare_annotations is None:
             return self._planner.prepare_source(trace=trace)
         # Preparation sees the full eligible corpus. Only the final source
@@ -482,7 +485,9 @@ class _EvidencePreparation:
     ports: EditorialRuntimePorts
     artifact_dir: Callable[[], Path]
 
-    def __call__(self, prepared: Any, on_stage: Callable[[str], None] | None) -> dict[str, Any]:
+    def __call__(
+        self, prepared: Any, on_stage: Callable[[StageUpdate], None] | None
+    ) -> dict[str, Any]:
         result = self._produce(prepared, on_stage)
         _log_preparation(result)
         write_secret_file(
@@ -508,7 +513,7 @@ class _EvidencePreparation:
             return {}
         return self._screen_documents(prepared)
 
-    def _produce(self, prepared: Any, on_stage: Callable[[str], None] | None) -> Any:
+    def _produce(self, prepared: Any, on_stage: Callable[[StageUpdate], None] | None) -> Any:
         from immich_memories.analysis.editorial_preparation import prepare_editorial_annotations
         from immich_memories.operations.cut_progress import StageProgressWriter
 
@@ -522,7 +527,7 @@ class _EvidencePreparation:
             if done not in {0, total} and done % batch_size:
                 return
             if on_stage is not None:
-                on_stage(live.publish(stage, done, total).stage_label)
+                on_stage(live.publish(stage, done, total))
 
         prepare = self.ports.prepare_annotations or prepare_editorial_annotations
         return prepare(

@@ -42,6 +42,7 @@ from immich_memories.analysis.text_episode_reader import (
     TextEpisodeReadResult,
 )
 from immich_memories.analysis.text_period_insight import TextPeriodInsightResult
+from immich_memories.operations.cut_progress import StageUpdate
 
 if TYPE_CHECKING:
     from immich_memories.analysis.smart_pipeline import ClipWithSegment
@@ -139,7 +140,7 @@ class TextEditorialPlanner:
         prepared: PreparedEditorialSource,
         trace: Trace,
         verified_segments: bool = True,
-        on_stage: Callable[[str], None] | None = None,
+        on_stage: Callable[[StageUpdate], None] | None = None,
     ) -> EditorialPlan:
         """Read the same canonical groups from an already prepared source."""
         demanded_ids = _demanded_ids(candidates)
@@ -183,7 +184,7 @@ class TextEditorialPlanner:
         *,
         reader: EpisodeReader,
         trace: Trace,
-        on_stage: Callable[[str], None] | None,
+        on_stage: Callable[[StageUpdate], None] | None,
     ) -> TextEpisodeReadResult:
         _stage(on_stage, "Reading event evidence")
         episodes = reader.read(episode_projections)
@@ -199,7 +200,7 @@ class TextEditorialPlanner:
         episodes: TextEpisodeReadResult,
         *,
         trace: Trace,
-        on_stage: Callable[[str], None] | None,
+        on_stage: Callable[[StageUpdate], None] | None,
     ) -> TextPeriodInsightResult:
         _stage(on_stage, "Reading the period account")
         period = self._period_reader(episodes)
@@ -277,9 +278,9 @@ def _demanded_ids(candidates: tuple[ClipWithSegment, ...]) -> tuple[str, ...]:
     return demanded_ids
 
 
-def _stage(on_stage: Callable[[str], None] | None, label: str) -> None:
+def _stage(on_stage: Callable[[StageUpdate], None] | None, label: str) -> None:
     if on_stage is not None:
-        on_stage(label)
+        on_stage(StageUpdate(label))
 
 
 def _cull_provenance(
