@@ -7,93 +7,51 @@ import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
 
 # Authentication
 
-By default, the web UI has no authentication, and because of that, it binds to
-`127.0.0.1` unless you decide otherwise. To listen beyond localhost you either enable
-authentication, name the address yourself (`--host`, `IMMICH_MEMORIES_SERVER__HOST`, or a
-`server.host` in the config file that is not the `0.0.0.0` wildcard), or set
-`server.allow_unauthenticated_lan: true`, a name that spells out what it allows.
-(The Docker image passes `--host 0.0.0.0` explicitly, which inside a container is the only
-useful bind, so which port the compose file publishes is the real boundary. The shipped
-`docker-compose.yml` publishes `127.0.0.1:8080:8080`; enable auth before you widen it.)
+Authentication is disabled by default, and because of that the web UI binds to `127.0.0.1`
+unless you decide otherwise. To listen beyond localhost you either enable authentication, name the
+address yourself (`--host`, `IMMICH_MEMORIES_SERVER__HOST`, or a `server.host` that is not the
+`0.0.0.0` wildcard), or set `server.allow_unauthenticated_lan: true`. The Docker image passes
+`--host 0.0.0.0` because inside a container that is the only useful bind, so the compose port
+mapping is the real boundary: the shipped file publishes `127.0.0.1:8080:8080`.
 
-One line in a config file does not count: a bare `server.host: 0.0.0.0`. Older versions
-wrote it into every config they saved, chosen or not, so it says nothing about intent and
-the loader now ignores it with a warning. If your LAN bind came from that line, set
-`server.allow_unauthenticated_lan: true` (or pass `--host`), after reading the next
-paragraph.
+A bare `server.host: 0.0.0.0` in a config file does not count: older versions wrote it into every
+file they saved, so the loader now ignores it with a warning.
 
-When authentication is disabled and the server listens beyond localhost, anyone who can reach the
-port can use the app, and, through it, your Immich library. The UI is single-user, single-replica because active workflow state lives in the
-process. A shared storage secret or volume does not make multiple replicas safe.
+When the server listens beyond localhost without authentication, anyone who reaches the port can
+use the app and, through it, your Immich library. The UI is single-user, single-replica because
+workflow state lives in the process; a shared secret or volume does not make replicas safe.
 
 <ThemedScreenshot name="login" alt="Login page" />
 
-## Quick start (basic auth)
-
-Set two env vars:
+## Basic auth
 
 ```bash
 IMMICH_MEMORIES_AUTH_USERNAME=admin
 IMMICH_MEMORIES_AUTH_PASSWORD=your-password-here
 ```
 
-Done. The UI now requires login.
+Set both; one alone is ignored. Setting both turns auth on with `provider: basic`. Passwords are
+compared in constant time. The YAML form:
 
-## Providers
-
-### Basic auth
-
-Username and password stored in config. Credentials are compared with constant-time comparison (no timing side-channels).
-
-**Env vars (quickest way):**
-
-```bash
-IMMICH_MEMORIES_AUTH_USERNAME=admin
-IMMICH_MEMORIES_AUTH_PASSWORD=your-password-here
+```yaml
+advanced:
+  auth:
+    enabled: true
+    provider: basic
+    username: admin
+    password: ${MY_SECRET_PASSWORD}   # password, client_secret, issuer_url and client_id expand ${VAR}
 ```
 
-Setting both vars automatically enables auth and sets the provider to `basic`. Set **both**: one
-alone is ignored.
-
-:::warning The UI reads auth from the default config path, always
-`immich-memories --config PATH ui` uses `PATH` to pick the host and port, and then the server reads
-`~/.immich-memories/config.yaml` for every authentication decision. So an `auth:` block that lives
-only in `PATH` is ignored, and the two files can disagree about whether auth is on: the bind
-address comes from one and enforcement from the other. Keep your auth config in the default path,
-or in environment variables, which apply either way.
+:::warning The UI reads auth from the default config path
+`immich-memories --config PATH ui` uses `PATH` for host and port, then reads
+`~/.immich-memories/config.yaml` for every authentication decision. Keep the `auth:` block in the
+default path, or in environment variables, which apply either way.
 :::
 
-**YAML config (under `advanced.auth`):**
+## OIDC / SSO
 
-```yaml
-advanced:
-  auth:
-    enabled: true
-    provider: basic
-    username: admin
-    password: your-password-here
-    session_ttl_hours: 24  # default
-```
-
-The `password`, `client_secret`, `issuer_url` and `client_id` fields support `${ENV_VAR}`
-expansion, so you can avoid hardcoding secrets:
-
-```yaml
-advanced:
-  auth:
-    enabled: true
-    provider: basic
-    username: admin
-    password: ${MY_SECRET_PASSWORD}
-```
-
----
-
-### OIDC / SSO
-
-Connect to any OpenID Connect provider. Uses PKCE automatically: no extra config needed.
-
-**YAML config:**
+Any OpenID Connect provider, with PKCE, discovered from `issuer_url/.well-known/openid-configuration`.
+Docker images ship `authlib`; a pip install needs `immich-memories[auth]`.
 
 ```yaml
 advanced:
@@ -102,283 +60,80 @@ advanced:
     provider: oidc
     issuer_url: https://your-idp.example.com
     client_id: immich-memories
-    client_secret: ${OIDC_CLIENT_SECRET}  # or leave empty for public clients
+    client_secret: ${OIDC_CLIENT_SECRET}  # empty for public clients
     public_url: https://memories.example.com  # the URL users reach you on
-    allowed_domains: [example.com]        # who may sign in; empty = anyone the IdP accepts
+    allowed_emails: [me@example.com]
+    allowed_domains: [example.com]        # exact: does not admit sub.example.com
     scope: openid email profile            # default
-    session_ttl_hours: 24                  # default
-    auto_launch: false    # if true, redirect directly to IdP (skips the login page)
-    button_text: "Sign in with SSO"  # text shown on the login button
+    session_ttl_hours: 24                  # default, 1 to 720
+    auto_launch: false                     # true: straight to the IdP, no login page
+    button_text: "Sign in with SSO"
 ```
 
-The `issuer_url` is used to auto-discover the OIDC configuration from `/.well-known/openid-configuration`.
+`public_url` pins the `redirect_uri` sent to the IdP (it must match what you registered there)
+and is what makes callback-origin validation possible.
 
-Set `public_url` to the address users actually reach the app on. It pins the `redirect_uri` sent to
-the IdP (which must match what you registered there) instead of letting it be derived from
-whatever host the request resolves to, and it is what allows the callback origin to be validated.
-
-:::warning Your IdP decides *who you are*, not *whether you may enter*
-
-With no allow-list, anyone your IdP authenticates becomes a full admin of this app,
-including the Immich API key. That is fine for a personal tenant, and wrong for a shared
-Keycloak/Authentik realm or an Auth0 tenant with social sign-ups, where "anyone the IdP
-authenticates" means anyone with a Google account.
-
-Set at least one of these:
-
-```yaml
-advanced:
-  auth:
-    allowed_emails:
-      - me@example.com
-    allowed_domains:
-      - example.com          # exact: does NOT admit sub.example.com
-```
-
-Either list admits, so you can allow a whole domain plus a named outside contractor.
-Matching ignores case. Once either list is set, an account whose token carries no `email`
-claim is refused; otherwise an IdP that omits the claim would be a way around the list.
-
-Someone who signs in successfully but is not on the list gets a "Not authorised" page
-naming the account they used, not a redirect back to the login page: their IdP session is
-still valid, so a redirect would simply loop.
+:::warning Your IdP decides who you are, not whether you may enter
+With no allow-list, anyone your IdP authenticates becomes a full admin of this app, Immich API key
+included. Fine for a personal tenant; wrong for a shared realm or an Auth0 tenant with social
+sign-ups. Set `allowed_emails` or `allowed_domains`: either list admits, matching ignores case, and
+once either is set an account whose token carries no `email` claim is refused. Someone who signs
+in but is not on the list gets a "Not authorised" page naming the account, not a redirect loop.
 :::
 
-**authlib is required for OIDC.** Install with:
+Register the callback URL `https://your-host/auth/callback` (and logout URL `https://your-host/logout`)
+with your provider. Auth0: a Regular Web Application. Keycloak: a client with client
+authentication enabled. Authelia: a client with `pkce_challenge_method: S256`, scopes `openid`,
+`email`, `profile`, grant type `authorization_code`.
 
-```bash
-pip install 'immich-memories[auth]'
-```
+## Trusted header (reverse proxy)
 
-With Docker there is nothing to install: both published images are built with all extras, authlib included.
-
-#### Auth0 example
-
-Two files. The compose file passes the secret in as an environment variable:
-
-```yaml
-# docker-compose.yml
-services:
-  immich-memories:
-    image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
-    environment:
-      - IMMICH_URL=https://photos.example.com
-      - IMMICH_API_KEY=${IMMICH_API_KEY}
-      - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
-    # ...
-```
-
-The app config references it (do not paste the `services:` block into `config.yaml`; unknown
-top-level keys make the config fail to load):
-
-```yaml
-# ~/.immich-memories/config.yaml
-advanced:
-  auth:
-    enabled: true
-    provider: oidc
-    issuer_url: https://YOUR_DOMAIN.auth0.com
-    client_id: YOUR_CLIENT_ID
-    client_secret: ${OIDC_CLIENT_SECRET}
-```
-
-In Auth0, create a Regular Web Application. Set the callback URL to `https://your-host/auth/callback` and logout URL to `https://your-host/logout`.
-
-#### Authelia example
-
-```yaml
-advanced:
-  auth:
-    enabled: true
-    provider: oidc
-    issuer_url: https://auth.example.com
-    client_id: immich-memories
-    client_secret: ${OIDC_CLIENT_SECRET}
-```
-
-In Authelia's `configuration.yml`, register a client:
-
-```yaml
-identity_providers:
-  oidc:
-    clients:
-      - client_id: immich-memories
-        client_secret: '$argon2id$...'  # hashed with authelia crypto hash generate
-        redirect_uris:
-          - https://memories.example.com/auth/callback
-        scopes:
-          - openid
-          - email
-          - profile
-        grant_types:
-          - authorization_code
-        response_types:
-          - code
-        pkce_challenge_method: S256
-```
-
-#### Keycloak example
-
-```yaml
-advanced:
-  auth:
-    enabled: true
-    provider: oidc
-    issuer_url: https://keycloak.example.com/realms/YOUR_REALM
-    client_id: immich-memories
-    client_secret: ${OIDC_CLIENT_SECRET}
-```
-
-In Keycloak, create a client with client authentication enabled. Set the redirect URI to `https://memories.example.com/auth/callback`.
-
----
-
-### Trusted header (reverse proxy)
-
-For setups where a reverse proxy (Traefik + Authelia, nginx + oauth2-proxy, etc.) handles authentication and forwards the verified user via request headers.
-
-**How it works:** The middleware reads the `Remote-User` header (configurable) and creates a session automatically. If the peer is not in `trusted_proxies`, the headers are not read at all and the request is simply unauthenticated. Nothing is stripped, so do not rely on that: an upstream that forwards the header from an untrusted source is your problem to fix, not the app's.
-
-:::caution trusted_proxies is required
-With `provider: header` and an empty `trusted_proxies`, the config fails validation and the app refuses to start (`trusted_proxies must be non-empty when provider is 'header'`). Without the check, any client could forge the headers and gain access. Set this to your proxy's IP or CIDR range.
-:::
-
-**YAML config:**
+For a proxy that authenticates (Traefik + Authelia, nginx + oauth2-proxy) and forwards the user in
+a header:
 
 ```yaml
 advanced:
   auth:
     enabled: true
     provider: header
-    user_header: Remote-User    # header containing the username
-    email_header: Remote-Email  # header containing the email (optional)
+    user_header: Remote-User    # default
+    email_header: Remote-Email  # default, optional
     trusted_proxies:
-      - 172.20.0.0/16   # your proxy's IP/CIDR
-      - 192.168.1.10
+      - 172.20.0.2              # your proxy; prefer a /32 over a whole Docker network
     session_ttl_hours: 24
 ```
 
-#### Traefik + Authelia example
+Headers are read only when the immediate peer is in `trusted_proxies`; from anyone else the
+request is simply unauthenticated. An empty `trusted_proxies` with `provider: header` fails
+validation at startup. Nothing is stripped, so a proxy that forwards the header from an untrusted
+source is your problem to fix. Authelia forwards `Remote-User` and `Remote-Email` by default.
 
-```yaml
-services:
-  immich-memories:
-    image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.memories.rule=Host(`memories.example.com`)"
-      - "traefik.http.routers.memories.middlewares=authelia@docker"
-    networks:
-      - proxy
+## Behind a reverse proxy with TLS
 
-  traefik:
-    image: traefik:v3
-    # ... your Traefik config ...
+Four things, whichever provider you use:
 
-  authelia:
-    image: authelia/authelia:latest
-    # ... your Authelia config ...
-```
+1. Do not publish 8080 on the LAN once the proxy is up: bind it to localhost or keep the container
+   on the proxy network only.
+2. List the proxy in `auth.trusted_proxies`. The app passes it to uvicorn as `forwarded_allow_ips`,
+   so `X-Forwarded-For` and `X-Forwarded-Proto` from that address are honoured. Without it every
+   visitor looks like the proxy (five wrong passwords from anyone lock login for everyone for ten
+   minutes) and the OIDC `redirect_uri` is built as `http://`. `"*"` trusts any peer; use it only
+   when the app is unreachable except through the proxy. With `provider: header` the forwarded
+   headers are deliberately not applied, and `"*"` is not parsed as an address there.
+3. Set `auth.public_url` to the address users type.
+4. Set `server.secure_cookies: true` so the session cookie carries `Secure`. Only once every
+   visitor arrives over HTTPS: with it on, a plain `http://` origin other than `localhost` cannot
+   log in.
 
-In your config YAML, set `trusted_proxies` to Traefik's container IP (prefer a single `/32` over a whole Docker network CIDR: on a shared `proxy` network any container in that range could send `Remote-User`). Authelia forwards `Remote-User` and `Remote-Email` by default, which match the defaults.
+`FORWARDED_ALLOW_IPS` in the environment still works and, when set, wins over `trusted_proxies`.
 
----
+## Sessions
 
-## Session
+Sessions last `session_ttl_hours` (24 by default). Abandoned session files are swept at startup
+and every 15 minutes. Logout is the sidebar button or `/logout`; OIDC logout also ends the IdP
+session when the IdP advertises `end_session_endpoint`. Scripts do not use sessions: they
+authenticate to [the trigger endpoint](../../create/recipes/trigger-endpoint.md) with
+`server.trigger_token`.
 
-- Sessions last 24 hours by default (`session_ttl_hours`). Range: 1-720 hours.
-- The same value expires session state on disk: abandoned session files are
-  swept at startup and every 15 minutes thereafter, so an exposed instance
-  doesn't accumulate one file per drive-by request.
-- Logout via the sidebar button or by navigating to `/logout`.
-- OIDC logout redirects to the IdP's `end_session_endpoint` when available (the IdP terminates the SSO session too). Falls back to a local-only logout if the IdP doesn't advertise that endpoint.
-- A session is for browsers. Scripts and workflows authenticate to
-  [the trigger endpoint](../../create/recipes/trigger-endpoint.md) with `server.trigger_token`
-  instead: no cookie, no login page.
-
-:::warning Behind a reverse proxy: bind locally, name the proxy, mark the cookie Secure
-
-Four things to set when the UI sits behind Traefik, Caddy or nginx with TLS:
-
-1. **Don't publish `8080` on the LAN once the proxy is up.** Bind it to localhost
-   (`127.0.0.1:8080:8080` in compose) or keep the container on the proxy network only.
-2. **List the proxy in `auth.trusted_proxies`.** The app passes it to uvicorn as
-   `forwarded_allow_ips`, so `X-Forwarded-For` / `X-Forwarded-Proto` from that address are
-   honored. Without it every visitor looks like the proxy's IP (five wrong passwords from anyone
-   lock the whole household out of login for 10 minutes), and the OIDC `redirect_uri` is built as
-   `http://…` instead of `https://…`, which most identity providers reject. `"*"` trusts any
-   peer for uvicorn's purposes; only use it when the app is unreachable except through the proxy.
-   It does **not** work with `provider: header`: the app parses each entry as an IP or CIDR and
-   silently drops what it cannot parse, so `["*"]` passes validation and then trusts nobody,
-   authenticating no one.
-3. **Set `auth.public_url`** to the address users actually type, e.g.
-   `https://memories.example.com`. It pins the OIDC `redirect_uri` to that origin rather than
-   whatever the request resolves to, and it is what makes callback-origin validation possible:
-   without it there is nothing trustworthy to compare an incoming `Host` header against, so no
-   origin check is performed and the IdP's registered `redirect_uri` is the only control.
-4. **Set `server.secure_cookies: true`** so the session cookie carries the `Secure` flag and
-   browsers never send it over plain HTTP. Only do this once every visitor arrives over HTTPS:
-   with it on, a plain `http://` origin (other than `localhost`) can't log in at all.
-
-```yaml
-# ~/.immich-memories/config.yaml
-advanced:
-  server:
-    secure_cookies: true
-  auth:
-    enabled: true
-    provider: basic            # or oidc
-    username: admin
-    password: ${MY_SECRET_PASSWORD}
-    public_url: https://memories.example.com
-    trusted_proxies:
-      - 172.20.0.2             # your proxy container's IP or CIDR
-```
-
-```yaml
-# docker-compose.yml
-services:
-  immich-memories:
-    ports:
-      - "127.0.0.1:8080:8080"     # or drop `ports:` entirely and expose via the proxy network
-```
-
-The `FORWARDED_ALLOW_IPS` environment variable still works and, when set, wins over
-`trusted_proxies`. With `provider: header` the forwarded headers are deliberately *not* applied:
-the app has to keep seeing the proxy's own address to trust `Remote-User`, and the login rate
-limiter and OIDC redirect don't apply to that provider anyway. Leave `FORWARDED_ALLOW_IPS` unset
-in that case.
-
-The login rate limiter reads `X-Forwarded-For` the same way: only when the immediate peer
-is in `auth.trusted_proxies`. Without that, every login behind a proxy shares one bucket and
-five wrong passwords from anyone lock out everyone for ten minutes; with it, an untrusted
-caller still cannot pick its own bucket by setting the header itself.
-
-When running without a reverse proxy (direct access on localhost), none of this applies.
-:::
-
----
-
-## Config reference
-
-All fields under `advanced.auth` with their defaults:
-
-| Field | Default | Description |
-|-------|---------|-------------|
-| `enabled` | `false` | Enable authentication |
-| `provider` | `basic` | Provider: `basic`, `oidc`, or `header` |
-| `session_ttl_hours` | `24` | How long a session lasts (1–720) |
-| `public_url` | `""` | The URL users reach this app on, e.g. `https://memories.example.com`. Pins the OIDC `redirect_uri` and enables callback-origin validation |
-| `allowed_emails` | `[]` | OIDC: addresses permitted to sign in. Empty allows any account the IdP authenticates |
-| `allowed_domains` | `[]` | OIDC: email domains permitted to sign in. Exact match: `example.com` does not admit `sub.example.com` |
-| `username` | `""` | Basic auth: username |
-| `password` | `""` | Basic auth: password (supports `${ENV_VAR}`) |
-| `issuer_url` | `""` | OIDC: IdP base URL (autodiscovery via `/.well-known/openid-configuration`; supports `${ENV_VAR}`) |
-| `client_id` | `""` | OIDC: client ID (supports `${ENV_VAR}`) |
-| `client_secret` | `""` | OIDC: client secret (empty for public clients; supports `${ENV_VAR}`) |
-| `scope` | `openid email profile` | OIDC: requested scopes |
-| `auto_launch` | `false` | OIDC: redirect directly to IdP (skip the login page) |
-| `button_text` | `Sign in with SSO` | OIDC: login button label |
-| `user_header` | `Remote-User` | Header: header name for the username |
-| `email_header` | `Remote-Email` | Header: header name for the email |
-| `trusted_proxies` | `[]` | IPs/CIDRs of your reverse proxy. Header provider: allowed to set auth headers. Basic/OIDC: their `X-Forwarded-For` / `X-Forwarded-Proto` are honored (uvicorn `forwarded_allow_ips`) |
+Every `advanced.auth` field with its default is in the
+[config reference](../../reference/config-reference.md).

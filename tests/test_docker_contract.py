@@ -136,7 +136,7 @@ def test_install_extra_validator_resolves_declared_feature_sets(extra: str, expe
 
 
 def test_opencv_stays_below_5_because_the_docker_build_resolves_unlocked() -> None:
-    """The image is built with an unlocked `pip wheel`; OpenCV 5 has no CascadeClassifier (#339)."""
+    """The image is built with an unlocked `pip wheel`; the 4→5 migration is unverified (#557)."""
     pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
     opencv = next(
         Requirement(value)

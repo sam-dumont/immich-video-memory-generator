@@ -111,7 +111,7 @@ Measured on a T1000 (Turing, driver 570.144), 20 s of 1080p60, SSIM against the 
 
 Matching libx264 costs about **1.2x the bits**, the cheapest of the three hardware backends, next
 to Intel's 2.2x and Apple's 2.9x. The configured CRF is translated onto NVENC's quantiser scale
-automatically; see [the overview](./overview.md#what-hardware-encoding-actually-costs).
+automatically; see [the overview](./overview.md#quality-one-dial-calibrated-per-encoder).
 
 Just don't buy the card for the encode. Encoding is the smaller half of a CPU-only assembly: title rendering was ~263 s of a ~339 s assembly at `--cpus=2`. The bigger win from this GPU is Taichi title rendering. It does not run the editor's models: see the [self-hosting guide](../self-hosting.md#one-machine-or-two) for where those go. See [CPU-Only Mode](./cpu-only.md#title-rendering-is-the-bottleneck-not-encoding) for the measured split.
 
