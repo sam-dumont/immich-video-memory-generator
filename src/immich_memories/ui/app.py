@@ -68,7 +68,7 @@ def _get_storage_secret() -> str:
 
 _STEPS = [
     ("Memory", "auto_awesome", "/"),
-    ("Clip Review", "video_library", "/step2"),
+    ("Media pool", "video_library", "/step2"),
     ("Options", "tune", "/step3"),
     ("Export", "download", "/step4"),
 ]
@@ -257,13 +257,13 @@ def index_page() -> None:
 
 @ui.page("/step2")
 def step2_page() -> None:
-    """Step 2: Clip Review page."""
+    """Step 2: the media pool page."""
     from immich_memories.ui.pages.step2_review import render_step2
 
     apply_theme()
     d = render_sidebar(2)
     with ui.column().classes("w-full px-8 py-5"):
-        page_header("Clip Review", 2, drawer=d)
+        page_header("Media pool", 2, drawer=d)
         render_step2()
 
 

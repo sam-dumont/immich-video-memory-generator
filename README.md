@@ -23,7 +23,7 @@
   <sub><a href="https://sam-dumont.github.io/immich-video-memory-generator/docs/welcome/overview">▶ Watch the 45-second demo</a> · <a href="https://sam-dumont.github.io/immich-video-memory-generator/docs/create/first-memory">Make your first memory</a> · <a href="https://sam-dumont.github.io/immich-video-memory-generator/">Full documentation</a></sub>
 </p>
 
-You left Google Photos for Immich and lost the year-in-review videos. This brings them back, on your hardware.
+The year-in-review videos your phone's cloud used to make, generated from your own Immich library, on your own hardware.
 
 ## What leaves your machine
 
@@ -86,7 +86,7 @@ Start with one month, not a year: preparation scales with the width of the date 
 - Ten memory types: year in review, monthly, person, multiple people (with `AND` / `OR` between names), season, on this day, album, trip with an animated map, holiday, and a day the library itself flagged. The web UI adds a custom date range.
 - Photos and videos in one pool, Live Photos included. Title screens, month dividers, map fly-overs.
 - Music: your own file, 28 bundled tracks, or a generated track through ACE-Step or MusicGen. Ducking under the clips' own audio.
-- A four-page web UI (Memory, Clip Review, Generation Options, Preview & Export) behind basic auth, OIDC or a trusted-header proxy, or a headless CLI.
+- A four-page web UI (Memory, Media pool, Generation Options, Preview & Export) behind basic auth, OIDC or a trusted-header proxy, or a headless CLI.
 - Daily automation: one scheduled `auto run` generates a single eligible memory a day and can upload it back to Immich. In Docker set `IMMICH_MEMORIES_AUTOMATION__ENABLED=true`.
 - Privacy mode blurs every frame and moves the map to a fake city, for demos and screenshots.
 

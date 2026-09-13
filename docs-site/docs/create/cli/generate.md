@@ -193,7 +193,9 @@ If the reader stops answering, the line says so instead of going quiet:
   ⏱ 0:14 elapsed
 ```
 
-Three drops, two then four seconds apart, and the run fails naming the same endpoint. A model
+Three drops, two then four seconds apart, and the last line says what to do: `Gave up on the
+reader at omlx.local:9999 after 3 dropped connections: fix the server and cut again`. The run then
+fails naming the same endpoint. A model
 server that is restarting survives that; one that is off is named within a second.
 
 ## What a run leaves behind

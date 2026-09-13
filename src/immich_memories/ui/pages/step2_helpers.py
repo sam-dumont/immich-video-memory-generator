@@ -1,4 +1,4 @@
-"""Shared helpers for Step 2: Clip Review page."""
+"""Shared helpers for Step 2: the media pool page."""
 
 from __future__ import annotations
 
@@ -204,20 +204,63 @@ def _download_immich_preview(
     return None
 
 
-def render_duration_summary(
-    total_duration: float,
-    target_duration: float,
-    clip_count: int,
-    container: ui.element,
-) -> None:
-    """Render duration summary."""
+def pool_counters_line(
+    *, videos: int, photos: int, ticked: int, in_cut: int | None, cut_seconds: float | None
+) -> str:
+    """One sentence for the pool page, so no two counters can disagree.
+
+    The cut part is the storyboard's own numbers; it is absent until a cut exists.
+    """
+    kinds = f"{videos} videos" + (f", {photos} photos" if photos else "")
+    line = f"{videos + photos} in the pool ({kinds}) · {ticked} ticked"
+    if in_cut is not None:
+        line += f" · {in_cut} in the cut, {format_duration(cut_seconds or 0.0)}"
+    return line
+
+
+def tick_explanation(*, has_result: bool) -> str:
+    """What a tick means: an exclusion before the first cut, an instruction after it."""
+    if has_result:
+        return "Ticked pictures are in the next cut, unticked ones are out. Cut again applies it."
+    return "Untick a picture to leave it out of the cut."
+
+
+def review_candidates(clips: list) -> list:
+    """The clips the excerpt editor can trim: moving pictures only, a still has no seconds to pick."""
+    from immich_memories.api.models import AssetType
+
+    return [clip for clip in clips if clip.asset.type != AssetType.IMAGE]
+
+
+def render_pool_counters(clips: list, container: ui.element) -> None:
+    """Redraw the counters line from the session: the grids call this on every tick."""
+    from immich_memories.operations.storyboard import read_storyboard
+
+    state = get_app_state()
+    photos = len(state.photo_assets) if state.include_photos and state.photo_assets else 0
+    ticked = len(state.selected_clip_ids)
+    if state.include_photos:
+        ticked = len(state.selected_clip_ids | state.selected_photo_ids)
+    in_cut: int | None = None
+    cut_seconds: float | None = None
+    if state.pipeline_result is not None:
+        board = (
+            read_storyboard(state.editorial_attempt_dir) if state.editorial_attempt_dir else None
+        )
+        if board is not None:
+            in_cut, cut_seconds = len(board.shots), board.total_seconds
+        else:
+            planned = state.pipeline_selected_clips
+            in_cut = len(planned)
+            cut_seconds = sum(clip.duration_seconds for clip in planned)
     container.clear()
-    with container, ui.row().classes("w-full gap-8"):
-        with ui.column().classes("items-center"):
-            ui.label("Selected Clips").classes("text-sm").style("color: var(--im-text-secondary)")
-            ui.label(str(clip_count)).classes("text-xl font-bold").style("color: var(--im-text)")
-        with ui.column().classes("items-center"):
-            ui.label("Total Duration").classes("text-sm").style("color: var(--im-text-secondary)")
-            ui.label(format_duration(total_duration)).classes("text-xl font-bold").style(
-                "color: var(--im-text)"
+    with container:
+        ui.label(
+            pool_counters_line(
+                videos=len(clips),
+                photos=photos,
+                ticked=ticked,
+                in_cut=in_cut,
+                cut_seconds=cut_seconds,
             )
+        ).classes("text-sm font-semibold pool-counters").style("color: var(--im-text)")

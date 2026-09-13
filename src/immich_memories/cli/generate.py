@@ -59,7 +59,11 @@ def register_generate_commands(main: click.Group) -> None:
     @selection_options
     @per_memory_type_options
     @automation_options
-    @click.option("--quiet", is_flag=True, help="Suppress interactive progress, emit log lines")
+    @click.option(
+        "--quiet",
+        is_flag=True,
+        help="Silence the live progress display and print log lines instead (cron, logs); -v sets the log level",
+    )
     @click.pass_context
     def generate(
         ctx: click.Context,

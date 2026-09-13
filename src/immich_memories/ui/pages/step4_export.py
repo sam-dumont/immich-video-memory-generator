@@ -130,7 +130,9 @@ def render_step4() -> None:
             state.step = 2
             ui.navigate.to("/step2")
 
-        im_button("Back to Clip Review", variant="secondary", on_click=go_back, icon="arrow_back")
+        im_button(
+            "Back to the media pool", variant="secondary", on_click=go_back, icon="arrow_back"
+        )
         return
 
     total_duration = sum(

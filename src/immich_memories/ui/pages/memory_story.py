@@ -88,12 +88,13 @@ def _render_story(story: StoryEntry) -> None:
         _render_details(story)
 
 
-def render_story(view: StoryView, warning: str | None = None) -> None:
-    """The thesis, one duration line, then every story with its carriers."""
+def render_story(view: StoryView, warning: str | None = None, *, show_thesis: bool = True) -> None:
+    """The weighed story: one duration line, then every story with its carriers."""
     im_section_header("The story", icon="auto_stories")
-    ui.label(view.thesis or "The editor left no thesis for this cut.").classes("text-lg").style(
-        "color: var(--im-text)"
-    )
+    if show_thesis:
+        ui.label(view.thesis or "The editor left no thesis for this cut.").classes("text-lg").style(
+            "color: var(--im-text)"
+        )
     if view.preparation:
         ui.label(view.preparation).classes("text-sm mt-1").style("color: var(--im-text-secondary)")
     if view.duration is not None:
