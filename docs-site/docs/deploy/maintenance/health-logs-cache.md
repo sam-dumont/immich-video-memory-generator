@@ -6,197 +6,101 @@ sidebar_label: "Health, Logs & Cache"
 
 ## Health endpoints
 
-Use `GET /health/live` for liveness and `GET /health/ready` for readiness. Liveness always returns
-`200` while the web process can answer, with `{"status": "alive", "version": "..."}`. It does not
-contact Immich.
+| Endpoint | Returns | Use it for |
+|---|---|---|
+| `GET /health/live` | `200` while the web process answers, `{"status": "alive", "version": …}`. Never contacts Immich | liveness probe |
+| `GET /health/ready` | `200` with `status: ready` when configuration and authenticated Immich access work; `503` with `status: degraded` otherwise | readiness probe, Uptime Kuma, blackbox exporter |
+| `GET /health` | always `200`; a ready payload is rewritten to `ok` | compatibility only, not a probe |
 
-Readiness checks configuration and Immich. Its payload is `status: ready` with HTTP `200` when both
-are usable, or `status: degraded` with HTTP `503` when configuration is missing or Immich cannot
-be reached. `GET /health` always returns HTTP `200` for compatibility; it rewrites a ready payload
-to `ok` and leaves a degraded payload as `degraded`. Do not use `/health` as a readiness probe.
-
-`/health/ready` returns JSON with the current system status (abridged; the real payload also
-carries automation, pending-delivery, scheduler and Immich blocks):
+`GET /health` always returns HTTP `200` for compatibility and rewrites a ready payload to `ok`; it
+is not a readiness probe. An abridged readiness payload:
 
 ```json
-{
-  "status": "ready",
-  "immich_reachable": true,
-  "last_successful_run": "2025-12-15T10:30:00.000000",
-  "version": "0.59.2"
-}
+{"status": "ready", "immich_reachable": true, "last_successful_run": "2025-12-15T10:30:00", "version": "0.77.2"}
 ```
 
-| Field | Values | Meaning |
-|-------|--------|---------|
-| `status` | `ready` / `degraded` | `ready` only when configuration and authenticated Immich access work; otherwise `degraded` |
-| `immich_reachable` | `true` / `false` | Whether the dependency probe reached Immich; authentication or version failures can still make readiness fail |
-| `last_successful_run` | ISO timestamp or `null` | Last completed video generation, from the run database |
-| `version` | semver string | Installed version of Immich Memories |
-
-The readiness check probes Immich and authenticates the current user, bounded by 5 seconds. If
-Immich is down, the status flips to `degraded` and readiness returns `503`, but the application
-keeps running (you can still browse the UI, review cached clips, etc.).
-
-Use this endpoint with monitoring tools: Uptime Kuma, Prometheus blackbox exporter, or a simple `curl` in a cron job.
+The readiness payload also carries `immich_reachable`, `last_successful_run` (from the run
+database), `version`, and the automation, pending-delivery and scheduler blocks. The Immich probe
+is bounded at 5 seconds. A degraded status does not stop the app: the UI still serves.
 
 ## Logging
 
-The level is `INFO` unless you say otherwise. For one run, `immich-memories -v generate …` logs at
-`DEBUG` and `immich-memories --log-level WARNING generate …` keeps only warnings and errors; both
-are root options, so they go before the subcommand and apply to `ui` as well. For a container,
-set `IMMICH_MEMORIES_LOG_LEVEL=DEBUG`. `generate --quiet` and `auto run --quiet` are a different
-knob: they change what the terminal shows, not what gets logged.
+`INFO` by default. `immich-memories -v generate …` logs at `DEBUG`; `--log-level WARNING` keeps
+warnings and errors. Both are root options, so they go before the subcommand and apply to `ui` as
+well. In a container, `IMMICH_MEMORIES_LOG_LEVEL=DEBUG`. `generate --quiet` and `auto run --quiet`
+are a different knob: they change what the terminal shows, not what is logged.
 
-Two output formats, controlled by the `IMMICH_MEMORIES_LOG_FORMAT` environment variable:
+Lines look like `2025-12-15 10:30:00,123 [INFO] immich_memories.generate [abc123]: Assembling final
+video...`; the bracketed run id ties every line of one run together (`-` outside a run).
+`IMMICH_MEMORIES_LOG_FORMAT=json` switches to one JSON object per line with the same fields, so
+`jq 'select(.run_id=="abc123")'` works. `IMMICH_MEMORIES_LOG_FILE=/path/to/file.log` writes the
+same lines to a file as well as stdout; in Docker, point it at a mounted path.
 
-### Text format (default)
+## Caches
 
-```
-2025-12-15 10:30:00,123 [INFO] immich_memories.generate [abc123]: Assembling final video...
-```
+Everything lives under `~/.immich-memories/cache/` (or `cache.directory`):
 
-Format: `timestamp [LEVEL] logger_name [run_id]: message`
-
-The `run_id` field (the `abc123` part) correlates all log lines from a single pipeline run. When no pipeline is active, it shows `-`.
-
-### JSON format
-
-Set `IMMICH_MEMORIES_LOG_FORMAT=json` for structured output:
-
-```json
-{
-  "timestamp": "2025-12-15T10:30:00.123456+00:00",
-  "level": "INFO",
-  "logger": "immich_memories.generate",
-  "run_id": "abc123",
-  "message": "Assembling final video..."
-}
-```
-
-The `run_id` field only appears when a pipeline run is active. Filter in production with: `jq 'select(.run_id=="abc123")'`.
-
-### Log file
-
-Set `IMMICH_MEMORIES_LOG_FILE=/path/to/immich-memories.log` to write the same lines to a file in
-addition to stdout (same format as chosen above). In Docker, point it at a mounted path.
-
-### Log level
-
-`INFO`. There is no user-facing switch for the log level yet, no env var, no CLI flag. If you
-need `DEBUG` output for a bug report, run from a checkout and call
-`configure_logging(level="DEBUG")` in code.
-
-## Video cache
-
-Downloaded Immich clips are cached locally to avoid re-downloading on repeat runs. The cache lives at `~/.immich-memories/cache/video-cache/` (or the path set in `cache.directory` config).
-
-### How it works
-
-The cache uses a two-level directory structure: `{id[:2]}/{id}{ext}`. When you request a clip, it checks the cache first. On a hit, it runs a quick `ffprobe` on the file and returns the local path; if ffprobe cannot read it (a truncated or corrupt file), the entry is deleted and downloaded again. On a miss, it streams the download into `{id}{ext}.part` and renames it into place only once complete, so a run killed mid-download never leaves a half file that the next run would trust. Leftover `.part` files nobody has written to for an hour are removed at the start of the next run.
-
-### Eviction
-
-Two eviction strategies run automatically:
-
-1. **Age-based eviction**: removes files older than `video_cache_max_age_days` (default: 7 days). Runs at the start of every generation.
-2. **Size-based eviction**: removes oldest files (by modification time, LRU) until the cache is under `video_cache_max_size_gb` (default: 10 GB). Runs after each download during a run, where files the current run already handed out are spared, so a large prefetch can temporarily exceed the cap. It runs once more at the end of the run with nothing spared, which is what makes the cap actually bind.
-
-### Configuration
+| Directory or file | What it holds | Cap |
+|---|---|---|
+| `annotations.sqlite` | every caption, head answer, detector verdict and reading the editor banked, keyed by producer and exact input | none; this is the file to keep |
+| `thumbnails/` | one Immich preview per candidate a memory's scope can reach | `thumbnail_cache_max_size_mb`, 10 GB |
+| `video-cache/` | downloaded Immich clips | `video_cache_max_size_gb` 10 GB, `video_cache_max_age_days` 7 |
+| `preview-cache/`, `previews/` | clip previews for the web UI | `preview_cache_max_size_mb`, 2 GB |
+| `../cache.db` (one level up) | run history, automation state, and the retired scorer's table | none |
 
 ```yaml
 cache:
   directory: ~/.immich-memories/cache
   database: ~/.immich-memories/cache.db
-  max_age_days: 30                  # vestigial: nothing reads this
   video_cache_enabled: true
-  video_cache_max_size_gb: 10.0     # Max disk usage for downloaded videos
-  video_cache_max_age_days: 7       # Evict videos older than this
-  thumbnail_cache_max_size_mb: 10000  # Max disk for Immich previews
-  preview_cache_max_size_mb: 2000     # Max disk for clip previews
+  video_cache_max_size_gb: 10.0
+  video_cache_max_age_days: 7
+  thumbnail_cache_max_size_mb: 10000
+  preview_cache_max_size_mb: 2000
 ```
 
-### Thumbnails: the budget that scales with your library
+`cache.max_age_days` is still accepted and nothing reads it.
 
-`thumbnails/` holds one Immich preview per candidate asset a memory's scope can
-reach, not per clip in the finished cut. Generating a memory reads each of
-those previews back several times: sharpness and exposure, the DINOv2 heads, the
-contact sheets, the caption. Measured on a real library, a preview is about
-**315 KB**, so a 10,793-candidate scope wants roughly 3.4 GB and a real cache
-held 12,159 previews for 3.92 GB.
+### The preview cache scales with your library
 
-Size it by your library:
+Generating a memory reads each candidate's preview several times (sharpness, the heads, the
+contact sheets, the caption). One preview is about 315 KB, so size it as
+`thumbnail_cache_max_size_mb ≈ 0.35 × pictures a memory's scope can reach`; the 10 GB default holds
+about 31,000. Previews the current run uses are never evicted, so a run that does not fit overflows
+the cap rather than losing facts. The price lands on the next overlapping run, which re-downloads
+every preview and re-captions the pictures whose banked caption failure no longer matches the
+bytes it was recorded against. One `WARNING` per run says how far over you are and names the
+setting. The clip and video caches hold one cut's worth of files however big the library is, so
+their caps are plain caps.
 
-```
-thumbnail_cache_max_size_mb ≈ 0.35 × (assets a memory's scope can reach)
-```
+### Video cache mechanics
 
-The 10 GB default holds about 31,000 previews. Previews this run is still using
-are never evicted, so a run whose working set does not fit overflows the limit
-rather than losing facts halfway through. What you pay instead is on the *next*
-run, which reclaims them: the next overlapping memory re-downloads every preview
-and re-captions the assets whose banked caption failure no longer matches the
-bytes it was recorded against. That is model work, not just bandwidth, which is
-why one `WARNING` per run says how far over you are and names the setting.
+Files sit at `{id[:2]}/{id}{ext}`. A hit is `ffprobe`d first; an unreadable file is deleted and
+fetched again. A download streams into `{id}{ext}.part` and is renamed into place only when
+complete, so a run killed mid-download leaves nothing the next run would trust; `.part` files idle
+for an hour are removed at the next start. Age eviction runs at the start of every run; size
+eviction runs after each download (sparing files the run already handed out) and once more at the
+end with nothing spared.
 
-Clip previews (`preview-cache/`, `previews/`) are different: their working set is
-one cut's clips (tens of files per run however big your library is), so 2 GB
-stays a plain cap and needs no rule of thumb. The video cache is the same shape.
+### Clearing
 
-Before these limits existed neither directory had a cap or an expiry, so both
-grew for as long as the app ran: on one real library, 5.2 GB of clip previews
-and 3.5 GB of thumbnails.
-
-The top-level `max_age_days` is vestigial: no code path reads it. Only `video_cache_max_age_days` evicts anything.
-
-### Cache stats and management
-
-From the CLI:
+The UI's Cache page (sidebar, Cache) shows usage and has per-cache **Clear** buttons and **Clear
+all**. From a shell, the video and thumbnail caches are plain directories, safe to delete while the
+app is idle:
 
 ```bash
-# View cache stats
-immich-memories cache stats
+rm -rf ~/.immich-memories/cache/video-cache
+rm -rf ~/.immich-memories/cache/thumbnails
 ```
 
-`cache stats` reports the legacy photo scorer's table, which nothing writes any
-more. So do `cache backup`, `cache export` and `cache import`. The editor's facts and banks are
-in `~/.immich-memories/cache/annotations.sqlite`, one directory down from `cache.db` and untouched
-by any of those four commands (see
-[Editorial annotation setup](../configuration/editorial-preparation.md)).
+Do not point `rm -rf` at `~/.immich-memories/cache` itself: `annotations.sqlite` is inside it, and
+deleting it re-asks the model everything about your library.
 
-The CLI has no `clear` command. To clear caches:
+### The CLI cache commands are not for the banks
 
-- **UI**: the Cache page (sidebar > Cache) shows current usage and has per-cache
-  **Clear** buttons plus a **Clear all**.
-- **Shell**: the video and thumbnail caches are plain directories that are safe to
-  delete while the app is idle:
+`immich-memories cache stats|backup|export|import` read and write `asset_scores`, the retired
+per-clip scorer's table, which nothing writes any more. They do not touch `annotations.sqlite`.
+To move an installation, copy `~/.immich-memories` (Docker: the config volume).
 
-  ```bash
-  rm -rf ~/.immich-memories/cache/video-cache      # downloaded clips (re-downloaded on demand)
-  rm -rf ~/.immich-memories/cache/thumbnails       # UI thumbnails
-  # Docker: docker exec immich-memories rm -rf /home/immich/.immich-memories/cache/video-cache
-  ```
-
-  Do not point `rm -rf` at `~/.immich-memories/cache` itself. The editor's banks are
-  `~/.immich-memories/cache/annotations.sqlite`, inside that directory, and deleting it re-asks
-  the model everything about your library. `~/.immich-memories/cache.db`, one level up, holds run
-  history and automation state.
-
-### Analysis database
-
-Separate from the video cache. `cache.db` holds the run history, the automation state and the
-tables the legacy scorer used to fill. What the editor learned about your library (captions,
-head facts, readings and banked answers) is in `annotations.sqlite`, which persists across video
-cache evictions. You can safely clear the video cache without losing any of it.
-
-`cache.db` has a versioned schema migrator that runs when the store is first opened.
-`annotations.sqlite` has none: it creates tables if they are missing and adds columns additively.
-Neither runs at process startup.
-
-### Disk space planning
-
-The only cache whose size you can predict is the preview cache, from the 315 KB figure above:
-`0.35 × (assets a memory's scope can reach)`, in MB. Everything else is capped rather than
-predicted, so set the caps to what your disk can spare and let eviction do the rest: the video
-cache defaults to 10 GB, clip previews to 2 GB. Output size depends entirely on codec, resolution
-and length; the one measured run put 62 s of 1080p H.264 at 87 MB, or 30 MB under `preset: fast`.
+`cache.db` has a versioned schema migrator that runs when it is first opened. `annotations.sqlite`
+creates tables when missing and adds columns additively. Neither runs at process start.
