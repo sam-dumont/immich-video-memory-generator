@@ -55,19 +55,29 @@ docker compose --profile inference up -d
 curl -s localhost:8092/health
 ```
 
-To put it on a GPU, change the backend it extends in `docker-compose.yml` and the image tag with
-it:
+To put it on a GPU, uncomment the device reservation that ships on the inference service in
+`docker-compose.yml`, and change the image tag with it:
 
 ```yaml
-    extends:
-      file: docker/hwaccel.inference.yml
-      service: cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities:
+                - gpu
 ```
 
 ```bash
 INFERENCE_TAG=latest-cuda docker compose --profile inference up -d
 curl -s localhost:8092/health | grep CUDAExecutionProvider
 ```
+
+The published file names no `extends:`, because it is downloaded on its own and compose resolves
+an `extends:` when the file loads, whatever profiles are on. The CPU backend reserves nothing, so
+there is nothing to write for it, and the CUDA one is the block above. From a checkout you can use
+`docker/hwaccel.inference.yml` instead, which holds both as `extends:` targets.
 
 `/health` names the provider a session is on, or the one it would open on if nothing is loaded yet.
 If it says `CPUExecutionProvider` on a GPU host, the reservation did not reach the container or the
