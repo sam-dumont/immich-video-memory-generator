@@ -1,10 +1,14 @@
-"""Step 2: Clip Review page."""
+"""Step 2: the media pool page.
+
+Everything the brief found, ticked or not, with one counters line and one primary
+action. Before a cut, an untick is an exclusion; after a cut the ticks are the
+owner's instructions and "Cut again" applies them.
+"""
 
 from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from typing import Any
 
 from nicegui import ui
 
@@ -25,10 +29,9 @@ from immich_memories.ui.pages.clip_grid import (
     _update_duration_summary,
     grid_item_date,
 )
-from immich_memories.ui.pages.clip_pipeline import render_pipeline_summary
 from immich_memories.ui.pages.clip_review import _render_review_selected_clips
-from immich_memories.ui.pages.memory_duration import duration_label, set_auto, set_manual_minutes
 from immich_memories.ui.pages.memory_run import CUT_ALREADY_RUNNING, arm_cut
+from immich_memories.ui.pages.step2_helpers import review_candidates, tick_explanation
 from immich_memories.ui.pages.step2_loading import (
     _load_clips,
     _set_initial_selection,
@@ -37,10 +40,6 @@ from immich_memories.ui.pages.step2_loading import (
 from immich_memories.ui.state import AppState, get_app_state
 
 logger = logging.getLogger(__name__)
-
-# ============================================================================
-# Main Step 2 Render Function
-# ============================================================================
 
 
 def _start_over_selection(state: AppState) -> None:
@@ -71,26 +70,11 @@ def _forget_result(state: AppState) -> None:
     state.clip_segments = {}
 
 
-def _handle_duration_mode_change(state: AppState, event: Any) -> None:
-    """Apply the Auto switch and refresh the controls for the new mode."""
-    value = event.value if hasattr(event, "value") else event
-    if value:
-        set_auto(state)
-    else:
-        set_manual_minutes(state, state.target_duration)
-    ui.navigate.to("/step2")
-
-
 def _render_step2_header(state) -> bool:
-    """Render Step 2 header: session guard, date range, cache init, clip loading.
-
-    Returns True if rendering should stop (early return in caller).
-    """
-    # Guard: redirect to step 1 if state was lost
+    """Session guard, cache init and clip loading. Returns True when the caller must stop."""
     if not state.scope_is_selected or not state.immich_url:
         im_info_card(
-            "Session expired \u2014 please reconfigure. "
-            "The server restarted and lost your settings.",
+            "Session expired — please reconfigure. The server restarted and lost your settings.",
             variant="warning",
         )
         im_button(
@@ -103,14 +87,11 @@ def _render_step2_header(state) -> bool:
 
     ensure_caches(state)
 
-    # Load clips if not already loaded
     if not state.clips:
         _load_clips()
         return True
 
-    clips = state.clips
-
-    if not clips:
+    if not state.clips:
         im_info_card("No videos found for the selected criteria.", variant="warning")
 
         def go_back():
@@ -125,42 +106,6 @@ def _render_step2_header(state) -> bool:
         ui.navigate.to("/")
         return True
 
-    if state.pipeline_result:
-        # The pool stays below, with the cut's ticks: untick to leave out, tick to keep in.
-        render_pipeline_summary(state.pipeline_result)
-
-        with ui.row().classes("w-full gap-4 mt-4"):
-
-            def review_clips():
-                state.pipeline_result = None
-                state.review_selected_mode = True
-                ui.navigate.to("/step2")
-
-            def cut_again():
-                if not arm_cut(state, before=lambda: reset_for_recut(state)):
-                    ui.notify(CUT_ALREADY_RUNNING, type="warning")
-                    return
-                ui.navigate.to("/")
-
-            def start_over():
-                _start_over_selection(state)
-                ui.navigate.to("/step2")
-
-            im_button("Cut again", variant="primary", on_click=cut_again, icon="refresh")
-            im_button(
-                "Review & Refine Selected Clips",
-                variant="secondary",
-                on_click=review_clips,
-                icon="edit",
-            )
-            im_button(
-                "Start Over (Select Different Clips)",
-                variant="secondary",
-                on_click=start_over,
-                icon="restart_alt",
-            )
-
-    # Check if in review mode
     if state.review_selected_mode and state.selected_clip_ids:
         _render_review_selected_clips(state.get_selected_clips())
         return True
@@ -168,86 +113,39 @@ def _render_step2_header(state) -> bool:
     return False
 
 
-def _render_compact_stats_bar(state, clips: list[VideoClipInfo]) -> None:
-    """Compact inline stats — renders labels into parent container (no wrapper)."""
-    hdr_count = sum(1 for c in clips if c.is_hdr)
-    fav_count = sum(1 for c in clips if c.asset.is_favorite)
-    total_dur = sum(c.duration_seconds or 0 for c in clips)
-    minutes = int(total_dur // 60)
-    secs = int(total_dur % 60)
+def _render_pool_actions(state) -> None:
+    """One primary action. Before a cut it is Cut; after one it is Cut again."""
+    has_result = state.pipeline_result is not None
 
-    if state.date_range:
-        ui.label(str(state.date_range.description)).classes("text-sm").style(
-            "color: var(--im-text-secondary)"
-        )
-    ui.label(f"{len(clips)} clips").classes("text-sm font-semibold").style("color: var(--im-text)")
-    ui.label(f"{minutes}:{secs:02d} total").classes("text-sm").style(
+    def cut() -> None:
+        before = (lambda: reset_for_recut(state)) if has_result else None
+        if not arm_cut(state, before=before):
+            ui.notify(CUT_ALREADY_RUNNING, type="warning")
+            return
+        ui.navigate.to("/")
+
+    def trim_clips() -> None:
+        # The result stays: trimming edits the cut, it does not discard it.
+        state.review_selected_mode = True
+        ui.navigate.to("/step2")
+
+    def start_over() -> None:
+        _start_over_selection(state)
+        ui.navigate.to("/step2")
+
+    ui.label(tick_explanation(has_result=has_result)).classes("text-sm tick-explanation").style(
         "color: var(--im-text-secondary)"
     )
-    if hdr_count:
-        ui.label(f"{hdr_count} HDR").classes("text-sm").style("color: var(--im-text-secondary)")
-    if fav_count:
-        ui.label(f"{fav_count} favorites").classes("text-sm").style(
-            "color: var(--im-text-secondary)"
-        )
-
-
-def _render_step2_controls(state, clips: list[VideoClipInfo]) -> None:
-    """Render the Generate Memories controls in a collapsible panel."""
-    hdr_count = sum(1 for c in clips if c.is_hdr)
-    fav_count = sum(1 for c in clips if c.asset.is_favorite)
-
-    with ui.expansion("Generate Memories", icon="auto_awesome", value=True).classes("w-full"):
-        # All controls in one flowing row
-        with ui.row().classes("w-full gap-4 items-end flex-wrap"):
-            ui.switch(
-                "Auto duration",
-                value=state.duration_mode == "auto",
-                on_change=lambda event: _handle_duration_mode_change(state, event),
-            ).tooltip(
-                "Uses about two good moments per active day, plus titles, "
-                "and shortens sparse memories automatically"
-            )
-            if state.duration_mode == "auto":
-                ui.label(duration_label(state)).classes("text-base font-semibold mb-2")
-            else:
-                ui.number(
-                    "Target duration (min)",
-                    value=state.target_duration,
-                    min=0.25,
-                    max=60,
-                    step=0.25,
-                ).classes("w-40").on_value_change(
-                    lambda e: set_manual_minutes(
-                        state,
-                        e.value if hasattr(e, "value") else e,
-                    )
+    with ui.row().classes("w-full gap-4 mt-2"):
+        if has_result:
+            im_button("Cut again", variant="primary", on_click=cut, icon="refresh")
+            if review_candidates(state.get_selected_clips()):
+                im_button(
+                    "Trim the video clips", variant="secondary", on_click=trim_clips, icon="edit"
                 )
-            ui.label(f"{len(clips)} clips ({hdr_count} HDR, {fav_count} favorites)").classes(
-                "text-sm"
-            ).style("color: var(--im-text-secondary)")
-            ui.checkbox("HDR clips only", value=state.hdr_only).on_value_change(
-                lambda e: setattr(state, "hdr_only", e.value if hasattr(e, "value") else e)
-            )
-
-        if state.hdr_only and hdr_count == 0:
-            im_info_card(
-                "No HDR clips found. Disable 'HDR clips only' to select clips.", variant="warning"
-            )
-
-        def start_generate():
-            before = (lambda: reset_for_recut(state)) if state.pipeline_result else None
-            if not arm_cut(state, before=before):
-                ui.notify(CUT_ALREADY_RUNNING, type="warning")
-                return
-            ui.navigate.to("/")
-
-        im_button(
-            "Generate Memories",
-            variant="primary",
-            on_click=start_generate,
-            icon="auto_awesome",
-        ).classes("w-full mt-2")
+            im_button("Start over", variant="ghost", on_click=start_over, icon="restart_alt")
+        else:
+            im_button("Cut", variant="primary", on_click=cut, icon="auto_awesome")
 
 
 def _make_lazy_loader(
@@ -329,14 +227,6 @@ def _render_view_toggle(state) -> None:
         list_btn.tooltip("Detailed list view")
 
 
-def _build_header_label(clips: list[VideoClipInfo], state) -> str:
-    """Build the header label showing video and photo counts."""
-    photo_count = len(state.photo_assets) if state.include_photos and state.photo_assets else 0
-    if photo_count:
-        return f"{len(clips)} Videos, {photo_count} Photos Found"
-    return f"{len(clips)} Videos Found"
-
-
 def _build_mixed_items(clips: list[VideoClipInfo], state) -> list[GridItem]:
     """Merge clips and photos into a single chronologically sorted list."""
     if not state.include_photos or not state.photo_assets:
@@ -351,8 +241,9 @@ def _render_step2_content(
     clips: list[VideoClipInfo],
     summary_container: ui.element,
 ) -> None:
-    """Render the clip grid and navigation section."""
-    im_section_header(_build_header_label(clips, state), icon="video_library")
+    """The grid or the list: photos and videos in one chronological pool."""
+    period = str(state.date_range.description) if state.date_range else ""
+    im_section_header(f"The pool{': ' + period if period else ''}", icon="video_library")
 
     with ui.row().classes("w-full items-center gap-2 mb-2"):
         ui.element("div").classes("flex-grow")
@@ -375,36 +266,6 @@ def _render_step2_content(
     else:
         _render_period_expansions(clips, summary_container)
 
-    # Show included photos if enabled
-    if state.include_photos and state.photo_assets:
-        _render_photo_preview(state)
-
-
-def _render_photo_preview(state) -> None:
-    """Show a compact preview grid of photos that will be included."""
-
-    from immich_memories.ui.pages.step2_helpers import render_thumbnail
-
-    photos = state.photo_assets
-    im_section_header(f"{len(photos)} Photos Included", icon="photo_library")
-
-    max_preview = 30
-    with (
-        ui.element("div")
-        .classes("w-full grid gap-2")
-        .style("grid-template-columns: repeat(auto-fill, minmax(80px, 1fr))")
-    ):
-        for photo in photos[:max_preview]:
-            with ui.element("div").tooltip(photo.original_file_name or photo.id):
-                render_thumbnail(
-                    photo.id, classes="w-full rounded", style="aspect-ratio: 1; object-fit: cover"
-                )
-
-    if len(photos) > max_preview:
-        ui.label(f"+ {len(photos) - max_preview} more photos").classes("text-sm mt-1").style(
-            "color: var(--im-text-secondary)"
-        )
-
 
 def _render_step2_nav(state) -> None:
     """Render navigation buttons at the bottom."""
@@ -416,10 +277,17 @@ def _render_step2_nav(state) -> None:
             ui.navigate.to("/")
 
         im_button("Back to the brief", variant="secondary", on_click=go_back, icon="arrow_back")
+        if state.pipeline_result is not None:
+            im_button(
+                "Back to the cut",
+                variant="ghost",
+                on_click=lambda: ui.navigate.to("/"),
+                icon="view_timeline",
+            )
 
 
 def render_step2() -> None:
-    """Render Step 2: Clip Review."""
+    """Render the media pool page."""
     state = get_app_state()
 
     if _render_step2_header(state):
@@ -427,17 +295,9 @@ def render_step2() -> None:
 
     clips = state.clips
 
-    # Compact stats + duration summary in one flowing row
-    with ui.row().classes("w-full items-center gap-6 flex-wrap mb-2"):
-        _render_compact_stats_bar(state, clips)
-        summary_container = ui.element("div")
-        _update_duration_summary(clips, summary_container)
-
-    # Generate Memories controls (expanded, prominent) — cache info inside
-    _render_step2_controls(state, clips)
-
-    # Clip grid/list
+    # One counters line; the grids redraw it on every tick.
+    summary_container = ui.element("div").classes("w-full mb-1")
+    _update_duration_summary(clips, summary_container)
+    _render_pool_actions(state)
     _render_step2_content(state, clips, summary_container)
-
-    # Navigation at the very bottom
     _render_step2_nav(state)

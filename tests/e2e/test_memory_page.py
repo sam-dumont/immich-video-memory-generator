@@ -113,7 +113,7 @@ def test_the_storyboard_is_the_default_view_and_plays_in_capture_order(
         [STORY_OF[picture.asset_id].title for picture in LIBRARY]
     )
     expect(page.locator(".storyboard-chapter")).to_have_text(["June 2024"])
-    expect(page.get_by_text(f"{len(LIBRARY)} shots, 0:", exact=False)).to_be_visible()
+    expect(page.get_by_text(f"{len(LIBRARY)} pictures, 0:", exact=False)).to_be_visible()
 
     # The weighed story is one tab away and comes back the same way.
     page.get_by_role("tab", name="Story", exact=True).click()
@@ -197,7 +197,9 @@ def test_the_media_pool_stays_reachable_from_advanced(page: Page, launch_app_url
 
     page.get_by_role("button", name="Open the media pool").click()
 
-    expect(page.get_by_text("3 Videos, 3 Photos Found", exact=True)).to_be_visible(timeout=60_000)
+    expect(page.get_by_text("6 in the pool (3 videos, 3 photos)", exact=False)).to_be_visible(
+        timeout=60_000
+    )
     for filename in _POOL_FILES:
         expect(page.get_by_text(filename, exact=True).first).to_be_visible()
 
@@ -209,7 +211,9 @@ def test_the_media_pool_loads_its_pictures_through_the_media_route(
     _brief_for_june(page, launch_app_url)
     page.get_by_text("Advanced", exact=True).click()
     page.get_by_role("button", name="Open the media pool").click()
-    expect(page.get_by_text("3 Videos, 3 Photos Found", exact=True)).to_be_visible(timeout=60_000)
+    expect(page.get_by_text("6 in the pool (3 videos, 3 photos)", exact=False)).to_be_visible(
+        timeout=60_000
+    )
 
     routed = page.locator("img[src^='/media/thumb/']")
     expect(routed.first).to_be_visible(timeout=30_000)
@@ -244,7 +248,7 @@ def test_the_story_reads_in_reader_words_and_hides_the_answer_schema_behind_deta
 
 
 # The wide filler month: one clip and forty-one stills, so the pool has to page.
-_BIG_POOL = f"1 Videos, {len(BIG_MONTH) - 1} Photos Found"
+_BIG_POOL = f"{len(BIG_MONTH)} in the pool (1 videos, {len(BIG_MONTH) - 1} photos)"
 _PAGE = CLIPS_PER_PAGE
 
 
@@ -263,7 +267,7 @@ def test_the_media_pool_shows_one_page_at_a_time(page: Page, launch_app_url: str
     _choose(page, "Memory type", "Monthly Highlights")
     _choose(page, "Month", "May")
     _open_media_pool(page)
-    expect(page.get_by_text(_BIG_POOL, exact=True)).to_be_visible(timeout=60_000)
+    expect(page.get_by_text(_BIG_POOL, exact=False)).to_be_visible(timeout=60_000)
     total = len(BIG_MONTH)
 
     expect(_grid_images(page).first).to_be_visible(timeout=30_000)
@@ -286,7 +290,9 @@ def test_a_tick_in_the_compact_grid_performs_no_navigation(page: Page, launch_ap
     """A toggled cell redraws in place; the page is not reloaded around it (#824)."""
     _brief_for_june(page, launch_app_url)
     _open_media_pool(page)
-    expect(page.get_by_text("3 Videos, 3 Photos Found", exact=True)).to_be_visible(timeout=60_000)
+    expect(page.get_by_text("6 in the pool (3 videos, 3 photos)", exact=False)).to_be_visible(
+        timeout=60_000
+    )
     # The view toggle itself navigates; let that page settle before planting the marker.
     page.locator("button").filter(has=page.locator("i:has-text('grid_view')")).click()
     page.wait_for_load_state("networkidle")
@@ -309,15 +315,16 @@ def test_review_rows_hold_a_video_only_while_they_are_open(page: Page, launch_ap
     page.get_by_role("button", name="Cut", exact=True).click()
     expect(page.get_by_text(_THESIS)).to_be_visible(timeout=120_000)
     page.get_by_role("button", name="Review the pool").click()
-    page.get_by_role("button", name="Review & Refine Selected Clips").click()
+    page.get_by_role("button", name="Trim the video clips").click()
 
-    # Every picture the cut kept has a row, stills included; rows are in capture order.
+    # Only the videos the cut kept have a row: a still has no seconds to trim; rows are in capture order.
+    videos = [p for p in LIBRARY if p.is_video]
     rows = page.locator(".review-clip-row")
-    expect(rows).to_have_count(len(LIBRARY), timeout=30_000)
+    expect(rows).to_have_count(len(videos), timeout=30_000)
     expect(page.locator(".review-clip-row video")).to_have_count(1, timeout=60_000)
 
     # The fourth picture in capture order is a video; a still would never hold a <video>.
-    second_video = next(i for i, p in enumerate(LIBRARY) if p.is_video and i > 0)
+    second_video = 1
     rows.nth(second_video).locator(".q-expansion-item__toggle-icon").first.click()
     expect(page.locator(".review-clip-row video")).to_have_count(2, timeout=60_000)
 

@@ -12,12 +12,12 @@ Three pages sit outside the memory flow, reachable from the sidebar at any time:
 reads every named person's picture count and month curve from Immich, and never a pixel. The page
 shows what it inferred and gives you one place to answer.
 
-**Start with a scan.** A fresh install shows "No people file yet". Press **Rescan the library**:
+**Start with a scan.** A fresh install shows "No people file yet" under the two buttons that fix it. Press **Rescan the library**:
 it reads the counts, writes the file and draws the roster. Rescan again whenever the library has
 changed. Everything under `inferred:` is recomputed by a scan; everything you confirm on this page
 is written under `confirmed:` and a scan never touches it. Confirmed beats inferred.
 
-**The roster** lists people 20 to a page, inner circle first, busiest first within a tier. Each
+**The roster** lists people 20 to a page, inner circle first, busiest first within a tier. **Find a name** above the pager narrows it to the names containing what you type. Each
 card carries the tier the scan gave (`inner`, `recurring`, `episodic`, `event`) and the evidence
 behind it, the birth date from Immich (read-only here: edit it in Immich), and a face crop.
 Face crops load as the cards come into view, through the app's own media route, so a household
@@ -25,7 +25,7 @@ of seventy is not seventy requests before the page draws.
 
 **What you can answer on a card:**
 
-- **Role**: pick one of the suggestions or type your own. Saved when you pick it.
+- **Role**: the list is suggestions; pick one or type your own. Saved when you pick it.
 - **Notes**: free text for the editor's context, saved once you stop typing for a second. The
   same text typed twice is not written twice.
 - **Relationships**: the scan proposes edges (co-appearance, birth date, month curves) with its

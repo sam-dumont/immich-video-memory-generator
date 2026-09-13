@@ -61,15 +61,15 @@ Three tabs: **Year** (a year, then **Calendar Year** or **From Birthday**, a bir
 
 - the **Immich connection** panel (URL, API key, Test Connection, Save Config; read [Settings](./settings.mdx#saving-config-from-the-memory-page-and-what-it-costs-you) before pressing Save);
 - the **pool switches** the selection route reads: **Include Photos**, **Include Live Photos** (the editor may play a Live Photo's motion when it earns it), **Accept Forwarded Media** (keep WhatsApp and other received media in the pool), **HDR clips only**;
-- **Open the media pool**, which goes to the Clip Review page.
+- **Open the media pool**, which goes to the Media pool page.
 
 ### The media pool page
 
-The pool is everything the brief found: videos, Live Photos and, with the switch on, photos, grouped by month with an **Include** checkbox each, twenty to a page with **Previous page** and **Next page** under the grid (only the page you are on is in the browser, so a pool of two thousand pictures costs no more than one of twenty). In the compact grid a click on a picture flips its tick in place. Everything starts checked. Checked media is what the editor cuts from, so untick what may never be used: the accidental pocket recording, the screenshot you forwarded. Twins and bursts are the editor's to judge; nothing here pre-deselects them.
+The pool is everything the brief found: videos, Live Photos and, with the switch on, photos, in one chronological grid with an **Include** checkbox each, twenty to a page with **Previous page** and **Next page** under the grid (only the page you are on is in the browser, so a pool of two thousand pictures costs no more than one of twenty). One line above the grid carries every number the page has: how many are in the pool (videos and photos), how many are ticked and, once a cut exists, how many it kept and for how long, the same figures the storyboard shows. Under it one sentence says what a tick means right now. In the compact grid a click on a picture flips its tick in place. Everything starts checked. Checked media is what the editor cuts from, so untick what may never be used: the accidental pocket recording, the screenshot you forwarded. Twins and bursts are the editor's to judge; nothing here pre-deselects them.
 
 After a cut the same checkboxes show the cut: ticked means in it. Two moves are yours from there. Untick a picture the editor kept and **Cut again** leaves it out. Tick a picture the editor dropped and **Cut again** keeps it in, in its own story, at its capture time. The editor reads the period exactly as before and adds your picture afterwards; it is not argued about a second time. The one thing that still outranks your tick is the family-viewing gate: a picture it refuses stays out, and the run's `owner-required-after-audience` record names it. **Start Over** forgets the cut, so the checkboxes go back to meaning only "may be used".
 
-The page has its own **Generate Memories** button, which cuts from the checked pool with the same duration line as the brief, and after a cut a **Review & Refine** screen: one expansion per selected clip, ten to a page, with an **Include in compilation** checkbox, a **Select range** slider for the excerpt (plus **First 5s**, **Middle 5s**, **Last 5s**, **Full clip**, **Preview**) and a **Rotation** select. A row loads its video preview when you open it and lets it go when you close it; only the first row starts open. Your edits are projected back onto the cut; the final duration updates as you trim.
+The page has one primary button: **Cut** before a cut exists, **Cut again** after one. Both use the duration from the brief. After a cut, **Trim the video clips** opens the excerpt editor: one expansion per video in the cut (stills have no seconds to pick, so they are not listed), ten to a page, with an **Include in compilation** checkbox, a **Select range** slider for the excerpt (plus **First 5s**, **Middle 5s**, **Last 5s**, **Full clip**, **Preview**) and a **Rotation** select. A row loads its video preview when you open it and lets it go when you close it; only the first row starts open. Your edits are projected back onto the cut; the final duration updates as you trim.
 
 ## Cut
 
@@ -81,7 +81,7 @@ While it runs the page shows one row per phase (**Finding media**, **Loading thu
 
 A stage that counts its work draws a bar with its count: the preparation passes (previews, pixel facts, the detectors) and the reader's requests. The preparation passes also show a strip of the last twelve pictures they finished; it goes away once the edit starts, since nothing new arrives then. If the reader stops answering, the Editing row says so at once: *Waiting for the reader at omlx.local:9999: connection dropped, retry 1 of 3*. The run retries three times, two then four seconds apart, and fails only after the third drop, so a server that is restarting survives and one that is off is named within a second. The rows, the bar and the CLI's progress line all read the one record the run writes per stage (phase, stage, done, total), so a reload rejoins the bar where it left it and the terminal shows the same position for the same cut. **Details** folds open the run's stage lines, newest last, the last few dozen of them; it stays closed, so the rows are what you see unless you ask.
 
-One session runs one cut at a time: **Cut**, **Cut again** and the pool page's **Generate Memories** are refused while a cut is running. The run belongs to the session, not the tab. Reload the page mid-cut and it lands on the same rows: the page polls the attempt the run writes under the cache directory (`editorial-runs/<key>/latest-attempt.private.json`), and when the run finishes the story appears without a second run. A cut that was cancelled, failed, or interrupted (the process that ran it is gone, which the attempt's released lease tells apart from a slow live run) is reported on the page with **Cut again**. A cut that finished while the session held no result for it is read back from the attempt, and **Re-load media to export** fetches the pool again and rebuilds the selection from the attempt's projection so Export works.
+One session runs one cut at a time: **Cut** and **Cut again** are refused while a cut is running, on either page. The run belongs to the session, not the tab. Reload the page mid-cut and it lands on the same rows: the page polls the attempt the run writes under the cache directory (`editorial-runs/<key>/latest-attempt.private.json`), and when the run finishes the story appears without a second run. A cut that was cancelled, failed, or interrupted (the process that ran it is gone, which the attempt's released lease tells apart from a slow live run) is reported on the page with **Cut again**. A cut that finished while the session held no result for it is read back from the attempt, and **Re-load media to export** fetches the pool again and rebuilds the selection from the attempt's projection so Export works.
 
 ## The result: the storyboard, then the story
 
@@ -89,10 +89,10 @@ When the cut finishes the page opens on the **Storyboard**: the cut in the order
 
 <ThemedScreenshot name="memory-story" alt="The storyboard: the thesis, then one shot per picture in capture order with its day, story and running timecode" />
 
-- the **thesis**: the editor's one-paragraph reading of the period;
-- one line with the number of shots and the content time they add up to (transitions come on top at render);
+- the **thesis**, above both tabs: the editor's one-paragraph reading of the period;
+- one line with the number of pictures and the seconds of pictures and video they add up to; titles and transitions make up the rest of the film;
 - a **chapter** label each time the month changes, the way the finished video gets one divider per month shown;
-- one **shot** per picture, in capture order: the running timecode where it starts, a small thumbnail, the capture day (in bold when the day changes), a camera or photo icon, the seconds it holds, the story it was granted to, the moment it depicts when the editor recorded one, and the editor's one-line reason.
+- one row per picture, in capture order: the running timecode where it starts, a small thumbnail, the capture day (in bold when the day changes), a **Video** or **Still** badge, the seconds it holds, the story it was granted to, the moment it depicts when the editor recorded one, and the editor's one-line reason.
 
 Read a story's day labels down the list. Two pictures under one story title on the same day is a moment; six pictures under one title across three bold days is a grouping that went loose, and this is where you see it.
 
@@ -108,7 +108,7 @@ The **Story** tab is the same cut the way the editor weighed it:
 A cut that left no plan behind shows its counts instead. Below both tabs, four buttons:
 
 - **Export**: straight to Preview & Export, below.
-- **Review the pool**: the media pool with the cut's picks, and the excerpt editor.
+- **Review the pool**: the media pool with the cut's picks; from there, **Trim the video clips**.
 - **Cut again**: the editor runs again over the same pool, with your ticks: unticked pictures stay out, pictures you ticked back in are kept.
 - **Change the brief**: back to an empty brief.
 

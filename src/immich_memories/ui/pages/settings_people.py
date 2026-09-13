@@ -70,18 +70,30 @@ class _RosterView:
     """Where the user is in the roster, kept across redraws."""
 
     page: int = 0
+    query: str = ""
 
 
-def roster_page(people: list[PersonView], page: int) -> tuple[list[PersonView], str]:
-    """The slice of the roster to draw for a page, and the label that says so."""
+def filtered_roster(people: list[PersonView], query: str) -> list[PersonView]:
+    """The people whose name contains the query, all of them when it is blank."""
+    needle = query.strip().lower()
+    return [person for person in people if needle in person.name.lower()] if needle else people
+
+
+def roster_page(
+    people: list[PersonView], page: int, query: str = ""
+) -> tuple[list[PersonView], str]:
+    """The slice of the roster to draw for a page, after the name filter, and its label."""
+    needle = query.strip().lower()
+    people = filtered_roster(people, query)
     total = len(people)
     if total == 0:
-        return [], "Nobody yet"
+        return [], "Nobody matching" if needle else "Nobody yet"
     last = (total - 1) // ROSTER_PAGE_SIZE
     page = min(max(page, 0), last)
     start = page * ROSTER_PAGE_SIZE
     shown = people[start : start + ROSTER_PAGE_SIZE]
-    return shown, f"Showing {start + 1}–{start + len(shown)} of {total}"
+    suffix = " matching" if needle else ""
+    return shown, f"Showing {start + 1}–{start + len(shown)} of {total}{suffix}"
 
 
 def settle(
@@ -127,6 +139,7 @@ def render_people_page() -> None:
     flags_column = ui.column().classes("w-full gap-2")
 
     im_section_header("The roster", icon="groups")
+    actions_row = ui.row().classes("w-full items-center gap-3 mb-2")
     roster_column = ui.column().classes("w-full gap-3")
 
     def refresh() -> None:
@@ -146,7 +159,8 @@ def render_people_page() -> None:
         ui.notify(f"{found} people in {path}", type="positive")
         refresh()
 
-    with ui.row().classes("w-full items-center gap-3 mb-2"):
+    # Above the roster: on a fresh install the empty-state card must sit under the button that fixes it.
+    with actions_row:
         im_button("Rescan the library", variant="secondary", on_click=rescan, icon="refresh")
         add_person_dialog = _add_person_dialog(path, refresh)
         im_button(
@@ -235,14 +249,23 @@ def _draw_roster(
                 variant="warning",
             )
             return
-        shown, label = roster_page(people, view.page)
-        _pager(people, view, label, refresh)
+        shown, label = roster_page(people, view.page, view.query)
+
+        def on_query(event) -> None:
+            view.query = str(event.value or "")
+            view.page = 0
+            refresh()
+
+        ui.input(label="Find a name", value=view.query, on_change=on_query).props(
+            "dense outlined clearable debounce=400"
+        ).classes("w-64 roster-filter")
+        _pager(filtered_roster(people, view.query), view, label, refresh)
         for person in shown:
             _person_card(person, people, path, refresh)
 
 
 def _pager(people: list[PersonView], view: _RosterView, label: str, refresh: Refresh) -> None:
-    last = (len(people) - 1) // ROSTER_PAGE_SIZE
+    last = max(len(people) - 1, 0) // ROSTER_PAGE_SIZE
     view.page = min(max(view.page, 0), last)
 
     def turn(step: int) -> None:
@@ -348,7 +371,7 @@ def _confirm_controls(person: PersonView, path: Path) -> None:
         ui.select(
             options=_role_options(person.role),
             value=person.role,
-            label="Role",
+            label="Role (suggestions; type your own)",
             with_input=True,
             new_value_mode="add-unique",
             clearable=True,

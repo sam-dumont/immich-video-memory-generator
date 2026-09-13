@@ -224,7 +224,7 @@ def _resolve_motion_and_timing(
     retained_motion = RetainedMotion(ports.resolve_motion)
     run.carriers = retained_motion(run.carriers)
     run.selection_stages["before_picture_review"] = len(run.carriers)
-    _announce_count(len(run.carriers), "into the picture review")
+    _announce_count(len(run.carriers), "going into the picture review")
     # Audience-eligible funded pictures and completion additions reuse prior results.
     run.carriers = retained_motion(run.carriers)
     run.motion_metrics = retained_motion.metrics
@@ -546,7 +546,7 @@ def _select(
         "after_funded_acquisition": len(run.carriers),
         "before_shareability": len(run.carriers),
     }
-    _announce_count(len(run.carriers), "into the audience gate")
+    _announce_count(len(run.carriers), "going into the family-viewing check")
     share_log = _apply_audience_gate(run, gate, selection, material, wall)
     if required - {c["asset_id"] for c in run.carriers}:
         # The safety gate keeps its authority over an owner tick; say so where the owner can read it.

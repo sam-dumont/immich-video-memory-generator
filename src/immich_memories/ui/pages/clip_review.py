@@ -1,4 +1,4 @@
-"""Clip review/refinement UI for Step 2: Clip Review."""
+"""The excerpt editor on the media pool page: pick the seconds each video shows."""
 
 from __future__ import annotations
 
@@ -420,12 +420,12 @@ def _render_review_nav(state) -> None:
             else:
                 ui.notify("Please select at least one clip", type="warning")
 
-        ui.button("Back to Selection", on_click=go_back_selection, icon="arrow_back").props(
+        ui.button("Back to the media pool", on_click=go_back_selection, icon="arrow_back").props(
             "outline"
         )
         ui.button("Reload the pool", on_click=reload_pool, icon="refresh").props("outline")
         ui.button(
-            "Continue to Generation",
+            "Next: Generation Options",
             on_click=continue_to_generation,
             icon="arrow_forward",
         ).props("color=primary")
@@ -435,16 +435,18 @@ def _render_review_selected_clips(clips: list[VideoClipInfo]) -> None:
     """Render the review/refinement UI for selected clips only."""
     state = get_app_state()
 
-    ui.label("Review & Refine Selected Clips").classes("text-xl font-semibold")
-    ui.label("Adjust time segments, preview clips, and remove any unwanted selections.").classes(
+    from immich_memories.ui.pages.step2_helpers import review_candidates
+
+    ui.label("Trim the video clips").classes("text-xl font-semibold")
+    ui.label("Pick the seconds each video shows and preview it. Stills need no trimming.").classes(
         "text-sm mb-4"
     ).style("color: var(--im-text-secondary)")
 
-    selected_clips = [c for c in clips if c.asset.id in state.selected_clip_ids]
+    selected_clips = review_candidates([c for c in clips if c.asset.id in state.selected_clip_ids])
 
     if not selected_clips:
         with ui.card().classes("w-full p-4").style("background: var(--im-warning-bg)"):
-            ui.label("No clips selected. Return to generate new selections.").style(
+            ui.label("No video clips in the cut; there is nothing to trim.").style(
                 "color: var(--im-warning-text)"
             )
 
@@ -452,7 +454,7 @@ def _render_review_selected_clips(clips: list[VideoClipInfo]) -> None:
             state.review_selected_mode = False
             ui.navigate.to("/step2")
 
-        ui.button("Back to Clip Selection", on_click=go_back, icon="arrow_back")
+        ui.button("Back to the media pool", on_click=go_back, icon="arrow_back")
         return
 
     for clip in selected_clips:

@@ -1,4 +1,4 @@
-"""Pipeline execution UI for Step 2: Clip Review."""
+"""Pipeline execution UI for Step 2: the media pool."""
 
 from __future__ import annotations
 
