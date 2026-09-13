@@ -122,6 +122,9 @@ class EditorialSelectionRequest:
 
     scope: SourceScope
     owner_excluded_asset_ids: tuple[str, ...] = ()
+    # Pictures the owner ticked after seeing a cut: admitted after the read, never argued
+    # about again. A post-read signal, so it changes no prompt and no digest input.
+    owner_required_asset_ids: tuple[str, ...] = ()
     evidence_exclusions: Mapping[str, str] = field(default_factory=dict)
 
 
@@ -146,6 +149,7 @@ class PreparedEditorialSource:
     trace: Trace
     episode_groups: tuple[EditorialGroup, ...]
     moment_groups: tuple[EditorialGroup, ...]
+    owner_required_asset_ids: tuple[str, ...] = ()
 
     @property
     def candidate_ids(self) -> tuple[str, ...]:
@@ -252,6 +256,7 @@ def prepare_editorial_source(
         trace=trace,
         episode_groups=grouped.episode_groups,
         moment_groups=grouped.moment_groups,
+        owner_required_asset_ids=_required_in_pool(request, grouped.candidates, trace),
     )
     _validate_prepared_source(prepared)
     return prepared
@@ -325,6 +330,19 @@ def _candidate_from(
         ),
         grounded_annotations=grounded_annotations,
     )
+
+
+def _required_in_pool(
+    request: EditorialSelectionRequest,
+    candidates: tuple[EditorialCandidate, ...],
+    trace: Trace,
+) -> tuple[str, ...]:
+    """Keep the required ids the pool can honour; name the ones it cannot."""
+    in_pool = {candidate.asset_id for candidate in candidates}
+    for asset_id in request.owner_required_asset_ids:
+        if asset_id not in in_pool:
+            trace.warnings.append(f"owner required picture is not in the eligible pool: {asset_id}")
+    return tuple(asset_id for asset_id in request.owner_required_asset_ids if asset_id in in_pool)
 
 
 def _visual_source_from(

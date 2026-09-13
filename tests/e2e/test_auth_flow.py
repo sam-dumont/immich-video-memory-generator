@@ -204,3 +204,11 @@ def test_sign_out(
         page.wait_for_timeout(2000)
         # Should be back on login page
         assert "/login" in page.url
+
+
+def test_the_media_route_is_behind_the_login(auth_server_url: str) -> None:
+    """A thumbnail URL without a session goes where every other page goes: to the login."""
+    response = httpx.get(f"{auth_server_url}/media/thumb/some-asset", follow_redirects=False)
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/login"
