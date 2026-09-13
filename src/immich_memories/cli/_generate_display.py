@@ -8,6 +8,7 @@ of that module is about resolving what to generate.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from rich.table import Table
@@ -15,10 +16,31 @@ from rich.table import Table
 from immich_memories.cli._helpers import print_success
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from immich_memories.config_loader import Config
     from immich_memories.timeperiod import DateRange
+
+
+# One line when it fits an 80-column terminal, else the path indented under the
+# label, and never Rich-highlighted: a magenta path reads as an error. A path
+# under the home directory is shown with ~, the way a person would type it.
+_SAVED_LABEL = "Video saved to:"
+_SAVED_LINE_WIDTH = 80
+
+
+def display_path(path: Path | str) -> str:
+    """A path as a person would write it: ~ for the home directory, unchanged otherwise."""
+    text = str(path)
+    home = str(Path.home())
+    if home and home != "/" and text.startswith(home + "/"):
+        return "~" + text[len(home) :]
+    return text
+
+
+def saved_path_line(path: Path | str) -> str:
+    shown = display_path(path).replace("[", "\\[")
+    if len(_SAVED_LABEL) + 1 + len(shown) + 2 <= _SAVED_LINE_WIDTH:
+        return f"{_SAVED_LABEL} {shown}"
+    return f"{_SAVED_LABEL}\n  {shown}"
 
 
 def _add_scope_rows(table: Table, *, album_ref: str | None, date_range: DateRange) -> None:
@@ -89,7 +111,7 @@ def _build_params_table(
     table.add_row("Transition", transition)
     table.add_row("Resolution", resolution)
     table.add_row("Format", output_format or config.output.codec)
-    table.add_row("Output", str(output_path))
+    table.add_row("Output", display_path(output_path))
     if add_date:
         table.add_row("Date Overlay", "Enabled")
     if add_place:
@@ -136,8 +158,6 @@ def _print_generation_result(
     if no_render:
         print_success("Selection complete; no video was created (--no-render)")
         return
-    # The path gets its own line: a long temp path wrapped mid-word on an 80-column terminal.
-    print_success("Video saved to:")
-    print_success(f"  {result_path}")
+    print_success(saved_path_line(result_path), highlight=False)
     if should_upload:
         print_success(f"Uploaded to Immich (album: {album_name or 'none'})")

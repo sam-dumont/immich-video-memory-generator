@@ -215,7 +215,7 @@ def _decision_log(carriers: Sequence[dict]) -> dict:
     trace.clips = {row["asset_id"]: f"{row['kind']}, {row['taken'][:10]}" for row in carriers}
     trace.editorial_passes.append(
         PassTrace(
-            name="hermetic-review",
+            name="picture_review",
             input_ids=ids,
             kept_ids=ids,
             rejected=(),
@@ -223,7 +223,7 @@ def _decision_log(carriers: Sequence[dict]) -> dict:
             duration_before=float(sum(row["seconds"] for row in carriers)),
             duration_after=float(sum(row["seconds"] for row in carriers)),
             provenance=DecisionProvenance(  # noqa: S106 - pass names, not secrets
-                pass_name="hermetic-review",  # noqa: S106
+                pass_name="picture_review",  # noqa: S106
                 pass_version="fixture",  # noqa: S106
                 schema_version="fixture",
                 model_identity="none",

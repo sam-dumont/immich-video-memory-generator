@@ -12,7 +12,7 @@ type Props = {
 
 const NAV_STEPS = [
   { icon: "auto_awesome", label: "Memory" },
-  { icon: "video_library", label: "Clip Review" },
+  { icon: "video_library", label: "Media pool" },
   { icon: "tune", label: "Options" },
   { icon: "download", label: "Export" },
 ];
