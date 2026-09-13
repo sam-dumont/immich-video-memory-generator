@@ -7,6 +7,17 @@ integration test compares against. Its own program because the kernel library
 has to be initialised on a fresh runtime, and because regenerating the golden
 is a deliberate act rather than a side effect of running the suite.
 
+The sheet is rendered with **no title text**. Everything in it is kernel output
+-- gradient, blur, vignette, film grain, bokeh, the final quantisation -- and so
+it is the same on every machine. The text on a title screen is drawn by Pillow
+on the CPU and uploaded as a layer, and Pillow's glyph rasterisation is not
+portable: the first version of this golden was rendered on macOS and, on the
+Linux runner, 208 of each frame's 14,400 pixels differed by as much as 242/255,
+all of them at glyph edges. That is a font rasteriser, not a kernel, and a
+golden that fails on it is a golden nobody can trust. The text compositing
+kernel is covered by its own test instead, which asserts where text lands
+rather than what its edges look like.
+
 Every import is function-local on purpose: the test that drives this module
 imports it for the case list alone, and must not pull a C++ runtime into the
 pytest process to get it.
@@ -44,6 +55,10 @@ FRAME_DURATION = 2.0
 # Mid-animation: fade, slide, colour pulse and deblur are all part-way through,
 # so a frame here exercises more of the kernel arithmetic than frame 0 does.
 FRAME_NUMBER = 9
+
+# The title the text-composite test draws. The golden itself renders without it.
+GOLDEN_TITLE, GOLDEN_SUBTITLE = "", None
+SAMPLE_TITLE, SAMPLE_SUBTITLE = "Summer in Lisbon", "July 2024"
 
 
 SHEET_COLUMNS = len(MOODS)
@@ -106,20 +121,26 @@ def _config_for(style):
     )
 
 
+def render_case(style_name: str, mood: str, title: str, subtitle: str | None):
+    """One frame of the matrix, on the kernel library this process loaded."""
+    from immich_memories.titles.renderer_kernels import KernelTitleRenderer
+
+    renderer = KernelTitleRenderer(_config_for(_style_for(style_name, mood)))
+    return renderer.render_frame(FRAME_NUMBER, title, subtitle)
+
+
 def render_sheet():
     """Render every case and lay them out as one array, row-major by style."""
     import numpy as np
 
     from immich_memories.titles.kernels import init_kernels
-    from immich_memories.titles.renderer_kernels import KernelTitleRenderer
 
     if init_kernels() is None:
         raise SystemExit("no kernel backend could be initialised")
 
-    frames = []
-    for style_name, mood in CASES:
-        renderer = KernelTitleRenderer(_config_for(_style_for(style_name, mood)))
-        frames.append(renderer.render_frame(FRAME_NUMBER, "Summer in Lisbon", "July 2024"))
+    frames = [
+        render_case(style_name, mood, GOLDEN_TITLE, GOLDEN_SUBTITLE) for style_name, mood in CASES
+    ]
     rows = [
         np.concatenate(frames[start : start + SHEET_COLUMNS], axis=1)
         for start in range(0, len(frames), SHEET_COLUMNS)
