@@ -1,0 +1,22 @@
+# CUDA variant: kubectl apply -k overlays/inference-cuda
+# Needs the GPU Operator, same as overlays/gpu: RuntimeClass `nvidia`,
+# nvidia.com/gpu resources, the nvidia.com/gpu.present node label.
+#
+# A sibling directory rather than overlays/inference/cuda because kustomize
+# refuses to build an overlay whose base is the directory containing it: it
+# reads the nesting as a cycle.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../inference
+
+patches:
+  - path: deployment-cuda.yaml
+
+# The `-cuda` image is the only one carrying the CUDA execution provider. A
+# device reservation does not grow one on the cpu image. Keep this tag and the
+# inference overlay's tag on the same release.
+images:
+  - name: ghcr.io/sam-dumont/immich-video-memory-generator/inference
+    newTag: "0.85.0-cuda"
