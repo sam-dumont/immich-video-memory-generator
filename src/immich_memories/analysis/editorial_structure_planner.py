@@ -11,6 +11,7 @@ import json
 import math
 import re
 from collections import ChainMap
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from operator import itemgetter
@@ -26,6 +27,7 @@ from immich_memories.analysis.editorial_final_sampled_duplicates import (
     displayed_sample_members,
     reduce_final_sampled_duplicates,
 )
+from immich_memories.analysis.editorial_owner_required import admit_owner_required
 from immich_memories.analysis.editorial_picture_evidence import PictureEvidenceOverlay
 from immich_memories.analysis.editorial_picture_ladders import depth_cap
 from immich_memories.analysis.editorial_sampled_reference import sampled_source_relation
@@ -276,6 +278,7 @@ def _final_duplicate_review(
     prior_assets: set[str],
     quality,
     pixel_facts,
+    owner_required: Sequence[str] = (),
 ) -> None:
     """Audit the completed film, including later contributions and the actual
     resolved render kinds. Nothing may refill a removed duplicate afterward."""
@@ -304,9 +307,10 @@ def _final_duplicate_review(
         preview_hashes=ports.sampled_preview_hashes(displayed_ids, final_records),
         confirm_relation=source_relation,
         bound_sample_members=final_members,
-        protected_asset_ids=sorted(prior_assets - set(prior.get("review_proposed_assets", [])))
-        if prior
-        else [],
+        protected_asset_ids=sorted(
+            (prior_assets - set(prior.get("review_proposed_assets", [])) if prior else set())
+            | set(owner_required)
+        ),
         objective_quality={
             c["asset_id"]: quality(c["asset_id"])
             for c in run.carriers
@@ -506,7 +510,20 @@ def _select(
         partition_limit=partition_limit,
     )
     run.carriers = list(selection.carriers)
-    _trim_to_timing(run, source, record_story)
+    required = frozenset(source.owner_required_asset_ids)
+    if required:
+        # After the read, never before it: the owner's ticks change no prompt.
+        run.carriers, owner_record = admit_owner_required(
+            run.carriers,
+            required=source.owner_required_asset_ids,
+            units=material.units,
+            stories=selection.story.stories,
+            episodes=selection.story.episodes,
+            anchor_label=wall.anchor_label,
+            line_of=lambda asset_id: material.story_lines.get(asset_id, ""),
+        )
+        record_story("owner-required", owner_record)
+    _trim_to_timing(run, source, record_story, protected=required)
     chapters = _chapters_of(selection, run.carriers, wall.anchor_label)
     beats = [row["beat"] for row in chapters]
     _story_worthiness(selection, wall, tier, worth_reason)
@@ -523,6 +540,12 @@ def _select(
         "before_shareability": len(run.carriers),
     }
     share_log = _apply_audience_gate(run, gate, selection, material, wall)
+    if required - {c["asset_id"] for c in run.carriers}:
+        # The safety gate keeps its authority over an owner tick; say so where the owner can read it.
+        record_story(
+            "owner-required-after-audience",
+            {"removed": sorted(required - {c["asset_id"] for c in run.carriers})},
+        )
     _resolve_motion_and_timing(run, source, ports)
     attached, observed = _observe_attached(
         run, ports, gate, material.picture_evidence, attached_relation_records, share_log
@@ -537,6 +560,7 @@ def _select(
         prior_assets=prior_assets,
         quality=material.builder.quality,
         pixel_facts=source.pixel_facts,
+        owner_required=source.owner_required_asset_ids,
     )
     run.selection_stages["after_final_duplicate_review"] = len(run.carriers)
     _check_empty_attached(ports, observed)
@@ -668,7 +692,7 @@ def _shows_life(material: Material, unit_of, asset_id: str) -> bool:
     return bool(u) and material.text.shows_life(u) and not material.text.lone_object(u)
 
 
-def _trim_to_timing(run: _Run, source, record) -> None:
+def _trim_to_timing(run: _Run, source, record, *, protected: frozenset[str] = frozenset()) -> None:
     """The production title budget depends on what was selected (a divider per month shown):
     a memory across ten years holds ten dividers. Fit the minimum content to that budget now,
     dropping from the least weighed stories, rather than dying in the tail's guard."""
@@ -678,6 +702,7 @@ def _trim_to_timing(run: _Run, source, record) -> None:
         run.carriers,
         lambda cs: source.render_timing.resolve(cs, source.assets).content_budget,
         MIN_CARRIER_SECONDS,
+        protected=protected,
     )
     record("timing-trim", {"dropped": [c["asset_id"] for c in dropped], "kept": len(run.carriers)})
 

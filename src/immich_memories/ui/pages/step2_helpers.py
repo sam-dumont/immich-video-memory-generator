@@ -8,6 +8,7 @@ from pathlib import Path
 from nicegui import ui
 
 from immich_memories.cache.disk_budget import evict_to_budget
+from immich_memories.ui.media_route import thumbnail_url
 from immich_memories.ui.state import get_app_state
 
 logger = logging.getLogger(__name__)
@@ -21,7 +22,7 @@ def format_duration(seconds: float) -> str:
 
 
 def get_thumbnail(asset_id: str) -> bytes | None:
-    """Get thumbnail from cache on-demand."""
+    """The cached preview bytes, for the one consumer that re-encodes them itself (the live strip)."""
     state = get_app_state()
     if state.thumbnail_cache is None:
         return None
@@ -29,6 +30,22 @@ def get_thumbnail(asset_id: str) -> bytes | None:
         return state.thumbnail_cache.get(asset_id, "preview")
     except Exception:  # WHY: UI graceful degradation
         return None
+
+
+def render_thumbnail(asset_id: str, *, classes: str, style: str, size: str = "thumbnail") -> None:
+    """An <img> the browser fetches from the media route, or a blank box if nothing is cached.
+
+    The bytes never travel inside the page: the route serves them, the browser
+    caches and lazily decodes them, and demo-mode blurring still applies because
+    it is a CSS rule on every <img>.
+    """
+    cache = get_app_state().thumbnail_cache
+    if cache is not None and (cache.has(asset_id, "thumbnail") or cache.has(asset_id, "preview")):
+        ui.image(thumbnail_url(asset_id, size=size)).props('loading="lazy"').classes(classes).style(
+            style
+        )
+    else:
+        ui.element("div").classes(classes).style(f"{style}; background: var(--im-bg-surface)")
 
 
 def _get_preview_path(asset_id: str, *, config=None) -> Path | None:
