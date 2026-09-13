@@ -72,10 +72,12 @@ const sidebars: SidebarsConfig = {
           items: [
             'create/pipeline/pipeline-overview',
             'create/pipeline/the-curator',
+            'create/pipeline/rules-mode',
             'create/pipeline/face-aware-cropping',
             'create/pipeline/duplicate-detection',
             'create/pipeline/live-photos',
             'create/pipeline/photo-support',
+            'create/pipeline/hdr',
             'create/pipeline/llm-content-analysis',
             'create/pipeline/title-screens-and-maps',
             'create/pipeline/audio-and-music',
@@ -162,6 +164,7 @@ const sidebars: SidebarsConfig = {
       items: [
         'contribute/testing',
         'contribute/development-setup',
+        'contribute/demo-assets',
         'contribute/code-of-conduct',
       ],
     },

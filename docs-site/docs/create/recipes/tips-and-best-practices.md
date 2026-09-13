@@ -37,7 +37,7 @@ Once you're happy with the results, scale up.
 
 ## Exclude Before You Cut
 
-The media pool (**Advanced → Open the media pool** on the Memory page) exists for a reason. Spend 2 minutes unticking what may never be used: the accidental recording of your pocket, the 45-second clip of a wall. The editor judges twins and bursts itself; what it cannot know is what you would never show.
+The media pool (**Media pool** in the sidebar) exists for a reason. Spend 2 minutes unticking what may never be used: the accidental recording of your pocket, the 45-second clip of a wall. The editor judges twins and bursts itself; what it cannot know is what you would never show.
 
 ## Set Up the Annotation Producers First
 

@@ -1,6 +1,6 @@
 # The Remotion demo
 
-The 60-second product demo on the docs landing page and the README hero GIF are rendered from
+The 45-second product demo on the docs landing page and the README hero GIF are rendered from
 this project. The UI is recreated in React (see `src/scenes/`), never screenshotted.
 
 | Command (from the repo root) | Produces |
