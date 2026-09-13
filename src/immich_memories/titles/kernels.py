@@ -1,10 +1,10 @@
-"""Taichi GPU kernel definitions, initialization, and helper functions.
+"""GPU kernel definitions, initialization, and helper functions.
 
-Backend selection lives in taichi_backend_probe.py; this module owns the
-kernels themselves and the lazy compilation that init_taichi() drives.
+Backend selection lives in kernel_backend_probe.py; this module owns the
+kernels themselves and the lazy compilation that init_kernels() drives.
 
 Note: This module does NOT use 'from __future__ import annotations'
-because Taichi kernels require actual type objects, not string annotations.
+because kernel signatures need actual type objects, not string annotations.
 """
 
 import contextlib
@@ -16,11 +16,11 @@ import numpy as np
 # WHY: importing the seam first is what silences both kernel libraries' banners
 # before either C++ runtime loads — including for the SDF modules below, which
 # take `ti` from the same place.
-# TAICHI_AVAILABLE keeps its name here: the package and its tests read it from
+# KERNELS_AVAILABLE keeps its name here: the package and its tests read it from
 # this module, and it means the same thing whichever library was picked.
 from .gpu_kernel_backend import KERNEL_BACKEND, KERNEL_BACKEND_REQUEST, ti
-from .gpu_kernel_backend import KERNEL_LIBRARY_AVAILABLE as TAICHI_AVAILABLE
-from .taichi_backend_probe import (
+from .gpu_kernel_backend import KERNEL_LIBRARY_AVAILABLE as KERNELS_AVAILABLE
+from .kernel_backend_probe import (
     _backend_dispatches,
     _candidate_backends,
     _silent_init,
@@ -41,21 +41,21 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-_taichi_initialized = False
-_taichi_backend = None
+_kernels_initialized = False
+_kernel_arch = None
 _kernels_compiled = False
 
 
-def init_taichi() -> str | None:
-    """Initialize Taichi with the best available GPU backend."""
-    global _taichi_initialized, _taichi_backend
-    if not TAICHI_AVAILABLE:
+def init_kernels() -> str | None:
+    """Initialize the kernel library on the best available GPU backend."""
+    global _kernels_initialized, _kernel_arch
+    if not KERNELS_AVAILABLE:
         logger.warning(
             "No title kernel library installed. Install with: pip install 'immich-memories[gpu]'"
         )
         return None
-    if _taichi_initialized:
-        return _taichi_backend
+    if _kernels_initialized:
+        return _kernel_arch
 
     import os
     import platform
@@ -75,7 +75,7 @@ def init_taichi() -> str | None:
         try:
             _silent_init(arch=backend, offline_cache=True)
             # The one line that says which of the two libraries this run is on.
-            # init_taichi() is idempotent, so it is printed once per process.
+            # init_kernels() is idempotent, so it is printed once per process.
             logger.info(
                 "Title kernels: %s %s (%s) on the %s backend",
                 KERNEL_BACKEND,
@@ -86,8 +86,8 @@ def init_taichi() -> str | None:
             _compile_kernels()
             if SDF_AVAILABLE and init_sdf_kernels:
                 init_sdf_kernels()
-            _taichi_initialized = True
-            _taichi_backend = name
+            _kernels_initialized = True
+            _kernel_arch = name
             return name
         except (RuntimeError, OSError) as e:
             last_error = e
@@ -106,11 +106,11 @@ def _kernel_library_version() -> str:
     return ".".join(str(part) for part in version) if isinstance(version, tuple) else str(version)
 
 
-def is_taichi_available() -> bool:
-    """Check if Taichi is available and can be initialized."""
-    if not TAICHI_AVAILABLE:
+def kernels_available() -> bool:
+    """Whether the kernel library is installed and can be initialized."""
+    if not KERNELS_AVAILABLE:
         return False
-    return init_taichi() is not None
+    return init_kernels() is not None
 
 
 # Compiled kernel references (populated by _compile_kernels)
@@ -186,10 +186,10 @@ def _compile_catmull_rom():
 
 
 def _compile_kernels():
-    """Compile all Taichi kernels. Must be called AFTER ti.init()."""
+    """Compile every title kernel. Must be called AFTER ti.init()."""
     global _kernels_compiled, _catmull_rom_blend, _generate_linear_gradient, _generate_radial_gradient, _gaussian_blur_h, _gaussian_blur_v, _apply_vignette, _render_bokeh_particles, _apply_noise_grain, _generate_aurora_gradient, _composite_rgba_over, _composite_text_with_offset, _apply_color_pulse, _render_sdf_text, _copy_field_3, _zero_field_4, _blend_fields, _finalize_to_output_u8, _finalize_to_output_u16, _apply_vignette_and_noise  # noqa: PLW0603, E501
 
-    if _kernels_compiled or not TAICHI_AVAILABLE:
+    if _kernels_compiled or not KERNELS_AVAILABLE:
         return
 
     @ti.kernel
@@ -622,7 +622,7 @@ def _compile_kernels():
     _apply_vignette_and_noise = apply_vignette_and_noise
 
     _kernels_compiled = True
-    logger.debug("Taichi kernels compiled")
+    logger.debug("Title kernels compiled")
 
 
 def _create_gaussian_kernel(radius: int, sigma: float | None = None) -> np.ndarray:

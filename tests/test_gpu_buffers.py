@@ -11,9 +11,9 @@ import pytest
 
 
 def _init():
-    from immich_memories.titles.taichi_kernels import init_taichi
+    from immich_memories.titles.kernels import init_kernels
 
-    init_taichi()
+    init_kernels()
 
 
 class TestCopyField3:
@@ -22,7 +22,7 @@ class TestCopyField3:
         _init()
 
     def test_copies_3channel_array(self):
-        from immich_memories.titles.taichi_kernels import _copy_field_3
+        from immich_memories.titles.kernels import _copy_field_3
 
         src = np.random.default_rng(42).random((4, 6, 3)).astype(np.float32)
         dst = np.zeros_like(src)
@@ -36,7 +36,7 @@ class TestZeroField4:
         _init()
 
     def test_zeros_4channel_array(self):
-        from immich_memories.titles.taichi_kernels import _zero_field_4
+        from immich_memories.titles.kernels import _zero_field_4
 
         arr = np.ones((4, 6, 4), dtype=np.float32)
         _zero_field_4(arr)
@@ -49,7 +49,7 @@ class TestBlendFields:
         _init()
 
     def test_blend_50_50(self):
-        from immich_memories.titles.taichi_kernels import _blend_fields
+        from immich_memories.titles.kernels import _blend_fields
 
         a = np.full((4, 6, 3), 0.0, dtype=np.float32)
         b = np.full((4, 6, 3), 1.0, dtype=np.float32)
@@ -57,7 +57,7 @@ class TestBlendFields:
         np.testing.assert_allclose(a, 0.5, atol=1e-6)
 
     def test_blend_fully_a(self):
-        from immich_memories.titles.taichi_kernels import _blend_fields
+        from immich_memories.titles.kernels import _blend_fields
 
         a = np.full((4, 6, 3), 0.2, dtype=np.float32)
         b = np.full((4, 6, 3), 0.8, dtype=np.float32)
@@ -71,7 +71,7 @@ class TestFinalizeToOutput:
         _init()
 
     def test_clips_and_scales_to_uint8(self):
-        from immich_memories.titles.taichi_kernels import _finalize_to_output
+        from immich_memories.titles.kernels import _finalize_to_output
 
         frame = np.array([[[0.0, 0.5, 1.0], [-0.1, 1.2, 0.75]]], dtype=np.float32)
         output = np.zeros_like(frame, dtype=np.uint8)
@@ -81,7 +81,7 @@ class TestFinalizeToOutput:
         np.testing.assert_allclose(output, expected, atol=1)
 
     def test_scales_to_uint16_hdr(self):
-        from immich_memories.titles.taichi_kernels import _finalize_to_output
+        from immich_memories.titles.kernels import _finalize_to_output
 
         frame = np.array([[[0.0, 0.5, 1.0]]], dtype=np.float32)
         output = np.zeros_like(frame, dtype=np.uint16)
@@ -97,7 +97,7 @@ class TestFusedVignetteNoise:
 
     def test_matches_sequential_within_tolerance(self):
         """Fused result should match sequential vignette then noise."""
-        from immich_memories.titles.taichi_kernels import (
+        from immich_memories.titles.kernels import (
             _apply_noise_grain,
             _apply_vignette,
             _apply_vignette_and_noise,
@@ -117,7 +117,7 @@ class TestFusedVignetteNoise:
 
     def test_noise_disabled(self):
         """When noise_intensity=0, result matches vignette-only."""
-        from immich_memories.titles.taichi_kernels import (
+        from immich_memories.titles.kernels import (
             _apply_vignette,
             _apply_vignette_and_noise,
         )
@@ -139,7 +139,7 @@ class TestGPUBuffers:
         _init()
 
     def test_allocates_correct_shapes(self):
-        from immich_memories.titles.taichi_kernels import GPUBuffers
+        from immich_memories.titles.kernels import GPUBuffers
 
         gpu = GPUBuffers(h=64, w=128, hdr=False)
         assert gpu.frame.shape == (64, 128, 3)
@@ -148,7 +148,7 @@ class TestGPUBuffers:
         assert gpu.output.shape == (64, 128, 3)
 
     def test_load_background_roundtrips(self):
-        from immich_memories.titles.taichi_kernels import GPUBuffers
+        from immich_memories.titles.kernels import GPUBuffers
 
         gpu = GPUBuffers(h=4, w=6, hdr=False)
         bg = np.random.default_rng(42).random((4, 6, 3)).astype(np.float32)
@@ -157,7 +157,7 @@ class TestGPUBuffers:
         np.testing.assert_allclose(result, bg, atol=1e-6)
 
     def test_read_output_returns_uint8(self):
-        from immich_memories.titles.taichi_kernels import GPUBuffers
+        from immich_memories.titles.kernels import GPUBuffers
 
         gpu = GPUBuffers(h=4, w=6, hdr=False)
         result = gpu.read_output()
@@ -165,14 +165,14 @@ class TestGPUBuffers:
         assert result.shape == (4, 6, 3)
 
     def test_hdr_output_is_uint16(self):
-        from immich_memories.titles.taichi_kernels import GPUBuffers
+        from immich_memories.titles.kernels import GPUBuffers
 
         gpu = GPUBuffers(h=4, w=6, hdr=True)
         result = gpu.read_output()
         assert result.dtype == np.uint16
 
     def test_ensure_sharp_creates_buffer(self):
-        from immich_memories.titles.taichi_kernels import GPUBuffers
+        from immich_memories.titles.kernels import GPUBuffers
 
         gpu = GPUBuffers(h=8, w=12, hdr=False)
         assert gpu.sharp is None
@@ -181,7 +181,7 @@ class TestGPUBuffers:
         assert gpu.sharp.shape == (8, 12, 3)
 
     def test_ensure_sharp_idempotent(self):
-        from immich_memories.titles.taichi_kernels import GPUBuffers
+        from immich_memories.titles.kernels import GPUBuffers
 
         gpu = GPUBuffers(h=8, w=12, hdr=False)
         gpu.ensure_sharp()

@@ -19,13 +19,13 @@ import pytest
 os.environ["IMMICH_FORCE_CPU"] = "1"
 
 from immich_memories.titles.colors import HDR_GRAPHICS_WHITE  # noqa: E402
-from immich_memories.titles.renderer_taichi import (  # noqa: E402
-    TaichiTitleConfig,
-    TaichiTitleRenderer,
+from immich_memories.titles.renderer_kernels import (  # noqa: E402
+    KernelTitleConfig,
+    KernelTitleRenderer,
 )
-from immich_memories.titles.taichi_kernels import TAICHI_AVAILABLE, init_taichi  # noqa: E402
+from immich_memories.titles.kernels import KERNELS_AVAILABLE, init_kernels  # noqa: E402
 
-requires_taichi = pytest.mark.skipif(not TAICHI_AVAILABLE, reason="Taichi not installed")
+requires_taichi = pytest.mark.skipif(not KERNELS_AVAILABLE, reason="Taichi not installed")
 pytestmark = [pytest.mark.integration]
 
 _CEILING = HDR_GRAPHICS_WHITE / 255.0
@@ -37,15 +37,15 @@ _TOLERANCE = 0.01
 
 @pytest.fixture(scope="module")
 def _taichi_cpu():
-    if not TAICHI_AVAILABLE:
+    if not KERNELS_AVAILABLE:
         pytest.skip("Taichi not installed")
-    backend = init_taichi()
+    backend = init_kernels()
     assert backend is not None
     return backend
 
 
-def _config(*, hdr: bool) -> TaichiTitleConfig:
-    return TaichiTitleConfig(
+def _config(*, hdr: bool) -> KernelTitleConfig:
+    return KernelTitleConfig(
         width=320,
         height=180,
         fps=10.0,
@@ -64,7 +64,7 @@ def _config(*, hdr: bool) -> TaichiTitleConfig:
 
 def _peak_level(hdr: bool) -> float:
     """Brightest pixel in a fully-faded-in title frame, as a fraction of full scale."""
-    renderer = TaichiTitleRenderer(_config(hdr=hdr))
+    renderer = KernelTitleRenderer(_config(hdr=hdr))
     # 1.5s in: past the 0.6s fade-in, well before the fade-out.
     frame = renderer.render_frame(15, "Title", "Subtitle")
     full_scale = 65535.0 if hdr else 255.0
@@ -94,7 +94,7 @@ def test_hdr_title_text_stays_at_or_below_graphics_white(_taichi_cpu) -> None:
 @requires_taichi
 def test_the_hdr_frame_still_has_readable_text(_taichi_cpu) -> None:
     """The ceiling must dim the text, not erase it."""
-    renderer = TaichiTitleRenderer(_config(hdr=True))
+    renderer = KernelTitleRenderer(_config(hdr=True))
     frame = renderer.render_frame(15, "Title", "Subtitle")
 
     background = float(np.median(frame)) / 65535.0

@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from immich_memories.tracking.system_info import (
-    _check_taichi,
+    _check_kernel_library,
     _get_cpu_brand,
     _get_ffmpeg_version,
     _get_gpu_name,
@@ -29,32 +29,32 @@ class TestCheckTaichi:
         self, monkeypatch: pytest.MonkeyPatch
     ):
         """System capture must not invalidate kernels owned by the title runtime."""
-        from immich_memories.titles import taichi_kernels
+        from immich_memories.titles import kernels
 
-        monkeypatch.setattr(taichi_kernels, "_taichi_initialized", True)
-        monkeypatch.setattr(taichi_kernels, "_taichi_backend", "Metal")
+        monkeypatch.setattr(kernels, "_kernels_initialized", True)
+        monkeypatch.setattr(kernels, "_kernel_arch", "Metal")
         # WHY not patch("taichi.init"): naming the library imports it, and a
         # process that loaded Quadrants dies on a Taichi import (#558). The
         # initializer this module owns is the boundary either way.
         monkeypatch.setattr(
-            taichi_kernels,
+            kernels,
             "_silent_init",
             _reinitialized,
         )
 
-        assert _check_taichi() is True
+        assert _check_kernel_library() is True
 
     def test_missing_optional_package_is_unavailable(self, monkeypatch: pytest.MonkeyPatch):
         """A base/dev install with no kernel library can still record a pipeline run."""
-        from immich_memories.titles import taichi_kernels
+        from immich_memories.titles import kernels
 
-        monkeypatch.setattr(taichi_kernels, "TAICHI_AVAILABLE", False)
+        monkeypatch.setattr(kernels, "KERNELS_AVAILABLE", False)
 
-        assert _check_taichi() is False
+        assert _check_kernel_library() is False
 
     def test_broken_taichi_dependency_is_not_hidden(self, monkeypatch: pytest.MonkeyPatch):
         """A corrupt optional install remains actionable instead of becoming false."""
-        from immich_memories.titles import taichi_kernels
+        from immich_memories.titles import kernels
 
         def raise_missing_runtime() -> bool:
             raise ModuleNotFoundError(
@@ -62,10 +62,10 @@ class TestCheckTaichi:
                 name="taichi_runtime",
             )
 
-        monkeypatch.setattr(taichi_kernels, "is_taichi_available", raise_missing_runtime)
+        monkeypatch.setattr(kernels, "kernels_available", raise_missing_runtime)
 
         with pytest.raises(ModuleNotFoundError, match="taichi_runtime"):
-            _check_taichi()
+            _check_kernel_library()
 
 
 class TestGetCpuBrand:

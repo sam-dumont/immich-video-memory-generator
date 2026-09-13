@@ -145,7 +145,7 @@ git commit -m "fix: resolve one truthful encoding contract"
 - Modify: `src/immich_memories/titles/renderer_ffmpeg.py`
 - Modify: `src/immich_memories/titles/video_encoding.py`
 - Modify: `src/immich_memories/titles/map_animation.py`
-- Modify: `src/immich_memories/titles/taichi_video.py`
+- Modify: `src/immich_memories/titles/kernel_video.py`
 - Modify: `src/immich_memories/titles/ending_service.py`
 - Modify: `src/immich_memories/titles/globe_video.py`
 - Modify: `src/immich_memories/generate_settings.py`
@@ -203,7 +203,7 @@ Expected: `rg` returns no matches; tests PASS.
 - [ ] **Step 5: Commit end-to-end plan propagation**
 
 ```bash
-git add src/immich_memories/processing/assembly_config.py src/immich_memories/processing/assembly_engine.py src/immich_memories/processing/clip_encoder.py src/immich_memories/processing/title_inserter.py src/immich_memories/processing/hdr_utilities.py src/immich_memories/titles/encoding.py src/immich_memories/titles/renderer_ffmpeg.py src/immich_memories/titles/video_encoding.py src/immich_memories/titles/map_animation.py src/immich_memories/titles/taichi_video.py src/immich_memories/titles/ending_service.py src/immich_memories/titles/globe_video.py src/immich_memories/generate_settings.py tests/test_assembler_unit.py tests/test_title_hdr.py tests/test_titles.py tests/test_hdr_conversion.py tests/test_output_quality.py
+git add src/immich_memories/processing/assembly_config.py src/immich_memories/processing/assembly_engine.py src/immich_memories/processing/clip_encoder.py src/immich_memories/processing/title_inserter.py src/immich_memories/processing/hdr_utilities.py src/immich_memories/titles/encoding.py src/immich_memories/titles/renderer_ffmpeg.py src/immich_memories/titles/video_encoding.py src/immich_memories/titles/map_animation.py src/immich_memories/titles/kernel_video.py src/immich_memories/titles/ending_service.py src/immich_memories/titles/globe_video.py src/immich_memories/generate_settings.py tests/test_assembler_unit.py tests/test_title_hdr.py tests/test_titles.py tests/test_hdr_conversion.py tests/test_output_quality.py
 git commit -m "fix: honor encoding plan across every render path"
 ```
 

@@ -45,21 +45,12 @@ dependencies = [
     "geopy>=2.4",
     "staticmap>=0.5",
     "apprise>=1.9",
-    # GPU title rendering, the phase that dominates a run. It ships by default
-    # because the fallback is a visibly poorer title, not a missing feature.
+    # The GPU kernel library the title renderer compiles against (#558). Title
+    # rendering is the phase that dominates a run, so it ships by default: the
+    # fallback is a visibly poorer title, not a missing feature.
     #
-    # Quadrants is the maintained fork of Taichi (#558): same `ti.*` surface,
-    # frame-for-frame identical output, a smaller wheel (41 MB vs 56 MB on
-    # linux x86_64) and — the reason it is the one in the base set — the only
-    # linux-aarch64 wheel of the two, so a Pi or an arm64 image gets GPU titles
-    # instead of the PIL fallback.
-    #
-    # Marker: no macOS x86_64 wheel is published, and 3.14 is not supported yet.
-    # Taichi has no wheel for either of those two either (it publishes only
-    # macosx arm64, manylinux x86_64 and win_amd64, cp39-cp313), so there is no
-    # fallback pin to write for them: those installs get PIL titles, exactly as
-    # they do today. `immich-memories[gpu]` installs Taichi for anyone who wants
-    # the old library back.
+    # Marker: no macOS x86_64 wheel is published and 3.14 is not supported yet.
+    # On those two, `ti` is None and title screens are PIL-rendered.
     "quadrants>=1.3.0; python_version < '3.14' and (sys_platform != 'darwin' or platform_machine != 'x86_64')",
     "freetype-py>=2.4",  # SDF font rendering
 ]
@@ -96,17 +87,6 @@ demucs = [
 #     Install the tested v0.1.8 tag with --no-deps, then its inference-only
 #     dependencies. The upstream UI set conflicts with this app's Starlette.
 #     See docs-site/docs/create/pipeline/audio-and-music.md for setup instructions.
-# Taichi, the kernel library the title renderer ran on before Quadrants (#558).
-# The base install no longer needs it — keep this extra to pin the old library,
-# to run the frame-parity test, or as an escape hatch if Quadrants ever
-# regresses. `advanced.hardware.title_kernel_backend: taichi` then selects it.
-#
-# The marker stays as it was: Taichi publishes no linux-aarch64 wheel, and
-# installing this extra there would try to build one from source. That costs
-# arm64 nothing now — Quadrants serves it from the base install.
-gpu = [
-    "taichi>=1.7.0; sys_platform != 'linux' or (platform_machine != 'aarch64' and platform_machine != 'arm64')",
-]
 # Required when preparing missing editorial public heads and detector facts.
 # Weights and the compact-caption endpoint are separate setup dependencies.
 #
@@ -139,7 +119,6 @@ all = [
     "immich-memories[audio]",
     "immich-memories[auth]",
     "immich-memories[demucs]",
-    "immich-memories[gpu]",
     "immich-memories[editorial]",
 ]
 # All features for macOS (includes Apple Vision framework)
@@ -148,7 +127,6 @@ all-mac = [
     "immich-memories[audio]",
     "immich-memories[demucs]",
     "immich-memories[mac]",
-    "immich-memories[gpu]",
     "immich-memories[editorial]",
 ]
 dev = [
@@ -378,9 +356,7 @@ module = [
     "onnxruntime.*",
     "huggingface_hub",
     "huggingface_hub.*",
-    # Taichi (GPU rendering)
-    "taichi.*",
-    # Quadrants (the experimental alternative to Taichi, #558)
+    # The GPU title kernel library
     "quadrants",
     "quadrants.*",
     # Not-yet-implemented modules
@@ -460,14 +436,14 @@ disable_error_code = ["valid-type", "misc", "call-arg"]
 # Audio mixer with optional path types
 [[tool.mypy.overrides]]
 module = [
-    "immich_memories.titles.renderer_taichi",
-    "immich_memories.titles.taichi_text",
+    "immich_memories.titles.renderer_kernels",
+    "immich_memories.titles.kernel_text",
     "immich_memories.titles.sdf_font",
-    "immich_memories.titles.taichi_backend_probe",
+    "immich_memories.titles.kernel_backend_probe",
     "immich_memories.titles.gpu_kernel_backend",
-    "immich_memories.titles.taichi_kernels",
+    "immich_memories.titles.kernels",
     "immich_memories.titles.sdf_font_rendering",
-    "immich_memories.titles.taichi_video",
+    "immich_memories.titles.kernel_video",
 ]
 disable_error_code = ["valid-type", "assignment", "misc", "truthy-function", "union-attr", "import-untyped", "attr-defined", "has-type"]
 
@@ -484,7 +460,7 @@ disable_error_code = ["attr-defined", "arg-type", "union-attr", "has-type"]
 module = ["immich_memories.titles.video_encoding"]
 disable_error_code = ["union-attr", "arg-type"]
 
-# Title rendering service with optional Taichi imports
+# Title rendering service with optional kernel-library imports
 [[tool.mypy.overrides]]
 module = ["immich_memories.titles.rendering_service"]
 disable_error_code = ["assignment", "misc", "attr-defined", "arg-type"]
@@ -523,7 +499,7 @@ ignore_missing_imports = true
 paths = ["src"]
 max_complexity_allowed = 15
 # complexipy 5.2 matches exclusions by basename, not path or glob.
-# Reviewed over-threshold CLI/Taichi functions remain visible in the snapshot.
+# Reviewed over-threshold CLI/kernel functions remain visible in the snapshot.
 exclude = ["_version.py"]
 
 # Dependency hygiene
@@ -556,10 +532,6 @@ DEP002 = [
     "oidc-provider-mock",                               # auth: used in upcoming OIDC tests task
     "demucs",                                           # optional: local stem separation
     "onnxruntime-gpu",                                  # editorial-cuda: the CUDA variant of the ONNX seats
-    # Both kernel libraries are loaded by name through the titles seam
-    # (importlib), never by a literal import, because only one of the two may
-    # ever be imported into a process.
-    "taichi", "quadrants",
 ]
 DEP001 = [
     "cv2", "Quartz", "Vision", "Metal", "CoreImage",   # Platform/alt-name imports
@@ -572,7 +544,6 @@ DEP001 = [
     "transformers", "huggingface_hub",                  # Optional: smart-turn, off by default
     "PIL", "av", "freetype", "streamlit",               # Alt package names (Pillow→PIL, pyav→av)
     "starlette",                                        # Transitive via nicegui→fastapi→starlette
-    "quadrants",                                        # The title kernel library, loaded by name
 ]
 DEP003 = ["PIL", "cv2", "yaml", "starlette"]  # Known transitive imports
 
@@ -652,10 +623,10 @@ markers = [
     "demo: renders a docs demo asset (run with: make demo-output)",
 ]
 # `-p no:quadrants`: the quadrants distribution registers a pytest11 plugin, so
-# merely having it installed imports Quadrants into every session — and a process that has imported Quadrants *aborts* the
-# interpreter the moment anything imports Taichi, because both link their own
-# LLVM and register the same options with it. Blocking the plugin is a no-op
-# when the extra is not installed.
+# merely having it installed pulls its C++ runtime into every pytest session,
+# including the thousands of tests that never touch a kernel. The app imports it
+# in exactly one place and nowhere near collection time; blocking the plugin
+# keeps it that way, and is a no-op where the wheel does not exist.
 addopts = "-p no:quadrants -m 'not integration and not e2e'"
 
 [tool.coverage.run]

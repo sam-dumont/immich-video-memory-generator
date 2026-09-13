@@ -6,10 +6,10 @@ SDFs allow crisp text at any scale with minimal memory, perfect for video titles
 Architecture:
 1. Generate SDF glyphs using FreeType's native SDF renderer
 2. Pack glyphs into a texture atlas
-3. Use Taichi GPU kernels to sample and render text
+3. Use GPU kernels to sample and render text
 
 Note: This module does NOT use 'from __future__ import annotations'
-because Taichi kernels require actual type objects, not string annotations.
+because kernel signatures need actual type objects, not string annotations.
 
 The implementation is split across helper modules:
 - sdf_font.py (this file): Data structures, font discovery
@@ -24,7 +24,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .gpu_kernel_backend import KERNEL_LIBRARY_AVAILABLE as TAICHI_AVAILABLE
+from .gpu_kernel_backend import KERNEL_LIBRARY_AVAILABLE as KERNELS_AVAILABLE
 
 logger = logging.getLogger(__name__)
 
@@ -211,6 +211,6 @@ __all__ = [
     "find_font",
     # Optional dependency flags
     "FREETYPE_AVAILABLE",
-    "TAICHI_AVAILABLE",
+    "KERNELS_AVAILABLE",
     "freetype",
 ]

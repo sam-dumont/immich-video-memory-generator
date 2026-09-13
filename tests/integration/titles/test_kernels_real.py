@@ -17,18 +17,18 @@ import pytest
 # Taichi initializes once per process — this ensures it uses CPU.
 os.environ["IMMICH_FORCE_CPU"] = "1"
 
-# WHY: Kernels are compiled lazily inside init_taichi(). A direct
-# `from .taichi_kernels import _generate_linear_gradient` captures None
+# WHY: Kernels are compiled lazily inside init_kernels(). A direct
+# `from .kernels import _generate_linear_gradient` captures None
 # at import time. We import the MODULE and access kernels at call time.
-from immich_memories.titles import taichi_kernels  # noqa: E402
-from immich_memories.titles.taichi_kernels import (  # noqa: E402
-    TAICHI_AVAILABLE,
+from immich_memories.titles import kernels  # noqa: E402
+from immich_memories.titles.kernels import (  # noqa: E402
+    KERNELS_AVAILABLE,
     GPUBuffers,
     _create_gaussian_kernel,
-    init_taichi,
+    init_kernels,
 )
 
-requires_taichi = pytest.mark.skipif(not TAICHI_AVAILABLE, reason="Taichi not installed")
+requires_taichi = pytest.mark.skipif(not KERNELS_AVAILABLE, reason="Taichi not installed")
 pytestmark = [pytest.mark.integration, requires_taichi]
 
 W, H = 160, 90
@@ -37,7 +37,7 @@ W, H = 160, 90
 @pytest.fixture(scope="module")
 def _taichi_cpu():
     """Initialize Taichi with CPU backend once per module."""
-    backend = init_taichi()
+    backend = init_kernels()
     assert backend is not None, "Taichi failed to initialize on CPU"
     return backend
 
@@ -46,7 +46,7 @@ class TestLinearGradientKernel:
     def test_fills_frame_with_non_uniform_color(self, _taichi_cpu):
         """Linear gradient should produce smoothly varying pixels, not a flat fill."""
         frame = np.zeros((H, W, 3), dtype=np.float32)
-        taichi_kernels._generate_linear_gradient(
+        kernels._generate_linear_gradient(
             frame,
             0.1,
             0.1,
@@ -67,7 +67,7 @@ class TestLinearGradientKernel:
         """Two gradients with different angles should differ."""
         frame_a = np.zeros((H, W, 3), dtype=np.float32)
         frame_b = np.zeros((H, W, 3), dtype=np.float32)
-        taichi_kernels._generate_linear_gradient(
+        kernels._generate_linear_gradient(
             frame_a,
             0.1,
             0.1,
@@ -79,7 +79,7 @@ class TestLinearGradientKernel:
             W,
             H,
         )
-        taichi_kernels._generate_linear_gradient(
+        kernels._generate_linear_gradient(
             frame_b,
             0.1,
             0.1,
@@ -106,8 +106,8 @@ class TestGaussianBlurKernel:
         temp = np.zeros_like(noisy)
         output = np.zeros_like(noisy)
 
-        taichi_kernels._gaussian_blur_h(noisy, temp, kernel, 5)
-        taichi_kernels._gaussian_blur_v(temp, output, kernel, 5)
+        kernels._gaussian_blur_h(noisy, temp, kernel, 5)
+        kernels._gaussian_blur_v(temp, output, kernel, 5)
 
         blurred_std = output.std()
         assert blurred_std < original_std * 0.8, (
@@ -123,8 +123,8 @@ class TestGaussianBlurKernel:
         temp = np.zeros_like(frame)
         output = np.zeros_like(frame)
 
-        taichi_kernels._gaussian_blur_h(frame, temp, kernel, 3)
-        taichi_kernels._gaussian_blur_v(temp, output, kernel, 3)
+        kernels._gaussian_blur_h(frame, temp, kernel, 3)
+        kernels._gaussian_blur_v(temp, output, kernel, 3)
 
         assert output.min() >= 0.0
         assert output.max() <= 1.0
@@ -139,7 +139,7 @@ class TestFinalizeToU8:
         frame[0, 2, :] = 1.0
 
         output = np.zeros((H, W, 3), dtype=np.uint8)
-        taichi_kernels._finalize_to_output_u8(frame, output, 255.0)
+        kernels._finalize_to_output_u8(frame, output, 255.0)
 
         assert output[0, 0, 0] == 0, "Black should map to 0"
         assert 126 <= output[0, 1, 0] <= 128, f"Mid-gray mapped to {output[0, 1, 0]}"
@@ -152,7 +152,7 @@ class TestFinalizeToU8:
         frame[0, 1, :] = 1.5
 
         output = np.zeros((H, W, 3), dtype=np.uint8)
-        taichi_kernels._finalize_to_output_u8(frame, output, 255.0)
+        kernels._finalize_to_output_u8(frame, output, 255.0)
 
         assert output[0, 0, 0] == 0, "Negative should clamp to 0"
         assert output[0, 1, 0] == 255, "Over-1.0 should clamp to 255"
@@ -173,7 +173,7 @@ class TestGPUBuffers:
         bg = np.full((H, W, 3), 0.6, dtype=np.float32)
         gpu.load_background(bg)
 
-        taichi_kernels._finalize_to_output_u8(gpu.frame, gpu.output, 255.0)
+        kernels._finalize_to_output_u8(gpu.frame, gpu.output, 255.0)
         result = gpu.read_output()
 
         assert result.shape == (H, W, 3)

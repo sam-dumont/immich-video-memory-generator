@@ -1,4 +1,4 @@
-"""Title and subtitle text drawn onto the Taichi frame buffer.
+"""Title and subtitle text drawn onto the GPU frame buffer.
 
 Two paths share the same fade/slide/scale timing: GPU SDF glyphs when a font
 atlas is available, and PIL otherwise. The PIL path rasterizes each string once
@@ -19,12 +19,12 @@ if TYPE_CHECKING:
     from .sdf_font import SDFFontAtlas
 
 # Import module for runtime access to compiled kernels.
-# Kernels are initially None and compiled lazily by init_taichi().
-# Direct `from .taichi_kernels import _func` would capture None at import time,
-# so we access them as `taichi_kernels._func` at call time instead.
-from . import taichi_kernels
+# Kernels are initially None and compiled lazily by init_kernels().
+# Direct `from .kernels import _func` would capture None at import time,
+# so we access them as `kernels._func` at call time instead.
+from . import kernels
 from .gpu_kernel_backend import ti
-from .taichi_kernels import (
+from .kernels import (
     SDF_AVAILABLE,
     _get_system_font,
     _hex_to_rgb,
@@ -276,7 +276,7 @@ class TitleTextRenderer:
 
         if cfg.enable_shadow and self._shadow_layer_gpu is not None:
             shadow_offset = max(2, int(cfg.height * cfg.shadow_offset_ratio))
-            taichi_kernels._composite_text_with_offset(
+            kernels._composite_text_with_offset(
                 self.gpu.frame,
                 self._shadow_layer_gpu,
                 self.gpu.temp,
@@ -284,10 +284,10 @@ class TitleTextRenderer:
                 title_anim["y_offset"] + shadow_offset,
                 title_anim["x_offset"] + shadow_offset,
             )
-            taichi_kernels._copy_field_3(self.gpu.temp, self.gpu.frame)
+            kernels._copy_field_3(self.gpu.temp, self.gpu.frame)
 
         if self._title_layer_gpu is not None:
-            taichi_kernels._composite_text_with_offset(
+            kernels._composite_text_with_offset(
                 self.gpu.frame,
                 self._title_layer_gpu,
                 self.gpu.temp,
@@ -295,14 +295,14 @@ class TitleTextRenderer:
                 title_anim["y_offset"],
                 title_anim["x_offset"],
             )
-            taichi_kernels._copy_field_3(self.gpu.temp, self.gpu.frame)
+            kernels._copy_field_3(self.gpu.temp, self.gpu.frame)
 
         if self._subtitle_layer_gpu is not None:
             subtitle_anim = self._compute_animation(t, progress, is_subtitle=True)
             base = min(cfg.width, cfg.height)
             ratio = cfg.title_size_ratio * 0.65 if subtitle else cfg.title_size_ratio
             pil_title_size = int(base * ratio)
-            taichi_kernels._composite_text_with_offset(
+            kernels._composite_text_with_offset(
                 self.gpu.frame,
                 self._subtitle_layer_gpu,
                 self.gpu.temp,
@@ -310,7 +310,7 @@ class TitleTextRenderer:
                 subtitle_anim["y_offset"] + pil_title_size * 1.3,
                 subtitle_anim["x_offset"],
             )
-            taichi_kernels._copy_field_3(self.gpu.temp, self.gpu.frame)
+            kernels._copy_field_3(self.gpu.temp, self.gpu.frame)
 
     def _init_sdf_atlas(self):
         """Initialize SDF font atlas for GPU text rendering."""
@@ -348,7 +348,7 @@ class TitleTextRenderer:
         is_shadow: bool = False,
     ):
         """Render text directly onto frame buffer using SDF GPU kernel."""
-        if not self.use_sdf or self._sdf_atlas is None or taichi_kernels._render_sdf_text is None:
+        if not self.use_sdf or self._sdf_atlas is None or kernels._render_sdf_text is None:
             return
 
         scale = font_size / self._sdf_atlas.font_size
@@ -372,7 +372,7 @@ class TitleTextRenderer:
         # WHY: glyph_data is small (~8 floats × num_glyphs) and generated
         # per-call from layout_text(). Implicit transfer is negligible.
         atlas = self._sdf_atlas_gpu if self._sdf_atlas_gpu is not None else self._sdf_atlas_float
-        taichi_kernels._render_sdf_text(
+        kernels._render_sdf_text(
             self.gpu.frame,
             atlas,
             glyph_data,

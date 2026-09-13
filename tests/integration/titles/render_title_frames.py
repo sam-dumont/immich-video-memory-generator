@@ -39,7 +39,7 @@ MOODS = (
 )
 CASES = tuple((style, mood) for style in STYLE_NAMES for mood in MOODS)
 
-FRAME_WIDTH, FRAME_HEIGHT, FRAME_FPS = 320, 180, 10.0
+FRAME_WIDTH, FRAME_HEIGHT, FRAME_FPS = 160, 90, 10.0
 FRAME_DURATION = 2.0
 # Mid-animation: fade, slide, colour pulse and deblur are all part-way through,
 # so a frame here exercises more of the kernel arithmetic than frame 0 does.
@@ -71,9 +71,9 @@ def _style_for(style_name: str, mood: str):
 
 def _config_for(style):
     """The renderer config the title service builds, minus the content backing."""
-    from immich_memories.titles.renderer_taichi import TaichiTitleConfig
+    from immich_memories.titles.renderer_kernels import KernelTitleConfig
 
-    return TaichiTitleConfig(
+    return KernelTitleConfig(
         width=FRAME_WIDTH,
         height=FRAME_HEIGHT,
         fps=FRAME_FPS,
@@ -99,15 +99,15 @@ def _config_for(style):
 
 def render_every_case() -> dict[str, object]:
     """Render the whole matrix in this process, on this process's kernel library."""
-    from immich_memories.titles.renderer_taichi import TaichiTitleRenderer
-    from immich_memories.titles.taichi_kernels import init_taichi
+    from immich_memories.titles.renderer_kernels import KernelTitleRenderer
+    from immich_memories.titles.kernels import init_kernels
 
-    if init_taichi() is None:
+    if init_kernels() is None:
         raise SystemExit("no kernel backend could be initialised")
 
     frames: dict[str, object] = {}
     for style_name, mood in CASES:
-        renderer = TaichiTitleRenderer(_config_for(_style_for(style_name, mood)))
+        renderer = KernelTitleRenderer(_config_for(_style_for(style_name, mood)))
         frames[case_key(style_name, mood)] = renderer.render_frame(
             FRAME_NUMBER, "Summer in Lisbon", "July 2024"
         )

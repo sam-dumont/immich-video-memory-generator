@@ -61,8 +61,8 @@ _SCRIPT: list[tuple[float, str, str]] = [
     (0.4, "log", "Photos: detected portrait orientation, rendering to 2160x3840"),
     (0.3, "log", "Ken Burns animation: subject at (0.48, 0.32), zoom 1.2x->1.0x"),
     (0.5, "progress", "Generating title screen...|34"),
-    (0.4, "log", "TaichiTitleRenderer initialized: 2160x3840 @ 60.0fps"),
-    (0.3, "log", "Generating title with Taichi: 2025"),
+    (0.4, "log", "KernelTitleRenderer initialized: 2160x3840 @ 60.0fps"),
+    (0.3, "log", "Generating title on the GPU: 2025"),
     # Title screen rendering 34->45%
     (0.2, "progress", "Generating title screen...|37"),
     (0.2, "progress", "Generating title screen...|40"),

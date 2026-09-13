@@ -114,13 +114,13 @@ class TestTaichiContentBacked:
     def test_taichi_render_content_backed(self, pre_rendered_clip):
         """Time: per-frame Taichi render with slow-mo bg (blur + vignette + bokeh + text)."""
         from immich_memories.titles.content_background import SlowmoBackgroundReader
-        from immich_memories.titles.renderer_taichi import TaichiTitleConfig, TaichiTitleRenderer
+        from immich_memories.titles.renderer_kernels import KernelTitleConfig, KernelTitleRenderer
 
         reader = SlowmoBackgroundReader(
             pre_rendered_clip, 1280, 720, 30.0, title_duration=3.5, source_seconds=0.5
         )
 
-        config = TaichiTitleConfig(
+        config = KernelTitleConfig(
             width=1280,
             height=720,
             fps=30.0,
@@ -133,7 +133,7 @@ class TestTaichiContentBacked:
             enable_bokeh=True,
         )
 
-        renderer = TaichiTitleRenderer(config=config)
+        renderer = KernelTitleRenderer(config=config)
         total_frames = renderer.total_frames
         frame_times: list[float] = []
 
@@ -165,7 +165,7 @@ class TestTaichiContentBacked:
         """Time: full content-backed title (slowmo + render + encode).
 
         Exercises: TitleScreenGenerator, RenderingService, SlowmoBackgroundReader,
-        TaichiTitleRenderer, encoding pipeline, text_builder.
+        KernelTitleRenderer, encoding pipeline, text_builder.
         """
         from immich_memories.titles.generator import TitleScreenConfig, TitleScreenGenerator
 
@@ -220,9 +220,9 @@ class TestTaichiGradient:
 
     def test_taichi_render_gradient_only(self):
         """Time: per-frame Taichi render with animated gradient (no content clip)."""
-        from immich_memories.titles.renderer_taichi import TaichiTitleConfig, TaichiTitleRenderer
+        from immich_memories.titles.renderer_kernels import KernelTitleConfig, KernelTitleRenderer
 
-        config = TaichiTitleConfig(
+        config = KernelTitleConfig(
             width=1280,
             height=720,
             fps=30.0,
@@ -242,7 +242,7 @@ class TestTaichiGradient:
             vignette_pulse=0.05,
         )
 
-        renderer = TaichiTitleRenderer(config=config)
+        renderer = KernelTitleRenderer(config=config)
         total_frames = renderer.total_frames
         frame_times: list[float] = []
 
@@ -273,7 +273,7 @@ class TestTaichiGradient:
         """Time: full gradient-only title (render + encode, no SlowmoReader).
 
         Exercises: TitleScreenGenerator gradient path, RenderingService,
-        TaichiTitleRenderer without background_reader, encoding pipeline.
+        KernelTitleRenderer without background_reader, encoding pipeline.
         """
         from immich_memories.titles.generator import TitleScreenConfig, TitleScreenGenerator
 

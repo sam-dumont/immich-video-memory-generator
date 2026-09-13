@@ -1,113 +1,63 @@
-"""Which kernel library the title renderer compiles against.
+"""The one place this project imports its GPU kernel library.
 
-Taichi 1.7.4 is terminal upstream. Quadrants is Genesis AI's live fork of it and
-exposes every `ti.*` symbol these kernels use, so swapping one for the other is
-a single import — this module is that import. Nothing else in the package names
-either distribution; they all take `ti` from here.
+Every title kernel compiles against Quadrants, and this module is the single
+`import quadrants as ti` that gives it to them. Two things it owns:
 
-Two things this module owns that callers must not work around:
+* **The optional-dependency guard.** Quadrants publishes no wheel for macOS
+  x86_64 or Python 3.14, so `ti` is None there and the title renderer falls back
+  to PIL, with a line in the log saying why. Nothing else in the package may
+  import the library directly: `KERNELS_AVAILABLE` is the answer to "is there a
+  GPU renderer here".
+* **The banner env vars.** Quadrants prints a version banner to stdout as its
+  C++ runtime loads, which corrupts a Rich Live display. Importing this module
+  is what sets the variables that silence it, so it has to be the first thing
+  any kernel-touching module pulls in.
 
-* **Only one of the two may ever be imported.** Both link their own LLVM and
-  register the same command-line options with it, so importing the second one
-  aborts the interpreter outright ("Option already exists!") rather than raising.
-  Anything that wants to know whether the GPU renderer is available must ask
-  `KERNEL_LIBRARY_AVAILABLE` here, never `import taichi` on its own.
-* **The banner env vars.** Both libraries print a version banner to stdout as
-  their C++ runtime loads, which corrupts a Rich Live display (taichi#8334).
-  Importing this module is what sets the variables that silence them, so it has
-  to be the first thing any kernel-touching module pulls in.
-
-Which one is asked for is decided in kernel_backend_choice.py, which answers
-that without importing anything. The default is `auto`: Quadrants when it is
-installed, Taichi otherwise. Either way an install that cannot have the one it
-asked for still renders titles on the other, with a line in the log saying so.
+`ti` is the alias because that is the name Quadrants' own API documentation and
+every kernel signature in this package uses.
 """
 
-import importlib
 import logging
 import os
-from types import ModuleType
 from typing import Any
-
-from .kernel_backend_choice import (
-    INSTALL_HINTS,
-    KERNEL_BACKEND_ENV_VAR,
-    preference_order,
-    requested_kernel_backend,
-)
 
 logger = logging.getLogger(__name__)
 
+KERNEL_LIBRARY = "quadrants"
+
 _SILENT_BANNERS = {
-    "ENABLE_TAICHI_HEADER_PRINT": "0",
-    "TI_LOG_LEVEL": "error",
     "ENABLE_QUADRANTS_HEADER_PRINT": "0",
     "QD_LOG_LEVEL": "error",
 }
 
 
 def _silence_kernel_banners() -> None:
-    """Set both libraries' quiet-mode variables before either runtime loads."""
+    """Set the library's quiet-mode variables before its runtime loads."""
     for name, value in _SILENT_BANNERS.items():
         os.environ.setdefault(name, value)
-
-
-def load_kernel_library(requested: str) -> tuple[ModuleType | None, str | None]:
-    """Import the best installed kernel library for this request.
-
-    Returns the module and the name of what was actually loaded. `(None, None)`
-    means no kernel library is installed at all, which is not an error: the
-    title renderer falls back to PIL. An installed-but-broken library raises,
-    because that is a machine to fix rather than a feature to skip.
-    """
-    for name in preference_order(requested):
-        try:
-            return importlib.import_module(name), name
-        except ModuleNotFoundError as exc:
-            # Only "this distribution is not here" is a fallback. A library that
-            # is installed but cannot load its own runtime is a broken machine,
-            # and quietly rendering titles on the CPU would hide it.
-            if exc.name != name:
-                raise
-            _log_missing_library(name, requested, exc)
-    return None, None
-
-
-def _log_missing_library(name: str, requested: str, exc: ModuleNotFoundError) -> None:
-    """Say what is absent, loudly only when somebody explicitly asked for it."""
-    # Under `auto` nothing was asked for, so neither absence is news. An explicit
-    # request that cannot be honoured is, even though titles still render.
-    if requested != name:
-        logger.debug("Title kernel library %s is not installed (%s)", name, exc)
-        return
-    logger.warning(
-        "Title kernel backend %r is not installed (%s); trying the other one. Install it with %s",
-        name,
-        exc,
-        INSTALL_HINTS[name],
-    )
-
-
-def _pin_backend_for_child_processes(name: str) -> None:
-    """Make every child of this process load the same library the parent did.
-
-    The backend probe runs in a child interpreter, and a child that re-read the
-    config could pick the other library and then probe something the parent will
-    never run.
-    """
-    os.environ[KERNEL_BACKEND_ENV_VAR] = name
 
 
 _silence_kernel_banners()
 
 # `ti` is deliberately Any. The kernel modules write `ti.f32` and
-# `ti.types.ndarray(...)` in annotation position — legal only because a kernel
-# library has no stubs, which is exactly what `import taichi as ti` used to give
-# them. Typing this as ModuleType would make every kernel signature an error.
+# `ti.types.ndarray(...)` in annotation position, which type-checks only against
+# the Any an unstubbed library produces.
 ti: Any
-KERNEL_BACKEND_REQUEST = requested_kernel_backend()
-ti, KERNEL_BACKEND = load_kernel_library(KERNEL_BACKEND_REQUEST)
-KERNEL_LIBRARY_AVAILABLE = ti is not None
+try:
+    import quadrants as ti  # noqa: I001 — must follow the env vars set above
 
-if KERNEL_BACKEND is not None:
-    _pin_backend_for_child_processes(KERNEL_BACKEND)
+    KERNELS_AVAILABLE = True
+except ModuleNotFoundError as _exc:
+    # Not an error: no wheel for this platform (macOS x86_64, Python 3.14) means
+    # PIL titles, which is a poorer picture and not a missing feature. A library
+    # that is installed but cannot load its own runtime is a different thing and
+    # is left to raise.
+    if _exc.name != KERNEL_LIBRARY:
+        raise
+    logger.info(
+        "%s is not installed (%s); title screens use the PIL renderer",
+        KERNEL_LIBRARY,
+        _exc,
+    )
+    ti = None
+    KERNELS_AVAILABLE = False

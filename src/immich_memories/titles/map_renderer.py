@@ -1,7 +1,7 @@
 """Trip map rendering — staticmap tiles + PIL text overlay.
 
 Renders map tiles with big location pins + city labels, produces PIL Images
-or numpy arrays ready for the Taichi GPU pipeline.
+or numpy arrays ready for the GPU pipeline.
 """
 
 from __future__ import annotations
@@ -63,7 +63,7 @@ def render_trip_map_array(
     location_names: list[str] | None = None,
     map_style: str = DEFAULT_MAP_STYLE,
 ) -> np.ndarray:
-    """Render map as numpy float32 array for Taichi GPU pipeline.
+    """Render map as numpy float32 array for the GPU pipeline.
 
     Returns array normalized to [0, 1] range, shape (height, width, 3).
     Includes pins and city labels but no title (title rendered by GPU).

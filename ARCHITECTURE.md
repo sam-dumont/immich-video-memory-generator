@@ -85,10 +85,10 @@ clip into normalized raw frames, `FrameBlender` (streaming_frame_blender.py) wri
 frames to a `FrameSink` and crossfades across clip boundaries, and `StreamingEncoder` (the
 sink it is constructed with) pipes them into FFmpeg.
 
-**TaichiTitleRenderer** (titles/renderer_taichi.py) owns the background and the per-frame
+**KernelTitleRenderer** (titles/renderer_kernels.py) owns the background and the per-frame
 GPU pipeline, and composes 2 services (both take Protocol-typed config/buffers):
-- `ParticleField` (taichi_particles.py): bokeh drift and fireworks physics, CPU numpy only
-- `TitleTextRenderer` (taichi_text.py): SDF and PIL text compositing onto the frame buffer
+- `ParticleField` (kernel_particles.py): bokeh drift and fireworks physics, CPU numpy only
+- `TitleTextRenderer` (kernel_text.py): SDF and PIL text compositing onto the frame buffer
 
 **`generate_memory()`** (generate.py) is the top-level orchestrator above the four; it runs
 the `OperationalPhase` lifecycle end to end (there is no `GenerationPipeline` class) with
@@ -239,13 +239,13 @@ src/immich_memories/
 │   ├── text_builder.py         # Text layout & positioning
 │   ├── content_background.py   # Content-aware background generation
 │   ├── renderer_pil.py         # PIL-based renderer
-│   ├── renderer_taichi.py      # TaichiTitleRenderer: background + frame pipeline
-│   ├── taichi_particles.py     # ParticleField: bokeh drift / fireworks physics
-│   ├── taichi_text.py          # TitleTextRenderer: SDF + PIL text compositing
+│   ├── renderer_kernels.py      # KernelTitleRenderer: background + frame pipeline
+│   ├── kernel_particles.py     # ParticleField: bokeh drift / fireworks physics
+│   ├── kernel_text.py          # TitleTextRenderer: SDF + PIL text compositing
 │   ├── renderer_ffmpeg.py      # FFmpeg-based renderer
-│   ├── taichi_kernels.py       # Taichi GPU kernels + lazy compilation (init_taichi)
-│   ├── taichi_backend_probe.py # Which Taichi arch can dispatch here (isolated child probe)
-│   ├── taichi_video.py         # Taichi video creation
+│   ├── kernels.py       # Taichi GPU kernels + lazy compilation (init_kernels)
+│   ├── kernel_backend_probe.py # Which Taichi arch can dispatch here (isolated child probe)
+│   ├── kernel_video.py         # Taichi video creation
 │   ├── ffmpeg_pipe.py          # Feed raw frames to FFmpeg without deadlocking on an unread stderr
 │   ├── safe_zones.py           # Keep vertical titles clear of the Reels/Shorts/TikTok button rail
 │   ├── map_animation.py        # Satellite map fly-over (van Wijk zoom)

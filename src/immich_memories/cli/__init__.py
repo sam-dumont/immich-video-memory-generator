@@ -6,11 +6,12 @@ import ipaddress
 import os
 from pathlib import Path
 
-# WHY: Taichi prints a banner to stdout at import time and init time.
-# Must be set before ANY module imports taichi (including tracking/system_info).
-# See https://github.com/taichi-dev/taichi/issues/8334
-os.environ.setdefault("ENABLE_TAICHI_HEADER_PRINT", "0")
-os.environ.setdefault("TI_LOG_LEVEL", "error")
+# WHY: the kernel library prints a banner to stdout at import time and init
+# time, which corrupts the Rich Live display. Must be set before ANY module
+# imports it (including tracking/system_info); titles/gpu_kernel_backend.py sets
+# the same pair for every other entry point.
+os.environ.setdefault("ENABLE_QUADRANTS_HEADER_PRINT", "0")
+os.environ.setdefault("QD_LOG_LEVEL", "error")
 
 import click
 

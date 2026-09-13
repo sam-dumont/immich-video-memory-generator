@@ -1,6 +1,6 @@
 """Real Taichi title renderer integration tests.
 
-Renders actual frames via TaichiTitleRenderer on CPU backend, verifying
+Renders actual frames via KernelTitleRenderer on CPU backend, verifying
 that output frames have correct dimensions, non-blank content, and
 animation produces visual change over time.
 
@@ -17,27 +17,27 @@ import pytest
 
 os.environ["IMMICH_FORCE_CPU"] = "1"
 
-from immich_memories.titles.renderer_taichi import (  # noqa: E402
-    TaichiTitleConfig,
-    TaichiTitleRenderer,
+from immich_memories.titles.renderer_kernels import (  # noqa: E402
+    KernelTitleConfig,
+    KernelTitleRenderer,
 )
-from immich_memories.titles.taichi_kernels import TAICHI_AVAILABLE, init_taichi  # noqa: E402
-from immich_memories.titles.taichi_video import create_title_video_taichi  # noqa: E402
+from immich_memories.titles.kernels import KERNELS_AVAILABLE, init_kernels  # noqa: E402
+from immich_memories.titles.kernel_video import create_title_video_gpu  # noqa: E402
 
-requires_taichi = pytest.mark.skipif(not TAICHI_AVAILABLE, reason="Taichi not installed")
+requires_taichi = pytest.mark.skipif(not KERNELS_AVAILABLE, reason="Taichi not installed")
 pytestmark = [pytest.mark.integration, requires_taichi]
 
 
 @pytest.fixture(scope="module")
 def _taichi_cpu():
-    backend = init_taichi()
+    backend = init_kernels()
     assert backend is not None
     return backend
 
 
 @pytest.fixture(scope="module")
 def small_config():
-    return TaichiTitleConfig(
+    return KernelTitleConfig(
         width=160,
         height=90,
         fps=10.0,
@@ -51,14 +51,14 @@ def small_config():
 class TestTaichiRendererFrame:
     def test_render_frame_correct_dimensions(self, _taichi_cpu, small_config):
         """Rendered frame should match configured width x height."""
-        renderer = TaichiTitleRenderer(small_config)
+        renderer = KernelTitleRenderer(small_config)
         frame = renderer.render_frame(0, "Test Title", "Subtitle")
         assert frame.shape == (90, 160, 3)
         assert frame.dtype == np.uint8
 
     def test_render_frame_not_blank(self, _taichi_cpu, small_config):
         """Frame should have visible content, not all zeros or all white."""
-        renderer = TaichiTitleRenderer(small_config)
+        renderer = KernelTitleRenderer(small_config)
         frame = renderer.render_frame(0, "Test Title")
         assert frame.std() > 1.0, "Frame should not be flat/blank"
         assert frame.mean() > 0.5, "Dark gradient frame should have some brightness"
@@ -66,7 +66,7 @@ class TestTaichiRendererFrame:
 
     def test_frames_at_different_times_differ(self, _taichi_cpu, small_config):
         """Animation should produce visually different frames at different times."""
-        renderer = TaichiTitleRenderer(small_config)
+        renderer = KernelTitleRenderer(small_config)
         frame_start = renderer.render_frame(0, "Test Title", "Sub")
         frame_mid = renderer.render_frame(renderer.total_frames // 2, "Test Title", "Sub")
         frame_end = renderer.render_frame(renderer.total_frames - 1, "Test Title", "Sub")
@@ -80,12 +80,12 @@ class TestTaichiRendererFrame:
 
     def test_total_frames_matches_config(self, _taichi_cpu, small_config):
         """total_frames should equal fps * duration."""
-        renderer = TaichiTitleRenderer(small_config)
+        renderer = KernelTitleRenderer(small_config)
         assert renderer.total_frames == 10  # 10fps * 1.0s
 
     def test_hdr_output_is_uint16(self, _taichi_cpu):
         """HDR config should produce uint16 output frames."""
-        hdr_config = TaichiTitleConfig(
+        hdr_config = KernelTitleConfig(
             width=160,
             height=90,
             fps=10.0,
@@ -95,7 +95,7 @@ class TestTaichiRendererFrame:
             hdr=True,
             use_sdf_text=False,
         )
-        renderer = TaichiTitleRenderer(hdr_config)
+        renderer = KernelTitleRenderer(hdr_config)
         frame = renderer.render_frame(0, "HDR Test")
         assert frame.dtype == np.uint16
         assert frame.shape == (90, 160, 3)
@@ -104,8 +104,8 @@ class TestTaichiRendererFrame:
 class TestTaichiTitleVideo:
     @pytest.mark.xdist_group("ffmpeg")
     def test_creates_valid_mp4(self, _taichi_cpu, tmp_path):
-        """create_title_video_taichi should produce a playable MP4 file."""
-        config = TaichiTitleConfig(
+        """create_title_video_gpu should produce a playable MP4 file."""
+        config = KernelTitleConfig(
             width=160,
             height=90,
             fps=10.0,
@@ -115,7 +115,7 @@ class TestTaichiTitleVideo:
             use_sdf_text=False,
         )
         output = tmp_path / "title.mp4"
-        result = create_title_video_taichi(
+        result = create_title_video_gpu(
             "Integration Test",
             "CPU Backend",
             output,
@@ -143,7 +143,7 @@ class TestTaichiTitleVideo:
     @pytest.mark.xdist_group("ffmpeg")
     def test_fade_from_white_modifies_first_frames(self, _taichi_cpu, tmp_path):
         """fade_from_white should make early frames brighter than without fade."""
-        config = TaichiTitleConfig(
+        config = KernelTitleConfig(
             width=160,
             height=90,
             fps=10.0,
@@ -154,11 +154,11 @@ class TestTaichiTitleVideo:
         )
         # Without fade
         no_fade = tmp_path / "no_fade.mp4"
-        create_title_video_taichi("Test", None, no_fade, config=config)
+        create_title_video_gpu("Test", None, no_fade, config=config)
 
         # With fade from white
         with_fade = tmp_path / "with_fade.mp4"
-        create_title_video_taichi(
+        create_title_video_gpu(
             "Test",
             None,
             with_fade,

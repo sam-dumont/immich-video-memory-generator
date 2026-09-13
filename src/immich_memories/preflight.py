@@ -363,35 +363,29 @@ def check_title_rendering(config: Config) -> CheckResult:
 
 
 def _kernel_library_check() -> CheckResult:
-    """OK as soon as one kernel library is importable, naming the one that wins.
+    """OK when the GPU kernel library is installed, else name what is lost.
 
-    By `find_spec`, never by importing: this runs on every `doctor` and a kernel
-    library costs up to 0.8 s to load. Which one is preferred comes from the
-    config, so an install that pinned Taichi is not told Quadrants is fine.
-
-    The WARNING names the feature that is gone rather than the package that is
-    absent: an install missing it otherwise learns nothing until the titles come
-    out flat.
+    By `find_spec`, never by importing: this runs on every `doctor` and the
+    library costs the better part of a second to load. The WARNING names the
+    feature that is gone rather than the package that is absent, because an
+    install missing it otherwise learns nothing until the titles come out flat.
     """
-    from immich_memories.titles.kernel_backend_choice import (
-        INSTALL_HINTS,
-        preference_order,
-        requested_kernel_backend,
-    )
+    from immich_memories.titles.gpu_kernel_backend import KERNEL_LIBRARY
 
-    order = preference_order(requested_kernel_backend())
-    installed = [name for name in order if importlib.util.find_spec(name) is not None]
-    if installed:
+    if importlib.util.find_spec(KERNEL_LIBRARY) is not None:
         return CheckResult(
             name="Title rendering",
             status=CheckStatus.OK,
-            message=f"GPU-accelerated title rendering available ({installed[0]})",
+            message="GPU-accelerated title rendering available",
         )
     return CheckResult(
         name="Title rendering",
         status=CheckStatus.WARNING,
         message="GPU-accelerated title rendering unavailable; titles use the PIL fallback",
-        details=f"No title kernel library installed; {INSTALL_HINTS[order[0]]}",
+        details=(
+            f"{KERNEL_LIBRARY} publishes no wheel for this platform "
+            "(macOS x86_64, Python 3.14); title screens are PIL-rendered"
+        ),
     )
 
 

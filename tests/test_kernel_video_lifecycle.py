@@ -10,8 +10,8 @@ import numpy as np
 import pytest
 
 from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
-from immich_memories.titles import taichi_video
-from immich_memories.titles.renderer_taichi import TaichiTitleConfig
+from immich_memories.titles import kernel_video
+from immich_memories.titles.renderer_kernels import KernelTitleConfig
 
 
 class _FakeStderr:
@@ -92,16 +92,16 @@ def _render_with_process(
     process: _FakeProcess,
     renderer: type[_OneFrameRenderer] = _OneFrameRenderer,
 ) -> Path:
-    monkeypatch.setattr(taichi_video, "TaichiTitleRenderer", renderer)
-    monkeypatch.setattr(taichi_video.subprocess, "Popen", lambda *_args, **_kwargs: process)
-    config = TaichiTitleConfig(
+    monkeypatch.setattr(kernel_video, "KernelTitleRenderer", renderer)
+    monkeypatch.setattr(kernel_video.subprocess, "Popen", lambda *_args, **_kwargs: process)
+    config = KernelTitleConfig(
         width=1,
         height=1,
         fps=1.0,
         duration=1.0,
         enable_bokeh=False,
     )
-    return taichi_video.create_title_video_taichi(
+    return kernel_video.create_title_video_gpu(
         "Title",
         None,
         tmp_path / "title.mp4",
@@ -126,19 +126,19 @@ def test_content_backed_hlg_title_preserves_transfer_without_reencoding_it(
 ) -> None:
     process = _FakeProcess()
     commands: list[list[str]] = []
-    monkeypatch.setattr(taichi_video, "TaichiTitleRenderer", _OneFrameRenderer)
+    monkeypatch.setattr(kernel_video, "KernelTitleRenderer", _OneFrameRenderer)
 
     def popen(command: list[str], **_kwargs) -> _FakeProcess:
         commands.append(command)
         return process
 
-    monkeypatch.setattr(taichi_video.subprocess, "Popen", popen)
+    monkeypatch.setattr(kernel_video.subprocess, "Popen", popen)
 
-    taichi_video.create_title_video_taichi(
+    kernel_video.create_title_video_gpu(
         "Title",
         None,
         tmp_path / "title.mp4",
-        config=TaichiTitleConfig(width=1, height=1, fps=1.0, duration=1.0),
+        config=KernelTitleConfig(width=1, height=1, fps=1.0, duration=1.0),
         encoding_plan=_hlg_plan(),
         frame_transfer=HdrTransfer.HLG,
     )

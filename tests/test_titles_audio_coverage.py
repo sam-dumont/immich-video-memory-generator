@@ -641,7 +641,7 @@ class TestRenderingServiceInit:
         from immich_memories.titles.rendering_service import RenderingService
 
         config = TitleScreenConfig(use_gpu_rendering=True)
-        with patch("immich_memories.titles.rendering_service.TAICHI_AVAILABLE", False):
+        with patch("immich_memories.titles.rendering_service.KERNELS_AVAILABLE", False):
             svc = RenderingService(config)
             assert not svc.use_gpu
 

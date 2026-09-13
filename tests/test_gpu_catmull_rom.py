@@ -12,12 +12,12 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-ti_kernels = pytest.importorskip("immich_memories.titles.taichi_kernels")
+ti_kernels = pytest.importorskip("immich_memories.titles.kernels")
 
 
 @pytest.fixture(scope="module")
 def taichi_ready() -> bool:
-    if not ti_kernels.init_taichi():
+    if not ti_kernels.init_kernels():
         pytest.skip("Taichi has no working backend here")
     return True
 

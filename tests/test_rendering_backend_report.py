@@ -1,6 +1,6 @@
 """The log has to distinguish a GPU from Taichi's CPU fallback.
 
-init_taichi() returns the string "CPU" when Metal, CUDA and Vulkan all fail
+init_kernels() returns the string "CPU" when Metal, CUDA and Vulkan all fail
 to start. The service logged "GPU rendering enabled: CPU", so a container
 rendering titles on the processor looked identical to one using the card —
 and titles are the most expensive stage in the pipeline.
@@ -27,8 +27,8 @@ def config() -> MagicMock:
 def test_a_real_gpu_is_reported_as_one(backend: str, config, caplog) -> None:
     # WHY: Taichi and the GPU it finds are the boundary — this asserts the log line.
     with (
-        patch("immich_memories.titles.rendering_service.TAICHI_AVAILABLE", True),
-        patch("immich_memories.titles.rendering_service.init_taichi", return_value=backend),
+        patch("immich_memories.titles.rendering_service.KERNELS_AVAILABLE", True),
+        patch("immich_memories.titles.rendering_service.init_kernels", return_value=backend),
         caplog.at_level(logging.INFO),
     ):
         service = RenderingService(config)
@@ -41,8 +41,8 @@ def test_a_real_gpu_is_reported_as_one(backend: str, config, caplog) -> None:
 def test_the_cpu_fallback_says_so_and_warns(config, caplog) -> None:
     # WHY: same boundary; a machine with working Metal can never reach this case.
     with (
-        patch("immich_memories.titles.rendering_service.TAICHI_AVAILABLE", True),
-        patch("immich_memories.titles.rendering_service.init_taichi", return_value="CPU"),
+        patch("immich_memories.titles.rendering_service.KERNELS_AVAILABLE", True),
+        patch("immich_memories.titles.rendering_service.init_kernels", return_value="CPU"),
         caplog.at_level(logging.INFO),
     ):
         service = RenderingService(config)
