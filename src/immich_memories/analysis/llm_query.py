@@ -42,6 +42,11 @@ class LLMIncompleteResponse(ValueError):
             self.raw = ""  # A truncated reasoning block contains no final-answer evidence.
 
 
+# Dropped connections are retried this many times before the call fails; a
+# provider that stopped answering is announced on the first drop (provider_status).
+TRANSPORT_RETRIES = 3
+
+
 @dataclass(frozen=True)
 class LLMTransportAttempt:
     """One actual HTTP POST outcome, kept separate from accepted-reply metrics."""
@@ -163,7 +168,7 @@ async def _post_adapted(
             # never fatal). Backoff, retry, and only then give up.
             transport_drops += 1
             _observe(transport_observer, transport_drops, "connection_error", None)
-            if transport_drops >= 3:
+            if transport_drops >= TRANSPORT_RETRIES:
                 raise
             await asyncio.sleep(2.0 * transport_drops)
             continue

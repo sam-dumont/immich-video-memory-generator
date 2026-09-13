@@ -19,6 +19,7 @@ from immich_memories.analysis.editorial_story_replies import (
     read_episode_page,
 )
 from immich_memories.analysis.editorial_story_weighing import _apply_story_weights
+from immich_memories.operations.cut_progress import StageUpdate, announce_stage
 
 HEADLINE_CHARS = 160
 PAGE_FRAGMENTS = 16
@@ -326,6 +327,7 @@ def read_period_story(
     queue, number = evidence.copy(), 0
     while queue:
         number += 1
+        announce_stage(StageUpdate(f"Reading the period account: page {number}"))
         page = next(iter(pages(queue, max_items=PAGE_FRAGMENTS, max_chars=PAGE_CHARS)))
         queue = queue[len(page) :]
         prompt, open_episodes, closed = _page_request(

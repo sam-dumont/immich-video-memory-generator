@@ -61,6 +61,7 @@ def test_exact_complete_reply_is_retained_before_period_parser_rejects_it(tmp_pa
     answer = requester(tmp_path)("Read every source.\n")
     assert answer == raw
     assert _read_response(answer, None, ()) is None
+    assert callable(seen[0][2].pop("transport_observer"))
     assert seen == [
         (
             "Read every source.\n",
