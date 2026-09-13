@@ -1,4 +1,4 @@
-"""The log has to distinguish a GPU from Taichi's CPU fallback.
+"""The log has to distinguish a GPU from the kernel library's CPU fallback.
 
 init_kernels() returns the string "CPU" when Metal, CUDA and Vulkan all fail
 to start. The service logged "GPU rendering enabled: CPU", so a container
@@ -25,7 +25,7 @@ def config() -> MagicMock:
 
 @pytest.mark.parametrize("backend", ["Metal", "CUDA", "Vulkan"])
 def test_a_real_gpu_is_reported_as_one(backend: str, config, caplog) -> None:
-    # WHY: Taichi and the GPU it finds are the boundary — this asserts the log line.
+    # WHY: the kernel library and the GPU it finds are the boundary; this asserts the log line.
     with (
         patch("immich_memories.titles.rendering_service.KERNELS_AVAILABLE", True),
         patch("immich_memories.titles.rendering_service.init_kernels", return_value=backend),
@@ -47,7 +47,7 @@ def test_the_cpu_fallback_says_so_and_warns(config, caplog) -> None:
     ):
         service = RenderingService(config)
 
-    assert service.use_gpu, "the Taichi renderer is still the right one — it does the deblur"
+    assert service.use_gpu, "the GPU renderer is still the right one: it does the deblur"
     assert service.backend == "CPU"
     assert "on CPU" in caplog.text
     assert any(r.levelno == logging.WARNING for r in caplog.records), (

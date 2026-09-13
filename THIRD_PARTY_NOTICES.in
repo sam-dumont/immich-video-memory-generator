@@ -120,6 +120,21 @@ VHS (records the CLI demo tape)
   URL: https://github.com/charmbracelet/vhs
 
 
+GPU title kernels
+-----------------
+
+Quadrants (https://github.com/Genesis-Embodied-AI/quadrants)
+  Role: the GPU kernel library the animated title screen renderer compiles
+    against. It is a maintained fork of Taichi, which this project used until
+    v0.80 and which is terminal upstream at 1.7.4.
+  License: Apache-2.0
+  Wheels (verified against PyPI for 1.3.0; no source distribution is published):
+    Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64, Python 3.10-3.13
+  Where there is no wheel (macOS x86_64, Python 3.14) the app renders title
+    screens with Pillow instead: the same text and timing on a static gradient,
+    without the animated kernels or the SDF text path. It is logged once at
+    startup and reported by `immich-memories preflight`.
+
 Test and demo fixtures
 ----------------------
 

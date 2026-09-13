@@ -92,7 +92,7 @@ class TestRenderTripMapFrame:
         assert result.size == (1920, 1080)
 
     def test_returns_numpy_array_for_gpu(self):
-        """render_trip_map_array returns numpy float32 array for Taichi pipeline."""
+        """render_trip_map_array returns numpy float32 array for the GPU pipeline."""
         from immich_memories.titles.map_renderer import render_trip_map_array
 
         locations = [(41.39, 2.17)]

@@ -13,13 +13,11 @@ from pathlib import Path
 
 import numpy as np
 
-# WHY: importing the seam first is what silences both kernel libraries' banners
-# before either C++ runtime loads — including for the SDF modules below, which
-# take `ti` from the same place.
-# KERNELS_AVAILABLE keeps its name here: the package and its tests read it from
-# this module, and it means the same thing whichever library was picked.
-from .gpu_kernel_backend import KERNEL_BACKEND, KERNEL_BACKEND_REQUEST, ti
-from .gpu_kernel_backend import KERNEL_LIBRARY_AVAILABLE as KERNELS_AVAILABLE
+# WHY: importing the seam first is what silences the library's banner before its
+# C++ runtime loads, including for the SDF modules below, which take `ti` from
+# the same place. KERNELS_AVAILABLE is re-exported here because this module is
+# where the rest of the package asks whether there is a GPU renderer at all.
+from .gpu_kernel_backend import KERNEL_LIBRARY, KERNELS_AVAILABLE, ti
 from .kernel_backend_probe import (
     _backend_dispatches,
     _candidate_backends,
@@ -50,9 +48,7 @@ def init_kernels() -> str | None:
     """Initialize the kernel library on the best available GPU backend."""
     global _kernels_initialized, _kernel_arch
     if not KERNELS_AVAILABLE:
-        logger.warning(
-            "No title kernel library installed. Install with: pip install 'immich-memories[gpu]'"
-        )
+        logger.warning("No GPU kernel library on this platform; title screens use the PIL renderer")
         return None
     if _kernels_initialized:
         return _kernel_arch
@@ -74,13 +70,12 @@ def init_kernels() -> str | None:
             continue
         try:
             _silent_init(arch=backend, offline_cache=True)
-            # The one line that says which of the two libraries this run is on.
+            # The one line that says what this run's titles are rendered by.
             # init_kernels() is idempotent, so it is printed once per process.
             logger.info(
-                "Title kernels: %s %s (%s) on the %s backend",
-                KERNEL_BACKEND,
+                "Title kernels: %s %s on the %s backend",
+                KERNEL_LIBRARY,
                 _kernel_library_version(),
-                KERNEL_BACKEND_REQUEST,
                 name,
             )
             _compile_kernels()
@@ -91,11 +86,11 @@ def init_kernels() -> str | None:
             return name
         except (RuntimeError, OSError) as e:
             last_error = e
-            logger.debug(f"Failed to init {KERNEL_BACKEND} with {name}: {e}")
+            logger.debug(f"Failed to init {KERNEL_LIBRARY} with {name}: {e}")
             continue
 
     logger.error(
-        f"Failed to initialize {KERNEL_BACKEND} with any backend. Last error: {last_error}"
+        f"Failed to initialize {KERNEL_LIBRARY} with any backend. Last error: {last_error}"
     )
     return None
 

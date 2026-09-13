@@ -491,8 +491,8 @@ class TestGraphicsWhiteCeiling:
         colour into text_rgb must apply it, or an HDR run glows anyway."""
         from typing import Any, cast
 
-        from immich_memories.titles.renderer_kernels import KernelTitleConfig
         from immich_memories.titles.kernel_text import TitleTextRenderer
+        from immich_memories.titles.renderer_kernels import KernelTitleConfig
 
         # WHY None buffers: the constructor only stores them; no GPU work
         # happens until a frame is rendered, which this test never does.

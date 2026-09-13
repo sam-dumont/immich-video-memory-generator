@@ -11,8 +11,7 @@ import logging
 
 import numpy as np
 
-from .gpu_kernel_backend import KERNEL_LIBRARY_AVAILABLE as KERNELS_AVAILABLE
-from .gpu_kernel_backend import ti
+from .gpu_kernel_backend import KERNELS_AVAILABLE, ti
 from .sdf_font import SDFFontAtlas
 
 logger = logging.getLogger(__name__)

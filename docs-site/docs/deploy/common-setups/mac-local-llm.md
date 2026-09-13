@@ -20,7 +20,7 @@ You have a Mac with Apple Silicon (M1/M2/M3/M4) and enough unified memory to hol
 │  │  oMLX        │  │   Immich Memories         │  │
 │  │  reader model│←─│   (native Python)         │  │
 │  │  port 8000   │  │   VideoToolbox encoding   │  │
-│  │              │  │   Taichi titles on Metal  │  │
+│  │              │  │   GPU titles on Metal     │  │
 │  └──────────────┘  └──────────────────────────┘  │
 │                             │                     │
 │                    ┌────────┴─────────┐           │
@@ -35,7 +35,7 @@ You have a Mac with Apple Silicon (M1/M2/M3/M4) and enough unified memory to hol
 ## Install
 
 ```bash
-# Install Immich Memories with the Mac extras (Taichi GPU titles, the editorial stack, ...)
+# Install Immich Memories with the Mac extras (Apple Vision, the editorial stack, ...)
 uv tool install "immich-memories[all-mac]"
 
 # Start the UI
@@ -43,7 +43,7 @@ immich-memories ui
 ```
 
 The bare `immich-memories` package works too, but title screens are then PIL-rendered and the
-context heads and detectors have no runtime: `all-mac` is what installs Taichi and the editorial
+context heads and detectors have no runtime: `all-mac` is what installs the editorial
 stack described below. Note it does not include the `auth` extra; add that separately if you want
 OIDC login.
 
@@ -118,7 +118,7 @@ so check it covers whatever you load before you count on it.
 
 - **A local editor**: the model reads the period's pictures and edits the memory on your machine; nothing leaves it.
 - **VideoToolbox encoding**: H.264/H.265 encoding on the chip's media engine instead of the CPU cores.
-- **Taichi GPU title renderer**: particle effects and gradient backgrounds rendered on Apple GPU.
+- **GPU title renderer**: particle effects and gradient backgrounds rendered on the Apple GPU.
 - **AI music generation**: ACE-Step runs in-process on Apple Silicon via MLX, no server involved. A 60 s track takes ~17 s with `use_lm: false`, or ~45 s with thinking mode on. What it costs is memory, not time: see below.
 - **All memory types and features**: everything works natively on Mac.
 

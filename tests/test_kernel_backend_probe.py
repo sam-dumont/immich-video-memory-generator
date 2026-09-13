@@ -1,4 +1,4 @@
-"""Contracts for isolated Taichi backend dispatch probing."""
+"""Contracts for isolated kernel backend dispatch probing."""
 
 from __future__ import annotations
 
@@ -48,8 +48,8 @@ def _install_runner(monkeypatch: pytest.MonkeyPatch, run: _RecordedRun) -> _Reco
     return run
 
 
-class _FakeTaichi:
-    """Stand-in for the `taichi` module inside the probe child.
+class _FakeKernelLibrary:
+    """Stand-in for the kernel library inside the probe child.
 
     The worker only ever touches four things on it: an arch attribute, init(),
     the @kernel decorator, and the ndarray type annotation.
@@ -75,10 +75,10 @@ class _FakeTaichi:
         return self._effect
 
 
-def _run_worker(monkeypatch: pytest.MonkeyPatch, fake_ti: _FakeTaichi) -> object:
+def _run_worker(monkeypatch: pytest.MonkeyPatch, fake_ti: _FakeKernelLibrary) -> object:
     from immich_memories.titles import kernel_backend_probe
 
-    # WHY: the worker's whole job is driving the Taichi runtime — the one
+    # WHY: the worker's whole job is driving the kernel runtime — the one
     # external boundary here. A real ti.init() would claim the GPU in-process,
     # which is exactly what running the probe in a child process avoids.
     monkeypatch.setattr(kernel_backend_probe, "ti", fake_ti)
@@ -91,7 +91,7 @@ def test_worker_reports_success_when_the_kernel_runs(monkeypatch: pytest.MonkeyP
     def increments(values) -> None:
         values[0] += 1
 
-    fake_ti = _FakeTaichi(effect=increments)
+    fake_ti = _FakeKernelLibrary(effect=increments)
 
     result = _run_worker(monkeypatch, fake_ti)
 
@@ -109,7 +109,7 @@ def test_worker_rejects_a_backend_that_dispatches_nothing(
     """
     from immich_memories.titles.kernel_backend_probe import KernelProbeOutcome
 
-    result = _run_worker(monkeypatch, _FakeTaichi(effect=lambda _values: None))
+    result = _run_worker(monkeypatch, _FakeKernelLibrary(effect=lambda _values: None))
 
     assert result.outcome is KernelProbeOutcome.DISPATCH_FAILED
     assert result.detail == "unexpected_kernel_result"
@@ -120,7 +120,7 @@ def test_worker_names_the_exception_a_failing_backend_raised(
 ) -> None:
     from immich_memories.titles.kernel_backend_probe import KernelProbeOutcome
 
-    fake_ti = _FakeTaichi(effect=lambda _values: None, init_error=RuntimeError("no device"))
+    fake_ti = _FakeKernelLibrary(effect=lambda _values: None, init_error=RuntimeError("no device"))
 
     result = _run_worker(monkeypatch, fake_ti)
 
@@ -131,8 +131,8 @@ def test_worker_names_the_exception_a_failing_backend_raised(
 def test_non_apple_hosts_try_cuda_then_vulkan_then_cpu(monkeypatch: pytest.MonkeyPatch) -> None:
     from immich_memories.titles import kernel_backend_probe
 
-    fake_ti = _FakeTaichi(effect=lambda _values: None)
-    # WHY: the arch objects are Taichi runtime singletons; identity is what
+    fake_ti = _FakeKernelLibrary(effect=lambda _values: None)
+    # WHY: the arch objects are kernel runtime singletons; identity is what
     # init_kernels passes through to ti.init().
     monkeypatch.setattr(kernel_backend_probe, "ti", fake_ti)
 
@@ -260,7 +260,7 @@ def _prepare_parent_init(monkeypatch: pytest.MonkeyPatch):
     `init_kernels` resolves KERNELS_AVAILABLE and the module-level init flags in
     `kernels`, but `_candidate_backends` and `_backend_dispatches` read
     `ti` and `_probe_backend` from `kernel_backend_probe`. Patching one
-    module for both would leave the real Taichi arch objects in play.
+    module for both would leave the real arch objects in play.
     """
     from immich_memories.titles import kernel_backend_probe, kernels
 
@@ -290,9 +290,7 @@ def test_successful_gpu_probe_initializes_parent_once(monkeypatch: pytest.Monkey
         "_probe_backend",
         lambda backend: probes.append(backend) or KernelProbeResult(KernelProbeOutcome.SUCCESS),
     )
-    monkeypatch.setattr(
-        kernels, "_silent_init", lambda **kwargs: parent_inits.append(kwargs)
-    )
+    monkeypatch.setattr(kernels, "_silent_init", lambda **kwargs: parent_inits.append(kwargs))
     monkeypatch.setattr(kernels, "_compile_kernels", lambda: compile_calls.append(True))
 
     assert kernels.init_kernels() == "Metal"
@@ -326,9 +324,7 @@ def test_failed_gpu_probe_skips_parent_gpu_init(
         "_probe_backend",
         lambda _backend: KernelProbeResult(KernelProbeOutcome(outcome)),
     )
-    monkeypatch.setattr(
-        kernels, "_silent_init", lambda **kwargs: parent_inits.append(kwargs)
-    )
+    monkeypatch.setattr(kernels, "_silent_init", lambda **kwargs: parent_inits.append(kwargs))
     monkeypatch.setattr(kernels, "_compile_kernels", lambda: None)
 
     assert kernels.init_kernels() == "CPU"
@@ -344,9 +340,7 @@ def test_forced_cpu_never_spawns_a_probe(monkeypatch: pytest.MonkeyPatch) -> Non
         "_probe_backend",
         lambda _backend: pytest.fail("CPU fallback must not spawn a child"),
     )
-    monkeypatch.setattr(
-        kernels, "_silent_init", lambda **kwargs: parent_inits.append(kwargs)
-    )
+    monkeypatch.setattr(kernels, "_silent_init", lambda **kwargs: parent_inits.append(kwargs))
     monkeypatch.setattr(kernels, "_compile_kernels", lambda: None)
 
     assert kernels.init_kernels() == "CPU"

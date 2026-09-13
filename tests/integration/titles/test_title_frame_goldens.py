@@ -1,14 +1,15 @@
-"""The Quadrants backend must render the same title frames Taichi does.
+"""The title kernels must keep rendering the frames Taichi rendered.
 
-Taichi 1.7.4 is the last release its upstream will make (#558). Quadrants is a
-maintained fork with the same kernel API, and the only thing that makes it a
-safe swap is that the pixels come out the same — so this renders one frame for
-each of the five preset styles under each of the nine moods on both libraries
-and compares them.
+The golden sheet in this directory was produced by Taichi 1.7.4, the library the
+renderer ran on until #558. Quadrants reproduced it byte for byte at this size,
+and at 1080p differed by one pixel of 1/255 on two of forty-five frames. That
+parity is the whole argument for the swap, so it is pinned here rather than left
+in a PR description: any future kernel change that moves the picture fails.
 
-The two libraries cannot share a process: each links its own copy of LLVM and
-registers the same options with it, so the second import aborts the interpreter.
-Each backend therefore renders in its own child, driven by render_title_frames.py.
+Regenerate deliberately, never to make a red test green:
+
+    python tests/integration/titles/render_title_frames.py \\
+        tests/integration/titles/golden_title_frames.png
 
 Run: make test-integration-titles
 """
@@ -22,76 +23,92 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from PIL import Image
 
-from tests.integration.titles.render_title_frames import CASES, case_key
+from tests.integration.titles.render_title_frames import (
+    CASES,
+    FRAME_HEIGHT,
+    FRAME_WIDTH,
+    case_key,
+    sheet_position,
+)
 
 # A rounding boundary in the gradient's uint8 quantisation is tolerable; a
-# different image is not. Measured on this matrix: max 1/255 on 1 pixel of 2 of
-# the 45 frames, mean 0.0000013/255.
+# different image is not. Measured Taichi vs Quadrants: identical at this size,
+# max 1/255 on 1 pixel of 2 of the 45 frames at 1080p.
 MAX_ABS_DIFF = 2
 MEAN_ABS_DIFF = 0.5
 
+GOLDEN = Path(__file__).with_name("golden_title_frames.png")
 _RENDER_PROGRAM = Path(__file__).with_name("render_title_frames.py")
 _RENDER_TIMEOUT_SECONDS = 300
 
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.skipif(
-        importlib.util.find_spec("taichi") is None,
-        reason="Taichi not installed",
-    ),
-    pytest.mark.skipif(
         importlib.util.find_spec("quadrants") is None,
-        reason="Quadrants not installed (pip install 'immich-memories[titles-quadrants]')",
+        reason="no kernel library wheel for this platform; titles are PIL-rendered",
     ),
 ]
 
 
-def _render_with(backend: str, work: Path) -> dict[str, np.ndarray]:
-    """Run the render program in its own interpreter and read back its archive."""
-    archive = work / f"{backend}.npz"
-    completed = subprocess.run(  # noqa: S603 — this interpreter, no shell
-        [sys.executable, str(_RENDER_PROGRAM), backend, str(archive)],
-        capture_output=True,
-        text=True,
-        timeout=_RENDER_TIMEOUT_SECONDS,
-        # A clean HOME so the developer's own config does not pick the backend.
-        env={"HOME": str(work / "home"), "PATH": str(Path(sys.executable).parent)},
-        check=False,
-    )
-    assert completed.returncode == 0, f"{backend} render failed:\n{completed.stderr[-2000:]}"
-    with np.load(archive) as frames:
-        return {key: frames[key] for key in frames.files}
+def _cell(sheet: np.ndarray, index: int) -> np.ndarray:
+    left, top = sheet_position(index)
+    return sheet[top : top + FRAME_HEIGHT, left : left + FRAME_WIDTH].astype(np.int16)
 
 
 @pytest.fixture(scope="module")
-def rendered_frames(tmp_path_factory: pytest.TempPathFactory) -> dict[str, dict[str, np.ndarray]]:
-    work = tmp_path_factory.mktemp("kernel-parity")
-    (work / "home").mkdir()
-    return {backend: _render_with(backend, work) for backend in ("taichi", "quadrants")}
+def rendered_sheet(tmp_path_factory: pytest.TempPathFactory) -> np.ndarray:
+    """Render the matrix in its own interpreter, the way the golden was made."""
+    work = tmp_path_factory.mktemp("title-goldens")
+    home = work / "home"
+    home.mkdir()
+    sheet = work / "sheet.png"
+    completed = subprocess.run(  # noqa: S603 — this interpreter, no shell
+        [sys.executable, str(_RENDER_PROGRAM), str(sheet)],
+        capture_output=True,
+        text=True,
+        timeout=_RENDER_TIMEOUT_SECONDS,
+        # A clean HOME so a developer's own config cannot change the render.
+        env={"HOME": str(home), "PATH": str(Path(sys.executable).parent)},
+        check=False,
+    )
+    assert completed.returncode == 0, f"render failed:\n{completed.stderr[-2000:]}"
+    return np.asarray(Image.open(sheet).convert("RGB"))
+
+
+@pytest.fixture(scope="module")
+def golden_sheet() -> np.ndarray:
+    return np.asarray(Image.open(GOLDEN).convert("RGB"))
+
+
+def test_the_golden_sheet_holds_every_case(golden_sheet: np.ndarray) -> None:
+    """A sheet the wrong size would make every comparison below meaningless."""
+    rows = -(-len(CASES) // 9)
+
+    assert golden_sheet.shape == (rows * FRAME_HEIGHT, 9 * FRAME_WIDTH, 3)
 
 
 @pytest.mark.parametrize(("style", "mood"), CASES, ids=lambda value: value)
-def test_quadrants_renders_the_same_title_frame_as_taichi(
-    rendered_frames: dict[str, dict[str, np.ndarray]], style: str, mood: str
+def test_the_kernels_still_render_the_golden_frame(
+    rendered_sheet: np.ndarray, golden_sheet: np.ndarray, style: str, mood: str
 ) -> None:
-    key = case_key(style, mood)
-    taichi_frame = rendered_frames["taichi"][key].astype(np.int16)
-    quadrants_frame = rendered_frames["quadrants"][key].astype(np.int16)
-
-    difference = np.abs(taichi_frame - quadrants_frame)
+    index = CASES.index((style, mood))
+    difference = np.abs(_cell(rendered_sheet, index) - _cell(golden_sheet, index))
 
     assert difference.max() <= MAX_ABS_DIFF, (
-        f"{key}: {difference.max()}/255 worst pixel, {int((difference != 0).sum())} pixels differ"
+        f"{case_key(style, mood)}: {difference.max()}/255 worst pixel, "
+        f"{int((difference.any(axis=2)).sum())} pixels differ"
     )
-    assert difference.mean() <= MEAN_ABS_DIFF, f"{key}: mean {difference.mean():.4f}/255"
+    assert difference.mean() <= MEAN_ABS_DIFF, (
+        f"{case_key(style, mood)}: mean {difference.mean():.4f}/255"
+    )
 
 
-def test_the_matrix_is_not_quietly_rendering_the_same_frame_twice(
-    rendered_frames: dict[str, dict[str, np.ndarray]],
+def test_the_matrix_is_not_quietly_rendering_the_same_frame_forty_five_times(
+    rendered_sheet: np.ndarray,
 ) -> None:
-    """A harness that renders one image 45 times would pass every case above."""
-    frames = rendered_frames["taichi"]
-    distinct = {frames[case_key(style, mood)].tobytes() for style, mood in CASES}
+    """A harness that rendered one image 45 times would pass every case above."""
+    distinct = {_cell(rendered_sheet, index).tobytes() for index in range(len(CASES))}
 
     assert len(distinct) > 1, "every cell of the style x mood matrix rendered identically"

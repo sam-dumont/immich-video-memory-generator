@@ -13,8 +13,6 @@ Every title kernel compiles against Quadrants, and this module is the single
   is what sets the variables that silence it, so it has to be the first thing
   any kernel-touching module pulls in.
 
-`ti` is the alias because that is the name Quadrants' own API documentation and
-every kernel signature in this package uses.
 """
 
 import logging
@@ -39,13 +37,14 @@ def _silence_kernel_banners() -> None:
 
 _silence_kernel_banners()
 
-# `ti` is deliberately Any. The kernel modules write `ti.f32` and
-# `ti.types.ndarray(...)` in annotation position, which type-checks only against
-# the Any an unstubbed library produces.
-ti: Any
 try:
-    import quadrants as ti  # noqa: I001 — must follow the env vars set above
+    import quadrants  # noqa: I001 — must follow the env vars set above
 
+    # `ti` is deliberately Any. The kernel modules write `ti.f32` and
+    # `ti.types.ndarray(...)` in annotation position, which type-checks only
+    # against the Any an unstubbed library produces. `ti` is the alias because
+    # that is the name Quadrants' own API docs and every kernel signature use.
+    ti: Any = quadrants
     KERNELS_AVAILABLE = True
 except ModuleNotFoundError as _exc:
     # Not an error: no wheel for this platform (macOS x86_64, Python 3.14) means

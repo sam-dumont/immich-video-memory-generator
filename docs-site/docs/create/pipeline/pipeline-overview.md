@@ -37,7 +37,7 @@ Every stage below carries one of four labels.
 
 | Class | Meaning |
 | --- | --- |
-| `local-only` | Needs this machine. Video decode, frame extraction, the picture encoder and detectors, FFmpeg assembly, encoding, Taichi title rendering. |
+| `local-only` | Needs this machine. Video decode, frame extraction, the picture encoder and detectors, FFmpeg assembly, encoding, GPU title rendering. |
 | `remotable` | An HTTP request to a model server: the caption model, the text model, music generation. Runs wherever you point the config: another box on the LAN, a GPU host, a hosted provider. |
 | `network` | Immich API I/O. Bounded by your NAS and your LAN, not by CPU. |
 | `cheap` | Pure Python over data already in memory or in SQLite. Milliseconds. |
@@ -118,7 +118,7 @@ point needed more than previews. Then:
   editor granted: 120 frames per photo at 4 s. HEIC decode and Apple gain-map HDR reconstruction
   happen here too, and the source is capped at 1.5× the output size: at 4K, measured on a 24.5 MP
   HEIC, a 2.0× cap paid 0.63 s and 0.32 GB per photo for pixels its own resize then discarded.
-- **Generates title screens**, using the Taichi renderer when Taichi initialises and PIL
+- **Generates title screens**, using the GPU renderer when the kernel library initialises and PIL
   otherwise. Both encode with the same encoder the final video uses.
 - **Assembles and encodes.** Two or more clips always go through the streaming assembler
   (`processing/streaming_assembler.py`): one FFmpeg decode process per clip at a time, crossfades
@@ -189,7 +189,7 @@ logged.
 | Source download | Originals for the selected sources | Bounded by NAS and LAN | `network` |
 | Clip extraction | FFmpeg trim and re-encode per clip | Can use hardware decode | `local-only` |
 | Photo render | numpy/OpenCV frame loop, 30 frames per second granted | Plus HEIC decode and gain-map HDR | `local-only` |
-| Title screens | Taichi GPU kernels, or PIL | Per-frame render plus an encode per screen | `local-only` |
+| Title screens | GPU kernels, or PIL | Per-frame render plus an encode per screen | `local-only` |
 | Assembly + encode | Streaming decode, blend, encode | Hardware encode, software decode | `local-only` |
 | Output validation | `ffprobe -count_frames` on the finished file | A full pass over every frame | `local-only` |
 | Music generation | ACE-Step or MusicGen | Seconds to minutes on a GPU; hours on CPU | `remotable`, or `local-only` in ACE-Step `lib` mode |

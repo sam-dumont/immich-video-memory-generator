@@ -88,3 +88,7 @@ never a bitrate target. Before 0.76.1 it got no rate-control flag at all and the
 decided quality. See [the overview](./overview.md#quality-what-crf-means-on-each-backend) for what
 the dial costs on each backend, and note that a hardware encoder needs more bits than libx264 for
 the same picture.
+
+## Title rendering
+
+GPU title rendering runs on Quadrants, which has wheels for Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 on Python 3.11-3.13. On macOS x86_64 and on Python 3.14 there is none, and title screens fall back to the PIL renderer (static gradient and text, no animated kernels, no SDF text); `immich-memories preflight` says which you will get. See [Title kernels](./cpu-only.md#title-kernels).

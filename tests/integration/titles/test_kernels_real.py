@@ -1,6 +1,6 @@
-"""Real Taichi kernel execution tests on CPU backend.
+"""Real kernel execution tests on the CPU backend.
 
-Runs actual GPU kernels via Taichi's CPU backend to verify correctness
+Runs actual GPU kernels on the library's CPU backend to verify correctness
 of gradient generation, Gaussian blur, and float32→uint8 finalization.
 
 Run: make test-integration-titles
@@ -13,8 +13,8 @@ import os
 import numpy as np
 import pytest
 
-# WHY: Must set CPU backend BEFORE importing Taichi modules.
-# Taichi initializes once per process — this ensures it uses CPU.
+# WHY: Must set the CPU backend BEFORE importing the kernel modules.
+# The library initializes once per process; this makes that once be CPU.
 os.environ["IMMICH_FORCE_CPU"] = "1"
 
 # WHY: Kernels are compiled lazily inside init_kernels(). A direct
@@ -28,22 +28,24 @@ from immich_memories.titles.kernels import (  # noqa: E402
     init_kernels,
 )
 
-requires_taichi = pytest.mark.skipif(not KERNELS_AVAILABLE, reason="Taichi not installed")
-pytestmark = [pytest.mark.integration, requires_taichi]
+requires_kernels = pytest.mark.skipif(
+    not KERNELS_AVAILABLE, reason="no kernel library wheel for this platform"
+)
+pytestmark = [pytest.mark.integration, requires_kernels]
 
 W, H = 160, 90
 
 
 @pytest.fixture(scope="module")
-def _taichi_cpu():
-    """Initialize Taichi with CPU backend once per module."""
+def _kernels_on_cpu():
+    """Initialize the kernels on the CPU backend once per module."""
     backend = init_kernels()
-    assert backend is not None, "Taichi failed to initialize on CPU"
+    assert backend is not None, "the kernel library failed to initialize on CPU"
     return backend
 
 
 class TestLinearGradientKernel:
-    def test_fills_frame_with_non_uniform_color(self, _taichi_cpu):
+    def test_fills_frame_with_non_uniform_color(self, _kernels_on_cpu):
         """Linear gradient should produce smoothly varying pixels, not a flat fill."""
         frame = np.zeros((H, W, 3), dtype=np.float32)
         kernels._generate_linear_gradient(
@@ -63,7 +65,7 @@ class TestLinearGradientKernel:
         assert frame.min() >= 0.0
         assert frame.max() <= 1.0
 
-    def test_different_angles_produce_different_output(self, _taichi_cpu):
+    def test_different_angles_produce_different_output(self, _kernels_on_cpu):
         """Two gradients with different angles should differ."""
         frame_a = np.zeros((H, W, 3), dtype=np.float32)
         frame_b = np.zeros((H, W, 3), dtype=np.float32)
@@ -96,7 +98,7 @@ class TestLinearGradientKernel:
 
 
 class TestGaussianBlurKernel:
-    def test_blur_reduces_noise(self, _taichi_cpu):
+    def test_blur_reduces_noise(self, _kernels_on_cpu):
         """Gaussian blur on a noisy image should reduce standard deviation."""
         rng = np.random.default_rng(42)
         noisy = rng.uniform(0.2, 0.8, (H, W, 3)).astype(np.float32)
@@ -114,7 +116,7 @@ class TestGaussianBlurKernel:
             f"Blur should reduce noise: {blurred_std:.4f} vs original {original_std:.4f}"
         )
 
-    def test_blur_preserves_value_range(self, _taichi_cpu):
+    def test_blur_preserves_value_range(self, _kernels_on_cpu):
         """Blur output should stay within the input value range."""
         frame = np.full((H, W, 3), 0.5, dtype=np.float32)
         frame[H // 2, W // 2, :] = 1.0
@@ -131,7 +133,7 @@ class TestGaussianBlurKernel:
 
 
 class TestFinalizeToU8:
-    def test_converts_float32_to_uint8(self, _taichi_cpu):
+    def test_converts_float32_to_uint8(self, _kernels_on_cpu):
         """Finalize kernel should map [0.0, 1.0] float32 to [0, 255] uint8."""
         frame = np.zeros((H, W, 3), dtype=np.float32)
         frame[0, 0, :] = 0.0
@@ -145,7 +147,7 @@ class TestFinalizeToU8:
         assert 126 <= output[0, 1, 0] <= 128, f"Mid-gray mapped to {output[0, 1, 0]}"
         assert output[0, 2, 0] == 255, "White should map to 255"
 
-    def test_clamps_out_of_range_values(self, _taichi_cpu):
+    def test_clamps_out_of_range_values(self, _kernels_on_cpu):
         """Values outside [0, 1] should be clamped before conversion."""
         frame = np.zeros((H, W, 3), dtype=np.float32)
         frame[0, 0, :] = -0.5
@@ -159,14 +161,14 @@ class TestFinalizeToU8:
 
 
 class TestGPUBuffers:
-    def test_allocates_correct_shapes(self, _taichi_cpu):
+    def test_allocates_correct_shapes(self, _kernels_on_cpu):
         """GPUBuffers should allocate frame, temp, bokeh, and output buffers."""
         gpu = GPUBuffers(H, W)
         assert gpu.h == H
         assert gpu.w == W
         assert gpu.hdr is False
 
-    def test_load_and_read_roundtrip(self, _taichi_cpu):
+    def test_load_and_read_roundtrip(self, _kernels_on_cpu):
         """Load a numpy background, finalize, and read back output."""
         gpu = GPUBuffers(H, W)
 

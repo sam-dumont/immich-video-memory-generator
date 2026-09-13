@@ -65,7 +65,7 @@ self-hosted Linux GPU runner runs the full set.
 - Real video download from Immich API (read-only, no writes)
 - End-to-end `generate_memory()` pipeline
 - Crossfade/transition rendering
-- Title screen generation with Taichi GPU
+- Title screen generation on the GPU
 
 ## Code Rules
 

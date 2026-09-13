@@ -1,7 +1,7 @@
 """Tests for GPU buffer kernels and GPUBuffers class (issue #164).
 
 Validates new kernels that replace CPU-side numpy operations with GPU-side
-equivalents. All tests run with both GPU and CPU Taichi backends.
+equivalents. All tests run with both the GPU and the CPU kernel backend.
 """
 
 from __future__ import annotations

@@ -154,7 +154,7 @@ skip these providers; missing required facts stop selection with an explicit set
 immich-memories preflight
 ```
 
-GPU title rendering gets a row saying what it costs when Taichi is absent. The other extras do
+GPU title rendering gets a row saying what it costs where the kernel library has no wheel. The other extras do
 not yet, and preflight does not check the detector snapshots at all: the first cut does that, and
 stops with a count per missing producer.
 

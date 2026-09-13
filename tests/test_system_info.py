@@ -22,10 +22,10 @@ def _reinitialized(**_kwargs) -> None:
     raise AssertionError("the kernel runtime was reinitialized")
 
 
-class TestCheckTaichi:
-    """Optional Taichi detection must distinguish absence from a broken install."""
+class TestCheckKernelLibrary:
+    """Kernel-library detection must distinguish absence from a broken install."""
 
-    def test_reuses_initialized_title_runtime_without_reinitializing_taichi(
+    def test_reuses_initialized_title_runtime_without_reinitializing_it(
         self, monkeypatch: pytest.MonkeyPatch
     ):
         """System capture must not invalidate kernels owned by the title runtime."""
@@ -33,9 +33,9 @@ class TestCheckTaichi:
 
         monkeypatch.setattr(kernels, "_kernels_initialized", True)
         monkeypatch.setattr(kernels, "_kernel_arch", "Metal")
-        # WHY not patch("taichi.init"): naming the library imports it, and a
-        # process that loaded Quadrants dies on a Taichi import (#558). The
-        # initializer this module owns is the boundary either way.
+        # WHY not patch the library's own init: naming it imports its C++
+        # runtime into a test process that has no use for it. The initializer
+        # this module owns is the boundary either way.
         monkeypatch.setattr(
             kernels,
             "_silent_init",
@@ -52,19 +52,19 @@ class TestCheckTaichi:
 
         assert _check_kernel_library() is False
 
-    def test_broken_taichi_dependency_is_not_hidden(self, monkeypatch: pytest.MonkeyPatch):
+    def test_a_broken_kernel_dependency_is_not_hidden(self, monkeypatch: pytest.MonkeyPatch):
         """A corrupt optional install remains actionable instead of becoming false."""
         from immich_memories.titles import kernels
 
         def raise_missing_runtime() -> bool:
             raise ModuleNotFoundError(
-                "No module named 'taichi_runtime'",
-                name="taichi_runtime",
+                "No module named 'quadrants_runtime'",
+                name="quadrants_runtime",
             )
 
         monkeypatch.setattr(kernels, "kernels_available", raise_missing_runtime)
 
-        with pytest.raises(ModuleNotFoundError, match="taichi_runtime"):
+        with pytest.raises(ModuleNotFoundError, match="quadrants_runtime"):
             _check_kernel_library()
 
 

@@ -272,7 +272,7 @@ There is no background backfill job yet; this is the supported way to do it toda
   selected model reader still stops if its provider is unavailable.
 - **Hold the caption server**, but on `no_captions` it does not need to, and nothing asks for one.
 - **AI music generation**: MusicGen and ACE-Step want GPU servers. Upload your own music instead.
-- **The Taichi title renderer**: it falls back to PIL. Titles still look right, without the
+- **The GPU title renderer**: it falls back to PIL. Titles still look right, without the
   particle effects and animated gradients.
 
 ## Encoding: what the chip will and will not do

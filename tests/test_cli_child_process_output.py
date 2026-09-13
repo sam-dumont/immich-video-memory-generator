@@ -1,6 +1,6 @@
 """A helper child process must never write into the output of the CLI run that owns it.
 
-Regression for #846. The Taichi backend probe used a `multiprocessing` spawn
+Regression for #846. The kernel backend probe used a `multiprocessing` spawn
 child, and a spawn child re-imports the parent's `__main__` with the parent's
 `sys.argv` restored. Under any launcher whose module body is not guarded by
 `if __name__ == "__main__"` — a wrapper script, a container entrypoint, the

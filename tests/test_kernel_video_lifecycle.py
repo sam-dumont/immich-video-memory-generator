@@ -1,4 +1,4 @@
-"""Lifecycle contracts for Taichi title rendering's FFmpeg process."""
+"""Lifecycle contracts for GPU title rendering's FFmpeg process."""
 
 from __future__ import annotations
 

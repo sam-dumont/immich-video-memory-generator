@@ -98,7 +98,6 @@ class HardwareAccelConfig(BaseModel):
     gpu_decode: bool = Field(default=True, description="Use hardware video decoding")
 
 
-
 class CacheConfig(BaseModel):
     """Cache settings."""
 

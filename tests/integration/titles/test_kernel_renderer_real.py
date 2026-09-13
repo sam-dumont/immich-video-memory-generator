@@ -1,4 +1,4 @@
-"""Real Taichi title renderer integration tests.
+"""Real GPU title renderer integration tests.
 
 Renders actual frames via KernelTitleRenderer on CPU backend, verifying
 that output frames have correct dimensions, non-blank content, and
@@ -17,19 +17,21 @@ import pytest
 
 os.environ["IMMICH_FORCE_CPU"] = "1"
 
+from immich_memories.titles.kernel_video import create_title_video_gpu  # noqa: E402
+from immich_memories.titles.kernels import KERNELS_AVAILABLE, init_kernels  # noqa: E402
 from immich_memories.titles.renderer_kernels import (  # noqa: E402
     KernelTitleConfig,
     KernelTitleRenderer,
 )
-from immich_memories.titles.kernels import KERNELS_AVAILABLE, init_kernels  # noqa: E402
-from immich_memories.titles.kernel_video import create_title_video_gpu  # noqa: E402
 
-requires_taichi = pytest.mark.skipif(not KERNELS_AVAILABLE, reason="Taichi not installed")
-pytestmark = [pytest.mark.integration, requires_taichi]
+requires_kernels = pytest.mark.skipif(
+    not KERNELS_AVAILABLE, reason="no kernel library wheel for this platform"
+)
+pytestmark = [pytest.mark.integration, requires_kernels]
 
 
 @pytest.fixture(scope="module")
-def _taichi_cpu():
+def _kernels_on_cpu():
     backend = init_kernels()
     assert backend is not None
     return backend
@@ -48,15 +50,15 @@ def small_config():
     )
 
 
-class TestTaichiRendererFrame:
-    def test_render_frame_correct_dimensions(self, _taichi_cpu, small_config):
+class TestKernelRendererFrame:
+    def test_render_frame_correct_dimensions(self, _kernels_on_cpu, small_config):
         """Rendered frame should match configured width x height."""
         renderer = KernelTitleRenderer(small_config)
         frame = renderer.render_frame(0, "Test Title", "Subtitle")
         assert frame.shape == (90, 160, 3)
         assert frame.dtype == np.uint8
 
-    def test_render_frame_not_blank(self, _taichi_cpu, small_config):
+    def test_render_frame_not_blank(self, _kernels_on_cpu, small_config):
         """Frame should have visible content, not all zeros or all white."""
         renderer = KernelTitleRenderer(small_config)
         frame = renderer.render_frame(0, "Test Title")
@@ -64,7 +66,7 @@ class TestTaichiRendererFrame:
         assert frame.mean() > 0.5, "Dark gradient frame should have some brightness"
         assert frame.mean() < 254.5, "Frame should not be all white"
 
-    def test_frames_at_different_times_differ(self, _taichi_cpu, small_config):
+    def test_frames_at_different_times_differ(self, _kernels_on_cpu, small_config):
         """Animation should produce visually different frames at different times."""
         renderer = KernelTitleRenderer(small_config)
         frame_start = renderer.render_frame(0, "Test Title", "Sub")
@@ -78,12 +80,12 @@ class TestTaichiRendererFrame:
         assert diff_start_mid > 0.5, f"Start vs mid should differ: {diff_start_mid:.2f}"
         assert diff_mid_end > 0.5, f"Mid vs end should differ: {diff_mid_end:.2f}"
 
-    def test_total_frames_matches_config(self, _taichi_cpu, small_config):
+    def test_total_frames_matches_config(self, _kernels_on_cpu, small_config):
         """total_frames should equal fps * duration."""
         renderer = KernelTitleRenderer(small_config)
         assert renderer.total_frames == 10  # 10fps * 1.0s
 
-    def test_hdr_output_is_uint16(self, _taichi_cpu):
+    def test_hdr_output_is_uint16(self, _kernels_on_cpu):
         """HDR config should produce uint16 output frames."""
         hdr_config = KernelTitleConfig(
             width=160,
@@ -101,9 +103,9 @@ class TestTaichiRendererFrame:
         assert frame.shape == (90, 160, 3)
 
 
-class TestTaichiTitleVideo:
+class TestKernelTitleVideo:
     @pytest.mark.xdist_group("ffmpeg")
-    def test_creates_valid_mp4(self, _taichi_cpu, tmp_path):
+    def test_creates_valid_mp4(self, _kernels_on_cpu, tmp_path):
         """create_title_video_gpu should produce a playable MP4 file."""
         config = KernelTitleConfig(
             width=160,
@@ -141,7 +143,7 @@ class TestTaichiTitleVideo:
         assert video_streams[0]["height"] == 90
 
     @pytest.mark.xdist_group("ffmpeg")
-    def test_fade_from_white_modifies_first_frames(self, _taichi_cpu, tmp_path):
+    def test_fade_from_white_modifies_first_frames(self, _kernels_on_cpu, tmp_path):
         """fade_from_white should make early frames brighter than without fade."""
         config = KernelTitleConfig(
             width=160,

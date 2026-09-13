@@ -19,13 +19,15 @@ import pytest
 os.environ["IMMICH_FORCE_CPU"] = "1"
 
 from immich_memories.titles.colors import HDR_GRAPHICS_WHITE  # noqa: E402
+from immich_memories.titles.kernels import KERNELS_AVAILABLE, init_kernels  # noqa: E402
 from immich_memories.titles.renderer_kernels import (  # noqa: E402
     KernelTitleConfig,
     KernelTitleRenderer,
 )
-from immich_memories.titles.kernels import KERNELS_AVAILABLE, init_kernels  # noqa: E402
 
-requires_taichi = pytest.mark.skipif(not KERNELS_AVAILABLE, reason="Taichi not installed")
+requires_kernels = pytest.mark.skipif(
+    not KERNELS_AVAILABLE, reason="no kernel library wheel for this platform"
+)
 pytestmark = [pytest.mark.integration]
 
 _CEILING = HDR_GRAPHICS_WHITE / 255.0
@@ -36,9 +38,9 @@ _TOLERANCE = 0.01
 
 
 @pytest.fixture(scope="module")
-def _taichi_cpu():
+def _kernels_on_cpu():
     if not KERNELS_AVAILABLE:
-        pytest.skip("Taichi not installed")
+        pytest.skip("no kernel library wheel for this platform")
     backend = init_kernels()
     assert backend is not None
     return backend
@@ -71,8 +73,8 @@ def _peak_level(hdr: bool) -> float:
     return float(frame.max()) / full_scale
 
 
-@requires_taichi
-def test_sdr_title_text_still_reaches_full_white(_taichi_cpu) -> None:
+@requires_kernels
+def test_sdr_title_text_still_reaches_full_white(_kernels_on_cpu) -> None:
     """Control: the ceiling is an HDR-only concession, not a global dimmer."""
     peak = _peak_level(hdr=False)
 
@@ -81,8 +83,8 @@ def test_sdr_title_text_still_reaches_full_white(_taichi_cpu) -> None:
     )
 
 
-@requires_taichi
-def test_hdr_title_text_stays_at_or_below_graphics_white(_taichi_cpu) -> None:
+@requires_kernels
+def test_hdr_title_text_stays_at_or_below_graphics_white(_kernels_on_cpu) -> None:
     peak = _peak_level(hdr=True)
 
     assert peak <= _CEILING + _TOLERANCE, (
@@ -91,8 +93,8 @@ def test_hdr_title_text_stays_at_or_below_graphics_white(_taichi_cpu) -> None:
     )
 
 
-@requires_taichi
-def test_the_hdr_frame_still_has_readable_text(_taichi_cpu) -> None:
+@requires_kernels
+def test_the_hdr_frame_still_has_readable_text(_kernels_on_cpu) -> None:
     """The ceiling must dim the text, not erase it."""
     renderer = KernelTitleRenderer(_config(hdr=True))
     frame = renderer.render_frame(15, "Title", "Subtitle")
@@ -108,7 +110,7 @@ def test_the_hdr_frame_still_has_readable_text(_taichi_cpu) -> None:
 def _pil_peak(hdr: bool) -> float:
     """Brightest pixel of a PIL-rendered title, as a fraction of full scale.
 
-    The PIL renderer is the fallback used when Taichi is unavailable — a
+    The PIL renderer is the fallback used where the kernel library is unavailable: a
     CPU-only deployment renders every title through it, and `title_color_filter`
     still maps its output into HLG, so the glow reproduces there too.
     """
@@ -152,7 +154,7 @@ def _brightest_text_channel(overlay) -> int:
 class TestMapFlyOverText:
     """The fly-over composites its own text straight onto the map tiles — no
     dimming pass stands between it and the output, unlike the static map, which
-    the Taichi path dims to 55% before compositing."""
+    the GPU path dims to 55% before compositing."""
 
     def test_title_overlay_is_ceilinged_in_hdr(self) -> None:
         from immich_memories.titles.map_animation import _render_title_overlay

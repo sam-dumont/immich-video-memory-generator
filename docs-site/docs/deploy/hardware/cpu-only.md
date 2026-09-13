@@ -22,7 +22,7 @@ is 3 h 41 min for a 10,793-picture library instead of four days.
 
 | Feature | With GPU | Without GPU | Impact |
 |---------|----------|-------------|--------|
-| Title screens | Animated GPU-rendered (Quadrants/Taichi: bokeh particles, gradient animation, SDF text) | Static PIL-rendered (gradient background, text overlay) | Simpler visuals, same text. And the dominant cost of a run (see below) |
+| Title screens | Animated GPU-rendered (bokeh particles, gradient animation, SDF text) | Static PIL-rendered (gradient background, text overlay) | Simpler visuals, same text. And the dominant cost of a run (see below) |
 | Video encoding | NVENC / VideoToolbox / VAAPI / QSV | libx264 / libx265 (software) | Slower encoding: the smaller half of a run |
 | SDF text rendering | GPU kernels + FreeType atlas | PIL text drawing | No SDF glow/shadow effects |
 | Video scaling | GPU-accelerated (scale_cuda, scale_vaapi) | FFmpeg swscale (CPU) | Slower for resolution changes |
@@ -48,49 +48,53 @@ hardware:
   enabled: false
 ```
 
-## Title kernels: Quadrants by default, Taichi fallback
+## Title kernels
 
-The animated title screen renderer (particle effects, gradient animations, SDF text) runs on a GPU
-kernel library. Since 0.80 that library is
-[Quadrants](https://github.com/Genesis-Embodied-AI/quadrants), and it installs with the app. There
-is no extra to remember:
+The animated title screen renderer (particle effects, gradient animations, SDF text) runs its work
+on the GPU through [Quadrants](https://github.com/Genesis-Embodied-AI/quadrants), which installs
+with the app. There is no extra to remember and nothing to configure:
 
 ```bash
 pip install immich-memories
 ```
 
-Quadrants is the maintained fork of Taichi. Taichi 1.7.4 (July 2025) is the last release its
-upstream will make; Quadrants has the same kernel API, renders the same frames (measured across
-five styles and nine moods: worst pixel 1/255, ten pixels of 7.8 million), ships a smaller wheel,
-and publishes `linux/arm64` wheels that Taichi never did. That last one is why the swap is worth
-it here: **`linux/arm64` hosts (a Raspberry Pi, the arm64 Docker image) now get GPU-rendered titles
-instead of the PIL fallback.**
-
-Taichi is still supported. `immich-memories[gpu]` installs it, and the config picks it:
-
-```yaml
-advanced:
-  hardware:
-    title_kernel_backend: auto   # auto (default) | quadrants | taichi
-```
-
-`auto` takes Quadrants when it is installed and Taichi otherwise. Naming one pins it, and an
-install that does not have the one it named falls back to the other rather than losing titles.
-`IMMICH_MEMORIES_TITLE_KERNELS=quadrants` overrides the config for a single run. Whichever wins,
-one line at the start of a render says so:
+One line at the start of a render says what the titles are being drawn by:
 
 ```
-Title kernels: quadrants 1.3.0 (auto) on the Metal backend
+Title kernels: quadrants 1.3.0 on the Metal backend
 ```
 
-Only one of the two is ever loaded. They each carry their own copy of LLVM and register the same
-options with it, so a process that imports both aborts. This is a choice per run, never a mix.
+Metal on Apple Silicon, CUDA or Vulkan on a card, and a CPU backend everywhere else. To keep the
+GPU renderer but force it onto the processor (a broken driver, or comparing timings), set
+`IMMICH_FORCE_CPU=1`.
 
-With neither installed, title screens are rendered with PIL (static gradient + text). The video
-output is functionally identical: same title text, same timing, same encoding, simpler visuals.
+### Where the GPU kernels exist
 
-Both libraries also have a CPU backend. To keep the GPU renderer but force it onto the processor (a
-broken driver, or comparing timings), set `IMMICH_FORCE_CPU=1`.
+Verified against PyPI for Quadrants 1.3.0 (`pip index versions quadrants`, and the `urls` list in
+its PyPI JSON). There is **no source distribution**, so a platform without a wheel gets no kernels
+at all rather than a long build:
+
+| Platform | Wheels |
+| --- | --- |
+| Linux x86_64 (manylinux 2.27+) | Python 3.10, 3.11, 3.12, 3.13 |
+| Linux aarch64 (manylinux 2.27+) | Python 3.10, 3.11, 3.12, 3.13 |
+| macOS arm64 (macOS 13+) | Python 3.10, 3.11, 3.12, 3.13 |
+| Windows AMD64 | Python 3.10, 3.11, 3.12, 3.13 |
+| **macOS x86_64 (Intel)** | **none** |
+| **Python 3.14 and later** | **none** |
+
+This app needs Python 3.11 or later, so the usable range here is **3.11 to 3.13**.
+
+On the two platforms with no wheel, title screens fall back to the PIL renderer. That loses the
+animated kernels (bokeh particles, the gradient animation, the slow-motion deblur of a
+content-backed card) and the SDF text path; you still get the same title text, the same timing and
+the same encoding on a static gradient. The fallback is logged once at startup, and
+`immich-memories preflight` says which renderer a machine will use before you start a long run:
+
+```
+Title rendering       PIL renderer: static title screens, no animation and no SDF text
+                      quadrants publishes no wheel for darwin/x86_64 on Python 3.12.
+```
 
 ## Performance expectations
 

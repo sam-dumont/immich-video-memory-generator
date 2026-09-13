@@ -116,3 +116,7 @@ automatically; see [the overview](./overview.md#what-hardware-encoding-actually-
 Just don't buy the card for the encode. Encoding is the smaller half of a CPU-only assembly: title rendering was ~263 s of a ~339 s assembly at `--cpus=2`. The bigger win from this GPU is title rendering. It does not run the editor's models: see the [self-hosting guide](../self-hosting.md#one-machine-or-two) for where those go. See [CPU-Only Mode](./cpu-only.md#title-rendering-is-the-bottleneck-not-encoding) for the measured split.
 
 The `editorial-cuda` extra pins ONNX Runtime GPU to the 1.26 series for CUDA 12 and cuDNN 9. Version 1.27 and newer require CUDA 13; see the [official compatibility table](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html). Do not install the CPU `editorial` extra beside it.
+
+## Title rendering
+
+GPU title rendering runs on Quadrants, which has wheels for Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 on Python 3.11-3.13. On macOS x86_64 and on Python 3.14 there is none, and title screens fall back to the PIL renderer (static gradient and text, no animated kernels, no SDF text); `immich-memories preflight` says which you will get. See [Title kernels](./cpu-only.md#title-kernels).

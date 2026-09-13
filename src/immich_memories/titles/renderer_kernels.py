@@ -21,6 +21,8 @@ import numpy as np
 # Direct `from .kernels import _func` would capture None at import time,
 # so we access them as `kernels._func` at call time instead.
 from . import kernels
+from .kernel_particles import ParticleField
+from .kernel_text import TitleTextRenderer
 from .kernels import (
     KERNELS_AVAILABLE as KERNELS_AVAILABLE,
 )
@@ -32,8 +34,6 @@ from .kernels import (
 from .kernels import (
     init_kernels as init_kernels,
 )
-from .kernel_particles import ParticleField
-from .kernel_text import TitleTextRenderer
 
 logger = logging.getLogger(__name__)
 

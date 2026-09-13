@@ -291,7 +291,7 @@ class TestFullPipelineWithTitles:
             transition="smart",  # TransitionType.SMART — mix of cut and crossfade
             transition_duration=0.3,
             # WHY: Force 720p — 4K PIL title rendering takes 2.5min per
-            # screen on CPU (no Taichi on Linux CI). At 720p, it's ~5s.
+            # screen on CPU (no GPU on Linux CI). At 720p, it's ~5s.
             output_resolution="720p",
             person_name="Test Person",
             date_start=date(2024, 1, 1),

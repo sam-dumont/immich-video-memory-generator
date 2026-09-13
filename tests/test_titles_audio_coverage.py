@@ -468,7 +468,7 @@ class TestTitleScreenGeneratorStyleInit:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TitleScreenConfig(style_mode=preset_name)
-            # WHY: mock RenderingService to avoid GPU/taichi init
+            # WHY: mock RenderingService to avoid GPU kernel init
             with patch("immich_memories.titles.generator.RenderingService"):
                 gen = TitleScreenGenerator(config=config, output_dir=Path(tmpdir))
                 assert gen.style.name == preset_name
@@ -636,7 +636,7 @@ class TestRenderingServiceInit:
         svc = RenderingService(config)
         assert not svc.use_gpu
 
-    def test_gpu_enabled_but_taichi_unavailable(self):
+    def test_gpu_enabled_but_kernels_unavailable(self):
         from immich_memories.titles.generator import TitleScreenConfig
         from immich_memories.titles.rendering_service import RenderingService
 

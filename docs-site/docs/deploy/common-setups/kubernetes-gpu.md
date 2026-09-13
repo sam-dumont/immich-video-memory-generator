@@ -183,7 +183,7 @@ Point your monitoring (Uptime Kuma, Prometheus blackbox exporter, etc.) at `/hea
 
 ## What works / what doesn't
 
-Same as the [Linux + NVIDIA](./linux-nvidia.md) setup: the card does NVENC encoding and Taichi GPU titles, and nothing else in this pod runs on it. The Kubernetes layer adds scheduling and PVC-based storage, not scaling: the UI is single-replica.
+Same as the [Linux + NVIDIA](./linux-nvidia.md) setup: the card does NVENC encoding and GPU titles, and nothing else in this pod runs on it. The Kubernetes layer adds scheduling and PVC-based storage, not scaling: the UI is single-replica.
 
 ## Performance
 

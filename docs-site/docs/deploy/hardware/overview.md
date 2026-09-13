@@ -173,3 +173,7 @@ This prints what backends are available, which one would be selected, and the sp
 - [Intel Quick Sync](./intel-qsv.md): QSV encoding and scaling
 - [AMD VAAPI](./amd-vaapi.md): VAAPI encoding and scaling (Linux only)
 - [CPU-Only Mode](./cpu-only.md): Running without any GPU
+
+## Title rendering
+
+GPU title rendering runs on Quadrants, which has wheels for Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 on Python 3.11-3.13. On macOS x86_64 and on Python 3.14 there is none, and title screens fall back to the PIL renderer (static gradient and text, no animated kernels, no SDF text); `immich-memories preflight` says which you will get. See [Title kernels](./cpu-only.md#title-kernels).

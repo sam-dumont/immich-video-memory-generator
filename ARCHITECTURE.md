@@ -239,13 +239,14 @@ src/immich_memories/
 │   ├── text_builder.py         # Text layout & positioning
 │   ├── content_background.py   # Content-aware background generation
 │   ├── renderer_pil.py         # PIL-based renderer
-│   ├── renderer_kernels.py      # KernelTitleRenderer: background + frame pipeline
+│   ├── renderer_kernels.py     # KernelTitleRenderer: background + frame pipeline
 │   ├── kernel_particles.py     # ParticleField: bokeh drift / fireworks physics
 │   ├── kernel_text.py          # TitleTextRenderer: SDF + PIL text compositing
 │   ├── renderer_ffmpeg.py      # FFmpeg-based renderer
-│   ├── kernels.py       # Taichi GPU kernels + lazy compilation (init_kernels)
-│   ├── kernel_backend_probe.py # Which Taichi arch can dispatch here (isolated child probe)
-│   ├── kernel_video.py         # Taichi video creation
+│   ├── gpu_kernel_backend.py   # The only `import quadrants as ti` in the tree
+│   ├── kernels.py              # GPU kernels + lazy compilation (init_kernels)
+│   ├── kernel_backend_probe.py # Which arch can dispatch here (isolated child probe)
+│   ├── kernel_video.py         # GPU title video creation
 │   ├── ffmpeg_pipe.py          # Feed raw frames to FFmpeg without deadlocking on an unread stderr
 │   ├── safe_zones.py           # Keep vertical titles clear of the Reels/Shorts/TikTok button rail
 │   ├── map_animation.py        # Satellite map fly-over (van Wijk zoom)

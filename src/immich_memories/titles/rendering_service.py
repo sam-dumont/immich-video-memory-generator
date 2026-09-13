@@ -25,11 +25,11 @@ if TYPE_CHECKING:
 
 # Try to import GPU-accelerated renderer
 try:
+    from .kernel_video import create_title_video_gpu
     from .renderer_kernels import (
         KernelTitleConfig,
         init_kernels,
     )
-    from .kernel_video import create_title_video_gpu
 
     KERNELS_AVAILABLE = True
 except ImportError:

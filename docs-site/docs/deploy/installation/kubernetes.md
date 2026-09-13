@@ -105,7 +105,7 @@ pod) before generating, and see
 nvidia`, one `nvidia.com/gpu` request/limit, `NVIDIA_VISIBLE_DEVICES` / `NVIDIA_DRIVER_CAPABILITIES`,
 a `nodeSelector` on `nvidia.com/gpu.present=true` and a toleration for the `nvidia.com/gpu` taint.
 Change the label or GPU count there. The app uses the card for two things and only two: NVENC
-encoding and Taichi title rendering. Nothing else in this pod runs on the GPU; the editor's models
+encoding and GPU title rendering. Nothing else in this pod runs on the GPU; the editor's models
 are separate services on their own hardware.
 
 ## Batch Jobs

@@ -24,7 +24,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .gpu_kernel_backend import KERNEL_LIBRARY_AVAILABLE as KERNELS_AVAILABLE
+from .gpu_kernel_backend import KERNELS_AVAILABLE
 
 logger = logging.getLogger(__name__)
 

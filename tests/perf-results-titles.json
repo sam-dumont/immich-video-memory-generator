@@ -50,7 +50,7 @@
       "median_wall_seconds": null
     },
     {
-      "scenario": "taichi_content_backed",
+      "scenario": "kernel_content_backed",
       "python_peak_mb": 42.360825538635254,
       "wall_seconds": 0.6932386670014239,
       "cpu_user_seconds": 0.0,
@@ -96,7 +96,7 @@
       "median_wall_seconds": null
     },
     {
-      "scenario": "taichi_gradient_only",
+      "scenario": "kernel_gradient_only",
       "python_peak_mb": 42.23033046722412,
       "wall_seconds": 0.3738492080010474,
       "cpu_user_seconds": 0.0,
@@ -154,7 +154,7 @@
       "raw_repetition_seconds": []
     },
     {
-      "scenario": "taichi_content_backed",
+      "scenario": "kernel_content_backed",
       "median_wall_seconds": 0.6932386670014239,
       "raw_repetition_seconds": []
     },
@@ -164,7 +164,7 @@
       "raw_repetition_seconds": []
     },
     {
-      "scenario": "taichi_gradient_only",
+      "scenario": "kernel_gradient_only",
       "median_wall_seconds": 0.3738492080010474,
       "raw_repetition_seconds": []
     },

@@ -153,7 +153,7 @@ Not config fields, but read by the app:
 | `IMMICH_MEMORIES_LOG_FORMAT` | `text` (default) or `json`. |
 | `IMMICH_MEMORIES_LOG_LEVEL` | `INFO` (default), `DEBUG`, `WARNING` or `ERROR`. The CLI flags `-v` and `--log-level` win over it for one run. |
 | `IMMICH_MEMORIES_LOG_FILE` | When set, logs are written to this file in addition to stdout. |
-| `IMMICH_FORCE_CPU` | `1`/`true`/`yes` forces the Taichi title renderer onto CPU even when a GPU is available. |
+| `IMMICH_FORCE_CPU` | `1`/`true`/`yes` forces the GPU title renderer onto the CPU backend even when a GPU is available. |
 | `ACESTEP_CHECKPOINTS_DIR` | ACE-Step `lib` mode: where model checkpoints are downloaded (default `~/.cache/ace-step/checkpoints`). |
 | `ACESTEP_MLX_VAE_CHUNK` | ACE-Step `lib` mode on Apple Silicon: VAE decode chunk size in latent frames (minimum 192). Lower it if MLX runs out of memory. |
 | `IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32` | ACE-Step `lib` mode on Apple Silicon: `1` keeps the MLX decoder in fp32 instead of casting to bf16 (roughly doubles decoder memory). |

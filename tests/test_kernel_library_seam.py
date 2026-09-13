@@ -1,9 +1,9 @@
 """One module imports the GPU kernel library, and an absent one is not a crash.
 
-Both halves matter. The package used to import Taichi from five places, which is
-what made swapping it for Quadrants a five-file change instead of a one-line one
-(#558); and the library has no wheel for macOS x86_64 or Python 3.14, where the
-right answer is PIL title screens rather than a traceback.
+Both halves matter. The package used to import its kernel library from five
+places, which is what made replacing it a five-file change instead of a one-line
+one (#558); and the library has no wheel for macOS x86_64 or Python 3.14, where
+the right answer is PIL title screens rather than a traceback.
 """
 
 from __future__ import annotations
