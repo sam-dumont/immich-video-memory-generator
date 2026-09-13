@@ -174,10 +174,38 @@ def test_title_rendering_preflight_says_what_the_pil_fallback_costs() -> None:
 
 
 def test_title_rendering_preflight_names_the_renderer_it_will_use() -> None:
-    result = check_title_rendering(Config())
+    # WHY: the dispatch probe is a child process; a unit test must not spawn one.
+    with patch(
+        "immich_memories.titles.kernel_backend_probe.kernel_dispatch_failure",
+        return_value=None,
+    ):
+        result = check_title_rendering(Config())
 
     assert result.status is CheckStatus.OK
     assert result.message == "GPU kernels (quadrants): animated title screens"
+
+
+def test_title_rendering_preflight_reports_a_cpu_that_cannot_run_a_kernel() -> None:
+    """An installed wheel is not proof: a Celeron J4125 has no AVX and dies on the
+    first kernel the library compiles (#910). Preflight has to say so before the run,
+    not leave the user with a dead process at title generation.
+    """
+    crash = (
+        "kernel backend crashed on this CPU: illegal instruction; "
+        "titles fall back to the PIL renderer"
+    )
+    # WHY: the dispatch probe is a child process; this is the answer a no-AVX box gives.
+    with patch(
+        "immich_memories.titles.kernel_backend_probe.kernel_dispatch_failure",
+        return_value=crash,
+    ):
+        result = check_title_rendering(Config())
+
+    assert result.status is CheckStatus.WARNING
+    # The reason is the message, not the details: `preflight` only prints details under -v,
+    # and a NAS user meeting this needs the sentence on the first run.
+    assert result.message == crash
+    assert result.details == "PIL renderer: static title screens, no animation and no SDF text"
 
 
 def test_preflight_run_lists_every_absent_optional_feature() -> None:
