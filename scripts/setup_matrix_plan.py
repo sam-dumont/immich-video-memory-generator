@@ -535,6 +535,11 @@ def _k8s_steps(cell: Cell, out_dir: Path) -> tuple[Step, ...]:
             "apply",
             (*context, "apply", "-f", str(local / "configmap.yaml"), "-f", str(local / "job.yaml")),
         ),
+        # WHY before the scheduling wait: the controller creates the pod a moment
+        # after `apply` returns, and `kubectl wait` on a selector that matches
+        # nothing is an error rather than a wait. The runner polls this one until
+        # it names a pod, which is what the wait below then has to wait on.
+        Step("wait-created", (*context, "get", "pod", "-l", f"job-name={name}", "-o", "name")),
         Step(
             "wait-scheduled",
             (

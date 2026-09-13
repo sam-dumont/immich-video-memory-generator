@@ -1,10 +1,13 @@
-"""The two things the runner has to wait for, and what it does when they never come.
+"""The three things the runner has to wait for, and what it does when they never come.
 
-Both were found on a real cluster. A Job that FAILS never satisfies
-`kubectl wait --for=condition=complete`, so the runner sat on a dead cell for
-three hours. And a Deployment that is Available is not a service that can answer:
-the pod was up while every `/facts` request came back 503 because the models were
-not in its cache yet, which a cell then measured as its own slowness.
+All three were found on a real cluster. `kubectl wait` on a label selector that
+matches nothing exits 1 with `error: no matching resources found`, and the pod is
+made a moment after `apply` returns, so the scheduling wait lost the race and
+ended the cell. A Job that FAILS never satisfies `kubectl wait
+--for=condition=complete`, so the runner sat on a dead cell for three hours. And a
+Deployment that is Available is not a service that can answer: the pod was up
+while every `/facts` request came back 503 because the models were not in its
+cache yet, which a cell then measured as its own slowness.
 """
 
 from __future__ import annotations
@@ -72,6 +75,42 @@ def _fake_kubectl(tmp_path: Path, answers: list[str]) -> None:
         f'sed -n "${{n}}p" "{tmp_path}/answers"\n'
     )
     script.chmod(0o755)
+
+
+def _pod_step() -> Step:
+    return Step("wait-created", ("kubectl", "get", "pod", "-l", "job-name=j", "-o", "name"))
+
+
+def test_the_cell_waits_for_the_pod_the_scheduling_wait_will_wait_on(monkeypatch, tmp_path) -> None:
+    """`kubectl get` prints nothing and exits 0 until the controller has made one."""
+    _fake_kubectl(tmp_path, ["", "", "pod/k8s-job-lxvhw"])
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setattr(setup_matrix_readiness, "POD_POLL_S", 0.0)
+    item = _job_cell(_pod_step())
+
+    record = setup_matrix.run_remote_cell(item, _plan(item), tmp_path / "out")
+
+    assert record["error"] is None, "it gave up on the empty answer the old wait died on"
+    assert (tmp_path / "calls").read_text().strip() == "3"
+    said = (tmp_path / "out" / "k8s-job" / "wait-created.stdout.log").read_text()
+    assert "pod/k8s-job-lxvhw" in said
+
+
+def test_a_job_that_never_makes_a_pod_ends_the_cell_rather_than_hanging(
+    monkeypatch, tmp_path
+) -> None:
+    _fake_kubectl(tmp_path, ["", ""])
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setattr(setup_matrix_readiness, "POD_POLL_S", 0.0)
+    monkeypatch.setattr(setup_matrix_readiness, "POD_TIMEOUT_S", 0.0)
+    item = _job_cell(_pod_step())
+
+    record = setup_matrix.run_remote_cell(item, _plan(item), tmp_path / "out")
+
+    assert record["error"] == "wait-created exited 1"
+    assert (
+        "created no pod" in (tmp_path / "out" / "k8s-job" / "wait-created.stderr.log").read_text()
+    )
 
 
 def test_a_job_that_fails_ends_the_cell_instead_of_waiting_out_the_ceiling(

@@ -84,6 +84,7 @@ from setup_matrix_readiness import (  # noqa: E402
     await_facts,
     await_job,
     await_listener,
+    await_pod,
     port_forward,
     warmup_picture,
 )
@@ -294,20 +295,29 @@ def run_local_cell(item: CellPlan, plan: Plan, out_dir: Path) -> dict:
     return record
 
 
+# The two steps that watch the cluster rather than ask it once. A Job that failed
+# never satisfies a wait for condition=complete, and a pod that does not exist yet
+# is an error to `kubectl wait` rather than something it waits for.
+_K8S_POLLS = {"wait-created": await_pod, "wait": await_job}
+
+
+def _run_or_poll(step: Step, plan: Plan, item: CellPlan) -> subprocess.CompletedProcess:
+    """One command, or the poll that step stands for."""
+
+    def probe() -> subprocess.CompletedProcess:
+        return _run_step(step, plan, item)
+
+    poll = _K8S_POLLS.get(step.name) if item.cell.lane == "k8s" else None
+    return poll(probe) if poll else probe()
+
+
 def run_remote_cell(item: CellPlan, plan: Plan, out_dir: Path) -> dict:
     """The NAS and cluster lanes: push, run, pull, then read the same artifacts back."""
     cell_dir = out_dir / item.cell.id
     cell_dir.mkdir(parents=True, exist_ok=True)
     record = _new_record(item, primed=None)
     for step in item.steps:
-        # A Job that failed never satisfies a wait for condition=complete, so the
-        # one step that watches a Job polls for either outcome instead.
-        job_wait = step.name == "wait" and item.cell.lane == "k8s"
-        proc = (
-            await_job(lambda step=step: _run_step(step, plan, item))
-            if job_wait
-            else _run_step(step, plan, item)
-        )
+        proc = _run_or_poll(step, plan, item)
         (cell_dir / f"{step.name}.stdout.log").write_text(proc.stdout or "")
         (cell_dir / f"{step.name}.stderr.log").write_text(proc.stderr or "")
         if proc.returncode != 0 and step.name not in {"logs", "delete"}:

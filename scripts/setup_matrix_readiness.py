@@ -1,12 +1,16 @@
-"""What the runner waits for: a Job that has finished, a service that can answer.
+"""What the runner waits for: a pod that exists, a Job that has finished, a service
+that can answer.
 
-Both gates replace something that looked like a wait and was not. `kubectl wait
-job --for=condition=complete` is never satisfied by a Job that FAILED, so the
-runner watched a dead cell until its three-hour ceiling. And `rollout status` on
-the inference Deployment says a pod is Available, which is not the same as a
-service that can decide a picture: the models are pulled into its cache on the
-first request, and until they are there every `/facts` call is a 503 that a cell
-would otherwise have measured as its own slowness.
+Every gate here replaces something that looked like a wait and was not. `kubectl
+wait` on a label selector that matches nothing is an error rather than a wait, and
+the Job controller makes the pod a moment after `apply` returns, so the scheduling
+wait used to lose the race and end the cell with `error: no matching resources
+found`. `kubectl wait job --for=condition=complete` is never satisfied by a Job
+that FAILED, so the runner watched a dead cell until its three-hour ceiling. And
+`rollout status` on the inference Deployment says a pod is Available, which is not
+the same as a service that can decide a picture: the models are pulled into its
+cache on the first request, and until they are there every `/facts` call is a 503
+that a cell would otherwise have measured as its own slowness.
 """
 
 from __future__ import annotations
@@ -21,6 +25,12 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import httpx
+
+POD_POLL_S = 3.0
+# Creating the pod is the controller's first act on a Job it has just been given,
+# and it takes a moment, not minutes. Two minutes with nothing there means the
+# controller never acted, which the cell should say rather than wait out.
+POD_TIMEOUT_S = 2 * 60
 
 JOB_POLL_S = 15.0
 # The ceiling the old single `kubectl wait` carried. A cell that has not finished
@@ -51,6 +61,32 @@ def await_listener(port: int, timeout_s: float = 15.0) -> None:
                     f"nothing answered on port {port} within {timeout_s:.0f}s"
                 ) from None
             time.sleep(0.2)
+
+
+def await_pod(probe: Callable[[], subprocess.CompletedProcess]) -> subprocess.CompletedProcess:
+    """Poll until the Job has a pod, so the wait after this has something to wait on.
+
+    `probe` runs `kubectl get pod -l job-name=... -o name`, which exits 0 and
+    prints nothing at all until the controller has made one. That silence is the
+    only signal: `kubectl wait` cannot be used here because a selector matching
+    nothing is an error to it, which is the race this closes.
+
+    A kubectl that failed for its own reasons is handed straight back rather than
+    polled for two minutes: only an empty answer means "not yet".
+    """
+    deadline = time.monotonic() + POD_TIMEOUT_S
+    while True:
+        proc = probe()
+        if proc.returncode != 0 or (proc.stdout or "").strip():
+            return proc
+        if time.monotonic() >= deadline:
+            return subprocess.CompletedProcess(
+                args=proc.args,
+                returncode=1,
+                stdout=proc.stdout,
+                stderr=f"the job created no pod within {POD_TIMEOUT_S:.0f}s",
+            )
+        time.sleep(POD_POLL_S)
 
 
 def job_outcome(text: str) -> str | None:

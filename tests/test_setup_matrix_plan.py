@@ -642,7 +642,17 @@ def test_a_cluster_cell_stops_waiting_on_a_pod_that_never_scheduled(
     steps = {step.name: step for step in item.steps}
     names = [step.name for step in item.steps]
 
+    # The pod is asked for before it is waited on: `kubectl wait` treats a
+    # selector that matches nothing as an error, and `apply` returns before the
+    # Job controller has created anything.
+    assert names.index("apply") < names.index("wait-created") < names.index("wait-scheduled")
     assert names.index("wait-scheduled") < names.index("wait")
+    assert steps["wait-created"].command[-4:] == (
+        "-l",
+        "job-name=setup-matrix-k8s-rules-local",
+        "-o",
+        "name",
+    )
     assert "--for=condition=PodScheduled" in steps["wait-scheduled"].command
     assert "--timeout=5m" in steps["wait-scheduled"].command
     assert item.diagnostics
