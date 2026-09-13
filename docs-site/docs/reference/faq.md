@@ -18,7 +18,7 @@ Yes. Skip the `--person` flag and it'll pull everything eligible from the select
 
 **How long does analysis take?**
 
-Depends on how much of the period has already been prepared, and on where the caption server and the text model run. The first cut over a period captions and measures every eligible picture once and reads the period with the text model; both are cached per producer and per exact request, so a library only pays this once and re-runs over the same period are mostly the render. `preset: fast` is the CPU-only render profile; it does not change what the editor reads. Nobody has timed preparation on NAS-class silicon yet, so this page will not invent a figure; the [NAS guide](../deploy/common-setups/nas-only.md#performance-expectations) has the one measured 4-core run and says exactly which column of it still applies.
+Depends on how much of the period has already been prepared, and on where the caption server and the text model run. The first cut over a period captions and measures every eligible picture once and reads the period with the text model; both are cached per producer and per exact request, so a library only pays this once and re-runs over the same period are mostly the render. `preset: fast` is the CPU-only render profile; it does not change what the editor reads. Nobody has timed preparation on NAS-class silicon yet, so this page will not invent a figure; the [NAS guide](../deploy/common-setups/nas-only.md#preparation-tiers-what-the-nas-pays) has the one measured 4-core run and says exactly which column of it still applies.
 
 **Can I run it headless?**
 

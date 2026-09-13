@@ -3,149 +3,66 @@ sidebar_position: 10
 title: Network & Privacy
 ---
 
-# Data Leaving Your Network
+# Data leaving your network
 
-Immich Memories runs locally and talks to your Immich server over your LAN. There is no
-telemetry, no update check and no analytics. Some features do make outbound requests, though.
-This page lists every one of them, what is sent, and how to turn it off. It is written from a sweep
-of the source code and maintained by hand; no gate checks it, so if you find an outbound call that
-is not listed here, [open an issue](https://github.com/sam-dumont/immich-video-memory-generator/issues).
+The app runs locally and talks to your Immich server over your LAN. No telemetry, no update check,
+no analytics. Some features make outbound requests; this page lists every one, what is sent and
+how to turn it off. It comes from a sweep of the source and is kept by hand: if you find a call
+that is not here, [open an issue](https://github.com/sam-dumont/immich-video-memory-generator/issues).
 
-## Summary table
+| Destination | When | What leaves your network | Opt out |
+|---|---|---|---|
+| Your Immich server | always | metadata, previews and originals down; the finished video and an album up, only with upload-back | `upload.enabled: false` (default) |
+| `nominatim.openstreetmap.org` | trip detection | the real GPS of each trip cluster's centroid, for a place name | do not use the Trip type |
+| `server.arcgisonline.com` (World Imagery) | the map fly-in of a trip title | tile requests covering the trip area and your home base | `title_screens.enabled: false` |
+| `cdn.jsdelivr.net` (Fontsource) | a title needs a font that is neither bundled nor in `~/.immich-memories/fonts/` | a font file, unpinned (`@latest`) | keep a bundled family (Josefin Sans, Montserrat, Outfit, Quicksand, Raleway) or drop TTFs in that folder |
+| `editorial.preparation.caption_base_url` | the first cut over a period, `full` tier | a 400 px JPEG of every eligible picture, once, plus a `/models` probe | `tier: no_captions`, or a server on your own network (default `localhost:8092`) |
+| `llm.base_url` | the reader | 800 px tiles of a few dozen candidates and their annotation lines, which carry people and place names; for titles, names, places, dates and descriptions | `reader: rules`, or a local model (default `localhost:8080`, the app's own port, so set it) |
+| `advanced.inference.facts_base_url` | preparation, when set | each picture's preview, for the heads and detectors | leave it unset: the app runs them itself |
+| `ace_step.api_url`, `musicgen.base_url` | AI music through a remote API | mood, tempo, genre text; MusicGen also uploads the generated track for stem separation | `ace_step.mode: lib`, your own file with `--music`, or `--no-music` |
+| Hugging Face, torch hub, `github.com` | `models fetch`; first use of ACE-Step or Demucs | nothing about your library; weights are downloaded once | pre-seed the caches for an air-gapped box |
+| Your Apprise or ntfy targets | notifications | memory type, outcome, duration, output path, a redacted error tail; a JPEG frame if `attach_thumbnail: true` | `notifications.enabled: false` (default) |
+| Your OIDC provider | login | the standard OIDC flow with PKCE | basic auth or the trusted-header provider |
 
-| Destination | When | What leaves your network | Off by default? | Opt out |
-|---|---|---|---|---|
-| Your Immich server | always | asset metadata, thumbnails/originals **down**; finished video + album create **up** only if upload-back is on | reads: no · upload: **yes** | `upload.enabled: false` (default) |
-| `nominatim.openstreetmap.org` | trip detection and trip titles | real GPS of trip clusters (lat/lon → place name) | no (runs when trips are detected) | don't use the Trip type; see below |
-| `server.arcgisonline.com` (World Imagery) | satellite map title screens | tile x/y/z requests for the trip area and your home base | no | `title_screens.enabled: false` |
-| `cdn.jsdelivr.net` (Fontsource) | first map / GPU title render **only if** the configured font is not bundled or cached | nothing personal (a font file is downloaded) | n/a | keep the default bundled font (Montserrat); pre-place TTFs in `~/.immich-memories/fonts/` |
-| `editorial.preparation.caption_base_url` | the first cut over a period | **a 400 px JPEG of every eligible picture in the period**, plus a `/models` probe | no: selection requires it | point it at a server on your own network (the default is `localhost:8092`) |
-| `llm.base_url` | the editor's readings, mood detection, LLM titles | frame thumbnails, photos, and for titles: **person names, place names, dates, clip descriptions** | **yes** | leave `llm` unconfigured, or point it at a local model |
-| `ace_step.api_url` / `musicgen.base_url` | AI music via a remote API | mood/genre/tempo text; a generated WAV for stem separation (MusicGen path) | **yes** | in-process ACE-Step (`ace_step.mode: lib`), your own file with `--music`, or `--no-music` |
-| Hugging Face / torch hub, and `github.com` for the pinned encoder | `models fetch`, and first use of ACE-Step or Demucs | nothing personal (model weights are downloaded once) | features are opt-in | pre-download models; air-gapped installs should disable those features |
-| Your Apprise / ntfy targets | notifications | memory type, status, duration, output path, error tail; a JPEG frame if `attach_thumbnail: true` | **yes** | `notifications.enabled: false` (default) |
-| Your OIDC provider | login | standard OIDC flow (client id, PKCE, tokens) | **yes** | basic auth or trusted-header auth |
+Two provider names fill in a vendor URL when `llm.base_url` is left at its default: `openai`
+(`https://api.openai.com/v1`) and `zai` (`https://api.z.ai/api/paas/v4`). `preflight` sends one
+small test completion to whatever the reader URL is.
 
-## Details
-
-### Nominatim geocoding
-
-**When:** trip detection (`analysis/trip_detection.py`) reverse-geocodes each detected trip
-cluster so trips get names, and trip title screens use those names.
-
-**What's sent:** the real latitude/longitude of the trip's centroid(s). Home-base coordinates
-are only used for the map animation, not geocoded.
-
-**Opt out:** don't use the Trip memory type. Disabling title screens does **not** stop trip
-detection from geocoding. Privacy mode does **not** change what is geocoded: detection runs
-before anonymization, so the request carries the real centroid either way. What reaches the
-video is anonymized (see below).
-
-### Map tiles (satellite)
-
-**When:** the animated fly-in of a trip title screen (`title_screens.enabled: true`).
-
-**What's sent:** standard tile URLs (`{z}/{y}/{x}`) covering the trip area and the route from
-your home base. Hundreds of tile requests per animated title. Only ArcGIS World Imagery is used
-today; the OSM/OpenTopo styles in the renderer are not reachable from the config. In privacy
-mode the animation is built from the relocated coordinates, so the tiles cover the fake city.
-
-**Opt out:** `title_screens.enabled: false`.
-
-### Fonts (jsdelivr / Fontsource)
-
-**When:** a map or GPU-rendered title needs a font family that is neither bundled in the wheel nor
-already present under `~/.immich-memories/fonts/`. Five families ship in the wheel (Josefin Sans,
-Montserrat, Outfit, Quicksand and Raleway), which covers every built-in theme, so this only fires
-if you configure a family of your own. Then a `latin-<weight>` TTF is fetched from
-`cdn.jsdelivr.net/fontsource/fonts/<family>@latest`.
-
-**What's sent:** nothing about your library. Note the file is unpinned (`@latest`).
-
-**Opt out:** keep the default font, or drop the TTFs you want into `~/.immich-memories/fonts/<Family>/`.
-
-### LLM vision API
-
-**When:** `llm` is configured: the editor's readings of a period, mood detection, or
-LLM-written titles.
-
-**What's sent:**
-- For the editor: the period's picture captions and metadata with the editing prompts; contact
-  sheets of the pictures where a reading asks to see them. See
-  [Editorial annotation setup](./editorial-preparation.md).
-- For mood detection: video keyframes.
-- For titles: the **person names, city/place names, dates and clip descriptions** the title is
-  written from.
-- `immich-memories preflight` sends one small test completion to verify the endpoint.
-
-**Destination:** whatever `llm.base_url` points to. With a local model (mlx-vlm/oMLX, Ollama,
-vLLM) nothing leaves your network. `openai-compatible` defaults to `http://localhost:8080/v1`,
-which is the app's own port. Set it. Two provider names fill in a vendor's URL instead when you
-leave `base_url` at that default: `openai` → `https://api.openai.com/v1`, `zai` →
-`https://api.z.ai/api/paas/v4`.
-
-**Opt out:** don't configure `llm`, or point it at a local server.
-
-### The two picture seats, side by side
-
-Two settings can send your photographs to a server, and they send very different things:
+## The two picture seats
 
 | Seat | Setting | What it is shown |
 |---|---|---|
-| reader | `llm.base_url` | 800 px picture tiles, **and the annotation lines beside them, which carry the names of people and places** |
-| captioner | `editorial.preparation.caption_base_url` | 400 px picture tiles, with no metadata attached |
+| reader | `llm.base_url` | 800 px tiles, and the annotation lines beside them with the names of people and places |
+| captioner | `editorial.preparation.caption_base_url` | 400 px tiles, no metadata |
 
-Both default to a server on this machine (`localhost:8080` and `localhost:8092`). Point either at
-another host (a GPU box on your LAN, a container, a hosted endpoint) and that is where those
-bytes go, onto its disk and into its logs. Nothing asks you to confirm it a second time:
-configuring an external endpoint *is* the choice.
+Both default to this machine. Pointing either at another host (a box on your LAN, a container, a
+hosted endpoint) is the consent step: those bytes go onto its disk and into its logs, and nothing
+asks a second time.
 
-### Music generation
+## Geocoding and maps
 
-**When:** `ace_step.enabled: true` in API mode (`ace_step.mode: api`), or `musicgen.enabled: true`.
-
-**What's sent:** a text prompt (mood, tempo, genre, optional lyrics). The MusicGen path also
-uploads the *generated* track for stem separation. No frames, no personal data.
-
-**Opt out:** run ACE-Step in-process (`ace_step.mode: lib`), pass your own track with
-`--music path.mp3` (or the Upload option in the UI), or `--no-music`.
-
-### Model downloads
-
-First use of an optional ML feature downloads its weights once: ACE-Step (Hugging Face),
-Demucs (torch hub), the `editorial` extra's detector weights (Hugging Face). Nothing about your
-library is sent;
-weights are cached under the respective library's cache directory. Air-gapped installs should
-pre-seed those caches or leave the features off.
-
-### Notifications (Apprise / ntfy)
-
-**When:** `notifications.enabled: true`.
-
-**What's sent:** memory type, outcome, duration, the absolute output path and a redacted error
-tail. With `notifications.attach_thumbnail: true`, a JPEG frame from the finished video is
-attached. Think about who runs your notification service (ntfy.sh, Discord, Telegram…) before
-turning that on.
+Trip detection reverse-geocodes each cluster's centroid so trips get names; home-base coordinates
+are used for the map animation only, never geocoded. Disabling title screens does not stop the
+geocoding, and privacy mode does not change it either: detection runs before anonymisation. The
+map fly-in requests hundreds of World Imagery tiles per animated title; in privacy mode the tiles
+cover the fake city.
 
 ## Thumbnails inside the web UI
 
-The pages do not embed pictures in the HTML any more. Every thumbnail is an `<img>` the browser
-fetches from the app itself at `/media/thumb/<asset id>` on the same port, served from the cache
-the analysis already filled. Nothing new leaves your network: the route answers only for assets the
+Every thumbnail is an `<img>` the browser fetches from the app at `/media/thumb/<asset id>` on the
+same port, served from the cache the analysis already filled. The route answers only for assets the
 current session prepared, sits behind the same login as every page, and derives a 320 px grid
-thumbnail from the cached preview on first request. In privacy mode the same blur applies to it.
+thumbnail from the cached preview on first request. Privacy-mode blur applies to it.
 
 ## Privacy mode
 
-Privacy mode (`--privacy-mode` / `server.enable_demo_mode: true`) is a **demo/screenshot**
-feature: it blurs every frame of every clip (not faces, the whole picture), makes all clip audio
-unintelligible, replaces person names, and moves the whole memory (home base and destination
-alike) onto a fake city, keeping the spacing between clips so the map still reads as a trip.
-Place names go with the coordinates. It does not reach the geocoding above, which already ran
-during detection, nor the output file name, which is built before anonymization. See
-[Privacy Mode](../../create/pipeline/privacy-mode.md).
+`--privacy-mode` (or `server.enable_demo_mode: true`) is a demo and screenshot feature: it blurs
+every frame of every clip, makes clip audio unintelligible, replaces person names, and moves home
+base and destination onto a fake city while keeping the spacing so the map still reads as a trip.
+It does not reach the geocoding, which already ran, nor the output file name, which is built
+first. See [Privacy mode](../../create/pipeline/privacy-mode.md).
 
 ## CI only
 
-`make pip-audit` queries `pypi.org` for known vulnerabilities in the dependency lockfile. It
-runs in CI, never at runtime.
+`make pip-audit` queries `pypi.org` for known vulnerabilities in the lock file. It runs in CI,
+never at runtime.

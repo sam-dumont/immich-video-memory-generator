@@ -344,7 +344,7 @@ One line per stage, the way the web UI shows one row per phase. A stage that cou
 count and an estimate:
 
 ```text
-⠿ Preparing previews: 352/10793 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━   3%
+⠿ Preparing previews: 352/9814 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━   3%
   ⏱ 0:41 elapsed, ~20:12 remaining
 ```
 
