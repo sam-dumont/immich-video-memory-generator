@@ -5,105 +5,70 @@ title: Config File
 
 # Config File
 
-Location: `~/.immich-memories/config.yaml`
-
-The file is written the first time you save the connection settings, either from Advanced on the web UI's Memory page or
-with `immich-memories config`. Permissions are set to `600` (owner read/write only) since it
-contains API keys. Sections are grouped in two tiers: everyday options at the top level, and the
-rest under `advanced:` (see [Tiers](#tiers) below).
-
-A complete annotated example lives in the repository at
-[`examples/config.example.yaml`](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/examples/config.example.yaml).
+`~/.immich-memories/config.yaml`, written the first time you save the connection settings (from
+Advanced on the Memory page, or `immich-memories config`), with permissions `600` because it holds
+API keys. A complete annotated example is in the repository at
+[`examples/config.example.yaml`](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/examples/config.example.yaml),
+and every key with its default is in the [config reference](../../reference/config-reference.md).
 
 ## Quick start config
 
-Most users only need these options:
-
 ```yaml
-# ── Required ──────────────────────────────────────────────
 immich:
   url: "https://photos.example.com"
   api_key: "${IMMICH_API_KEY}"
   api_version: auto  # auto | v2 | v3
 
-# ── Output ────────────────────────────────────────────────
 output:
   directory: "~/Videos/Memories"
   resolution: "1080p"            # 720p, 1080p, 4k
   codec: h265                     # h264 is the default; h265 preserves HDR
-  hdr_mode: auto                  # Preserve HLG/PQ when present; otherwise output SDR
+  hdr_mode: auto                  # keep HLG/PQ when present, otherwise SDR
 
 defaults:
   scale_mode: "blur"             # blur background, or fit for black bars
   transition: "smart"            # cut, crossfade, smart, none
 
-# ── The editor's model (OpenAI-compatible, must take images) ─
-# The reader is graded on Qwen3-VL-30B-A3B-Instruct-4bit (oMLX).
-# It is sent pictures, so a text-only model cannot take this
-# seat. What it reads is prepared per Configuration →
-# Editorial annotation setup.
+# The reader (OpenAI-compatible, must take images). Leave it out for the rules reader.
 llm:
   provider: "openai-compatible"
   base_url: "http://localhost:8000/v1"
   model: "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"
-
-# ── AI background music (optional) ───────────────────────
-# Music is on when one generator is enabled. Per run you can
-# still pass `--music PATH` / `--no-music` (CLI) or pick
-# None / Upload file / AI Generated in the UI.
-ace_step:
-  enabled: false
-  api_url: "http://localhost:8000"
 ```
 
-That's it. Everything else has sane defaults.
+Everything else has a default. With `codec: h265` and `hdr_mode: auto`, HLG or PQ material gives a
+10-bit HDR video and SDR clips, photos and titles are converted to the same transfer; H.264 is
+always SDR and tone-maps HDR sources.
 
-With `codec: h265` and `hdr_mode: auto`, detected HLG or PQ material produces a 10-bit HDR video;
-SDR clips, photos, and titles are converted to the same HDR transfer during assembly. H.264 is
-always SDR. If you select `codec: h264`, detected HDR is tone-mapped to SDR even when
-`hdr_mode: auto` is set. Use H.264 when broad playback compatibility matters more than HDR.
+The target duration you pick per run (slider or `--duration`) applies to the whole result, titles
+and fade overlap included. The editor grants seconds to the stories it weighed; if that adds up
+short, the run says so rather than padding with pictures it had decided against.
 
-The target duration you pick per run (UI slider or `--duration`) applies to the complete result,
-including titles and the time removed by overlapping fades. There is no backfill pass: the editor
-grants seconds to the stories it weighed, and if that adds up short the run says so ("Selected
-41.2s of pictures and video for a 60.0s memory"), rather than padding with material it had already
-decided against. The encoded duration may differ by less than one transition because cuts land on
-video frame boundaries. There is no config default for the target: the memory type preset supplies
-one.
+Immich Memories supports **Immich v2 and v3**. `auto` is the default runtime policy: the app
+detects the server major and selects the matching API contract. You do not choose a version for
+each run. Explicit `v2` and `v3` values are manual troubleshooting escape hatches for proxies or
+unusual deployments that break version detection. An override forces that contract; it is not a
+normal upgrade step.
 
 ## Tiers
 
-`llm`, `ace_step` and the other tuning sections are Tier 2. When the app writes
-the file it groups them under `advanced:`; when reading, both placements work and are merged setting by
-setting; if the same setting appears in both, the top-level value wins.
+Everyday sections stay at the top level (`immich`, `defaults`, `output`, `audio`, `title_screens`,
+`title_llm`, `cache`, `upload`, `trips`, `photos`, `scheduler`). Tuning sections go under
+`advanced:` (`analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `server`, `auth`, `automation`,
+`notifications`, `triage`, `editorial`, `inference`). When the app writes the file it groups them
+that way; when reading, both placements work and are merged setting by setting; if the same
+setting appears in both, the top-level value wins.
 
-```yaml
-advanced:
-  llm:
-    base_url: "http://localhost:8080/v1"
-  hardware:
-    encoder_preset: quality
-```
-
-Tier 2 sections: `analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `server`, `auth`,
-`automation`, `notifications`, `triage`, `editorial`. Everything else (`immich`, `defaults`,
-`output`, `audio`, `title_screens`, `title_llm`, `cache`, `upload`, `trips`, `photos`,
-`scheduler`) stays at the top level.
-
-Unknown keys inside a section are silently ignored (a typo does not fail the load; it just does
-nothing), with one exception: the thirty keys of the removed clip scorer (`content_analysis`,
-`audio_content`, `speech`, `transcription`, `description_llm`, `analysis.max_refinement_passes`, `photos.max_ratio`
-and the rest of that family) are refused at startup with a message naming them, so an old file
-cannot keep loading while its settings do nothing. Unknown top-level keys and invalid values
-(`codec: av1`, `llm.provider: gemini`) also fail with a validation error at startup.
+Unknown keys inside a section are ignored, with one exception: the keys of the removed per-clip
+scorer (`content_analysis`, `audio_content`, `speech`, `transcription`, `description_llm`,
+`analysis.max_refinement_passes`, `photos.max_ratio` and the rest of that family) are refused at
+startup by name, so an old file cannot keep loading while its settings do nothing. Unknown
+top-level keys and invalid values (`codec: av1`) fail with a validation error.
 
 ## Footage the camera roll did not shoot
 
-Doorbells, security cameras, screen recorders and messaging apps all upload into the same
-timeline as your phone. None of it was shot to be remembered, and some of it scores well:
-a doorbell is a perfectly stable camera pointed at a place people walk through.
-
-Source files matching these patterns never reach selection:
+Doorbells, screen recorders and messaging apps upload into the same timeline as your phone.
+Files matching these patterns never reach selection:
 
 ```yaml
 advanced:
@@ -117,79 +82,35 @@ advanced:
       - "vid-*-wa[0-9][0-9][0-9][0-9]*"
 ```
 
-Case-insensitive globs against the original filename. Setting the key replaces the list
-rather than adding to it, so include the defaults you want to keep. An empty list turns the
-filter off.
-
-A name does not always give it away. On iOS a photo saved from a messaging app keeps an
-`IMG_` name and loses only its EXIF camera. So a still whose EXIF names no camera at all is
-also dropped:
-
-```yaml
-advanced:
-  analysis:
-    exclude_stills_without_camera_exif: true   # the default
-```
-
-Measured across four months of a real library: of 1541 stills with no EXIF make, 1498
-arrived through a messaging app and 34 were downloads, against 9 camera originals that had
-lost their make somewhere. Turn it off if your library is mostly exported or edited
-originals, which lose their make the same way. Videos are exempt either way: 25 of 224
-make-less videos in that library were genuine phone clips, so the rule cannot judge them.
-
-Both rules run before anything is analysed, which is also what keeps this material out of
-the analysis budget, and `discover-days` applies the same rules before it counts a day's
-photographs: a day should not clear the bar on pictures nobody in the library took.
-
-Both rules are pure metadata, so an excluded file costs nothing to skip and never reaches a
-model. The camera whose filename gives nothing away is caught later and differently: the
-memory-worthy gate is asked whether each happening is remarkable, background, or a maybe, and a
-doorbell's afternoon is background.
+Case-insensitive globs on the original filename. Setting the key replaces the list, so include
+the defaults you want to keep. A still whose EXIF names no camera at all is also dropped
+(`exclude_stills_without_camera_exif: true`, the default): on iOS a photo saved from a messaging
+app keeps its `IMG_` name and loses only the camera make. Measured across four months of one
+library, 1,498 of 1,541 make-less stills had arrived through a messaging app against 9 camera
+originals. Turn it off if your library is mostly exported or edited originals, which lose their
+make the same way. Videos are exempt. Both rules are pure metadata, run before anything is
+analysed, and `discover-days` applies them before it counts a day's photographs.
 
 ## Immich API compatibility
 
-Immich Memories supports **Immich v2 and v3**. `auto` is the default runtime policy: the app
-detects the server major and selects the matching API contract. You do not choose a version for
-each run.
-
-Explicit `v2` and `v3` values are manual troubleshooting escape hatches for proxies or unusual
-deployments that break version detection. An override forces that contract; it is not a normal
-upgrade step.
-
 The compatibility layer converts v2 duration strings and v3 millisecond durations to seconds,
-uses version-specific upload fields, and sends timezone-aware search dates accepted by v3. Check
-the configured connection and resolved API contract without generating or uploading anything:
+uses version-specific upload fields, and sends timezone-aware search dates. Both majors have run
+against live servers: v2 day to day until the v3 migration in mid-2026, v3 day to day since, plus
+the hermetic end-to-end suite and the release smoke test on a faithful v3 service. An unknown major
+stops the run with `UnsupportedImmichVersion` rather than sending requests of the wrong shape.
 
 ```bash
 immich-memories config test
 ```
 
-This check is read-only.
-
-### What "supports v2 and v3" is claiming
-
-Both majors have run against live servers, not just against tests. The project was developed
-day-to-day against a live Immich v2 server until the v3 migration in mid-2026, and has run
-day-to-day against live v3 since. This is one library and one server at a time, not a version
-matrix, but it is real usage, not a compatibility layer that only its own tests have seen.
-
-| Server major | Under `auto` | How it is covered |
-|--------------|--------------|-------------------|
-| 2 | v2 contract | months of live-server development, plus contract tests pinning the v2/v3 wire differences |
-| 3 | v3 contract | daily live-server use since the migration, the hermetic E2E suite and the release smoke test (both run a faithful v3 service), plus the same contract tests |
-| anything else | the run stops with `UnsupportedImmichVersion` | n/a |
-
-Nothing here promises that every point release of both majors was exercised before a release.
-What it does promise is that an unknown major fails immediately and says so, rather than sending
-requests of the wrong shape and failing somewhere less obvious. If yours breaks, that is a bug
-worth an issue.
+This check is read-only: it reports the connection and the resolved contract and does nothing else.
 
 ## Environment variable substitution
 
-A handful of secret-bearing fields expand `${VAR_NAME}` at load time:
+These fields expand `${VAR_NAME}` at load time:
 
 | Section | Fields |
-|---------|--------|
+|---|---|
 | `immich` | `url`, `api_key` |
 | `llm` / `title_llm` | `api_key` |
 | `musicgen` | `base_url`, `api_key` |
@@ -198,45 +119,20 @@ A handful of secret-bearing fields expand `${VAR_NAME}` at load time:
 | `editorial` | `annotation_database` |
 | `editorial.preparation` | `head_bundle`, `detector_python`, `detector_cache_dir` |
 
-Only the braced form expands. A bare `$VAR_NAME` is left exactly as written,
-because these fields hold passwords and API keys and a `$` in a secret is
-ordinary: `S3cret$USER!` would otherwise pick up your login name and the only
-symptom would be a rejected password. If a value contains a bare `$NAME` that
-matches a variable you have set, a warning says so at load time.
+Only the braced form expands. A bare `$VAR` is left as written, because a `$` in a password is
+ordinary; a warning says so at load time if it matches a variable you have set. Every other string
+is stored literally. To set any other field from the environment, use
+`IMMICH_MEMORIES_<SECTION>__<FIELD>` ([Environment variables](environment-variables.md)).
 
-```yaml
-immich:
-  api_key: ${IMMICH_API_KEY}
-
-llm:
-  api_key: ${OPENAI_API_KEY}
-```
-
-Every other string is stored literally; `output.directory: ${HOME}/x` is not expanded. To set any
-other field from the environment, use the `IMMICH_MEMORIES_<SECTION>__<FIELD>` form described in
-[Environment Variables](environment-variables.md).
-
-## Trip memories
-
-For trip detection, set your home coordinates:
+## Trips and upload-back
 
 ```yaml
 trips:
   homebase_latitude: 50.85
   homebase_longitude: 4.35
   min_distance_km: 50
-```
 
-## Upload back to Immich
-
-Generated videos can be auto-uploaded as Immich albums:
-
-```yaml
 upload:
   enabled: true
   album_name: "2024 Memories"
 ```
-
-## All options
-
-For the full list of options (source admission, hardware acceleration, title screens, scheduler, notifications, etc.), see the [Config Reference](../../reference/config-reference.md).

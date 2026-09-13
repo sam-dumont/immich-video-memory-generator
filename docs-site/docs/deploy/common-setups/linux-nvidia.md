@@ -123,12 +123,12 @@ IMMICH_API_KEY=your-api-key-here
 ## Performance expectations
 
 No GPU run of this pipeline has been measured end to end, so there is no table here. The one
-measured run is CPU-only ([NAS-only](./nas-only.md#performance-expectations)), and only its render
+measured run is CPU-only ([NAS-only](./nas-only.md#preparation-tiers-what-the-nas-pays)), and only its render
 column still describes this product: 2.7 minutes of a 10 minute run, most of it title screens
 rather than the encode. A CUDA Taichi backend is what shortens those.
 
 The rest of a run is preparation and the editor's readings, and that has
-[been measured on a NAS](./nas-only.md#preparation-measured) and nowhere else. What is true by
+[been measured on a NAS](./nas-only.md#preparation-tiers-what-the-nas-pays) and nowhere else. What is true by
 construction: it is bounded by your Immich server and your two model services rather than by this
 card, and every producer banks its answer, so a second cut over the same period skips it.
 

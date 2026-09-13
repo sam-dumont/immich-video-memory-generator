@@ -16,7 +16,7 @@ container. On a cheap VPS that means a second machine, not a slower first one. R
 The *caption* server is a different matter: set
 [`editorial.preparation.tier: no_captions`](../../reference/config-reference.md#preparation-tiers) and
 this box prepares every producer the audience gate reads without one. On a four-core Celeron that
-is 3 h 41 min for a 10,793-picture library instead of four days.
+is 3 h 41 min for a library of about ten thousand pictures instead of four days.
 
 ## What changes without a GPU
 
@@ -68,14 +68,14 @@ image) the `gpu` extra skips Taichi altogether: titles are always PIL-rendered t
 
 ## Performance expectations
 
-The one end-to-end measurement is in the [NAS-only guide](../common-setups/nas-only.md#performance-expectations):
+The one end-to-end measurement is in the [NAS-only guide](../common-setups/nas-only.md#preparation-tiers-what-the-nas-pays):
 a 14-clip monthly, 62 s of 1080p out, cold cache, 4 cores and no GPU took 10 min 08 s with
 `preset: fast` and 15 min 42 s on the default profile. The analysis phase was 7.4 of those
 10 minutes.
 
 Read that for the render, not for preparation: the Analysis column measured the retired per-clip
 scorer, which is not the work this product does any more, and preparation on the current route is
-[measured only on a NAS](../common-setups/nas-only.md#preparation-measured). What is true by
+[measured only on a NAS](../common-setups/nas-only.md#preparation-tiers-what-the-nas-pays). What is true by
 construction rather than by measurement is that the heads and the detectors have no GPU path here,
 so a card does not shorten them, and that every producer banks its answer, so a second cut over
 the same period skips them. Title rendering is the part a GPU would actually take off your hands.

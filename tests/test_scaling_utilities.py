@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from immich_memories.processing.scaling_utilities import (
+    _detect_faces_opencv,
     _get_aspect_ratio_filter,
     _get_smart_crop_filter,
     aggregate_mood_from_clips,
@@ -267,3 +271,30 @@ class TestAggregateMood:
             assert aggregate_mood_from_clips(clips) == expected_mood, (
                 f"{emotion} should map to {expected_mood}"
             )
+
+
+# ---------------------------------------------------------------------------
+# TestDetectFacesOpenCV
+# ---------------------------------------------------------------------------
+
+FIXTURES = Path(__file__).parent
+FACE_PHOTO = FIXTURES / "fixtures" / "faces" / "picnic-friends.jpg"
+# fake_library.py states the invariant this leans on: none of the six CC0
+# photographs in the e2e library shows a recognisable face.
+FACELESS_LIBRARY = sorted((FIXTURES / "e2e" / "fixtures" / "library").glob("*.jpg"))
+
+
+class TestDetectFacesOpenCV:
+    """The OpenCV fallback detector, run on real photographs."""
+
+    def test_faces_are_found_and_normalised(self):
+        """A picnic with four people yields centres inside the 0-1 frame."""
+        centres = _detect_faces_opencv(FACE_PHOTO)
+
+        assert centres != []
+        assert all(0.0 <= x <= 1.0 and 0.0 <= y <= 1.0 for x, y in centres)
+
+    @pytest.mark.parametrize("photo", FACELESS_LIBRARY, ids=lambda p: p.stem)
+    def test_a_photo_without_a_face_yields_nothing(self, photo):
+        """Tree bark and tablecloths are not faces — the Haar cascade thought four were."""
+        assert _detect_faces_opencv(photo) == []

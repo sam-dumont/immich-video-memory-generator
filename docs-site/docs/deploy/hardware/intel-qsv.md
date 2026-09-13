@@ -85,6 +85,6 @@ QSV is common in home server setups: Intel NUCs, older desktops repurposed as me
 
 QSV takes the configured CRF as `-global_quality` on the same 0-51 quantiser scale, in ICQ mode,
 never a bitrate target. Before 0.76.1 it got no rate-control flag at all and the driver's default
-decided quality. See [the overview](./overview.md#quality-what-crf-means-on-each-backend) for what
+decided quality. See [the overview](./overview.md#quality-one-dial-calibrated-per-encoder) for what
 the dial costs on each backend, and note that a hardware encoder needs more bits than libx264 for
 the same picture.

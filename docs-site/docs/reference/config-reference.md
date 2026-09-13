@@ -157,7 +157,7 @@ CRF is the image-quality authority. `quality` is only a shorthand used when `crf
 an explicit `crf` wins. The number is on **libx265's CRF scale**, which is the reference every
 other encoder is calibrated against: each backend gets whatever setting reproduces the same
 picture, measured by SSIM, rather than the same integer. See
-[the hardware overview](../deploy/hardware/overview.md#quality-what-crf-means-on-each-backend)
+[the hardware overview](../deploy/hardware/overview.md#quality-one-dial-calibrated-per-encoder)
 for the measured table. Lower CRF still means higher quality everywhere.
 
 The presets are points on that curve, measured on 1080p60 film and (for `balanced`) judged by
@@ -471,7 +471,7 @@ tier still requires its caption producer, even with rules editing.
 `preparation.tier` names which producers a deployment asks for. It is a named choice, never a
 fallback: a producer the tier demands and cannot reach still stops the run.
 
-| `tier` | What runs | First pass over 10,793 pictures on a Celeron J4125 NAS |
+| `tier` | What runs | First pass over about ten thousand pictures on a Celeron J4125 NAS |
 | --- | --- | --- |
 | `full` | pixels, encoder + six heads, both detectors, captions | 4 days |
 | `no_captions` | pixels, encoder + six heads, both detectors | 3 h 41 min |
@@ -594,7 +594,7 @@ The video cache defaults to 10 GB. If you're tight on disk, lower `video_cache_m
 budget in MB ≈ 0.35 × (assets a memory's scope can reach)
 ```
 
-One 10,793-candidate scope wants about 3.4 GB; the `0.35` leaves a little headroom over the measured 0.315 MB. The 10 GB default holds roughly 31,000 previews, which covers three scopes that size.
+A scope of ten thousand candidates wants about 3.4 GB; the `0.35` leaves a little headroom over the measured 0.315 MB. The 10 GB default holds roughly 31,000 previews, which covers three scopes that size.
 
 If the run's working set does not fit, nothing is lost mid-run: previews this run is still using are never deleted, so the cache temporarily overflows the limit instead. But the *next* run reclaims them, so the next overlapping memory re-downloads every preview and re-captions the assets whose banked caption failure no longer matches the bytes. You get one `WARNING` per run saying how far over you are and naming this setting. Raise it rather than ignoring it.
 
