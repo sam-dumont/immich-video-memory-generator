@@ -45,6 +45,13 @@ REMOTE_CACHE = "/models/.immich-memories/cache"
 # pod and the Job agree on one path.
 OUTPUT_SUBPATH = "setup-matrix"
 
+# The matrix's own claims. It never mounts the app's: those are RWO and stay
+# attached to the running Deployment on whichever node holds it, so a Job that
+# asked for them would sit in Multi-Attach forever, and `-models` does not exist
+# at all in a namespace that predates deploy/kubernetes/base/pvc.yaml.
+DATA_CLAIM = "setup-matrix-data"
+OUTPUT_CLAIM = "setup-matrix-output"
+
 PREPARE_COLD_LOG = "prepare-cold.log"
 PREPARE_WARM_LOG = "prepare-warm.log"
 GENERATE_LOG = "generate.log"
@@ -101,7 +108,11 @@ class Step:
 
 @dataclass(frozen=True)
 class CellPlan:
-    """What one cell will do, as text a person can read and a shell could run."""
+    """What one cell will do, as text a person can read and a shell could run.
+
+    `diagnostic` is not part of the sequence: it is what to ask when a step in it
+    gives up, so a cell that failed says why in its own record.
+    """
 
     cell: Cell
     pins: dict[str, Any]
@@ -111,6 +122,7 @@ class CellPlan:
     app_credentials: tuple[str, ...]
     cache_dir: str
     skip_reason: str | None = None
+    diagnostic: Step | None = None
 
 
 @dataclass(frozen=True)
@@ -354,11 +366,15 @@ def _secret_steps(cell: Cell, context: tuple[str, ...]) -> tuple[Step, ...]:
 
 
 def _k8s_steps(cell: Cell, out_dir: Path) -> tuple[Step, ...]:
-    """Apply, wait, then copy the results out through a collector pod.
+    """Claims, apply, wait to be scheduled, wait to finish, copy out, tear down.
 
     WHY a collector: `kubectl cp` shells into the pod to run tar, and a finished
     Job's pod has no running container to shell into. The collector mounts the
     same output claim, stays up while the copy happens, and is deleted after.
+
+    WHY two waits: a pod that cannot be scheduled, for a missing claim or for a
+    node with no room, is Pending and never reaches `complete`. One wait meant
+    three hours of watching a pod that was never going to start.
     """
     context = KUBECTL
     name = f"setup-matrix-{cell.id}"
@@ -366,9 +382,22 @@ def _k8s_steps(cell: Cell, out_dir: Path) -> tuple[Step, ...]:
     local = out_dir / cell.id
     return (
         *_secret_steps(cell, context),
+        Step("apply-claims", (*context, "apply", "-f", str(local / "claims.yaml"))),
         Step(
             "apply",
             (*context, "apply", "-f", str(local / "configmap.yaml"), "-f", str(local / "job.yaml")),
+        ),
+        Step(
+            "wait-scheduled",
+            (
+                *context,
+                "wait",
+                "pod",
+                "-l",
+                f"job-name={name}",
+                "--for=condition=PodScheduled",
+                f"--timeout={SCHEDULING_TIMEOUT}",
+            ),
         ),
         Step("wait", (*context, "wait", f"job/{name}", "--for=condition=complete", "--timeout=3h")),
         Step("logs", (*context, "logs", f"job/{name}", "--tail=-1")),
@@ -380,7 +409,24 @@ def _k8s_steps(cell: Cell, out_dir: Path) -> tuple[Step, ...]:
         Step("copy-out", (*context, "cp", f"{collector}:{OUTPUT_SUBPATH}/{cell.id}", str(local))),
         Step("delete-collector", (*context, "delete", "pod", collector, "--ignore-not-found")),
         Step("delete", (*context, "delete", "job", name, "--ignore-not-found")),
+        # The results are on this machine by now, and the next cell's apply makes
+        # the claim again. The data claim is deliberately left alone: it carries
+        # the models and the annotation bank, warm across cells and across runs.
+        Step(
+            "delete-output-claim",
+            (*context, "delete", "pvc", OUTPUT_CLAIM, "--ignore-not-found"),
+        ),
     )
+
+
+def k8s_diagnostic(cell: Cell) -> Step:
+    """What to ask the cluster when a cluster cell's step gives up."""
+    return Step("describe", (*KUBECTL, "describe", "pod", "-l", f"job-name=setup-matrix-{cell.id}"))
+
+
+def purge_claims_command() -> tuple[str, ...]:
+    """Both claims, for a run that asked to leave the cluster with nothing of its own."""
+    return (*KUBECTL, "delete", "pvc", DATA_CLAIM, OUTPUT_CLAIM, "--ignore-not-found")
 
 
 CPU_OVERLAY = "deploy/kubernetes/overlays/inference"
@@ -392,6 +438,10 @@ INFERENCE_PORT = 8092
 # the runner reads it off the LoadBalancer the `inference-lan` overlay asks for.
 INFERENCE_ENV = "MATRIX_INFERENCE_BASE_URL"
 DERIVED_ADDRESS = "<derived at run time>"
+
+# Long enough for a claim to be provisioned and a node to be picked, short
+# enough that "nothing can run this" is an answer rather than an afternoon.
+SCHEDULING_TIMEOUT = "5m"
 
 KUBECTL = ("kubectl", "--context", "$MATRIX_K8S_CONTEXT", "-n", "$MATRIX_K8S_NAMESPACE")
 # `.ip` on most controllers, `.hostname` on the ones that hand out a name.
@@ -490,6 +540,7 @@ def _k8s_manifests(
         else ""
     )
     return {
+        "claims.yaml": _CLAIMS.format(data=DATA_CLAIM, output=OUTPUT_CLAIM),
         "configmap.yaml": _CONFIGMAP.format(name=name, config=config_block),
         "job.yaml": _JOB.format(
             name=name,
@@ -499,10 +550,49 @@ def _k8s_manifests(
             out=REMOTE_OUT,
             secrets=secret_block,
             subpath=f"{OUTPUT_SUBPATH}/{cell.id}",
+            output_claim=OUTPUT_CLAIM,
+            data_claim=DATA_CLAIM,
         ),
-        "collector.yaml": _COLLECTOR.format(name=f"{name}-collect", image=image, out=REMOTE_OUT),
+        "collector.yaml": _COLLECTOR.format(
+            name=f"{name}-collect", image=image, out=REMOTE_OUT, output_claim=OUTPUT_CLAIM
+        ),
     }
 
+
+# Applied before every cluster cell, and applying an unchanged claim changes
+# nothing, so one cell's run leaves the next one's storage already there.
+_CLAIMS = """# The models and the annotation bank, kept between cells and between runs.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {data}
+  namespace: $MATRIX_K8S_NAMESPACE
+  labels:
+    app.kubernetes.io/name: immich-memories
+    app.kubernetes.io/component: setup-matrix
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+# One cell's output, deleted once the collector has copied it to this machine.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {output}
+  namespace: $MATRIX_K8S_NAMESPACE
+  labels:
+    app.kubernetes.io/name: immich-memories
+    app.kubernetes.io/component: setup-matrix
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+"""
 
 _CONFIGMAP = """apiVersion: v1
 kind: ConfigMap
@@ -562,23 +652,27 @@ spec:
               subPath: {subpath}
             - name: models
               mountPath: /models
+          # The request is what the scheduler has to find: a 1-CPU app pod was
+          # already answered with Insufficient cpu here, and a cell that runs on
+          # scraps is not a measurement. The limit is the NAS cell's docker cap,
+          # 4 CPU and 4 GB, so the two rows in the table are comparable.
           resources:
             requests:
               memory: "4Gi"
               cpu: "2000m"
             limits:
-              memory: "16Gi"
-              cpu: "8000m"
+              memory: "4Gi"
+              cpu: "4000m"
       volumes:
         - name: config
           configMap:
             name: {name}-config
         - name: output
           persistentVolumeClaim:
-            claimName: immich-memories-output
+            claimName: {output_claim}
         - name: models
           persistentVolumeClaim:
-            claimName: immich-memories-models
+            claimName: {data_claim}
 """
 
 # Mounts the output claim and does nothing, so `kubectl cp` has a running
@@ -623,7 +717,7 @@ spec:
   volumes:
     - name: output
       persistentVolumeClaim:
-        claimName: immich-memories-output
+        claimName: {output_claim}
 """
 
 
@@ -648,6 +742,7 @@ def build_cell_plan(
     config_yaml = yaml.safe_dump(nested(pins), sort_keys=False)
     memory = manifest.get("memory") or {}
     manifests: dict[str, str] = {}
+    diagnostic: Step | None = None
     if cell.lane == "mac":
         steps = _mac_steps(cell, memory, month, out_dir)
         cache = "$HOME/.immich-memories/cache"
@@ -657,6 +752,7 @@ def build_cell_plan(
     elif cell.lane == "k8s":
         steps = _k8s_steps(cell, out_dir)
         manifests = _k8s_manifests(cell, memory, month, image, config_yaml)
+        diagnostic = k8s_diagnostic(cell)
         cache = REMOTE_CACHE
     else:
         raise PlanError(f"{cell.id}: unknown lane {cell.lane!r}")
@@ -670,6 +766,7 @@ def build_cell_plan(
         app_credentials=credentials,
         cache_dir=cache,
         skip_reason=skip,
+        diagnostic=diagnostic,
     )
 
 
@@ -766,7 +863,7 @@ def dry_run_text(plan: Plan, *, overlay: tuple[Step, ...] = ()) -> str:
     ]
     if overlay:
         lines += ["", "# inference service overlay"]
-        lines += [f"  {step.name:<18} {step}" for step in overlay]
+        lines += [f"  {step.name:<19} {step}" for step in overlay]
     for item in plan.cells:
         cell = item.cell
         lines += [
@@ -785,7 +882,9 @@ def dry_run_text(plan: Plan, *, overlay: tuple[Step, ...] = ()) -> str:
             )
         lines.append("   pinned config:")
         lines += [f"     {line}" for line in item.config_yaml.rstrip().splitlines()]
-        lines += [f"   {step.name:<18} {step}" for step in item.steps]
+        lines += [f"   {step.name:<19} {step}" for step in item.steps]
+        if item.diagnostic:
+            lines.append(f"   {'on failure':<19} {item.diagnostic}")
         for name, body in item.manifests.items():
             lines.append(f"   manifest {name}:")
             lines += [f"     {line}" for line in body.rstrip().splitlines()]

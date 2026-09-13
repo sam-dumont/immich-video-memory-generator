@@ -68,6 +68,7 @@ from setup_matrix_plan import (  # noqa: E402
     load_manifest,
     needs_lan_address,
     overlay_path,
+    purge_claims_command,
     read_cells,
 )
 from setup_matrix_summary import (  # noqa: E402
@@ -273,10 +274,42 @@ def run_remote_cell(item: CellPlan, plan: Plan, out_dir: Path) -> dict:
         (cell_dir / f"{step.name}.stderr.log").write_text(proc.stderr or "")
         if proc.returncode != 0 and step.name not in {"logs", "delete"}:
             record["error"] = f"{step.name} exited {proc.returncode}"
+            if item.diagnostic is not None:
+                record["error"] += "\n" + _diagnose(item.diagnostic, item, plan, cell_dir)
             break
 
+    if record["error"]:
+        _finish_failed_cell(item, plan, cell_dir)
     _read_remote_artifacts(record, cell_dir)
     return record
+
+
+# What a cell still runs after it has failed: what it has to say, and whatever it
+# created. A pod left Pending holds the output claim open, and the next cluster
+# cell's teardown would then wait on a claim this one will never release.
+_AFTER_FAILURE = ("logs", "delete-collector", "delete", "delete-output-claim")
+
+
+def _finish_failed_cell(item: CellPlan, plan: Plan, cell_dir: Path) -> None:
+    for step in item.steps:
+        if step.name in _AFTER_FAILURE:
+            proc = _run_step(step, plan, item)
+            (cell_dir / f"{step.name}.stdout.log").write_text(proc.stdout or "")
+            (cell_dir / f"{step.name}.stderr.log").write_text(proc.stderr or "")
+
+
+def _diagnose(diagnostic: Step, item: CellPlan, plan: Plan, cell_dir: Path) -> str:
+    """What the cluster says about the pod, for a cell that gave up waiting on it.
+
+    A Pending pod's reason is in its events and nowhere else: the Job object says
+    only that nothing has completed.
+    """
+    proc = _run_step(diagnostic, plan, item)
+    text = ((proc.stdout or "") + (proc.stderr or "")).strip()
+    (cell_dir / f"{diagnostic.name}.log").write_text(text + "\n")
+    tail = "\n".join(text.splitlines()[-12:])
+    print(tail, file=sys.stderr)
+    return tail
 
 
 def _read_remote_artifacts(record: dict, cell_dir: Path) -> None:
@@ -483,6 +516,11 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--keep-service", action="store_true", help="leave the inference overlay running"
     )
+    parser.add_argument(
+        "--purge-claims",
+        action="store_true",
+        help="delete the cluster claims at the end, models and annotation bank included",
+    )
     return parser.parse_args(argv)
 
 
@@ -611,6 +649,8 @@ def _execute(plan: Plan, opts: argparse.Namespace, out_dir: Path, overlay: tuple
         if lan:
             _apply_overlay(plan, LAN_OVERLAY, up=False)
         _apply_overlay(plan, overlay_path(device), up=False)
+    if opts.purge_claims and any(item.cell.lane == "k8s" for item in plan.runnable):
+        _run_bare(purge_claims_command(), plan)
 
     _publish_summary(plan, opts, out_dir, _collect_rows(out_dir, records))
     _report_skips(plan)
@@ -656,14 +696,18 @@ def _summarize(plan: Plan, opts: argparse.Namespace, out_dir: Path) -> int:
     return 0
 
 
-def _apply_overlay(plan: Plan, path: str, *, up: bool) -> None:
-    verb = ["apply", "-k", path] if up else ["delete", "-k", path, "--ignore-not-found"]
-    command = (*KUBECTL, *verb)
+def _run_bare(command: tuple[str, ...], plan: Plan) -> None:
+    """A command that belongs to the run rather than to a cell, so no cell logs it."""
     subprocess.run(  # noqa: S603
         [_substitute(part, plan.environment) for part in command],
         cwd=REPO_ROOT,
         check=False,
     )
+
+
+def _apply_overlay(plan: Plan, path: str, *, up: bool) -> None:
+    verb = ["apply", "-k", path] if up else ["delete", "-k", path, "--ignore-not-found"]
+    _run_bare((*KUBECTL, *verb), plan)
 
 
 def _report_skips(plan: Plan) -> None:

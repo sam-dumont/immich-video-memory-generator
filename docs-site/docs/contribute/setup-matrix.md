@@ -131,6 +131,31 @@ The cells that use the inference service bring
 the end, plus `inference-lan` when a NAS cell is in the run. `--inference-device` picks CPU or CUDA, and `auto` asks the cluster whether a node carries
 the GPU operator's label. `--keep-service` leaves it running.
 
+## The cluster lane
+
+The matrix makes two claims of its own, `setup-matrix-data` and `setup-matrix-output`, before it
+applies a Job, and applying them again changes nothing. It never mounts the app's claims: those are
+`ReadWriteOnce` and stay attached to the running Deployment on whichever node holds it, so a Job
+asking for them sits in Multi-Attach forever, and `immich-memories-models` does not exist at all in
+a namespace older than `deploy/kubernetes/base/pvc.yaml`.
+
+`setup-matrix-data` is the models and the annotation bank, mounted at `/models`. It is kept between
+cells and between runs, because a warm bank is the difference between a cold preparation and an
+afternoon of them. `--purge-claims` deletes it at the end of the run. The output claim is deleted
+per cell once the collector has copied the results to this machine.
+
+A cell waits twice: five minutes for its pod to be scheduled, then up to three hours for the Job to
+finish. A pod that cannot be scheduled, for a claim that does not exist or a node with no room, is
+Pending and never completes, and the single long wait used to watch one for three hours. When a step
+gives up, the runner runs `kubectl describe pod` for that Job and puts the tail of its events in the
+cell's record and on the terminal, then removes what the cell created so the next one is not blocked
+behind its claim.
+
+The Job requests 2 CPU and 4 GB, because this cluster already answered a 1-CPU pod with
+`Insufficient cpu` and a cell running on scraps is not a measurement. Its limit is 4 CPU and 4 GB,
+which is exactly the NAS cell's docker cap, so the two rows in the table can be read against each
+other.
+
 ## What lands in the output
 
 Everything goes under `output/setup-matrix/<library>/<timestamp>/`, which is gitignored because a

@@ -337,6 +337,65 @@ def test_an_ssh_command_line_in_the_destination_variable_is_refused(
     assert "~/.ssh/config" in str(error.value)
 
 
+def _k8s_cell(manifest: dict, tmp_path: Path):
+    return next(
+        item
+        for item in _plan(manifest, tmp_path, FULL_ENV).cells
+        if item.cell.id == "k8s-rules-local"
+    )
+
+
+def test_a_cluster_cell_mounts_claims_of_its_own(manifest: dict, tmp_path: Path) -> None:
+    """The app's claims are RWO and attached to the running Deployment on one node."""
+    item = _k8s_cell(manifest, tmp_path)
+    claims = [doc for doc in yaml.safe_load_all(item.manifests["claims.yaml"]) if doc]
+
+    assert [doc["metadata"]["name"] for doc in claims] == [
+        "setup-matrix-data",
+        "setup-matrix-output",
+    ]
+    assert all(doc["spec"]["accessModes"] == ["ReadWriteOnce"] for doc in claims)
+    assert all("storageClassName" not in doc["spec"] for doc in claims), "use the default class"
+    rendered = item.manifests["job.yaml"] + item.manifests["collector.yaml"]
+    assert "immich-memories-models" not in rendered
+    assert "immich-memories-output" not in rendered
+
+
+def test_the_claims_are_applied_before_the_job_that_mounts_them(
+    manifest: dict, tmp_path: Path
+) -> None:
+    names = [step.name for step in _k8s_cell(manifest, tmp_path).steps]
+    assert names.index("apply-claims") < names.index("apply")
+    # The data claim carries the models and the bank, so it outlives the cell.
+    assert "delete-output-claim" in names
+    assert not [name for name in names if name == "delete-data-claim"]
+
+
+def test_a_cluster_cell_stops_waiting_on_a_pod_that_never_scheduled(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """A Pending pod never completes, and the three-hour wait was watching one."""
+    item = _k8s_cell(manifest, tmp_path)
+    steps = {step.name: step for step in item.steps}
+    names = [step.name for step in item.steps]
+
+    assert names.index("wait-scheduled") < names.index("wait")
+    assert "--for=condition=PodScheduled" in steps["wait-scheduled"].command
+    assert "--timeout=5m" in steps["wait-scheduled"].command
+    assert item.diagnostic is not None
+    assert "describe" in item.diagnostic.command
+
+
+def test_a_cluster_cell_asks_for_what_the_nas_cell_is_capped_at(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """Two rows in the same table, so neither may be given more room than the other."""
+    job = yaml.safe_load(_k8s_cell(manifest, tmp_path).manifests["job.yaml"])
+    resources = job["spec"]["template"]["spec"]["containers"][0]["resources"]
+    assert resources["requests"] == {"memory": "4Gi", "cpu": "2000m"}
+    assert resources["limits"] == {"memory": "4Gi", "cpu": "4000m"}
+
+
 def test_a_printed_step_is_a_line_a_shell_could_actually_run(
     manifest: dict, tmp_path: Path
 ) -> None:
