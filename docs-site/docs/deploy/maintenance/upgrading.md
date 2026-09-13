@@ -35,7 +35,7 @@ Read the [GitHub release notes](https://github.com/sam-dumont/immich-video-memor
 
 ## Upgrading Immich from v2 to v3
 
-Immich Memories supports Immich v2 and v3 — see
+Immich Memories supports Immich v2 and v3, see
 [Immich API compatibility](../configuration/config-file.md#immich-api-compatibility) for what that
 covers and what is actually tested. Keep the default automatic runtime policy during the server
 upgrade:
@@ -69,7 +69,7 @@ a video, create an album, or upload anything. A successful result includes the r
 
 ## Config compatibility
 
-There is no automatic config migration. Unknown keys **inside** a known section are silently ignored, so a renamed field simply stops doing anything; unknown *top-level* keys and invalid values fail at startup. Renames are documented in the release notes — check them when a setting seems to have stopped taking effect.
+There is no automatic config migration. Unknown keys **inside** a known section are silently ignored, so a renamed field simply stops doing anything; unknown *top-level* keys and invalid values fail at startup. Renames are documented in the release notes: check them when a setting seems to have stopped taking effect.
 
 The removed clip scorer's keys are named rather than merely ignored: `content_analysis`, `audio_content`, `speech`, `transcription`, `analysis.max_refinement_passes`, `analysis.scene_threshold` and the other pacing and detection dials, `photos.max_ratio`, `photos.read_moments`, `photos.moment_gap_seconds`, `photos.moment_hash_threshold` and `hardware.gpu_analysis`. A file that still names one starts normally and logs a warning listing every one it found, with what each used to do. Delete them to silence it; leaving them changes nothing, because the code that read them is gone. The `audio-ml`, `speech` and `transcribe` extras went with it.
 
