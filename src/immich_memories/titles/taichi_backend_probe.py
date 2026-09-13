@@ -10,12 +10,15 @@ because Taichi kernels require actual type objects, not string annotations.
 """
 
 import contextlib
+import json
 import logging
 import os
-import queue
+import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
 
 import numpy as np
 
@@ -39,7 +42,6 @@ except ImportError:
     ti = None
 
 _TAICHI_PROBE_TIMEOUT_SECONDS = 10.0
-_TAICHI_PROBE_STOP_TIMEOUT_SECONDS = 1.0
 
 
 class TaichiProbeOutcome(StrEnum):
@@ -53,7 +55,7 @@ class TaichiProbeOutcome(StrEnum):
 
 @dataclass(frozen=True)
 class TaichiProbeResult:
-    """Small picklable result sent from the probe child to its parent."""
+    """Small serialisable result the probe child hands back to its parent."""
 
     outcome: TaichiProbeOutcome
     detail: str | None = None
@@ -94,7 +96,7 @@ def _silent_init(**kwargs) -> None:
         ti.init(**kwargs)
 
 
-def _taichi_probe_worker(backend_name: str, result_queue) -> None:
+def _taichi_probe_worker(backend_name: str) -> TaichiProbeResult:
     """Initialize one backend and dispatch a real kernel inside a child process."""
     try:
         with _silence_output_fds():
@@ -109,71 +111,69 @@ def _taichi_probe_worker(backend_name: str, result_queue) -> None:
             values = np.zeros(1, dtype=np.int32)
             increment(values)
         if values[0] != 1:
-            result = TaichiProbeResult(
+            return TaichiProbeResult(
                 TaichiProbeOutcome.DISPATCH_FAILED,
                 "unexpected_kernel_result",
             )
-        else:
-            result = TaichiProbeResult(TaichiProbeOutcome.SUCCESS)
     except Exception as exc:
-        result = TaichiProbeResult(
+        return TaichiProbeResult(
             TaichiProbeOutcome.DISPATCH_FAILED,
             type(exc).__name__,
         )
-    result_queue.put(result)
+    return TaichiProbeResult(TaichiProbeOutcome.SUCCESS)
 
 
-def _stop_probe_process(process) -> None:
-    """Stop a stuck probe, escalating from terminate to kill."""
-    process.terminate()
-    process.join(_TAICHI_PROBE_STOP_TIMEOUT_SECONDS)
-    if process.is_alive():
-        process.kill()
-        process.join(_TAICHI_PROBE_STOP_TIMEOUT_SECONDS)
+def _read_probe_result(result_path: Path) -> TaichiProbeResult | None:
+    """Read the child's answer, or None when it wrote something we cannot trust."""
+    try:
+        payload = json.loads(result_path.read_text())
+        return TaichiProbeResult(TaichiProbeOutcome(payload["outcome"]), payload["detail"])
+    except (OSError, ValueError, TypeError, KeyError):
+        return None
 
 
 def _probe_taichi_backend(
     backend_name: str,
     timeout: float = _TAICHI_PROBE_TIMEOUT_SECONDS,
 ) -> TaichiProbeResult:
-    """Probe one non-CPU backend without changing parent Taichi state."""
-    import multiprocessing
+    """Probe one non-CPU backend without changing parent Taichi state.
 
-    context = multiprocessing.get_context("spawn")
-    result_queue = context.Queue(maxsize=1)
-    process = context.Process(
-        target=_taichi_probe_worker,
-        args=(backend_name, result_queue),
-        name=f"taichi-{backend_name}-probe",
-        daemon=True,
-    )
-    started = False
-    try:
-        process.start()
-        started = True
-        process.join(timeout)
-        if process.is_alive():
-            _stop_probe_process(process)
-            return TaichiProbeResult(TaichiProbeOutcome.TIMED_OUT)
+    The child runs this file as its own program. A `multiprocessing` spawn child
+    would instead re-import the parent's `__main__` with the parent's `sys.argv`
+    restored, so under any launcher whose module body is not guarded by
+    `if __name__ == "__main__"` the probe re-ran the whole application and printed
+    that second run's failure into the terminal of the run in progress (#846).
+    Its streams are captured for the same reason: a probe child must never write
+    into its parent's output.
+    """
+    # WHY function-local: only the parent needs the bounded runner. The child runs
+    # this file by path and must not depend on the package around it.
+    from immich_memories.operations.bounded_process import run_bounded_process
+
+    with tempfile.TemporaryDirectory(prefix="immich-taichi-probe-") as directory:
+        result_path = Path(directory) / "result.json"
+        command = [sys.executable, str(Path(__file__).resolve()), backend_name, str(result_path)]
         try:
-            result = result_queue.get(timeout=0.25)
-        except queue.Empty:
+            completed = run_bounded_process(command, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return TaichiProbeResult(TaichiProbeOutcome.TIMED_OUT)
+        except OSError as exc:
+            return TaichiProbeResult(TaichiProbeOutcome.CHILD_CRASHED, type(exc).__name__)
+        if completed.returncode or not result_path.is_file():
+            logger.debug(
+                "Taichi %s probe child exited %s: %s",
+                backend_name,
+                completed.returncode,
+                (completed.stderr or completed.stdout or "").strip()[-2000:],
+            )
             return TaichiProbeResult(
                 TaichiProbeOutcome.CHILD_CRASHED,
-                f"exitcode={process.exitcode}",
+                f"exitcode={completed.returncode}",
             )
-        if not isinstance(result, TaichiProbeResult):
+        result = _read_probe_result(result_path)
+        if result is None:
             return TaichiProbeResult(TaichiProbeOutcome.CHILD_CRASHED, "invalid_result")
         return result
-    except (OSError, RuntimeError, TypeError) as exc:
-        return TaichiProbeResult(TaichiProbeOutcome.CHILD_CRASHED, type(exc).__name__)
-    finally:
-        if started and process.is_alive():
-            _stop_probe_process(process)
-        result_queue.close()
-        result_queue.join_thread()
-        if started and not process.is_alive():
-            process.close()
 
 
 def _candidate_backends(
@@ -205,3 +205,10 @@ def _backend_dispatches(name: str, probe_name: str | None) -> bool:
         probe.detail or "no detail",
     )
     return False
+
+
+if __name__ == "__main__":
+    _result = _taichi_probe_worker(sys.argv[1])
+    Path(sys.argv[2]).write_text(
+        json.dumps({"outcome": _result.outcome.value, "detail": _result.detail})
+    )
