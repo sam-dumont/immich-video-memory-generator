@@ -154,9 +154,10 @@ def test_the_cut_shows_the_pictures_it_is_working_on_while_it_works(
     # Bounded by construction: a long stage must not grow the page.
     expect(page.locator(".q-linear-progress")).to_have_count(1)
     assert strip.count() <= 12
-    # The pictures stay while the run moves on to the stages that count nothing.
+    # Once the run moves on to the edit, nothing new arrives, so the strip goes
+    # away instead of lingering under the Editing row.
     expect(_active_stage(page)).to_be_visible(timeout=60_000)
-    expect(strip.first).to_be_visible()
+    expect(strip).to_have_count(0)
 
 
 def test_the_detail_lines_are_folded_away_until_asked_for(page: Page, launch_app_url: str) -> None:

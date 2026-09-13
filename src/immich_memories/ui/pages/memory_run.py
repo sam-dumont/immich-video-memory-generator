@@ -384,7 +384,12 @@ def render_cutting(state: AppState) -> None:
         rows.paint(status)
         log.remember(status.detail)
         bar.show(live_progress_of(record))
-        strip.show(recent_pictures_of(record))
+        # The strip shows the pictures a preparation pass just finished; once the
+        # edit starts there are no new arrivals, so it stops lingering.
+        if status.phase is OperationalPhase.ANALYSIS:
+            strip.show(recent_pictures_of(record))
+        else:
+            strip.hide()
         if record is not None and not state.cancel_requested:
             elapsed.set_text(f"Elapsed: {elapsed_label(record.get('started_at'))}")
 

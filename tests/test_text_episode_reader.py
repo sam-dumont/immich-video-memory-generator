@@ -21,6 +21,7 @@ from immich_memories.analysis.selection_source import (
     prepare_editorial_source,
 )
 from immich_memories.analysis.selection_source_groups import project_episode_groups
+from immich_memories.operations.cut_progress import StageUpdate, announcing_stages
 from immich_memories.store.episode_readings import (
     BankedEpisodeReading,
     EpisodeReadingIdentity,
@@ -252,15 +253,23 @@ def test_cold_episodes_are_packed_below_the_serialized_prompt_limit(
         )
 
     store = EpisodeReadingStore(tmp_path / "annotations.sqlite")
-    first = CachedTextEpisodeReader(
-        store=store,
-        producer=producer,
-        annotations=lines,
-        requester=requester,
-        limits=TextEpisodeRequestLimits(max_prompt_chars=1_400),
-    ).read(projections)
+    announced: list[StageUpdate] = []
+    with announcing_stages(announced.append):
+        first = CachedTextEpisodeReader(
+            store=store,
+            producer=producer,
+            annotations=lines,
+            requester=requester,
+            limits=TextEpisodeRequestLimits(max_prompt_chars=1_400),
+        ).read(projections)
 
     assert len(prompts) > 1
+    # Every model request announces where the reading is, so the long silent
+    # stretch of a cut becomes "Reading event evidence: 2/3" on both surfaces.
+    assert [(u.done, u.total) for u in announced if u.counted] == [
+        (index, len(prompts)) for index in range(1, len(prompts) + 1)
+    ]
+    assert announced[0].stage_label == f"Reading event evidence: 1/{len(prompts)}"
     assert all(len(prompt) <= 1_400 for prompt in prompts)
     assert all(asset_id not in "".join(prompts) for asset_id in prepared.candidate_ids)
     assert all(episode.reading is not None for episode in first.episodes)
