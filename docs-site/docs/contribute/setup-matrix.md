@@ -48,9 +48,9 @@ Two files outside the repo, neither of them tracked:
 | File | Holds |
 |---|---|
 | `~/.immich-memories-matrix/.env` | `MELIOUS_AI_BASE_URL`, `MELIOUS_AI_KEY`, `ZAI_BASE_URL`, `ZAI_API_KEY` |
-| `~/.immich-memories-matrix/matrix.env` | `MATRIX_NAS_SSH`, `MATRIX_NAS_DOCKER`, `MATRIX_NAS_CACHE`, `MATRIX_NAS_OUT`, `MATRIX_K8S_CONTEXT`, `MATRIX_K8S_NAMESPACE`, `MATRIX_OMLX_BASE_URL`, `MATRIX_CAPTION_BASE_URL` |
+| `~/.immich-memories-matrix/matrix.env` | `MATRIX_NAS_SSH`, `MATRIX_NAS_DOCKER`, `MATRIX_NAS_CACHE`, `MATRIX_NAS_OUT`, `MATRIX_NAS_DOCKER_LIMITS`, `MATRIX_K8S_CONTEXT`, `MATRIX_K8S_NAMESPACE`, `MATRIX_OMLX_BASE_URL`, `MATRIX_CAPTION_BASE_URL` |
 
-`MATRIX_INFERENCE_BASE_URL` is the one optional entry: see below.
+`MATRIX_NAS_DOCKER_LIMITS` and `MATRIX_INFERENCE_BASE_URL` are the two optional entries: see below.
 
 Point at others with `--env-file`, repeatable. The Mac cells also want `OPENAI_API_KEY` in the
 shell, which is the alias the config loader maps to `llm.api_key`.
@@ -64,6 +64,16 @@ the alias name in the variable. The runner refuses a value with whitespace in it
 The NAS lane moves its files with tar over ssh rather than `scp`. A Synology runs an OpenSSH 8.2
 server with the SFTP subsystem off, and a modern `scp` client speaks SFTP, so every copy closed
 the connection. tar asks the far side for nothing but a shell.
+
+`MATRIX_NAS_DOCKER_LIMITS` is what the NAS container is capped at, and it defaults to
+`--cpus 4 --memory 4g`. `--cpus` is a CFS quota, and a kernel built without the CFS bandwidth
+controller, which is what a Synology on cgroup v1 runs, answers the run with `NanoCPUs can not be
+set, as your kernel does not support CPU CFS scheduler or the cgroup is not mounted`. Such a host
+wants a cpuset pin instead: `--cpuset-cpus 0-3 --memory 4g` gives the cell the same four cores and
+starts. The value is split the way a shell would and every flag in it has to be a resource cap
+(`--cpus`, `--cpuset-cpus`, `--memory`, `--memory-swap` and their kin), because it is rendered
+verbatim into a command the NAS runs as root. Whatever it comes to is written into each NAS cell's
+`timing.json` as `container_limits`, so a row can say what its container actually had.
 
 `MATRIX_CAPTION_BASE_URL` is where the caption pass sends its pictures: whichever
 OpenAI-compatible server holds `smolvlm2-500m`. On the owner's Mac that is oMLX, which serves the
@@ -131,6 +141,16 @@ The cells that use the inference service bring
 the end, plus `inference-lan` when a NAS cell is in the run. `--inference-device` picks CPU or CUDA, and `auto` asks the cluster whether a node carries
 the GPU operator's label. `--keep-service` leaves it running.
 
+A rolled-out Deployment is not yet a service that can decide a picture. The models land in its
+cache on the first request that wants them, and until they are there every `/facts` call comes back
+503, which the first cell to run would have measured as its own preparation time. So before any
+cell starts, the runner sends the service one real facts request: a 200 px JPEG out of the fixture
+library, retried with a widening wait until it answers 200, bounded at fifteen minutes. It reaches
+an in-cluster Service through `kubectl port-forward` and the NAS cells' service through the LAN
+address. How long the service took to answer is published as `inference_warmup_s`, and a service
+that never answers stops the run with the body it replied with, which is the only thing that names
+the model it is missing.
+
 ## The cluster lane
 
 The matrix makes two claims of its own, `setup-matrix-data` and `setup-matrix-output`, before it
@@ -146,15 +166,18 @@ per cell once the collector has copied the results to this machine.
 
 A cell waits twice: five minutes for its pod to be scheduled, then up to three hours for the Job to
 finish. A pod that cannot be scheduled, for a claim that does not exist or a node with no room, is
-Pending and never completes, and the single long wait used to watch one for three hours. When a step
-gives up, the runner runs `kubectl describe pod` for that Job and puts the tail of its events in the
-cell's record and on the terminal, then removes what the cell created so the next one is not blocked
-behind its claim.
+Pending and never completes, and the single long wait used to watch one for three hours. The second
+wait is a poll of the Job's own counters rather than `kubectl wait --for=condition=complete`: with
+`backoffLimit: 0` a cell that fails leaves a Job in `Failed`, a state that condition never reaches,
+so the runner used to sit on a dead cell for the whole three hours. It now asks for `succeeded` and
+`failed` every 15 s and stops on either, under the same ceiling. When a step gives up, the runner
+runs `kubectl describe pod` for that Job and puts the tail of its events in the cell's record and on
+the terminal, then removes what the cell created so the next one is not blocked behind its claim.
 
 The Job requests 2 CPU and 4 GB, because this cluster already answered a 1-CPU pod with
 `Insufficient cpu` and a cell running on scraps is not a measurement. Its limit is 4 CPU and 4 GB,
-which is exactly the NAS cell's docker cap, so the two rows in the table can be read against each
-other.
+which is exactly the NAS cell's default docker cap, so the two rows in the table can be read
+against each other.
 
 ## What lands in the output
 
@@ -178,10 +201,13 @@ reports a re-read rather than a first derivation, which the record says out loud
 make test-one T=tests/test_setup_matrix_plan.py
 make test-one T=tests/test_setup_matrix_capture.py
 make test-one T=tests/test_setup_matrix_summary.py
+make test-one T=tests/test_setup_matrix_readiness.py
 ```
 
 The plan tests are the real gate: the ten cells never run in CI, so what is asserted is that the
 plan they would run is the right one, that it is identical between calls, and that no value from
-the environment reaches the rendered text. The capture tests feed the parsers output built by the
+the environment reaches the rendered text. The readiness tests stand in for the two things that
+cannot be reproduced without a cluster: a fake `kubectl` for a Job that fails, and a fake service
+that answers 503 before it answers facts. The capture tests feed the parsers output built by the
 renderers the CLI actually prints with, so a change to either format fails there instead of quietly
 publishing a plausible wrong number.

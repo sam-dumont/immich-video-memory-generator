@@ -55,6 +55,7 @@ from setup_matrix_plan import (  # noqa: E402
     FIXTURE_PORT,
     INFERENCE_ENV,
     INFERENCE_PORT,
+    INFERENCE_SERVICE,
     KUBECTL,
     LAN_OVERLAY,
     LAN_SERVICE,
@@ -71,12 +72,21 @@ from setup_matrix_plan import (  # noqa: E402
     purge_claims_command,
     read_cells,
 )
+from setup_matrix_readiness import (  # noqa: E402
+    await_facts,
+    await_job,
+    await_listener,
+    port_forward,
+    warmup_picture,
+)
 from setup_matrix_summary import (  # noqa: E402
     build_markdown,
     build_summary,
     read_cell_records,
     write_cell_record,
 )
+
+from immich_memories.config_models_inference import SERVED_PRODUCERS  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_ENV_FILES = (
@@ -88,6 +98,10 @@ DEFAULT_ENV_FILES = (
 # everything this matrix measures.
 DEFAULT_IMAGE_TAG = "0.84.1"
 IMAGE_REPO = "ghcr.io/sam-dumont/immich-video-memory-generator"
+# The pictures the demo library is built from. The inference warm-up sends one of
+# them: a real photograph, not a synthetic square, so every model the cells will
+# ask for is the one that gets loaded.
+FIXTURE_LIBRARY = REPO_ROOT / "tests" / "e2e" / "fixtures" / "library"
 
 
 def read_env_files(paths: tuple[Path, ...]) -> dict[str, str]:
@@ -133,20 +147,8 @@ def serve_fixture(root: Path) -> tuple[object, str]:
 
     print("building the fixture library (one thumbnail per picture, about 15s)...", flush=True)
     server = FakeImmichServer.start(root, host="0.0.0.0", port=FIXTURE_PORT)  # noqa: S104
-    _await_listener(FIXTURE_PORT)
+    await_listener(FIXTURE_PORT)
     return server, f"http://{lan_address()}:{FIXTURE_PORT}"
-
-
-def _await_listener(port: int, timeout_s: float = 15.0) -> None:
-    deadline = time.monotonic() + timeout_s
-    while True:
-        try:
-            with socket.create_connection(("127.0.0.1", port), timeout=1.0):
-                return
-        except OSError:
-            if time.monotonic() >= deadline:
-                raise SystemExit(f"the fixture library never answered on port {port}") from None
-            time.sleep(0.2)
 
 
 def _substitute(part: str, environment: dict[str, str]) -> str:
@@ -269,7 +271,14 @@ def run_remote_cell(item: CellPlan, plan: Plan, out_dir: Path) -> dict:
     cell_dir.mkdir(parents=True, exist_ok=True)
     record = _new_record(item, primed=None)
     for step in item.steps:
-        proc = _run_step(step, plan, item)
+        # A Job that failed never satisfies a wait for condition=complete, so the
+        # one step that watches a Job polls for either outcome instead.
+        job_wait = step.name == "wait" and item.cell.lane == "k8s"
+        proc = (
+            await_job(lambda step=step: _run_step(step, plan, item))
+            if job_wait
+            else _run_step(step, plan, item)
+        )
         (cell_dir / f"{step.name}.stdout.log").write_text(proc.stdout or "")
         (cell_dir / f"{step.name}.stderr.log").write_text(proc.stderr or "")
         if proc.returncode != 0 and step.name not in {"logs", "delete"}:
@@ -353,6 +362,9 @@ def _new_record(item: CellPlan, *, primed: bool | None) -> dict:
         "hosted": cell.hosted,
         "skip_reason": item.skip_reason,
         "prepare_cache_primed": primed,
+        # What the container was actually pinned to, which is not the same on
+        # every NAS: a kernel with no CFS controller takes a cpuset, not a quota.
+        "container_limits": item.container_limits or None,
         "timing": {
             "prepare_cold_s": None,
             "prepare_warm_s": None,
@@ -458,6 +470,27 @@ def _lan_address(plan: Plan) -> str:
                 "address that already works."
             )
         time.sleep(_LAN_ADDRESS_POLL_S)
+
+
+def _warm_inference(plan: Plan) -> float:
+    """One real facts request before any cell makes one, and how long it took to answer.
+
+    A rolled-out Deployment is not a service that can decide a picture: the models
+    land in its cache on the first request that wants them, and until they do every
+    call is a 503. Without this the first service cell measured that download as its
+    own preparation time, which is not what the row claims to be.
+    """
+    pictures = sorted(FIXTURE_LIBRARY.glob("*.jpg"))
+    if not pictures:
+        raise SystemExit(f"no picture under {FIXTURE_LIBRARY} to warm the service with")
+    image = warmup_picture(pictures[0])
+    address = plan.environment.get(INFERENCE_ENV) or ""
+    producers = tuple(SERVED_PRODUCERS)
+    if address and address != DERIVED_ADDRESS:
+        return await_facts(address, image, producers)
+    kubectl = tuple(_substitute(part, plan.environment) for part in KUBECTL)
+    with port_forward(kubectl, INFERENCE_SERVICE, INFERENCE_PORT) as local:
+        return await_facts(local, image, producers)
 
 
 def _write_cell_config(item: CellPlan, plan: Plan, out_dir: Path, config: Path | None) -> None:
@@ -619,6 +652,7 @@ def _execute(plan: Plan, opts: argparse.Namespace, out_dir: Path, overlay: tuple
     # way to know it until the Service exists.
     device = _resolve_device(opts.inference_device, plan) if overlay else "cpu"
     lan = plan.environment.get(INFERENCE_ENV) == DERIVED_ADDRESS
+    warmup: float | None = None
     if overlay:
         print(f"inference overlay: {overlay_path(device)}")
         _apply_overlay(plan, overlay_path(device), up=True)
@@ -626,6 +660,11 @@ def _execute(plan: Plan, opts: argparse.Namespace, out_dir: Path, overlay: tuple
             _apply_overlay(plan, LAN_OVERLAY, up=True)
             plan.environment[INFERENCE_ENV] = f"http://{_lan_address(plan)}:{INFERENCE_PORT}"
             print(f"inference reachable off-cluster on port {INFERENCE_PORT}")
+    # Every lane that reads its picture facts from the service waits on this one
+    # request, wherever the service came from.
+    if any(item.cell.facts == "service" for item in plan.runnable):
+        warmup = _warm_inference(plan)
+        print(f"inference answered a facts request after {warmup:.0f}s")
 
     for item in plan.runnable:
         _write_cell_config(item, plan, out_dir, opts.config)
@@ -652,7 +691,7 @@ def _execute(plan: Plan, opts: argparse.Namespace, out_dir: Path, overlay: tuple
     if opts.purge_claims and any(item.cell.lane == "k8s" for item in plan.runnable):
         _run_bare(purge_claims_command(), plan)
 
-    _publish_summary(plan, opts, out_dir, _collect_rows(out_dir, records))
+    _publish_summary(plan, opts, out_dir, _collect_rows(out_dir, records), warmup)
     _report_skips(plan)
     return 0 if all(row.get("error") is None for row in records) else 1
 
@@ -677,8 +716,20 @@ def _manifest_rank(order: list[str], cell_id: str) -> int:
     return order.index(cell_id) if cell_id in order else len(order)
 
 
-def _publish_summary(plan: Plan, opts: argparse.Namespace, out_dir: Path, rows: list[dict]) -> None:
-    summary = build_summary(library=plan.library, month=plan.month, image=plan.image, rows=rows)
+def _publish_summary(
+    plan: Plan,
+    opts: argparse.Namespace,
+    out_dir: Path,
+    rows: list[dict],
+    warmup: float | None = None,
+) -> None:
+    summary = build_summary(
+        library=plan.library,
+        month=plan.month,
+        image=plan.image,
+        rows=rows,
+        inference_warmup_s=warmup,
+    )
     if opts.anonymize:
         summary = anonymize(summary)
     (out_dir / "summary.data.json").write_text(json.dumps(summary, indent=2) + "\n")
