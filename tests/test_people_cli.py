@@ -195,6 +195,15 @@ class TestShow:
 
         assert "people scan" in output
 
+    def test_that_sentence_survives_a_narrow_terminal(self, tmp_path, monkeypatch):
+        # The same sentence, read from a 40-column window: what the CLI prints
+        # is not allowed to depend on the terminal the suite happens to run in.
+        monkeypatch.setenv("COLUMNS", "40")
+
+        output = _run(["people", "show", "--file", str(tmp_path / "nothing.yaml")])
+
+        assert "people scan" in output
+
     def test_show_carries_the_era_day_share(self, tmp_path):
         out = tmp_path / "people.yaml"
         _run(["people", "scan", "--out", str(out)])
