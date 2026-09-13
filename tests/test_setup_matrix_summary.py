@@ -115,6 +115,19 @@ def test_a_field_the_cell_explained_is_named_with_its_own_reason() -> None:
     assert not any("peak_rss_mb, " in line for line in summary["unmeasured"])
 
 
+def test_a_gap_that_is_not_a_timing_is_named_too() -> None:
+    """A cell whose copy-out failed has its numbers and no film, and the run says which."""
+    row = _row(
+        "k8s-rules-service",
+        measurement_notes={"film": "the film. The copy-out never brought it back."},
+        video={},
+    )
+
+    unmeasured = _summary([row])["unmeasured"]
+
+    assert "k8s-rules-service: the film. The copy-out never brought it back." in unmeasured
+
+
 def test_a_primed_bank_means_cold_was_not_cold() -> None:
     summary = _summary([_row(REFERENCE_CELL, prepare_cache_primed=True)])
     assert any("true cold preparation" in line for line in summary["unmeasured"])

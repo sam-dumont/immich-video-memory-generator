@@ -255,6 +255,44 @@ def _banked_cell(out_dir: Path, cell_id: str, selected: list[str]) -> None:
     )
 
 
+def test_a_cluster_cell_that_lost_its_copy_out_still_reports_what_it_cut(tmp_path) -> None:
+    """The container tees its phases into the volume; `kubectl logs` came back anyway.
+
+    `k8s-rules-service` published an empty row with `selection 1s, 14 planned from
+    130 candidates` and `generation 5m 42s` in the log beside it, because the only
+    copy of the block the capture read was the one the copy-out never brought back.
+    """
+    item = _cell_plan(
+        "k8s-rules-service",
+        "k8s",
+        steps=(
+            Step("logs", ("cat", str(FIXTURES / "k8s-job-logs.stdout.txt"))),
+            Step("copy-out", ("true",)),
+        ),
+    )
+
+    record = setup_matrix.run_remote_cell(item, _plan_of(item), tmp_path / "out")
+
+    assert record["timing"]["total_s"] == 344
+    assert record["timing"]["selection_s"] == 1
+    assert record["timing"]["render_s"] == 342
+    assert (record["planned"], record["eligible"]) == (14, 130)
+    # The film was named and never arrived, so nothing measured it.
+    assert record["video"] == {}
+    assert "copy-out" in record["measurement_notes"]["film"]
+    assert "copy-out" in record["measurement_notes"]["prepare_cold_s"]
+
+
+def test_a_remote_cell_that_printed_no_summary_invents_none(tmp_path) -> None:
+    """The NAS cell that died in its detectors has no numbers, and none are filled in."""
+    item = _cell_plan("nas-rules-local", "nas", steps=(Step("run", ("echo", "Error: no")),))
+
+    record = setup_matrix.run_remote_cell(item, _plan_of(item), tmp_path / "out")
+
+    assert record["timing"]["total_s"] is None
+    assert record["measurement_notes"].get("film") is None
+
+
 def test_the_summary_is_rebuilt_from_every_lane_that_has_run(monkeypatch, tmp_path) -> None:
     """Lanes are separate invocations into one output directory, so the table is on disk."""
     out_dir = tmp_path / "out"

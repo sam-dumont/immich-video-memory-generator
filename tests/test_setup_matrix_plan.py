@@ -17,6 +17,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
+from matrix_pinned_config import pinned_config  # noqa: E402
 from setup_matrix_plan import (  # noqa: E402
     DERIVED_ADDRESS,
     INFERENCE_ENV,
@@ -45,7 +46,6 @@ FULL_ENV = {
     "MATRIX_K8S_NAMESPACE": "private-namespace",
     "MELIOUS_AI_BASE_URL": "https://hosted.invalid/v1",
     "MELIOUS_AI_KEY": "secret-melious-key",
-    "ZAI_BASE_URL": "https://zai.invalid/v4",
     "ZAI_API_KEY": "secret-zai-key",
     "MATRIX_FIXTURE_BASE_URL": "http://a-fixture.invalid:8078",
     # Supplied by the runner, never by the operator: it is read off the
@@ -56,6 +56,47 @@ FULL_ENV = {
 
 
 TAG = "0.87.4"
+
+# The operator's own config, which is what a cell's config is a copy of. Every
+# path here exists on one Mac and nowhere else; the second real remote run pushed
+# this `detector_python` to a NAS and the cell died in FileNotFoundError.
+OPERATOR_CONFIG = {
+    "immich": {"url": "http://immich.invalid:2283", "api_key": "operator-key"},
+    "output": {"directory": "~/Videos/Memories", "resolution": "4K"},
+    "cache": {
+        "directory": "~/.immich-memories/cache",
+        "database": "~/.immich-memories/cache.db",
+    },
+    "audio": {"local_music_dir": "~/Music/Memories"},
+    "llm": {
+        "provider": "openai-compatible",
+        "base_url": "http://localhost:9999/v1",
+        "model": "a-model-this-mac-has-resident",
+        "thinking": False,
+        "no_thinking_params": {"chat_template_kwargs": {"enable_thinking": False}},
+    },
+    "advanced": {
+        "triage": {
+            "encoder": "/Users/someone/.immich-memories/models/triage/dinov2-small.onnx",
+            "bundle": "/Users/someone/heads/private-v4.npz",
+        },
+        "editorial": {
+            "annotation_database": "/Users/someone/.immich-memories/annotations.sqlite",
+            "preparation": {
+                "head_bundle": "/Users/someone/heads/private-6heads.npz",
+                "detector_python": "/Users/someone/.immich-memories-distill/venv/bin/python",
+                "detector_cache_dir": "/Users/someone/.cache/huggingface",
+                "marqo_onnx": "/Users/someone/models/nsfw-marqo-384.onnx",
+            },
+        },
+    },
+}
+
+# A value that only resolves on the machine the config was written on: an
+# absolute path into somebody's home, or a `~` that means a different directory
+# in every container the matrix runs (the NAS sets HOME=/models, the cluster Job
+# gets /home/immich, which goes away with the pod).
+_ELSEWHERE = re.compile(rf"^\s*[\w.-]+: '?(~|/Users/|{re.escape(str(Path.home()))})")
 
 
 @pytest.fixture
@@ -232,7 +273,42 @@ def test_credentials_are_named_never_written(manifest: dict, tmp_path: Path) -> 
     assert zai.app_credentials == ("ZAI_API_KEY",)
     assert "${ZAI_API_KEY}" in zai.config_yaml
     assert FULL_ENV["ZAI_API_KEY"] not in zai.config_yaml
-    assert "-e ZAI_API_KEY" in str(next(step for step in zai.steps if step.name == "run"))
+
+
+def test_a_nas_cell_hands_its_key_over_in_a_file_not_an_empty_flag(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """docker fills `-e NAME` from the shell running it, and ssh gives it none of ours.
+
+    Both NAS hosted cells reached their provider with an empty key: Melious
+    answered 401 while the same key worked from the cluster, where the runner
+    makes a Secret out of its own environment.
+    """
+    plan = _plan(manifest, tmp_path, FULL_ENV)
+    zai = next(item for item in plan.cells if item.cell.id == "nas-hosted-zai")
+    rules = next(item for item in plan.cells if item.cell.id == "nas-rules-local")
+    order = [step.name for step in zai.steps]
+    steps = {step.name: str(step) for step in zai.steps}
+
+    assert "-e ZAI_API_KEY" not in steps["run"]
+    assert "--env-file $MATRIX_NAS_OUT/nas-hosted-zai/env" in steps["run"]
+    assert "ZAI_API_KEY=$ZAI_API_KEY" in steps["push-env"]
+    assert "umask 077" in steps["push-env"], "the file holds a key and nothing else may read it"
+    assert order.index("push-env") < order.index("run") < order.index("drop-env")
+    assert "--exclude=./env" in steps["pull-results"], "a key never comes back with the results"
+    # A cell with no credential has no file to write, to name or to remove.
+    assert [name for name in order if name in {"push-env", "drop-env"}] == ["push-env", "drop-env"]
+    rules_steps = {step.name: str(step) for step in rules.steps}
+    assert "push-env" not in rules_steps
+    assert "--env-file" not in rules_steps["run"]
+
+
+def test_the_dry_run_prints_the_env_file_by_reference(manifest: dict, tmp_path: Path) -> None:
+    """The transcript goes in a pull request, so it carries the name and never the key."""
+    text = dry_run_text(_plan(manifest, tmp_path, FULL_ENV))
+
+    assert "ZAI_API_KEY=$ZAI_API_KEY" in text
+    assert all(FULL_ENV[name] not in text for name in ("ZAI_API_KEY", "MELIOUS_AI_KEY"))
 
 
 def test_the_pinned_config_nests_the_way_the_loader_reads_it(
@@ -521,6 +597,98 @@ def test_an_ssh_command_line_in_the_destination_variable_is_refused(
         _plan(manifest, tmp_path, environment)
     assert "MATRIX_NAS_SSH" in str(error.value)
     assert "~/.ssh/config" in str(error.value)
+
+
+@pytest.mark.parametrize("lane", ["nas", "k8s"])
+def test_a_remote_cell_carries_no_path_off_the_operators_machine(
+    manifest: dict, tmp_path: Path, lane: str
+) -> None:
+    """A cell's config is a copy of the operator's, and a container is not that machine.
+
+    `nas-rules-local` reached `detectors: FileNotFoundError` on a venv interpreter
+    under /Users and published no cut at all, because the pins only overwrite the
+    fields they name and every other path came along for the ride.
+    """
+    source = tmp_path / "operator.yaml"
+    source.write_text(yaml.safe_dump(OPERATOR_CONFIG))
+    for item in _plan(manifest, tmp_path, FULL_ENV, lanes=(lane,)).cells:
+        rendered = pinned_config(source, tmp_path / f"{item.cell.id}.yaml", item.pins).read_text()
+        elsewhere = [line for line in rendered.splitlines() if _ELSEWHERE.match(line)]
+        assert elsewhere == [], f"{item.cell.id} carries {elsewhere}"
+        config = yaml.safe_load(rendered)
+        preparation = config["advanced"]["editorial"]["preparation"]
+        assert preparation["detector_python"] == "", "blank is the interpreter running the cell"
+        assert preparation["marqo_onnx"].startswith("/models/")
+        assert config["output"]["directory"] == "/out"
+        assert config["cache"]["directory"] == "/cache"
+
+
+def test_a_hosted_cell_does_not_inherit_the_operators_llm_dialect(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """That block describes the server on the operator's desk, not somebody's API.
+
+    `no_thinking_params` is oMLX's own chat-template switch, and z.ai answers a
+    request carrying it with a 200 whose body is a 404. The provider preset would
+    supply the right dialect and the right URL, but it fills a field only where it
+    is still at the model's default, so the copied value has to go rather than be
+    written over.
+    """
+    source = tmp_path / "operator.yaml"
+    source.write_text(yaml.safe_dump(OPERATOR_CONFIG))
+    plan = _plan(manifest, tmp_path, FULL_ENV)
+
+    def rendered(cell_id: str) -> dict:
+        item = next(one for one in plan.cells if one.cell.id == cell_id)
+        return yaml.safe_load(
+            pinned_config(source, tmp_path / f"{cell_id}.yaml", item.pins).read_text()
+        )
+
+    zai = rendered("k8s-hosted-zai")
+    assert zai["llm"]["provider"] == "zai"
+    assert "no_thinking_params" not in zai["llm"]
+    assert "base_url" not in zai["llm"], "the preset's own URL is the one serving completions"
+
+    # A hosted cell that names its own endpoint still gets the one it named.
+    melious = rendered("nas-hosted-melious")
+    assert melious["llm"]["base_url"] == "$MELIOUS_AI_BASE_URL"
+    assert "no_thinking_params" not in melious["llm"]
+
+    # The reference cell reads the operator's own server, and keeps its dialect.
+    assert rendered("mac-local")["llm"]["no_thinking_params"] == {
+        "chat_template_kwargs": {"enable_thinking": False}
+    }
+
+
+def test_the_collector_copies_from_the_directory_the_job_wrote_to(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """`kubectl cp` runs tar inside the pod, and the image's WORKDIR is /app.
+
+    A source relative to the claim root was `tar: setup-matrix/<cell>: Cannot
+    stat` on the second real run: the film, the attempt and every per-step log
+    stayed on the volume and the cell published an empty row.
+    """
+    item = _k8s_cell(manifest, tmp_path)
+    container = yaml.safe_load(item.manifests["job.yaml"])["spec"]["template"]["spec"][
+        "containers"
+    ][0]
+    collector = yaml.safe_load(item.manifests["collector.yaml"])["spec"]["containers"][0]
+    written = _output_mount(container)
+    read_back = _output_mount(collector)
+    pod, _, source = str(
+        next(step for step in item.steps if step.name == "copy-out").command[-2]
+    ).partition(":")
+
+    assert source.startswith("/"), "a relative source resolves against the image's WORKDIR"
+    assert source == written["mountPath"] == read_back["mountPath"]
+    assert written["subPath"] == read_back["subPath"] == f"setup-matrix/{item.cell.id}"
+    assert pod.endswith("-collect")
+    assert f"tee {source}/generate.log" in container["command"][-1]
+
+
+def _output_mount(container: dict) -> dict:
+    return next(mount for mount in container["volumeMounts"] if mount["name"] == "output")
 
 
 def _k8s_cell(manifest: dict, tmp_path: Path):

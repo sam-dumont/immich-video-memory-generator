@@ -75,6 +75,17 @@ def _timing_gaps(row: dict) -> list[str]:
     return gaps
 
 
+def _artifact_gaps(row: dict) -> list[str]:
+    """Notes about something that is not a timing, which `_timing_gaps` never reaches.
+
+    A cell whose copy-out failed has its numbers off its own stdout and no film,
+    and the run says which of the two it is looking at.
+    """
+    timing = row.get("timing") or {}
+    notes = row.get("measurement_notes") or {}
+    return [f"{row['id']}: {note}" for name, note in notes.items() if name not in timing]
+
+
 def _usage_gaps(row: dict) -> list[str]:
     usage = row.get("hosted_usage") or {}
     if not row.get("hosted"):
@@ -132,6 +143,7 @@ def build_summary(
             unmeasured.append(f"{row['id']}: not run. {row['skip_reason']}")
             continue
         unmeasured.extend(_timing_gaps(row))
+        unmeasured.extend(_artifact_gaps(row))
         unmeasured.extend(_usage_gaps(row))
         if row.get("prepare_cache_primed"):
             unmeasured.append(
