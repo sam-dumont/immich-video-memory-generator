@@ -5,12 +5,18 @@ what that module read out of the people file and hands every answer straight
 back to it. Nothing about the schema, the ordering or the write contract lives
 here, which is why the confirm flow can be tested on a real file with no
 browser in the room.
+
+Nothing here reloads the browser. Every answer redraws the roster in place, on
+the page the user was looking at, and a face crop is an <img> the browser
+fetches lazily from the app's own media route rather than one API call per
+person before anything is drawn.
 """
 
 from __future__ import annotations
 
-import base64
 import logging
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from nicegui import ui
@@ -37,9 +43,12 @@ from immich_memories.people.editor import (
 )
 from immich_memories.people.relationships import RELATIONSHIP_CHOICES, relationship_label
 from immich_memories.ui.components import im_badge, im_button, im_info_card, im_section_header
+from immich_memories.ui.media_route import person_thumbnail_url
 from immich_memories.ui.nicegui_compat import io_bound_result
 
 logger = logging.getLogger(__name__)
+
+ROSTER_PAGE_SIZE = 20
 
 _TIER_VARIANT = {"inner": "success", "recurring": "info", "episodic": "info", "event": "warning"}
 
@@ -50,11 +59,62 @@ _TIER_MEANING = {
     "event": "a burst — lots of pictures over very few months",
 }
 
+_UNSET = object()
+
+Refresh = Callable[[], None]
+Saver = Callable[[Path, PersonView], None]
+
+
+@dataclass
+class _RosterView:
+    """Where the user is in the roster, kept across redraws."""
+
+    page: int = 0
+
+
+def roster_page(people: list[PersonView], page: int) -> tuple[list[PersonView], str]:
+    """The slice of the roster to draw for a page, and the label that says so."""
+    total = len(people)
+    if total == 0:
+        return [], "Nobody yet"
+    last = (total - 1) // ROSTER_PAGE_SIZE
+    page = min(max(page, 0), last)
+    start = page * ROSTER_PAGE_SIZE
+    shown = people[start : start + ROSTER_PAGE_SIZE]
+    return shown, f"Showing {start + 1}–{start + len(shown)} of {total}"
+
+
+def settle(
+    path: Path,
+    person: PersonView,
+    *,
+    role: object = _UNSET,
+    notes: object = _UNSET,
+    save: Saver = save_person,
+) -> bool:
+    """Write one answer, only when it differs from what the card already holds.
+
+    The notes input fires once per pause in typing and the role select fires
+    on every selection, including re-selecting what was there. Each write
+    rewrites the whole people file, so a value that did not change is not a
+    write.
+    """
+    changed = False
+    if role is not _UNSET and (role or None) != (person.role or None):
+        person.role = role or None  # type: ignore[assignment]
+        changed = True
+    if notes is not _UNSET and (notes or None) != (person.notes or None):
+        person.notes = notes or None  # type: ignore[assignment]
+        changed = True
+    if changed:
+        save(path, person)
+    return changed
+
 
 def render_people_page() -> None:
     """The people file as a page: the roster, the flags, and the confirm controls."""
     path = default_people_path()
-    thumbnails: dict[str, str] = {}
+    view = _RosterView()
 
     im_info_card(
         "Who the library thinks is in it, read from counts and month curves alone. "
@@ -69,22 +129,11 @@ def render_people_page() -> None:
     im_section_header("The roster", icon="groups")
     roster_column = ui.column().classes("w-full gap-3")
 
-    async def load() -> None:
-        """Draw the roster from the file, then let the faces catch up.
-
-        One face crop is one call to Immich, so a household of seventy is
-        seventy round trips. Waiting for them before drawing anything would
-        hold the page blank for the whole of it, and redrawing afterwards
-        would throw away whatever the user had started typing.
-        """
+    def refresh() -> None:
+        """Re-read the file and redraw, on the page the user was looking at."""
         people = load_people(path)
         _draw_flags(flags_column, curation_flags(people))
-        avatars = _draw_roster(roster_column, people, thumbnails, path)
-        if not people:
-            return
-        thumbnails.update(await io_bound_result(_fetch_thumbnails, [p.person_id for p in people]))
-        for person_id, holder in avatars.items():
-            _fill_avatar(holder, thumbnails.get(person_id))
+        _draw_roster(roster_column, people, path, view, refresh)
 
     async def rescan() -> None:
         ui.notify("Reading the library…", type="ongoing")
@@ -95,11 +144,11 @@ def render_people_page() -> None:
             ui.notify(f"The scan could not finish: {exc}", type="negative")
             return
         ui.notify(f"{found} people in {path}", type="positive")
-        await load()
+        refresh()
 
     with ui.row().classes("w-full items-center gap-3 mb-2"):
         im_button("Rescan the library", variant="secondary", on_click=rescan, icon="refresh")
-        add_person_dialog = _add_person_dialog(path)
+        add_person_dialog = _add_person_dialog(path, refresh)
         im_button(
             "Add someone not in Immich",
             variant="ghost",
@@ -108,7 +157,7 @@ def render_people_page() -> None:
         )
         ui.label(str(path)).classes("text-sm self-center").style("color: var(--im-text-secondary)")
 
-    ui.timer(0.1, load, once=True)
+    ui.timer(0.1, refresh, once=True)
 
 
 def _scan(path: Path) -> int:
@@ -132,30 +181,6 @@ def _scan(path: Path) -> int:
     save_graph(path, graph)
     save_evidence_graph(default_evidence_graph_path(path), graph, load_document(path))
     return len(graph.people)
-
-
-def _fetch_thumbnails(person_ids: list[str]) -> dict[str, str]:
-    """Immich's face crops, base64'd server-side.
-
-    The browser never gets the API key: the same reason the clip grid inlines
-    its thumbnails instead of pointing at Immich directly.
-    """
-    config = get_config()
-    if not config.immich.url or not config.immich.api_key:
-        return {}
-
-    from immich_memories.api.sync_client import SyncImmichClient
-
-    found: dict[str, str] = {}
-    with SyncImmichClient(base_url=config.immich.url, api_key=config.immich.api_key) as client:
-        for person_id in person_ids:
-            if person_id.startswith("manual:"):
-                continue
-            try:
-                found[person_id] = base64.b64encode(client.get_person_thumbnail(person_id)).decode()
-            except Exception as exc:  # noqa: BLE001, PERF203 - a missing face is not the page
-                logger.debug("No thumbnail for one person: %s", type(exc).__name__)
-    return found
 
 
 def _person_url(person_id: str) -> str | None:
@@ -194,9 +219,13 @@ def _flag_card(flag: CurationFlag) -> None:
 
 
 def _draw_roster(
-    container: ui.column, people: list[PersonView], thumbnails: dict[str, str], path: Path
-) -> dict[str, ui.element]:
-    """Draw every card, and hand back the avatar slot each one is waiting on."""
+    container: ui.column,
+    people: list[PersonView],
+    path: Path,
+    view: _RosterView,
+    refresh: Refresh,
+) -> None:
+    """Draw one page of cards, with the pager above them."""
     container.clear()
     with container:
         if not people:
@@ -205,48 +234,71 @@ def _draw_roster(
                 "named person's count and month curve, and looks at no pixels.",
                 variant="warning",
             )
-            return {}
-        return {
-            person.person_id: _person_card(person, people, thumbnails.get(person.person_id), path)
-            for person in people
-        }
+            return
+        shown, label = roster_page(people, view.page)
+        _pager(people, view, label, refresh)
+        for person in shown:
+            _person_card(person, people, path, refresh)
+
+
+def _pager(people: list[PersonView], view: _RosterView, label: str, refresh: Refresh) -> None:
+    last = (len(people) - 1) // ROSTER_PAGE_SIZE
+    view.page = min(max(view.page, 0), last)
+
+    def turn(step: int) -> None:
+        view.page += step
+        refresh()
+
+    with ui.row().classes("w-full items-center gap-2 roster-pager"):
+        ui.label(label).classes("text-sm").style("color: var(--im-text-secondary)")
+        ui.element("div").classes("flex-grow")
+        previous = ui.button("Previous", icon="chevron_left", on_click=lambda: turn(-1)).props(
+            "flat dense no-caps size=sm"
+        )
+        following = ui.button("Next", icon="chevron_right", on_click=lambda: turn(1)).props(
+            "flat dense no-caps size=sm"
+        )
+        if view.page == 0:
+            previous.disable()
+        if view.page >= last:
+            following.disable()
 
 
 def _person_card(
-    person: PersonView, people: list[PersonView], thumbnail: str | None, path: Path
-) -> ui.element:
+    person: PersonView, people: list[PersonView], path: Path, refresh: Refresh
+) -> None:
     with (
         ui.card()
-        .classes("w-full p-4")
+        .classes("w-full p-4 roster-card")
         .style("background: var(--im-bg-elevated); border: 1px solid var(--im-border-light)")
     ):
         with ui.row().classes("w-full items-start gap-4 no-wrap"):
-            avatar = _avatar(thumbnail)
+            _avatar(person.person_id)
             with ui.column().classes("flex-grow gap-1"):
                 _headline(person)
                 _facts(person)
                 _confirm_controls(person, path)
-        _links_section(person, people, path)
-    return avatar
+        _links_section(person, people, path, refresh)
 
 
-def _avatar(thumbnail: str | None) -> ui.element:
-    holder = (
+def _avatar(person_id: str) -> None:
+    """A 64 px face the browser fetches when the card scrolls into view.
+
+    The icon sits underneath: a person Immich has no crop for, or a manual
+    entry, shows the icon because the image hides itself when the route says
+    404.
+    """
+    with (
         ui.element("div")
-        .classes("rounded-full flex items-center justify-center overflow-hidden")
+        .classes("relative rounded-full flex items-center justify-center overflow-hidden")
         .style("width: 64px; height: 64px; flex: 0 0 64px; background: var(--im-bg)")
-    )
-    _fill_avatar(holder, thumbnail)
-    return holder
-
-
-def _fill_avatar(holder: ui.element, thumbnail: str | None) -> None:
-    holder.clear()
-    with holder:
-        if thumbnail:
-            ui.image(f"data:image/jpeg;base64,{thumbnail}").classes("w-full h-full object-cover")
-        else:
-            ui.icon("person").style("color: var(--im-text-muted)")
+    ):
+        ui.icon("person").style("color: var(--im-text-muted)")
+        if not person_id.startswith("manual:"):
+            ui.element("img").props(
+                f'src="{person_thumbnail_url(person_id)}" loading="lazy" alt="" '
+                "onerror=\"this.style.display='none'\""
+            ).classes("absolute inset-0 w-full h-full object-cover")
 
 
 def _headline(person: PersonView) -> None:
@@ -290,9 +342,8 @@ def _confirm_controls(person: PersonView, path: Path) -> None:
     with ui.row().classes("w-full items-center gap-3 mt-1 no-wrap"):
 
         def on_role(event) -> None:
-            person.role = event.value
-            save_person(path, person)
-            ui.notify(f"{person.name}: {person.role or 'no role'}", type="positive")
+            if settle(path, person, role=event.value):
+                ui.notify(f"{person.name}: {person.role or 'no role'}", type="positive")
 
         ui.select(
             options=_role_options(person.role),
@@ -305,8 +356,7 @@ def _confirm_controls(person: PersonView, path: Path) -> None:
         ).props("dense outlined").classes("w-48")
 
         def on_notes(event) -> None:
-            person.notes = event.value
-            save_person(path, person)
+            settle(path, person, notes=event.value)
 
         ui.input(
             label="Notes",
@@ -315,14 +365,16 @@ def _confirm_controls(person: PersonView, path: Path) -> None:
         ).props("dense outlined debounce=800").classes("flex-grow")
 
 
-def _links_section(person: PersonView, people: list[PersonView], path: Path) -> None:
+def _links_section(
+    person: PersonView, people: list[PersonView], path: Path, refresh: Refresh
+) -> None:
     ui.separator().classes("my-2")
     with ui.row().classes("w-full items-center gap-2"):
         ui.label("Relationships").classes("text-sm font-medium").style(
             "color: var(--im-text-secondary)"
         )
         ui.element("div").classes("flex-grow")
-        dialog = _relationship_dialog(person, people, path)
+        dialog = _relationship_dialog(person, people, path, refresh)
         ui.button("Add relationship", icon="add", on_click=dialog.open).props(
             "flat dense no-caps size=sm"
         ).style("color: var(--im-primary)")
@@ -330,7 +382,7 @@ def _links_section(person: PersonView, people: list[PersonView], path: Path) -> 
         ui.label("Nothing recorded yet.").classes("text-xs").style("color: var(--im-text-muted)")
         return
     for link in person.links:
-        _link_row(person, link, path)
+        _link_row(person, link, path, refresh)
 
 
 def _why(link: LinkView) -> str:
@@ -340,7 +392,7 @@ def _why(link: LinkView) -> str:
     return f"{link.prompt} ({link.confidence:.0%})" if link.confidence else link.prompt
 
 
-def _link_row(person: PersonView, link: LinkView, path: Path) -> None:
+def _link_row(person: PersonView, link: LinkView, path: Path, refresh: Refresh) -> None:
     with ui.row().classes("w-full items-center gap-2 no-wrap"):
         ui.icon("link").classes("text-sm").style("color: var(--im-text-muted)")
         ui.label(f"{relationship_label(link.kind)} {link.target_name}").classes("text-sm").style(
@@ -354,7 +406,7 @@ def _link_row(person: PersonView, link: LinkView, path: Path) -> None:
             def remove() -> None:
                 remove_relationship(path, person.person_id, link.kind, link.target_id)
                 ui.notify("Relationship removed", type="positive")
-                ui.navigate.reload()
+                refresh()
 
             ui.button(icon="delete_outline", on_click=remove).props(
                 "flat dense round size=sm"
@@ -390,7 +442,7 @@ def _link_row(person: PersonView, link: LinkView, path: Path) -> None:
         ).tooltip("No, they are not")
 
 
-def _add_person_dialog(path: Path) -> ui.dialog:
+def _add_person_dialog(path: Path, refresh: Refresh) -> ui.dialog:
     with ui.dialog() as dialog, ui.card().classes("w-full max-w-md p-5 gap-4"):
         ui.label("Add someone").classes("text-lg font-semibold").style("color: var(--im-text)")
         ui.label(
@@ -407,7 +459,8 @@ def _add_person_dialog(path: Path) -> ui.dialog:
                 return
             dialog.close()
             ui.notify(f"Added {name.value}", type="positive")
-            ui.navigate.reload()
+            name.value = ""
+            refresh()
 
         with ui.row().classes("w-full justify-end gap-2"):
             im_button("Cancel", variant="ghost", on_click=dialog.close)
@@ -415,7 +468,9 @@ def _add_person_dialog(path: Path) -> ui.dialog:
     return dialog
 
 
-def _relationship_dialog(person: PersonView, people: list[PersonView], path: Path) -> ui.dialog:
+def _relationship_dialog(
+    person: PersonView, people: list[PersonView], path: Path, refresh: Refresh
+) -> ui.dialog:
     kinds = {choice.kind: choice.label for choice in RELATIONSHIP_CHOICES}
     targets = {
         other.person_id: other.name for other in people if other.person_id != person.person_id
@@ -443,7 +498,7 @@ def _relationship_dialog(person: PersonView, people: list[PersonView], path: Pat
             add_relationship(path, person.person_id, str(kind.value), str(target.value))
             dialog.close()
             ui.notify("Relationship confirmed", type="positive")
-            ui.navigate.reload()
+            refresh()
 
         with ui.row().classes("w-full justify-end gap-2"):
             im_button("Cancel", variant="ghost", on_click=dialog.close)
