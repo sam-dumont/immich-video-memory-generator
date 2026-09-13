@@ -616,11 +616,16 @@ def _is_port_free(host: str, port: int) -> bool:
         sock.close()
 
 
-def main(port: int = 8080, host: str = "0.0.0.0", reload: bool = False) -> None:  # noqa: S104
+def main(
+    port: int = 8080,
+    host: str = "0.0.0.0",  # noqa: S104
+    reload: bool = False,
+    log_level: str | None = None,
+) -> None:
     """Run the NiceGUI application."""
     from immich_memories.logging_config import configure_logging
 
-    configure_logging()
+    configure_logging(level=log_level)
     if not _is_port_free(host, port):
         logger.error(
             f"Port {port} is already in use. "
