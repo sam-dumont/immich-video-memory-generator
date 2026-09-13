@@ -7,11 +7,11 @@ title: Hardware Acceleration Overview
 
 A GPU buys three things here: animated title screens, faster encoding, and (on Apple Silicon) face detection on the Neural Engine. **Every feature has a CPU fallback**, so it works on any machine. See [CPU-Only Mode](./cpu-only.md) for details on running without a GPU.
 
-What a media accelerator does **not** buy is the editor's models. NVENC, Quick Sync and VAAPI decode, scale and encode; they do not run inference. The reader (~17 GB resident) and the caption server (1-2 GB) are separate services with their own hardware needs — see the [self-hosting guide](../self-hosting.md#one-machine-or-two). An NVIDIA card can run the encoder and the classifiers, but through CUDA and in their own container: the [inference service](../installation/inference-service.md).
+What a media accelerator does **not** buy is the editor's models. NVENC, Quick Sync and VAAPI decode, scale and encode; they do not run inference. The reader (~17 GB resident) and the caption server (1-2 GB) are separate services with their own hardware needs, see the [self-hosting guide](../self-hosting.md#one-machine-or-two). An NVIDIA card can run the encoder and the classifiers, but through CUDA and in their own container: the [inference service](../installation/inference-service.md).
 
 Encoding video in software (libx264) works everywhere but it's slow. A hardware encoder is faster; how much faster depends on your card, codec and preset, and this project has not measured it. The pipeline auto-detects your hardware and picks the best available backend; NVENC, Quick Sync and VAAPI are only selected after a one-frame test encode succeeds, so an FFmpeg build that merely lists them (Debian's does, including inside the Docker image) doesn't send a GPU-less box down the hardware path.
 
-The encode is not where a run spends its time, though. Analysis and title rendering are — measured at `--cpus=2`, title rendering was ~263 s of a ~339 s assembly ([CPU-Only Mode](./cpu-only.md#title-rendering-is-the-bottleneck-not-encoding)), and in a measured end-to-end run analysis was 7.4 of 10.1 minutes ([NAS-Only](../common-setups/nas-only.md#performance-expectations)). Hardware acceleration shortens the last phase; a GPU earns its keep first on titles.
+The encode is not where a run spends its time, though. Analysis and title rendering are: measured at `--cpus=2`, title rendering was ~263 s of a ~339 s assembly ([CPU-Only Mode](./cpu-only.md#title-rendering-is-the-bottleneck-not-encoding)), and in a measured end-to-end run analysis was 7.4 of 10.1 minutes ([NAS-Only](../common-setups/nas-only.md#performance-expectations)). Hardware acceleration shortens the last phase; a GPU earns its keep first on titles.
 
 ## Supported backends
 
@@ -59,7 +59,7 @@ neither was:
 ## Quality: what CRF means on each backend
 
 `output.quality` (or an explicit `output.crf`) is one dial, and the number is on **libx265's CRF
-scale** — the reference, because libx265 is the only encoder present on every machine. Every other
+scale**: the reference, because libx265 is the only encoder present on every machine. Every other
 family is calibrated to reproduce *that picture*, measured by SSIM on real 1080p60 film, rather than
 to copy that integer. Before 0.76.1 the three hardware backends got **no rate-control flag at all**
 and the driver's default decided quality, while VideoToolbox got a mapping never checked against an
@@ -70,7 +70,7 @@ what they need.
 
 ### The preset ladder
 
-Two quality points, measured on 1080p60 film and — for `balanced` — judged by eye on gradients:
+Two quality points, measured on 1080p60 film and (for `balanced`) judged by eye on gradients:
 
 | `quality` | reference CRF | SSIM | software bitrate | per minute |
 |---|---|---|---|---|
@@ -79,13 +79,13 @@ Two quality points, measured on 1080p60 film and — for `balanced` — judged b
 | `fast` | 24 | 0.98451 | 1.6 Mbps | ~12 MB, encoded as fast as the backend can |
 
 `high` used to mean CRF 12. SSIM is already past 0.999 by CRF 18, so CRF 12 bought nothing visible
-while asking VideoToolbox for 76 Mbps — which is where 645 MB two-minute exports came from. A
+while asking VideoToolbox for 76 Mbps, which is where 645 MB two-minute exports came from. A
 memory film is watched, not archived for remastering.
 
 There is deliberately **no tier below balanced**. The obvious candidate, around 0.980, bands on
 gradients on real content, and a preset that visibly breaks up a sky is not worth shipping to save
 a few megabytes. `fast` therefore keeps the balanced picture and buys its speed from the encoder
-effort preset instead — which is what the name promises and the only thing it can honestly trade.
+effort preset instead, which is what the name promises and the only thing it can honestly trade.
 Setting `quality: fast` overrides `hardware.encoder_preset`.
 
 `medium` and `low` are retired names that still load, resolving to `balanced` and `fast`.
@@ -93,7 +93,7 @@ Setting `quality: fast` overrides `hardware.encoder_preset`.
 ### What each preset asks of each encoder
 
 The same picture needs a different number on every scale, so each family is pinned by two measured
-anchors rather than a shared offset — the five slopes are +1.00, +0.67, +0.33, +0.67 and -1.67 per
+anchors rather than a shared offset: the five slopes are +1.00, +0.67, +0.33, +0.67 and -1.67 per
 reference CRF step:
 
 | | `high` | `balanced` |
@@ -114,7 +114,7 @@ Every backend was measured against software on the same clip, at matched SSIM:
 | **VAAPI** (J4125, Gemini Lake) | 15.3 Mbps vs libx264's 7.0 | **2.2x** |
 | **VideoToolbox** (Apple Silicon) | 13.2 Mbps vs libx265's 4.6 | **2.9x** |
 
-Hardware buys speed, not quality per byte — and how much it costs varies a lot by chip. Turing's
+Hardware buys speed, not quality per byte, and how much it costs varies a lot by chip. Turing's
 NVENC is nearly free; Apple's costs roughly three times the bits for the same picture. It is still
 usually worth taking: on an M-series Mac, libx265 `-preset medium` runs at 2.6x realtime against
 VideoToolbox's 8.2x.
@@ -125,7 +125,7 @@ Full tables, with the clip, hardware and method behind every anchor, are in
 A note on method: SSIM fixes the rough level but barely punishes **banding**, and banding on sky,
 walls and skin is the first thing a viewer notices. The balanced anchor was therefore confirmed by
 eye on gradients, not by the score alone. If a backend bands on your content, raise `quality` to
-`high` — and say so, because the anchor should move.
+`high`, and say so, because the anchor should move.
 
 ## When your hardware cannot encode the codec you asked for
 
@@ -142,7 +142,7 @@ instead of giving the whole film to the CPU (set output.codec_policy: strict to 
 
 The result is a bigger file that plays on more things, produced far faster. Set
 `output.codec_policy: strict` to always honour `output.codec` and accept the CPU cost. The
-substitution never applies to ProRes, and never to an HDR output — H.264 carries no HDR, so trading
+substitution never applies to ProRes, and never to an HDR output: H.264 carries no HDR, so trading
 the codec there would trade away the dynamic range with it.
 
 ## NVIDIA: two things that fail after detection looks fine
