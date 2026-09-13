@@ -346,6 +346,16 @@ def _handler_type(
             if len(parts) == 2 and parts[0] in thumbnails and parts[1] == "thumbnail":
                 self._send_file(thumbnails[parts[0]], "image/jpeg")
                 return
+            person = path.removeprefix("/api/people/").split("/")
+            if (
+                len(person) == 2
+                and person[1] == "thumbnail"
+                and not path.startswith("/api/assets/")
+            ):
+                # Every person gets the same CC0 face stand-in: the People page
+                # only needs a picture that decodes, not a likeness.
+                self._send_file(next(iter(thumbnails.values())), "image/jpeg")
+                return
             if (
                 len(parts) == 3
                 and parts[0] in media
