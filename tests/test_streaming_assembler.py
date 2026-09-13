@@ -1006,64 +1006,48 @@ class TestAudioFilterChain:
 
     def test_loudnorm_included_when_normalize_true(self) -> None:
         from immich_memories.processing.assembly_config import AssemblyClip
-        from immich_memories.processing.streaming_audio import _build_audio_filter_graph
+        from immich_memories.processing.streaming_audio import _segment_chain
 
-        clips = [
-            AssemblyClip(path=Path("/a.mp4"), duration=3.0),
-            AssemblyClip(path=Path("/b.mp4"), duration=3.0),
-        ]
-        graph = _build_audio_filter_graph(clips, ["fade"], 0.5, fps=30, normalize_audio=True)
-        assert "loudnorm=I=-16:TP=-1.5:LRA=11" in graph
+        clip = AssemblyClip(path=Path("/a.mp4"), duration=3.0)
+        chain = _segment_chain(clip, fps=30, normalize_audio=True)
+        assert "loudnorm=I=-16:TP=-1.5:LRA=11" in chain
 
     def test_loudnorm_excluded_when_normalize_false(self) -> None:
         from immich_memories.processing.assembly_config import AssemblyClip
-        from immich_memories.processing.streaming_audio import _build_audio_filter_graph
+        from immich_memories.processing.streaming_audio import _segment_chain
 
-        clips = [
-            AssemblyClip(path=Path("/a.mp4"), duration=3.0),
-            AssemblyClip(path=Path("/b.mp4"), duration=3.0),
-        ]
-        graph = _build_audio_filter_graph(clips, ["fade"], 0.5, fps=30, normalize_audio=False)
-        assert "loudnorm" not in graph
+        clip = AssemblyClip(path=Path("/a.mp4"), duration=3.0)
+        chain = _segment_chain(clip, fps=30, normalize_audio=False)
+        assert "loudnorm" not in chain
 
     def test_privacy_muffle_included(self) -> None:
         from immich_memories.processing.assembly_config import AssemblyClip
-        from immich_memories.processing.streaming_audio import _build_audio_filter_graph
+        from immich_memories.processing.streaming_audio import _segment_chain
 
-        clips = [
-            AssemblyClip(path=Path("/a.mp4"), duration=3.0),
-            AssemblyClip(path=Path("/b.mp4"), duration=3.0),
-        ]
-        graph = _build_audio_filter_graph(clips, ["fade"], 0.5, fps=30, privacy_mode=True)
-        assert "lowpass=f=300" in graph
+        clip = AssemblyClip(path=Path("/a.mp4"), duration=3.0)
+        chain = _segment_chain(clip, fps=30, privacy_mode=True)
+        assert "lowpass=f=300" in chain
 
     def test_title_screen_gets_null_audio(self) -> None:
         from immich_memories.processing.assembly_config import AssemblyClip
-        from immich_memories.processing.streaming_audio import _build_audio_filter_graph
+        from immich_memories.processing.streaming_audio import _clip_sources
 
         clips = [
             AssemblyClip(path=Path("/title.mp4"), duration=3.0, is_title_screen=True),
             AssemblyClip(path=Path("/b.mp4"), duration=3.0),
         ]
-        graph = _build_audio_filter_graph(clips, ["fade"], 0.5, fps=30)
-        assert "anullsrc" in graph
+        sources = _clip_sources(clips, 30, [], None, privacy_mode=False)
+        assert "anullsrc" in " ".join(sources[0])
+        assert "anullsrc" not in " ".join(sources[1])
 
     def test_loudnorm_not_applied_to_title_screens(self) -> None:
         from immich_memories.processing.assembly_config import AssemblyClip
-        from immich_memories.processing.streaming_audio import _build_audio_filter_graph
+        from immich_memories.processing.streaming_audio import _segment_chain
 
-        clips = [
-            AssemblyClip(path=Path("/title.mp4"), duration=3.0, is_title_screen=True),
-            AssemblyClip(path=Path("/b.mp4"), duration=3.0),
-        ]
-        graph = _build_audio_filter_graph(clips, ["fade"], 0.5, fps=30, normalize_audio=True)
-        # Title screen (a0) should use anullsrc, not loudnorm
-        # Content clip (a1) should have loudnorm
-        parts = graph.split(";")
-        title_part = [p for p in parts if "[a0]" in p][0]
-        content_part = [p for p in parts if "[a1]" in p][0]
-        assert "loudnorm" not in title_part
-        assert "loudnorm" in content_part
+        title = AssemblyClip(path=Path("/title.mp4"), duration=3.0, is_title_screen=True)
+        content = AssemblyClip(path=Path("/b.mp4"), duration=3.0)
+        assert "loudnorm" not in _segment_chain(title, fps=30, normalize_audio=True)
+        assert "loudnorm" in _segment_chain(content, fps=30, normalize_audio=True)
 
     def test_pre_extracted_audio_with_crossfade_uses_acrossfade(self, tmp_path: Path) -> None:
         """Pre-extracted audio with fade transitions must route through
@@ -1103,9 +1087,13 @@ class TestAudioFilterChain:
             "Concat demuxer duplicates overlap audio causing drift."
         )
 
-    def test_large_filter_graph_travels_in_a_file_not_an_argv_string(self, tmp_path: Path) -> None:
+    def test_large_cut_never_puts_an_oversized_graph_in_an_argv_string(
+        self, tmp_path: Path
+    ) -> None:
         """A 3,679-photo album put a ~900 KB graph in one argv string; Linux caps
-        one at 128 KB and exec died with "Argument list too long" (#780)."""
+        one at 128 KB and exec died with "Argument list too long" (#780). The
+        graph travels in a file, and since #782 it is also split into bounded
+        groups, so every crossfade must still be accounted for across them."""
         from immich_memories.processing.assembly_config import AssemblyClip
         from immich_memories.processing.streaming_audio import extract_and_mix_audio
 
@@ -1128,11 +1116,49 @@ class TestAudioFilterChain:
                 fade_duration=0.5,
             )
 
-        mix = next(c for c in commands if _graph_file_flag(c))
-        assert all(len(arg) < 128 * 1024 for arg in mix)
-        assert len(graphs) == 1 and len(graphs[0]) > 128 * 1024
-        assert graphs[0].count("acrossfade") == n_clips - 1
-        assert not list(tmp_path.glob("*.filter_complex.txt")), "graph file outlived the run"
+        assert graphs, "Expected the merge to carry its filter graph in a file"
+        assert all(len(arg) < 128 * 1024 for cmd in commands for arg in cmd)
+        assert sum(g.count("acrossfade") for g in graphs) == n_clips - 1
+        assert not list(tmp_path.rglob("*.filter_complex.txt")), "graph file outlived the run"
+
+    def test_no_single_graph_holds_every_clip(self, tmp_path: Path) -> None:
+        """One graph per cut meant one loudnorm instance per clip, ~75 MB resident
+        each whatever the clip's length, on top of an acrossfade chain that buffers
+        its own accumulated prefix. A 174-clip mix needed ~15 GB, so the kernel
+        killed FFmpeg on a 4 GB NAS and left only its progress ticker to log (#782)."""
+        from immich_memories.processing.assembly_config import AssemblyClip
+        from immich_memories.processing.streaming_audio import (
+            _MERGE_GROUP_SIZE,
+            extract_and_mix_audio,
+        )
+
+        n_clips = 174
+        clips = [AssemblyClip(path=Path(f"/clip_{i}.mp4"), duration=5.0) for i in range(n_clips)]
+        graphs: list[str] = []
+        commands: list[list[str]] = []
+        fake = _fake_ffmpeg_run(graphs)
+
+        def run(cmd: list[str], **kwargs: object) -> SimpleNamespace:
+            commands.append(cmd)
+            return fake(cmd, **kwargs)
+
+        # WHY: subprocess.run is the FFmpeg/ffprobe process boundary
+        with patch("immich_memories.processing.streaming_audio.subprocess.run", side_effect=run):
+            extract_and_mix_audio(
+                clips=clips,
+                transitions=["fade"] * (n_clips - 1),
+                output_path=tmp_path / "audio.m4a",
+                fade_duration=0.5,
+            )
+
+        merges = [c for c in commands if _graph_file_flag(c)]
+        assert merges, "Expected the segments to be merged"
+        assert all(c.count("-i") <= _MERGE_GROUP_SIZE for c in merges)
+        assert all("loudnorm" not in g for g in graphs), "merging must not re-normalise"
+
+        renders = [c for c in commands if "-af" in c]
+        assert len(renders) == n_clips
+        assert all(c[c.index("-af") + 1].count("loudnorm") == 1 for c in renders)
 
     @pytest.mark.parametrize(
         ("major", "flag"),
@@ -1242,30 +1268,28 @@ class TestAudioFilterChain:
                 pre_extracted_audio=[wav_a, wav_b],
             )
 
-        ffmpeg_cmds = [c for c in captured_cmds if c[0] == "ffmpeg"]
-        main_cmd_str = " ".join(str(c) for c in ffmpeg_cmds[0])
-        assert str(wav_a) in main_cmd_str, "Expected WAV path as FFmpeg input"
-        assert str(wav_b) in main_cmd_str, "Expected WAV path as FFmpeg input"
+        rendered = " ".join(" ".join(c) for c in captured_cmds if c[0] == "ffmpeg")
+        assert str(wav_a) in rendered, "Expected WAV path as FFmpeg input"
+        assert str(wav_b) in rendered, "Expected WAV path as FFmpeg input"
+        assert "/a.mp4" not in rendered, "Expected the WAV, not the source video"
+        assert "/b.mp4" not in rendered, "Expected the WAV, not the source video"
 
     def test_pre_extracted_audio_gets_frame_aligned_atrim(self) -> None:
         """Audio atrim must use frame-aligned duration (int(dur*fps)/fps),
         not raw clip.duration. Without this, int() truncation in the video
         frame count causes ~0.017s/clip drift → ~1.2s at 70 clips."""
         from immich_memories.processing.assembly_config import AssemblyClip
-        from immich_memories.processing.streaming_audio import _build_audio_filter_graph
+        from immich_memories.processing.streaming_audio import _segment_chain
 
-        clips = [
-            AssemblyClip(path=Path("/a.mp4"), duration=3.017),
-            AssemblyClip(path=Path("/b.mp4"), duration=4.517),
-        ]
-        graph = _build_audio_filter_graph(clips, ["fade"], 0.5, fps=30)
         # Frame-aligned: int(3.017*30)/30 = 90/30 = 3.0
         #                int(4.517*30)/30 = 135/30 = 4.5
-        assert "atrim=0:3.0" in graph, f"Expected frame-aligned 3.0, got: {graph}"
-        assert "atrim=0:4.5" in graph, f"Expected frame-aligned 4.5, got: {graph}"
+        chain_a = _segment_chain(AssemblyClip(path=Path("/a.mp4"), duration=3.017), fps=30)
+        chain_b = _segment_chain(AssemblyClip(path=Path("/b.mp4"), duration=4.517), fps=30)
+        assert "atrim=0:3.0" in chain_a, f"Expected frame-aligned 3.0, got: {chain_a}"
+        assert "atrim=0:4.5" in chain_b, f"Expected frame-aligned 4.5, got: {chain_b}"
         # NOT the raw clip.duration
-        assert "atrim=0:3.017" not in graph
-        assert "atrim=0:4.517" not in graph
+        assert "atrim=0:3.017" not in chain_a
+        assert "atrim=0:4.517" not in chain_b
 
     @requires_ffmpeg
     def test_loudnorm_does_not_eat_duration_at_scale(self, tmp_path: Path) -> None:
@@ -1273,7 +1297,7 @@ class TestAudioFilterChain:
         Over 30 clips this accumulates to >0.5s of drift — enough to detect.
         Regression test: atrim must come BEFORE loudnorm to clamp duration."""
         from immich_memories.processing.assembly_config import AssemblyClip
-        from immich_memories.processing.streaming_audio import _build_audio_filter_graph
+        from immich_memories.processing.streaming_audio import extract_and_mix_audio
 
         n_clips = 30
         fps = 30
@@ -1295,33 +1319,14 @@ class TestAudioFilterChain:
         subprocess.run(command, capture_output=True, timeout=120, check=True)  # noqa: S603, S607
 
         clips = [AssemblyClip(path=wavs[i], duration=clip_dur) for i in range(n_clips)]
-        transitions = ["fade"] * (n_clips - 1)
-        graph = _build_audio_filter_graph(clips, transitions, fade_dur, fps=fps)
-
-        inputs: list[str] = []
-        for wav in wavs:
-            inputs.extend(["-i", str(wav)])
-
         out = tmp_path / "mixed.m4a"
-        result = subprocess.run(  # noqa: S603, S607
-            [
-                "ffmpeg",
-                "-y",
-                *inputs,
-                "-filter_complex",
-                graph,
-                "-map",
-                "[aout]",
-                "-c:a",
-                "aac",
-                str(out),
-            ],
-            capture_output=True,
-            # 30 inputs, 30 loudnorm passes and 29 crossfades: minutes on a loaded
-            # shared runner. This test is about duration accuracy, not speed.
-            timeout=300,
+        extract_and_mix_audio(
+            clips=clips,
+            transitions=["fade"] * (n_clips - 1),
+            output_path=out,
+            fade_duration=fade_dur,
+            fps=fps,
         )
-        assert result.returncode == 0, f"FFmpeg failed: {result.stderr[-300:]}"
 
         dur_result = subprocess.run(  # noqa: S603, S607
             [

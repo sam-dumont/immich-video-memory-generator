@@ -7,6 +7,7 @@ import pytest
 from immich_memories.processing.ffmpeg_runner import (
     _parse_ffmpeg_major,
     ffmpeg_error_excerpt,
+    ffmpeg_exit_reason,
 )
 
 
@@ -46,3 +47,24 @@ def test_excerpt_keeps_the_last_lines_only() -> None:
 )
 def test_major_version_is_read_from_the_banner(banner: str, major: int) -> None:
     assert _parse_ffmpeg_major(banner) == major
+
+
+def test_a_clean_exit_code_is_reported_as_itself() -> None:
+    assert ffmpeg_exit_reason(1) == "exit 1"
+
+
+def test_a_killed_ffmpeg_says_so_and_points_at_the_memory_cap() -> None:
+    """A killed FFmpeg prints no reason, so its stderr ends on the progress
+    ticker and reads like an unexplained stall. #782 could not tell the two
+    apart from the log alone."""
+    reason = ffmpeg_exit_reason(-9)
+    assert "SIGKILL" in reason
+    assert "memory" in reason
+
+
+def test_other_signals_are_named_without_the_memory_guess() -> None:
+    assert ffmpeg_exit_reason(-11) == "killed by SIGSEGV"
+
+
+def test_an_unknown_signal_number_still_reads_as_a_signal() -> None:
+    assert ffmpeg_exit_reason(-999) == "killed by signal 999"

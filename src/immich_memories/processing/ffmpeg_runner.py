@@ -6,6 +6,7 @@ import contextlib
 import functools
 import logging
 import re
+import signal
 import subprocess
 import time
 from collections.abc import Callable, Iterable
@@ -24,6 +25,7 @@ __all__ = [
     "_run_ffmpeg_with_progress",
     "drain_stderr_tail",
     "ffmpeg_error_excerpt",
+    "ffmpeg_exit_reason",
     "ffmpeg_major_version",
     "filter_complex_from_file",
     "write_frames_to_ffmpeg",
@@ -54,6 +56,26 @@ def ffmpeg_error_excerpt(stderr: str, *, max_lines: int = 6) -> str:
     if not kept:
         return stderr.strip()[-500:]
     return "\n".join(kept[-max_lines:])
+
+
+def ffmpeg_exit_reason(returncode: int) -> str:
+    """Say how FFmpeg ended: its own exit code, or the signal that killed it.
+
+    A killed FFmpeg prints nothing on its way out, so its stderr ends on the
+    progress ticker and reads exactly like a stall that stopped for no reason.
+    #782 spent a whole report on that ambiguity. Python reports a signal as a
+    negative returncode, and SIGKILL on a container is almost always the memory
+    cap rather than anything FFmpeg decided to do.
+    """
+    if returncode >= 0:
+        return f"exit {returncode}"
+    try:
+        name = signal.Signals(-returncode).name
+    except ValueError:
+        return f"killed by signal {-returncode}"
+    if name == "SIGKILL":
+        return f"killed by {name}, usually the container memory limit"
+    return f"killed by {name}"
 
 
 def _parse_ffmpeg_major(banner: str) -> int:
