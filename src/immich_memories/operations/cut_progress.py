@@ -1,14 +1,13 @@
-"""What a long stage is working on right now, for a surface watching it work.
+"""Where a run is, as one record both surfaces read.
 
-A run publishes its position as a sentence -- "Preparing previews: 352/10793"
--- which is all a phase row needs and all a progress bar cannot use. This is the
-same position as numbers, plus the handful of assets the pass has most recently
-finished, so a watcher can draw a real bar and show the pictures going past.
+A run announces its position as a ``StageUpdate``: the phase it is in, the
+stage it is on, and, for a pass that counts its work, how far through. The
+attempt stores that record, the page draws a bar from its fraction, and the
+terminal sets a real total so its estimate works. Neither side parses the
+sentence the other shows.
 
-It is a snapshot rather than a log: the file is overwritten and the asset window
-is bounded, so a run over a hundred thousand pictures writes the same few
-hundred bytes as a run over ten, and a reader that polls it pays the same cost
-either way.
+The snapshot file is a side channel for the pictures a pass has most recently
+finished: bounded, overwritten, a few hundred bytes however large the library.
 """
 
 from __future__ import annotations
@@ -16,9 +15,10 @@ from __future__ import annotations
 import contextlib
 import json
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from immich_memories.security import write_secret_file
 
@@ -28,32 +28,59 @@ PROGRESS_FILE = "stage-progress.private.json"
 # bytes nobody ever sees.
 RECENT_ASSET_LIMIT = 12
 
+# The two phases a cut passes through once its media is loaded: preparing the
+# pictures' facts, then editing. Values match ``OperationalPhase``.
+ANALYSIS_PHASE = "analysis"
+SELECTION_PHASE = "selection"
+
 
 @dataclass(frozen=True, slots=True)
-class StageProgress:
-    """One long stage, as numbers rather than as a sentence."""
+class StageUpdate:
+    """One position in a run: phase, stage, and counts when the stage has them."""
 
     label: str
-    done: int
-    total: int
+    phase: str = SELECTION_PHASE
+    done: int | None = None
+    total: int | None = None
     recent_asset_ids: tuple[str, ...] = ()
 
     @property
-    def stage_label(self) -> str:
-        """The sentence a run publishes for this position, as the phase row shows it.
+    def counted(self) -> bool:
+        return self.done is not None and self.total is not None
 
-        One formatter for both sides: a reader can tell whether the numbers it
-        holds still describe the stage the attempt says it is on, which is what
-        stops a full bar sitting under a row that has moved on.
-        """
-        return f"Preparing {self.label}: {self.done}/{self.total}"
+    @property
+    def stage_label(self) -> str:
+        """The sentence a phase row shows for this position."""
+        if self.counted:
+            return f"Preparing {self.label}: {self.done}/{self.total}"
+        return self.label
 
     @property
     def fraction(self) -> float | None:
-        """How far through, or None when the total cannot say."""
-        if self.total <= 0:
+        """How far through, or None when the stage counts nothing or its total says nothing."""
+        if self.done is None or self.total is None or self.total <= 0:
             return None
         return min(1.0, max(0.0, self.done / self.total))
+
+    def as_record(self) -> dict[str, Any]:
+        return {"phase": self.phase, "label": self.label, "done": self.done, "total": self.total}
+
+    @classmethod
+    def from_record(cls, record: Mapping[str, Any] | None) -> StageUpdate | None:
+        if not isinstance(record, Mapping) or "label" not in record:
+            return None
+        try:
+            done = record.get("done")
+            total = record.get("total")
+            return cls(
+                label=str(record["label"]),
+                phase=str(record.get("phase") or SELECTION_PHASE),
+                done=None if done is None else int(done),
+                total=None if total is None else int(total),
+                recent_asset_ids=tuple(str(v) for v in record.get("recent_asset_ids") or ()),
+            )
+        except (ValueError, TypeError):
+            return None
 
 
 class StageProgressWriter:
@@ -71,15 +98,10 @@ class StageProgressWriter:
     def note_asset(self, asset_id: str) -> None:
         self._recent.append(asset_id)
 
-    def publish(self, label: str, done: int, total: int) -> StageProgress:
-        """Write the snapshot and return it, so the caller can label its stage from it."""
-        progress = StageProgress(label, done, total, tuple(self._recent))
-        payload = {
-            "label": progress.label,
-            "done": progress.done,
-            "total": progress.total,
-            "recent_asset_ids": list(progress.recent_asset_ids),
-        }
+    def publish(self, label: str, done: int, total: int) -> StageUpdate:
+        """Write the snapshot and return the record the caller announces."""
+        progress = StageUpdate(label, ANALYSIS_PHASE, done, total, tuple(self._recent))
+        payload = progress.as_record() | {"recent_asset_ids": list(progress.recent_asset_ids)}
         # A file nobody renders from is not worth failing a cut that is
         # otherwise fine, so a display write never propagates.
         with contextlib.suppress(OSError):
@@ -87,17 +109,13 @@ class StageProgressWriter:
         return progress
 
 
-def read_stage_progress(directory: Path | None) -> StageProgress | None:
-    """The live stage's numbers, or None when there are none to read yet."""
+def read_stage_progress(directory: Path | None) -> StageUpdate | None:
+    """The last published snapshot, or None when there is none to read yet."""
     if directory is None:
         return None
     try:
         record = json.loads((directory / PROGRESS_FILE).read_text())
-        return StageProgress(
-            label=str(record["label"]),
-            done=int(record["done"]),
-            total=int(record["total"]),
-            recent_asset_ids=tuple(str(value) for value in record.get("recent_asset_ids") or ()),
-        )
-    except (OSError, ValueError, KeyError, TypeError):
+    except (OSError, ValueError):
         return None
+    progress = StageUpdate.from_record(record)
+    return progress if progress is not None and progress.counted else None

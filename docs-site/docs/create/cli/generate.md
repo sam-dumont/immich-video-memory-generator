@@ -335,6 +335,22 @@ Include photos alongside videos:
 immich-memories generate --year 2024 --include-photos --photo-duration 5.0
 ```
 
+## What the terminal shows while it runs
+
+One line per stage, the way the web UI shows one row per phase. A stage that counts its work
+(the preparation passes: previews, pixel facts, detectors) turns the spinner into a bar with the
+count and an estimate:
+
+```text
+⠿ Preparing previews: 352/10793 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━   3%
+  ⏱ 0:41 elapsed, ~20:12 remaining
+```
+
+The estimate is elapsed time scaled by the fraction done, so it appears once a stage is past 5 %
+and it is only as good as the pass is even. Stages that count nothing (*Reading event evidence*,
+*Editing the memory*) keep the spinner and the elapsed time. The stage sequence and the counts are
+the same record the web UI draws its bar from; `--quiet` replaces all of it with log lines.
+
 ## Time Period Options
 
 | Method | Flags | What you get |

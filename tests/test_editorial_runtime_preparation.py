@@ -167,7 +167,7 @@ def test_the_attempt_carries_live_numbers_and_recent_pictures_beside_its_stage(
     """The stage sentence keeps its wording; the bar and the strip read the numbers."""
     planner, sources, _ = build(tmp_path, providers=successful_ports([]), fetched=[])
     monkeypatch.setattr(planner._planner, "plan_prepared", lambda *_, **__: EditorialPlan())
-    stages: list[str] = []
+    stages: list = []
 
     planner.plan_source(sources, trace=Trace(), on_stage=stages.append)
 
@@ -177,8 +177,8 @@ def test_the_attempt_carries_live_numbers_and_recent_pictures_beside_its_stage(
     assert set(progress.recent_asset_ids) <= {s.id for s in sources}
     assert progress.fraction == 1.0
     # The label vocabulary the phase rows depend on is unchanged.
-    assert "Preparing source metadata" in stages
-    assert any(stage.startswith("Preparing previews: ") for stage in stages)
+    assert "Preparing source metadata" in [stage.stage_label for stage in stages]
+    assert any(stage.stage_label.startswith("Preparing previews: ") for stage in stages)
 
 
 def test_the_no_captions_tier_cuts_without_a_caption_server_and_says_so(

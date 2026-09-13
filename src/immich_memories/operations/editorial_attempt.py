@@ -11,7 +11,10 @@ from typing import Any
 from uuid import uuid4
 
 from immich_memories.operations.cancellation import PipelineCancelled
+from immich_memories.operations.cut_progress import ANALYSIS_PHASE, StageUpdate
 from immich_memories.security import write_secret_file
+
+_FIRST_STAGE = StageUpdate("Preparing editorial evidence", ANALYSIS_PHASE)
 
 
 def _now() -> str:
@@ -34,7 +37,8 @@ class EditorialAttempt:
             "attempt_id": self.attempt_id,
             "status": "running",
             "started_at": _now(),
-            "stage": "Preparing editorial evidence",
+            "stage": _FIRST_STAGE.stage_label,
+            "progress": _FIRST_STAGE.as_record(),
             "request": request,
             "restart": "Run the same request; completed exact judgments remain reusable.",
         }
@@ -56,10 +60,14 @@ class EditorialAttempt:
             raise
         return self
 
-    def stage(self, label: str) -> None:
-        if self.record["stage"] == label:
+    def stage(self, update: StageUpdate | str) -> None:
+        """Record where the run is: the sentence for a row, the numbers for a bar."""
+        if isinstance(update, str):
+            update = StageUpdate(update)
+        if self.record["stage"] == update.stage_label:
             return  # The lease proves liveness; repeated labels need no disk heartbeat.
-        self.record["stage"] = label
+        self.record["stage"] = update.stage_label
+        self.record["progress"] = update.as_record()
         self._save()
 
     def complete(
