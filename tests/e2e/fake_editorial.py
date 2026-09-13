@@ -181,6 +181,10 @@ def write_plan_files(attempt_dir: Path, carriers: Sequence[dict], realization: d
         ),
     )
     write_secret_file(
+        attempt_dir / "selection-trace.private.json",
+        json.dumps(_decision_log(carriers), indent=2),
+    )
+    write_secret_file(
         attempt_dir / "render-projection.private.json",
         json.dumps(
             {
@@ -195,6 +199,42 @@ def write_plan_files(attempt_dir: Path, carriers: Sequence[dict], realization: d
             indent=2,
         ),
     )
+
+
+def _decision_log(carriers: Sequence[dict]) -> dict:
+    """The decision log a real run writes beside its plan, in the real `Trace` shape.
+
+    The fixture keeps every candidate, so the one pass records them all as kept;
+    `runs why` can then read a hermetic run the way it reads a real one.
+    """
+    from immich_memories.analysis.editorial_contracts import DecisionProvenance, PassTrace
+    from immich_memories.analysis.selection_trace import Trace
+
+    ids = tuple(row["asset_id"] for row in carriers)
+    trace = Trace()
+    trace.clips = {row["asset_id"]: f"{row['kind']}, {row['taken'][:10]}" for row in carriers}
+    trace.editorial_passes.append(
+        PassTrace(
+            name="hermetic-review",
+            input_ids=ids,
+            kept_ids=ids,
+            rejected=(),
+            unresolved=(),
+            duration_before=float(sum(row["seconds"] for row in carriers)),
+            duration_after=float(sum(row["seconds"] for row in carriers)),
+            provenance=DecisionProvenance(  # noqa: S106 - pass names, not secrets
+                pass_name="hermetic-review",  # noqa: S106
+                pass_version="fixture",  # noqa: S106
+                schema_version="fixture",
+                model_identity="none",
+                input_ids=ids,
+                sheet_hashes=(),
+                request_key="",
+                cache_hit=False,
+            ),
+        )
+    )
+    return trace.as_dict()
 
 
 def _candidates(sources: Sequence[Any], *, photo_seconds: float) -> tuple[Any, ...]:
