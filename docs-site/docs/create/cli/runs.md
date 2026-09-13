@@ -57,6 +57,30 @@ extraction, assembly and music, all of which happen after selection. Analysis
 and selection run before the run row exists and account for most of the model
 budget, so a per-phase total would understate the bill.
 
+## runs story
+
+The cut of a run in the order it plays: one line per shot with its timecode, capture day, kind (photo or video), length, the story it was granted to and the reason the editor wrote. A month change prints as a chapter line. It is the same record the web UI's Storyboard tab draws.
+
+```bash
+immich-memories runs story              # the most recent completed run
+immich-memories runs story 20260913_08  # a run id or a unique prefix
+immich-memories runs story ~/.immich-memories/cache/editorial-runs/june/attempts/a1   # an attempt directory
+```
+
+The end-of-run block of `generate` prints the first eight shots and this command for the rest.
+
+## runs why
+
+What a run decided about one picture: the passes it survived, the pass that dropped it and the reason, and, when it made the cut, where it plays.
+
+```bash
+immich-memories runs why 3f1c9a2e-... --run 20260913_08   # --run defaults to the latest completed run
+```
+
+Every run since 0.78 writes its decision log (`selection-trace.private.json`) beside its plan, so this works without `--trace-selection`. Runs made before that answer "left no decision log".
+
+Both commands find the run through the run id, which the CLI and the web UI share: a memory cut on the page can be read from the terminal and the other way round.
+
 ## runs stats
 
 Aggregate statistics across all your runs:

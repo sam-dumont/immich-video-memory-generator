@@ -91,6 +91,8 @@ def register_generate_commands(main: click.Group) -> None:
         dry_run: bool,
         no_render: bool,
         trace_selection: Path | None,
+        include_asset: tuple[str, ...],
+        exclude_asset: tuple[str, ...],
         upload_to_immich: bool,
         album: str | None,
         from_album: str | None,
@@ -407,6 +409,8 @@ def register_generate_commands(main: click.Group) -> None:
                             automation_attempt_id=automation_attempt_id,
                             dry_run=dry_run,
                             accept_any_provenance=accept_any_provenance,
+                            owner_required_asset_ids=include_asset,
+                            owner_excluded_asset_ids=exclude_asset,
                             no_render=no_render,
                         )
                         return
@@ -631,6 +635,8 @@ def register_generate_commands(main: click.Group) -> None:
                         dry_run=dry_run,
                         no_render=no_render,
                         accept_any_provenance=accept_any_provenance,
+                        owner_required_asset_ids=include_asset,
+                        owner_excluded_asset_ids=exclude_asset,
                     )
 
                 _print_generation_result(
