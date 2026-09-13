@@ -62,8 +62,16 @@ docker compose exec immich-memories immich-memories models fetch   # the pinned 
 docker compose exec immich-memories immich-memories preflight      # Immich, the reader, the digests
 ```
 
-`models fetch` is not needed on `tier: metadata_only`. Model endpoints must be reachable from
-inside the container, and `localhost` there is the container: give them real hostnames.
+The compose file pins `IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER: "no_captions"`, so `models
+fetch` is part of the first run: that tier wants the encoder and both detectors. It is the richest
+tier the app serves on its own, and what it gives up against `full` is the caption under every
+picture, which means the audience gate refuses what `full` refuses but can never clear a unit. Drop
+the key to `metadata_only` and nothing needs fetching; raise it to `full` once a caption server
+answers, and set `IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL` with it. See
+[Running modes](../running-modes.md).
+
+Model endpoints must be reachable from inside the container, and `localhost` there is the
+container: give them real hostnames.
 
 ## Resources
 
@@ -128,7 +136,7 @@ the run (see [Immich API compatibility](../configuration/config-file.md#immich-a
 |---|---|
 | `IMMICH_URL`, `IMMICH_API_KEY` | Required. |
 | `IMMICH_MEMORIES_PRESET` | `fast`: 1080p H.264, fast encoder preset, static titles. Explicit settings win. |
-| `IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER` | `full`, `no_captions` or `metadata_only`. See [Running modes](../running-modes.md). |
+| `IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER` | `full`, `no_captions` or `metadata_only`. The compose file pins `no_captions`; the code default is `full`. See [Running modes](../running-modes.md). |
 | `IMMICH_MEMORIES_LLM__BASE_URL`, `IMMICH_MEMORIES_LLM__MODEL` | The reader. The model string must match what the server reports at `/v1/models`, and it must take images. |
 | `IMMICH_MEMORIES_AUTH_USERNAME`, `IMMICH_MEMORIES_AUTH_PASSWORD` | Set both to turn on basic auth. |
 | `IMMICH_MEMORIES_STORAGE_SECRET` | Web session secret. Auto-generated into the config volume if unset, so sessions already survive a restart. |
