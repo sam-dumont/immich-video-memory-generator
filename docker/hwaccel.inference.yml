@@ -1,11 +1,15 @@
 # Attaching hardware to the inference service, the way immich's hwaccel.ml.yml does.
 #
-# The inference service in docker-compose.yml extends one of these. Switch
-# backend by changing the `service:` it names, and the image tag with it:
+# An overlay for people who have a checkout. docker-compose.yml names no
+# `extends:` at all, because it is downloaded on its own far more often than it
+# is cloned and compose resolves an `extends:` when the file loads, whatever
+# profiles are on: naming this file from there made a lone docker-compose.yml
+# fail to parse (#882). It carries the cuda reservation commented out instead.
+# From a checkout, add the block to the inference service:
 #
 #   extends:
 #     file: docker/hwaccel.inference.yml
-#     service: cuda          # cpu by default
+#     service: cuda          # or cpu, which reserves nothing
 #
 # `cuda` also needs the `-cuda` image: set INFERENCE_TAG=latest-cuda (or
 # X.Y.Z-cuda). The cpu image has no CUDA provider in it and will not grow one

@@ -87,6 +87,9 @@ make docs-voice
 make notices
 make notices-check
 
+# Check docker-compose.yml parses alone in an empty directory (the curl-one-file path)
+make compose-check
+
 
 # Architectural boundary enforcement (import-linter)
 make arch-check
@@ -130,6 +133,7 @@ make critique
 - **Dependency hygiene**: deptry must pass (`make dep-check`)
 - **CLI reference drift**: the generated page must match the Click tree (`make docs-cli-check`)
 - **Config reference drift**: the config reference must list exactly the schema's keys (`make docs-config-check`)
+- **Compose file stands alone**: `docker-compose.yml` must parse with nothing beside it (`make compose-check`)
 - **Tests**: all tests must pass (`make test`)
 - **Commit messages**: must follow [Conventional Commits](https://www.conventionalcommits.org/) (`make commitlint`)
   - Format: `type(scope): description` — e.g., `fix(api): handle timeout errors`
