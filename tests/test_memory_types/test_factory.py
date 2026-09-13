@@ -56,6 +56,26 @@ class TestPersonFilterOnEveryType:
         assert preset.person_filter.person_names == ["Riley", "Bob"]
         assert preset.person_filter.require_co_occurrence
 
+    @pytest.mark.parametrize(
+        ("memory_type", "params"),
+        [
+            (MemoryType.YEAR_IN_REVIEW, {"year": 2024}),
+            (MemoryType.SEASON, {"year": 2024, "season": "summer"}),
+            (MemoryType.MONTHLY_HIGHLIGHTS, {"year": 2024, "month": 3}),
+            (MemoryType.ON_THIS_DAY, {"target_date": date(2024, 6, 15)}),
+            (MemoryType.HOLIDAY, {"year": 2024, "holiday": "christmas"}),
+        ],
+        ids=str,
+    )
+    def test_any_of_these_people_unions_on_every_date_range_type(self, memory_type, params) -> None:
+        """The brief's together/any choice is the same choice on every card."""
+        preset = create_preset(
+            memory_type, person_names=["Riley", "Bob"], person_match="or", **params
+        )
+
+        assert preset.person_filter.mode == "any"
+        assert not preset.person_filter.require_co_occurrence
+
     def test_naming_nobody_leaves_the_memory_wide(self) -> None:
         preset = create_preset(MemoryType.YEAR_IN_REVIEW, year=2024)
 

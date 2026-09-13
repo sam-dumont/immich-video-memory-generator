@@ -208,6 +208,23 @@ def test_metadata_search_filters_the_video_and_photo_inventories(fake_immich_ser
     assert [asset.duration_seconds for asset in photos] == [None] * len(_PHOTO_IDS)
 
 
+def test_metadata_search_narrows_to_the_named_faces(fake_immich_server) -> None:
+    """A person filter is a server-side narrowing, the way Immich answers it."""
+    with SyncImmichClient(
+        fake_immich_server.base_url,
+        fake_immich_server.api_key,
+        api_version="v3",
+    ) as client:
+        kit = client.search_metadata(person_ids=["person-kit"]).all_assets
+        both = client.search_metadata(person_ids=["person-kit", "person-robin"]).all_assets
+
+    assert {asset.id for asset in kit} == {p.asset_id for p in LIBRARY if "Kit" in p.people}
+    assert {asset.id for asset in both} == {
+        p.asset_id for p in LIBRARY if {"Kit", "Robin"} <= set(p.people)
+    }
+    assert 0 < len(both) < len(kit) < len(LIBRARY)
+
+
 def test_search_uses_v3_millisecond_duration_on_the_wire(fake_immich_server) -> None:
     """The fake rejects accidental regression to Immich v2 duration strings."""
     response = httpx.post(

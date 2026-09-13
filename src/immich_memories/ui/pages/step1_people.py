@@ -1,8 +1,9 @@
 """Who a memory is about — the wizard's person picking, in one place.
 
-Every card that can be narrowed to people gets the same widget. Multi-person
-memories also say whether several names mean everybody together or any named
+Every card that can be narrowed to people gets the same widget, and every card
+that can hold two names says whether they mean everybody together or any named
 person. That choice reaches source discovery rather than an editorial prompt.
+The condition that says what the choice cannot waits under a disclosure.
 
 The renderers take the state and the "apply" callback rather than reaching for
 either: the card that owns a memory type is what knows when its parameters are
@@ -24,6 +25,15 @@ if TYPE_CHECKING:
     from immich_memories.ui.state import AppState
 
 ApplyPreset = Callable[[MemoryType], None]
+
+# What several names mean, in the words the brief uses on every card that can
+# carry more than one. The keys are the `person_match` the fetch reads.
+PERSON_MATCH_LABELS = {"and": "Together", "or": "Any of these people"}
+
+# The disclosure the Boolean condition lives behind. Picking people and saying
+# what several of them mean is the whole plain path; quoted names, AND, OR and
+# parentheses are the override, and they wait to be asked for (#887).
+PEOPLE_CONDITION_PANEL = "Advanced people condition"
 
 # The cards that render the shared picker. The two person memory types are
 # absent because they collect their people as part of *being* those memories
@@ -87,20 +97,27 @@ def _render_grouped_condition(
         )
         apply(memory_type)
 
-    field = ui.input(
-        label="Grouped people condition (optional)",
-        value=saved,
-        placeholder='("Person A" OR "Person B") AND "Person C"',
-        on_change=on_condition,
-    ).classes("w-full mt-2")
-    ui.label(
-        "Use quoted names, AND, OR and parentheses. AND requires the people in the same "
-        "photo or video, not separate pictures from the same event. "
-        "Changing the people picker replaces this condition."
-    ).classes("text-xs")
-    message = ui.label(
-        state.person_expression_error or (f"Active condition: {saved}" if saved else "")
-    )
+    # The disclosure opens on a condition that is already in play: a filter the
+    # page will not show is a filter nobody can undo.
+    with ui.expansion(
+        PEOPLE_CONDITION_PANEL,
+        icon="tune",
+        value=bool(saved or state.person_expression_error),
+    ).classes("w-full mt-2"):
+        field = ui.input(
+            label="Grouped people condition (optional)",
+            value=saved,
+            placeholder='("Person A" OR "Person B") AND "Person C"',
+            on_change=on_condition,
+        ).classes("w-full")
+        ui.label(
+            "Use quoted names, AND, OR and parentheses. AND requires the people in the same "
+            "photo or video, not separate pictures from the same event. "
+            "Changing the people picker replaces this condition."
+        ).classes("text-xs")
+        message = ui.label(
+            state.person_expression_error or (f"Active condition: {saved}" if saved else "")
+        )
 
     def clear_field() -> None:
         nonlocal syncing
@@ -120,7 +137,10 @@ def render_person_picker(state: AppState, memory_type: MemoryType, apply: ApplyP
     if not by_name:
         return
 
-    saved = state.memory_preset_params.get("person_names") or []
+    saved = [
+        name for name in (state.memory_preset_params.get("person_names") or []) if name in by_name
+    ]
+    saved_match = state.memory_preset_params.get("person_match", "and")
     clear_grouped_display: Callable[[], None] | None = None
 
     def on_people(e) -> None:
@@ -129,18 +149,37 @@ def render_person_picker(state: AppState, memory_type: MemoryType, apply: ApplyP
             clear_grouped_display()
         chosen = [name for name in (e.value or []) if name in by_name]
         state.memory_preset_params["person_names"] = chosen
+        match_toggle.set_visibility(len(chosen) > 1)
         apply(memory_type)
 
-    ui.select(
-        options=list(by_name),
-        label="Only with (optional)",
-        value=[name for name in saved if name in by_name],
-        on_change=on_people,
-        multiple=True,
-    ).props("use-chips").classes("w-64 mt-2").tooltip(
-        "Narrow this memory to these people. Pick several and only moments "
-        "with all of them are used — the same as --person twice on the CLI."
-    )
+    def on_match(e) -> None:
+        state.clear_person_expression()
+        if clear_grouped_display is not None:
+            clear_grouped_display()
+        state.memory_preset_params["person_match"] = e.value
+        apply(memory_type)
+
+    with ui.row().classes("gap-4 items-end flex-wrap"):
+        ui.select(
+            options=list(by_name),
+            label="Only with (optional)",
+            value=saved,
+            on_change=on_people,
+            multiple=True,
+        ).props("use-chips").classes("w-64 mt-2").tooltip(
+            "Narrow this memory to these people, the same as --person on the CLI."
+        )
+        match_toggle = (
+            ui.toggle(PERSON_MATCH_LABELS, value=saved_match, on_change=on_match)
+            .classes("mt-2")
+            .tooltip(
+                "Together keeps only the moments holding everyone named. Any of "
+                "these people keeps a moment holding any one of them."
+            )
+        )
+    # One name is not a choice between the two, so the toggle waits for a second.
+    match_toggle.set_visibility(len(saved) > 1)
+    state.memory_preset_params.setdefault("person_match", saved_match)
     clear_grouped_display = _render_grouped_condition(state, memory_type, apply)
 
 
@@ -293,7 +332,7 @@ def render_multi_person_params(state: AppState, apply: ApplyPreset) -> None:
             apply(MemoryType.MULTI_PERSON)
 
         ui.toggle(
-            {"and": "Together (AND)", "or": "Any of (OR)"},
+            PERSON_MATCH_LABELS,
             value=saved_match,
             on_change=on_match,
         ).classes("mt-1")
