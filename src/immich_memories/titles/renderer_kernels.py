@@ -21,6 +21,7 @@ import numpy as np
 # Direct `from .kernels import _func` would capture None at import time,
 # so we access them as `kernels._func` at call time instead.
 from . import kernels
+from .kernel_blur import AnimatedBlur
 from .kernel_particles import ParticleField
 from .kernel_text import TitleTextRenderer
 from .kernels import (
@@ -122,6 +123,28 @@ class KernelTitleConfig:
     _bokeh_seed: int = 42
 
 
+def _deblur_mix(progress: float, cfg: KernelTitleConfig) -> float:
+    """How much of the blurred background this frame shows, 0 to 1.
+
+    Flat at 1.0 for most of a title -- the last second of an opening ramps it
+    away, the first second of an ending ramps it in -- which is what makes the
+    blurred buffer worth holding on to.
+    """
+    transition_duration = 1.0
+    if cfg.reverse_blur:
+        transition_end = transition_duration / cfg.duration
+        if progress > transition_end:
+            return 1.0
+        t = progress / transition_end
+        return 3 * t * t - 2 * t * t * t
+
+    deblur_start = 1.0 - (transition_duration / cfg.duration)
+    if progress < deblur_start:
+        return 1.0
+    t = (progress - deblur_start) / (1.0 - deblur_start)
+    return 1.0 - (3 * t * t - 2 * t * t * t)
+
+
 # =============================================================================
 # Main Renderer Class
 # =============================================================================
@@ -136,8 +159,19 @@ class KernelTitleRenderer:
     TitleTextRenderer; this class owns the background and the frame pipeline.
     """
 
-    def __init__(self, config: KernelTitleConfig | None = None):
-        """Initialize renderer with configuration."""
+    def __init__(
+        self,
+        config: KernelTitleConfig | None = None,
+        *,
+        animated_blur: AnimatedBlur | None = None,
+    ):
+        """Initialize renderer with configuration.
+
+        `animated_blur` replaces the blur behind the animated deblur. The
+        renderer builds its own when it first needs one; passing a different
+        one is how the pixel tests render the same title with the decimation
+        and the frame reuse switched off.
+        """
         if not kernels_available():
             raise RuntimeError(
                 "No title kernel library available. "
@@ -165,6 +199,7 @@ class KernelTitleRenderer:
             logger.debug("Slow-mo sources resident on device: %d frames", len(frames))
 
         self._blur_kernel_np = _create_gaussian_kernel(self.config.blur_radius)
+        self._animated_blur = animated_blur
 
         self.color1 = _hex_to_rgb(self.config.bg_color1)
         self.color2 = _hex_to_rgb(self.config.bg_color2)
@@ -261,38 +296,32 @@ class KernelTitleRenderer:
         Intro (reverse_blur=False): full blur → sharp reveal in last 1s
         Ending (reverse_blur=True): sharp → full blur in first 1s, then fade to white
         """
-        transition_duration = 1.0
-        if cfg.reverse_blur:
-            transition_end = transition_duration / cfg.duration
-            if progress > transition_end:
-                blur_mix = 1.0
-            else:
-                t = progress / transition_end
-                blur_mix = 3 * t * t - 2 * t * t * t
-        else:
-            deblur_start = 1.0 - (transition_duration / cfg.duration)
-            if progress < deblur_start:
-                blur_mix = 1.0
-            else:
-                t = (progress - deblur_start) / (1.0 - deblur_start)
-                blur_mix = 1.0 - (3 * t * t - 2 * t * t * t)
+        blur_mix = _deblur_mix(progress, cfg)
 
         if blur_mix < 1.0:
             self.gpu.ensure_sharp()
             kernels._copy_field_3(self.gpu.frame, self.gpu.sharp)
 
-        kernels._gaussian_blur_h(
-            self.gpu.frame, self.gpu.temp, self._blur_kernel_np, cfg.blur_radius
-        )
-        kernels._gaussian_blur_v(
-            self.gpu.temp, self.gpu.frame, self._blur_kernel_np, cfg.blur_radius
-        )
+        # A frame off the flat tail is blended with the sharp copy above, so it
+        # needs its own blur however still the picture is holding.
+        self._blur_for(cfg).apply(self.gpu.frame, reusable=blur_mix >= 1.0)
 
         if blur_mix < 1.0:
             kernels._blend_fields(self.gpu.frame, self.gpu.sharp, 1.0 - blur_mix)
 
         brightness_delta = -0.15 * blur_mix
         kernels._apply_color_pulse(self.gpu.frame, brightness_delta, 1.0)
+
+    def _blur_for(self, cfg: KernelTitleConfig) -> AnimatedBlur:
+        """The blur for this frame's size and radius, rebuilt when either moves.
+
+        A held blurred buffer is only the right picture for the radius and the
+        frame size it was taken at, and both live on a mutable config.
+        """
+        key = (cfg.height, cfg.width, cfg.blur_radius)
+        if self._animated_blur is None or self._animated_blur.key != key:
+            self._animated_blur = AnimatedBlur(cfg.height, cfg.width, cfg.blur_radius)
+        return self._animated_blur
 
     def _render_gradient(self, t: float, progress: float, cfg: KernelTitleConfig):
         """Render the background gradient directly to GPU frame buffer."""

@@ -7,6 +7,7 @@ import http.server
 import sys
 import threading
 from collections.abc import Iterator
+from dataclasses import replace
 from pathlib import Path
 from types import ModuleType
 from unittest.mock import patch
@@ -19,8 +20,8 @@ from immich_memories.analysis.editorial_preparation_detectors import (
     DOCLING_REVISION,
 )
 from immich_memories.cli import main, models_cmd
-from immich_memories.cli.models_cmd import fetch_pinned_model
 from immich_memories.config_loader import Config
+from immich_memories.pinned_models import fetch_pinned_model
 
 
 class _Fixture:
@@ -144,7 +145,7 @@ def test_models_fetch_lands_the_configured_path_from_the_configured_url(
     destination = tmp_path / "models" / "dinov2-small.onnx"
     # WHY: the pinned 88 MB export cannot live in the repo, so the fixture's own
     # digest stands in for it; everything else is the production command.
-    monkeypatch.setattr(models_cmd, "DINOV2_SMALL_ONNX_SHA256", EXPORT_SHA256)
+    monkeypatch.setattr(models_cmd, "ENCODER", replace(models_cmd.ENCODER, sha256=EXPORT_SHA256))
     config = Config(triage={"encoder": str(destination), "encoder_url": served.url})
 
     # WHY: --no-detectors keeps this test on the encoder. Warming the detectors
@@ -187,8 +188,10 @@ def _pinned_everywhere(served: _Fixture, tmp_path: Path, monkeypatch: pytest.Mon
     WHY: the real pins are an 88 MB encoder and a 22.5 MB detector export that
     cannot live in the repo, so the fixture's own digest stands in for both.
     """
-    monkeypatch.setattr(models_cmd, "DINOV2_SMALL_ONNX_SHA256", EXPORT_SHA256)
-    monkeypatch.setattr(models_cmd, "MARQO_ONNX_SHA256", EXPORT_SHA256)
+    monkeypatch.setattr(models_cmd, "ENCODER", replace(models_cmd.ENCODER, sha256=EXPORT_SHA256))
+    monkeypatch.setattr(
+        models_cmd, "MARQO_ONNX", replace(models_cmd.MARQO_ONNX, sha256=EXPORT_SHA256)
+    )
     return Config(
         triage={"encoder": str(tmp_path / "dinov2.onnx"), "encoder_url": served.url},
         editorial={
@@ -220,7 +223,7 @@ def test_models_fetch_lands_every_artifact_a_first_run_needs(
 def test_models_fetch_refuses_a_detector_export_that_is_not_the_pinned_one(
     served: _Fixture, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(models_cmd, "DINOV2_SMALL_ONNX_SHA256", EXPORT_SHA256)
+    monkeypatch.setattr(models_cmd, "ENCODER", replace(models_cmd.ENCODER, sha256=EXPORT_SHA256))
     config = Config(
         triage={"encoder": str(tmp_path / "dinov2.onnx"), "encoder_url": served.url},
         editorial={

@@ -28,7 +28,9 @@ triage engine and detector module rather than reimplementing them, which is what
 computed there identical to one computed in process; two import-linter contracts hold the
 direction of that dependency and keep the UI and CLI out of it. The service is not a distribution:
 the image puts it on `PYTHONPATH`, and `pythonpath` in `[tool.pytest.ini_options]` does the same
-for the suite. Design: `docs/implementation-plans/2026-09-11-phase5-inference-service.md`.
+for the suite. Its `seeding.py` fills a cold cache volume from the app's `pinned_models.py` table,
+so a fresh PVC needs no `kubectl cp`. Design:
+`docs/implementation-plans/2026-09-11-phase5-inference-service.md`.
 
 ## Build System
 
@@ -86,9 +88,10 @@ frames to a `FrameSink` and crossfades across clip boundaries, and `StreamingEnc
 sink it is constructed with) pipes them into FFmpeg.
 
 **KernelTitleRenderer** (titles/renderer_kernels.py) owns the background and the per-frame
-GPU pipeline, and composes 2 services (both take Protocol-typed config/buffers):
+GPU pipeline, and composes 3 services (all take Protocol-typed config/buffers):
 - `ParticleField` (kernel_particles.py): bokeh drift and fireworks physics, CPU numpy only
 - `TitleTextRenderer` (kernel_text.py): SDF and PIL text compositing onto the frame buffer
+- `AnimatedBlur` (kernel_blur.py): the deblur's Gaussian, decimated and held between frames
 
 **`generate_memory()`** (generate.py) is the top-level orchestrator above the four; it runs
 the `OperationalPhase` lifecycle end to end (there is no `GenerationPipeline` class) with
@@ -242,6 +245,7 @@ src/immich_memories/
 │   ├── renderer_kernels.py     # KernelTitleRenderer: background + frame pipeline
 │   ├── kernel_particles.py     # ParticleField: bokeh drift / fireworks physics
 │   ├── kernel_text.py          # TitleTextRenderer: SDF + PIL text compositing
+│   ├── kernel_blur.py          # AnimatedBlur: quarter-res deblur Gaussian, held while it stands
 │   ├── renderer_ffmpeg.py      # FFmpeg-based renderer
 │   ├── gpu_kernel_backend.py   # The only `import quadrants as ti` in the tree
 │   ├── kernels.py              # GPU kernels + lazy compilation (init_kernels)
@@ -421,6 +425,7 @@ src/immich_memories/
 ├── generate_progress.py        # Adapters from pipeline progress to caller-supplied callbacks
 ├── generate_settings.py        # Assembly/title settings, assembler creation, music, upload call
 ├── generate_timeline.py        # Final-duration validation + content budget guards
+├── pinned_models.py            # One digest-pinned artifact table: `models fetch` and the inference service both read it
 ├── filename_builder.py         # Output filename generation
 ├── timeperiod.py               # Date range utilities
 ├── security.py                 # Input sanitization

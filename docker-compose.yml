@@ -140,8 +140,13 @@ services:
     volumes:
       - immich-memories-model-cache:/cache
     environment:
-      # A cold cache needs to fetch the two detector snapshots (37 MB) once.
+      # A cold cache fetches the pinned encoder, the pinned Marqo export and the
+      # Docling snapshot once, on first use.
       IMMICH_MEMORIES_INFERENCE_ALLOW_MODEL_DOWNLOADS: "true"
+      # Everything huggingface_hub writes goes on the volume above. Left unset it
+      # caches under $HOME, in the container's writable layer, and a recreate
+      # downloads the lot again.
+      HF_HOME: "/cache/huggingface"
       # Drop the weights after five idle minutes. The process stays up.
       IMMICH_MEMORIES_INFERENCE_IDLE_UNLOAD_SECONDS: "300"
     restart: unless-stopped

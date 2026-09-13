@@ -126,9 +126,24 @@ In the same namespace `http://inference:8092` does. As an env var it is
 the service's own settings above take one. The base NetworkPolicy already allows the app egress on
 8092, so there is nothing to open.
 
-The encoder and Marqo exports still have to reach `/cache` on the PVC: `kubectl cp` them, or run
-`immich-memories models fetch` in a Job that mounts the same claim. The overlay's
-`ALLOW_MODEL_DOWNLOADS=true` covers the detector snapshots only.
+### A cold cache volume
+
+A fresh PVC is empty, and that is all right. Both overlays set `ALLOW_MODEL_DOWNLOADS=true`, and on
+that setting the service fetches what it is missing the first time something asks for it: the
+pinned DINOv2 export (88 MB), the pinned Marqo export (22.5 MB) and the Docling snapshot, each
+checked against the same digest `immich-memories models fetch` pins. The first `/facts` call
+after a cold start waits for the download. Nothing after it does.
+
+To fill the volume yourself instead, `kubectl cp` the two ONNX exports into `/cache`, or run
+`immich-memories models fetch` in a Job that mounts the same claim. With
+`ALLOW_MODEL_DOWNLOADS=false` that is the only way in, and a request for a producer whose file is
+absent answers 503 naming the file and the path it wants it at.
+
+The pod's root filesystem is read-only, so everything written at runtime has to point at a volume.
+The overlay sets `HF_HOME=/cache/huggingface` and `TMPDIR=/tmp` for that reason. Without them the
+Hugging Face download has nowhere to put its temporary files, fails with `Read-only file system (os
+error 30)`, and every `/facts` request answers 503 until the pod is restarted. Keep both if you
+write your own manifests.
 
 ### Reach the service from outside the cluster
 
@@ -180,6 +195,13 @@ curl -s localhost:8092/facts -H 'content-type: application/json' \
   {"head": "activity", "version": "public-v1", "label": "outdoors", "confidence": 0.71}]}}}
 ```
 
+When a producer cannot load, `/facts` answers 503 with the reason in `detail`: which producer, which
+artifact, which path. The service logs that line once per distinct message, so a run against a
+broken producer is one line worth reading rather than one per picture, and the app repeats it as
+`Remote classifiers returned HTTP 503: <detail>` rather than sending you looking for logs. A load
+that failed is retried on a later request, backing off from 10 s to 2 minutes, so fixing the cause
+does not need a restart.
+
 A fact on the wire is the bank row without its asset id. The client stores what it is handed,
 verbatim, which is the whole point: **a fact's identity is the artifact that produced it, never the
 machine that ran it.** The same picture through the `cpu` and the `cuda` image lands on one row:
@@ -202,7 +224,7 @@ Every setting is an environment variable prefixed `IMMICH_MEMORIES_INFERENCE_`:
 | `IDLE_UNLOAD_SECONDS` | `300` | drop idle weights; `0` holds them |
 | `PRELOAD` | `false` | load every producer at boot instead of on first use |
 | `DETECTOR_CACHE_DIR` | the Hugging Face cache | where the detector snapshots live |
-| `ALLOW_MODEL_DOWNLOADS` | `false` | let a cold cache fetch the Docling snapshot |
+| `ALLOW_MODEL_DOWNLOADS` | `false` | let a cold cache fetch the pinned exports and the Docling snapshot itself |
 | `MAX_IMAGE_BYTES` | `16777216` | refuse anything larger |
 
 Idle unload drops the weights and **keeps the process**: the next request reloads them.
@@ -236,6 +258,5 @@ keys are in the [config reference](../../reference/config-reference.md#inference
 ## Not yet
 
 - The captioner is not in the image yet, so `/v1/chat/completions` is still your own caption server.
-- The encoder and Marqo exports must already exist. Point `ENCODER` and `MARQO_ONNX` at the digest-pinned files from the app's `models fetch`, or place them at the cache paths above. Docling can fetch its snapshot into `/cache/huggingface` when `ALLOW_MODEL_DOWNLOADS` is on.
 
 For an image check before a release, dispatch the Release workflow with `inference_only: true`. It builds commit-tagged CPU and CUDA images without creating a version or moving `latest`; the CUDA base account is reused at UID/GID 1000 so the cache volume has the same ownership as the CPU image.
