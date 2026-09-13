@@ -7,8 +7,8 @@ The Python section is generated (`make notices`); everything else is kept by
 hand. The project itself is MIT (see LICENSE).
 
 
-Models (downloaded by `immich-memories models fetch`, digest-pinned in code)
-----------------------------------------------------------------------------
+Models (bundled, or downloaded by `immich-memories models fetch`, digest-pinned)
+--------------------------------------------------------------------------------
 
 DINOv2 small (facebook/dinov2-small)
   Role: the frozen picture encoder every editorial fact is computed from
@@ -41,6 +41,19 @@ Docling document figure classifier (docling-project/DocumentFigureClassifier-v2.
   Copyright: IBM Corporation (Docling project)
   URL: https://huggingface.co/docling-project/DocumentFigureClassifier-v2.0
 
+YuNet face detector (opencv_zoo)
+  Role: the face centre behind smart-zoom framing, on the OpenCV path
+  Artifact: face_detection_yunet_2023mar.onnx at revision
+    f12e12798e8314f7c074a6656816c048dcc95b7a, copied byte-for-byte into the
+    Python package at src/immich_memories/processing/bundled_models/, 227 KB,
+    sha256 8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4
+  License: MIT
+  Copyright: 2020 Shiqi Yu
+  URL: https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet
+  Note: opencv_zoo as a whole is Apache-2.0; this model directory carries its
+    own MIT LICENSE, and that is the one reproduced here. Bundled rather than
+    fetched because it is 227 KB and the machine may never reach the network.
+
 Optional models the app can call but never bundles: a caption model and a text
 reader served by the operator (any OpenAI-compatible endpoint), MusicGen
 (Meta, CC-BY-NC-4.0 weights) and ACE-Step (Apache-2.0) for generated music,
@@ -51,10 +64,10 @@ Their licences are the operator's to check for the models they choose.
 Apache-2.0 notice
 -----------------
 
-The three models above are distributed under the Apache License, Version 2.0
-(http://www.apache.org/licenses/LICENSE-2.0). Their ONNX exports are
-derivative works of those checkpoints and carry the same licence; no NOTICE
-file accompanies the upstream checkpoints.
+The three Apache-2.0 models above (YuNet is MIT) are distributed under the
+Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0).
+Their ONNX exports are derivative works of those checkpoints and carry the
+same licence; no NOTICE file accompanies the upstream checkpoints.
 
 
 Bundled music (packages/immich-memories-music)
@@ -127,6 +140,13 @@ Fixture library, tests/e2e/fixtures/library/ (six photographs)
   License: CC0 1.0 (public domain dedication), no attribution required
   Source: StockSnap.io via the Openverse index; per-file provenance in
     tests/e2e/fixtures/library/CREDITS.md
+
+Face fixture, tests/fixtures/faces/picnic-friends.jpg ("Friends Picnic")
+  License: CC0 1.0 (public domain dedication), no attribution required
+  Copyright: Helena Lopes
+  Source: https://stocksnap.io/photo/friends-picnic-3IVBNKC2JH, via the
+    Openverse index; provenance in tests/fixtures/faces/CREDITS.md
+  Note: kept out of the library above, which shows no recognisable face
 
 HDR samples, tests/fixtures/hdr_samples/ (see LICENSES.md there)
   Awesome-Gain-Maps (UltraHDR JPEG gain map test images)
