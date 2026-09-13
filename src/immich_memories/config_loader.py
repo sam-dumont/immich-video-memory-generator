@@ -27,6 +27,7 @@ from immich_memories.config_models_automation import (
     UploadConfig,
 )
 from immich_memories.config_models_editorial import EditorialConfig
+from immich_memories.config_models_inference import InferenceConfig
 from immich_memories.config_models_llm import LLMConfig  # noqa: F401
 from immich_memories.config_models_render import (
     DefaultsConfig,
@@ -60,6 +61,7 @@ _TIER2_SECTIONS = frozenset(
         "notifications",
         "triage",
         "editorial",
+        "inference",
     }
 )
 
@@ -281,7 +283,7 @@ class Config(BaseSettings):
       Tier 1 (top level): immich, defaults, output, audio, title_screens,
                            cache, upload, trips, photos
       Tier 2 (advanced:):  analysis, hardware, llm, musicgen, ace_step,
-                           server, auth, automation, notifications, triage, editorial
+                           server, auth, automation, notifications, triage, editorial, inference
       Tier 3 (internal):   scheduler, title_llm
 
     At runtime, ALL sections are flat fields on Config (config.analysis, etc.).
@@ -324,6 +326,7 @@ class Config(BaseSettings):
     notifications: NotificationConfig = Field(default_factory=NotificationConfig)
     triage: TriageConfig = Field(default_factory=TriageConfig)
     editorial: EditorialConfig = Field(default_factory=EditorialConfig)
+    inference: InferenceConfig = Field(default_factory=InferenceConfig)
 
     # `${VAR}` forms as written in config.yaml, so Save can put them back
     # instead of the secrets they expanded to.

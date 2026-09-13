@@ -14,10 +14,10 @@ Two settings decide what a deployment needs and what the cut loses. They are ind
 | How much image analysis runs first | `advanced.editorial.preparation.tier` | `metadata_only`, `no_captions`, `full` |
 
 Where the analysis runs is a third, smaller choice: in the app process (the default), or in the
-optional [inference service](./installation/inference-service.md) on a CPU or CUDA box. Today the
-service exists and the app cannot consume it yet ([#831](https://github.com/sam-dumont/immich-video-memory-generator/issues/831)),
-so treat that column as "not yet". Hardware encoders (Quick Sync, VAAPI, NVENC) only change the
-render; none of them runs inference.
+optional [inference service](./installation/inference-service.md) on a CPU or CUDA box, switched
+on with one key (`advanced.inference.facts_base_url`). The facts are the same rows either way, so
+you can move the service, change its provider or turn it off without re-deriving anything.
+Hardware encoders (Quick Sync, VAAPI, NVENC) only change the render; none of them runs inference.
 
 ## The reader
 
