@@ -10,6 +10,390 @@ supersedes: "Knowledge store migration (design-later)" — next-steps item 14
 # The annotation store
 
 > Postgres holds the facts. The dump holds the decisions. Your backup is 16 MB.
+>
+> Reassessed on 2026-09-13 against the shipped stores: see the first section. The rest is the 2026-09-01 design and is kept as the record.
+
+## Reassessed 2026-09-13, against the stores that ship
+
+The design below was written on 2026-09-01 against the probe-era tree: six JSONL
+write-ahead logs, a triage-heads `embeddings.db`, a `judgments.db` fed by the retired
+scorer. Two weeks later the story-first release replaced that tree. This section says
+what actually persists on `main` today, what the owner ruled since, what Immich does
+that we copy, and what changes in the plan. Everything under it that this section
+contradicts is history.
+
+### Why one Postgres, in the owner's words
+
+"It has to run in Docker and Kubernetes. SQLite and files are a pain. Postgres is easy
+to run."
+
+The deployment targets are Docker Compose and Kubernetes. State in files inside
+containers is what hurts: volumes and their permissions, backups that miss half the
+files, a second replica that cannot share a SQLite file, an inference service that
+needs the same facts the app has. Postgres is a service every self-hoster already runs,
+because Immich needs one. So the store is PostgreSQL with pgvector, in its own
+container, shipped by default, and the bare-metal install points at any Postgres.
+
+### What the owner ruled (2026-09-13)
+
+- No SQLite. One store, one repository layer. No second backend, no fallback.
+- Configuration lives in the database and is edited from the UI. Environment variables
+  and the config file are the fast bootstrap path (first run, Docker, Kubernetes) and
+  act as overrides. The UI shows, per setting, where the value comes from and marks
+  values set by an env var or the file as locked, with the reason.
+- The same for the people graph and companion (edited in the UI, stored in the
+  database, importable and exportable as YAML), automation state, run history and
+  notification state.
+- Take inspiration from Immich itself.
+- The byte-identical replay of the ten editorial routes stays the acceptance test for
+  the move (`tests/test_replay_editorial_routes.py`, `make parity`).
+
+### What Immich does, and what we copy
+
+Read on 2026-09-13 from `immich-app/immich` at `main` and `immich-app/immich-charts`.
+
+| Immich | Where | We copy | We do not |
+|---|---|---|---|
+| Four services in compose: `immich-server`, `immich-machine-learning`, `redis` (Valkey), `database` on `ghcr.io/immich-app/postgres:14-vectorchord…`; `POSTGRES_INITDB_ARGS: --data-checksums`, `shm_size: 128mb`, a bind mount for the data directory, healthchecks on every service, `depends_on` from the server to redis and database, `DB_PASSWORD`/`DB_USERNAME`/`DB_DATABASE_NAME` from `.env` | `docker/docker-compose.yml`, `docker/example.env` | the shape and the image: an app service, an inference service, a `database` service on `ghcr.io/immich-app/postgres` with data checksums, healthchecks, `depends_on`, `.env` for the password | Redis (we have no queue); separate `DB_*` variables for the app itself (compose assembles one `IMMICH_MEMORIES_DATABASE_URL`, §5 explains the redaction it needs) |
+| Migrations run on boot: `DatabaseService.onBootstrap` checks the Postgres version range, checks and creates or updates the vector extension within its accepted range, then `runMigrations()`; a nightly or out-of-range extension version refuses to start with the sentence that fixes it | `server/src/services/database.service.ts` | migrations at start, not a separate command; a version gate on Postgres and pgvector with the fixing sentence in the error | the extension update path (pgvector upgrades are the container image's job) |
+| ML facts flow over HTTP: the server calls `immich-machine-learning` (`IMMICH_MACHINE_LEARNING_URL`), and the server, not the ML service, writes the result | `server/src/services/smart-info.service.ts` | exactly our #857 shape: the inference service is stateless, the app banks the facts | nothing |
+| Vectors: `smart_search.embedding vector(512)` with `clip_index` (`vector_cosine_ops`), the dimension checked against the configured model and the table cleared when the model changes | `server/src/schema/tables/smart-search.table.ts`, `smart-info.service.ts` | one `embeddings` table keyed by asset and encoder key, dimensions recorded per row and checked against the encoder at config change, on the same extension path (`vector` types from pgvector, a `vchord` index when a consumer needs one) | a cosine index before a consumer measures the need (§1 point 6) |
+| Settings in the database: `system_metadata (key varchar primary key, value jsonb)` holds the whole config under one key; edited from the admin UI; `IMMICH_CONFIG_FILE` makes every update throw "Cannot update configuration while IMMICH_CONFIG_FILE is in use"; `IMMICH_LOG_LEVEL` overrides the stored level and the log says which one set it | `server/src/schema/tables/system-metadata.table.ts`, `server/src/services/system-config.service.ts` | the pattern, named here "the locked-source rule": database-held settings, file and env as overrides, the UI read-only for what they set, the source shown | one jsonb blob for all settings: we store one row per key, so the UI can lock and label each field on its own instead of the whole page |
+| Backups from the server container: an in-process cron (`backup.database.cronExpression`, `keepLastAmount`) runs `pg_dump` through the server's own repository, with `pg_dumpall` and `psql` as the other two bins it knows | `server/src/services/database-backup.service.ts` | the in-process nightly `pg_dump`, rotation by count, restore through `psql` (§7 already had this shape) | `pg_dumpall` (cluster-wide; it is what would sweep our database into their dump on a shared cluster) |
+| Kubernetes: the Helm chart ships the server and the machine-learning deployment; Postgres is external by default (`postgresql.enabled: false`, the server env hints at a CloudNativePG `-rw` service and a user Secret) | `immich-charts/charts/immich/values.yaml` | a StatefulSet in our manifests by default, an external URL in a Secret when the cluster already has Postgres (CloudNativePG or Immich's own) | nothing |
+
+### What persists on main today
+
+Measured on the reference library (sizes rounded; counts kept relative on purpose).
+
+| Store | File | Size | What it holds | Class | Fate |
+|---|---|---|---|---|---|
+| Annotation facts and banks | `cache/annotations.sqlite` (`store/`) | ~200 MB | `assets`, `descriptions` (per model), `description_fields`, `head_facts` (label, confidence, encoder key: 90 % of the rows), `pixel_facts`, `flags`, `asset_people`, `motion_bursts`, `editorial_episode_readings`, `editorial_period_insights`, `editorial_verdicts`, `judgments`, `visual_judgments`, `run_costs` | 2 | imported once, then Postgres only |
+| Legacy judgments | `cache/judgments.db` | ~46 MB | `visual_judgments` from the retired scorer's era; still opened by `cache/judgment_cache.py` for the text gateway | 2, aging | imported once, then the file is dead |
+| Operational cache | `cache.db` (schema v23) | ~20 MB | live: `pipeline_runs`, `phase_stats`, `automation_attempts`, `notification_health`; retired: `video_analysis`, `video_segments`, `video_metadata`, `asset_scores`, `asset_look_failures`, `hash_index`, `thumbnails` | live rows 1 (audit trail) | live tables imported once; retired tables dropped; the file is dead |
+| Small derived caches | `thumbnail-hashes.sqlite`, `sampled-preview-hashes.sqlite`, `demanded-motion.sqlite`, `text-judgments.sqlite` | KB to MB | phash per preview, sampled-pair confirmations, demanded motion facts, text answers | 3 | imported once (cheap to recompute, free to keep) |
+| People | `people.yaml` (56 KB), `people-graph.json` (312 KB) | 370 KB | confirmations and roles (human), inferred evidence graph (machine) | 1 | tables; YAML and JSON become import and export |
+| Special days | `special-days.json` | 16 KB | curated catalogue the auto detector reads | 1 | table |
+| Configuration | `config.yaml` (+ env) | 4 KB | every setting, Tier 1 flat and Tier 2 under `advanced:`; secrets as `${VAR}` | 1 | `settings` table; file and env stay as bootstrap and overrides |
+| Per-attempt records | `cache/editorial-runs/<run>/attempts/<id>/*.private.json` (`status`, `plan`, `render-projection`, `selection-trace`, `stage-progress`), `run.private.json` index | MBs per run | the cut as planned, the storyboard, the decision log, live progress | 2 per run, disposable after retention | files, indexed in `pipeline_runs`, pruned by retention |
+| Thumbnails, previews, video cache, editorial frames | `cache/*` files | ~17 GB | Immich renditions and derived frames | 3 | files, never in the database |
+| Parity reference | `~/.immich-memories-matrix/*.private.json` | small | the owner's graded reference plans | private, owner-only | private file |
+
+Two facts change the plan:
+
+1. **No vectors are stored today.** `head_facts` keeps the label, the confidence and
+   the encoder key; the DINOv2 vector itself is computed and dropped, locally or in the
+   inference service. Nothing on `main` does a similarity search: near-duplicates go
+   through perceptual hashes (`thumbnail_hashes`), place matching stayed a side project.
+   The `embeddings` table is created anyway (below), so the day a consumer ships, the
+   home exists. §1's finding that 2,304-dim packs cannot be HNSW-indexed as `vector`
+   stays true: the column is `halfvec(2304)` or a `vector(256)` projection, decided by
+   the first consumer.
+2. **The WAL layer of §4 does not exist on main.** The pipeline writes through `store/`
+   with `ON CONFLICT DO NOTHING` on content keys (`producer_key`, `evidence_key`, model,
+   version). That idempotence carries over unchanged into the Postgres repository.
+
+### Decisions
+
+**One store, Postgres only.** `src/immich_memories/store/` becomes one repository layer
+over PostgreSQL (`psycopg[binary]`, a small pool, forward-only SQL migrations in
+`store/migrations/` applied at boot inside one transaction against `schema_migrations`,
+after a version gate on Postgres (`>= 14, < 20`, Immich's own range) and on the `vector`
+type's extension (pgvector `>= 0.7`; VectorChord present or not) that refuses to start
+with the sentence that fixes it, the way Immich's `DatabaseService.onBootstrap` does).
+No `sqlite3` import survives outside the one-shot importer. The annotation facts, the
+banks, the operational tables, people, special days, settings and the reserved
+`embeddings` table live in one database, one schema.
+
+**Compose and Kubernetes are the primary path.** `docker-compose.yml` ships a `database`
+service on Immich's own image (`ghcr.io/immich-app/postgres:17-vectorchord1.1.1-pgvector0.8.5`,
+SHA-pinned) with `POSTGRES_INITDB_ARGS: --data-checksums`, `shm_size: 128mb`, a named
+volume, a `pg_isready` healthcheck, and the app service `depends_on` it with
+`condition: service_healthy`; compose assembles `IMMICH_MEMORIES_DATABASE_URL` from
+`DB_PASSWORD` in `.env`. The file is reproduced in full below. `deploy/kubernetes` ships a StatefulSet with a
+PersistentVolumeClaim and a Secret for the URL, readiness of the app gated on the
+database; an existing cluster (CloudNativePG, or Immich's own) is one URL in the Secret
+instead. `deploy/terraform` the same two shapes. The bare-metal install (`uv tool
+install`) is the exception: it documents that Postgres is required, gives the two-line
+compose for just the database and the `brew`/`apt` one-liner, and what `store import`
+does on first run.
+
+**Immich's image, VectorChord included: the reuse story.** The owner asked why not
+VectorChord, since Immich uses it and using the same thing allows reuse. Re-decided: we
+use Immich's Postgres image, not `pgvector/pgvector`. What that buys, exactly:
+
+- *Same image.* `ghcr.io/immich-app/postgres` bundles VectorChord (`vchord`) with
+  pgvector kept installed for its types, so a self-hoster runs one more instance of an
+  image they already pull and trust, or none at all (next point). We pin the tag by
+  digest and follow Immich's tag policy: their compose default is still
+  `14-vectorchord0.4.3-pgvectors0.2.0` (the pgvecto.rs bridge image, PG 14, unchanged
+  since 2026-06), their docs support Postgres `>= 14, < 20`, and their registry
+  publishes every major from 14 to 18 with the current VectorChord (`1.1.1`) and
+  pgvector (`0.8.5`). For a second container we pin `17-vectorchord1.1.1-pgvector0.8.5`
+  (a supported major, current extensions, no pgvecto.rs bridge) and bump when Immich's
+  compose moves; for a shared cluster we run whatever they run, which is why our SQL uses
+  only the `vector` types and adds a `vchord` index only when a consumer needs one.
+- *Same extension path.* `CREATE EXTENSION IF NOT EXISTS vector` is a no-op on their
+  image (VectorChord requires it); `CREATE EXTENSION IF NOT EXISTS vchord` is optional
+  and attempted, not required. The reserved `embeddings` table works on either.
+- *Sharing the Immich cluster.* `IMMICH_MEMORIES_DATABASE_URL` pointing at their
+  `database` service, with our own database and our own role inside it, our own
+  migrations, and never a statement against Immich's schema (§1 point 4). Two things to
+  say plainly: their image runs as superuser, so `CREATE DATABASE` and `CREATE EXTENSION`
+  work with their credentials but a dedicated role is the documented path; and their
+  `pg_dumpall` template would include our database in their dump, while their in-app
+  backup (`pg_dump` of their database) would not, so our own nightly `pg_dump` runs in
+  both shapes.
+- *Or a second container of the same image.* The default compose below. One more
+  process of something already on the box.
+
+The reasons the 2026-09-01 design gave against VectorChord (an ANN engine we do not need,
+a startup version gate, `shared_preload_libraries`) are costs of the extension, not of the
+image, and they are Immich's to carry: the image ships preloaded and gated already, and we
+simply do not create a `vchord` index until something needs one. Licence, checked on
+2026-09-13 in `tensorchord/VectorChord/LICENSE`: dual AGPLv3 or Elastic License v2. We
+run it as a database server the operator deploys; we do not link it, modify it or
+redistribute it, and the app stays MIT, the same position Immich (AGPL itself) and every
+self-hoster of it are in. pgvector is PostgreSQL-licensed. No reason not to use the image
+survives.
+
+**The NAS runs the container too.** Postgres 17 idles at roughly 60 to 90 MB resident
+with the image's default `shared_buffers` of 128 MB allocated on demand, and reaches a
+few hundred MB under a cut; these are the image's documented defaults, not a number
+measured in this repository yet (slice P10 measures it on the DS423+ next to the
+existing `preset: fast` benchmark). It replaces the page cache the app process held for
+the SQLite files, so the cost on a 2 GB box is the container's baseline, not the sum.
+The NAS page sets `shared_buffers=64MB` and `max_connections=20` in the compose
+override.
+
+**Configuration lives in the store, edited from the UI: the locked-source rule.** A
+`settings` table (`key`, `value_json`, `updated_at`, `updated_by`) holds every Tier 1
+and Tier 2 key, one row per key. Precedence, the same in the UI and the CLI:
+
+    environment variable  >  config file  >  settings table  >  built-in default
+
+Env and file win because they are deployment-time intent (compose, Kubernetes
+manifests, `-c path`), and infrastructure-as-code must beat a click, or a restart could
+quietly undo what the operator wrote. This is Immich's rule (`IMMICH_CONFIG_FILE` makes
+the admin UI refuse updates; `IMMICH_LOG_LEVEL` wins over the stored level and the log
+says so), applied per key instead of per page: the UI shows every setting with its
+source (`database`, `env IMMICH_MEMORIES_LLM__ENDPOINT`, `file /config/config.yaml`)
+and locks the field when the source is env or file, saying which one.
+`immich-memories config show --sources` prints the same table. Bootstrap-only keys,
+never in the database: `store.database_url` (you cannot read the database to learn
+where it is) and the log level.
+
+**Secrets.** Never in the store in clear. Either the value comes from an env var or the
+file (`${VAR}` as today), or the UI stores it in the `settings` table encrypted with a
+key from `IMMICH_MEMORIES_SECRET_KEY` (Fernet). Without that env key the UI cannot store
+a secret and says so; the field stays locked to env or file. Log redaction becomes
+value-based for every secret (the six-line fix of §5 plus the parsed password of
+`database_url`).
+
+**People.** `people` (identity, roles, confirmations) and `person_evidence` (the
+inferred graph) are tables. The UI edits the tables. `people.yaml` and
+`people-graph.json` stop being canonical and become the import and export format
+(`people export`, `people import`): a human-editable, diffable copy of class 1 data is
+worth keeping, and it is how a library moves between installs. The `confirmed:` block
+round-trips byte-identical (property test, §10 risk 5).
+
+**Vectors, reserved now.** `0001_initial.sql` runs `CREATE EXTENSION IF NOT EXISTS
+vector` (and tries `vchord`, optional) and creates `embeddings (asset_id, encoder_key, dims, vector halfvec(2304),
+projected vector(256), computed_at, PRIMARY KEY (asset_id, encoder_key))`, empty. The
+dimensions are checked against the encoder at config change, the way Immich checks
+`smart_search` against its CLIP model. No index until a consumer measures that a
+sequential scan is too slow (§1 point 6). The near-duplicate pass beyond phash and the
+place-match work write here when they ship; this program ships the table, not a
+consumer, and says so.
+
+**Per-attempt records stay files, indexed in the store.** The plan, the projection and
+the decision log are per run, megabytes, read by the storyboard and by `runs story` /
+`runs why`, and disposable after a retention window. `pipeline_runs` gains the attempt
+directory and the storyboard summary; retention prunes the directories.
+
+**Thumbnails, previews and frames stay files.** 17 GB of renditions never belong in a
+database.
+
+**Degraded mode is a refusal, and the UI stays up.** `IMMICH_MEMORIES_DATABASE_URL`
+missing or the database unreachable: `preflight` fails with the sentence to fix it, the
+CLI refuses to run a cut and prints the host and the error, the UI boots to a page that
+says the store is missing or unreachable and how to set it, `/health/ready` says the
+same, and nothing that would write is offered. No fallback store exists to write to, by
+design.
+
+**The old files are imported once.** `immich-memories store import --from
+~/.immich-memories [--verify]` reads `annotations.sqlite`, `judgments.db`, `cache.db`
+(live tables only), the four small caches, `people.yaml`, `people-graph.json`,
+`special-days.json` and `config.yaml`, row by row, `ON CONFLICT DO NOTHING` on the
+content keys, idempotent and resumable, then writes a `store-import.done` marker beside
+the files. After the import the files are never written again; `--verify` runs
+`make parity` and requires the identical plan and decision hash. `preflight` on a fresh
+database next to an old `~/.immich-memories` suggests the command.
+
+**Backups.** §7 as written (nightly in-process `pg_dump`, `gzip -t`, manifest,
+restore-verify, rotate by count), now covering settings, people and special days, so
+the dump of the title holds every class 1 and class 2 row. Thumbnails are never in a
+backup.
+
+**Tests run against a real Postgres.** Locally through `testcontainers[postgres]`
+(Docker required), in CI through a `services: postgres` block on the test job
+(`pgvector/pgvector:pg17`), both behind `make test-store`; the unit suite skips
+`test-store` when Docker is absent and mocks nothing about the store.
+
+### The docker-compose.yml we ship
+
+The full file, verbatim, as slice P10 lands it. Redis is absent on purpose: nothing
+queues (the scheduler runs in the app process, the inference service is called
+synchronously), so there is nothing for it to hold.
+
+```yaml
+services:
+  immich-memories:
+    image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
+    container_name: immich-memories
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - immich-memories-data:/home/immich/.immich-memories   # renditions, attempt records, logs
+      - ./output:/app/output
+    environment:
+      IMMICH_URL: "${IMMICH_URL:-http://immich-server:2283}"   # locked in the UI: env
+      IMMICH_API_KEY: "${IMMICH_API_KEY}"                       # locked in the UI: env (secret)
+      IMMICH_MEMORIES_DATABASE_URL: "postgresql://${DB_USERNAME:-immich_memories}:${DB_PASSWORD}@database:5432/${DB_DATABASE_NAME:-immich_memories}"
+      IMMICH_MEMORIES_SECRET_KEY: "${IMMICH_MEMORIES_SECRET_KEY:-}"   # lets the UI store secrets; empty = env-only
+      IMMICH_MEMORIES_INFERENCE__FACTS_BASE_URL: "${INFERENCE_URL:-}"  # set to http://immich-memories-inference:8092 with the profile
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "immich-memories", "preflight", "--quiet"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: "4"
+
+  immich-memories-inference:
+    image: ghcr.io/sam-dumont/immich-video-memory-generator/inference:${INFERENCE_TAG:-latest}
+    container_name: immich-memories-inference
+    profiles:
+      - inference
+    extends:
+      file: docker/hwaccel.inference.yml
+      service: cpu
+    ports:
+      - "127.0.0.1:8092:8092"
+    volumes:
+      - immich-memories-model-cache:/cache
+    environment:
+      IMMICH_MEMORIES_INFERENCE_ALLOW_MODEL_DOWNLOADS: "true"
+      IMMICH_MEMORIES_INFERENCE_IDLE_UNLOAD_SECONDS: "300"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: "4"
+
+  database:
+    image: ghcr.io/immich-app/postgres:17-vectorchord1.1.1-pgvector0.8.5   # pin by digest at release time
+    container_name: immich-memories-database
+    environment:
+      POSTGRES_PASSWORD: "${DB_PASSWORD}"
+      POSTGRES_USER: "${DB_USERNAME:-immich_memories}"
+      POSTGRES_DB: "${DB_DATABASE_NAME:-immich_memories}"
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    volumes:
+      - immich-memories-database:/var/lib/postgresql/data
+    shm_size: 128mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-immich_memories} -d ${DB_DATABASE_NAME:-immich_memories}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+volumes:
+  immich-memories-data:
+  immich-memories-model-cache:
+  immich-memories-database:
+```
+
+`.env` next to it:
+
+```dotenv
+IMMICH_URL=http://immich-server:2283
+IMMICH_API_KEY=
+DB_PASSWORD=change-me
+# DB_USERNAME=immich_memories
+# DB_DATABASE_NAME=immich_memories
+# IMMICH_MEMORIES_SECRET_KEY=        # `openssl rand -base64 32`; enables secret entry in the UI
+# INFERENCE_URL=http://immich-memories-inference:8092
+# INFERENCE_TAG=latest
+```
+
+Everything set here shows as locked in the Settings pages with its variable named;
+everything not set here is edited from the UI and stored in the `settings` table.
+
+The one-file variant for an existing Immich stack (`docker-compose.override.yml` or a
+merged file on the same compose network): no `database` service of ours, the URL points
+at theirs.
+
+```yaml
+services:
+  immich-memories:
+    image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - immich-memories-data:/home/immich/.immich-memories
+      - ./output:/app/output
+    environment:
+      IMMICH_URL: "http://immich-server:2283"
+      IMMICH_API_KEY: "${IMMICH_MEMORIES_API_KEY}"
+      # Our own database and role inside Immich's cluster; created once by
+      # `immich-memories store init --admin-url postgresql://${DB_USERNAME}:${DB_PASSWORD}@database:5432/postgres`
+      IMMICH_MEMORIES_DATABASE_URL: "postgresql://immich_memories:${IMMICH_MEMORIES_DB_PASSWORD}@database:5432/immich_memories"
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  immich-memories-data:
+```
+
+Slice P10's acceptance test is this file: `docker compose config` validates both
+variants, and `make docker-smoke` boots the default stack, waits for the `database`
+healthcheck, and asserts the app reached the database (`preflight` green, one settings
+row written and read back).
+
+### The slices, each at most ~300 lines, each with its test and its docs page
+
+The checklist lives in issue #871.
+
+| # | Slice | Test | Docs |
+|---|---|---|---|
+| P1 | Repository layer: `store/repository.py` (pool, transactions, `ON CONFLICT` helpers), `store/migrations/0001_initial.sql` (assets, facts, banks, settings, people, special days, operational tables, `embeddings` reserved), the boot-time migrator with the Postgres and pgvector version gates, Tier 2 `store` config with `IMMICH_MEMORIES_DATABASE_URL`, redaction by name and parsed password; `make test-store` with testcontainers and the CI service | migration applies twice idempotently; the version gate's sentences; redaction; connection refusal is a typed error | `reference/config-reference.md` |
+| P2 | Annotation facts and banks over the repository (`store/editorial_preparation.py`, `episode_readings.py`, `period_insights.py`, `asset_annotations.py`, verdicts, judgments); `sqlite3` gone from `analysis/` | the store tests moved onto `make test-store`; the byte-identical key test for the banks; replay guards green | `deploy/maintenance/health-logs-cache.md` |
+| P3 | Operational tables over the repository: `pipeline_runs` (+ attempt dir, storyboard summary), `phase_stats`, `automation_attempts`, `notification_health`, the run index; `tracking/`, `automation/*_state*`, health and trigger APIs | run tracker and health API tests on `make test-store`; `runs story` reads the index | `deploy/maintenance/health-logs-cache.md` |
+| P4 | `settings` table + `SettingsStore`; `Config` assembled env > file > table > default with a per-key source; `config show --sources` | precedence property test over generated configs; `--sources` output pinned | `deploy/configuration/config-file.md`, `create/cli/config.md` |
+| P5 | Settings pages write to the table; locked fields with the source shown; secrets via `IMMICH_MEMORIES_SECRET_KEY` | e2e: change a setting in the UI, restart the hermetic app, it sticks; an env-set field is locked and names the var | `create/web-ui/settings.mdx` |
+| P6 | People: `people`, `person_evidence` tables; companion editor and `people` CLI through the repository; `people export/import` | YAML round trip property test, `confirmed:` byte-identical; e2e Settings > People edits persist | `create/web-ui/settings.mdx`, `create/cli/people.md` |
+| P7 | Special days and the small caches (thumbnail hashes, sampled-pair confirmations, demanded motion, text judgments) over the repository; the last `sqlite3` import outside the importer removed, enforced by an import-linter contract | counts and replay unchanged | `deploy/maintenance/health-logs-cache.md` |
+| P8 | `store import --from <dir> [--verify]`: every old file once, idempotent, resumable, the `.done` marker, `preflight` suggesting it | import the hermetic library, run it twice, `make parity` identical after | `deploy/maintenance/upgrading.md` |
+| P9 | Refusal mode and the missing-store page: `preflight`, CLI refusal with host and error, the UI boot page, `/health/ready` | e2e with the database stopped: the page shows the sentence, Cut is absent, the CLI exits non-zero naming the host | `deploy/self-hosting.md`, `reference/troubleshooting.md` |
+| P10 | The compose file above shipped verbatim (Immich's image, checksums, shm, healthcheck, `depends_on: service_healthy`, `.env`) plus the add-to-your-Immich-stack variant, Kubernetes StatefulSet + Secret + readiness, Terraform, the NAS override (`shared_buffers=64MB`), the `uv tool install` page, backups wired (`store backup|restore|status`, nightly job); the DS423+ memory measurement recorded on the NAS page | `docker compose config` validates both variants; `make docker-smoke` boots the stack, waits for the database healthcheck and asserts the app reached it; seed, dump, drop, restore, assert loop | `deploy/installation/*`, `deploy/common-setups/nas-only.md`, `deploy/maintenance/backup.md` (new), `deploy/running-modes.md` |
+
+Acceptance for the whole program: on a library imported from the old files, the ten
+editorial routes replay byte-identical (`make parity`), and `grep -r sqlite3 src/`
+returns only `store/importer.py`.
+
+---
 
 ## 0. The problem, measured
 
