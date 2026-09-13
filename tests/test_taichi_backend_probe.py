@@ -2,94 +2,50 @@
 
 from __future__ import annotations
 
-import multiprocessing
+import json
 import platform
-import queue
+import subprocess
+import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-
-class _FakeQueue:
-    def __init__(self, *items: object) -> None:
-        self.items = list(items)
-        self.closed = False
-        self.joined = False
-
-    def get(self, timeout: float) -> object:  # noqa: ARG002
-        if not self.items:
-            raise queue.Empty
-        return self.items.pop(0)
-
-    def put(self, item: object) -> None:
-        self.items.append(item)
-
-    def close(self) -> None:
-        self.closed = True
-
-    def join_thread(self) -> None:
-        self.joined = True
+from immich_memories.operations import bounded_process
 
 
-class _FakeProcess:
-    def __init__(self, *, alive: bool = False, exitcode: int | None = 0) -> None:
-        self.alive = alive
-        self.exitcode = exitcode
-        self.started = False
-        self.terminated = False
-        self.killed = False
-        self.closed = False
-        self.join_timeouts: list[float] = []
+class _RecordedRun:
+    """Stand in for the bounded process runner and record what the probe asked for."""
 
-    def start(self) -> None:
-        self.started = True
+    def __init__(
+        self,
+        *,
+        payload: dict[str, object] | str | None,
+        returncode: int = 0,
+        error: BaseException | None = None,
+    ) -> None:
+        self.payload = payload
+        self.returncode = returncode
+        self.error = error
+        self.command: list[str] | None = None
+        self.timeout: float | None = None
 
-    def join(self, timeout: float) -> None:
-        self.join_timeouts.append(timeout)
-
-    def is_alive(self) -> bool:
-        return self.alive
-
-    def terminate(self) -> None:
-        self.terminated = True
-
-    def kill(self) -> None:
-        self.killed = True
-        self.alive = False
-        self.exitcode = -9
-
-    def close(self) -> None:
-        self.closed = True
+    def __call__(self, command, *, timeout, **_kwargs):
+        self.command = list(command)
+        self.timeout = timeout
+        if self.error is not None:
+            raise self.error
+        if self.payload is not None:
+            written = self.payload if isinstance(self.payload, str) else json.dumps(self.payload)
+            Path(command[3]).write_text(written)
+        return subprocess.CompletedProcess(list(command), self.returncode, "", "")
 
 
-class _FakeContext:
-    def __init__(self, result_queue: _FakeQueue, process: _FakeProcess) -> None:
-        self.result_queue = result_queue
-        self.process = process
-        self.process_kwargs: dict[str, object] | None = None
-
-    def Queue(self, maxsize: int) -> _FakeQueue:  # noqa: N802
-        assert maxsize == 1
-        return self.result_queue
-
-    def Process(self, **kwargs: object) -> _FakeProcess:  # noqa: N802
-        self.process_kwargs = kwargs
-        return self.process
-
-
-def _install_context(
-    monkeypatch: pytest.MonkeyPatch,
-    result_queue: _FakeQueue,
-    process: _FakeProcess,
-) -> _FakeContext:
-    context = _FakeContext(result_queue, process)
-
-    def get_context(method: str) -> _FakeContext:
-        assert method == "spawn"
-        return context
-
-    monkeypatch.setattr(multiprocessing, "get_context", get_context)
-    return context
+def _install_runner(monkeypatch: pytest.MonkeyPatch, run: _RecordedRun) -> _RecordedRun:
+    # WHY: the runner is the process boundary — the one thing the probe owns that
+    # a unit test cannot let loose, since a real child would claim the GPU.
+    monkeypatch.setattr(bounded_process, "run_bounded_process", run)
+    return run
 
 
 class _FakeTaichi:
@@ -126,10 +82,7 @@ def _run_worker(monkeypatch: pytest.MonkeyPatch, fake_ti: _FakeTaichi) -> object
     # external boundary here. A real ti.init() would claim the GPU in-process,
     # which is exactly what running the probe in a child process avoids.
     monkeypatch.setattr(taichi_backend_probe, "ti", fake_ti)
-    result_queue = _FakeQueue()
-    taichi_backend_probe._taichi_probe_worker("metal", result_queue)
-    assert len(result_queue.items) == 1
-    return result_queue.items[0]
+    return taichi_backend_probe._taichi_probe_worker("metal")
 
 
 def test_worker_reports_success_when_the_kernel_runs(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -192,32 +145,33 @@ def test_non_apple_hosts_try_cuda_then_vulkan_then_cpu(monkeypatch: pytest.Monke
     ]
 
 
-def test_probe_returns_success_and_closes_resources(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_probe_runs_its_own_program_instead_of_re_running_the_caller(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The child must be this file, never a re-import of the caller's __main__.
+
+    A `multiprocessing` spawn child re-imports the parent's `__main__` with the
+    parent's `sys.argv` restored, which ran the whole CLI a second time inside a
+    generation and printed that run's error into the terminal (#846).
+    """
+    from immich_memories.titles import taichi_backend_probe
     from immich_memories.titles.taichi_backend_probe import (
         TaichiProbeOutcome,
-        TaichiProbeResult,
         _probe_taichi_backend,
-        _taichi_probe_worker,
     )
 
-    result_queue = _FakeQueue(TaichiProbeResult(TaichiProbeOutcome.SUCCESS))
-    process = _FakeProcess()
-    context = _install_context(monkeypatch, result_queue, process)
+    run = _install_runner(monkeypatch, _RecordedRun(payload={"outcome": "success", "detail": None}))
 
     result = _probe_taichi_backend("metal", timeout=2.5)
 
     assert result.outcome is TaichiProbeOutcome.SUCCESS
-    assert process.started
-    assert process.join_timeouts == [2.5]
-    assert process.closed
-    assert result_queue.closed
-    assert result_queue.joined
-    assert context.process_kwargs == {
-        "target": _taichi_probe_worker,
-        "args": ("metal", result_queue),
-        "name": "taichi-metal-probe",
-        "daemon": True,
-    }
+    assert run.timeout == 2.5
+    assert run.command is not None
+    assert run.command[:3] == [
+        sys.executable,
+        str(Path(taichi_backend_probe.__file__).resolve()),
+        "metal",
+    ]
 
 
 def test_probe_preserves_dispatch_failure(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -227,16 +181,14 @@ def test_probe_preserves_dispatch_failure(monkeypatch: pytest.MonkeyPatch) -> No
         _probe_taichi_backend,
     )
 
-    result_queue = _FakeQueue(TaichiProbeResult(TaichiProbeOutcome.DISPATCH_FAILED, "RuntimeError"))
-    process = _FakeProcess()
-    _install_context(monkeypatch, result_queue, process)
+    _install_runner(
+        monkeypatch,
+        _RecordedRun(payload={"outcome": "dispatch_failed", "detail": "RuntimeError"}),
+    )
 
     result = _probe_taichi_backend("cuda")
 
     assert result == TaichiProbeResult(TaichiProbeOutcome.DISPATCH_FAILED, "RuntimeError")
-    assert process.closed
-    assert result_queue.closed
-    assert result_queue.joined
 
 
 def test_probe_reports_child_crash_without_a_result(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -245,28 +197,22 @@ def test_probe_reports_child_crash_without_a_result(monkeypatch: pytest.MonkeyPa
         _probe_taichi_backend,
     )
 
-    result_queue = _FakeQueue()
-    process = _FakeProcess(exitcode=7)
-    _install_context(monkeypatch, result_queue, process)
+    _install_runner(monkeypatch, _RecordedRun(payload=None, returncode=7))
 
     result = _probe_taichi_backend("vulkan")
 
     assert result.outcome is TaichiProbeOutcome.CHILD_CRASHED
     assert result.detail == "exitcode=7"
-    assert process.closed
-    assert result_queue.closed
-    assert result_queue.joined
 
 
 def test_probe_distrusts_a_result_it_did_not_recognise(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Anything but a TaichiProbeResult means the child was not ours to trust."""
+    """Anything but a probe outcome means the child was not ours to trust."""
     from immich_memories.titles.taichi_backend_probe import (
         TaichiProbeOutcome,
         _probe_taichi_backend,
     )
 
-    result_queue = _FakeQueue("something else entirely")
-    _install_context(monkeypatch, result_queue, _FakeProcess())
+    _install_runner(monkeypatch, _RecordedRun(payload="something else entirely"))
 
     result = _probe_taichi_backend("metal")
 
@@ -274,25 +220,38 @@ def test_probe_distrusts_a_result_it_did_not_recognise(monkeypatch: pytest.Monke
     assert result.detail == "invalid_result"
 
 
-def test_probe_terminates_then_kills_a_hung_child(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_probe_reports_a_child_that_outlived_its_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from immich_memories.titles.taichi_backend_probe import (
         TaichiProbeOutcome,
         _probe_taichi_backend,
     )
 
-    result_queue = _FakeQueue()
-    process = _FakeProcess(alive=True, exitcode=None)
-    _install_context(monkeypatch, result_queue, process)
+    _install_runner(
+        monkeypatch,
+        _RecordedRun(payload=None, error=subprocess.TimeoutExpired("probe", 4.0)),
+    )
 
     result = _probe_taichi_backend("metal", timeout=4.0)
 
     assert result.outcome is TaichiProbeOutcome.TIMED_OUT
-    assert process.terminated
-    assert process.killed
-    assert process.join_timeouts == [4.0, 1.0, 1.0]
-    assert process.closed
-    assert result_queue.closed
-    assert result_queue.joined
+
+
+def test_probe_survives_an_interpreter_it_cannot_launch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from immich_memories.titles.taichi_backend_probe import (
+        TaichiProbeOutcome,
+        _probe_taichi_backend,
+    )
+
+    _install_runner(monkeypatch, _RecordedRun(payload=None, error=OSError("no interpreter")))
+
+    result = _probe_taichi_backend("metal")
+
+    assert result.outcome is TaichiProbeOutcome.CHILD_CRASHED
+    assert result.detail == "OSError"
 
 
 def _prepare_parent_init(monkeypatch: pytest.MonkeyPatch):
