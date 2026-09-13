@@ -17,7 +17,7 @@
 
 <p align="center">
   <a href="https://sam-dumont.github.io/immich-video-memory-generator/docs/welcome/overview">
-    <img src="https://sam-dumont.github.io/immich-video-memory-generator/img/demo-hero.gif" alt="Immich Memories demo: the brief, the cut and the story it produced" width="800">
+    <img src="https://sam-dumont.github.io/immich-video-memory-generator/img/demo-hero.gif" alt="Immich Memories demo: the brief, the cut and the story it produced" width="720">
   </a>
   <br/>
   <sub><a href="https://sam-dumont.github.io/immich-video-memory-generator/docs/welcome/overview">▶ Watch the 47-second demo</a> · <a href="https://sam-dumont.github.io/immich-video-memory-generator/docs/create/first-memory">Make your first memory</a> · <a href="https://sam-dumont.github.io/immich-video-memory-generator/">Full documentation</a></sub>
@@ -94,7 +94,7 @@ How the editor decides is written up in [The Curator](https://sam-dumont.github.
 
 ## About the demo
 
-The hero above is `make demo-hero`, an 18-second cut of the Remotion demo (`make demo-ui`), which recreates the UI in React over a CC0 fixture library: 136 stock pictures that tell one household's June, a birthday, a Saturday in the woods and a week by a lake. The CLI demo inside it is a VHS recording (`make demo-cli`). Docs screenshots come from a hermetic run over the same fixture library (`make screenshots`).
+The hero above is `make demo-hero`, a 15-second cut of the Remotion demo (`make demo-ui`), which recreates the UI in React over a CC0 fixture library: 136 stock pictures that tell one household's June, a birthday, a Saturday in the woods and a week by a lake. The CLI demo inside it is a VHS recording (`make demo-cli`). Docs screenshots come from a hermetic run over the same fixture library (`make screenshots`).
 
 ## Development
 

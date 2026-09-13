@@ -8,7 +8,7 @@ the export, the same run in a terminal, and it ends on the film it made.
 | Command (from the repo root) | Produces |
 |---|---|
 | `make demo-ui` | `docs-site/static/demo/demo.mp4`, the full composition, 1920×1080 H.264 |
-| `make demo-hero` | `docs-site/static/img/demo-hero.gif`, seconds 2.6 to 16.6 of `demo.mp4` (brief, cut, storyboard) then its last 4 s (the film), 800 px, 12 fps |
+| `make demo-hero` | `docs-site/static/img/demo-hero.gif`, seconds 3.4 to 15.6 of `demo.mp4` (brief, cut, storyboard) then its last 3 s (the film), 720 px, 10 fps, 15.1 s, 3.8 MB |
 | `make demo-cli` | `public/cli-demo.mp4`, VHS recording the real CLI (`scripts/demo-cli-hermetic.py`: `generate`, `runs story`, `runs why` against the hermetic fakes from `tests/e2e`) |
 | `make demo-output` | `public/output-preview.mp4` and `public/output-frame.jpg`, cut on the hermetic launch |
 | `make demo-music` | ACE-Step candidates for `public/demo-music.wav` |
