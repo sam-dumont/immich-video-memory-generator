@@ -16,7 +16,7 @@ that is not here, [open an issue](https://github.com/sam-dumont/immich-video-mem
 | `nominatim.openstreetmap.org` | trip detection | the real GPS of each trip cluster's centroid, for a place name | do not use the Trip type |
 | `server.arcgisonline.com` (World Imagery) | the map fly-in of a trip title | tile requests covering the trip area and your home base | `title_screens.enabled: false` |
 | `cdn.jsdelivr.net` (Fontsource) | a title needs a font that is neither bundled nor in `~/.immich-memories/fonts/` | a font file, unpinned (`@latest`) | keep a bundled family (Josefin Sans, Montserrat, Outfit, Quicksand, Raleway) or drop TTFs in that folder |
-| `editorial.preparation.caption_base_url` | the first cut over a period, `full` tier | a 400 px JPEG of every eligible picture, once, plus a `/models` probe | `tier: no_captions`, or a server on your own network (default `localhost:8092`) |
+| `editorial.preparation.caption_base_url` | the first cut over a period, `full` tier | a 400 px JPEG of every eligible picture, once, a `/models` probe, and `caption_api_key` as a bearer token when one is set | `tier: no_captions`, or a server on your own network (default `localhost:8092`) |
 | `llm.base_url` | the reader | 800 px tiles of a few dozen candidates and their annotation lines, which carry people and place names; for titles, names, places, dates and descriptions | `reader: rules`, or a local model (default `localhost:8080`, the app's own port, so set it) |
 | `advanced.inference.facts_base_url` | preparation, when set | each picture's preview, for the heads and detectors | leave it unset: the app runs them itself |
 | `ace_step.api_url`, `musicgen.base_url` | AI music through a remote API | mood, tempo, genre text; MusicGen also uploads the generated track for stem separation | `ace_step.mode: lib`, your own file with `--music`, or `--no-music` |
@@ -33,7 +33,7 @@ small test completion to whatever the reader URL is.
 | Seat | Setting | What it is shown |
 |---|---|---|
 | reader | `llm.base_url` | 800 px tiles, and the annotation lines beside them with the names of people and places |
-| captioner | `editorial.preparation.caption_base_url` | 400 px tiles, no metadata |
+| captioner | `editorial.preparation.caption_base_url` | 400 px tiles, no metadata, and `caption_api_key` if set |
 
 Both default to this machine. Pointing either at another host (a box on your LAN, a container, a
 hosted endpoint) is the consent step: those bytes go onto its disk and into its logs, and nothing

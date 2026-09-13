@@ -289,12 +289,16 @@ class _Acquisition:
                     asset_ids=tuple(asset_ids),
                     preview_for=self.preview_for,
                     base_url=self.preparation_config.caption_base_url,
+                    api_key=self.preparation_config.caption_api_key,
                     timeout=self.preparation_config.caption_timeout_seconds,
                     concurrency=self.preparation_config.caption_concurrency,
                     check_cancelled=self.check,
                     progress=self.report,
                 )
             self.failures.update({f"caption:{key}": value for key, value in errors.items()})
+        except PermissionError as exc:
+            # The endpoint answered and asked for a credential; repointing the URL is not the fix.
+            self.failures["captions"] = str(exc)
         except Exception as exc:
             self.failures["captions"] = (
                 f"{type(exc).__name__}: {exc}; configure caption_base_url with the compact-v3 public model endpoint"

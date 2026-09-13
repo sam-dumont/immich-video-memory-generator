@@ -30,6 +30,7 @@ from setup_matrix_plan import (  # noqa: E402
 
 FULL_ENV = {
     "MATRIX_OMLX_BASE_URL": "http://omlx.invalid:8000/v1",
+    "MATRIX_CAPTION_BASE_URL": "http://captions.invalid:8092/v1",
     "OPENAI_API_KEY": "secret-omlx-key",
     "MATRIX_NAS_SSH": "someone@a-nas.invalid",
     "MATRIX_NAS_DOCKER": "/usr/local/bin/docker",
@@ -295,6 +296,104 @@ def test_the_nas_script_reaches_the_remote_shell_as_one_argument(
     assert len(run.command) == 3, "ssh, the destination, and one command string"
     assert run.command[2].startswith("$MATRIX_NAS_DOCKER run")
     assert "/bin/bash -lc '" in run.command[2]
+
+
+def test_the_nas_moves_its_files_with_tar_over_ssh(manifest: dict, tmp_path: Path) -> None:
+    """The NAS ssh server has the SFTP subsystem off, and a modern scp speaks only SFTP."""
+    item = next(
+        cell
+        for cell in _plan(manifest, tmp_path, FULL_ENV).cells
+        if cell.cell.id == "nas-rules-local"
+    )
+    steps = {step.name: step for step in item.steps}
+
+    assert steps["push-config"].command[0] == "tar"
+    assert steps["push-config"].pipe_to[:2] == ("ssh", "$MATRIX_NAS_SSH")
+    assert steps["pull-results"].command[:2] == ("ssh", "$MATRIX_NAS_SSH")
+    assert steps["pull-results"].pipe_to[0] == "tar"
+    assert not [step for step in item.steps if "scp" in str(step)]
+
+
+def test_a_piped_step_prints_as_one_pipeline(manifest: dict, tmp_path: Path) -> None:
+    item = next(
+        cell
+        for cell in _plan(manifest, tmp_path, FULL_ENV).cells
+        if cell.cell.id == "nas-rules-local"
+    )
+    push = next(step for step in item.steps if step.name == "push-config")
+    upstream, _, downstream = str(push).partition(" | ")
+    assert upstream.startswith("tar -C ")
+    assert downstream.startswith("ssh $MATRIX_NAS_SSH ")
+
+
+def test_an_ssh_command_line_in_the_destination_variable_is_refused(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """It is substituted where ssh expects `[user@]host`; a command there dies far from here."""
+    environment = {**FULL_ENV, "MATRIX_NAS_SSH": "ssh -i /nowhere/key someone@a-nas.invalid"}
+    with pytest.raises(PlanError) as error:
+        _plan(manifest, tmp_path, environment)
+    assert "MATRIX_NAS_SSH" in str(error.value)
+    assert "~/.ssh/config" in str(error.value)
+
+
+def _k8s_cell(manifest: dict, tmp_path: Path):
+    return next(
+        item
+        for item in _plan(manifest, tmp_path, FULL_ENV).cells
+        if item.cell.id == "k8s-rules-local"
+    )
+
+
+def test_a_cluster_cell_mounts_claims_of_its_own(manifest: dict, tmp_path: Path) -> None:
+    """The app's claims are RWO and attached to the running Deployment on one node."""
+    item = _k8s_cell(manifest, tmp_path)
+    claims = [doc for doc in yaml.safe_load_all(item.manifests["claims.yaml"]) if doc]
+
+    assert [doc["metadata"]["name"] for doc in claims] == [
+        "setup-matrix-data",
+        "setup-matrix-output",
+    ]
+    assert all(doc["spec"]["accessModes"] == ["ReadWriteOnce"] for doc in claims)
+    assert all("storageClassName" not in doc["spec"] for doc in claims), "use the default class"
+    rendered = item.manifests["job.yaml"] + item.manifests["collector.yaml"]
+    assert "immich-memories-models" not in rendered
+    assert "immich-memories-output" not in rendered
+
+
+def test_the_claims_are_applied_before_the_job_that_mounts_them(
+    manifest: dict, tmp_path: Path
+) -> None:
+    names = [step.name for step in _k8s_cell(manifest, tmp_path).steps]
+    assert names.index("apply-claims") < names.index("apply")
+    # The data claim carries the models and the bank, so it outlives the cell.
+    assert "delete-output-claim" in names
+    assert not [name for name in names if name == "delete-data-claim"]
+
+
+def test_a_cluster_cell_stops_waiting_on_a_pod_that_never_scheduled(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """A Pending pod never completes, and the three-hour wait was watching one."""
+    item = _k8s_cell(manifest, tmp_path)
+    steps = {step.name: step for step in item.steps}
+    names = [step.name for step in item.steps]
+
+    assert names.index("wait-scheduled") < names.index("wait")
+    assert "--for=condition=PodScheduled" in steps["wait-scheduled"].command
+    assert "--timeout=5m" in steps["wait-scheduled"].command
+    assert item.diagnostic is not None
+    assert "describe" in item.diagnostic.command
+
+
+def test_a_cluster_cell_asks_for_what_the_nas_cell_is_capped_at(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """Two rows in the same table, so neither may be given more room than the other."""
+    job = yaml.safe_load(_k8s_cell(manifest, tmp_path).manifests["job.yaml"])
+    resources = job["spec"]["template"]["spec"]["containers"][0]["resources"]
+    assert resources["requests"] == {"memory": "4Gi", "cpu": "2000m"}
+    assert resources["limits"] == {"memory": "4Gi", "cpu": "4000m"}
 
 
 def test_a_printed_step_is_a_line_a_shell_could_actually_run(

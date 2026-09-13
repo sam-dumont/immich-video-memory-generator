@@ -40,6 +40,7 @@ advanced:
     preparation:
       tier: full             # full | no_captions | metadata_only
       caption_base_url: http://localhost:8092/v1
+      caption_api_key: ""    # bearer token, if the server asks for one
       caption_timeout_seconds: 90
       caption_concurrency: 4
       batch_size: 32
@@ -119,6 +120,19 @@ cap. Captions are sent as 400 px JPEG tiles at quality 90; pixel measurements ke
 outcome; timeouts, missing models and transport failures stay incomplete and a later run resumes
 them. On `no_captions` and `metadata_only` none of this applies: no endpoint is contacted and an
 absent description is not a missing fact.
+
+A server behind a bearer token gets one from `caption_api_key`. It travels as
+`Authorization: Bearer <key>` on the `/models` probe and on every completion; left blank, no such
+header is sent, which is what an unauthenticated server on localhost should see. The reader's
+`llm.api_key` is never borrowed for this: same machine, different endpoint, and a captioner
+pointed at a hosted VLM has no business carrying the reader's credential. `title_llm.api_key`
+works the same way. A 401 or 403 names `caption_api_key` rather than reporting the endpoint as
+unreachable, because the URL is fine and the credential is what is missing.
+
+`caption_api_key: ${MY_KEY}` reads the value out of the environment, so the file can be committed
+and the token cannot. An unset variable leaves the key empty rather than the literal `${MY_KEY}`,
+which would otherwise be sent as a bearer token and come back as a 401 that looks like the wrong
+key. Save writes the `${MY_KEY}` form back either way.
 
 ## Editing without a language model
 

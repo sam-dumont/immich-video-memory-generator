@@ -332,7 +332,9 @@ def _generate_thumbnails(media_dir: Path, media: dict[str, Path]) -> dict[str, P
     other, and Phase 1 clustering collapsed the whole pool into one clip.
     """
     thumbnail_dir = media_dir / "thumbnails"
-    thumbnail_dir.mkdir()
+    # The setup matrix serves one library twice into the same output directory,
+    # once per lane invocation, and every render below overwrites what it finds.
+    thumbnail_dir.mkdir(exist_ok=True)
     thumbnails: dict[str, Path] = {}
     for asset_id, source in media.items():
         thumbnail_path = thumbnail_dir / f"{asset_id}.jpg"

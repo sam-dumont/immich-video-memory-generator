@@ -11,6 +11,7 @@ import contextlib
 import logging
 import os
 import stat
+from collections.abc import Iterator
 from pathlib import Path
 
 import yaml
@@ -230,29 +231,42 @@ _CREDENTIAL_ENV_ALIASES: dict[str, tuple[str, ...]] = {
 
 
 def _feeder_env_vars(path: str) -> tuple[str, ...]:
-    section, _, field = path.partition(".")
-    settings_name = f"IMMICH_MEMORIES_{section.upper()}__{field.upper()}"
+    settings_name = "IMMICH_MEMORIES_" + path.upper().replace(".", "__")
     return (*_CREDENTIAL_ENV_ALIASES.get(path, ()), settings_name)
+
+
+def _credential_sites(data: dict, prefix: str = "") -> Iterator[tuple[str, dict, str]]:
+    """Every credential field in the tree: its dotted path, the dict holding it, its name.
+
+    Nested, because a section can own a section: the caption key lives at
+    `editorial.preparation.caption_api_key`, and a walk one level deep would
+    write it to disk with everything else.
+    """
+    for field, value in data.items():
+        if isinstance(value, dict):
+            yield from _credential_sites(value, f"{prefix}{field}.")
+        elif field in CREDENTIAL_FIELD_NAMES and isinstance(value, str):
+            yield f"{prefix}{field}", data, field
 
 
 def _credential_templates(data: dict) -> dict[str, str]:
     """Record the `${VAR}` forms written in the file before expansion loses them."""
     templates: dict[str, str] = {}
-    for section, values in data.items():
-        if not isinstance(values, dict):
-            continue
-        for field, value in values.items():
-            if field in CREDENTIAL_FIELD_NAMES and isinstance(value, str) and "$" in value:
-                templates[f"{section}.{field}"] = value
+    for path, holder, field in _credential_sites(data):
+        if "$" in holder[field]:
+            templates[path] = holder[field]
     return templates
 
 
 def _text_to_persist(path: str, value: str, templates: dict[str, str]) -> str | None:
     """What to write for a credential, or None to write the value verbatim."""
-    if not value:
-        return None
+    # Template first, because a reference whose variable is unset resolves to
+    # nothing for fields that refuse a literal `${VAR}`, and Save must not read
+    # that emptiness as permission to drop the line the user wrote.
     if template := templates.get(path):
         return template
+    if not value:
+        return None
     for name in _feeder_env_vars(path):
         if os.environ.get(name) == value:
             return f"${{{name}}}"
@@ -266,14 +280,9 @@ def _keep_env_secrets_out(data: dict, templates: dict[str, str]) -> None:
     disk by pressing Save -- the file outlives the container that had the env
     var, and it is the one artifact most likely to be copied or backed up.
     """
-    for section, values in data.items():
-        if not isinstance(values, dict):
-            continue
-        for field, value in values.items():
-            if field not in CREDENTIAL_FIELD_NAMES or not isinstance(value, str):
-                continue
-            if replacement := _text_to_persist(f"{section}.{field}", value, templates):
-                values[field] = replacement
+    for path, holder, field in _credential_sites(data):
+        if replacement := _text_to_persist(path, holder[field], templates):
+            holder[field] = replacement
 
 
 class Config(BaseSettings):

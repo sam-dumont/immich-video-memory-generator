@@ -19,6 +19,7 @@ from immich_memories.api.models import AssetType
 from immich_memories.generate_clips import MIN_CLIP_DURATION
 from immich_memories.timeperiod import calendar_year
 from immich_memories.ui.pages.step2_loading import _build_clips
+from tests.e2e import fake_immich
 from tests.e2e.fake_immich import FakeImmichServer
 from tests.e2e.fake_library import CAST, LIBRARY
 
@@ -441,3 +442,23 @@ def test_the_library_can_be_served_on_every_interface(tmp_path: Path) -> None:
         assert thumbnail.status_code == 200
     finally:
         server.close()
+
+
+def test_serving_the_same_root_twice_reuses_its_media_directory(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """The setup matrix runs one lane per invocation into the same output directory.
+
+    The second invocation serves the same library out of the same root, and used
+    to die on `thumbnails/` already existing before it had bound anything.
+    """
+    # WHY: replaces the ffmpeg renders. This is about the directory the service
+    # lays out, and rendering the whole library twice buys the assertion nothing.
+    monkeypatch.setattr(fake_immich, "_ffmpeg", lambda *_args: None)
+    root = tmp_path / "served-twice"
+
+    for _ in range(2):
+        server = FakeImmichServer.start(root)
+        server.close()
+
+    assert (root / "media" / "thumbnails").is_dir()

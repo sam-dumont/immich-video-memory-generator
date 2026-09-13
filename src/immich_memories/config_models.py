@@ -27,6 +27,11 @@ _ENV_REFERENCE = re.compile(r"\$\{([^}]+)\}")
 _BARE_ENV_REFERENCE = re.compile(r"\$([A-Za-z_][A-Za-z0-9_]*)")
 
 
+def has_unresolved_env_reference(value: str) -> bool:
+    """Whether a `${VAR}` survived expansion, meaning the variable is not set."""
+    return _ENV_REFERENCE.search(value) is not None
+
+
 def expand_env_vars(value: str) -> str:
     """Expand `${VAR}` references in a config value.
 

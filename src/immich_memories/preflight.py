@@ -477,6 +477,15 @@ def check_detector_export(config: Config) -> CheckResult:
     )
 
 
+def _caption_endpoint_unreachable(base_url: str, error: Exception) -> CheckResult:
+    return CheckResult(
+        name="Captions",
+        status=CheckStatus.ERROR,
+        message="Caption endpoint unreachable",
+        details=f"{base_url}: {sanitize_error_message(str(error))}",
+    )
+
+
 def check_caption_endpoint(config: Config) -> CheckResult:
     """Report whether the configured caption server advertises the accepted alias."""
     if not config.editorial.preparation.demands_captions:
@@ -486,19 +495,33 @@ def check_caption_endpoint(config: Config) -> CheckResult:
             message=f"Not required by {config.editorial.preparation.tier}",
         )
     from immich_memories.analysis.editorial_description_contract import API_MODEL
+    from immich_memories.analysis.editorial_preparation_captions import (
+        CAPTION_KEY_HINT,
+        REFUSED_CODES,
+        bearer_headers,
+    )
 
-    base_url = config.editorial.preparation.caption_base_url
+    preparation = config.editorial.preparation
+    base_url = preparation.caption_base_url
     try:
-        response = httpx.get(f"{base_url}/models", timeout=5.0)
+        response = httpx.get(
+            f"{base_url}/models",
+            timeout=5.0,
+            headers=bearer_headers(preparation.caption_api_key),
+        )
         response.raise_for_status()
         rows = response.json().get("data", [])
-    except (httpx.HTTPError, ValueError) as e:
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code not in REFUSED_CODES:
+            return _caption_endpoint_unreachable(base_url, e)
         return CheckResult(
             name="Captions",
             status=CheckStatus.ERROR,
-            message="Caption endpoint unreachable",
-            details=f"{base_url}: {sanitize_error_message(str(e))}",
+            message="Caption endpoint refused the request",
+            details=f"{base_url} answered HTTP {e.response.status_code}; {CAPTION_KEY_HINT}",
         )
+    except (httpx.HTTPError, ValueError) as e:
+        return _caption_endpoint_unreachable(base_url, e)
     served = {row.get("id") for row in rows if isinstance(row, dict)}
     if API_MODEL not in served:
         return CheckResult(

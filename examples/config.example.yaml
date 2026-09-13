@@ -55,6 +55,7 @@ advanced:
     annotation_database: ""        # blank = annotations.sqlite inside cache.directory
     preparation:
       caption_base_url: "http://localhost:8092/v1"   # the compact-caption server
+      caption_api_key: ""          # blank = no Authorization header; not taken from llm.api_key
       caption_timeout_seconds: 90
       caption_concurrency: 4
       batch_size: 32

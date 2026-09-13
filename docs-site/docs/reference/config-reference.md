@@ -430,6 +430,7 @@ editorial:
   preparation:
     tier: full                   # full | no_captions | metadata_only
     caption_base_url: http://localhost:8092/v1
+    caption_api_key: ""          # bearer token for a caption server that requires one
     caption_timeout_seconds: 90
     caption_concurrency: 4
     batch_size: 32

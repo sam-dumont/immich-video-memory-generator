@@ -52,6 +52,17 @@ class TestS16SecretsAreFullyMasked:
 
         assert redact_config({"immich": {"api_key": ""}})["immich"]["api_key"] == ""
 
+    def test_no_configured_secret_reaches_the_settings_page(self):
+        """The viewer renders the whole model, so a new secret field is masked by name."""
+        from immich_memories.config_loader import Config
+        from immich_memories.ui.pages.settings_config import redact_config
+
+        config = Config(editorial={"preparation": {"caption_api_key": "caption-credential"}})
+
+        redacted = redact_config(config.model_dump())
+
+        assert "caption-credential" not in repr(redacted)
+
 
 class TestS3RateLimiterSeesTheRealClient:
     """Behind Traefik/nginx every request carries the proxy's IP, so one bad

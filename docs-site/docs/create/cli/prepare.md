@@ -59,7 +59,8 @@ same way.
 
 Exit 0 means every producer finished for every picture. Exit 1 means facts are still missing, and
 the run says which producer and how many; a caption server that is not running is the usual
-cause. Rerunning is cheap, so "run it until it exits 0" is the intended loop.
+cause. A caption server that is running but answers 401 or 403 says so and names
+`advanced.editorial.preparation.caption_api_key`. Rerunning is cheap, so "run it until it exits 0" is the intended loop.
 
 ## What leaves your machine
 
@@ -70,7 +71,7 @@ them only where you point it:
 |---|---|---|
 | previews, pixels | nowhere | your Immich server answers preview requests over your LAN |
 | heads, detectors | nowhere by default; the inference service if `advanced.inference.facts_base_url` is set | the preview of each picture that still lacks those facts, once |
-| captions (`full` tier) | the caption server at `editorial.preparation.caption_base_url` | a 400 px JPEG tile of every eligible picture in the scope, once, no metadata |
+| captions (`full` tier) | the caption server at `editorial.preparation.caption_base_url` | a 400 px JPEG tile of every eligible picture in the scope, once, no metadata, plus `caption_api_key` as a bearer token if the server wants one |
 
 Both endpoints default to `localhost`. Nothing asks a second time once you point one elsewhere,
 so read [Network & Privacy](../../deploy/configuration/network-and-privacy.md#the-two-picture-seats)
