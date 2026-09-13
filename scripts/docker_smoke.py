@@ -17,6 +17,11 @@ with the picture library it reads, and installed by a bootstrap that then hands
 over to the real CLI. Everything downstream of selection (downloads, timing,
 FFmpeg, output validation) is the production code the release would ship.
 
+The container's output is streamed to the job log as it arrives, and the phases
+it names are timed. Run 34769467426 (v0.85.1) captured that output instead and
+printed it only at the end, so a 1200 s timeout reported nothing but the fact
+that 1200 s had passed (#896).
+
 Usage: python scripts/docker_smoke.py --image <ref-or-digest> [--timeout 900]
 Linux-only (uses --network host so the container reaches the host's
 localhost-bound fake service).
@@ -25,11 +30,16 @@ localhost-bound fake service).
 from __future__ import annotations
 
 import argparse
+import contextlib
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import uuid
+from collections import deque
+from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -38,6 +48,54 @@ from tests.e2e.fake_immich import FakeImmichServer  # noqa: E402
 FIXTURE = Path(__file__).resolve().parent.parent / "tests" / "e2e" / "fake_editorial.py"
 LIBRARY_DIR = FIXTURE.parent / "fixtures" / "library"
 SMOKE_MOUNT = "/smoke"
+
+# How much of the container's log a failure repeats at the bottom of the job,
+# where someone reading a red release sees it without scrolling.
+TAIL_LINES = 60
+
+# The lines the container prints on entering a phase, in the order it reaches
+# them. First sight of one starts that phase; the gate reports what each cost,
+# and a timeout names the one it died in.
+PHASE_MARKERS: tuple[str, ...] = (
+    "Connecting to Immich",
+    "Preparing previews",
+    "Reading dates, places and people",
+    "Reading event evidence",
+    "Reading the period account",
+    "Building editorial cards",
+    "Editing the memory",
+    "Editorial selection complete",
+    "Downloading clips",
+    "Clips downloaded",
+    "Rendering memory",
+    "Generating title screens",
+    "Video saved to:",
+)
+
+# What the gate asks the image for, and why each is free to ask. On trial here
+# is the image -- that its OpenCV, FFmpeg, encoders and title kernels resolve
+# and cut a real month -- not a point on the quality curve.
+#
+# Both levers aim at the phase that actually costs the release: rendering, and
+# inside it the title screens -- 331 s of the 570 s that run 34769467426's own
+# arm64 image took on a 2-CPU cap here, to make 10.5 seconds of video.
+#
+# 720p is 44% of 1080p's pixels. `quality: fast` keeps the balanced picture and
+# buys its speed from the encoder effort preset (libx264 `veryfast` rather than
+# `medium`), which is the only thing that tier trades; `hardware.encoder_preset`
+# carries the same answer to the hardware encoders, so a runner that grows a GPU
+# does not quietly go back to `medium`.
+#
+# Nothing here touches `editorial.preparation`. The mounted route replaces the
+# pipeline builder, so no tier's producers ever run: the 133 previews of a
+# release smoke are scripted and cost 0.15 s end to end.
+PINNED_CONFIG: dict[str, str] = {
+    "IMMICH_MEMORIES_OUTPUT__RESOLUTION": "720p",
+    "IMMICH_MEMORIES_OUTPUT__QUALITY": "fast",
+    "IMMICH_MEMORIES_HARDWARE__ENCODER_PRESET": "fast",
+}
+
+PINNED_HEIGHT = PINNED_CONFIG["IMMICH_MEMORIES_OUTPUT__RESOLUTION"].removesuffix("p")
 
 # Installed before the CLI is imported, so the route is already replaced by the
 # time `generate` builds a pipeline. The kernel library's banner settings come
@@ -132,6 +190,7 @@ def generate_argv(
     editorial_dir: Path,
 ) -> list[str]:
     """The exact `docker run` that renders one monthly cut inside the image."""
+    pinned = [arg for name, value in PINNED_CONFIG.items() for arg in ("-e", f"{name}={value}")]
     return [
         "docker",
         "run",
@@ -148,6 +207,12 @@ def generate_argv(
         # WHY the server's own key: FakeImmichServer rejects anything
         # else with "Invalid API key", which failed every release.
         f"IMMICH_API_KEY={api_key}",
+        "-e",
+        # WHY: the CLI's own prints otherwise sit in a pipe buffer, and a
+        # streamed log that arrives in one lump at the end is the captured log
+        # this gate just stopped having.
+        "PYTHONUNBUFFERED=1",
+        *pinned,
         "-v",
         f"{out_dir}:/app/output",
         "-v",
@@ -175,6 +240,129 @@ def generate_argv(
     ]
 
 
+@dataclass(frozen=True)
+class ContainerRun:
+    """What the container did, as the job log saw it happen."""
+
+    returncode: int
+    elapsed: float
+    tail: tuple[str, ...]
+    phases: tuple[tuple[str, float], ...]
+    timed_out: bool
+
+    @property
+    def last_phase(self) -> str:
+        """The phase the container was in when it stopped."""
+        return self.phases[-1][0] if self.phases else "no phase reached"
+
+
+def _phase_of(line: str) -> str | None:
+    return next((marker for marker in PHASE_MARKERS if marker in line), None)
+
+
+def stream_container(argv: list[str], *, container: str, timeout: int) -> ContainerRun:
+    """Run the container, echoing each line as it arrives and timing the phases.
+
+    The job log is the only witness a failed release leaves behind, so nothing
+    here waits for the process to exit before printing.
+    """
+    started = time.monotonic()
+    tail: deque[str] = deque(maxlen=TAIL_LINES)
+    phases: list[tuple[str, float]] = []
+    expired = threading.Event()
+    proc = subprocess.Popen(
+        argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
+    )
+
+    def _stop() -> None:
+        expired.set()
+        # Killing the client alone leaves the container running on the daemon;
+        # killing only the container can leave the client waiting. Both, in
+        # order, and tolerant of a host with no docker on PATH.
+        with contextlib.suppress(OSError, subprocess.SubprocessError):
+            subprocess.run(["docker", "kill", container], capture_output=True, timeout=60)  # noqa: S607
+        proc.kill()
+
+    watchdog = threading.Timer(timeout, _stop)
+    watchdog.start()
+    try:
+        for line in proc.stdout or ():
+            elapsed = time.monotonic() - started
+            print(f"[{elapsed:7.1f}s] {line}", end="", flush=True)
+            tail.append(line.rstrip("\n"))
+            phase = _phase_of(line)
+            if phase is not None and phase not in {name for name, _ in phases}:
+                phases.append((phase, elapsed))
+        returncode = proc.wait()
+    finally:
+        watchdog.cancel()
+    return ContainerRun(
+        returncode=returncode,
+        elapsed=time.monotonic() - started,
+        tail=tuple(tail),
+        phases=tuple(phases),
+        timed_out=expired.is_set(),
+    )
+
+
+def print_phase_timings(run: ContainerRun) -> None:
+    """Print each phase the container named, when it started and what it cost."""
+    if not run.phases:
+        print(f"\nphases: the container named none in {run.elapsed:.1f}s")
+        return
+    print(f"\nphases over {run.elapsed:.1f}s (reached at, then what it cost)")
+    ends = [at for _, at in run.phases[1:]] + [run.elapsed]
+    for (name, at), end in zip(run.phases, ends, strict=True):
+        print(f"  {at:7.1f}s  {name:<34}{end - at:7.1f}s")
+
+
+def report_failure(run: ContainerRun, timeout: int) -> None:
+    """Repeat the container's last lines and name the phase it stopped in."""
+    print("\n".join(run.tail), file=sys.stderr)
+    if run.timed_out:
+        print(f"FAIL: generation hung past {timeout}s in '{run.last_phase}'", file=sys.stderr)
+    else:
+        print(f"FAIL: exit {run.returncode} in '{run.last_phase}'", file=sys.stderr)
+
+
+def _verify(video: Path) -> int:
+    """Check the cut decodes and came back at the size the gate pinned."""
+    probe = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=height",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1",
+            str(video),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    probed = dict(line.split("=", 1) for line in probe.stdout.splitlines() if "=" in line)
+    if probe.returncode != 0 or float(probed.get("duration") or 0) <= 0:
+        print(f"FAIL: {video.name} does not decode", file=sys.stderr)
+        return 1
+    if probed.get("height") != PINNED_HEIGHT:
+        # A pin the loader has stopped reading is how this gate would quietly go
+        # back to costing a release twenty minutes.
+        print(
+            f"FAIL: {video.name} came back {probed.get('height')} lines tall; "
+            f"the pinned {PINNED_HEIGHT}p never reached the container",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"OK: {video.name} ({float(probed['duration']):.1f}s, {PINNED_HEIGHT}p)")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--image", required=True)
@@ -195,7 +383,7 @@ def main() -> int:
             container = f"immich-memories-smoke-{uuid.uuid4().hex[:8]}"
             print(f"fake Immich at {server.base_url}; image {args.image}")
             try:
-                proc = subprocess.run(
+                run = stream_container(
                     generate_argv(
                         image=args.image,
                         container=container,
@@ -204,49 +392,22 @@ def main() -> int:
                         out_dir=out_dir,
                         editorial_dir=editorial_dir,
                     ),
+                    container=container,
                     timeout=args.timeout,
-                    capture_output=True,
-                    text=True,
                 )
-            except subprocess.TimeoutExpired:
-                subprocess.run(["docker", "kill", container], capture_output=True)
-                print(f"FAIL: generation hung past {args.timeout}s", file=sys.stderr)
-                return 1
             finally:
                 server.close()
 
-            print(proc.stdout[-4000:])
-            if proc.returncode != 0:
-                # WHY stderr AND stdout: the CLI logs to stdout (StreamHandler +
-                # Rich), so stderr alone hid the actual cause.
-                print(proc.stdout[-4000:], file=sys.stderr)
-                print(proc.stderr[-4000:], file=sys.stderr)
-                print(f"FAIL: exit {proc.returncode}", file=sys.stderr)
+            print_phase_timings(run)
+            if run.timed_out or run.returncode != 0:
+                report_failure(run, args.timeout)
                 return 1
 
             videos = sorted(out_dir.rglob("*.mp4"))
             if not videos:
                 print("FAIL: no MP4 in the output volume", file=sys.stderr)
                 return 1
-            probe = subprocess.run(
-                [
-                    "ffprobe",
-                    "-v",
-                    "error",
-                    "-show_entries",
-                    "format=duration",
-                    "-of",
-                    "csv=p=0",
-                    str(videos[0]),
-                ],
-                capture_output=True,
-                text=True,
-            )
-            if probe.returncode != 0 or float(probe.stdout.strip() or 0) <= 0:
-                print(f"FAIL: {videos[0].name} does not decode", file=sys.stderr)
-                return 1
-            print(f"OK: {videos[0].name} ({probe.stdout.strip()}s)")
-            return 0
+            return _verify(videos[0])
         finally:
             # WHY sudo: the container (UID 1000) owns the output tree, the
             # runner user cannot delete it, and Python 3.12's
