@@ -11,7 +11,7 @@ import sqlite3
 import sys
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from immich_memories.analysis import llm_metrics
 from immich_memories.analysis.editorial_duration_advisory import editorial_duration_warning
@@ -23,6 +23,8 @@ from immich_memories.cli._helpers import console, print_error, print_success, pr
 from immich_memories.cli._run_inputs import ResolvedRunInputs
 from immich_memories.cli._run_summary import render_run_summary
 from immich_memories.cli._run_timeline import configure_timeline, final_timeline
+from immich_memories.operations.run_index import run_id_for_attempt
+from immich_memories.operations.storyboard import read_storyboard
 from immich_memories.timeperiod import DateRange
 
 logger = logging.getLogger(__name__)
@@ -311,6 +313,8 @@ def run_pipeline_and_generate(
     dry_run: bool = False,
     no_render: bool = False,
     accept_any_provenance: bool = False,
+    owner_required_asset_ids: tuple[str, ...] = (),
+    owner_excluded_asset_ids: tuple[str, ...] = (),
 ) -> tuple[Path, bool, str | None]:
     """Run smart pipeline analysis + video generation.
 
@@ -420,6 +424,8 @@ def run_pipeline_and_generate(
         title_override=title_override,
         person_names=person_names,
         accept_any_provenance=accept_any_provenance,
+        owner_required_asset_ids=owner_required_asset_ids,
+        owner_excluded_asset_ids=owner_excluded_asset_ids,
     )
     if dry_run:
         return _finish_preparation(
@@ -582,6 +588,7 @@ def run_pipeline_and_generate(
         timeline_plan=timeline_plan,
         editorial_render_timing=timing_binding,
         editorial_duration_realization=duration_realization,
+        editorial_attempt_dir=_attempt_dir_of(pipeline_result),
         progress_callback=gen_progress,
         phase_callback=generation_phase,
         completed_operational_phase=OperationalPhase.SELECTION,
@@ -604,6 +611,10 @@ def run_pipeline_and_generate(
         _gen_time / _total_time * 100 if _total_time > 0 else 0,
     )
 
+    # The live area is done: stop it before the block prints, or its redraw tears
+    # the summary into fragments and repeats the last task line (#846).
+    progress.stop()
+    attempt_dir = _attempt_dir_of(pipeline_result)
     console.print(
         render_run_summary(
             total_seconds=_total_time,
@@ -613,12 +624,21 @@ def run_pipeline_and_generate(
             planned=len(selected_clips),
             counters=llm_metrics.active(),
             preparation_tier=config.editorial.preparation.tier,
-        )
+            storyboard=read_storyboard(attempt_dir) if attempt_dir else None,
+            run_id=run_id_for_attempt(attempt_dir) if attempt_dir else None,
+        ),
+        highlight=False,
+        soft_wrap=True,
     )
 
     _send_notification(config, memory_type, "completed", _total_time, str(result_path))
 
     return result_path, should_upload, album_name
+
+
+def _attempt_dir_of(pipeline_result: Any) -> Path | None:
+    recorded = pipeline_result.stats.get("editorial_attempt_directory")
+    return Path(recorded) if recorded else None
 
 
 def _send_notification(
