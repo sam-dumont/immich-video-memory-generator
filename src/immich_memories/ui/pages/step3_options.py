@@ -433,7 +433,9 @@ def render_step3() -> None:
             state.step = 4
             ui.navigate.to("/step4")
 
-        im_button("Back to Clip Review", variant="secondary", on_click=go_back, icon="arrow_back")
+        im_button(
+            "Back to the media pool", variant="secondary", on_click=go_back, icon="arrow_back"
+        )
         im_button(
             "Next: Preview & Export", variant="primary", on_click=go_next, icon="arrow_forward"
         )

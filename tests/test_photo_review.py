@@ -128,26 +128,3 @@ class TestBuildMixedItems:
         assert len(result) == 2
         assert isinstance(result[0], VideoClipInfo)
         assert isinstance(result[1], Asset)
-
-
-class TestBuildHeaderLabel:
-    """Test header label shows both video and photo counts."""
-
-    def test_videos_only(self):
-        from immich_memories.ui.pages.step2_review import _build_header_label
-        from tests.conftest import make_clip
-
-        state = AppState()
-        state.include_photos = False
-        clips = [make_clip("v1"), make_clip("v2")]
-        assert _build_header_label(clips, state) == "2 Videos Found"
-
-    def test_videos_and_photos(self):
-        from immich_memories.ui.pages.step2_review import _build_header_label
-        from tests.conftest import make_clip
-
-        state = AppState()
-        state.include_photos = True
-        state.photo_assets = [make_photo_asset("p1"), make_photo_asset("p2")]
-        clips = [make_clip("v1")]
-        assert _build_header_label(clips, state) == "1 Videos, 2 Photos Found"

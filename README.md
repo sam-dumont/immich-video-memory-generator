@@ -86,7 +86,7 @@ Start with one month, not a year: preparation scales with the width of the date 
 - Ten memory types: year in review, monthly, person, multiple people (with `AND` / `OR` between names), season, on this day, album, trip with an animated map, holiday, and a day the library itself flagged. The web UI adds a custom date range.
 - Photos and videos in one pool, Live Photos included. Title screens, month dividers, map fly-overs.
 - Music: your own file, 28 bundled tracks, or a generated track through ACE-Step or MusicGen. Ducking under the clips' own audio.
-- A four-page web UI (Memory, Clip Review, Generation Options, Preview & Export) behind basic auth, OIDC or a trusted-header proxy, or a headless CLI.
+- A four-page web UI (Memory, Media pool, Generation Options, Preview & Export) behind basic auth, OIDC or a trusted-header proxy, or a headless CLI.
 - Daily automation: one scheduled `auto run` generates a single eligible memory a day and can upload it back to Immich. In Docker set `IMMICH_MEMORIES_AUTOMATION__ENABLED=true`.
 - Privacy mode blurs every frame and moves the map to a fake city, for demos and screenshots.
 
