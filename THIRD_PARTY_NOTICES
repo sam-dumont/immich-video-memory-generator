@@ -665,7 +665,7 @@ rich 14.3.3
   License: MIT
   URL: https://github.com/Textualize/rich
 
-setuptools 80.10.2
+setuptools 84.0.0
   License: MIT
   URL: https://github.com/pypa/setuptools
 

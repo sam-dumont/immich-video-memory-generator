@@ -151,7 +151,7 @@ On an M2 Pro (12-core, 32 GB):
 
 There is no table here. The one that used to be was keyed on clip count and measured a per-clip
 scorer that no longer exists, which makes it worse than nothing to calibrate against. Preparation
-on the current route has been measured [on a NAS](./nas-only.md#preparation-measured) and not
+on the current route has been measured [on a NAS](./nas-only.md#preparation-tiers-what-the-nas-pays) and not
 on this hardware.
 
 What has not changed is the shape: the model passes are the slowest phase, they scale with how

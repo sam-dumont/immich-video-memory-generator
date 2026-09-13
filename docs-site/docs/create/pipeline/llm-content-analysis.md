@@ -25,7 +25,7 @@ in, and only where you left the field at its default. `openai-compatible` fills 
 The model named in `llm` is sent pictures: 800 px JPEG tiles of the candidates whose facts the
 edit demands, plus contact sheets. A text-only model will not do the picture pass, and the run
 does not degrade politely into one that can. See
-[the self-hosting guide](../../deploy/self-hosting.md#what-has-actually-been-tested).
+[the self-hosting guide](../../deploy/self-hosting.md#what-has-been-tested).
 :::
 
 ## LLM Title Generation

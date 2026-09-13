@@ -11,7 +11,7 @@ VAAPI (Video Acceleration API) provides hardware-accelerated video encoding on A
 
 - **VAAPI encoding**: h264_vaapi, hevc_vaapi. Hardware-accelerated encoding.
 - **VAAPI scaling**: `scale_vaapi` resizes frames on the GPU.
-- **Face detection**: falls back to CPU (OpenCV Haar cascades). AMD doesn't expose a GPU-accelerated face detection path.
+- **Face detection**: falls back to CPU (OpenCV YuNet). AMD doesn't expose a GPU-accelerated face detection path.
 
 ## Requirements
 
@@ -91,7 +91,7 @@ selected, which is why this needs both flags. Before 0.76.1 neither was emitted 
 default decided quality.
 
 Reaching software quality costs roughly 2.2x the bits, see
-[the measured table](./overview.md#what-hardware-encoding-actually-costs).
+[the measured table](./overview.md#quality-one-dial-calibrated-per-encoder).
 
 ## Title rendering
 

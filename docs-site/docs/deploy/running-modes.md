@@ -32,7 +32,7 @@ were not metered.
 
 ## The preparation tier
 
-| `tier` | What runs on every picture in scope | First pass, 10,793 pictures on a Celeron J4125 NAS | What the gate can do |
+| `tier` | What runs on every picture in scope | First pass, about ten thousand pictures on a Celeron J4125 NAS | What the gate can do |
 |---|---|---|---|
 | `metadata_only` | Previews and pixel measurements. No ONNX, no captions | Minutes | Nothing to judge with: every unit stays at family viewing, `sendable` export refused |
 | `no_captions` | Pixels, the DINOv2 encoder with six context heads, the sensitive-content and document detectors | 3 h 41 min (1.23 s per picture) | Refuses what it would refuse on `full`. Cannot clear a unit: eight findings (bathing, toileting, medical procedures, identifying records and the rest) are only named by a description |
