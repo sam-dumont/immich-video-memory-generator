@@ -176,3 +176,77 @@ class TestProviderPresets:
         url = mock_post.call_args[0][0] if mock_post.call_args[0] else mock_post.call_args[1]["url"]
         assert url.startswith("https://api.openai.com/v1")
         assert mock_post.call_args[1]["json"]["reasoning_effort"] == "medium"
+
+    @pytest.mark.asyncio
+    async def test_zai_with_an_anthropic_base_speaks_the_messages_dialect(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(
+            provider="zai",
+            base_url="https://api.z.ai/api/anthropic",
+            model="glm-5.3-flash",
+            api_key="k",
+        )
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", return_value=_anthropic_response()) as mock_post:
+            assert await query_llm("Judge this cut", config, max_tokens=600) == '{"ok": true}'
+
+        assert mock_post.call_args[0][0] == "https://api.z.ai/api/anthropic/v1/messages"
+
+    @pytest.mark.asyncio
+    async def test_a_200_carrying_a_provider_error_envelope_names_its_code_and_message(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(
+            provider="openai-compatible",
+            base_url="https://api.z.ai/api/anthropic",
+            model="glm-5.3-flash",
+            api_key="k",
+        )
+        envelope = AsyncMock()
+        envelope.status_code = 200
+        envelope.json = MagicMock(
+            return_value={"code": 500, "msg": "404 NOT_FOUND", "success": False}
+        )
+        envelope.raise_for_status = lambda: None
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with (
+            patch("httpx.AsyncClient.post", return_value=envelope),
+            pytest.raises(ValueError, match="404 NOT_FOUND") as caught,
+        ):
+            await query_llm("Judge this cut", config, max_tokens=600)
+
+        assert "500" in str(caught.value) and "choices" in str(caught.value)
+
+    @pytest.mark.asyncio
+    async def test_a_generic_thinking_block_does_not_hide_the_providers_own_switch(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(
+            provider="zai",
+            model="glm-5.3-flash",
+            api_key="k",
+            no_thinking_params={
+                "chat_template_kwargs": {"enable_thinking": False},
+                "repetition_penalty": 1.05,
+            },
+        )
+
+        def _ok(url, json):  # noqa: A002
+            response = AsyncMock()
+            response.status_code = 200
+            response.json = MagicMock(
+                return_value={"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]}
+            )
+            response.raise_for_status = lambda: None
+            return response
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", side_effect=_ok) as mock_post:
+            await query_llm("Judge this cut", config, thinking=False)
+
+        payload = mock_post.call_args[1]["json"]
+        assert payload["thinking"] == {"type": "disabled"}
+        assert payload["repetition_penalty"] == 1.05

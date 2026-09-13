@@ -17,6 +17,7 @@ import logging
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -118,16 +119,32 @@ _PROVIDER_PRESETS: dict[str, dict] = {
 }
 
 
+def _preset_dialect(base_url: str) -> str:
+    """z.ai serves both dialects on one host, so the base URL's path picks the adapter.
+
+    `.../api/anthropic` wants `/v1/messages`; `.../api/paas/v4` wants
+    `/chat/completions`. Posting the OpenAI path to the Anthropic base gets a
+    200 carrying `{"code":500,"msg":"404 NOT_FOUND"}`.
+    """
+    path = urlsplit(base_url).path.rstrip("/")
+    return "anthropic" if path.endswith("/anthropic") else "openai-compatible"
+
+
 def _resolved(config: LLMConfig) -> LLMConfig:
     preset = _PROVIDER_PRESETS.get(config.provider)
     if preset is None:
         return config
     fields = type(config).model_fields
-    updates: dict = {"provider": "openai-compatible"}
+    updates: dict = {}
     for name, value in preset.items():
         default = fields[name].get_default(call_default_factory=True)
         if getattr(config, name) == default:
             updates[name] = value
+        elif name in ("thinking_params", "no_thinking_params"):
+            # The provider's own reasoning switch is not interchangeable with the
+            # generic one it was replaced by; send both.
+            updates[name] = {**getattr(config, name), **value}
+    updates["provider"] = _preset_dialect(updates.get("base_url", config.base_url))
     return config.model_copy(update=updates)
 
 
@@ -736,6 +753,15 @@ def _anthropic_answer(
         raise
 
 
+def _no_choices(body: dict) -> str:
+    """Some gateways answer 200 with their own error envelope instead of a completion."""
+    code = body.get("code")
+    message = body.get("msg") or body.get("message")
+    if code is None and not message:
+        return f"LLM provider returned no choices; body fields: {sorted(body)[:10]}"
+    return f"LLM provider returned no choices: code {code}, msg {str(message)[:300]!r}"
+
+
 def _interpret_openai_response(
     response: httpx.Response,
     thinking: bool,
@@ -751,6 +777,8 @@ def _interpret_openai_response(
             code = str(error.get("code", "unknown"))[:80]
             message = str(error.get("message", "provider returned an error"))[:300]
             raise ValueError(f"LLM provider error {code}: {message}")
+        if "choices" not in body:
+            raise ValueError(_no_choices(body))
         choice = body["choices"][0]
         usage = body.get("usage") or {}
         if not isinstance(choice, dict) or not isinstance(usage, dict):

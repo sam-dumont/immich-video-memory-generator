@@ -13,13 +13,17 @@ titles below, and the mood detection the music pipeline uses. This page covers t
 ## Any OpenAI-compatible API
 
 Five provider values, three code paths. `ollama` speaks Ollama's native API, `anthropic` speaks
-`/v1/messages`, and `openai-compatible`, `openai` and `zai` all speak `/v1/chat/completions`,
-so anything that serves that endpoint works: mlx-vlm, [oMLX](https://github.com/jundot/omlx),
-vLLM, Ollama's compatibility layer, Groq, OpenAI itself.
+`/v1/messages`, and `openai-compatible` and `openai` speak `/v1/chat/completions`, so anything that
+serves that endpoint works: mlx-vlm, [oMLX](https://github.com/jundot/omlx), vLLM, Ollama's
+compatibility layer, Groq, OpenAI itself. `zai` picks one of those last two from its `base_url`
+path, because z.ai serves both: `.../api/anthropic` gets `/v1/messages`, everything else gets
+`/chat/completions`.
 
-`openai` and `zai` are the same code path with the vendor's base URL and reasoning dialect filled
-in, and only where you left the field at its default. `openai-compatible` fills in nothing: its
-`base_url` stays `http://localhost:8080/v1`, which is the app's own port, so set it.
+`openai` and `zai` fill in the vendor's base URL and reasoning dialect where you left the field at
+its default. The provider's own reasoning switch is merged in even when you set your own
+`thinking_params` or `no_thinking_params`, because the two are not the same request field.
+`openai-compatible` fills in nothing: its `base_url` stays `http://localhost:8080/v1`, which is the
+app's own port, so set it.
 
 :::warning The reader needs eyes
 The model named in `llm` is sent pictures: 800 px JPEG tiles of the candidates whose facts the

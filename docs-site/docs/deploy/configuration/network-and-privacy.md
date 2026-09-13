@@ -28,6 +28,17 @@ Two provider names fill in a vendor URL when `llm.base_url` is left at its defau
 (`https://api.openai.com/v1`) and `zai` (`https://api.z.ai/api/paas/v4`). `preflight` sends one
 small test completion to whatever the reader URL is.
 
+z.ai serves two dialects on one host, so `provider: zai` routes on the path of the `base_url` you
+set: `.../api/anthropic` takes the Anthropic adapter and its `/v1/messages`, and anything else
+(including the preset `.../api/paas/v4`) takes the OpenAI-compatible one. Send the OpenAI path to
+the Anthropic base and the reply is an HTTP 200 carrying `{"code":500,"msg":"404 NOT_FOUND"}`,
+which the reader now reports by its code and message instead of a bare `KeyError`.
+
+A named provider's own reasoning switch is sent whatever else you put in `thinking_params` or
+`no_thinking_params`. z.ai wants `thinking: {"type": "disabled"}` on a fast call; replacing the
+block with a Qwen-shaped one used to drop that switch, and GLM then reasoned through the whole
+bulk pass.
+
 ## The two picture seats
 
 | Seat | Setting | What it is shown |
