@@ -130,10 +130,14 @@ def _protect_favourites(
     rejects: tuple[CullDecision, ...],
 ) -> tuple[tuple[CullDecision, ...], tuple[str, ...]]:
     favourite_ids = {candidate.asset_id for candidate in prepared.candidates if candidate.favourite}
-    protected = tuple(decision for decision in rejects if decision.asset_id in favourite_ids)
-    accepted = tuple(decision for decision in rejects if decision.asset_id not in favourite_ids)
+    required_ids = set(prepared.owner_required_asset_ids)
+    protected_ids = favourite_ids | required_ids
+    protected = tuple(decision for decision in rejects if decision.asset_id in protected_ids)
+    accepted = tuple(decision for decision in rejects if decision.asset_id not in protected_ids)
     warnings = tuple(
-        f"!! cull reject conflicted with protected favourite: {decision.asset_id}"
+        f"!! cull reject conflicted with protected "
+        f"{'favourite' if decision.asset_id in favourite_ids else 'owner required picture'}: "
+        f"{decision.asset_id}"
         for decision in protected
     )
     return accepted, warnings

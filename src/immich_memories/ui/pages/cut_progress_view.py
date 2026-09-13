@@ -22,7 +22,7 @@ from collections.abc import Callable, Sequence
 
 from nicegui import ui
 
-from immich_memories.operations.cut_progress import StageProgress
+from immich_memories.operations.cut_progress import StageUpdate
 
 STRIP_SLOTS = 12
 STRIP_THUMBNAIL_PX = 96
@@ -134,13 +134,15 @@ class StageBar:
         self._bar.set_visibility(shown)
         self._caption.set_visibility(shown)
 
-    def show(self, progress: StageProgress | None) -> None:
+    def show(self, progress: StageUpdate | None) -> None:
         fraction = progress.fraction if progress is not None else None
         if progress is None or fraction is None:
             self._visible(False)
             return
         self._bar.value = fraction
-        self._caption.set_text(f"{progress.label} {progress.done:,} of {progress.total:,}")
+        self._caption.set_text(
+            f"{progress.label} {progress.done or 0:,} of {progress.total or 0:,}"
+        )
         self._visible(True)
 
 

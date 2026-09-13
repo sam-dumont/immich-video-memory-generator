@@ -11,6 +11,7 @@ import pytest
 from immich_memories.analysis.editorial_planner import EditorialPlan, EditorialSelection
 from immich_memories.analysis.editorial_source_route import EditorialSourcePlan
 from immich_memories.analysis.smart_pipeline import PipelineConfig, SmartPipeline
+from immich_memories.operations.cut_progress import StageUpdate
 from tests.test_editorial_source_route import demand, photo
 
 
@@ -30,7 +31,7 @@ def test_source_timer_includes_work_and_finishes_with_truthful_outcome(monkeypat
         assert events[0]["elapsed_seconds"] == 0
         assert events[0]["status"] == "running"
         clock[0] += 7.5
-        on_stage("Editing the memory")
+        on_stage(StageUpdate("Editing the memory"))
         clock[0] += 11.25
         if failure:
             raise RuntimeError("required source evidence unavailable")
@@ -66,7 +67,7 @@ def test_display_callback_failure_does_not_change_selection():
     expected = EditorialPlan((EditorialSelection("picture", render_mode="still"),))
 
     def plan_source(_sources, *, on_stage, **_kwargs):
-        on_stage("Reading event evidence")
+        on_stage(StageUpdate("Reading event evidence"))
         return EditorialSourcePlan(rows, expected)
 
     def broken_display(_event):

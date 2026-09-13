@@ -228,7 +228,7 @@ def restore_handlers(original_handlers: list[logging.Handler]) -> None:
 
 def configure_logging(
     fmt: str | None = None,
-    level: str = "INFO",
+    level: str | None = None,
     log_file: str | None = None,
 ) -> None:
     """Configure the root logger with the specified format.
@@ -237,6 +237,7 @@ def configure_logging(
         fmt: Log format - "text" for human-readable, "json" for structured JSON.
             If None, reads from IMMICH_MEMORIES_LOG_FORMAT env var (default: "text").
         level: Log level name (DEBUG, INFO, WARNING, ERROR, CRITICAL).
+            If None, reads from IMMICH_MEMORIES_LOG_LEVEL env var (default: "INFO").
         log_file: Path to a log file. If None, reads from IMMICH_MEMORIES_LOG_FILE
             env var. When set, logs go to both stdout and the file.
     """
@@ -244,6 +245,8 @@ def configure_logging(
         fmt = os.environ.get("IMMICH_MEMORIES_LOG_FORMAT", "text").lower()
     if log_file is None:
         log_file = os.environ.get("IMMICH_MEMORIES_LOG_FILE")
+    if level is None:
+        level = os.environ.get("IMMICH_MEMORIES_LOG_LEVEL", "INFO")
 
     root = logging.getLogger()
     root.setLevel(getattr(logging, level.upper(), logging.INFO))

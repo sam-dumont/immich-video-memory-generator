@@ -573,3 +573,107 @@ class TestFetchParity:
         # about queries that happen.
         assert cli, "the CLI asked Immich for nothing"
         assert cli == ui
+
+
+# ---------------------------------------------------------------------------
+# Progress: one stage record, rendered by both surfaces
+# ---------------------------------------------------------------------------
+
+
+class CountingDisplay:
+    """The CLI's ProgressDisplay protocol, remembering what each stage did to its task."""
+
+    def __init__(self) -> None:
+        self.total: float | None = None
+        self.completed: int | None = None
+        self.description = ""
+        self.seen: list[tuple[str, int | None, float | None]] = []
+
+    def add_task(self, description: str, **fields) -> int:
+        self.total = fields.get("total")
+        self.description = description
+        return 0
+
+    def reset(self, _task_id: int, *, total: float | None = None) -> None:
+        self.total = total
+        self.completed = None
+
+    def update(self, _task_id: int, **kwargs) -> None:
+        if "description" in kwargs:
+            self.description = str(kwargs["description"])
+        if "completed" in kwargs:
+            self.completed = kwargs["completed"]
+        self.seen.append((self.description, self.completed, self.total))
+
+
+class TestProgressParity:
+    """A counted stage reaches the terminal and the page with the same numbers.
+
+    The run publishes one record per stage. Both reporters read it, so a bar
+    on the page and the ``~N remaining`` estimate in the terminal describe the
+    same position, and neither has to parse the sentence the other shows.
+    """
+
+    def _run(self, on_stage) -> None:
+        from immich_memories.operations.cut_progress import StageUpdate
+
+        on_stage(StageUpdate("Preparing source metadata", phase="analysis"))
+        on_stage(StageUpdate("previews", phase="analysis", done=2, total=6))
+        on_stage(StageUpdate("previews", phase="analysis", done=6, total=6))
+        on_stage(StageUpdate("Editing the memory"))
+
+    def test_both_surfaces_see_the_same_stage_sequence_and_counts(self) -> None:
+        from immich_memories.analysis.editorial_projection import EditorialStageReporter
+        from immich_memories.analysis.progress import ProgressTracker
+        from immich_memories.cli._pipeline_runner import _SourceProgressReporter
+        from immich_memories.ui.pages.clip_pipeline import _make_progress_callback
+
+        page: dict = {}
+        page_seen: list[tuple[str, int | None, int | None]] = []
+        update_page = _make_progress_callback(page)
+
+        def page_reporter(status: dict) -> None:
+            update_page(status)
+            page_seen.append(
+                (page["phase_label"], page.get("current_index"), page.get("total_items"))
+            )
+
+        self._run(EditorialStageReporter(ProgressTracker(), page_reporter))
+
+        display = CountingDisplay()
+        task = display.add_task("Selecting", total=None)
+        self._run(EditorialStageReporter(ProgressTracker(), _SourceProgressReporter(display, task)))
+
+        expected = [
+            ("Preparing source metadata", None, None),
+            ("Preparing previews: 2/6", 2, 6),
+            ("Preparing previews: 6/6", 6, 6),
+            ("Editing the memory", None, None),
+        ]
+        assert page_seen == expected
+        assert display.seen == expected
+
+    def test_the_page_can_draw_a_bar_and_the_terminal_can_estimate(self) -> None:
+        """The counted stage carries a fraction for the bar and a total for the estimate."""
+        from immich_memories.analysis.editorial_projection import EditorialStageReporter
+        from immich_memories.analysis.progress import ProgressTracker
+        from immich_memories.cli._pipeline_runner import _SourceProgressReporter
+        from immich_memories.operations.cut_progress import StageUpdate
+        from immich_memories.ui.pages.clip_pipeline import _make_progress_callback
+
+        page: dict = {}
+        EditorialStageReporter(ProgressTracker(), _make_progress_callback(page))(
+            StageUpdate("previews", phase="analysis", done=3, total=6)
+        )
+        assert page["indeterminate"] is False
+        assert page["progress_fraction"] == 0.5
+        assert page["current_phase"] == "analysis"
+
+        display = CountingDisplay()
+        task = display.add_task("Selecting", total=None)
+        reporter = EditorialStageReporter(ProgressTracker(), _SourceProgressReporter(display, task))
+        reporter(StageUpdate("previews", phase="analysis", done=3, total=6))
+        assert (display.total, display.completed) == (6, 3)
+        # The stage after it counts nothing, so the task goes back to a spinner.
+        reporter(StageUpdate("Reading event evidence"))
+        assert display.total is None

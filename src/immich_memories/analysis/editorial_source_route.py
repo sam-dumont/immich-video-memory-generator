@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 from immich_memories.analysis.editorial_planner import EditorialPlan, EditorialSelection
 from immich_memories.analysis.motion_rendering import MotionRendering, motion_renderings
 from immich_memories.api.models import Asset, AssetType, VideoClipInfo
+from immich_memories.operations.cut_progress import StageUpdate
 from immich_memories.processing.live_material import LiveRenderMaterial
 
 if TYPE_CHECKING:
@@ -43,7 +44,7 @@ class EditorialSourcePlanner(Protocol):
         trace: Trace,
         include_live_photos: bool = True,
         hdr_only: bool = False,
-        on_stage: Callable[[str], None] | None = None,
+        on_stage: Callable[[StageUpdate], None] | None = None,
     ) -> EditorialSourcePlan: ...
 
 

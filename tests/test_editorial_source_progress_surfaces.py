@@ -161,8 +161,8 @@ def test_cached_asset_checks_do_not_repeat_logs_or_ui_writes_and_still_cancel(ca
         update_ui(_status("Reading the period"))
         assert state["phase_label"] == "Reading the period"
         assert caplog.messages.count("Reading the period") == 1
-        update_ui({**_status("Reading the period"), "current_index": 4, "completed_count": 4})
-        assert state["current_index"] == state["completed_count"] == 4
+        update_ui({**_status("Reading the period"), "current_index": 4, "total_items": 9})
+        assert (state["current_index"], state["total_items"]) == (4, 9)
         update_ui(_status("Reading the period", status="complete"))
         assert state["status"] == "complete"
         cancel["requested"] = True

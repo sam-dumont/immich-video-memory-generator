@@ -35,8 +35,9 @@ from immich_memories.ui.auth import (
     trigger_token_authorizes,
 )
 from immich_memories.ui.health_api import register_health_routes
+from immich_memories.ui.media_route import register_media_route
 from immich_memories.ui.reverse_proxy import reverse_proxy_run_kwargs
-from immich_memories.ui.state import ensure_config, get_app_state
+from immich_memories.ui.state import ensure_config, get_app_state, peek_app_state
 from immich_memories.ui.theme import apply_theme, render_theme_toggle
 from immich_memories.ui.trigger_api import register_trigger_routes
 
@@ -351,6 +352,16 @@ register_health_routes(app)
 register_trigger_routes(app)
 
 
+def _session_thumbnail_cache():
+    session = peek_app_state()
+    return session.thumbnail_cache if session else None
+
+
+# /media/thumb/{asset_id}: every thumbnail the pages show, served from the session's
+# cache instead of inlined as a data URI — see ui/media_route.py.
+register_media_route(app, _session_thumbnail_cache)
+
+
 # ============================================================================
 # Auth: Middleware + Routes
 # ============================================================================
@@ -616,11 +627,16 @@ def _is_port_free(host: str, port: int) -> bool:
         sock.close()
 
 
-def main(port: int = 8080, host: str = "0.0.0.0", reload: bool = False) -> None:  # noqa: S104
+def main(
+    port: int = 8080,
+    host: str = "0.0.0.0",  # noqa: S104
+    reload: bool = False,
+    log_level: str | None = None,
+) -> None:
     """Run the NiceGUI application."""
     from immich_memories.logging_config import configure_logging
 
-    configure_logging()
+    configure_logging(level=log_level)
     if not _is_port_free(host, port):
         logger.error(
             f"Port {port} is already in use. "

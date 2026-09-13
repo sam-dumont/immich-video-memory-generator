@@ -22,7 +22,7 @@ from nicegui import background_tasks, run, ui
 
 from immich_memories.analysis.editorial_planner import EditorialSelection
 from immich_memories.api.models import AssetType, VideoClipInfo
-from immich_memories.operations.cut_progress import StageProgress, read_stage_progress
+from immich_memories.operations.cut_progress import StageUpdate, read_stage_progress
 from immich_memories.operations.editorial_attempt import read_editorial_attempt
 from immich_memories.operations.phases import OperationalPhase
 from immich_memories.security import sanitize_error_message
@@ -151,20 +151,23 @@ def latest_attempt_of(state: AppState) -> dict[str, Any] | None:
     return read_latest_attempt(attempt_root(state), since=state.cut_armed_at)
 
 
-def live_progress_of(record: Mapping[str, Any] | None) -> StageProgress | None:
-    """The numbers the attempt is reporting right now, read from that same attempt.
+def live_progress_of(record: Mapping[str, Any] | None) -> StageUpdate | None:
+    """The numbers the attempt is reporting right now, read from its own record.
 
     Going through the record rather than the session's own key is what makes a
-    reload rejoin the bar exactly where it rejoins the rows. A finished per-asset
-    pass leaves its last snapshot on disk, so the stage it names has to match the
-    stage the attempt is on: otherwise a full bar would sit under a row that has
-    long since moved on to work that counts nothing.
+    reload rejoin the bar exactly where it rejoins the rows. A stage that counts
+    nothing carries no numbers, so a finished per-asset pass never leaves a
+    full bar under a row that has moved on to other work.
     """
+    progress = StageUpdate.from_record((record or {}).get("progress"))
+    return progress if progress is not None and progress.counted else None
+
+
+def recent_pictures_of(record: Mapping[str, Any] | None) -> tuple[str, ...]:
+    """The pictures the attempt's last counted pass finished most recently."""
     directory = (record or {}).get("directory")
-    progress = read_stage_progress(Path(directory)) if directory else None
-    if progress is None or progress.stage_label != str((record or {}).get("stage") or ""):
-        return None
-    return progress
+    snapshot = read_stage_progress(Path(directory)) if directory else None
+    return snapshot.recent_asset_ids if snapshot is not None else ()
 
 
 def phase_of(record: Mapping[str, Any] | None) -> CutStatus:
@@ -174,10 +177,12 @@ def phase_of(record: Mapping[str, Any] | None) -> CutStatus:
     stage = str(record.get("stage") or "")
     if record.get("status") == "complete":
         return CutStatus(OperationalPhase.COMPLETE, stage)
-    # Annotation production announces itself as "Preparing ..."; everything after is the edit.
-    if stage.startswith("Preparing"):
-        return CutStatus(OperationalPhase.ANALYSIS, stage)
-    return CutStatus(OperationalPhase.SELECTION, stage)
+    progress = StageUpdate.from_record(record.get("progress"))
+    try:
+        phase = OperationalPhase(progress.phase) if progress is not None else None
+    except ValueError:
+        phase = None
+    return CutStatus(phase or OperationalPhase.ANALYSIS, stage)
 
 
 def elapsed_label(started_at: str | None, now: datetime | None = None) -> str:
@@ -238,6 +243,7 @@ def restore_cut_from_attempt(state: AppState, attempt_dir: Path, record: Mapping
     state.editorial_selections = tuple(selections)
     state.selected_clip_ids = set(segments)
     state.selected_photo_ids = {c.asset.id for c in selected if c.asset.type == AssetType.IMAGE}
+    state.previous_cut_asset_ids = frozenset(segments)
     state.clip_segments = segments
     state.editorial_attempt_dir = attempt_dir
     state.pipeline_result = {
@@ -377,9 +383,8 @@ def render_cutting(state: AppState) -> None:
         status = phase_of(record)
         rows.paint(status)
         log.remember(status.detail)
-        progress = live_progress_of(record)
-        bar.show(progress)
-        strip.show(progress.recent_asset_ids if progress is not None else ())
+        bar.show(live_progress_of(record))
+        strip.show(recent_pictures_of(record))
         if record is not None and not state.cancel_requested:
             elapsed.set_text(f"Elapsed: {elapsed_label(record.get('started_at'))}")
 

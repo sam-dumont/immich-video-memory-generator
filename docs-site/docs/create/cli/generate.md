@@ -121,6 +121,11 @@ tier. `--quality` changes the effective CRF preset; an explicit `output.crf` in 
 more precise control. The app passes it directly to software H.264/H.265 and maps it onto each hardware backend's own
 quantiser scale, with a measured offset per backend (VAAPI, QSV and NVENC each take +2).
 
+### Verbosity (root option)
+
+`-v` before the subcommand logs at `DEBUG`: `immich-memories -v generate --month 6`. To see less,
+`--log-level WARNING`. Neither touches the progress display; that is `generate --quiet`.
+
 ### Preset (root option)
 
 `--preset fast` is a root option: it goes before `generate`, as in `immich-memories --preset fast
@@ -329,6 +334,22 @@ Include photos alongside videos:
 ```bash
 immich-memories generate --year 2024 --include-photos --photo-duration 5.0
 ```
+
+## What the terminal shows while it runs
+
+One line per stage, the way the web UI shows one row per phase. A stage that counts its work
+(the preparation passes: previews, pixel facts, detectors) turns the spinner into a bar with the
+count and an estimate:
+
+```text
+⠿ Preparing previews: 352/10793 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━   3%
+  ⏱ 0:41 elapsed, ~20:12 remaining
+```
+
+The estimate is elapsed time scaled by the fraction done, so it appears once a stage is past 5 %
+and it is only as good as the pass is even. Stages that count nothing (*Reading event evidence*,
+*Editing the memory*) keep the spinner and the elapsed time. The stage sequence and the counts are
+the same record the web UI draws its bar from; `--quiet` replaces all of it with log lines.
 
 ## Time Period Options
 

@@ -332,3 +332,45 @@ def test_blocking_pipeline_remembers_where_the_cut_wrote_its_plan(tmp_path) -> N
     state.reset_clips()
 
     assert state.editorial_attempt_dir is None
+
+
+def test_a_tick_the_last_cut_did_not_make_reaches_the_editor_as_a_requirement() -> None:
+    kept, added = _photo("keep-photo"), _photo("add-photo")
+    state = AppState(
+        config=Config(),
+        immich_url="http://immich.test",
+        immich_api_key="test-key",
+        date_ranges=[_WINDOW],
+        include_photos=True,
+        photo_assets=[kept, added],
+        thumbnail_cache=MagicMock(),
+        previous_cut_asset_ids=frozenset({"keep-photo"}),
+    )
+    result_clip = VideoClipInfo(asset=added, duration_seconds=4.0, width=4000, height=3000)
+    selection_result = PipelineResult(
+        selected_clips=[result_clip],
+        clip_segments={"add-photo": (0.0, 4.0)},
+        errors=[],
+        stats={},
+    )
+    pipeline = _source_pipeline(selection_result)
+    progress_state = {"cancelled": False, "done": False, "error": None}
+
+    with (
+        # WHY: Immich is the external boundary the blocking pipeline call reaches.
+        patch("immich_memories.ui.pages.clip_pipeline.SyncImmichClient") as client_cls,
+        # WHY: the pipeline is a stand-in; the test reads the context the builder was handed.
+        patch(
+            "immich_memories.analysis.editorial_runtime.build_smart_pipeline", return_value=pipeline
+        ) as build,
+        # WHY: get_config would read the developer's own config.yaml off disk.
+        patch("immich_memories.config.get_config", return_value=state.config),
+    ):
+        client_cls.return_value.__enter__.return_value = MagicMock()
+        _run_pipeline_blocking(state, PipelineConfig(), [], [kept, added], progress_state)
+
+    assert progress_state["error"] is None
+    context = build.call_args.kwargs["editorial_context"]
+    assert context.owner_required_asset_ids == ("add-photo",)
+    # The result becomes the reference for the next round of ticks.
+    assert state.previous_cut_asset_ids == frozenset({"add-photo"})
