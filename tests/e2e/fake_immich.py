@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Self
 from urllib.parse import parse_qs, urlsplit
 
-from tests.e2e.fake_library import LIBRARY, Picture
+from tests.e2e.fake_library import ALL_PICTURES, Picture
 
 _MONTH_BUCKET = "2024-06-01T00:00:00.000Z"
 
@@ -33,8 +33,8 @@ _VIDEO_DURATION = 4.0
 # thumbnail taken at the halfway point still shows the middle of the picture.
 _PAN_HEADROOM = 1.25
 
-_VIDEOS = tuple(picture for picture in LIBRARY if picture.is_video)
-_PHOTOS = tuple(picture for picture in LIBRARY if not picture.is_video)
+_VIDEOS = tuple(picture for picture in ALL_PICTURES if picture.is_video)
+_PHOTOS = tuple(picture for picture in ALL_PICTURES if not picture.is_video)
 
 
 def _asset_payload(picture: Picture) -> dict[str, Any]:
@@ -78,12 +78,45 @@ TIMELINE_ASSETS = tuple(_asset_payload(picture) for picture in _VIDEOS) + tuple(
 )
 
 
+def _month_of(taken_at: str) -> str:
+    """The MONTH bucket an asset falls in, in the form Immich returns."""
+    return f"{taken_at[:7]}-01T00:00:00.000Z"
+
+
 def _assets_for_query(query: dict[str, list[str]]) -> list[dict[str, Any]]:
     requested_type = query.get("type", [None])[0]
+    requested_bucket = query.get("timeBucket", [None])[0]
     return [
         asset
         for asset in TIMELINE_ASSETS
-        if requested_type is None or asset["type"] == requested_type
+        if (requested_type is None or asset["type"] == requested_type)
+        and (requested_bucket is None or _month_of(asset["fileCreatedAt"]) == requested_bucket)
+    ]
+
+
+def _buckets_for_query(query: dict[str, list[str]]) -> list[dict[str, Any]]:
+    """One MONTH bucket per month that holds a matching asset, newest first like Immich."""
+    counts: dict[str, int] = {}
+    for asset in _assets_for_query({k: v for k, v in query.items() if k != "timeBucket"}):
+        month = _month_of(asset["fileCreatedAt"])
+        counts[month] = counts.get(month, 0) + 1
+    return [
+        {"count": count, "timeBucket": month}
+        for month, count in sorted(counts.items(), reverse=True)
+    ]
+
+
+def _assets_for_search(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """The metadata search honours the type and the taken-at window, like the real one."""
+    requested_type = payload.get("type")
+    taken_after = payload.get("takenAfter")
+    taken_before = payload.get("takenBefore")
+    return [
+        asset
+        for asset in TIMELINE_ASSETS
+        if (requested_type is None or asset["type"] == requested_type)
+        and (taken_after is None or asset["fileCreatedAt"] >= taken_after)
+        and (taken_before is None or asset["fileCreatedAt"] <= taken_before)
     ]
 
 
@@ -330,10 +363,7 @@ def _handler_type(
                 )
                 return
             if path == "/api/timeline/buckets":
-                self._send_json(
-                    200,
-                    [{"count": len(_assets_for_query(query)), "timeBucket": _MONTH_BUCKET}],
-                )
+                self._send_json(200, _buckets_for_query(query))
                 return
             if path == "/api/timeline/bucket":
                 self._send_json(200, _assets_for_query(query))
@@ -373,12 +403,7 @@ def _handler_type(
             path = urlsplit(self.path).path
             if path == "/api/search/metadata":
                 payload = self._read_json()
-                requested_type = payload.get("type")
-                items = [
-                    asset
-                    for asset in TIMELINE_ASSETS
-                    if requested_type is None or asset["type"] == requested_type
-                ]
+                items = _assets_for_search(payload)
                 self._send_json(
                     200,
                     {
