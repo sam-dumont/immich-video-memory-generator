@@ -87,7 +87,7 @@ Two exceptions to "everything is written":
 | **Analysis** | a SQLite table the retired clip scorer used to fill | nothing: no code writes it any more |
 | **Video** | downloaded source videos | re-download from Immich; bounded by the cache size limit and evicted automatically |
 | **Thumbnail** | Immich previews, read back for pixel facts, the context heads, contact sheets, captions and the clip review grid | re-fetched from Immich on demand, and re-captioned where a banked caption failure no longer matches |
-| **Preview** | the `.mp4` previews the wizard plays back | regenerated when you next preview |
+| **Preview** | the `.mp4` previews the review page plays back | regenerated when you next preview |
 
 The expensive thing on disk is not in that list and not behind those buttons: the editor's banks
 live in `annotations.sqlite` under the cache directory, and hold every caption, head answer,

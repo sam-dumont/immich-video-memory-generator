@@ -167,7 +167,7 @@ reaches it. `auto install` copies `PATH`, `ACESTEP_CHECKPOINTS_DIR`, `ACESTEP_ML
 `IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32`, and `PYTORCH_MPS_HIGH_WATERMARK_RATIO` from the shell you
 install from into the plist or unit, and nothing else, since `IMMICH_MEMORIES_*` also holds
 credentials. Change one of them and re-run `auto install`. See
-[`auto install`](../../create/cli/auto.md#what-environment-the-scheduled-job-sees).
+[`auto install`](../../create/cli/auto.md#auto-install).
 :::
 
 ## Precedence
