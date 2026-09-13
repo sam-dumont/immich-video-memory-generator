@@ -230,7 +230,7 @@ tests/integration/
 **Config:**
 - New config options MUST have a sane default
 - User-facing options go in Tier 1 (top-level YAML). Everything else in Tier 2 (`advanced:`)
-- Tier 2 sections (`_TIER2_SECTIONS` in `config_loader.py`): analysis, hardware, llm, musicgen, ace_step, server, auth, automation, notifications, triage, editorial
+- Tier 2 sections (`_TIER2_SECTIONS` in `config_loader.py`): analysis, hardware, llm, musicgen, ace_step, server, auth, automation, notifications, triage, editorial, inference
 - At runtime, all sections are flat on Config (`config.analysis`, not `config.advanced.analysis`)
 - Do NOT add migration/compat shims for renamed fields — deprecate, document, remove
 

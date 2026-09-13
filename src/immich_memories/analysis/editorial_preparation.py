@@ -27,8 +27,11 @@ from immich_memories.analysis.editorial_preparation_pixels import (
     refresh_threshold,
     remember_pixel,
 )
+from immich_memories.analysis.editorial_preparation_remote import prepare_remote_facts
+from immich_memories.analysis.remote_facts import RemoteFactsError, offloaded_versions
 from immich_memories.api.models import Asset
 from immich_memories.config_models_editorial_preparation import EditorialPreparationConfig
+from immich_memories.config_models_inference import InferenceConfig
 from immich_memories.config_models_triage import TriageConfig
 from immich_memories.operations.cancellation import check_cancelled as current_check_cancelled
 from immich_memories.store.editorial_preparation import (
@@ -146,6 +149,7 @@ class _Acquisition:
     providers: PreparationPorts
     preparation_config: EditorialPreparationConfig
     triage_config: TriageConfig
+    inference_config: InferenceConfig
     store_path: Path
     preview_for: Callable[[str], bytes]
     check: Callable[[], None]
@@ -220,6 +224,39 @@ class _Acquisition:
         except Exception as exc:
             self.failures["public_heads"] = f"{type(exc).__name__}: {exc}"
 
+    def remote_facts(self, pending: Mapping[str, Mapping[str, str]]) -> bool:
+        """Bank the offloaded producers from the service; False when it did not answer.
+
+        A failure is never silent: it is recorded against the endpoint in the
+        preparation report, which both surfaces print, and says whether the local
+        producers took over. Whatever the service banked before failing stays
+        banked; the local path re-derives only what is still missing.
+        """
+        if not pending:
+            return True
+        self.check()
+        try:
+            with self.timed("remote_facts", len(pending)):
+                prepare_remote_facts(
+                    pending=pending,
+                    store_path=self.store_path,
+                    config=self.inference_config,
+                    preview_for=self.preview_for,
+                    check_cancelled=self.check,
+                    progress=self.report,
+                    on_asset=self.note,
+                )
+            return True
+        except RemoteFactsError as exc:
+            endpoint = self.inference_config.facts_base_url
+            outcome = (
+                "the local producers took over"
+                if self.inference_config.fallback_to_local
+                else "no local fallback (inference.fallback_to_local is off)"
+            )
+            self.failures["remote_facts"] = f"inference service at {endpoint}: {exc}; {outcome}"
+            return False
+
     def detectors(
         self, pending: Mapping[str, Sequence[str]], preview_paths: Mapping[str, Path]
     ) -> None:
@@ -272,6 +309,7 @@ def prepare_editorial_annotations(
     preparation_config: EditorialPreparationConfig,
     triage_config: TriageConfig,
     head_versions: Mapping[str, str],
+    inference_config: InferenceConfig | None = None,
     description_model: str = DESCRIPTION_MODEL,
     pixel_producer_key: str = PRODUCER_KEY,
     fetch_preview: Callable[[str], bytes | None] | None = None,
@@ -297,6 +335,7 @@ def prepare_editorial_annotations(
         providers=ports or PreparationPorts(),
         preparation_config=preparation_config,
         triage_config=triage_config,
+        inference_config=inference_config or InferenceConfig(),
         store_path=store_path,
         preview_for=lambda asset_id: cached_preview(cache_path, asset_id),
         check=check_cancelled or current_check_cancelled,
@@ -388,6 +427,7 @@ def _acquire_model_facts(
     head_versions: Mapping[str, str],
     preview_paths: Mapping[str, Path],
 ) -> None:
+    head_versions = _after_remote(stage, before, ids, available, head_versions)
     requested_public = {
         head: version for head, version in head_versions.items() if head in PUBLIC_HEAD_VERSIONS
     }
@@ -398,6 +438,33 @@ def _acquire_model_facts(
     if detector_pending:
         stage.detectors(detector_pending, preview_paths)
     _record_unpackaged_heads(pending, head_versions, stage.failures)
+
+
+def _after_remote(
+    stage: _Acquisition,
+    before: Mapping[str, Sequence[str]],
+    ids: Sequence[str],
+    available: set[str],
+    head_versions: Mapping[str, str],
+) -> Mapping[str, str]:
+    """Offload what the service answers for; return the head versions left to the local producers."""
+    if not stage.inference_config.enabled:
+        return head_versions
+    offloaded = offloaded_versions(head_versions, stage.inference_config.producers)
+    missing = {
+        head: set(before.get(f"head:{head}@{version}", ())) for head, version in offloaded.items()
+    }
+    pending = {
+        asset_id: {
+            head: version for head, version in offloaded.items() if asset_id in missing[head]
+        }
+        for asset_id in ids
+        if asset_id in available
+    }
+    served = stage.remote_facts({key: value for key, value in pending.items() if value})
+    if served or not stage.inference_config.fallback_to_local:
+        return {head: version for head, version in head_versions.items() if head not in offloaded}
+    return head_versions
 
 
 def _ensure_sharpness_threshold(connection: sqlite3.Connection, pixel_producer_key: str) -> None:

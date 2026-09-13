@@ -75,6 +75,7 @@ def _run_preparation(client, config: Config, assets) -> tuple[ProducerClock, Pre
         preparation_config=config.editorial.preparation,
         triage_config=config.triage,
         head_versions=config.editorial.head_versions,
+        inference_config=config.inference,
         description_model=config.editorial.description_model,
         pixel_producer_key=config.editorial.pixel_producer_key,
         fetch_preview=lambda asset_id: client.get_asset_thumbnail(asset_id, size="preview"),
