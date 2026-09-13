@@ -126,6 +126,9 @@ def test_capture_memory_walkthrough(
     _hide_sidebar(page)
     _save(page, d, _name("hero-memory", theme))
     _show_sidebar(page)
+    page.get_by_role("tab", name="Story", exact=True).click()
+    expect(page.get_by_text("3 stories, 6 pictures", exact=True)).to_be_visible()
+    _save(page, d, _name("memory-story-ranked", theme))
 
     export.click()
     page.wait_for_url("**/step4", timeout=30_000)

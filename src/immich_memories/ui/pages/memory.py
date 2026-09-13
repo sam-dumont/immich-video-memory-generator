@@ -27,6 +27,11 @@ from immich_memories.ui.pages.memory_run import (
 )
 from immich_memories.ui.pages.memory_story import render_story
 from immich_memories.ui.pages.memory_story_data import StoryView, read_story_view
+from immich_memories.ui.pages.memory_storyboard import (
+    Storyboard,
+    read_storyboard,
+    render_storyboard,
+)
 from immich_memories.ui.pages.step2_review import reset_for_recut
 from immich_memories.ui.state import get_app_state
 
@@ -103,6 +108,22 @@ def _render_actions(
         )
 
 
+def _render_views(view: StoryView, board: Storyboard | None, warning: str | None) -> None:
+    """The storyboard first, since that is the video; the weighed story one tab away."""
+    if board is None:
+        render_story(view, warning=warning)
+        return
+    with ui.tabs().classes("w-full") as tabs:
+        storyboard_tab = ui.tab("Storyboard", icon="view_timeline")
+        story_tab = ui.tab("Story", icon="auto_stories")
+    # No slide between the two readings of one cut: a screenshot mid-animation shows both.
+    with ui.tab_panels(tabs, value=storyboard_tab, animated=False).classes("w-full"):
+        with ui.tab_panel(storyboard_tab):
+            render_storyboard(board, note=view.preparation, warning=warning)
+        with ui.tab_panel(story_tab):
+            render_story(view, warning=warning)
+
+
 def _render_cut_result(state: AppState, result: dict) -> None:
     view = _story_view(state)
     if view is None:
@@ -110,7 +131,10 @@ def _render_cut_result(state: AppState, result: dict) -> None:
         render_pipeline_summary(result)
     else:
         realization = result.get("stats", {}).get("editorial_duration_realization")
-        render_story(view, warning=editorial_duration_warning(realization))
+        board = (
+            read_storyboard(state.editorial_attempt_dir) if state.editorial_attempt_dir else None
+        )
+        _render_views(view, board, editorial_duration_warning(realization))
     _render_actions(state)
 
 
@@ -128,7 +152,8 @@ def _render_recovered(state: AppState, record: Mapping[str, Any]) -> None:
         return
     view = read_story_view(attempt_dir)
     if view is not None:
-        render_story(view, warning=editorial_duration_warning(record.get("duration_realization")))
+        warning = editorial_duration_warning(record.get("duration_realization"))
+        _render_views(view, read_storyboard(attempt_dir), warning)
     im_info_card(
         "This cut finished while the page was away. Re-load its media to export it.",
         variant="info",
