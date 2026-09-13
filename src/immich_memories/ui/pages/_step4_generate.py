@@ -246,6 +246,7 @@ def _build_generation_params(state, selected_clips, output_path):
         photo_assets=None,
         target_duration_seconds=state.target_duration_seconds,
         timeline_plan=state.timeline_plan,
+        editorial_attempt_dir=state.editorial_attempt_dir,
         editorial_render_timing=getattr(state, "editorial_render_timing", None),
         editorial_duration_realization=(
             (getattr(state, "pipeline_result", None) or {})

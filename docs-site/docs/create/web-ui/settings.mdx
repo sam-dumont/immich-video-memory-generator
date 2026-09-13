@@ -4,7 +4,43 @@ sidebar_label: "Settings"
 
 # Settings
 
-Three pages sit outside the memory flow, reachable from the sidebar at any time: **Config** (`/settings/config`), **People** (`/settings/people`) and **Cache** (`/settings/cache`). People is documented with [`immich-memories people`](../cli/people.md), which writes the same file.
+Three pages sit outside the memory flow, reachable from the sidebar at any time: **Config** (`/settings/config`), **People** (`/settings/people`) and **Cache** (`/settings/cache`). The CLI side of People is [`immich-memories people`](../cli/people.md), which writes the same file.
+
+## People: confirming who's who
+
+`/settings/people` is the editor for the people file (`~/.immich-memories/people.yaml`). The scan
+reads every named person's picture count and month curve from Immich, and never a pixel. The page
+shows what it inferred and gives you one place to answer.
+
+**Start with a scan.** A fresh install shows "No people file yet". Press **Rescan the library**:
+it reads the counts, writes the file and draws the roster. Rescan again whenever the library has
+changed. Everything under `inferred:` is recomputed by a scan; everything you confirm on this page
+is written under `confirmed:` and a scan never touches it. Confirmed beats inferred.
+
+**The roster** lists people 20 to a page, inner circle first, busiest first within a tier. Each
+card carries the tier the scan gave (`inner`, `recurring`, `episodic`, `event`) and the evidence
+behind it, the birth date from Immich (read-only here: edit it in Immich), and a face crop.
+Face crops load as the cards come into view, through the app's own media route, so a household
+of seventy is not seventy requests before the page draws.
+
+**What you can answer on a card:**
+
+- **Role**: pick one of the suggestions or type your own. Saved when you pick it.
+- **Notes**: free text for the editor's context, saved once you stop typing for a second. The
+  same text typed twice is not written twice.
+- **Relationships**: the scan proposes edges (co-appearance, birth date, month curves) with its
+  confidence. ✓ confirms, ✗ rejects, pressing the same answer again takes it back. **Add
+  relationship** records one the scan missed; one answer updates both people. Confirmed edges
+  show a badge and a delete icon; inferred ones stay proposals until you answer.
+
+**Add someone not in Immich** creates a person with no face record, for somebody who matters to
+the stories but was never tagged. They get a local id and can carry relationships like anyone else.
+
+Nothing on this page reloads the browser: a role change, a note, an added person or a removed
+relationship redraws the roster in place and keeps your place on the page.
+
+**Curation** at the top lists what only Immich can fix: two records with one name, or a person
+split across records. Each flag links to the record in Immich.
 
 ## Config: what is actually running
 
