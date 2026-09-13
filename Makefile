@@ -2,7 +2,7 @@
 # Uses uv for fast Python package management
 export PYTHONUNBUFFERED=1
 
-.PHONY: docs-voice notices notices-check help install dev dev-ci dev-test run preflight parity docs-cli-check docs-config-check test test-extras test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-audio-mixing test-integration-titles test-fast benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci integration-coverage-for-diff ci critique ensure-dev commitlint privacy-gate pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots demo-output demo-output-trip diagrams capability-matrix
+.PHONY: docs-voice notices notices-check help install dev dev-ci dev-test run preflight parity docs-cli-check docs-config-check test test-extras test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-audio-mixing test-integration-titles test-fast benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell compose-check file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci integration-coverage-for-diff ci critique ensure-dev commitlint privacy-gate pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots demo-output demo-output-trip diagrams capability-matrix
 
 # Default target
 help:
@@ -46,6 +46,7 @@ help:
 	@echo "  build        Build the package"
 	@echo "  docker       Build Docker image"
 	@echo "  docker-run   Run Docker container"
+	@echo "  compose-check Check docker-compose.yml parses on its own, with nothing beside it"
 	@echo ""
 	@echo "Cache Management:"
 	@echo "  cache-stats           Show analysis cache stats"
@@ -615,7 +616,7 @@ launch-check-ci: ensure-dev e2e
 	@echo "Hermetic launch check passed!"
 
 # Full CI-equivalent pipeline (locally)
-ci: ensure-dev lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint semgrep refurb dep-check arch-check duplication critique docs-cli-check docs-config-check docs-voice notices-check test
+ci: ensure-dev lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint semgrep refurb dep-check arch-check duplication critique docs-cli-check docs-config-check docs-voice notices-check compose-check test
 	@echo "Full CI pipeline passed!"
 
 # Self-critique for AI code smells
@@ -686,6 +687,36 @@ docker-shell:
 		--mount type=volume,source=$(IMMICH_CONFIG_VOLUME),target=/home/immich/.immich-memories \
 		--mount type=volume,source=$(IMMICH_OUTPUT_VOLUME),target=/app/output \
 		$(DOCKER_IMAGE):$(DOCKER_TAG) /bin/bash
+
+# The README, docker.md and self-hosting.md all say: curl one file, compose up.
+# That only works if the file resolves with nothing next to it, and an `extends:`
+# pointing at docker/ broke it at parse time before any profile was considered.
+# Copying it alone into an empty directory is the only way to catch that: from a
+# checkout the companion file is always there and the parse always succeeds.
+# The guard tests `docker compose version`, not `command -v docker`: on macOS the
+# compose plugin lives under $HOME/.docker, so a gate run with a throwaway HOME
+# has the docker binary and no compose subcommand.
+# Both profiles, because `config` drops a profiled service from its output: the
+# default run is the one users take, the second one reads the inference body.
+compose-check:  ## Fail when docker-compose.yml needs a file that a curl of it alone does not bring
+	@if ! docker compose version >/dev/null 2>&1; then \
+		echo "compose-check SKIPPED: no 'docker compose' here (a skip is not a pass)"; \
+	else \
+		tmp=$$(mktemp -d) || exit $$?; \
+		trap 'rm -rf "$$tmp"' EXIT INT TERM; \
+		cp docker-compose.yml "$$tmp/docker-compose.yml"; \
+		cd "$$tmp" || exit $$?; \
+		export IMMICH_URL=http://immich.example:2283 IMMICH_API_KEY=compose-check; \
+		docker compose config >/dev/null || { \
+			echo "docker-compose.yml does not stand alone: it reads a file that a curl of the raw URL does not bring"; \
+			exit 1; \
+		}; \
+		docker compose --profile inference config >/dev/null || { \
+			echo "docker-compose.yml stands alone until the inference profile is asked for"; \
+			exit 1; \
+		}; \
+		echo "docker-compose.yml stands alone, both profiles"; \
+	fi
 
 # =============================================================================
 # Cleanup
