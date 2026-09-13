@@ -23,7 +23,7 @@
   <sub><a href="https://sam-dumont.github.io/immich-video-memory-generator/docs/welcome/overview">▶ Watch the 45-second demo</a> · <a href="https://sam-dumont.github.io/immich-video-memory-generator/docs/create/first-memory">Make your first memory</a> · <a href="https://sam-dumont.github.io/immich-video-memory-generator/">Full documentation</a></sub>
 </p>
 
-You left Google Photos for Immich and lost the year-in-review videos. This brings them back, on your hardware.
+The year-in-review videos your phone's cloud used to make, generated from your own Immich library, on your own hardware.
 
 ## What leaves your machine
 
