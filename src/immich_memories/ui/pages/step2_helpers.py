@@ -142,14 +142,24 @@ def _get_preview_path(asset_id: str, *, config=None) -> Path | None:
     return None
 
 
-def _download_immich_preview(asset_id: str, *, config=None) -> Path | None:
+def _download_immich_preview(
+    asset_id: str,
+    *,
+    config=None,
+    immich: tuple[str | None, str | None, str | None] | None = None,
+) -> Path | None:
     """Download transcoded preview from Immich and cache locally.
 
     Used as fallback when the source video isn't in the local cache
-    (e.g. clips loaded from analysis cache without re-downloading).
+    (e.g. clips loaded from analysis cache without re-downloading). `immich`
+    carries (url, api key, api version) when the caller runs off the page
+    thread, where the session cannot be looked up.
     """
-    state = get_app_state()
-    if not state.immich_url or not state.immich_api_key:
+    if immich is None:
+        state = get_app_state()
+        immich = (state.immich_url, state.immich_api_key, state.immich_api_version)
+    immich_url, immich_api_key, immich_api_version = immich
+    if not immich_url or not immich_api_key:
         return None
 
     if config is None:
@@ -170,9 +180,9 @@ def _download_immich_preview(asset_id: str, *, config=None) -> Path | None:
         # left to the garbage collector strands an httpx client and its private
         # event loop.
         with SyncImmichClient(
-            base_url=state.immich_url,
-            api_key=state.immich_api_key,
-            api_version=state.immich_api_version,
+            base_url=immich_url,
+            api_key=immich_api_key,
+            api_version=immich_api_version,
         ) as client:
             video_bytes: bytes = client.get_video_playback(asset_id)
         if video_bytes and len(video_bytes) > 10_000:
