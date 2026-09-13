@@ -1,0 +1,20 @@
+# Reach the inference service from outside the cluster:
+#   kubectl apply -k overlays/inference        # or overlays/inference-cuda
+#   kubectl apply -k overlays/inference-lan
+#
+# Deliberately additive rather than a patch on the ClusterIP Service. A patch
+# would turn the one Service the app addresses into a LoadBalancer, so every
+# in-cluster caller would be riding an external address for no reason, and the
+# CUDA variant would need its own copy of the patch. A second Service composes
+# with either device overlay and leaves `http://inference:8092` alone.
+#
+# Apply it only when something outside the cluster has to call the service: a
+# NAS, another host, the setup matrix. `kubectl delete -k overlays/inference-lan`
+# takes the address back.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: immich-memories
+
+resources:
+  - service-lan.yaml

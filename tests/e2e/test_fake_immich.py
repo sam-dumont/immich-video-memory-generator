@@ -415,3 +415,29 @@ def test_unexpected_method_endpoint_pairs_return_json_diagnostics(
         "method": method,
         "path": "/api/not-implemented",
     }
+
+
+def test_the_library_can_be_served_on_every_interface(tmp_path: Path) -> None:
+    """The setup matrix serves this library to a NAS and a cluster over the LAN.
+
+    Binding a wildcard is the whole change. It is asserted here rather than in
+    the matrix tests because the contract belongs to this service: an address it
+    hands back must be one a caller can fetch, and every asset URL it serves must
+    stay relative so the host it was reached on is the host the client keeps using.
+    """
+    server = FakeImmichServer.start(tmp_path / "lan", host="0.0.0.0", port=0)  # noqa: S104
+    try:
+        assert server.base_url.startswith("http://127.0.0.1:")
+        assert server.listening_host == "0.0.0.0", "a loopback bind never reaches the NAS"  # noqa: S104
+
+        version = httpx.get(
+            f"{server.base_url}/api/server/version", headers={"x-api-key": server.api_key}
+        )
+        assert version.status_code == 200
+        thumbnail = httpx.get(
+            f"{server.base_url}/api/assets/{_PHOTO_IDS[0]}/thumbnail",
+            headers={"x-api-key": server.api_key},
+        )
+        assert thumbnail.status_code == 200
+    finally:
+        server.close()

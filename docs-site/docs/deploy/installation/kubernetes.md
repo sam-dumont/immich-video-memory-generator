@@ -16,7 +16,9 @@ deploy/kubernetes/
 ├── base/                    Namespace, Secret, PVCs, Deployment, Service, NetworkPolicy
 │   ├── job.yaml             optional CLI Job + CronJobs (commented out in kustomization.yaml)
 │   └── ingress.yaml.example optional Ingress, only after enabling authentication
-└── overlays/gpu/            + runtimeClassName nvidia, nvidia.com/gpu, node selector, tolerations
+├── overlays/gpu/            + runtimeClassName nvidia, nvidia.com/gpu, node selector, tolerations
+├── overlays/inference/      the inference service alone: Deployment, Service on 8092, cache PVC
+└── overlays/inference-cuda/ the same service on an NVIDIA card
 ```
 
 ## Prerequisites
@@ -88,6 +90,27 @@ first cut; the root filesystem is read-only, so the models live on the `/models`
 `nvidia.com/gpu.present=true` and a toleration for the `nvidia.com/gpu` taint. The app uses the
 card for NVENC encoding and GPU title rendering, nothing else: the editor's models are separate
 services, and the [inference service](./inference-service.md) has its own CUDA image.
+
+## Inference service
+
+`overlays/inference` deploys the [inference service](./inference-service.md) on its own: the
+encoder, the six heads and the two detectors behind one port, a ClusterIP Service named
+`inference` on 8092, a 10Gi cache PVC and its own NetworkPolicy. It does not include `base/`, so
+it builds with no Secret at all, and the two overlays are applied separately:
+
+```bash
+kubectl apply -k deploy/kubernetes/overlays/inference        # CPU
+kubectl apply -k deploy/kubernetes/overlays/inference-cuda   # NVIDIA nodes
+```
+
+`inference-cuda` adds `runtimeClassName: nvidia`, one `nvidia.com/gpu`, the `NVIDIA_*` env, the
+node selector and the toleration, and pins the `-cuda` image tag.
+
+Point the app at it with `IMMICH_MEMORIES_INFERENCE__FACTS_BASE_URL`, two underscores, set to
+`http://inference:8092` in the same namespace or
+`http://inference.immich-memories.svc.cluster.local:8092` from another. The base NetworkPolicy
+already allows egress on 8092. `curl /health` through a port-forward names the execution provider
+the service opened.
 
 ## Batch jobs
 

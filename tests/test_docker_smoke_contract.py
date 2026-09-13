@@ -8,11 +8,19 @@ the pool and every run ended in "Pipeline selected no clips".
 The third way it can die is the story-first route: a release runner has no text
 model and no prepared annotation store, so `generate` stops on the blank-model
 guard unless the hermetic editorial route is mounted into the container.
+
+The fourth killed v0.85.0 (#881), and it was the same mistake twice: the smoke
+was still written for the six-picture fixture #876 replaced. It handed the
+container `fake_library.py` without the directory that module globs to know which
+pictures exist, so the scripted editor kept none of the 133 sources the fake
+Immich served ("Pipeline selected no clips"), and it asked for 20 seconds, which
+is too short a budget to hold the eighteen carriers the month now ships.
 """
 
 from __future__ import annotations
 
 import ast
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -24,7 +32,10 @@ from immich_memories.analysis.source_filter import not_shot_here
 from immich_memories.analysis.source_quality import is_usable_source
 from immich_memories.api.models import Asset
 from immich_memories.config_models_analysis import AnalysisConfig
+from immich_memories.config_models_render import TitleScreenConfig
+from immich_memories.generate_clips import MIN_CLIP_DURATION
 from tests.e2e.fake_immich import TIMELINE_ASSETS, FakeImmichServer
+from tests.e2e.fake_library import CARRIERS, LIBRARY
 
 _SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "docker_smoke.py"
 
@@ -142,3 +153,87 @@ def test_mounted_bootstrap_imports_without_the_repository_tests_package(tmp_path
 
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "generate" in proc.stdout
+
+
+def test_the_mounted_route_reads_the_month_the_fake_immich_serves(tmp_path: Path) -> None:
+    """The staged library must hold the same pictures, or the cut comes back empty (#881).
+
+    `fake_library` decides which pictures exist by globbing its own directory, so
+    a container handed the module without the files keeps none of the sources the
+    host serves and the release ends in "Pipeline selected no clips".
+    """
+    injected = docker_smoke.prepare_editorial_fixture(tmp_path)
+    probe = (
+        "import sys; sys.path.insert(0, sys.argv[1]); "
+        "from tests.e2e.fake_library import CARRIERS, LIBRARY, STORY_OF; "
+        "print(len(LIBRARY), len(CARRIERS), len(STORY_OF))"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-I", "-c", probe, str(injected)],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert proc.stdout.split() == [str(len(LIBRARY)), str(len(CARRIERS)), str(len(CARRIERS))]
+
+
+def test_the_smoke_asks_for_a_memory_the_scripted_cut_fits_inside(tmp_path: Path) -> None:
+    """Too short an ask samples carriers out of a certified selection (#881).
+
+    `apply_final_content_budget` keeps at most `budget // MIN_CLIP_DURATION` clips,
+    and dropping one from a bound editorial timeline makes assembly refuse the
+    render. The fixture grew from six pictures to eighteen; the ask has to follow.
+    """
+    titles = TitleScreenConfig()
+    argv = docker_smoke.generate_argv(
+        image="ghcr.io/example/app@sha256:cafe",
+        container="smoke-test",
+        immich_url="http://127.0.0.1:9",
+        api_key="not-a-real-key",
+        out_dir=tmp_path / "output",
+        editorial_dir=tmp_path,
+    )
+
+    requested = float(argv[argv.index("--duration") + 1])
+    assert requested >= (
+        len(CARRIERS) * MIN_CLIP_DURATION + titles.title_duration + titles.ending_duration
+    )
+
+
+def test_the_bootstrap_counts_the_month_before_anything_selects(tmp_path: Path) -> None:
+    """An unreadable pool must stop the gate, not arrive as an editorial verdict (#881).
+
+    Pointed at a closed port, the bootstrap has to name the pool it could not read
+    and stop there — before a download, a render, or a "selected no clips" that
+    says nothing about the image.
+    """
+    injected = docker_smoke.prepare_editorial_fixture(tmp_path)
+    runner = (
+        "import runpy, sys; sys.path.insert(0, sys.argv[1]); "
+        "sys.argv = sys.argv[2:]; runpy.run_path(sys.argv[0], run_name='__main__')"
+    )
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-c",
+            runner,
+            str(injected),
+            str(injected / "smoke_bootstrap.py"),
+            "generate",
+        ],
+        cwd=tmp_path,
+        env={**os.environ, "IMMICH_URL": "http://127.0.0.1:9", "IMMICH_API_KEY": "not-a-real-key"},
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+
+    assert proc.returncode != 0
+    assert "smoke: cannot read the pool at http://127.0.0.1:9" in proc.stderr
+    assert "Downloading" not in proc.stdout

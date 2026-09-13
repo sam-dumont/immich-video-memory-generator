@@ -1,0 +1,20 @@
+# Named `inference` so the app's setting reads the way the docs write it:
+#   facts_base_url: http://inference:8092
+# Across namespaces that is inference.immich-memories.svc.cluster.local:8092.
+apiVersion: v1
+kind: Service
+metadata:
+  name: inference
+  namespace: immich-memories
+  labels:
+    app.kubernetes.io/name: immich-memories-inference
+    app.kubernetes.io/component: inference
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8092
+      targetPort: http
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: immich-memories-inference

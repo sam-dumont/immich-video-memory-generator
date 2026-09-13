@@ -23,9 +23,7 @@ from datetime import datetime
 from pathlib import Path
 
 import yaml
-
-from immich_memories.config_loader import _TIER2_SECTIONS, Config
-from immich_memories.config_presets import PRESETS
+from matrix_pinned_config import pinned_config
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = Path(__file__).with_suffix(".yaml")
@@ -43,59 +41,6 @@ class Result:
     @property
     def ok(self) -> bool:
         return self.error is None
-
-
-def _pinned_config(source: Path | None, dest: Path, pins: dict) -> Path:
-    """A copy of the config with the settings the matrix varies pinned to known values.
-
-    WHY at all: inheriting the developer's config means the rows test that
-    config, not the code. The first sweep ran every row at 4K because one local
-    line said so -- never touching 1080p, which is the shipped default and what
-    a NAS actually runs -- and two rows asserted flags their config already set,
-    so they re-rendered the baseline under a different name and reported "ok".
-
-    WHY the section walk: a tier-2 section may sit at top level (legacy) or
-    under `advanced:`, and the loader resolves the clash with `if key not in
-    data` -- top level wins. Writing the modern spelling into a config using the
-    old one leaves the edit inert.
-    """
-    source = source or Config.get_default_path()
-    if not source.exists():
-        raise SystemExit(
-            f"{source} does not exist, and the sweep needs a real config to copy "
-            "for its Immich credentials. Pass --config explicitly."
-        )
-    data = yaml.safe_load(source.read_text()) or {}
-
-    # WHY: `apply_preset` fills only fields the user has NOT set, so any key the
-    # local config happens to carry silently outranks the preset -- and the row
-    # renders a partial profile while claiming to show the whole one. Clearing
-    # the keys the preset owns hands them back to it. Explicit pins are applied
-    # after, so a row can still override one.
-    if "preset" in pins:
-        for section_name, values in PRESETS[pins["preset"]].items():
-            section = data.get(section_name)
-            if isinstance(section, dict):
-                for field in values:
-                    section.pop(field, None)
-
-    for dotted, value in pins.items():
-        section, _, leaf = dotted.partition(".")
-        if not leaf:
-            data[section] = value
-            continue
-        if section in data:
-            target = data[section]
-        elif section in data.get("advanced", {}):
-            target = data["advanced"][section]
-        elif section in _TIER2_SECTIONS:
-            target = data.setdefault("advanced", {}).setdefault(section, {})
-        else:
-            target = data.setdefault(section, {})
-        target[leaf] = value
-
-    dest.write_text(yaml.safe_dump(data, sort_keys=False))
-    return dest
 
 
 def _low_power_prefix() -> list[str]:
@@ -183,7 +128,7 @@ def _run(
     target = out_dir / f"{name}.mp4"
     args = [str(a).replace("{album}", album) for a in row["args"]]
     pins = {**baseline, **row.get("config", {})}
-    root = ["--config", str(_pinned_config(config, out_dir / f"{name}.yaml", pins))]
+    root = ["--config", str(pinned_config(config, out_dir / f"{name}.yaml", pins))]
 
     cmd = [
         *(_low_power_prefix() if row.get("low_power") else []),

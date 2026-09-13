@@ -1,0 +1,20 @@
+# The model cache, mounted at /cache: the digest-pinned DINOv2 and Marqo ONNX
+# exports, the two detector snapshots, and on the CUDA image a 512 MB cap of
+# driver JIT cache. Separate from the app's `immich-memories-models` PVC on
+# purpose: ReadWriteOnce means one node holds the volume, and tying the service
+# to the app's node is the one thing running it separately was meant to avoid.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: immich-memories-inference-cache
+  namespace: immich-memories
+  labels:
+    app.kubernetes.io/name: immich-memories-inference
+    app.kubernetes.io/component: inference
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  # storageClassName: local-path
