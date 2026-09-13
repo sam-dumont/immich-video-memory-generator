@@ -59,8 +59,8 @@ solo reels.
 immich-memories generate --memory-type multi_person --person "Riley" --person "Bob" --year 2025
 ```
 
-Use **Any of (OR)** in the web UI (or `--person-match or` on the CLI) to make one
-memory from every tagged appearance of any named person:
+Use **Any of these people** in the web UI (or `--person-match or` on the CLI) to make
+one memory from every tagged appearance of any named person:
 
 ```bash
 immich-memories generate --memory-type multi_person --person "Riley" --person "Bob" \
@@ -81,8 +81,9 @@ That one is every picture or video holding Riley and at least one of the two
 adults. `AND` means the same asset, not the same afternoon. The expression names
 its own people, so it replaces `--person` and `--person-match` rather than
 refining them: passing both is a usage error. The web UI has the same field,
-**Grouped people condition**, under the people picker. It covers date-range
-memories; trips, albums and a single-person birthday are refused.
+**Grouped people condition**, under the people picker's **Advanced people
+condition** panel. It covers date-range memories; trips, albums and a
+single-person birthday are refused.
 
 Default duration: the same one-minute-per-month rule as Person Spotlight, capped
 at 10 minutes. Title screens and default filenames say whether the people are
@@ -92,7 +93,8 @@ joined by AND or OR, so the two runs cannot overwrite one another.
 
 The same AND default applies wherever you name several people. Repeating
 `--person` on any CLI memory type can be changed to a union with
-`--person-match or`; the Memory page's ordinary **Only with** picker remains AND:
+`--person-match or`, and the Memory page's ordinary **Only with** picker offers
+the same **Together / Any of these people** toggle once a second name is in it:
 
 ```bash
 immich-memories generate --memory-type season --season summer --year 2025 --person "Riley" --person "Bob"

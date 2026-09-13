@@ -116,6 +116,7 @@ def list_memory_types() -> list[dict[str, str]]:
 def _year_in_review(
     year: int,
     person_names: list[str] | None = None,
+    person_match: str = "and",
     **kwargs,  # noqa: ARG001
 ) -> MemoryPreset:
     return MemoryPreset(
@@ -123,7 +124,7 @@ def _year_in_review(
         name=f"{year} Memories",
         description=f"A look back at your best moments of {year}",
         date_ranges=[calendar_year(year)],
-        person_filter=person_filter_for(person_names),
+        person_filter=person_filter_for(person_names, person_match=person_match),
         default_duration_seconds=600,  # ~50s per month × 12
     )
 
@@ -138,6 +139,7 @@ def _season(
     season: str | None = None,
     hemisphere: str = "north",
     person_names: list[str] | None = None,
+    person_match: str = "and",
     **kwargs,  # noqa: ARG001
 ) -> MemoryPreset:
     if season is None:
@@ -149,7 +151,7 @@ def _season(
         name=f"{season_cap} {year}",
         description=f"{season_cap} highlights of {year}",
         date_ranges=[date_range],
-        person_filter=person_filter_for(person_names),
+        person_filter=person_filter_for(person_names, person_match=person_match),
         default_duration_seconds=135,  # ~45s per month × 3
     )
 
@@ -237,6 +239,7 @@ def _monthly_highlights(
     year: int,
     month: int | None = None,
     person_names: list[str] | None = None,
+    person_match: str = "and",
     **kwargs,  # noqa: ARG001
 ) -> MemoryPreset:
     if month is None:
@@ -250,7 +253,7 @@ def _monthly_highlights(
         name=f"{month_name} {year}",
         description=f"Highlights from {month_name} {year}",
         date_ranges=[date_range],
-        person_filter=person_filter_for(person_names),
+        person_filter=person_filter_for(person_names, person_match=person_match),
         default_duration_seconds=60,
     )
 
@@ -264,6 +267,7 @@ def _on_this_day(
     target_date: date | None = None,
     years_back: int = 5,
     person_names: list[str] | None = None,
+    person_match: str = "and",
     **kwargs,  # noqa: ARG001
 ) -> MemoryPreset:
     if target_date is None:
@@ -277,7 +281,7 @@ def _on_this_day(
         name=f"{month_name} {target_date.day} Through the Years",
         description=f"Memories from {month_name} {target_date.day} across previous years",
         date_ranges=date_ranges,
-        person_filter=person_filter_for(person_names),
+        person_filter=person_filter_for(person_names, person_match=person_match),
         default_duration_seconds=45,  # ~30-45s — it's a single date across years
     )
 
@@ -361,6 +365,7 @@ def _holiday(
     years_back: int = 5,
     window_days: int = 2,
     person_names: list[str] | None = None,
+    person_match: str = "and",
     **kwargs,  # noqa: ARG001
 ) -> MemoryPreset:
     """A holiday is the date a library reliably has every year, so it spans them."""
@@ -377,7 +382,7 @@ def _holiday(
         name=f"{label} Through the Years",
         description=f"{label} across {years_back} years",
         date_ranges=build_holiday(holiday, year, years_back, window_days, today=today),
-        person_filter=person_filter_for(person_names),
+        person_filter=person_filter_for(person_names, person_match=person_match),
         default_duration_seconds=60,
     )
 

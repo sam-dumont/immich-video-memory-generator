@@ -26,7 +26,7 @@ The brief appears once Immich has answered. With credentials in `config.yaml` or
 | Year in Review | Year, Only with | 10 min |
 | Season | Year, Season (spring/summer/autumn/winter), Hemisphere (north/south), Only with | 2 min 15 s |
 | Person Spotlight | Year (or "All Time"), Person, checkbox "Birthday to birthday" | 10 min |
-| Multi-Person | Year, People (select 2+), Together (AND) / Any of (OR) | 10 min |
+| Multi-Person | Year, People (select 2+), Together / Any of these people | 10 min |
 | Monthly Highlights | Year, Month, Only with | 1 min |
 | On This Day | Only with (otherwise uses today's date across previous years) | 45 s |
 | Album | "Album" from your Immich albums | auto: 4 s per item in the album, bounded 30 s–10 min |
@@ -45,7 +45,11 @@ The brief appears once Immich has answered. With credentials in `config.yaml` or
 
 Every person picker is populated from Immich's face recognition data, so only named faces are offered.
 
-Two types are *about* people: **Person Spotlight** takes one person, **Multi-Person** takes 2 or more, with a **Together (AND) / Any of (OR)** toggle. Together requires every chosen person in each asset. Every other type that covers a period carries an optional **Only with** picker: leave it empty and the memory covers everyone; name several and only pictures and videos containing **all** of them are used, which is what repeating `--person` does on the CLI. A **Grouped people condition** field under the picker takes quoted names with AND, OR and parentheses when the picker cannot say it (`--people-expression` on the CLI).
+Two types are *about* people: **Person Spotlight** takes one person, **Multi-Person** takes 2 or more. Every other type that covers a period carries an optional **Only with** picker; leave it empty and the memory covers everyone.
+
+Two names or more raise one question, and one toggle answers it: **Together** keeps only the pictures and videos holding everyone named, which is what repeating `--person` does on the CLI, and **Any of these people** keeps anything holding one of them, which is `--person-match or`. Multi-Person shows the toggle from the start, since it takes two names to exist. **Only with** shows it when you pick a second name: with one name there is nothing to choose between.
+
+A **Grouped people condition** says what the toggle cannot: quoted names with AND, OR and parentheses, `--people-expression` on the CLI. It lives under **Advanced people condition**, folded away under the picker, because most first films never need it. The panel opens by itself when a condition is already set, so a filter is never narrowing a memory with nothing on screen saying so. Typing a condition replaces what the picker and the toggle say; touching either of them clears the condition.
 
 Three types carry no person filter: **Album** (the album decides), **Trip** (its window is taken whole; on the CLI `--person` narrows trip *detection*, not the finished video) and **Surprise me** (the occasion, not its guest list). **Custom date range** keeps its own single-person **Person** filter, defaulting to **All people**.
 
@@ -57,7 +61,7 @@ Three tabs: **Year** (a year, then **Calendar Year** or **From Birthday**, a bir
 
 <ThemedScreenshot name="memory-brief-advanced" alt="Advanced: the Immich connection panel, the pool switches and the media pool button" />
 
-**Advanced** holds three things:
+This is the page's own **Advanced**, at the bottom of the brief, not the **Advanced people condition** panel that belongs to the memory type's people picker above. It holds three things:
 
 - the **Immich connection** panel (URL, API key, Test Connection, Save Config; read [Settings](./settings.mdx#saving-config-from-the-memory-page-and-what-it-costs-you) before pressing Save);
 - the **pool switches** the selection route reads: **Include Photos**, **Include Live Photos** (the editor may play a Live Photo's motion when it earns it), **Accept Forwarded Media** (keep WhatsApp and other received media in the pool), **HDR clips only**;

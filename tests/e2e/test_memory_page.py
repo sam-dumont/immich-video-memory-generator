@@ -12,8 +12,10 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import Page, expect
 
+from immich_memories.api.person_expression import PersonExpression
 from immich_memories.ui.pages.clip_grid import CLIPS_PER_PAGE
 from immich_memories.ui.pages.memory_brief import MEMORY_TYPE_LABELS
+from immich_memories.ui.pages.step1_people import PEOPLE_CONDITION_PANEL
 from tests.e2e.fake_editorial import _EPISODES, PREVIEW_STAGE, STAGES
 from tests.e2e.fake_library import (
     CARRIERS,
@@ -45,6 +47,15 @@ _EDITING_STAGE = re.compile("^(" + "|".join(re.escape(stage) for stage in STAGES
 
 # The reading the editor gave a picture — a badge only the Details disclosure shows.
 _STANDINGS = re.compile(r"^(remarkable|maybe)$")
+
+# The Boolean override, and the fixture pictures holding both named faces.
+_CONDITION = '"Robin" AND "Kit"'
+_CONDITION_LABEL = PersonExpression.parse(_CONDITION).display_label
+_CONDITION_ASSETS = {
+    picture.asset_id for picture in LIBRARY if {"Robin", "Kit"} <= set(picture.people)
+}
+# The same two names read the plain way: any one of them is enough.
+_EITHER_ASSETS = {picture.asset_id for picture in LIBRARY if {"Robin", "Kit"} & set(picture.people)}
 
 
 def _active_stage(page: Page):
@@ -355,6 +366,23 @@ def _latest_request(launch_workspace) -> dict:
     ]
 
 
+def _attempts(launch_workspace) -> set[Path]:
+    return set(launch_workspace.cache_dir.glob("editorial-runs/*/attempts/*"))
+
+
+def _request_of_the_cut_after(launch_workspace, before: set[Path]) -> dict:
+    """The request this cut wrote, not one an earlier cut is still writing into.
+
+    A test that stops watching a run leaves it going, so the newest attempt on
+    disk belongs to whichever cut last touched a file. The attempt that was not
+    there before the click is the one this cut opened.
+    """
+    written = _attempts(launch_workspace) - before
+    assert written, "the cut opened no attempt"
+    newest = max(written, key=lambda path: path.stat().st_mtime)
+    return json.loads((newest / "status.private.json").read_text())["request"]
+
+
 def _evidence(page: Page, name: str) -> None:
     """Save a walk-through frame when UX_EVIDENCE_DIR is set (the owner's browser-tested rule)."""
     target = os.environ.get("UX_EVIDENCE_DIR")
@@ -423,3 +451,56 @@ def test_a_tick_survives_the_cut_and_cut_again_keeps_the_pool(
     page.get_by_role("button", name="Export", exact=True).click()
     expect(page.get_by_text("Preview & Export", exact=True).first).to_be_visible()
     _evidence(page, "08-export-page")
+
+
+def test_the_people_condition_waits_under_advanced_and_still_reaches_the_cut(
+    page: Page, launch_app_url: str, launch_workspace
+) -> None:
+    """Quoted names are the override, not the first screen, and they still narrow a cut (#887)."""
+    _brief_for_june(page, launch_app_url)
+    condition = page.get_by_label("Grouped people condition (optional)")
+    expect(page.get_by_label("Only with (optional)")).to_be_visible()
+    expect(condition).to_be_hidden()
+    _evidence(page, "01-brief-condition-folded-away")
+
+    page.get_by_text(PEOPLE_CONDITION_PANEL, exact=True).click()
+
+    expect(condition).to_be_visible()
+    condition.fill(_CONDITION)
+    expect(page.get_by_text(f"Active condition: {_CONDITION_LABEL}", exact=True)).to_be_visible()
+    _evidence(page, "02-condition-typed-under-advanced")
+
+    before = _attempts(launch_workspace)
+    page.get_by_role("button", name="Cut", exact=True).click()
+    expect(_active_stage(page)).to_be_visible(timeout=60_000)
+
+    request = _request_of_the_cut_after(launch_workspace, before)
+    assert set(request["requested_assets"]) == _CONDITION_ASSETS
+
+
+def test_the_picker_says_together_or_any_of_these_people_without_a_condition(
+    page: Page, launch_app_url: str, launch_workspace
+) -> None:
+    """Two names and one word for what they mean is the whole plain path (#887)."""
+    _brief_for_june(page, launch_app_url)
+    any_of = page.get_by_role("button", name="Any of these people")
+    expect(any_of).to_be_hidden()
+
+    people = page.get_by_role("combobox", name="Only with (optional)")
+    people.click()
+    for name in ("Robin", "Kit"):
+        page.get_by_role("option", name=name, exact=True).click()
+    page.keyboard.press("Escape")
+
+    # One name means nothing to choose between; the second is what raises the question.
+    expect(any_of).to_be_visible()
+    any_of.click()
+    _evidence(page, "03-together-or-any-of-these-people")
+
+    before = _attempts(launch_workspace)
+    page.get_by_role("button", name="Cut", exact=True).click()
+    expect(_active_stage(page)).to_be_visible(timeout=60_000)
+
+    requested = set(_request_of_the_cut_after(launch_workspace, before)["requested_assets"])
+    assert requested == _EITHER_ASSETS
+    assert requested > _CONDITION_ASSETS
