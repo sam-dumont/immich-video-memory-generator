@@ -22,7 +22,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from capability_matrix import _pinned_config  # noqa: E402
+from matrix_pinned_config import pinned_config  # noqa: E402
 
 from immich_memories.config_loader import _load_yaml_data  # noqa: E402
 
@@ -36,7 +36,7 @@ def _write(tmp_path: Path, data: dict) -> Path:
 def test_a_pin_reaches_a_section_spelled_at_top_level(tmp_path: Path) -> None:
     source = _write(tmp_path, {"immich": {"url": "http://x"}, "ace_step": {"enabled": True}})
 
-    dest = _pinned_config(source, tmp_path / "out.yaml", {"ace_step.enabled": False})
+    dest = pinned_config(source, tmp_path / "out.yaml", {"ace_step.enabled": False})
 
     assert _load_yaml_data(dest)["ace_step"]["enabled"] is False
 
@@ -46,7 +46,7 @@ def test_a_pin_reaches_a_section_spelled_under_advanced(tmp_path: Path) -> None:
         tmp_path, {"immich": {"url": "http://x"}, "advanced": {"ace_step": {"enabled": True}}}
     )
 
-    dest = _pinned_config(source, tmp_path / "out.yaml", {"ace_step.enabled": False})
+    dest = pinned_config(source, tmp_path / "out.yaml", {"ace_step.enabled": False})
 
     assert _load_yaml_data(dest)["ace_step"]["enabled"] is False
 
@@ -55,7 +55,7 @@ def test_pinning_keeps_the_credentials_the_run_needs(tmp_path: Path) -> None:
     """Every row generates against the real library; a pin must not drop the key."""
     source = _write(tmp_path, {"immich": {"url": "http://x", "api_key": "k"}})
 
-    dest = _pinned_config(source, tmp_path / "out.yaml", {"output.resolution": "1080p"})
+    dest = pinned_config(source, tmp_path / "out.yaml", {"output.resolution": "1080p"})
 
     loaded = _load_yaml_data(dest)
     assert loaded["immich"] == {"url": "http://x", "api_key": "k"}
@@ -65,7 +65,7 @@ def test_pinning_keeps_the_credentials_the_run_needs(tmp_path: Path) -> None:
 def test_a_missing_config_is_named_rather_than_silently_empty(tmp_path: Path) -> None:
     """Starting from `{}` produced a config with no URL and a 0s 'not configured' run."""
     with pytest.raises(SystemExit, match="does not exist"):
-        _pinned_config(tmp_path / "absent.yaml", tmp_path / "out.yaml", {})
+        pinned_config(tmp_path / "absent.yaml", tmp_path / "out.yaml", {})
 
 
 def test_rows_that_render_the_same_video_are_reported(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -114,7 +114,7 @@ def test_a_top_level_scalar_can_be_pinned(tmp_path: Path) -> None:
     """`preset: fast` is a bare key, not a section, so the dotted walk must not apply."""
     source = _write(tmp_path, {"immich": {"url": "http://x"}})
 
-    dest = _pinned_config(source, tmp_path / "out.yaml", {"preset": "fast"})
+    dest = pinned_config(source, tmp_path / "out.yaml", {"preset": "fast"})
 
     assert _load_yaml_data(dest)["preset"] == "fast"
 
@@ -135,7 +135,7 @@ def test_a_preset_row_lets_the_preset_own_its_keys(tmp_path: Path) -> None:
         },
     )
 
-    dest = _pinned_config(source, tmp_path / "out.yaml", {"preset": "fast"})
+    dest = pinned_config(source, tmp_path / "out.yaml", {"preset": "fast"})
 
     loaded = _load_yaml_data(dest)
     assert "codec" not in loaded["output"], "the preset must be free to set codec"
@@ -146,6 +146,6 @@ def test_a_preset_row_lets_the_preset_own_its_keys(tmp_path: Path) -> None:
 def test_an_explicit_pin_still_beats_the_preset(tmp_path: Path) -> None:
     source = _write(tmp_path, {"immich": {"url": "http://x"}, "output": {"codec": "hevc"}})
 
-    dest = _pinned_config(source, tmp_path / "out.yaml", {"preset": "fast", "output.codec": "av1"})
+    dest = pinned_config(source, tmp_path / "out.yaml", {"preset": "fast", "output.codec": "av1"})
 
     assert _load_yaml_data(dest)["output"]["codec"] == "av1"

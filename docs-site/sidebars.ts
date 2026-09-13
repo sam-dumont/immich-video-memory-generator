@@ -165,6 +165,7 @@ const sidebars: SidebarsConfig = {
         'contribute/testing',
         'contribute/development-setup',
         'contribute/demo-assets',
+        'contribute/setup-matrix',
         'contribute/code-of-conduct',
       ],
     },

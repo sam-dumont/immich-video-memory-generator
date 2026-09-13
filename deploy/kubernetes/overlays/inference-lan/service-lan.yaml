@@ -1,0 +1,28 @@
+# A second Service for the same pods, this one asking the cluster's load-balancer
+# controller for an address on the LAN. The ClusterIP Service keeps its name and
+# its port, so `facts_base_url: http://inference:8092` goes on meaning the same
+# thing inside the cluster; this is only for callers that are not in it.
+#
+# The service checks no credential: whatever reaches port 8092 gets an answer.
+# On a home LAN behind a router that is the same exposure the NAS and the Mac
+# already have to each other. Do not put it on a routable address.
+apiVersion: v1
+kind: Service
+metadata:
+  name: inference-lan
+  namespace: immich-memories
+  labels:
+    app.kubernetes.io/name: immich-memories-inference
+    app.kubernetes.io/component: inference-lan
+spec:
+  # No externalTrafficPolicy: the default routes from any node, which every
+  # controller handles. Local would preserve the caller's address, and nothing
+  # here reads it.
+  type: LoadBalancer
+  ports:
+    - name: http
+      port: 8092
+      targetPort: http
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: immich-memories-inference

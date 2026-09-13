@@ -99,7 +99,7 @@ def test_only_the_kustomization_pin_names_a_concrete_version() -> None:
     """
     offenders = {}
     for name, text in _deploy_texts().items():
-        if name.endswith("base/kustomization.yaml"):
+        if name.endswith("kustomization.yaml"):
             text = re.sub(r"(?m)^\s*newTag:.*$", "", text)
         if found := re.findall(r"\d+\.\d+\.\d+", text):
             offenders[name] = found
@@ -302,6 +302,49 @@ def test_kustomize_renders_with_a_secret_created_from_the_example(
     )
     has_gpu = "nvidia.com/gpu" in container["resources"]["limits"]
     assert has_gpu == (target == "overlays/gpu")
+
+
+@pytest.mark.skipif(shutil.which("kubectl") is None, reason="kubectl not installed")
+@pytest.mark.parametrize("target", ["overlays/inference", "overlays/inference-cuda"])
+def test_inference_overlays_build_without_the_secret(target: str) -> None:
+    """The inference service holds no credential, so its overlay must not need base/secret.yaml."""
+    result = subprocess.run(
+        ["kubectl", "kustomize", str(K8S_ROOT / target)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    rendered = list(yaml.safe_load_all(result.stdout))
+    assert "Secret" not in {doc["kind"] for doc in rendered}
+    deployment = next(doc for doc in rendered if doc["kind"] == "Deployment")
+    container = deployment["spec"]["template"]["spec"]["containers"][0]
+    assert container["ports"][0]["containerPort"] == CAPTION_PORT
+    cuda = target.endswith("-cuda")
+    assert ("nvidia.com/gpu" in container["resources"]["limits"]) == cuda
+    assert container["image"].endswith("-cuda") == cuda
+
+
+@pytest.mark.skipif(shutil.which("kubectl") is None, reason="kubectl not installed")
+def test_the_lan_overlay_adds_a_service_and_changes_nothing_else() -> None:
+    """A patch on the ClusterIP Service would put every in-cluster caller on an external address."""
+    result = subprocess.run(
+        ["kubectl", "kustomize", str(K8S_ROOT / "overlays/inference-lan")],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    rendered = list(yaml.safe_load_all(result.stdout))
+    assert [doc["kind"] for doc in rendered] == ["Service"]
+    service = rendered[0]
+    assert service["metadata"]["name"] == "inference-lan"
+    assert service["spec"]["type"] == "LoadBalancer"
+    assert service["spec"]["ports"][0]["port"] == CAPTION_PORT
+    # Same pods as the ClusterIP Service, which keeps its own name and type.
+    assert service["spec"]["selector"] == {"app.kubernetes.io/name": "immich-memories-inference"}
 
 
 def test_every_pod_can_reach_the_pinned_encoder_and_the_detector_cache() -> None:

@@ -1,0 +1,30 @@
+# Strategic-merge patch: one NVIDIA card for the encoder, the heads and the two
+# detectors. Nothing in the service config changes; `provider: auto` takes CUDA
+# when the provider is present, and /health names which one it opened.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: immich-memories-inference
+  namespace: immich-memories
+spec:
+  template:
+    spec:
+      runtimeClassName: nvidia
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: inference
+          env:
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: "all"
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: "compute,utility"
+          resources:
+            requests:
+              nvidia.com/gpu: "1"
+            limits:
+              nvidia.com/gpu: "1"
