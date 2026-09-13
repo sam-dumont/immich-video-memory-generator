@@ -121,6 +121,11 @@ tier. `--quality` changes the effective CRF preset; an explicit `output.crf` in 
 more precise control. The app passes it directly to software H.264/H.265 and maps it onto each hardware backend's own
 quantiser scale, with a measured offset per backend (VAAPI, QSV and NVENC each take +2).
 
+### Verbosity (root option)
+
+`-v` before the subcommand logs at `DEBUG`: `immich-memories -v generate --month 6`. To see less,
+`--log-level WARNING`. Neither touches the progress display; that is `generate --quiet`.
+
 ### Preset (root option)
 
 `--preset fast` is a root option: it goes before `generate`, as in `immich-memories --preset fast

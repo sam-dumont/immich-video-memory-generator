@@ -42,6 +42,12 @@ Use this endpoint with monitoring tools: Uptime Kuma, Prometheus blackbox export
 
 ## Logging
 
+The level is `INFO` unless you say otherwise. For one run, `immich-memories -v generate …` logs at
+`DEBUG` and `immich-memories --log-level WARNING generate …` keeps only warnings and errors; both
+are root options, so they go before the subcommand and apply to `ui` as well. For a container,
+set `IMMICH_MEMORIES_LOG_LEVEL=DEBUG`. `generate --quiet` and `auto run --quiet` are a different
+knob: they change what the terminal shows, not what gets logged.
+
 Two output formats, controlled by the `IMMICH_MEMORIES_LOG_FORMAT` environment variable:
 
 ### Text format (default)
