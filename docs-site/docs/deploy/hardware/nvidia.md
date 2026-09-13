@@ -14,7 +14,7 @@ NVIDIA GPUs with NVENC move video encoding off the CPU and onto dedicated silico
 - **CUDA scaling**: `scale_cuda` resizes frames on the GPU instead of pulling them back to CPU.
 - **Taichi title rendering**: with the `gpu` extra installed, Taichi picks the CUDA backend (Vulkan second) for animated title screens. This is the phase that costs the most on a CPU-only box.
 
-What the card does *not* get you: the Docker image installs the CPU build of PyTorch on purpose, on both published architectures. The two annotation detectors are ONNX graphs on ONNX Runtime's CPU provider and want no torch at all — the only thing left in the image that does is local Demucs stem separation — so the CUDA wheels are pure weight: on arm64 they cost 3.3 GB of `nvidia` libraries plus 818 MB of triton, and the CUDA torch they come with still reports `cuda_available: False` inside the container. To run the ONNX seats against the CUDA execution provider, install `pip install "immich-memories[editorial-cuda]"` on the host instead of using the image; it replaces `editorial` rather than joining it.
+What the card does *not* get you: the Docker image installs the CPU build of PyTorch on purpose, on both published architectures. The two annotation detectors are ONNX graphs on ONNX Runtime's CPU provider and want no torch at all (the only thing left in the image that does is local Demucs stem separation) so the CUDA wheels are pure weight: on arm64 they cost 3.3 GB of `nvidia` libraries plus 818 MB of triton, and the CUDA torch they come with still reports `cuda_available: False` inside the container. To run the ONNX seats against the CUDA execution provider, install `pip install "immich-memories[editorial-cuda]"` on the host instead of using the image; it replaces `editorial` rather than joining it.
 
 GPU inference also has a separate [inference service image](../installation/inference-service.md). Its `-cuda` variant uses the same device extra; attach the GPU through `docker/hwaccel.inference.yml`. The app image remains usable for NVENC without running model inference.
 
@@ -84,7 +84,7 @@ spec:
           nvidia.com/gpu: 1
 ```
 
-Without `video` the encode library is absent and nothing on the pod explains why — the encoders
+Without `video` the encode library is absent and nothing on the pod explains why: the encoders
 still list, detection still looks plausible, and the render falls back to the CPU.
 
 ## When the image is newer than the driver
@@ -109,7 +109,7 @@ Measured on a T1000 (Turing, driver 570.144), 20 s of 1080p60, SSIM against the 
 | `h264_nvenc -qp 22` | 6.2 Mbps | 0.98731 |
 | `h264_nvenc -qp 24` | 4.5 Mbps | 0.98433 |
 
-Matching libx264 costs about **1.2x the bits** — the cheapest of the three hardware backends, next
+Matching libx264 costs about **1.2x the bits**, the cheapest of the three hardware backends, next
 to Intel's 2.2x and Apple's 2.9x. The configured CRF is translated onto NVENC's quantiser scale
 automatically; see [the overview](./overview.md#what-hardware-encoding-actually-costs).
 

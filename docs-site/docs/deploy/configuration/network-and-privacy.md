@@ -96,7 +96,7 @@ Two settings can send your photographs to a server, and they send very different
 | captioner | `editorial.preparation.caption_base_url` | 400 px picture tiles, with no metadata attached |
 
 Both default to a server on this machine (`localhost:8080` and `localhost:8092`). Point either at
-another host — a GPU box on your LAN, a container, a hosted endpoint — and that is where those
+another host (a GPU box on your LAN, a container, a hosted endpoint) and that is where those
 bytes go, onto its disk and into its logs. Nothing asks you to confirm it a second time:
 configuring an external endpoint *is* the choice.
 
@@ -131,8 +131,8 @@ turning that on.
 
 Privacy mode (`--privacy-mode` / `server.enable_demo_mode: true`) is a **demo/screenshot**
 feature: it blurs every frame of every clip (not faces, the whole picture), makes all clip audio
-unintelligible, replaces person names, and moves the whole memory — home base and destination
-alike — onto a fake city, keeping the spacing between clips so the map still reads as a trip.
+unintelligible, replaces person names, and moves the whole memory (home base and destination
+alike) onto a fake city, keeping the spacing between clips so the map still reads as a trip.
 Place names go with the coordinates. It does not reach the geocoding above, which already ran
 during detection, nor the output file name, which is built before anonymization. See
 [Privacy Mode](../../create/pipeline/privacy-mode.md).
