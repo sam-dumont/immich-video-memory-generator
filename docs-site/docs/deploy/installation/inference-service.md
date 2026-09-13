@@ -128,10 +128,24 @@ graph into 87 partitions, so a tensor crosses the accelerator boundary dozens of
 Naming `coreml` still selects it, so the measurement can be redone when the provider improves.
 Provider choice re-keys nothing, so this costs no re-derivation.
 
+## Point the app at it
+
+```yaml
+advanced:
+  inference:
+    facts_base_url: http://inference:8092
+```
+
+That is the whole switch (`IMMICH_MEMORIES_INFERENCE__FACTS_BASE_URL` in the environment). From
+then on `prepare` and `generate` send each picture's preview to `/facts` once, ask for every
+producer the tier demands that is still missing, and bank the answer verbatim. `producers:` limits
+what goes over the wire (`[heads]` keeps the two detectors local), `timeout_seconds` bounds one
+request, and `fallback_to_local` says what happens when the service is down: the failure is named
+against the endpoint either way, and with the fallback on the app's own producers take over. The
+keys are in the [config reference](../../reference/config-reference.md#inference-service).
+
 ## Not yet
 
-- The app has no setting to point at this service; preparation still runs in process. That switch,
-  and storing what the service returned verbatim, is the next item.
 - The captioner is not in the image yet, so `/v1/chat/completions` is still your own caption server.
 - The encoder and Marqo exports must already exist. Point `ENCODER` and `MARQO_ONNX` at the digest-pinned files from the app's `models fetch`, or place them at the cache paths above. Docling can fetch its snapshot into `/cache/huggingface` when `ALLOW_MODEL_DOWNLOADS` is on.
 

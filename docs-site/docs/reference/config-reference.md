@@ -506,6 +506,35 @@ can be recorded as `caption unavailable`, counted separately from successful des
 See [Editorial annotation setup](../deploy/configuration/editorial-preparation.md) for the
 runtime extra, exact model artifacts and caption endpoint requirements.
 
+## Inference service
+
+```yaml
+advanced:
+  inference:
+    facts_base_url: ""          # blank: the heads and detectors run in the app process
+    timeout_seconds: 60         # one picture, one request; the service answers all producers at once
+    producers: [heads, nsfw_marqo, doc_docling]   # what the service answers for; the rest stay local
+    fallback_to_local: true     # when the service cannot be reached, run the in-process producers
+```
+
+Point `facts_base_url` at a running [inference service](../deploy/installation/inference-service.md)
+(`http://inference:8092` in the compose profile) and `prepare` and `generate` send each picture's
+preview there once and bank what comes back. The row is the same row the in-process producers
+write: same head, version, label and encoder key, because the service runs the application's own
+producers and the key is computed over the model artifact, never over where it ran. Change the
+provider or the host and nothing is re-derived.
+
+`producers` narrows what is offloaded. `[heads]` sends the DINOv2 encoder and the six context heads
+to the service and keeps the two detectors on the app's CPU; the detectors are the cheap half.
+
+When the service does not answer, the run does not stop and does not pretend: the failure is
+recorded against the endpoint in the preparation report, which the CLI prints and the cut's
+failure detail carries, and with `fallback_to_local: true` the in-process producers take over for the pictures still
+missing facts (which needs the model files from `models fetch` on the app box). With it off, the
+facts stay missing and the cut refuses until the service is back.
+
+`IMMICH_MEMORIES_INFERENCE__FACTS_BASE_URL` is the environment form, like every other key.
+
 ## Title screens
 
 ```yaml
