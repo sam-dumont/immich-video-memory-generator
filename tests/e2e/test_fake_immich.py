@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date
 from itertools import combinations
 from pathlib import Path
 
@@ -19,12 +20,16 @@ from immich_memories.generate_clips import MIN_CLIP_DURATION
 from immich_memories.timeperiod import calendar_year
 from immich_memories.ui.pages.step2_loading import _build_clips
 from tests.e2e.fake_immich import FakeImmichServer
-from tests.e2e.fake_library import LIBRARY
+from tests.e2e.fake_library import BIG_MONTH, LIBRARY
 
 pytestmark = pytest.mark.e2e
 
 _VIDEO_IDS = [p.asset_id for p in LIBRARY if p.is_video]
 _PHOTO_IDS = [p.asset_id for p in LIBRARY if not p.is_video]
+_MAY_VIDEO_IDS = [p.asset_id for p in BIG_MONTH if p.is_video]
+_MAY_PHOTO_IDS = [p.asset_id for p in BIG_MONTH if not p.is_video]
+_JUNE_START = date(2024, 6, 1)
+_JUNE_END = date(2024, 6, 30)
 
 
 def _probe_video(path: Path) -> dict:
@@ -148,8 +153,10 @@ def test_monthly_timeline_contains_every_synthetic_moment(fake_immich_server) ->
         buckets = client.get_time_buckets(size="MONTH")
         assets = client.get_bucket_assets("2024-06-01T00:00:00.000Z", size="MONTH")
 
+    # Newest month first, like Immich: the story month, then the wide filler month.
     assert [(bucket.time_bucket, bucket.count) for bucket in buckets] == [
-        ("2024-06-01T00:00:00.000Z", 6)
+        ("2024-06-01T00:00:00.000Z", 6),
+        ("2024-05-01T00:00:00.000Z", len(BIG_MONTH)),
     ]
     assert [asset.id for asset in assets if asset.type is AssetType.VIDEO] == _VIDEO_IDS
     assert [asset.id for asset in assets if asset.type is AssetType.IMAGE] == _PHOTO_IDS
@@ -175,8 +182,9 @@ def test_monthly_timeline_honors_requested_asset_type_and_count(fake_immich_serv
             asset_type=AssetType.IMAGE,
         )
 
-    assert [bucket.count for bucket in video_buckets] == [3]
-    assert [bucket.count for bucket in photo_buckets] == [3]
+    may_videos = sum(1 for picture in BIG_MONTH if picture.is_video)
+    assert [bucket.count for bucket in video_buckets] == [3, may_videos]
+    assert [bucket.count for bucket in photo_buckets] == [3, len(BIG_MONTH) - may_videos]
     assert [asset.id for asset in videos] == _VIDEO_IDS
     assert [asset.id for asset in photos] == _PHOTO_IDS
 
@@ -188,9 +196,15 @@ def test_metadata_search_filters_the_video_and_photo_inventories(fake_immich_ser
         fake_immich_server.api_key,
         api_version="v3",
     ) as client:
-        videos = client.search_metadata(asset_type=AssetType.VIDEO).all_assets
-        photos = client.search_metadata(asset_type=AssetType.IMAGE).all_assets
+        videos = client.search_metadata(
+            asset_type=AssetType.VIDEO, taken_after=_JUNE_START, taken_before=_JUNE_END
+        ).all_assets
+        photos = client.search_metadata(
+            asset_type=AssetType.IMAGE, taken_after=_JUNE_START, taken_before=_JUNE_END
+        ).all_assets
+        everything = client.search_metadata().all_assets
 
+    assert len(everything) == len(LIBRARY) + len(BIG_MONTH)
     assert [asset.id for asset in videos] == _VIDEO_IDS
     assert [asset.duration_seconds for asset in videos] == [4.0, 4.0, 4.0]
     assert [asset.id for asset in photos] == _PHOTO_IDS
@@ -202,7 +216,11 @@ def test_search_uses_v3_millisecond_duration_on_the_wire(fake_immich_server) -> 
     response = httpx.post(
         f"{fake_immich_server.base_url}/api/search/metadata",
         headers={"x-api-key": fake_immich_server.api_key},
-        json={"type": "VIDEO"},
+        json={
+            "type": "VIDEO",
+            "takenAfter": "2024-06-01T00:00:00.000Z",
+            "takenBefore": "2024-06-30T23:59:59.999Z",
+        },
     )
 
     response.raise_for_status()
@@ -223,7 +241,8 @@ def test_real_step2_duration_filter_keeps_selectable_fake_clips(fake_immich_serv
     clips, skipped = _build_clips(assets)
 
     assert skipped == 0
-    assert [clip.asset.id for clip in clips] == _VIDEO_IDS
+    # The whole year: the May filler clip comes first, then the story month's three.
+    assert [clip.asset.id for clip in clips] == _MAY_VIDEO_IDS + _VIDEO_IDS
     assert all(clip.duration_seconds >= MIN_CLIP_DURATION for clip in clips)
 
 
@@ -261,7 +280,7 @@ def test_original_and_playback_downloads_are_valid_h264_sdr_media(
 
 def test_photo_originals_are_generated_jpegs(fake_immich_server, tmp_path: Path) -> None:
     """Every fake photo downloads as a real JPEG above the source-quality floor."""
-    assert set(fake_immich_server.photo_paths) == set(_PHOTO_IDS)
+    assert set(fake_immich_server.photo_paths) == set(_PHOTO_IDS) | set(_MAY_PHOTO_IDS)
     assert all(
         path.is_relative_to(fake_immich_server.root)
         for path in fake_immich_server.photo_paths.values()

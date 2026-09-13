@@ -10,9 +10,10 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import Page, expect
 
+from immich_memories.ui.pages.clip_grid import CLIPS_PER_PAGE
 from immich_memories.ui.pages.memory_brief import MEMORY_TYPE_LABELS
 from tests.e2e.fake_editorial import _EPISODES, PREVIEW_STAGE, STAGES
-from tests.e2e.fake_library import LIBRARY, STORIES, THESIS
+from tests.e2e.fake_library import BIG_MONTH, LIBRARY, STORIES, THESIS
 from tests.e2e.test_launch_smoke import _choose
 
 pytestmark = pytest.mark.e2e
@@ -211,6 +212,88 @@ def test_the_story_reads_in_reader_words_and_hides_the_answer_schema_behind_deta
 
     expect(lead.get_by_text("dominant", exact=True)).to_be_visible()
     expect(lead.get_by_text(_STANDINGS).first).to_be_visible()
+
+
+# The wide filler month: one clip and forty-one stills, so the pool has to page.
+_BIG_POOL = f"1 Videos, {len(BIG_MONTH) - 1} Photos Found"
+_PAGE = CLIPS_PER_PAGE
+
+
+def _open_media_pool(page: Page) -> None:
+    page.get_by_text("Advanced", exact=True).click()
+    page.get_by_role("button", name="Open the media pool").click()
+
+
+def _grid_images(page: Page):
+    return page.locator(".media-pool-grid img")
+
+
+def test_the_media_pool_shows_one_page_at_a_time(page: Page, launch_app_url: str) -> None:
+    """Paging replaces the page in the DOM instead of appending to it (#824)."""
+    _open_brief(page, launch_app_url)
+    _choose(page, "Memory type", "Monthly Highlights")
+    _choose(page, "Month", "May")
+    _open_media_pool(page)
+    expect(page.get_by_text(_BIG_POOL, exact=True)).to_be_visible(timeout=60_000)
+    total = len(BIG_MONTH)
+
+    expect(_grid_images(page).first).to_be_visible(timeout=30_000)
+    expect(page.get_by_text(f"1–{_PAGE} of {total}", exact=True)).to_be_visible()
+    assert 0 < _grid_images(page).count() <= _PAGE
+
+    page.get_by_role("button", name="Next page").click()
+    expect(page.get_by_text(f"{_PAGE + 1}–{2 * _PAGE} of {total}", exact=True)).to_be_visible()
+    assert _grid_images(page).count() <= _PAGE
+
+    page.get_by_role("button", name="Next page").click()
+    expect(page.get_by_text(f"{2 * _PAGE + 1}–{total} of {total}", exact=True)).to_be_visible()
+    assert _grid_images(page).count() == total - 2 * _PAGE
+
+    page.get_by_role("button", name="Previous page").click()
+    expect(page.get_by_text(f"{_PAGE + 1}–{2 * _PAGE} of {total}", exact=True)).to_be_visible()
+
+
+def test_a_tick_in_the_compact_grid_performs_no_navigation(page: Page, launch_app_url: str) -> None:
+    """A toggled cell redraws in place; the page is not reloaded around it (#824)."""
+    _brief_for_june(page, launch_app_url)
+    _open_media_pool(page)
+    expect(page.get_by_text("3 Videos, 3 Photos Found", exact=True)).to_be_visible(timeout=60_000)
+    # The view toggle itself navigates; let that page settle before planting the marker.
+    page.locator("button").filter(has=page.locator("i:has-text('grid_view')")).click()
+    page.wait_for_load_state("networkidle")
+
+    cells = page.locator(".media-pool-grid .cursor-pointer")
+    expect(cells.first).to_be_visible(timeout=30_000)
+    expect(cells.first.locator("i:has-text('check_circle')")).to_have_count(1)
+    page.evaluate("window.__still_here = 'yes'")
+
+    cells.first.click()
+    expect(cells.first.locator("i:has-text('check_circle')")).to_have_count(0)
+    cells.first.click()
+    expect(cells.first.locator("i:has-text('check_circle')")).to_have_count(1)
+    assert page.evaluate("window.__still_here") == "yes"
+
+
+def test_review_rows_hold_a_video_only_while_they_are_open(page: Page, launch_app_url: str) -> None:
+    """A closed row shows a thumbnail; opening it starts the preview, closing it releases it."""
+    _brief_for_june(page, launch_app_url)
+    page.get_by_role("button", name="Cut", exact=True).click()
+    expect(page.get_by_text(_THESIS)).to_be_visible(timeout=120_000)
+    page.get_by_role("button", name="Review the pool").click()
+    page.get_by_role("button", name="Review & Refine Selected Clips").click()
+
+    # Every picture the cut kept has a row, stills included; rows are in capture order.
+    rows = page.locator(".review-clip-row")
+    expect(rows).to_have_count(len(LIBRARY), timeout=30_000)
+    expect(page.locator(".review-clip-row video")).to_have_count(1, timeout=60_000)
+
+    # The fourth picture in capture order is a video; a still would never hold a <video>.
+    second_video = next(i for i, p in enumerate(LIBRARY) if p.is_video and i > 0)
+    rows.nth(second_video).locator(".q-expansion-item__toggle-icon").first.click()
+    expect(page.locator(".review-clip-row video")).to_have_count(2, timeout=60_000)
+
+    rows.nth(second_video).locator(".q-expansion-item__toggle-icon").first.click()
+    expect(page.locator(".review-clip-row video")).to_have_count(1, timeout=30_000)
 
 
 def _latest_request(launch_workspace) -> dict:
