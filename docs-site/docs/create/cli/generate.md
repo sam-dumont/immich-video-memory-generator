@@ -158,7 +158,7 @@ explicitly; the flags below still win. Five keys in three sections, and none of 
 | `--privacy-mode` | n/a | flag | n/a | Demo mode: blur every frame, scramble the audio, fake the names |
 | `--include-live-photos` / `--no-live-photos` | n/a | flag pair | on | Live Photo clips, merged when burst-captured. `analysis.include_live_photos` is already `true` |
 | `--keep-intermediates` | n/a | flag | n/a | Keep intermediate files for debugging |
-| `--quiet` | n/a | flag | n/a | Suppress interactive progress, emit log lines only |
+| `--quiet` | n/a | flag | n/a | Silence the live progress display and print log lines instead (cron, logs); `-v` sets the log level |
 | `--trace-selection` | n/a | path | n/a | Write a stage-by-stage report of how the clips were chosen |
 | `--include` | n/a | asset id, repeatable | n/a | Keep this picture in the cut even if the editor would drop it. The same as ticking it on the pool page after a cut |
 | `--exclude` | n/a | asset id, repeatable | n/a | Leave this picture out. The same as unticking it |
@@ -361,7 +361,7 @@ If the reader stops answering, the line names it instead of going quiet:
   ⏱ 0:14 elapsed
 ```
 
-Three drops, two then four seconds apart, and the run fails with the same endpoint in the error.
+Three drops, two then four seconds apart, and the last line says what to do: `Gave up on the reader at omlx.local:9999 after 3 dropped connections: fix the server and cut again`. The run then fails with the same endpoint in the error.
 A model server that is restarting survives that; one that is off is named within a second. The stage sequence and the counts are
 the same record the web UI draws its bar from; `--quiet` replaces all of it with log lines.
 

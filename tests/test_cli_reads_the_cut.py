@@ -167,7 +167,7 @@ class TestRunsStory:
         assert lines[0].lstrip().startswith("0:00")
         assert "3.5 s" in lines[0]  # the renderer's interval, not the plan's seconds
         assert "video" in lines[2] and "Two nights by the lake" in lines[2]
-        assert "3 shots, 0:11 of content" in result.output
+        assert "3 pictures, 0:11 of pictures and video" in result.output
 
     def test_no_argument_reads_the_latest_completed_run(self, cut):
         config, _ = cut
@@ -187,7 +187,7 @@ class TestRunsWhy:
         config, _ = cut
         result = _invoke(config, ["runs", "why", "woods-9", "--run", RUN_ID])
         assert result.exit_code == 0, result.output
-        assert "dropped at picture-review: a near duplicate of the path shot" in result.output
+        assert "left out at the picture review: a near duplicate of the path shot" in result.output
 
     def test_a_kept_picture_says_where_it_plays(self, cut):
         config, _ = cut
@@ -218,7 +218,7 @@ class TestRunSummary:
             run_id=RUN_ID,
         )
         assert "3 planned from 6 candidates" in text
-        assert "the cut, in order (3 shots, 0:11)" in text
+        assert "the cut, in order (3 pictures, 0:11 of pictures and video)" in text
         order = [line.split()[1] for line in text.splitlines() if line.lstrip().startswith("0:")]
         assert order == ["2024-06-08", "2024-06-09", "2024-06-21"]
         assert f"runs why <asset id> --run {RUN_ID}" in text
