@@ -20,8 +20,8 @@ from pathlib import Path
 from typing import Any
 
 from immich_memories.analysis.editorial_story_replies import WEIGHTS
+from immich_memories.operations.storyboard import MOTION_KINDS, PLAN_FILE, carrier_reason
 
-PLAN_FILE = "plan.private.json"
 PREPARATION_FILE = "preparation.private.json"
 
 # What a reduced preparation tier changed about this cut, in the reader's terms. The
@@ -33,9 +33,6 @@ PREPARATION_NOTES = {
         "so every picture is held to family viewing."
     ),
 }
-
-# Carrier kinds the planner writes for moving pictures; anything else is held as a still.
-MOTION_KINDS = frozenset({"video", "live-motion", "motion"})
 
 # The editor answers in its own vocabulary; readers get these words instead. Display only —
 # `StoryEntry.weight` keeps the stored word for the Details disclosure. A weight with no
@@ -108,13 +105,6 @@ class StoryView:
     @property
     def carrier_count(self) -> int:
         return sum(len(story.carriers) for story in self.stories)
-
-
-def carrier_reason(why: object, title: str) -> str:
-    """The editor's reason for a carrier, without the story title it prefixed."""
-    text = str(why or "").strip()
-    prefix = f"{title}: "
-    return text[len(prefix) :] if title and text.startswith(prefix) else text
 
 
 def _carrier(row: Mapping[str, Any], title: str, render_modes: Mapping[str, str]) -> CarrierView:

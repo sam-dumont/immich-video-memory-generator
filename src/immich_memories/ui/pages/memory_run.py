@@ -25,6 +25,7 @@ from immich_memories.api.models import AssetType, VideoClipInfo
 from immich_memories.operations.cut_progress import StageUpdate, read_stage_progress
 from immich_memories.operations.editorial_attempt import read_editorial_attempt
 from immich_memories.operations.phases import OperationalPhase
+from immich_memories.operations.storyboard import MOTION_KINDS, PLAN_FILE
 from immich_memories.security import sanitize_error_message
 from immich_memories.ui.components import im_button
 from immich_memories.ui.pages.clip_pipeline import (
@@ -36,7 +37,6 @@ from immich_memories.ui.pages.clip_pipeline import (
     ui_cut_key,
 )
 from immich_memories.ui.pages.cut_progress_view import LiveStrip, StageBar, StageLog
-from immich_memories.ui.pages.memory_story_data import MOTION_KINDS, PLAN_FILE
 from immich_memories.ui.pages.step2_helpers import get_thumbnail
 from immich_memories.ui.pages.step2_loading import ensure_caches, load_pool
 
