@@ -138,8 +138,8 @@ def test_install_extra_validator_resolves_declared_feature_sets(extra: str, expe
     assert result.stdout.strip() == expected
 
 
-def test_opencv_stays_below_5_because_the_docker_build_resolves_unlocked() -> None:
-    """The image is built with an unlocked `pip wheel`; the 4→5 migration is unverified (#557)."""
+def test_opencv_stays_on_the_5_line_because_only_that_line_is_graded() -> None:
+    """5 is the line the suite and the pixel tests ran on; 6 is unverified, as <5 once was (#557)."""
     pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
     opencv = next(
         Requirement(value)
@@ -147,8 +147,9 @@ def test_opencv_stays_below_5_because_the_docker_build_resolves_unlocked() -> No
         if Requirement(value).name == "opencv-python"
     )
 
-    assert not opencv.specifier.contains("5.0.0.93"), opencv
-    assert opencv.specifier.contains("4.13.0.92"), opencv
+    assert opencv.specifier.contains("5.0.0.93"), opencv
+    assert not opencv.specifier.contains("4.13.0.92"), opencv
+    assert not opencv.specifier.contains("6.0.0"), opencv
 
 
 def test_the_arm64_image_gets_gpu_titles_from_the_base_install() -> None:
