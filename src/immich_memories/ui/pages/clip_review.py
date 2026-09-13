@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 from pathlib import Path
 
 from nicegui import ui
@@ -13,7 +12,7 @@ from immich_memories.ui.pages.step2_helpers import (
     _download_immich_preview,
     _get_preview_path,
     format_duration,
-    get_thumbnail,
+    render_thumbnail,
 )
 from immich_memories.ui.state import get_app_state
 
@@ -24,16 +23,9 @@ _DEFAULT_EXCERPT_SECONDS = 5.0
 
 def _render_clip_thumbnail(clip: VideoClipInfo) -> None:
     """Render the initial thumbnail for a clip (sync, placeholder)."""
-    thumb = get_thumbnail(clip.asset.id)
-    if thumb:
-        b64 = base64.b64encode(thumb).decode()
-        ui.image(f"data:image/jpeg;base64,{b64}").classes("w-full rounded").style(
-            "aspect-ratio: 16/9; object-fit: cover"
-        )
-    else:
-        ui.element("div").classes("w-full rounded").style(
-            "aspect-ratio: 16/9; background: var(--im-bg-surface)"
-        )
+    render_thumbnail(
+        clip.asset.id, classes="w-full rounded", style="aspect-ratio: 16/9; object-fit: cover"
+    )
 
 
 def _make_preview_loader(video_aid: str, container: ui.element, vid_id: str):
