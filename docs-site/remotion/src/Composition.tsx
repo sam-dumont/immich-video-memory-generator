@@ -92,7 +92,7 @@ export const DemoVideo: React.FC = () => {
             frames={D.storyboard}
             clickTarget="pool"
             clickAt={192}
-            scrollPx={380}
+            scrollPx={1520}
           />
         </TransitionSeries.Sequence>
 
@@ -119,7 +119,7 @@ export const DemoVideo: React.FC = () => {
             frames={D.storyboardAgain}
             clickTarget="export"
             clickAt={60}
-            scrollPx={340}
+            scrollPx={1430}
           />
         </TransitionSeries.Sequence>
 

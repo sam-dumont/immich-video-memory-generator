@@ -4,7 +4,7 @@ The demo's "and here is the video it made" scene used to play a real family
 video with every face blurred. That is a privacy problem, and blurred it was
 also a poor advertisement -- half the demo was unreadable mush. This renders
 the same scene out of the fixture library instead: the real product, driven
-through the real browser flow, over six CC0 stock photographs.
+through the real browser flow, over the CC0 fixture library (one household's June).
 
 Run it with `make demo-output` after the fixture library or the renderer
 changes, then re-render the demo with `make demo-ui`. It is kept out of every

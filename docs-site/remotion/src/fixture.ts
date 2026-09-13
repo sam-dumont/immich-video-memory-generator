@@ -24,8 +24,8 @@ export type PoolCard = {
 
 export const THESIS = "A month that turns around one birthday afternoon in the garden, spends a Saturday in the woods, and leaves the city for a week camped above a lake before pancakes on the first morning back.";
 export const SUMMARY_LINE = "4 stories, 18 pictures";
-export const POOL_LINE = "134 in the pool (13 videos, 121 photos)";
-export const POOL_TOTAL = 134;
+export const POOL_LINE = "133 in the pool (13 videos, 120 photos)";
+export const POOL_TOTAL = 133;
 export const POOL_VIDEOS = 13;
 export const POOL_PAGE = 20;
 export const CUT_COUNT = 18;

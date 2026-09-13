@@ -136,7 +136,7 @@ VHS (records the CLI demo tape)
 Test and demo fixtures
 ----------------------
 
-Fixture library, tests/e2e/fixtures/library/ (137 photographs)
+Fixture library, tests/e2e/fixtures/library/ (136 photographs)
   License: CC0 1.0 (public domain dedication), no attribution required
   Source: six from StockSnap.io via the Openverse index, the rest from
     Wikimedia Commons filtered to CC0; per-file provenance and SHA-256 in

@@ -11,14 +11,15 @@ import { COLORS } from "../theme";
 
 /**
  * The real rendered memory, last and full bleed, in real time. It is cut by the
- * product itself on the hermetic launch, over the six CC0 stock photographs in
+ * product itself on the hermetic launch, over the CC0 fixture library in
  * tests/e2e/fixtures -- see `make demo-output`. Nothing in it is anyone's library.
  */
 
-// The rendered film is 32 s: pictures until about 25 s, then its blurred ending
-// card. The demo plays the last nine seconds of pictures and ends where the
-// card begins, so the closing image is a picture rather than a blur.
-const FILM_START_SECONDS = 16;
+// The rendered film is 54 s: pictures until about 47 s (the lake week, then
+// the pancakes back home), then its blurred ending card. The demo plays the
+// last nine seconds of pictures and ends where the card begins, so the closing
+// image is a picture rather than a blur.
+const FILM_START_SECONDS = 38;
 const FPS = 30;
 
 type Props = { frames: number };

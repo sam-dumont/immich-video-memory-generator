@@ -273,7 +273,7 @@ def _decision_log(carriers: Sequence[dict], dropped: Sequence[tuple[str, str]] =
     )
     trace.editorial_passes.append(
         PassTrace(
-            name="story-review",
+            name="picture_review",
             input_ids=ids + tuple(asset_id for asset_id, _ in dropped),
             kept_ids=ids,
             rejected=rejected,
@@ -281,7 +281,7 @@ def _decision_log(carriers: Sequence[dict], dropped: Sequence[tuple[str, str]] =
             duration_before=float(sum(row["seconds"] for row in carriers)),
             duration_after=float(sum(row["seconds"] for row in carriers)),
             provenance=DecisionProvenance(  # noqa: S106 - pass names, not secrets
-                pass_name="story-review",  # noqa: S106
+                pass_name="picture_review",  # noqa: S106
                 pass_version="fixture",  # noqa: S106
                 schema_version="fixture",
                 model_identity="none",

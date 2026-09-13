@@ -10,7 +10,9 @@ purpose: the story view puts them side by side, and a reader who does not
 believe the pair does not believe the product.
 
 Nothing here is anyone's real library. The home is a public landmark, the
-people are a made-up cast, and the pictures are CC0 stock.
+people are a made-up cast, and the pictures are CC0 stock chosen so that no
+recognisable face appears in any of them (tests/test_scaling_utilities.py
+leans on that).
 """
 
 from __future__ import annotations

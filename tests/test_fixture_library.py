@@ -70,12 +70,23 @@ def test_every_scene_has_a_file_and_the_month_reads_as_a_story() -> None:
     assert [picture.taken_at for picture in CARRIERS] == sorted(
         picture.taken_at for picture in CARRIERS
     )
-    # The holiday sits far enough from home for trip detection (about 590 km).
-    from immich_memories.analysis.trip_detection import haversine_km
-
-    away = haversine_km(HOME.latitude, HOME.longitude, LAKE.latitude, LAKE.longitude)
-    assert 500 < away < 700
     assert any(picture.place is LAKE for picture in CARRIERS)
+
+
+def test_trip_detection_finds_exactly_the_lake_week() -> None:
+    from immich_memories.analysis.trip_detection import detect_trips
+    from immich_memories.api.models import Asset
+    from tests.e2e.fake_immich import _asset_payload
+
+    assets = [Asset.model_validate(_asset_payload(picture)) for picture in LIBRARY]
+    trips = detect_trips(assets, HOME.latitude, HOME.longitude)
+    assert [(trip.start_date.isoformat(), trip.end_date.isoformat()) for trip in trips] == [
+        ("2024-06-21", "2024-06-27")
+    ]
+    # The Saturday in the woods is a day out, not a trip: it is under 50 km and one day long.
+    assert trips[0].asset_count == sum(
+        1 for picture in LIBRARY if picture.place is not HOME and picture.place.country == "France"
+    )
 
 
 def test_every_picture_has_a_reason_to_be_in_or_out() -> None:

@@ -88,13 +88,13 @@ Start with one month, not a year: preparation scales with the width of the date 
 - Music: your own file, 28 bundled tracks, or a generated track through ACE-Step or MusicGen. Ducking under the clips' own audio.
 - A four-page web UI (Memory, Media pool, Generation Options, Preview & Export) behind basic auth, OIDC or a trusted-header proxy, or a headless CLI.
 - Daily automation: one scheduled `auto run` generates a single eligible memory a day and can upload it back to Immich. In Docker set `IMMICH_MEMORIES_AUTOMATION__ENABLED=true`.
-- Privacy mode blurs every frame and moves the map to a fake city, for demos and screenshots.
+- Privacy mode blurs every frame and moves the map to a fake city, for showing the app over your own library.
 
 How the editor decides is written up in [The Curator](https://sam-dumont.github.io/immich-video-memory-generator/docs/create/pipeline/the-curator).
 
 ## About the demo
 
-The hero above is `make demo-hero`, an 18-second cut of the Remotion demo (`make demo-ui`), which recreates the UI in React over six CC0 photos. The CLI demo inside it is a VHS recording (`make demo-cli`). Docs screenshots come from a hermetic run over the same fixture library (`make screenshots`).
+The hero above is `make demo-hero`, an 18-second cut of the Remotion demo (`make demo-ui`), which recreates the UI in React over a CC0 fixture library: 136 stock pictures that tell one household's June, a birthday, a Saturday in the woods and a week by a lake. The CLI demo inside it is a VHS recording (`make demo-cli`). Docs screenshots come from a hermetic run over the same fixture library (`make screenshots`).
 
 ## Development
 

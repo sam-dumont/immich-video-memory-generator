@@ -6,6 +6,7 @@ import json
 import os
 import re
 from collections import Counter
+from itertools import groupby
 from pathlib import Path
 
 import pytest
@@ -120,8 +121,9 @@ def test_the_storyboard_is_the_default_view_and_plays_in_capture_order(
     # The storyboard is what opens: one shot per picture, in the order the video plays them.
     shots = page.locator(".storyboard-shot")
     expect(shots).to_have_count(len(CARRIERS))
+    # The day is printed once, on the first shot of each day.
     expect(page.locator(".storyboard-shot .storyboard-day")).to_have_text(
-        [picture.taken_at[:10] for picture in CARRIERS]
+        [day for day, _ in groupby(picture.taken_at[:10] for picture in CARRIERS)]
     )
     expect(page.locator(".storyboard-shot .storyboard-story")).to_have_text(
         [STORY_OF[picture.asset_id].title for picture in CARRIERS]
@@ -180,7 +182,9 @@ def test_the_detail_lines_are_folded_away_until_asked_for(page: Page, launch_app
     page.get_by_role("button", name="Cut", exact=True).click()
     expect(_active_stage(page)).to_be_visible(timeout=60_000)
     # The clean five-row view is the default: the lines exist but are not shown.
-    a_preview_line = page.get_by_text(re.compile(rf"^Preparing {PREVIEW_STAGE}: \d+/6$"))
+    a_preview_line = page.get_by_text(
+        re.compile(rf"^Preparing {PREVIEW_STAGE}: \d+/{len(LIBRARY)}$")
+    )
     expect(a_preview_line.first).to_be_hidden()
 
     page.get_by_text("Details", exact=True).click()
@@ -287,11 +291,12 @@ def test_the_media_pool_shows_one_page_at_a_time(page: Page, launch_app_url: str
     expect(page.get_by_text(f"{_PAGE + 1}–{2 * _PAGE} of {total}", exact=True)).to_be_visible()
     assert _grid_images(page).count() <= _PAGE
 
-    for _ in range(pages - 2):
+    for index in range(2, pages):
         page.get_by_role("button", name="Next page").click()
-    expect(
-        page.get_by_text(f"{(pages - 1) * _PAGE + 1}–{total} of {total}", exact=True)
-    ).to_be_visible()
+        last = total if index == pages - 1 else (index + 1) * _PAGE
+        expect(
+            page.get_by_text(f"{index * _PAGE + 1}–{last} of {total}", exact=True)
+        ).to_be_visible()
     assert _grid_images(page).count() == total - (pages - 1) * _PAGE
 
     page.get_by_role("button", name="Previous page").click()
