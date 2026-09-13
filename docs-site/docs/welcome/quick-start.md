@@ -65,7 +65,9 @@ advanced:
 Those two values need nothing but the app: no vision reader, no caption server, nothing to fetch.
 It is the degraded mode, so custom free-text subjects are refused and the cut is simpler, but the
 ten standard memory types all come out. Set neither key and you get `reader: auto`, which is the
-rules reader while `llm.model` is blank, on `tier: full`, which does want a caption server.
+rules reader while `llm.model` is blank, on `tier: full`, which does want a caption server. The
+shipped `docker-compose.yml` pins `no_captions` instead, so the Docker path already needs no second
+service; it only wants `immich-memories models fetch` run once inside the container.
 
 Each step up costs a piece: `tier: no_captions` wants three model files on the app's disk (the
 pinned ONNX encoder, the pinned sensitive-content ONNX export and the document classifier's

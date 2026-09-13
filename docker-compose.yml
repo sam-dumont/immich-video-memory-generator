@@ -20,11 +20,11 @@
 # mundane object, so look before you share, and custom free-text subjects are
 # refused outright.
 #
-# What it does still ask for: the preparation tier starts at `full`, which wants
-# one caption per picture from a caption server, and a cut stops naming
-# caption_base_url when nothing answers. Set the tier below to no_captions (about
-# 500 MB, `models fetch` first) or metadata_only (nothing to fetch) and this
-# container really is the whole stack.
+# The preparation tier below is pinned to no_captions, so this container is the
+# whole stack: run `models fetch` inside it once (about 500 MB of pinned ONNX)
+# and a cut finishes with no second service. Raise the tier to full for a caption
+# under every picture, which wants a caption server, or drop it to metadata_only,
+# which fetches nothing at all.
 #
 # For the model editor, which reads the period as a story and puts a reason under
 # every picture, point LLM__BASE_URL and LLM__MODEL at a vision model you host:
@@ -53,12 +53,16 @@ services:
       # IMMICH_MEMORIES_LLM__BASE_URL: "http://your-model-box:8000/v1"
       # IMMICH_MEMORIES_LLM__MODEL: "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"
       # Which producers this box pays for: full | no_captions | metadata_only.
-      # Unset means full. On a NAS use no_captions: 3h41 for a 10,793-picture
-      # library against 4 days, and the audience gate keeps every producer it
-      # reads. Both it and full want `models fetch` run inside the container
-      # first; metadata_only fetches nothing and cannot export as sendable.
-      # IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER: "no_captions"
-      # Needed on the full tier, which is what an unset tier above means:
+      # Pinned here rather than left to the code default, which is full, so that
+      # a first `up` with only IMMICH_URL and IMMICH_API_KEY set finishes a cut
+      # with no second service. Given up against full: the caption per picture,
+      # so the audience gate refuses what full refuses but can never clear a
+      # unit, because eight findings are only named by a description. On a NAS
+      # the first pass is 3h41 for a 10,793-picture library against 4 days on
+      # full. Either tier wants `models fetch` run inside the container first;
+      # metadata_only fetches nothing and cannot export as sendable.
+      IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER: "no_captions"
+      # Raise the tier to "full" with this, once a caption server answers:
       # IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL: "http://your-model-box:8092/v1"
       # Optional: run the heads and detectors in the inference service below
       # instead of in this container (start it with --profile inference).
