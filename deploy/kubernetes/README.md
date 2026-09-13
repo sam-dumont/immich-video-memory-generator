@@ -17,6 +17,7 @@ base/                  CPU-only: Namespace, Secret, PVCs, Deployment, Service, N
 overlays/gpu/          adds runtimeClassName nvidia, nvidia.com/gpu, node selector, tolerations
 overlays/inference/    the inference service alone: Deployment, Service on 8092, cache PVC, policy
 overlays/inference-cuda/ the same service on an NVIDIA card (patch + `-cuda` image tag)
+overlays/inference-lan/  a second Service, type LoadBalancer, for callers outside the cluster
 ```
 
 ## Prerequisites
@@ -121,6 +122,18 @@ Deployment to `http://inference:8092`, or
 `http://inference.immich-memories.svc.cluster.local:8092` from another namespace. The base
 NetworkPolicy already allows egress on 8092. The encoder and Marqo ONNX exports have to be on the
 cache PVC; `ALLOW_MODEL_DOWNLOADS=true` in the overlay only covers the detector snapshots.
+
+`overlays/inference-lan` is for callers that are not in the cluster: a NAS, a laptop, the setup
+matrix. It adds a second Service, `inference-lan`, type LoadBalancer, on the same pods and port,
+and leaves the ClusterIP one alone, so nothing in-cluster changes and either device overlay
+composes with it. It needs a load-balancer controller; without one the Service stays `<pending>`.
+Nothing here checks a credential, so do not give it a routable address.
+
+```bash
+kubectl apply -k overlays/inference-lan
+kubectl -n immich-memories get service inference-lan
+kubectl delete -k overlays/inference-lan
+```
 
 ## Ingress
 

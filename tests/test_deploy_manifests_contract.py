@@ -326,6 +326,27 @@ def test_inference_overlays_build_without_the_secret(target: str) -> None:
     assert container["image"].endswith("-cuda") == cuda
 
 
+@pytest.mark.skipif(shutil.which("kubectl") is None, reason="kubectl not installed")
+def test_the_lan_overlay_adds_a_service_and_changes_nothing_else() -> None:
+    """A patch on the ClusterIP Service would put every in-cluster caller on an external address."""
+    result = subprocess.run(
+        ["kubectl", "kustomize", str(K8S_ROOT / "overlays/inference-lan")],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    rendered = list(yaml.safe_load_all(result.stdout))
+    assert [doc["kind"] for doc in rendered] == ["Service"]
+    service = rendered[0]
+    assert service["metadata"]["name"] == "inference-lan"
+    assert service["spec"]["type"] == "LoadBalancer"
+    assert service["spec"]["ports"][0]["port"] == CAPTION_PORT
+    # Same pods as the ClusterIP Service, which keeps its own name and type.
+    assert service["spec"]["selector"] == {"app.kubernetes.io/name": "immich-memories-inference"}
+
+
 def test_every_pod_can_reach_the_pinned_encoder_and_the_detector_cache() -> None:
     """A first cut stops without the encoder, and the root filesystem is read-only."""
     for label, pod in _pod_specs():

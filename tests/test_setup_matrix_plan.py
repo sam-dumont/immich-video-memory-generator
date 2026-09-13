@@ -16,11 +16,15 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from setup_matrix_plan import (  # noqa: E402
+    DERIVED_ADDRESS,
+    INFERENCE_ENV,
+    LAN_OVERLAY,
     PlanError,
     build_plan,
     dry_run_text,
     inference_overlay_steps,
     load_manifest,
+    needs_lan_address,
     read_cells,
 )
 
@@ -31,7 +35,6 @@ FULL_ENV = {
     "MATRIX_NAS_DOCKER": "/usr/local/bin/docker",
     "MATRIX_NAS_CACHE": "/nowhere/models",
     "MATRIX_NAS_OUT": "/nowhere/matrix",
-    "MATRIX_INFERENCE_BASE_URL": "http://inference.invalid:8092",
     "MATRIX_K8S_CONTEXT": "a-cluster-context",
     "MATRIX_K8S_NAMESPACE": "private-namespace",
     "MELIOUS_AI_BASE_URL": "https://hosted.invalid/v1",
@@ -39,6 +42,10 @@ FULL_ENV = {
     "ZAI_BASE_URL": "https://zai.invalid/v4",
     "ZAI_API_KEY": "secret-zai-key",
     "MATRIX_FIXTURE_BASE_URL": "http://a-fixture.invalid:8078",
+    # Supplied by the runner, never by the operator: it is read off the
+    # LoadBalancer. Present here because build_plan is given what the runner
+    # would have put in the environment by then.
+    INFERENCE_ENV: DERIVED_ADDRESS,
 }
 
 
@@ -72,6 +79,49 @@ def test_a_full_environment_leaves_nothing_skipped(manifest: dict, tmp_path: Pat
     assert plan.skipped == ()
 
 
+def test_the_nas_service_cells_need_no_hand_set_inference_address(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """The runner derives it from the LoadBalancer, so nobody has to look one up."""
+    plan = _plan(manifest, tmp_path, FULL_ENV)
+    for item in plan.cells:
+        assert INFERENCE_ENV not in item.cell.requires_env, item.cell.id
+    assert plan.skipped == ()
+
+
+def test_only_the_nas_lane_needs_an_address_off_the_cluster(manifest: dict) -> None:
+    """A cluster cell reaches the service over the cluster's own DNS."""
+    cells = read_cells(manifest)
+    assert needs_lan_address(cells) is True
+    assert needs_lan_address(tuple(c for c in cells if c.lane != "nas")) is False
+    for cell in cells:
+        if cell.lane == "k8s" and cell.facts == "service":
+            assert cell.config["inference.facts_base_url"] == "http://inference:8092"
+
+
+def test_the_load_balancer_comes_up_before_the_address_is_read_and_goes_away_after() -> None:
+    steps = [s.name for s in inference_overlay_steps(device="cpu", keep=False, lan=True)]
+    assert steps.index("apply-inference-lan") < steps.index("read-lan-address")
+    assert "delete-inference-lan" in steps
+    assert steps.index("delete-inference-lan") < steps.index("delete-inference")
+    assert LAN_OVERLAY in str(inference_overlay_steps(device="cpu", keep=False, lan=True)[3])
+
+
+def test_no_load_balancer_is_asked_for_when_nothing_outside_the_cluster_calls() -> None:
+    steps = [s.name for s in inference_overlay_steps(device="cpu", keep=False, lan=False)]
+    assert not [name for name in steps if "lan" in name]
+
+
+def test_the_dry_run_says_the_address_is_derived_rather_than_inventing_one(
+    manifest: dict, tmp_path: Path
+) -> None:
+    text = dry_run_text(
+        _plan(manifest, tmp_path, FULL_ENV),
+        overlay=inference_overlay_steps(device="auto", keep=False, lan=True),
+    )
+    assert f"{INFERENCE_ENV}={DERIVED_ADDRESS}" in text
+
+
 def test_a_missing_variable_keeps_the_cell_with_a_reason(manifest: dict, tmp_path: Path) -> None:
     without_nas = {key: value for key, value in FULL_ENV.items() if key != "MATRIX_NAS_SSH"}
     plan = _plan(manifest, tmp_path, without_nas)
@@ -89,9 +139,11 @@ def test_no_environment_value_reaches_the_rendered_plan(manifest: dict, tmp_path
     """The transcript goes in a pull request, so it must carry names, not values."""
     text = dry_run_text(
         _plan(manifest, tmp_path, FULL_ENV),
-        overlay=inference_overlay_steps(device="auto", keep=False),
+        overlay=inference_overlay_steps(device="auto", keep=False, lan=True),
     )
-    leaked = [value for value in FULL_ENV.values() if value in text]
+    # The derived-address placeholder is the one value meant to be printed: it
+    # names where the address comes from instead of naming an address.
+    leaked = [value for value in FULL_ENV.values() if value in text and value != DERIVED_ADDRESS]
     assert leaked == []
     assert "$MATRIX_NAS_SSH" in text
     assert "$MATRIX_K8S_NAMESPACE" in text
@@ -179,8 +231,8 @@ def test_the_cluster_lane_renders_a_configmap_and_a_job(manifest: dict, tmp_path
 
 
 def test_the_overlay_comes_down_unless_it_is_kept() -> None:
-    torn_down = [step.name for step in inference_overlay_steps(device="cpu", keep=False)]
-    kept = [step.name for step in inference_overlay_steps(device="cpu", keep=True)]
+    torn_down = [step.name for step in inference_overlay_steps(device="cpu", keep=False, lan=False)]
+    kept = [step.name for step in inference_overlay_steps(device="cpu", keep=True, lan=False)]
     assert "delete-inference" in torn_down
     assert "delete-inference" not in kept
 
@@ -258,3 +310,35 @@ def test_a_printed_step_is_a_line_a_shell_could_actually_run(
     )
     run = next(step for step in item.steps if step.name == "run")
     assert shlex.split(str(run)) == list(run.command)
+
+
+def test_the_runner_supplies_the_inference_address_so_no_cell_skips_for_it(
+    monkeypatch, capsys, tmp_path: Path
+) -> None:
+    """End to end: nobody sets MATRIX_INFERENCE_BASE_URL and the NAS cells still run."""
+    import setup_matrix
+
+    # WHY: read_env_files merges os.environ under the env files, and the point of
+    # the test is the one variable that is NOT in either.
+    for name, value in FULL_ENV.items():
+        if name != INFERENCE_ENV:
+            monkeypatch.setenv(name, value)
+    monkeypatch.delenv(INFERENCE_ENV, raising=False)
+
+    exit_code = setup_matrix.main(
+        [
+            "--dry-run",
+            "--serve-fixture",
+            "--lane",
+            "nas",
+            "--env-file",
+            str(tmp_path / "no-such.env"),
+            "--out",
+            str(tmp_path / "out"),
+        ]
+    )
+    printed = capsys.readouterr()
+    assert exit_code == 0
+    assert INFERENCE_ENV not in printed.err, "no cell may be skipped for an address it derives"
+    assert f"{INFERENCE_ENV}={DERIVED_ADDRESS}" in printed.out
+    assert "nas-rules-service" in printed.out

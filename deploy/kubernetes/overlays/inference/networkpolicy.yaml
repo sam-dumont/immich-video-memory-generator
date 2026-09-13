@@ -20,7 +20,8 @@ spec:
 
   ingress:
     # /ping, /health, /facts. Nothing checks a credential: whatever reaches the
-    # port gets an answer, so keep the Service ClusterIP and off any Ingress.
+    # port gets an answer. This overlay keeps it ClusterIP for that reason; the
+    # inference-lan overlay is the deliberate exception, and it says so.
     - ports:
         - port: 8092
           protocol: TCP

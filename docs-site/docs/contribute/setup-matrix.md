@@ -45,10 +45,19 @@ Two files outside the repo, neither of them tracked:
 | `~/.immich-memories-matrix/.env` | `MELIOUS_AI_BASE_URL`, `MELIOUS_AI_KEY`, `ZAI_BASE_URL`, `ZAI_API_KEY` |
 | `~/.immich-memories-matrix/matrix.env` | `MATRIX_NAS_SSH`, `MATRIX_NAS_DOCKER`, `MATRIX_NAS_CACHE`, `MATRIX_NAS_OUT`, `MATRIX_K8S_CONTEXT`, `MATRIX_K8S_NAMESPACE`, `MATRIX_OMLX_BASE_URL` |
 
+`MATRIX_INFERENCE_BASE_URL` is the one optional entry: see below.
+
 Point at others with `--env-file`, repeatable. The Mac cells also want `OPENAI_API_KEY` in the
-shell, which is the alias the config loader maps to `llm.api_key`, and the NAS cells that use the
-inference service want `MATRIX_INFERENCE_BASE_URL`: an address for the service that the NAS can
-reach, which a ClusterIP alone is not.
+shell, which is the alias the config loader maps to `llm.api_key`.
+
+The NAS cells that read picture facts from the inference service need an address the NAS can reach,
+and `http://inference:8092` is not one: it resolves inside the cluster only. The runner handles it.
+It applies [the `inference-lan` overlay](../deploy/installation/inference-service.md), waits up to
+180 s for the load-balancer controller to hand out an address, writes `http://<that>:8092` into
+those cells' configs, and deletes the Service at the end. Set `MATRIX_INFERENCE_BASE_URL` to pin an
+address instead, which is how to point at a service the matrix did not start. A dry run prints
+`<derived at run time>` rather than an address, because there is none yet and a transcript should
+not carry one.
 
 A variable a cell needs and cannot find is not a crash. The cell stays in the table with a
 `skip_reason` and is listed under `unmeasured` in the published record, because a lane that could
@@ -88,9 +97,9 @@ uv run python scripts/setup_matrix.py --lane nas --lane k8s --library demo
 lanes pull; it defaults to the last published tag rather than the source version, because the
 version in `pyproject.toml` is often ahead of anything on a registry.
 
-The cluster cells that use the inference service bring
+The cells that use the inference service bring
 [the inference overlay](../deploy/installation/inference-service.md) up first and take it down at
-the end. `--inference-device` picks CPU or CUDA, and `auto` asks the cluster whether a node carries
+the end, plus `inference-lan` when a NAS cell is in the run. `--inference-device` picks CPU or CUDA, and `auto` asks the cluster whether a node carries
 the GPU operator's label. `--keep-service` leaves it running.
 
 ## What lands in the output

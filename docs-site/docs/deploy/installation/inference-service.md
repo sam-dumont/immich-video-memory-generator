@@ -120,6 +120,38 @@ The encoder and Marqo exports still have to reach `/cache` on the PVC: `kubectl 
 `immich-memories models fetch` in a Job that mounts the same claim. The overlay's
 `ALLOW_MODEL_DOWNLOADS=true` covers the detector snapshots only.
 
+### Reach the service from outside the cluster
+
+`http://inference:8092` only resolves inside the cluster. A NAS, a laptop or anything else on the
+LAN needs an address of its own, which is what `overlays/inference-lan` asks for:
+
+```bash
+kubectl apply -k deploy/kubernetes/overlays/inference-lan
+kubectl -n immich-memories get service inference-lan
+```
+
+It adds a second Service, `inference-lan`, type LoadBalancer, on the same pods and the same port.
+The ClusterIP Service is untouched, so `facts_base_url: http://inference:8092` goes on meaning what
+it meant and no in-cluster caller starts riding an external address. It composes with either device
+overlay, which a patch on the one Service would not: the CUDA variant would need its own copy.
+
+The address comes from the cluster's load-balancer controller. Without one the Service sits at
+`<pending>` forever and there is nothing to point at. Read it back and use it:
+
+```yaml
+advanced:
+  inference:
+    facts_base_url: http://<the address>:8092
+```
+
+Nothing here checks a credential: whatever reaches port 8092 gets an answer. On a home LAN behind
+a router that is the same exposure your NAS and your desktop already have to each other. Do not
+give it a routable address, and take it back with
+`kubectl delete -k deploy/kubernetes/overlays/inference-lan` when you are done.
+
+The setup matrix does this on its own: the NAS cells apply the overlay, wait for the address, use
+it and delete it. See [Setup matrix](../../contribute/setup-matrix.md).
+
 ## What it answers
 
 | Endpoint | Question |

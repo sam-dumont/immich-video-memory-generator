@@ -49,8 +49,14 @@ from setup_matrix_capture import (  # noqa: E402
     read_losses,
 )
 from setup_matrix_plan import (  # noqa: E402
+    DERIVED_ADDRESS,
     FIXTURE_ENV,
     FIXTURE_PORT,
+    INFERENCE_ENV,
+    INFERENCE_PORT,
+    KUBECTL,
+    LAN_OVERLAY,
+    LAN_SERVICE,
     CellPlan,
     Plan,
     PlanError,
@@ -58,7 +64,9 @@ from setup_matrix_plan import (  # noqa: E402
     dry_run_text,
     inference_overlay_steps,
     load_manifest,
+    needs_lan_address,
     overlay_path,
+    read_cells,
 )
 from setup_matrix_summary import build_markdown, build_summary  # noqa: E402
 
@@ -310,6 +318,43 @@ def _resolve_device(device: str, plan: Plan) -> str:
     return "cuda" if proc.returncode == 0 and proc.stdout.strip() else "cpu"
 
 
+# A LoadBalancer address is handed out by a controller, not by us, and it can
+# take a moment. Bounded so a cluster without a controller fails with a sentence
+# instead of hanging until someone notices.
+_LAN_ADDRESS_TIMEOUT_S = 180
+_LAN_ADDRESS_POLL_S = 3
+
+
+def _lan_address(plan: Plan) -> str:
+    """The address the `inference-lan` Service was given, polled until it exists.
+
+    Read back rather than configured: it is whatever the cluster's controller
+    hands out, so no address is written down anywhere in the repo. `.ip` on most
+    controllers, `.hostname` on the ones that answer with a name.
+    """
+    deadline = time.monotonic() + _LAN_ADDRESS_TIMEOUT_S
+    paths = ("{.status.loadBalancer.ingress[0].ip}", "{.status.loadBalancer.ingress[0].hostname}")
+    while True:
+        for path in paths:
+            command = (*KUBECTL, "get", "service", LAN_SERVICE, "-o", f"jsonpath={path}")
+            proc = subprocess.run(  # noqa: S603
+                [_substitute(part, plan.environment) for part in command],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if proc.returncode == 0 and proc.stdout.strip():
+                return proc.stdout.strip()
+        if time.monotonic() >= deadline:
+            raise SystemExit(
+                f"service/{LAN_SERVICE} still has no LoadBalancer address after "
+                f"{_LAN_ADDRESS_TIMEOUT_S}s. The cluster needs a load-balancer controller for "
+                f"the NAS cells to reach the inference service, or set {INFERENCE_ENV} to an "
+                "address that already works."
+            )
+        time.sleep(_LAN_ADDRESS_POLL_S)
+
+
 def _write_cell_config(item: CellPlan, plan: Plan, out_dir: Path, config: Path | None) -> None:
     pins = {
         key: _substitute(value, plan.environment) if isinstance(value, str) else value
@@ -365,6 +410,20 @@ def _lanes(requested: list[str]) -> tuple[str, ...]:
     return () if not requested or "all" in requested else tuple(dict.fromkeys(requested))
 
 
+def _chosen_cells(manifest: dict, opts: argparse.Namespace) -> tuple:
+    """The cells this request covers, before a plan exists.
+
+    Needed early: whether the LoadBalancer address has to be derived decides what
+    goes into the environment the plan is built from.
+    """
+    lanes, ids = _lanes(opts.lane), tuple(opts.cell)
+    return tuple(
+        cell
+        for cell in read_cells(manifest)
+        if (not lanes or cell.lane in lanes) and (not ids or cell.id in ids)
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     opts = _parse_args(argv)
     environment = read_env_files(tuple(opts.env_file) or DEFAULT_ENV_FILES)
@@ -381,9 +440,18 @@ def main(argv: list[str] | None = None) -> int:
         environment[FIXTURE_ENV] = url
         print(f"fixture library serving at {url} (api key: fake-immich-api-key)")
 
+    manifest = load_manifest()
+    chosen = _chosen_cells(manifest, opts)
+    lan = needs_lan_address(chosen)
+    if lan and not (environment.get(INFERENCE_ENV) or "").strip():
+        # A placeholder, so the cell is runnable rather than skipped for a
+        # variable nobody is meant to set. `_execute` replaces it with the
+        # address the LoadBalancer hands out, before any config is written.
+        environment[INFERENCE_ENV] = DERIVED_ADDRESS
+
     try:
         plan = build_plan(
-            manifest=load_manifest(),
+            manifest=manifest,
             library=opts.library,
             month=opts.month,
             lanes=_lanes(opts.lane),
@@ -396,9 +464,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {error}", file=sys.stderr)
         return 2
 
-    needs_overlay = any(item.cell.inference_overlay for item in plan.runnable)
+    needs_overlay = lan or any(item.cell.inference_overlay for item in plan.runnable)
     overlay = (
-        inference_overlay_steps(device=opts.inference_device, keep=opts.keep_service)
+        inference_overlay_steps(device=opts.inference_device, keep=opts.keep_service, lan=lan)
         if needs_overlay
         else ()
     )
@@ -424,13 +492,22 @@ def main(argv: list[str] | None = None) -> int:
 
 def _execute(plan: Plan, opts: argparse.Namespace, out_dir: Path, overlay: tuple) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
-    for item in plan.runnable:
-        _write_cell_config(item, plan, out_dir, opts.config)
 
+    # The service comes up before any config is written, because a NAS cell's
+    # config has to carry the address the LoadBalancer hands out and there is no
+    # way to know it until the Service exists.
     device = _resolve_device(opts.inference_device, plan) if overlay else "cpu"
+    lan = plan.environment.get(INFERENCE_ENV) == DERIVED_ADDRESS
     if overlay:
         print(f"inference overlay: {overlay_path(device)}")
-        _apply_overlay(plan, device, up=True)
+        _apply_overlay(plan, overlay_path(device), up=True)
+        if lan:
+            _apply_overlay(plan, LAN_OVERLAY, up=True)
+            plan.environment[INFERENCE_ENV] = f"http://{_lan_address(plan)}:{INFERENCE_PORT}"
+            print(f"inference reachable off-cluster on port {INFERENCE_PORT}")
+
+    for item in plan.runnable:
+        _write_cell_config(item, plan, out_dir, opts.config)
 
     records: list[dict] = [
         {**_new_record(item, primed=None), "skip_reason": item.skip_reason} for item in plan.skipped
@@ -448,7 +525,9 @@ def _execute(plan: Plan, opts: argparse.Namespace, out_dir: Path, overlay: tuple
             records.extend(future.result())
 
     if overlay and not opts.keep_service:
-        _apply_overlay(plan, device, up=False)
+        if lan:
+            _apply_overlay(plan, LAN_OVERLAY, up=False)
+        _apply_overlay(plan, overlay_path(device), up=False)
 
     order = [cell.cell.id for cell in plan.cells]
     records.sort(key=lambda row: order.index(row["id"]))
@@ -462,10 +541,9 @@ def _execute(plan: Plan, opts: argparse.Namespace, out_dir: Path, overlay: tuple
     return 0 if all(row.get("error") is None for row in records) else 1
 
 
-def _apply_overlay(plan: Plan, device: str, *, up: bool) -> None:
-    path = overlay_path(device)
+def _apply_overlay(plan: Plan, path: str, *, up: bool) -> None:
     verb = ["apply", "-k", path] if up else ["delete", "-k", path, "--ignore-not-found"]
-    command = ("kubectl", "--context", "$MATRIX_K8S_CONTEXT", "-n", "$MATRIX_K8S_NAMESPACE", *verb)
+    command = (*KUBECTL, *verb)
     subprocess.run(  # noqa: S603
         [_substitute(part, plan.environment) for part in command],
         cwd=REPO_ROOT,

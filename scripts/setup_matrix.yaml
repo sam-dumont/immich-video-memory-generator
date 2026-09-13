@@ -126,9 +126,13 @@ cells:
     facts: service
     tier: no_captions
     why: The same NAS with the classifiers moved off it. Isolates what they cost.
-    requires_env:
-      [MATRIX_NAS_SSH, MATRIX_NAS_DOCKER, MATRIX_NAS_CACHE, MATRIX_NAS_OUT, MATRIX_INFERENCE_BASE_URL]
+    requires_env: [MATRIX_NAS_SSH, MATRIX_NAS_DOCKER, MATRIX_NAS_CACHE, MATRIX_NAS_OUT]
     config:
+      # Not a variable anyone sets. A NAS is outside the cluster, so the runner
+      # applies the inference-lan overlay, waits for the LoadBalancer address and
+      # writes `http://<that>:8092` here. Setting MATRIX_INFERENCE_BASE_URL pins
+      # it instead, which is the way to point at a service the matrix did not
+      # start. No address is ever committed.
       inference.facts_base_url: $env:MATRIX_INFERENCE_BASE_URL
       # Pinned false on every service cell. With the fallback on, an unreachable
       # service is answered by the in-process producers and the row reports a
@@ -143,7 +147,7 @@ cells:
     why: A NAS that pays for judgement instead of running it.
     requires_env:
       [MATRIX_NAS_SSH, MATRIX_NAS_DOCKER, MATRIX_NAS_CACHE, MATRIX_NAS_OUT,
-       MATRIX_INFERENCE_BASE_URL, MELIOUS_AI_BASE_URL, MELIOUS_AI_KEY]
+       MELIOUS_AI_BASE_URL, MELIOUS_AI_KEY]
     config:
       editorial.reader: model
       llm.provider: openai-compatible
@@ -161,7 +165,7 @@ cells:
     why: The second hosted reader, to tell a provider result from a hosted one.
     requires_env:
       [MATRIX_NAS_SSH, MATRIX_NAS_DOCKER, MATRIX_NAS_CACHE, MATRIX_NAS_OUT,
-       MATRIX_INFERENCE_BASE_URL, ZAI_BASE_URL, ZAI_API_KEY]
+       ZAI_BASE_URL, ZAI_API_KEY]
     config:
       editorial.reader: model
       # `zai` is the openai-compatible adapter with the provider's URL and

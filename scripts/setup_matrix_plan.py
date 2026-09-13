@@ -335,7 +335,7 @@ def _k8s_steps(cell: Cell, out_dir: Path) -> tuple[Step, ...]:
     Job's pod has no running container to shell into. The collector mounts the
     same output claim, stays up while the copy happens, and is deleted after.
     """
-    context = ("kubectl", "--context", "$MATRIX_K8S_CONTEXT", "-n", "$MATRIX_K8S_NAMESPACE")
+    context = KUBECTL
     name = f"setup-matrix-{cell.id}"
     collector = f"{name}-collect"
     local = out_dir / cell.id
@@ -360,6 +360,17 @@ def _k8s_steps(cell: Cell, out_dir: Path) -> tuple[Step, ...]:
 
 CPU_OVERLAY = "deploy/kubernetes/overlays/inference"
 CUDA_OVERLAY = "deploy/kubernetes/overlays/inference-cuda"
+LAN_OVERLAY = "deploy/kubernetes/overlays/inference-lan"
+LAN_SERVICE = "inference-lan"
+INFERENCE_PORT = 8092
+# The override. Set it to pin the address the NAS cells call; leave it unset and
+# the runner reads it off the LoadBalancer the `inference-lan` overlay asks for.
+INFERENCE_ENV = "MATRIX_INFERENCE_BASE_URL"
+DERIVED_ADDRESS = "<derived at run time>"
+
+KUBECTL = ("kubectl", "--context", "$MATRIX_K8S_CONTEXT", "-n", "$MATRIX_K8S_NAMESPACE")
+# `.ip` on most controllers, `.hostname` on the ones that hand out a name.
+LB_ADDRESS_PATH = "{.status.loadBalancer.ingress[0].ip}"
 
 
 def overlay_path(device: str) -> str:
@@ -369,27 +380,40 @@ def overlay_path(device: str) -> str:
     return CPU_OVERLAY if device == "cpu" else CUDA_OVERLAY
 
 
-def inference_overlay_steps(*, device: str, keep: bool) -> tuple[Step, ...]:
+def needs_lan_address(cells: tuple[Cell, ...]) -> bool:
+    """Whether anything off the cluster has to call the inference service.
+
+    Only the NAS lane does. A cluster cell reaches it at `http://inference:8092`
+    over the cluster's own DNS and needs no address handed out to the LAN.
+    """
+    return any(cell.lane == "nas" and cell.facts == "service" for cell in cells)
+
+
+def inference_overlay_steps(*, device: str, keep: bool, lan: bool) -> tuple[Step, ...]:
     """Bring the inference service up before the service cells, and take it down after.
 
     `auto` is resolved at run time by asking the cluster whether any node carries
     the GPU operator's label. A dry run prints the probe instead of its answer,
     because the answer depends on a cluster the transcript should not assume.
+
+    `lan` adds the second Service that asks for a LoadBalancer address, which is
+    the only way a NAS outside the cluster can reach the port. The address is read
+    back rather than configured: it is whatever the controller hands out, and it
+    is never written to a file in the repo.
     """
-    context = ("kubectl", "--context", "$MATRIX_K8S_CONTEXT", "-n", "$MATRIX_K8S_NAMESPACE")
     probe = Step(
-        "probe-gpu", (*context, "get", "nodes", "-l", "nvidia.com/gpu.present=true", "-o", "name")
+        "probe-gpu", (*KUBECTL, "get", "nodes", "-l", "nvidia.com/gpu.present=true", "-o", "name")
     )
     overlay = "<cpu or cuda, decided by probe-gpu>" if device == "auto" else overlay_path(device)
     steps = [
         probe
         if device == "auto"
         else Step("device", ("echo", f"inference device pinned: {device}")),
-        Step("apply-inference", (*context, "apply", "-k", overlay)),
+        Step("apply-inference", (*KUBECTL, "apply", "-k", overlay)),
         Step(
             "wait-inference",
             (
-                *context,
+                *KUBECTL,
                 "rollout",
                 "status",
                 "deployment/immich-memories-inference",
@@ -397,9 +421,25 @@ def inference_overlay_steps(*, device: str, keep: bool) -> tuple[Step, ...]:
             ),
         ),
     ]
+    if lan:
+        steps += [
+            Step("apply-inference-lan", (*KUBECTL, "apply", "-k", LAN_OVERLAY)),
+            Step(
+                "read-lan-address",
+                (*KUBECTL, "get", "service", LAN_SERVICE, "-o", f"jsonpath={LB_ADDRESS_PATH}"),
+            ),
+            Step("derive", ("echo", f"{INFERENCE_ENV}={DERIVED_ADDRESS}")),
+        ]
     if not keep:
+        if lan:
+            steps.append(
+                Step(
+                    "delete-inference-lan",
+                    (*KUBECTL, "delete", "-k", LAN_OVERLAY, "--ignore-not-found"),
+                )
+            )
         steps.append(
-            Step("delete-inference", (*context, "delete", "-k", overlay, "--ignore-not-found"))
+            Step("delete-inference", (*KUBECTL, "delete", "-k", overlay, "--ignore-not-found"))
         )
     return tuple(steps)
 
