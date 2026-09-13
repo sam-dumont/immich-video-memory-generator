@@ -1,0 +1,40 @@
+# This selects `app.kubernetes.io/name: immich-memories-inference`; the base
+# policy selects `immich-memories`. Different value, so the two never both apply
+# to one pod and nothing here changes the app's traffic. The app side already
+# allows egress on 8092, which is the call this service answers.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: immich-memories-inference
+  namespace: immich-memories
+  labels:
+    app.kubernetes.io/name: immich-memories-inference
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: immich-memories-inference
+  policyTypes:
+    - Ingress
+    - Egress
+
+  ingress:
+    # /ping, /health, /facts. Nothing checks a credential: whatever reaches the
+    # port gets an answer, so keep the Service ClusterIP and off any Ingress.
+    - ports:
+        - port: 8092
+          protocol: TCP
+
+  egress:
+    # DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+
+    # HTTPS, for the one cold-cache fetch of the detector snapshots. Drop this
+    # rule once the volume is warm and ALLOW_MODEL_DOWNLOADS is back to false.
+    - ports:
+        - port: 443
+          protocol: TCP

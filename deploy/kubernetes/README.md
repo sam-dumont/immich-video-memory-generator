@@ -15,6 +15,8 @@ base/                  CPU-only: Namespace, Secret, PVCs, Deployment, Service, N
   job.yaml             optional CLI Job + CronJobs (commented out in kustomization.yaml)
   ingress.yaml.example optional Ingress — only after enabling authentication
 overlays/gpu/          adds runtimeClassName nvidia, nvidia.com/gpu, node selector, tolerations
+overlays/inference/    the inference service alone: Deployment, Service on 8092, cache PVC, policy
+overlays/inference-cuda/ the same service on an NVIDIA card (patch + `-cuda` image tag)
 ```
 
 ## Prerequisites
@@ -89,6 +91,36 @@ Deployment; with `ReadWriteOnce` storage the job pod has to land on the same nod
 nvidia`, one `nvidia.com/gpu`, `NVIDIA_*` env, `nodeSelector` on `nvidia.com/gpu.present=true`
 and a toleration for the `nvidia.com/gpu` taint. Edit the label or GPU count there. The app
 auto-detects the GPU (NVENC encoding, CUDA analysis, GPU title rendering).
+
+## Inference service
+
+`overlays/inference` is the encoder, the six heads and the two detectors behind one HTTP port, as
+a separate Deployment: a ClusterIP Service named `inference` on 8092, a 10Gi model-cache PVC and
+its own NetworkPolicy. It deliberately does not list `../../base` in its resources. The base
+refuses to build without a hand-made `secret.yaml`, and this service holds no credential and never
+talks to Immich. The namespace object still comes from the base, so on a cluster running the
+service alone, `kubectl create namespace immich-memories` first.
+
+```bash
+kubectl apply -k overlays/inference        # CPU
+kubectl apply -k overlays/inference-cuda   # NVIDIA nodes
+```
+
+`overlays/inference-cuda` is the same overlay plus `deployment-cuda.yaml`: `runtimeClassName:
+nvidia`, one `nvidia.com/gpu`, `NVIDIA_VISIBLE_DEVICES` / `NVIDIA_DRIVER_CAPABILITIES`, the
+`nvidia.com/gpu.present` node selector, the `nvidia.com/gpu` toleration, and the `-cuda` image
+tag. It is a sibling directory rather than `overlays/inference/cuda` because kustomize reads an
+overlay nested inside its own base as a cycle and refuses to build it.
+
+Each overlay pins its own tag (`images: newTag`), the CUDA one with `-cuda` on the end. Bump them
+together. Settings are `IMMICH_MEMORIES_INFERENCE_*` env vars with one underscore, not the app's
+two; the image already sets host, port and the two cache directories.
+
+To use it, set `IMMICH_MEMORIES_INFERENCE__FACTS_BASE_URL` (two underscores, app side) on the app
+Deployment to `http://inference:8092`, or
+`http://inference.immich-memories.svc.cluster.local:8092` from another namespace. The base
+NetworkPolicy already allows egress on 8092. The encoder and Marqo ONNX exports have to be on the
+cache PVC; `ALLOW_MODEL_DOWNLOADS=true` in the overlay only covers the detector snapshots.
 
 ## Ingress
 

@@ -1,0 +1,229 @@
+# The setup matrix (#873): ONE memory, ten setups.
+#
+# This is not the capability matrix. That one varies what the product is asked
+# for (ten memory types, seeds, replays) on one machine. This one varies the
+# machine: host lane x reader x where picture facts come from x preparation
+# tier, over the SAME month of the SAME library, so the table answers "how do
+# the same pictures come out under each mode, and what does each mode cost".
+#
+# Two env spellings, and they mean different things:
+#
+#   $env:NAME   resolved by the runner before it executes. For anything the app
+#               will not expand itself: a base URL, an ssh destination, a path
+#               on the NAS. --dry-run prints the reference, never the value, so
+#               a transcript can be pasted into a pull request.
+#
+#   ${NAME}     written verbatim into the pinned config and expanded by the app
+#               at load time. For credentials only: llm.api_key is one of the
+#               fields config_loader expands, so the key never lands on disk.
+#               The runner passes the variable through to the process, and
+#               refuses to start a cell whose credential variable is missing.
+#
+# `requires_env` names every variable a cell cannot run without. A cell whose
+# variables are absent is not dropped: it stays in the table with a skip_reason,
+# because a missing lane is a result too.
+
+schema: setup-matrix-v1
+
+# Over a copy of the operator's own config, which is where the Immich
+# credentials live. Pinned for every cell so the comparison is the setup and
+# nothing else. Music generation is off everywhere: ACE-Step would dominate the
+# render time of every row and tell us nothing about the setup.
+baseline_config:
+  output.resolution: 1080p
+  analysis.include_live_photos: true
+  ace_step.enabled: false
+  musicgen.enabled: false
+  # llm.model is deliberately NOT pinned: the operator's config already names
+  # the model their local server has resident, and no other cell reads it
+  # (`editorial.reader: rules` decides the reader, not a blank model name).
+  editorial.reader: rules
+  inference.facts_base_url: ""
+  inference.fallback_to_local: true
+  editorial.preparation.tier: no_captions
+
+libraries:
+  # The public run. tests/e2e/fake_library.py is a stock month (June 2024) that
+  # tells a story; `--serve-fixture` puts it on the LAN so the NAS and the
+  # cluster can reach it. Nothing here needs anonymising.
+  demo:
+    month: "2024-06"
+    anonymize_required: false
+    config:
+      immich.url: $env:MATRIX_FIXTURE_BASE_URL
+      immich.api_key: fake-immich-api-key
+  # The private run. February 2024 of the owner's library, from the pinned
+  # config's own Immich credentials. Aggregates only: --anonymize is mandatory
+  # before anything from it is published.
+  february:
+    month: "2024-02"
+    anonymize_required: true
+    config: {}
+
+# What every cell asks the product for. One memory, same length, same shape.
+memory:
+  memory_type: monthly_highlights
+  duration: 60
+
+lanes:
+  # One cell at a time, and the only lane allowed to call oMLX: one machine,
+  # one resident model. It kernel-panicked under parallel load on 09-14, so the
+  # serial rule is not a preference.
+  mac:
+    parallel: false
+    why: The only lane that may call the local model server.
+  nas:
+    parallel: true
+    why: A DS423+ over ssh, capped at 4 CPUs and 4 GB so the numbers are a NAS.
+  k8s:
+    parallel: true
+    why: A batch Job per cell, output copied back when it finishes.
+
+cells:
+  - id: mac-local
+    lane: mac
+    reader: local_model
+    facts: local
+    tier: full
+    why: The reference cut. Everything else is measured against this one.
+    requires_env: [MATRIX_OMLX_BASE_URL, OPENAI_API_KEY]
+    config:
+      editorial.reader: model
+      llm.provider: openai-compatible
+      llm.base_url: $env:MATRIX_OMLX_BASE_URL
+      # oMLX wants a bearer token. OPENAI_API_KEY is the alias config_loader
+      # already maps to llm.api_key, and it is the one the owner's shell exports.
+      llm.api_key: ${OPENAI_API_KEY}
+      # Tier full demands a caption per picture, and oMLX is the only vision
+      # server on this lane. Same host, same serial rule.
+      editorial.preparation.caption_base_url: $env:MATRIX_OMLX_BASE_URL
+
+  - id: mac-rules
+    lane: mac
+    reader: rules
+    facts: local
+    tier: full
+    why: The same machine and the same facts with no editorial model at all.
+    requires_env: [MATRIX_OMLX_BASE_URL]
+    config:
+      editorial.reader: rules
+      editorial.preparation.caption_base_url: $env:MATRIX_OMLX_BASE_URL
+
+  - id: nas-rules-local
+    lane: nas
+    reader: rules
+    facts: local
+    tier: no_captions
+    # no_captions, not metadata_only: this cell exists to measure what running
+    # the ONNX encoder and the two detectors in process costs a 4 GB NAS.
+    # metadata_only would ask for no facts at all and measure nothing.
+    why: The shipped NAS default. Four cores, four gigabytes, no model anywhere.
+    requires_env: [MATRIX_NAS_SSH, MATRIX_NAS_DOCKER, MATRIX_NAS_CACHE, MATRIX_NAS_OUT]
+
+  - id: nas-rules-service
+    lane: nas
+    reader: rules
+    facts: service
+    tier: no_captions
+    why: The same NAS with the classifiers moved off it. Isolates what they cost.
+    requires_env:
+      [MATRIX_NAS_SSH, MATRIX_NAS_DOCKER, MATRIX_NAS_CACHE, MATRIX_NAS_OUT, MATRIX_INFERENCE_BASE_URL]
+    config:
+      inference.facts_base_url: $env:MATRIX_INFERENCE_BASE_URL
+      # Pinned false on every service cell. With the fallback on, an unreachable
+      # service is answered by the in-process producers and the row reports a
+      # time for a setup that never ran.
+      inference.fallback_to_local: false
+
+  - id: nas-hosted-melious
+    lane: nas
+    reader: hosted_melious
+    facts: service
+    tier: no_captions
+    why: A NAS that pays for judgement instead of running it.
+    requires_env:
+      [MATRIX_NAS_SSH, MATRIX_NAS_DOCKER, MATRIX_NAS_CACHE, MATRIX_NAS_OUT,
+       MATRIX_INFERENCE_BASE_URL, MELIOUS_AI_BASE_URL, MELIOUS_AI_KEY]
+    config:
+      editorial.reader: model
+      llm.provider: openai-compatible
+      llm.base_url: $env:MELIOUS_AI_BASE_URL
+      llm.model: qwen3-30b-a3b-instruct
+      llm.api_key: ${MELIOUS_AI_KEY}
+      inference.facts_base_url: $env:MATRIX_INFERENCE_BASE_URL
+      inference.fallback_to_local: false
+
+  - id: nas-hosted-zai
+    lane: nas
+    reader: hosted_zai
+    facts: service
+    tier: no_captions
+    why: The second hosted reader, to tell a provider result from a hosted one.
+    requires_env:
+      [MATRIX_NAS_SSH, MATRIX_NAS_DOCKER, MATRIX_NAS_CACHE, MATRIX_NAS_OUT,
+       MATRIX_INFERENCE_BASE_URL, ZAI_BASE_URL, ZAI_API_KEY]
+    config:
+      editorial.reader: model
+      # `zai` is the openai-compatible adapter with the provider's URL and
+      # reasoning dialect preset. The preset fills base_url only where the field
+      # is still at its default, so pinning it here wins.
+      llm.provider: zai
+      llm.base_url: $env:ZAI_BASE_URL
+      llm.model: glm-5.3-flash
+      llm.api_key: ${ZAI_API_KEY}
+      inference.facts_base_url: $env:MATRIX_INFERENCE_BASE_URL
+      inference.fallback_to_local: false
+
+  - id: k8s-rules-service
+    lane: k8s
+    reader: rules
+    facts: service
+    tier: no_captions
+    why: "The cluster with no model bill at all: rules, and classifiers on a GPU."
+    requires_env: [MATRIX_K8S_CONTEXT, MATRIX_K8S_NAMESPACE]
+    inference_overlay: true
+    config:
+      inference.facts_base_url: http://inference:8092
+      inference.fallback_to_local: false
+
+  - id: k8s-hosted-melious
+    lane: k8s
+    reader: hosted_melious
+    facts: service
+    tier: no_captions
+    why: The same cluster job with a hosted reader over the top.
+    requires_env: [MATRIX_K8S_CONTEXT, MATRIX_K8S_NAMESPACE, MELIOUS_AI_BASE_URL, MELIOUS_AI_KEY]
+    inference_overlay: true
+    config:
+      editorial.reader: model
+      llm.provider: openai-compatible
+      llm.base_url: $env:MELIOUS_AI_BASE_URL
+      llm.model: qwen3-30b-a3b-instruct
+      llm.api_key: ${MELIOUS_AI_KEY}
+      inference.facts_base_url: http://inference:8092
+      inference.fallback_to_local: false
+
+  - id: k8s-hosted-zai
+    lane: k8s
+    reader: hosted_zai
+    facts: service
+    tier: no_captions
+    why: "The cheapest published setup: nothing local but the encode."
+    requires_env: [MATRIX_K8S_CONTEXT, MATRIX_K8S_NAMESPACE, ZAI_BASE_URL, ZAI_API_KEY]
+    inference_overlay: true
+    config:
+      editorial.reader: model
+      llm.provider: zai
+      llm.base_url: $env:ZAI_BASE_URL
+      llm.model: glm-5.3-flash
+      llm.api_key: ${ZAI_API_KEY}
+      inference.facts_base_url: http://inference:8092
+      inference.fallback_to_local: false
+
+  - id: k8s-rules-local
+    lane: k8s
+    reader: rules
+    facts: local
+    tier: no_captions
+    why: One pod doing everything, to price the inference service against itself.
+    requires_env: [MATRIX_K8S_CONTEXT, MATRIX_K8S_NAMESPACE]

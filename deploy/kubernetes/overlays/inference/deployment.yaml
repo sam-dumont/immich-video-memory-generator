@@ -1,0 +1,118 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: immich-memories-inference
+  namespace: immich-memories
+  labels:
+    app.kubernetes.io/name: immich-memories-inference
+    app.kubernetes.io/component: inference
+spec:
+  # One replica on one ReadWriteOnce cache volume. A second replica means a
+  # second copy of the weights, fetched again, for a service that unloads them
+  # after five idle minutes anyway.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: immich-memories-inference
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: immich-memories-inference
+        app.kubernetes.io/component: inference
+    spec:
+      # Same user as the app image: `immich`, UID/GID 1000. The Dockerfile
+      # chowns /cache to it.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: inference
+          # Tag is set by `images:` in kustomization.yaml
+          image: ghcr.io/sam-dumont/immich-video-memory-generator/inference:latest
+          imagePullPolicy: Always
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            # Everything written at runtime goes to /cache or /tmp, and both are
+            # volumes: model files, the detector snapshots, the CUDA JIT cache.
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+
+          ports:
+            - name: http
+              containerPort: 8092
+              protocol: TCP
+
+          # Single underscore. These are the service's own settings, not the
+          # app's IMMICH_MEMORIES_<SECTION>__<KEY> nesting. The image already
+          # sets HOST (every interface), PORT, CACHE_DIR and DETECTOR_CACHE_DIR.
+          env:
+            # A cold cache fetches the two detector snapshots (37 MB) once.
+            - name: IMMICH_MEMORIES_INFERENCE_ALLOW_MODEL_DOWNLOADS
+              value: "true"
+            # Drop the weights after five idle minutes. The process stays up.
+            - name: IMMICH_MEMORIES_INFERENCE_IDLE_UNLOAD_SECONDS
+              value: "300"
+            # - name: IMMICH_MEMORIES_INFERENCE_PROVIDER
+            #   value: "auto"           # auto | cpu | cuda | coreml
+            # - name: IMMICH_MEMORIES_INFERENCE_PRELOAD
+            #   value: "false"          # "true" loads every producer at boot
+            # - name: IMMICH_MEMORIES_INFERENCE_REQUEST_THREADS
+            #   value: "4"
+            # - name: IMMICH_MEMORIES_INFERENCE_MAX_IMAGE_BYTES
+            #   value: "16777216"
+
+          # The same ceiling the compose service gets: 4 GB, 4 CPUs.
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "4Gi"
+              cpu: "4000m"
+
+          volumeMounts:
+            # The encoder export, the Marqo export, the detector snapshots and
+            # (on the CUDA image) the driver's JIT cache.
+            - name: cache
+              mountPath: /cache
+            - name: tmp
+              mountPath: /tmp
+
+          # /ping is the whole question: the process answers or it does not.
+          # Weights load on first request, so there is no separate ready state,
+          # and a load that takes 30 s must not restart the pod under it.
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+      volumes:
+        - name: cache
+          persistentVolumeClaim:
+            claimName: immich-memories-inference-cache
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi

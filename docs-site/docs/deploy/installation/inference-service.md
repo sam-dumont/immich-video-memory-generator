@@ -73,6 +73,53 @@ curl -s localhost:8092/health | grep CUDAExecutionProvider
 If it says `CPUExecutionProvider` on a GPU host, the reservation did not reach the container or the
 image is the CPU one: those are the only two causes.
 
+## On Kubernetes
+
+`deploy/kubernetes/overlays/inference` is the service on its own: a Deployment, a ClusterIP
+Service on 8092, a 10Gi model-cache PVC and a NetworkPolicy. It does not pull in `base/`, so it
+needs no Secret and no Immich, and it runs in a cluster where the app itself does not.
+
+```bash
+kubectl create namespace immich-memories                     # base/ creates it too
+kubectl apply -k deploy/kubernetes/overlays/inference        # CPU
+kubectl apply -k deploy/kubernetes/overlays/inference-cuda   # NVIDIA nodes
+```
+
+`inference-cuda` is the same overlay plus one patch: `runtimeClassName: nvidia`, one
+`nvidia.com/gpu`, the two `NVIDIA_*` env vars, a node selector on `nvidia.com/gpu.present=true`, a
+toleration for the `nvidia.com/gpu` taint, and the `-cuda` image tag. It sits in a sibling
+directory because kustomize reads an overlay nested inside its own base as a cycle.
+
+Each overlay pins its tag in an `images:` entry, the CUDA one with `-cuda` on the end. Bump both
+together, and check the pin against the releases page first: it trails the current release.
+
+Port-forward and read the provider back:
+
+```bash
+kubectl -n immich-memories port-forward svc/inference 8092:8092
+curl -s localhost:8092/health
+```
+
+`CUDAExecutionProvider` on the CUDA overlay, `CPUExecutionProvider` on the other. If the CUDA one
+says CPU, the card did not reach the pod or the tag is not the `-cuda` one.
+
+Then point the app at it, in `config.yaml` or as an env var on the app Deployment:
+
+```yaml
+advanced:
+  inference:
+    facts_base_url: http://inference.immich-memories.svc.cluster.local:8092
+```
+
+In the same namespace `http://inference:8092` does. As an env var it is
+`IMMICH_MEMORIES_INFERENCE__FACTS_BASE_URL`, two underscores: that one is the app's setting, while
+the service's own settings above take one. The base NetworkPolicy already allows the app egress on
+8092, so there is nothing to open.
+
+The encoder and Marqo exports still have to reach `/cache` on the PVC: `kubectl cp` them, or run
+`immich-memories models fetch` in a Job that mounts the same claim. The overlay's
+`ALLOW_MODEL_DOWNLOADS=true` covers the detector snapshots only.
+
 ## What it answers
 
 | Endpoint | Question |

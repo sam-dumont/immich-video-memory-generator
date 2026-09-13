@@ -1,0 +1,30 @@
+# The inference service on its own:  kubectl apply -k overlays/inference
+# On NVIDIA nodes instead:           kubectl apply -k overlays/inference-cuda
+#
+# Deliberately not `resources: [../../base]`. The base refuses to build until a
+# hand-made base/secret.yaml exists (Immich URL + API key), and this service
+# holds no credential and never talks to Immich: it takes a picture on the wire
+# and answers with what the frozen classifiers say. It is the app that needs the
+# secret, not this.
+#
+# The namespace object comes from the base. Running the inference service alone
+# on a fresh cluster needs it first:
+#   kubectl create namespace immich-memories
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: immich-memories
+
+resources:
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+  - networkpolicy.yaml
+
+# Published image tags carry no `v` prefix: release `vX.Y.Z` ships as image tag
+# `X.Y.Z` (plus `latest`), and the CUDA image is that tag with `-cuda` on the
+# end. Releases land faster than this pin does: check it against the releases
+# page before you apply, and bump it when you upgrade.
+images:
+  - name: ghcr.io/sam-dumont/immich-video-memory-generator/inference
+    newTag: "0.85.0"

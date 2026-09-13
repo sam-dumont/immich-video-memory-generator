@@ -170,21 +170,36 @@ class FakeImmichServer:
         host, port = httpd.server_address[:2]
         if isinstance(host, bytes):
             host = host.decode("ascii")
-        self.base_url = f"http://{host}:{port}"
+        # A wildcard bind is an address to listen on, not one to call. Anyone
+        # reading base_url wants something they can fetch, and a caller on this
+        # machine can always fetch the loopback.
+        self.base_url = f"http://{'127.0.0.1' if host == '0.0.0.0' else host}:{port}"  # noqa: S104
 
     @classmethod
-    def start(cls, root: Path, *, upload_commit_delay: float = 0.0) -> Self:
-        """Start the service on an operating-system-selected localhost port."""
+    def start(
+        cls,
+        root: Path,
+        *,
+        upload_commit_delay: float = 0.0,
+        host: str = "127.0.0.1",
+        port: int = 0,
+    ) -> Self:
+        """Start the service, by default on an operating-system-selected localhost port.
+
+        `host` and `port` exist for the setup matrix, which has to serve this
+        library to a NAS and a cluster over the LAN. Every asset URL the service
+        hands out is relative, so binding elsewhere needs no other change.
+        """
         root.mkdir(parents=True, exist_ok=True)
         media_dir = root / "media"
-        media_dir.mkdir()
+        media_dir.mkdir(exist_ok=True)
         video_paths = _generate_videos(media_dir)
         photo_paths = _generate_photos(media_dir)
         media = video_paths | photo_paths
         thumbnail_paths = _generate_thumbnails(media_dir, media)
         uploads: list[RecordedUpload] = []
         httpd = ThreadingHTTPServer(
-            ("127.0.0.1", 0),
+            (host, port),
             _handler_type(media, thumbnail_paths, uploads, upload_commit_delay),
         )
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
@@ -197,6 +212,12 @@ class FakeImmichServer:
             photo_paths,
             uploads,
         )
+
+    @property
+    def listening_host(self) -> str:
+        """The address the socket is bound to, which is not always one to call."""
+        host = self._httpd.server_address[0]
+        return host.decode("ascii") if isinstance(host, bytes) else str(host)
 
     def close(self) -> None:
         """Stop the service and release its listening socket."""
