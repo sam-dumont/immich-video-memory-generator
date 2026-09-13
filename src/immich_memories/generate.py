@@ -49,6 +49,7 @@ from immich_memories.generate_timeline import (
 )
 from immich_memories.generate_timeline import publish_and_check_duration, validate_certified_content
 from immich_memories.operations.phases import OperationalPhase, PhaseEvent
+from immich_memories.operations.run_index import record_run_attempt
 from immich_memories.processing.clip_validation import validate_clips
 from immich_memories.processing.output_canvas import OutputCanvas
 from immich_memories.processing.output_contract import validate_output
@@ -164,6 +165,8 @@ class GenerationParams:
     timeline_plan: TimelinePlan | None = None
     editorial_render_timing: dict | None = None
     editorial_duration_realization: dict | None = None
+    # The attempt the cut was selected from, so the run id can find its plan and trace.
+    editorial_attempt_dir: Path | None = None
     # Explicit review changes; the original editorial plan remains unchanged.
     editorial_owner_edits: dict | None = None
 
@@ -729,6 +732,9 @@ def _generate_memory_inner(
             delivery_album=params.upload_album,
             clips_analyzed=len(params.clips),
             clips_selected=len(assembly_clips),
+        )
+        record_run_attempt(
+            params.config.cache.cache_path, run_id, params.editorial_attempt_dir, result_path
         )
 
         # Phase 4: Upload (if requested)

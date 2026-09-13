@@ -285,6 +285,8 @@ immich-memories generate [OPTIONS]
 | `--dry-run` | boolean | false | Discover inputs and show preparation needs without selection or generation |
 | `--no-render` | boolean | false | Run story-first selection and its audience and media checks, then stop before encoding. Unlike --dry-run, this picks the clips it would actually ship |
 | `--trace-selection` | file | - | Write a stage-by-stage report of how the clips were chosen |
+| `--include` | text | - | Keep this picture in the cut even if the editor would drop it (repeatable) |
+| `--exclude` | text | - | Leave this picture out of the cut (repeatable) |
 | `--upload-to-immich` | boolean | false | Upload generated video back to Immich |
 | `--album` | text | - | Immich album name for uploaded video |
 | `--add-date` | boolean | false | Caption each clip with its date |
@@ -590,6 +592,35 @@ immich-memories runs storage [OPTIONS]
 | Flag | Type | Default | Description |
 | --- | --- | --- | --- |
 | `--json` | boolean | false | Machine-readable output |
+
+### `runs story`
+
+Print the cut of a run in the order it plays: day, kind, length, story, reason.
+
+With no RUN_ID the most recent completed run is read. A run id prefix
+works, and so does the path of an attempt directory.
+
+```bash
+immich-memories runs story [OPTIONS]
+```
+
+**Arguments:**
+- `run_id` (text)
+
+### `runs why`
+
+Say what a run decided about one picture: where it passed, where it was dropped, and why.
+
+```bash
+immich-memories runs why [OPTIONS]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--run` | text | - | Run id or prefix (default: latest) |
+
+**Arguments:**
+- `asset_id` (text)
 
 ## `scheduler`
 
