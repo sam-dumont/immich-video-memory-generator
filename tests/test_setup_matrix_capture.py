@@ -19,13 +19,18 @@ from setup_matrix_capture import (  # noqa: E402
     parse_cgroup_peak_rss_mb,
     parse_prepare_seconds,
     parse_prepared_pictures,
+    parse_prepared_producers,
     parse_run_summary,
     parse_saved_path,
+    parse_time_peak_rss_mb,
 )
 
 from immich_memories.analysis.llm_metrics import LLMCounters  # noqa: E402
 from immich_memories.cli._generate_display import saved_path_line  # noqa: E402
 from immich_memories.cli._run_summary import render_run_summary  # noqa: E402
+
+# Excerpts of the first real Mac lane run, copied out of its own logs.
+FIXTURES = Path(__file__).resolve().parent / "fixtures" / "setup_matrix"
 
 
 def test_a_run_block_yields_the_numbers_it_printed() -> None:
@@ -121,6 +126,19 @@ def test_a_home_relative_path_is_expanded_back(monkeypatch) -> None:
     assert parse_saved_path(line) == str(target)
 
 
+def test_a_quiet_run_names_its_film_under_a_log_prefix() -> None:
+    """What the matrix actually runs: `generate --quiet`, so the label goes through logging.
+
+    The formatter stamps the first line and leaves the wrapped path on the next
+    one, which is why the label cannot be anchored to the start of a line.
+    """
+    text = (FIXTURES / "generate-saved.stdout.txt").read_text()
+    assert parse_saved_path(text) == (
+        "output/setup-matrix/demo/run1/mac-local/"
+        "mac-local_af64ef21_20260913_221211_52d6/mac-local_af64ef21.mp4"
+    )
+
+
 def test_clock_reads_both_shapes_the_summary_prints() -> None:
     assert clock_seconds("42s") == 42
     assert clock_seconds("3m 07s") == 187
@@ -136,6 +154,28 @@ def test_cgroup_v2_and_v1_counters_both_read() -> None:
 def test_a_container_that_answered_nothing_leaves_the_field_unmeasured() -> None:
     assert parse_cgroup_peak_rss_mb("") is None
     assert parse_cgroup_cpu_seconds("") is None
+
+
+def test_both_flavours_of_usr_bin_time_report_the_peak_of_one_step() -> None:
+    """BSD counts bytes, GNU counts kilobytes, and the matrix has a lane on each.
+
+    This is the only per-step peak a local cell can get: getrusage on
+    RUSAGE_CHILDREN is the maximum over every child the runner ever reaped, so
+    it hands every cell of a lane the same number.
+    """
+    bsd = (
+        "        0.00 real         0.00 user         0.00 sys\n"
+        "             1310720  maximum resident set size\n"
+        "                   0  average shared memory size\n"
+    )
+    gnu = (
+        '\tCommand being timed: "immich-memories prepare"\n'
+        "\tMaximum resident set size (kbytes): 1039872\n"
+        "\tExit status: 0\n"
+    )
+    assert parse_time_peak_rss_mb(bsd) == 1.2
+    assert parse_time_peak_rss_mb(gnu) == 1015.5
+    assert parse_time_peak_rss_mb("no such wrapper on this host") is None
 
 
 def test_anonymising_keeps_overlap_computable_and_drops_the_words() -> None:
@@ -173,3 +213,29 @@ def test_prepare_seconds_come_from_the_table_prepare_actually_prints() -> None:
     banked = "1,337 pictures prepared at 0.4812 s/picture."
     assert parse_prepared_pictures(banked) == (1337, 0.4812)
     assert parse_prepared_pictures("nothing of the sort") == (None, None)
+
+
+def test_a_real_cold_prepare_yields_its_count_and_every_producer_row() -> None:
+    """`print_success` puts a tick in front of the count, and the table says who paid.
+
+    The rate table is the only place a run says which producer the preparation
+    seconds went to, and on the first Mac run that was captions for all of it.
+    """
+    text = (FIXTURES / "prepare-cold.stdout.txt").read_text()
+    assert parse_prepared_pictures(text) == (133, 0.1153)
+    assert parse_prepared_producers(text) == [
+        {
+            "producer": "previews",
+            "pending": 133,
+            "seconds_per_picture": 0.0001,
+            "share_pct": 0.0,
+            "seconds": 0.0,
+        },
+        {
+            "producer": "captions",
+            "pending": 133,
+            "seconds_per_picture": 0.1152,
+            "share_pct": 100.0,
+            "seconds": 15.0,
+        },
+    ]

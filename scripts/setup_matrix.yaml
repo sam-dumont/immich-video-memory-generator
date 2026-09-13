@@ -22,6 +22,17 @@
 # `requires_env` names every variable a cell cannot run without. A cell whose
 # variables are absent is not dropped: it stays in the table with a skip_reason,
 # because a missing lane is a result too.
+#
+# ISOLATION: every cell banks in an editorial cache of its own, pinned per cell
+# by the runner (`cache.directory`, `cache.database`, and the annotation bank
+# under them). Nothing derived and nothing decided crosses from one cell to the
+# next. The first real Mac run shared one cache and `mac-rules` published the
+# model's verdicts as its own losses, with a one-second "cold" preparation on
+# top of captions another cell had paid for. Model FILES are the opposite case
+# and stay shared, so no detector is downloaded twice: the NAS keeps them in
+# $MATRIX_NAS_CACHE at /models and the cluster on the setup-matrix-data claim
+# under `models/`, while each cell's cache is its own directory beside its
+# output (NAS) or its own subPath of the same claim (cluster).
 
 schema: setup-matrix-v1
 

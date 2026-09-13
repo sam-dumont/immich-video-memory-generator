@@ -31,6 +31,33 @@ Captions are a third endpoint again, set per cell by `editorial.preparation.capt
 only tier `full` asks for any: a cell can read its facts in process and still send its captions out.
 Only the two Mac cells caption at all.
 
+## One cache per cell
+
+Every cell banks in an editorial cache of its own. The runner pins `cache.directory`,
+`cache.database` and the annotation bank under them per cell, so nothing one cell derived and
+nothing one cell decided reaches the next.
+
+This is not a tidiness rule. The first real Mac lane run shared the operator's own cache across
+both cells, and `mac-rules` published losses in the model's words ("remembered verdict culled
+birthday-candles-01") because `mac-local` had filled the bank minutes earlier. Its cold preparation
+came in at one second, against fifteen for the cell that actually paid for the captions. Both rows
+were the second cell reading the first one's work.
+
+| Lane | Cache | Models |
+|---|---|---|
+| Mac | `<out>/<cell>/cache`, beside the cell's logs | wherever the operator's own config keeps them |
+| NAS | `$MATRIX_NAS_OUT/<cell>/cache`, mounted at `/cache` | `$MATRIX_NAS_CACHE` at `/models`, shared |
+| Kubernetes | subPath `cache/<cell>` of `setup-matrix-data` at `/cache` | subPath `models` of the same claim, shared |
+
+Model files are the opposite case and stay shared, so no detector is downloaded once per cell. The
+NAS cell's cache is not pulled back with its results: it is previews and thumbnails by the
+gigabyte, it means nothing off the NAS, and leaving it there is what makes a re-run of that cell
+warm.
+
+`prepare_cache_primed` follows from this. It is true when the cell's own cache directory was
+already there before the run, which is to say the cell has run before, and the record then says
+that its cold preparation is a re-read rather than a first derivation.
+
 ## Start with the dry run
 
 ```bash
@@ -131,6 +158,15 @@ The cells that use the inference service bring
 the end, plus `inference-lan` when a NAS cell is in the run. `--inference-device` picks CPU or CUDA, and `auto` asks the cluster whether a node carries
 the GPU operator's label. `--keep-service` leaves it running.
 
+`--inference-tag` is what the service runs, and it defaults to `--image-tag` so the service under
+test is the release the cells are. The committed overlays pin a release of their own, and a pin
+ages: the first cluster lane ran a `0.85.0-cuda` service against a `0.86.2` app image, so those
+rows measured a service two releases behind the code they were published as. The runner does not
+edit the overlay. It renders it with `kubectl kustomize`, rewrites the inference image reference to
+the tag it was given, and applies the result, which leaves the committed files as the thing a
+reader applies by hand. The resolved image is printed by the dry run and recorded in
+`summary.data.json` as `inference_image`.
+
 ## The cluster lane
 
 The matrix makes two claims of its own, `setup-matrix-data` and `setup-matrix-output`, before it
@@ -139,10 +175,12 @@ applies a Job, and applying them again changes nothing. It never mounts the app'
 asking for them sits in Multi-Attach forever, and `immich-memories-models` does not exist at all in
 a namespace older than `deploy/kubernetes/base/pvc.yaml`.
 
-`setup-matrix-data` is the models and the annotation bank, mounted at `/models`. It is kept between
-cells and between runs, because a warm bank is the difference between a cold preparation and an
-afternoon of them. `--purge-claims` deletes it at the end of the run. The output claim is deleted
-per cell once the collector has copied the results to this machine.
+`setup-matrix-data` carries both halves of what a cell wants kept: the model files on subPath
+`models`, mounted at `/models` and shared by every cell, and one editorial cache per cell on
+subPath `cache/<cell>`, mounted at `/cache`. It is kept between cells and between runs, because a
+warm bank is the difference between a cold preparation and an afternoon of them. `--purge-claims`
+deletes it at the end of the run. The output claim is deleted per cell once the collector has
+copied the results to this machine.
 
 A cell waits twice: five minutes for its pod to be scheduled, then up to three hours for the Job to
 finish. A pod that cannot be scheduled, for a claim that does not exist or a node with no room, is
@@ -169,8 +207,15 @@ files under `docs/research/`) and `summary.md`, the one table a person reads.
 Nothing in either is estimated. A number the run did not report stays null and earns a line under
 `unmeasured`. Three of those are there by construction: no provider in the matrix returns a price
 with a completion, so the cost column is empty; token counts at or above 1000 are rounded to the
-nearest 100 by the end-of-run summary; and a host whose annotation bank already held the month
-reports a re-read rather than a first derivation, which the record says out loud.
+nearest 100 by the end-of-run summary; and a cell re-run over its own cache reports a re-read
+rather than a first derivation, which the record says out loud.
+
+Peak memory is measured per step, by running each local step under `/usr/bin/time` and taking the
+largest of the three. The kernel's own counter is the maximum over every child the runner has
+reaped, which is the lane and not the cell, and it handed both Mac cells the same figure to the
+decimal. A host carrying neither `/usr/bin/time -l` nor `-v` leaves the field null with that
+sentence under `unmeasured`. Remote cells keep their cgroup readings, which are already per
+container.
 
 ## Tests
 

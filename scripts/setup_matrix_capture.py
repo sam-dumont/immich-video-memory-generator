@@ -28,16 +28,24 @@ _TOKENS = re.compile(r"([\d.]+k|\d+) prompt / ([\d.]+k|\d+) completion")
 _CALLS = re.compile(r"^(\d+) calls")
 _CACHE_HITS = re.compile(r"(\d+) answered from the judgment cache")
 # `saved_path_line` puts the path on the same line, or indented underneath when
-# the line would pass 80 columns.
-_SAVED = re.compile(r"^Video saved to:(?:\s+(\S.*?))?\s*$", re.MULTILINE)
+# the line would pass 80 columns. The label is not anchored to the start of a
+# line because the matrix runs `generate --quiet`, where `print_success` goes
+# through logging and the formatter stamps the first line with a timestamp.
+_SAVED = re.compile(r"Video saved to:(?:[ \t]+(\S.*?))?[ \t]*$", re.MULTILINE)
 
 # `prepare` prints a rate table whose `total` row ends in `human_duration`:
 # "total  133  0.4812  100%  64 s" / "... 12 min" / "... 1 h 4 min".
-_PREPARE_TOTAL = re.compile(
-    r"^total\s+[\d,]+\s+[\d.]+\s+100%\s+(?:(\d+) h )?(?:([\d.]+) min|([\d.]+) s)\s*$",
+_ELAPSED = r"(?:(\d+) h )?(?:([\d.]+) min|([\d.]+) s)"
+_PREPARE_TOTAL = re.compile(rf"^total\s+[\d,]+\s+[\d.]+\s+100%\s+{_ELAPSED}\s*$", re.MULTILINE)
+# One producer's row of the same table. `share` is an em dash when the pass cost
+# no measurable time at all, and `total` is excluded because it is not a producer.
+_PREPARE_ROW = re.compile(
+    rf"^(?!total\b)([a-z][\w-]*)\s+([\d,]+)\s+([\d.]+)\s+(?:([\d.]+)%|\S)\s+{_ELAPSED}\s*$",
     re.MULTILINE,
 )
-_PREPARE_PICTURES = re.compile(r"^([\d,]+) pictures prepared at ([\d.]+) s/picture\.", re.MULTILINE)
+# Not anchored: `print_success` prints a tick in front of this line, and under
+# --quiet a log timestamp instead.
+_PREPARE_PICTURES = re.compile(r"([\d,]+) pictures prepared at ([\d.]+) s/picture\.")
 
 
 @dataclass
@@ -159,6 +167,12 @@ def parse_run_summary(text: str) -> RunSummary:
     return summary
 
 
+def _elapsed_seconds(hours: str | None, minutes: str | None, seconds: str | None) -> float:
+    total = float(hours or 0) * 3600
+    total += float(minutes) * 60 if minutes else float(seconds or 0)
+    return round(total, 2)
+
+
 def parse_prepare_seconds(text: str) -> float | None:
     """Elapsed preparation from the `total` row of the rate table `prepare` prints.
 
@@ -167,12 +181,26 @@ def parse_prepare_seconds(text: str) -> float | None:
     A finer one would need a flag `prepare` does not have.
     """
     match = _PREPARE_TOTAL.search(text)
-    if not match:
-        return None
-    hours, minutes, seconds = match.groups()
-    total = float(hours or 0) * 3600
-    total += float(minutes) * 60 if minutes else float(seconds or 0)
-    return round(total, 2)
+    return _elapsed_seconds(*match.groups()) if match else None
+
+
+def parse_prepared_producers(text: str) -> list[dict]:
+    """Each producer's row of the rate table, in the order preparation ran them.
+
+    The per-picture total hides which stage was expensive, and that is the whole
+    question on a low-power box: captions took every measurable second of the
+    first Mac cell, and the table is where a row can say so.
+    """
+    return [
+        {
+            "producer": producer,
+            "pending": int(pending.replace(",", "")),
+            "seconds_per_picture": float(rate),
+            "share_pct": float(share) if share else None,
+            "seconds": _elapsed_seconds(hours, minutes, seconds),
+        }
+        for producer, pending, rate, share, hours, minutes, seconds in _PREPARE_ROW.findall(text)
+    ]
 
 
 def parse_prepared_pictures(text: str) -> tuple[int | None, float | None]:
@@ -181,6 +209,21 @@ def parse_prepared_pictures(text: str) -> tuple[int | None, float | None]:
     if not match:
         return None, None
     return int(match.group(1).replace(",", "")), float(match.group(2))
+
+
+# `/usr/bin/time` writes its report to stderr after the command has exited.
+# BSD (`-l`, macOS) counts bytes, GNU (`-v`) counts kilobytes.
+_BSD_RSS = re.compile(r"^\s*(\d+)\s+maximum resident set size", re.MULTILINE)
+_GNU_RSS = re.compile(r"^\s*Maximum resident set size \(kbytes\):\s*(\d+)", re.MULTILINE)
+
+
+def parse_time_peak_rss_mb(text: str) -> float | None:
+    """One step's peak resident memory, from whichever `/usr/bin/time` the host has."""
+    if match := _BSD_RSS.search(text):
+        return round(int(match.group(1)) / 1_048_576, 1)
+    if match := _GNU_RSS.search(text):
+        return round(int(match.group(1)) / 1024, 1)
+    return None
 
 
 def parse_cgroup_peak_rss_mb(text: str) -> float | None:

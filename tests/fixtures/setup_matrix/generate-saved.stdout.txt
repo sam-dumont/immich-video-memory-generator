@@ -1,0 +1,3 @@
+2026-09-13 22:13:06,176 [INFO] immich_memories.automation.notifications [-]: Notification sent: Memory Generated: Monthly Highlights
+2026-09-13 22:13:06,183 [INFO] immich_memories.cli [-]: Video saved to:
+  output/setup-matrix/demo/run1/mac-local/mac-local_af64ef21_20260913_221211_52d6/mac-local_af64ef21.mp4

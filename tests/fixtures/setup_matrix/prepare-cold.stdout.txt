@@ -1,0 +1,10 @@
+2026-09-13 22:06:17,270 [INFO] httpx [-]: HTTP Request: POST http://10.2.254.76:8078/api/search/metadata "HTTP/1.1 200 OK"
+2026-09-13 22:06:17,271 [INFO] httpx [-]: HTTP Request: POST http://10.2.254.76:8078/api/search/metadata "HTTP/1.1 200 OK"
+ℹ Preparing 133 pictures over 1 window(s)
+producer        pending   s/picture   share    elapsed
+previews            133      0.0001    0.0%        0 s
+captions            133      0.1152  100.0%       15 s
+total               133      0.1153    100%       15 s
+
+At this rate 1,000 pictures would take 2 min.
+✓ 133 pictures prepared at 0.1153 s/picture.

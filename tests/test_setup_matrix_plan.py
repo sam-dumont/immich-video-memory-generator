@@ -18,14 +18,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 from setup_matrix_plan import (  # noqa: E402
     DERIVED_ADDRESS,
     INFERENCE_ENV,
+    INFERENCE_IMAGE,
     LAN_OVERLAY,
     PlanError,
     build_plan,
     dry_run_text,
+    inference_image,
     inference_overlay_steps,
     load_manifest,
     needs_lan_address,
     read_cells,
+    retag_inference,
 )
 
 FULL_ENV = {
@@ -48,6 +51,9 @@ FULL_ENV = {
     # would have put in the environment by then.
     INFERENCE_ENV: DERIVED_ADDRESS,
 }
+
+
+TAG = "0.87.3"
 
 
 @pytest.fixture
@@ -101,15 +107,49 @@ def test_only_the_nas_lane_needs_an_address_off_the_cluster(manifest: dict) -> N
 
 
 def test_the_load_balancer_comes_up_before_the_address_is_read_and_goes_away_after() -> None:
-    steps = [s.name for s in inference_overlay_steps(device="cpu", keep=False, lan=True)]
+    overlay = inference_overlay_steps(device="cpu", keep=False, lan=True, tag=TAG)
+    steps = [step.name for step in overlay]
     assert steps.index("apply-inference-lan") < steps.index("read-lan-address")
     assert "delete-inference-lan" in steps
     assert steps.index("delete-inference-lan") < steps.index("delete-inference")
-    assert LAN_OVERLAY in str(inference_overlay_steps(device="cpu", keep=False, lan=True)[3])
+    assert LAN_OVERLAY in str(next(s for s in overlay if s.name == "apply-inference-lan"))
+
+
+def test_the_service_runs_the_release_the_cells_run_not_the_committed_pin() -> None:
+    """The overlays pin a release of their own, and the cluster lane ran two behind it.
+
+    The rendered YAML is rewritten rather than the overlay file, so what is
+    committed stays what a reader applies by hand.
+    """
+    rendered = (
+        "    spec:\n"
+        "      containers:\n"
+        "        - name: inference\n"
+        f"          image: {INFERENCE_IMAGE}:0.85.0-cuda\n"
+        "          ports:\n"
+    )
+    retagged = retag_inference(rendered, inference_image(TAG, device="cuda"))
+    assert f"image: {INFERENCE_IMAGE}:{TAG}-cuda\n" in retagged
+    assert "0.85.0" not in retagged
+    assert inference_image(TAG, device="cpu") == f"{INFERENCE_IMAGE}:{TAG}"
+
+
+def test_nothing_but_the_inference_image_is_rewritten() -> None:
+    """A rendered overlay is applied whole, so the rewrite has to be the one line."""
+    app = "          image: ghcr.io/sam-dumont/immich-video-memory-generator:0.84.1\n"
+    assert retag_inference(app, inference_image(TAG, device="cpu")) == app
+
+
+def test_the_dry_run_names_the_tag_the_service_will_run() -> None:
+    steps = inference_overlay_steps(device="cpu", keep=False, lan=False, tag=TAG)
+    assert f"{INFERENCE_IMAGE}:{TAG}" in " ".join(str(step) for step in steps)
+    applied = next(step for step in steps if step.name == "apply-inference")
+    assert applied.command[:2] == ("kubectl", "kustomize"), "rendered, then rewritten, then applied"
+    assert applied.pipe_to[-3:] == ("apply", "-f", "-")
 
 
 def test_no_load_balancer_is_asked_for_when_nothing_outside_the_cluster_calls() -> None:
-    steps = [s.name for s in inference_overlay_steps(device="cpu", keep=False, lan=False)]
+    steps = [s.name for s in inference_overlay_steps(device="cpu", keep=False, lan=False, tag=TAG)]
     assert not [name for name in steps if "lan" in name]
 
 
@@ -118,7 +158,7 @@ def test_the_dry_run_says_the_address_is_derived_rather_than_inventing_one(
 ) -> None:
     text = dry_run_text(
         _plan(manifest, tmp_path, FULL_ENV),
-        overlay=inference_overlay_steps(device="auto", keep=False, lan=True),
+        overlay=inference_overlay_steps(device="auto", keep=False, lan=True, tag=TAG),
     )
     assert f"{INFERENCE_ENV}={DERIVED_ADDRESS}" in text
 
@@ -140,7 +180,7 @@ def test_no_environment_value_reaches_the_rendered_plan(manifest: dict, tmp_path
     """The transcript goes in a pull request, so it must carry names, not values."""
     text = dry_run_text(
         _plan(manifest, tmp_path, FULL_ENV),
-        overlay=inference_overlay_steps(device="auto", keep=False, lan=True),
+        overlay=inference_overlay_steps(device="auto", keep=False, lan=True, tag=TAG),
     )
     # The derived-address placeholder is the one value meant to be printed: it
     # names where the address comes from instead of naming an address.
@@ -205,6 +245,67 @@ def test_the_pinned_config_nests_the_way_the_loader_reads_it(
     assert config["llm"]["base_url"] == "$MATRIX_OMLX_BASE_URL"
 
 
+def test_no_two_cells_write_into_the_same_editorial_cache(manifest: dict, tmp_path: Path) -> None:
+    """The bank remembers verdicts, so a shared cache hands one cell another's judgement.
+
+    The first real Mac run proved it: `mac-rules` reported losses in the model's
+    words because `mac-local` had just filled the bank they share.
+    """
+    plan = _plan(manifest, tmp_path, FULL_ENV)
+    for item in plan.cells:
+        cache = item.pins["cache.directory"]
+        assert item.cache_dir == cache
+        assert item.pins["cache.database"].startswith(cache)
+        # Blank is what resolves the annotation bank under the cache directory;
+        # an operator's own override would put every cell back in one bank.
+        assert item.pins["editorial.annotation_database"] == ""
+    # The remote lanes reach their own cache at one container path, so it is the
+    # mount behind it that has to differ; each lane's own test asserts that.
+    mac = [item.pins["cache.directory"] for item in plan.cells if item.cell.lane == "mac"]
+    assert len(set(mac)) == len(mac) == 2
+
+
+def test_a_mac_cell_banks_beside_its_own_logs(manifest: dict, tmp_path: Path) -> None:
+    item = next(
+        cell for cell in _plan(manifest, tmp_path, FULL_ENV).cells if cell.cell.id == "mac-local"
+    )
+    assert item.pins["cache.directory"] == str(tmp_path / "mac-local" / "cache")
+
+
+def test_a_nas_cell_keeps_its_bank_and_shares_only_the_models(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """Detectors are downloaded once for the lane; nothing a reader decided is."""
+    item = next(
+        cell
+        for cell in _plan(manifest, tmp_path, FULL_ENV).cells
+        if cell.cell.id == "nas-rules-local"
+    )
+    run = str(next(step for step in item.steps if step.name == "run"))
+    pull = str(next(step for step in item.steps if step.name == "pull-results"))
+
+    assert "-v $MATRIX_NAS_CACHE:/models" in run
+    assert "-v $MATRIX_NAS_OUT/nas-rules-local/cache:/cache" in run
+    assert item.pins["cache.directory"] == "/cache"
+    # Gigabytes of previews and thumbnails stay on the NAS, warm for a re-run.
+    assert "--exclude=./cache" in pull
+
+
+def test_a_cluster_cell_banks_on_its_own_subpath_of_the_shared_claim(
+    manifest: dict, tmp_path: Path
+) -> None:
+    job = yaml.safe_load(_k8s_cell(manifest, tmp_path).manifests["job.yaml"])
+    container = job["spec"]["template"]["spec"]["containers"][0]
+    mounts = {mount["mountPath"]: mount for mount in container["volumeMounts"]}
+    volumes = {volume["name"]: volume for volume in job["spec"]["template"]["spec"]["volumes"]}
+
+    assert mounts["/cache"]["subPath"] == "cache/k8s-rules-local"
+    assert mounts["/models"]["subPath"] == "models"
+    claim = "persistentVolumeClaim"
+    assert volumes[mounts["/cache"]["name"]][claim]["claimName"] == "setup-matrix-data"
+    assert volumes[mounts["/models"]["name"]][claim]["claimName"] == "setup-matrix-data"
+
+
 def test_the_nas_lane_caps_the_container_at_a_nas(manifest: dict, tmp_path: Path) -> None:
     item = next(
         cell
@@ -232,8 +333,12 @@ def test_the_cluster_lane_renders_a_configmap_and_a_job(manifest: dict, tmp_path
 
 
 def test_the_overlay_comes_down_unless_it_is_kept() -> None:
-    torn_down = [step.name for step in inference_overlay_steps(device="cpu", keep=False, lan=False)]
-    kept = [step.name for step in inference_overlay_steps(device="cpu", keep=True, lan=False)]
+    torn_down = [
+        step.name for step in inference_overlay_steps(device="cpu", keep=False, lan=False, tag=TAG)
+    ]
+    kept = [
+        step.name for step in inference_overlay_steps(device="cpu", keep=True, lan=False, tag=TAG)
+    ]
     assert "delete-inference" in torn_down
     assert "delete-inference" not in kept
 

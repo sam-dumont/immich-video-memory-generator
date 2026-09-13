@@ -44,7 +44,9 @@ from setup_matrix_capture import (  # noqa: E402
     parse_cgroup_peak_rss_mb,
     parse_prepare_seconds,
     parse_prepared_pictures,
+    parse_prepared_producers,
     parse_run_summary,
+    parse_time_peak_rss_mb,
     probe_video,
     read_cut,
     read_losses,
@@ -58,18 +60,21 @@ from setup_matrix_plan import (  # noqa: E402
     KUBECTL,
     LAN_OVERLAY,
     LAN_SERVICE,
+    REMOTE_OUT,
     CellPlan,
     Plan,
     PlanError,
     Step,
     build_plan,
     dry_run_text,
+    inference_image,
     inference_overlay_steps,
     load_manifest,
     needs_lan_address,
     overlay_path,
     purge_claims_command,
     read_cells,
+    retag_inference,
 )
 from setup_matrix_summary import (  # noqa: E402
     build_markdown,
@@ -157,7 +162,21 @@ def _substitute(part: str, environment: dict[str, str]) -> str:
     return part
 
 
-def _run_step(step: Step, plan: Plan, item: CellPlan) -> subprocess.CompletedProcess:
+# The only per-step peak memory a local cell can get. `getrusage(RUSAGE_CHILDREN)`
+# reports the maximum over every child this process has ever reaped, so it hands
+# every cell of a lane the same figure: both Mac cells came back at 1014.9 MB.
+TIME_BINARY = Path("/usr/bin/time")
+_TIME_FLAG = "-l" if sys.platform == "darwin" else "-v"
+NO_TIME_REASON = (
+    "per-step peak memory. /usr/bin/time is not on this host, and the kernel's own"
+    " counter is the maximum over every child the runner ever spawned, which is the"
+    " lane rather than the cell."
+)
+
+
+def _run_step(
+    step: Step, plan: Plan, item: CellPlan, *, measure: bool = False
+) -> subprocess.CompletedProcess:
     resolved = [_substitute(part, plan.environment) for part in step.command]
     passthrough = {
         name: plan.environment[name] for name in item.app_credentials if name in plan.environment
@@ -166,6 +185,8 @@ def _run_step(step: Step, plan: Plan, item: CellPlan) -> subprocess.CompletedPro
     if step.pipe_to:
         sink = [_substitute(part, plan.environment) for part in step.pipe_to]
         return _run_pipe(resolved, sink, environment)
+    if measure and TIME_BINARY.is_file():
+        resolved = [str(TIME_BINARY), _TIME_FLAG, *resolved]
     return subprocess.run(  # noqa: S603
         resolved,
         cwd=REPO_ROOT,
@@ -218,33 +239,32 @@ def _run_pipe(
     )
 
 
-def _child_cost() -> tuple[float, float]:
-    """Peak RSS in MB and CPU seconds charged to children so far, from the kernel."""
+def _child_cpu_seconds() -> float:
+    """CPU seconds charged to children so far, from the kernel."""
     usage = resource.getrusage(resource.RUSAGE_CHILDREN)
-    divisor = 1_048_576 if sys.platform == "darwin" else 1024
-    return usage.ru_maxrss / divisor, usage.ru_utime + usage.ru_stime
-
-
-def _bank_primed(cache_dir: Path, memory_key: str) -> bool:
-    """Whether this scope had already been prepared, which makes `cold` a re-read."""
-    return (Path(cache_dir).expanduser() / "editorial-runs" / memory_key).is_dir()
+    return usage.ru_utime + usage.ru_stime
 
 
 def run_local_cell(item: CellPlan, plan: Plan, out_dir: Path) -> dict:
     """The mac lane: three invocations here in this process tree, timed and captured."""
     cell_dir = out_dir / item.cell.id
     cell_dir.mkdir(parents=True, exist_ok=True)
-    cache = Path(_substitute(item.cache_dir, plan.environment))
-    record = _new_record(item, primed=_bank_primed(cache, item.cell.id))
-    before_rss, before_cpu = _child_cost()
+    cache = Path(_substitute(item.cache_dir, plan.environment)).expanduser()
+    # A cache of this cell's own, so an existing one means this cell has run
+    # before and its `cold` preparation is a re-read of what it banked then.
+    record = _new_record(item, primed=cache.is_dir())
+    before_cpu = _child_cpu_seconds()
+    peaks: list[float] = []
 
     for step in item.steps:
         started = time.monotonic()
-        proc = _run_step(step, plan, item)
+        proc = _run_step(step, plan, item, measure=True)
         elapsed = time.monotonic() - started
         (cell_dir / f"{step.name}.stdout.log").write_text(proc.stdout or "")
         (cell_dir / f"{step.name}.stderr.log").write_text(proc.stderr or "")
         text = (proc.stdout or "") + "\n" + (proc.stderr or "")
+        if peak := parse_time_peak_rss_mb(proc.stderr or ""):
+            peaks.append(peak)
         if step.name == "prepare-cold":
             record["timing"]["prepare_cold_s"] = parse_prepare_seconds(text) or round(elapsed, 2)
             _apply_prepared(record, text)
@@ -256,9 +276,10 @@ def run_local_cell(item: CellPlan, plan: Plan, out_dir: Path) -> dict:
             record["error"] = f"{step.name} exited {proc.returncode}"
             break
 
-    after_rss, after_cpu = _child_cost()
-    record["timing"]["peak_rss_mb"] = round(max(after_rss, before_rss), 1)
-    record["timing"]["cpu_s"] = round(after_cpu - before_cpu, 2)
+    record["timing"]["peak_rss_mb"] = max(peaks) if peaks else None
+    if not peaks:
+        record["measurement_notes"]["peak_rss_mb"] = NO_TIME_REASON
+    record["timing"]["cpu_s"] = round(_child_cpu_seconds() - before_cpu, 2)
     _apply_attempt(record, cache, item.cell.id)
     return record
 
@@ -338,7 +359,11 @@ def _read_remote_artifacts(record: dict, cell_dir: Path) -> None:
 
 def _apply_prepared(record: dict, text: str) -> None:
     pictures, per_picture = parse_prepared_pictures(text)
-    record["prepared"] = {"pictures": pictures, "seconds_per_picture": per_picture}
+    record["prepared"] = {
+        "pictures": pictures,
+        "seconds_per_picture": per_picture,
+        "producers": parse_prepared_producers(text),
+    }
 
 
 def _new_record(item: CellPlan, *, primed: bool | None) -> dict:
@@ -362,6 +387,9 @@ def _new_record(item: CellPlan, *, primed: bool | None) -> dict:
             "peak_rss_mb": None,
             "cpu_s": None,
         },
+        # Why a field the run did not report is missing, where "the run did not
+        # report it" is not the whole story. Read by the summary's unmeasured list.
+        "measurement_notes": {},
         "prepared": {},
         "hosted_usage": {},
         "selected_asset_ids": [],
@@ -381,10 +409,24 @@ def _apply_run_summary(record: dict, text: str, cell_dir: Path) -> None:
     record["eligible"] = summary.eligible
     record["hosted_usage"] = summary.usage.as_dict()
     if summary.video_path:
-        local = cell_dir / Path(summary.video_path).name
-        source = Path(summary.video_path)
-        record["video"] = probe_video(source if source.is_file() else local) or {}
-        record["video"]["path"] = str(source)
+        found = _locate_video(summary.video_path, cell_dir)
+        record["video"] = probe_video(found) or {}
+        record["video"]["path"] = str(found)
+
+
+def _locate_video(shown: str, cell_dir: Path) -> Path:
+    """The file the run named, as a path on this machine.
+
+    A local cell prints whatever `--output` was given relative to the directory
+    the runner starts it in, and a remote cell prints a path inside its own
+    container, which `pull-results` and `copy-out` mirror into the cell directory.
+    """
+    named = Path(shown)
+    candidates = [named if named.is_absolute() else REPO_ROOT / named]
+    if shown.startswith(f"{REMOTE_OUT}/"):
+        candidates.append(cell_dir / shown[len(REMOTE_OUT) + 1 :])
+    candidates.append(cell_dir / named.name)
+    return next((path for path in candidates if path.is_file()), candidates[0])
 
 
 def _apply_attempt(record: dict, cache: Path, memory_key: str) -> None:
@@ -512,6 +554,11 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--serve-fixture", action="store_true", help="serve the fixture library on the LAN"
     )
     parser.add_argument("--image-tag", default=DEFAULT_IMAGE_TAG)
+    parser.add_argument(
+        "--inference-tag",
+        default=None,
+        help="image tag for the inference service; defaults to --image-tag",
+    )
     parser.add_argument("--inference-device", choices=["auto", "cpu", "cuda"], default="auto")
     parser.add_argument(
         "--keep-service", action="store_true", help="leave the inference overlay running"
@@ -584,7 +631,12 @@ def main(argv: list[str] | None = None) -> int:
 
     needs_overlay = lan or any(item.cell.inference_overlay for item in plan.runnable)
     overlay = (
-        inference_overlay_steps(device=opts.inference_device, keep=opts.keep_service, lan=lan)
+        inference_overlay_steps(
+            device=opts.inference_device,
+            keep=opts.keep_service,
+            lan=lan,
+            tag=opts.inference_tag or opts.image_tag,
+        )
         if needs_overlay
         else ()
     )
@@ -619,9 +671,10 @@ def _execute(plan: Plan, opts: argparse.Namespace, out_dir: Path, overlay: tuple
     # way to know it until the Service exists.
     device = _resolve_device(opts.inference_device, plan) if overlay else "cpu"
     lan = plan.environment.get(INFERENCE_ENV) == DERIVED_ADDRESS
+    served = inference_image(opts.inference_tag or opts.image_tag, device=device) if overlay else ""
     if overlay:
-        print(f"inference overlay: {overlay_path(device)}")
-        _apply_overlay(plan, overlay_path(device), up=True)
+        print(f"inference overlay: {overlay_path(device)} running {served}")
+        _apply_overlay(plan, overlay_path(device), up=True, image=served)
         if lan:
             _apply_overlay(plan, LAN_OVERLAY, up=True)
             plan.environment[INFERENCE_ENV] = f"http://{_lan_address(plan)}:{INFERENCE_PORT}"
@@ -644,6 +697,11 @@ def _execute(plan: Plan, opts: argparse.Namespace, out_dir: Path, overlay: tuple
         ]
         for future in futures:
             records.extend(future.result())
+
+    # Which service answered this cell, so a row can say what it measured against.
+    for row in records:
+        if served and row.get("facts") == "service":
+            row["inference_image"] = served
 
     if overlay and not opts.keep_service:
         if lan:
@@ -705,9 +763,37 @@ def _run_bare(command: tuple[str, ...], plan: Plan) -> None:
     )
 
 
-def _apply_overlay(plan: Plan, path: str, *, up: bool) -> None:
-    verb = ["apply", "-k", path] if up else ["delete", "-k", path, "--ignore-not-found"]
-    _run_bare((*KUBECTL, *verb), plan)
+def _apply_overlay(plan: Plan, path: str, *, up: bool, image: str = "") -> None:
+    if not up:
+        _run_bare((*KUBECTL, "delete", "-k", path, "--ignore-not-found"), plan)
+    elif image:
+        _apply_rendered(plan, retag_inference(_render_overlay(path), image))
+    else:
+        _run_bare((*KUBECTL, "apply", "-k", path), plan)
+
+
+def _render_overlay(path: str) -> str:
+    proc = subprocess.run(  # noqa: S603
+        ["kubectl", "kustomize", path],  # noqa: S607
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise SystemExit(f"kubectl kustomize {path} failed: {proc.stderr.strip()}")
+    return proc.stdout
+
+
+def _apply_rendered(plan: Plan, manifests: str) -> None:
+    """Apply what is in hand, because the image the matrix wants is not the committed pin."""
+    subprocess.run(  # noqa: S603
+        [_substitute(part, plan.environment) for part in (*KUBECTL, "apply", "-f", "-")],
+        cwd=REPO_ROOT,
+        input=manifests,
+        text=True,
+        check=False,
+    )
 
 
 def _report_skips(plan: Plan) -> None:

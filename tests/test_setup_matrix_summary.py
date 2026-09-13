@@ -105,6 +105,16 @@ def test_a_missing_timing_is_named_not_filled_in() -> None:
     assert "| - |" in build_markdown(summary)
 
 
+def test_a_field_the_cell_explained_is_named_with_its_own_reason() -> None:
+    """A host with no way to measure a field did not simply fail to report it."""
+    row = _row("mac-local")
+    row["timing"]["peak_rss_mb"] = None
+    row["measurement_notes"] = {"peak_rss_mb": "per-step peak memory. /usr/bin/time is absent."}
+    summary = _summary([row])
+    assert "mac-local: per-step peak memory. /usr/bin/time is absent." in summary["unmeasured"]
+    assert not any("peak_rss_mb, " in line for line in summary["unmeasured"])
+
+
 def test_a_primed_bank_means_cold_was_not_cold() -> None:
     summary = _summary([_row(REFERENCE_CELL, prepare_cache_primed=True)])
     assert any("true cold preparation" in line for line in summary["unmeasured"])

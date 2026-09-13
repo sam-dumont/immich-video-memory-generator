@@ -91,6 +91,26 @@ def test_kustomization_pins_a_published_image_tag() -> None:
     assert "commonLabels" not in kustomization
 
 
+def test_the_two_inference_overlays_name_the_same_release() -> None:
+    """The CUDA image is the CPU tag with `-cuda` on the end, and only it carries that provider.
+
+    They drift apart silently: a cluster applying one overlay and reading the
+    other's release notes gets a service that answers with different weights.
+    """
+    tags = {}
+    for overlay in ("inference", "inference-cuda"):
+        kustomization = yaml.safe_load(
+            (K8S_ROOT / "overlays" / overlay / "kustomization.yaml").read_text()
+        )
+        entry = next(
+            image for image in kustomization["images"] if image["name"].endswith("/inference")
+        )
+        tags[overlay] = str(entry["newTag"])
+
+    assert re.fullmatch(r"\d+\.\d+\.\d+", tags["inference"]), tags
+    assert tags["inference-cuda"] == f"{tags['inference']}-cuda", tags
+
+
 def test_only_the_kustomization_pin_names_a_concrete_version() -> None:
     """One `0.59.2` was copied into five prose sites and all six rotted together (#732).
 

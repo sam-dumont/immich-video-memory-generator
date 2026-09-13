@@ -40,7 +40,16 @@ FIXTURE_ENV = "MATRIX_FIXTURE_BASE_URL"
 # code has a single set of paths to read back.
 REMOTE_CONFIG = "/out/config.yaml"
 REMOTE_OUT = "/out"
-REMOTE_CACHE = "/models/.immich-memories/cache"
+# Every cell gets an editorial cache of its own, and the model files stay shared
+# at /models. The bank remembers what a reader decided and what a caption cost,
+# so a cell running second on a shared cache reports the cell before it: the
+# first Mac run had `mac-rules` culling pictures with the model's own words and
+# calling a one-second re-read a cold preparation.
+REMOTE_CACHE = "/cache"
+CELL_CACHE_DIR = "cache"
+# The two mounts of the cluster's one data claim: models shared, cache per cell.
+MODELS_SUBPATH = "models"
+CACHE_SUBPATH = "cache"
 # Where a cluster cell writes inside the shared output claim, so the collector
 # pod and the Job agree on one path.
 OUTPUT_SUBPATH = "setup-matrix"
@@ -206,6 +215,20 @@ def _variables(source: dict[str, Any]) -> tuple[tuple[str, ...], tuple[str, ...]
     return tuple(dict.fromkeys(references)), tuple(dict.fromkeys(credentials))
 
 
+def cache_pins(cache_dir: str) -> dict[str, str]:
+    """The three settings that decide where a cell banks, pointed at one directory.
+
+    `editorial.annotation_database` is pinned blank on purpose: blank is what
+    resolves the bank under the cache directory, and an operator's own absolute
+    override would quietly put every cell back in one bank.
+    """
+    return {
+        "cache.directory": cache_dir,
+        "cache.database": f"{cache_dir}/cache.db",
+        "editorial.annotation_database": "",
+    }
+
+
 def _pins_for(cell: Cell, manifest: dict, library: dict) -> dict[str, Any]:
     pins: dict[str, Any] = dict(manifest.get("baseline_config") or {})
     pins.update(library.get("config") or {})
@@ -320,6 +343,8 @@ def _nas_steps(cell: Cell, memory: dict, month: str, out_dir: Path, image: str) 
         "HOME=/models",
         "-v",
         f"{remote}:{REMOTE_OUT}",
+        "-v",
+        f"{remote}/{CELL_CACHE_DIR}:{REMOTE_CACHE}",
         *_credential_flags(cell),
         image,
         "/bin/bash",
@@ -339,9 +364,16 @@ def _nas_steps(cell: Cell, memory: dict, month: str, out_dir: Path, image: str) 
             pipe_to=("ssh", "$MATRIX_NAS_SSH", f"mkdir -p {remote} && tar -C {remote} -xf -"),
         ),
         Step("run", ("ssh", "$MATRIX_NAS_SSH", " ".join(docker))),
+        # The cell's cache is not pulled: it is previews and thumbnails by the
+        # gigabyte, it means nothing off the NAS, and leaving it there is what
+        # makes a re-run of this cell warm.
         Step(
             "pull-results",
-            ("ssh", "$MATRIX_NAS_SSH", f"tar -C {remote} -cf - ."),
+            (
+                "ssh",
+                "$MATRIX_NAS_SSH",
+                f"tar -C {remote} --exclude=./{CELL_CACHE_DIR} -cf - .",
+            ),
             pipe_to=("tar", "-C", str(local), "-xf", "-"),
         ),
     )
@@ -433,6 +465,14 @@ CPU_OVERLAY = "deploy/kubernetes/overlays/inference"
 CUDA_OVERLAY = "deploy/kubernetes/overlays/inference-cuda"
 LAN_OVERLAY = "deploy/kubernetes/overlays/inference-lan"
 LAN_SERVICE = "inference-lan"
+# The service's own image. The committed overlays pin a release of their own, and
+# a pin ages: the cluster lane last ran 0.85.0-cuda while the cells ran a 0.86.2
+# app image, so those rows measured a service two releases behind the code they
+# were published as. The matrix renders the overlay and rewrites this reference.
+INFERENCE_IMAGE = "ghcr.io/sam-dumont/immich-video-memory-generator/inference"
+_INFERENCE_IMAGE_LINE = re.compile(
+    rf"(?m)^(\s*image:\s*){re.escape(INFERENCE_IMAGE)}(?::\S+)?[ \t]*$"
+)
 INFERENCE_PORT = 8092
 # The override. Set it to pin the address the NAS cells call; leave it unset and
 # the runner reads it off the LoadBalancer the `inference-lan` overlay asks for.
@@ -455,6 +495,23 @@ def overlay_path(device: str) -> str:
     return CPU_OVERLAY if device == "cpu" else CUDA_OVERLAY
 
 
+def inference_image(tag: str, *, device: str) -> str:
+    """The inference image for a device. Only the `-cuda` build carries that provider."""
+    if device not in {"cpu", "cuda"}:
+        raise PlanError(f"inference device must be cpu or cuda by now, got {device!r}")
+    return f"{INFERENCE_IMAGE}:{tag}-cuda" if device == "cuda" else f"{INFERENCE_IMAGE}:{tag}"
+
+
+def retag_inference(rendered: str, image: str) -> str:
+    """Point every inference container in a rendered overlay at `image`.
+
+    The rendered output is rewritten rather than the overlay, because the
+    committed files are what a reader applies by hand and the matrix has no
+    business editing them to run.
+    """
+    return _INFERENCE_IMAGE_LINE.sub(lambda match: match.group(1) + image, rendered)
+
+
 def needs_lan_address(cells: tuple[Cell, ...]) -> bool:
     """Whether anything off the cluster has to call the inference service.
 
@@ -464,12 +521,16 @@ def needs_lan_address(cells: tuple[Cell, ...]) -> bool:
     return any(cell.lane == "nas" and cell.facts == "service" for cell in cells)
 
 
-def inference_overlay_steps(*, device: str, keep: bool, lan: bool) -> tuple[Step, ...]:
+def inference_overlay_steps(*, device: str, keep: bool, lan: bool, tag: str) -> tuple[Step, ...]:
     """Bring the inference service up before the service cells, and take it down after.
 
     `auto` is resolved at run time by asking the cluster whether any node carries
     the GPU operator's label. A dry run prints the probe instead of its answer,
     because the answer depends on a cluster the transcript should not assume.
+
+    The overlay is rendered and its image reference rewritten to `tag` before it
+    is applied, so the service under test is the release the cells are running
+    rather than whatever the committed pin last named.
 
     `lan` adds the second Service that asks for a LoadBalancer address, which is
     the only way a NAS outside the cluster can reach the port. The address is read
@@ -479,12 +540,21 @@ def inference_overlay_steps(*, device: str, keep: bool, lan: bool) -> tuple[Step
     probe = Step(
         "probe-gpu", (*KUBECTL, "get", "nodes", "-l", "nvidia.com/gpu.present=true", "-o", "name")
     )
-    overlay = "<cpu or cuda, decided by probe-gpu>" if device == "auto" else overlay_path(device)
+    auto = device == "auto"
+    overlay = "<cpu or cuda, decided by probe-gpu>" if auto else overlay_path(device)
+    image = (
+        f"{INFERENCE_IMAGE}:{tag}<-cuda if probe-gpu finds one>"
+        if auto
+        else inference_image(tag, device=device)
+    )
     steps = [
-        probe
-        if device == "auto"
-        else Step("device", ("echo", f"inference device pinned: {device}")),
-        Step("apply-inference", (*KUBECTL, "apply", "-k", overlay)),
+        probe if auto else Step("device", ("echo", f"inference device pinned: {device}")),
+        Step("inference-image", ("echo", image)),
+        Step(
+            "apply-inference",
+            ("kubectl", "kustomize", overlay),
+            pipe_to=(*KUBECTL, "apply", "-f", "-"),
+        ),
         Step(
             "wait-inference",
             (
@@ -548,8 +618,11 @@ def _k8s_manifests(
             script=script,
             config=REMOTE_CONFIG,
             out=REMOTE_OUT,
+            cache=REMOTE_CACHE,
             secrets=secret_block,
             subpath=f"{OUTPUT_SUBPATH}/{cell.id}",
+            models_subpath=MODELS_SUBPATH,
+            cache_subpath=f"{CACHE_SUBPATH}/{cell.id}",
             output_claim=OUTPUT_CLAIM,
             data_claim=DATA_CLAIM,
         ),
@@ -650,8 +723,14 @@ spec:
             - name: output
               mountPath: {out}
               subPath: {subpath}
-            - name: models
+            # One claim, two mounts: the models are downloaded once for the whole
+            # matrix, the editorial cache belongs to this cell alone.
+            - name: data
               mountPath: /models
+              subPath: {models_subpath}
+            - name: data
+              mountPath: {cache}
+              subPath: {cache_subpath}
           # The request is what the scheduler has to find: a 1-CPU app pod was
           # already answered with Insufficient cpu here, and a cell that runs on
           # scraps is not a measurement. The limit is the NAS cell's docker cap,
@@ -670,7 +749,7 @@ spec:
         - name: output
           persistentVolumeClaim:
             claimName: {output_claim}
-        - name: models
+        - name: data
           persistentVolumeClaim:
             claimName: {data_claim}
 """
@@ -739,21 +818,20 @@ def build_cell_plan(
     missing = [name for name in required if not (environment.get(name) or "").strip()]
     skip = f"needs {', '.join(missing)}, absent from the loaded environment" if missing else None
 
+    cache = str(out_dir / cell.id / CELL_CACHE_DIR) if cell.lane == "mac" else REMOTE_CACHE
+    pins.update(cache_pins(cache))
     config_yaml = yaml.safe_dump(nested(pins), sort_keys=False)
     memory = manifest.get("memory") or {}
     manifests: dict[str, str] = {}
     diagnostic: Step | None = None
     if cell.lane == "mac":
         steps = _mac_steps(cell, memory, month, out_dir)
-        cache = "$HOME/.immich-memories/cache"
     elif cell.lane == "nas":
         steps = _nas_steps(cell, memory, month, out_dir, image)
-        cache = REMOTE_CACHE
     elif cell.lane == "k8s":
         steps = _k8s_steps(cell, out_dir)
         manifests = _k8s_manifests(cell, memory, month, image, config_yaml)
         diagnostic = k8s_diagnostic(cell)
-        cache = REMOTE_CACHE
     else:
         raise PlanError(f"{cell.id}: unknown lane {cell.lane!r}")
 
