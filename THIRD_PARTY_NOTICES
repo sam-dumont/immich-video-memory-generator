@@ -1,102 +1,163 @@
 Third-Party Software Notices
 ============================
 
-This project includes or depends on the following third-party software.
-Each entry lists the license under which that software is distributed.
+This project ships with, downloads, or calls the third-party work listed here.
+Each entry gives the licence it is distributed under and where it comes from.
+The Python section is generated (`make notices`); everything else is kept by
+hand. The project itself is MIT (see LICENSE).
 
 
-Python Dependencies
--------------------
+Models (bundled, or downloaded by `immich-memories models fetch`, digest-pinned)
+--------------------------------------------------------------------------------
 
-staticmap 0.5.7
+DINOv2 small (facebook/dinov2-small)
+  Role: the frozen picture encoder every editorial fact is computed from
+  Artifact: dinov2-small-478164cd.onnx, an ONNX export of the checkpoint,
+    served from this repository's `models-v1` release, 84 MB,
+    sha256 478164cd290ee78e5ddb4fcc474136eec714b4b8253a3609cc7164b592e958af
   License: Apache-2.0
-  Copyright: 2015 komoot GmbH
-  URL: https://github.com/komoot/staticmap
+  Copyright: Meta Platforms, Inc. and affiliates
+  URL: https://huggingface.co/facebook/dinov2-small
+  Paper: Oquab et al., "DINOv2: Learning Robust Visual Features without
+    Supervision", 2023
+  Note: the six linear heads that read its features are trained by this project
+    and ship inside the Python package under the project licence.
 
-opencv-python 4.x
+Marqo NSFW image detector (Marqo/nsfw-image-detection-384)
+  Role: the sensitive-content detector behind the family-viewing gate
+  Artifact: nsfw-marqo-384-924658f1.onnx, an ONNX export of revision
+    0c26ec22111b83f106d72a55f611ec35962bcb65 written by
+    scripts/export_marqo_onnx.py, served from the `models-v1` release, 22 MB,
+    sha256 924658f1ac638d96e9126ecb29de047dc8d31c9c9defcab77a26a5c96ed69e11
   License: Apache-2.0
-  Copyright: OpenCV team
-  URL: https://github.com/opencv/opencv-python
+  Copyright: Marqo
+  URL: https://huggingface.co/Marqo/nsfw-image-detection-384
 
-watchdog 6.x
+Docling document figure classifier (docling-project/DocumentFigureClassifier-v2.0)
+  Role: tells a screenshot, a scan or a chart from a photograph
+  Artifact: model.onnx at revision 2a12e02668b98ca40216eab41cdf19530577cba4,
+    fetched from the Hugging Face Hub into the local cache on first use
   License: Apache-2.0
-  Copyright: Mickaël Schoentgen
-  URL: https://github.com/gorakhargosh/watchdog
+  Copyright: IBM Corporation (Docling project)
+  URL: https://huggingface.co/docling-project/DocumentFigureClassifier-v2.0
 
-httpx 0.28.x
-  License: BSD-3-Clause
-  Copyright: Tom Christie
-  URL: https://github.com/encode/httpx
-
-scenedetect 0.6.x
-  License: BSD-3-Clause
-  Copyright: Brandon Castellano
-  URL: https://www.scenedetect.com
-
-click 8.x
-  License: BSD-3-Clause
-  Copyright: 2014 Pallets
-  URL: https://palletsprojects.com/p/click/
-
-numpy 2.x
-  License: BSD-3-Clause
-  Copyright: Travis E. Oliphant et al.
-  URL: https://numpy.org/
-
-imagehash 4.x
-  License: BSD-2-Clause
-  Copyright: Johannes Buchner
-  URL: https://github.com/JohannesBuchner/imagehash
-
-pydantic 2.x
+YuNet face detector (opencv_zoo)
+  Role: the face centre behind smart-zoom framing, on the OpenCV path
+  Artifact: face_detection_yunet_2023mar.onnx at revision
+    f12e12798e8314f7c074a6656816c048dcc95b7a, copied byte-for-byte into the
+    Python package at src/immich_memories/processing/bundled_models/, 227 KB,
+    sha256 8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4
   License: MIT
-  Copyright: Samuel Colvin et al.
-  URL: https://github.com/pydantic/pydantic
+  Copyright: 2020 Shiqi Yu
+  URL: https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet
+  Note: opencv_zoo as a whole is Apache-2.0; this model directory carries its
+    own MIT LICENSE, and that is the one reproduced here. Bundled rather than
+    fetched because it is 227 KB and the machine may never reach the network.
 
-pydantic-settings 2.x
+Optional models the app can call but never bundles: a caption model and a text
+reader served by the operator (any OpenAI-compatible endpoint), MusicGen
+(Meta, CC-BY-NC-4.0 weights) and ACE-Step (Apache-2.0) for generated music,
+Demucs (MIT, weights downloaded by the `demucs` package) for stem separation.
+Their licences are the operator's to check for the models they choose.
+
+
+Apache-2.0 notice
+-----------------
+
+The three Apache-2.0 models above (YuNet is MIT) are distributed under the
+Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0).
+Their ONNX exports are derivative works of those checkpoints and carry the
+same licence; no NOTICE file accompanies the upstream checkpoints.
+
+
+Bundled music (packages/immich-memories-music)
+----------------------------------------------
+
+28 tracks generated locally with ACE-Step 1.5 (acestep-v15-xl-turbo). Nothing is
+sampled from or trained on third-party recordings; the tracks are released under
+the project's MIT licence. Model, settings, and per-track tempo, key and seed are
+recorded in packages/immich-memories-music/LICENSE-MUSIC.
+
+ACE-Step (the generator, not shipped)
+  License: Apache-2.0
+  URL: https://github.com/ace-step/ACE-Step
+
+
+Bundled fonts
+-------------
+
+Title fonts, src/immich_memories/titles/bundled_fonts/ (see LICENSE there).
+All under the SIL Open Font License 1.1 (https://openfontlicense.org/):
+
+Montserrat        Julieta Ulanovsky           https://github.com/JulietaUla/montserrat
+Outfit            Rodrigo Fuenzalida          https://github.com/nicholasjimmy/outfit
+Raleway           Matt McInerney, Pablo Impallari, Rodrigo Fuenzalida
+                                              https://github.com/impallari/Raleway
+Josefin Sans      Santiago Orozco             https://github.com/googlefonts/josefinsans
+Quicksand         Andrew Paglinawan           https://github.com/googlefonts/Quicksand
+
+Originally obtained through Fontsource (https://fontsource.org/, MIT); the
+Fontsource CDN is only contacted as a fallback for a custom font name.
+
+Inter (web UI and docs site: src/immich_memories/ui/static/fonts/,
+docs-site/static/fonts/)
+  License: SIL Open Font License 1.1
+  Copyright: 2016 The Inter Project Authors (Rasmus Andersson)
+  URL: https://github.com/rsms/inter
+
+Material Icons (Remotion demo: docs-site/remotion/public/MaterialIcons-Regular.woff2)
+  License: Apache-2.0
+  Copyright: Google LLC
+  URL: https://github.com/google/material-design-icons
+
+
+Demo and documentation tooling
+------------------------------
+
+Remotion 4.0.516 (docs-site/remotion/, renders the demo video; not part of the app)
+  License: Remotion License (https://remotion.dev/license): free for
+    individuals and for companies of up to three people; larger companies need
+    a company licence. The rendered demo.mp4 is published under the project
+    licence; the tool is only run by contributors who rebuild it.
+  Copyright: Remotion AG
+  URL: https://www.remotion.dev/
+
+Docusaurus (docs-site/)
   License: MIT
-  Copyright: Samuel Colvin, Eric Jolibois, Hasan Ramezani
-  URL: https://github.com/pydantic/pydantic-settings
+  Copyright: Meta Platforms, Inc.
+  URL: https://docusaurus.io/
 
-nicegui 3.x
+VHS (records the CLI demo tape)
   License: MIT
-  Copyright: Zauberzeug GmbH
-  URL: https://nicegui.io/
+  Copyright: Charmbracelet, Inc.
+  URL: https://github.com/charmbracelet/vhs
 
-moviepy 1.x
-  License: MIT
-  Copyright: Zulko 2017
-  URL: https://zulko.github.io/moviepy/
 
-videohash 3.x
-  License: MIT
-  Copyright: Akash Mahanty
-  URL: https://github.com/akamhy/videohash
+Test and demo fixtures
+----------------------
 
-PyYAML 6.x
-  License: MIT
-  Copyright: Kirill Simonov
-  URL: https://pyyaml.org/
+Fixture library, tests/e2e/fixtures/library/ (six photographs)
+  License: CC0 1.0 (public domain dedication), no attribution required
+  Source: StockSnap.io via the Openverse index; per-file provenance in
+    tests/e2e/fixtures/library/CREDITS.md
 
-rich 14.x
-  License: MIT
-  Copyright: Will McGugan
-  URL: https://github.com/Textualize/rich
+Face fixture, tests/fixtures/faces/picnic-friends.jpg ("Friends Picnic")
+  License: CC0 1.0 (public domain dedication), no attribution required
+  Copyright: Helena Lopes
+  Source: https://stocksnap.io/photo/friends-picnic-3IVBNKC2JH, via the
+    Openverse index; provenance in tests/fixtures/faces/CREDITS.md
+  Note: kept out of the library above, which shows no recognisable face
 
-Pillow 12.x
-  License: HPND (Historical Permission Notice and Disclaimer)
-  Copyright: Jeffrey A. Clark
-  URL: https://python-pillow.org/
-
-croniter 6.x
-  License: MIT
-  Copyright: Matsumoto Taichi, kiorky
-  URL: https://github.com/kiorky/croniter
-
-geopy 2.x
-  License: MIT
-  Copyright: geopy contributors
-  URL: https://github.com/geopy/geopy
+HDR samples, tests/fixtures/hdr_samples/ (see LICENSES.md there)
+  Awesome-Gain-Maps (UltraHDR JPEG gain map test images)
+    License: MIT, Copyright: Nathan Moroney
+    URL: https://github.com/NMoroney/Awesome-Gain-Maps
+  Jellyfin test videos (HDR10 and Dolby Vision clips)
+    License: CC BY-SA, Copyright: Jellyfin contributors
+    URL: https://repo.jellyfin.org/test-videos/
+  FFmpeg FATE suite (HDR10+, HDR Vivid, Dolby Vision bitstreams)
+    License: permissive test data, Copyright: FFmpeg project
+    URL: http://fate-suite.ffmpeg.org/hevc/
 
 
 Algorithms
@@ -106,14 +167,14 @@ Van Wijk smooth zoom interpolation
   Ported from d3-interpolate (https://github.com/d3/d3-interpolate)
   License: ISC
   Copyright: 2010-2021 Mike Bostock
-  Based on: "Smooth and efficient zooming and panning"
-  by Jarke J. van Wijk and Wim A.A. Nuij (IEEE InfoVis 2003)
+  Based on: "Smooth and efficient zooming and panning" by Jarke J. van Wijk
+    and Wim A.A. Nuij (IEEE InfoVis 2003)
 
 
-External Services
------------------
+External services (called at runtime, nothing bundled)
+------------------------------------------------------
 
-ESRI / ArcGIS World Imagery (satellite tiles)
+ESRI / ArcGIS World Imagery (satellite title backgrounds)
   License: Esri Master License Agreement
   Copyright: Esri, Maxar, Earthstar Geographics, GIS User Community
   URL: https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer
@@ -130,89 +191,582 @@ OpenTopoMap (optional map style)
   Copyright: OpenTopoMap contributors
   URL: https://opentopomap.org/
 
-Nominatim (reverse geocoding via geopy)
+Nominatim (reverse geocoding through geopy)
   License: ODbL
   Copyright: OpenStreetMap contributors
   URL: https://nominatim.openstreetmap.org/
 
 
-Runtime Dependencies
---------------------
+Runtime tools (installed by the operator or the Docker image, not bundled)
+--------------------------------------------------------------------------
 
 FFmpeg
-  License: LGPL-2.1 or GPL-2.0+ (depending on build)
+  License: LGPL-2.1-or-later, or GPL-2.0-or-later depending on the build
   Copyright: FFmpeg developers
   URL: https://ffmpeg.org/
 
-ExifTool (optional — HDR headroom fallback)
-  License: Perl Artistic License / GPL-1.0+
+ExifTool (optional, HDR headroom fallback)
+  License: Perl Artistic License / GPL-1.0-or-later
   Copyright: Phil Harvey
   URL: https://exiftool.org/
-  Note: Only invoked as subprocess when built-in MakerNote parser fails.
-        Not bundled or required.
+  Note: called as a subprocess only when the built-in MakerNote parser fails.
 
 
-Bundled Fonts (SIL Open Font License 1.1)
------------------------------------------
-Bundled in src/immich_memories/titles/bundled_fonts/
-No runtime download needed. See bundled_fonts/LICENSE for details.
+Python dependencies
+-------------------
 
-Montserrat — Julieta Ulanovsky
-  URL: https://github.com/JulietaUla/montserrat
+Read the licence lines below as they are: `mutagen` (the optional `audio`
+extra) is GPL-2.0-or-later and is imported as a library; `bidict`, `certifi`,
+`orjson` and `tqdm` carry MPL-2.0 terms on their own files; `docutils` is a mix
+of public domain, BSD and GPL parts. Nothing here changes the project's MIT
+licence for its own code, but a downstream that vendors the environment
+should know.
 
-Outfit — Rodrigo Fuenzalida
-  URL: https://github.com/nicholasjimmy/outfit
+136 packages, computed from uv.lock: everything reachable from
+immich-memories through the runtime extras (never the dev tools). Regenerate
+with `make notices`; `make notices-check` fails when this list is stale.
 
-Raleway — Matt McInerney, Pablo Impallari, Rodrigo Fuenzalida
-  URL: https://github.com/impallari/Raleway
+aiofiles 25.1.0
+  License: Apache-2.0
+  URL: https://github.com/Tinche/aiofiles
 
-Josefin Sans — Santiago Orozco
-  URL: https://github.com/googlefonts/josefinsans
+aiohappyeyeballs 2.6.1
+  License: PSF-2.0
+  URL: https://github.com/aio-libs/aiohappyeyeballs
 
-Quicksand — Andrew Paglinawan
-  URL: https://github.com/googlefonts/Quicksand
+aiohttp 3.14.3
+  License: Apache-2.0 AND MIT
+  URL: https://github.com/aio-libs/aiohttp
 
-All fonts licensed under SIL Open Font License 1.1
-Originally sourced via Fontsource CDN (https://fontsource.org/, MIT license)
-Now bundled in the package — CDN download only used as fallback for custom fonts
+aiosignal 1.4.0
+  License: Apache-2.0
+  URL: https://github.com/aio-libs/aiosignal
 
-
-Bundled Models (src/immich_memories/processing/bundled_models/)
----------------------------------------------------------------
-
-YuNet face detector — face_detection_yunet_2023mar.onnx
+annotated-doc 0.0.4
   License: MIT
-  Copyright: 2020 Shiqi Yu <shiqi.yu@gmail.com>
-  URL: https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet
-  Note: Copied byte-for-byte from OpenCV Zoo (itself Apache-2.0); the model
-        directory carries the narrower MIT notice reproduced here.
-        Run by cv2.FaceDetectorYN for smart-zoom face centering.
-        Provenance and SHA-256 in face_detection_yunet_2023mar.md.
+  URL: https://github.com/fastapi/annotated-doc
 
-
-Test Fixtures (tests/fixtures/faces/)
--------------------------------------
-
-Friends Picnic (StockSnap.io, via the Openverse index)
-  License: CC0 1.0 (public domain dedication)
-  Copyright: Helena Lopes
-  URL: https://stocksnap.io/photo/friends-picnic-3IVBNKC2JH
-
-
-Test Fixtures (tests/fixtures/hdr_samples/)
--------------------------------------------
-
-Awesome-Gain-Maps (UltraHDR JPEG gain map test images)
+annotated-types 0.7.0
   License: MIT
-  Copyright: Nathan Moroney
-  URL: https://github.com/NMoroney/Awesome-Gain-Maps
+  URL: https://github.com/annotated-types/annotated-types
 
-Jellyfin Test Videos (HDR10 + Dolby Vision test clips)
-  License: CC BY-SA
-  Copyright: Jellyfin Contributors
-  URL: https://repo.jellyfin.org/test-videos/
+antlr4-python3-runtime 4.9.3
+  License: BSD
+  URL: http://www.antlr.org
 
-FFmpeg FATE Suite (HDR10+, HDR Vivid, Dolby Vision bitstreams)
-  License: Permissive (test data)
-  Copyright: FFmpeg project
-  URL: http://fate-suite.ffmpeg.org/hevc/
+anyio 4.12.1
+  License: MIT
+  URL: https://github.com/agronholm/anyio
+
+apprise 1.9.9
+  License: BSD-2-Clause
+  URL: https://appriseit.com
+
+attrs 25.4.0
+  License: MIT
+  URL: https://github.com/python-attrs/attrs
+
+authlib 1.7.2
+  License: BSD
+  URL: https://github.com/authlib/authlib
+
+bidict 0.23.1
+  License: MPL-2.0
+  URL: https://github.com/jab/bidict
+
+certifi 2026.2.25
+  License: MPL-2.0
+  URL: https://github.com/certifi/python-certifi
+
+cffi 2.0.0
+  License: MIT
+  URL: https://github.com/python-cffi/cffi
+
+charset-normalizer 3.4.5
+  License: MIT
+  URL: https://github.com/jawah/charset_normalizer/blob/master/CHANGELOG.md
+
+click 8.4.2
+  License: BSD-3-Clause
+  URL: https://github.com/pallets/click/
+
+cloudpickle 3.1.2
+  License: BSD
+  URL: https://github.com/cloudpipe/cloudpickle
+
+colorama 0.4.6
+  License: BSD
+  URL: https://github.com/tartley/colorama
+
+croniter 6.0.0
+  License: MIT
+  URL: http://github.com/kiorky/croniter
+
+cryptography 50.0.0
+  License: Apache-2.0 OR BSD-3-Clause
+  URL: https://github.com/pyca/cryptography
+
+cuda-bindings 13.4.1
+  License: NVIDIA proprietary (CUDA Toolkit EULA); pulled only by torch on Linux through the demucs extra
+  URL: https://docs.nvidia.com/cuda/eula/
+
+cuda-pathfinder 1.8.1
+  License: NVIDIA proprietary (CUDA Toolkit EULA); pulled only by torch on Linux through the demucs extra
+  URL: https://docs.nvidia.com/cuda/eula/
+
+cuda-toolkit 13.0.3.0
+  License: NVIDIA proprietary (CUDA Toolkit EULA); pulled only by torch on Linux through the demucs extra
+  URL: https://docs.nvidia.com/cuda/eula/
+
+demucs 4.0.1
+  License: MIT
+  URL: https://github.com/facebookresearch/demucs
+
+dill 0.4.1
+  License: BSD
+  URL: https://github.com/uqfoundation/dill
+
+docutils 0.22.4
+  License: Public Domain; BSD; GPL
+  URL: https://docutils.sourceforge.io
+
+dora-search 0.1.12
+  License: MIT
+  URL: https://github.com/facebookresearch/dora
+
+einops 0.8.2
+  License: MIT
+  URL: https://github.com/arogozhnikov/einops
+
+fastapi 0.135.1
+  License: MIT
+  URL: https://github.com/fastapi/fastapi
+
+filelock 3.25.0
+  License: MIT
+  URL: https://github.com/tox-dev/py-filelock
+
+flatbuffers 25.12.19
+  License: Apache-2.0
+  URL: https://github.com/google/flatbuffers
+
+freetype-py 2.5.1
+  License: BSD
+  URL: https://github.com/rougier/freetype-py
+
+frozenlist 1.8.0
+  License: Apache-2.0
+  URL: https://github.com/aio-libs/frozenlist
+
+fsspec 2026.2.0
+  License: BSD
+  URL: https://github.com/fsspec/filesystem_spec
+
+geographiclib 2.1
+  License: MIT
+  URL: https://github.com/geographiclib/geographiclib-python
+
+geopy 2.4.1
+  License: MIT
+  URL: https://github.com/geopy/geopy
+
+h11 0.16.0
+  License: MIT
+  URL: https://github.com/python-hyper/h11
+
+hf-xet 1.6.0
+  License: Apache-2.0
+  URL: https://github.com/huggingface/xet-core
+
+httpcore 1.0.9
+  License: BSD-3-Clause
+  URL: https://www.encode.io/httpcore/
+
+httptools 0.7.1
+  License: MIT
+  URL: https://github.com/MagicStack/httptools
+
+httpx 0.28.1
+  License: BSD
+  URL: https://github.com/encode/httpx
+
+huggingface-hub 1.30.0
+  License: Apache-2.0
+  URL: https://github.com/huggingface/huggingface_hub
+
+idna 3.18
+  License: BSD-3-Clause
+  URL: https://github.com/kjd/idna
+
+ifaddr 0.2.0
+  License: MIT
+  URL: https://github.com/pydron/ifaddr
+
+immich-memories-music 0.1.0
+  License: MIT
+  URL: https://github.com/sam-dumont/immich-video-memory-generator
+
+itsdangerous 2.2.0
+  License: BSD
+  URL: https://github.com/pallets/itsdangerous/
+
+jinja2 3.1.6
+  License: BSD
+  URL: https://github.com/pallets/jinja/
+
+joserfc 1.7.4
+  License: BSD
+  URL: https://github.com/authlib/joserfc
+
+julius 0.2.7
+  License: MIT
+  URL: https://github.com/adefossez/julius
+
+lameenc 1.8.2
+  License: GNU Lesser General Public License v3 (LGPLv3)
+  URL: https://github.com/chrisstaite/lameenc
+
+markdown 3.10.2
+  License: BSD-3-Clause
+  URL: https://Python-Markdown.github.io/
+
+markdown-it-py 4.0.0
+  License: MIT
+  URL: https://github.com/executablebooks/markdown-it-py
+
+markdown2 2.5.5
+  License: MIT
+  URL: https://github.com/trentm/python-markdown2
+
+markupsafe 3.0.3
+  License: BSD-3-Clause
+  URL: https://github.com/pallets/markupsafe/
+
+mdurl 0.1.2
+  License: MIT
+  URL: https://github.com/executablebooks/mdurl
+
+mpmath 1.3.0
+  License: BSD
+  URL: https://github.com/fredrik-johansson/mpmath
+
+multidict 6.7.1
+  License: Apache License 2.0
+  URL: https://github.com/aio-libs/multidict
+
+mutagen 1.47.0
+  License: GPL-2.0-or-later
+  URL: https://github.com/quodlibet/mutagen
+
+networkx 3.6.1
+  License: BSD-3-Clause
+  URL: https://networkx.org/
+
+nicegui 3.16.0
+  License: MIT
+  URL: https://nicegui.io
+
+numpy 2.4.2
+  License: BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0
+  URL: https://numpy.org
+
+nvidia-cublas 13.1.1.3
+  License: NVIDIA proprietary (CUDA Toolkit EULA); pulled only by torch on Linux through the demucs extra
+  URL: https://docs.nvidia.com/cuda/eula/
+
+nvidia-cuda-cupti 13.0.85
+  License: NVIDIA proprietary (CUDA Toolkit EULA); pulled only by torch on Linux through the demucs extra
+  URL: https://docs.nvidia.com/cuda/eula/
+
+nvidia-cuda-nvrtc 13.0.88
+  License: NVIDIA proprietary (CUDA Toolkit EULA); pulled only by torch on Linux through the demucs extra
+  URL: https://docs.nvidia.com/cuda/eula/
+
+nvidia-cuda-runtime 13.0.96
+  License: NVIDIA proprietary (CUDA Toolkit EULA); pulled only by torch on Linux through the demucs extra
+  URL: https://docs.nvidia.com/cuda/eula/
+
+nvidia-cudnn-cu13 9.24.0.43
+  License: NVIDIA proprietary (CUDA Toolkit EULA); pulled only by torch on Linux through the demucs extra
+  URL: https://docs.nvidia.com/cuda/eula/
+
+nvidia-cufft 12.0.0.61
+  License: NVIDIA proprietary (CUDA Toolkit EULA); pulled only by torch on Linux through the demucs extra
+  URL: https://docs.nvidia.com/cuda/eula/
+
+nvidia-cufile 1.15.1.6
+  License: NVIDIA proprietary (CUDA Toolkit EULA); pulled only by torch on Linux through the demucs extra
+  URL: https://docs.nvidia.com/cuda/eula/
+
+nvidia-curand 10.4.0.35
+  License: NVIDIA proprietary (CUDA Toolkit EULA); pulled only by torch on Linux through the demucs extra
+  URL: https://docs.nvidia.com/cuda/eula/
+
+nvidia-cusolver 12.0.4.66
+  License: NVIDIA proprietary (CUDA Toolkit EULA); pulled only by torch on Linux through the demucs extra
+  URL: https://docs.nvidia.com/cuda/eula/
+
+nvidia-cusparse 12.6.3.3
+  License: NVIDIA proprietary (CUDA Toolkit EULA); pulled only by torch on Linux through the demucs extra
+  URL: https://docs.nvidia.com/cuda/eula/
+
+nvidia-cusparselt-cu13 0.8.1
+  License: NVIDIA proprietary (CUDA Toolkit EULA); pulled only by torch on Linux through the demucs extra
+  URL: https://docs.nvidia.com/cuda/eula/
+
+nvidia-nccl-cu13 2.30.7
+  License: NVIDIA proprietary (CUDA Toolkit EULA); pulled only by torch on Linux through the demucs extra
+  URL: https://docs.nvidia.com/cuda/eula/
+
+nvidia-nvjitlink 13.4.52
+  License: NVIDIA proprietary (CUDA Toolkit EULA); pulled only by torch on Linux through the demucs extra
+  URL: https://docs.nvidia.com/cuda/eula/
+
+nvidia-nvshmem-cu13 3.4.5
+  License: NVIDIA proprietary (CUDA Toolkit EULA); pulled only by torch on Linux through the demucs extra
+  URL: https://docs.nvidia.com/cuda/eula/
+
+nvidia-nvtx 13.0.85
+  License: NVIDIA proprietary (CUDA Toolkit EULA); pulled only by torch on Linux through the demucs extra
+  URL: https://docs.nvidia.com/cuda/eula/
+
+oauthlib 3.3.1
+  License: BSD-3-Clause
+  URL: https://github.com/oauthlib/oauthlib
+
+omegaconf 2.3.0
+  License: BSD
+  URL: https://github.com/omry/omegaconf
+
+onnxruntime 1.28.0
+  License: MIT
+  URL: https://onnxruntime.ai
+
+onnxruntime-gpu 1.26.0
+  License: MIT
+  URL: https://onnxruntime.ai
+
+opencv-python 4.13.0.92
+  License: Apache-2.0
+  URL: https://github.com/opencv/opencv-python
+
+openunmix 1.3.0
+  License: MIT
+  URL: https://github.com/sigsep/open-unmix-pytorch
+
+orjson 3.11.7
+  License: MPL-2.0 AND (Apache-2.0 OR MIT)
+  URL: https://github.com/ijl/orjson
+
+packaging 26.0
+  License: Apache-2.0 OR BSD-2-Clause
+  URL: https://github.com/pypa/packaging
+
+pillow 12.3.0
+  License: MIT-CMU
+  URL: https://python-pillow.github.io
+
+pillow-heif 1.3.0
+  License: GNU General Public License v2 (GPLv2)
+  URL: https://github.com/bigcat88/pillow_heif
+
+propcache 0.4.1
+  License: Apache-2.0
+  URL: https://github.com/aio-libs/propcache
+
+protobuf 7.35.1
+  License: 3-Clause BSD License
+  URL: https://developers.google.com/protocol-buffers/
+
+pycparser 3.0
+  License: BSD-3-Clause
+  URL: https://github.com/eliben/pycparser
+
+pydantic 2.12.5
+  License: MIT
+  URL: https://github.com/pydantic/pydantic
+
+pydantic-core 2.41.5
+  License: MIT
+  URL: https://github.com/pydantic/pydantic-core
+
+pydantic-settings 2.15.0
+  License: MIT
+  URL: https://github.com/pydantic/pydantic-settings
+
+pygments 2.20.0
+  License: BSD-2-Clause
+  URL: https://pygments.org
+
+pyobjc-core 12.1
+  License: MIT
+  URL: https://github.com/ronaldoussoren/pyobjc
+
+pyobjc-framework-cocoa 12.1
+  License: MIT
+  URL: https://github.com/ronaldoussoren/pyobjc
+
+pyobjc-framework-coreml 12.1
+  License: MIT
+  URL: https://github.com/ronaldoussoren/pyobjc
+
+pyobjc-framework-metal 12.1
+  License: MIT
+  URL: https://github.com/ronaldoussoren/pyobjc
+
+pyobjc-framework-quartz 12.1
+  License: MIT
+  URL: https://github.com/ronaldoussoren/pyobjc
+
+pyobjc-framework-vision 12.1
+  License: MIT
+  URL: https://github.com/ronaldoussoren/pyobjc
+
+python-dateutil 2.9.0.post0
+  License: BSD; Apache-2.0
+  URL: https://github.com/dateutil/dateutil
+
+python-dotenv 1.2.2
+  License: BSD-3-Clause
+  URL: https://github.com/theskumar/python-dotenv
+
+python-engineio 4.13.4
+  License: MIT
+  URL: https://github.com/miguelgrinberg/python-engineio
+
+python-multipart 0.0.32
+  License: Apache-2.0
+  URL: https://github.com/Kludex/python-multipart
+
+python-socketio 5.16.4
+  License: MIT
+  URL: https://github.com/miguelgrinberg/python-socketio
+
+pytz 2026.1.post1
+  License: MIT
+  URL: http://pythonhosted.org/pytz
+
+pyyaml 6.0.3
+  License: MIT
+  URL: https://github.com/yaml/pyyaml
+
+requests 2.33.0
+  License: Apache-2.0
+  URL: https://github.com/psf/requests
+
+requests-oauthlib 2.0.0
+  License: BSD
+  URL: https://github.com/requests/requests-oauthlib
+
+retrying 1.4.2
+  License: Apache-2.0
+  URL: https://github.com/groodt/retrying
+
+rich 14.3.3
+  License: MIT
+  URL: https://github.com/Textualize/rich
+
+setuptools 80.10.2
+  License: MIT
+  URL: https://github.com/pypa/setuptools
+
+simple-websocket 1.1.0
+  License: MIT
+  URL: https://github.com/miguelgrinberg/simple-websocket
+
+six 1.17.0
+  License: MIT
+  URL: https://github.com/benjaminp/six
+
+starlette 1.6.0
+  License: BSD-3-Clause
+  URL: https://github.com/Kludex/starlette
+
+staticmap 0.5.7
+  License: Apache-2.0
+  URL: https://github.com/komoot/staticmap
+
+submitit 1.5.4
+  License: MIT
+  URL: https://github.com/facebookincubator/submitit
+
+sympy 1.14.0
+  License: BSD
+  URL: https://github.com/sympy/sympy
+
+taichi 1.7.4
+  License: Apache-2.0
+  URL: https://github.com/taichi-dev/taichi
+
+tinycss2 1.5.1
+  License: BSD
+  URL: https://www.courtbouillon.org/tinycss2
+
+torch 2.14.0
+  License: Apache-2.0 AND Apache-2.0 WITH LLVM-exception AND BSD-2-Clause AND BSD-3-Clause AND BSL-1.0 AND MIT
+  URL: https://pytorch.org
+
+torchaudio 2.11.0
+  License: BSD
+  URL: https://github.com/pytorch/audio
+
+tqdm 4.67.3
+  License: MPL-2.0 AND MIT
+  URL: https://tqdm.github.io
+
+treetable 0.2.6
+  License: Unlicense license
+  URL: https://github.com/adefossez/treetable
+
+triton 3.8.0
+  License: MIT
+  URL: https://github.com/triton-lang/triton
+
+typing-extensions 4.15.0
+  License: PSF-2.0
+  URL: https://github.com/python/typing_extensions
+
+typing-inspection 0.4.2
+  License: MIT
+  URL: https://github.com/pydantic/typing-inspection
+
+tzdata 2025.3
+  License: Apache-2.0
+  URL: https://github.com/python/tzdata
+
+urllib3 2.7.0
+  License: MIT
+  URL: https://github.com/urllib3/urllib3/blob/main/CHANGES.rst
+
+uvicorn 0.41.0
+  License: BSD-3-Clause
+  URL: https://uvicorn.dev/
+
+uvloop 0.22.1
+  License: Apache-2.0; MIT
+  URL: https://github.com/MagicStack/uvloop
+
+watchdog 6.0.0
+  License: Apache-2.0
+  URL: https://github.com/gorakhargosh/watchdog/
+
+watchfiles 1.1.1
+  License: MIT
+  URL: https://github.com/samuelcolvin/watchfiles
+
+webencodings 0.5.1
+  License: BSD
+  URL: https://github.com/SimonSapin/python-webencodings
+
+websockets 16.0
+  License: BSD-3-Clause
+  URL: https://github.com/python-websockets/websockets
+
+wsproto 1.3.2
+  License: MIT
+  URL: https://github.com/python-hyper/wsproto/
+
+yarl 1.23.0
+  License: Apache-2.0
+  URL: https://github.com/aio-libs/yarl
+

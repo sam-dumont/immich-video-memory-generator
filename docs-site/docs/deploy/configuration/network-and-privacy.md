@@ -96,7 +96,7 @@ Two settings can send your photographs to a server, and they send very different
 | captioner | `editorial.preparation.caption_base_url` | 400 px picture tiles, with no metadata attached |
 
 Both default to a server on this machine (`localhost:8080` and `localhost:8092`). Point either at
-another host — a GPU box on your LAN, a container, a hosted endpoint — and that is where those
+another host (a GPU box on your LAN, a container, a hosted endpoint) and that is where those
 bytes go, onto its disk and into its logs. Nothing asks you to confirm it a second time:
 configuring an external endpoint *is* the choice.
 
@@ -127,12 +127,20 @@ tail. With `notifications.attach_thumbnail: true`, a JPEG frame from the finishe
 attached. Think about who runs your notification service (ntfy.sh, Discord, Telegram…) before
 turning that on.
 
+## Thumbnails inside the web UI
+
+The pages do not embed pictures in the HTML any more. Every thumbnail is an `<img>` the browser
+fetches from the app itself at `/media/thumb/<asset id>` on the same port, served from the cache
+the analysis already filled. Nothing new leaves your network: the route answers only for assets the
+current session prepared, sits behind the same login as every page, and derives a 320 px grid
+thumbnail from the cached preview on first request. In privacy mode the same blur applies to it.
+
 ## Privacy mode
 
 Privacy mode (`--privacy-mode` / `server.enable_demo_mode: true`) is a **demo/screenshot**
 feature: it blurs every frame of every clip (not faces, the whole picture), makes all clip audio
-unintelligible, replaces person names, and moves the whole memory — home base and destination
-alike — onto a fake city, keeping the spacing between clips so the map still reads as a trip.
+unintelligible, replaces person names, and moves the whole memory (home base and destination
+alike) onto a fake city, keeping the spacing between clips so the map still reads as a trip.
 Place names go with the coordinates. It does not reach the geocoding above, which already ran
 during detection, nor the output file name, which is built before anonymization. See
 [Privacy Mode](../../create/pipeline/privacy-mode.md).

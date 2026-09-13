@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import base64
 from datetime import datetime
 
 from nicegui import ui
 
 from immich_memories.ui.components import im_badge, im_card, im_section_header
 from immich_memories.ui.pages.memory_story_data import CarrierView, StoryEntry, StoryView
-from immich_memories.ui.pages.step2_helpers import get_thumbnail
+from immich_memories.ui.pages.step2_helpers import render_thumbnail
 
 _WEIGHT_VARIANT = {"dominant": "success", "major": "success", "minor": "info"}
 _STANDING_VARIANT = {"remarkable": "success", "maybe": "warning"}
@@ -23,16 +22,9 @@ def _when(taken: str) -> str:
 
 
 def _render_thumbnail(asset_id: str) -> None:
-    thumb = get_thumbnail(asset_id)
-    if thumb:
-        encoded = base64.b64encode(thumb).decode()
-        ui.image(f"data:image/jpeg;base64,{encoded}").classes("rounded").style(
-            "width: 128px; aspect-ratio: 16/9; object-fit: cover"
-        )
-    else:
-        ui.element("div").classes("rounded").style(
-            "width: 128px; aspect-ratio: 16/9; background: var(--im-bg-surface)"
-        )
+    render_thumbnail(
+        asset_id, classes="rounded", style="width: 128px; aspect-ratio: 16/9; object-fit: cover"
+    )
 
 
 def _render_carrier(carrier: CarrierView) -> None:

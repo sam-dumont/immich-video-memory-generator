@@ -1,0 +1,225 @@
+Third-Party Software Notices
+============================
+
+This project ships with, downloads, or calls the third-party work listed here.
+Each entry gives the licence it is distributed under and where it comes from.
+The Python section is generated (`make notices`); everything else is kept by
+hand. The project itself is MIT (see LICENSE).
+
+
+Models (bundled, or downloaded by `immich-memories models fetch`, digest-pinned)
+--------------------------------------------------------------------------------
+
+DINOv2 small (facebook/dinov2-small)
+  Role: the frozen picture encoder every editorial fact is computed from
+  Artifact: dinov2-small-478164cd.onnx, an ONNX export of the checkpoint,
+    served from this repository's `models-v1` release, 84 MB,
+    sha256 478164cd290ee78e5ddb4fcc474136eec714b4b8253a3609cc7164b592e958af
+  License: Apache-2.0
+  Copyright: Meta Platforms, Inc. and affiliates
+  URL: https://huggingface.co/facebook/dinov2-small
+  Paper: Oquab et al., "DINOv2: Learning Robust Visual Features without
+    Supervision", 2023
+  Note: the six linear heads that read its features are trained by this project
+    and ship inside the Python package under the project licence.
+
+Marqo NSFW image detector (Marqo/nsfw-image-detection-384)
+  Role: the sensitive-content detector behind the family-viewing gate
+  Artifact: nsfw-marqo-384-924658f1.onnx, an ONNX export of revision
+    0c26ec22111b83f106d72a55f611ec35962bcb65 written by
+    scripts/export_marqo_onnx.py, served from the `models-v1` release, 22 MB,
+    sha256 924658f1ac638d96e9126ecb29de047dc8d31c9c9defcab77a26a5c96ed69e11
+  License: Apache-2.0
+  Copyright: Marqo
+  URL: https://huggingface.co/Marqo/nsfw-image-detection-384
+
+Docling document figure classifier (docling-project/DocumentFigureClassifier-v2.0)
+  Role: tells a screenshot, a scan or a chart from a photograph
+  Artifact: model.onnx at revision 2a12e02668b98ca40216eab41cdf19530577cba4,
+    fetched from the Hugging Face Hub into the local cache on first use
+  License: Apache-2.0
+  Copyright: IBM Corporation (Docling project)
+  URL: https://huggingface.co/docling-project/DocumentFigureClassifier-v2.0
+
+YuNet face detector (opencv_zoo)
+  Role: the face centre behind smart-zoom framing, on the OpenCV path
+  Artifact: face_detection_yunet_2023mar.onnx at revision
+    f12e12798e8314f7c074a6656816c048dcc95b7a, copied byte-for-byte into the
+    Python package at src/immich_memories/processing/bundled_models/, 227 KB,
+    sha256 8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4
+  License: MIT
+  Copyright: 2020 Shiqi Yu
+  URL: https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet
+  Note: opencv_zoo as a whole is Apache-2.0; this model directory carries its
+    own MIT LICENSE, and that is the one reproduced here. Bundled rather than
+    fetched because it is 227 KB and the machine may never reach the network.
+
+Optional models the app can call but never bundles: a caption model and a text
+reader served by the operator (any OpenAI-compatible endpoint), MusicGen
+(Meta, CC-BY-NC-4.0 weights) and ACE-Step (Apache-2.0) for generated music,
+Demucs (MIT, weights downloaded by the `demucs` package) for stem separation.
+Their licences are the operator's to check for the models they choose.
+
+
+Apache-2.0 notice
+-----------------
+
+The three Apache-2.0 models above (YuNet is MIT) are distributed under the
+Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0).
+Their ONNX exports are derivative works of those checkpoints and carry the
+same licence; no NOTICE file accompanies the upstream checkpoints.
+
+
+Bundled music (packages/immich-memories-music)
+----------------------------------------------
+
+28 tracks generated locally with ACE-Step 1.5 (acestep-v15-xl-turbo). Nothing is
+sampled from or trained on third-party recordings; the tracks are released under
+the project's MIT licence. Model, settings, and per-track tempo, key and seed are
+recorded in packages/immich-memories-music/LICENSE-MUSIC.
+
+ACE-Step (the generator, not shipped)
+  License: Apache-2.0
+  URL: https://github.com/ace-step/ACE-Step
+
+
+Bundled fonts
+-------------
+
+Title fonts, src/immich_memories/titles/bundled_fonts/ (see LICENSE there).
+All under the SIL Open Font License 1.1 (https://openfontlicense.org/):
+
+Montserrat        Julieta Ulanovsky           https://github.com/JulietaUla/montserrat
+Outfit            Rodrigo Fuenzalida          https://github.com/nicholasjimmy/outfit
+Raleway           Matt McInerney, Pablo Impallari, Rodrigo Fuenzalida
+                                              https://github.com/impallari/Raleway
+Josefin Sans      Santiago Orozco             https://github.com/googlefonts/josefinsans
+Quicksand         Andrew Paglinawan           https://github.com/googlefonts/Quicksand
+
+Originally obtained through Fontsource (https://fontsource.org/, MIT); the
+Fontsource CDN is only contacted as a fallback for a custom font name.
+
+Inter (web UI and docs site: src/immich_memories/ui/static/fonts/,
+docs-site/static/fonts/)
+  License: SIL Open Font License 1.1
+  Copyright: 2016 The Inter Project Authors (Rasmus Andersson)
+  URL: https://github.com/rsms/inter
+
+Material Icons (Remotion demo: docs-site/remotion/public/MaterialIcons-Regular.woff2)
+  License: Apache-2.0
+  Copyright: Google LLC
+  URL: https://github.com/google/material-design-icons
+
+
+Demo and documentation tooling
+------------------------------
+
+Remotion 4.0.516 (docs-site/remotion/, renders the demo video; not part of the app)
+  License: Remotion License (https://remotion.dev/license): free for
+    individuals and for companies of up to three people; larger companies need
+    a company licence. The rendered demo.mp4 is published under the project
+    licence; the tool is only run by contributors who rebuild it.
+  Copyright: Remotion AG
+  URL: https://www.remotion.dev/
+
+Docusaurus (docs-site/)
+  License: MIT
+  Copyright: Meta Platforms, Inc.
+  URL: https://docusaurus.io/
+
+VHS (records the CLI demo tape)
+  License: MIT
+  Copyright: Charmbracelet, Inc.
+  URL: https://github.com/charmbracelet/vhs
+
+
+Test and demo fixtures
+----------------------
+
+Fixture library, tests/e2e/fixtures/library/ (six photographs)
+  License: CC0 1.0 (public domain dedication), no attribution required
+  Source: StockSnap.io via the Openverse index; per-file provenance in
+    tests/e2e/fixtures/library/CREDITS.md
+
+Face fixture, tests/fixtures/faces/picnic-friends.jpg ("Friends Picnic")
+  License: CC0 1.0 (public domain dedication), no attribution required
+  Copyright: Helena Lopes
+  Source: https://stocksnap.io/photo/friends-picnic-3IVBNKC2JH, via the
+    Openverse index; provenance in tests/fixtures/faces/CREDITS.md
+  Note: kept out of the library above, which shows no recognisable face
+
+HDR samples, tests/fixtures/hdr_samples/ (see LICENSES.md there)
+  Awesome-Gain-Maps (UltraHDR JPEG gain map test images)
+    License: MIT, Copyright: Nathan Moroney
+    URL: https://github.com/NMoroney/Awesome-Gain-Maps
+  Jellyfin test videos (HDR10 and Dolby Vision clips)
+    License: CC BY-SA, Copyright: Jellyfin contributors
+    URL: https://repo.jellyfin.org/test-videos/
+  FFmpeg FATE suite (HDR10+, HDR Vivid, Dolby Vision bitstreams)
+    License: permissive test data, Copyright: FFmpeg project
+    URL: http://fate-suite.ffmpeg.org/hevc/
+
+
+Algorithms
+----------
+
+Van Wijk smooth zoom interpolation
+  Ported from d3-interpolate (https://github.com/d3/d3-interpolate)
+  License: ISC
+  Copyright: 2010-2021 Mike Bostock
+  Based on: "Smooth and efficient zooming and panning" by Jarke J. van Wijk
+    and Wim A.A. Nuij (IEEE InfoVis 2003)
+
+
+External services (called at runtime, nothing bundled)
+------------------------------------------------------
+
+ESRI / ArcGIS World Imagery (satellite title backgrounds)
+  License: Esri Master License Agreement
+  Copyright: Esri, Maxar, Earthstar Geographics, GIS User Community
+  URL: https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer
+  Attribution: "Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community"
+
+OpenStreetMap (optional map style)
+  License: ODbL (data), CC-BY-SA 2.0 (tiles)
+  Copyright: OpenStreetMap contributors
+  URL: https://www.openstreetmap.org/
+  Attribution: "© OpenStreetMap contributors"
+
+OpenTopoMap (optional map style)
+  License: CC-BY-SA (rendering), ODbL (data)
+  Copyright: OpenTopoMap contributors
+  URL: https://opentopomap.org/
+
+Nominatim (reverse geocoding through geopy)
+  License: ODbL
+  Copyright: OpenStreetMap contributors
+  URL: https://nominatim.openstreetmap.org/
+
+
+Runtime tools (installed by the operator or the Docker image, not bundled)
+--------------------------------------------------------------------------
+
+FFmpeg
+  License: LGPL-2.1-or-later, or GPL-2.0-or-later depending on the build
+  Copyright: FFmpeg developers
+  URL: https://ffmpeg.org/
+
+ExifTool (optional, HDR headroom fallback)
+  License: Perl Artistic License / GPL-1.0-or-later
+  Copyright: Phil Harvey
+  URL: https://exiftool.org/
+  Note: called as a subprocess only when the built-in MakerNote parser fails.
+
+
+Python dependencies
+-------------------
+
+Read the licence lines below as they are: `mutagen` (the optional `audio`
+extra) is GPL-2.0-or-later and is imported as a library; `bidict`, `certifi`,
+`orjson` and `tqdm` carry MPL-2.0 terms on their own files; `docutils` is a mix
+of public domain, BSD and GPL parts. Nothing here changes the project's MIT
+licence for its own code, but a downstream that vendors the environment
+should know.
+
+{{PYTHON_DEPENDENCIES}}
