@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, field_validator
 
-from immich_memories.config_models import expand_env_vars
+from immich_memories.config_models import expand_env_vars, has_unresolved_env_reference
 
 # The one place the sensitive-content export's host is named; `models fetch`
 # verifies the digest pinned in analysis/editorial_preparation_detectors.py
@@ -25,6 +25,10 @@ class EditorialPreparationConfig(BaseModel):
 
     tier: PreparationTier = "full"
     caption_base_url: str = "http://localhost:8092/v1"
+    caption_api_key: str = Field(
+        default="",
+        description="Bearer token for a caption server that wants one; never taken from llm",
+    )
     caption_timeout_seconds: float = Field(default=90, gt=0)
     caption_concurrency: int = Field(default=4, ge=1, le=16)
     batch_size: int = Field(default=32, ge=1, le=256)
@@ -54,6 +58,20 @@ class EditorialPreparationConfig(BaseModel):
     @classmethod
     def expand_paths(cls, value: object) -> object:
         return expand_env_vars(value) if isinstance(value, str) else value
+
+    @field_validator("caption_api_key", mode="before")
+    @classmethod
+    def resolve_caption_key(cls, value: object) -> object:
+        """A `${VAR}` whose variable is unset means no key, never a literal to send as one.
+
+        A path can survive being written out verbatim. A bearer header cannot:
+        `Authorization: Bearer ${OPENAI_API_KEY}` earns a 401 that reads as a wrong
+        key, when the real cause is a variable nobody exported.
+        """
+        if not isinstance(value, str):
+            return value
+        expanded = expand_env_vars(value)
+        return "" if has_unresolved_env_reference(expanded) else expanded
 
     @field_validator("caption_base_url")
     @classmethod

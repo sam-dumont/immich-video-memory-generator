@@ -69,13 +69,16 @@ Story-first selection runs by default. These variables configure its preparation
 ```bash
 export IMMICH_MEMORIES_EDITORIAL__ANNOTATION_DATABASE="/mnt/cache/annotations.sqlite"
 export IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL="http://localhost:8092/v1"
+export IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_API_KEY="only-if-the-server-wants-one"
 export IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR="/mnt/models/huggingface/hub"
 export IMMICH_MEMORIES_EDITORIAL__PREPARATION__ALLOW_MODEL_DOWNLOADS="false"
 export IMMICH_MEMORIES_TRIAGE__ENCODER="/mnt/models/triage/dinov2-small.onnx"
 ```
 
-Nested preparation fields use another double underscore. There is no editorial opt-in
-environment variable. New runs use the FAMILY audience. See
+Nested preparation fields use another double underscore. `OPENAI_API_KEY` does not reach the
+captioner: it is a second endpoint with a second credential, so give it
+`CAPTION_API_KEY` of its own or leave it blank for a server that needs none.
+There is no editorial opt-in environment variable. New runs use the FAMILY audience. See
 [Editorial annotation setup](editorial-preparation.md) before the first uncached run.
 
 ### Hardware

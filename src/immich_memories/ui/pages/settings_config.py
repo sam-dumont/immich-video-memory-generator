@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 _SENSITIVE_KEYS = {
     "api_key",
     "api_keys",
+    "caption_api_key",
     "client_secret",
     "password",
     "secret",

@@ -145,3 +145,51 @@ def test_other_credential_fields_are_covered_too(tmp_path: Path, monkeypatch):
     config.save_yaml(out)
 
     assert FROM_ENV not in out.read_text()
+
+
+def test_a_nested_key_supplied_by_an_env_var_is_not_written(tmp_path: Path, monkeypatch):
+    """Preparation's caption key sits two levels down; Save must still leave it in the env."""
+    monkeypatch.setenv("IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_API_KEY", FROM_ENV)
+    config = Config()
+    config.editorial.preparation.caption_api_key = FROM_ENV
+
+    out = tmp_path / "saved.yaml"
+    config.save_yaml(out)
+
+    text = out.read_text()
+    assert FROM_ENV not in text
+    assert "${IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_API_KEY}" in text
+
+
+def test_a_templated_nested_key_is_saved_as_its_template(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("MY_CAPTION_KEY", FROM_ENV)
+    source = tmp_path / "config.yaml"
+    source.write_text(
+        "advanced:\n  editorial:\n    preparation:\n      caption_api_key: ${MY_CAPTION_KEY}\n"
+    )
+    config = Config.from_yaml(source)
+    assert config.editorial.preparation.caption_api_key == FROM_ENV
+
+    out = tmp_path / "saved.yaml"
+    config.save_yaml(out)
+
+    text = out.read_text()
+    assert FROM_ENV not in text
+    assert "${MY_CAPTION_KEY}" in text
+
+
+def test_an_unset_template_survives_a_save(tmp_path: Path, monkeypatch):
+    """The caption key resolves to empty when its variable is missing; Save must not
+    take that as permission to delete the reference the user wrote."""
+    monkeypatch.delenv("MY_CAPTION_KEY", raising=False)
+    source = tmp_path / "config.yaml"
+    source.write_text(
+        "advanced:\n  editorial:\n    preparation:\n      caption_api_key: ${MY_CAPTION_KEY}\n"
+    )
+    config = Config.from_yaml(source)
+    assert config.editorial.preparation.caption_api_key == ""
+
+    out = tmp_path / "saved.yaml"
+    config.save_yaml(out)
+
+    assert "${MY_CAPTION_KEY}" in out.read_text()

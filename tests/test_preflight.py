@@ -193,11 +193,14 @@ def test_preflight_run_lists_every_absent_optional_feature() -> None:
 class _CaptionEndpoint:
     """A local stand-in for the caption server's `/models` inventory."""
 
-    def __init__(self, model_ids: list[str]) -> None:
+    def __init__(self, model_ids: list[str], token: str | None = None) -> None:
         body = json.dumps({"data": [{"id": name} for name in model_ids]}).encode()
 
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_GET(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler's name
+                if token is not None and self.headers.get("Authorization") != f"Bearer {token}":
+                    self.send_error(401, "Unauthorized")
+                    return
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
@@ -299,3 +302,33 @@ def test_caption_check_fails_when_the_endpoint_serves_another_model() -> None:
 
     assert result.status is CheckStatus.ERROR
     assert API_MODEL in (result.details or result.message)
+
+
+def test_caption_check_sends_the_configured_key() -> None:
+    endpoint = _CaptionEndpoint([API_MODEL], "caption-token")
+    try:
+        config = Config(
+            editorial={
+                "preparation": {
+                    "caption_base_url": endpoint.base_url,
+                    "caption_api_key": "caption-token",
+                }
+            }
+        )
+        result = check_caption_endpoint(config)
+    finally:
+        endpoint.close()
+
+    assert result.status is CheckStatus.OK
+
+
+def test_caption_check_names_the_key_when_the_endpoint_refuses() -> None:
+    endpoint = _CaptionEndpoint([API_MODEL], "caption-token")
+    try:
+        config = Config(editorial={"preparation": {"caption_base_url": endpoint.base_url}})
+        result = check_caption_endpoint(config)
+    finally:
+        endpoint.close()
+
+    assert result.status is CheckStatus.ERROR
+    assert "caption_api_key" in (result.details or "")

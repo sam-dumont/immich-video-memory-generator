@@ -9,7 +9,7 @@ import yaml
 from pydantic import ValidationError
 
 from immich_memories.config import EditorialConfig as PublicEditorialConfig
-from immich_memories.config_loader import Config
+from immich_memories.config_loader import Config, _apply_env_overrides
 from immich_memories.config_models_editorial import EditorialConfig
 
 
@@ -122,3 +122,57 @@ def test_saved_legacy_detector_versions_upgrade_without_changing_custom_heads(tm
         "nsfw_marqo": "det-v2",
         "activity": "custom-v3",
     }
+
+
+def test_caption_key_comes_from_its_own_nested_environment_variable(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv(
+        "IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_API_KEY", "the-captioners-key"
+    )
+    source = tmp_path / "config.yaml"
+    source.write_text("advanced:\n  editorial:\n    preparation:\n      tier: full\n")
+
+    config = Config.from_yaml(source)
+
+    assert config.editorial.preparation.caption_api_key == "the-captioners-key"
+
+
+def test_the_readers_key_never_becomes_the_captioners_key(tmp_path: Path, monkeypatch) -> None:
+    """Same box, different endpoint: a token for one is not consent for the other."""
+    monkeypatch.setenv("OPENAI_API_KEY", "the-readers-key")
+    source = tmp_path / "config.yaml"
+    source.write_text("advanced:\n  editorial:\n    preparation:\n      tier: full\n")
+
+    config = Config.from_yaml(source)
+    _apply_env_overrides(config)
+
+    assert config.llm.api_key == "the-readers-key"
+    assert config.editorial.preparation.caption_api_key == ""
+
+
+def test_caption_key_expands_a_template_from_the_environment(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("MY_CAPTION_KEY", "expanded-caption-key")
+    source = tmp_path / "config.yaml"
+    source.write_text(
+        "advanced:\n  editorial:\n    preparation:\n      caption_api_key: ${MY_CAPTION_KEY}\n"
+    )
+
+    config = Config.from_yaml(source)
+
+    assert config.editorial.preparation.caption_api_key == "expanded-caption-key"
+
+
+def test_an_unset_template_leaves_no_key_rather_than_the_literal(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """`Authorization: Bearer ${MY_CAPTION_KEY}` is a 401 that reads as a wrong key."""
+    monkeypatch.delenv("MY_CAPTION_KEY", raising=False)
+    source = tmp_path / "config.yaml"
+    source.write_text(
+        "advanced:\n  editorial:\n    preparation:\n      caption_api_key: ${MY_CAPTION_KEY}\n"
+    )
+
+    config = Config.from_yaml(source)
+
+    assert config.editorial.preparation.caption_api_key == ""

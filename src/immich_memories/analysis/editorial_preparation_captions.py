@@ -34,6 +34,13 @@ from immich_memories.analysis.editorial_description_wire import (
 )
 from immich_memories.store.editorial_preparation import now
 
+REFUSED_CODES = frozenset({401, 403})
+_REFUSED_ERRORS = tuple(f"http_{code}" for code in sorted(REFUSED_CODES))
+CAPTION_KEY_HINT = (
+    "set advanced.editorial.preparation.caption_api_key "
+    "(IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_API_KEY)"
+)
+
 
 def _request_payload(image: bytes, *, api_model: str) -> dict[str, object]:
     return _wire_payload(image, api_model=api_model)
@@ -53,9 +60,27 @@ class CallOutcome:
     image_sha256: str | None = None
 
 
-def _model_ids(base_url: str, *, timeout: float) -> tuple[str, ...]:
-    with urllib.request.urlopen(f"{base_url}/models", timeout=timeout) as response:  # noqa: S310
-        payload = json.loads(response.read())
+def bearer_headers(api_key: str) -> dict[str, str]:
+    """The Authorization header a protected caption endpoint needs, or nothing at all.
+
+    An empty key leaves the request exactly as it was, so an unauthenticated
+    server on localhost never sees a header it would have to ignore.
+    """
+    return {"Authorization": f"Bearer {api_key}"} if api_key else {}
+
+
+def _model_ids(base_url: str, *, timeout: float, api_key: str) -> tuple[str, ...]:
+    request = urllib.request.Request(f"{base_url}/models", headers=bearer_headers(api_key))  # noqa: S310
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+            payload = json.loads(response.read())
+    except urllib.error.HTTPError as exc:
+        if exc.code not in REFUSED_CODES:
+            raise
+        # The endpoint is there and answering; it wants a credential. Another URL is not the fix.
+        raise PermissionError(
+            f"caption endpoint {base_url} answered HTTP {exc.code}; {CAPTION_KEY_HINT}"
+        ) from exc
     rows = payload.get("data") if isinstance(payload, dict) else None
     if not isinstance(rows, list):
         raise ValueError("public description endpoint returned no model inventory")
@@ -64,12 +89,12 @@ def _model_ids(base_url: str, *, timeout: float) -> tuple[str, ...]:
     )
 
 
-def _ask_one(base_url: str, image: bytes, *, timeout: float) -> CallOutcome:
+def _ask_one(base_url: str, image: bytes, *, timeout: float, api_key: str) -> CallOutcome:
     wire = json.dumps(_request_payload(image, api_model=API_MODEL)).encode()
     request = urllib.request.Request(  # noqa: S310
         f"{base_url}/chat/completions",
         data=wire,
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json"} | bearer_headers(api_key),
     )
     request_sha256 = hashlib.sha256(wire).hexdigest()
     image_sha256 = hashlib.sha256(image).hexdigest()
@@ -109,6 +134,8 @@ def _ask_one(base_url: str, image: bytes, *, timeout: float) -> CallOutcome:
         )
     except urllib.error.HTTPError as exc:
         error = f"http_{exc.code}"
+        if exc.code in REFUSED_CODES:
+            error = f"{error}; {CAPTION_KEY_HINT}"
     except json.JSONDecodeError:
         error = "unparsed"
     except (KeyError, TypeError, ValueError) as exc:
@@ -133,16 +160,24 @@ def _optional_int(value: object) -> int | None:
     return int(value) if isinstance(value, int) and not isinstance(value, bool) else None
 
 
-def check_provider(base_url: str, timeout: float, check_cancelled: Callable[[], None]) -> None:
+def check_provider(
+    base_url: str, timeout: float, check_cancelled: Callable[[], None], *, api_key: str = ""
+) -> None:
     check_cancelled()
-    if API_MODEL not in _model_ids(base_url, timeout=timeout):
+    if API_MODEL not in _model_ids(base_url, timeout=timeout, api_key=api_key):
         raise ValueError(f"caption endpoint must advertise {API_MODEL}")
     # Preserve the accepted three schema controls before sending library previews.
     for rgb in ((200, 20, 20), (20, 40, 200), (128, 128, 128)):
         check_cancelled()
         buffer = io.BytesIO()
         Image.new("RGB", (400, 400), rgb).save(buffer, "JPEG", quality=90)
-        if _ask_one(base_url, tile_preview(buffer.getvalue()), timeout=timeout).envelope is None:
+        control = _ask_one(
+            base_url, tile_preview(buffer.getvalue()), timeout=timeout, api_key=api_key
+        )
+        if control.envelope is None:
+            # A refused control says nothing about the schema; it never reached it.
+            if control.error and control.error.startswith(_REFUSED_ERRORS):
+                raise PermissionError(f"caption endpoint {base_url}: {control.error}")
             raise ValueError("caption endpoint failed the compact-v3 schema control")
 
 
@@ -152,6 +187,7 @@ def _describe(
     preview_for: Callable[[str], bytes],
     base_url: str,
     timeout: float,
+    api_key: str,
     check_cancelled: Callable[[], None],
 ) -> tuple[str, bytes, tuple[CallOutcome, ...]]:
     check_cancelled()
@@ -160,7 +196,7 @@ def _describe(
     outcomes = []
     for _attempt in range(2):
         check_cancelled()
-        outcome = _ask_one(base_url, image, timeout=timeout)
+        outcome = _ask_one(base_url, image, timeout=timeout, api_key=api_key)
         outcomes.append(outcome)
         if outcome.envelope is not None:
             break
@@ -177,11 +213,12 @@ def prepare_captions(
     concurrency: int,
     check_cancelled: Callable[[], None],
     progress: Callable[[str, int, int], None],
+    api_key: str = "",
 ) -> dict[str, str]:
     """Bank successes and only verified two-completion failures, with bounded concurrency."""
     if not asset_ids:
         return {}
-    check_provider(base_url, timeout, check_cancelled)
+    check_provider(base_url, timeout, check_cancelled, api_key=api_key)
     failures = {}
     # Bound submitted work too: cancellation must not drain a whole library queue.
     with ThreadPoolExecutor(max_workers=concurrency) as pool:
@@ -195,6 +232,7 @@ def prepare_captions(
                     preview_for=preview_for,
                     base_url=base_url,
                     timeout=timeout,
+                    api_key=api_key,
                     check_cancelled=check_cancelled,
                 )
                 for asset_id in asset_ids[start : start + concurrency]

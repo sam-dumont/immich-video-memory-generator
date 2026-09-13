@@ -9,6 +9,7 @@ import os
 import sqlite3
 import stat
 import time
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import numpy as np
@@ -556,3 +557,39 @@ def test_a_run_reports_what_each_stage_cost_and_how_many_pictures_it_saw(tmp_pat
     assert result.pictures_by_stage["previews"] == 2
     assert set(rates) == {"previews", "pixels", "public_heads", "detectors"}
     assert all(seconds >= 0 for seconds in rates.values())
+
+
+def test_the_configured_caption_key_reaches_the_caption_request(tmp_path):
+    ports = successful_ports([])
+    real = ports.captions
+    sent = []
+
+    def captions(**kwargs):
+        sent.append(kwargs.get("api_key"))
+        return real(**kwargs)
+
+    run(
+        tmp_path,
+        ports=replace(ports, captions=captions),
+        preparation_config=EditorialPreparationConfig(caption_api_key="caption-token"),
+        fetch_preview=lambda _: preview(),
+    )
+
+    assert sent == ["caption-token"]
+
+
+def test_a_caption_endpoint_that_wants_a_token_says_so_and_nothing_else(tmp_path):
+    """A refused credential is not a wrong URL, so it must not be reported as one."""
+
+    def refused(**_):
+        raise PermissionError("caption endpoint http://vlm.test/v1 answered HTTP 401; set x")
+
+    result = run(
+        tmp_path,
+        ports=replace(successful_ports([]), captions=refused),
+        fetch_preview=lambda _: preview(),
+    )
+
+    assert result.failures["captions"] == (
+        "caption endpoint http://vlm.test/v1 answered HTTP 401; set x"
+    )
