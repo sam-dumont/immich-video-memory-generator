@@ -1,6 +1,6 @@
 """A helper child process must never write into the output of the CLI run that owns it.
 
-Regression for #846. The Taichi backend probe used a `multiprocessing` spawn
+Regression for #846. The kernel backend probe used a `multiprocessing` spawn
 child, and a spawn child re-imports the parent's `__main__` with the parent's
 `sys.argv` restored. Under any launcher whose module body is not guarded by
 `if __name__ == "__main__"` — a wrapper script, a container entrypoint, the
@@ -36,11 +36,11 @@ config_loader.Config.get_default_path = classmethod(lambda cls: _config_path)
 sys.argv = ["immich-memories", "years"]
 
 from immich_memories.cli import main
-from immich_memories.titles.taichi_backend_probe import _probe_taichi_backend
+from immich_memories.titles.kernel_backend_probe import _probe_backend
 
 # Where a title render asks whether the GPU can dispatch, mid-run. Whichever
 # answer comes back, none of it belongs in the command's output.
-_probe_taichi_backend("metal", timeout=5.0)
+_probe_backend("metal", timeout=5.0)
 
 main()
 '''

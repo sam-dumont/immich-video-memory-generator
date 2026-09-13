@@ -1,12 +1,12 @@
-"""GPU-accelerated title screen renderer using Taichi.
+"""GPU-accelerated title screen renderer.
 
 Cross-platform GPU acceleration (Metal/CUDA/Vulkan/CPU fallback) for title
 rendering with gradients, blur, vignette, bokeh particles, and SDF text.
-~15-60x faster than PIL renderer. See taichi_kernels.py for GPU kernels,
-taichi_particles.py for particle state, taichi_text.py for text.
+~15-60x faster than PIL renderer. See kernels.py for GPU kernels,
+kernel_particles.py for particle state, kernel_text.py for text.
 
 Note: This module does NOT use 'from __future__ import annotations'
-because Taichi kernels require actual type objects, not string annotations.
+because kernel signatures need actual type objects, not string annotations.
 """
 
 import logging
@@ -17,23 +17,23 @@ from typing import Any
 import numpy as np
 
 # Import module for runtime access to compiled kernels.
-# Kernels are initially None and compiled lazily by init_taichi().
-# Direct `from .taichi_kernels import _func` would capture None at import time,
-# so we access them as `taichi_kernels._func` at call time instead.
-from . import taichi_kernels
-from .taichi_kernels import (
-    TAICHI_AVAILABLE as TAICHI_AVAILABLE,
+# Kernels are initially None and compiled lazily by init_kernels().
+# Direct `from .kernels import _func` would capture None at import time,
+# so we access them as `kernels._func` at call time instead.
+from . import kernels
+from .kernel_particles import ParticleField
+from .kernel_text import TitleTextRenderer
+from .kernels import (
+    KERNELS_AVAILABLE as KERNELS_AVAILABLE,
 )
-from .taichi_kernels import (
+from .kernels import (
     _create_gaussian_kernel,
     _hex_to_rgb,
-    is_taichi_available,
+    kernels_available,
 )
-from .taichi_kernels import (
-    init_taichi as init_taichi,
+from .kernels import (
+    init_kernels as init_kernels,
 )
-from .taichi_particles import ParticleField
-from .taichi_text import TitleTextRenderer
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +44,8 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class TaichiTitleConfig:
-    """Configuration for Taichi GPU title renderer."""
+class KernelTitleConfig:
+    """Configuration for the GPU title renderer."""
 
     width: int = 1920
     height: int = 1080
@@ -127,8 +127,8 @@ class TaichiTitleConfig:
 # =============================================================================
 
 
-class TaichiTitleRenderer:
-    """GPU-accelerated title renderer using Taichi.
+class KernelTitleRenderer:
+    """GPU-accelerated title renderer.
 
     Pre-allocates GPU buffers and compiles kernels on first use.
     Subsequent renders reuse the compiled kernels for maximum performance.
@@ -136,19 +136,22 @@ class TaichiTitleRenderer:
     TitleTextRenderer; this class owns the background and the frame pipeline.
     """
 
-    def __init__(self, config: TaichiTitleConfig | None = None):
+    def __init__(self, config: KernelTitleConfig | None = None):
         """Initialize renderer with configuration."""
-        if not is_taichi_available():
-            raise RuntimeError("Taichi not available. Install with: pip install taichi")
+        if not kernels_available():
+            raise RuntimeError(
+                "No title kernel library available. "
+                "Install with: pip install 'immich-memories[gpu]'"
+            )
 
-        self.config = config or TaichiTitleConfig()
+        self.config = config or KernelTitleConfig()
         self.total_frames = int(self.config.fps * self.config.duration)
 
         h, w = self.config.height, self.config.width
         # WHY: GPU-resident buffers (ti.ndarray) eliminate implicit CPU↔GPU
         # transfers. Kernels operate on device memory; only background-in
         # and uint8-out cross the bus. See issue #164.
-        from .taichi_kernels import GPUBuffers
+        from .kernels import GPUBuffers
 
         self.gpu = GPUBuffers(h, w, hdr=self.config.hdr)
         # The slow-mo sources are the same handful of frames for the whole
@@ -170,7 +173,7 @@ class TaichiTitleRenderer:
         self.text = TitleTextRenderer(self.config, self.gpu)
 
         logger.info(
-            f"TaichiTitleRenderer initialized: {w}x{h} @ {self.config.fps}fps "
+            f"KernelTitleRenderer initialized: {w}x{h} @ {self.config.fps}fps "
             f"(SDF: {self.text.use_sdf})"
         )
 
@@ -189,10 +192,10 @@ class TaichiTitleRenderer:
         if has_animated_bg:
             self._apply_animated_deblur(progress, cfg)
         elif cfg.blur_radius > 0:
-            taichi_kernels._gaussian_blur_h(
+            kernels._gaussian_blur_h(
                 self.gpu.frame, self.gpu.temp, self._blur_kernel_np, cfg.blur_radius
             )
-            taichi_kernels._gaussian_blur_v(
+            kernels._gaussian_blur_v(
                 self.gpu.temp, self.gpu.frame, self._blur_kernel_np, cfg.blur_radius
             )
 
@@ -200,7 +203,7 @@ class TaichiTitleRenderer:
         if not has_animated_bg:
             brightness_delta = cfg.color_pulse_amount * math.sin(progress * 2 * math.pi)
             saturation_mult = 1.0 + 0.05 * math.sin(progress * 2 * math.pi + math.pi / 2)
-            taichi_kernels._apply_color_pulse(self.gpu.frame, brightness_delta, saturation_mult)
+            kernels._apply_color_pulse(self.gpu.frame, brightness_delta, saturation_mult)
 
         # 4. Vignette + noise (FUSED — one kernel launch instead of two)
         vignette_strength = cfg.vignette_strength + cfg.vignette_pulse * math.sin(
@@ -210,7 +213,7 @@ class TaichiTitleRenderer:
             cfg.noise_intensity if (cfg.enable_noise and cfg.noise_intensity > 0) else 0.0
         )
         noise_seed = frame_number * 12345 % 1000000 if noise_intensity > 0 else 0
-        taichi_kernels._apply_vignette_and_noise(
+        kernels._apply_vignette_and_noise(
             self.gpu.frame, vignette_strength, noise_intensity, noise_seed, cfg.width, cfg.height
         )
 
@@ -222,7 +225,7 @@ class TaichiTitleRenderer:
 
         # 7. Finalize on GPU: clip + scale + convert, then single GPU→CPU readback
         max_val = 65535.0 if cfg.hdr else 255.0
-        taichi_kernels._finalize_to_output(self.gpu.frame, self.gpu.output, max_val, hdr=cfg.hdr)
+        kernels._finalize_to_output(self.gpu.frame, self.gpu.output, max_val, hdr=cfg.hdr)
         return self.gpu.read_output()
 
     def _load_background(self, cfg, t: float, progress: float) -> bool:
@@ -252,7 +255,7 @@ class TaichiTitleRenderer:
             self._render_gradient(t, progress, cfg)
         return False
 
-    def _apply_animated_deblur(self, progress: float, cfg: TaichiTitleConfig) -> None:
+    def _apply_animated_deblur(self, progress: float, cfg: KernelTitleConfig) -> None:
         """Apply animated blur transition (all GPU-resident).
 
         Intro (reverse_blur=False): full blur → sharp reveal in last 1s
@@ -276,22 +279,22 @@ class TaichiTitleRenderer:
 
         if blur_mix < 1.0:
             self.gpu.ensure_sharp()
-            taichi_kernels._copy_field_3(self.gpu.frame, self.gpu.sharp)
+            kernels._copy_field_3(self.gpu.frame, self.gpu.sharp)
 
-        taichi_kernels._gaussian_blur_h(
+        kernels._gaussian_blur_h(
             self.gpu.frame, self.gpu.temp, self._blur_kernel_np, cfg.blur_radius
         )
-        taichi_kernels._gaussian_blur_v(
+        kernels._gaussian_blur_v(
             self.gpu.temp, self.gpu.frame, self._blur_kernel_np, cfg.blur_radius
         )
 
         if blur_mix < 1.0:
-            taichi_kernels._blend_fields(self.gpu.frame, self.gpu.sharp, 1.0 - blur_mix)
+            kernels._blend_fields(self.gpu.frame, self.gpu.sharp, 1.0 - blur_mix)
 
         brightness_delta = -0.15 * blur_mix
-        taichi_kernels._apply_color_pulse(self.gpu.frame, brightness_delta, 1.0)
+        kernels._apply_color_pulse(self.gpu.frame, brightness_delta, 1.0)
 
-    def _render_gradient(self, t: float, progress: float, cfg: TaichiTitleConfig):
+    def _render_gradient(self, t: float, progress: float, cfg: KernelTitleConfig):
         """Render the background gradient directly to GPU frame buffer."""
         angle_rad = math.radians(cfg.gradient_angle)
         angle_offset = math.radians(cfg.gradient_rotation) * math.sin(progress * 2 * math.pi)
@@ -300,7 +303,7 @@ class TaichiTitleRenderer:
         if cfg.gradient_type == "aurora":
             if not hasattr(self, "_aurora_blobs"):
                 self._init_aurora_blobs()
-            taichi_kernels._generate_aurora_gradient(
+            kernels._generate_aurora_gradient(
                 self.gpu.frame,
                 self._aurora_blobs,
                 len(self._aurora_blobs),
@@ -309,7 +312,7 @@ class TaichiTitleRenderer:
                 t,
             )
         elif cfg.gradient_type == "radial":
-            taichi_kernels._generate_radial_gradient(
+            kernels._generate_radial_gradient(
                 self.gpu.frame,
                 self.color1[0],
                 self.color1[1],
@@ -322,7 +325,7 @@ class TaichiTitleRenderer:
                 cfg.height,
             )
         else:
-            taichi_kernels._generate_linear_gradient(
+            kernels._generate_linear_gradient(
                 self.gpu.frame,
                 self.color1[0],
                 self.color1[1],
@@ -366,7 +369,7 @@ class TaichiTitleRenderer:
 
         self._aurora_blobs = blobs
 
-    def _render_particles(self, progress: float, cfg: TaichiTitleConfig):
+    def _render_particles(self, progress: float, cfg: KernelTitleConfig):
         """Render bokeh or fireworks particles (GPU-resident)."""
         if not cfg.enable_bokeh:
             return
@@ -375,9 +378,9 @@ class TaichiTitleRenderer:
         # updated on CPU each frame. The implicit transfer is negligible vs
         # the ~13MB frame buffers that now stay on GPU.
         self.particles.update(progress)
-        taichi_kernels._zero_field_4(self.gpu.bokeh)
-        taichi_kernels._render_bokeh_particles(
+        kernels._zero_field_4(self.gpu.bokeh)
+        kernels._render_bokeh_particles(
             self.gpu.bokeh, self.particles.buffer, self.particles.count, cfg.width, cfg.height
         )
-        taichi_kernels._composite_rgba_over(self.gpu.frame, self.gpu.bokeh, self.gpu.temp, 1.0)
-        taichi_kernels._copy_field_3(self.gpu.temp, self.gpu.frame)
+        kernels._composite_rgba_over(self.gpu.frame, self.gpu.bokeh, self.gpu.temp, 1.0)
+        kernels._copy_field_3(self.gpu.temp, self.gpu.frame)

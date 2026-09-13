@@ -39,13 +39,13 @@ FIXTURE = Path(__file__).resolve().parent.parent / "tests" / "e2e" / "fake_edito
 SMOKE_MOUNT = "/smoke"
 
 # Installed before the CLI is imported, so the route is already replaced by the
-# time `generate` builds a pipeline. Taichi's banner settings come first for the
-# same reason they do in the CLI's own __init__.
+# time `generate` builds a pipeline. The kernel library's banner settings come
+# first for the same reason they do in the CLI's own __init__.
 _BOOTSTRAP = f'''import os
 import sys
 
-os.environ.setdefault("ENABLE_TAICHI_HEADER_PRINT", "0")
-os.environ.setdefault("TI_LOG_LEVEL", "error")
+os.environ.setdefault("ENABLE_QUADRANTS_HEADER_PRINT", "0")
+os.environ.setdefault("QD_LOG_LEVEL", "error")
 sys.path.insert(0, "{SMOKE_MOUNT}")
 
 from tests.e2e.fake_editorial import install_fake_editorial_route

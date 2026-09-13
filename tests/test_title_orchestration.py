@@ -27,7 +27,7 @@ def tmp_output(tmp_path: Path) -> Path:
 def mock_rendering():
     """Mock RenderingService — replaces FFmpeg subprocess calls.
 
-    # WHY: RenderingService.__init__ tries to import taichi and init GPU.
+    # WHY: RenderingService.__init__ tries to load the kernel library and init the GPU.
     # We mock the entire class to avoid GPU detection in unit tests.
     """
     with patch("immich_memories.titles.generator.RenderingService") as cls:

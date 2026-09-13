@@ -86,7 +86,7 @@ first cut; the root filesystem is read-only, so the models live on the `/models`
 `overlays/gpu/deployment-gpu.yaml` patches the Deployment with `runtimeClassName: nvidia`, one
 `nvidia.com/gpu`, `NVIDIA_VISIBLE_DEVICES` and `NVIDIA_DRIVER_CAPABILITIES`, a node selector on
 `nvidia.com/gpu.present=true` and a toleration for the `nvidia.com/gpu` taint. The app uses the
-card for NVENC encoding and Taichi title rendering, nothing else: the editor's models are separate
+card for NVENC encoding and GPU title rendering, nothing else: the editor's models are separate
 services, and the [inference service](./inference-service.md) has its own CUDA image.
 
 ## Batch jobs

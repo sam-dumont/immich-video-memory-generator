@@ -146,7 +146,7 @@ const showcaseItems: ShowcaseItem[] = [
   },
   {
     title: 'Cinematic title screens',
-    description: 'Animated gradients, particle systems, satellite trip maps. Two renderers: Taichi if it finds a Metal, CUDA or Vulkan backend, PIL everywhere else. The log says which one actually ran.',
+    description: 'Animated gradients, particle systems, satellite trip maps. Two renderers: GPU kernels if they find a Metal, CUDA or Vulkan backend, PIL everywhere else. The log says which one actually ran.',
     image: '/img/screenshots/memory-options.png',
     alt: 'Generation options with title and music settings',
   },

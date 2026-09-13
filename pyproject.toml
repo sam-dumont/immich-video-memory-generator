@@ -45,6 +45,14 @@ dependencies = [
     "geopy>=2.4",
     "staticmap>=0.5",
     "apprise>=1.9",
+    # The GPU kernel library the title renderer compiles against (#558). Title
+    # rendering is the phase that dominates a run, so it ships by default: the
+    # fallback is a visibly poorer title, not a missing feature.
+    #
+    # Marker: no macOS x86_64 wheel is published and 3.14 is not supported yet.
+    # On those two, `ti` is None and title screens are PIL-rendered.
+    "quadrants>=1.3.0; python_version < '3.14' and (sys_platform != 'darwin' or platform_machine != 'x86_64')",
+    "freetype-py>=2.4",  # SDF font rendering
 ]
 
 [project.optional-dependencies]
@@ -79,12 +87,6 @@ demucs = [
 #     Install the tested v0.1.8 tag with --no-deps, then its inference-only
 #     dependencies. The upstream UI set conflicts with this app's Starlette.
 #     See docs-site/docs/create/pipeline/audio-and-music.md for setup instructions.
-# GPU-accelerated title rendering with Taichi
-# Supports: Metal (macOS), CUDA (NVIDIA), Vulkan, OpenGL, CPU fallback
-gpu = [
-    "taichi>=1.7.0; sys_platform != 'linux' or (platform_machine != 'aarch64' and platform_machine != 'arm64')",
-    "freetype-py>=2.4",  # SDF font rendering
-]
 # Required when preparing missing editorial public heads and detector facts.
 # Weights and the compact-caption endpoint are separate setup dependencies.
 #
@@ -117,7 +119,6 @@ all = [
     "immich-memories[audio]",
     "immich-memories[auth]",
     "immich-memories[demucs]",
-    "immich-memories[gpu]",
     "immich-memories[editorial]",
 ]
 # All features for macOS (includes Apple Vision framework)
@@ -126,7 +127,6 @@ all-mac = [
     "immich-memories[audio]",
     "immich-memories[demucs]",
     "immich-memories[mac]",
-    "immich-memories[gpu]",
     "immich-memories[editorial]",
 ]
 dev = [
@@ -262,6 +262,9 @@ constraint-dependencies = [
     "python-engineio>=4.13.2",
     "python-multipart>=0.0.31",
     "python-socketio>=5.16.2",
+    # quadrants requires setuptools>=77 at runtime, which put it in the audited
+    # set for the first time; 80.10.2 is PYSEC-2026-3447, fixed in 83.0.0.
+    "setuptools>=83.0.0",
     "starlette>=1.3.1",
     "urllib3>=2.7.0",
     "yt-dlp>=2026.7.4",
@@ -356,8 +359,9 @@ module = [
     "onnxruntime.*",
     "huggingface_hub",
     "huggingface_hub.*",
-    # Taichi (GPU rendering)
-    "taichi.*",
+    # The GPU title kernel library
+    "quadrants",
+    "quadrants.*",
     # Not-yet-implemented modules
     "immich_memories.cache.*",
     # Optional audio dependencies
@@ -435,13 +439,14 @@ disable_error_code = ["valid-type", "misc", "call-arg"]
 # Audio mixer with optional path types
 [[tool.mypy.overrides]]
 module = [
-    "immich_memories.titles.renderer_taichi",
-    "immich_memories.titles.taichi_text",
+    "immich_memories.titles.renderer_kernels",
+    "immich_memories.titles.kernel_text",
     "immich_memories.titles.sdf_font",
-    "immich_memories.titles.taichi_backend_probe",
-    "immich_memories.titles.taichi_kernels",
+    "immich_memories.titles.kernel_backend_probe",
+    "immich_memories.titles.gpu_kernel_backend",
+    "immich_memories.titles.kernels",
     "immich_memories.titles.sdf_font_rendering",
-    "immich_memories.titles.taichi_video",
+    "immich_memories.titles.kernel_video",
 ]
 disable_error_code = ["valid-type", "assignment", "misc", "truthy-function", "union-attr", "import-untyped", "attr-defined", "has-type"]
 
@@ -458,7 +463,7 @@ disable_error_code = ["attr-defined", "arg-type", "union-attr", "has-type"]
 module = ["immich_memories.titles.video_encoding"]
 disable_error_code = ["union-attr", "arg-type"]
 
-# Title rendering service with optional Taichi imports
+# Title rendering service with optional kernel-library imports
 [[tool.mypy.overrides]]
 module = ["immich_memories.titles.rendering_service"]
 disable_error_code = ["assignment", "misc", "attr-defined", "arg-type"]
@@ -497,7 +502,7 @@ ignore_missing_imports = true
 paths = ["src"]
 max_complexity_allowed = 15
 # complexipy 5.2 matches exclusions by basename, not path or glob.
-# Reviewed over-threshold CLI/Taichi functions remain visible in the snapshot.
+# Reviewed over-threshold CLI/kernel functions remain visible in the snapshot.
 exclude = ["_version.py"]
 
 # Dependency hygiene
@@ -620,7 +625,12 @@ markers = [
     "perf: performance benchmarks (run with: make benchmark-perf)",
     "demo: renders a docs demo asset (run with: make demo-output)",
 ]
-addopts = "-m 'not integration and not e2e'"
+# `-p no:quadrants`: the quadrants distribution registers a pytest11 plugin, so
+# merely having it installed pulls its C++ runtime into every pytest session,
+# including the thousands of tests that never touch a kernel. The app imports it
+# in exactly one place and nowhere near collection time; blocking the plugin
+# keeps it that way, and is a no-op where the wheel does not exist.
+addopts = "-p no:quadrants -m 'not integration and not e2e'"
 
 [tool.coverage.run]
 source = ["src/immich_memories", "services/inference/immich_memories_inference"]

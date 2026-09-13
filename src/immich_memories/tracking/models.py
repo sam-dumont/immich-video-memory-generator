@@ -49,7 +49,7 @@ class SystemInfo:
     # Dependencies
     ffmpeg_version: str | None = None
     opencv_version: str | None = None
-    taichi_available: bool = False
+    gpu_kernels_available: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -66,7 +66,7 @@ class SystemInfo:
             "vram_mb": self.vram_mb,
             "ffmpeg_version": self.ffmpeg_version,
             "opencv_version": self.opencv_version,
-            "taichi_available": self.taichi_available,
+            "gpu_kernels_available": self.gpu_kernels_available,
         }
 
     @classmethod
@@ -85,7 +85,7 @@ class SystemInfo:
             vram_mb=data.get("vram_mb", 0),
             ffmpeg_version=data.get("ffmpeg_version"),
             opencv_version=data.get("opencv_version"),
-            taichi_available=data.get("taichi_available", False),
+            gpu_kernels_available=data.get("gpu_kernels_available", False),
         )
 
     def to_json(self) -> str:

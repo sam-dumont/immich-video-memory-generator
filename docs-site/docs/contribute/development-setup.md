@@ -29,7 +29,7 @@ Other install targets, when you need them:
 |--------|----------|------|
 | `make dev-ci` | dev tools only | Lint/typecheck-only work |
 | `make dev-test` | dev + `gpu` | Default for contributors (what CI tests with) |
-| `make dev-mac` | dev + `all-mac` (Apple Vision, Metal, Taichi, the editorial stack) | Apple Silicon, full feature set |
+| `make dev-mac` | dev + `all-mac` (Apple Vision, Metal, the editorial stack) | Apple Silicon, full feature set |
 | `make dev` | every declared extra (torch, demucs, editorial), slow | Only if you work across all optional backends |
 
 ## Verify everything works

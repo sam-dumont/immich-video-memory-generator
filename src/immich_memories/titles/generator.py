@@ -63,7 +63,7 @@ class TitleScreenConfig:
     show_decorative_lines: bool = False
 
     # Performance
-    use_gpu_rendering: bool = True  # Use Taichi GPU when available
+    use_gpu_rendering: bool = True  # Use the GPU kernels when available
 
     # LLM-generated title override (bypasses template generation)
     title_override: str | None = None
@@ -251,7 +251,7 @@ class TitleScreenGenerator:
             frame_progress=frame_progress,
         )
 
-        renderer_type = "GPU (Taichi)" if self._rendering.use_gpu else "CPU (PIL)"
+        renderer_type = "GPU" if self._rendering.use_gpu else "CPU (PIL)"
         logger.info(f"Title screen generated [{renderer_type}]: {output_path}")
 
         return GeneratedScreen(

@@ -1,8 +1,8 @@
-"""Bokeh and fireworks particle state for the Taichi title renderer.
+"""Bokeh and fireworks particle state for the GPU title renderer.
 
 Everything here is CPU-side numpy. One small float32 array carries the
 particles that the GPU kernel draws each frame; the frame buffers themselves
-never leave the device. See taichi_kernels.py for the drawing kernel.
+never leave the device. See kernels.py for the drawing kernel.
 """
 
 from typing import Protocol

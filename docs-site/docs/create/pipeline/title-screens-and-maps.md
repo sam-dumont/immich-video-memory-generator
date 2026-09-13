@@ -23,8 +23,8 @@ Depending on the memory type, title screens include some or all of:
 
 | Backend | When it's used | What it does well |
 |---------|---------------|------------------|
-| **Taichi** | Taichi imports and initialises: Metal, CUDA or Vulkan; it will also run on its own CPU backend and say so in the log | Bokeh particle systems over a content-backed card. SDF text exists in the tree but both production call sites pin it off. |
-| **PIL** | Taichi is not installed, or fails to initialise | Static gradients, clean text rendering. Still looks good, just no animation. |
+| **GPU kernels** | The kernel library imports and initialises: Metal, CUDA or Vulkan; it will also run on its own CPU backend and say so in the log | Bokeh particle systems over a content-backed card. SDF text exists in the tree but both production call sites pin it off. |
+| **PIL** | The kernel library has no wheel for this platform, or fails to initialise | Static gradients, clean text rendering. Still looks good, just no animation. |
 
 The choice is automatic and there is nothing to configure. `--no-animated-background` is a
 different switch: it stays on whichever backend you have and turns off the gradient rotation,
@@ -41,11 +41,11 @@ By default, title screens use a frame from your actual footage as the background
 of the first clip, blurred and darkened, with white text over it. So every title screen looks like
 it belongs to the video it introduces rather than to a generic gradient.
 
-How hard it is blurred and dimmed depends on the renderer. Taichi blurs by a tenth of the frame
+How hard it is blurred and dimmed depends on the renderer. The GPU path blurs by a tenth of the frame
 height and dims proportionally to how much blur it applied; PIL uses a fixed Gaussian and a flat
 multiplier. Neither is a config key.
 
-The Taichi path animates that background in slow motion, interpolating between the decoded frames
+The GPU path animates that background in slow motion, interpolating between the decoded frames
 with Catmull-Rom and a cubic ease-in. There is no switch for it: it falls back to a single blurred
 frame when the clip cannot be decoded or yields fewer than five frames.
 

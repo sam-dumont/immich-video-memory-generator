@@ -26,7 +26,7 @@ You have a Linux server (Ubuntu, Debian, Fedora) with an NVIDIA GPU. NVENC has s
 │  │  ┌──────────────────┐  ┌────────────────────┐ │  │
 │  │  │ Immich Memories   │  │  MusicGen API      │ │  │
 │  │  │ NVENC encoding   │  │  (optional)        │ │  │
-│  │  │ Taichi titles    │  │  port 8000         │ │  │
+│  │  │ GPU titles       │  │  port 8000         │ │  │
 │  │  │ port 8080        │  │                    │ │  │
 │  │  └──────────────────┘  └────────────────────┘ │  │
 │  └────────────────────────────────────────────────┘  │
@@ -111,7 +111,7 @@ IMMICH_API_KEY=your-api-key-here
 ## What works
 
 - **NVENC encoding**: hardware-accelerated H.264/H.265 encoding. NVIDIA is probed first, so NVENC is used automatically: nothing to configure.
-- **Taichi GPU title renderer**: full particle effects and gradient backgrounds using the NVIDIA GPU.
+- **GPU title renderer**: full particle effects and gradient backgrounds using the NVIDIA GPU.
 - **AI music generation**: if you run a MusicGen or ACE-Step server alongside, configure it in the `musicgen` or `ace_step` config sections.
 - **Every memory type**: all ten, same as anywhere else. What the card accelerates is the encode, the scaling and the titles. Preparation, the heads and the detectors are CPU work here, and the two model services are their own problem.
 
@@ -125,7 +125,7 @@ IMMICH_API_KEY=your-api-key-here
 No GPU run of this pipeline has been measured end to end, so there is no table here. The one
 measured run is CPU-only ([NAS-only](./nas-only.md#preparation-tiers-what-the-nas-pays)), and only its render
 column still describes this product: 2.7 minutes of a 10 minute run, most of it title screens
-rather than the encode. A CUDA Taichi backend is what shortens those.
+rather than the encode. A CUDA kernel backend is what shortens those.
 
 The rest of a run is preparation and the editor's readings, and that has
 [been measured on a NAS](./nas-only.md#preparation-tiers-what-the-nas-pays) and nowhere else. What is true by
@@ -176,5 +176,5 @@ advanced:
 
 - **Check GPU detection**: run `docker exec immich-memories immich-memories hardware` to verify GPU detection inside the container.
 - **Multi-GPU**: pick the card with `NVIDIA_VISIBLE_DEVICES=0` (or `CUDA_VISIBLE_DEVICES`) in the container environment; there is no config knob for it.
-- **VRAM monitoring**: watch `nvidia-smi` during generation. Nobody has recorded peak VRAM for the encode or for Taichi titles, so measure your own before you size a card around them.
+- **VRAM monitoring**: watch `nvidia-smi` during generation. Nobody has recorded peak VRAM for the encode or for GPU titles, so measure your own before you size a card around them.
 - **Headless Linux**: the CLI works fully on headless servers. Use `immich-memories generate` instead of the UI if you don't need a browser.

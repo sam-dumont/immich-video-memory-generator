@@ -35,7 +35,7 @@ def capture_system_info() -> SystemInfo:
         vram_mb=_get_vram_mb(),
         ffmpeg_version=_get_ffmpeg_version(),
         opencv_version=_get_opencv_version(),
-        taichi_available=_check_taichi(),
+        gpu_kernels_available=_check_kernel_library(),
     )
 
 
@@ -272,21 +272,22 @@ def _get_opencv_version() -> str | None:
         return None
 
 
-def _check_taichi() -> bool:
-    """Check if Taichi is available and working."""
+def _check_kernel_library() -> bool:
+    """Whether the title kernel library is present and can initialize.
+
+    An absent library reports False; one that is installed but cannot load its
+    own runtime raises, because that is a broken machine and must stay
+    actionable instead of looking like "this box has no GPU".
+    """
+    # WHY: ti.init() resets the kernel library's process-wide runtime. Title
+    # rendering owns that lifecycle and its compiled kernel references, so system
+    # capture must use the same idempotent initializer instead of resetting the
+    # GPU underneath it. It also must not import the kernel library by name to
+    # find out whether it is here: the seam behind this import is the only place
+    # that imports it, once.
+    from immich_memories.titles.kernels import kernels_available
+
     try:
-        import taichi  # noqa: F401
-
-        # WHY: ti.init() resets Taichi's process-wide runtime. Title rendering
-        # owns that lifecycle and its compiled kernel references, so system
-        # capture must use the same idempotent initializer instead of resetting
-        # the GPU underneath it.
-        from immich_memories.titles.taichi_kernels import is_taichi_available
-
-        return is_taichi_available()
-    except ModuleNotFoundError as exc:
-        if exc.name != "taichi":
-            raise
-        return False
+        return kernels_available()
     except (RuntimeError, OSError):
         return False

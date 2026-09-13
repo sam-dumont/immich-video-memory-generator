@@ -51,7 +51,7 @@ def pre_rendered_clip(fixtures_dir) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# Content-backed mode (slow-mo + Taichi render)
+# Content-backed mode (slow-mo + GPU render)
 # ---------------------------------------------------------------------------
 
 
@@ -108,19 +108,19 @@ class TestSlowmoBackgroundReader:
         reader.close()
 
 
-class TestTaichiContentBacked:
-    """Profile Taichi rendering with content-backed background."""
+class TestKernelContentBacked:
+    """Profile GPU rendering with content-backed background."""
 
-    def test_taichi_render_content_backed(self, pre_rendered_clip):
-        """Time: per-frame Taichi render with slow-mo bg (blur + vignette + bokeh + text)."""
+    def test_kernel_render_content_backed(self, pre_rendered_clip):
+        """Time: per-frame GPU render with slow-mo bg (blur + vignette + bokeh + text)."""
         from immich_memories.titles.content_background import SlowmoBackgroundReader
-        from immich_memories.titles.renderer_taichi import TaichiTitleConfig, TaichiTitleRenderer
+        from immich_memories.titles.renderer_kernels import KernelTitleConfig, KernelTitleRenderer
 
         reader = SlowmoBackgroundReader(
             pre_rendered_clip, 1280, 720, 30.0, title_duration=3.5, source_seconds=0.5
         )
 
-        config = TaichiTitleConfig(
+        config = KernelTitleConfig(
             width=1280,
             height=720,
             fps=30.0,
@@ -133,11 +133,11 @@ class TestTaichiContentBacked:
             enable_bokeh=True,
         )
 
-        renderer = TaichiTitleRenderer(config=config)
+        renderer = KernelTitleRenderer(config=config)
         total_frames = renderer.total_frames
         frame_times: list[float] = []
 
-        with measure_resources("taichi_content_backed", resolution="720p") as result:
+        with measure_resources("kernel_content_backed", resolution="720p") as result:
             for i in range(total_frames):
                 t0 = time.monotonic()
                 frame = renderer.render_frame(i, "Test Title 2025", "A Subtitle")
@@ -150,14 +150,14 @@ class TestTaichiContentBacked:
         first_ms = frame_times[0] * 1000
 
         logger.info(
-            f"SUBSTEP: taichi_content_backed = {result.wall_seconds:.2f}s "
+            f"SUBSTEP: kernel_content_backed = {result.wall_seconds:.2f}s "
             f"({total_frames} frames, avg={avg_ms:.1f}ms, p95={p95_ms:.1f}ms, "
             f"first={first_ms:.1f}ms)"
         )
-        _substep_timings["content_backed__taichi_render"] = result.wall_seconds
-        _substep_timings["content_backed__taichi_avg_ms"] = avg_ms
-        _substep_timings["content_backed__taichi_p95_ms"] = p95_ms
-        _substep_timings["content_backed__taichi_first_ms"] = first_ms
+        _substep_timings["content_backed__kernel_render"] = result.wall_seconds
+        _substep_timings["content_backed__kernel_avg_ms"] = avg_ms
+        _substep_timings["content_backed__kernel_p95_ms"] = p95_ms
+        _substep_timings["content_backed__kernel_first_ms"] = first_ms
         _title_results.append(result)
         reader.close()
 
@@ -165,7 +165,7 @@ class TestTaichiContentBacked:
         """Time: full content-backed title (slowmo + render + encode).
 
         Exercises: TitleScreenGenerator, RenderingService, SlowmoBackgroundReader,
-        TaichiTitleRenderer, encoding pipeline, text_builder.
+        KernelTitleRenderer, encoding pipeline, text_builder.
         """
         from immich_memories.titles.generator import TitleScreenConfig, TitleScreenGenerator
 
@@ -215,14 +215,14 @@ class TestTaichiContentBacked:
 # ---------------------------------------------------------------------------
 
 
-class TestTaichiGradient:
-    """Profile Taichi rendering with gradient-only background (no SlowmoReader)."""
+class TestKernelGradient:
+    """Profile GPU rendering with gradient-only background (no SlowmoReader)."""
 
-    def test_taichi_render_gradient_only(self):
-        """Time: per-frame Taichi render with animated gradient (no content clip)."""
-        from immich_memories.titles.renderer_taichi import TaichiTitleConfig, TaichiTitleRenderer
+    def test_kernel_render_gradient_only(self):
+        """Time: per-frame GPU render with animated gradient (no content clip)."""
+        from immich_memories.titles.renderer_kernels import KernelTitleConfig, KernelTitleRenderer
 
-        config = TaichiTitleConfig(
+        config = KernelTitleConfig(
             width=1280,
             height=720,
             fps=30.0,
@@ -242,11 +242,11 @@ class TestTaichiGradient:
             vignette_pulse=0.05,
         )
 
-        renderer = TaichiTitleRenderer(config=config)
+        renderer = KernelTitleRenderer(config=config)
         total_frames = renderer.total_frames
         frame_times: list[float] = []
 
-        with measure_resources("taichi_gradient_only", resolution="720p") as result:
+        with measure_resources("kernel_gradient_only", resolution="720p") as result:
             for i in range(total_frames):
                 t0 = time.monotonic()
                 frame = renderer.render_frame(i, "Gradient Title 2025", "No Content Clip")
@@ -259,21 +259,21 @@ class TestTaichiGradient:
         first_ms = frame_times[0] * 1000
 
         logger.info(
-            f"SUBSTEP: taichi_gradient = {result.wall_seconds:.2f}s "
+            f"SUBSTEP: kernel_gradient = {result.wall_seconds:.2f}s "
             f"({total_frames} frames, avg={avg_ms:.1f}ms, p95={p95_ms:.1f}ms, "
             f"first={first_ms:.1f}ms)"
         )
-        _substep_timings["gradient__taichi_render"] = result.wall_seconds
-        _substep_timings["gradient__taichi_avg_ms"] = avg_ms
-        _substep_timings["gradient__taichi_p95_ms"] = p95_ms
-        _substep_timings["gradient__taichi_first_ms"] = first_ms
+        _substep_timings["gradient__kernel_render"] = result.wall_seconds
+        _substep_timings["gradient__kernel_avg_ms"] = avg_ms
+        _substep_timings["gradient__kernel_p95_ms"] = p95_ms
+        _substep_timings["gradient__kernel_first_ms"] = first_ms
         _title_results.append(result)
 
     def test_full_title_gradient_only(self, tmp_path):
         """Time: full gradient-only title (render + encode, no SlowmoReader).
 
         Exercises: TitleScreenGenerator gradient path, RenderingService,
-        TaichiTitleRenderer without background_reader, encoding pipeline.
+        KernelTitleRenderer without background_reader, encoding pipeline.
         """
         from immich_memories.titles.generator import TitleScreenConfig, TitleScreenGenerator
 
@@ -346,29 +346,29 @@ def test_save_title_drilldown(tmp_path):
 
     # Content-backed breakdown
     cb_catmull = _substep_timings.get("content_backed__catmull_rom", 0)
-    cb_taichi = _substep_timings.get("content_backed__taichi_render", 0)
+    cb_kernels = _substep_timings.get("content_backed__kernel_render", 0)
     cb_full = _substep_timings.get("content_backed__full_title", 0)
-    cb_overhead = max(0, cb_full - cb_taichi)
+    cb_overhead = max(0, cb_full - cb_kernels)
 
     # Gradient breakdown
-    gr_taichi = _substep_timings.get("gradient__taichi_render", 0)
+    gr_kernels = _substep_timings.get("gradient__kernel_render", 0)
     gr_full = _substep_timings.get("gradient__full_title", 0)
-    gr_overhead = max(0, gr_full - gr_taichi)
+    gr_overhead = max(0, gr_full - gr_kernels)
 
     logger.info("\n--- DERIVED BREAKDOWN ---")
     logger.info("Content-backed (one screen):")
-    logger.info(f"  Catmull-Rom interpolation:  {cb_catmull:>6.1f}s  (included in taichi_render)")
-    logger.info(f"  Taichi render (incl bg):    {cb_taichi:>6.1f}s")
+    logger.info(f"  Catmull-Rom interpolation:  {cb_catmull:>6.1f}s  (included in kernel_render)")
+    logger.info(f"  GPU render (incl bg):       {cb_kernels:>6.1f}s")
     logger.info(f"  Encoding + I/O overhead:    {cb_overhead:>6.1f}s")
     logger.info(f"  TOTAL:                      {cb_full:>6.1f}s")
 
     logger.info("Gradient-only (one screen):")
-    logger.info(f"  Taichi render:              {gr_taichi:>6.1f}s")
+    logger.info(f"  GPU render:                 {gr_kernels:>6.1f}s")
     logger.info(f"  Encoding + I/O overhead:    {gr_overhead:>6.1f}s")
     logger.info(f"  TOTAL:                      {gr_full:>6.1f}s")
 
-    if gr_taichi > 0:
-        slowmo_overhead = cb_taichi - gr_taichi
+    if gr_kernels > 0:
+        slowmo_overhead = cb_kernels - gr_kernels
         logger.info(f"\nContent-backed overhead vs gradient: +{slowmo_overhead:.1f}s per screen")
     logger.info("=" * 70)
 

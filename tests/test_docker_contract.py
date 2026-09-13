@@ -67,10 +67,13 @@ def _resolve_install_target(extra: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def _marker_environment(sys_platform: str, platform_machine: str) -> dict[str, str]:
+def _marker_environment(
+    sys_platform: str, platform_machine: str, python_version: str = "3.12"
+) -> dict[str, str]:
     environment = {key: str(value) for key, value in default_environment().items()}
     environment["sys_platform"] = sys_platform
     environment["platform_machine"] = platform_machine
+    environment["python_version"] = python_version
     return environment
 
 
@@ -149,27 +152,51 @@ def test_opencv_stays_on_the_5_line_because_only_that_line_is_graded() -> None:
     assert not opencv.specifier.contains("6.0.0"), opencv
 
 
-def test_gpu_extra_excludes_taichi_only_on_linux_arm64() -> None:
-    """The all image must keep GPU support except where Taichi publishes no wheel."""
+def test_the_arm64_image_gets_gpu_titles_from_the_base_install() -> None:
+    """The whole point of the Quadrants default: linux/arm64 stops losing titles.
+
+    The library the renderer used before Quadrants published no linux-aarch64
+    wheel, so that platform lost its titles to PIL. Quadrants publishes one and
+    is a base dependency, so the arm64 image renders titles on the GPU.
+    """
     pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
-    extras = pyproject["project"]["optional-dependencies"]
-    gpu_requirements = [Requirement(value) for value in extras["gpu"]]
-    taichi = next(requirement for requirement in gpu_requirements if requirement.name == "taichi")
-    freetype = next(
-        requirement for requirement in gpu_requirements if requirement.name == "freetype-py"
-    )
+    base = [Requirement(value) for value in pyproject["project"]["dependencies"]]
+    quadrants = next(requirement for requirement in base if requirement.name == "quadrants")
+    freetype = next(requirement for requirement in base if requirement.name == "freetype-py")
 
-    assert taichi.marker is not None
-    for machine in ("aarch64", "arm64"):
-        environment = _marker_environment("linux", machine)
-        assert not taichi.marker.evaluate(environment)
+    assert quadrants.marker is not None
+    for platform, machine in (
+        ("linux", "aarch64"),
+        ("linux", "x86_64"),
+        ("darwin", "arm64"),
+        ("win32", "AMD64"),
+    ):
+        assert quadrants.marker.evaluate(_marker_environment(platform, machine)), (
+            platform,
+            machine,
+        )
 
-    for platform, machine in (("linux", "x86_64"), ("darwin", "arm64"), ("win32", "AMD64")):
-        environment = _marker_environment(platform, machine)
-        assert taichi.marker.evaluate(environment)
+    # The two places Quadrants publishes no wheel, verified against PyPI: it
+    # ships cp310-cp313 for linux x86_64/aarch64, macOS arm64 and win_amd64, and
+    # no sdist. Those installs render title screens with PIL.
+    assert not quadrants.marker.evaluate(_marker_environment("darwin", "x86_64"))
+    assert not quadrants.marker.evaluate(_marker_environment("linux", "x86_64", "3.14"))
 
+    # SDF font rendering ships with the kernels it feeds.
     assert freetype.marker is None
-    assert "immich-memories[gpu]" in extras["all"]
+
+
+def test_no_extra_is_needed_for_gpu_titles() -> None:
+    """GPU titles used to be `immich-memories[gpu]`; the kernels ship by default now."""
+    pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
+
+    assert "gpu" not in pyproject["project"]["optional-dependencies"]
+    assert not [
+        value
+        for values in pyproject["project"]["optional-dependencies"].values()
+        for value in values
+        if "gpu" in Requirement(value).extras
+    ]
 
 
 def test_builder_provides_native_opus_for_arm64_source_wheels() -> None:
@@ -304,7 +331,7 @@ def test_release_publisher_supports_core_metadata_2_5() -> None:
 
 
 def test_gpu_integration_uses_ci_dependency_set() -> None:
-    """GPU integration needs Taichi, not the full Torch and audio-ML stack."""
+    """GPU integration needs the kernel library, not the full Torch and audio-ML stack."""
     workflow = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "integration.yml").read_text())
     run_commands = [
         step.get("run") for step in workflow["jobs"]["integration"]["steps"] if "run" in step
