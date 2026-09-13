@@ -28,6 +28,8 @@ class Picture:
     taken_at: str
     caption: str
     is_favorite: bool = False
+    # A filler picture borrows one of the six photographs; the six use their own file.
+    source_id: str | None = None
 
     @property
     def is_video(self) -> bool:
@@ -35,7 +37,7 @@ class Picture:
 
     @property
     def source(self) -> Path:
-        return LIBRARY_DIR / f"{self.asset_id}.jpg"
+        return LIBRARY_DIR / f"{self.source_id or self.asset_id}.jpg"
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,6 +132,45 @@ STORIES: tuple[Story, ...] = (
         picture_ids=("lake-tents", "lake-sunset"),
     ),
 )
+
+
+def _filler_month() -> tuple[Picture, ...]:
+    """A second month wide enough to page: one clip and forty-one stills over May 2024.
+
+    The media pool shows twenty pictures per page, so a month of forty-two proves the
+    page never grows past that. None of these belongs to a story; the scripted
+    editor only knows June.
+    """
+    sources = tuple(picture.asset_id for picture in LIBRARY if not picture.is_video)
+    pictures = [
+        Picture(
+            asset_id="may-walk",
+            filename="IMG_2001.mp4",
+            kind="video",
+            taken_at="2024-05-01T10:00:00.000Z",
+            caption="a slow walk down the lane",
+            source_id="woods-path",
+        )
+    ]
+    for index in range(41):
+        day, hour = divmod(index, 2)
+        pictures.append(
+            Picture(
+                asset_id=f"may-{index + 1:02d}",
+                filename=f"IMG_{2002 + index}.jpg",
+                kind="still",
+                taken_at=f"2024-05-{day + 2:02d}T{9 + hour * 6:02d}:00:00.000Z",
+                caption=f"filler picture {index + 1}",
+                source_id=sources[index % len(sources)],
+            )
+        )
+    return tuple(pictures)
+
+
+BIG_MONTH: tuple[Picture, ...] = _filler_month()
+
+# Everything the fake Immich serves: the June story month and the wide May filler month.
+ALL_PICTURES: tuple[Picture, ...] = LIBRARY + BIG_MONTH
 
 BY_ID: dict[str, Picture] = {picture.asset_id: picture for picture in LIBRARY}
 

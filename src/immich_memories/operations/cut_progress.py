@@ -15,7 +15,9 @@ from __future__ import annotations
 import contextlib
 import json
 from collections import deque
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -43,6 +45,9 @@ class StageUpdate:
     done: int | None = None
     total: int | None = None
     recent_asset_ids: tuple[str, ...] = ()
+    # The verb a counted stage is shown with: preparation passes prepare,
+    # the editorial reads read.
+    verb: str = "Preparing"
 
     @property
     def counted(self) -> bool:
@@ -52,7 +57,7 @@ class StageUpdate:
     def stage_label(self) -> str:
         """The sentence a phase row shows for this position."""
         if self.counted:
-            return f"Preparing {self.label}: {self.done}/{self.total}"
+            return f"{self.verb} {self.label}: {self.done}/{self.total}"
         return self.label
 
     @property
@@ -63,7 +68,13 @@ class StageUpdate:
         return min(1.0, max(0.0, self.done / self.total))
 
     def as_record(self) -> dict[str, Any]:
-        return {"phase": self.phase, "label": self.label, "done": self.done, "total": self.total}
+        return {
+            "phase": self.phase,
+            "label": self.label,
+            "done": self.done,
+            "total": self.total,
+            "verb": self.verb,
+        }
 
     @classmethod
     def from_record(cls, record: Mapping[str, Any] | None) -> StageUpdate | None:
@@ -78,9 +89,39 @@ class StageUpdate:
                 done=None if done is None else int(done),
                 total=None if total is None else int(total),
                 recent_asset_ids=tuple(str(v) for v in record.get("recent_asset_ids") or ()),
+                verb=str(record.get("verb") or "Preparing"),
             )
         except (ValueError, TypeError):
             return None
+
+
+# The run's stage sink, reachable from layers that never see the `on_stage`
+# callback: the model gateways and the structure planner announce through it.
+# A context variable rather than a global, so two cuts in one process (two web
+# sessions) never hear each other; the gateway's sync bridge copies the context
+# onto its helper thread.
+_STAGE_SINK: ContextVar[Callable[[StageUpdate], None] | None] = ContextVar(
+    "stage_sink", default=None
+)
+
+
+@contextmanager
+def announcing_stages(on_stage: Callable[[StageUpdate], None] | None) -> Iterator[None]:
+    """Route every `announce_stage` inside the block to `on_stage`."""
+    token = _STAGE_SINK.set(on_stage)
+    try:
+        yield
+    finally:
+        _STAGE_SINK.reset(token)
+
+
+def announce_stage(update: StageUpdate) -> None:
+    """Tell the run where it is, if anyone is listening; never raises."""
+    sink = _STAGE_SINK.get()
+    if sink is None:
+        return
+    with contextlib.suppress(Exception):
+        sink(update)
 
 
 class StageProgressWriter:

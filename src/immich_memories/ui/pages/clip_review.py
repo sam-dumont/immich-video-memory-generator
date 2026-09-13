@@ -8,6 +8,7 @@ from nicegui import ui
 
 from immich_memories.api.models import VideoClipInfo
 from immich_memories.ui.nicegui_compat import io_bound_result
+from immich_memories.ui.pages.paging import render_paged
 from immich_memories.ui.pages.step2_helpers import (
     _download_immich_preview,
     _get_preview_path,
@@ -20,6 +21,9 @@ from immich_memories.ui.state import get_app_state
 # first five seconds, which is what the retired "average seconds per clip" dial defaulted to.
 _DEFAULT_EXCERPT_SECONDS = 5.0
 
+# Rows carry a <video> each while open, so the page shows a handful at a time.
+REVIEW_ROWS_PER_PAGE = 10
+
 
 def _render_clip_thumbnail(clip: VideoClipInfo) -> None:
     """Render the initial thumbnail for a clip (sync, placeholder)."""
@@ -28,16 +32,32 @@ def _render_clip_thumbnail(clip: VideoClipInfo) -> None:
     )
 
 
+def _found_or_empty(lookup, *args, **kwargs) -> Path | str:
+    """A missing preview is a value, not a cancellation.
+
+    `io_bound_result` reads a None result as NiceGUI cancelling the await and
+    raises, so a lookup that honestly found nothing used to kill the loader
+    before the Immich fallback ran: no review row ever showed its video.
+    """
+    return lookup(*args, **kwargs) or ""
+
+
 def _make_preview_loader(video_aid: str, container: ui.element, vid_id: str):
     """Return async loader that swaps thumbnail with video preview."""
 
     async def load_preview():
-
         state = get_app_state()
-        preview_path = await io_bound_result(_get_preview_path, video_aid, config=state.config)
+        preview_path = await io_bound_result(
+            _found_or_empty, _get_preview_path, video_aid, config=state.config
+        )
         if not preview_path:
+            # Credentials are read here, on the page's thread: the worker has no session.
             preview_path = await io_bound_result(
-                _download_immich_preview, video_aid, config=state.config
+                _found_or_empty,
+                _download_immich_preview,
+                video_aid,
+                config=state.config,
+                immich=(state.immich_url, state.immich_api_key, state.immich_api_version),
             )
 
         if preview_path:
@@ -272,26 +292,53 @@ def _render_review_clip_row(
         )
     )
 
-    with ui.expansion(" ".join(title_parts), value=idx < 5).classes("w-full"):  # noqa: SIM117
-        with ui.row().classes("w-full gap-4"):
-            with ui.column().classes("w-64"):
-                video_id = f"preview_{clip.asset.id.replace('-', '_')}"
+    # One wrapper per row: the expansion component spreads its own classes over two nodes.
+    with ui.element("div").classes("w-full review-clip-row"):
+        row = ui.expansion(" ".join(title_parts), value=idx == 0).classes("w-full")
+    with row, ui.row().classes("w-full gap-4"):
+        with ui.column().classes("w-64"):
+            video_id = f"preview_{clip.asset.id.replace('-', '_')}"
 
-                with ui.element("div").classes("w-full") as video_container:
-                    _render_clip_thumbnail(clip)
+            with ui.element("div").classes("w-full") as video_container:
+                _render_clip_thumbnail(clip)
 
-                ui.timer(
-                    0.1,
-                    _make_preview_loader(clip.video_asset_id, video_container, video_id),
-                    once=True,
-                )
+            _wire_preview_to_row(row, clip, video_container, video_id, open_now=idx == 0)
 
-                keep_checkbox = ui.checkbox("Include in compilation", value=True)
-                keep_checkbox.on_value_change(
-                    _make_toggle_handler(clip.asset.id, state, update_summary)
-                )
+            keep_checkbox = ui.checkbox("Include in compilation", value=True)
+            keep_checkbox.on_value_change(
+                _make_toggle_handler(clip.asset.id, state, update_summary)
+            )
 
-            _render_clip_controls(clip, video_id, start, end, state, update_summary)
+        _render_clip_controls(clip, video_id, start, end, state, update_summary)
+
+
+def _wire_preview_to_row(
+    row: ui.expansion,
+    clip: VideoClipInfo,
+    video_container: ui.element,
+    video_id: str,
+    *,
+    open_now: bool,
+) -> None:
+    """Start a preview only while the row is open, and release the video when it closes.
+
+    Every open row used to hold a <video> element for the whole visit, and each
+    of them registered a media route it kept until the page died (#824).
+    """
+    load_preview = _make_preview_loader(clip.video_asset_id, video_container, video_id)
+
+    def on_toggle(event) -> None:
+        opened = event.value if hasattr(event, "value") else event
+        if opened:
+            ui.timer(0.1, load_preview, once=True)
+            return
+        video_container.clear()
+        with video_container:
+            _render_clip_thumbnail(clip)
+
+    row.on_value_change(on_toggle)
+    if open_now:
+        ui.timer(0.1, load_preview, once=True)
 
 
 def _render_summary_metrics(
@@ -436,10 +483,12 @@ def _render_review_selected_clips(clips: list[VideoClipInfo]) -> None:
     ui.separator()
 
     selected_clips_sorted = sorted(selected_clips, key=lambda c: c.asset.file_created_at)
-    for i, clip in enumerate(selected_clips_sorted):
-        if clip.asset.id not in state.selected_clip_ids:
-            continue
-        _render_review_clip_row(clip, i, state, update_summary)
+
+    def render_rows(rows) -> None:
+        for i, clip in enumerate(rows):
+            _render_review_clip_row(clip, i, state, update_summary)
+
+    render_paged(selected_clips_sorted, render_rows, REVIEW_ROWS_PER_PAGE)
 
     ui.separator()
 

@@ -26,6 +26,7 @@ from immich_memories.analysis.text_episode_answers import (
     _EpisodeRequestScope,
     _read_response_result,
 )
+from immich_memories.operations.cut_progress import StageUpdate, announce_stage
 from immich_memories.store.episode_readings import (
     BankedEpisodeReading,
     EpisodeCullDecision,
@@ -384,6 +385,9 @@ class CachedTextEpisodeReader:
         calls = 0
         for pack in packs:
             calls += 1
+            announce_stage(
+                StageUpdate("event evidence", done=calls, total=len(packs), verb="Reading")
+            )
             page_readings.extend(self._ask(pack, lines, diagnostics, unavailable_by_group, failed))
             self._bank_complete(missing, request_scopes, page_readings, banked)
         for _round in range(self._limits.unread_retry_rounds):
