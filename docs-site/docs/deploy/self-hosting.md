@@ -190,7 +190,7 @@ immich-memories generate --memory-type monthly_highlights --year 2024 --month 6
 The cold pass describes every eligible picture once, runs six context heads and two detectors over
 it, and reads the month's stories. All of it is banked by producer and exact input, so the second
 cut of that month is mostly the render. **Measured on a four-core Celeron NAS: 1.23 s per picture
-for every producer except the caption, and 30.9 s for the caption** — which is the whole reason
+for every producer except the caption, and 30.9 s for the caption**, which is the whole reason
 [`editorial.preparation.tier`](../reference/config-reference.md#preparation-tiers) exists. The one published end-to-end
 figure (10 min 08 s for a 14-clip monthly on 4 arm64 cores, `preset: fast`) is from the retired
 per-clip scorer and only tells you about the render.

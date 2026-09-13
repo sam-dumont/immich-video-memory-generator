@@ -10,7 +10,7 @@ the first time, the [self-hosting guide](../self-hosting.md) puts the same piece
 
 Story-first selection prepares descriptions, context labels and pixel measurements for the
 whole source period. It reuses complete facts from the annotation database. Missing previews,
-unavailable providers and incomplete facts stop selection with a count for each missing producer —
+unavailable providers and incomplete facts stop selection with a count for each missing producer:
 for the producers this deployment's `tier` actually demanded. A producer the tier does not ask for
 is never reported missing and never blocks a cut. See
 [preparation tiers](../../reference/config-reference.md#preparation-tiers); the short version is
@@ -143,7 +143,7 @@ locally and commits each completed batch. It does not upload images to Hugging F
 
 `immich-memories models fetch` supplies both in one command: it downloads `marqo_onnx_url` to a
 temporary file, hashes it and only then renames it into `marqo_onnx`, and it warms the Docling
-snapshot at its pinned revision into `detector_cache_dir` when that is set — so
+snapshot at its pinned revision into `detector_cache_dir` when that is set, so
 `allow_model_downloads` can stay `false` and mean what it says. `--no-detectors` fetches only the
 encoder. Setting `allow_model_downloads: true` instead lets the worker acquire the Docling
 snapshot itself; the sensitive-content export is never fetched from inside a run. Neither starts
@@ -168,7 +168,7 @@ a picture against torch's 0.440 s. What it removes is 920 MB of dependencies fro
 11 s of interpreter start-up before the first detector picture, and the class of failure where
 `torch` and `torchvision` resolve from different indexes and the detector dies on import.
 
-A separate `detector_python` needs `onnxruntime`, `huggingface-hub`, `numpy` and `Pillow` — and
+A separate `detector_python` needs `onnxruntime`, `huggingface-hub`, `numpy` and `Pillow`, and
 no part of the torch family. The worker ships with the main package and runs without importing
 the app's UI or configuration dependencies. The versions `uv.lock` currently pins are Hugging
 Face Hub 1.30.0 and ONNX Runtime 1.28.0; read the lock rather than this sentence if they matter

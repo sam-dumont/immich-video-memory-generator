@@ -75,13 +75,13 @@ uses the same process cleanup for its generation deadline and interruption.
 | `person_spotlight` | `person_names: ["Name"]` |
 | `multi_person` | `person_names: ["One", "Two"]` |
 | `album` | `params: { from_album: "Album name" }` |
-| `special_day` | **cannot be scheduled** — its window comes from the catalogue, not from a cron expression. Use [`auto run`](./auto.md#auto-run), which generates the special days that are due |
+| `special_day` | **cannot be scheduled**: its window comes from the catalogue, not from a cron expression. Use [`auto run`](./auto.md#auto-run), which generates the special days that are due |
 
 ## Timezone
 
 `scheduler.timezone` is the zone the cron expressions are written in, and `9am` means 9am there.
-It defaults to `UTC`. A name the system cannot resolve — a typo, or a box with no timezone
-database — falls back to UTC and says so in the log; `scheduler list` shows each job's next run
+It defaults to `UTC`. A name the system cannot resolve (a typo, or a box with no timezone
+database) falls back to UTC and says so in the log; `scheduler list` shows each job's next run
 in the zone it will actually fire in, so check it there.
 
 ## Auto-resolved parameters
@@ -92,9 +92,9 @@ When a schedule fires, date parameters get resolved automatically from the fire 
 |-------------|---------------------|
 | `year_in_review` | `year` = previous year |
 | `monthly_highlights` | `year` + `month` = previous month |
-| `on_this_day` | nothing — the run covers the day it fires |
+| `on_this_day` | nothing: the run covers the day it fires |
 | `trip` | `year` = previous year (scans GPS data, generates every detected trip) |
-| `album` | nothing — `from_album` is the whole scope |
+| `album` | nothing: `from_album` is the whole scope |
 | anything else | `year` = fire year |
 
 So a `year_in_review` firing on Jan 15 2025 generates for 2024. A `monthly_highlights` firing on Aug 1 generates for July. You get the idea.
@@ -103,7 +103,7 @@ So a `year_in_review` firing on Jan 15 2025 generates for 2024. A `monthly_highl
 
 A `trip` schedule generates a video for every trip it detects in the year. To pick one instead, set `params: { trip_index: 2 }`, `params: { month: 7 }` (the trip closest to that month) or `params: { near_date: "2024-07-15" }`.
 
-Explicit `params` in the schedule config override these auto-resolved values. Setting `params: { year: 2020 }` on a `year_in_review` schedule always generates for 2020 no matter when it fires. A param that no `generate` option can express — `target_date`, say — fails the job with that message rather than being dropped on the way to the command. The expressible ones are `year`, `month`, `season`, `holiday`, `years_back`, `trip_index`, `near_date` and `from_album`.
+Explicit `params` in the schedule config override these auto-resolved values. Setting `params: { year: 2020 }` on a `year_in_review` schedule always generates for 2020 no matter when it fires. A param that no `generate` option can express (`target_date`, say) fails the job with that message rather than being dropped on the way to the command. The expressible ones are `year`, `month`, `season`, `holiday`, `years_back`, `trip_index`, `near_date` and `from_album`.
 
 `duration_minutes` is in minutes: `duration_minutes: 3` renders a three-minute video.
 
