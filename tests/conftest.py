@@ -10,9 +10,12 @@ import threading
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from click.testing import CliRunner
+from rich.console import Console
 
 from immich_memories import config_loader
 from immich_memories.api.models import Asset, AssetType, ExifInfo, VideoClipInfo
@@ -26,6 +29,11 @@ _TEST_ENV_KEYS = {
 }
 _ORIGINAL_TEST_ENV: dict[str, str | None] = {}
 
+# The width every CLI render is pinned to. Wide enough that a sentence with a
+# pytest temporary path in it still fits on one line.
+_CLI_WIDTH = 200
+_TERMINAL_PATCHES = pytest.MonkeyPatch()
+
 
 def pytest_configure(config: pytest.Config) -> None:
     """Route test configuration paths to one disposable session directory."""
@@ -37,11 +45,48 @@ def pytest_configure(config: pytest.Config) -> None:
         _ORIGINAL_TEST_ENV[key] = os.environ.get(key)
         os.environ[key] = str(_TEST_ROOT / relative)
 
+    _pin_the_cli_width()
+
+
+def _pin_the_cli_width() -> None:
+    """Render CLI output at one width instead of at the developer's terminal's.
+
+    Nothing in a CliRunner run replaces the terminal, so the width reached the
+    CLI from whatever window the suite ran in: a message wrapped in a different
+    place on every machine, and an assertion on a phrase that landed across the
+    break passed or failed by luck (#880). Two seams ask for that width, so both
+    are pinned here rather than in the tests that happen to trip over them.
+
+    A Rich console takes its width from $COLUMNS when it is built and keeps it,
+    and the CLI builds its console at import time — before any fixture could
+    reach it — so the width goes in at construction. `runs why` instead wraps its
+    reasons with shutil.get_terminal_size at the moment it prints, which reads
+    $COLUMNS live; CliRunner already applies `env` for the length of an
+    invocation and puts it back after, so pinning it there leaves pytest's own
+    report at the terminal's real width.
+    """
+    console_init = Console.__init__
+    runner_init = CliRunner.__init__
+
+    def sized_console(self: Console, **kwargs: Any) -> None:
+        if kwargs.get("width") is None:
+            kwargs["width"] = _CLI_WIDTH
+        console_init(self, **kwargs)
+
+    def sized_runner(self: CliRunner, *args: Any, **kwargs: Any) -> None:
+        runner_init(self, *args, **kwargs)
+        self.env = {"COLUMNS": str(_CLI_WIDTH), **self.env}
+
+    _TERMINAL_PATCHES.setattr(Console, "__init__", sized_console)
+    _TERMINAL_PATCHES.setattr(CliRunner, "__init__", sized_runner)
+
 
 def pytest_unconfigure(config: pytest.Config) -> None:
     """Restore the process environment and remove the validated test root."""
     del config
     global _TEST_ROOT
+
+    _TERMINAL_PATCHES.undo()
 
     for key, original_value in _ORIGINAL_TEST_ENV.items():
         if original_value is None:

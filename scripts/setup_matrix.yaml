@@ -65,19 +65,21 @@ memory:
   memory_type: monthly_highlights
   duration: 60
 
+# Lanes run against each other. Inside a lane nothing does: a lane is one host,
+# and every number this matrix publishes is a timing taken on it.
 lanes:
-  # One cell at a time, and the only lane allowed to call oMLX: one machine,
-  # one resident model. It kernel-panicked under parallel load on 09-14, so the
-  # serial rule is not a preference.
+  # The only lane allowed to call oMLX: one machine, one resident model. It
+  # kernel-panicked under parallel load on 09-14, so the serial rule is not a
+  # preference.
   mac:
     parallel: false
     why: The only lane that may call the local model server.
   nas:
-    parallel: true
+    parallel: false
     why: A DS423+ over ssh, capped at 4 CPUs and 4 GB so the numbers are a NAS.
   k8s:
-    parallel: true
-    why: A batch Job per cell, output copied back when it finishes.
+    parallel: false
+    why: A batch Job per cell, and they share one inference service.
 
 cells:
   - id: mac-local
@@ -86,7 +88,7 @@ cells:
     facts: local
     tier: full
     why: The reference cut. Everything else is measured against this one.
-    requires_env: [MATRIX_OMLX_BASE_URL, OPENAI_API_KEY]
+    requires_env: [MATRIX_OMLX_BASE_URL, MATRIX_CAPTION_BASE_URL, OPENAI_API_KEY]
     config:
       editorial.reader: model
       llm.provider: openai-compatible
@@ -94,9 +96,13 @@ cells:
       # oMLX wants a bearer token. OPENAI_API_KEY is the alias config_loader
       # already maps to llm.api_key, and it is the one the owner's shell exports.
       llm.api_key: ${OPENAI_API_KEY}
-      # Tier full demands a caption per picture, and oMLX is the only vision
-      # server on this lane. Same host, same serial rule.
-      editorial.preparation.caption_base_url: $env:MATRIX_OMLX_BASE_URL
+      # Tier full demands a caption per picture, and the caption endpoint is
+      # its own setting: whichever OpenAI-compatible server holds smolvlm2-500m.
+      # On this Mac that is oMLX, which hosts it beside the reader; elsewhere it
+      # is the inference service on localhost:8092, or a remote one.
+      editorial.preparation.caption_base_url: $env:MATRIX_CAPTION_BASE_URL
+      # Sent to the caption endpoint and nowhere else.
+      editorial.preparation.caption_api_key: ${OPENAI_API_KEY}
 
   - id: mac-rules
     lane: mac
@@ -104,10 +110,12 @@ cells:
     facts: local
     tier: full
     why: The same machine and the same facts with no editorial model at all.
-    requires_env: [MATRIX_OMLX_BASE_URL]
+    requires_env: [MATRIX_CAPTION_BASE_URL]
     config:
       editorial.reader: rules
-      editorial.preparation.caption_base_url: $env:MATRIX_OMLX_BASE_URL
+      editorial.preparation.caption_base_url: $env:MATRIX_CAPTION_BASE_URL
+      # Sent to the caption endpoint and nowhere else.
+      editorial.preparation.caption_api_key: ${OPENAI_API_KEY}
 
   - id: nas-rules-local
     lane: nas

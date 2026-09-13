@@ -35,10 +35,11 @@ immich-memories generate --memory-type year_in_review --year 2025 --no-photos
 
 Pick **Year in Review** on the [Memory page](../web-ui/memory.mdx) and the year from the dropdown.
 Its optional **Only with** box narrows the year to one or more people:
-the same thing `--person` does above, and naming several keeps only what holds
-all of them. On the CLI, add `--person-match or` when repeated names should mean
-any named person instead, or `--people-expression '"Riley" AND ("Casey" OR "Bob")'` when the
-condition is neither a flat AND nor a flat OR.
+the same thing `--person` does above. A second name brings up a **Together /
+Any of these people** toggle, the UI's word for `--person-match`. When the
+condition is neither a flat AND nor a flat OR, **Advanced people condition**
+under the picker takes `'"Riley" AND ("Casey" OR "Bob")'`, the same string as
+`--people-expression`.
 
 ## What makes it special
 

@@ -27,6 +27,11 @@ SCHEMA = "setup-matrix-v1"
 _ENV_REFERENCE = re.compile(r"^\$env:([A-Z][A-Z0-9_]*)$")
 _APP_REFERENCE = re.compile(r"^\$\{([A-Z][A-Z0-9_]*)\}$")
 
+# Where the NAS lane is told to connect. This is an ssh DESTINATION — what ssh
+# and nothing else would accept as `[user@]host`, ideally a Host alias out of
+# ~/.ssh/config carrying the key, the user, BatchMode and ConnectTimeout.
+NAS_SSH_ENV = "MATRIX_NAS_SSH"
+
 # The fixture library binds here so the NAS and the cluster can reach the Mac.
 FIXTURE_PORT = 8078
 FIXTURE_ENV = "MATRIX_FIXTURE_BASE_URL"
@@ -39,6 +44,13 @@ REMOTE_CACHE = "/models/.immich-memories/cache"
 # Where a cluster cell writes inside the shared output claim, so the collector
 # pod and the Job agree on one path.
 OUTPUT_SUBPATH = "setup-matrix"
+
+# The matrix's own claims. It never mounts the app's: those are RWO and stay
+# attached to the running Deployment on whichever node holds it, so a Job that
+# asked for them would sit in Multi-Attach forever, and `-models` does not exist
+# at all in a namespace that predates deploy/kubernetes/base/pvc.yaml.
+DATA_CLAIM = "setup-matrix-data"
+OUTPUT_CLAIM = "setup-matrix-output"
 
 PREPARE_COLD_LOG = "prepare-cold.log"
 PREPARE_WARM_LOG = "prepare-warm.log"
@@ -72,10 +84,16 @@ class Cell:
 
 @dataclass(frozen=True)
 class Step:
-    """One command in a cell's sequence, rendered with variable names not values."""
+    """One command in a cell's sequence, rendered with variable names not values.
+
+    `pipe_to` is a second command fed from the first one's stdout. It stays two
+    argv lists rather than becoming a shell string so nothing here has to be
+    quoted for a shell that never runs.
+    """
 
     name: str
     command: tuple[str, ...]
+    pipe_to: tuple[str, ...] = ()
 
     def __str__(self) -> str:
         """The command as a shell would have to be given it.
@@ -84,12 +102,17 @@ class Step:
         a quoted script inside its argument, and single quotes do not nest. Naive
         wrapping printed a line that looked runnable and was not.
         """
-        return " ".join(part if _plain(part) else shlex.quote(part) for part in self.command)
+        rendered = _render(self.command)
+        return f"{rendered} | {_render(self.pipe_to)}" if self.pipe_to else rendered
 
 
 @dataclass(frozen=True)
 class CellPlan:
-    """What one cell will do, as text a person can read and a shell could run."""
+    """What one cell will do, as text a person can read and a shell could run.
+
+    `diagnostic` is not part of the sequence: it is what to ask when a step in it
+    gives up, so a cell that failed says why in its own record.
+    """
 
     cell: Cell
     pins: dict[str, Any]
@@ -99,6 +122,7 @@ class CellPlan:
     app_credentials: tuple[str, ...]
     cache_dir: str
     skip_reason: str | None = None
+    diagnostic: Step | None = None
 
 
 @dataclass(frozen=True)
@@ -267,7 +291,7 @@ def _credential_flags(cell: Cell) -> list[str]:
 
 
 def _nas_steps(cell: Cell, memory: dict, month: str, out_dir: Path, image: str) -> tuple[Step, ...]:
-    """ssh, one docker run, scp back.
+    """ssh, one docker run, and the results tarred back.
 
     WHY the single quoted string: `ssh host a b c` concatenates its arguments and
     hands the result to the remote shell, which re-splits them. Passing the docker
@@ -302,11 +326,24 @@ def _nas_steps(cell: Cell, memory: dict, month: str, out_dir: Path, image: str) 
         "-lc",
         shlex.quote(_container_script(cell, memory, month)),
     ]
+    # WHY tar over ssh instead of scp: the NAS runs an OpenSSH 8.2 server with
+    # the SFTP subsystem turned off, and a modern scp client speaks SFTP by
+    # default, so every copy died with "Connection closed". `scp -O` would also
+    # work; tar needs nothing of the remote but a shell, which is the one thing
+    # the ssh destination is guaranteed to give us.
     return (
         Step("make-remote-dir", ("ssh", "$MATRIX_NAS_SSH", f"mkdir -p {remote}")),
-        Step("push-config", ("scp", str(local / "config.yaml"), f"$MATRIX_NAS_SSH:{remote}/")),
+        Step(
+            "push-config",
+            ("tar", "-C", str(local), "-cf", "-", "config.yaml"),
+            pipe_to=("ssh", "$MATRIX_NAS_SSH", f"mkdir -p {remote} && tar -C {remote} -xf -"),
+        ),
         Step("run", ("ssh", "$MATRIX_NAS_SSH", " ".join(docker))),
-        Step("pull-results", ("scp", "-r", f"$MATRIX_NAS_SSH:{remote}/.", str(local))),
+        Step(
+            "pull-results",
+            ("ssh", "$MATRIX_NAS_SSH", f"tar -C {remote} -cf - ."),
+            pipe_to=("tar", "-C", str(local), "-xf", "-"),
+        ),
     )
 
 
@@ -329,11 +366,15 @@ def _secret_steps(cell: Cell, context: tuple[str, ...]) -> tuple[Step, ...]:
 
 
 def _k8s_steps(cell: Cell, out_dir: Path) -> tuple[Step, ...]:
-    """Apply, wait, then copy the results out through a collector pod.
+    """Claims, apply, wait to be scheduled, wait to finish, copy out, tear down.
 
     WHY a collector: `kubectl cp` shells into the pod to run tar, and a finished
     Job's pod has no running container to shell into. The collector mounts the
     same output claim, stays up while the copy happens, and is deleted after.
+
+    WHY two waits: a pod that cannot be scheduled, for a missing claim or for a
+    node with no room, is Pending and never reaches `complete`. One wait meant
+    three hours of watching a pod that was never going to start.
     """
     context = KUBECTL
     name = f"setup-matrix-{cell.id}"
@@ -341,9 +382,22 @@ def _k8s_steps(cell: Cell, out_dir: Path) -> tuple[Step, ...]:
     local = out_dir / cell.id
     return (
         *_secret_steps(cell, context),
+        Step("apply-claims", (*context, "apply", "-f", str(local / "claims.yaml"))),
         Step(
             "apply",
             (*context, "apply", "-f", str(local / "configmap.yaml"), "-f", str(local / "job.yaml")),
+        ),
+        Step(
+            "wait-scheduled",
+            (
+                *context,
+                "wait",
+                "pod",
+                "-l",
+                f"job-name={name}",
+                "--for=condition=PodScheduled",
+                f"--timeout={SCHEDULING_TIMEOUT}",
+            ),
         ),
         Step("wait", (*context, "wait", f"job/{name}", "--for=condition=complete", "--timeout=3h")),
         Step("logs", (*context, "logs", f"job/{name}", "--tail=-1")),
@@ -355,7 +409,24 @@ def _k8s_steps(cell: Cell, out_dir: Path) -> tuple[Step, ...]:
         Step("copy-out", (*context, "cp", f"{collector}:{OUTPUT_SUBPATH}/{cell.id}", str(local))),
         Step("delete-collector", (*context, "delete", "pod", collector, "--ignore-not-found")),
         Step("delete", (*context, "delete", "job", name, "--ignore-not-found")),
+        # The results are on this machine by now, and the next cell's apply makes
+        # the claim again. The data claim is deliberately left alone: it carries
+        # the models and the annotation bank, warm across cells and across runs.
+        Step(
+            "delete-output-claim",
+            (*context, "delete", "pvc", OUTPUT_CLAIM, "--ignore-not-found"),
+        ),
     )
+
+
+def k8s_diagnostic(cell: Cell) -> Step:
+    """What to ask the cluster when a cluster cell's step gives up."""
+    return Step("describe", (*KUBECTL, "describe", "pod", "-l", f"job-name=setup-matrix-{cell.id}"))
+
+
+def purge_claims_command() -> tuple[str, ...]:
+    """Both claims, for a run that asked to leave the cluster with nothing of its own."""
+    return (*KUBECTL, "delete", "pvc", DATA_CLAIM, OUTPUT_CLAIM, "--ignore-not-found")
 
 
 CPU_OVERLAY = "deploy/kubernetes/overlays/inference"
@@ -367,6 +438,10 @@ INFERENCE_PORT = 8092
 # the runner reads it off the LoadBalancer the `inference-lan` overlay asks for.
 INFERENCE_ENV = "MATRIX_INFERENCE_BASE_URL"
 DERIVED_ADDRESS = "<derived at run time>"
+
+# Long enough for a claim to be provisioned and a node to be picked, short
+# enough that "nothing can run this" is an answer rather than an afternoon.
+SCHEDULING_TIMEOUT = "5m"
 
 KUBECTL = ("kubectl", "--context", "$MATRIX_K8S_CONTEXT", "-n", "$MATRIX_K8S_NAMESPACE")
 # `.ip` on most controllers, `.hostname` on the ones that hand out a name.
@@ -465,6 +540,7 @@ def _k8s_manifests(
         else ""
     )
     return {
+        "claims.yaml": _CLAIMS.format(data=DATA_CLAIM, output=OUTPUT_CLAIM),
         "configmap.yaml": _CONFIGMAP.format(name=name, config=config_block),
         "job.yaml": _JOB.format(
             name=name,
@@ -474,10 +550,49 @@ def _k8s_manifests(
             out=REMOTE_OUT,
             secrets=secret_block,
             subpath=f"{OUTPUT_SUBPATH}/{cell.id}",
+            output_claim=OUTPUT_CLAIM,
+            data_claim=DATA_CLAIM,
         ),
-        "collector.yaml": _COLLECTOR.format(name=f"{name}-collect", image=image, out=REMOTE_OUT),
+        "collector.yaml": _COLLECTOR.format(
+            name=f"{name}-collect", image=image, out=REMOTE_OUT, output_claim=OUTPUT_CLAIM
+        ),
     }
 
+
+# Applied before every cluster cell, and applying an unchanged claim changes
+# nothing, so one cell's run leaves the next one's storage already there.
+_CLAIMS = """# The models and the annotation bank, kept between cells and between runs.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {data}
+  namespace: $MATRIX_K8S_NAMESPACE
+  labels:
+    app.kubernetes.io/name: immich-memories
+    app.kubernetes.io/component: setup-matrix
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+# One cell's output, deleted once the collector has copied it to this machine.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {output}
+  namespace: $MATRIX_K8S_NAMESPACE
+  labels:
+    app.kubernetes.io/name: immich-memories
+    app.kubernetes.io/component: setup-matrix
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+"""
 
 _CONFIGMAP = """apiVersion: v1
 kind: ConfigMap
@@ -537,23 +652,27 @@ spec:
               subPath: {subpath}
             - name: models
               mountPath: /models
+          # The request is what the scheduler has to find: a 1-CPU app pod was
+          # already answered with Insufficient cpu here, and a cell that runs on
+          # scraps is not a measurement. The limit is the NAS cell's docker cap,
+          # 4 CPU and 4 GB, so the two rows in the table are comparable.
           resources:
             requests:
               memory: "4Gi"
               cpu: "2000m"
             limits:
-              memory: "16Gi"
-              cpu: "8000m"
+              memory: "4Gi"
+              cpu: "4000m"
       volumes:
         - name: config
           configMap:
             name: {name}-config
         - name: output
           persistentVolumeClaim:
-            claimName: immich-memories-output
+            claimName: {output_claim}
         - name: models
           persistentVolumeClaim:
-            claimName: immich-memories-models
+            claimName: {data_claim}
 """
 
 # Mounts the output claim and does nothing, so `kubectl cp` has a running
@@ -598,7 +717,7 @@ spec:
   volumes:
     - name: output
       persistentVolumeClaim:
-        claimName: immich-memories-output
+        claimName: {output_claim}
 """
 
 
@@ -623,6 +742,7 @@ def build_cell_plan(
     config_yaml = yaml.safe_dump(nested(pins), sort_keys=False)
     memory = manifest.get("memory") or {}
     manifests: dict[str, str] = {}
+    diagnostic: Step | None = None
     if cell.lane == "mac":
         steps = _mac_steps(cell, memory, month, out_dir)
         cache = "$HOME/.immich-memories/cache"
@@ -632,6 +752,7 @@ def build_cell_plan(
     elif cell.lane == "k8s":
         steps = _k8s_steps(cell, out_dir)
         manifests = _k8s_manifests(cell, memory, month, image, config_yaml)
+        diagnostic = k8s_diagnostic(cell)
         cache = REMOTE_CACHE
     else:
         raise PlanError(f"{cell.id}: unknown lane {cell.lane!r}")
@@ -645,6 +766,7 @@ def build_cell_plan(
         app_credentials=credentials,
         cache_dir=cache,
         skip_reason=skip,
+        diagnostic=diagnostic,
     )
 
 
@@ -660,6 +782,23 @@ def nested(pins: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _check_ssh_destination(environment: dict[str, str]) -> None:
+    """The NAS variable is a destination, not a command line.
+
+    It is substituted where ssh expects `[user@]host`, so a value like
+    `ssh -i key admin@nas` reaches ssh as a username and the first step dies with
+    "remote username contains invalid characters", naming nothing useful.
+    Checking it here means `--dry-run` says so too, before anything connects.
+    """
+    value = (environment.get(NAS_SSH_ENV) or "").strip()
+    if value and any(character.isspace() for character in value):
+        raise PlanError(
+            f"{NAS_SSH_ENV} contains whitespace, so it is being set to a command. It is an ssh "
+            "destination: `user@host`, or better a Host alias from ~/.ssh/config that carries the "
+            "key, the user, BatchMode and ConnectTimeout."
+        )
+
+
 def build_plan(
     *,
     manifest: dict,
@@ -672,6 +811,7 @@ def build_plan(
     environment: dict[str, str],
 ) -> Plan:
     """The whole request as a plan, skipped cells included."""
+    _check_ssh_destination(environment)
     libraries = manifest.get("libraries") or {}
     if library not in libraries:
         raise PlanError(f"unknown library {library!r}; the manifest knows {sorted(libraries)}")
@@ -723,7 +863,7 @@ def dry_run_text(plan: Plan, *, overlay: tuple[Step, ...] = ()) -> str:
     ]
     if overlay:
         lines += ["", "# inference service overlay"]
-        lines += [f"  {step.name:<18} {step}" for step in overlay]
+        lines += [f"  {step.name:<19} {step}" for step in overlay]
     for item in plan.cells:
         cell = item.cell
         lines += [
@@ -742,7 +882,9 @@ def dry_run_text(plan: Plan, *, overlay: tuple[Step, ...] = ()) -> str:
             )
         lines.append("   pinned config:")
         lines += [f"     {line}" for line in item.config_yaml.rstrip().splitlines()]
-        lines += [f"   {step.name:<18} {step}" for step in item.steps]
+        lines += [f"   {step.name:<19} {step}" for step in item.steps]
+        if item.diagnostic:
+            lines.append(f"   {'on failure':<19} {item.diagnostic}")
         for name, body in item.manifests.items():
             lines.append(f"   manifest {name}:")
             lines += [f"     {line}" for line in body.rstrip().splitlines()]
@@ -753,3 +895,7 @@ def dry_run_text(plan: Plan, *, overlay: tuple[Step, ...] = ()) -> str:
 
 def _plain(part: str) -> bool:
     return bool(re.fullmatch(r"[A-Za-z0-9_@%+=:,./$-]+", part))
+
+
+def _render(command: tuple[str, ...]) -> str:
+    return " ".join(part if _plain(part) else shlex.quote(part) for part in command)

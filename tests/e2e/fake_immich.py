@@ -124,16 +124,22 @@ def _buckets_for_query(query: dict[str, list[str]]) -> list[dict[str, Any]]:
 
 
 def _assets_for_search(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """The metadata search honours the type and the taken-at window, like the real one."""
+    """The metadata search honours the type, the taken-at window and the faces.
+
+    Several ``personIds`` intersect, which is what Immich answers and what the
+    wizard's "Together" and a grouped condition's AND both count on.
+    """
     requested_type = payload.get("type")
     taken_after = payload.get("takenAfter")
     taken_before = payload.get("takenBefore")
+    wanted_people = set(payload.get("personIds") or ())
     return [
         asset
         for asset in TIMELINE_ASSETS
         if (requested_type is None or asset["type"] == requested_type)
         and (taken_after is None or asset["fileCreatedAt"] >= taken_after)
         and (taken_before is None or asset["fileCreatedAt"] <= taken_before)
+        and wanted_people <= {person["id"] for person in asset["people"]}
     ]
 
 
@@ -326,7 +332,9 @@ def _generate_thumbnails(media_dir: Path, media: dict[str, Path]) -> dict[str, P
     other, and Phase 1 clustering collapsed the whole pool into one clip.
     """
     thumbnail_dir = media_dir / "thumbnails"
-    thumbnail_dir.mkdir()
+    # The setup matrix serves one library twice into the same output directory,
+    # once per lane invocation, and every render below overwrites what it finds.
+    thumbnail_dir.mkdir(exist_ok=True)
     thumbnails: dict[str, Path] = {}
     for asset_id, source in media.items():
         thumbnail_path = thumbnail_dir / f"{asset_id}.jpg"
