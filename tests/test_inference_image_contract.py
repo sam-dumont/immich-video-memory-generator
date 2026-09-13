@@ -52,6 +52,10 @@ def compose_service() -> dict:
     return yaml.safe_load(COMPOSE.read_text())["services"][SERVICE]
 
 
+def compose_image(service: str) -> str:
+    return yaml.safe_load(COMPOSE.read_text())["services"][service]["image"]
+
+
 @pytest.mark.parametrize("device", ["cpu", "cuda"])
 def test_each_device_selects_a_builder_and_a_runtime_stage(device: str) -> None:
     lines = instructions(DOCKERFILE.read_text())
@@ -179,6 +183,35 @@ def test_the_quickstart_does_not_start_a_service_nothing_uses_yet() -> None:
     # The app has no facts_base_url switch until W8, and the models are a
     # ~500 MB fetch: `docker compose up` must stay one container.
     assert compose_service()["profiles"] == ["inference"]
+
+
+def test_compose_pulls_the_inference_image_the_release_actually_publishes() -> None:
+    """The compose name must be the name the manifest job pushes, segment for segment.
+
+    They drifted: compose said `...-generator-inference` where the workflow pushes
+    `...-generator/inference`, a path segment rather than a hyphen. Nothing failed
+    in CI, because the only thing that resolves the name is a self-hoster running
+    the `--profile inference up` line the file itself prints, against a manifest
+    that has never existed.
+    """
+    workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/release.yml").read_text())
+    step = next(
+        s
+        for s in workflow["jobs"]["inference-manifest"]["steps"]
+        if s.get("name") == "Create and push manifests"
+    )
+    # The app image is `ghcr.io/<github.repository>`, so it resolves the template.
+    repository = compose_image("immich-memories").removeprefix("ghcr.io/").split(":")[0]
+    published = step["env"]["IMAGE"].replace("${{ github.repository }}", repository)
+
+    reference = compose_image(SERVICE)
+    image, _, tag = reference.partition(":")
+
+    assert image == published, f"{reference} is not published; the release pushes {published}"
+    # The default and the documented GPU override must both be tags a release moves.
+    assert tag == "${INFERENCE_TAG:-latest}"
+    release_tags = set(re.findall(r"-t \$IMAGE:([^\s\"]+)", step["run"]))
+    assert {"latest", "latest-cuda"} <= release_tags
 
 
 def test_inference_only_analysis_cannot_create_a_release(tmp_path, monkeypatch):
