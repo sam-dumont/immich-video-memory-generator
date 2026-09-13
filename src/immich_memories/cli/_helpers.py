@@ -62,15 +62,19 @@ def print_warning(message: str) -> None:
         console.print(f"[yellow]Warning:[/yellow] {message}")
 
 
-def print_success(message: str) -> None:
-    """Print a success message."""
+def print_success(message: str, *, highlight: bool = True) -> None:
+    """Print a success message.
+
+    ``highlight=False`` keeps Rich from colouring paths and numbers inside the
+    message: a saved-file path painted magenta reads as an error.
+    """
     display = _active_display.get()
     if display is not None:
         display.print_message(f"[green]\u2713[/green] {message}")
     elif _quiet_mode.get():
         _logger.info(message)
     else:
-        console.print(f"[green]\u2713[/green] {message}")
+        console.print(f"[green]\u2713[/green] {message}", highlight=highlight)
 
 
 def print_info(message: str) -> None:

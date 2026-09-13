@@ -11,9 +11,9 @@ VHS recording, and the screenshots come from a hermetic run over the same six ph
 
 | Command (repo root) | Produces |
 |---|---|
-| `make demo-ui` | `docs-site/static/demo/demo.mp4`, the 45-second composition, 1920×1080 H.264 |
-| `make demo-hero` | `docs-site/static/img/demo-hero.gif`, seconds 2.6 to 20.6 of `demo.mp4` at 800 px and 12 fps, the README hero |
-| `make demo-cli` | `docs-site/remotion/public/cli-demo.mp4`, the terminal recording the CLI scene plays, via VHS |
+| `make demo-ui` | `docs-site/static/demo/demo.mp4`, the 47-second composition, 1920×1080 H.264; it ends on the film the product made |
+| `make demo-hero` | `docs-site/static/img/demo-hero.gif`, seconds 2.6 to 16.6 of `demo.mp4` (brief, cut, storyboard) then its last 4 s (the film), 800 px, 10 fps, the README hero |
+| `make demo-cli` | `docs-site/remotion/public/cli-demo.mp4`, VHS recording the real CLI: `scripts/demo-cli-hermetic.py` runs `generate`, `runs story` and `runs why` against the hermetic fakes from `tests/e2e` (`make demo-cli-run` plays the same session without recording) |
 | `make demo-output` | `docs-site/remotion/public/output-preview.mp4` and `output-frame.jpg`, cut on the hermetic launch |
 | `make demo-music` | ACE-Step candidates for `docs-site/remotion/public/demo-music.wav` |
 | `make screenshots` | the light and dark screenshots under `docs-site/static/img/screenshots/` |
