@@ -1,32 +1,24 @@
-"""SDF GPU text rendering with Taichi kernels.
+"""SDF GPU text rendering.
 
 Provides GPU-accelerated text rendering using Signed Distance Field atlases
-and Taichi compute kernels for high-performance text compositing.
+and compute kernels for high-performance text compositing.
 
 Note: This module does NOT use 'from __future__ import annotations'
-because Taichi kernels require actual type objects, not string annotations.
+because kernel signatures need actual type objects, not string annotations.
 """
 
 import logging
 
 import numpy as np
 
+from .gpu_kernel_backend import KERNELS_AVAILABLE, ti
 from .sdf_font import SDFFontAtlas
 
 logger = logging.getLogger(__name__)
 
-# Optional dependency
-try:
-    import taichi as ti
-
-    TAICHI_AVAILABLE = True
-except ImportError:
-    TAICHI_AVAILABLE = False
-    ti = None
-
 
 # =============================================================================
-# GPU Text Rendering with Taichi
+# GPU Text Rendering
 # =============================================================================
 
 # Module-level kernel references (set after ti.init)
@@ -35,10 +27,10 @@ _kernels_compiled = False
 
 
 def _compile_sdf_kernels():
-    """Compile Taichi kernels for SDF text rendering."""
+    """Compile the kernels for SDF text rendering."""
     global _render_sdf_text, _kernels_compiled
 
-    if not TAICHI_AVAILABLE:
+    if not KERNELS_AVAILABLE:
         return
 
     if _kernels_compiled:

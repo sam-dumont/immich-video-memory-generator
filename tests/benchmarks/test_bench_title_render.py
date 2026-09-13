@@ -12,20 +12,20 @@ import pytest
 
 
 @pytest.fixture()
-def _init_taichi():
-    from immich_memories.titles.taichi_kernels import init_taichi
+def _init_kernels():
+    from immich_memories.titles.kernels import init_kernels
 
-    init_taichi()
+    init_kernels()
 
 
 @pytest.mark.benchmark
 class TestTitleRenderPerf:
-    def test_gradient_per_frame_time(self, _init_taichi, benchmark):
+    def test_gradient_per_frame_time(self, _init_kernels, benchmark):
         """720p gradient-only title: target <16ms/frame avg."""
-        from immich_memories.titles.renderer_taichi import TaichiTitleConfig, TaichiTitleRenderer
+        from immich_memories.titles.renderer_kernels import KernelTitleConfig, KernelTitleRenderer
 
-        cfg = TaichiTitleConfig(width=1280, height=720, fps=30.0, duration=3.5)
-        renderer = TaichiTitleRenderer(cfg)
+        cfg = KernelTitleConfig(width=1280, height=720, fps=30.0, duration=3.5)
+        renderer = KernelTitleRenderer(cfg)
 
         # Warm up JIT
         renderer.render_frame(0, "Warm Up")
@@ -39,13 +39,13 @@ class TestTitleRenderPerf:
 
         benchmark(render_one)
 
-    def test_content_backed_per_frame_time(self, _init_taichi, benchmark):
+    def test_content_backed_per_frame_time(self, _init_kernels, benchmark):
         """720p content-backed title: target <20ms/frame avg."""
-        from immich_memories.titles.renderer_taichi import TaichiTitleConfig, TaichiTitleRenderer
+        from immich_memories.titles.renderer_kernels import KernelTitleConfig, KernelTitleRenderer
 
         bg = np.random.default_rng(42).random((720, 1280, 3)).astype(np.float32)
-        cfg = TaichiTitleConfig(width=1280, height=720, fps=30.0, duration=3.5, background_image=bg)
-        renderer = TaichiTitleRenderer(cfg)
+        cfg = KernelTitleConfig(width=1280, height=720, fps=30.0, duration=3.5, background_image=bg)
+        renderer = KernelTitleRenderer(cfg)
 
         renderer.render_frame(0, "Warm Up")
 
@@ -58,12 +58,12 @@ class TestTitleRenderPerf:
 
         benchmark(render_one)
 
-    def test_manual_timing_report(self, _init_taichi):
+    def test_manual_timing_report(self, _init_kernels):
         """Manual per-frame timing with percentiles (not pytest-benchmark)."""
-        from immich_memories.titles.renderer_taichi import TaichiTitleConfig, TaichiTitleRenderer
+        from immich_memories.titles.renderer_kernels import KernelTitleConfig, KernelTitleRenderer
 
-        cfg = TaichiTitleConfig(width=1280, height=720, fps=30.0, duration=3.5)
-        renderer = TaichiTitleRenderer(cfg)
+        cfg = KernelTitleConfig(width=1280, height=720, fps=30.0, duration=3.5)
+        renderer = KernelTitleRenderer(cfg)
         renderer.render_frame(0, "Warm Up")
 
         times = []

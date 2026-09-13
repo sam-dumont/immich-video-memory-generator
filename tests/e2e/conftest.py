@@ -166,8 +166,8 @@ def _build_launch_environment(home: Path | None = None) -> dict[str, str]:
         {
             "IMMICH_MEMORIES_AUTH__ENABLED": "false",
             "IMMICH_MEMORIES_STORAGE_SECRET": "launch-smoke-storage-secret",
-            "ENABLE_TAICHI_HEADER_PRINT": "0",
-            "TI_LOG_LEVEL": "error",
+            "ENABLE_QUADRANTS_HEADER_PRINT": "0",
+            "QD_LOG_LEVEL": "error",
         }
     )
     if home is not None:

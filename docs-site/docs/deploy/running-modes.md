@@ -120,3 +120,7 @@ share it.
 - A hosted reader: the same as above with a provider URL and key, and the privacy table above read once.
 
 The whole stand-up, in order, is the [self-hosting guide](./self-hosting.md).
+
+## Title rendering
+
+Every mode above renders title screens the same way: on the GPU kernels where they exist, and with PIL where they do not. GPU title rendering runs on Quadrants, which has wheels for Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 on Python 3.11-3.13. On macOS x86_64 and on Python 3.14 there is none, and title screens fall back to the PIL renderer (static gradient and text, no animated kernels, no SDF text); `immich-memories preflight` says which you will get. See [Title kernels](./hardware/cpu-only.md#title-kernels).

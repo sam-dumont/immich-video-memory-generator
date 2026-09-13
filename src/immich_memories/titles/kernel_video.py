@@ -1,4 +1,4 @@
-"""Video creation using Taichi GPU-rendered title frames.
+"""Video creation using GPU-rendered title frames.
 
 Pipes rendered frames into FFmpeg to produce the final title video file.
 """
@@ -21,7 +21,7 @@ from immich_memories.processing.ffmpeg_runner import drain_stderr_tail
 from immich_memories.processing.hardware_encode import apply_hardware_encode
 
 from .encoding import standalone_title_encoding_plan, title_color_filter, title_encoder_args
-from .renderer_taichi import TaichiTitleConfig, TaichiTitleRenderer
+from .renderer_kernels import KernelTitleConfig, KernelTitleRenderer
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +116,7 @@ def _apply_fade_to_white(
 
 @dataclass(frozen=True)
 class _FrameRenderContext:
-    renderer: TaichiTitleRenderer
+    renderer: KernelTitleRenderer
     title: str
     subtitle: str | None
     fade_in_frames: int
@@ -172,24 +172,24 @@ def _raise_ffmpeg_errors(
         raise RuntimeError("FFmpeg frame writer failed") from writer_errors[0]
 
 
-def create_title_video_taichi(
+def create_title_video_gpu(
     title: str,
     subtitle: str | None,
     output_path: Path,
-    config: TaichiTitleConfig | None = None,
+    config: KernelTitleConfig | None = None,
     fade_from_white: bool = False,
     fade_to_white: bool = False,
     encoding_plan: EncodingPlan | None = None,
     frame_progress: Callable[[int, int], None] | None = None,
     frame_transfer: HdrTransfer = HdrTransfer.NONE,
 ) -> Path:
-    """Create title video using Taichi GPU rendering."""
-    cfg = config or TaichiTitleConfig()
+    """Create title video using GPU rendering."""
+    cfg = config or KernelTitleConfig()
     plan = encoding_plan or standalone_title_encoding_plan()
     cfg.hdr = plan.hdr
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    renderer = TaichiTitleRenderer(cfg)
+    renderer = KernelTitleRenderer(cfg)
 
     encoder_args = title_encoder_args(plan)
 
@@ -251,7 +251,7 @@ def create_title_video_taichi(
 
     cmd = apply_hardware_encode(cmd, pixel_format=plan.pixel_format)
 
-    logger.info(f"Generating title with Taichi: {title}")
+    logger.info(f"Generating title on the GPU: {title}")
 
     process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
     stderr_tail = bytearray()

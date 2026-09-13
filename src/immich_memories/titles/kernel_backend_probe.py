@@ -1,12 +1,12 @@
-"""Taichi backend availability: which arch can actually dispatch a kernel here.
+"""Kernel backend availability: which arch can actually dispatch a kernel here.
 
-Owns the `taichi` import guard, so importing this module (directly or via
-taichi_kernels) is what sets the banner-suppression env vars before Taichi's
-C++ runtime loads. Nothing here knows about title kernels; taichi_kernels
-drives the selection loop with `_candidate_backends` and `_backend_dispatches`.
+The library itself is imported once, in gpu_kernel_backend.py; this module only
+asks which arch on this machine can actually run a kernel. Nothing here knows
+about title kernels: kernels.py drives the selection loop with
+`_candidate_backends` and `_backend_dispatches`.
 
 Note: This module does NOT use 'from __future__ import annotations'
-because Taichi kernels require actual type objects, not string annotations.
+because kernel signatures need actual type objects, not string annotations.
 """
 
 import contextlib
@@ -22,29 +22,17 @@ from pathlib import Path
 
 import numpy as np
 
+# WHY absolute, in a module that otherwise uses relative imports: the dispatch
+# probe runs this file as its own program in a child interpreter, where it is
+# `__main__` with no package and a relative import cannot resolve.
+from immich_memories.titles.gpu_kernel_backend import KERNEL_LIBRARY, ti
+
 logger = logging.getLogger(__name__)
 
-# WHY: Taichi's C++ runtime prints to stdout, corrupting Rich Live display.
-# ENABLE_TAICHI_HEADER_PRINT="0" — suppresses import-time version banner (taichi#8334)
-# TI_LOG_LEVEL — belt-and-suspenders for C++ log messages
-# These must be set before `import taichi` below, and before any sibling module
-# that imports Taichi is loaded.
-# The main fix is verbose=False on ti.init() calls (see init_taichi and _check_taichi)
-os.environ.setdefault("ENABLE_TAICHI_HEADER_PRINT", "0")
-os.environ.setdefault("TI_LOG_LEVEL", "error")
-
-try:
-    import taichi as ti
-
-    TAICHI_AVAILABLE = True
-except ImportError:
-    TAICHI_AVAILABLE = False
-    ti = None
-
-_TAICHI_PROBE_TIMEOUT_SECONDS = 10.0
+_PROBE_TIMEOUT_SECONDS = 10.0
 
 
-class TaichiProbeOutcome(StrEnum):
+class KernelProbeOutcome(StrEnum):
     """Bounded outcomes from an isolated backend dispatch probe."""
 
     SUCCESS = "success"
@@ -54,10 +42,10 @@ class TaichiProbeOutcome(StrEnum):
 
 
 @dataclass(frozen=True)
-class TaichiProbeResult:
+class KernelProbeResult:
     """Small serialisable result the probe child hands back to its parent."""
 
-    outcome: TaichiProbeOutcome
+    outcome: KernelProbeOutcome
     detail: str | None = None
 
 
@@ -86,17 +74,16 @@ def _silence_output_fds():
 def _silent_init(**kwargs) -> None:
     """Call ti.init() with stdout/stderr silenced at the OS file descriptor level.
 
-    WHY: Taichi's C++ runtime prints "[Taichi] Starting on arch=metal"
-    directly to file descriptor 1, bypassing Python's sys.stdout, all
-    env vars (TI_LOG_LEVEL, ENABLE_TAICHI_HEADER_PRINT), and all Python
-    API flags (verbose=False, log_level). The ONLY way to suppress it is
-    to redirect the raw OS file descriptors during the call.
+    WHY: the C++ runtime prints "Starting on arch=metal" directly to file
+    descriptor 1, bypassing Python's sys.stdout, the quiet-mode env vars and
+    every Python API flag (verbose=False, log_level). The ONLY way to suppress
+    it is to redirect the raw OS file descriptors during the call.
     """
     with _silence_output_fds():
         ti.init(**kwargs)
 
 
-def _taichi_probe_worker(backend_name: str) -> TaichiProbeResult:
+def _probe_worker(backend_name: str) -> KernelProbeResult:
     """Initialize one backend and dispatch a real kernel inside a child process."""
     try:
         with _silence_output_fds():
@@ -111,32 +98,32 @@ def _taichi_probe_worker(backend_name: str) -> TaichiProbeResult:
             values = np.zeros(1, dtype=np.int32)
             increment(values)
         if values[0] != 1:
-            return TaichiProbeResult(
-                TaichiProbeOutcome.DISPATCH_FAILED,
+            return KernelProbeResult(
+                KernelProbeOutcome.DISPATCH_FAILED,
                 "unexpected_kernel_result",
             )
     except Exception as exc:
-        return TaichiProbeResult(
-            TaichiProbeOutcome.DISPATCH_FAILED,
+        return KernelProbeResult(
+            KernelProbeOutcome.DISPATCH_FAILED,
             type(exc).__name__,
         )
-    return TaichiProbeResult(TaichiProbeOutcome.SUCCESS)
+    return KernelProbeResult(KernelProbeOutcome.SUCCESS)
 
 
-def _read_probe_result(result_path: Path) -> TaichiProbeResult | None:
+def _read_probe_result(result_path: Path) -> KernelProbeResult | None:
     """Read the child's answer, or None when it wrote something we cannot trust."""
     try:
         payload = json.loads(result_path.read_text())
-        return TaichiProbeResult(TaichiProbeOutcome(payload["outcome"]), payload["detail"])
+        return KernelProbeResult(KernelProbeOutcome(payload["outcome"]), payload["detail"])
     except (OSError, ValueError, TypeError, KeyError):
         return None
 
 
-def _probe_taichi_backend(
+def _probe_backend(
     backend_name: str,
-    timeout: float = _TAICHI_PROBE_TIMEOUT_SECONDS,
-) -> TaichiProbeResult:
-    """Probe one non-CPU backend without changing parent Taichi state.
+    timeout: float = _PROBE_TIMEOUT_SECONDS,
+) -> KernelProbeResult:
+    """Probe one non-CPU backend without disturbing the parent runtime.
 
     The child runs this file as its own program. A `multiprocessing` spawn child
     would instead re-import the parent's `__main__` with the parent's `sys.argv`
@@ -150,29 +137,29 @@ def _probe_taichi_backend(
     # this file by path and must not depend on the package around it.
     from immich_memories.operations.bounded_process import run_bounded_process
 
-    with tempfile.TemporaryDirectory(prefix="immich-taichi-probe-") as directory:
+    with tempfile.TemporaryDirectory(prefix="immich-kernel-probe-") as directory:
         result_path = Path(directory) / "result.json"
         command = [sys.executable, str(Path(__file__).resolve()), backend_name, str(result_path)]
         try:
             completed = run_bounded_process(command, timeout=timeout)
         except subprocess.TimeoutExpired:
-            return TaichiProbeResult(TaichiProbeOutcome.TIMED_OUT)
+            return KernelProbeResult(KernelProbeOutcome.TIMED_OUT)
         except OSError as exc:
-            return TaichiProbeResult(TaichiProbeOutcome.CHILD_CRASHED, type(exc).__name__)
+            return KernelProbeResult(KernelProbeOutcome.CHILD_CRASHED, type(exc).__name__)
         if completed.returncode or not result_path.is_file():
             logger.debug(
-                "Taichi %s probe child exited %s: %s",
+                "Kernel %s probe child exited %s: %s",
                 backend_name,
                 completed.returncode,
                 (completed.stderr or completed.stdout or "").strip()[-2000:],
             )
-            return TaichiProbeResult(
-                TaichiProbeOutcome.CHILD_CRASHED,
+            return KernelProbeResult(
+                KernelProbeOutcome.CHILD_CRASHED,
                 f"exitcode={completed.returncode}",
             )
         result = _read_probe_result(result_path)
         if result is None:
-            return TaichiProbeResult(TaichiProbeOutcome.CHILD_CRASHED, "invalid_result")
+            return KernelProbeResult(KernelProbeOutcome.CHILD_CRASHED, "invalid_result")
         return result
 
 
@@ -195,11 +182,12 @@ def _backend_dispatches(name: str, probe_name: str | None) -> bool:
     """Prove a GPU backend can dispatch, while allowing CPU to bypass the probe."""
     if probe_name is None:
         return True
-    probe = _probe_taichi_backend(probe_name)
-    if probe.outcome is TaichiProbeOutcome.SUCCESS:
+    probe = _probe_backend(probe_name)
+    if probe.outcome is KernelProbeOutcome.SUCCESS:
         return True
     logger.debug(
-        "Taichi %s dispatch probe failed (%s: %s)",
+        "%s %s dispatch probe failed (%s: %s)",
+        KERNEL_LIBRARY,
         name,
         probe.outcome.value,
         probe.detail or "no detail",
@@ -208,7 +196,7 @@ def _backend_dispatches(name: str, probe_name: str | None) -> bool:
 
 
 if __name__ == "__main__":
-    _result = _taichi_probe_worker(sys.argv[1])
+    _result = _probe_worker(sys.argv[1])
     Path(sys.argv[2]).write_text(
         json.dumps({"outcome": _result.outcome.value, "detail": _result.detail})
     )

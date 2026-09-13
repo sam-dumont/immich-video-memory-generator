@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import builtins
 import subprocess as _subprocess
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from immich_memories.tracking.system_info import (
-    _check_taichi,
+    _check_kernel_library,
     _get_cpu_brand,
     _get_ffmpeg_version,
     _get_gpu_name,
@@ -19,49 +18,54 @@ from immich_memories.tracking.system_info import (
 )
 
 
-class TestCheckTaichi:
-    """Optional Taichi detection must distinguish absence from a broken install."""
+def _reinitialized(**_kwargs) -> None:
+    raise AssertionError("the kernel runtime was reinitialized")
 
-    def test_reuses_initialized_title_runtime_without_reinitializing_taichi(
+
+class TestCheckKernelLibrary:
+    """Kernel-library detection must distinguish absence from a broken install."""
+
+    def test_reuses_initialized_title_runtime_without_reinitializing_it(
         self, monkeypatch: pytest.MonkeyPatch
     ):
         """System capture must not invalidate kernels owned by the title runtime."""
-        from immich_memories.titles import taichi_kernels
+        from immich_memories.titles import kernels
 
-        monkeypatch.setattr(taichi_kernels, "_taichi_initialized", True)
-        monkeypatch.setattr(taichi_kernels, "_taichi_backend", "Metal")
-        with patch("taichi.init", side_effect=AssertionError("Taichi was reinitialized")):
-            assert _check_taichi() is True
+        monkeypatch.setattr(kernels, "_kernels_initialized", True)
+        monkeypatch.setattr(kernels, "_kernel_arch", "Metal")
+        # WHY not patch the library's own init: naming it imports its C++
+        # runtime into a test process that has no use for it. The initializer
+        # this module owns is the boundary either way.
+        monkeypatch.setattr(
+            kernels,
+            "_silent_init",
+            _reinitialized,
+        )
+
+        assert _check_kernel_library() is True
 
     def test_missing_optional_package_is_unavailable(self, monkeypatch: pytest.MonkeyPatch):
-        """A base/dev install without Taichi can still record a pipeline run."""
-        real_import = builtins.__import__
+        """A base/dev install with no kernel library can still record a pipeline run."""
+        from immich_memories.titles import kernels
 
-        def import_without_taichi(name, *args, **kwargs):
-            if name == "taichi":
-                raise ModuleNotFoundError("No module named 'taichi'", name="taichi")
-            return real_import(name, *args, **kwargs)
+        monkeypatch.setattr(kernels, "KERNELS_AVAILABLE", False)
 
-        monkeypatch.setattr(builtins, "__import__", import_without_taichi)
+        assert _check_kernel_library() is False
 
-        assert _check_taichi() is False
-
-    def test_broken_taichi_dependency_is_not_hidden(self, monkeypatch: pytest.MonkeyPatch):
+    def test_a_broken_kernel_dependency_is_not_hidden(self, monkeypatch: pytest.MonkeyPatch):
         """A corrupt optional install remains actionable instead of becoming false."""
-        real_import = builtins.__import__
+        from immich_memories.titles import kernels
 
-        def import_broken_taichi(name, *args, **kwargs):
-            if name == "taichi":
-                raise ModuleNotFoundError(
-                    "No module named 'taichi_runtime'",
-                    name="taichi_runtime",
-                )
-            return real_import(name, *args, **kwargs)
+        def raise_missing_runtime() -> bool:
+            raise ModuleNotFoundError(
+                "No module named 'quadrants_runtime'",
+                name="quadrants_runtime",
+            )
 
-        monkeypatch.setattr(builtins, "__import__", import_broken_taichi)
+        monkeypatch.setattr(kernels, "kernels_available", raise_missing_runtime)
 
-        with pytest.raises(ModuleNotFoundError, match="taichi_runtime"):
-            _check_taichi()
+        with pytest.raises(ModuleNotFoundError, match="quadrants_runtime"):
+            _check_kernel_library()
 
 
 class TestGetCpuBrand:

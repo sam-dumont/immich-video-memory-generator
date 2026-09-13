@@ -114,7 +114,7 @@ class TripService:
             fps=self.config.fps,
         )
 
-        renderer_type = "GPU (Taichi)" if self._rendering.use_gpu else "CPU (PIL)"
+        renderer_type = "GPU" if self._rendering.use_gpu else "CPU (PIL)"
         logger.info(f"Trip map screen generated [{renderer_type}]: {output_path}")
 
         return GeneratedScreen(

@@ -12,13 +12,13 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-ti_kernels = pytest.importorskip("immich_memories.titles.taichi_kernels")
+ti_kernels = pytest.importorskip("immich_memories.titles.kernels")
 
 
 @pytest.fixture(scope="module")
-def taichi_ready() -> bool:
-    if not ti_kernels.init_taichi():
-        pytest.skip("Taichi has no working backend here")
+def kernels_ready() -> bool:
+    if not ti_kernels.init_kernels():
+        pytest.skip("the kernel library has no working backend here")
     return True
 
 
@@ -34,7 +34,7 @@ def _numpy_catmull_rom(sources: list[np.ndarray], window: tuple, t: float) -> np
     return np.clip(out, 0.0, 1.0)
 
 
-def test_the_device_blend_matches_the_one_it_replaces(taichi_ready: bool) -> None:
+def test_the_device_blend_matches_the_one_it_replaces(kernels_ready: bool) -> None:
     rng = np.random.default_rng(7)
     height, width, count = 64, 96, 8
     sources = [rng.integers(0, 256, size=(height, width, 3), dtype=np.uint8) for _ in range(count)]
@@ -52,7 +52,7 @@ def test_the_device_blend_matches_the_one_it_replaces(taichi_ready: bool) -> Non
     assert worst < 1e-5, f"device blend drifted from the reference by {worst}"
 
 
-def test_sources_of_the_wrong_shape_are_refused(taichi_ready: bool) -> None:
+def test_sources_of_the_wrong_shape_are_refused(kernels_ready: bool) -> None:
     """A refusal keeps the numpy path; a wrong-shaped upload would corrupt frames."""
     gpu = ti_kernels.GPUBuffers(64, 96)
 

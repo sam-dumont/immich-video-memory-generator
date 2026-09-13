@@ -1,4 +1,4 @@
-"""Generate real GPU-rendered trip map opening videos via Taichi."""
+"""Generate real GPU-rendered trip map opening videos."""
 
 from __future__ import annotations
 
@@ -10,11 +10,11 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from immich_memories.titles.map_renderer import render_trip_map_array
-from immich_memories.titles.renderer_taichi import (
-    TaichiTitleConfig,
-    init_taichi,
+from immich_memories.titles.renderer_kernels import (
+    KernelTitleConfig,
+    init_kernels,
 )
-from immich_memories.titles.taichi_video import create_title_video_taichi
+from immich_memories.titles.kernel_video import create_title_video_gpu
 
 OUTPUT_DIR = Path(__file__).parent.parent / "demo_output" / "videos"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -34,12 +34,12 @@ SPAIN = {
 MAP_DIMMING = 0.55
 
 
-def _map_config(arr: np.ndarray, width: int, height: int) -> TaichiTitleConfig:
-    """Create a TaichiTitleConfig for map videos with dimmed background."""
+def _map_config(arr: np.ndarray, width: int, height: int) -> KernelTitleConfig:
+    """Create a KernelTitleConfig for map videos with dimmed background."""
     dimmed = arr * MAP_DIMMING
     # Same absolute font size in portrait and landscape
     title_ratio = 0.135 * min(width, height) / height
-    return TaichiTitleConfig(
+    return KernelTitleConfig(
         width=width,
         height=height,
         fps=30.0,
@@ -64,8 +64,8 @@ def _map_config(arr: np.ndarray, width: int, height: int) -> TaichiTitleConfig:
 
 
 def main():
-    backend = init_taichi()
-    print(f"Taichi backend: {backend}")
+    backend = init_kernels()
+    print(f"Kernel backend: {backend}")
 
     # Landscape satellite
     print("\n[1] Landscape satellite map video (1920x1080)...")
@@ -78,7 +78,7 @@ def main():
     )
     config = _map_config(arr, 1920, 1080)
     out = OUTPUT_DIR / "trip_map_landscape.mp4"
-    create_title_video_taichi(
+    create_title_video_gpu(
         "TWO WEEKS IN SPAIN, SUMMER 2025", None, out, config, fade_from_white=True
     )
     print(f"  -> {out} ({out.stat().st_size / 1024:.0f} KB)")
@@ -94,7 +94,7 @@ def main():
     )
     config_p = _map_config(arr_p, 1080, 1920)
     out_p = OUTPUT_DIR / "trip_map_portrait.mp4"
-    create_title_video_taichi(
+    create_title_video_gpu(
         "TWO WEEKS IN SPAIN, SUMMER 2025", None, out_p, config_p, fade_from_white=True
     )
     print(f"  -> {out_p} ({out_p.stat().st_size / 1024:.0f} KB)")

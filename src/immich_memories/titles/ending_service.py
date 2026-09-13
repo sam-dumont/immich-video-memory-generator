@@ -55,7 +55,7 @@ class EndingService:
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Build FFmpeg command -- same pattern as taichi_video.py (intro)
+        # Build FFmpeg command -- same pattern as kernel_video.py (intro)
         # to ensure it uses the same codec and color contract as every title clip.
         encoder_args = title_encoder_args(encoding_plan)
         cmd = [

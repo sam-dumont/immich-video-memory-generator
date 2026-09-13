@@ -102,11 +102,12 @@ install-acestep:  ## Install the tested ACE-Step 1.5 inference stack (music gene
 dev-ci:
 	uv sync --extra dev --locked
 
-# Install dev + GPU extras for CI test jobs (taichi/freetype). The editorial
-# extra stays out: onnxruntime and torch are imported inside the functions that
-# need them, so the unit suite runs without either.
+# Install dev for CI test jobs. The GPU title kernels are a base dependency, so
+# there is no extra to add for them. The editorial extra stays out: onnxruntime
+# and torch are imported inside the functions that need them, so the unit suite
+# runs without either.
 dev-test:
-	uv sync --extra dev --extra gpu --locked
+	uv sync --extra dev --locked
 
 # Install with macOS-specific extras (Apple Vision, Metal GPU, etc.)
 dev-mac:

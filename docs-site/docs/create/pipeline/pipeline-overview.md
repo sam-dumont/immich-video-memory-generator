@@ -78,8 +78,8 @@ encoder, a lower resolution and fewer clips.
 - **Photos** render frame by frame in Python: Ken Burns is one `cv2.warpAffine` per frame at
   30 fps for the seconds granted, over a blurred background when the aspect differs. HEIC decode
   and gain-map HDR happen here; sources are capped at 1.5× the output size.
-- **Title screens** render with Taichi when it initialises, PIL otherwise, and encode with the
-  final video's encoder.
+- **Title screens** render on the GPU when the kernel library initialises, PIL otherwise, and
+  encode with the final video's encoder.
 - **Assembly and encode** stream: one FFmpeg decode per clip at a time, crossfades blended into
   one preallocated buffer, raw frames piped into one encode process. Memory stays flat with clip
   count, which is what makes 4K output possible.
