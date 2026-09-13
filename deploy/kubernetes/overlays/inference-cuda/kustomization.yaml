@@ -19,4 +19,4 @@ patches:
 # inference overlay's tag on the same release.
 images:
   - name: ghcr.io/sam-dumont/immich-video-memory-generator/inference
-    newTag: "0.87.3-cuda"
+    newTag: "0.87.4-cuda"

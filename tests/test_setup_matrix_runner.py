@@ -24,7 +24,11 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures" / "setup_matrix"
 
 
 def _cell_plan(
-    cell_id: str, lane: str, steps: tuple[Step, ...] = (), cache_dir: str = ""
+    cell_id: str,
+    lane: str,
+    steps: tuple[Step, ...] = (),
+    cache_dir: str = "",
+    container_limits: str = "",
 ) -> CellPlan:
     cell = Cell(
         id=cell_id,
@@ -45,6 +49,7 @@ def _cell_plan(
         manifests={},
         app_credentials=(),
         cache_dir=cache_dir,
+        container_limits=container_limits,
     )
 
 
@@ -211,6 +216,22 @@ def test_a_piped_step_carries_a_tar_stream_from_one_command_to_the_other(tmp_pat
 
     assert record["error"] is None
     assert (destination / "config.yaml").read_text() == "pinned: true\n"
+
+
+def test_a_nas_cell_records_what_its_container_was_actually_pinned_to(tmp_path) -> None:
+    """The published table has no column for it, so the cell's own record is where it lives."""
+    item = _cell_plan("nas-limits", "nas", container_limits="--cpuset-cpus 0-3 --memory 4g")
+    plan = Plan(
+        library="demo",
+        month="2024-06",
+        image="image:tag",
+        anonymize_required=False,
+        cells=(item,),
+    )
+
+    record = setup_matrix.run_remote_cell(item, plan, tmp_path / "out")
+
+    assert record["container_limits"] == "--cpuset-cpus 0-3 --memory 4g"
 
 
 def _banked_cell(out_dir: Path, cell_id: str, selected: list[str]) -> None:

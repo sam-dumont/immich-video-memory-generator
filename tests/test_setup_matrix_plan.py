@@ -53,7 +53,7 @@ FULL_ENV = {
 }
 
 
-TAG = "0.87.3"
+TAG = "0.87.4"
 
 
 @pytest.fixture
@@ -403,6 +403,46 @@ def test_the_nas_script_reaches_the_remote_shell_as_one_argument(
     assert "/bin/bash -lc '" in run.command[2]
 
 
+def _nas_run(manifest: dict, tmp_path: Path, environment: dict) -> str:
+    item = next(
+        cell
+        for cell in _plan(manifest, tmp_path, environment).cells
+        if cell.cell.id == "nas-rules-local"
+    )
+    return next(step for step in item.steps if step.name == "run").command[2]
+
+
+def test_a_nas_cell_is_capped_at_four_cores_and_four_gigabytes_by_default(
+    manifest: dict, tmp_path: Path
+) -> None:
+    assert "--cpus 4 --memory 4g" in _nas_run(manifest, tmp_path, FULL_ENV)
+
+
+def test_a_nas_without_the_cfs_controller_can_ask_for_a_cpuset_instead(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """`--cpus` is a quota, and a kernel with no CFS bandwidth controller refuses it."""
+    run = _nas_run(
+        manifest,
+        tmp_path,
+        {**FULL_ENV, "MATRIX_NAS_DOCKER_LIMITS": "--cpuset-cpus 0-3 --memory 4g"},
+    )
+    assert "--cpuset-cpus 0-3 --memory 4g" in run
+    assert "--cpus 4" not in run
+
+
+def test_anything_but_a_resource_cap_is_refused_before_it_reaches_the_nas(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """The string is rendered verbatim into a command the NAS runs as root."""
+    with pytest.raises(PlanError, match="--privileged is not a container resource flag"):
+        _plan(
+            manifest,
+            tmp_path,
+            {**FULL_ENV, "MATRIX_NAS_DOCKER_LIMITS": "--memory 4g --privileged true"},
+        )
+
+
 def test_the_nas_moves_its_files_with_tar_over_ssh(manifest: dict, tmp_path: Path) -> None:
     """The NAS ssh server has the SFTP subsystem off, and a modern scp speaks only SFTP."""
     item = next(
@@ -474,6 +514,20 @@ def test_the_claims_are_applied_before_the_job_that_mounts_them(
     # The data claim carries the models and the bank, so it outlives the cell.
     assert "delete-output-claim" in names
     assert not [name for name in names if name == "delete-data-claim"]
+
+
+def test_a_cluster_cell_watches_for_a_failed_job_as_well_as_a_finished_one(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """A Job that failed never satisfies `--for=condition=complete`, so it is polled."""
+    item = next(
+        cell
+        for cell in _plan(manifest, tmp_path, FULL_ENV).cells
+        if cell.cell.id == "k8s-rules-local"
+    )
+    wait = next(step for step in item.steps if step.name == "wait")
+    assert "--for=condition=complete" not in str(wait)
+    assert "succeeded=" in str(wait) and "failed=" in str(wait)
 
 
 def test_a_cluster_cell_stops_waiting_on_a_pod_that_never_scheduled(

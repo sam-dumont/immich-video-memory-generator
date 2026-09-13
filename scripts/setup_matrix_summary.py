@@ -103,7 +103,14 @@ def read_cell_records(out_dir: Path) -> list[dict]:
     return [json.loads(path.read_text()) for path in sorted(out_dir.glob(f"*/{CELL_RECORD}"))]
 
 
-def build_summary(*, library: str, month: str, image: str, rows: list[dict]) -> dict:
+def build_summary(
+    *,
+    library: str,
+    month: str,
+    image: str,
+    rows: list[dict],
+    inference_warmup_s: float | None = None,
+) -> dict:
     """The record, with every row's overlap against the reference cut worked out."""
     reference = next(
         (row.get("selected_asset_ids") or [] for row in rows if row["id"] == REFERENCE_CELL),
@@ -142,6 +149,9 @@ def build_summary(*, library: str, month: str, image: str, rows: list[dict]) -> 
         "inference_image": next(
             (row["inference_image"] for row in rows if row.get("inference_image")), None
         ),
+        # How long the inference service took to answer its first real request,
+        # which is a cost of the setup and not of the cell that would have paid it.
+        "inference_warmup_s": inference_warmup_s,
         "reference_cell": REFERENCE_CELL,
         "scope": f"One monthly memory over {month}, run once per setup.",
         "conditions": list(CONDITIONS),

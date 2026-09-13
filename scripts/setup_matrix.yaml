@@ -128,6 +128,10 @@ cells:
       # Sent to the caption endpoint and nowhere else.
       editorial.preparation.caption_api_key: ${OPENAI_API_KEY}
 
+  # Every NAS cell below runs under MATRIX_NAS_DOCKER_LIMITS, which defaults to
+  # `--cpus 4 --memory 4g`. A kernel with no CFS bandwidth controller (a Synology
+  # on cgroup v1) refuses --cpus outright with "NanoCPUs can not be set"; set the
+  # variable to `--cpuset-cpus 0-3 --memory 4g` there to pin the same four cores.
   - id: nas-rules-local
     lane: nas
     reader: rules

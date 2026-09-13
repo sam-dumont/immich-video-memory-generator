@@ -32,6 +32,28 @@ _APP_REFERENCE = re.compile(r"^\$\{([A-Z][A-Z0-9_]*)\}$")
 # ~/.ssh/config carrying the key, the user, BatchMode and ConnectTimeout.
 NAS_SSH_ENV = "MATRIX_NAS_SSH"
 
+# What the NAS container is capped at, rendered verbatim into its `docker run`.
+# The default is a CFS quota; a kernel built without the CFS bandwidth controller
+# — a Synology on cgroup v1 — refuses it with "NanoCPUs can not be set", and there
+# `--cpuset-cpus 0-3 --memory 4g` pins the same four cores instead.
+NAS_LIMITS_ENV = "MATRIX_NAS_DOCKER_LIMITS"
+DEFAULT_NAS_LIMITS = "--cpus 4 --memory 4g"
+# The value reaches a remote shell as part of a command docker runs as root, so
+# only caps go through: a flag that is not one of these is refused, not passed on.
+_LIMIT_FLAGS = frozenset(
+    {
+        "--cpus",
+        "--cpuset-cpus",
+        "--cpuset-mems",
+        "--cpu-shares",
+        "--memory",
+        "--memory-reservation",
+        "--memory-swap",
+        "--memory-swappiness",
+    }
+)
+_LIMIT_VALUE = re.compile(r"[A-Za-z0-9][A-Za-z0-9.,:_-]*")
+
 # The fixture library binds here so the NAS and the cluster can reach the Mac.
 FIXTURE_PORT = 8078
 FIXTURE_ENV = "MATRIX_FIXTURE_BASE_URL"
@@ -130,6 +152,8 @@ class CellPlan:
     manifests: dict[str, str]
     app_credentials: tuple[str, ...]
     cache_dir: str
+    # Only a NAS cell has any: the other two lanes are not capped by a container.
+    container_limits: str = ""
     skip_reason: str | None = None
     diagnostic: Step | None = None
 
@@ -313,7 +337,34 @@ def _credential_flags(cell: Cell) -> list[str]:
     return [flag for name in credentials for flag in ("-e", name)]
 
 
-def _nas_steps(cell: Cell, memory: dict, month: str, out_dir: Path, image: str) -> tuple[Step, ...]:
+def nas_docker_limits(environment: dict[str, str]) -> tuple[str, ...]:
+    """The NAS container's resource flags, as argv, checked flag by flag.
+
+    Each entry has to be a cap and a plain value, because the result is rendered
+    into a command a remote shell re-splits: a `;` or a `-v` in there would be
+    running on the NAS as root.
+    """
+    raw = (environment.get(NAS_LIMITS_ENV) or "").strip() or DEFAULT_NAS_LIMITS
+    tokens: list[str] = []
+    for part in shlex.split(raw):
+        flag, joined, value = part.partition("=")
+        tokens.extend([flag, value] if joined else [part])
+    if len(tokens) % 2:
+        raise PlanError(f"{NAS_LIMITS_ENV}: {tokens[-1]} has no value")
+    for flag, value in zip(tokens[::2], tokens[1::2], strict=True):
+        if flag not in _LIMIT_FLAGS:
+            raise PlanError(
+                f"{NAS_LIMITS_ENV}: {flag} is not a container resource flag. It holds the "
+                f"cell's caps and nothing else: {', '.join(sorted(_LIMIT_FLAGS))}."
+            )
+        if not _LIMIT_VALUE.fullmatch(value):
+            raise PlanError(f"{NAS_LIMITS_ENV}: {value!r} is not a value for {flag}")
+    return tuple(tokens)
+
+
+def _nas_steps(
+    cell: Cell, memory: dict, month: str, out_dir: Path, image: str, limits: tuple[str, ...]
+) -> tuple[Step, ...]:
     """ssh, one docker run, and the results tarred back.
 
     WHY the single quoted string: `ssh host a b c` concatenates its arguments and
@@ -327,10 +378,7 @@ def _nas_steps(cell: Cell, memory: dict, month: str, out_dir: Path, image: str) 
         "$MATRIX_NAS_DOCKER",
         "run",
         "--rm",
-        "--cpus",
-        "4",
-        "--memory",
-        "4g",
+        *limits,
         "--device",
         "/dev/dri",
         # WHY root: the NAS mounts its shares with an ownership the image's uid
@@ -431,7 +479,11 @@ def _k8s_steps(cell: Cell, out_dir: Path) -> tuple[Step, ...]:
                 f"--timeout={SCHEDULING_TIMEOUT}",
             ),
         ),
-        Step("wait", (*context, "wait", f"job/{name}", "--for=condition=complete", "--timeout=3h")),
+        # WHY a status query rather than `kubectl wait --for=condition=complete`:
+        # a Job that FAILED never satisfies that wait, and with backoffLimit 0 it
+        # is a likely outcome. The runner polls this until one counter answers,
+        # under the same three-hour ceiling.
+        Step("wait", (*context, "get", f"job/{name}", "-o", f"jsonpath={JOB_STATUS_PATH}")),
         Step("logs", (*context, "logs", f"job/{name}", "--tail=-1")),
         Step("apply-collector", (*context, "apply", "-f", str(local / "collector.yaml"))),
         Step(
@@ -465,6 +517,8 @@ CPU_OVERLAY = "deploy/kubernetes/overlays/inference"
 CUDA_OVERLAY = "deploy/kubernetes/overlays/inference-cuda"
 LAN_OVERLAY = "deploy/kubernetes/overlays/inference-lan"
 LAN_SERVICE = "inference-lan"
+# The in-cluster Service, which is what the runner port-forwards to warm up.
+INFERENCE_SERVICE = "inference"
 # The service's own image. The committed overlays pin a release of their own, and
 # a pin ages: the cluster lane last ran 0.85.0-cuda while the cells ran a 0.86.2
 # app image, so those rows measured a service two releases behind the code they
@@ -482,6 +536,11 @@ DERIVED_ADDRESS = "<derived at run time>"
 # Long enough for a claim to be provisioned and a node to be picked, short
 # enough that "nothing can run this" is an answer rather than an afternoon.
 SCHEDULING_TIMEOUT = "5m"
+
+# What the runner polls a Job with. Both counters are asked for by name because
+# `{.status.succeeded}{.status.failed}` prints "1" for either outcome, and the
+# whole point is telling them apart. `setup_matrix_readiness.job_outcome` reads it.
+JOB_STATUS_PATH = "succeeded={.status.succeeded} failed={.status.failed}"
 
 KUBECTL = ("kubectl", "--context", "$MATRIX_K8S_CONTEXT", "-n", "$MATRIX_K8S_NAMESPACE")
 # `.ip` on most controllers, `.hostname` on the ones that hand out a name.
@@ -824,10 +883,13 @@ def build_cell_plan(
     memory = manifest.get("memory") or {}
     manifests: dict[str, str] = {}
     diagnostic: Step | None = None
+    container_limits = ""
     if cell.lane == "mac":
         steps = _mac_steps(cell, memory, month, out_dir)
     elif cell.lane == "nas":
-        steps = _nas_steps(cell, memory, month, out_dir, image)
+        limits = nas_docker_limits(environment)
+        steps = _nas_steps(cell, memory, month, out_dir, image, limits)
+        container_limits = " ".join(limits)
     elif cell.lane == "k8s":
         steps = _k8s_steps(cell, out_dir)
         manifests = _k8s_manifests(cell, memory, month, image, config_yaml)
@@ -843,6 +905,7 @@ def build_cell_plan(
         manifests=manifests,
         app_credentials=credentials,
         cache_dir=cache,
+        container_limits=container_limits,
         skip_reason=skip,
         diagnostic=diagnostic,
     )
