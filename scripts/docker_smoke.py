@@ -12,10 +12,10 @@ model to read the period with, and an annotation store already prepared for
 the library. Without them `generate` stops on the blank-model guard before
 anything is rendered, so the gate would fail every release for a reason that
 says nothing about the image. The hermetic route from `tests/e2e/fake_editorial.py`
-— the same one the launch smoke uses — is mounted into the container and
-installed by a bootstrap that then hands over to the real CLI. Everything
-downstream of selection (downloads, timing, FFmpeg, output validation) is the
-production code the release would ship.
+— the same one the launch smoke uses — is mounted into the container together
+with the picture library it reads, and installed by a bootstrap that then hands
+over to the real CLI. Everything downstream of selection (downloads, timing,
+FFmpeg, output validation) is the production code the release would ship.
 
 Usage: python scripts/docker_smoke.py --image <ref-or-digest> [--timeout 900]
 Linux-only (uses --network host so the container reaches the host's
@@ -36,19 +36,58 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from tests.e2e.fake_immich import FakeImmichServer  # noqa: E402
 
 FIXTURE = Path(__file__).resolve().parent.parent / "tests" / "e2e" / "fake_editorial.py"
+LIBRARY_DIR = FIXTURE.parent / "fixtures" / "library"
 SMOKE_MOUNT = "/smoke"
 
 # Installed before the CLI is imported, so the route is already replaced by the
 # time `generate` builds a pipeline. The kernel library's banner settings come
 # first for the same reason they do in the CLI's own __init__.
-_BOOTSTRAP = f'''import os
+#
+# `_count_the_month` states the gate's two preconditions where the container can
+# still see them: an empty pool and an empty fixture both end in a legitimate
+# looking "selected no clips", which is how v0.85.0 spent a release reading a
+# staging mistake as an editorial verdict.
+_BOOTSTRAP = f'''import json
+import os
 import sys
+import urllib.error
+import urllib.request
 
 os.environ.setdefault("ENABLE_QUADRANTS_HEADER_PRINT", "0")
 os.environ.setdefault("QD_LOG_LEVEL", "error")
 sys.path.insert(0, "{SMOKE_MOUNT}")
 
 from tests.e2e.fake_editorial import install_fake_editorial_route
+from tests.e2e.fake_library import CARRIERS, LIBRARY
+
+
+def _count_the_month():
+    """Refuse a pool or a fixture that cannot produce a cut, before anything selects."""
+    if not LIBRARY or not CARRIERS:
+        raise SystemExit(
+            "smoke: the mounted fixture holds %d pictures and %d carriers; its "
+            "pictures did not travel with the module" % (len(LIBRARY), len(CARRIERS))
+        )
+    url = os.environ.get("IMMICH_URL", "")
+    request = urllib.request.Request(
+        url + "/api/timeline/buckets",
+        headers={{"x-api-key": os.environ.get("IMMICH_API_KEY", "")}},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            served = sum(bucket["count"] for bucket in json.load(response))
+    except (OSError, ValueError) as error:
+        raise SystemExit("smoke: cannot read the pool at %s: %s" % (url, error))
+    if not served:
+        raise SystemExit("smoke: %s serves no assets; there is nothing to select" % url)
+    print("smoke: %d assets served, %d carriers scripted" % (served, len(CARRIERS)))
+
+
+# WHY only for a generate: the release gate never runs anything else, and the
+# contract test proves the bootstrap's imports resolve inside an image by running
+# it with --help, when there is no service to count and nothing to select.
+if "generate" in sys.argv:
+    _count_the_month()
 
 install_fake_editorial_route(stage_seconds=0.0)
 
@@ -59,7 +98,7 @@ main()
 
 
 def prepare_editorial_fixture(root: Path) -> Path:
-    """Lay out the hermetic route and its bootstrap for the container to mount."""
+    """Lay out the hermetic route, its picture library and its bootstrap to mount."""
     if not FIXTURE.is_file():
         raise FileNotFoundError(f"{FIXTURE} is missing; the smoke cannot stand up a cut")
     directory = root / "editorial"
@@ -70,6 +109,11 @@ def prepare_editorial_fixture(root: Path) -> Path:
     # Preserve the fixture's package imports, including its shared library.
     for fixture in (FIXTURE, FIXTURE.with_name("fake_library.py")):
         shutil.copy(fixture, package / fixture.name)
+    # WHY the pictures and not just the module: since #876 `fake_library` globs
+    # this directory to decide which pictures exist, so the module alone builds
+    # an empty month and the scripted editor keeps none of what the fake Immich
+    # serves -- the release read that as "Pipeline selected no clips" (#881).
+    shutil.copytree(LIBRARY_DIR, package / "fixtures" / "library")
     (directory / "smoke_bootstrap.py").write_text(_BOOTSTRAP)
     # The container runs as UID 1000 and only reads these.
     directory.chmod(0o755)
@@ -119,7 +163,12 @@ def generate_argv(
         "--month",
         "6",
         "--duration",
-        "20",
+        # WHY 60 and not the 20 the six-picture fixture used: the scripted cut is
+        # 18 carriers, and a budget under MIN_CLIP_DURATION each makes the final
+        # content budget sample seven of them out of a selection production has
+        # already certified, which assembly refuses outright (#881). 60 is also
+        # what `monthly_highlights` asks for when nobody overrides it.
+        "60",
         "--no-music",
         "--output",
         "/app/output/smoke.mp4",
