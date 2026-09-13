@@ -268,6 +268,7 @@ class _FakeEditorialPipeline:
             cancellation_scope,
             check_cancelled,
         )
+        from immich_memories.operations.cut_progress import ANALYSIS_PHASE, StageUpdate
         from immich_memories.operations.editorial_attempt import EditorialAttempt
 
         report_stage = EditorialStageReporter(self.tracker, progress_callback)
@@ -280,8 +281,11 @@ class _FakeEditorialPipeline:
             ):
                 self._prepare_previews(sources, attempt, report_stage, check_cancelled)
                 for label in STAGES:
-                    attempt.stage(label)
-                    report_stage(label)
+                    update = StageUpdate(
+                        label, ANALYSIS_PHASE if label.startswith("Preparing") else "selection"
+                    )
+                    attempt.stage(update)
+                    report_stage(update)
                     time.sleep(self._stage_seconds)
                     check_cancelled()
                 candidates = _candidates(sources, photo_seconds=self._app_config.photos.duration)
@@ -310,9 +314,9 @@ class _FakeEditorialPipeline:
         total = len(sources)
         for index, source in enumerate(sources, 1):
             live.note_asset(_asset_of(source).id)
-            label = live.publish(PREVIEW_STAGE, index, total).stage_label
-            attempt.stage(label)
-            report_stage(label)
+            update = live.publish(PREVIEW_STAGE, index, total)
+            attempt.stage(update)
+            report_stage(update)
             # Half a stage per picture: long enough that a watcher's one-second
             # poll sees the bar move, short enough not to double the smoke.
             time.sleep(self._stage_seconds / 2)

@@ -79,38 +79,29 @@ def render_pipeline_summary(result: dict) -> None:
                     ui.label(f"{clip_id}: {error_msg}").style("color: var(--im-warning)")
 
 
+# The keys a stage reporter writes (see EditorialStageReporter). Anything else
+# in a status dict is dropped rather than mirrored as a default nobody reads.
 _PROGRESS_STATUS_KEYS = [
     "indeterminate",
     "status",
     "started_at",
     "phase_label",
+    "current_phase",
     "progress_fraction",
-    "current_item",
-    "current_asset_id",
     "current_index",
     "total_items",
     "elapsed",
-    "eta",
-    "avg_duration",
-    "speed_ratio",
-    "completed_count",
-    "error_count",
 ]
 _PROGRESS_DEFAULTS: dict[str, Any] = {
     "indeterminate": False,
     "status": "running",
     "started_at": None,
     "phase_label": "Processing",
-    "progress_fraction": 0,
-    "current_item": "",
-    "current_index": 0,
-    "total_items": 0,
+    "current_phase": "",
+    "progress_fraction": None,
+    "current_index": None,
+    "total_items": None,
     "elapsed": "0s",
-    "eta": "--",
-    "avg_duration": 0.0,
-    "speed_ratio": 0.0,
-    "completed_count": 0,
-    "error_count": 0,
 }
 
 

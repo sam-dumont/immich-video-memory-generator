@@ -229,16 +229,20 @@ class _AttemptPhaseReporter:
 
 
 class _SourceProgressReporter:
-    """Analysis owns 0-20% of the bar; an indeterminate source stage owns all of it."""
+    """A source stage owns the whole bar: counted when it reports numbers, a spinner when not."""
 
     def __init__(self, progress: ProgressDisplay, task: TaskID) -> None:
         self._progress = progress
         self._task = task
-        self._started = False
+        # None before the first source stage; then "unbounded" or the counted total.
+        self._mode: str | int | None = None
 
     def __call__(self, status: dict) -> None:
         if status.get("indeterminate"):
             self._unbounded_stage(status)
+            return
+        if "total_items" in status:
+            self._counted_stage(status)
             return
         pct = status.get("overall_progress", 0)
         phase_name = status.get("current_phase", "")
@@ -249,12 +253,22 @@ class _SourceProgressReporter:
         )
 
     def _unbounded_stage(self, status: dict) -> None:
-        if not self._started:
+        if self._mode != "unbounded":
             self._progress.reset(self._task, total=None)
-            self._started = True
+            self._mode = "unbounded"
         self._progress.update(self._task, description=status["phase_label"])
         if status.get("status") == "complete":
             self._progress.reset(self._task, total=100)
+
+    def _counted_stage(self, status: dict) -> None:
+        """Give the task the stage's own total, so the estimate the display owns can run."""
+        total = int(status["total_items"])
+        if self._mode != total:
+            self._progress.reset(self._task, total=total)
+            self._mode = total
+        self._progress.update(
+            self._task, completed=int(status["current_index"]), description=status["phase_label"]
+        )
 
 
 def run_pipeline_and_generate(
