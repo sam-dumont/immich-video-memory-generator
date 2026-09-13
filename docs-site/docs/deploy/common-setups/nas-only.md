@@ -77,7 +77,7 @@ per missing producer.
 | `metadata_only` | pixels and Immich metadata; no ONNX, no captions | minutes |
 
 Measured per picture on that box: 1.23 s for all the producers together, of which the DINOv2 embed
-is 0.53 s and the `nsfw_marqo` detector 0.40 s — against **30.9 s** for one caption. Peak resident
+is 0.53 s and the `nsfw_marqo` detector 0.40 s, against **30.9 s** for one caption. Peak resident
 memory 570 MB. Preparation is banked per picture, so these are first-pass costs; the second cut over
 the same period pays only a preview check.
 
@@ -86,14 +86,14 @@ that funded it rather than a sentence, and the Memory page says so in one line u
 `nsfw_marqo`, `swim`, `children`, `exposure` and `doc_docling` are all still produced, so the
 audience gate refuses everything it would have refused.
 
-What it will not do is **clear** a unit. Eight of the findings that hold a picture to the family —
-bathing, toileting, intimate hygiene, a medical procedure, an identifying record and the rest — are
+What it will not do is **clear** a unit. Eight of the findings that hold a picture to the family (
+bathing, toileting, intimate hygiene, a medical procedure, an identifying record and the rest) are
 named only by a written description. A detector head cannot see them, so a head seeing nothing is
 not a clearance, and the gate may only ever tighten. Every unit therefore stays at family viewing
 with a finding that says the description was missing rather than unreadable. To earn a `sendable`
 export, run the tier that does the reading.
 
-**What `metadata_only` costs you.** Everything above, plus the six heads and both detectors — and
+**What `metadata_only` costs you.** Everything above, plus the six heads and both detectors, and
 with them sensitive-content and document detection. Because the gate then has no evidence, that tier
 holds **every** unit to family viewing and refuses a `sendable` export outright. Use it only on a
 box that cannot run ONNX at all.
@@ -176,8 +176,8 @@ If Immich runs on the same Docker network, use the container name (`immich-serve
 docker compose exec immich-memories immich-memories models fetch
 ```
 
-That writes the two digest-pinned ONNX exports — the DINOv2-small encoder and the
-sensitive-content detector — and warms the document classifier's snapshot into the Hugging Face
+That writes the two digest-pinned ONNX exports (the DINOv2-small encoder and the
+sensitive-content detector) and warms the document classifier's snapshot into the Hugging Face
 cache on the config volume. All three run on the CPU. With them in place, `allow_model_downloads`
 stays `false` and means it. `immich-memories preflight` checks Immich, the reader, both export
 digests and the caption alias.
@@ -187,7 +187,7 @@ stage, and names the command that would fix it. It used to contribute nothing si
 surface only at the end of preparation, as a count of missing facts.
 
 **The NAS image carries no PyTorch for the detectors.** Both seats are ONNX graphs, so the CPU
-install resolves no `nvidia-*` wheel and no torch, torchvision or timm — 920 MB and 11 s of
+install resolves no `nvidia-*` wheel and no torch, torchvision or timm: 920 MB and 11 s of
 start-up off a 2 GB box. It is not faster: measured on a J4125, the ONNX sensitive-content graph
 runs at 0.469 s a picture against torch's 0.440 s. What it buys is a smaller image that installs
 the same way every time.
@@ -220,14 +220,14 @@ docker compose exec immich-memories sh -c \
    | head -1 | xargs cat'
 ```
 
-The run prints the same thing as it goes — one line per cut,
-`preparation tier=no_captions: 1234 pictures requested; detectors 0.396s/pic ...` — so
+The run prints the same thing as it goes (one line per cut,
+`preparation tier=no_captions: 1234 pictures requested; detectors 0.396s/pic ...`) so
 `docker compose logs immich-memories | grep "preparation tier"` works too, and the end-of-run block
 names the tier under `TIER`. A wall-clock total cannot tell you which producer a box cannot afford;
 these numbers can.
 
-A second `generate` over the same month should skip preparation almost entirely — every producer is
-banked by exact input — so run it twice and the difference is the cold cost.
+A second `generate` over the same month should skip preparation almost entirely (every producer is
+banked by exact input) so run it twice and the difference is the cold cost.
 
 ### Adding captions later
 
@@ -241,8 +241,8 @@ docker compose exec \
   immich-memories immich-memories generate --type monthly --duration 60
 ```
 
-That run pays the caption cost once for that scope — about 2,700 pictures a day on a DS423+, so a
-10,793-picture library is roughly four days — and every later cut over those pictures reads the
+That run pays the caption cost once for that scope (about 2,700 pictures a day on a DS423+, so a
+10,793-picture library is roughly four days) and every later cut over those pictures reads the
 banked descriptions for free. Do it a month at a time, overnight, in whatever order you care about,
 then flip the compose `TIER` to `full` for good once you are caught up.
 
@@ -270,7 +270,7 @@ There is no background backfill job yet; this is the supported way to do it toda
 - **Hold the tested 30B reader.** Use another machine for that model, or choose `reader: rules`.
   `no_captions` changes preparation; it does not disable a configured model reader. An explicitly
   selected model reader still stops if its provider is unavailable.
-- **Hold the caption server** — but on `no_captions` it does not need to, and nothing asks for one.
+- **Hold the caption server**, but on `no_captions` it does not need to, and nothing asks for one.
 - **AI music generation**: MusicGen and ACE-Step want GPU servers. Upload your own music instead.
 - **The Taichi title renderer**: it falls back to PIL. Titles still look right, without the
   particle effects and animated gradients.
@@ -362,7 +362,7 @@ Two things that stay true whatever the tier:
   period, and any overlapping memory, skips the work entirely.
 
 The steady state is not the first pass. A family adding 50 pictures a day needs 25 minutes a day of
-NAS captioning, which is nothing. The first pass is the problem, not the rate — which is why
+NAS captioning, which is nothing. The first pass is the problem, not the rate, which is why
 captions are opt-in rather than a four-day wait before anybody sees a video.
 
 Start with one month, not a year.

@@ -9,7 +9,7 @@ title: CPU-Only Mode
 run without a GPU; what you give up is animated titles and the hardware encoder, not a step of the
 pipeline.
 
-What a CPU-only box cannot do is hold the vision reader — roughly 17 GB resident, and not in this
+What a CPU-only box cannot do is hold the vision reader: roughly 17 GB resident, and not in this
 container. On a cheap VPS that means a second machine, not a slower first one. Read
 [one machine or two](../self-hosting.md#one-machine-or-two) before you size anything.
 
