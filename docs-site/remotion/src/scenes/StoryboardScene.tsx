@@ -26,77 +26,14 @@ import { AnimatedCursor } from "../components/AnimatedCursor";
  * The result page as the app draws it since the storyboard landed: the thesis
  * once, two tabs (Storyboard, Story), and the cut in the order it plays, one
  * card per picture with its timecode, day, kind, story and the reader's reason.
+ * The pictures, the thesis and the cut come from the hermetic fixture
+ * (`../fixture`, generated from tests/e2e/fake_library.py).
  */
 
-export type Shot = {
-  /** The same six pictures the hermetic fixture serves. */
-  picture: string;
-  day: string;
-  motion: boolean;
-  seconds: number;
-  story: string;
-  reason: string;
-  /** Set on the first picture of a month: the real page prints a chapter label. */
-  chapter?: string;
-};
+import { SHOTS, THESIS, type Shot } from "../fixture";
 
-export const THESIS =
-  "A year that opens at a table in the garden, spends its best day of the " +
-  "summer walking in the woods, and ends camped on a slope above a lake.";
-
-export const SHOTS: Shot[] = [
-  {
-    picture: "library/garden-table.jpg",
-    day: "2025-04-19",
-    motion: true,
-    seconds: 5,
-    story: "Lunch in the garden",
-    reason: "the table and chairs still out on the lawn",
-    chapter: "April 2025",
-  },
-  {
-    picture: "library/garden-cake.jpg",
-    day: "2025-04-19",
-    motion: false,
-    seconds: 4,
-    story: "Lunch in the garden",
-    reason: "the cake with the candles still in it",
-  },
-  {
-    picture: "library/woods-hamper.jpg",
-    day: "2025-07-02",
-    motion: false,
-    seconds: 4,
-    story: "The day in the woods",
-    reason: "the hamper open on the checked cloth",
-    chapter: "July 2025",
-  },
-  {
-    picture: "library/woods-path.jpg",
-    day: "2025-07-02",
-    motion: true,
-    seconds: 6,
-    story: "The day in the woods",
-    reason: "the long green path back to the car",
-  },
-  {
-    picture: "library/lake-tents.jpg",
-    day: "2025-08-14",
-    motion: true,
-    seconds: 5,
-    story: "Two nights by the lake",
-    reason: "the tents pitched on the slope above the lake",
-    chapter: "August 2025",
-  },
-  {
-    picture: "library/lake-sunset.jpg",
-    day: "2025-08-16",
-    motion: false,
-    seconds: 4,
-    story: "Two nights by the lake",
-    reason: "the last of the sun going down over the water",
-  },
-];
+export { SHOTS, THESIS };
+export type { Shot };
 
 const timecode = (seconds: number) =>
   `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;

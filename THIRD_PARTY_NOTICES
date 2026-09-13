@@ -123,10 +123,11 @@ VHS (records the CLI demo tape)
 Test and demo fixtures
 ----------------------
 
-Fixture library, tests/e2e/fixtures/library/ (six photographs)
+Fixture library, tests/e2e/fixtures/library/ (137 photographs)
   License: CC0 1.0 (public domain dedication), no attribution required
-  Source: StockSnap.io via the Openverse index; per-file provenance in
-    tests/e2e/fixtures/library/CREDITS.md
+  Source: six from StockSnap.io via the Openverse index, the rest from
+    Wikimedia Commons filtered to CC0; per-file provenance and SHA-256 in
+    tests/e2e/fixtures/library/CREDITS.md, pinned by tests/test_fixture_library.py
 
 HDR samples, tests/fixtures/hdr_samples/ (see LICENSES.md there)
   Awesome-Gain-Maps (UltraHDR JPEG gain map test images)

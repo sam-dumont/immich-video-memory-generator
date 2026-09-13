@@ -851,7 +851,10 @@ demo-ui-install:  ## Install Remotion demo dependencies
 demo-ui-dev: demo-ui-install  ## Start Remotion Studio for live demo preview
 	cd docs-site/remotion && npm run dev
 
-demo-ui: demo-ui-install  ## Render Remotion demo → docs-site/static/demo/demo.mp4
+demo-fixture:  ## Export the hermetic fixture library into the Remotion demo (docs-site/remotion/src/fixture.ts)
+	uv run python scripts/export-demo-fixture.py
+
+demo-ui: demo-ui-install demo-fixture  ## Render Remotion demo → docs-site/static/demo/demo.mp4
 	@mkdir -p docs-site/static/demo
 	cd docs-site/remotion && npx remotion render src/index.ts DemoVideo ../static/demo/demo.mp4 --codec h264 --crf 18
 

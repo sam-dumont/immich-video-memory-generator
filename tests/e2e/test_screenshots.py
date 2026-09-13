@@ -21,7 +21,7 @@ from playwright.sync_api import Page, expect
 
 from tests.e2e.conftest import set_theme
 from tests.e2e.fake_editorial import STAGES
-from tests.e2e.fake_library import THESIS
+from tests.e2e.fake_library import THESIS, summary_line
 from tests.e2e.redaction import redact_page
 from tests.e2e.test_launch_smoke import _choose
 
@@ -127,7 +127,7 @@ def test_capture_memory_walkthrough(
     _save(page, d, _name("hero-memory", theme))
     _show_sidebar(page)
     page.get_by_role("tab", name="Story", exact=True).click()
-    expect(page.get_by_text("3 stories, 6 pictures", exact=True)).to_be_visible()
+    expect(page.get_by_text(summary_line(), exact=True)).to_be_visible()
     _save(page, d, _name("memory-story-ranked", theme))
 
     export.click()

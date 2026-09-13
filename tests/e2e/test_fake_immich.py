@@ -20,14 +20,13 @@ from immich_memories.generate_clips import MIN_CLIP_DURATION
 from immich_memories.timeperiod import calendar_year
 from immich_memories.ui.pages.step2_loading import _build_clips
 from tests.e2e.fake_immich import FakeImmichServer
-from tests.e2e.fake_library import BIG_MONTH, LIBRARY
+from tests.e2e.fake_library import CAST, LIBRARY
 
 pytestmark = pytest.mark.e2e
 
 _VIDEO_IDS = [p.asset_id for p in LIBRARY if p.is_video]
 _PHOTO_IDS = [p.asset_id for p in LIBRARY if not p.is_video]
-_MAY_VIDEO_IDS = [p.asset_id for p in BIG_MONTH if p.is_video]
-_MAY_PHOTO_IDS = [p.asset_id for p in BIG_MONTH if not p.is_video]
+_VIDEO_SECONDS = [p.seconds for p in LIBRARY if p.is_video]
 _JUNE_START = date(2024, 6, 1)
 _JUNE_END = date(2024, 6, 30)
 
@@ -128,7 +127,7 @@ def test_step1_connection_chain_returns_user_people_and_available_years(
 
     assert user.name == "Fake Immich User"
     assert [(person.id, person.name, person.is_hidden) for person in people] == [
-        ("fake-person", "Fake Person", False)
+        (f"person-{name.lower()}", name, False) for name in CAST
     ]
     assert years == [2024]
 
@@ -153,10 +152,9 @@ def test_monthly_timeline_contains_every_synthetic_moment(fake_immich_server) ->
         buckets = client.get_time_buckets(size="MONTH")
         assets = client.get_bucket_assets("2024-06-01T00:00:00.000Z", size="MONTH")
 
-    # Newest month first, like Immich: the story month, then the wide filler month.
+    # One month holds the whole library.
     assert [(bucket.time_bucket, bucket.count) for bucket in buckets] == [
-        ("2024-06-01T00:00:00.000Z", 6),
-        ("2024-05-01T00:00:00.000Z", len(BIG_MONTH)),
+        ("2024-06-01T00:00:00.000Z", len(LIBRARY)),
     ]
     assert [asset.id for asset in assets if asset.type is AssetType.VIDEO] == _VIDEO_IDS
     assert [asset.id for asset in assets if asset.type is AssetType.IMAGE] == _PHOTO_IDS
@@ -182,9 +180,8 @@ def test_monthly_timeline_honors_requested_asset_type_and_count(fake_immich_serv
             asset_type=AssetType.IMAGE,
         )
 
-    may_videos = sum(1 for picture in BIG_MONTH if picture.is_video)
-    assert [bucket.count for bucket in video_buckets] == [3, may_videos]
-    assert [bucket.count for bucket in photo_buckets] == [3, len(BIG_MONTH) - may_videos]
+    assert [bucket.count for bucket in video_buckets] == [len(_VIDEO_IDS)]
+    assert [bucket.count for bucket in photo_buckets] == [len(_PHOTO_IDS)]
     assert [asset.id for asset in videos] == _VIDEO_IDS
     assert [asset.id for asset in photos] == _PHOTO_IDS
 
@@ -204,11 +201,11 @@ def test_metadata_search_filters_the_video_and_photo_inventories(fake_immich_ser
         ).all_assets
         everything = client.search_metadata().all_assets
 
-    assert len(everything) == len(LIBRARY) + len(BIG_MONTH)
+    assert len(everything) == len(LIBRARY)
     assert [asset.id for asset in videos] == _VIDEO_IDS
-    assert [asset.duration_seconds for asset in videos] == [4.0, 4.0, 4.0]
+    assert [asset.duration_seconds for asset in videos] == _VIDEO_SECONDS
     assert [asset.id for asset in photos] == _PHOTO_IDS
-    assert [asset.duration_seconds for asset in photos] == [None, None, None]
+    assert [asset.duration_seconds for asset in photos] == [None] * len(_PHOTO_IDS)
 
 
 def test_search_uses_v3_millisecond_duration_on_the_wire(fake_immich_server) -> None:
@@ -225,7 +222,7 @@ def test_search_uses_v3_millisecond_duration_on_the_wire(fake_immich_server) -> 
 
     response.raise_for_status()
     durations = [asset["duration"] for asset in response.json()["assets"]["items"]]
-    assert durations == [4000, 4000, 4000]
+    assert durations == [int(seconds * 1000) for seconds in _VIDEO_SECONDS]
     assert all(type(duration) is int for duration in durations)
 
 
@@ -241,8 +238,7 @@ def test_real_step2_duration_filter_keeps_selectable_fake_clips(fake_immich_serv
     clips, skipped = _build_clips(assets)
 
     assert skipped == 0
-    # The whole year: the May filler clip comes first, then the story month's three.
-    assert [clip.asset.id for clip in clips] == _MAY_VIDEO_IDS + _VIDEO_IDS
+    assert [clip.asset.id for clip in clips] == _VIDEO_IDS
     assert all(clip.duration_seconds >= MIN_CLIP_DURATION for clip in clips)
 
 
@@ -275,12 +271,12 @@ def test_original_and_playback_downloads_are_valid_h264_sdr_media(
             "color_transfer": "bt709",
         }
         assert streams["audio"]["codec_name"] == "aac"
-        assert float(probe["format"]["duration"]) == pytest.approx(4.0, abs=0.1)
+        assert float(probe["format"]["duration"]) == pytest.approx(_VIDEO_SECONDS[0], abs=0.1)
 
 
 def test_photo_originals_are_generated_jpegs(fake_immich_server, tmp_path: Path) -> None:
     """Every fake photo downloads as a real JPEG above the source-quality floor."""
-    assert set(fake_immich_server.photo_paths) == set(_PHOTO_IDS) | set(_MAY_PHOTO_IDS)
+    assert set(fake_immich_server.photo_paths) == set(_PHOTO_IDS)
     assert all(
         path.is_relative_to(fake_immich_server.root)
         for path in fake_immich_server.photo_paths.values()
@@ -314,13 +310,18 @@ def test_every_asset_thumbnail_shows_its_own_scene(fake_immich_server) -> None:
         }
 
     # The editor's duplicate gate: a thumbnail pair within 8 hash bits reads as one scene.
+    # The library carries near-duplicate frames on purpose (the phone's second shot of
+    # the same moment), so a few close pairs are expected; one preview shared by all
+    # assets, the #525 regression, would collapse every pair to zero.
     threshold = 8
     distances = {
         (left, right): hamming_distance(hashes[left], hashes[right])
         for left, right in combinations(sorted(hashes), 2)
     }
     assert all(hashes.values())
-    assert min(distances.values()) > threshold, f"near-duplicate previews: {distances}"
+    assert len(set(hashes.values())) == len(hashes), "two assets share one preview"
+    close = {pair: d for pair, d in distances.items() if d <= threshold}
+    assert len(close) < 0.02 * len(distances), f"near-duplicate previews: {close}"
 
 
 def test_real_auto_client_uploads_and_fake_records_v3_multipart(fake_immich_server) -> None:

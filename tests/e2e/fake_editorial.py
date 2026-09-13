@@ -10,8 +10,11 @@ production, and one ``(candidates, PipelineResult)`` pair -- so everything
 downstream of selection (the Memory page's polling, the story view, the pool
 page, Step 4 and the real FFmpeg render) runs against unmodified production code.
 
-Nothing here decides anything an editor would decide: the six fake sources all
-ship, in capture order, each held for the duration its own metadata allows.
+The one editorial decision is scripted in ``fake_library``: a picture ships when
+the library hangs it on a story, every other picture is left out with the reason
+written there, and a picture the owner ticks is admitted under the story nearest
+in time. The kept pictures play in capture order, each held for the duration its
+own metadata allows.
 """
 
 from __future__ import annotations
@@ -25,7 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from immich_memories.security import write_secret_file
-from tests.e2e.fake_library import BY_ID, STORIES, STORY_OF, THESIS
+from tests.e2e.fake_library import BY_ID, CARRIERS, DROPPED, STORIES, STORY_OF, THESIS
 
 # The per-asset pass the real route runs before its named stages, and the one a
 # first cut over a big library sits inside for a long time. It is scripted here
@@ -67,6 +70,7 @@ _EPISODES = tuple(
         "purpose": story.purpose,
     }
     for story in STORIES
+    if any(picture.story_key == story.key for picture in CARRIERS)
 )
 
 
@@ -87,7 +91,7 @@ def _carrier_rows(candidates: Sequence[Any]) -> list[dict[str, Any]]:
     rows = []
     for row in candidates:
         asset = row.clip.asset
-        story = STORY_OF[asset.id]
+        story = _story_for(asset.id)
         picture = BY_ID[asset.id]
         rows.append(
             {
@@ -98,13 +102,49 @@ def _carrier_rows(candidates: Sequence[Any]) -> list[dict[str, Any]]:
                 "story_episode": story.key,
                 "story_weight": story.weight,
                 "story_role": story.role,
-                "why": f"{story.title}: {picture.caption}",
+                "why": (
+                    f"{story.title}: {picture.caption}"
+                    if asset.id in STORY_OF
+                    else f"{story.title}: kept by the owner: {picture.caption}"
+                ),
                 "standing": "remarkable" if picture.is_favorite else "maybe",
                 "start_time": row.start_time,
                 "end_time": row.end_time,
             }
         )
     return rows
+
+
+def _story_for(asset_id: str) -> Any:
+    """The story a picture belongs to, or the story of the carrier nearest in time."""
+    if asset_id in STORY_OF:
+        return STORY_OF[asset_id]
+    taken = BY_ID[asset_id].taken_at
+    nearest = min(CARRIERS, key=lambda picture: abs(_seconds(picture.taken_at) - _seconds(taken)))
+    return STORY_OF[nearest.asset_id]
+
+
+def _seconds(stamp: str) -> float:
+    from datetime import datetime
+
+    return datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp()
+
+
+def _select(
+    sources: Sequence[Any], required: Sequence[str]
+) -> tuple[list[Any], list[tuple[str, str]]]:
+    """Ship the story pictures and whatever the owner ticked; leave the rest out with a reason."""
+    kept, dropped = [], []
+    wanted = set(required)
+    for source in sources:
+        asset_id = _asset_of(source).id
+        if asset_id in STORY_OF or asset_id in wanted:
+            kept.append(source)
+        else:
+            dropped.append(
+                (asset_id, DROPPED.get(asset_id, "not part of any story the month tells"))
+            )
+    return kept, dropped
 
 
 def _duration_realization(*, requested: float, budget: float, content: float, slots: int) -> dict:
@@ -159,7 +199,12 @@ def _evidence_lines(carriers: Sequence[dict]) -> tuple[Any, ...]:
     )
 
 
-def write_plan_files(attempt_dir: Path, carriers: Sequence[dict], realization: dict) -> None:
+def write_plan_files(
+    attempt_dir: Path,
+    carriers: Sequence[dict],
+    realization: dict,
+    dropped: Sequence[tuple[str, str]] = (),
+) -> None:
     """Leave behind what the structure record and the projection leave after a real run."""
     from immich_memories.analysis.editorial_evidence_provenance import AttemptEvidenceProvenance
 
@@ -182,7 +227,7 @@ def write_plan_files(attempt_dir: Path, carriers: Sequence[dict], realization: d
     )
     write_secret_file(
         attempt_dir / "selection-trace.private.json",
-        json.dumps(_decision_log(carriers), indent=2),
+        json.dumps(_decision_log(carriers, dropped), indent=2),
     )
     write_secret_file(
         attempt_dir / "render-projection.private.json",
@@ -201,29 +246,42 @@ def write_plan_files(attempt_dir: Path, carriers: Sequence[dict], realization: d
     )
 
 
-def _decision_log(carriers: Sequence[dict]) -> dict:
+def _decision_log(carriers: Sequence[dict], dropped: Sequence[tuple[str, str]] = ()) -> dict:
     """The decision log a real run writes beside its plan, in the real `Trace` shape.
 
-    The fixture keeps every candidate, so the one pass records them all as kept;
-    `runs why` can then read a hermetic run the way it reads a real one.
+    One pass keeps the story pictures and records every other candidate as
+    rejected with the library's reason, so `runs why` reads a hermetic run the
+    way it reads a real one.
     """
-    from immich_memories.analysis.editorial_contracts import DecisionProvenance, PassTrace
+    from immich_memories.analysis.editorial_contracts import (
+        DecisionProvenance,
+        PassTrace,
+        TraceDecision,
+    )
     from immich_memories.analysis.selection_trace import Trace
 
     ids = tuple(row["asset_id"] for row in carriers)
+    rejected = tuple(TraceDecision(asset_id, reason) for asset_id, reason in dropped)
     trace = Trace()
     trace.clips = {row["asset_id"]: f"{row['kind']}, {row['taken'][:10]}" for row in carriers}
+    trace.clips.update(
+        {
+            asset_id: f"{BY_ID[asset_id].kind}, {BY_ID[asset_id].taken_at[:10]}"
+            for asset_id, _ in dropped
+            if asset_id in BY_ID
+        }
+    )
     trace.editorial_passes.append(
         PassTrace(
-            name="hermetic-review",
-            input_ids=ids,
+            name="story-review",
+            input_ids=ids + tuple(asset_id for asset_id, _ in dropped),
             kept_ids=ids,
-            rejected=(),
+            rejected=rejected,
             unresolved=(),
             duration_before=float(sum(row["seconds"] for row in carriers)),
             duration_after=float(sum(row["seconds"] for row in carriers)),
             provenance=DecisionProvenance(  # noqa: S106 - pass names, not secrets
-                pass_name="hermetic-review",  # noqa: S106
+                pass_name="story-review",  # noqa: S106
                 pass_version="fixture",  # noqa: S106
                 schema_version="fixture",
                 model_identity="none",
@@ -328,10 +386,13 @@ class _FakeEditorialPipeline:
                     report_stage(update)
                     time.sleep(self._stage_seconds)
                     check_cancelled()
-                candidates = _candidates(sources, photo_seconds=self._app_config.photos.duration)
-                result = self._result(candidates, attempt.directory)
+                kept, dropped = _select(
+                    sources, getattr(self._context, "owner_required_asset_ids", ())
+                )
+                candidates = _candidates(kept, photo_seconds=self._app_config.photos.duration)
+                result = self._result(candidates, attempt.directory, len(sources))
                 realization = result.stats["editorial_duration_realization"]
-                write_plan_files(attempt.directory, _carrier_rows(candidates), realization)
+                write_plan_files(attempt.directory, _carrier_rows(candidates), realization, dropped)
                 attempt.complete(
                     selected=len(result.editorial_selections),
                     outcome="selected",
@@ -352,17 +413,19 @@ class _FakeEditorialPipeline:
 
         live = StageProgressWriter(lambda: attempt.directory)
         total = len(sources)
+        # The whole pass takes about two stages whatever the pool size: long
+        # enough that a watcher's one-second poll sees the bar move, short
+        # enough that a library of a hundred pictures does not stall the smoke.
+        pause = min(self._stage_seconds / 2, 2 * self._stage_seconds / max(total, 1))
         for index, source in enumerate(sources, 1):
             live.note_asset(_asset_of(source).id)
             update = live.publish(PREVIEW_STAGE, index, total)
             attempt.stage(update)
             report_stage(update)
-            # Half a stage per picture: long enough that a watcher's one-second
-            # poll sees the bar move, short enough not to double the smoke.
-            time.sleep(self._stage_seconds / 2)
+            time.sleep(pause)
             check_cancelled()
 
-    def _result(self, candidates: tuple[Any, ...], attempt_directory: Path) -> Any:
+    def _result(self, candidates: tuple[Any, ...], attempt_directory: Path, pool: int) -> Any:
         from immich_memories.analysis.editorial_planner import EditorialSelection
         from immich_memories.analysis.smart_pipeline import PipelineResult
         from immich_memories.api.models import AssetType
@@ -383,7 +446,7 @@ class _FakeEditorialPipeline:
             "source_evidence": "hermetic launch fixture; no model and no annotation store",
             "legacy_deep_analysis_count": 0,
             "total_analyzed": 0,
-            "source_candidate_count": len(candidates),
+            "source_candidate_count": pool,
             "selected_count": len(selections),
             "error_count": 0,
             "editorial_render_adjustments": [],
