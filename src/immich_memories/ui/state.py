@@ -423,6 +423,22 @@ def get_app_state() -> AppState:
     return state
 
 
+def peek_app_state() -> AppState | None:
+    """The current browser session's AppState, or None; never creates one.
+
+    A plain HTTP route (the thumbnail route) must not mint a session for a
+    request that carries no known cookie: NiceGUI would persist the fresh user
+    dict to disk, one file per stray request (see ui/session_storage.py).
+    """
+    from nicegui import app
+
+    session_id = app.storage.user.get("session_id")
+    if not session_id or session_id not in _sessions:
+        return None
+    _sessions[session_id].last_accessed = datetime.now()
+    return _sessions[session_id]
+
+
 def cleanup_stale_sessions(max_age_hours: int = _SESSION_TIMEOUT_HOURS) -> None:
     """Remove sessions idle for longer than max_age_hours. Cap at _MAX_SESSIONS."""
     cutoff = datetime.now() - timedelta(hours=max_age_hours)
