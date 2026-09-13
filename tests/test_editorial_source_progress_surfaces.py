@@ -38,7 +38,7 @@ def test_cli_real_display_enters_indeterminate_then_reports_actual_terminal_stag
 
     def source(_sources, *, progress_callback, **_kwargs):
         for payload in [
-            _status("Preparing source metadata"),
+            _status("Reading dates, places and people"),
             _status(),
             _status(
                 "Editorial selection failed" if failed else "Editorial selection complete",
@@ -102,7 +102,7 @@ def test_cli_real_display_enters_indeterminate_then_reports_actual_terminal_stag
     ]
     assert result.stats["selection_route"] == "editorial-source"
     assert observed[:2] == [
-        ("running", None, None, "Preparing source metadata"),
+        ("running", None, None, "Reading dates, places and people"),
         ("running", None, None, "Editing the memory"),
     ]
     expected = (
