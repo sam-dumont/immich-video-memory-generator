@@ -100,4 +100,4 @@ immich-memories models fetch
 If your caption server runs on another machine, every eligible picture in the scope is sent to it
 as a 400 px JPEG tile with no metadata attached. That is the whole of what leaves this box during
 preparation, see
-[Network & Privacy](../../deploy/configuration/network-and-privacy.md#the-two-picture-seats-side-by-side).
+[Network & Privacy](../../deploy/configuration/network-and-privacy.md#the-two-picture-seats).

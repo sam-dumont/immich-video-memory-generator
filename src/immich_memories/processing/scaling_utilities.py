@@ -5,7 +5,12 @@ from __future__ import annotations
 import logging
 import subprocess
 from collections import Counter
+from functools import lru_cache
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # cv2 is imported lazily at every call site below
+    import cv2
 
 __all__ = [
     "_get_aspect_ratio_filter",
@@ -15,6 +20,13 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
+
+# Bundled rather than downloaded; provenance and licence sit next to it.
+_YUNET_MODEL = Path(__file__).parent / "bundled_models" / "face_detection_yunet_2023mar.onnx"
+# OpenCV's own FaceDetectorYN documentation and sample use these three.
+_YUNET_SCORE_THRESHOLD = 0.9
+_YUNET_NMS_THRESHOLD = 0.3
+_YUNET_TOP_K = 5000
 
 
 def _get_aspect_ratio_filter(
@@ -244,19 +256,39 @@ def _detect_faces_vision(detector: object, frame_path: Path) -> list[tuple[float
     return positions
 
 
+@lru_cache(maxsize=1)
+def _yunet_detector() -> cv2.FaceDetectorYN:
+    """Build the YuNet detector once — each create() re-reads and re-parses the graph.
+
+    The input size is a placeholder: every call resets it to the frame it is
+    about to read, because YuNet's anchors are laid out for the exact size.
+    """
+    import cv2
+
+    return cv2.FaceDetectorYN.create(
+        str(_YUNET_MODEL),
+        "",
+        (320, 320),
+        _YUNET_SCORE_THRESHOLD,
+        _YUNET_NMS_THRESHOLD,
+        _YUNET_TOP_K,
+    )
+
+
 def _detect_faces_opencv(frame_path: Path) -> list[tuple[float, float]]:
-    """Detect faces using OpenCV Haar cascade and return normalized (x, y) centers."""
+    """Detect faces with OpenCV's YuNet and return normalized (x, y) centers."""
     import cv2
 
     img = cv2.imread(str(frame_path))
     if img is None:
         return []
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    faces_cv = cv2.CascadeClassifier(
-        cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-    ).detectMultiScale(gray, 1.1, 4)
     h, w = img.shape[:2]
-    return [((x + fw / 2) / w, (y + fh / 2) / h) for x, y, fw, fh in faces_cv]
+    detector = _yunet_detector()
+    detector.setInputSize((w, h))
+    _, faces = detector.detect(img)
+    if faces is None:
+        return []
+    return [((x + fw / 2) / w, (y + fh / 2) / h) for x, y, fw, fh in faces[:, :4]]
 
 
 def _detect_face_center_in_video(video_path: Path) -> tuple[float, float] | None:
