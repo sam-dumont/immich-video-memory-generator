@@ -6,11 +6,15 @@ buffering, and a mock would happily "pass" a version that hangs in production.
 
 from __future__ import annotations
 
+import signal
 import subprocess
 import sys
 import threading
+import time
 
-from immich_memories.processing.ffmpeg_runner import write_frames_to_ffmpeg
+import pytest
+
+from immich_memories.processing.ffmpeg_runner import stop_owned_process, write_frames_to_ffmpeg
 
 # Floods stderr *before* reading any stdin, so an undrained parent blocks as
 # soon as the stderr buffer fills.
@@ -23,6 +27,15 @@ _NOISY = (
     "sys.stderr.buffer.flush()"
 )
 _EXIT_2 = "import sys; sys.stderr.buffer.write(b'boom'); sys.stdin.buffer.read(); sys.exit(2)"
+# Never reads stdin and never exits on its own: the shape of a wedged encoder.
+_STALLS = "import time; time.sleep(60)"
+_DIES_AT_ONCE = "raise SystemExit(3)"
+
+
+def _endless_frames():
+    """A feed that only ends when the child stops taking it."""
+    while True:
+        yield b"x" * 65536
 
 
 def test_a_noisy_child_cannot_stall_the_writer() -> None:
@@ -81,3 +94,79 @@ def test_the_bare_pattern_really_does_deadlock() -> None:
     finally:
         process.kill()
         process.wait(timeout=10)
+
+
+def _spy_on_spawned_processes(monkeypatch) -> list[subprocess.Popen]:
+    """Hand the test the real children the helper starts, so it can inspect them after."""
+    spawned: list[subprocess.Popen] = []
+    real_popen = subprocess.Popen
+
+    # WHY: not a mock — the real child still runs. The helper owns its process and
+    # never hands it back, and "the child is gone" is only answerable on that object.
+    def _remember(*args, **kwargs):
+        process = real_popen(*args, **kwargs)
+        spawned.append(process)
+        return process
+
+    monkeypatch.setattr(subprocess, "Popen", _remember)
+    return spawned
+
+
+def test_a_stalled_child_is_killed_and_reaped_when_the_wait_expires(monkeypatch) -> None:
+    """#883: a wait() that times out must still end the child and join the reader."""
+    spawned = _spy_on_spawned_processes(monkeypatch)
+    threads_before = set(threading.enumerate())
+
+    with pytest.raises(subprocess.TimeoutExpired):
+        write_frames_to_ffmpeg([sys.executable, "-c", _STALLS], [b"frame"], wait_timeout=0.3)
+
+    assert spawned[-1].poll() is not None, "the stalled child outlived the timeout"
+    assert set(threading.enumerate()) <= threads_before, "a reader thread was left behind"
+
+
+def test_a_feed_blocked_on_a_full_pipe_is_bounded_by_the_total_deadline(monkeypatch) -> None:
+    """#883: the deadline covers the whole operation, not just the wait after the last frame."""
+    spawned = _spy_on_spawned_processes(monkeypatch)
+    threads_before = set(threading.enumerate())
+
+    started = time.monotonic()
+    with pytest.raises(subprocess.TimeoutExpired):
+        write_frames_to_ffmpeg(
+            [sys.executable, "-c", _STALLS],
+            _endless_frames(),
+            wait_timeout=30,
+            total_timeout=0.5,
+        )
+
+    assert time.monotonic() - started < 3, "the blocked write outlived its deadline"
+    assert spawned[-1].poll() is not None, "the wedged child outlived the deadline"
+    assert set(threading.enumerate()) <= threads_before, "a reader thread was left behind"
+
+
+def test_a_child_that_ignores_sigterm_is_killed_and_reaped() -> None:
+    """The escalation is the point of the shared cleanup: FFmpeg gets asked, then made."""
+    deaf_to_term = (
+        "import signal, sys, time;"
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN);"
+        "sys.stdout.write('ready');"
+        "sys.stdout.flush();"
+        "time.sleep(60)"
+    )
+    process = subprocess.Popen([sys.executable, "-c", deaf_to_term], stdout=subprocess.PIPE)
+    assert process.stdout is not None
+    assert process.stdout.read(5) == b"ready", "the child never installed its handler"
+
+    stop_owned_process(process, terminate_grace=0.3)
+
+    assert process.returncode == -signal.SIGKILL
+
+
+def test_a_child_that_dies_early_still_surfaces_the_broken_pipe() -> None:
+    """The deadline must not swallow a write that failed for its own reasons."""
+    with pytest.raises(OSError):
+        write_frames_to_ffmpeg(
+            [sys.executable, "-c", _DIES_AT_ONCE],
+            _endless_frames(),
+            wait_timeout=5,
+            total_timeout=10,
+        )

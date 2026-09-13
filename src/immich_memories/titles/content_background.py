@@ -5,7 +5,6 @@ Streams slow-motion video backgrounds from a source clip.
 
 from __future__ import annotations
 
-import contextlib
 import logging
 import shutil
 import subprocess
@@ -15,6 +14,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from immich_memories.processing.encoding_plan import HdrTransfer
+from immich_memories.processing.ffmpeg_runner import stop_owned_process
 
 if TYPE_CHECKING:
     pass
@@ -28,6 +28,10 @@ logger = logging.getLogger(__name__)
 # is the better picture. No realistic clip falls short: five frames at 30fps is
 # 0.17s, and the window itself is already floored at 0.1s.
 _MIN_SOURCE_FRAMES = 5
+
+# Half a second of source at native fps; a decode still running long after that
+# is wedged rather than slow, and the static background is the better picture.
+_SOURCE_DECODE_TIMEOUT_SECONDS = 30
 
 
 def _probe_duration(clip_path: Path) -> float:
@@ -90,9 +94,6 @@ class SlowmoBackgroundReader:
             return
 
         source_is_hdr = source_transfer is not HdrTransfer.NONE
-        pix_fmt = "rgb48le" if source_is_hdr else "rgb24"
-        bpp = 6 if source_is_hdr else 3
-        frame_size = width * height * bpp
 
         # WHY: extract source frames at native fps — no slowdown in FFmpeg.
         # Interpolation happens in Python for smooth blending.
@@ -102,33 +103,16 @@ class SlowmoBackgroundReader:
             "-t", str(actual_source),
             "-i", str(clip_path),
             "-f", "rawvideo",
-            "-pix_fmt", pix_fmt,
+            "-pix_fmt", "rgb48le" if source_is_hdr else "rgb24",
             "-an",
             "pipe:1",
         ]  # fmt: skip
 
-        # WHY streaming + native dtype (#408): capture_output=True held every
-        # raw frame (746 MB for 15 frames at 4K 16-bit) while float32 copies
-        # (1.5 GB) accumulated beside it — a 2.2 GB peak. Reading the pipe one
-        # frame at a time and keeping frames in their native dtype caps the
-        # working set at the raw frames plus the small float window read_frame
-        # converts on demand.
-        try:
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-            assert proc.stdout is not None
-            while True:
-                chunk = proc.stdout.read(frame_size)
-                if len(chunk) < frame_size:
-                    break
-                dtype = np.uint16 if source_is_hdr else np.uint8
-                self._source_frames.append(
-                    np.frombuffer(chunk, dtype=dtype).reshape((height, width, 3))
-                )
-            returncode = proc.wait(timeout=30)
-        except (OSError, subprocess.SubprocessError) as e:
-            logger.debug(f"Failed to extract frames from {clip_path}: {e}")
-            with contextlib.suppress(Exception):
-                proc.kill()
+        returncode = self._decode_source_frames(
+            cmd, (height, width, 3), np.uint16 if source_is_hdr else np.uint8
+        )
+        if returncode is None:
+            logger.debug(f"No source frames read from {clip_path.name}")
             self._source_frames.clear()
             return
 
@@ -150,6 +134,38 @@ class SlowmoBackgroundReader:
             f"Loaded {len(self._source_frames)} source frames for "
             f"{self._total_output_frames} output frames ({title_duration}s)"
         )
+
+    def _decode_source_frames(
+        self,
+        cmd: list[str],
+        shape: tuple[int, int, int],
+        dtype: type[np.uint8] | type[np.uint16],
+    ) -> int | None:
+        """Stream FFmpeg's raw frames into the source list; None if the decode broke.
+
+        WHY streaming + native dtype (#408): capture_output=True held every raw
+        frame (746 MB for 15 frames at 4K 16-bit) while float32 copies (1.5 GB)
+        accumulated beside it — a 2.2 GB peak. Reading the pipe one frame at a
+        time and keeping frames in their native dtype caps the working set at the
+        raw frames plus the small float window read_frame converts on demand.
+        """
+        frame_size = int(np.prod(shape)) * np.dtype(dtype).itemsize
+        proc: subprocess.Popen[bytes] | None = None
+        try:
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            assert proc.stdout is not None
+            while True:
+                chunk = proc.stdout.read(frame_size)
+                if len(chunk) < frame_size:
+                    break
+                self._source_frames.append(np.frombuffer(chunk, dtype=dtype).reshape(shape))
+            return proc.wait(timeout=_SOURCE_DECODE_TIMEOUT_SECONDS)
+        except (OSError, subprocess.SubprocessError) as e:
+            logger.debug(f"Slowmo source decode failed: {e}")
+            return None
+        finally:
+            if proc is not None:
+                stop_owned_process(proc)
 
     @property
     def is_active(self) -> bool:

@@ -18,6 +18,7 @@ from typing import Any
 import numpy as np
 
 from immich_memories.processing.clip_caption import ClipCaption, caption_filters
+from immich_memories.processing.ffmpeg_runner import stop_owned_process
 from immich_memories.processing.hdr_utilities import (
     _detect_color_primaries,
     _detect_hdr_type,
@@ -230,8 +231,7 @@ class FrameDecoder:
                 yield frame
         finally:
             proc.stdout.close()
-            proc.terminate()
-            proc.wait(timeout=5)
+            stop_owned_process(proc)
 
 
 def make_decoder(
