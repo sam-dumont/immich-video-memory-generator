@@ -6,48 +6,78 @@ title: FAQ
 
 **Does it modify my Immich library?**
 
-By default, no. It downloads copies of your videos for analysis and processing. If you enable `--upload-to-immich`, the generated compilation video is uploaded as a new asset (optionally into an album). Your originals are never modified or deleted. The one write beyond the upload: when a re-render of the same memory lands in the same album, the copy it replaces is moved to Immich's trash, so the album does not fill with identical files. Recoverable, and never the asset just uploaded.
+Not unless you ask it to. It reads metadata and previews, and downloads copies of the selected
+originals to cut from. With `--upload-to-immich` (or the Export page's upload switch) the finished
+video is uploaded as a new asset, optionally into an album. When a re-render of the same memory
+lands in the same album, the copy it replaces goes to Immich's trash, so the album does not fill
+with identical files. Nothing else is written.
 
-**What video formats does it support?**
+**What leaves my machine?**
 
-Anything FFmpeg can decode, which is basically everything: MP4, MOV, AVI, MKV, WebM, you name it. Output supports mp4 and mov containers with h264, h265, or ProRes codecs.
+By default nothing but requests to your Immich server. The caption server and the reader can
+receive pictures and annotation text; both default to `localhost` and only send when you point
+them elsewhere. Trip detection geocodes GPS clusters at Nominatim, and satellite title screens
+fetch map tiles. [Running modes](../deploy/running-modes.md) has the table per mode and
+[Network & Privacy](../deploy/configuration/network-and-privacy.md) the switch for each.
+
+**Do I need a model?**
+
+No. With `reader: rules` (the default when no `llm.model` is set) the ten standard memory types
+are cut from dates, places, favourites, people and whatever image facts the tier produced. It is
+a simpler editor: no thesis, and it can miss an occasion in a broad recap. What it keeps per
+memory type, measured against the model editor, is on [Rules mode](../create/pipeline/rules-mode.md).
+
+**How long does a cut take?**
+
+The first cut over a period reads every eligible picture once and banks it; the second is
+mostly the render. Measured for a 60-second month of 1,440 pictures, selection only: 55 s cold and
+1.4 s warm on a workstation with rules; 279 s cold and 11 s warm on a Celeron NAS; about 16 to
+25 minutes with a model reader. The per-host table is on [Running modes](../deploy/running-modes.md).
+
+**How much disk?**
+
+The caches are bounded by config, not by the library: 10 GB of downloaded video (evicted after
+7 days), 10 GB of Immich previews, 2 GB of clip previews, plus the annotation store. One measured
+62-second 1080p H.264 output was 87 MB, or 30 MB under `preset: fast`.
+
+**Can I generate for several people at once?**
+
+Yes. `--memory-type multi_person` with repeated `--person` means everyone in the same picture;
+`--people-expression '"Riley" AND ("Casey" OR "Bob")'` takes a real condition, where `AND` means
+the same picture, not the same afternoon. The Memory page has the same field.
 
 **Can I use it without face recognition?**
 
-Yes. Skip the `--person` flag and it'll pull everything eligible from the selected time period. Face recognition just narrows the pool to assets containing a specific person.
+Yes. Without a person, a period covers everyone. Face recognition only narrows the pool.
 
-**How long does analysis take?**
+**What about Live Photos?**
 
-Depends on how much of the period has already been prepared, and on where the caption server and the text model run. The first cut over a period captions and measures every eligible picture once and reads the period with the text model; both are cached per producer and per exact request, so a library only pays this once and re-runs over the same period are mostly the render. `preset: fast` is the CPU-only render profile; it does not change what the editor reads. Nobody has timed preparation on NAS-class silicon yet, so this page will not invent a figure; the [NAS guide](../deploy/common-setups/nas-only.md#preparation-tiers-what-the-nas-pays) has the one measured 4-core run and says exactly which column of it still applies.
+Included by default. The editor treats a Live Photo as a photograph that carries motion it may
+play when the motion earns it; burst-captured Live Photos are merged into one continuous moment.
+Tested on iPhones; Samsung and Pixel motion photos should work through Immich's normalisation
+but have not been tested first-hand. See [Live Photos](../create/pipeline/live-photos.md).
+
+**Which formats?**
+
+Anything FFmpeg decodes. Output is MP4 or MOV with H.264, H.265 or ProRes; HDR sources stay HDR
+in H.265 and ProRes (H.264 has no HDR).
 
 **Can I run it headless?**
 
-Yes. The CLI works without a display. Use `immich-memories generate` with flags instead of `immich-memories ui`. Works fine over SSH, in Docker containers, and in CI pipelines.
+Yes: `immich-memories generate` works over SSH, in Docker and in CI, and `runs story` prints the
+cut in the terminal.
 
 **Is it safe for production?**
 
-The codebase is AI-written (on purpose, as an experiment) with 7,461 tests (6,838 unit, 623 integration and E2E) and strict quality gates. The output (music, clip selection, mood analysis) is AI-generated too, so results vary. Review what it produces before showing it at grandma's birthday party.
-
-**Can I generate for multiple people at once?**
-
-Yes, and it takes more than a list. `--memory-type multi_person` with repeated `--person` flags defaults to everyone-in-the-same-asset. For anything else, `--people-expression` takes a real condition: quoted names with `AND`, `OR` and parentheses, as in `'"Riley" AND ("Casey" OR "Bob")'`, where `AND` means the same picture or video, not the same afternoon. It replaces `--person` rather than refining it. See the [generate CLI docs](../create/cli/generate.md).
-
-**How much disk space does it need?**
-
-Downloads are a bounded cache, not per-run scratch, so the ceiling is set by config rather than by your library size. The defaults under `cache:` are 10 GB of downloaded video (evicted after 7 days), 10 GB of Immich previews, 2 GB of clip previews, and `cache.db` keeping 30 days of analysis results.
-
-The output is small next to that. One measured run: 62 seconds of 1080p H.264 came out at 87 MB, or 30 MB under `preset: fast`. The [NAS-only guide](../deploy/common-setups/nas-only.md) has the rest of that measurement.
-
-**Can it use iPhone Live Photos?**
-
-Yes. Live Photos are included by default (`analysis.include_live_photos: true`). Live Photos are ~3 second video clips captured with every iPhone photo. When you took photos in rapid succession, the tool detects the overlap and merges them into one continuous moment, cutting at the midpoint between consecutive shutter presses. Two real examples from the [Live Photos page](../create/pipeline/live-photos.md): three Live Photos merged to 4.5 seconds, six merged to 8.4 seconds.
-
-Tested on iPhones. Samsung and Google Pixel motion photos should work (Immich normalizes them to the same field), but I only use iOS so it hasn't been tested firsthand. PRs from Android users welcome.
-
-**How big should my PRs be?**
-
-About 300 lines of diff, excluding generated and lock files, one concern per PR. Smaller PRs get reviewed faster and catch bugs earlier. If your change is bigger, split it into focused chunks. See [CONTRIBUTING.md](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/CONTRIBUTING.md) for the full guidelines.
+It is beta and under heavy rework, and the code was written with AI assistance as a deliberate
+experiment ([Built with AI](../welcome/built-with-ai.md)). The output is an editor's judgment, and
+judgments vary. Review a cut before showing it at a family party.
 
 **Does it work on Apple Silicon?**
 
-Yes. VideoToolbox hardware acceleration is auto-detected. For music generation, ACE-Step works via MLX on Apple Silicon. For mood detection LLM, mlx-vlm is the recommended server.
+Yes. VideoToolbox is auto-detected for the encode, ACE-Step runs through MLX, and oMLX is the
+tested local server for the caption model and the reader.
+
+**How big should my PR be?**
+
+About 300 lines of diff, one concern per PR. See [CONTRIBUTING.md](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/CONTRIBUTING.md).

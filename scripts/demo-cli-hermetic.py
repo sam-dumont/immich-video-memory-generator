@@ -4,7 +4,7 @@
 Nothing here is simulated: `immich-memories generate`, `runs story` and
 `runs why` run in this process, the same way the e2e tests run them, against
 the fake Immich server and the scripted editorial route from `tests/e2e`. The
-pictures are the CC0 fixture library; the memory is the fixture's June.
+pictures are the six CC0 fixture photographs; the memory is the fixture's June.
 
 VHS records the terminal (`make demo-cli`); the Remotion `CliScene` plays it.
 """
@@ -69,7 +69,8 @@ def main() -> None:
     try:
         cache = root / "cache"
         cache.mkdir()
-        out = root / "output"
+        # Where a person would put it: the recording prints ~/Videos/june-2024.mp4.
+        out = _HOME / "Videos"
         out.mkdir()
         (root / "state").mkdir()
         config_path = root / "config.yaml"
@@ -113,7 +114,7 @@ def main() -> None:
 
         _prompt(
             "immich-memories generate --memory-type monthly_highlights",
-            "--year 2024 --month 6 --no-music",
+            "--year 2024 --month 6 --no-music --output ~/Videos/june-2024.mp4",
         )
         _run(
             [
@@ -126,7 +127,7 @@ def main() -> None:
                 "6",
                 "--no-music",
                 "--output",
-                str(out / "june.mp4"),
+                str(out / "june-2024.mp4"),
             ]
         )
 
@@ -142,12 +143,11 @@ def main() -> None:
             asset = carriers[0]["asset_id"]
             _prompt("immich-memories runs why", asset)
             _run(["runs", "why", asset])
-        # And one the editor left out, so the terminal shows a reason for a "no" too.
-        from tests.e2e.fake_library import DROPPED
-
-        left_out = next(iter(DROPPED))
-        _prompt("immich-memories runs why", left_out)
-        _run(["runs", "why", left_out])
+        # Typed, not run: VHS cannot show a video player. The demo cuts from
+        # this line to the film itself. The name is the file the run wrote.
+        written = sorted(out.rglob("*.mp4"), key=lambda p: p.stat().st_mtime)
+        if written:
+            _prompt("open", "~/" + str(written[-1].relative_to(_HOME)))
     finally:
         server.close()
 

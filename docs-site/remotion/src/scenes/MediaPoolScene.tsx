@@ -19,7 +19,7 @@ import { ImButton } from "../components/ImButton";
 import { ImSectionHeader } from "../components/ImSectionHeader";
 import { MaterialIcon } from "../components/MaterialIcon";
 import { AnimatedCursor } from "../components/AnimatedCursor";
-import { CUT_COUNT, CUT_SECONDS, POOL, POOL_TOTAL, POOL_VIDEOS } from "../fixture";
+import { SHOTS } from "./StoryboardScene";
 
 /**
  * The media pool after a cut, as the app draws it: one counters line, one
@@ -27,12 +27,22 @@ import { CUT_COUNT, CUT_SECONDS, POOL, POOL_TOTAL, POOL_VIDEOS } from "../fixtur
  * pool itself. The cursor unticks one picture and presses Cut again.
  */
 
-// The first page of the pool, twenty pictures in capture order, from the fixture.
-const CARDS = POOL;
+// The pool card for each of the six fixture pictures, in capture order.
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const takenLabel = (day: string, motion: boolean) =>
+  `${MONTHS[Number(day.slice(5, 7)) - 1]} ${day.slice(8)} ${motion ? "12:15" : "16:30"}`;
 
-/** Which card the cursor unticks: the first picture of the month, which the cut kept.
- * The storyboard's second visit leaves the same picture out. */
-export const UNTICKED = 0;
+const CARDS = SHOTS.map((shot) => ({
+  picture: shot.picture,
+  motion: shot.motion,
+  taken: takenLabel(shot.day, shot.motion),
+  file: `IMG_${2418 + SHOTS.indexOf(shot) * 137}.${shot.motion ? "mp4" : "jpg"}`,
+  seconds: shot.seconds,
+  favourite: SHOTS.indexOf(shot) === 0 || SHOTS.indexOf(shot) === 2,
+}));
+
+/** Which card the cursor unticks. The storyboard's second visit leaves it out. */
+export const UNTICKED = 1;
 
 const UNTICK_AT = 52;
 const CLICK_CUT_AGAIN = 92;
@@ -41,7 +51,7 @@ const CARD_W = 108;
 const CARD_GAP = 18;
 // Measured against a 1920x1080 still render: the Include box of the second
 // card, and the middle of the Cut again button.
-const CHECKBOX_XY = { x: CONTENT_X + 20, y: CONTENT_Y + 370 };
+const CHECKBOX_XY = { x: CONTENT_X + 146, y: CONTENT_Y + 370 };
 const CUT_AGAIN_XY = { x: CONTENT_X + 71, y: CONTENT_Y + 134 };
 
 const cursorSteps = [
@@ -116,10 +126,11 @@ export const MediaPoolScene: React.FC<Props> = ({ bassIntensity }) => {
     spring({ frame, fps, config: { damping: 20, stiffness: 150 }, delay });
 
   const unticked = frame >= UNTICK_AT + 6;
-  const ticked = unticked ? CUT_COUNT - 1 : CUT_COUNT;
+  const ticked = unticked ? CARDS.length - 1 : CARDS.length;
   // The cut itself does not change until Cut again runs: only the tick count moves.
-  const cutLabel = `${Math.floor(CUT_SECONDS / 60)}:${String(CUT_SECONDS % 60).padStart(2, "0")}`;
-  const videos = POOL_VIDEOS;
+  const cutSeconds = CARDS.reduce((sum, c) => sum + c.seconds, 0);
+  const cutLabel = `0:${String(cutSeconds).padStart(2, "0")}`;
+  const videos = CARDS.filter((c) => c.motion).length;
 
   const pressed = interpolate(frame, [CLICK_CUT_AGAIN, CLICK_CUT_AGAIN + 4], [1, 0.97], {
     extrapolateLeft: "clamp",
@@ -142,8 +153,8 @@ export const MediaPoolScene: React.FC<Props> = ({ bassIntensity }) => {
           <PageHeader title="Media pool" />
 
           <div style={{ fontSize: 14, fontWeight: 600, color: COLORS.text, opacity: reveal(2) }}>
-            {POOL_TOTAL} in the pool ({videos} videos, {POOL_TOTAL - videos} photos) · {ticked}{" "}
-            ticked · {CUT_COUNT} in the cut, {cutLabel}
+            {CARDS.length} in the pool ({videos} videos, {CARDS.length - videos} photos) · {ticked}{" "}
+            ticked · {CARDS.length} in the cut, {cutLabel}
           </div>
           <div
             style={{ fontSize: 13, color: COLORS.textSecondary, marginTop: 10, opacity: reveal(4) }}
@@ -160,7 +171,7 @@ export const MediaPoolScene: React.FC<Props> = ({ bassIntensity }) => {
           </div>
 
           <div style={{ marginTop: 26, opacity: reveal(12) }}>
-            <ImSectionHeader icon="video_library" title="The pool: Jun 01, 2024 - Jun 30, 2024" />
+            <ImSectionHeader icon="video_library" title="The pool: Jan 01, 2025 - Dec 31, 2025" />
           </div>
 
           <div style={{ display: "flex", gap: CARD_GAP, marginTop: 12, flexWrap: "wrap" }}>
@@ -168,7 +179,7 @@ export const MediaPoolScene: React.FC<Props> = ({ bassIntensity }) => {
               <PoolCard
                 key={card.picture}
                 card={card}
-                checked={card.ticked && !(unticked && i === UNTICKED)}
+                checked={!(unticked && i === UNTICKED)}
                 reveal={reveal(14 + i * 3)}
               />
             ))}

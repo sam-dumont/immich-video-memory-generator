@@ -16,7 +16,7 @@ import { fontFamily } from "../fonts";
 // estimate, the render, the end-of-run block, then runs story and runs why.
 // START_FRAME is in the recording's own frames (VHS records at 25 fps).
 const RECORDING_FPS = 25;
-const START_SECONDS = 13;
+const START_SECONDS = 15;
 const START_FRAME = START_SECONDS * RECORDING_FPS;
 const PLAYBACK_RATE = 8;
 

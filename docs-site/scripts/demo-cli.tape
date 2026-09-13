@@ -3,7 +3,7 @@
 #
 # Nothing is simulated: scripts/demo-cli-hermetic.py runs the real CLI against
 # the hermetic fake Immich and the scripted editorial route from tests/e2e,
-# over the CC0 fixture library: generate, then runs story, then runs why, in and out.
+# over the six CC0 fixture photographs: generate, then runs story, then runs why.
 #
 # Requires: brew install vhs
 
@@ -18,4 +18,4 @@ Set TypingSpeed 40ms
 
 Type "uv run python scripts/demo-cli-hermetic.py"
 Enter
-Sleep 64s
+Sleep 66s

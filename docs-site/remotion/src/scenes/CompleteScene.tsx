@@ -15,10 +15,15 @@ import { Sidebar } from "../components/Sidebar";
 import { PageHeader } from "../components/PageHeader";
 import { ImButton } from "../components/ImButton";
 import { MaterialIcon } from "../components/MaterialIcon";
+import { AnimatedCursor } from "../components/AnimatedCursor";
+import { CONTENT_X, CONTENT_Y } from "../components/PageHeader";
 
-type Props = { bassIntensity?: number };
+type Props = { bassIntensity?: number; playAt: number };
 
-export const CompleteScene: React.FC<Props> = ({ bassIntensity }) => {
+// Measured against a 1920x1080 still render: the centre of the play button.
+const PLAY_XY = { x: CONTENT_X + 668, y: CONTENT_Y + 459 };
+
+export const CompleteScene: React.FC<Props> = ({ bassIntensity, playAt }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
@@ -174,6 +179,12 @@ export const CompleteScene: React.FC<Props> = ({ bassIntensity }) => {
           </div>
         </div>
       </WindowFrame>
+      <AnimatedCursor
+        steps={[
+          { frame: playAt - 22, ...PLAY_XY },
+          { frame: playAt, ...PLAY_XY, click: true },
+        ]}
+      />
     </AbsoluteFill>
   );
 };

@@ -16,29 +16,27 @@ import { GeneratingScene } from "./scenes/GeneratingScene";
 import { CompleteScene } from "./scenes/CompleteScene";
 import { OutputPreviewScene } from "./scenes/OutputPreviewScene";
 import { CliScene } from "./scenes/CliScene";
-import { OutroScene } from "./scenes/OutroScene";
 
 const FADE = 15; // 0.5s
 const SLIDE = 12; // 0.4s
 
 // Scene durations (frames at 30fps). TransitionSeries overlaps each pair by the
 // transition's length, so the video runs sum(D) - sum(transitions):
-// 1499 - 156 = 1343 frames, which is TOTAL_FRAMES in theme.ts.
+// 1544 - 141 = 1403 frames, which is TOTAL_FRAMES in theme.ts.
 //
 // Every length is cut to the frame its own scene stops moving on.
 const D = {
   title: 75, // 2.5s
   brief: 168, // 5.6s — open the type dropdown, pick, click Cut
-  cutting: 186, // 6.2s — the phase rows, the bar with its count, the strip
-  storyboard: 210, // 7.0s — the cut in the order it plays; then Review the pool
+  cutting: 176, // 5.9s — the phase rows, the bar with its count, the strip
+  storyboard: 190, // 6.3s — the cut in the order it plays; then Review the pool
   pool: 110, // 3.7s — untick one picture, Cut again
   storyboardAgain: 75, // 2.5s — the second cut, one picture fewer; click Export
   export: 100, // 3.3s — summary lands, cursor arrives, click Generate
-  generating: 150, // 5.0s — progress + live preview
-  complete: 50, // 1.7s — success state
-  output: 140, // 4.7s — the ACTUAL output video at 3x
-  cli: 180, // 6.0s — the real terminal at 8x: the bar, the estimate, the cut, runs story
-  outro: 55, // 1.8s — CTA
+  generating: 140, // 4.7s — progress + live preview
+  cli: 180, // 6.0s — the real terminal at 8x: the bar, the cut, runs story, runs why
+  complete: 60, // 2.0s — ready; the cursor presses Play
+  output: 270, // 9.0s — the film it made, the last nine seconds, full bleed
 };
 
 export const DemoVideo: React.FC = () => {
@@ -94,7 +92,7 @@ export const DemoVideo: React.FC = () => {
             frames={D.storyboard}
             clickTarget="pool"
             clickAt={192}
-            scrollPx={1520}
+            scrollPx={380}
           />
         </TransitionSeries.Sequence>
 
@@ -121,7 +119,7 @@ export const DemoVideo: React.FC = () => {
             frames={D.storyboardAgain}
             clickTarget="export"
             clickAt={60}
-            scrollPx={1430}
+            scrollPx={340}
           />
         </TransitionSeries.Sequence>
 
@@ -150,27 +148,7 @@ export const DemoVideo: React.FC = () => {
           timing={linearTiming({ durationInFrames: FADE })}
         />
 
-        {/* 9. Complete */}
-        <TransitionSeries.Sequence durationInFrames={D.complete}>
-          <CompleteScene bassIntensity={bass} />
-        </TransitionSeries.Sequence>
-
-        <TransitionSeries.Transition
-          presentation={fade()}
-          timing={linearTiming({ durationInFrames: FADE })}
-        />
-
-        {/* 10. Output preview — the actual video it made */}
-        <TransitionSeries.Sequence durationInFrames={D.output}>
-          <OutputPreviewScene />
-        </TransitionSeries.Sequence>
-
-        <TransitionSeries.Transition
-          presentation={fade()}
-          timing={linearTiming({ durationInFrames: FADE })}
-        />
-
-        {/* 11. CLI — the same run in a terminal */}
+        {/* 9. CLI — the same run in a terminal, ending on the saved file */}
         <TransitionSeries.Sequence durationInFrames={D.cli}>
           <CliScene />
         </TransitionSeries.Sequence>
@@ -180,9 +158,19 @@ export const DemoVideo: React.FC = () => {
           timing={linearTiming({ durationInFrames: FADE })}
         />
 
-        {/* 12. Outro — CTA */}
-        <TransitionSeries.Sequence durationInFrames={D.outro}>
-          <OutroScene />
+        {/* 10. Complete — ready; the cursor presses Play */}
+        <TransitionSeries.Sequence durationInFrames={D.complete}>
+          <CompleteScene bassIntensity={bass} playAt={44} />
+        </TransitionSeries.Sequence>
+
+        <TransitionSeries.Transition
+          presentation={fade()}
+          timing={linearTiming({ durationInFrames: FADE })}
+        />
+
+        {/* 11. The film it made, last: full bleed, real time */}
+        <TransitionSeries.Sequence durationInFrames={D.output}>
+          <OutputPreviewScene frames={D.output} />
         </TransitionSeries.Sequence>
       </TransitionSeries>
     </AbsoluteFill>

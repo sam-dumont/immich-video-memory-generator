@@ -68,7 +68,7 @@ hermetic launch check runs on pull requests off the cache setup alone, in parall
 CI calls `make launch-check-ci`, which is the Playwright e2e run against a fake Immich. The local
 `make launch-check` is the bigger one that also does `check`, `build`, and the docs build.
 
-A PR passes 20 gates: 15 static checks in the quality job and 5 security scans in the security job. Locally, `make ci` runs 16 of them plus the unit tests: lint, format-check, typecheck, file-length, complexity, cognitive-complexity, dead-code, security-lint, semgrep, refurb, dep-check, arch-check, duplication, critique, docs-cli-check, docs-config-check, test. CI adds the four that need a remote or a diff (commitlint, pip-audit, gitleaks, hadolint), then the build/docker/docs jobs and the launch check. Every PR must pass all of them.
+`make ci` runs the same gates locally, plus the unit tests; the Makefile is the list. CI adds the checks that need a remote or a diff (commitlint, pip-audit, gitleaks, hadolint), then the build, Docker and docs jobs and the launch check. Every PR must pass all of them.
 
 ## Quality Gates Overview
 
@@ -85,7 +85,8 @@ A PR passes 20 gates: 15 static checks in the quality job and 5 security scans i
 | Dependencies | pip-audit + deptry | Known CVEs; unused, missing or transitive imports |
 | Architecture | import-linter | Forbidden-import contracts: the core packages (`analysis`, `processing`, `titles`, `people`, `store`, `triage`, `operations`) must not import `ui`, and they plus `audio` must not import `cli`. The dependency runs one way: UI and CLI import core, never the reverse |
 | Commits | commitizen | Non-conventional commit messages |
-| Tests | pytest | 7,461 tests: 6,838 unit in CI, 623 integration/E2E locally and on the GPU runner |
+| Docs | docs-voice, docs-cli-check, docs-config-check, notices-check | Chatbot prose and em dashes; drift between the generated references and the code; drift in THIRD_PARTY_NOTICES |
+| Tests | pytest | the unit suite in CI; integration and e2e locally and on the GPU runner |
 
 ## How to Add a New Feature
 

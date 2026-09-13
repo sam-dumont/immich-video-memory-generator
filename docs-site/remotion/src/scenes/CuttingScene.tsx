@@ -15,7 +15,6 @@ import { Sidebar } from "../components/Sidebar";
 import { PageHeader } from "../components/PageHeader";
 import { ImButton } from "../components/ImButton";
 import { MaterialIcon } from "../components/MaterialIcon";
-import { POOL_TOTAL, SHOTS } from "../fixture";
 
 const PHASE_TITLES = [
   "Finding media",
@@ -27,10 +26,16 @@ const PHASE_TITLES = [
 
 const DONE = PHASE_TITLES.length - 1;
 
-// The strip of pictures the per-picture pass is working on, from the fixture's
-// cut; the bar counts the whole pool the way the real page does.
-const PREVIEWS = SHOTS.slice(0, 8).map((shot) => shot.picture);
-const TOTAL = POOL_TOTAL;
+// The same six pictures the hermetic fixture serves, in capture order. The real
+// page shows this strip while the per-picture pass runs, and names its count.
+const PREVIEWS = [
+  "library/garden-table.jpg",
+  "library/garden-cake.jpg",
+  "library/woods-hamper.jpg",
+  "library/woods-path.jpg",
+  "library/lake-tents.jpg",
+  "library/lake-sunset.jpg",
+];
 const PREVIEW_START = 46;
 const PREVIEW_END = 126;
 
@@ -141,7 +146,7 @@ const PreviewStrip: React.FC<{ prepared: number; fps: number; frame: number }> =
     <div
       style={{ fontSize: 13, color: COLORS.textSecondary, marginTop: 10 }}
     >
-      previews {prepared} of {TOTAL}
+      previews {prepared} of {PREVIEWS.length}
     </div>
     <div
       style={{
@@ -155,7 +160,7 @@ const PreviewStrip: React.FC<{ prepared: number; fps: number; frame: number }> =
     >
       <div
         style={{
-          width: `${(prepared / TOTAL) * 100}%`,
+          width: `${(prepared / PREVIEWS.length) * 100}%`,
           height: "100%",
           backgroundColor: COLORS.primary,
         }}
@@ -169,11 +174,11 @@ export const CuttingScene: React.FC<Props> = ({ bassIntensity }) => {
   const { fps } = useVideoConfig();
 
   const prepared = Math.min(
-    TOTAL,
+    PREVIEWS.length,
     Math.max(
       0,
       Math.floor(
-        interpolate(frame, [PREVIEW_START, PREVIEW_END], [0, TOTAL + 0.999], {
+        interpolate(frame, [PREVIEW_START, PREVIEW_END], [0, PREVIEWS.length + 0.999], {
           extrapolateLeft: "clamp",
           extrapolateRight: "clamp",
         }),
@@ -186,7 +191,7 @@ export const CuttingScene: React.FC<Props> = ({ bassIntensity }) => {
   // While the previews are being prepared, the row detail carries the live count.
   const liveDetail =
     step.detail.startsWith("Preparing previews")
-      ? `Preparing previews: ${prepared}/${TOTAL}`
+      ? `Preparing previews: ${prepared}/${PREVIEWS.length}`
       : step.detail;
   const finished = step.phase === DONE;
 
