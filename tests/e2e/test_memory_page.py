@@ -13,7 +13,7 @@ from playwright.sync_api import Page, expect
 from immich_memories.ui.pages.clip_grid import CLIPS_PER_PAGE
 from immich_memories.ui.pages.memory_brief import MEMORY_TYPE_LABELS
 from tests.e2e.fake_editorial import _EPISODES, PREVIEW_STAGE, STAGES
-from tests.e2e.fake_library import BIG_MONTH, LIBRARY, STORIES, THESIS
+from tests.e2e.fake_library import BIG_MONTH, LIBRARY, STORIES, STORY_OF, THESIS
 from tests.e2e.test_launch_smoke import _choose
 
 pytestmark = pytest.mark.e2e
@@ -77,6 +77,7 @@ def test_a_cut_from_the_brief_shows_the_story_and_offers_export(
     page.get_by_role("button", name="Cut", exact=True).click()
 
     expect(page.get_by_text(_THESIS)).to_be_visible(timeout=120_000)
+    page.get_by_role("tab", name="Story", exact=True).click()
     # Weight order, not capture order: the heaviest story leads, the lightest closes.
     titles = page.locator(".q-card .text-base.font-semibold")
     expect(titles).to_have_text(list(_STORY_TITLES))
@@ -93,6 +94,32 @@ def test_a_cut_from_the_brief_shows_the_story_and_offers_export(
         episode["key"] for episode in _EPISODES
     ]
     assert "IMG_" not in json.dumps(provenance)
+
+
+def test_the_storyboard_is_the_default_view_and_plays_in_capture_order(
+    page: Page, launch_app_url: str
+) -> None:
+    _brief_for_june(page, launch_app_url)
+    page.get_by_role("button", name="Cut", exact=True).click()
+    expect(page.get_by_text(_THESIS)).to_be_visible(timeout=120_000)
+
+    # The storyboard is what opens: one shot per picture, in the order the video plays them.
+    shots = page.locator(".storyboard-shot")
+    expect(shots).to_have_count(len(LIBRARY))
+    expect(page.locator(".storyboard-shot .storyboard-day")).to_have_text(
+        [picture.taken_at[:10] for picture in LIBRARY]
+    )
+    expect(page.locator(".storyboard-shot .storyboard-story")).to_have_text(
+        [STORY_OF[picture.asset_id].title for picture in LIBRARY]
+    )
+    expect(page.locator(".storyboard-chapter")).to_have_text(["June 2024"])
+    expect(page.get_by_text(f"{len(LIBRARY)} shots, 0:", exact=False)).to_be_visible()
+
+    # The weighed story is one tab away and comes back the same way.
+    page.get_by_role("tab", name="Story", exact=True).click()
+    expect(page.get_by_text("3 stories, 6 pictures", exact=True)).to_be_visible()
+    page.get_by_role("tab", name="Storyboard", exact=True).click()
+    expect(shots).to_have_count(len(LIBRARY))
 
 
 def test_a_reload_mid_cut_joins_the_running_cut_instead_of_starting_another(
@@ -200,6 +227,7 @@ def test_the_story_reads_in_reader_words_and_hides_the_answer_schema_behind_deta
     _brief_for_june(page, launch_app_url)
     page.get_by_role("button", name="Cut", exact=True).click()
     expect(page.get_by_text(_THESIS)).to_be_visible(timeout=120_000)
+    page.get_by_role("tab", name="Story", exact=True).click()
 
     for badge in ("Main story", "Important", "Small moment"):
         expect(page.get_by_text(badge, exact=True)).to_be_visible()
@@ -317,6 +345,9 @@ def test_a_tick_survives_the_cut_and_cut_again_keeps_the_pool(
     _brief_for_june(page, launch_app_url)
     _evidence(page, "01-brief")
     page.get_by_role("button", name="Cut", exact=True).click()
+    story_tab = page.get_by_role("tab", name="Story", exact=True)
+    expect(story_tab).to_be_visible(timeout=120_000)
+    story_tab.click()
     expect(page.get_by_text("3 stories, 6 pictures", exact=True)).to_be_visible(timeout=120_000)
     _evidence(page, "02-first-cut-six-pictures")
 
@@ -333,6 +364,9 @@ def test_a_tick_survives_the_cut_and_cut_again_keeps_the_pool(
     expect(boxes.first).not_to_be_checked()
     _evidence(page, "04-pool-one-unticked")
     page.get_by_role("button", name="Cut again", exact=True).click()
+    story_tab = page.get_by_role("tab", name="Story", exact=True)
+    expect(story_tab).to_be_visible(timeout=120_000)
+    story_tab.click()
     expect(page.get_by_text("3 stories, 5 pictures", exact=True)).to_be_visible(timeout=120_000)
     _evidence(page, "05-second-cut-five-pictures")
     request = _latest_request(launch_workspace)
@@ -348,6 +382,9 @@ def test_a_tick_survives_the_cut_and_cut_again_keeps_the_pool(
     expect(boxes.first).to_be_checked()
     _evidence(page, "06-pool-ticked-back-in")
     page.get_by_role("button", name="Cut again", exact=True).click()
+    story_tab = page.get_by_role("tab", name="Story", exact=True)
+    expect(story_tab).to_be_visible(timeout=120_000)
+    story_tab.click()
     expect(page.get_by_text("3 stories, 6 pictures", exact=True)).to_be_visible(timeout=120_000)
     _evidence(page, "07-third-cut-six-pictures")
     request = _latest_request(launch_workspace)
