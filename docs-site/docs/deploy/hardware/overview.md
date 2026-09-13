@@ -17,14 +17,14 @@ The encode is not where a run spends its time, though. Analysis and title render
 
 | Backend | Platform | Encode | Decode | GPU Scaling | Face Detection |
 |---------|----------|--------|--------|-------------|----------------|
-| **NVIDIA NVENC** | Linux (Windows untested) | h264_nvenc, hevc_nvenc | NVDEC | scale_cuda | CPU (OpenCV Haar cascades) |
+| **NVIDIA NVENC** | Linux (Windows untested) | h264_nvenc, hevc_nvenc | NVDEC | scale_cuda | CPU (OpenCV YuNet) |
 | **Apple VideoToolbox** | macOS | h264_videotoolbox, hevc_videotoolbox | VideoToolbox | - | Vision Framework (Neural Engine) |
-| **Intel QSV** | Linux (Windows untested) | h264_qsv, hevc_qsv | QSV | scale_qsv | CPU (OpenCV Haar cascades) |
-| **AMD VAAPI** | Linux | h264_vaapi, hevc_vaapi | VAAPI | scale_vaapi | CPU (OpenCV Haar cascades) |
-| **Software** | Everywhere | libx264, libx265 | FFmpeg | swscale | CPU (OpenCV Haar cascades) |
+| **Intel QSV** | Linux (Windows untested) | h264_qsv, hevc_qsv | QSV | scale_qsv | CPU (OpenCV YuNet) |
+| **AMD VAAPI** | Linux | h264_vaapi, hevc_vaapi | VAAPI | scale_vaapi | CPU (OpenCV YuNet) |
+| **Software** | Everywhere | libx264, libx265 | FFmpeg | swscale | CPU (OpenCV YuNet) |
 
 Face detection (for smart crops) runs on the GPU only on Apple Silicon (Vision Framework).
-Everywhere else it is OpenCV Haar cascades on the CPU.
+Everywhere else it is OpenCV's YuNet detector on the CPU.
 
 ## Configuration
 
