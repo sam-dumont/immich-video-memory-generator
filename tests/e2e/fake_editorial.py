@@ -245,6 +245,7 @@ class _FakeEditorialPipeline:
             "hemisphere": context.hemisphere,
             "date_ranges": [[r.start.isoformat(), r.end.isoformat()] for r in context.case_ranges],
             "requested_assets": [_asset_of(source).id for source in sources],
+            "required_assets": list(getattr(context, "owner_required_asset_ids", ())),
             "include_live_photos": include_live_photos,
             "hdr_only": False,
         }

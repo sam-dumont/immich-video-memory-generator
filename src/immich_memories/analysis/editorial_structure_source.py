@@ -126,4 +126,9 @@ def capture_structure_input(
         artifact_dir=artifact_dir,
         motion_outcome_replay=motion_outcome_replay,
         attached_outcome_replay=attached_outcome_replay,
+        owner_required_asset_ids=tuple(
+            asset_id
+            for asset_id in workprint.prepared.owner_required_asset_ids
+            if asset_id in assets
+        ),
     )
