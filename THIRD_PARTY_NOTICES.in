@@ -151,10 +151,11 @@ Quadrants (https://github.com/Genesis-Embodied-AI/quadrants)
 Test and demo fixtures
 ----------------------
 
-Fixture library, tests/e2e/fixtures/library/ (six photographs)
+Fixture library, tests/e2e/fixtures/library/ (136 photographs)
   License: CC0 1.0 (public domain dedication), no attribution required
-  Source: StockSnap.io via the Openverse index; per-file provenance in
-    tests/e2e/fixtures/library/CREDITS.md
+  Source: six from StockSnap.io via the Openverse index, the rest from
+    Wikimedia Commons filtered to CC0; per-file provenance and SHA-256 in
+    tests/e2e/fixtures/library/CREDITS.md, pinned by tests/test_fixture_library.py
 
 Face fixture, tests/fixtures/faces/picnic-friends.jpg ("Friends Picnic")
   License: CC0 1.0 (public domain dedication), no attribution required

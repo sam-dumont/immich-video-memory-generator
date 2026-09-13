@@ -7,7 +7,7 @@ title: Privacy Mode
 
 Privacy mode (also called demo mode) blurs every frame of every clip, makes the audio unintelligible, and replaces person names with fake ones. It's for situations where you want to demo the app or share a screen recording without showing your actual footage.
 
-This feature is how all the demo videos on this site were made. I would never have been able to record shareable demos without it: building a privacy mode specifically for this purpose was one of those things where having AI write the code made it feasible. Without it, I'd have had to either skip demos entirely or manually edit out personal content from every recording.
+The demos and screenshots on this site no longer use it. They run the real product over a CC0 stock library that tells one made-up household's June, so nothing needs blurring ([how the demo assets are made](../../contribute/demo-assets.md)). Privacy mode stays for the case it was built for: showing the app over your own library to someone who should not see your pictures.
 
 The result is a video that demonstrates the timing, transitions, music, and structure of the memory without revealing any personal content. [What gets anonymized](#what-gets-anonymized) is the full list.
 

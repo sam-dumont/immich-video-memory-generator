@@ -852,15 +852,24 @@ demo-ui-install:  ## Install Remotion demo dependencies
 demo-ui-dev: demo-ui-install  ## Start Remotion Studio for live demo preview
 	cd docs-site/remotion && npm run dev
 
-demo-ui: demo-ui-install  ## Render Remotion demo → docs-site/static/demo/demo.mp4
+demo-fixture:  ## Export the hermetic fixture library into the Remotion demo (docs-site/remotion/src/fixture.ts)
+	uv run python scripts/export-demo-fixture.py
+
+demo-ui: demo-ui-install demo-fixture  ## Render Remotion demo → docs-site/static/demo/demo.mp4
 	@mkdir -p docs-site/static/demo
 	cd docs-site/remotion && npx remotion render src/index.ts DemoVideo ../static/demo/demo.mp4 --codec h264 --crf 18
 
-# The README hero is the brief → cut → story stretch of the Remotion demo (seconds
-# 2.6 to 20.6 of the composition), 800 px wide at 12 fps with a two-pass palette so
-# the UI's flat colours stay crisp. Re-run after `make demo-ui`.
+# The README hero is the brief → cut → storyboard stretch of the Remotion demo
+# (seconds 3.4 to 15.6) and then the last 3 s, the film it made: 720 px, 10 fps,
+# 15.2 s, 3.8 MB. The README loads it from GitHub Pages on every visit, so 4 MB is
+# the ceiling. The film tail is what costs: full-bleed photography runs about
+# 1.4 MB per GIF second against the UI's 0.09, because LZW gets nothing on moving
+# photographs. Width and the cut window alone cannot pay for it, so the palette is
+# capped at 80 colours and a light hqdn3d takes the grain out before palettegen
+# sees it. sierra2_4a was measured worse than bayer here (+21%). Re-run after
+# `make demo-ui`, and re-check the size: the film's content sets it, not the code.
 demo-hero:  ## Cut the README hero GIF from docs-site/static/demo/demo.mp4: the brief, the cut and the storyboard, then the film it made
 	$(eval DEMO_END := $(shell ffprobe -v error -show_entries format=duration -of csv=p=0 docs-site/static/demo/demo.mp4))
 	ffmpeg -y -loglevel error -i docs-site/static/demo/demo.mp4 \
-	  -filter_complex "[0:v]trim=2.6:16.6,setpts=PTS-STARTPTS[a];[0:v]trim=start=$$(python3 -c 'print($(DEMO_END)-4.0)'),setpts=PTS-STARTPTS[b];[a][b]concat=n=2:v=1:a=0,fps=10,scale=800:-1:flags=lanczos,split[x][y];[y]palettegen=stats_mode=diff[p];[x][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle" \
+	  -filter_complex "[0:v]trim=3.4:15.6,setpts=PTS-STARTPTS[a];[0:v]trim=start=$$(python3 -c 'print($(DEMO_END)-3.0)'),setpts=PTS-STARTPTS[b];[a][b]concat=n=2:v=1:a=0,fps=10,scale=720:-1:flags=lanczos,hqdn3d,split[x][y];[y]palettegen=max_colors=80:stats_mode=diff[p];[x][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle" \
 	  docs-site/static/img/demo-hero.gif

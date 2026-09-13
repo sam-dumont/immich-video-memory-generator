@@ -279,7 +279,7 @@ class TestAggregateMood:
 
 FIXTURES = Path(__file__).parent
 FACE_PHOTO = FIXTURES / "fixtures" / "faces" / "picnic-friends.jpg"
-# fake_library.py states the invariant this leans on: none of the six CC0
+# fake_library.py states the invariant this leans on: none of the CC0
 # photographs in the e2e library shows a recognisable face.
 FACELESS_LIBRARY = sorted((FIXTURES / "e2e" / "fixtures" / "library").glob("*.jpg"))
 

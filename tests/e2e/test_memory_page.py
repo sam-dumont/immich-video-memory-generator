@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import os
 import re
+from collections import Counter
+from itertools import groupby
 from pathlib import Path
 
 import pytest
@@ -13,15 +15,28 @@ from playwright.sync_api import Page, expect
 from immich_memories.ui.pages.clip_grid import CLIPS_PER_PAGE
 from immich_memories.ui.pages.memory_brief import MEMORY_TYPE_LABELS
 from tests.e2e.fake_editorial import _EPISODES, PREVIEW_STAGE, STAGES
-from tests.e2e.fake_library import BIG_MONTH, LIBRARY, STORIES, STORY_OF, THESIS
+from tests.e2e.fake_library import (
+    CARRIERS,
+    LIBRARY,
+    STORIES,
+    STORY_OF,
+    THESIS,
+    pool_line,
+    summary_line,
+)
 from tests.e2e.test_launch_smoke import _choose
 
 pytestmark = pytest.mark.e2e
 
-# The scripted editor's thesis and its three stories, from the fixture.
+# The scripted editor's thesis and its four stories, from the fixture.
 _THESIS = THESIS
 _STORY_TITLES = tuple(story.title for story in STORIES)
-_POOL_FILES = tuple(picture.filename for picture in LIBRARY)
+# The pool pages twenty at a time; the first page carries the first pictures of the month.
+_POOL_FILES = tuple(picture.filename for picture in LIBRARY[:5])
+_SUMMARY = summary_line()
+_POOL = pool_line()
+_CARRIER_VIDEOS = sum(1 for picture in CARRIERS if picture.is_video)
+_CARRIER_STILLS = len(CARRIERS) - _CARRIER_VIDEOS
 
 
 # One of the fixture's editing stages, exactly as the active row reports it once the
@@ -81,9 +96,9 @@ def test_a_cut_from_the_brief_shows_the_story_and_offers_export(
     # Weight order, not capture order: the heaviest story leads, the lightest closes.
     titles = page.locator(".q-card .text-base.font-semibold")
     expect(titles).to_have_text(list(_STORY_TITLES))
-    expect(page.get_by_text("3 stories, 6 pictures", exact=True)).to_be_visible()
-    expect(page.get_by_text("Motion", exact=True)).to_have_count(3)
-    expect(page.get_by_text("Still", exact=True)).to_have_count(3)
+    expect(page.get_by_text(_SUMMARY, exact=True)).to_be_visible()
+    expect(page.get_by_text("Motion", exact=True)).to_have_count(_CARRIER_VIDEOS)
+    expect(page.get_by_text("Still", exact=True)).to_have_count(_CARRIER_STILLS)
     expect(page.get_by_text(re.compile(r"^\d+ s of pictures and video selected"))).to_be_visible()
     expect(page.get_by_role("button", name="Export", exact=True)).to_be_visible()
     # The attempt keeps what each story was read from, so a later drift can be diffed.
@@ -105,21 +120,22 @@ def test_the_storyboard_is_the_default_view_and_plays_in_capture_order(
 
     # The storyboard is what opens: one shot per picture, in the order the video plays them.
     shots = page.locator(".storyboard-shot")
-    expect(shots).to_have_count(len(LIBRARY))
+    expect(shots).to_have_count(len(CARRIERS))
+    # The day is printed once, on the first shot of each day.
     expect(page.locator(".storyboard-shot .storyboard-day")).to_have_text(
-        [picture.taken_at[:10] for picture in LIBRARY]
+        [day for day, _ in groupby(picture.taken_at[:10] for picture in CARRIERS)]
     )
     expect(page.locator(".storyboard-shot .storyboard-story")).to_have_text(
-        [STORY_OF[picture.asset_id].title for picture in LIBRARY]
+        [STORY_OF[picture.asset_id].title for picture in CARRIERS]
     )
     expect(page.locator(".storyboard-chapter")).to_have_text(["June 2024"])
-    expect(page.get_by_text(f"{len(LIBRARY)} pictures, 0:", exact=False)).to_be_visible()
+    expect(page.get_by_text(f"{len(CARRIERS)} pictures, ", exact=False)).to_be_visible()
 
     # The weighed story is one tab away and comes back the same way.
     page.get_by_role("tab", name="Story", exact=True).click()
-    expect(page.get_by_text("3 stories, 6 pictures", exact=True)).to_be_visible()
+    expect(page.get_by_text(_SUMMARY, exact=True)).to_be_visible()
     page.get_by_role("tab", name="Storyboard", exact=True).click()
-    expect(shots).to_have_count(len(LIBRARY))
+    expect(shots).to_have_count(len(CARRIERS))
 
 
 def test_a_reload_mid_cut_joins_the_running_cut_instead_of_starting_another(
@@ -149,7 +165,7 @@ def test_the_cut_shows_the_pictures_it_is_working_on_while_it_works(
     strip = page.locator(".q-img").locator("visible=true")
     expect(strip.first).to_be_visible(timeout=60_000)
     # A real bar for the pass that reports numbers, from the engine's own count.
-    expect(page.get_by_text(re.compile(rf"^{PREVIEW_STAGE} \d+ of 6$"))).to_be_visible(
+    expect(page.get_by_text(re.compile(rf"^{PREVIEW_STAGE} \d+ of {len(LIBRARY)}$"))).to_be_visible(
         timeout=60_000
     )
     # Bounded by construction: a long stage must not grow the page.
@@ -166,7 +182,9 @@ def test_the_detail_lines_are_folded_away_until_asked_for(page: Page, launch_app
     page.get_by_role("button", name="Cut", exact=True).click()
     expect(_active_stage(page)).to_be_visible(timeout=60_000)
     # The clean five-row view is the default: the lines exist but are not shown.
-    a_preview_line = page.get_by_text(re.compile(rf"^Preparing {PREVIEW_STAGE}: \d+/6$"))
+    a_preview_line = page.get_by_text(
+        re.compile(rf"^Preparing {PREVIEW_STAGE}: \d+/{len(LIBRARY)}$")
+    )
     expect(a_preview_line.first).to_be_hidden()
 
     page.get_by_text("Details", exact=True).click()
@@ -197,9 +215,7 @@ def test_the_media_pool_stays_reachable_from_advanced(page: Page, launch_app_url
 
     page.get_by_role("button", name="Open the media pool").click()
 
-    expect(page.get_by_text("6 in the pool (3 videos, 3 photos)", exact=False)).to_be_visible(
-        timeout=60_000
-    )
+    expect(page.get_by_text(_POOL, exact=False)).to_be_visible(timeout=60_000)
     for filename in _POOL_FILES:
         expect(page.get_by_text(filename, exact=True).first).to_be_visible()
 
@@ -211,9 +227,7 @@ def test_the_media_pool_loads_its_pictures_through_the_media_route(
     _brief_for_june(page, launch_app_url)
     page.get_by_text("Advanced", exact=True).click()
     page.get_by_role("button", name="Open the media pool").click()
-    expect(page.get_by_text("6 in the pool (3 videos, 3 photos)", exact=False)).to_be_visible(
-        timeout=60_000
-    )
+    expect(page.get_by_text(_POOL, exact=False)).to_be_visible(timeout=60_000)
 
     routed = page.locator("img[src^='/media/thumb/']")
     expect(routed.first).to_be_visible(timeout=30_000)
@@ -236,7 +250,9 @@ def test_the_story_reads_in_reader_words_and_hides_the_answer_schema_behind_deta
 
     for badge in ("Main story", "Important", "Small moment"):
         expect(page.get_by_text(badge, exact=True)).to_be_visible()
-    expect(page.get_by_text("2 pictures", exact=True)).to_have_count(3)
+    per_story = Counter(picture.story_key for picture in CARRIERS)
+    for count, stories in Counter(per_story.values()).items():
+        expect(page.get_by_text(f"{count} pictures", exact=True)).to_have_count(stories)
     for machine_word in ("dominant", "remarkable", "maybe"):
         expect(page.get_by_text(machine_word, exact=True).first).to_be_hidden()
 
@@ -247,8 +263,6 @@ def test_the_story_reads_in_reader_words_and_hides_the_answer_schema_behind_deta
     expect(lead.get_by_text(_STANDINGS).first).to_be_visible()
 
 
-# The wide filler month: one clip and forty-one stills, so the pool has to page.
-_BIG_POOL = f"{len(BIG_MONTH)} in the pool (1 videos, {len(BIG_MONTH) - 1} photos)"
 _PAGE = CLIPS_PER_PAGE
 
 
@@ -263,12 +277,11 @@ def _grid_images(page: Page):
 
 def test_the_media_pool_shows_one_page_at_a_time(page: Page, launch_app_url: str) -> None:
     """Paging replaces the page in the DOM instead of appending to it (#824)."""
-    _open_brief(page, launch_app_url)
-    _choose(page, "Memory type", "Monthly Highlights")
-    _choose(page, "Month", "May")
+    _brief_for_june(page, launch_app_url)
     _open_media_pool(page)
-    expect(page.get_by_text(_BIG_POOL, exact=False)).to_be_visible(timeout=60_000)
-    total = len(BIG_MONTH)
+    expect(page.get_by_text(_POOL, exact=False)).to_be_visible(timeout=60_000)
+    total = len(LIBRARY)
+    pages = -(-total // _PAGE)
 
     expect(_grid_images(page).first).to_be_visible(timeout=30_000)
     expect(page.get_by_text(f"1–{_PAGE} of {total}", exact=True)).to_be_visible()
@@ -278,21 +291,25 @@ def test_the_media_pool_shows_one_page_at_a_time(page: Page, launch_app_url: str
     expect(page.get_by_text(f"{_PAGE + 1}–{2 * _PAGE} of {total}", exact=True)).to_be_visible()
     assert _grid_images(page).count() <= _PAGE
 
-    page.get_by_role("button", name="Next page").click()
-    expect(page.get_by_text(f"{2 * _PAGE + 1}–{total} of {total}", exact=True)).to_be_visible()
-    assert _grid_images(page).count() == total - 2 * _PAGE
+    for index in range(2, pages):
+        page.get_by_role("button", name="Next page").click()
+        last = total if index == pages - 1 else (index + 1) * _PAGE
+        expect(
+            page.get_by_text(f"{index * _PAGE + 1}–{last} of {total}", exact=True)
+        ).to_be_visible()
+    assert _grid_images(page).count() == total - (pages - 1) * _PAGE
 
     page.get_by_role("button", name="Previous page").click()
-    expect(page.get_by_text(f"{_PAGE + 1}–{2 * _PAGE} of {total}", exact=True)).to_be_visible()
+    expect(
+        page.get_by_text(f"{(pages - 2) * _PAGE + 1}–{(pages - 1) * _PAGE} of {total}", exact=True)
+    ).to_be_visible()
 
 
 def test_a_tick_in_the_compact_grid_performs_no_navigation(page: Page, launch_app_url: str) -> None:
     """A toggled cell redraws in place; the page is not reloaded around it (#824)."""
     _brief_for_june(page, launch_app_url)
     _open_media_pool(page)
-    expect(page.get_by_text("6 in the pool (3 videos, 3 photos)", exact=False)).to_be_visible(
-        timeout=60_000
-    )
+    expect(page.get_by_text(_POOL, exact=False)).to_be_visible(timeout=60_000)
     # The view toggle itself navigates; let that page settle before planting the marker.
     page.locator("button").filter(has=page.locator("i:has-text('grid_view')")).click()
     page.wait_for_load_state("networkidle")
@@ -318,7 +335,7 @@ def test_review_rows_hold_a_video_only_while_they_are_open(page: Page, launch_ap
     page.get_by_role("button", name="Trim the video clips").click()
 
     # Only the videos the cut kept have a row: a still has no seconds to trim; rows are in capture order.
-    videos = [p for p in LIBRARY if p.is_video]
+    videos = [p for p in CARRIERS if p.is_video]
     rows = page.locator(".review-clip-row")
     expect(rows).to_have_count(len(videos), timeout=30_000)
     expect(page.locator(".review-clip-row video")).to_have_count(1, timeout=60_000)
@@ -356,16 +373,17 @@ def test_a_tick_survives_the_cut_and_cut_again_keeps_the_pool(
     story_tab = page.get_by_role("tab", name="Story", exact=True)
     expect(story_tab).to_be_visible(timeout=120_000)
     story_tab.click()
-    expect(page.get_by_text("3 stories, 6 pictures", exact=True)).to_be_visible(timeout=120_000)
-    _evidence(page, "02-first-cut-six-pictures")
+    expect(page.get_by_text(_SUMMARY, exact=True)).to_be_visible(timeout=120_000)
+    _evidence(page, "02-first-cut")
 
-    # The pool stays reachable after a cut, with the cut's own ticks.
+    # The pool stays reachable after a cut, with the cut's own ticks: the first page
+    # of the pool opens on the first picture of the month, which the cut kept.
     page.get_by_role("button", name="Review the pool", exact=True).click()
     boxes = page.get_by_role("checkbox", name="Include")
-    expect(boxes).to_have_count(6)
-    for index in range(6):
-        expect(boxes.nth(index)).to_be_checked()
-    _evidence(page, "03-pool-after-cut-all-ticked")
+    expect(boxes).to_have_count(min(_PAGE, len(LIBRARY)))
+    assert LIBRARY[0].shipped
+    expect(boxes.first).to_be_checked()
+    _evidence(page, "03-pool-after-cut")
 
     # A NiceGUI checkbox flips after the server round trip: click, then wait for the state.
     boxes.first.click()
@@ -375,16 +393,19 @@ def test_a_tick_survives_the_cut_and_cut_again_keeps_the_pool(
     story_tab = page.get_by_role("tab", name="Story", exact=True)
     expect(story_tab).to_be_visible(timeout=120_000)
     story_tab.click()
-    expect(page.get_by_text("3 stories, 5 pictures", exact=True)).to_be_visible(timeout=120_000)
-    _evidence(page, "05-second-cut-five-pictures")
+    one_fewer = _SUMMARY.replace(f"{len(CARRIERS)} pictures", f"{len(CARRIERS) - 1} pictures")
+    expect(page.get_by_text(one_fewer, exact=True)).to_be_visible(timeout=120_000)
+    _evidence(page, "05-second-cut-one-fewer")
+    # After a cut the pool's ticks are the cut's own, so the next request carries
+    # the cut minus the one picture that was unticked.
     request = _latest_request(launch_workspace)
-    assert len(request["requested_assets"]) == 5
+    assert len(request["requested_assets"]) == len(CARRIERS) - 1
     assert request["required_assets"] == []
 
     # Tick the one the cut left out: it is required now, and the next cut carries it.
     page.get_by_role("button", name="Review the pool", exact=True).click()
     boxes = page.get_by_role("checkbox", name="Include")
-    expect(boxes).to_have_count(6)
+    expect(boxes).to_have_count(min(_PAGE, len(LIBRARY)))
     expect(boxes.first).not_to_be_checked()
     boxes.first.click()
     expect(boxes.first).to_be_checked()
@@ -393,8 +414,8 @@ def test_a_tick_survives_the_cut_and_cut_again_keeps_the_pool(
     story_tab = page.get_by_role("tab", name="Story", exact=True)
     expect(story_tab).to_be_visible(timeout=120_000)
     story_tab.click()
-    expect(page.get_by_text("3 stories, 6 pictures", exact=True)).to_be_visible(timeout=120_000)
-    _evidence(page, "07-third-cut-six-pictures")
+    expect(page.get_by_text(_SUMMARY, exact=True)).to_be_visible(timeout=120_000)
+    _evidence(page, "07-third-cut")
     request = _latest_request(launch_workspace)
     assert len(request["required_assets"]) == 1
     assert request["required_assets"][0] in request["requested_assets"]

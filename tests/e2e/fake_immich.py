@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Self
 from urllib.parse import parse_qs, urlsplit
 
-from tests.e2e.fake_library import ALL_PICTURES, Picture
+from tests.e2e.fake_library import ALL_PICTURES, CAST, Picture
 
 _MONTH_BUCKET = "2024-06-01T00:00:00.000Z"
 
@@ -33,8 +33,21 @@ _VIDEO_DURATION = 4.0
 # thumbnail taken at the halfway point still shows the middle of the picture.
 _PAN_HEADROOM = 1.25
 
+_BY_ID = {picture.asset_id: picture for picture in ALL_PICTURES}
 _VIDEOS = tuple(picture for picture in ALL_PICTURES if picture.is_video)
 _PHOTOS = tuple(picture for picture in ALL_PICTURES if not picture.is_video)
+
+
+def _person_payload(name: str) -> dict[str, Any]:
+    """The household's cast as Immich returns a person: an id, a name, a face crop."""
+    return {
+        "id": f"person-{name.lower()}",
+        "name": name,
+        "birthDate": None,
+        "thumbnailPath": f"/fake/people/{name.lower()}.jpg",
+        "isHidden": False,
+        "updatedAt": "2024-06-01T12:00:00.000Z",
+    }
 
 
 def _asset_payload(picture: Picture) -> dict[str, Any]:
@@ -57,15 +70,19 @@ def _asset_payload(picture: Picture) -> dict[str, Any]:
         "isFavorite": picture.is_favorite,
         "isArchived": False,
         "isTrashed": False,
-        "duration": int(_VIDEO_DURATION * 1000) if is_video else None,
+        "duration": int(picture.seconds * 1000) if is_video else None,
         "width": width,
         "height": height,
         "exifInfo": {
             **_CAMERA_EXIF,
             "dateTimeOriginal": picture.taken_at,
             "fileSizeInByte": 400_000 if is_video else 20_000,
+            "latitude": picture.place.latitude,
+            "longitude": picture.place.longitude,
+            "city": picture.place.city,
+            "country": picture.place.country,
         },
-        "people": [],
+        "people": [_person_payload(name) for name in picture.people],
         "faces": [],
         "checksum": f"fake-checksum-{picture.asset_id}",
         "livePhotoVideoId": None,
@@ -215,18 +232,18 @@ def _generate_videos(media_dir: Path) -> dict[str, Path]:
             "lavfi",
             # A tone per clip: silence detection reads the audio track too.
             "-i",
-            f"sine=frequency={440 + index * 110}:sample_rate=48000:duration={_VIDEO_DURATION}",
+            f"sine=frequency={440 + index * 110}:sample_rate=48000:duration={picture.seconds}",
             "-map",
             "0:v:0",
             "-map",
             "1:a:0",
             "-t",
-            str(_VIDEO_DURATION),
+            str(picture.seconds),
             "-vf",
             (
                 f"scale={stage_w}:{stage_h}:force_original_aspect_ratio=increase,"
                 f"crop={width}:{height}:"
-                f"x='(in_w-out_w)*t/{_VIDEO_DURATION}',"
+                f"x='(in_w-out_w)*t/{picture.seconds}',"
                 # WHY: a JPEG decodes full-range, and libx264 would then tag the
                 # clip yuvj420p -- which the production probe reads as unknown.
                 "scale=in_range=full:out_range=tv,format=yuv420p"
@@ -292,7 +309,8 @@ def _generate_thumbnails(media_dir: Path, media: dict[str, Path]) -> dict[str, P
     thumbnails: dict[str, Path] = {}
     for asset_id, source in media.items():
         thumbnail_path = thumbnail_dir / f"{asset_id}.jpg"
-        seek = ["-ss", str(_VIDEO_DURATION / 2)] if source.suffix == ".mp4" else []
+        seconds = _BY_ID[asset_id].seconds if asset_id in _BY_ID else _VIDEO_DURATION
+        seek = ["-ss", str(seconds / 2)] if source.suffix == ".mp4" else []
         _ffmpeg(
             *seek,
             "-i",
@@ -347,17 +365,8 @@ def _handler_type(
                 self._send_json(
                     200,
                     {
-                        "people": [
-                            {
-                                "id": "fake-person",
-                                "name": "Fake Person",
-                                "birthDate": None,
-                                "thumbnailPath": "/fake/people/fake-person.jpg",
-                                "isHidden": False,
-                                "updatedAt": "2024-06-01T12:00:00.000Z",
-                            }
-                        ],
-                        "total": 1,
+                        "people": [_person_payload(name) for name in CAST],
+                        "total": len(CAST),
                         "hidden": 0,
                     },
                 )

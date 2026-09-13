@@ -90,6 +90,9 @@ def launch_workspace(
                 },
                 "upload": {"enabled": False},
                 "photos": {"enabled": True},
+                # The fixture home is a public landmark; the week by the lake
+                # sits about 590 km from it, so trip detection has a trip to find.
+                "trips": {"homebase_latitude": 50.8417, "homebase_longitude": 4.3624},
                 "advanced": {
                     "hardware": {
                         "enabled": False,
