@@ -110,23 +110,36 @@ construction rather than by measurement is that the heads and the detectors have
 so a card does not shorten them, and that every producer banks its answer, so a second cut over
 the same period skips them. Title rendering is the part a GPU would actually take off your hands.
 
-### Title rendering is the bottleneck, not encoding
+### Title rendering used to be the bottleneck
 
-This page used to say title rendering was near-instant on CPU. It is the opposite, and the
-number is worth knowing before you size a box.
+This page once said title rendering was near-instant on CPU, then said the opposite. Both
+were true of their day, and the number is worth knowing before you size a box.
 
 Measured 2026-08-23 in the container with `--cpus=2`, generating 18 seconds of output:
-**title rendering took ~263 s of a ~339 s assembly**.
-Titles are seconds of video, but every frame of them is composed pixel by pixel on the CPU,
-while the clips around them are a decode-and-encode the CPU is comparatively good at.
+**title rendering took ~263 s of a ~339 s assembly**. Titles are seconds of video, but every
+frame of them was composed pixel by pixel on the CPU, while the clips around them are a
+decode-and-encode the CPU is comparatively good at.
+
+Profiling that (#900) found 85% of a title frame in one Gaussian blur, at a radius of a tenth
+of the frame height, recomputed at full resolution on every frame. It now runs on a
+quarter-size copy of the picture and is held between frames while the background holds still.
+Measured on the CPU backend pinned to two threads, over a 3.5 s opening and a 7 s ending:
+
+| | before | after |
+| --- | --- | --- |
+| Opening title, 720p | 186 ms a frame | 32 ms a frame |
+| Ending screen, 720p | 184 ms a frame | 27 ms a frame |
+| Opening title, 1080p | 578 ms a frame | 64 ms a frame |
+
+The picture is the same one: the largest per-channel difference between the two renders stays
+under the film grain the renderer lays over the result anyway, which is what
+`make test-integration-titles` asserts on every run.
 
 The practical consequences:
 
-- A **shorter or simpler title** is the cheapest large win available on a CPU-only box.
-- Rendering cost scales with title **duration and resolution**, not with how many clips the
-  memory has: a 12-clip memory and a 40-clip memory pay nearly the same title bill.
-- Hardware encoding helps the encode, which is the smaller half. Buy a GPU for the titles
-  before you buy one for the encoder.
+- Rendering cost still scales with title **duration and resolution**, not with how many clips
+  the memory has: a 12-clip memory and a 40-clip memory pay nearly the same title bill.
+- Hardware encoding helps the encode, which is now the larger half again on a CPU-only box.
 
 ## Preflight check
 

@@ -88,9 +88,10 @@ frames to a `FrameSink` and crossfades across clip boundaries, and `StreamingEnc
 sink it is constructed with) pipes them into FFmpeg.
 
 **KernelTitleRenderer** (titles/renderer_kernels.py) owns the background and the per-frame
-GPU pipeline, and composes 2 services (both take Protocol-typed config/buffers):
+GPU pipeline, and composes 3 services (all take Protocol-typed config/buffers):
 - `ParticleField` (kernel_particles.py): bokeh drift and fireworks physics, CPU numpy only
 - `TitleTextRenderer` (kernel_text.py): SDF and PIL text compositing onto the frame buffer
+- `AnimatedBlur` (kernel_blur.py): the deblur's Gaussian, decimated and held between frames
 
 **`generate_memory()`** (generate.py) is the top-level orchestrator above the four; it runs
 the `OperationalPhase` lifecycle end to end (there is no `GenerationPipeline` class) with
@@ -244,6 +245,7 @@ src/immich_memories/
 │   ├── renderer_kernels.py     # KernelTitleRenderer: background + frame pipeline
 │   ├── kernel_particles.py     # ParticleField: bokeh drift / fireworks physics
 │   ├── kernel_text.py          # TitleTextRenderer: SDF + PIL text compositing
+│   ├── kernel_blur.py          # AnimatedBlur: quarter-res deblur Gaussian, held while it stands
 │   ├── renderer_ffmpeg.py      # FFmpeg-based renderer
 │   ├── gpu_kernel_backend.py   # The only `import quadrants as ti` in the tree
 │   ├── kernels.py              # GPU kernels + lazy compilation (init_kernels)

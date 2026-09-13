@@ -440,6 +440,7 @@ disable_error_code = ["valid-type", "misc", "call-arg"]
 [[tool.mypy.overrides]]
 module = [
     "immich_memories.titles.renderer_kernels",
+    "immich_memories.titles.kernel_blur",
     "immich_memories.titles.kernel_text",
     "immich_memories.titles.sdf_font",
     "immich_memories.titles.kernel_backend_probe",
@@ -658,4 +659,8 @@ exclude_lines = [
     "if TYPE_CHECKING:",
     "@(abc\\.)?abstractmethod",
     "\\.\\.\\.",  # Protocol stubs
+    # A kernel body is compiled by the kernel library and run on the device;
+    # the Python interpreter never executes those lines, so coverage counts
+    # every one of them as missed however hard the pixel tests exercise them.
+    "@ti\\.kernel",
 ]
