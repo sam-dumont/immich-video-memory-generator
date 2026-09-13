@@ -54,4 +54,4 @@ selection and feeding it back in. Treat "for later editing" in its help text as 
 aspiration rather than a description.
 :::
 
-If you want to see how a selection was actually *reached* (including which stage dropped what), use [`generate --trace-selection`](./generate.md#why-did-selection-drop-that-clip) instead. That reports on a real run.
+If you want to see how a selection was actually *reached* (including which stage dropped what), use [`generate --trace-selection`](./generate.md#what-a-run-leaves-behind) instead. That reports on a real run.
