@@ -5,7 +5,7 @@ title: Apple Silicon
 
 # Apple Silicon
 
-Apple Silicon Macs (M1, M2, M3, M4, M5) are probably the best platform for this tool: video encoding, Taichi title rendering and local model inference all accelerate, and unified memory means the reader's 17 GB of weights and the render share one pool instead of copying between two.
+Apple Silicon Macs (M1, M2, M3, M4, M5) are probably the best platform for this tool: video encoding, GPU title rendering and local model inference all accelerate, and unified memory means the reader's 17 GB of weights and the render share one pool instead of copying between two.
 
 ## What you get
 

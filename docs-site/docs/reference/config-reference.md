@@ -220,7 +220,7 @@ hardware:
   enabled: true                  # false = CPU encoding, no GPU probing at all
   encoder_preset: "balanced"     # fast, balanced, quality
   gpu_decode: true               # Hardware video decoding
-  title_kernel_backend: "taichi" # taichi (default) or quadrants — see below
+  title_kernel_backend: "auto"   # auto (default), quadrants or taichi — see below
 ```
 
 The backend is detected automatically (NVIDIA NVENC → Apple VideoToolbox → Intel QSV → VAAPI, first
@@ -231,10 +231,12 @@ Linux hosts pick the card with `CUDA_VISIBLE_DEVICES` / `NVIDIA_VISIBLE_DEVICES`
 `fast` enables VideoToolbox's speed-priority mode while `balanced` and `quality` leave it disabled.
 Image quality still comes from the CRF translation described above.
 
-`title_kernel_backend` picks the GPU kernel library the title renderer compiles against — nothing
-else in the pipeline. `taichi` is the default; `quadrants` is experimental and needs the
-`titles-quadrants` extra. `IMMICH_MEMORIES_TITLE_KERNELS=quadrants` sets it for one run. See
-[Quadrants (experimental)](../deploy/hardware/cpu-only.md#quadrants-experimental).
+`title_kernel_backend` picks the GPU kernel library the title renderer compiles against, and
+nothing else in the pipeline. `auto` takes Quadrants, which ships with the app, and falls back to Taichi
+when only Taichi is installed. Naming one pins it, and an install without that one still renders on
+the other rather than dropping to the PIL titles. `IMMICH_MEMORIES_TITLE_KERNELS` overrides it for
+one run. See
+[Title kernels](../deploy/hardware/cpu-only.md#title-kernels-quadrants-by-default-taichi-fallback).
 
 ## Audio and music
 

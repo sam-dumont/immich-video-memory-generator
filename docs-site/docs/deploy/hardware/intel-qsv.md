@@ -79,7 +79,7 @@ services:
 
 ## Good for headless servers
 
-QSV is common in home server setups: Intel NUCs, older desktops repurposed as media servers. It takes the encode off the CPU cores without needing a discrete graphics card. The encode is the smaller half of a run, though: see [CPU-Only Mode](./cpu-only.md#title-rendering-is-the-bottleneck-not-encoding). The larger win on such a box is usually the titles: install the `gpu` extra and Taichi will try the Vulkan backend on the integrated GPU.
+QSV is common in home server setups: Intel NUCs, older desktops repurposed as media servers. It takes the encode off the CPU cores without needing a discrete graphics card. The encode is the smaller half of a run, though: see [CPU-Only Mode](./cpu-only.md#title-rendering-is-the-bottleneck-not-encoding). The larger win on such a box is usually the titles: the kernel library installs with the app and tries the Vulkan backend on the integrated GPU.
 
 ## Quality
 

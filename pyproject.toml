@@ -45,6 +45,23 @@ dependencies = [
     "geopy>=2.4",
     "staticmap>=0.5",
     "apprise>=1.9",
+    # GPU title rendering, the phase that dominates a run. It ships by default
+    # because the fallback is a visibly poorer title, not a missing feature.
+    #
+    # Quadrants is the maintained fork of Taichi (#558): same `ti.*` surface,
+    # frame-for-frame identical output, a smaller wheel (41 MB vs 56 MB on
+    # linux x86_64) and — the reason it is the one in the base set — the only
+    # linux-aarch64 wheel of the two, so a Pi or an arm64 image gets GPU titles
+    # instead of the PIL fallback.
+    #
+    # Marker: no macOS x86_64 wheel is published, and 3.14 is not supported yet.
+    # Taichi has no wheel for either of those two either (it publishes only
+    # macosx arm64, manylinux x86_64 and win_amd64, cp39-cp313), so there is no
+    # fallback pin to write for them: those installs get PIL titles, exactly as
+    # they do today. `immich-memories[gpu]` installs Taichi for anyone who wants
+    # the old library back.
+    "quadrants>=1.3.0; python_version < '3.14' and (sys_platform != 'darwin' or platform_machine != 'x86_64')",
+    "freetype-py>=2.4",  # SDF font rendering
 ]
 
 [project.optional-dependencies]
@@ -79,21 +96,16 @@ demucs = [
 #     Install the tested v0.1.8 tag with --no-deps, then its inference-only
 #     dependencies. The upstream UI set conflicts with this app's Starlette.
 #     See docs-site/docs/create/pipeline/audio-and-music.md for setup instructions.
-# GPU-accelerated title rendering with Taichi
-# Supports: Metal (macOS), CUDA (NVIDIA), Vulkan, OpenGL, CPU fallback
+# Taichi, the kernel library the title renderer ran on before Quadrants (#558).
+# The base install no longer needs it — keep this extra to pin the old library,
+# to run the frame-parity test, or as an escape hatch if Quadrants ever
+# regresses. `advanced.hardware.title_kernel_backend: taichi` then selects it.
+#
+# The marker stays as it was: Taichi publishes no linux-aarch64 wheel, and
+# installing this extra there would try to build one from source. That costs
+# arm64 nothing now — Quadrants serves it from the base install.
 gpu = [
     "taichi>=1.7.0; sys_platform != 'linux' or (platform_machine != 'aarch64' and platform_machine != 'arm64')",
-    "freetype-py>=2.4",  # SDF font rendering
-]
-# Experimental alternative kernel library for the same title renderer (#558).
-# Taichi 1.7.4 is terminal upstream; Quadrants is Genesis AI's live fork and
-# exposes every `ti.*` symbol the title kernels use. It also ships
-# linux-aarch64 wheels, which is the platform the `gpu` pin above excludes.
-# Opt in per run with advanced.hardware.title_kernel_backend: quadrants.
-# Markers: no macOS x86_64 wheel is published, and 3.14 is not supported yet.
-titles-quadrants = [
-    "quadrants>=1.3.0; python_version < '3.14' and (sys_platform != 'darwin' or platform_machine != 'x86_64')",
-    "freetype-py>=2.4",  # SDF font rendering, same as the `gpu` extra
 ]
 # Required when preparing missing editorial public heads and detector facts.
 # Weights and the compact-caption endpoint are separate setup dependencies.
@@ -560,7 +572,7 @@ DEP001 = [
     "transformers", "huggingface_hub",                  # Optional: smart-turn, off by default
     "PIL", "av", "freetype", "streamlit",               # Alt package names (Pillow→PIL, pyav→av)
     "starlette",                                        # Transitive via nicegui→fastapi→starlette
-    "quadrants",                                        # Optional: the alternative title kernel backend
+    "quadrants",                                        # The title kernel library, loaded by name
 ]
 DEP003 = ["PIL", "cv2", "yaml", "starlette"]  # Known transitive imports
 
@@ -639,9 +651,8 @@ markers = [
     "perf: performance benchmarks (run with: make benchmark-perf)",
     "demo: renders a docs demo asset (run with: make demo-output)",
 ]
-# `-p no:quadrants`: the quadrants distribution (the titles-quadrants extra)
-# registers a pytest11 plugin, so merely having it installed imports Quadrants
-# into every session — and a process that has imported Quadrants *aborts* the
+# `-p no:quadrants`: the quadrants distribution registers a pytest11 plugin, so
+# merely having it installed imports Quadrants into every session — and a process that has imported Quadrants *aborts* the
 # interpreter the moment anything imports Taichi, because both link their own
 # LLVM and register the same options with it. Blocking the plugin is a no-op
 # when the extra is not installed.

@@ -18,9 +18,9 @@ Two things this module owns that callers must not work around:
   to be the first thing any kernel-touching module pulls in.
 
 Which one is asked for is decided in kernel_backend_choice.py, which answers
-that without importing anything. Taichi is the default and the fallback: an
-install that asked for Quadrants and does not have it renders titles exactly as
-before, with a line in the log saying so.
+that without importing anything. The default is `auto`: Quadrants when it is
+installed, Taichi otherwise. Either way an install that cannot have the one it
+asked for still renders titles on the other, with a line in the log saying so.
 """
 
 import importlib
@@ -30,9 +30,9 @@ from types import ModuleType
 from typing import Any
 
 from .kernel_backend_choice import (
+    INSTALL_HINTS,
     KERNEL_BACKEND_ENV_VAR,
-    KERNEL_BACKEND_EXTRAS,
-    TAICHI,
+    preference_order,
     requested_kernel_backend,
 )
 
@@ -53,14 +53,14 @@ def _silence_kernel_banners() -> None:
 
 
 def load_kernel_library(requested: str) -> tuple[ModuleType | None, str | None]:
-    """Import the requested kernel library, or Taichi, or say neither is here.
+    """Import the best installed kernel library for this request.
 
     Returns the module and the name of what was actually loaded. `(None, None)`
     means no kernel library is installed at all, which is not an error: the
     title renderer falls back to PIL. An installed-but-broken library raises,
     because that is a machine to fix rather than a feature to skip.
     """
-    for name in dict.fromkeys((requested, TAICHI)):
+    for name in preference_order(requested):
         try:
             return importlib.import_module(name), name
         except ModuleNotFoundError as exc:
@@ -74,20 +74,17 @@ def load_kernel_library(requested: str) -> tuple[ModuleType | None, str | None]:
 
 
 def _log_missing_library(name: str, requested: str, exc: ModuleNotFoundError) -> None:
-    """Say what was asked for and what it costs, once, at the right level."""
-    if name != requested:
-        logger.debug("Neither %s nor %s is installed (%s)", requested, name, exc)
-        return
-    if name == TAICHI:
-        logger.debug("Taichi is not installed (%s); titles use the PIL renderer", exc)
+    """Say what is absent, loudly only when somebody explicitly asked for it."""
+    # Under `auto` nothing was asked for, so neither absence is news. An explicit
+    # request that cannot be honoured is, even though titles still render.
+    if requested != name:
+        logger.debug("Title kernel library %s is not installed (%s)", name, exc)
         return
     logger.warning(
-        "Title kernel backend %r is not installed (%s); falling back to %s. "
-        "Install it with pip install 'immich-memories[%s]'",
-        requested,
+        "Title kernel backend %r is not installed (%s); trying the other one. Install it with %s",
+        name,
         exc,
-        TAICHI,
-        KERNEL_BACKEND_EXTRAS[requested],
+        INSTALL_HINTS[name],
     )
 
 
@@ -108,7 +105,8 @@ _silence_kernel_banners()
 # library has no stubs, which is exactly what `import taichi as ti` used to give
 # them. Typing this as ModuleType would make every kernel signature an error.
 ti: Any
-ti, KERNEL_BACKEND = load_kernel_library(requested_kernel_backend())
+KERNEL_BACKEND_REQUEST = requested_kernel_backend()
+ti, KERNEL_BACKEND = load_kernel_library(KERNEL_BACKEND_REQUEST)
 KERNEL_LIBRARY_AVAILABLE = ti is not None
 
 if KERNEL_BACKEND is not None:

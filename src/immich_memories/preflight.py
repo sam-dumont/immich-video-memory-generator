@@ -351,26 +351,6 @@ def check_hardware() -> CheckResult:
         )
 
 
-def _optional_runtime_check(
-    name: str, modules: tuple[str, ...], *, extra: str, ready: str, cost: str
-) -> CheckResult:
-    """OK when the extra's runtime imports, else a WARNING naming what is lost.
-
-    `cost` is the point: an install missing an extra otherwise learns nothing
-    until the feature silently does nothing, so the WARNING states the feature
-    that is gone rather than the package that is absent.
-    """
-    missing = [module for module in modules if importlib.util.find_spec(module) is None]
-    if not missing:
-        return CheckResult(name=name, status=CheckStatus.OK, message=ready)
-    return CheckResult(
-        name=name,
-        status=CheckStatus.WARNING,
-        message=cost,
-        details=f"Missing {', '.join(missing)}; install with pip install 'immich-memories[{extra}]'",
-    )
-
-
 def check_title_rendering(config: Config) -> CheckResult:
     """Report whether title screens get the GPU renderer or the PIL fallback."""
     if not config.title_screens.enabled:
@@ -379,21 +359,39 @@ def check_title_rendering(config: Config) -> CheckResult:
             status=CheckStatus.SKIPPED,
             message="Title screens disabled",
         )
-    # Name the library this install actually renders with: under the Quadrants
-    # backend, "install taichi" is the wrong advice and a present Taichi is not
-    # the thing being loaded.
+    return _kernel_library_check()
+
+
+def _kernel_library_check() -> CheckResult:
+    """OK as soon as one kernel library is importable, naming the one that wins.
+
+    By `find_spec`, never by importing: this runs on every `doctor` and a kernel
+    library costs up to 0.8 s to load. Which one is preferred comes from the
+    config, so an install that pinned Taichi is not told Quadrants is fine.
+
+    The WARNING names the feature that is gone rather than the package that is
+    absent: an install missing it otherwise learns nothing until the titles come
+    out flat.
+    """
     from immich_memories.titles.kernel_backend_choice import (
-        KERNEL_BACKEND_EXTRAS,
+        INSTALL_HINTS,
+        preference_order,
         requested_kernel_backend,
     )
 
-    backend = requested_kernel_backend()
-    return _optional_runtime_check(
-        "Title rendering",
-        (backend,),
-        extra=KERNEL_BACKEND_EXTRAS[backend],
-        ready=f"GPU-accelerated title rendering available ({backend})",
-        cost="GPU-accelerated title rendering unavailable; titles use the PIL fallback",
+    order = preference_order(requested_kernel_backend())
+    installed = [name for name in order if importlib.util.find_spec(name) is not None]
+    if installed:
+        return CheckResult(
+            name="Title rendering",
+            status=CheckStatus.OK,
+            message=f"GPU-accelerated title rendering available ({installed[0]})",
+        )
+    return CheckResult(
+        name="Title rendering",
+        status=CheckStatus.WARNING,
+        message="GPU-accelerated title rendering unavailable; titles use the PIL fallback",
+        details=f"No title kernel library installed; {INSTALL_HINTS[order[0]]}",
     )
 
 

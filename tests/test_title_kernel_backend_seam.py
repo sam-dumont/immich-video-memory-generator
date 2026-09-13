@@ -18,7 +18,7 @@ from immich_memories.titles import gpu_kernel_backend, kernel_backend_choice
 def _no_ambient_choice(monkeypatch: pytest.MonkeyPatch) -> None:
     """Neither the developer's shell nor their config decides these tests."""
     monkeypatch.delenv(kernel_backend_choice.KERNEL_BACKEND_ENV_VAR, raising=False)
-    _use_config(monkeypatch, "taichi")
+    _use_config(monkeypatch, "auto")
 
 
 def _use_config(monkeypatch: pytest.MonkeyPatch, backend: str) -> None:
@@ -33,8 +33,17 @@ def _use_config(monkeypatch: pytest.MonkeyPatch, backend: str) -> None:
     )
 
 
-def test_taichi_is_what_you_get_when_nobody_asked(monkeypatch: pytest.MonkeyPatch) -> None:
-    assert kernel_backend_choice.requested_kernel_backend() == "taichi"
+def test_nobody_asking_means_the_best_installed_one(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert kernel_backend_choice.requested_kernel_backend() == "auto"
+
+
+def test_auto_prefers_quadrants_and_keeps_taichi_behind_it() -> None:
+    assert kernel_backend_choice.preference_order("auto") == ("quadrants", "taichi")
+
+
+def test_pinning_one_library_still_leaves_the_other_as_a_fallback() -> None:
+    """A config naming a library the machine lacks must not cost the titles."""
+    assert kernel_backend_choice.preference_order("taichi") == ("taichi", "quadrants")
 
 
 def test_the_config_key_picks_quadrants(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -59,7 +68,7 @@ def test_the_env_var_beats_the_config_key(monkeypatch: pytest.MonkeyPatch) -> No
 def test_a_backend_nobody_ships_is_not_honoured(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(kernel_backend_choice.KERNEL_BACKEND_ENV_VAR, "warp")
 
-    assert kernel_backend_choice.requested_kernel_backend() == "taichi"
+    assert kernel_backend_choice.requested_kernel_backend() == "auto"
 
 
 def test_an_unreadable_config_still_renders_titles(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -71,7 +80,7 @@ def test_an_unreadable_config_still_renders_titles(monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr(config_module, "get_config", _explode)
 
-    assert kernel_backend_choice.requested_kernel_backend() == "taichi"
+    assert kernel_backend_choice.requested_kernel_backend() == "auto"
 
 
 def _fake_import(monkeypatch: pytest.MonkeyPatch, missing: set[str]) -> None:
@@ -103,6 +112,27 @@ def test_a_missing_quadrants_falls_back_to_taichi(
     assert "quadrants" in caplog.text.lower()
 
 
+def test_auto_is_silent_about_a_library_nobody_asked_for(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """`auto` on a Taichi-only install is the expected shape, not a warning."""
+    _fake_import(monkeypatch, {"quadrants"})
+
+    with caplog.at_level("WARNING"):
+        _module, name = gpu_kernel_backend.load_kernel_library("auto")
+
+    assert name == "taichi"
+    assert caplog.text == ""
+
+
+def test_auto_takes_quadrants_when_it_is_there(monkeypatch: pytest.MonkeyPatch) -> None:
+    _fake_import(monkeypatch, set())
+
+    _module, name = gpu_kernel_backend.load_kernel_library("auto")
+
+    assert name == "quadrants"
+
+
 def test_the_requested_library_is_the_one_loaded(monkeypatch: pytest.MonkeyPatch) -> None:
     _fake_import(monkeypatch, set())
 
@@ -115,7 +145,7 @@ def test_no_kernel_library_at_all_is_not_an_error(monkeypatch: pytest.MonkeyPatc
     """Titles fall back to the PIL renderer; the seam must say so, not raise."""
     _fake_import(monkeypatch, {"quadrants", "taichi"})
 
-    module, name = gpu_kernel_backend.load_kernel_library("quadrants")
+    module, name = gpu_kernel_backend.load_kernel_library("auto")
 
     assert (module, name) == (None, None)
 

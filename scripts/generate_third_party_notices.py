@@ -44,6 +44,7 @@ KNOWN = {
     "pyobjc-framework-metal": ("MIT", "https://github.com/ronaldoussoren/pyobjc"),
     "pyobjc-framework-coreml": ("MIT", "https://github.com/ronaldoussoren/pyobjc"),
     "taichi": ("Apache-2.0", "https://github.com/taichi-dev/taichi"),
+    "quadrants": ("Apache-2.0", "https://github.com/Genesis-Embodied-AI/quadrants"),
     "staticmap": ("Apache-2.0", "https://github.com/komoot/staticmap"),
     "immich-memories-music": (
         "MIT (tracks generated locally, see LICENSE-MUSIC)",

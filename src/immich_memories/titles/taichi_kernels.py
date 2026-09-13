@@ -18,7 +18,7 @@ import numpy as np
 # take `ti` from the same place.
 # TAICHI_AVAILABLE keeps its name here: the package and its tests read it from
 # this module, and it means the same thing whichever library was picked.
-from .gpu_kernel_backend import KERNEL_BACKEND, ti
+from .gpu_kernel_backend import KERNEL_BACKEND, KERNEL_BACKEND_REQUEST, ti
 from .gpu_kernel_backend import KERNEL_LIBRARY_AVAILABLE as TAICHI_AVAILABLE
 from .taichi_backend_probe import (
     _backend_dispatches,
@@ -74,7 +74,15 @@ def init_taichi() -> str | None:
             continue
         try:
             _silent_init(arch=backend, offline_cache=True)
-            logger.info(f"{KERNEL_BACKEND} initialized with {name} backend")
+            # The one line that says which of the two libraries this run is on.
+            # init_taichi() is idempotent, so it is printed once per process.
+            logger.info(
+                "Title kernels: %s %s (%s) on the %s backend",
+                KERNEL_BACKEND,
+                _kernel_library_version(),
+                KERNEL_BACKEND_REQUEST,
+                name,
+            )
             _compile_kernels()
             if SDF_AVAILABLE and init_sdf_kernels:
                 init_sdf_kernels()
@@ -90,6 +98,12 @@ def init_taichi() -> str | None:
         f"Failed to initialize {KERNEL_BACKEND} with any backend. Last error: {last_error}"
     )
     return None
+
+
+def _kernel_library_version() -> str:
+    """The loaded library's version, however it chooses to expose it."""
+    version = getattr(ti, "__version__", None)
+    return ".".join(str(part) for part in version) if isinstance(version, tuple) else str(version)
 
 
 def is_taichi_available() -> bool:

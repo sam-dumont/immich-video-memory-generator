@@ -18,6 +18,10 @@ from immich_memories.tracking.system_info import (
 )
 
 
+def _reinitialized(**_kwargs) -> None:
+    raise AssertionError("the kernel runtime was reinitialized")
+
+
 class TestCheckTaichi:
     """Optional Taichi detection must distinguish absence from a broken install."""
 
@@ -29,8 +33,16 @@ class TestCheckTaichi:
 
         monkeypatch.setattr(taichi_kernels, "_taichi_initialized", True)
         monkeypatch.setattr(taichi_kernels, "_taichi_backend", "Metal")
-        with patch("taichi.init", side_effect=AssertionError("Taichi was reinitialized")):
-            assert _check_taichi() is True
+        # WHY not patch("taichi.init"): naming the library imports it, and a
+        # process that loaded Quadrants dies on a Taichi import (#558). The
+        # initializer this module owns is the boundary either way.
+        monkeypatch.setattr(
+            taichi_kernels,
+            "_silent_init",
+            _reinitialized,
+        )
+
+        assert _check_taichi() is True
 
     def test_missing_optional_package_is_unavailable(self, monkeypatch: pytest.MonkeyPatch):
         """A base/dev install with no kernel library can still record a pipeline run."""

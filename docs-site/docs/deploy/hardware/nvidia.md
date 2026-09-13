@@ -12,7 +12,7 @@ NVIDIA GPUs with NVENC move video encoding off the CPU and onto dedicated silico
 - **NVENC encoding**: h264_nvenc, hevc_nvenc. Offloads encoding to dedicated hardware on the GPU.
 - **NVDEC decoding**: hardware-accelerated decode, keeps the full pipeline on GPU.
 - **CUDA scaling**: `scale_cuda` resizes frames on the GPU instead of pulling them back to CPU.
-- **Taichi title rendering**: with the `gpu` extra installed, Taichi picks the CUDA backend (Vulkan second) for animated title screens. This is the phase that costs the most on a CPU-only box.
+- **GPU title rendering**: the title kernels pick the CUDA backend (Vulkan second) for animated title screens. This is the phase that costs the most on a CPU-only box.
 
 What the card does *not* get you: the Docker image installs the CPU build of PyTorch on purpose, on both published architectures. The two annotation detectors are ONNX graphs on ONNX Runtime's CPU provider and want no torch at all (the only thing left in the image that does is local Demucs stem separation) so the CUDA wheels are pure weight: on arm64 they cost 3.3 GB of `nvidia` libraries plus 818 MB of triton, and the CUDA torch they come with still reports `cuda_available: False` inside the container. To run the ONNX seats against the CUDA execution provider, install `pip install "immich-memories[editorial-cuda]"` on the host instead of using the image; it replaces `editorial` rather than joining it.
 
@@ -113,6 +113,6 @@ Matching libx264 costs about **1.2x the bits**, the cheapest of the three hardwa
 to Intel's 2.2x and Apple's 2.9x. The configured CRF is translated onto NVENC's quantiser scale
 automatically; see [the overview](./overview.md#what-hardware-encoding-actually-costs).
 
-Just don't buy the card for the encode. Encoding is the smaller half of a CPU-only assembly: title rendering was ~263 s of a ~339 s assembly at `--cpus=2`. The bigger win from this GPU is Taichi title rendering. It does not run the editor's models: see the [self-hosting guide](../self-hosting.md#one-machine-or-two) for where those go. See [CPU-Only Mode](./cpu-only.md#title-rendering-is-the-bottleneck-not-encoding) for the measured split.
+Just don't buy the card for the encode. Encoding is the smaller half of a CPU-only assembly: title rendering was ~263 s of a ~339 s assembly at `--cpus=2`. The bigger win from this GPU is title rendering. It does not run the editor's models: see the [self-hosting guide](../self-hosting.md#one-machine-or-two) for where those go. See [CPU-Only Mode](./cpu-only.md#title-rendering-is-the-bottleneck-not-encoding) for the measured split.
 
 The `editorial-cuda` extra pins ONNX Runtime GPU to the 1.26 series for CUDA 12 and cuDNN 9. Version 1.27 and newer require CUDA 13; see the [official compatibility table](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html). Do not install the CPU `editorial` extra beside it.

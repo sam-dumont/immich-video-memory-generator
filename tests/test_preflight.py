@@ -151,14 +151,22 @@ def test_notification_preflight_is_optional_when_disabled() -> None:
     assert result.message == "Notifications disabled"
 
 
-def test_title_rendering_preflight_reports_the_pil_fallback_without_taichi() -> None:
-    # WHY: replaces the installed-package probe with what a no-gpu install sees.
+def test_title_rendering_preflight_reports_the_pil_fallback_without_a_kernel_library() -> None:
+    # WHY: replaces the installed-package probe with what a no-kernel install sees.
     with patch("immich_memories.preflight.importlib.util.find_spec", return_value=None):
         result = check_title_rendering(Config())
 
     assert result.status is CheckStatus.WARNING
     assert "PIL fallback" in result.message
-    assert "immich-memories[gpu]" in (result.details or "")
+    assert "immich-memories" in (result.details or "")
+
+
+def test_title_rendering_preflight_names_the_library_it_would_load() -> None:
+    """One of the two being present is enough, and the message says which one."""
+    result = check_title_rendering(Config())
+
+    assert result.status is CheckStatus.OK
+    assert "quadrants" in result.message
 
 
 def test_preflight_run_lists_every_absent_optional_feature() -> None:

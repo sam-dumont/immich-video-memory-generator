@@ -22,9 +22,9 @@ is 3 h 41 min for a 10,793-picture library instead of four days.
 
 | Feature | With GPU | Without GPU | Impact |
 |---------|----------|-------------|--------|
-| Title screens | Animated GPU-rendered (Taichi: bokeh particles, gradient animation, SDF text) | Static PIL-rendered (gradient background, text overlay) | Simpler visuals, same text. And the dominant cost of a run (see below) |
+| Title screens | Animated GPU-rendered (Quadrants/Taichi: bokeh particles, gradient animation, SDF text) | Static PIL-rendered (gradient background, text overlay) | Simpler visuals, same text. And the dominant cost of a run (see below) |
 | Video encoding | NVENC / VideoToolbox / VAAPI / QSV | libx264 / libx265 (software) | Slower encoding: the smaller half of a run |
-| SDF text rendering | Taichi GPU kernels + FreeType atlas | PIL text drawing | No SDF glow/shadow effects |
+| SDF text rendering | GPU kernels + FreeType atlas | PIL text drawing | No SDF glow/shadow effects |
 | Video scaling | GPU-accelerated (scale_cuda, scale_vaapi) | FFmpeg swscale (CPU) | Slower for resolution changes |
 
 **What runs on this CPU, identically to a GPU box:**
@@ -48,49 +48,49 @@ hardware:
   enabled: false
 ```
 
-## Taichi (optional GPU dependency)
+## Title kernels: Quadrants by default, Taichi fallback
 
-Taichi powers the animated title screen renderer (particle effects, gradient animations, SDF text). It is an **optional** dependency:
+The animated title screen renderer (particle effects, gradient animations, SDF text) runs on a GPU
+kernel library. Since 0.80 that library is
+[Quadrants](https://github.com/Genesis-Embodied-AI/quadrants), and it installs with the app. There
+is no extra to remember:
 
 ```bash
-# Install with GPU title support
-pip install "immich-memories[gpu]"
-
-# Or install without it (CPU-only titles)
 pip install immich-memories
 ```
 
-When Taichi is not installed, title screens are rendered with PIL (static gradient + text). The video output is functionally identical: same title text, same timing, same encoding.
+Quadrants is the maintained fork of Taichi. Taichi 1.7.4 (July 2025) is the last release its
+upstream will make; Quadrants has the same kernel API, renders the same frames (measured across
+five styles and nine moods: worst pixel 1/255, ten pixels of 7.8 million), ships a smaller wheel,
+and publishes `linux/arm64` wheels that Taichi never did. That last one is why the swap is worth
+it here: **`linux/arm64` hosts (a Raspberry Pi, the arm64 Docker image) now get GPU-rendered titles
+instead of the PIL fallback.**
 
-Taichi also has a CPU backend. To keep Taichi but force it off the GPU (a broken driver, or
-comparing timings), set `IMMICH_FORCE_CPU=1`. On `linux/arm64` (Raspberry Pi, the arm64 Docker
-image) the `gpu` extra skips Taichi altogether: titles are always PIL-rendered there.
-
-### Quadrants (experimental)
-
-Taichi 1.7.4 (July 2025) is the last release upstream will make. [Quadrants](https://github.com/Genesis-Embodied-AI/quadrants)
-is a maintained fork of it with the same kernel API, so the title renderer runs on either one
-unchanged. Two reasons to care: it is where bug fixes now happen, and it publishes
-`linux/arm64` wheels — which is exactly the platform the `gpu` extra has to skip, so a Pi or an
-arm64 Docker host gets GPU-rendered titles back instead of the PIL fallback.
-
-```bash
-pip install "immich-memories[titles-quadrants]"
-```
+Taichi is still supported. `immich-memories[gpu]` installs it, and the config picks it:
 
 ```yaml
 advanced:
   hardware:
-    title_kernel_backend: quadrants
+    title_kernel_backend: auto   # auto (default) | quadrants | taichi
 ```
 
-`IMMICH_MEMORIES_TITLE_KERNELS=quadrants` does the same for a single run. An install that asks for
-Quadrants without the extra logs one line and renders with Taichi, so the flag is safe to leave in
-a config you copy between machines.
+`auto` takes Quadrants when it is installed and Taichi otherwise. Naming one pins it, and an
+install that does not have the one it named falls back to the other rather than losing titles.
+`IMMICH_MEMORIES_TITLE_KERNELS=quadrants` overrides the config for a single run. Whichever wins,
+one line at the start of a render says so:
 
-Taichi remains the default and is not going anywhere until Quadrants has soaked. Only one of the two
-is ever loaded — they each carry their own copy of LLVM and a process that imports both dies — so
-this is a per-run choice, not a mix.
+```
+Title kernels: quadrants 1.3.0 (auto) on the Metal backend
+```
+
+Only one of the two is ever loaded. They each carry their own copy of LLVM and register the same
+options with it, so a process that imports both aborts. This is a choice per run, never a mix.
+
+With neither installed, title screens are rendered with PIL (static gradient + text). The video
+output is functionally identical: same title text, same timing, same encoding, simpler visuals.
+
+Both libraries also have a CPU backend. To keep the GPU renderer but force it onto the processor (a
+broken driver, or comparing timings), set `IMMICH_FORCE_CPU=1`.
 
 ## Performance expectations
 
