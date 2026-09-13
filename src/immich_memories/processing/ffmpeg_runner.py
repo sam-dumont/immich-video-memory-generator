@@ -38,6 +38,12 @@ FFMPEG_STDERR_TAIL_BYTES = 64 * 1024
 # reader noticing EOF, a cancelled watchdog waking up.
 _THREAD_JOIN_SECONDS = 10.0
 
+# What a child that means to stop on SIGTERM is given: FFmpeg finishes the file
+# it is writing, then exits. The second grace is the kernel's, for delivering
+# SIGKILL and letting us reap what is left.
+TERMINATE_GRACE_SECONDS = 5.0
+KILL_GRACE_SECONDS = 5.0
+
 # The feed loop does real work per frame (Ken Burns rendering, decoding), so its
 # budget has to be a multiple of the wait that follows it, not the same number.
 _TOTAL_TIMEOUT_FACTOR = 10
@@ -148,8 +154,8 @@ def drain_stderr_tail(
 def stop_owned_process(
     process: subprocess.Popen[Any],
     *,
-    terminate_grace: float = 5.0,
-    kill_grace: float = 5.0,
+    terminate_grace: float | None = None,
+    kill_grace: float | None = None,
 ) -> None:
     """End a child we own and reap it: terminate, bounded wait, kill, reap.
 
@@ -160,6 +166,8 @@ def stop_owned_process(
     """
     if process.poll() is not None:
         return
+    terminate_grace = TERMINATE_GRACE_SECONDS if terminate_grace is None else terminate_grace
+    kill_grace = KILL_GRACE_SECONDS if kill_grace is None else kill_grace
     with contextlib.suppress(OSError):
         process.terminate()
     try:
