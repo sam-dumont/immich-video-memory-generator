@@ -17,7 +17,7 @@ import json
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from immich_memories.analysis.editorial_contracts import (
     ConservationCheck,
@@ -28,7 +28,7 @@ from immich_memories.analysis.editorial_contracts import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Mapping
 
 _active: ContextVar[Trace | None] = ContextVar("selection_trace", default=None)
 
@@ -303,6 +303,47 @@ class Trace:
             ),
             "",
         ]
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> Trace:
+        """A trace read back from the file a run left behind, enough for `story_of`.
+
+        Request traces are not rebuilt: a story needs the passes and their
+        decisions, not the wire provenance of each request.
+        """
+        trace = cls()
+        trace.warnings = list(data.get("warnings") or [])
+        trace.clips = dict(data.get("clips") or {})
+        for raw in data.get("editorial_passes") or ():
+            provenance = raw.get("provenance") or {}
+            trace.editorial_passes.append(
+                PassTrace(
+                    name=str(raw.get("name", "")),
+                    input_ids=tuple(raw.get("input_ids") or ()),
+                    kept_ids=tuple(raw.get("kept_ids") or ()),
+                    rejected=tuple(
+                        TraceDecision(str(d.get("asset_id", "")), str(d.get("reason", "")))
+                        for d in raw.get("rejected") or ()
+                    ),
+                    unresolved=tuple(
+                        TraceDecision(str(d.get("asset_id", "")), str(d.get("reason", "")))
+                        for d in raw.get("unresolved") or ()
+                    ),
+                    duration_before=float(raw.get("duration_before") or 0.0),
+                    duration_after=float(raw.get("duration_after") or 0.0),
+                    provenance=DecisionProvenance(
+                        pass_name=str(provenance.get("pass_name", "")),
+                        pass_version=str(provenance.get("pass_version", "")),
+                        schema_version=str(provenance.get("schema_version", "")),
+                        model_identity=str(provenance.get("model_identity", "")),
+                        input_ids=tuple(provenance.get("input_ids") or ()),
+                        sheet_hashes=tuple(provenance.get("sheet_hashes") or ()),
+                        request_key=str(provenance.get("request_key", "")),
+                        cache_hit=bool(provenance.get("cache_hit", False)),
+                    ),
+                )
+            )
+        return trace
 
     def as_dict(self) -> dict:
         return {

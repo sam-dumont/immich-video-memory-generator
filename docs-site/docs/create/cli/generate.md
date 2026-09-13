@@ -160,6 +160,8 @@ explicitly; the flags below still win. Five keys in three sections, and none of 
 | `--keep-intermediates` | n/a | flag | n/a | Keep intermediate files for debugging |
 | `--quiet` | n/a | flag | n/a | Suppress interactive progress, emit log lines only |
 | `--trace-selection` | n/a | path | n/a | Write a stage-by-stage report of how the clips were chosen |
+| `--include` | n/a | asset id, repeatable | n/a | Keep this picture in the cut even if the editor would drop it. The same as ticking it on the pool page after a cut |
+| `--exclude` | n/a | asset id, repeatable | n/a | Leave this picture out. The same as unticking it |
 
 ### Upload
 
