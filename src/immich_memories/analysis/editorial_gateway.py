@@ -19,6 +19,7 @@ from immich_memories.analysis.editorial_contracts import (
     RequestTrace,
 )
 from immich_memories.analysis.llm_query import LLMTransportAttempt, query_llm
+from immich_memories.analysis.provider_status import watch_provider
 from immich_memories.analysis.selection_trace import Trace
 from immich_memories.analysis.visual_request_planner import VisionRequestLimits
 from immich_memories.cache.judgment_cache import VisualJudgmentCache, VisualJudgmentIdentity
@@ -170,8 +171,10 @@ class VisualEditorialGateway:
             request, page_hashes, request_key, cache_hit=False, model=llm_config.model
         )
         attempts: list[RequestAttemptTrace] = []
+        watch = watch_provider("reader", llm_config)
 
         def record_attempt(attempt: LLMTransportAttempt) -> None:
+            watch(attempt)
             attempts.append(
                 RequestAttemptTrace(
                     attempt=attempt.attempt,
