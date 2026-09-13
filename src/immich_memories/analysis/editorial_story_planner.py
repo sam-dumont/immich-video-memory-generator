@@ -524,12 +524,14 @@ def trim_to_timing_budget(
     carriers: list[dict],
     content_budget_of: Callable[[list[dict]], float],
     min_seconds: float,
+    protected: frozenset[str] = frozenset(),
 ) -> tuple[list[dict], list[dict]]:
     """Drop carriers until their minimum content fits the production content budget of what remains.
 
     The budget depends on the selection (a month divider per month shown), so it is re-resolved
     after every drop. Drop order: the least weighed story first, and inside a story its latest
-    picture; a story's only picture goes only when no lighter story still has one.
+    picture; a story's only picture goes only when no lighter story still has one. A protected
+    carrier (one the owner required) is never a victim; when only those remain the trim stops.
     """
     kept = carriers.copy()
     dropped: list[dict] = []
@@ -540,7 +542,9 @@ def trim_to_timing_budget(
         counts: dict[str, int] = {}
         for c in kept:
             counts[c.get("story_episode") or ""] = counts.get(c.get("story_episode") or "", 0) + 1
-        ranked = [(_drop_rank(c, counts), c) for c in kept]
+        ranked = [(_drop_rank(c, counts), c) for c in kept if c["asset_id"] not in protected]
+        if not ranked:
+            break
         best = min(rank for rank, _c in ranked)
         if best >= 14 and len(kept) == 1:
             break  # the dominant story's only picture stays whatever the budget says

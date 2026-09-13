@@ -27,7 +27,7 @@ from immich_memories.ui.pages.memory_run import (
 )
 from immich_memories.ui.pages.memory_story import render_story
 from immich_memories.ui.pages.memory_story_data import StoryView, read_story_view
-from immich_memories.ui.pages.step2_review import _start_over_selection
+from immich_memories.ui.pages.step2_review import reset_for_recut
 from immich_memories.ui.state import get_app_state
 
 if TYPE_CHECKING:
@@ -55,8 +55,8 @@ def render_memory() -> None:
 
 
 def _recut(state: AppState) -> None:
-    """Run the editor again over the same pool."""
-    if not arm_cut(state, before=lambda: _start_over_selection(state)):
+    """Run the editor again over the same pool, with the owner's ticks."""
+    if not arm_cut(state, before=lambda: reset_for_recut(state)):
         ui.notify(CUT_ALREADY_RUNNING, type="warning")
         return
     ui.navigate.to("/")

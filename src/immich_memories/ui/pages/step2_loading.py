@@ -209,6 +209,7 @@ async def _finish_load(
     _set_initial_selection(clips, state)
     state.photo_assets = photo_assets
     state.selected_photo_ids = {a.id for a in photo_assets}
+    state.previous_cut_asset_ids = None
 
     total = f"Found {len(clips)} videos"
     if photo_assets:
