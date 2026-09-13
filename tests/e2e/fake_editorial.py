@@ -37,7 +37,7 @@ PREVIEW_STAGE = "previews"
 # order the real route reaches them. The Memory page shows the current one, so a
 # wrong label here would hide a real regression in the progress surface.
 STAGES = (
-    "Preparing source metadata",
+    "Reading dates, places and people",
     "Reading event evidence",
     "Reading the period account",
     "Building editorial cards",

@@ -110,6 +110,10 @@ class LiveStrip:
                 cell.set_visibility(False)
                 self._cells.append(cell)
 
+    def hide(self) -> None:
+        for cell in self._cells:
+            cell.set_visibility(False)
+
     def show(self, asset_ids: Sequence[str]) -> None:
         for index, asset_id in self._ring.admit(asset_ids, limit=STRIP_ARRIVALS_PER_TICK):
             # A slot the ring has handed out stays spent even when the picture
