@@ -2,7 +2,7 @@
 # Uses uv for fast Python package management
 export PYTHONUNBUFFERED=1
 
-.PHONY: help install dev dev-ci dev-test run preflight parity docs-cli-check docs-config-check test test-extras test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-audio-mixing test-integration-titles test-fast benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci integration-coverage-for-diff ci critique ensure-dev commitlint privacy-gate pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots demo-output diagrams capability-matrix
+.PHONY: docs-voice notices notices-check help install dev dev-ci dev-test run preflight parity docs-cli-check docs-config-check test test-extras test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-audio-mixing test-integration-titles test-fast benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci integration-coverage-for-diff ci critique ensure-dev commitlint privacy-gate pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots demo-output diagrams capability-matrix
 
 # Default target
 help:
@@ -292,7 +292,7 @@ playwright-install:  ## Install Playwright browsers for E2E tests
 
 e2e:  ## Run required fake-service contracts and real hermetic browser render
 	uv run pytest tests/e2e/test_fake_immich.py tests/e2e/test_launch_smoke.py \
-		tests/e2e/test_memory_page.py -v \
+		tests/e2e/test_memory_page.py tests/e2e/test_people_page.py -v \
 		-m "e2e and not visual" --log-cli-level=INFO --tb=short \
 		--junitxml=tests/e2e-junit.xml
 
@@ -614,7 +614,7 @@ launch-check-ci: ensure-dev e2e
 	@echo "Hermetic launch check passed!"
 
 # Full CI-equivalent pipeline (locally)
-ci: ensure-dev lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint semgrep refurb dep-check arch-check duplication critique docs-cli-check docs-config-check test
+ci: ensure-dev lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint semgrep refurb dep-check arch-check duplication critique docs-cli-check docs-config-check docs-voice notices-check test
 	@echo "Full CI pipeline passed!"
 
 # Self-critique for AI code smells
@@ -788,6 +788,24 @@ docs-cli-check:
 # Fail when the hand-written config reference and the pydantic schema disagree on keys
 docs-config-check:
 	uv run python scripts/check_config_docs.py
+
+# Fail when the docs or the README use the words and punctuation the owner's voice bans
+docs-voice:  ## Voice gate: no em dashes, no chatbot words, in README.md and docs-site/docs
+	uv run python scripts/docs_voice_gate.py
+
+# THIRD_PARTY_NOTICES is generated: the hand-written sections live in THIRD_PARTY_NOTICES.in,
+# the Python dependency inventory comes from uv.lock plus the installed licence metadata
+notices:  ## Regenerate THIRD_PARTY_NOTICES from THIRD_PARTY_NOTICES.in and uv.lock
+	uv run python scripts/generate_third_party_notices.py
+
+notices-check:  ## Fail when THIRD_PARTY_NOTICES is stale against uv.lock
+	@uv run python scripts/generate_third_party_notices.py >/dev/null && \
+	if ! git diff --quiet -- THIRD_PARTY_NOTICES; then \
+		echo "THIRD_PARTY_NOTICES is stale: run 'make notices' and commit the result"; \
+		git --no-pager diff --stat -- THIRD_PARTY_NOTICES; \
+		exit 1; \
+	fi; \
+	echo "THIRD_PARTY_NOTICES is up to date"
 
 docs-install:
 	cd docs-site && npm ci

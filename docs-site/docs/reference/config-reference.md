@@ -160,7 +160,7 @@ picture, measured by SSIM, rather than the same integer. See
 [the hardware overview](../deploy/hardware/overview.md#quality-what-crf-means-on-each-backend)
 for the measured table. Lower CRF still means higher quality everywhere.
 
-The presets are points on that curve, measured on 1080p60 film and — for `balanced` — judged by
+The presets are points on that curve, measured on 1080p60 film and (for `balanced`) judged by
 eye on gradients:
 
 | `quality` | reference CRF | SSIM | software bitrate | per minute |
@@ -169,7 +169,7 @@ eye on gradients:
 | `balanced` (default) | 24 | 0.98451 | 1.6 Mbps | ~12 MB |
 | `fast` | 24 | 0.98451 | 1.6 Mbps | ~12 MB, encoded as fast as the backend can |
 
-`high` used to mean CRF 12, which is past SSIM 0.999 — quality nobody can see, at several times
+`high` used to mean CRF 12, which is past SSIM 0.999: quality nobody can see, at several times
 the bits, and the reason exports were hundreds of megabytes.
 
 There is deliberately no tier below `balanced`: around 0.980 gradients start to band, and a preset
@@ -179,8 +179,8 @@ buys its speed from the encoder effort preset instead, overriding `hardware.enco
 
 `codec_policy` decides what happens when the machine has no hardware encoder for the codec you
 asked for but does have one for the other. `prefer_hardware` (the default) switches codec and says
-so in the log and the run record, which on a chip like Intel Gemini Lake — H.264 encode entrypoint,
-no HEVC one — is the difference between a film finishing and the CPU doing all of it. The file is
+so in the log and the run record, which on a chip like Intel Gemini Lake (H.264 encode entrypoint,
+no HEVC one) is the difference between a film finishing and the CPU doing all of it. The file is
 bigger and plays on more things. `strict` always honours `output.codec` and accepts the CPU cost.
 The switch never applies to ProRes, and never to an HDR output, because H.264 carries no HDR.
 

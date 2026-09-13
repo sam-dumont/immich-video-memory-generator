@@ -16,6 +16,7 @@ thing; neither pretends to phases that do not exist.
 from __future__ import annotations
 
 from immich_memories.analysis.llm_metrics import LLMCounters
+from immich_memories.operations.storyboard import Storyboard, storyboard_lines
 
 __all__ = ["render_llm_totals", "render_run_summary"]
 
@@ -88,6 +89,8 @@ def render_run_summary(
     planned: int,
     counters: LLMCounters | None,
     preparation_tier: str = "full",
+    storyboard: Storyboard | None = None,
+    run_id: str | None = None,
 ) -> str:
     """The end-of-run block, as printable text.
 
@@ -106,7 +109,28 @@ def render_run_summary(
     ]
     lines.extend(_tier_lines(preparation_tier))
     lines.extend(_llm_lines(counters))
+    lines.extend(_storyboard_lines(storyboard, run_id))
     return "\n".join(lines)
+
+
+_SUMMARY_SHOTS = 8
+
+
+def _storyboard_lines(board: Storyboard | None, run_id: str | None) -> list[str]:
+    """The first shots of the cut in the order they play, and where to read the rest."""
+    if board is None or not board.shots:
+        return []
+    lines = ["", f"  the cut, in order ({len(board.shots)} shots, {board.total_label})"]
+    lines.extend(storyboard_lines(board, limit=_SUMMARY_SHOTS))
+    if len(board.shots) > _SUMMARY_SHOTS:
+        rest = len(board.shots) - _SUMMARY_SHOTS
+        handle = run_id or "<run id>"
+        lines.append(f"  ... {rest} more: immich-memories runs story {handle}")
+    elif run_id:
+        lines.append(
+            f"  why any picture is in or out: immich-memories runs why <asset id> --run {run_id}"
+        )
+    return lines
 
 
 def render_llm_totals(metrics: dict) -> str:

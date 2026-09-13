@@ -10,7 +10,7 @@ container, with their own device variant. It is modelled on `immich-machine-lear
 the same way: one image per backend, weights in a cache volume, weights dropped when idle.
 
 It is **optional**. Leave it out and the app runs the same producers in process, which is what a
-laptop wants. Run it when the models belong somewhere other than the box running the app — a GPU
+laptop wants. Run it when the models belong somewhere other than the box running the app: a GPU
 machine, a Kubernetes node, or simply a container you can restart without restarting the app.
 
 :::note
@@ -26,7 +26,7 @@ this service later; today it serves `/facts` only.
 | `:X.Y.Z-cuda` | `linux/amd64` | CUDA, falling back to CPU |
 
 `openvino`, `armnn` and `rocm` are not shipped. Quick Sync, VAAPI and NVENC decode, scale and
-encode — they do not run inference, and that stays true on every page here.
+encode: they do not run inference, and that stays true on every page here.
 
 Both are published by the release, so you pull rather than build:
 
@@ -71,7 +71,7 @@ curl -s localhost:8092/health | grep CUDAExecutionProvider
 
 `/health` names the provider a session is on, or the one it would open on if nothing is loaded yet.
 If it says `CPUExecutionProvider` on a GPU host, the reservation did not reach the container or the
-image is the CPU one — those are the only two causes.
+image is the CPU one: those are the only two causes.
 
 ## What it answers
 
@@ -79,7 +79,7 @@ image is the CPU one — those are the only two causes.
 |---|---|
 | `GET /ping` | are you up |
 | `GET /health` | which producers are loaded, at which versions, on which provider |
-| `POST /facts` | one picture in — what do the frozen classifiers say about it |
+| `POST /facts` | one picture in: what do the frozen classifiers say about it |
 
 ```bash
 curl -s localhost:8092/facts -H 'content-type: application/json' \
@@ -93,7 +93,7 @@ curl -s localhost:8092/facts -H 'content-type: application/json' \
 
 A fact on the wire is the bank row without its asset id. The client stores what it is handed,
 verbatim, which is the whole point: **a fact's identity is the artifact that produced it, never the
-machine that ran it.** The same picture through the `cpu` and the `cuda` image lands on one row —
+machine that ran it.** The same picture through the `cpu` and the `cuda` image lands on one row:
 no URL, hostname, device or execution-provider name enters any key. Facts are label-identical
 across providers rather than byte-identical; confidences move in the last few decimal places.
 

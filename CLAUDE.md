@@ -80,6 +80,13 @@ make docs-cli-check
 # Config reference key parity with the pydantic schema
 make docs-config-check
 
+# Voice gate: no em dashes or chatbot words in README.md and docs-site/docs
+make docs-voice
+
+# Regenerate THIRD_PARTY_NOTICES from THIRD_PARTY_NOTICES.in + uv.lock, and fail on drift
+make notices
+make notices-check
+
 
 # Architectural boundary enforcement (import-linter)
 make arch-check

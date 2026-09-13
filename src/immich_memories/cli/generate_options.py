@@ -225,6 +225,20 @@ def run_options(command: FC) -> FC:
             help="Write a stage-by-stage report of how the clips were chosen",
         ),
         click.option(
+            "--include",
+            "include_asset",
+            metavar="ASSET_ID",
+            multiple=True,
+            help="Keep this picture in the cut even if the editor would drop it (repeatable)",
+        ),
+        click.option(
+            "--exclude",
+            "exclude_asset",
+            metavar="ASSET_ID",
+            multiple=True,
+            help="Leave this picture out of the cut (repeatable)",
+        ),
+        click.option(
             "--upload-to-immich",
             is_flag=True,
             default=False,
