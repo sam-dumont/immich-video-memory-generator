@@ -97,6 +97,9 @@ class AppState:
     editorial_render_timing: dict[str, Any] | None = None
     # Where the last cut wrote its plan; the story page reads it from there.
     editorial_attempt_dir: Path | None = None
+    # The cut the pool's ticks are shown against. A tick outside it is a picture the owner
+    # wants back in; None means no cut yet, so ticks are plain exclusions.
+    previous_cut_asset_ids: frozenset[str] | None = None
     # The armed cut's identity, set before its worker starts. A reload polls the
     # attempt tree under this key instead of starting a second run. Sessions that
     # cut the same brief share a key, so only attempts started after the arming
@@ -349,6 +352,7 @@ class AppState:
         self.timeline_plan = None
         self.editorial_render_timing = None
         self.editorial_attempt_dir = None
+        self.previous_cut_asset_ids = None
         self.active_cut_key = None
         self.cut_armed_at = None
         self.review_selected_mode = False
@@ -417,6 +421,22 @@ def get_app_state() -> AppState:
     state.last_accessed = datetime.now()
     _sessions[session_id] = state
     return state
+
+
+def peek_app_state() -> AppState | None:
+    """The current browser session's AppState, or None; never creates one.
+
+    A plain HTTP route (the thumbnail route) must not mint a session for a
+    request that carries no known cookie: NiceGUI would persist the fresh user
+    dict to disk, one file per stray request (see ui/session_storage.py).
+    """
+    from nicegui import app
+
+    session_id = app.storage.user.get("session_id")
+    if not session_id or session_id not in _sessions:
+        return None
+    _sessions[session_id].last_accessed = datetime.now()
+    return _sessions[session_id]
 
 
 def cleanup_stale_sessions(max_age_hours: int = _SESSION_TIMEOUT_HOURS) -> None:
