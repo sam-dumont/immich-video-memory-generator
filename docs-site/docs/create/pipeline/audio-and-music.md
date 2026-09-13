@@ -5,339 +5,139 @@ title: Audio & Music
 
 # Audio & Music
 
-The music pipeline has three stages:
+Three stages: a mood for the memory, a track for the mood, and ducking so the music drops under
+the clips' own sound. Ducking is a sidechain compressor keyed on the clip's audio; it does not
+know what the sound is, so speech, laughter, wind and traffic all duck it.
 
-1. **Mood detection**: A vision LLM looks at keyframes from your video and outputs a structured mood analysis (happy, calm, energetic, etc. plus genre and tempo suggestions).
-2. **Music generation**: The pipeline takes that mood and sends it to the configured music backend. ACE-Step can run directly in the app or through its REST API. MusicGen is the alternative generator when ACE-Step is disabled.
-3. **Audio ducking**: a sidechain compressor keyed on the clip's own audio track, so the music drops whenever the footage is louder. It does not know what the sound is; speech, laughter, wind and traffic all duck it.
+## Which music plays
 
-## No GPU? Start here
+| Where | Switch | Effect |
+|---|---|---|
+| Config | `ace_step.enabled`, `musicgen.enabled` | When either is on, a track is generated (ACE-Step first when both are) |
+| CLI | `--music PATH`, `--no-music`, `--music-volume 0.0-1.0` (default 0.5) | Your file, no music, or the level |
+| UI, Generation Options | **Background music**: None, Upload file, Bundled, AI Generated, plus the volume slider | Same choices per run |
 
-A plain install produces silent videos unless you supply an MP3 per run: both
-music generators need a GPU or a separate server. The `music` extra ships 28
-royalty-free background tracks that are used automatically when no generator is
-configured, so Docker and NAS installs have music out of the box.
+The chain is fixed: an explicit file wins; otherwise a generator if one is enabled; otherwise a
+bundled track. A generator that fails falls through to the next, then to the bundle, and the run
+is told: the substitution comes back as a warning on the finished video and in the nightly
+notification, so a dead backend does not sound like working music forever.
+
+## The bundled tracks
+
+A plain install renders silent videos unless you supply a file. The `music` extra ships 28
+royalty-free tracks (the Docker image and the `all` extra include it), used when no generator is
+configured:
 
 ```bash
 pip install "immich-memories[music]"
 ```
 
-The Docker image and the `all` extra already include it.
+Five moods (calm, energetic, happy, nostalgic, tender) in acoustic and electronic styles, about
+30 s each, looped with a crossfade to fill longer videos. They were generated locally with
+ACE-Step 1.5 from nothing sampled, so there is no attribution requirement; the settings and each
+track's tempo, key and seed are in `LICENSE-MUSIC` inside the package. The pick follows the
+memory's mood when the pipeline has one; today the per-clip emotion field the mood aggregation
+reads is not written by anything, so the choice is whole-library and random.
 
-Tracks cover five moods (calm, energetic, happy, nostalgic, tender) in acoustic
-and electronic styles, roughly 30 seconds each, and are repeated with a crossfade
-to fill longer videos. Selection is meant to follow the memory's detected mood, with near neighbours
-sharing a folder (playful draws from happy, peaceful from calm, romantic from
-tender), and a mood that maps to no folder drawing from the whole library rather
-than falling to silence. In practice every pick takes that last branch today:
-the per-clip emotion field the aggregation reads is no longer written by
-anything, so the choice is whole-library and random.
+When a memory holds photos, a bundled track whose measured beat lands within 0.2 beats of the
+photo cadence is preferred, so cuts land with the pulse. The window is loose on purpose: the
+detector quantises the beat period to 23 ms frames and reads half or double time often enough
+that a tighter window would throw away tracks that fit.
 
-They were generated locally with ACE-Step 1.5: nothing sampled from or derived
-from third-party recordings, so there is no attribution requirement. The models,
-settings and per-track tempo, key and seed are recorded in `LICENSE-MUSIC` inside
-the package.
+## ACE-Step
 
-Supplying `--music yourfile.mp3` or configuring a generator overrides the bundle;
-`--no-music` still means no music.
-
-## Music Providers
-
-### ACE-Step
-
-ACE-Step 1.5 takes explicit musical parameters (BPM, key, time signature) as structured API fields, which MusicGen does not. Nobody here has run a listening test between the two, so that is the difference this page will claim.
-
+ACE-Step 1.5 takes explicit musical parameters (BPM, key, time signature) as structured fields.
 Two modes:
 
-| Mode | How it works | When to use |
-|------|-------------|-------------|
-| `lib` | Direct Python import, in-process | Apple Silicon (MLX/MPS) or CUDA desktop, no server needed |
-| `api` | Remote REST API server | Headless servers, Docker deployments, Python 3.13 |
-
-Production model variants:
-
-| Variant | DiT | Steps | Use |
-|---------|-----|-------|-----|
-| `turbo` | 2B | 8 | Fast preview on smaller machines |
-| `base` | 2B | 50 | Special tasks and fine-tuning, not the normal soundtrack default |
-| `acestep-v15-xl-turbo` | 4B | 8 | Recommended production soundtrack model; the memory check wants 21 GB *free* without the planner, 29 GB with it |
-| `acestep-v15-xl-sft` | 4B | 50 | Maximum detail and tunable CFG; see the v0.1.8 warning below |
-| `acestep-v15-xl-base` | 4B | 50 | Extract/lego/complete workflows, not needed for normal text-to-music |
-
-The Steps column describes `lib` mode. In `api` mode the request carries no step count, guidance
-scale or shift: whatever the remote server is configured with is what you get.
-
-The DiT model and LM planner are separate choices. `acestep-v15-xl-turbo` selects the 4B audio
-executor; `lm_model_size: "4B"` selects the 4B planner. For local `lib` mode, use both for the
-full XL setup. In `api` mode the remote ACE-Step server owns the loaded DiT/LM models, so
-`model_variant` and `lm_model_size` in this app do not switch the server's models.
-
-```yaml
-ace_step:
-  enabled: true
-  mode: "lib"              # or "api"
-  api_url: "http://localhost:8000"
-  model_variant: "acestep-v15-xl-turbo"
-  lm_model_size: "4B"
-  num_versions: 3
-```
-
-:::warning Python 3.12 or earlier required for local mode
-ACE-Step local (`mode: "lib"`) requires Python 3.12 or earlier. API mode works on any Python version.
-:::
-
-:::warning ACE-Step v0.1.8 non-turbo XL models
-v0.1.7 added DCW and enabled it by default. On v0.1.8, direct-library and REST callers still inherit
-DCW-on for `xl-sft` and `xl-base`, which can produce garbled audio on Apple Silicon. The Gradio UI
-has a model-aware default, but the equivalent CLI/API fix is still an
-[open upstream change](https://github.com/ace-step/ACE-Step-1.5/pull/1282). Use `xl-turbo` for
-production automation; test non-turbo XL only with DCW explicitly disabled in a patched server or
-adapter.
-:::
-
-#### Tempo follows the photo cuts
-
-When a memory contains photos, the tempo asked of ACE-Step is nudged so a photo
-lasts a whole number of beats. Photos hold the screen for a fixed time, so their
-cuts arrive at a steady rate; picking a tempo whose beat divides that rate makes
-the cuts land with the pulse instead of against it.
-
-The rate is the interval between visible cuts, not the photo's length. A
-crossfade starts the next clip before the current one ends, so at the default
-4 s photo duration and 0.5 s crossfade the cuts arrive every 3.5 s. Aligning to
-4 s instead put the pulse 0.21 beats away from the cut on average across the ten
-mood/style combinations, and 0.375 beats away at worst: most of a beat every
-few photos. Against the real 3.5 s interval that drops to 0.03 average, 0.2
-worst. Only 120 bpm divides 3.5 s exactly (the requested tempo is a whole
-number), so most combinations now land near-aligned rather than exactly aligned;
-near-aligned against the true interval beats exactly-aligned against the wrong
-one. With `transition: cut` there is no overlap and the cadence is the full
-photo duration.
-
-The nudge stays inside the genre's own tempo range (drum and bass at 70 bpm is
-not a thing), and within 15% of the mood's own tempo, so a run of short photos
-cannot drag a serene track up to dance tempo. Where neither holds, the mood wins
-and nothing changes. Videos are never re-timed: they carry speech and laughter
-the pipeline protects, so only photo cadence drives this.
-
-How closely ACE-Step honours a requested tempo has not been measured, so this page
-does not claim a figure. Asking for an aligned tempo is still worth doing; whatever
-the residual is, it is also why cuts are aligned in *rate* rather than locked to the
-beat.
-
-A bundled track cannot be asked for a tempo; its own is already fixed. So the
-choice runs the other way: the tracks are measured, the ones whose beat lands
-within 0.2 beats of the photo cadence become the candidates, and one of those is
-picked at random. Alignment narrows the field; it does not name a winner, or the
-same memory would get the same song every time it was regenerated. When nothing
-lands close enough the pick falls back to any track. With no photos there is no
-rhythm to sync to, and the pick stays random too.
-
-That 0.2 is set by the detector, not by taste: the onset envelope quantizes the
-beat period to 23 ms frames, so a track built at 120 bpm measures 117.5. A tighter
-window would throw away tracks that fit and measure only the noise. It is a loose
-window for a reason beyond quantisation, too: on the bundled corpus the detector
-reads half or double time often enough that the candidate set is partly its own
-error. Alignment narrows the field; it does not promise a track that fits.
-
-Tempo is measured with an onset envelope and autocorrelation over an FFmpeg
-decode, using numpy alone. librosa would be a line, but it is not a dependency
-of this project (it only arrives transitively with the torch extras), and a
-plain install with the `music` extra has to work without them.
-
-### MusicGen
-
-Meta's MusicGen handles text-to-music generation and Demucs stem separation via a remote API server. If you're running everything locally with ACE-Step + local Demucs, you don't need MusicGen at all.
-
-```yaml
-musicgen:
-  enabled: true
-  base_url: "http://localhost:8000"
-  timeout_seconds: 10800         # 3 hours max per job
-  num_versions: 3
-```
-
-### Local/API Fallback and Stem Separation
-
-ACE-Step `lib` mode automatically falls back to the configured ACE-Step REST API when the local
-package is not installed.
-
-Generators are tried in order. With both enabled, ACE-Step goes first and MusicGen is the fallback:
-an ACE-Step failure costs the run its first choice, not its music. Only when every enabled generator
-fails does the run drop to a bundled track. With ACE-Step disabled, MusicGen handles generation on
-its own.
-
-MusicGen also supplies remote Demucs stem separation when it is enabled; with it disabled, an
-installed local Demucs handles stems instead. Stems are separated only for the web UI, whose mixer
-ducks the four stems independently. The CLI masters the full mix and ducks that, so it asks for no
-separation rather than paying for a Demucs run it would discard.
-
-### Custom Music
-
-You don't have to use AI-generated music. In the web UI, on the options page (**Back to Generation Options** from Export), choose **Upload file** under **Background music** (MP3, M4A or WAV) and set the **Music volume** slider. On the CLI, pass `--music /path/to/track.mp3` (and `--music-volume 0.0-1.0`, default 0.5).
-
-To disable music, choose **None** in the UI or pass `--no-music` on the CLI. Without `--music`, the CLI generates an AI track when `ace_step.enabled` or `musicgen.enabled` is set. With no generator configured (or with one that failed) it falls back to a bundled track, and only renders with the clips' own audio when the `music` extra isn't installed and there is nothing bundled to fall back to.
-
-For a local library, `immich-memories music search` and `music add` read `audio.local_music_dir` (default `~/Music/Memories`); see the [music command](../cli/music.md). Generation itself does not pick from that directory.
-
-## Audio Ducking
-
-When background music plays over your clips, it should get quieter when someone's talking or when there's an interesting sound in the original audio. The music automatically dips to let the original audio through, then comes back up.
-
-### How it works
-
-1. **Stem separation**: [Demucs](https://github.com/facebookresearch/demucs) splits the clip's audio into vocals and non-vocal stems
-2. **Activity detection**: when the vocal/sound energy exceeds the ducking threshold, the music volume drops
-3. **Smooth transitions**: fade in/out prevents jarring volume jumps
-
-### Demucs dependency
-
-Stem separation requires [Demucs](https://github.com/facebookresearch/demucs), which downloads a model on first use (~80 MB). If Demucs isn't available, ducking still works but uses simpler energy detection on the mixed audio, which is less accurate at distinguishing speech from music.
-
-Install locally: `pip install 'immich-memories[demucs]'` and the pipeline auto-detects it. Or use MusicGen's remote `/separate` endpoint.
-
-## Fully Local Setup (No Servers)
-
-On Apple Silicon with at least 24 GB of unified memory, and the machine otherwise quiet, you can
-run the shown XL production profile in-process. The check is on *free* memory, not installed: the
-XL profile below needs 21 GB free without the planner, 29 GB with it. Smaller or busier machines
-should use the 2B `turbo` profile instead:
+| `ace_step.mode` | What runs |
+|---|---|
+| `api` (default) | HTTP to an ACE-Step server, polled every 3 s. The server owns the loaded models; `model_variant` and `lm_model_size` here do not switch them |
+| `lib` | The model in this process: MLX on Apple Silicon, CUDA on NVIDIA, PyTorch CPU otherwise. Python 3.12 or earlier. Falls back to `api` when the package is missing |
 
 ```yaml
 ace_step:
   enabled: true
   mode: "lib"
-  model_variant: "acestep-v15-xl-turbo"
+  api_url: "http://localhost:8000"
+  model_variant: "acestep-v15-xl-turbo"   # 4B, 8 steps: the production soundtrack model
   lm_model_size: "4B"
-  use_lm: false            # See "Thinking mode" below
-
-musicgen:
-  enabled: false           # Not needed: local Demucs handles stems
+  use_lm: false
+  num_versions: 3
 ```
 
-### Thinking mode (`use_lm`)
+The variants: `turbo` and `base` (2B, 8 and 50 steps), `acestep-v15-xl-turbo` (4B, 8 steps),
+`acestep-v15-xl-sft` and `acestep-v15-xl-base` (4B, 50 steps, for tuning and extract workflows).
+On v0.1.8 the non-turbo XL models inherit DCW on and can produce garbled audio on Apple Silicon;
+use `xl-turbo` for automation.
 
-Off by default. When on, ACE-Step's 5Hz language model rewrites your caption and
-invents its own genre metadata before the audio model ever sees the prompt, which
-pulls instrumental briefs off-target. It also dominates generation time: a 60 s
-track took ~45 s with it on and ~17 s with it off.
+`use_lm` is off by default: with it on, ACE-Step's language model rewrites the caption before the
+audio model sees it, pulls instrumental briefs off target, and takes a 60 s track from about 17 s
+to 45 s. The prompts this project ships are already written the way ACE-Step's guides recommend.
 
-Turn it on only if you want the model to elaborate a vague brief. The music
-prompts this project ships are already written the way ACE-Step's own guides
-recommend (genre first, then mood, instruments, production tags and BPM), so
-they do not need rewriting.
+When the memory holds photos, the requested tempo is nudged so a photo lasts a whole number of
+beats, measured against the interval between visible cuts (3.5 s at the default 4 s photo and
+0.5 s crossfade), within the genre's tempo range and within 15 % of the mood's tempo. Videos are
+never re-timed.
 
-:::note Upgrading
-`use_lm` previously defaulted to `true`. If your `config.yaml` sets it
-explicitly, set it to `false` to pick up the improved output.
-:::
+### Running it in-process on Apple Silicon
 
-Install the tested ACE-Step 1.5 release into the same Python 3.12 environment as
-`immich-memories`. ACE-Step's full UI dependency set currently conflicts with the app's Starlette
-version, so install the pinned package without its UI/training dependencies, then add the direct
-inference dependencies:
+`lib` mode checks free memory against the weights the profile keeps resident and refuses with a
+named shortfall rather than letting macOS kill the process mid-render: about 29 GB for XL with the
+4B planner, 21 GB for XL without it, 11 GB and 7 GB for the 2B profiles. A refusal is a normal
+backend failure: MusicGen next, then a bundled track. The MLX buffer cache is capped at 4 GiB and
+the DiT copy runs in bf16 (7.8 GB instead of 15.5 GB for XL); set
+`IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32=1` to keep fp32. Models are dropped after each batch, so the
+process falls back to about 1 GB between generations.
+
+Install the pinned release into the app's Python 3.12 environment without its UI dependencies:
 
 ```bash
 uv sync --extra demucs
 make install-acestep
 ```
 
-`make install-acestep` runs the pinned commands below and then imports the backend to
-prove the install actually works: a mismatched `torchvision` fails only at model load,
-several minutes into a generation, with `operator torchvision::nms does not exist`.
+The target runs the pinned `uv pip install` lines and imports the backend to prove the install
+works (a mismatched torchvision fails only at model load, minutes into a generation). A bare
+`uv sync` removes what the project does not declare; rerun `make install-acestep` after one.
 
-<details>
-<summary>What the target runs</summary>
+## MusicGen
 
-```bash
-uv pip install --python .venv/bin/python --no-deps \
-  'ace-step @ git+https://github.com/ace-step/ACE-Step-1.5.git@v0.1.8'
-uv pip install --python .venv/bin/python \
-  'accelerate>=1.12.0' 'diffusers>=0.37.0' diskcache 'loguru>=0.7.3' \
-  'mlx>=0.25.2' 'mlx-lm>=0.20.0' 'pytorch-wavelets>=1.3.0' \
-  'pywavelets>=1.9.0' toml 'torchvision==0.25.0' \
-  'transformers>=4.51.0,<4.58.0' 'typer-slim>=0.21.1' \
-  'vector-quantize-pytorch>=1.27.15'
+Meta's MusicGen through a remote server, for text-to-music and for Demucs stem separation:
+
+```yaml
+musicgen:
+  enabled: true
+  base_url: "http://localhost:8000"
+  timeout_seconds: 10800
+  num_versions: 3
 ```
 
-</details>
+With ACE-Step enabled, MusicGen is the fallback. With it disabled, MusicGen generates alone.
 
-The command above is the tested Apple Silicon inference installation; it deliberately does not
-install ACE-Step's Gradio UI. CUDA hosts should use the pinned v0.1.8 release with the appropriate
-PyTorch wheels. The `make` quality gates sync with `--inexact`, so they leave this installation alone.
-A bare `uv sync` is exact and removes packages this project does not declare, so rerun
-`make install-acestep` afterwards if you run one.
+## Ducking and stems
 
-### Memory on Apple Silicon
+The CLI masters the full mix and ducks that with a sidechain compressor (threshold 0.02, ratio
+4.0, 100 ms attack, 2.5 s release, 2 s fade in, 3 s fade out); `--music-volume` maps 0.0 to
+1.0 onto −20 dB to 0 dB before ducking. The web UI's mixer is a different path: it separates the
+clip audio into stems with [Demucs](https://github.com/facebookresearch/demucs) and ducks the
+four stems independently (slider −40 dB to 0 dB, default 0.7, ratio 6.0, 50 ms attack, 500 ms
+release). Demucs comes from `pip install 'immich-memories[demucs]'` (an 80 MB model on first use)
+or from MusicGen's remote `/separate` endpoint; without either, ducking uses plain energy
+detection on the mixed audio. The CLI asks for no separation.
 
-In `lib` mode the app limits the MLX buffer cache to 4 GiB before loading models. It does **not**
-clamp the VAE decode chunk: that was tried and removed, because clamping it cost decode speed for
-memory the cache limit was already holding. At ACE-Step's own chunk size, a 300 s render peaks at
-38 GiB of MLX memory and 13 GiB RSS. Set `ACESTEP_MLX_VAE_CHUNK` yourself if you want to bound it
-anyway; ACE-Step's `ACESTEP_SAVE_MEMORY` and `MAX_MPS_VRAM` do not bound this allocation.
+None of the ducking constants has a config key; `audio:` holds only `local_music_dir`
+(`~/Music/Memories`), which the [`music` command](../cli/music.md) reads. For custom fades or a
+dB level, run `immich-memories music add` on the finished file.
 
-The MLX DiT copy runs in bf16 (the same precision ACE-Step uses on CUDA) instead of the fp32
-ACE-Step converts it from on macOS (7.8 GB instead of 15.5 GB for the XL model). Set
-`IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32=1` to keep fp32. Once a music batch finishes, the models are
-dropped and both torch's and MLX's caches are released, so the process falls back to ~1 GB between
-generations instead of holding ~27 GB of parked GPU memory. The next batch reloads the models,
-which is not free.
+## Disk
 
-#### The render declines rather than getting killed
+| Model | Location | Size |
+|---|---|---|
+| ACE-Step 2B (turbo, base) | `~/.cache/ace-step/checkpoints/` | about 4.5 GB each |
+| ACE-Step XL-turbo (4B) | same | about 19 GB |
+| ACE-Step planners (0.6B, 1.7B, 4B) | same | 1.2, 3.4, 7.8 GB |
+| Shared VAE and embedding | same | about 1.4 GB |
+| Demucs htdemucs | `~/.cache/torch/hub/` | about 80 MB |
 
-Before loading any weights, `lib` mode compares free memory against what the configured profile
-needs resident and refuses with a named shortfall if it does not fit. Without that check, macOS
-settles it with jetsam: the process takes SIGKILL mid-render, and on a machine that is also
-serving a local LLM that can take the whole session down with it.
-
-| Profile | Weights that must stay resident |
-|---------|----------------------------------|
-| XL (4B) + 4B planner | ~29 GB |
-| XL (4B), `use_lm: false` | ~21 GB |
-| 2B + 1.7B planner | ~11 GB |
-| 2B, `use_lm: false` | ~7 GB |
-
-These are the checkpoint sizes from [Model Cache & Disk Usage](#model-cache--disk-usage): a
-floor, not the ~53 GB peak a full XL/4B render reaches. Most of that peak is cache the OS
-reclaims under pressure; the weights are not, so below the floor the render is not slow, it is
-dead. A machine with 40 GB free still renders XL/4B exactly as before.
-
-A refusal is not a failed video. The music pipeline treats it like any other backend failure: it
-tries MusicGen next, then a bundled track, and the memory is reported in the run's warning. The
-fixes are to free memory, drop to a smaller `model_variant`, or set `use_lm: false`.
-
-:::note Scheduled runs
-A nightly job hits this far more often than hand-testing does, because whatever else the machine
-runs all day is at its largest at 03:00. `auto status` reports the last attempt's warning.
-:::
-
-For a hosted generator, leave ACE-Step out of the app environment and use `mode: "api"` with the
-server URL. For a desktop that normally runs locally but has a server available as backup, keep
-`mode: "lib"` and set `api_url`; the app uses the API only when the local package is unavailable.
-
-## Configuration
-
-Which music plays is decided by three switches:
-
-| Where | Switch | Effect |
-|-------|--------|--------|
-| Config | `ace_step.enabled` / `musicgen.enabled` | When either is true, generation produces an AI track by default (ACE-Step first when both are on) |
-| CLI | `--music PATH`, `--no-music`, `--music-volume 0.0-1.0` | Own file, no music at all, or the mix level (default 0.5) |
-| UI options page | **Background music**: None / Upload file / AI Generated, plus the volume slider | Same choices per run |
-
-The CLI's `--music-volume` maps to a base music level of −20 dB (0.0) to 0 dB (1.0) before ducking, with sidechain threshold 0.02, ratio 4.0, 100 ms attack and 2.5 s release, 2 s fade in, 3 s fade out. The UI's stem mixer is a different path with different constants: its slider maps −40 dB (0.0) to 0 dB (1.0), defaults to 0.7 rather than 0.5, and ducks at ratio 6.0 with a 50 ms attack and a 500 ms release. The `audio:` section holds exactly one key, `local_music_dir`, used by the `music` command; ducking and fades are fixed in the mixer and have no config surface. If you need custom fades or a dB level, run `immich-memories music add` on the finished file with `--volume`, `--fade-in`, `--fade-out`.
-
-## Model Cache & Disk Usage
-
-| Model | Cache Location | Size | When Downloaded |
-|-------|---------------|------|----------------|
-| ACE-Step turbo/base (2B) | `~/.cache/ace-step/checkpoints/` | ~4.5 GB each | First generation |
-| ACE-Step XL-turbo (4B) | `~/.cache/ace-step/checkpoints/` | ~19 GB observed | First generation |
-| ACE-Step LM 0.6B | `~/.cache/ace-step/checkpoints/` | ~1.2 GB | First generation (if `use_lm: true`) |
-| ACE-Step LM 1.7B | `~/.cache/ace-step/checkpoints/` | ~3.4 GB | First generation (if `use_lm: true`) |
-| ACE-Step LM 4B | `~/.cache/ace-step/checkpoints/` | ~7.8 GB observed | First generation (if `use_lm: true`) |
-| Shared ACE VAE + embedding | `~/.cache/ace-step/checkpoints/` | ~1.4 GB observed | First generation |
-| Demucs htdemucs | `~/.cache/torch/hub/` | ~80 MB | First stem separation |
-
-**Total disk for the XL production profile** (XL-turbo + 4B LM + shared assets + Demucs): about
-28 GB on the tested v0.1.8 installation. Old 2B checkpoints are not removed automatically.
+The XL production profile with the 4B planner is about 28 GB on disk. Old checkpoints are not
+removed automatically.
