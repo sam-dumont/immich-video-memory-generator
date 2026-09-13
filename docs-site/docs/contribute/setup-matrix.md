@@ -58,6 +58,23 @@ warm.
 already there before the run, which is to say the cell has run before, and the record then says
 that its cold preparation is a re-read rather than a first derivation.
 
+## A remote cell's config names container roots only
+
+A cell's config is a copy of the operator's own, for its Immich credentials, with the axes the
+sweep varies written over the top. Every path-valued field comes along with that copy, and on a
+NAS or in a pod none of them exist: the second real remote run pushed
+`advanced.editorial.preparation.detector_python: /Users/…/venv-detectors/bin/python` to the NAS and
+`nas-rules-local` died in `detectors: FileNotFoundError` with 133 pictures still missing their
+heads, having reported no cut at all.
+
+So every remote cell gets each of those fields re-pinned to a root its container actually has
+(`/out`, `/cache`, `/models`), or blanked where blank is the field's own "work it out here"
+default: `output.directory`, `audio.local_music_dir`, `triage.encoder`, `triage.bundle`,
+`editorial.preparation.head_bundle`, `editorial.preparation.detector_python`,
+`editorial.preparation.detector_cache_dir` and `editorial.preparation.marqo_onnx`, on top of the
+cache trio every lane already gets. `~` counts as a local path here too: HOME is `/models` on the
+NAS and `/home/immich` in the Job, a directory that goes away with the pod.
+
 ## Start with the dry run
 
 ```bash
@@ -202,6 +219,12 @@ warm bank is the difference between a cold preparation and an afternoon of them.
 deletes it at the end of the run. The output claim is deleted per cell once the collector has
 copied the results to this machine.
 
+The collector mounts that claim on the same subPath and at the same path the Job wrote to, `/out`,
+and `kubectl cp` is given that absolute path. `kubectl cp` runs `tar` inside the container, and the
+image's WORKDIR is `/app`: a source relative to the claim root was
+`tar: setup-matrix/<cell>: Cannot stat` on the second real run, and the film, the attempt and every
+per-step log stayed on the volume while the cell published an empty row.
+
 A cell waits twice: five minutes for its pod to be scheduled, then up to three hours for the Job to
 finish. A pod that cannot be scheduled, for a claim that does not exist or a node with no room, is
 Pending and never completes, and the single long wait used to watch one for three hours. The second
@@ -232,6 +255,12 @@ Nothing in either is estimated. A number the run did not report stays null and e
 with a completion, so the cost column is empty; token counts at or above 1000 are rounded to the
 nearest 100 by the end-of-run summary; and a cell re-run over its own cache reports a re-read
 rather than a first derivation, which the record says out loud.
+
+A remote cell that cut a film and failed to copy it back still reports its numbers. The container
+tees every phase into its output volume, but the run's own stdout came back with the step that ran
+it (`kubectl logs` for a cluster cell, the ssh session for a NAS one), and the end-of-run block is
+read from there when the volume's copy never arrived. What did not come back is named under
+`unmeasured`: the film, and whichever per-phase timings were only ever written to the volume.
 
 Peak memory is measured per step, by running each local step under `/usr/bin/time` and taking the
 largest of the three. The kernel's own counter is the maximum over every child the runner has

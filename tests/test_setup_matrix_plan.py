@@ -17,6 +17,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
+from matrix_pinned_config import pinned_config  # noqa: E402
 from setup_matrix_plan import (  # noqa: E402
     DERIVED_ADDRESS,
     INFERENCE_ENV,
@@ -56,6 +57,40 @@ FULL_ENV = {
 
 
 TAG = "0.87.4"
+
+# The operator's own config, which is what a cell's config is a copy of. Every
+# path here exists on one Mac and nowhere else; the second real remote run pushed
+# this `detector_python` to a NAS and the cell died in FileNotFoundError.
+OPERATOR_CONFIG = {
+    "immich": {"url": "http://immich.invalid:2283", "api_key": "operator-key"},
+    "output": {"directory": "~/Videos/Memories", "resolution": "4K"},
+    "cache": {
+        "directory": "~/.immich-memories/cache",
+        "database": "~/.immich-memories/cache.db",
+    },
+    "audio": {"local_music_dir": "~/Music/Memories"},
+    "advanced": {
+        "triage": {
+            "encoder": "/Users/someone/.immich-memories/models/triage/dinov2-small.onnx",
+            "bundle": "/Users/someone/heads/private-v4.npz",
+        },
+        "editorial": {
+            "annotation_database": "/Users/someone/.immich-memories/annotations.sqlite",
+            "preparation": {
+                "head_bundle": "/Users/someone/heads/private-6heads.npz",
+                "detector_python": "/Users/someone/.immich-memories-distill/venv/bin/python",
+                "detector_cache_dir": "/Users/someone/.cache/huggingface",
+                "marqo_onnx": "/Users/someone/models/nsfw-marqo-384.onnx",
+            },
+        },
+    },
+}
+
+# A value that only resolves on the machine the config was written on: an
+# absolute path into somebody's home, or a `~` that means a different directory
+# in every container the matrix runs (the NAS sets HOME=/models, the cluster Job
+# gets /home/immich, which goes away with the pod).
+_ELSEWHERE = re.compile(rf"^\s*[\w.-]+: '?(~|/Users/|{re.escape(str(Path.home()))})")
 
 
 @pytest.fixture
@@ -521,6 +556,61 @@ def test_an_ssh_command_line_in_the_destination_variable_is_refused(
         _plan(manifest, tmp_path, environment)
     assert "MATRIX_NAS_SSH" in str(error.value)
     assert "~/.ssh/config" in str(error.value)
+
+
+@pytest.mark.parametrize("lane", ["nas", "k8s"])
+def test_a_remote_cell_carries_no_path_off_the_operators_machine(
+    manifest: dict, tmp_path: Path, lane: str
+) -> None:
+    """A cell's config is a copy of the operator's, and a container is not that machine.
+
+    `nas-rules-local` reached `detectors: FileNotFoundError` on a venv interpreter
+    under /Users and published no cut at all, because the pins only overwrite the
+    fields they name and every other path came along for the ride.
+    """
+    source = tmp_path / "operator.yaml"
+    source.write_text(yaml.safe_dump(OPERATOR_CONFIG))
+    for item in _plan(manifest, tmp_path, FULL_ENV, lanes=(lane,)).cells:
+        rendered = pinned_config(source, tmp_path / f"{item.cell.id}.yaml", item.pins).read_text()
+        elsewhere = [line for line in rendered.splitlines() if _ELSEWHERE.match(line)]
+        assert elsewhere == [], f"{item.cell.id} carries {elsewhere}"
+        config = yaml.safe_load(rendered)
+        preparation = config["advanced"]["editorial"]["preparation"]
+        assert preparation["detector_python"] == "", "blank is the interpreter running the cell"
+        assert preparation["marqo_onnx"].startswith("/models/")
+        assert config["output"]["directory"] == "/out"
+        assert config["cache"]["directory"] == "/cache"
+
+
+def test_the_collector_copies_from_the_directory_the_job_wrote_to(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """`kubectl cp` runs tar inside the pod, and the image's WORKDIR is /app.
+
+    A source relative to the claim root was `tar: setup-matrix/<cell>: Cannot
+    stat` on the second real run: the film, the attempt and every per-step log
+    stayed on the volume and the cell published an empty row.
+    """
+    item = _k8s_cell(manifest, tmp_path)
+    container = yaml.safe_load(item.manifests["job.yaml"])["spec"]["template"]["spec"][
+        "containers"
+    ][0]
+    collector = yaml.safe_load(item.manifests["collector.yaml"])["spec"]["containers"][0]
+    written = _output_mount(container)
+    read_back = _output_mount(collector)
+    pod, _, source = str(
+        next(step for step in item.steps if step.name == "copy-out").command[-2]
+    ).partition(":")
+
+    assert source.startswith("/"), "a relative source resolves against the image's WORKDIR"
+    assert source == written["mountPath"] == read_back["mountPath"]
+    assert written["subPath"] == read_back["subPath"] == f"setup-matrix/{item.cell.id}"
+    assert pod.endswith("-collect")
+    assert f"tee {source}/generate.log" in container["command"][-1]
+
+
+def _output_mount(container: dict) -> dict:
+    return next(mount for mount in container["volumeMounts"] if mount["name"] == "output")
 
 
 def _k8s_cell(manifest: dict, tmp_path: Path):

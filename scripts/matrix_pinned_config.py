@@ -89,3 +89,32 @@ def pinned_config(source: Path | None, dest: Path, pins: dict) -> Path:
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(yaml.safe_dump(data, sort_keys=False))
     return dest
+
+
+def remote_path_pins(*, out: str, models: str) -> dict[str, str]:
+    """Every path-valued field on Config, aimed at a container's roots instead of a laptop's.
+
+    A remote cell copies the operator's own config for its Immich credentials, and
+    every one of these fields comes with it. The second real remote run died on
+    `detectors: FileNotFoundError` for a venv interpreter under /Users, carried
+    into a NAS container from a Mac three floors away, and the cell reported no
+    cut at all. Blank is used wherever blank is the field's own "work it out
+    here" default: the interpreter running, the Hugging Face cache, the bundle
+    shipped inside the wheel.
+
+    The cache trio (`cache.directory`, `cache.database`,
+    `editorial.annotation_database`) is not here: `cache_pins` owns it and pins it
+    for every lane, remote or not.
+    """
+    return {
+        "output.directory": out,
+        # Read by `immich-memories music` and nothing the matrix runs, so this is
+        # about the file naming no directory of the operator's, not about music.
+        "audio.local_music_dir": f"{out}/music",
+        "triage.encoder": f"{models}/triage/dinov2-small.onnx",
+        "triage.bundle": "",
+        "editorial.preparation.head_bundle": "",
+        "editorial.preparation.detector_python": "",
+        "editorial.preparation.detector_cache_dir": f"{models}/huggingface",
+        "editorial.preparation.marqo_onnx": f"{models}/detectors/nsfw-marqo-384.onnx",
+    }

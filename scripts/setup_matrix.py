@@ -38,6 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from matrix_pinned_config import pinned_config  # noqa: E402
 from setup_matrix_capture import (  # noqa: E402
+    RunSummary,
     anonymize,
     latest_attempt,
     parse_cgroup_cpu_seconds,
@@ -329,6 +330,8 @@ def run_remote_cell(item: CellPlan, plan: Plan, out_dir: Path) -> dict:
     if record["error"]:
         _finish_failed_cell(item, plan, cell_dir)
     _read_remote_artifacts(record, cell_dir)
+    if record["timing"]["total_s"] is None:
+        _apply_stranded_summary(record, cell_dir)
     return record
 
 
@@ -436,16 +439,59 @@ def _new_record(item: CellPlan, *, primed: bool | None) -> dict:
 
 def _apply_run_summary(record: dict, text: str, cell_dir: Path) -> None:
     summary = parse_run_summary(text)
+    _apply_measured_block(record, summary)
+    if summary.video_path:
+        found = _locate_video(summary.video_path, cell_dir)
+        record["video"] = probe_video(found) or {}
+        record["video"]["path"] = str(found)
+
+
+def _apply_measured_block(record: dict, summary: RunSummary) -> None:
     record["timing"]["selection_s"] = summary.selection_s
     record["timing"]["render_s"] = summary.render_s
     record["timing"]["total_s"] = summary.total_s
     record["planned"] = summary.planned
     record["eligible"] = summary.eligible
     record["hosted_usage"] = summary.usage.as_dict()
+
+
+# Where a remote cell's own stdout landed on this machine, which is not where the
+# container put it: the container tees every phase into the output volume, and the
+# copy-out is what brings that back. `kubectl logs` and the ssh session return the
+# same text without it.
+STDOUT_OF_THE_RUN = {"k8s": "logs.stdout.log", "nas": "run.stdout.log"}
+
+STRANDED_ARTIFACTS = (
+    "the container wrote it into its output volume and the copy-out never brought it"
+    " back. What this row does carry was read off the run's own stdout."
+)
+STRANDED_FILM = (
+    "the film. The run named the file it wrote and the copy-out never brought it back,"
+    " so nothing here measured its duration, its size or its codec."
+)
+
+
+def _apply_stranded_summary(record: dict, cell_dir: Path) -> None:
+    """A cell that cut but never got its files back still reports what it printed.
+
+    `k8s-rules-service` published an empty row with `selection 1s, 14 planned from
+    130 candidates` and `generation 5m 42s` sitting in the log beside it, because
+    the only copy of the end-of-run block the capture read was the one on the
+    volume. This reads the copy that came back, and names what did not.
+    """
+    name = STDOUT_OF_THE_RUN.get(record["lane"])
+    log = cell_dir / name if name else None
+    if log is None or not log.is_file():
+        return
+    summary = parse_run_summary(log.read_text())
+    if summary.total_s is None:
+        return
+    _apply_measured_block(record, summary)
+    for field, value in record["timing"].items():
+        if value is None:
+            record["measurement_notes"].setdefault(field, STRANDED_ARTIFACTS)
     if summary.video_path:
-        found = _locate_video(summary.video_path, cell_dir)
-        record["video"] = probe_video(found) or {}
-        record["video"]["path"] = str(found)
+        record["measurement_notes"]["film"] = STRANDED_FILM
 
 
 def _locate_video(shown: str, cell_dir: Path) -> Path:

@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from matrix_pinned_config import remote_path_pins
 
 MANIFEST = Path(__file__).resolve().parent / "setup_matrix.yaml"
 SCHEMA = "setup-matrix-v1"
@@ -76,14 +77,6 @@ CELL_CACHE_DIR = "cache"
 # export under /home/immich — three roots, one of them gone with the pod, and
 # nothing fetching any of them. One root, named in the config both lanes read.
 REMOTE_MODELS = "/models"
-REMOTE_MODEL_PINS: dict[str, Any] = {
-    "triage.encoder": f"{REMOTE_MODELS}/triage/dinov2-small.onnx",
-    "editorial.preparation.marqo_onnx": f"{REMOTE_MODELS}/detectors/nsfw-marqo-384.onnx",
-    "editorial.preparation.detector_cache_dir": f"{REMOTE_MODELS}/huggingface",
-    # `models fetch` warms all three first, so this only covers what a pinned
-    # snapshot adds between the release and the run.
-    "editorial.preparation.allow_model_downloads": True,
-}
 MODELS_FETCH_LOG = "models-fetch.log"
 MODELS_FETCH_SECONDS = "models-fetch-seconds.txt"
 REMOTE_LANES = frozenset({"nas", "k8s"})
@@ -286,8 +279,13 @@ def _pins_for(cell: Cell, manifest: dict, library: dict) -> dict[str, Any]:
     pins.update(library.get("config") or {})
     pins["editorial.preparation.tier"] = cell.tier
     pins.update(cell.config)
+    if cell.lane in REMOTE_LANES:
+        pins.update(remote_path_pins(out=REMOTE_OUT, models=REMOTE_MODELS))
     if fetches_models(cell):
-        pins.update(REMOTE_MODEL_PINS)
+        # `models fetch` warms every pinned artifact first, so this only covers
+        # what a pinned snapshot adds between the release and the run. Where the
+        # files land is `remote_path_pins`, which every remote cell gets.
+        pins["editorial.preparation.allow_model_downloads"] = True
     return {key: _render_pin(value) for key, value in pins.items()}
 
 
@@ -564,7 +562,15 @@ def _k8s_steps(cell: Cell, out_dir: Path) -> tuple[Step, ...]:
             "wait-collector",
             (*context, "wait", f"pod/{collector}", "--for=condition=ready", "--timeout=5m"),
         ),
-        Step("copy-out", (*context, "cp", f"{collector}:{OUTPUT_SUBPATH}/{cell.id}", str(local))),
+        # WHY the absolute path: `kubectl cp` runs `tar cf - <source>` inside the
+        # container, and the image's WORKDIR is /app. A source relative to the
+        # claim root was `tar: setup-matrix/<cell>: Cannot stat` on the second
+        # real run — the film, the attempt and every per-step log stayed on the
+        # volume and the cell published an empty row. The collector now mounts
+        # the cell's own subPath at the same place the Job wrote it, so this is
+        # the path the container script tees into and nothing has to agree about
+        # a working directory.
+        Step("copy-out", (*context, "cp", f"{collector}:{REMOTE_OUT}", str(local))),
         Step("delete-collector", (*context, "delete", "pod", collector, "--ignore-not-found")),
         Step("delete", (*context, "delete", "job", name, "--ignore-not-found")),
         # The results are on this machine by now, and the next cell's apply makes
@@ -777,7 +783,11 @@ def _k8s_manifests(
             data_claim=DATA_CLAIM,
         ),
         "collector.yaml": _COLLECTOR.format(
-            name=f"{name}-collect", image=image, out=REMOTE_OUT, output_claim=OUTPUT_CLAIM
+            name=f"{name}-collect",
+            image=image,
+            out=REMOTE_OUT,
+            output_claim=OUTPUT_CLAIM,
+            subpath=f"{OUTPUT_SUBPATH}/{cell.id}",
         ),
     }
 
@@ -904,7 +914,8 @@ spec:
 """
 
 # Mounts the output claim and does nothing, so `kubectl cp` has a running
-# container to shell into after the Job's own pod has finished.
+# container to shell into after the Job's own pod has finished. Same mountPath
+# and same subPath as the Job, so the copy reads the directory the Job wrote.
 _COLLECTOR = """apiVersion: v1
 kind: Pod
 metadata:
@@ -935,6 +946,7 @@ spec:
       volumeMounts:
         - name: output
           mountPath: {out}
+          subPath: {subpath}
       resources:
         requests:
           memory: "64Mi"
