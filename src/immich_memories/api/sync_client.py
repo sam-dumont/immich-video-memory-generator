@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -44,35 +45,35 @@ class SyncImmichClient:
     def timeout(self) -> float:
         return self._async_client.timeout
 
-    def _run(self, coro):
-        """Run an async coroutine synchronously.
+    def _drive(self, coro):
+        """Drive one coroutine on this wrapper's own loop.
 
-        Uses a persistent event loop so httpx's AsyncClient can reuse TCP
-        connections across calls.
+        Keeping one loop for the wrapper's whole life lets httpx's AsyncClient
+        reuse TCP connections across calls.
+        """
+        if self._loop is None or self._loop.is_closed():
+            self._loop = asyncio.new_event_loop()
+        return self._loop.run_until_complete(coro)
+
+    def _run(self, coro):
+        """Run an async coroutine synchronously, even under a running loop.
+
+        Playwright's sync API pumps its loop from a greenlet on the calling
+        thread, so asyncio reports a running loop for the rest of the session
+        even between browser calls. Handing our own loop to a worker thread is
+        the only way to stay callable from there.
         """
         try:
             asyncio.get_running_loop()
         except RuntimeError:
-            if self._loop is None or self._loop.is_closed():
-                self._loop = asyncio.new_event_loop()
-            return self._loop.run_until_complete(coro)
-        else:
-            import concurrent.futures
-
-            def _run_with_persistent_loop():
-                if self._loop is None or self._loop.is_closed():
-                    self._loop = asyncio.new_event_loop()
-                return self._loop.run_until_complete(coro)
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                return pool.submit(_run_with_persistent_loop).result()
+            return self._drive(coro)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(self._drive, coro).result()
 
     def close(self) -> None:
         """Close the client and its event loop."""
         try:
-            if self._loop is None or self._loop.is_closed():
-                self._loop = asyncio.new_event_loop()
-            self._loop.run_until_complete(self._async_client.close())
+            self._run(self._async_client.close())
         finally:
             if self._loop is not None and not self._loop.is_closed():
                 self._loop.close()
