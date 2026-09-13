@@ -7,13 +7,16 @@ holds the plan, the render projection and the selection trace the run wrote.
 
 from __future__ import annotations
 
+import shutil
 import sys
+import textwrap
 from pathlib import Path
 
 import click
 
 from immich_memories.analysis.selection_trace import ClipStory, Trace
 from immich_memories.cli._helpers import console, print_error
+from immich_memories.operations.reader_words import stage_words
 from immich_memories.operations.run_index import attempt_dir_for_run
 from immich_memories.operations.storyboard import (
     TRACE_FILE,
@@ -65,7 +68,7 @@ def storyboard_text(run_id: str, board: Storyboard | None) -> str:
     """The storyboard as the terminal prints it."""
     if board is None or not board.shots:
         return f"Run {run_id} has no storyboard: its attempt directory holds no plan."
-    lines = [f"Run {run_id}: {len(board.shots)} shots, {board.total_label} of content"]
+    lines = [f"Run {run_id}: {board.summary_label}"]
     if board.thesis:
         lines.append(f"  {board.thesis}")
     lines.append("")
@@ -83,27 +86,45 @@ def read_trace(attempt_dir: Path) -> Trace | None:
     return Trace.from_dict(json.loads(path.read_text()))
 
 
-def why_text(asset_id: str, story: ClipStory, board: Storyboard | None) -> str:
-    """One picture's fate, in the order the editor decided it."""
+def why_text(
+    asset_id: str, story: ClipStory, board: Storyboard | None, width: int | None = None
+) -> str:
+    """One picture's fate, in the order the editor decided it, in reader words.
+
+    Long reasons wrap at the terminal width (or the width given), indented under
+    their line, so a paragraph of judgement stays readable in a narrow window.
+    """
+    columns = width or shutil.get_terminal_size((100, 20)).columns
     shot = next((s for s in (board.shots if board else ()) if s.asset_id == asset_id), None)
     lines = [f"{asset_id}: {story.facts}".rstrip(": ")]
     if story.survived:
-        lines.append(f"  passed {', '.join(story.survived)}")
+        lines.append(
+            _wrapped(f"passed {', '.join(stage_words(s) for s in story.survived)}", columns)
+        )
     if story.dropped_at:
         reason = f": {story.reason}" if story.reason else ""
-        lines.append(f"  dropped at {story.dropped_at}{reason}")
+        lines.append(_wrapped(f"left out at {stage_words(story.dropped_at)}{reason}", columns))
     if story.admitted_at:
-        lines.append(f"  admitted at {story.admitted_at}")
+        lines.append(_wrapped(f"kept at {stage_words(story.admitted_at)}", columns))
     if shot is not None:
         lines.append(
-            f"  in the cut at {shot.timecode}, {shot.day}, story: {shot.story_title}"
-            + (f", because {shot.reason}" if shot.reason else "")
+            _wrapped(
+                f"in the cut at {shot.timecode}, {shot.day}, story: {shot.story_title}"
+                + (f", because {shot.reason}" if shot.reason else ""),
+                columns,
+            )
         )
     elif story.shipped:
         lines.append("  in the cut")
     elif not story.dropped_at and not story.survived:
         lines.append("  never reached the editor: not in this run's pool")
     return "\n".join(lines)
+
+
+def _wrapped(text: str, columns: int) -> str:
+    return textwrap.fill(
+        text, width=max(columns, 20), initial_indent="  ", subsequent_indent="    "
+    )
 
 
 def register_reading_commands(runs: click.Group) -> None:

@@ -389,7 +389,7 @@ def render_cutting(state: AppState) -> None:
         if status.phase is OperationalPhase.ANALYSIS:
             strip.show(recent_pictures_of(record))
         else:
-            strip.hide()
+            strip.fade_out()
         if record is not None and not state.cancel_requested:
             elapsed.set_text(f"Elapsed: {elapsed_label(record.get('started_at'))}")
 
