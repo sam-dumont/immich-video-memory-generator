@@ -151,8 +151,8 @@ jobs:
   # Block owner-defined private terms (family names, birth dates, fine GPS,
   # ...) from a PR's diff, commit messages, title or body. The denylist is a
   # repository secret, never a file in this repo, so a fork -- which never
-  # sees secrets -- has nothing to scan against and skips cleanly instead of
-  # failing closed on contributors who can't possibly have the list.
+  # sees secrets -- skips only the term scan. Public research schemas apply
+  # to every PR, including forks without the owner's private list.
   private-terms:
     name: Private terms
     runs-on: ubuntu-latest
@@ -172,16 +172,10 @@ jobs:
       - run: uv python install "3.13"
       - run: make dev-ci
 
-      - name: Skip (no PRIVATE_TERMS secret configured)
-        if: env.PRIVATE_TERMS == ''
-        run: |
-          echo "private-terms: PRIVATE_TERMS secret not set, skipping"
-
-      - name: Scan the diff and commit messages against origin/${{ github.base_ref }}
-        if: env.PRIVATE_TERMS != ''
-        run: |
-          uv run python scripts/private_terms_gate.py --terms-env PRIVATE_TERMS \
-            --range "origin/${{ github.base_ref }}..HEAD"
+      - name: Validate research data, then scan configured private terms
+        env:
+          PRIVATE_TERMS_RANGE: origin/${{ github.base_ref }}..HEAD
+        run: make research-data-check privacy-range
 
       # PR_TITLE/PR_BODY go through env, never string-interpolated into the
       # run: script -- a title or body is attacker-controlled text and

@@ -15,6 +15,8 @@ import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
 
 **Memory type** offers exactly what `generate --memory-type` accepts, in the same order (Year in Review, Season, Person Spotlight, Multi-Person, Monthly Highlights, On This Day, Album, Trip, Holiday, Surprise me), plus **Custom date range**, which the CLI spells as `--start`/`--end`. Picking a type shows only that type's parameters.
 
+**Trip** finds trips from GPS-tagged photos, videos and Live Photos, using the same discovery as the CLI. The year picker includes years with only photos. Discovery includes a month on either side of the selected year, so a trip across New Year keeps its full dates; only trips overlapping the selected year are offered. The dropdown counts assets, including photos.
+
 **Duration** is one line. With **Auto duration** on it shows the type's own answer ("Auto · 1m 00s" for a month) and where the number comes from; Trip and Album measure theirs from the media once it is loaded. Turn the switch off to type an exact **Target duration (min)**; fractional minutes keep their seconds. The target is the complete video, titles and transition overlap included.
 
 The brief appears once Immich has answered. With credentials in `config.yaml` or the environment the page connects on its own; otherwise only the connection panel shows until **Test Connection** succeeds.
