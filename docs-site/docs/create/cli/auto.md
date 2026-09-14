@@ -172,5 +172,5 @@ cooldown.
 
 The complete child stdout and stderr are retained under the configured cache at
 `automation-output/<attempt-id>.private.log`, including successful runs. Files are
-readable only by their owner, with configured credentials redacted. Older runs
-may have no log.
+readable only by their owner, with configured credentials redacted. Open the run
+in the web UI's **Runs** page to download its child output. Older runs may have no log.

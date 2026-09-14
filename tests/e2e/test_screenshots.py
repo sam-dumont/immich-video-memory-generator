@@ -139,3 +139,9 @@ def test_capture_memory_walkthrough(
     page.wait_for_url("**/step3", timeout=30_000)
     expect(page.get_by_role("button", name="Next: Preview & Export")).to_be_visible(timeout=30_000)
     _save(page, d, _name("memory-options", theme))
+
+
+def test_capture_automation_walkthrough(page: Page, launch_app_url: str, launch_workspace):
+    from tests.e2e.test_automation_pages import test_choose_generate_and_read_the_same_automatic_run
+
+    test_choose_generate_and_read_the_same_automatic_run(page, launch_app_url, launch_workspace)

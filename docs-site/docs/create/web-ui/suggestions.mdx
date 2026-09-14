@@ -1,0 +1,26 @@
+---
+title: Suggestions
+---
+
+import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
+
+# Suggestions
+
+**Suggestions** shows what automation would make next from your library. It uses
+the same discovery and ranking as `immich-memories auto suggest`.
+
+<ThemedScreenshot name="suggestions" alt="Suggested memories with their dates, reasons and actions" />
+
+Each card gives a reason, dates, picture count and category. **Candidate key**
+reveals the key accepted by `auto run --candidate`. **Check eligibility** runs the
+checks without making a video. **Run this suggestion** creates the video on the
+server and offers **Open run** when it finishes. The page states whether automatic
+upload to Immich is enabled in your configuration.
+
+A suggestion can become stale while the page is open. Running it checks cooldown,
+repetition rules and failure backoff again. If it is no longer eligible, the page
+says so. **Refresh suggestions** reads the library again.
+
+**Why other suggestions were skipped** explains the repetition rule that rejected
+each candidate, or its failure backoff. For example, automation will not choose the
+same category as the previous automatic memory.

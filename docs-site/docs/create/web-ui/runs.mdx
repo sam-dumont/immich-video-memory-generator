@@ -1,0 +1,25 @@
+---
+title: Runs
+---
+
+import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
+
+# Runs
+
+**Runs** lists manual and automatic generations from the same database as
+`immich-memories runs list`. It includes failures, not just finished videos.
+
+<ThemedScreenshot name="runs" alt="Run history with status, dates and links to each run" />
+
+Use **Status** to filter the list. **Previous runs** and **Next runs** load twenty
+records at a time; **Refresh runs** updates the current view.
+
+Open a run to see its output path, Immich delivery status, warnings and recorded
+phase timings. **Read the cut** shows the saved storyboard in playback order,
+using the same plan as `runs story`. A run that stopped before selection, predates
+saved plans or has lost its cache says that no cut is available.
+
+**Download child output** retrieves the complete stdout and stderr of an automatic
+generation, with configured credentials removed. This includes successful child
+output. Older runs may have no transcript. These records survive closing the
+original generation tab.

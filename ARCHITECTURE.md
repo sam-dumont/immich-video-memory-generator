@@ -519,3 +519,7 @@ clip scorer (`_REMOVED_CONFIG_KEYS`) is refused at load with a message naming it
 - **Tests**: `tests/` directory, run with `make test`
 - **Integration tests**: run manually with `make test-integration*` (per-suite folders under `tests/integration/`, see CLAUDE.md); also run on the self-hosted GPU runner. Not a pre-commit hook.
 - **Pre-commit**: Run `make ci` before committing
+
+The web sidebar links Memory, Suggestions, Runs, Media pool and Settings.
+`ui/pages/suggestions.py` uses `AutoRunner`; `ui/pages/runs.py` reads `RunDatabase`
+and the shared run index/storyboard. Neither page owns a separate job store.
