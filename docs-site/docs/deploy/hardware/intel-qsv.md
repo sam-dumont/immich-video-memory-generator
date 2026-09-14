@@ -79,7 +79,7 @@ services:
 
 ## Good for headless servers
 
-QSV is common in home server setups: Intel NUCs, older desktops repurposed as media servers. It takes the encode off the CPU cores without needing a discrete graphics card. The encode is the smaller half of a run, though: see [CPU-Only Mode](./cpu-only.md#title-rendering-is-the-bottleneck-not-encoding). The larger win on such a box is usually the titles: the kernel library installs with the app and tries the Vulkan backend on the integrated GPU.
+QSV is common in home server setups: Intel NUCs, older desktops repurposed as media servers. It takes the encode off the CPU cores without needing a discrete graphics card. That is the larger half of a CPU-only assembly again, now that the title blur has been fixed: see [CPU-Only Mode](./cpu-only.md#title-rendering-used-to-be-the-bottleneck) for the measured split. Titles are the other half, and the kernel library installs with the app and tries the Vulkan backend on the integrated GPU.
 
 ## Quality
 

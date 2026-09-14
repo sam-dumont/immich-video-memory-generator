@@ -363,32 +363,48 @@ def check_title_rendering(config: Config) -> CheckResult:
     return _kernel_library_check()
 
 
+_PIL_RENDERER_MESSAGE = "PIL renderer: static title screens, no animation and no SDF text"
+
+
 def _kernel_library_check() -> CheckResult:
     """Name the title renderer this machine will use, and why.
 
-    By `find_spec`, never by importing: this runs on every `preflight` and the
-    kernel library costs the better part of a second to load. It says the
-    outcome rather than the package because a self-hoster on a platform with no
-    wheel should learn it here, not from flat titles after a long run.
+    Two ways to lose the kernels, and a self-hoster should meet both here rather
+    than after a long run: no wheel for the platform, answered by `find_spec`,
+    and a wheel that cannot run here, answered by the child dispatch probe. The
+    second is the expensive one, and it is why an installed package is not the
+    answer on its own: a CPU without AVX dies on the first kernel (#910).
     """
     from immich_memories.titles.gpu_kernel_backend import KERNEL_LIBRARY
 
-    if importlib.util.find_spec(KERNEL_LIBRARY) is not None:
+    if importlib.util.find_spec(KERNEL_LIBRARY) is None:
         return CheckResult(
             name="Title rendering",
-            status=CheckStatus.OK,
-            message=f"GPU kernels ({KERNEL_LIBRARY}): animated title screens",
+            status=CheckStatus.WARNING,
+            message=_PIL_RENDERER_MESSAGE,
+            details=(
+                f"{KERNEL_LIBRARY} publishes no wheel for {_platform_tag()}. "
+                "Wheels exist for Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 "
+                "on Python 3.10-3.13; everywhere else title screens are PIL-rendered, "
+                "which the log says once at startup."
+            ),
+        )
+
+    from immich_memories.titles.kernel_backend_probe import kernel_dispatch_failure
+
+    if reason := kernel_dispatch_failure():
+        # The reason leads, because `preflight` prints details only under -v and this
+        # is the line that tells a self-hoster their processor is the problem.
+        return CheckResult(
+            name="Title rendering",
+            status=CheckStatus.WARNING,
+            message=reason,
+            details=_PIL_RENDERER_MESSAGE,
         )
     return CheckResult(
         name="Title rendering",
-        status=CheckStatus.WARNING,
-        message="PIL renderer: static title screens, no animation and no SDF text",
-        details=(
-            f"{KERNEL_LIBRARY} publishes no wheel for {_platform_tag()}. "
-            "Wheels exist for Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 "
-            "on Python 3.10-3.13; everywhere else title screens are PIL-rendered, "
-            "which the log says once at startup."
-        ),
+        status=CheckStatus.OK,
+        message=f"GPU kernels ({KERNEL_LIBRARY}): animated title screens",
     )
 
 

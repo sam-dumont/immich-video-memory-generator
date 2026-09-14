@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from matrix_pinned_config import DROP, hosted_reader_pins, remote_path_pins
 
 MANIFEST = Path(__file__).resolve().parent / "setup_matrix.yaml"
 SCHEMA = "setup-matrix-v1"
@@ -76,14 +77,6 @@ CELL_CACHE_DIR = "cache"
 # export under /home/immich — three roots, one of them gone with the pod, and
 # nothing fetching any of them. One root, named in the config both lanes read.
 REMOTE_MODELS = "/models"
-REMOTE_MODEL_PINS: dict[str, Any] = {
-    "triage.encoder": f"{REMOTE_MODELS}/triage/dinov2-small.onnx",
-    "editorial.preparation.marqo_onnx": f"{REMOTE_MODELS}/detectors/nsfw-marqo-384.onnx",
-    "editorial.preparation.detector_cache_dir": f"{REMOTE_MODELS}/huggingface",
-    # `models fetch` warms all three first, so this only covers what a pinned
-    # snapshot adds between the release and the run.
-    "editorial.preparation.allow_model_downloads": True,
-}
 MODELS_FETCH_LOG = "models-fetch.log"
 MODELS_FETCH_SECONDS = "models-fetch-seconds.txt"
 REMOTE_LANES = frozenset({"nas", "k8s"})
@@ -285,9 +278,16 @@ def _pins_for(cell: Cell, manifest: dict, library: dict) -> dict[str, Any]:
     pins: dict[str, Any] = dict(manifest.get("baseline_config") or {})
     pins.update(library.get("config") or {})
     pins["editorial.preparation.tier"] = cell.tier
+    if cell.hosted:
+        pins.update(hosted_reader_pins())
     pins.update(cell.config)
+    if cell.lane in REMOTE_LANES:
+        pins.update(remote_path_pins(out=REMOTE_OUT, models=REMOTE_MODELS))
     if fetches_models(cell):
-        pins.update(REMOTE_MODEL_PINS)
+        # `models fetch` warms every pinned artifact first, so this only covers
+        # what a pinned snapshot adds between the release and the run. Where the
+        # files land is `remote_path_pins`, which every remote cell gets.
+        pins["editorial.preparation.allow_model_downloads"] = True
     return {key: _render_pin(value) for key, value in pins.items()}
 
 
@@ -372,14 +372,37 @@ def _container_script(cell: Cell, memory: dict, month: str) -> str:
     )
 
 
-def _credential_flags(cell: Cell) -> list[str]:
-    """`-e NAME` per credential: docker takes the value from the ssh session's env.
+def _credential_flags(remote: str, credentials: tuple[str, ...]) -> list[str]:
+    """`--env-file`, because a bare `-e NAME` on the far side of ssh sends an empty value.
 
-    The value never enters the command, so a rendered plan carries no key even
-    when it is executed for real.
+    docker fills `-e NAME` from the environment of the shell running it, and a
+    non-interactive ssh session carries none of the runner's variables. Both NAS
+    hosted cells reached their provider with an empty key: Melious answered 401
+    while the same key worked from the cluster, where the runner makes a Secret
+    out of its own environment. `push-env` writes the file 0600, `pull-results`
+    leaves it behind and `drop-env` removes it.
     """
-    _, credentials = _variables(cell.config)
-    return [flag for name in credentials for flag in ("-e", name)]
+    return ["--env-file", f"{remote}/env"] if credentials else []
+
+
+def _push_env_steps(remote: str, credentials: tuple[str, ...]) -> tuple[Step, ...]:
+    """The cell's credentials into a file on the NAS, with no copy on this machine.
+
+    A value exists in the argv of the local `printf` for as long as it runs,
+    which is the exposure `kubectl create secret --from-literal` already accepts
+    on the other lane. It never reaches the NAS's command line, a file here, or a
+    log: the step writes through a pipe and its own stdout is empty. The rendered
+    plan carries `NAME=$NAME`, so a dry run can go in a pull request.
+    """
+    if not credentials:
+        return ()
+    return (
+        Step(
+            "push-env",
+            ("printf", "%s\\n", *[f"{name}=${name}" for name in credentials]),
+            pipe_to=("ssh", "$MATRIX_NAS_SSH", f"umask 077 && cat > {remote}/env"),
+        ),
+    )
 
 
 def nas_docker_limits(environment: dict[str, str]) -> tuple[str, ...]:
@@ -419,6 +442,7 @@ def _nas_steps(
     """
     remote = f"$MATRIX_NAS_OUT/{cell.id}"
     local = out_dir / cell.id
+    _, credentials = _variables(cell.config)
     docker = [
         "$MATRIX_NAS_DOCKER",
         "run",
@@ -438,7 +462,7 @@ def _nas_steps(
         f"{remote}:{REMOTE_OUT}",
         "-v",
         f"{remote}/{CELL_CACHE_DIR}:{REMOTE_CACHE}",
-        *_credential_flags(cell),
+        *_credential_flags(remote, credentials),
         image,
         "/bin/bash",
         "-lc",
@@ -462,6 +486,7 @@ def _nas_steps(
             ("tar", "-C", str(local), "-cf", "-", "config.yaml"),
             pipe_to=("ssh", "$MATRIX_NAS_SSH", f"mkdir -p {remote} && tar -C {remote} -xf -"),
         ),
+        *_push_env_steps(remote, credentials),
         Step("run", ("ssh", "$MATRIX_NAS_SSH", " ".join(docker))),
         # The cell's cache is not pulled: it is previews and thumbnails by the
         # gigabyte, it means nothing off the NAS, and leaving it there is what
@@ -471,9 +496,15 @@ def _nas_steps(
             (
                 "ssh",
                 "$MATRIX_NAS_SSH",
-                f"tar -C {remote} --exclude=./{CELL_CACHE_DIR} -cf - .",
+                f"tar -C {remote} --exclude=./{CELL_CACHE_DIR} --exclude=./env -cf - .",
             ),
             pipe_to=("tar", "-C", str(local), "-xf", "-"),
+        ),
+        # The credentials leave the NAS with the cell, whether or not it worked.
+        *(
+            (Step("drop-env", ("ssh", "$MATRIX_NAS_SSH", f"rm -f {remote}/env")),)
+            if credentials
+            else ()
         ),
     )
 
@@ -564,7 +595,15 @@ def _k8s_steps(cell: Cell, out_dir: Path) -> tuple[Step, ...]:
             "wait-collector",
             (*context, "wait", f"pod/{collector}", "--for=condition=ready", "--timeout=5m"),
         ),
-        Step("copy-out", (*context, "cp", f"{collector}:{OUTPUT_SUBPATH}/{cell.id}", str(local))),
+        # WHY the absolute path: `kubectl cp` runs `tar cf - <source>` inside the
+        # container, and the image's WORKDIR is /app. A source relative to the
+        # claim root was `tar: setup-matrix/<cell>: Cannot stat` on the second
+        # real run — the film, the attempt and every per-step log stayed on the
+        # volume and the cell published an empty row. The collector now mounts
+        # the cell's own subPath at the same place the Job wrote it, so this is
+        # the path the container script tees into and nothing has to agree about
+        # a working directory.
+        Step("copy-out", (*context, "cp", f"{collector}:{REMOTE_OUT}", str(local))),
         Step("delete-collector", (*context, "delete", "pod", collector, "--ignore-not-found")),
         Step("delete", (*context, "delete", "job", name, "--ignore-not-found")),
         # The results are on this machine by now, and the next cell's apply makes
@@ -777,7 +816,11 @@ def _k8s_manifests(
             data_claim=DATA_CLAIM,
         ),
         "collector.yaml": _COLLECTOR.format(
-            name=f"{name}-collect", image=image, out=REMOTE_OUT, output_claim=OUTPUT_CLAIM
+            name=f"{name}-collect",
+            image=image,
+            out=REMOTE_OUT,
+            output_claim=OUTPUT_CLAIM,
+            subpath=f"{OUTPUT_SUBPATH}/{cell.id}",
         ),
     }
 
@@ -904,7 +947,8 @@ spec:
 """
 
 # Mounts the output claim and does nothing, so `kubectl cp` has a running
-# container to shell into after the Job's own pod has finished.
+# container to shell into after the Job's own pod has finished. Same mountPath
+# and same subPath as the Job, so the copy reads the directory the Job wrote.
 _COLLECTOR = """apiVersion: v1
 kind: Pod
 metadata:
@@ -935,6 +979,7 @@ spec:
       volumeMounts:
         - name: output
           mountPath: {out}
+          subPath: {subpath}
       resources:
         requests:
           memory: "64Mi"
@@ -1002,9 +1047,16 @@ def build_cell_plan(
 
 
 def nested(pins: dict[str, Any]) -> dict[str, Any]:
-    """Dotted pins as the nested mapping a config file holds."""
+    """Dotted pins as the nested mapping a config file holds.
+
+    A `DROP` names a field to take out of the copied config, so it has nothing to
+    write here and the cluster's ConfigMap is left without the key at all, which
+    is the same outcome.
+    """
     out: dict[str, Any] = {}
     for dotted, value in sorted(pins.items()):
+        if value is DROP:
+            continue
         *branches, leaf = dotted.split(".")
         target = out
         for branch in branches:

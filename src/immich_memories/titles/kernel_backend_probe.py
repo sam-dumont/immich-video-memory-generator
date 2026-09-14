@@ -10,9 +10,11 @@ because kernel signatures need actual type objects, not string annotations.
 """
 
 import contextlib
+import functools
 import json
 import logging
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -25,11 +27,15 @@ import numpy as np
 # WHY absolute, in a module that otherwise uses relative imports: the dispatch
 # probe runs this file as its own program in a child interpreter, where it is
 # `__main__` with no package and a relative import cannot resolve.
-from immich_memories.titles.gpu_kernel_backend import KERNEL_LIBRARY, ti
+from immich_memories.titles.gpu_kernel_backend import KERNEL_LIBRARY, KERNELS_AVAILABLE, ti
 
 logger = logging.getLogger(__name__)
 
 _PROBE_TIMEOUT_SECONDS = 10.0
+
+CPU_PROBE_NAME = "cpu"
+
+_PIL_FALLBACK = "titles fall back to the PIL renderer"
 
 
 class KernelProbeOutcome(StrEnum):
@@ -38,6 +44,7 @@ class KernelProbeOutcome(StrEnum):
     SUCCESS = "success"
     DISPATCH_FAILED = "dispatch_failed"
     CHILD_CRASHED = "child_crashed"
+    CHILD_SIGNALLED = "child_signalled"
     TIMED_OUT = "timed_out"
 
 
@@ -110,6 +117,26 @@ def _probe_worker(backend_name: str) -> KernelProbeResult:
     return KernelProbeResult(KernelProbeOutcome.SUCCESS)
 
 
+def _terminating_signal(returncode: int) -> signal.Signals | None:
+    """The signal that killed the child, under either convention for reporting one.
+
+    POSIX `wait` gives a negative return code; a shell, a container runtime or an
+    init wrapper between us and the child gives 128+n instead. A kernel library
+    compiling its first kernel for an instruction set the CPU does not have dies
+    by SIGILL, which reaches us as -4 or 132 depending on what was in the way.
+    """
+    if returncode < 0:
+        number = -returncode
+    elif 128 < returncode < 192:
+        number = returncode - 128
+    else:
+        return None
+    try:
+        return signal.Signals(number)
+    except ValueError:
+        return None
+
+
 def _read_probe_result(result_path: Path) -> KernelProbeResult | None:
     """Read the child's answer, or None when it wrote something we cannot trust."""
     try:
@@ -153,6 +180,8 @@ def _probe_backend(
                 completed.returncode,
                 (completed.stderr or completed.stdout or "").strip()[-2000:],
             )
+            if killed_by := _terminating_signal(completed.returncode):
+                return KernelProbeResult(KernelProbeOutcome.CHILD_SIGNALLED, killed_by.name)
             return KernelProbeResult(
                 KernelProbeOutcome.CHILD_CRASHED,
                 f"exitcode={completed.returncode}",
@@ -163,26 +192,73 @@ def _probe_backend(
         return result
 
 
-def _candidate_backends(
-    *, force_cpu: bool, operating_system: str
-) -> list[tuple[object, str, str | None]]:
+@functools.cache
+def probe_backend_dispatch(backend_name: str) -> KernelProbeResult:
+    """Answer once per process whether one backend can dispatch a kernel here.
+
+    Cached because the child costs the better part of a second and its answer
+    cannot change while the process lives: `init_kernels()` and `preflight` ask
+    the same question and must not each pay for it (#855).
+    """
+    return _probe_backend(backend_name)
+
+
+def kernel_dispatch_failure() -> str | None:
+    """One line saying why title kernels cannot run here, or None when they can.
+
+    Asked of the CPU backend because it is the floor under every other one: the
+    library generates code for this processor whatever arch it targets, so a CPU
+    that cannot execute a kernel has no working kernel renderer of any kind.
+    """
+    if not KERNELS_AVAILABLE:
+        return f"{KERNEL_LIBRARY} is not installed on this platform; {_PIL_FALLBACK}"
+    result = probe_backend_dispatch(CPU_PROBE_NAME)
+    if result.outcome is KernelProbeOutcome.SUCCESS:
+        return None
+    if result.outcome is KernelProbeOutcome.CHILD_SIGNALLED:
+        return (
+            f"kernel backend crashed on this CPU: {_signal_wording(result.detail)}; {_PIL_FALLBACK}"
+        )
+    if result.outcome is KernelProbeOutcome.TIMED_OUT:
+        return (
+            f"kernel backend did not start within {_PROBE_TIMEOUT_SECONDS:.0f}s on this machine; "
+            f"{_PIL_FALLBACK}"
+        )
+    return (
+        f"kernel backend could not dispatch here ({result.detail or 'no detail'}); {_PIL_FALLBACK}"
+    )
+
+
+def _signal_wording(detail: str | None) -> str:
+    """Say what the signal means, for a reader who does not read signal names."""
+    if detail == signal.SIGILL.name:
+        return "illegal instruction"
+    return detail.lower() if detail else "a fatal signal"
+
+
+def _candidate_backends(*, force_cpu: bool, operating_system: str) -> list[tuple[object, str, str]]:
     """Return parent architecture objects and child-safe probe names in priority order."""
     if force_cpu:
-        return [(ti.cpu, "CPU", None)]
+        return [(ti.cpu, "CPU", CPU_PROBE_NAME)]
     if operating_system == "Darwin":
-        return [(ti.metal, "Metal", "metal"), (ti.cpu, "CPU", None)]
+        return [(ti.metal, "Metal", "metal"), (ti.cpu, "CPU", CPU_PROBE_NAME)]
     return [
         (ti.cuda, "CUDA", "cuda"),
         (ti.vulkan, "Vulkan", "vulkan"),
-        (ti.cpu, "CPU", None),
+        (ti.cpu, "CPU", CPU_PROBE_NAME),
     ]
 
 
-def _backend_dispatches(name: str, probe_name: str | None) -> bool:
-    """Prove a GPU backend can dispatch, while allowing CPU to bypass the probe."""
-    if probe_name is None:
-        return True
-    probe = _probe_backend(probe_name)
+def _backend_dispatches(name: str, probe_name: str) -> bool:
+    """Prove a backend can dispatch a kernel, CPU included.
+
+    CPU used to be waved through on the grounds that a processor is always
+    there. It is, but the library's generated code is not always something it
+    can execute: on a CPU without AVX the first kernel it compiles dies by
+    SIGILL, and waving CPU through put that death in the parent process, hours
+    into a run, instead of in a probe child (#910).
+    """
+    probe = probe_backend_dispatch(probe_name)
     if probe.outcome is KernelProbeOutcome.SUCCESS:
         return True
     logger.debug(

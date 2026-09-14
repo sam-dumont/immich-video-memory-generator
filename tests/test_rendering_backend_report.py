@@ -53,3 +53,30 @@ def test_the_cpu_fallback_says_so_and_warns(config, caplog) -> None:
     assert any(r.levelno == logging.WARNING for r in caplog.records), (
         "a silent CPU fallback is the bug"
     )
+
+
+def test_a_cpu_that_cannot_run_a_kernel_falls_to_pil_with_its_reason(config, caplog) -> None:
+    """The no-AVX case (#910): no backend at all, and the log has to say why.
+
+    "Kernel library unavailable" on its own sent a NAS user looking for a missing
+    package that was installed and imported fine.
+    """
+    crash = (
+        "kernel backend crashed on this CPU: illegal instruction; "
+        "titles fall back to the PIL renderer"
+    )
+    # WHY: the kernel library boundary again, answering as a Celeron J4125 does.
+    with (
+        patch("immich_memories.titles.rendering_service.KERNELS_AVAILABLE", True),
+        patch("immich_memories.titles.rendering_service.init_kernels", return_value=None),
+        patch(
+            "immich_memories.titles.kernel_backend_probe.kernel_dispatch_failure",
+            return_value=crash,
+        ),
+        caplog.at_level(logging.INFO),
+    ):
+        service = RenderingService(config)
+
+    assert not service.use_gpu
+    assert service.backend is None
+    assert "illegal instruction" in caplog.text
