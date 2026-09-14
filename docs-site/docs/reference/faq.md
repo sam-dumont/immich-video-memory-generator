@@ -22,7 +22,7 @@ fetch map tiles. [Running modes](../deploy/running-modes.md) has the table per m
 
 **Do I need a model?**
 
-No. With `reader: rules` (the default when no `llm.model` is set) the ten standard memory types
+No. `reader` ships as `auto`, which resolves to the rules reader while `llm.model` is blank, and with it the ten standard memory types
 are cut from dates, places, favourites, people and whatever image facts the tier produced. It is
 a simpler editor: no thesis, and it can miss an occasion in a broad recap. What it keeps per
 memory type, measured against the model editor, is on [Rules mode](../create/pipeline/rules-mode.md).
@@ -59,8 +59,8 @@ but have not been tested first-hand. See [Live Photos](../create/pipeline/live-p
 
 **Which formats?**
 
-Anything FFmpeg decodes. Output is MP4 or MOV with H.264, H.265 or ProRes; HDR sources stay HDR
-in H.265 and ProRes (H.264 has no HDR).
+Anything FFmpeg decodes. Output is MP4 or MOV with H.264, H.265 or ProRes. HDR output is H.265
+only: `encoding_plan.py` refuses HDR with ProRes and with H.264, so a ProRes render is SDR.
 
 **Can I run it headless?**
 

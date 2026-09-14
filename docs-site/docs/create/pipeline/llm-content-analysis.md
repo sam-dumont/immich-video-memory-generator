@@ -177,35 +177,8 @@ ollama serve
 
 ## Configuration
 
-One section names the model; the editor, titles and mood detection all read it.
-
-```yaml
-advanced:
-  llm:
-    base_url: "http://localhost:8000/v1"   # example: oMLX. The default is 8080, the app's own port
-    model: "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"
-    api_key: ""                            # local servers ignore it
-    provider: "openai-compatible"          # or ollama | openai | zai | anthropic
-    timeout_seconds: 300                   # the default
-    thinking: "disabled"                   # disabled | low | high | max | auto
-```
-
-`model` has to be the string the server reports at `GET /v1/models`, not the name you typed
-somewhere else.
-
-A separate `title_llm` section can point trip titles at a different model:
-
-```yaml
-advanced:
-  title_llm:
-    provider: "openai-compatible"
-    base_url: "http://localhost:11434/v1"
-    model: "llama3.2"
-    timeout_seconds: 300
-```
-
-**Fields do not fall back to `llm`.** The switch is all-or-nothing on `title_llm.model`: set it
-and the whole `title_llm` block is used, with every field you left out taking its *built-in*
-default; `provider: openai-compatible`, `base_url: http://localhost:8080/v1`, empty `api_key`.
-Leave `title_llm.model` empty and `llm` is used instead. Write out every field you care about, or
-the two-line version above silently resets five others.
+Every `llm:` key, with its default, is in the
+[config reference](../../reference/config-reference.md#llm-vision-model). The three that have to be
+right: `base_url` (which defaults to the app's own port, so set it), `model` (the exact string the
+server reports at `GET /v1/models`) and `provider`, which picks the dialect and, on `openai`,
+`anthropic` and `zai`, fills in the vendor URL when you leave `base_url` alone.

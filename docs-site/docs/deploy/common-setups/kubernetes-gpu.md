@@ -171,7 +171,7 @@ kubectl apply -f base/sealed-secret.yaml
   "configuration": "configured",
   "immich_reachable": true,
   "last_successful_run": "2025-12-15T10:30:00",
-  "version": "0.59.2"
+  "version": "X.Y.Z"
 }
 ```
 
