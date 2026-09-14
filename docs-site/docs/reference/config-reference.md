@@ -308,7 +308,8 @@ to configure. An explicit `base_url` always wins over a preset, and under
 `provider: zai` it also picks the adapter: a `.../api/anthropic` base takes the
 Anthropic route, anything else the OpenAI-compatible one. An explicit
 `thinking_params`/`no_thinking_params` is kept too, with the provider's own
-reasoning switch merged on top of it.
+reasoning switch filled in beside it, and a key you named yourself wins over
+the preset's.
 
 `thinking: true` runs the model in reasoning mode for two calls: title
 generation, and the special-day question in `discover-days`. Measured on the
@@ -333,9 +334,17 @@ parseable in it. This field is sent on every non-thinking call: it hangs off
 the switch, not off `thinking`, because a server that reasons by default does
 so whether or not you turned reasoning on. The default is Qwen's
 `chat_template_kwargs: {"enable_thinking": false}`; set it to `{}` for servers
-that reason only when asked (the `openai` preset already does, while `zai`
-sends its own `thinking: {"type": "disabled"}`). A server that rejects the
-field is detected from its 400 and asked without it from then on.
+that reason only when asked, which the `openai` preset already does.
+
+z.ai takes a level rather than an on and off, so the `zai` preset sends
+`thinking: {"type": ...}` with one of `disabled`, `low`, `high` or `max`. The
+GLM-5 line reasons unconditionally and answers `disabled` with HTTP 400 code
+1210, "This model always engages in thinking and cannot be disabled", so the
+preset sends `low` there and `disabled` on the lines that take it. Write the
+key yourself to ask for `high` or `max`. A model the preset has never heard of
+that refuses `disabled` the same way is retried once at `low`, with a warning
+naming the code and what changed. A server that rejects the field outright is
+detected from its 400 and asked without it from then on.
 
 `send_image_detail` covers one more dialect gap: OpenAI's optional
 `image_url.detail` field is sent by default, and some strict vision schemas
@@ -345,7 +354,10 @@ to `false` for those servers: the `zai` preset already does.
 Parameter dialects are otherwise handled automatically: OpenAI's reasoning
 models (gpt-5 family) reject `max_tokens` and non-default temperatures, and
 the query layer reads those 400s, adapts the request, and remembers the
-answer per server and model, validated against the live OpenAI API. One
+answer per server and model, validated against the live OpenAI API. Every 4xx
+and 5xx an LLM provider returns carries the body's own `code` and `message`,
+bounded to 300 characters, into the error the run logs, so a refused call says
+why instead of only naming its status. One
 provider note: z.ai's OpenAI-compatible endpoint accepts image content only
 on its dedicated vision models, so point `llm.model` at one of those if you
 use it for content analysis.

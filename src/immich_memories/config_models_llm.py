@@ -69,7 +69,10 @@ class LLMConfig(BaseModel):
             "chat template reasons by default. Omitting the enable switch does "
             "not disable it: bulk analysis then reasons at its small token "
             "budget, truncates mid-thought and returns nothing parseable. "
-            "Servers that reason only when asked want {}."
+            "Servers that reason only when asked want {}. z.ai takes a level "
+            "instead of a switch, {'thinking': {'type': ...}} with one of "
+            "disabled, low, high, max; the preset picks the lowest level the "
+            "model accepts, and a key set here wins over it."
         ),
     )
     max_tokens_param: str = Field(

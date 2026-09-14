@@ -34,10 +34,19 @@ set: `.../api/anthropic` takes the Anthropic adapter and its `/v1/messages`, and
 the Anthropic base and the reply is an HTTP 200 carrying `{"code":500,"msg":"404 NOT_FOUND"}`,
 which the reader now reports by its code and message instead of a bare `KeyError`.
 
-A named provider's own reasoning switch is sent whatever else you put in `thinking_params` or
-`no_thinking_params`. z.ai wants `thinking: {"type": "disabled"}` on a fast call; replacing the
-block with a Qwen-shaped one used to drop that switch, and GLM then reasoned through the whole
-bulk pass.
+A named provider's own reasoning switch fills in beside whatever else you put in
+`thinking_params` or `no_thinking_params`: replacing the block with a Qwen-shaped one used to drop
+that switch, and GLM then reasoned through the whole bulk pass. A `thinking` key you write
+yourself wins over the preset's, because z.ai's switch is a level rather than an on and off:
+`disabled`, `low`, `high` or `max`. The GLM-5 line reasons unconditionally and answers `disabled`
+with HTTP 400 code 1210, so the preset sends `low` there and `disabled` on the lines that take it.
+A model neither list has heard of that refuses the same way is retried once at `low`, and the log
+says what changed.
+
+Every refusal an LLM provider sends now carries that provider's own `code` and `message`, bounded
+to 300 characters, into the line the reader logs. Before, a 400 or a 429 reached the operator as
+the bare status and a link to MDN, so `1210` and `1113 Insufficient balance` both read as "Client
+error".
 
 ## The two picture seats
 

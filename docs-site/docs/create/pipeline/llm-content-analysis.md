@@ -21,7 +21,9 @@ path, because z.ai serves both: `.../api/anthropic` gets `/v1/messages`, everyth
 
 `openai` and `zai` fill in the vendor's base URL and reasoning dialect where you left the field at
 its default. The provider's own reasoning switch is merged in even when you set your own
-`thinking_params` or `no_thinking_params`, because the two are not the same request field.
+`thinking_params` or `no_thinking_params`, because the two are not the same request field. A
+`thinking` key you write yourself wins over the preset's, which is how you pick a z.ai reasoning
+level other than the one its preset chose for your model.
 `openai-compatible` fills in nothing: its `base_url` stays `http://localhost:8080/v1`, which is the
 app's own port, so set it.
 

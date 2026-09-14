@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from immich_memories.config_models_llm import LLMConfig
@@ -248,5 +249,171 @@ class TestProviderPresets:
             await query_llm("Judge this cut", config, thinking=False)
 
         payload = mock_post.call_args[1]["json"]
-        assert payload["thinking"] == {"type": "disabled"}
+        assert payload["thinking"] == {"type": "low"}
         assert payload["repetition_penalty"] == 1.05
+
+
+def _completion(url=None, json=None):  # noqa: A002
+    # WHY: the LLM server is the external boundary; the fake stands in for a
+    # plain accepted completion so the test can read what was posted to it.
+    response = AsyncMock()
+    response.status_code = 200
+    response.json = MagicMock(
+        return_value={"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]}
+    )
+    response.raise_for_status = lambda: None
+    return response
+
+
+class TestZaiThinkingLevel:
+    """z.ai's switch is a level (disabled | low | high | max), not a boolean."""
+
+    @pytest.mark.asyncio
+    async def test_a_model_that_always_reasons_gets_the_cheapest_level_it_accepts(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(provider="zai", model="glm-5.3-flash", api_key="k")
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", side_effect=_completion) as mock_post:
+            await query_llm("Describe this wall", config, thinking=False)
+
+        assert mock_post.call_args[1]["json"]["thinking"] == {"type": "low"}
+
+    @pytest.mark.asyncio
+    async def test_a_model_that_can_be_told_not_to_reason_still_gets_disabled(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(provider="zai", model="glm-4.6", api_key="k")
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", side_effect=_completion) as mock_post:
+            await query_llm("Describe this wall", config, thinking=False)
+
+        assert mock_post.call_args[1]["json"]["thinking"] == {"type": "disabled"}
+
+    @pytest.mark.asyncio
+    async def test_a_level_the_operator_names_wins_over_the_preset(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(
+            provider="zai",
+            model="glm-5.3-flash",
+            api_key="k",
+            no_thinking_params={"thinking": {"type": "high"}},
+        )
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", side_effect=_completion) as mock_post:
+            await query_llm("Describe this wall", config, thinking=False)
+
+        assert mock_post.call_args[1]["json"]["thinking"] == {"type": "high"}
+
+    @pytest.mark.asyncio
+    async def test_a_refusal_to_stop_reasoning_retries_once_at_the_lowest_level(self, caplog):
+        import logging
+
+        from immich_memories.analysis.llm_query import query_llm
+
+        # A line the preset has never heard of, so it starts from "disabled".
+        # A model name of its own too: the dialect a call negotiates is
+        # remembered for the rest of the process, per server and model.
+        config = LLMConfig(provider="zai", model="glm-6.1-unreleased", api_key="k")
+        refusal = httpx.Response(
+            400,
+            json={
+                "error": {
+                    "code": "1210",
+                    "message": (
+                        "This model always engages in thinking and cannot be "
+                        "disabled; please use low, high, or max"
+                    ),
+                }
+            },
+            request=httpx.Request("POST", "https://api.z.ai/api/paas/v4/chat/completions"),
+        )
+        posted: list[dict] = []
+
+        async def _refuse_then_answer(url, json):  # noqa: A002
+            posted.append(dict(json))
+            return refusal if len(posted) == 1 else _completion()
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with (
+            patch("httpx.AsyncClient.post", side_effect=_refuse_then_answer),
+            caplog.at_level(logging.WARNING, logger="immich_memories.analysis.llm_query"),
+        ):
+            assert await query_llm("Describe this wall", config, thinking=False) == "ok"
+
+        assert posted[0]["thinking"] == {"type": "disabled"}
+        assert posted[1]["thinking"] == {"type": "low"}
+        assert "1210" in caplog.text and "low" in caplog.text
+
+
+class TestProviderErrorsAreLegible:
+    """httpx names the status; only the body says why the call was refused."""
+
+    @pytest.mark.asyncio
+    async def test_a_4xx_carries_the_providers_code_and_message(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(provider="zai", model="glm-5.3-flash", api_key="k")
+        refused = httpx.Response(
+            429,
+            json={"error": {"code": "1113", "message": "Insufficient balance"}},
+            request=httpx.Request("POST", "https://api.z.ai/api/paas/v4/chat/completions"),
+        )
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with (
+            patch("httpx.AsyncClient.post", return_value=refused),
+            pytest.raises(httpx.HTTPStatusError) as caught,
+        ):
+            await query_llm("Describe this wall", config)
+
+        assert "1113" in str(caught.value) and "Insufficient balance" in str(caught.value)
+
+    @pytest.mark.asyncio
+    async def test_the_messages_dialect_reports_its_refusals_the_same_way(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(
+            provider="anthropic",
+            base_url="https://api.z.ai/api/anthropic",
+            model="glm-5.3-flash",
+            api_key="k",
+        )
+        refused = httpx.Response(
+            400,
+            json={"error": {"code": "1210", "message": "cannot be disabled"}},
+            request=httpx.Request("POST", "https://api.z.ai/api/anthropic/v1/messages"),
+        )
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with (
+            patch("httpx.AsyncClient.post", return_value=refused),
+            pytest.raises(httpx.HTTPStatusError) as caught,
+        ):
+            await query_llm("Describe this wall", config)
+
+        assert "1210" in str(caught.value) and "cannot be disabled" in str(caught.value)
+
+    @pytest.mark.asyncio
+    async def test_ollama_names_its_refusal_too(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(provider="ollama", base_url="http://localhost:11434", model="qwen3")
+        refused = httpx.Response(
+            404,
+            json={"error": 'model "qwen3" not found, try pulling it first'},
+            request=httpx.Request("POST", "http://localhost:11434/api/generate"),
+        )
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with (
+            patch("httpx.AsyncClient.post", return_value=refused),
+            pytest.raises(httpx.HTTPStatusError) as caught,
+        ):
+            await query_llm("Describe this wall", config)
+
+        assert "try pulling it first" in str(caught.value)

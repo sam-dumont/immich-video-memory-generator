@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+import re
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -79,7 +80,20 @@ THINKING_MIN_TIMEOUT_SECONDS = 180
 _PARAM_ADAPTATIONS: dict[tuple[str, str], set[str]] = {}
 
 
-def _adaptation_for(message: str) -> str | None:
+# z.ai's reasoning switch is a level, not a boolean: disabled, low, high, max.
+# Measured 2026-09-14 on /api/paas/v4, glm-5.3-flash answers a request carrying
+# {"type": "disabled"} with HTTP 400 code 1210, "This model always engages in
+# thinking and cannot be disabled; please use low, high, or max", which names
+# the levels it will take instead.
+THINKING_REQUIRED_CODE = "1210"
+LOWEST_THINKING_LEVEL = "low"
+_LOWEST_LEVEL_ADAPTATION = "lowest_thinking_level"
+
+
+def _adaptation_for(error: dict) -> str | None:
+    if str(error.get("code", "")) == THINKING_REQUIRED_CODE:
+        return _LOWEST_LEVEL_ADAPTATION
+    message = str(error.get("message", ""))
     if "chat_template_kwargs" in message:
         return "no_chat_template_kwargs"
     if "max_tokens" in message and "max_completion_tokens" in message:
@@ -96,6 +110,24 @@ def _apply_adaptations(payload: dict, adaptations: set[str]) -> None:
         payload["max_completion_tokens"] = payload.pop("max_tokens")
     if "default_temperature" in adaptations:
         payload.pop("temperature", None)
+    if _LOWEST_LEVEL_ADAPTATION in adaptations:
+        # The refusal is only ever to "off": a level the model will reason at
+        # is left exactly as the caller asked for it.
+        thinking = payload.get("thinking")
+        if isinstance(thinking, dict) and thinking.get("type") == "disabled":
+            payload["thinking"] = {"type": LOWEST_THINKING_LEVEL}
+
+
+def _announce_adaptation(adaptation: str, before: object, after: object) -> None:
+    if adaptation == _LOWEST_LEVEL_ADAPTATION:
+        logger.warning(
+            "LLM provider refused thinking %s (code %s); retrying once with %s",
+            before,
+            THINKING_REQUIRED_CODE,
+            after,
+        )
+    else:
+        logger.info("LLM server dialect: adapting request (%s)", adaptation)
 
 
 # The Anthropic dialect asks for an explicit reasoning budget; it must sit
@@ -113,10 +145,31 @@ _PROVIDER_PRESETS: dict[str, dict] = {
     "zai": {
         "base_url": "https://api.z.ai/api/paas/v4",
         "thinking_params": {"thinking": {"type": "enabled"}},
-        "no_thinking_params": {"thinking": {"type": "disabled"}},
         "send_image_detail": False,
     },
 }
+
+# The whole GLM-5 line reasons unconditionally, so the cheapest level it
+# accepts is what "do not reason" has to mean there; older lines take
+# "disabled".
+_ALWAYS_REASONING_MODELS = re.compile(r"^glm-5(\.\d+)?(-|$)")
+
+
+def _zai_off_level(model: str) -> str:
+    """The thinking level that stands in for "off" on one z.ai model."""
+    return (
+        LOWEST_THINKING_LEVEL
+        if _ALWAYS_REASONING_MODELS.match(model.strip().lower())
+        else "disabled"
+    )
+
+
+def _preset_for(config: LLMConfig) -> dict | None:
+    """The named provider's preset, with the model-dependent parts filled in."""
+    preset = _PROVIDER_PRESETS.get(config.provider)
+    if preset is None or config.provider != "zai":
+        return preset
+    return {**preset, "no_thinking_params": {"thinking": {"type": _zai_off_level(config.model)}}}
 
 
 def _preset_dialect(base_url: str) -> str:
@@ -131,7 +184,7 @@ def _preset_dialect(base_url: str) -> str:
 
 
 def _resolved(config: LLMConfig) -> LLMConfig:
-    preset = _PROVIDER_PRESETS.get(config.provider)
+    preset = _preset_for(config)
     if preset is None:
         return config
     fields = type(config).model_fields
@@ -142,8 +195,10 @@ def _resolved(config: LLMConfig) -> LLMConfig:
             updates[name] = value
         elif name in ("thinking_params", "no_thinking_params"):
             # The provider's own reasoning switch is not interchangeable with the
-            # generic one it was replaced by; send both.
-            updates[name] = {**getattr(config, name), **value}
+            # generic one it was replaced by, so both are sent. A key the user
+            # named themselves still wins, which is how a z.ai thinking level
+            # other than the preset's is chosen.
+            updates[name] = {**value, **getattr(config, name)}
     updates["provider"] = _preset_dialect(updates.get("base_url", config.base_url))
     return config.model_copy(update=updates)
 
@@ -198,7 +253,7 @@ async def _post_adapted(
             error = _response_body(resp).get("error", {})
             if not isinstance(error, dict):
                 raise TypeError("LLM error body is not an object")
-            adaptation = _adaptation_for(str(error.get("message", "")))
+            adaptation = _adaptation_for(error)
         except (TypeError, ValueError):
             _record_invalid_response(transport_observer, resp.status_code)
             raise
@@ -207,8 +262,9 @@ async def _post_adapted(
         _observe(transport_observer, 1, "dialect_adaptation", resp.status_code, adaptation)
         adaptations.add(adaptation)
         applied_adaptations.add(adaptation)
+        before = payload.get("thinking")
         _apply_adaptations(payload, adaptations)
-        logger.info("LLM server dialect: adapting request (%s)", adaptation)
+        _announce_adaptation(adaptation, before, payload.get("thinking"))
 
 
 def build_llm_timeout(read_timeout: float) -> httpx.Timeout:
@@ -431,11 +487,7 @@ async def _query_ollama(
         except httpx.HTTPError:
             _observe(transport_observer, 1, "connection_error", None)
             raise
-        try:
-            resp.raise_for_status()
-        except httpx.HTTPStatusError:
-            _observe(transport_observer, 1, "http_error", resp.status_code)
-            raise
+        _ensure_success(resp, transport_observer)
         try:
             body = _response_body(resp)
         except (TypeError, ValueError):
@@ -521,11 +573,7 @@ async def _query_anthropic(
         except httpx.HTTPError:
             _observe(transport_observer, 1, "connection_error", None)
             raise
-        try:
-            resp.raise_for_status()
-        except httpx.HTTPStatusError:
-            _observe(transport_observer, 1, "http_error", resp.status_code)
-            raise
+        _ensure_success(resp, transport_observer)
         body, usage = _anthropic_usage(resp, transport_observer)
         cached_input = usage.get("cache_read_input_tokens", 0) or 0
         cache_creation_input = usage.get("cache_creation_input_tokens", 0) or 0
@@ -828,11 +876,45 @@ def _record_invalid_response(
     _observe(observer, 1, "invalid_response", status_code)
 
 
+# Enough of a refused call to act on, short enough to sit on a warning line.
+PROVIDER_MESSAGE_CHARS = 300
+
+
+def _provider_error_detail(response: httpx.Response) -> str:
+    """The provider's own code and message, bounded, or "" when it named neither.
+
+    httpx's HTTPStatusError text is the status line and a link to MDN. The
+    reason a call was refused exists only in the body, so without this the
+    operator reads "400 Bad Request" and has nothing to go on.
+    """
+    try:
+        body = response.json()
+    except ValueError:
+        return ""
+    if not isinstance(body, dict):
+        return ""
+    error = body.get("error")
+    if isinstance(error, str):
+        # Ollama's refusals are a bare sentence under `error`, with no code.
+        return f"message {error[:PROVIDER_MESSAGE_CHARS]!r}"
+    named = error if isinstance(error, dict) else body
+    code = named.get("code")
+    message = named.get("message") or named.get("msg")
+    if code is None and not message:
+        return ""
+    return f"code {code}, message {str(message)[:PROVIDER_MESSAGE_CHARS]!r}"
+
+
 def _ensure_success(
     response: httpx.Response, observer: Callable[[LLMTransportAttempt], None] | None
 ) -> None:
+    """Raise on a 4xx or 5xx, carrying the provider's own code and message."""
     try:
         response.raise_for_status()
-    except httpx.HTTPStatusError:
+    except httpx.HTTPStatusError as exc:
         _observe(observer, 1, "http_error", response.status_code)
-        raise
+        detail = _provider_error_detail(response)
+        if not detail:
+            raise
+        summary = f"{str(exc).splitlines()[0]} - provider said {detail}"
+        raise httpx.HTTPStatusError(summary, request=exc.request, response=response) from exc
