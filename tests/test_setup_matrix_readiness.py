@@ -1,13 +1,16 @@
-"""The three things the runner has to wait for, and what it does when they never come.
+"""What the runner has to wait for, and what it does when it never comes.
 
-All three were found on a real cluster. `kubectl wait` on a label selector that
-matches nothing exits 1 with `error: no matching resources found`, and the pod is
-made a moment after `apply` returns, so the scheduling wait lost the race and
+Every one of these was found on a real cluster. `kubectl wait` on a label selector
+that matches nothing exits 1 with `error: no matching resources found`, and the pod
+is made a moment after `apply` returns, so the scheduling wait lost the race and
 ended the cell. A Job that FAILS never satisfies `kubectl wait
---for=condition=complete`, so the runner sat on a dead cell for three hours. And a
+--for=condition=complete`, so the runner sat on a dead cell for three hours. A
 Deployment that is Available is not a service that can answer: the pod was up
 while every `/facts` request came back 503 because the models were not in its
-cache yet, which a cell then measured as its own slowness.
+cache yet, which a cell then measured as its own slowness. And a re-applied image
+tag left that Deployment in ContainerCreating with its Service holding no ready
+endpoint, so the port-forward the warm-up went through never got a listener and
+the run died in sixty seconds without ever making a facts request.
 """
 
 from __future__ import annotations
@@ -26,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 import setup_matrix  # noqa: E402
 import setup_matrix_readiness  # noqa: E402
-from setup_matrix_plan import Cell, CellPlan, Plan, Step  # noqa: E402
+from setup_matrix_plan import INFERENCE_ENV, Cell, CellPlan, Plan, Step  # noqa: E402
 
 
 def _plan(item: CellPlan) -> Plan:
@@ -198,3 +201,177 @@ def test_a_service_that_never_warms_up_fails_with_what_it_actually_said(monkeypa
 
     assert "heads: the model is not in the cache yet" in str(failure.value)
     assert "503" in str(failure.value)
+
+
+_FORWARD_SCRIPT = """\
+import http.server
+import os
+import socket
+import sys
+import time
+
+tally = os.path.join(os.path.dirname(os.path.abspath(__file__)), "forwards")
+n = (int(open(tally).read()) if os.path.exists(tally) else 0) + 1
+open(tally, "w").write(str(n))
+local = int(sys.argv[-1].split(":")[0])
+if n <= {silent}:
+    time.sleep(120)
+    raise SystemExit(0)
+if n <= {silent} + {deaf}:
+    listener = socket.socket()
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    listener.bind(("127.0.0.1", local))
+    listener.listen(5)
+    while True:
+        listener.accept()[0].close()
+
+
+class _Facts(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        body = b'{{"producers": {{}}}}'
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *_args):
+        return
+
+
+http.server.HTTPServer(("127.0.0.1", local), _Facts).serve_forever()
+"""
+
+
+def _fake_forwarding_kubectl(tmp_path: Path, *, silent: int = 0, deaf: int = 0) -> None:
+    """A kubectl `port-forward` that is broken in each of the two ways a real one is.
+
+    Its first `silent` calls bind nothing, which is a forward to a Service with no
+    ready endpoint. The `deaf` calls after those bind the local port and close
+    every connection, which is a forward whose pod has gone. Any call after that
+    is the service: it binds the port it was handed and answers the facts request.
+    """
+    script = tmp_path / "kubectl"
+    body = _FORWARD_SCRIPT.format(silent=silent, deaf=deaf)
+    script.write_text(f"#!{sys.executable}\n" + body)
+    script.chmod(0o755)
+
+
+def test_a_forward_that_never_came_up_is_thrown_away_and_made_again(monkeypatch, tmp_path) -> None:
+    """The pod was still pulling its image, so the first forwards had nothing to reach."""
+    _fake_forwarding_kubectl(tmp_path, silent=2)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setattr(setup_matrix_readiness, "WARMUP_FIRST_WAIT_S", 0.0)
+    monkeypatch.setattr(setup_matrix_readiness, "WARMUP_LISTENER_TIMEOUT_S", 1.0)
+
+    seconds = setup_matrix_readiness.await_facts_via_forward(
+        ("kubectl",), "inference", 8092, b"jpeg-bytes", ("heads",)
+    )
+
+    assert (tmp_path / "forwards").read_text().strip() == "3", (
+        "it kept the dead forward instead of making a new one on the same budget"
+    )
+    assert seconds >= 0.0
+
+
+def test_a_forward_whose_pod_has_gone_is_replaced_rather_than_asked_again(
+    monkeypatch, tmp_path
+) -> None:
+    """It is listening and it connects; nothing behind it answers, which is the same thing."""
+    _fake_forwarding_kubectl(tmp_path, deaf=1)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setattr(setup_matrix_readiness, "WARMUP_FIRST_WAIT_S", 0.0)
+    monkeypatch.setattr(setup_matrix_readiness, "WARMUP_TIMEOUT_S", 30.0)
+
+    setup_matrix_readiness.await_facts_via_forward(
+        ("kubectl",), "inference", 8092, b"jpeg-bytes", ("heads",)
+    )
+
+    assert (tmp_path / "forwards").read_text().strip() == "2", (
+        "it kept asking down a tunnel that reaches nothing"
+    )
+
+
+def test_a_forward_that_never_answers_spends_the_budget_and_says_it_was_the_forward(
+    monkeypatch, tmp_path
+) -> None:
+    """`facts answered 503` and `port-forward never answered` are different findings."""
+    _fake_forwarding_kubectl(tmp_path, silent=99)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setattr(setup_matrix_readiness, "WARMUP_FIRST_WAIT_S", 0.0)
+    monkeypatch.setattr(setup_matrix_readiness, "WARMUP_LISTENER_TIMEOUT_S", 0.2)
+    monkeypatch.setattr(setup_matrix_readiness, "WARMUP_TIMEOUT_S", 0.5)
+
+    with pytest.raises(SystemExit) as failure:
+        setup_matrix_readiness.await_facts_via_forward(
+            ("kubectl",), "inference", 8092, b"jpeg-bytes", ("heads",)
+        )
+
+    assert "port-forward never answered" in str(failure.value)
+    assert "svc/inference" in str(failure.value)
+
+
+def _fake_rollout_kubectl(tmp_path: Path, *, rollout_code: int) -> None:
+    """A kubectl that writes down every subcommand it was given, and can fail the rollout."""
+    script = tmp_path / "kubectl"
+    script.write_text(
+        "#!/bin/sh\n"
+        f'echo "$@" >> "{tmp_path}/ran"\n'
+        f'case " $* " in *" rollout "*) exit {rollout_code};; esac\n'
+        "exit 0\n"
+    )
+    script.chmod(0o755)
+
+
+def _cluster_plan() -> Plan:
+    item = _job_cell(_pod_step())
+    plan = _plan(item)
+    plan.environment.update({"MATRIX_K8S_CONTEXT": "ctx", "MATRIX_K8S_NAMESPACE": "ns"})
+    return plan
+
+
+def test_the_overlay_is_not_handed_on_until_its_new_pod_has_rolled_out(monkeypatch, tmp_path):
+    """`apply` returns while the pod is still pulling, and nothing reaches it before it stops."""
+    _fake_rollout_kubectl(tmp_path, rollout_code=0)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+
+    setup_matrix.bring_up_inference(_cluster_plan(), "deploy/kubernetes/overlays/inference", "i:t")
+
+    ran = (tmp_path / "ran").read_text().splitlines()
+    applied = next(n for n, line in enumerate(ran) if line.startswith("--context ctx -n ns apply"))
+    waited = next(n for n, line in enumerate(ran) if "rollout status" in line)
+    assert applied < waited, "it went on to the service before the new pod existed"
+    assert "deployment/immich-memories-inference --timeout=10m" in ran[waited]
+
+
+def test_a_deployment_that_never_rolls_out_stops_the_run_rather_than_the_warm_up(
+    monkeypatch, tmp_path
+) -> None:
+    """Fifteen minutes of facts requests cannot report an image that never got pulled."""
+    _fake_rollout_kubectl(tmp_path, rollout_code=1)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+
+    with pytest.raises(SystemExit) as failure:
+        setup_matrix.bring_up_inference(
+            _cluster_plan(), "deploy/kubernetes/overlays/inference", "i:t"
+        )
+
+    assert "immich-memories-inference" in str(failure.value)
+    assert "10m" in str(failure.value)
+
+
+def test_an_address_the_nas_cells_can_reach_is_warmed_without_a_forward(
+    monkeypatch, tmp_path
+) -> None:
+    """A forward is a second process that can fail on its own, and this needs none."""
+    _fake_forwarding_kubectl(tmp_path, silent=99)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setattr(setup_matrix_readiness, "WARMUP_FIRST_WAIT_S", 0.0)
+    plan = _cluster_plan()
+
+    with _facts_service([_READY]) as (base_url, asked):
+        plan.environment[INFERENCE_ENV] = base_url
+        setup_matrix.warm_inference(plan)
+
+    assert len(asked) == 1
+    assert not (tmp_path / "forwards").exists(), "it port-forwarded to an address it already had"

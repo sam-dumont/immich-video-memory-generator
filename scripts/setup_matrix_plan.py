@@ -676,6 +676,20 @@ DRAIN_TIMEOUT = "--timeout=3m"
 # `.ip` on most controllers, `.hostname` on the ones that hand out a name.
 LB_ADDRESS_PATH = "{.status.loadBalancer.ingress[0].ip}"
 
+INFERENCE_DEPLOYMENT = "deployment/immich-memories-inference"
+# An image pull, which is the slow part of a re-applied tag. The warm-up's own
+# budget is for models being loaded, not for the layers arriving.
+INFERENCE_ROLLOUT_TIMEOUT = "10m"
+# The dry run prints this as `wait-inference` and the runner runs this same
+# tuple, so the transcript cannot promise a wait the run does not take.
+INFERENCE_ROLLOUT = (
+    *KUBECTL,
+    "rollout",
+    "status",
+    INFERENCE_DEPLOYMENT,
+    f"--timeout={INFERENCE_ROLLOUT_TIMEOUT}",
+)
+
 
 def overlay_path(device: str) -> str:
     """Which overlay directory a device choice applies. `auto` is resolved before this."""
@@ -744,16 +758,7 @@ def inference_overlay_steps(*, device: str, keep: bool, lan: bool, tag: str) -> 
             ("kubectl", "kustomize", overlay),
             pipe_to=(*KUBECTL, "apply", "-f", "-"),
         ),
-        Step(
-            "wait-inference",
-            (
-                *KUBECTL,
-                "rollout",
-                "status",
-                "deployment/immich-memories-inference",
-                "--timeout=10m",
-            ),
-        ),
+        Step("wait-inference", INFERENCE_ROLLOUT),
     ]
     if lan:
         steps += [

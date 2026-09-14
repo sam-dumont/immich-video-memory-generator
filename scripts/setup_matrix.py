@@ -57,8 +57,11 @@ from setup_matrix_plan import (  # noqa: E402
     DERIVED_ADDRESS,
     FIXTURE_ENV,
     FIXTURE_PORT,
+    INFERENCE_DEPLOYMENT,
     INFERENCE_ENV,
     INFERENCE_PORT,
+    INFERENCE_ROLLOUT,
+    INFERENCE_ROLLOUT_TIMEOUT,
     INFERENCE_SERVICE,
     KUBECTL,
     LAN_OVERLAY,
@@ -83,10 +86,10 @@ from setup_matrix_plan import (  # noqa: E402
 )
 from setup_matrix_readiness import (  # noqa: E402
     await_facts,
+    await_facts_via_forward,
     await_job,
     await_listener,
     await_pod,
-    port_forward,
     warmup_picture,
 )
 from setup_matrix_summary import (  # noqa: E402
@@ -583,7 +586,7 @@ def _lan_address(plan: Plan) -> str:
         time.sleep(_LAN_ADDRESS_POLL_S)
 
 
-def _warm_inference(plan: Plan) -> float:
+def warm_inference(plan: Plan) -> float:
     """One real facts request before any cell makes one, and how long it took to answer.
 
     A rolled-out Deployment is not a service that can decide a picture: the models
@@ -597,11 +600,12 @@ def _warm_inference(plan: Plan) -> float:
     image = warmup_picture(pictures[0])
     address = plan.environment.get(INFERENCE_ENV) or ""
     producers = tuple(SERVED_PRODUCERS)
+    # An address the NAS cells will use is an address this host can use too, and
+    # it needs no second process that can fail on its own.
     if address and address != DERIVED_ADDRESS:
         return await_facts(address, image, producers)
     kubectl = tuple(_substitute(part, plan.environment) for part in KUBECTL)
-    with port_forward(kubectl, INFERENCE_SERVICE, INFERENCE_PORT) as local:
-        return await_facts(local, image, producers)
+    return await_facts_via_forward(kubectl, INFERENCE_SERVICE, INFERENCE_PORT, image, producers)
 
 
 def _write_cell_config(item: CellPlan, plan: Plan, out_dir: Path, config: Path | None) -> None:
@@ -777,7 +781,7 @@ def _execute(plan: Plan, opts: argparse.Namespace, out_dir: Path, overlay: tuple
     warmup: float | None = None
     if overlay:
         print(f"inference overlay: {overlay_path(device)} running {served}")
-        _apply_overlay(plan, overlay_path(device), up=True, image=served)
+        bring_up_inference(plan, overlay_path(device), served)
         if lan:
             _apply_overlay(plan, LAN_OVERLAY, up=True)
             plan.environment[INFERENCE_ENV] = f"http://{_lan_address(plan)}:{INFERENCE_PORT}"
@@ -785,7 +789,7 @@ def _execute(plan: Plan, opts: argparse.Namespace, out_dir: Path, overlay: tuple
     # Every lane that reads its picture facts from the service waits on this one
     # request, wherever the service came from.
     if any(item.cell.facts == "service" for item in plan.runnable):
-        warmup = _warm_inference(plan)
+        warmup = warm_inference(plan)
         print(f"inference answered a facts request after {warmup:.0f}s")
 
     for item in plan.runnable:
@@ -874,13 +878,31 @@ def _summarize(plan: Plan, opts: argparse.Namespace, out_dir: Path) -> int:
     return 0
 
 
-def _run_bare(command: tuple[str, ...], plan: Plan) -> None:
+def _run_bare(command: tuple[str, ...], plan: Plan) -> subprocess.CompletedProcess:
     """A command that belongs to the run rather than to a cell, so no cell logs it."""
-    subprocess.run(  # noqa: S603
+    return subprocess.run(  # noqa: S603
         [_substitute(part, plan.environment) for part in command],
         cwd=REPO_ROOT,
         check=False,
     )
+
+
+def bring_up_inference(plan: Plan, path: str, image: str) -> None:
+    """Apply the inference overlay and come back only once its new pod can be reached.
+
+    `apply` returns as soon as the API server has the manifest. When the tag has
+    changed, the Deployment is pulling by then, and a Service with no ready
+    endpoint answers nothing at all: a `port-forward` to one never even gets a
+    local listener. That is not a slow service, and the warm-up's fifteen minutes
+    are not for it, so the pull is waited out here where `rollout status` is the
+    thing that says what happened.
+    """
+    _apply_overlay(plan, path, up=True, image=image)
+    if _run_bare(INFERENCE_ROLLOUT, plan).returncode != 0:
+        raise SystemExit(
+            f"{INFERENCE_DEPLOYMENT} never rolled out within {INFERENCE_ROLLOUT_TIMEOUT}, so "
+            "nothing can reach the inference service and no cell would have measured it."
+        )
 
 
 def _apply_overlay(plan: Plan, path: str, *, up: bool, image: str = "") -> None:

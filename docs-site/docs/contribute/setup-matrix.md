@@ -203,11 +203,22 @@ A rolled-out Deployment is not yet a service that can decide a picture. The mode
 cache on the first request that wants them, and until they are there every `/facts` call comes back
 503, which the first cell to run would have measured as its own preparation time. So before any
 cell starts, the runner sends the service one real facts request: a 200 px JPEG out of the fixture
-library, retried with a widening wait until it answers 200, bounded at fifteen minutes. It reaches
-an in-cluster Service through `kubectl port-forward` and the NAS cells' service through the LAN
-address. How long the service took to answer is published as `inference_warmup_s`, and a service
-that never answers stops the run with the body it replied with, which is the only thing that names
-the model it is missing.
+library, retried with a widening wait until it answers 200, bounded at fifteen minutes. How long
+the service took to answer is published as `inference_warmup_s`, and a service that never answers
+stops the run with the body it replied with, which is the only thing that names the model it is
+missing.
+
+Getting to the service is its own problem. `kubectl apply` returns as soon as the API server has
+the manifest, so when the tag has changed the Deployment is still pulling, and a Service with no
+ready endpoint answers nothing at all: a port-forward to one never even gets a local listener. A
+run once died sixty seconds after printing the overlay line, before a single facts request was
+made. So the runner waits out `kubectl rollout status deployment/immich-memories-inference
+--timeout=10m` first, and stops there with what the rollout said rather than spending the warm-up's
+budget on an image pull. The forward itself is then disposable: if it never comes up, or comes up
+and drops, it is killed and replaced on the same fifteen minutes, and the give-up says which of the
+two it was (`the port-forward never answered` against `facts answered 503: ...`). NAS cells hand
+the warm-up a LAN address, which is reachable from here as well, so those runs skip the forward
+entirely.
 
 A NAS cell's credentials go over in a file. `docker run -e NAME` takes the value from the
 environment of the shell running docker, and a non-interactive ssh session carries none of the
