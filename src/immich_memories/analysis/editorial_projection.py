@@ -46,6 +46,8 @@ class EditorialStageReporter:
             return
         payload: dict = {
             "phase_label": update.stage_label,
+            "stage_identity": update.identity,
+            "remaining_label": update.remaining_label,
             "current_phase": update.phase,
             "indeterminate": not update.counted,
             "status": status,

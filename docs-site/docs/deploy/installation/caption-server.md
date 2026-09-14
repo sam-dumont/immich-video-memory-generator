@@ -66,6 +66,7 @@ This is the setup the project is developed against, and the numbers below came o
 
 ```bash
 brew install lablup/tap/mlxcel
+pip install huggingface-hub          # for the `hf` command, if you do not have it
 hf download mlx-community/SmolVLM2-500M-Video-Instruct-mlx \
   --revision fa57db46815177fbdfd65cc85a2b3416a8332268
 ```
@@ -105,6 +106,10 @@ one serves them.
 docker compose --profile captioner up -d
 curl -s localhost:8092/v1/models
 ```
+
+The `inference` profile publishes the same host port, so running both means changing one of the two
+left-hand sides in `docker-compose.yml`. Inside the compose network they are two service names on
+one port number and nothing collides; only a `curl` from the host cares.
 
 The first `up` pulls 546 MB and checks both digests before the server starts. Re-running it is
 cheap: the digest check short-circuits and nothing downloads twice.

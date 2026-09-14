@@ -105,5 +105,5 @@ The homebase coordinates are required. Without them, the algorithm can't determi
 - **GPS data is required.** If your videos don't have GPS metadata (some cameras strip it, screen recordings never have it), trip detection won't find anything. iPhones and Android phones embed GPS by default.
 - **Set your homebase accurately.** The algorithm filters everything within `min_distance_km` of your home. If your coordinates are wrong, local trips might show up or real trips might get filtered out.
 - **Lower `min_distance_km` for local trips.** Default is 50 km. If you want to capture weekend drives to a nearby city, try 20 km.
-- **`min_duration_days` counts nights, not days.** The default of 2 needs a trip spanning three calendar dates. `1` catches a weekend away; `0` catches single-day excursions.
+- **`min_duration_days` counts nights, not days.** The default of 2 needs a trip spanning three calendar dates. `1` catches a weekend away, and it is the floor: the field is `ge=1`, so `0` fails validation rather than keeping single-day excursions.
 - **`--person` narrows trip *detection*, not the finished video.** `--person "Their Name"` looks for trips among the assets that person appears in: useful when one person's photos are the ones carrying GPS. Each video is then built from everything shot in that window, so the rest of the group is still in it.

@@ -44,24 +44,30 @@ so the first failure doesn't hide the ones behind it and you get the whole list 
 - Architecture layer enforcement (import-linter)
 - Code duplication detection (jscpd)
 - AI code critique
+- The compose file parsing alone, in an empty directory (`make compose-check`)
 - Commit message linting (Conventional Commits), on pull requests only
 
-**Tier 2: Security** (parallel with Tier 1):
+Sixteen steps on a pull request, fifteen on a push to `main`, which is the one the commit gate
+skips. `make docs-voice` and `make notices-check` are in `make ci` and in the pre-commit hooks, not
+in this job.
+
+**Tier 1: Security** (a second job, parallel with the quality gates):
 - Bandit static analysis
 - Semgrep rules
 - pip-audit dependency CVEs
 - Gitleaks secret detection
 - Hadolint Dockerfile linting
 
-**Tier 3: Tests** (runs after both Tier 1 and Tier 2 pass):
+**Tier 2: Tests** (runs after both quality and security pass):
 - Full test suite (Ubuntu on 3.11/3.12/3.13; macOS on 3.13 for a pull request, all three on main)
 - `make test-extras`: only the tests marked `extras`, which are what the torch family
-  (demucs/editorial) unlocks. Note that the CI job installs `audio` and `gpu` and not those two,
-  so what runs there is the subset that survives without torch; the rest is a local target
+  (demucs/editorial) unlocks. Note that the CI job installs `dev,audio` on Linux and
+  `dev,mac,audio` on macOS, neither of which pulls torch, so what runs there is the subset that
+  survives without it; the rest is a local target
 
-**Tier 4: Build + Docker** (runs after tests pass):
+**Tier 3: Build + Docker** (runs after tests pass):
 - Package build verification
-- Docker image build
+- Docker image build, on pull requests only
 
 Two jobs sit outside the tiers. The docs site build depends on nothing and starts immediately. The
 hermetic launch check runs on pull requests off the cache setup alone, in parallel with the tests:

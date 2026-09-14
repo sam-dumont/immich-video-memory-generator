@@ -948,6 +948,7 @@ class TestPhaseAllocation:
         pp.report("assembly", 1.0, "done")
         pp.report("music", 0.0, "start")
         pp.report("music", 1.0, "done")
+        pp.report("done", 1.0, "Complete")
 
         assert calls == sorted(calls), f"Progress not monotonic: {calls}"
         assert calls[-1] == 1.0

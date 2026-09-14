@@ -72,9 +72,13 @@ immich-memories generate --from-album "Summer 2025"
 
 ## Duration
 
-Without `--duration`, the runtime is planned from the album's own media: the same
-media-aware planner trips use, bounded to 60–300 s and capped by what the album can
-honestly fill. A 10-asset album will not be stretched into a five-minute video.
+In the web UI, an album with no duration set gets one from its own size: four seconds an item,
+bounded between 30 seconds and 10 minutes (`album_target_minutes`). A 10-asset album is 40 seconds,
+not five minutes.
+
+On the CLI there is no such planner. `--duration` left out means no target at all, and the editor
+decides the length from what it kept. The 60 to 300 second range some of these pages quote belongs
+to the trip planner, which albums do not use.
 
 ## Duplicate album names
 

@@ -24,8 +24,13 @@ pip install "immich-memories[editorial]"      # ONNX Runtime and Hugging Face Hu
 pip install "immich-memories[editorial-cuda]" # instead of editorial, on a CUDA host
 ```
 
-`all` and `all-mac` include `editorial`. Never install both: `onnxruntime-gpu` already contains
-the CPU provider and the two distributions own the same import name.
+`all` and `all-mac` include `editorial`. Never install `editorial` and `editorial-cuda` together:
+`onnxruntime-gpu` already contains the CPU provider, the two distributions own the same import
+name, and whichever pip wrote last is the one that answers.
+
+The card is for the encoder and its six heads. Both detectors open CPU ONNX sessions whatever is
+installed: the Docling one pins `CPUExecutionProvider` and the Marqo one only sets a thread count.
+That is true inside the CUDA inference image too.
 
 ## Configuration
 

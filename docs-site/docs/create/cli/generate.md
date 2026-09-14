@@ -15,92 +15,14 @@ first run over a period is the slow one: the second is mostly the render. The au
 immich-memories generate [OPTIONS]
 ```
 
-The tables below are the flags as `--help` prints them. The [CLI reference](../../reference/cli-reference.md)
-is generated from the same source and wins on any disagreement.
+Every flag, with its default, is in the generated
+[CLI reference](../../reference/cli-reference.md#generate), which comes out of the same Click tree
+`--help` does and is checked against it on every PR. `immich-memories generate --help` prints the
+same thing in your terminal. This page is what the flags do not tell you.
 
-## Flags
-
-### Time period
-
-| Flag | Short | Type | Default | Description |
-|------|-------|------|---------|-------------|
-| `--year` | `-y` | int | n/a | Calendar year |
-| `--start` | n/a | `YYYY-MM-DD` | n/a | Start date. With `--end` it overrides any memory type's own range |
-| `--end` | n/a | `YYYY-MM-DD` | n/a | End date (with `--start`) |
-| `--period` | n/a | string | n/a | Length from `--start`: `30d`, `2w`, `6m`, `1y` |
-| `--month` | n/a | int | n/a | Month 1 to 12 (with `--year`); with `--memory-type trip` it selects the trip by month |
-| `--day` | n/a | `YYYY-MM-DD` | today | The day the memory is about. `special_day`: a catalogued day. `on_this_day`: the anniversary to look back from |
-| `--years-back` | n/a | int | per type | `on_this_day`: all years (30 max) unless set. `holiday` and `--birthday`: 5 |
-
-Dates are `YYYY-MM-DD`, always. `--birthday` also takes `MM-DD`. Slashed or day-first forms are
-refused with an error naming the format, never guessed.
-
-### Memory type
-
-| Flag | Short | Type | Default | Description |
-|------|-------|------|---------|-------------|
-| `--memory-type` | n/a | choice | n/a | `year_in_review`, `season`, `person_spotlight`, `multi_person`, `monthly_highlights`, `on_this_day`, `album`, `trip`, `holiday`, `special_day` |
-| `--from-album` | n/a | string | n/a | An Immich album (name or id) as the pool. Implies `album`; cannot be combined with a time period or a person |
-| `--person` | `-p` | string | n/a | A person from Immich face recognition, repeatable |
-| `--person-match` | n/a | `and` / `or` | `and` | With several `--person`: everyone in each picture, or any of them |
-| `--people-expression` | n/a | string | n/a | Quoted full names with `AND`, `OR` and parentheses, evaluated per picture. Use instead of `--person` |
-| `--birthday` | `-b` | flag or `MM-DD` | n/a | The year ending on a birthday, plus earlier birthdays. Bare flag reads the birth date from Immich |
-| `--holiday` | n/a | name or `MM-DD` | n/a | With `holiday`: `new_year`, `valentines`, `easter`, `mothers_day`, `fathers_day`, `halloween`, `thanksgiving`, `christmas_eve`, `christmas`, `new_years_eve`, or any date |
-| `--season` | n/a | choice | n/a | `spring`, `summer`, `fall`, `autumn`, `winter` (with `season`) |
-| `--hemisphere` | n/a | `north` / `south` | `north` | For the season dates |
-| `--event-id` | n/a | string | n/a | An exact catalogue event id (with `special_day` and `--day`) |
-| `--trip-index` | n/a | int | n/a | One trip from the discovery table (with `trip`) |
-| `--all-trips` | n/a | flag | off | Every detected trip, one video each |
-| `--near-date` | n/a | `YYYY-MM-DD` | n/a | The trip closest to a date |
-| `--accept-any-provenance` | n/a | flag | off | Keep forwarded and re-encoded media (the messaging-app imports the default filter drops) |
-
-### Output
-
-| Flag | Short | Type | Default | Description |
-|------|-------|------|---------|-------------|
-| `--duration` | `-d` | int | per type | Target length in seconds |
-| `--short-form` | n/a | `15` / `30` / `60` / `90` | n/a | Sets the duration and makes the video vertical |
-| `--orientation` | n/a | choice | `landscape` | `landscape`, `portrait`, `square` |
-| `--resolution` | `-r` | choice | config value; `auto` matches source clips | `auto`, `4k`, `1080p`, `720p` |
-| `--scale-mode` | `-s` | `blur` / `fit` | config, else `blur` | Blurred background or black bars on an aspect mismatch |
-| `--transition` | `-t` | choice | `smart` | `smart` (fades and cuts), `cut`, `crossfade`, `none` |
-| `--quality` | `-q` | choice | config | `high`, `medium`, `low` |
-| `--format` | n/a | choice | config | `mp4`, `h265`, `prores` |
-| `--output` | `-o` | path | config dir | The file name you want; see [Output](#output) |
-| `--title` / `--subtitle` | n/a | string | template | Override the title screen text |
-| `--llm-title` | n/a | flag | off | Ask the model for the title. `--title` still wins; a failed call falls back to the template |
-| `--add-date` | n/a | flag | off | Caption each clip with its date, bottom right, worded relative to the memory's span |
-| `--add-place` | n/a | flag | off | Caption a clip with `CITY, COUNTRY` when the place changes, top left |
-
-### Photos and music
-
-| Flag | Short | Type | Default | Description |
-|------|-------|------|---------|-------------|
-| `--include-photos` / `--no-photos` | n/a | flag pair | on | Photos as animated clips beside the videos |
-| `--photo-duration` | n/a | float | `4.0` | Seconds per photo |
-| `--include-live-photos` / `--no-live-photos` | n/a | flag pair | on | Live Photo clips, merged when burst-captured |
-| `--music` | `-m` | path or `auto` | config | A file, or `auto` to generate from config |
-| `--no-music` | n/a | flag | off | No music at all |
-| `--music-volume` | n/a | float | `0.5` | 0.0 to 1.0 |
-
-### Modes
-
-| Flag | Short | Type | Default | Description |
-|------|-------|------|---------|-------------|
-| `--dry-run` | n/a | flag | off | Discover the inputs and report what preparation is missing. No selection, no video |
-| `--no-render` | n/a | flag | off | Select for real, stop before the encode |
-| `--include` | n/a | asset id, repeatable | n/a | Keep this picture in the cut even if the editor would drop it. The same as ticking it on the pool page |
-| `--exclude` | n/a | asset id, repeatable | n/a | Leave this picture out. The same as unticking it |
-| `--trace-selection` | n/a | path | n/a | Also write the stage-by-stage funnel to a file of your choosing |
-| `--privacy-mode` | n/a | flag | off | Blur every frame, scramble the audio, fake the names (for demos) |
-| `--upload-to-immich` | n/a | flag | off | Upload the video back to Immich |
-| `--album` | n/a | string | n/a | The album to upload into, created if missing |
-| `--keep-intermediates` | n/a | flag | off | Keep the work files |
-| `--quiet` | n/a | flag | off | No progress display, log lines only |
-
-When `--resolution` is omitted, the command uses `output.resolution` from the config (1080p by
-default); pass `--resolution auto` to let the sources choose. `--quality` changes the effective CRF,
-mapped onto each hardware encoder's own scale.
+`--resolution` takes the config value; `auto` matches source clips. When `--resolution` is omitted,
+the command uses `output.resolution`, which is 1080p by default. `--quality` changes the effective
+CRF, mapped onto each hardware encoder's own scale.
 
 Two root options go before `generate`: `-v` (or `--log-level DEBUG`) for verbose logs, and
 `--preset fast` for the CPU-only profile (1080p, H.264, medium quality, static title backgrounds)
@@ -178,13 +100,14 @@ work (previews, pixel facts, detectors, the reader's requests) turns the spinner
 an estimate:
 
 ```text
-⠿ Preparing previews: 352/9814 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━   3%
-  ⏱ 0:41 elapsed, ~20:12 remaining
+⠿ Preparing previews: 352/9814 · ~19m left in this stage ━━━━━━━━━━━   3%
+  ⏱ 0:41 elapsed
 ```
 
-The estimate is elapsed time scaled by the fraction done. It appears once a stage is past 5 %
-and is only as good as the pass is even. Stages with nothing to count keep the spinner and the
-elapsed time.
+The estimate uses the items completed since this stage's first update. It appears after
+another update advances the count and resets when the stage changes. It estimates this pass,
+not the whole cut; slow items can change it. The page reads the same saved estimate, including
+after a reload. Stages with nothing to count keep the spinner and elapsed time.
 
 If the reader stops answering, the line says so instead of going quiet:
 

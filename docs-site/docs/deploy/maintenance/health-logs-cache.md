@@ -12,8 +12,15 @@ sidebar_label: "Health, Logs & Cache"
 | `GET /health/ready` | `200` with `status: ready` when configuration and authenticated Immich access work; `503` with `status: degraded` otherwise | readiness probe, Uptime Kuma, blackbox exporter |
 | `GET /health` | always `200`; a ready payload is rewritten to `ok` | compatibility only, not a probe |
 
-`GET /health` always returns HTTP `200` for compatibility and rewrites a ready payload to `ok`; it
-is not a readiness probe. An abridged readiness payload:
+`GET /health` always returns HTTP `200` for compatibility and rewrites a ready payload to `ok`; a
+degraded one is passed through as `degraded` with the same `200`, which is what makes it useless as
+a probe.
+
+All three are unauthenticated, on purpose and even with login turned on: a container runtime has no
+session. They carry the version, whether config is present and whether Immich answered, and nothing
+about your library. Put them behind your ingress rules if that is more than you want to publish.
+
+An abridged readiness payload:
 
 ```json
 {"status": "ready", "immich_reachable": true, "last_successful_run": "2025-12-15T10:30:00", "version": "0.77.2"}

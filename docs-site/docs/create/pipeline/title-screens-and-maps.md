@@ -32,9 +32,6 @@ colour pulse and vignette pulse. On the shipped default it changes nothing, beca
 content-backed title zeroes all three anyway; it only bites if you have turned content backgrounds
 off. It does not send you to PIL.
 
-There is a third renderer in the tree, `titles/renderer_ffmpeg.py`, that draws titles with
-`drawtext`. Nothing in the product imports it: only tests do. Treat it as unwired.
-
 ## Content-backed backgrounds
 
 By default, title screens use a frame from your actual footage as the background: the first second
@@ -98,7 +95,7 @@ Each endpoint gets a pin (red circle with white outline) and a city label. The t
 Two animation modes get picked automatically based on how far apart departure and destination are:
 
 - **Van Wijk zoom**: for long distances. Zooms out to show the route, then zooms back in. The math is the d3 `interpolateZoom` algorithm: it picks the smoothest path through zoom-space rather than just linearly interpolating.
-- **Linear pan**: for short hops. When the destination is close enough that the mid-transit zoom would stay above zoom level 10 (metro scale), it just pans at fixed zoom instead of zooming out unnecessarily.
+- **Linear pan**: for short hops. When the destination is close enough that the mid-transit zoom would stay at zoom level 10 or above (metro scale), it just pans at fixed zoom instead of zooming out unnecessarily.
 
 ### Tile source
 
@@ -133,26 +130,10 @@ changes no pixels.
 
 ## Configuration
 
-Title screen settings live under `title_screens` in your config:
-
-```yaml
-title_screens:
-  style_mode: auto              # auto (mood-based) or random
-  animated_background: true     # gradient shift, colour pulse, vignette; off on content-backed cards
-  title_duration: 3.5           # seconds per title card
-  locale: auto                  # auto, en, or fr
-  show_decorative_lines: false  # inert: every style and every card pins line accents off
-  show_month_dividers: true     # month dividers in yearly memories
-  use_first_name_only: true     # "Riley" instead of "Riley Martin"
-```
-
-Map coordinates for trip memories come from the `trips` config section:
-
-```yaml
-trips:
-  homebase_latitude: 48.8566    # Your home coordinates
-  homebase_longitude: 2.3522
-```
+The `title_screens:` and `trips:` keys, with their defaults, are in the
+[config reference](../../reference/config-reference.md#title-screens). The switches worth knowing
+about: `enabled` turns the whole thing off, including the map fly-over and its tile requests, and
+`style` pins one of the visual styles above instead of letting the mood pick.
 
 ## Previewing before a full render
 

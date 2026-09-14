@@ -5,7 +5,12 @@ title: uv / pip
 
 # Install with uv or pip
 
-Requires **Python 3.11 or newer** and FFmpeg on your `PATH`.
+Requires **Python 3.11 or newer** and FFmpeg on your `PATH`:
+
+```bash
+brew install ffmpeg        # macOS
+sudo apt install ffmpeg    # Debian, Ubuntu
+```
 
 ## uv (Recommended)
 
@@ -26,12 +31,17 @@ uvx immich-memories --help
 ```bash
 git clone https://github.com/sam-dumont/immich-video-memory-generator.git
 cd immich-video-memory-generator
-uv sync
-uv run immich-memories ui      # `uv sync` installs into .venv, so the command is not on your PATH
+uv sync --extra editorial      # or --extra all-mac on Apple Silicon
+uv run immich-memories ui
 ```
 
-To get a plain `immich-memories` command instead, install it as a tool: `uv tool install "immich-memories[all]"`
-(or `[all-mac]` on macOS).
+A bare `uv sync` gives you the app and the render and not the ONNX runtime the six context heads
+and the two detectors need, so the first cut stops at the heads stage on every tier but
+`metadata_only`. Take the extra.
+
+`uv sync` installs into the clone's `.venv` and puts nothing on your `PATH`: inside the clone it is
+always `uv run immich-memories ...`. For a plain `immich-memories` command, install it as a tool
+instead: `uv tool install "immich-memories[all]"` (or `[all-mac]` on macOS).
 
 ### Platform Extras
 
@@ -141,6 +151,10 @@ pip install "immich-memories[all]"
 pip install "immich-memories[all-mac]"
 ```
 
+`editorial-cuda` **replaces** `editorial`; never install both. `onnxruntime` and `onnxruntime-gpu`
+own the same import name, and the one that answers is whichever pip wrote last. `all` and `all-mac`
+carry the CPU variant.
+
 The `editorial` extra supplies the runtimes for preparing missing public context and detector
 facts. Its pinned encoder, detector weights and compact-caption endpoint require separate
 [editorial annotation setup](../configuration/editorial-preparation.md). Complete cached facts
@@ -152,9 +166,10 @@ skip these providers; missing required facts stop selection with an explicit set
 immich-memories preflight
 ```
 
-GPU title rendering gets a row saying what it costs where the kernel library has no wheel. The other extras do
-not yet, and preflight does not check the detector snapshots at all: the first cut does that, and
-stops with a count per missing producer.
+GPU title rendering gets a row saying what it costs where the kernel library has no wheel, and
+both digest-pinned ONNX exports get a row each. What preflight does not check is the document
+classifier's Hugging Face snapshot, or whether the other extras are installed: the first cut does
+that, and stops with a count per missing producer.
 
 ## Optional System Dependencies
 
@@ -166,8 +181,15 @@ These are **not required** but improve specific features:
 
 The primary HDR headroom parser is pure Python: exiftool is only called if the built-in parser fails on an unusual HEIC file.
 
-## Verify
+## Before the first cut
 
 ```bash
 immich-memories --help
+immich-memories models fetch   # skip on tier: metadata_only
+immich-memories preflight
 ```
+
+`models fetch` writes the pinned encoder, the pinned sensitive-content export and the document
+classifier's snapshot, about 500 MB in total, under `~/.immich-memories/models` and the Hugging
+Face cache. Every tier but `metadata_only` wants them, and the first cut without them stops at the
+heads stage naming the file it could not open.

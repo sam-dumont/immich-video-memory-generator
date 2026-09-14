@@ -20,9 +20,10 @@ VAAPI (Video Acceleration API) provides hardware-accelerated video encoding on A
 - Mesa VA drivers installed (`mesa-va-drivers` on Debian/Ubuntu, `libva-mesa-driver` on Arch)
 - FFmpeg built with VAAPI support
 
-**In the Docker image the drivers are already installed** (amd64 only). Images up to 0.76.1
-shipped FFmpeg with VAAPI compiled in but no VA-API driver at all, so `vaInitialize` failed with
-`-542398533` and every run silently encoded in software. If you are on an older image, upgrade.
+**In the Docker image the drivers are already installed** (amd64 only), from `0.77.1` on. Images
+older than that shipped FFmpeg with VAAPI compiled in and no VA-API driver at all, so
+`vaInitialize` failed with `-542398533` and every run silently encoded in software. If you are on
+one, upgrade.
 
 Check availability:
 
@@ -85,14 +86,17 @@ docker compose exec immich-memories vainfo
 
 ## Quality
 
-VAAPI takes the configured CRF as `-rc_mode CQP -qp`, offset by the measured +2 that makes
-`crf: 18` land on the quality libx264 gives at CRF 18. `-qp` on its own is ignored unless CQP is
-selected, which is why this needs both flags. Before 0.76.1 neither was emitted and the driver's
-default decided quality.
+VAAPI takes the configured CRF as `-rc_mode CQP -qp`. It is not a fixed offset: two measured
+anchors are pinned per encoder family and the dial interpolates between them. VAAPI's pair is
+QP 20 at reference CRF 18 and QP 22 at CRF 24 (`processing/rate_control.py`). `-qp` on its own is
+ignored unless CQP is selected, which is why this needs both flags. Before 0.77.1 neither was
+emitted and the driver's default decided quality.
 
 Reaching software quality costs roughly 2.2x the bits, see
-[the measured table](./overview.md#quality-one-dial-calibrated-per-encoder).
+[the measured table](./overview.md#quality-one-dial-calibrated-per-encoder). That sweep was taken
+through the iHD driver on an Intel J4125, not on an AMD card: the flags and the interpolation are
+the same on Mesa, the bit cost on your GPU is not something anyone here has measured.
 
 ## Title rendering
 
-GPU title rendering runs on Quadrants, which has wheels for Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 on Python 3.11-3.13. On macOS x86_64 and on Python 3.14 there is none, and title screens fall back to the PIL renderer (static gradient and text, no animated kernels, no SDF text); `immich-memories preflight` says which you will get. See [Title kernels](./cpu-only.md#title-kernels).
+GPU title rendering runs on Quadrants, which has wheels for Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 on Python 3.11-3.13. On macOS x86_64 and on Python 3.14 there is none, and title screens fall back to the PIL renderer, which still animates its gradient but loses the kernel effects (bokeh particles, the slow-motion deblur of a content-backed card) and the SDF text path; `immich-memories preflight` says which you will get. See [Title kernels](./cpu-only.md#title-kernels).
