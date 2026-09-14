@@ -37,7 +37,12 @@ _PROVIDER_PRESETS: dict[str, dict] = {
     "openai": {
         "base_url": "https://api.openai.com/v1",
         "thinking_params": {"reasoning_effort": "medium"},
-        "no_thinking_params": {},
+        # The gpt-5 family reasons on every call and cannot be told not to, so
+        # "do not think" means the cheapest effort it sells -- one level below
+        # the "low" the generic compatible hosts stop at. Two story-pick calls
+        # at 300 and 600 tokens came back raw "" on gpt-5.6-luna for want of it.
+        "no_thinking_params": {"reasoning_effort": "minimal"},
+        "always_reasons": True,
     },
     "anthropic": {
         "base_url": "https://api.anthropic.com",

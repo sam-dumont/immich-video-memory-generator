@@ -4,7 +4,7 @@ import math
 from collections.abc import Callable, Mapping
 from typing import Any, cast
 
-from immich_memories.analysis.strict_json import final_json_object
+from immich_memories.analysis.strict_json import final_json_object, model_text_rows
 
 
 def source_kind_marker(unit: Mapping[str, Any]) -> str:
@@ -50,8 +50,8 @@ def _read_pick(
     answer = final_json_object(raw)
     if answer is None:
         raise ValueError("answer must be one complete JSON object")
-    answered = answer.get("keep")
-    if not isinstance(answered, list) or any(not isinstance(label, str) for label in answered):
+    answered = model_text_rows(answer.get("keep"))
+    if answered is None or any(not isinstance(label, str) for label in answered):
         raise ValueError("keep must be an array of labels")
     # A model that echoes back a whole offered row has still named that row.
     kept = [label.split(" | ", 1)[0].strip() for label in answered]

@@ -11,7 +11,11 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 
-from immich_memories.analysis.strict_json import bounded_model_text, final_json_object
+from immich_memories.analysis.strict_json import (
+    bounded_model_text,
+    final_json_object,
+    model_text_rows,
+)
 from immich_memories.store.period_insights import (
     BankedInsightEvidence,
     BankedPeriodInsight,
@@ -299,9 +303,10 @@ def _evidence(
 
 
 def _text_list(value: object, *, max_rows: int, max_chars: int) -> tuple[str, ...] | None:
-    if not isinstance(value, list) or len(value) > max_rows:
+    values = model_text_rows(value)
+    if values is None or len(values) > max_rows:
         return None
-    rows = tuple(bounded_model_text(item, max_chars=max_chars) for item in value)
+    rows = tuple(bounded_model_text(item, max_chars=max_chars) for item in values)
     if any(item is None for item in rows):
         return None
     return tuple(item for item in rows if item is not None)

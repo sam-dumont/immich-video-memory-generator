@@ -108,6 +108,17 @@ class LLMConfig(BaseModel):
         default_factory=dict,
         description="Request fields merged into every call, for provider-specific requirements.",
     )
+    always_reasons: bool = Field(
+        default=False,
+        description=(
+            "Whether this endpoint thinks before answering whether or not it "
+            "was asked to, billing that thinking inside the same token budget "
+            "as the answer. Left false, it is learned from the first reply that "
+            "reports reasoning tokens and remembered for the rest of the run; "
+            "set it true to spare that first call, which otherwise comes back "
+            "with an empty answer."
+        ),
+    )
     send_image_detail: bool = Field(
         default=True,
         description=(

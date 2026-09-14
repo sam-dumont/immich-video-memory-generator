@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
-from immich_memories.analysis.llm_query import LLMTransportAttempt
+from immich_memories.analysis.llm_wire import LLMTransportAttempt
 from immich_memories.analysis.provider_status import watch_provider
 from immich_memories.config_models_llm import LLMConfig
 from immich_memories.operations.cut_progress import (

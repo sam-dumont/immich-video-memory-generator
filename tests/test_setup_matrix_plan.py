@@ -16,6 +16,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from immich_memories.config_loader import Config
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from matrix_pinned_config import DROP, pinned_config, read_operator_immich  # noqa: E402
@@ -37,6 +39,7 @@ from setup_matrix_plan import (  # noqa: E402
     PlanError,
     build_plan,
     captioner_overlay_path,
+    check_homebase,
     declared_for_device,
     dry_run_text,
     inference_image,
@@ -77,6 +80,12 @@ FULL_ENV = {
     # LoadBalancer. Present here because build_plan is given what the runner
     # would have put in the environment by then.
     INFERENCE_ENV: DERIVED_ADDRESS,
+    # The class the owner lends the GPU node that the default one cannot reach.
+    "MATRIX_K8S_1070_STORAGE_CLASS": "a-class-that-reaches-that-node",
+    # Where home is for every lane. Nowhere near the owner's: what matters to a
+    # test is that the plan carries the reference and never the number.
+    "MATRIX_HOMEBASE_LATITUDE": "12.3456",
+    "MATRIX_HOMEBASE_LONGITUDE": "-7.8910",
 }
 
 
@@ -877,7 +886,7 @@ def test_a_cluster_cell_pulls_its_results_through_a_pipe_not_kubectl_cp(
 
     assert "cp" not in copy_out.command
     assert copy_out.command[:4] == ("kubectl", "--context", "$MATRIX_K8S_CONTEXT", "-n")
-    assert copy_out.command[-7:] == ("--", "tar", "-C", "/out", "-cf", "-", ".")
+    assert copy_out.command[-8:] == ("--", "tar", "-C", "/out", "--exclude=*.wav", "-cf", "-", ".")
     assert copy_out.pipe_to[0] == "tar"
     assert copy_out.pipe_to[-2:] == ("-xf", "-")
     assert str(copy_out).count(" | ") == 1
@@ -1118,6 +1127,220 @@ def test_no_pod_of_an_interrupted_run_is_left_holding_the_claim(
     # the healthy case, so the drain is a bounded delete of the same selector.
     assert "--ignore-not-found" in drain
     assert "--timeout=3m" in drain
+
+
+# The 1070 sits on a node in another zone, and the matrix's own claims bind
+# volumes the zoned default class pins to the zone the other two GPU nodes are
+# in. `k8s-gpu-1070` sat in FailedScheduling for "1 node(s) didn't match
+# PersistentVolume's node affinity", which no CPU or memory request can fix: the
+# storage is what cannot follow the pod. A cell that names its own class gets
+# claims of its own, under its own names, so the shared pair is left alone.
+
+
+def test_a_cell_may_name_the_storage_class_its_claims_are_made_under(
+    manifest: dict, tmp_path: Path
+) -> None:
+    item = _cell(manifest, tmp_path, "k8s-gpu-1070")
+    claims = [doc for doc in yaml.safe_load_all(item.manifests["claims.yaml"]) if doc]
+
+    assert [doc["metadata"]["name"] for doc in claims] == [
+        "setup-matrix-k8s-gpu-1070-data",
+        "setup-matrix-k8s-gpu-1070-output",
+    ]
+    # The reference, not the value: the owner decides which class to lend, and a
+    # dry run is meant to be pasteable.
+    assert {doc["spec"]["storageClassName"] for doc in claims} == {"$MATRIX_K8S_1070_STORAGE_CLASS"}
+
+
+def test_the_shared_claims_are_untouched_by_a_cell_that_names_its_own(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """Every other cluster cell keeps the one pair, on the cluster's default class."""
+    documents = yaml.safe_load_all(_k8s_cell(manifest, tmp_path).manifests["claims.yaml"])
+    claims = [doc for doc in documents if doc]
+
+    assert [doc["metadata"]["name"] for doc in claims] == [
+        "setup-matrix-data",
+        "setup-matrix-output",
+    ]
+    assert all("storageClassName" not in doc["spec"] for doc in claims)
+
+
+def test_a_cell_with_its_own_claims_mounts_them_everywhere_it_mounts_storage(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """The Job, the collector and the tear-down have to name the same two claims.
+
+    A collector on the shared output claim would copy an empty volume back and
+    report the cell as having produced nothing.
+    """
+    item = _cell(manifest, tmp_path, "k8s-gpu-1070")
+    job = yaml.safe_load(item.manifests["job.yaml"])["spec"]["template"]["spec"]
+    collector = yaml.safe_load(item.manifests["collector.yaml"])["spec"]
+    teardown = str(next(step for step in item.steps if step.name == "delete-output-claim"))
+
+    def claim_of(spec: dict, volume: str) -> str:
+        return next(v for v in spec["volumes"] if v["name"] == volume)["persistentVolumeClaim"][
+            "claimName"
+        ]
+
+    assert claim_of(job, "output") == "setup-matrix-k8s-gpu-1070-output"
+    assert claim_of(job, "data") == "setup-matrix-k8s-gpu-1070-data"
+    assert claim_of(collector, "output") == "setup-matrix-k8s-gpu-1070-output"
+    assert "setup-matrix-k8s-gpu-1070-output" in teardown
+    # The data claim carries the models and the bank, so it outlives the cell.
+    assert "setup-matrix-k8s-gpu-1070-data" not in teardown
+
+
+def test_the_collector_is_scheduled_where_the_claim_it_mounts_can_follow_it(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """A zoned volume binds to one node's zone, and the collector has to be in it.
+
+    The Job already carries a node selector for its card. The collector takes the
+    same one, and the GPU taint's toleration with it, so the copy runs beside the
+    volume the Job wrote rather than wherever the scheduler had room.
+    """
+    for cell_id in ("k8s-gpu-t1000", "k8s-gpu-1070"):
+        item = _cell(manifest, tmp_path, cell_id)
+        job = yaml.safe_load(item.manifests["job.yaml"])["spec"]["template"]["spec"]
+        collector = yaml.safe_load(item.manifests["collector.yaml"])["spec"]
+
+        assert collector["nodeSelector"] == job["nodeSelector"], cell_id
+        assert {
+            "key": "nvidia.com/gpu",
+            "operator": "Exists",
+            "effect": "NoSchedule",
+        } in collector["tolerations"], cell_id
+    # A cell that pins no node pins no collector either.
+    assert (
+        "nodeSelector"
+        not in yaml.safe_load(_k8s_cell(manifest, tmp_path).manifests["collector.yaml"])["spec"]
+    )
+
+
+def test_a_cell_whose_storage_class_variable_is_unset_is_skipped_and_says_so(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """A missing class is not a class to fall back on: the shared one is the wrong zone."""
+    environment = {key: value for key, value in FULL_ENV.items() if "1070" not in key}
+    item = next(
+        item
+        for item in _plan(manifest, tmp_path, environment).cells
+        if item.cell.id == "k8s-gpu-1070"
+    )
+
+    assert item.skip_reason is not None
+    assert "MATRIX_K8S_1070_STORAGE_CLASS" in item.skip_reason
+
+
+def test_the_copy_out_leaves_the_mastered_audio_on_the_volume(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """The mastered track is the biggest thing in the directory and nothing reads it.
+
+    `k8s-gpu-t1000` lost its attempt, its cut and its per-phase logs to
+    "Truncated tar archive ... mastered_calm_acoustic_s522.wav", because tar
+    stops where the stream broke and the rest of the archive never arrives. The
+    film and the attempt JSONs are what the row is built from; the master is a
+    render intermediate the run has already muxed.
+    """
+    copy_out = str(
+        next(step for step in _k8s_cell(manifest, tmp_path).steps if step.name == "copy-out")
+    )
+
+    assert "--exclude=*.wav" in copy_out
+    assert copy_out.index("--exclude") < copy_out.index("-cf")
+
+
+# Every lane has to plan against the same home. `_near_home_test` in
+# `analysis/editorial_structure_planner` measures each happening against
+# `trips.homebase_*` and `worthiness` in `analysis/editorial_rule_reader` grades
+# anything over 10 km "away". The schema's default for both is 0.0: Mac and NAS
+# cells copy the operator's config and inherit a real home, and a cluster cell's
+# ConfigMap is built from the pins alone and inherited Null Island. Run 1's eight
+# k8s cells read every Brussels happening as 5,500 km away, wrote none of the 22
+# "No occasion indicator" rows the NAS wrote, and planned 14 shots to the other
+# lanes' 15 -- a different cut, for a reason no column in the table named.
+
+
+def test_every_cell_of_every_lane_is_pinned_to_the_same_home(
+    manifest: dict, tmp_path: Path
+) -> None:
+    plan = _plan(manifest, tmp_path, FULL_ENV)
+
+    assert plan.runnable
+    for item in plan.runnable:
+        assert item.pins["trips.homebase_latitude"] == "$MATRIX_HOMEBASE_LATITUDE", item.cell.id
+        assert item.pins["trips.homebase_longitude"] == "$MATRIX_HOMEBASE_LONGITUDE", item.cell.id
+
+
+def test_a_cluster_config_map_carries_the_home_a_cluster_cell_has_no_other_way_to_get(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """The ConfigMap is the whole of a Job's config, so a key absent from it is absent."""
+    configmap = yaml.safe_load(_k8s_cell(manifest, tmp_path).manifests["configmap.yaml"])
+    trips = yaml.safe_load(configmap["data"]["config.yaml"])["trips"]
+
+    assert trips == {
+        "homebase_latitude": "$MATRIX_HOMEBASE_LATITUDE",
+        "homebase_longitude": "$MATRIX_HOMEBASE_LONGITUDE",
+    }
+
+
+def test_a_rendered_config_map_loads_as_a_home_the_planner_can_measure_against(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """What the Job actually reads: the ConfigMap with the runner's values substituted.
+
+    The reference is written as `$NAME` text and the runner puts the value back
+    before it applies the manifest, so the value arrives as a string and the
+    planner wants two floats. This is the assertion that the round trip ends in a
+    home and not at Null Island.
+    """
+    configmap = yaml.safe_load(_k8s_cell(manifest, tmp_path).manifests["configmap.yaml"])
+    rendered = configmap["data"]["config.yaml"]
+    for name, value in FULL_ENV.items():
+        rendered = rendered.replace(f"${name}", value)
+    path = tmp_path / "from-the-config-map.yaml"
+    path.write_text(rendered)
+
+    trips = Config.from_yaml(path).trips
+
+    assert (trips.homebase_latitude, trips.homebase_longitude) == (12.3456, -7.8910)
+    trips.validate_homebase()
+
+
+def test_a_run_with_no_home_in_the_environment_is_refused(manifest: dict) -> None:
+    """Not a skip_reason: every cell reads these, so one missing variable is the run."""
+    environment = {k: v for k, v in FULL_ENV.items() if "HOMEBASE" not in k}
+
+    with pytest.raises(PlanError) as raised:
+        check_homebase(manifest, environment)
+
+    assert "MATRIX_HOMEBASE_LATITUDE" in str(raised.value)
+    assert "MATRIX_HOMEBASE_LONGITUDE" in str(raised.value)
+    # The full environment is the passing case, and says nothing on its way past.
+    assert check_homebase(manifest, FULL_ENV) is None
+
+
+def test_a_home_written_into_the_manifest_as_a_number_is_refused(manifest: dict) -> None:
+    """Coordinates are the operator's home and belong in no file this repo tracks."""
+    manifest["baseline_config"]["trips.homebase_latitude"] = 12.3456
+
+    with pytest.raises(PlanError, match=r"trips\.homebase_latitude.*\$env:"):
+        check_homebase(manifest, FULL_ENV)
+
+
+def test_a_dry_run_names_the_home_variables_and_prints_neither_value(
+    manifest: dict, tmp_path: Path
+) -> None:
+    text = dry_run_text(_plan(manifest, tmp_path, FULL_ENV))
+
+    assert "homebase_latitude: $MATRIX_HOMEBASE_LATITUDE" in text
+    assert "homebase_longitude: $MATRIX_HOMEBASE_LONGITUDE" in text
+    assert "12.3456" not in text
+    assert "-7.8910" not in text
 
 
 def test_the_pods_carry_the_label_the_drain_selects_on(manifest: dict, tmp_path: Path) -> None:
@@ -1670,7 +1893,7 @@ def test_a_seeded_cell_copies_a_bank_instead_of_preparing(manifest: dict, tmp_pa
     item = _cells_by_id(manifest, tmp_path)["mac-hosted-melious-gemma-4-31b"]
     steps = [step.name for step in item.steps]
 
-    assert steps == ["seed-cache", "generate"], "a seeded cell never prepares"
+    assert steps == ["probe-readers", "seed-cache", "generate"], "a seeded cell never prepares"
     seed = str(next(step for step in item.steps if step.name == "seed-cache"))
     assert str(tmp_path / "mac-local" / "cache") in seed
     assert str(tmp_path / item.cell.id / "cache") in seed
@@ -1739,3 +1962,21 @@ def test_every_priced_model_is_one_some_cell_actually_reads_with(manifest: dict)
             assert price["retrieved"]
             assert price["input_per_million"] > 0
             assert price["output_per_million"] > 0
+
+
+def test_a_reader_cell_probes_its_reader_before_it_spends_anything(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """Run 1 paid for four models that answered every read with nothing in it."""
+    cells = _cells_by_id(manifest, tmp_path)
+    hosted = cells["mac-hosted-melious-gemma-4-31b"]
+
+    assert hosted.steps[0].name == "probe-readers"
+    assert "--cell mac-hosted-melious-gemma-4-31b" in str(hosted.steps[0])
+    assert "--library demo --month 2024-06" in str(hosted.steps[0])
+
+
+def test_a_cell_that_calls_no_model_has_nothing_to_probe(manifest: dict, tmp_path: Path) -> None:
+    rules = _cells_by_id(manifest, tmp_path)["mac-rules"]
+
+    assert "probe-readers" not in [step.name for step in rules.steps]

@@ -15,7 +15,7 @@ from PIL import Image
 
 from immich_memories.analysis import editorial_picture_facts as module
 from immich_memories.analysis import llm_metrics
-from immich_memories.analysis.llm_query import LLMIncompleteResponse, LLMTransportAttempt
+from immich_memories.analysis.llm_wire import LLMIncompleteResponse, LLMTransportAttempt
 from immich_memories.analysis.selection_trace import Trace
 from immich_memories.config_models_llm import LLMConfig
 

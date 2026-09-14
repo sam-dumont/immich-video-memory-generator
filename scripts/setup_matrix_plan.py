@@ -94,6 +94,27 @@ OUTPUT_SUBPATH = "setup-matrix"
 # at all in a namespace that predates deploy/kubernetes/base/pvc.yaml.
 DATA_CLAIM = "setup-matrix-data"
 OUTPUT_CLAIM = "setup-matrix-output"
+# A cell may take the pair away from the shared names. The cluster's default
+# class provisions volumes with a node affinity of its own — region and zone —
+# and a node outside that zone cannot mount one however much CPU it has free:
+# `k8s-gpu-1070` sat in FailedScheduling for "1 node(s) didn't match
+# PersistentVolume's node affinity" because the card is on a node the zoned
+# class does not reach. `claim_mode: own` gives that cell a data and an output
+# claim of its own so the shared pair, warm with models and bank, is untouched.
+SHARED_CLAIMS = "shared"
+OWN_CLAIMS = "own"
+CLAIM_MODES = frozenset({SHARED_CLAIMS, OWN_CLAIMS})
+
+# The two pins every lane has to agree on before a single cell is comparable.
+# `analysis/editorial_structure_planner._near_home_test` measures each happening
+# against `trips.homebase_*` and `analysis/editorial_rule_reader.worthiness`
+# grades anything further than 10 km "away"; the schema's default for both is
+# 0.0. Mac and NAS cells copy the operator's config and inherit a real home, and
+# a cluster cell's ConfigMap is built from the pins alone and inherited Null
+# Island: run 1's cluster cells read every Brussels happening as 5,500 km from
+# home and wrote not one of the 22 "No occasion indicator" rows every Mac and
+# NAS rules cell wrote over the same month.
+HOMEBASE_PINS = ("trips.homebase_latitude", "trips.homebase_longitude")
 
 # What the GPU operator labels a node with, and what a render cell selects on. A
 # hostname would name the same machine today and the wrong card the day a GPU
@@ -154,6 +175,11 @@ MAKE_REMOTE_DIR = "make-remote-dir"
 FRESH_CACHE = "fresh-cache"
 # The step the runner retries and then judges on the film being here.
 COPY_OUT = "copy-out"
+# What the copy-out leaves behind. The mastered track is a render intermediate,
+# already muxed into the film by the time it is written, and it is the biggest
+# file in a cell's directory: on `k8s-gpu-t1000` it was the member the stream
+# broke on, and everything archived behind it went with it.
+MASTER_EXCLUDE = "--exclude=*.wav"
 
 # The env var `config_loader` maps to `immich.api_key`, which is how a cluster
 # cell is handed the operator's key without a ConfigMap ever holding one.
@@ -206,6 +232,18 @@ class Cell:
     # names. The ids are whatever the operator's own server has resident, so they
     # belong in their environment and not in this repo.
     for_each_env: str = ""
+    # The StorageClass this cell's claims are made under. Blank takes the
+    # cluster's default, which is what every cell but the odd-zone one wants.
+    storage_class: str = ""
+    # `shared` takes the matrix's one pair of claims; `own` makes a pair named
+    # after the cell. A cell naming a class of its own is always `own` in effect:
+    # the shared claims are already bound under the default class, and applying
+    # a different class over a bound claim changes nothing.
+    claim_mode: str = SHARED_CLAIMS
+
+    @property
+    def owns_claims(self) -> bool:
+        return self.claim_mode == OWN_CLAIMS or bool(self.storage_class)
 
     @property
     def hosted(self) -> bool:
@@ -313,9 +351,30 @@ def read_cells(manifest: dict) -> tuple[Cell, ...]:
             requires_overlay=str(row.get("requires_overlay") or ""),
             seed_cache_from=str(row.get("seed_cache_from") or ""),
             for_each_env=str(row.get("for_each_env") or ""),
+            storage_class=str((row.get("k8s") or {}).get("storage_class", "")),
+            claim_mode=_claim_mode(row),
         )
         for row in manifest["cells"]
     )
+
+
+def _claim_mode(row: dict) -> str:
+    mode = str((row.get("k8s") or {}).get("claim_mode", SHARED_CLAIMS))
+    if mode not in CLAIM_MODES:
+        raise PlanError(f"{row['id']}: claim_mode {mode!r} is not one of {sorted(CLAIM_MODES)}")
+    return mode
+
+
+def cell_claims(cell: Cell) -> tuple[str, str]:
+    """The data and output claim this cell mounts, shared or its own.
+
+    Named after the cell as soon as it wants either a class or a pair of its own,
+    because the shared names are already bound under the default class and a
+    class is not something `apply` can change on a bound claim.
+    """
+    if not cell.owns_claims:
+        return DATA_CLAIM, OUTPUT_CLAIM
+    return f"setup-matrix-{cell.id}-data", f"setup-matrix-{cell.id}-output"
 
 
 # The config key a reader's model id is pinned under.
@@ -494,6 +553,41 @@ def _mac_steps(
 
 SEED_CACHE = "seed-cache"
 SEED_SCRIPT = "scripts/setup_matrix_seed.py"
+
+PROBE_READERS = "probe-readers"
+PROBE_READERS_SCRIPT = "scripts/setup_matrix_probe_readers.py"
+# The readers. A `rules` cell calls no model, so it has nothing to probe and
+# nothing to lose by starting.
+MODEL_READERS = ("hosted_", "local_model")
+
+
+def reads_with_a_model(cell: Cell) -> bool:
+    return cell.reader.startswith(MODEL_READERS)
+
+
+def probe_readers_step(cell: Cell, library: str, month: str) -> Step:
+    """Ask this cell's reader the three shapes it will be asked, before it spends anything.
+
+    It runs on this machine rather than on the host the cell runs on: a reader is
+    a URL and this machine can reach it, and three calls now are cheaper than the
+    hour of pictures run 1 spent on four models that answered every read with
+    HTTP 200 and nothing in it.
+    """
+    return Step(
+        PROBE_READERS,
+        (
+            "uv",
+            "run",
+            "python",
+            PROBE_READERS_SCRIPT,
+            "--cell",
+            cell.id,
+            "--library",
+            library,
+            "--month",
+            month,
+        ),
+    )
 
 
 def seed_source(cell: Cell, out_dir: Path, *, prepared_here: bool) -> Path:
@@ -937,9 +1031,27 @@ def _k8s_steps(cell: Cell, out_dir: Path, *, operator_immich: bool) -> tuple[Ste
         # tees and nothing has to agree about a working directory. The image's
         # WORKDIR is /app, and a relative source resolved against it was
         # `tar: setup-matrix/<cell>: Cannot stat` on the second real run.
+        # WHY the exclude: the mastered track is the largest file in the
+        # directory and nothing downstream opens it -- the film is muxed by the
+        # time it is written. `k8s-gpu-t1000` lost its attempt, its cut and every
+        # per-phase log to "Truncated tar archive ...
+        # mastered_calm_acoustic_s522.wav": tar stops where the stream broke, and
+        # everything behind that member never arrives.
         Step(
             COPY_OUT,
-            (*context, "exec", collector, "--", "tar", "-C", REMOTE_OUT, "-cf", "-", "."),
+            (
+                *context,
+                "exec",
+                collector,
+                "--",
+                "tar",
+                "-C",
+                REMOTE_OUT,
+                MASTER_EXCLUDE,
+                "-cf",
+                "-",
+                ".",
+            ),
             pipe_to=("tar", "-C", str(local), "-xf", "-"),
         ),
         Step("delete-collector", (*context, "delete", "pod", collector, "--ignore-not-found")),
@@ -949,7 +1061,7 @@ def _k8s_steps(cell: Cell, out_dir: Path, *, operator_immich: bool) -> tuple[Ste
         # the models and the annotation bank, warm across cells and across runs.
         Step(
             "delete-output-claim",
-            (*context, "delete", "pvc", OUTPUT_CLAIM, "--ignore-not-found"),
+            (*context, "delete", "pvc", cell_claims(cell)[1], "--ignore-not-found"),
         ),
     )
 
@@ -968,9 +1080,17 @@ def k8s_diagnostics(cell: Cell) -> tuple[Step, ...]:
     )
 
 
-def purge_claims_command() -> tuple[str, ...]:
-    """Both claims, for a run that asked to leave the cluster with nothing of its own."""
-    return (*KUBECTL, "delete", "pvc", DATA_CLAIM, OUTPUT_CLAIM, "--ignore-not-found")
+def purge_claims_command(cells: tuple[Cell, ...] = ()) -> tuple[str, ...]:
+    """Every claim the run made, for one that asked to leave the cluster with nothing.
+
+    The shared pair plus whatever a cell on another zone made for itself: those
+    carry a copy of the same models, and a purge that left them would leave the
+    biggest thing the matrix put on the cluster behind.
+    """
+    names = dict.fromkeys(
+        (DATA_CLAIM, OUTPUT_CLAIM, *(name for cell in cells for name in cell_claims(cell)))
+    )
+    return (*KUBECTL, "delete", "pvc", *names, "--ignore-not-found")
 
 
 CPU_OVERLAY = "deploy/kubernetes/overlays/inference"
@@ -1275,6 +1395,32 @@ def inference_overlay_steps(
     return tuple(steps)
 
 
+def _storage_class_block(cell: Cell) -> str:
+    """The class line a claim carries, or nothing at all for the cluster's default."""
+    return f"  storageClassName: {_render_pin(cell.storage_class)}\n" if cell.storage_class else ""
+
+
+def collector_pod_block(product: str) -> str:
+    """Where the collector may land, which is wherever the Job's volume can follow it.
+
+    A zoned or node-local class binds the output volume to one node's zone, and a
+    collector the scheduler put elsewhere either cannot start or would copy back
+    an empty directory. It takes the Job's own node selector, and the GPU taint's
+    toleration with it, because a GPU node is tainted against everything that
+    does not tolerate it. No runtime class: the collector runs `sleep`.
+    """
+    if not product:
+        return ""
+    return (
+        "  nodeSelector:\n"
+        f"    {GPU_PRODUCT_LABEL}: {product}\n"
+        "  tolerations:\n"
+        f"    - key: {GPU_RESOURCE}\n"
+        "      operator: Exists\n"
+        "      effect: NoSchedule\n"
+    )
+
+
 def gpu_pod_block(product: str) -> str:
     """Where a render cell's pod may land, and what hands it the card once it does.
 
@@ -1370,8 +1516,11 @@ def _k8s_manifests(
         if credentials or operator_immich
         else ""
     )
+    data_claim, output_claim = cell_claims(cell)
     return {
-        "claims.yaml": _CLAIMS.format(data=DATA_CLAIM, output=OUTPUT_CLAIM),
+        "claims.yaml": _CLAIMS.format(
+            data=data_claim, output=output_claim, storage_class=_storage_class_block(cell)
+        ),
         "configmap.yaml": _CONFIGMAP.format(name=name, config=config_block),
         "job.yaml": _JOB.format(
             name=name,
@@ -1389,15 +1538,16 @@ def _k8s_manifests(
             subpath=f"{OUTPUT_SUBPATH}/{cell.id}",
             models_subpath=MODELS_SUBPATH,
             cache_subpath=f"{CACHE_SUBPATH}/{cell.id}",
-            output_claim=OUTPUT_CLAIM,
-            data_claim=DATA_CLAIM,
+            output_claim=output_claim,
+            data_claim=data_claim,
         ),
         "collector.yaml": _COLLECTOR.format(
             name=f"{name}-collect",
             image=image,
             out=REMOTE_OUT,
-            output_claim=OUTPUT_CLAIM,
+            output_claim=output_claim,
             subpath=f"{OUTPUT_SUBPATH}/{cell.id}",
+            placement=collector_pod_block(cell.gpu_product),
         ),
     }
 
@@ -1416,7 +1566,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  resources:
+{storage_class}  resources:
     requests:
       storage: 10Gi
 ---
@@ -1432,7 +1582,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  resources:
+{storage_class}  resources:
     requests:
       storage: 10Gi
 """
@@ -1537,7 +1687,7 @@ metadata:
     app.kubernetes.io/component: setup-matrix-collector
 spec:
   restartPolicy: Never
-  securityContext:
+{placement}  securityContext:
     runAsNonRoot: true
     runAsUser: 1000
     runAsGroup: 1000
@@ -1577,6 +1727,7 @@ def build_cell_plan(
     *,
     manifest: dict,
     library: dict,
+    library_name: str,
     month: str,
     out_dir: Path,
     image: str,
@@ -1588,7 +1739,22 @@ def build_cell_plan(
     pins = _pins_for(cell, manifest, library)
     source = {**(library.get("config") or {}), **cell.config}
     references, credentials = _variables(source)
-    required = tuple(dict.fromkeys((*cell.requires_env, *references, *credentials)))
+    # The storage class is not a config pin, so `_variables` never sees it. It is
+    # required all the same: a cell that names a class and is handed none would
+    # fall back to the cluster's default, which is the class whose volumes that
+    # node cannot mount, and the cell would sit Pending for the same reason it
+    # was given a knob for.
+    named_class = env_reference(cell.storage_class)
+    required = tuple(
+        dict.fromkeys(
+            (
+                *cell.requires_env,
+                *references,
+                *credentials,
+                *((named_class,) if named_class else ()),
+            )
+        )
+    )
     missing = [name for name in required if not (environment.get(name) or "").strip()]
     skip = overlay_skip_reason(cell) or (
         f"needs {', '.join(missing)}, absent from the loaded environment" if missing else None
@@ -1628,6 +1794,8 @@ def build_cell_plan(
         diagnostics = k8s_diagnostics(cell)
     else:
         raise PlanError(f"{cell.id}: unknown lane {cell.lane!r}")
+    if reads_with_a_model(cell):
+        steps = (probe_readers_step(cell, library_name, month), *steps)
 
     return CellPlan(
         cell=cell,
@@ -1678,6 +1846,37 @@ def _check_ssh_destination(environment: dict[str, str]) -> None:
             f"{NAS_SSH_ENV} contains whitespace, so it is being set to a command. It is an ssh "
             "destination: `user@host`, or better a Host alias from ~/.ssh/config that carries the "
             "key, the user, BatchMode and ConnectTimeout."
+        )
+
+
+def check_homebase(manifest: dict, environment: dict[str, str]) -> None:
+    """Refuse to start a run whose lanes would not agree about where home is.
+
+    A skip_reason would be the wrong answer here. Every cell reads these, so a
+    missing variable is not a lane that cannot run: it is a whole matrix that
+    would publish a cut shaped by an accident, with no column saying so. Asked
+    for by the runner rather than by `build_plan`, because rebuilding a table off
+    records already on disk needs no home and should not want one.
+    """
+    baseline = manifest.get("baseline_config") or {}
+    unreferenced = [pin for pin in HOMEBASE_PINS if not env_reference(baseline.get(pin))]
+    if unreferenced:
+        raise PlanError(
+            f"baseline_config wants {' and '.join(unreferenced)} as a $env: reference. Coordinates"
+            " are the operator's home: they belong in an environment file, and a cell handed"
+            " none plans against Null Island and reads every happening as away."
+        )
+    missing = [
+        name
+        for pin in HOMEBASE_PINS
+        if (name := env_reference(baseline[pin])) and not (environment.get(name) or "").strip()
+    ]
+    if missing:
+        raise PlanError(
+            f"needs {', '.join(missing)}, absent from the loaded environment. Every lane plans"
+            " against the same home or nothing in the table compares: without one the cut is"
+            " made at Null Island, every happening is thousands of km away, and the reader"
+            " grades the whole month as a trip. Put them in ~/.immich-memories-matrix/.env."
         )
 
 
@@ -1751,6 +1950,7 @@ def build_plan(
                 cell,
                 manifest=manifest,
                 library=settings,
+                library_name=library,
                 month=resolved,
                 out_dir=out_dir,
                 image=image,

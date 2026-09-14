@@ -15,6 +15,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from setup_matrix_capture import CUT_FROM_LOG
+
 SCHEMA = "setup-matrix-v1"
 
 # One cell's own record, written beside its logs the moment that cell finishes.
@@ -77,6 +79,23 @@ def order_kept(reference: list[str], other: list[str]) -> bool | None:
         return None
     ranking = {asset: index for index, asset in enumerate(reference)}
     return all(ranking[a] < ranking[b] for a, b in zip(shared, shared[1:], strict=False))
+
+
+# A cut read back off a run's log is a set of pictures and not a running order:
+# the videos are fetched first and concurrently, so the download lines say which
+# ones without saying when. Chronological order is a hard product rule, and a
+# table that reported it broken off a fetch order would be raising a false alarm
+# about the loudest finding it has.
+
+
+def _order_of(
+    row: dict, reference: list[str], selected: list[str], *, ordered: bool
+) -> bool | None:
+    if row["id"] == REFERENCE_CELL and selected:
+        return True
+    if not ordered or row.get("cut_source") == CUT_FROM_LOG:
+        return None
+    return order_kept(reference, selected)
 
 
 def _timing_gaps(row: dict) -> list[str]:
@@ -198,19 +217,18 @@ def build_summary(
     captioner_device: str | None = None,
 ) -> dict:
     """The record, with every row's overlap against the reference cut worked out."""
-    reference = next(
-        (row.get("selected_asset_ids") or [] for row in rows if row["id"] == REFERENCE_CELL),
-        [],
-    )
+    reference_row = next((row for row in rows if row["id"] == REFERENCE_CELL), {})
+    reference = reference_row.get("selected_asset_ids") or []
+    # Every row's order is read against the reference's, so a reference cut that
+    # was itself recovered off a log makes the whole column a false alarm.
+    ordered = reference_row.get("cut_source") is None
     unmeasured: list[str] = []
     for row in rows:
         selected = row.get("selected_asset_ids") or []
         row["overlap_vs_cell_1"] = (
             1.0 if row["id"] == REFERENCE_CELL and selected else jaccard(reference, selected)
         )
-        row["order_kept"] = (
-            True if row["id"] == REFERENCE_CELL and selected else order_kept(reference, selected)
-        )
+        row["order_kept"] = _order_of(row, reference, selected, ordered=ordered)
         if row.get("skip_reason"):
             unmeasured.append(f"{row['id']}: not run. {row['skip_reason']}")
             continue

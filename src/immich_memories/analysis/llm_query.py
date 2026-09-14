@@ -7,8 +7,8 @@ JSON parsing and validation.
 Routing lives here and nowhere else. A second vision call that POSTed
 OpenAI-style regardless of the configured provider 404ed on every Ollama server
 it met, and the caller read the failure as "not special". What each request
-looks like on the wire is `llm_wire`, which `llm_batch` reads too so a queued
-answer and a live one are the same answer.
+looks like on the wire, and how a reply off one is read, is `llm_wire`, which
+`llm_batch` reads too so a queued answer and a live one are the same answer.
 """
 
 from __future__ import annotations
@@ -17,7 +17,8 @@ import asyncio
 import base64
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import replace
+from functools import partial
 from typing import TYPE_CHECKING
 
 import httpx
@@ -29,19 +30,31 @@ from immich_memories.analysis.llm_wire import (
     DEFAULT_TEMPERATURE,
     PARAM_ADAPTATIONS,
     THINKING_MIN_TIMEOUT_SECONDS,
+    TRANSPORT_RETRIES,
+    LLMIncompleteResponse,
+    LLMTransportAttempt,
     adaptation_for,
     announce_adaptation,
+    anthropic_answer,
     anthropic_headers,
     anthropic_payload,
+    anthropic_usage,
     apply_adaptations,
     apply_anthropic_reasoning,
+    apply_reasoning_headroom,
     apply_thinking_budget,
-    no_choices_detail,
-    openai_answer_content,
+    ensure_success,
+    interpret_openai_response,
+    learn_reasoning,
+    observe,
     openai_headers,
     openai_payload,
+    reasoning_headroom,
     reasoning_only_detail,
+    record_invalid_response,
+    response_body,
     shape_for_provider,
+    widen_for_reasoning,
 )
 from immich_memories.config_models_llm import LLMConfig
 from immich_memories.operations.cancellation import check_cancelled
@@ -51,31 +64,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 logger = logging.getLogger(__name__)
-
-
-class LLMIncompleteResponse(ValueError):
-    """A provider-confirmed output limit, with only the partial final-answer channel."""
-
-    def __init__(self, raw: object = None):
-        super().__init__("LLM returned incomplete content")
-        self.raw = raw.rsplit("</think>", 1)[-1].lstrip() if isinstance(raw, str) else ""
-        if self.raw.startswith("<think>"):
-            self.raw = ""  # A truncated reasoning block contains no final-answer evidence.
-
-
-# Dropped connections are retried this many times before the call fails; a
-# provider that stopped answering is announced on the first drop (provider_status).
-TRANSPORT_RETRIES = 3
-
-
-@dataclass(frozen=True)
-class LLMTransportAttempt:
-    """One actual HTTP POST outcome, kept separate from accepted-reply metrics."""
-
-    attempt: int
-    outcome: str
-    status_code: int | None
-    adaptation: str | None = None
 
 
 # A stuck server should fail while connecting, not hold the full generation
@@ -108,27 +96,27 @@ async def _post_adapted(
             # One such drop killed a 26-minute run (owner ruling 2026-09-01:
             # never fatal). Backoff, retry, and only then give up.
             transport_drops += 1
-            _observe(transport_observer, transport_drops, "connection_error", None)
+            observe(transport_observer, transport_drops, "connection_error", None)
             if transport_drops >= TRANSPORT_RETRIES:
                 raise
             await asyncio.sleep(2.0 * transport_drops)
             continue
         except httpx.HTTPError:
-            _observe(transport_observer, 1, "connection_error", None)
+            observe(transport_observer, 1, "connection_error", None)
             raise
         if resp.status_code != 400:
             return resp
         try:
-            error = _response_body(resp).get("error", {})
+            error = response_body(resp).get("error", {})
             if not isinstance(error, dict):
                 raise TypeError("LLM error body is not an object")
             adaptation = adaptation_for(error)
         except (TypeError, ValueError):
-            _record_invalid_response(transport_observer, resp.status_code)
+            record_invalid_response(transport_observer, resp.status_code)
             raise
         if adaptation is None or adaptation in applied_adaptations:
             return resp
-        _observe(transport_observer, 1, "dialect_adaptation", resp.status_code, adaptation)
+        observe(transport_observer, 1, "dialect_adaptation", resp.status_code, adaptation)
         adaptations.add(adaptation)
         applied_adaptations.add(adaptation)
         before = payload.get("thinking")
@@ -200,15 +188,11 @@ async def query_llm(
         return remembered
     attempt_number = 0
 
-    def observe(attempt: LLMTransportAttempt) -> None:
+    def watch(attempt: LLMTransportAttempt) -> None:
         nonlocal attempt_number
         attempt_number += 1
         if transport_observer is not None:
-            transport_observer(
-                LLMTransportAttempt(
-                    attempt_number, attempt.outcome, attempt.status_code, attempt.adaptation
-                )
-            )
+            transport_observer(replace(attempt, attempt=attempt_number))
 
     started = time.monotonic()
     effective_thinking = bool(thinking and llm_config.reasons and not images)
@@ -226,7 +210,7 @@ async def query_llm(
                 thinking,
                 images,
                 image_detail,
-                observe,
+                watch,
                 require_complete,
             )
     finally:
@@ -346,20 +330,20 @@ async def _query_ollama(
         try:
             resp = await client.post(f"{base_url}/api/generate", json=payload)
         except httpx.HTTPError:
-            _observe(transport_observer, 1, "connection_error", None)
+            observe(transport_observer, 1, "connection_error", None)
             raise
-        _ensure_success(resp, transport_observer)
+        ensure_success(resp, transport_observer)
         try:
-            body = _response_body(resp)
+            body = response_body(resp)
         except (TypeError, ValueError):
-            _record_invalid_response(transport_observer, resp.status_code)
+            record_invalid_response(transport_observer, resp.status_code)
             raise
         llm_metrics.record_reply(
             prompt_tokens=body.get("prompt_eval_count", 0) or 0,
             completion_tokens=body.get("eval_count", 0) or 0,
         )
         if require_complete and body.get("done_reason") in {"length", "max_tokens", "truncated"}:
-            _observe(transport_observer, 1, "incomplete", resp.status_code)
+            observe(transport_observer, 1, "incomplete", resp.status_code)
             llm_metrics.record_truncation()
             raise LLMIncompleteResponse(body.get("response"))
         try:
@@ -367,9 +351,9 @@ async def _query_ollama(
             if not isinstance(raw_text, str):
                 raise TypeError("Ollama response content is not text")
         except (KeyError, TypeError):
-            _record_invalid_response(transport_observer, resp.status_code)
+            record_invalid_response(transport_observer, resp.status_code)
             raise
-        _observe(transport_observer, 1, "response", resp.status_code)
+        observe(transport_observer, 1, "response", resp.status_code)
         return raw_text
 
 
@@ -396,10 +380,10 @@ async def _query_anthropic(
         try:
             resp = await client.post(f"{base_url}/v1/messages", json=payload)
         except httpx.HTTPError:
-            _observe(transport_observer, 1, "connection_error", None)
+            observe(transport_observer, 1, "connection_error", None)
             raise
-        _ensure_success(resp, transport_observer)
-        body, usage = _anthropic_usage(resp, transport_observer)
+        ensure_success(resp, transport_observer)
+        body, usage = anthropic_usage(resp, transport_observer)
         cached_input = usage.get("cache_read_input_tokens", 0) or 0
         cache_creation_input = usage.get("cache_creation_input_tokens", 0) or 0
         llm_metrics.record_reply(
@@ -411,14 +395,14 @@ async def _query_anthropic(
             cached_prompt_tokens=cached_input,
             completion_tokens=usage.get("output_tokens", 0) or 0,
         )
-        raw_text = _anthropic_answer(body, resp, transport_observer)
+        raw_text = anthropic_answer(body, resp, transport_observer)
         truncated = body.get("stop_reason") == "max_tokens"
         if truncated and require_complete:
-            _observe(transport_observer, 1, "incomplete", resp.status_code)
+            observe(transport_observer, 1, "incomplete", resp.status_code)
             llm_metrics.record_truncation()
             raise LLMIncompleteResponse(raw_text or "")
         if thinking and truncated:
-            _observe(transport_observer, 1, "thinking_fallback", resp.status_code)
+            observe(transport_observer, 1, "thinking_fallback", resp.status_code)
             llm_metrics.record_truncation()
             logger.warning("Thinking hit the token budget; retrying without thinking")
             return await _query_anthropic(
@@ -433,10 +417,49 @@ async def _query_anthropic(
                 require_complete=require_complete,
             )
         if raw_text is None:
-            _record_invalid_response(transport_observer, resp.status_code)
+            record_invalid_response(transport_observer, resp.status_code)
             raise ValueError(reasoning_only_detail(body))
-        _observe(transport_observer, 1, "response", resp.status_code)
+        observe(transport_observer, 1, "response", resp.status_code)
         return raw_text
+
+
+def _apply_bulk_reasoning(
+    payload: dict, config: LLMConfig, max_tokens: int, endpoint: tuple[str, str]
+) -> None:
+    """What a call that did not ask to think owes a host that does it anyway."""
+    if config.no_thinking_params:
+        # Not asking to think is not the same as asking not to. On a server
+        # whose template reasons by default, every bulk call reasoned anyway
+        # at the caller's small budget and came back truncated mid-thought.
+        # Gated on the switch itself, never on llm.thinking: a user who turns
+        # reasoning off still has a server that reasons unless it is told.
+        payload.update(config.no_thinking_params)
+    headroom = reasoning_headroom(endpoint, declared=config.always_reasons)
+    if headroom:
+        apply_reasoning_headroom(payload, max_tokens, headroom)
+
+
+def _openai_request(
+    prompt: str,
+    config: LLMConfig,
+    temperature: float,
+    max_tokens: int,
+    timeout: int,
+    thinking: bool,
+    images: Sequence[bytes],
+    image_detail: str,
+    endpoint: tuple[str, str],
+) -> tuple[dict, int, set[str]]:
+    """The body to post, the read budget it earns, and this endpoint's learned dialect."""
+    payload = openai_payload(prompt, config, temperature, max_tokens, images, image_detail)
+    if thinking:
+        timeout = apply_thinking_budget(payload, config, max_tokens, timeout)
+    else:
+        _apply_bulk_reasoning(payload, config, max_tokens, endpoint)
+    shape_for_provider(payload, config)
+    adaptations = PARAM_ADAPTATIONS.setdefault(endpoint, set())
+    apply_adaptations(payload, adaptations)
+    return payload, timeout, adaptations
 
 
 async def _query_openai(
@@ -453,19 +476,22 @@ async def _query_openai(
 ) -> str:
     base_url = config.base_url.rstrip("/")
     headers = openai_headers(config)
-    payload = openai_payload(prompt, config, temperature, max_tokens, images, image_detail)
-    if thinking:
-        timeout = apply_thinking_budget(payload, config, max_tokens, timeout)
-    elif config.no_thinking_params:
-        # Not asking to think is not the same as asking not to. On a server
-        # whose template reasons by default, every bulk call reasoned anyway
-        # at the caller's small budget and came back truncated mid-thought.
-        # Gated on the switch itself, never on llm.thinking: a user who turns
-        # reasoning off still has a server that reasons unless it is told.
-        payload.update(config.no_thinking_params)
-    shape_for_provider(payload, config)
-    adaptations = PARAM_ADAPTATIONS.setdefault((base_url, config.model), set())
-    apply_adaptations(payload, adaptations)
+    endpoint = (base_url, config.model)
+    payload, timeout, adaptations = _openai_request(
+        prompt, config, temperature, max_tokens, timeout, thinking, images, image_detail, endpoint
+    )
+    again = partial(
+        _query_openai,
+        prompt,
+        config,
+        temperature,
+        max_tokens,
+        timeout,
+        images=images,
+        image_detail=image_detail,
+        transport_observer=transport_observer,
+        require_complete=require_complete,
+    )
     # Retry up to 3x — some models (Qwen/mlx-vlm) return null content
     # Per-phase, not a scalar: a stuck server should fail while connecting
     # rather than hold the whole generation budget on one read.
@@ -476,204 +502,42 @@ async def _query_openai(
             resp = await _post_adapted(
                 client, f"{base_url}/chat/completions", payload, adaptations, transport_observer
             )
-            _ensure_success(resp, transport_observer)
-            content, retry_without_thinking = _interpret_openai_response(
-                resp,
-                thinking,
-                require_complete,
-                transport_observer,
-                attempt + 1,
-            )
-            if retry_without_thinking:
+            ensure_success(resp, transport_observer)
+            try:
+                reply = interpret_openai_response(
+                    resp, thinking, require_complete, transport_observer, attempt + 1
+                )
+            except LLMIncompleteResponse as exc:
+                if not _grow_for_reasoning(endpoint, exc, thinking=thinking):
+                    raise
+                return await again(thinking=thinking)
+            learn_reasoning(endpoint, reply)
+            if reply.retry_without_thinking:
                 llm_metrics.record_truncation()
                 # Truncation mid-think leaves the unfinished reasoning in the
                 # content channel — unparseable. A fast answer beats no answer.
                 logger.warning("Thinking hit the token budget; retrying without thinking")
-                return await _query_openai(
-                    prompt,
-                    config,
-                    temperature,
-                    max_tokens,
-                    timeout,
-                    thinking=False,
-                    images=images,
-                    image_detail=image_detail,
-                    transport_observer=transport_observer,
-                    require_complete=require_complete,
-                )
-            if content is not None:
-                _observe(transport_observer, attempt + 1, "response", resp.status_code)
-                return content
-            _observe(transport_observer, attempt + 1, "null_content", resp.status_code)
+                return await again(thinking=False)
+            if reply.content is not None:
+                observe(transport_observer, attempt + 1, "response", resp.status_code, reply=reply)
+                return reply.content
+            observe(transport_observer, attempt + 1, "null_content", resp.status_code)
             logger.debug("LLM null content (attempt %d/3)", attempt + 1)
     msg = "LLM returned null content after 3 retries"
     raise ValueError(msg)
 
 
-def _openai_completion(
-    choice: dict,
-    thinking: bool,
-    require_complete: bool,
-    observer: Callable[[LLMTransportAttempt], None] | None,
-    attempt: int,
-    status_code: int,
-) -> tuple[str | None, bool]:
-    truncated = choice.get("finish_reason") == "length"
-    if truncated and require_complete:
-        _observe(observer, attempt, "incomplete", status_code)
-        llm_metrics.record_truncation()
-        message = choice.get("message")
-        raise LLMIncompleteResponse(message.get("content") if isinstance(message, dict) else None)
-    if truncated and thinking:
-        _observe(observer, attempt, "thinking_fallback", status_code)
-        return None, True
-    message = choice["message"]
-    if not isinstance(message, dict):
-        raise TypeError("OpenAI response message is not an object")
-    return openai_answer_content(message), False
-
-
-def _anthropic_usage(
-    response: httpx.Response, observer: Callable[[LLMTransportAttempt], None] | None
-) -> tuple[dict, dict]:
-    """Decode the native Anthropic body far enough to retain usage metrics."""
-    try:
-        body = _response_body(response)
-        usage = body.get("usage") or {}
-        if not isinstance(usage, dict):
-            raise TypeError("Anthropic usage is not an object")
-    except (TypeError, ValueError):
-        _record_invalid_response(observer, response.status_code)
-        raise
-    return body, usage
-
-
-def _anthropic_answer(
-    body: dict, response: httpx.Response, observer: Callable[[LLMTransportAttempt], None] | None
-) -> str | None:
-    """The first text block, or None when the reply carried reasoning only.
-
-    A reasoning model puts one or more `thinking` blocks in front of its
-    answer, and on z.ai's route it does so whether or not it was asked to, so
-    a reply with no text block at all is a normal shape here rather than a
-    malformed body.
-    """
-    try:
-        content = body["content"]
-        if not isinstance(content, list):
-            raise TypeError("Anthropic response content is not a list")
-        texts = [block["text"] for block in content if block.get("type") == "text"]
-    except (KeyError, TypeError, AttributeError):
-        _record_invalid_response(observer, response.status_code)
-        raise
-    return texts[0] if texts else None
-
-
-def _interpret_openai_response(
-    response: httpx.Response,
-    thinking: bool,
-    require_complete: bool,
-    observer: Callable[[LLMTransportAttempt], None] | None,
-    attempt: int,
-) -> tuple[str | None, bool]:
-    """Parse one OpenAI-style reply and preserve its completed-post outcome."""
-    try:
-        body = _response_body(response)
-        error = body.get("error")
-        if isinstance(error, dict):
-            code = str(error.get("code", "unknown"))[:80]
-            message = str(error.get("message", "provider returned an error"))[:300]
-            raise ValueError(f"LLM provider error {code}: {message}")
-        if "choices" not in body:
-            raise ValueError(no_choices_detail(body))
-        choice = body["choices"][0]
-        usage = body.get("usage") or {}
-        if not isinstance(choice, dict) or not isinstance(usage, dict):
-            raise TypeError("OpenAI response has an invalid body shape")
-    except (KeyError, TypeError, ValueError, IndexError):
-        _record_invalid_response(observer, response.status_code)
-        raise
-    llm_metrics.record_reply(
-        prompt_tokens=usage.get("prompt_tokens", 0) or 0,
-        cached_prompt_tokens=(usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0)
-        or 0,
-        completion_tokens=usage.get("completion_tokens", 0) or 0,
+def _grow_for_reasoning(
+    endpoint: tuple[str, str], exc: LLMIncompleteResponse, *, thinking: bool
+) -> bool:
+    """Whether one more try is owed because thinking, not the answer, hit the ceiling."""
+    if thinking or not widen_for_reasoning(
+        endpoint, reasoning_tokens=exc.reasoning_tokens, answered=bool(exc.raw)
+    ):
+        return False
+    logger.warning(
+        "LLM reasoning used %d of %d tokens and left the answer short; retrying with more room",
+        exc.reasoning_tokens,
+        exc.completion_tokens,
     )
-    try:
-        content, retry_without_thinking = _openai_completion(
-            choice, thinking, require_complete, observer, attempt, response.status_code
-        )
-    except (KeyError, TypeError, AttributeError):
-        _record_invalid_response(observer, response.status_code)
-        raise
-    return content, retry_without_thinking
-
-
-def _observe(
-    observer: Callable[[LLMTransportAttempt], None] | None,
-    attempt: int,
-    outcome: str,
-    status_code: int | None,
-    adaptation: str | None = None,
-) -> None:
-    if observer is not None:
-        observer(LLMTransportAttempt(attempt, outcome, status_code, adaptation))
-
-
-def _response_body(response: httpx.Response) -> dict:
-    """Decode one provider response as the object every dialect requires."""
-    body = response.json()
-    if not isinstance(body, dict):
-        raise TypeError("LLM response body is not an object")
-    return body
-
-
-def _record_invalid_response(
-    observer: Callable[[LLMTransportAttempt], None] | None, status_code: int
-) -> None:
-    """Trace the one completed POST whose content could not be parsed."""
-    _observe(observer, 1, "invalid_response", status_code)
-
-
-# Enough of a refused call to act on, short enough to sit on a warning line.
-PROVIDER_MESSAGE_CHARS = 300
-
-
-def _provider_error_detail(response: httpx.Response) -> str:
-    """The provider's own code and message, bounded, or "" when it named neither.
-
-    httpx's HTTPStatusError text is the status line and a link to MDN. The
-    reason a call was refused exists only in the body, so without this the
-    operator reads "400 Bad Request" and has nothing to go on.
-    """
-    try:
-        body = response.json()
-    except ValueError:
-        return ""
-    if not isinstance(body, dict):
-        return ""
-    error = body.get("error")
-    if isinstance(error, str):
-        # Ollama's refusals are a bare sentence under `error`, with no code.
-        return f"message {error[:PROVIDER_MESSAGE_CHARS]!r}"
-    named = error if isinstance(error, dict) else body
-    code = named.get("code")
-    message = named.get("message") or named.get("msg")
-    if code is None and not message:
-        return ""
-    return f"code {code}, message {str(message)[:PROVIDER_MESSAGE_CHARS]!r}"
-
-
-def _ensure_success(
-    response: httpx.Response, observer: Callable[[LLMTransportAttempt], None] | None
-) -> None:
-    """Raise on a 4xx or 5xx, carrying the provider's own code and message."""
-    try:
-        response.raise_for_status()
-    except httpx.HTTPStatusError as exc:
-        _observe(observer, 1, "http_error", response.status_code)
-        detail = _provider_error_detail(response)
-        if not detail:
-            raise
-        summary = f"{str(exc).splitlines()[0]} - provider said {detail}"
-        raise httpx.HTTPStatusError(summary, request=exc.request, response=response) from exc
+    return True
