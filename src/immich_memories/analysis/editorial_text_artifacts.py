@@ -75,14 +75,25 @@ class TextPromptArtifacts:
         *,
         raw: str | None = None,
         error: BaseException | None = None,
+        billed: dict | None = None,
     ) -> None:
+        """Close one call's record. `billed` is the provider's own account of the reply.
+
+        Without it a starved read is indistinguishable from a refused one: both
+        land as `response_chars: 0`, and only the token split says which budget
+        actually ran out.
+        """
         if call is None:
             return
         stem, record = call
         try:
+            if billed:
+                record["reply"] = billed
             if error is not None:
                 raw = getattr(error, "raw", None)
-                record.update(status="raised", error_type=type(error).__name__)
+                record.update(
+                    status="raised", error_type=type(error).__name__, error=str(error)[:300]
+                )
             else:
                 record["status"] = "complete_transport"
             if isinstance(raw, str):

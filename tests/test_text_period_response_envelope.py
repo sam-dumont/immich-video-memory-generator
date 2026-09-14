@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -116,3 +117,67 @@ def test_commentary_does_not_make_a_wrong_schema_valid() -> None:
 
     assert _read_response(raw, identity, grounding) is None
     assert _response_problem(raw, grounding) == "schema_version missing or wrong"
+
+
+RECORDED_BARE_STRING_LIST_ANSWERS = (
+    "period_reading_bare_string_lists_1.txt",
+    "period_reading_bare_string_lists_2.txt",
+)
+
+
+def _wide_grounding(count: int = 40) -> tuple[PeriodEpisodeGrounding, ...]:
+    return tuple(
+        PeriodEpisodeGrounding(
+            episode_id=f"episode-{index}",
+            evidence_key=f"evidence-{index}",
+            rendered_line=f"Episode {index} is readable.",
+            representative_asset_ids=(f"asset-{index}",),
+        )
+        for index in range(1, count + 1)
+    )
+
+
+@pytest.mark.parametrize("fixture_name", RECORDED_BARE_STRING_LIST_ANSWERS)
+def test_a_bare_string_where_a_list_belongs_still_reads(fixture_name: str) -> None:
+    """Verbatim from the local 35B on the demo month, twice, through the repair ask.
+
+    Both answers are period-insight-text-v1 in every other respect; both wrote
+    `tensions` and `recurring_threads` as one sentence instead of a one-item list.
+    Naming the shape in the repair prompt got the same shape back, so the parser
+    carries the constraint: one string is one row.
+    """
+    raw = (Path(__file__).parent / "fixtures" / fixture_name).read_text(encoding="utf-8")
+    grounding = _wide_grounding()
+    identity = PeriodInsightIdentity.from_grounding(producer_key="test", episodes=grounding)
+
+    result = _read_response(raw, identity, grounding)
+
+    assert result is not None
+    assert len(result.tensions) == 1
+    assert len(result.recurring_threads) == 1
+    assert result.thesis.startswith("The family spent June 2024")
+
+
+def test_an_empty_string_where_a_list_belongs_is_no_rows() -> None:
+    """One sentence is one row, so nothing at all is no rows — not a blank row."""
+    payload = {**_payload(), "tensions": "", "recurring_threads": "  "}
+    grounding = _grounding()
+    identity = PeriodInsightIdentity.from_grounding(producer_key="test", episodes=grounding)
+
+    result = _read_response(json.dumps(payload), identity, grounding)
+
+    assert result is not None
+    assert result.tensions == ()
+    assert result.recurring_threads == ()
+
+
+@pytest.mark.parametrize("value", (12, True, {"tension": "one"}, None))
+def test_a_field_that_is_neither_a_list_nor_a_string_is_still_refused(value: object) -> None:
+    """The container widened; the contents did not."""
+    payload = {**_payload(), "tensions": value}
+    grounding = _grounding()
+    identity = PeriodInsightIdentity.from_grounding(producer_key="test", episodes=grounding)
+    raw = json.dumps(payload)
+
+    assert _read_response(raw, identity, grounding) is None
+    assert _response_problem(raw, grounding) == "tensions missing or more than 12"

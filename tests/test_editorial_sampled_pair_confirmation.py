@@ -15,7 +15,7 @@ from PIL import Image
 from immich_memories.analysis import editorial_gateway
 from immich_memories.analysis.editorial_picture_facts import PROMPT, PictureFactsProvider
 from immich_memories.analysis.editorial_sampled_pair_confirmation import CachedSampledPairConfirmer
-from immich_memories.analysis.llm_query import LLMTransportAttempt
+from immich_memories.analysis.llm_wire import LLMTransportAttempt
 from immich_memories.analysis.selection_same_picture import _PAIR_PROMPT
 from immich_memories.analysis.selection_trace import Trace
 from immich_memories.analysis.visual_request_planner import VisionRequestLimits
