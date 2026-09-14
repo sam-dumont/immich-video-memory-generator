@@ -7,7 +7,7 @@
 
 Immich Memories generates video compilations from an Immich photo library.
 The public lifecycle of one run (`operations/phases.py`, `OperationalPhase`):
-**discovery -> download -> analysis -> selection -> render -> music -> delivery**.
+**discovery -> download -> analysis -> selection -> render -> music -> delivery -> complete**.
 Selection is the story-first editorial route, the only one: `generate` (or the Memory page's
 Cut) -> `build_smart_pipeline(editorial_context)` (`analysis/editorial_runtime.py`) ->
 `SmartPipeline.run_editorial_source()` -> `RuntimeEditorialPlanner.plan_source()`, which reports
@@ -169,7 +169,7 @@ src/immich_memories/
 │   └── motion_rendering.py     # What a photograph could show as motion, if the memory wants it
 │
 ├── processing/                 # Video processing & assembly
-│   ├── video_assembler.py      # VideoAssembler (composes 6 services)
+│   ├── video_assembler.py      # VideoAssembler (composes 5 services)
 │   ├── assembly_engine.py      # AssemblyEngine: strategy-based multi-clip assembly
 │   ├── assembly_config.py      # Dataclasses: AssemblySettings, AssemblyClip, etc.
 │   ├── streaming_assembler.py  # StreamingEncoder + assemble_streaming(): low-memory 4K assembly
@@ -247,7 +247,6 @@ src/immich_memories/
 │   ├── kernel_particles.py     # ParticleField: bokeh drift / fireworks physics
 │   ├── kernel_text.py          # TitleTextRenderer: SDF + PIL text compositing
 │   ├── kernel_blur.py          # AnimatedBlur: quarter-res deblur Gaussian, held while it stands
-│   ├── renderer_ffmpeg.py      # FFmpeg-based renderer
 │   ├── gpu_kernel_backend.py   # The only `import quadrants as ti` in the tree (behind the probe)
 │   ├── kernels.py              # GPU kernels + lazy compilation (init_kernels)
 │   ├── kernel_backend_probe.py # The gate: which arch can dispatch here, asked without loading
@@ -273,13 +272,16 @@ src/immich_memories/
 │   ├── generate_options.py     # `generate`'s flags, grouped; group order is the --help order
 │   ├── generate_resolution.py  # What those flags mean against the config, presets and conflicts
 │   ├── _analyze_export.py      # `analyze`, `export-project`
-│   ├── config_cmd.py           # `config`, `people`, `years`, `preflight`
+│   ├── config_cmd.py           # `config`, `years`, `preflight`
+│   ├── people_cmd.py           # `people` scan/show
+│   ├── models_cmd.py           # `models fetch`
+│   ├── prepare_cmd.py          # `prepare`
 │   ├── scheduler_cmd.py        # `scheduler list/status/start`
 │   ├── auto_cmd.py             # `auto suggest/run/history/status/install/test-notification`
-│   ├── special_days_cmd.py     # `special-days` scan/list: the days worth a memory of their own
+│   ├── special_days_cmd.py     # `discover-days` and `days-due`: the days worth a memory of their own
 │   ├── cache_cmd.py            # `cache stats/export/import/backup`
 │   ├── titles.py               # `titles test`, `titles fonts`
-│   ├── runs.py                 # `runs list/show/stats/storage/delete`
+│   ├── runs.py                 # `runs list/show/story/why/stats/storage/delete`
 │   ├── music_cmd.py            # `music search/analyze/add`
 │   ├── hardware_cmd.py         # `hardware` info display
 │   ├── _helpers.py             # Shared console/print utilities
@@ -335,7 +337,6 @@ src/immich_memories/
 │       ├── _step4_generate.py      # Generation logic
 │       ├── step4_recovery.py       # Reload recovers a run that outlived the page
 │       ├── _step4_upload.py        # Upload-back to Immich
-│       ├── _step4_music.py         # Music generation/mixing helpers
 │       ├── settings_config.py      # Settings page
 │       └── settings_people.py      # The companion editor: confirm who's who, flag twins
 │
@@ -352,11 +353,9 @@ src/immich_memories/
 │   ├── __init__.py             # Re-exports public API
 │   ├── database.py             # VideoAnalysisCache: owns cache.db's schema; the legacy segment tables it still reads
 │   ├── schema_migrator.py      # SchemaMigrator: schema ladder v1..vN, DDL
-│   ├── database_models.py      # CachedSegment, CachedVideoAnalysis, SimilarVideo
-│   ├── database_rows.py        # SQLite row <-> model conversion
 │   ├── versions.py             # SCHEMA_VERSION / ANALYSIS_VERSION (independent)
 │   ├── migration_sql.py        # Transactional migration helpers
-│   ├── migration_v11.py … v19.py # One module per schema migration (no v18)
+│   ├── migration_v11.py … v23.py # One module per schema migration (no v18, no v20)
 │   ├── asset_score_cache.py    # The legacy photo scorer's table, still read by `cache stats/export/import`
 │   ├── judgment_cache.py       # Reasoning-mode LLM verdicts, keyed by the exact prompt asked
 │   ├── thumbnail_cache.py      # File-based thumbnail storage
@@ -368,6 +367,11 @@ src/immich_memories/
 │   ├── executor.py             # resolve_schedule_params(): schedule entry -> generation params
 │   ├── daemon.py               # Daemon loop (foreground, SIGINT/SIGTERM)
 │   └── models.py               # Scheduling data models
+│
+├── store/                      # The annotation store: every banked fact and reading
+│                               # (annotations.sqlite; see docs/research for the design)
+│
+├── triage/                     # The pinned DINOv2 ONNX encoder and its six context heads
 │
 ├── people/                     # The library's people graph (counts and dates, no pixels)
 │   ├── signatures.py           # Tiers, onset, twins, duplicates, dyads, owner curve pairing
@@ -492,9 +496,8 @@ Immich API → Asset models → ClipExtractor → VideoClipInfo
 Config is organized in 3 tiers (see `config_loader.py`):
 
 - **Tier 1** (top-level YAML): `immich`, `defaults`, `output`, `audio`, `title_screens`, `cache`, `upload`, `trips`, `photos`
-- **Tier 2** (under `advanced:` in YAML, `_TIER2_SECTIONS`): `analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `server`, `auth`, `automation`, `notifications`, `triage`, `editorial`
+- **Tier 2** (under `advanced:` in YAML, `_TIER2_SECTIONS`): `analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `server`, `auth`, `automation`, `notifications`, `triage`, `editorial`, `inference`
 - **Tier 3** (internal): `scheduler`, `title_llm`
-- Not in any tier list (top-level field on `Config`): `scoring_priority`
 
 At runtime, all sections are flat fields on `Config` (e.g. `config.analysis`).
 Both flat and nested YAML formats are accepted.

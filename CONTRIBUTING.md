@@ -97,14 +97,18 @@ Full rules in [CLAUDE.md](CLAUDE.md) (yes, the AI reads it too).
 ```
 src/immich_memories/
 ├── api/          # Immich API client (ImmichClient + 5 composed services)
-├── analysis/     # Video analysis, scoring, clip selection (SmartPipeline + services)
+├── analysis/     # Reading the period and choosing what stays (SmartPipeline + services)
+├── editorial/    # The editing passes, inside analysis/
+├── store/        # The annotation store: every banked fact and reading
+├── triage/       # The pinned ONNX encoder and its six context heads
+├── people/       # The people graph and the companion file
 ├── photos/       # Photo-to-video animation (Ken Burns, face-aware pan, blurred fill)
-├── processing/   # Video assembly (VideoAssembler + 6 composed services)
+├── processing/   # Video assembly (VideoAssembler + 5 composed services)
 ├── titles/       # Title screens, map fly-overs (TitleScreenGenerator + services)
 ├── audio/        # Music generation, audio ducking, mood analysis
-├── ui/           # NiceGUI 4-step wizard
+├── ui/           # NiceGUI pages: Memory, Media pool, Options, Export
 ├── cli/          # Click commands
-├── cache/        # Analysis, video, and thumbnail caching (SQLite)
+├── cache/        # Preview, video and run-history caching (SQLite)
 ├── tracking/     # Run history and job management
 ├── operations/   # Lifecycle phases, storage report
 ├── planning/     # Auto-duration planning
@@ -129,7 +133,7 @@ test: add integration test for HDR passthrough
 
 ## About this project
 
-This codebase is built almost entirely with AI (Claude by Anthropic). That's not a disclaimer: it's a deliberate choice, and the quality gates exist because of it, not in spite of it. 5,600+ tests, 20 CI gates, 80% diff-coverage on every PR, composition over inheritance, TDD.
+This codebase is built almost entirely with AI (Claude by Anthropic). That's not a disclaimer: it's a deliberate choice, and the quality gates exist because of it, not in spite of it. 21 CI gates and 80 % diff-coverage on every PR, composition over inheritance, TDD. `uv run pytest tests/ --collect-only -q` says how many tests there are today.
 
 If you spot something the AI got wrong, please fix it. That's how this gets better.
 

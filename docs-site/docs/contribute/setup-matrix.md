@@ -183,7 +183,7 @@ minutes in with nothing rendered. Nothing in the published table said so.
 
 ## The two GPU cells
 
-Every one of the ten cells above encodes on a CPU, so after the first run the table had no answer to
+Every cell above but these two encodes on a CPU, so after the first run the table had no answer to
 either question the owner asked next: when do you need a GPU, and did you try the GTX 1070 against
 the T1000. `k8s-gpu-t1000` and `k8s-gpu-1070` are `k8s-rules-service` with the render moved onto a
 named card. Same reader, same picture facts, same tier, same 2 CPU request and 4 GB limit, so the
@@ -222,8 +222,10 @@ have run anywhere else.
 
 ## The render device column
 
-The first cluster run is why that column exists. Those Jobs are plain `base/job.yaml` with no GPU
-request at all, and all three of them logged
+The first cluster run is why that column exists. Each cluster cell gets a Job rendered from the
+runner's own template (`scripts/setup_matrix_plan.py`), which is derived from `base/job.yaml` and
+differs from it: `backoffLimit: 0`, and per-cell claims and subPaths. None of them asked for a GPU,
+and all three logged
 `Title kernels: quadrants 1.3.0 on the CUDA backend`: the device plugin hands out a shared card and
 the kernel library takes what it finds, so the title screens, which are the phase a GPU helps most,
 were already accelerated. The encode was not. Every NVENC probe in those same logs died on
@@ -404,7 +406,10 @@ Two files outside the repo, neither of them tracked:
 | `~/.immich-memories-matrix/.env` | `MELIOUS_AI_BASE_URL`, `MELIOUS_AI_KEY`, `ZAI_API_KEY`, `ZAI_BASE_URL`, `OPENAI_KEY` |
 | `~/.immich-memories-matrix/matrix.env` | `MATRIX_NAS_SSH`, `MATRIX_NAS_DOCKER`, `MATRIX_NAS_CACHE`, `MATRIX_NAS_OUT`, `MATRIX_NAS_DOCKER_LIMITS`, `MATRIX_K8S_CONTEXT`, `MATRIX_K8S_NAMESPACE`, `MATRIX_OMLX_BASE_URL`, `MATRIX_CAPTION_BASE_URL`, `MATRIX_MAC_ALT_MODELS` |
 
-`MATRIX_NAS_DOCKER_LIMITS` and `MATRIX_INFERENCE_BASE_URL` are the two optional entries: see below.
+`MATRIX_NAS_DOCKER_LIMITS` is the one optional entry in the table above.
+`MATRIX_INFERENCE_BASE_URL` and `MATRIX_FIXTURE_BASE_URL` are optional in code but not listed
+there: without the second one, and without `--serve-fixture`, every `demo`-library cell is skipped
+for a missing variable. See below.
 `ZAI_BASE_URL` names z.ai's Anthropic-compatible endpoint, and both zai cells pin it. The account
 behind `ZAI_API_KEY` is a coding plan, which is served there and nowhere else: the other route,
 `/api/paas/v4`, answers a coding plan `429 {"code":"1113","msg":"Insufficient balance"}` whatever
@@ -495,8 +500,10 @@ reads the cell records already there and republishes one summary over all of the
 does that and nothing else, which is how to rebuild the table after a lane was rerun by hand.
 
 `--cell <id>` is repeatable and narrows further. `--image-tag` picks the published image the remote
-lanes pull; it defaults to the last published tag rather than the source version, because the
-version in `pyproject.toml` is often ahead of anything on a registry.
+lanes pull. Its default is a constant in `scripts/setup_matrix.py` (`DEFAULT_IMAGE_TAG`) rather
+than anything read from a registry or from the source, and nothing bumps it on a release, so check
+it against the releases page before a run that is supposed to measure the current build. The source
+version comes from git tags, not from `pyproject.toml`, which declares `dynamic = ["version"]`.
 
 The cells that use the inference service bring
 [the inference overlay](../deploy/installation/inference-service.md) up first and take it down at
