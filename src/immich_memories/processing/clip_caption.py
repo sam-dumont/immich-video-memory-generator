@@ -205,17 +205,21 @@ def caption_font_path() -> str | None:
 
 def caption_frame_windows(
     clips: list, transitions: list[str], fps: int, fade_frames: int
-) -> list[tuple[int, int]]:
-    """Keep burnt-in captions out of both sides of each dissolve."""
-    return [
-        (
-            fade_frames if incoming == "fade" else 0,
-            int(clip.duration * fps) - (fade_frames if outgoing == "fade" else 0),
-        )
-        for clip, incoming, outgoing in zip(
-            clips, ["cut", *transitions], [*transitions, "cut"], strict=True
-        )
-    ]
+) -> list[tuple[int, int] | None]:
+    """Keep burnt-in captions out of both sides of each dissolve.
+
+    A clip too short to hold a body between its fades gets no window at all.
+    The alternative is a window FFmpeg can never satisfy, which drops that
+    clip's caption silently.
+    """
+    windows: list[tuple[int, int] | None] = []
+    for clip, incoming, outgoing in zip(
+        clips, ["cut", *transitions], [*transitions, "cut"], strict=True
+    ):
+        start = fade_frames if incoming == "fade" else 0
+        end = int(clip.duration * fps) - (fade_frames if outgoing == "fade" else 0)
+        windows.append((start, end) if start < end else None)
+    return windows
 
 
 def timeline_captions(

@@ -204,15 +204,16 @@ def _build_title_settings(
         settings.max_dividers = plan.max_dividers
         settings.show_ending_screen = plan.ending_duration > 0.0
 
-    if params.memory_type == "holiday" and params.date_end:
+    # No fallback occasion: a holiday that arrives without its parameter keeps
+    # the template's own title rather than claiming to be somebody's Christmas.
+    holiday = params.memory_preset_params.get("holiday")
+    if params.memory_type == "holiday" and params.date_end and holiday:
         from immich_memories.memory_types.factory import holiday_label
         from immich_memories.processing.clip_caption import resolve_caption_locale
         from immich_memories.titles.text_builder import TITLE_PATTERNS
 
         locale = resolve_caption_locale(settings.locale)
-        settings.title_override = holiday_label(
-            params.memory_preset_params.get("holiday", "christmas"), params.date_end.year, locale
-        )
+        settings.title_override = holiday_label(holiday, params.date_end.year, locale)
         settings.subtitle_override = TITLE_PATTERNS[locale]["on_this_day_subtitle"]
 
     # Apply LLM-generated title overrides

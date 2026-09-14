@@ -33,3 +33,21 @@ def test_holiday_opening_names_the_occasion(tmp_path):
     settings = _build_title_settings(params, params.config, [])
     assert settings.title_override == "Our Christmases"
     assert settings.subtitle_override == "2020–2024"
+
+
+def test_a_holiday_that_lost_its_parameter_is_not_called_christmas(tmp_path):
+    """No occasion beats the wrong occasion on the one screen every viewer sees."""
+    params = GenerationParams(
+        clips=[],
+        output_path=tmp_path / "holiday.mp4",
+        config=Config(),
+        memory_type="holiday",
+        memory_preset_params={},
+        date_start=date(2020, 12, 23),
+        date_end=date(2024, 12, 27),
+    )
+
+    settings = _build_title_settings(params, params.config, [])
+
+    assert settings is not None
+    assert settings.title_override is None
