@@ -655,10 +655,8 @@ class TestAnthropicReasoningBlocks:
 
     @pytest.mark.asyncio
     async def test_the_callers_cap_buys_the_answer_and_not_the_reasoning(self):
-        from immich_memories.analysis.llm_query import (
-            ANTHROPIC_REASONING_HEADROOM_TOKENS,
-            query_llm,
-        )
+        from immich_memories.analysis.llm_query import query_llm
+        from immich_memories.analysis.llm_wire import ANTHROPIC_REASONING_HEADROOM_TOKENS
 
         config = LLMConfig(
             provider="zai",

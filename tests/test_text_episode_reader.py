@@ -1122,3 +1122,109 @@ def test_a_swallowed_provider_failure_names_the_rejecting_check_once_in_the_log(
         "text episode provider failed (ValueError): LLM provider returned no choices: "
         "['code', 'msg']"
     ]
+
+
+def test_a_cold_episode_can_be_read_from_a_provider_batch(tmp_path: Path) -> None:
+    """The whole stage is offered at once, and what the queue answers is never asked live."""
+    import httpx
+
+    from immich_memories.analysis.editorial_text_gateway import SyncTextPromptRequester
+    from immich_memories.analysis.llm_batch import BatchCoordinator, BatchPolicy
+    from immich_memories.analysis.text_episode_reader import (
+        TEXT_EPISODE_MAX_OUTPUT_TOKENS,
+        CachedTextEpisodeReader,
+    )
+    from immich_memories.config_models_llm import LLMConfig
+
+    noon = datetime(2026, 8, 25, 12, tzinfo=UTC)
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(
+            source_fetcher=lambda _scope: (
+                make_asset("party-context", file_created_at=noon),
+                make_asset("friend-in-scope", file_created_at=noon + timedelta(minutes=5)),
+            )
+        ),
+    )
+    projections = project_episode_groups(prepared, ("friend-in-scope",))
+    lines = _AnnotationLines(
+        {
+            "party-context": "birthday cake | with family",
+            "friend-in-scope": "beside the cake | with friend",
+        }
+    )
+    producer = EpisodeReadingProducer(
+        model_id="qwen3-vl-30b",
+        prompt_version="episode-prompt-v1",
+        schema_version="episode-schema-v1",
+        annotation_renderer_version="annotation-line-v1",
+        annotation_versions=("description:student-v1",),
+    )
+    answer = json.dumps(
+        {
+            "schema_version": "episode-reading-text-v1",
+            "episodes": [
+                {
+                    "episode": 1,
+                    "what_happened": "A friend joins a family birthday party.",
+                    "representatives": [{"asset": 2, "reason": "Beside the cake."}],
+                    "cull": [],
+                }
+            ],
+        }
+    )
+    queued: list[str] = []
+
+    def wire(request: httpx.Request) -> httpx.Response:
+        # WHY: replaces the provider's HTTP endpoint, the one external boundary.
+        path = request.url.path
+        if path.endswith("/files") and request.method == "POST":
+            queued.extend(re.findall(r'"custom_id": "([0-9a-f]+)"', request.content.decode()))
+            return httpx.Response(200, json={"id": "in"})
+        if path.endswith("/content"):
+            return httpx.Response(
+                200,
+                text="\n".join(
+                    json.dumps(
+                        {
+                            "custom_id": key,
+                            "response": {
+                                "status_code": 200,
+                                "body": {"choices": [{"message": {"content": answer}}]},
+                            },
+                        }
+                    )
+                    for key in queued
+                ),
+            )
+        if "/batches/" in path:
+            return httpx.Response(200, json={"status": "completed", "output_file_id": "out"})
+        if request.method == "POST":
+            return httpx.Response(200, json={"id": "b1"})
+        if path.endswith("/batches"):
+            return httpx.Response(200, json={"data": []})
+        raise AssertionError(f"a batched answer must not be asked live: {path}")
+
+    config = LLMConfig(provider="openai", model="m", api_key="k", batch="auto")
+    coordinator = BatchCoordinator(
+        config,
+        BatchPolicy(mode="auto", min_requests=1, max_wait_minutes=5),
+        client_factory=lambda headers: httpx.AsyncClient(
+            transport=httpx.MockTransport(wire), headers=headers
+        ),
+    )
+    result = CachedTextEpisodeReader(
+        store=EpisodeReadingStore(tmp_path / "annotations.sqlite"),
+        producer=producer,
+        annotations=lines,
+        requester=SyncTextPromptRequester(
+            config,
+            max_tokens=TEXT_EPISODE_MAX_OUTPUT_TOKENS,
+            timeout_seconds=30,
+            batch=coordinator,
+        ),
+    ).read(projections)
+
+    assert len(queued) == 1
+    assert result.episodes[0].reading is not None
+    assert result.episodes[0].reading.what_happened == "A friend joins a family birthday party."

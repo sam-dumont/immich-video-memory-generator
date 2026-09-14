@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from contextvars import copy_context
 from dataclasses import dataclass, replace
 
@@ -19,6 +19,7 @@ from immich_memories.analysis.editorial_json_completion import (
 )
 from immich_memories.analysis.editorial_text_artifacts import TextPromptArtifacts
 from immich_memories.analysis.editorial_text_failures import TextCompletionFailure
+from immich_memories.analysis.llm_batch import BatchCoordinator, BatchPrompt, batch_prompt_key
 from immich_memories.analysis.llm_providers import resolved_llm_config
 from immich_memories.analysis.llm_query import LLMIncompleteResponse, query_llm
 from immich_memories.analysis.llm_text_identity import text_model_identity
@@ -193,6 +194,7 @@ class SyncTextPromptRequester:
     timeout_seconds: int
     thinking: bool = False
     artifacts: TextPromptArtifacts | None = None
+    batch: BatchCoordinator | None = None
 
     def __post_init__(self) -> None:
         if self.max_tokens <= 0 or self.timeout_seconds <= 0:
@@ -212,6 +214,31 @@ class SyncTextPromptRequester:
             raise ValueError("text completion budget exceeds the configured ceiling")
         return _run_sync(self._request(prompt, max_tokens=max_tokens, ceiling=self.max_tokens))
 
+    def prefetch(self, asked: Sequence[tuple[str, int]]) -> None:
+        """Offer a stage's independent prompts to the provider's batch route at once.
+
+        Only prompts whose answers are not each other's input belong here: a
+        batch is submitted whole, so a prompt written from another's answer
+        cannot be in it. What the batch does not answer is asked live below,
+        which is why nothing downstream has to know which arrived how.
+        """
+        if self.batch is None:
+            return
+        self.batch.prefill(
+            [
+                BatchPrompt(
+                    batch_prompt_key(self.llm_config, prompt, max_tokens=budget), prompt, budget
+                )
+                for prompt, budget in asked
+            ]
+        )
+
+    def _batched(self, prompt: str, max_tokens: int) -> str | None:
+        if self.batch is None:
+            return None
+        key = batch_prompt_key(self.llm_config, prompt, max_tokens=max_tokens)
+        return self.batch.answer_for(key)
+
     async def _request(self, prompt: str, *, max_tokens: int, ceiling: int | None) -> str:
         try:
             return await self._query(prompt, max_tokens=max_tokens)
@@ -224,6 +251,7 @@ class SyncTextPromptRequester:
             return await self._query(prompt, max_tokens=retry_tokens)
 
     async def _query(self, prompt: str, *, max_tokens: int) -> str:
+        batched = self._batched(prompt, max_tokens)
         call = (
             self.artifacts.start(
                 prompt,
@@ -231,10 +259,15 @@ class SyncTextPromptRequester:
                 max_tokens=max_tokens,
                 timeout_seconds=self.timeout_seconds,
                 thinking=self.thinking,
+                transport="batch" if batched is not None else "realtime",
             )
             if self.artifacts
             else None
         )
+        if batched is not None:
+            if self.artifacts:
+                self.artifacts.finish(call, raw=batched)
+            return batched
         try:
             raw = await query_llm(
                 prompt,

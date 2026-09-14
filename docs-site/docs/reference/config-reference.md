@@ -288,6 +288,9 @@ llm:
   timeout_seconds: 300             # increase for slow local models (10-3600)
   send_image_detail: true          # off: APIs whose strict schema rejects image_url.detail
   thinking: "disabled"             # disabled | low | high | max | auto
+  batch: "off"                     # off | auto: queue a stage's independent prompts, half price
+  batch_min_requests: 8            # fewest independent prompts in a stage worth queueing
+  batch_max_wait_minutes: 60       # then ask whatever the batch has not answered in real time
   # thinking_params:               # what the switch looks like on your server
   #   chat_template_kwargs:        # (default: the Qwen dialect, vLLM/mlx)
   #     enable_thinking: true
