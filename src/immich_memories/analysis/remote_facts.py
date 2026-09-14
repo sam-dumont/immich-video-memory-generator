@@ -8,8 +8,10 @@ host or provider name enters a key, so a remote row and a local row are the same
 from __future__ import annotations
 
 import base64
+import math
 from collections.abc import Mapping
 from contextlib import AbstractContextManager
+from dataclasses import dataclass
 
 import httpx
 from pydantic import BaseModel, Field, ValidationError
@@ -43,6 +45,19 @@ class _Envelope(BaseModel):
     producers: dict[str, ProducerFacts]
 
 
+# What the service spent deciding one picture, so a summary can tell an operator
+# whether a slow pass is the classifiers or the wire in front of them.
+SERVICE_SECONDS_HEADER = "X-Facts-Seconds"
+
+
+@dataclass(frozen=True, slots=True)
+class FactsAnswer:
+    """One picture's producers, and what the service charged itself for them."""
+
+    producers: dict[str, ProducerFacts]
+    service_seconds: float | None
+
+
 def offloaded_versions(
     head_versions: Mapping[str, str], producers: Mapping[str, str] | list[str] | tuple[str, ...]
 ) -> dict[str, str]:
@@ -65,16 +80,26 @@ def producer_names(head_versions: Mapping[str, str]) -> tuple[str, ...]:
 
 
 class RemoteFactsClient(AbstractContextManager):
-    """One reused connection; one preview upload for all missing producers of a picture."""
+    """Reused connections, safe to call from several threads; one upload per picture."""
 
     def __init__(self, config: InferenceConfig, client: httpx.Client | None = None) -> None:
         self._url = f"{config.facts_base_url}/facts"
-        self._client = client or httpx.Client(timeout=config.timeout_seconds, trust_env=False)
+        # httpx keeps twenty connections alive by default. With more callers than
+        # that, the ones past it hand back a closed socket and pay for a fresh
+        # handshake on every picture, which is the cost this is here to avoid.
+        self._client = client or httpx.Client(
+            timeout=config.timeout_seconds,
+            trust_env=False,
+            limits=httpx.Limits(
+                max_connections=config.facts_concurrency,
+                max_keepalive_connections=config.facts_concurrency,
+            ),
+        )
 
     def __exit__(self, *_exc: object) -> None:
         self._client.close()
 
-    def facts(self, image: bytes, head_versions: Mapping[str, str]) -> dict[str, ProducerFacts]:
+    def facts(self, image: bytes, head_versions: Mapping[str, str]) -> FactsAnswer:
         names = producer_names(head_versions)
         try:
             response = self._client.post(
@@ -94,7 +119,20 @@ class RemoteFactsClient(AbstractContextManager):
         except (ValidationError, ValueError):
             raise RemoteFactsError("Remote classifiers returned malformed facts") from None
         _validate_contract(result, names, head_versions)
-        return result
+        return FactsAnswer(result, _service_seconds(response))
+
+
+def _service_seconds(response: httpx.Response) -> float | None:
+    """What the service says this picture cost it, when it says anything at all.
+
+    A service older than the header is not a failure: the summary then shows the
+    wall clock alone, exactly as it did before there was a header to read.
+    """
+    try:
+        seconds = float(response.headers[SERVICE_SECONDS_HEADER])
+    except (KeyError, ValueError):
+        return None
+    return seconds if math.isfinite(seconds) and seconds >= 0 else None
 
 
 # The service names the producer and the missing artifact in its `detail`, and

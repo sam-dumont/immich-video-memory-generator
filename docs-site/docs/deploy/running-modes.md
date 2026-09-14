@@ -19,6 +19,14 @@ on with one key (`advanced.inference.facts_base_url`). The facts are the same ro
 you can move the service, change its provider or turn it off without re-deriving anything.
 Hardware encoders (Quick Sync, VAAPI, NVENC) only change the render; none of them runs inference.
 
+On a cluster, set `advanced.inference.facts_concurrency` with it. It is 8 by default and the app
+keeps that many `/facts` requests in flight. At 1, which is what the client used to do, a Job
+against a T1000 on `no_captions` spent 42.7 minutes on 3,709 pictures: 0.69 s each, the same rate
+a 133-picture scope got, so the wait was the round trip and not the card. A 13,552-picture month
+would have cost 2.6 hours of facts before anything was selected. Match it to the service's
+`REQUEST_THREADS` and give the pod the CPU for them. `prepare` prints what each side spent: the
+`remote_facts` row carries the app's wall clock and a `service s/pic` column beside it.
+
 ## The reader
 
 | `reader` | Needs | What you get | What you lose |
