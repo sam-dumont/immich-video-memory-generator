@@ -155,13 +155,14 @@ def hosted_reader_pins() -> dict[str, Any]:
     """What a cell reading off somebody else's API must not inherit from the operator's `llm:`.
 
     That block describes the server on the operator's desk. `no_thinking_params`
-    is oMLX's own chat-template switch, and z.ai answers a request carrying it
-    with a 200 whose body is a 404 (`KeyError: 'choices'`). `base_url` is the
-    same story one level up: a named provider carries its own, and z.ai's
-    Anthropic-compatible endpoint is not where `/chat/completions` lives.
+    is oMLX's own chat-template switch, which means nothing to a hosted provider
+    and can get the request refused. `base_url` is the same story one level up:
+    the operator's own `http://localhost:...` is not where anybody's API lives.
 
     Dropped rather than overwritten, because `_PROVIDER_PRESETS` fills each of
-    these only where the field is still at the model's default. A cell that names
-    one of them itself still wins: these are applied before the cell's own pins.
+    these only where the field is still at the model's default. The drop is a
+    default and not a rule: these are applied before the cell's own pins, so a
+    cell naming either field gets the one it named. Both zai cells name
+    `base_url`, because a coding plan is served by one of z.ai's two routes.
     """
     return {"llm.base_url": DROP, "llm.no_thinking_params": DROP}

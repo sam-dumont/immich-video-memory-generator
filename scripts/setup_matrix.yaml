@@ -188,17 +188,19 @@ cells:
     why: The second hosted reader, to tell a provider result from a hosted one.
     requires_env:
       [MATRIX_NAS_SSH, MATRIX_NAS_DOCKER, MATRIX_NAS_CACHE, MATRIX_NAS_OUT,
-       ZAI_API_KEY]
+       ZAI_API_KEY, ZAI_BASE_URL]
     config:
       editorial.reader: model
-      # `zai` is the openai-compatible adapter with the provider's URL and
-      # reasoning dialect preset. base_url is deliberately NOT pinned: the
-      # owner's ZAI_BASE_URL names z.ai's Anthropic-compatible endpoint, and the
-      # adapter then POSTs `…/api/anthropic/chat/completions`, which answers 200
-      # with a 404 body and `KeyError: 'choices'`. The preset's own base_url is
-      # the one that serves /chat/completions, and the runner drops the field out
-      # of the copied config so the preset can apply at all.
+      # base_url is pinned to ZAI_BASE_URL, which names z.ai's Anthropic-
+      # compatible endpoint. The account behind ZAI_API_KEY is a coding plan,
+      # and a coding plan is served there and nowhere else: the preset's own
+      # `…/api/paas/v4` answers it 429 `{"code":"1113","msg":"Insufficient
+      # balance"}` no matter what the request says. `provider: zai` routes on
+      # the base URL's path, so a `/api/anthropic` base takes the /v1/messages
+      # adapter. The hosted-cell drop of llm.base_url is a default for cells
+      # that want the preset's URL; a cell naming its own still gets it.
       llm.provider: zai
+      llm.base_url: $env:ZAI_BASE_URL
       llm.model: glm-5.3-flash
       llm.api_key: ${ZAI_API_KEY}
       inference.facts_base_url: $env:MATRIX_INFERENCE_BASE_URL
@@ -239,12 +241,15 @@ cells:
     facts: service
     tier: no_captions
     why: "The cheapest published setup: nothing local but the encode."
-    requires_env: [MATRIX_K8S_CONTEXT, MATRIX_K8S_NAMESPACE, ZAI_API_KEY]
+    requires_env:
+      [MATRIX_K8S_CONTEXT, MATRIX_K8S_NAMESPACE, ZAI_API_KEY, ZAI_BASE_URL]
     inference_overlay: true
     config:
       editorial.reader: model
-      # base_url unpinned, for the reason `nas-hosted-zai` gives above.
+      # base_url pinned to the Anthropic route, for the reason `nas-hosted-zai`
+      # gives above: the coding plan is served there and nowhere else.
       llm.provider: zai
+      llm.base_url: $env:ZAI_BASE_URL
       llm.model: glm-5.3-flash
       llm.api_key: ${ZAI_API_KEY}
       inference.facts_base_url: http://inference:8092
