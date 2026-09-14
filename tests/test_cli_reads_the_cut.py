@@ -190,30 +190,76 @@ class TestRunsStory:
 
 
 class TestRunsWhy:
+    def _snapshot(self, attempt, provenance):
+        (attempt / "preparation.private.json").write_text(
+            json.dumps({"caption_provenance": provenance})
+        )
+
     def test_caption_origin_comes_from_the_run_snapshot(self, cut):
         config, attempt = cut
-        (attempt / "preparation.private.json").write_text(
-            json.dumps(
-                {
-                    "caption_provenance": {
-                        "garden-2": {
-                            "model_id": "public-captioner",
-                            "endpoint": "http://original.invalid/v1",
-                            "artifact_id": "gguf-q8@one",
-                            "reported_build": {"revision": "build-one"},
-                        }
-                    },
-                }
-            )
+        self._snapshot(
+            attempt,
+            {
+                "origins": [
+                    {
+                        "model_id": "public-captioner",
+                        "endpoint": "http://original.invalid/v1",
+                        "artifact_id": "gguf-q8@one",
+                        "served": {"owned_by": "llamacpp"},
+                        "control_digest": "6b1d0a0c11b612f4",
+                        "assets": 1,
+                    }
+                ],
+                "by_asset": {},
+            },
         )
         config.editorial.preparation.caption_base_url = "http://replacement.invalid/v1"
         result = _invoke(config, ["runs", "why", "garden-2"])
         assert result.exit_code == 0, result.output
         assert "public-captioner" in result.output
         assert "gguf-q8@one" in result.output
-        assert "build-one" in result.output
+        assert "owned_by=llamacpp" in result.output
+        assert "6b1d0a0c11b612f4" in result.output
         assert "original.invalid" in result.output
         assert "replacement.invalid" not in result.output
+
+    def test_a_caption_banked_before_origins_were_recorded_reads_as_unknown(self, cut):
+        """The answer to "what happens to the bank I already have"."""
+        config, attempt = cut
+        self._snapshot(attempt, {"origins": [{"status": "unknown", "assets": 1}], "by_asset": {}})
+        config.editorial.preparation.caption_base_url = "http://replacement.invalid/v1"
+        result = _invoke(config, ["runs", "why", "garden-2"])
+        assert result.exit_code == 0, result.output
+        assert "Caption origin: unknown (not recorded with this caption)" in result.output
+        assert "replacement.invalid" not in result.output
+
+    def test_a_picture_with_no_caption_at_all_gets_no_origin_sentence(self, cut):
+        config, attempt = cut
+        self._snapshot(
+            attempt,
+            {
+                "origins": [
+                    {
+                        "model_id": "public-captioner",
+                        "endpoint": "http://one.invalid/v1",
+                        "assets": 1,
+                    },
+                    {"status": "none", "assets": 1},
+                ],
+                "by_asset": {"garden-2": 1},
+            },
+        )
+        result = _invoke(config, ["runs", "why", "garden-2"])
+        assert result.exit_code == 0, result.output
+        assert "Caption origin" not in result.output
+
+    def test_a_run_that_predates_caption_origins_says_so(self, cut):
+        config, attempt = cut
+        (attempt / "preparation.private.json").write_text(json.dumps({"tier": "full"}))
+        result = _invoke(config, ["runs", "why", "garden-2"])
+        assert result.exit_code == 0, result.output
+        assert "Caption origin: unknown (not recorded for this run)" in result.output
+
     def test_the_music_answer_names_its_text_source(self, cut):
         config, attempt = cut
         (attempt / "music-mood.private.json").write_text(

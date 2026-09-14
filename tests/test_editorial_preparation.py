@@ -154,7 +154,10 @@ def test_changing_caption_server_preserves_rows_and_marks_legacy_origins_unknown
     )
     assert result.complete
     assert calls == []
-    assert result.caption_provenance == {"aa1": {"status": "unknown"}, "bb2": {"status": "unknown"}}
+    assert result.caption_provenance == {
+        "origins": [{"status": "unknown", "assets": 2}],
+        "by_asset": {},
+    }
 
 
 def test_warm_preparation_keeps_the_original_server_and_build(tmp_path):
@@ -164,6 +167,7 @@ def test_warm_preparation_keeps_the_original_server_and_build(tmp_path):
     from tests.test_editorial_preparation_captions import _CaptionServer
 
     server = _CaptionServer(None)
+    first_url = server.base_url
     ports = replace(successful_ports([]), captions=prepare_captions)
     try:
         first = run(
@@ -171,7 +175,7 @@ def test_warm_preparation_keeps_the_original_server_and_build(tmp_path):
             ports=ports,
             fetch_preview=lambda _: preview(),
             preparation_config=EditorialPreparationConfig(
-                caption_base_url=server.base_url, caption_artifact_id="original-build"
+                caption_base_url=first_url, caption_artifact_id="original-build"
             ),
         )
         assert first.complete
@@ -188,8 +192,10 @@ def test_warm_preparation_keeps_the_original_server_and_build(tmp_path):
     )
     assert second.complete
     assert second.caption_provenance == first.caption_provenance
-    assert second.caption_provenance["aa1"]["artifact_id"] == "original-build"
-    assert second.caption_provenance["aa1"]["reported_build"] == {"revision": "served-revision"}
+    (origin,) = second.caption_provenance["origins"]
+    assert origin["artifact_id"] == "original-build"
+    assert origin["served"] == {"owned_by": "served-revision"}
+    assert origin["endpoint"] == first_url
 
 
 def test_old_docling_facts_are_replaced_without_repeating_other_producers(tmp_path):

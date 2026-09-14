@@ -12,7 +12,7 @@ import urllib.request
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextvars import copy_context
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 
 from PIL import Image
 
@@ -32,7 +32,11 @@ from immich_memories.analysis.editorial_description_wire import (
 from immich_memories.analysis.editorial_description_wire import (
     tile_preview,
 )
-from immich_memories.store.caption_provenance import CaptionOrigin, remember_origin
+from immich_memories.store.caption_provenance import (
+    CaptionOrigin,
+    remember_origin,
+    served_facts,
+)
 from immich_memories.store.editorial_preparation import now
 
 REFUSED_CODES = frozenset({401, 403})
@@ -162,12 +166,27 @@ def _optional_int(value: object) -> int | None:
 def check_provider(
     base_url: str, timeout: float, check_cancelled: Callable[[], None], *, api_key: str = ""
 ) -> CaptionOrigin:
+    """Accept the endpoint, and describe the build behind it out of its own answers.
+
+    The alias and the URL are configuration: every shipped recipe advertises the
+    same alias on the same port, so neither separates mlxcel from llama.cpp. The
+    served `/models` row and the three schema controls are the two things here
+    that came out of the weights. Measured against both captioners this project
+    ships a recipe for, serving the same 500M model: mlxcel answers
+    `owned_by=user` and no `meta`, llama.cpp answers `owned_by=llamacpp`,
+    `meta.ftype=Q8_0`, `meta.n_params=409252800`, and the control digests are
+    f5a1cdf9df7fe125 against 824e389c39e457a6 — each stable across repeats,
+    different between the two. The digest is the load-bearing half: two builds
+    that word `setting` the same way are not a harmful mix, and two that word it
+    differently cannot hide behind one alias on one port.
+    """
     check_cancelled()
     inventory = _model_inventory(base_url, timeout=timeout, api_key=api_key)
     served = next((row for row in inventory if row["id"] == API_MODEL), None)
     if served is None:
         raise ValueError(f"caption endpoint must advertise {API_MODEL}")
     # Preserve the accepted three schema controls before sending library previews.
+    answers = []
     for rgb in ((200, 20, 20), (20, 40, 200), (128, 128, 128)):
         check_cancelled()
         buffer = io.BytesIO()
@@ -180,12 +199,14 @@ def check_provider(
             if control.error and control.error.startswith(_REFUSED_ERRORS):
                 raise PermissionError(f"caption endpoint {base_url}: {control.error}")
             raise ValueError("caption endpoint failed the compact-v3 schema control")
-    build = {
-        key: str(served[key])[:512]
-        for key in ("revision", "version", "build", "commit", "sha256", "quantization", "root")
-        if isinstance(served.get(key), str | int | float)
-    }
-    return CaptionOrigin(model_id=API_MODEL, endpoint=base_url, reported_build=build)
+        answers.append(control.raw_sha256 or "")
+    control_digest = hashlib.sha256("|".join(answers).encode()).hexdigest()[:16]
+    return CaptionOrigin(
+        model_id=API_MODEL,
+        endpoint=base_url,
+        served=served_facts(served),
+        control_digest=control_digest,
+    )
 
 
 def _describe(
@@ -226,12 +247,9 @@ def prepare_captions(
     """Bank successes and only verified two-completion failures, with bounded concurrency."""
     if not asset_ids:
         return {}
-    checked = check_provider(base_url, timeout, check_cancelled, api_key=api_key)
-    origin = CaptionOrigin(
-        model_id=API_MODEL,
-        endpoint=base_url,
+    origin = replace(
+        check_provider(base_url, timeout, check_cancelled, api_key=api_key),
         artifact_id=artifact_id,
-        reported_build=checked.reported_build if checked else {},
     )
     failures = {}
     # Bound submitted work too: cancellation must not drain a whole library queue.
