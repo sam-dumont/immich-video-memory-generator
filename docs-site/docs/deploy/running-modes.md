@@ -19,6 +19,14 @@ on with one key (`advanced.inference.facts_base_url`). The facts are the same ro
 you can move the service, change its provider or turn it off without re-deriving anything.
 Hardware encoders (Quick Sync, VAAPI, NVENC) only change the render; none of them runs inference.
 
+On a cluster, set `advanced.inference.facts_concurrency` with it. It is 8 by default and the app
+keeps that many `/facts` requests in flight. At 1, which is what the client used to do, a Job
+against a T1000 on `no_captions` spent 42.7 minutes on 3,709 pictures: 0.69 s each, the same rate
+a 133-picture scope got, so the wait was the round trip and not the card. A 13,552-picture month
+would have cost 2.6 hours of facts before anything was selected. Match it to the service's
+`REQUEST_THREADS` and give the pod the CPU for them. `prepare` prints what each side spent: the
+`remote_facts` row carries the app's wall clock and a `service s/pic` column beside it.
+
 ## The reader
 
 | `reader` | Needs | What you get | What you lose |
@@ -182,7 +190,7 @@ judged less focused than the shorter metadata cut.
 | Mode | To the caption server | To the reader | Elsewhere |
 |---|---|---|---|
 | rules + `metadata_only` | nothing | nothing | Immich reads; Nominatim for trip GPS; map tiles for title screens |
-| rules + `no_captions` | nothing | nothing | same |
+| rules + `no_captions` | nothing | nothing | same, plus: with `advanced.inference.facts_base_url` set, a preview of every picture in the period goes to that service. It is off by default |
 | any reader + `full` | a 400 px JPEG of every picture in the period, once | (see next rows) | same |
 | `model`, local | as above on `full` | 800 px tiles of a few dozen candidates, plus their annotation lines with people and place names, to a box you own | same |
 | `model`, hosted | as above on `full` | the same tiles and lines to the provider | same |
@@ -213,4 +221,4 @@ The whole stand-up, in order, is the [self-hosting guide](./self-hosting.md).
 
 ## Title rendering
 
-Every mode above renders title screens the same way: on the GPU kernels where they exist, and with PIL where they do not. GPU title rendering runs on Quadrants, which has wheels for Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 on Python 3.11-3.13. On macOS x86_64 and on Python 3.14 there is none, and title screens fall back to the PIL renderer (static gradient and text, no animated kernels, no SDF text); `immich-memories preflight` says which you will get. See [Title kernels](./hardware/cpu-only.md#title-kernels).
+Every mode above renders title screens the same way: on the GPU kernels where they exist, and with PIL where they do not. GPU title rendering runs on Quadrants, which has wheels for Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 on Python 3.11-3.13. On macOS x86_64 and on Python 3.14 there is none, and title screens fall back to the PIL renderer, which still animates its gradient but loses the kernel effects (bokeh particles, the slow-motion deblur of a content-backed card) and the SDF text path; `immich-memories preflight` says which you will get. See [Title kernels](./hardware/cpu-only.md#title-kernels).

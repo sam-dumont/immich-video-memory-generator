@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import logging
 import sys
+import time
 from io import BytesIO
 from types import SimpleNamespace
 
@@ -486,3 +487,29 @@ def test_every_503_is_logged_once_per_distinct_message(tmp_path, caplog):
         f"{settings.encoder_path}; {ENCODER_HINT}"
     ) == 1
     assert len(caplog.records) == 1
+
+
+class SlowProducer:
+    """A producer that takes a known amount of time, so the header can be checked against it."""
+
+    name = HEADS
+    encoder_key = "c" * 64
+    versions = {"people": "public-v1"}  # noqa: RUF012
+
+    def decide(self, image: bytes) -> ProducerFacts:
+        time.sleep(0.05)
+        return ProducerFacts(
+            producer=self.name,
+            encoder_key=self.encoder_key,
+            facts=(Fact(head="people", version="public-v1", label="yes", confidence=0.5),),
+        )
+
+
+def test_facts_says_how_long_the_producers_themselves_took():
+    """0.69 s a picture on a GPU service is not the GPU; the split has to be visible."""
+    runtime = ProducerRuntime({HEADS: SlowProducer})
+
+    with service(runtime) as client:
+        response = client.post("/facts", json={"image": base64.b64encode(photograph()).decode()})
+
+    assert 0.05 <= float(response.headers["X-Facts-Seconds"]) < 5

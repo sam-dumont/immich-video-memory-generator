@@ -8,7 +8,7 @@ producer, and what a stated library size therefore costs.
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
 
@@ -79,27 +79,54 @@ def human_duration(seconds: float) -> str:
 
 
 def rate_report(
-    costs: Sequence[ProducerCost], *, pictures: int, library_size: int
+    costs: Sequence[ProducerCost],
+    *,
+    pictures: int,
+    library_size: int,
+    service_seconds: Mapping[str, float] | None = None,
 ) -> tuple[str, ...]:
-    """The table a NAS owner reads: per producer, the total, and a library projection."""
+    """The table a NAS owner reads: per producer, the total, and a library projection.
+
+    ``service_seconds`` is what another machine charged itself for a producer that ran
+    there. Its column appears only when something reported one: on a box where every
+    producer ran locally an empty column would say nothing, and the difference between
+    the two numbers is the whole reason to print either.
+    """
+    charged = dict(service_seconds or {})
     total = total_seconds_per_picture(costs, pictures)
     elapsed = sum(cost.seconds for cost in costs)
+
+    def service(producer: str) -> str:
+        if not charged:
+            return ""
+        seconds = charged.get(producer)
+        return f"{seconds / pictures:>15.4f}" if seconds is not None and pictures else f"{'—':>15}"
+
     lines = [
-        f"{'producer':<14}{'pending':>9}{'s/picture':>12}{'share':>8}{'elapsed':>11}",
+        f"{'producer':<14}{'pending':>9}{'s/picture':>12}{'share':>8}{'elapsed':>11}"
+        + (f"{'service s/pic':>15}" if charged else ""),
     ]
     for cost in costs:
         rate = cost.seconds_per_picture(pictures)
         share = f"{100 * cost.seconds / elapsed:.1f}%" if elapsed else "—"
         lines.append(
             f"{cost.producer:<14}{cost.pending:>9}{rate:>12.4f}{share:>8}"
-            f"{human_duration(cost.seconds):>11}"
+            f"{human_duration(cost.seconds):>11}{service(cost.producer)}"
         )
     lines.extend(
         (
-            f"{'total':<14}{pictures:>9}{total:>12.4f}{'100%':>8}{human_duration(elapsed):>11}",
+            f"{'total':<14}{pictures:>9}{total:>12.4f}{'100%':>8}{human_duration(elapsed):>11}"
+            f"{_summed(charged, pictures)}",
             "",
             f"At this rate {library_size:,} pictures would take "
             f"{human_duration(total * library_size)}.",
         )
     )
     return tuple(lines)
+
+
+def _summed(charged: Mapping[str, float], pictures: int) -> str:
+    """The total row's share of the service column, when there is a column to fill."""
+    if not charged or not pictures:
+        return ""
+    return f"{sum(charged.values()) / pictures:>15.4f}"

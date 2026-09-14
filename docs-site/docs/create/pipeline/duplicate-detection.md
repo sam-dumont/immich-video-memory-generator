@@ -45,8 +45,8 @@ Perceptual distance is the second vote here, never the only one. Measured on 653
 pairs: the model contradicted itself on 39, and only 4 of those were pixel-close; its
 uncertainty lives on pixel-*distant* pairs. At a corroboration distance of 10 the rule
 reproduced all 653 decisions exactly while removing 30% of the calls. The first changed
-decision appears at 12. That 10 is a cap, not a setting: every run recalibrates it on a
-sample of your own library and may only lower it.
+decision appears at 12. That 10 is a constant in the code, not a setting: there is no config key
+for it and nothing recalibrates it per library.
 
 ## 3. The final film, over what actually shipped
 
@@ -74,7 +74,7 @@ slot, the hamming distance, and which signal nominated the pair.
 
 ## What there is no knob for
 
-There is no `duplicate_hash_threshold`. The key existed for the retired clip scorer and
-the loader now refuses a config file that names it: you get a startup error naming the
-key rather than a setting that loads and does nothing. The two thresholds you can still
-set are the burst pair above; the other two numbers are measured caps in the code.
+There is no `duplicate_hash_threshold`. The key existed for the retired clip scorer, and a config
+file that still names it starts normally and logs one warning naming it, rather than keeping a
+setting that quietly does nothing. The two thresholds you can still set are the burst pair above;
+the other two numbers are constants in the code.
