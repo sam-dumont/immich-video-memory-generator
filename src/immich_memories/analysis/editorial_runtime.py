@@ -314,7 +314,7 @@ class RuntimeEditorialPlanner:
             self._backend._context = replace(context, artifact_dir=attempt.directory)
 
             def stage(update: StageUpdate) -> None:
-                attempt.stage(update)
+                update = attempt.stage(update)
                 if on_stage is not None:
                     on_stage(update)
 

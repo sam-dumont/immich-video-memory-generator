@@ -220,11 +220,21 @@ def test_launch_flow_renders_real_video(
     assert launch_config["advanced"]["ace_step"]["enabled"] is False
 
     _drive_to_step4(page, launch_app_url)
+    page.evaluate("""() => {
+        window.exportProgress = [];
+        new MutationObserver(() => {
+            const bar = document.querySelector('.q-linear-progress[role="progressbar"]');
+            if (bar) window.exportProgress.push(Number(bar.getAttribute('aria-valuenow')));
+        }).observe(document.body, {subtree: true, attributes: true, attributeFilter: ['aria-valuenow']});
+    }""")
     page.get_by_role("button", name="Generate Video").click()
 
     expect(page.get_by_text("Your memory video is ready!", exact=True)).to_be_visible(
         timeout=600_000
     )
+    fractions = page.evaluate("window.exportProgress")
+    assert len(set(fractions)) > 2
+    assert fractions == sorted(fractions)
 
     outputs = sorted(launch_workspace.output_dir.rglob("*.mp4"))
     assert len(outputs) == 1
