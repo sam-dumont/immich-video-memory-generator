@@ -15,17 +15,87 @@ titles below, and the mood detection the music pipeline uses. This page covers t
 Five provider values, three code paths. `ollama` speaks Ollama's native API, `anthropic` speaks
 `/v1/messages`, and `openai-compatible` and `openai` speak `/v1/chat/completions`, so anything that
 serves that endpoint works: mlx-vlm, [oMLX](https://github.com/jundot/omlx), vLLM, Ollama's
-compatibility layer, Groq, OpenAI itself. `zai` picks one of those last two from its `base_url`
-path, because z.ai serves both: `.../api/anthropic` gets `/v1/messages`, everything else gets
-`/chat/completions`.
+compatibility layer, Groq, OpenAI itself. `zai` is the `anthropic` adapter with z.ai's URL and
+reasoning level filled in, and it is the one provider that picks its adapter from the `base_url`
+path, because z.ai serves both dialects on one host: `.../api/anthropic` gets `/v1/messages`,
+`.../api/paas/v4` gets `/chat/completions`.
 
-`openai` and `zai` fill in the vendor's base URL and reasoning dialect where you left the field at
-its default. The provider's own reasoning switch is merged in even when you set your own
-`thinking_params` or `no_thinking_params`, because the two are not the same request field. A
+`openai`, `anthropic` and `zai` fill in the vendor's base URL and reasoning dialect where you left
+the field at its default. The provider's own reasoning switch is merged in even when you set your
+own `thinking_params` or `no_thinking_params`, because the two are not the same request field. A
 `thinking` key you write yourself wins over the preset's, which is how you pick a z.ai reasoning
 level other than the one its preset chose for your model.
 `openai-compatible` fills in nothing: its `base_url` stays `http://localhost:8080/v1`, which is the
 app's own port, so set it.
+
+## Anthropic-compatible
+
+`provider: anthropic` is the Messages API: `POST {base_url}/v1/messages`, `x-api-key`,
+`anthropic-version: 2023-06-01`, the prompt and then the reader's tiles as base64 `image` blocks in
+one user message. Claude serves it, and so does every host that copied it. Nothing about the app
+is Claude-specific: point `base_url` at whoever serves the dialect and the reader works.
+
+Answers come back as a JSON envelope the app validates itself. No provider-side JSON mode is used,
+so a host that does not have one loses nothing.
+
+**Claude**
+
+```yaml
+advanced:
+  llm:
+    provider: "anthropic"
+    model: "claude-sonnet-5"        # or claude-haiku-4-5 for the cheap seat
+    api_key: "${ANTHROPIC_API_KEY}"
+    thinking: "high"                # disabled | low | high | max | auto
+```
+
+`base_url` defaults to `https://api.anthropic.com`, so leave it out. Two things the preset handles
+for you, because Claude answers HTTP 400 otherwise: no `temperature` goes out (from the 4.7 line on
+Claude refuses any sampling parameter, so the greedy decoding every other provider gets is not on
+offer), and reasoning is asked for as `thinking: {"type": "adaptive"}` with the level as
+`output_config.effort` rather than the older fixed token budget. Bulk calls send
+`thinking: {"type": "disabled"}`: Claude's current models reason by default, and a photo pass at a
+140-token cap that reasons comes back with no answer in it. If you pin a model that predates that
+dialect, write the older switch out yourself:
+
+```yaml
+    thinking_params:
+      thinking: {type: "enabled", budget_tokens: 2048}
+```
+
+**z.ai coding plan**
+
+```yaml
+advanced:
+  llm:
+    provider: "zai"
+    model: "glm-5.3-flash"
+    api_key: "${ZAI_API_KEY}"
+    thinking: "low"
+```
+
+`base_url` defaults to `https://api.z.ai/api/anthropic`, which is where a coding-plan account is
+served. The other route, `https://api.z.ai/api/paas/v4`, is the OpenAI-compatible one and answers
+that account `429 code 1113, Insufficient balance`. Set it explicitly if your account is the other
+kind. z.ai takes the level as its own word rather than an effort, and the GLM-5 line refuses
+`disabled` outright, so the preset sends `low` there.
+
+**Anything else that serves the Messages API**
+
+```yaml
+advanced:
+  llm:
+    provider: "anthropic"
+    base_url: "https://your-gateway.example.com/anthropic"
+    model: "whatever-it-serves"
+    api_key: "${ANTHROPIC_API_KEY}"
+    thinking: "auto"
+```
+
+An explicit `base_url` wins over the preset and the adapter stays the Messages API. `auto` sends no
+reasoning field in either direction and takes the host's default, which is the setting to start
+from when you do not know what the host does with one. Run `immich-memories preflight` and it will
+report the host's model list, or fall back to a one-token ask when it does not publish one.
 
 :::warning The reader needs eyes
 The model named in `llm` is sent pictures: 800 px JPEG tiles of the candidates whose facts the
@@ -59,17 +129,22 @@ and its default is already the Qwen dialect:
 
 ```yaml
 llm:
-  thinking: false                 # default
+  thinking: "disabled"            # default
   no_thinking_params:             # merged into every non-thinking call
     chat_template_kwargs:
       enable_thinking: false
 ```
 
-A server that reasons only when asked wants `no_thinking_params: {}` instead. Turning `thinking:
-true` back on runs two calls in reasoning mode (title generation and the special-day question in
-`discover-days`), while everything else stays fast, and it is refused outright alongside images; `thinking_params` carries the fields those calls send, defaulting to the
-same Qwen dialect. OpenAI's reasoning models want `{"reasoning_effort": "medium"}` there, which
+A server that reasons only when asked wants `no_thinking_params: {}` instead. Setting `thinking` to
+`low`, `high` or `max` runs two calls in reasoning mode (title generation and the special-day
+question in `discover-days`), while everything else stays fast, and it is refused outright
+alongside images; `thinking_params` carries the fields those calls send, defaulting to the same
+Qwen dialect. OpenAI's reasoning models want `{"reasoning_effort": "medium"}` there, which
 `provider: openai` fills in for you.
+
+The level only reaches hosts that take one: Claude gets it as `output_config.effort`, z.ai as its
+own level word. Everywhere else it is on or off, and `thinking_params` says how hard. `auto` sends
+nothing in either direction. `true` and `false` still parse, as `high` and `disabled`.
 
 ### Which model
 
@@ -112,6 +187,7 @@ advanced:
     api_key: ""                            # local servers ignore it
     provider: "openai-compatible"          # or ollama | openai | zai | anthropic
     timeout_seconds: 300                   # the default
+    thinking: "disabled"                   # disabled | low | high | max | auto
 ```
 
 `model` has to be the string the server reports at `GET /v1/models`, not the name you typed

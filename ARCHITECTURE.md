@@ -163,7 +163,8 @@ src/immich_memories/
 │   ├── thumbnail_prefetch.py   # cached_preview_bytes(): the one preview reader the editorial modules share
 │   ├── apple_vision.py         # macOS Vision framework face detection (smart crops)
 │   ├── apple_vision_image.py   # Vision image conversion helpers
-│   ├── llm_query.py            # LLM query helpers
+│   ├── llm_query.py            # LLM query helpers: the two wire dialects and their transports
+│   ├── llm_providers.py        # Named providers: their URL, their adapter, the way they reason
 │   ├── live_photo_pipeline.py  # Keep a Live Photo's video half out of the video pool
 │   └── motion_rendering.py     # What a photograph could show as motion, if the memory wants it
 │

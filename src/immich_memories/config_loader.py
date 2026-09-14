@@ -223,7 +223,7 @@ class _YamlSettingsSource(PydanticBaseSettingsSource):
 # IMMICH_MEMORIES_<SECTION>__<FIELD> form (see _apply_env_overrides).
 _CREDENTIAL_ENV_ALIASES: dict[str, tuple[str, ...]] = {
     "immich.api_key": ("IMMICH_API_KEY",),
-    "llm.api_key": ("OPENAI_API_KEY",),
+    "llm.api_key": ("OPENAI_API_KEY", "ANTHROPIC_API_KEY"),
     "musicgen.api_key": ("MUSICGEN_API_KEY",),
     "ace_step.api_key": ("ACE_STEP_API_KEY",),
     "auth.password": ("IMMICH_MEMORIES_AUTH_PASSWORD",),
@@ -421,14 +421,30 @@ def _arm_log_redaction(config: Config) -> None:
     install_secret_redaction(configured_secret_values(config))
 
 
+def _llm_key_from_env(provider: str) -> str | None:
+    """The LLM key the environment holds, the configured host's own name first.
+
+    Both names feed one field, so which wins has to be decided rather than
+    left to whichever is read last: a box with keys for two providers in its
+    environment sends the one belonging to the provider it is pointed at.
+    """
+    messages_api = provider in ("anthropic", "zai")
+    names = (
+        ("ANTHROPIC_API_KEY", "OPENAI_API_KEY")
+        if messages_api
+        else ("OPENAI_API_KEY", "ANTHROPIC_API_KEY")
+    )
+    return next((value for name in names if (value := os.environ.get(name))), None)
+
+
 def _apply_env_overrides(config: Config) -> None:
     """Apply environment variable overrides to a Config instance."""
     if url := os.environ.get("IMMICH_URL"):
         config.immich.url = url
     if api_key := os.environ.get("IMMICH_API_KEY"):
         config.immich.api_key = api_key
-    if openai_key := os.environ.get("OPENAI_API_KEY"):
-        config.llm.api_key = openai_key
+    if llm_key := _llm_key_from_env(config.llm.provider):
+        config.llm.api_key = llm_key
 
     # MusicGen env var overrides (also supported via IMMICH_MEMORIES_MUSICGEN__*)
     if musicgen_enabled := os.environ.get("MUSICGEN_ENABLED"):

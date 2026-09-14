@@ -75,10 +75,10 @@ answer for a wedding that ran fifteen hours in one place.
 
 ## Fast eyes, then a considered answer
 
-With `llm.thinking: true` the question runs in two steps: one fast call that
+With `llm.thinking` at `low`, `high` or `max` the question runs in two steps: one fast call that
 looks at the sampled thumbnails and writes a line per picture, then a
 text-only call that reasons over those lines together with the times, places
-and recognised names. Without `thinking`, it stays the single vision call it
+and recognised names. With `thinking: disabled`, it stays the single vision call it
 has always been, so nothing changes on a server that cannot reason.
 
 Measured across 14 candidate days, one vision call said "special" to all fourteen, and one call

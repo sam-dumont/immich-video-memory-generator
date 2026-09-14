@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from immich_memories.analysis.special_day import ask_if_special
+from immich_memories.config_models_llm import LLMConfig
 
 _VERDICT = '{"special": true, "title": "Pace and Light", "subtitle": "", "what": ""}'
 
@@ -42,7 +43,7 @@ def test_the_pictures_are_read_first_then_reasoned_about_as_text() -> None:
     with patch("immich_memories.analysis.llm_query.query_llm", new=_recorder(calls)):
         ask_if_special(
             [asset],
-            llm_config=SimpleNamespace(thinking=True),
+            llm_config=LLMConfig(thinking="high"),
             thumbnails=[(asset, b"jpeg-bytes")],
         )
 
@@ -62,7 +63,7 @@ def test_what_the_eyes_saw_is_what_the_judgement_reads() -> None:
     with patch("immich_memories.analysis.llm_query.query_llm", new=_recorder(calls)):
         ask_if_special(
             [asset],
-            llm_config=SimpleNamespace(thinking=True),
+            llm_config=LLMConfig(thinking="high"),
             thumbnails=[(asset, b"jpeg-bytes")],
         )
 
@@ -79,7 +80,7 @@ def test_a_server_that_cannot_reason_keeps_todays_behaviour() -> None:
     with patch("immich_memories.analysis.llm_query.query_llm", new=_recorder(calls)):
         ask_if_special(
             [asset],
-            llm_config=SimpleNamespace(thinking=False),
+            llm_config=LLMConfig(thinking="disabled"),
             thumbnails=[(asset, b"jpeg-bytes")],
         )
 
@@ -101,7 +102,7 @@ def test_the_lines_the_judgement_read_are_recoverable_afterwards(caplog) -> None
     ):
         ask_if_special(
             [asset],
-            llm_config=SimpleNamespace(thinking=True),
+            llm_config=LLMConfig(thinking="high"),
             thumbnails=[(asset, b"jpeg-bytes")],
         )
 
@@ -123,7 +124,7 @@ def test_a_look_that_fails_still_gets_a_judgement() -> None:
     with patch("immich_memories.analysis.llm_query.query_llm", new=_blind):
         verdict = ask_if_special(
             [asset],
-            llm_config=SimpleNamespace(thinking=True),
+            llm_config=LLMConfig(thinking="high"),
             thumbnails=[(asset, b"jpeg-bytes")],
         )
 
