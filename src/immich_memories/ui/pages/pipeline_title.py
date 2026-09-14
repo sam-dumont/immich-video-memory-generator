@@ -94,6 +94,7 @@ def generate_template_title(
     person_names: list[str] | None = None,
     album_name: str | None = None,
     preset_params: dict | None = None,
+    locale: str = "en",
 ) -> tuple[str, str | None]:
     """Generate a template-based title from memory type and date range.
 
@@ -127,7 +128,11 @@ def generate_template_title(
         return f"{_MONTH_NAMES[start.month]} {year}", None
 
     if memory_type == "trip":
-        return f"{_MONTH_NAMES[start.month]} {year} Trip", f"{start_date} \u2013 {end_date}"
+        from immich_memories.i18n import get_month_name
+        from immich_memories.processing.clip_caption import resolve_caption_locale
+
+        month = get_month_name(start.month, resolve_caption_locale(locale))
+        return f"{month} {year}", f"{start_date} \u2013 {end_date}"
 
     occasion = _occasion_title(memory_type, start, end, preset_params)
     if occasion is not None:
@@ -274,6 +279,7 @@ async def generate_title_after_pipeline(state: AppState) -> None:
         person_names=person_names,
         album_name=state.album_name,
         preset_params=state.memory_preset_params,
+        locale=config.title_screens.locale,
     )
     state.title_suggestion_title = template_title
     state.title_suggestion_subtitle = template_subtitle

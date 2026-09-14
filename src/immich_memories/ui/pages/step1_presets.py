@@ -283,12 +283,40 @@ def _render_album_picker(state: AppState) -> None:
     ui.timer(0.1, _load_albums, once=True)
 
 
+async def _load_trip_year_options(state: AppState, year_select: ui.select) -> None:
+    from datetime import datetime
+
+    from immich_memories.api.immich import SyncImmichClient
+
+    def fetch_years() -> list[int]:
+        with SyncImmichClient(
+            base_url=state.immich_url,
+            api_key=state.immich_api_key,
+            api_version=state.immich_api_version,
+        ) as client:
+            buckets = client.get_time_buckets()
+        return sorted({datetime.fromisoformat(b.time_bucket).year for b in buckets}, reverse=True)
+
+    current_year = year_select.value
+    try:
+        years = await io_bound_result(fetch_years)
+        if years:
+            selected = current_year if current_year in years else years[0]
+            year_select.set_options(years, value=selected)
+            state.memory_preset_params["year"] = selected
+    except Exception as exc:  # WHY: keep the existing years usable if the timeline fails
+        logger.warning("Could not load trip years: %s", exc)
+        ui.notify(
+            "Could not load photo years. Showing the previously loaded years.", type="warning"
+        )
+
+
 def _render_trip_params(state: AppState) -> None:
     """Year picker + dynamic trip detection dropdown."""
     from immich_memories.analysis.trip_detection import DetectedTrip
 
     year_options = state.years or list(range(2024, 2019, -1))
-    current_year = state.memory_preset_params.get("year", year_options[0] if year_options else 2024)
+    current_year = state.memory_preset_params.get("year", year_options[0])
 
     # Trip detection results container
     trip_container = ui.column().classes("w-full mt-2")
@@ -299,12 +327,12 @@ def _render_trip_params(state: AppState) -> None:
         for i, t in enumerate(trips):
             days = (t.end_date - t.start_date).days + 1
             options[i] = (
-                f"{t.location_name} ({t.start_date} to {t.end_date}, {days}d, {t.asset_count} videos)"
+                f"{t.location_name} ({t.start_date} to {t.end_date}, {days}d, {t.asset_count} assets)"
             )
         return options
 
     async def _detect_trips_for_year(year_val: int) -> None:
-        """Fetch videos and run trip detection for the selected year."""
+        """Find trips from photos and videos for the selected year."""
         trip_container.clear()
 
         if not state.immich_url or not state.immich_api_key:
@@ -323,34 +351,19 @@ def _render_trip_params(state: AppState) -> None:
                 ).classes("text-sm")
 
         try:
-            from immich_memories.analysis.trip_detection import detect_trips
+            from immich_memories.analysis.trip_discovery import discover_year_trips
             from immich_memories.api.immich import SyncImmichClient
-            from immich_memories.timeperiod import DateRange
 
             assert state.config is not None  # set in initialize_app
             trips_config = state.config.trips
 
             def do_detect() -> list[DetectedTrip]:
-                from datetime import datetime
-
-                dr = DateRange(
-                    start=datetime(year_val, 1, 1, 0, 0, 0),
-                    end=datetime(year_val, 12, 31, 23, 59, 59),
-                )
                 with SyncImmichClient(
                     base_url=state.immich_url,
                     api_key=state.immich_api_key,
                     api_version=state.immich_api_version,
                 ) as client:
-                    assets = client.get_videos_for_date_range(dr)
-                return detect_trips(
-                    assets,
-                    trips_config.homebase_latitude,
-                    trips_config.homebase_longitude,
-                    min_distance_km=trips_config.min_distance_km,
-                    min_duration_days=trips_config.min_duration_days,
-                    max_gap_days=trips_config.max_gap_days,
-                )
+                    return discover_year_trips(client, trips_config, year_val)
 
             detected = await io_bound_result(do_detect)
         except Exception as exc:  # WHY: UI graceful degradation
@@ -405,15 +418,27 @@ def _render_trip_params(state: AppState) -> None:
         state.date_ranges = []
         await _detect_trips_for_year(e.value)
 
-    ui.select(
-        options=year_options, label="Year", value=current_year, on_change=on_year_change
-    ).classes("w-48")
+    year_select = ui.select(options=year_options, label="Year", value=current_year).classes("w-48")
 
     state.memory_preset_params.setdefault("year", current_year)
 
-    # Auto-detect trips if connected and year is set
+    async def load_trip_years() -> None:
+        # The picker is disabled for the duration of this load. Anything that
+        # escapes -- a render error, a client that disconnected mid-await --
+        # would strand it disabled for the rest of the session, with a page
+        # reload the only way back.
+        try:
+            await _load_trip_year_options(state, year_select)
+            year_select.on_value_change(on_year_change)
+            await _detect_trips_for_year(year_select.value)
+        finally:
+            year_select.enable()
+
     if state.connected_user and current_year:
-        ui.timer(0.1, lambda: _detect_trips_for_year(current_year), once=True)
+        year_select.disable()
+        ui.timer(0.1, load_trip_years, once=True)
+    else:
+        year_select.on_value_change(on_year_change)
 
 
 def _day_name(entry: DiscoveredDay) -> str:

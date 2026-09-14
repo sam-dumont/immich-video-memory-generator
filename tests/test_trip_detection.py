@@ -753,7 +753,7 @@ class TestCrossYearBoundary:
         mock_progress = MagicMock()
 
         with patch(
-            "immich_memories.cli._trip_display.detect_trips",
+            "immich_memories.analysis.trip_discovery.detect_trips",
             return_value=[],
         ):
             run_trip_detection(mock_client, config, 2015, mock_progress)
@@ -812,7 +812,7 @@ class TestCrossYearBoundary:
         )
 
         with patch(
-            "immich_memories.cli._trip_display.detect_trips",
+            "immich_memories.analysis.trip_discovery.detect_trips",
             return_value=[trip_2014, trip_boundary, trip_2015],
         ):
             trips = run_trip_detection(mock_client, config, 2015, mock_progress)

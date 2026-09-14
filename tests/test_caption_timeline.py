@@ -9,10 +9,10 @@ from immich_memories.processing.assembly_config import AssemblyClip
 from immich_memories.processing.clip_caption import captions_for_timeline
 
 
-def _clip(date: str | None, place: str | None = None) -> AssemblyClip:
+def _clip(date: str | None, place: str | None = None, duration: float = 4.0) -> AssemblyClip:
     return AssemblyClip(
         path=Path("/x.mp4"),
-        duration=4.0,
+        duration=duration,
         date=date,
         asset_id=f"a-{date}-{place}",
         location_name=place,
@@ -221,3 +221,25 @@ class TestCaptionFilters:
         )
 
         assert int(re.search(r"fontsize=(\d+)", date_f).group(1)) == 48
+
+
+class TestDissolveWindows:
+    def test_a_clip_shorter_than_its_two_fades_still_shows_its_caption(self):
+        """Two 15-frame fades leave no body in a 0.8s clip.
+
+        An impossible window (`gte(n,15)*lt(n,9)`) is never true, so the clip
+        would lose its caption with nothing in the render to show for it.
+        """
+        from immich_memories.processing.clip_caption import (
+            ClipCaption,
+            caption_filters,
+            caption_frame_windows,
+        )
+
+        clips = [_clip("2025-08-01"), _clip("2025-08-02", duration=0.8), _clip("2025-08-03")]
+        windows = caption_frame_windows(clips, ["fade", "fade"], fps=30, fade_frames=15)
+
+        (drawn,) = caption_filters(
+            ClipCaption(date="Saturday 2"), 1920, 1080, frame_window=windows[1]
+        )
+        assert "enable=" not in drawn
