@@ -1,6 +1,7 @@
 # Cache/state volume, mounted at /home/immich/.immich-memories: config.yaml,
-# cache.db (analysis scores — the expensive part), the downloaded-video cache,
-# projects and automation history. Losing it means re-analyzing the library.
+# cache/annotations.sqlite, cache.db, downloads, thumbnails and preview clips.
+# Also mounted at ~/.cache and /tmp through separate subPaths. Leave room for
+# active downloads and FFmpeg intermediates beyond the configured cache caps.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -13,7 +14,7 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 20Gi
+      storage: 50Gi
   # storageClassName: local-path
 ---
 # Generated videos, mounted at /app/output.
@@ -33,7 +34,7 @@ spec:
   # storageClassName: local-path
 ---
 # Pinned model artifacts, mounted at /models: the digest-checked DINOv2 export
-# and the Hugging Face cache the two detectors read. Both are written by
+# the pinned Marqo export and the document detector's Hugging Face cache. They are written by
 # `immich-memories models fetch`; neither can live on the read-only root
 # filesystem, and re-fetching them on every restart is 500 MB of nothing.
 apiVersion: v1

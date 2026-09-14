@@ -20,17 +20,11 @@ dog.
 That is the whole of it. The face boxes come from Immich; nothing in this app runs a detector to
 get them.
 
-## What faces no longer do
+## Faces in selection
 
-There used to be a per-clip scorer that counted faces per frame and let a segment with people in
-it outscore an equally sharp segment of scenery. It is gone, along with every knob it read. Story-
-first selection asks a different question (is this moment worth showing, and does this picture
-carry it), and the count of recognised people is one column on the wall the reader sees, not a
-term in a score.
-
-The OpenCV and Apple Vision detection backends are still in the tree, behind a `smart_zoom` scale
-mode that the config no longer accepts. Wired, but unreachable. Nothing in a real run calls
-either.
+Recognised people also provide context for the editor. Face-aware framing itself only controls
+the photo pan; it does not decide whether a picture belongs in the memory. See
+[The Curator](./the-curator.md).
 
 ## What happens to video clips
 

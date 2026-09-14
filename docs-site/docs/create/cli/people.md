@@ -5,31 +5,27 @@ title: people
 
 # people
 
-Works out who is in your library from the numbers Immich already holds, writes it to a
-file you can edit, and never overwrites an answer you gave it.
+Builds relationship context from Immich metadata and writes it to a file you can review.
+Scans preserve confirmed answers when the existing file is readable; see the file warning below.
 
 ```bash
 immich-memories people scan     # build or refresh the file
 immich-memories people show     # read it back
 ```
 
-Nothing here looks at a pixel and nothing here asks you a question. Counts, names, birth
-dates, the months each person appears in, and how often two people appear together are
-enough, which is the point: curation you already did inside Immich has to pay off
-somewhere.
+The scan uses names, counts, birth dates, active months and co-appearance. It does not download
+photos or call a model. Its tiers and relationships are inferences, so check them before relying
+on them as context.
 
 ## What the graph reads
 
-**Volume is a burst, continuity is a relationship.** That one rule does most of the work.
-A person with 160 pictures spread over four active months across scattered years was at
-four events with you. A person with the same 160 pictures spread over forty months is
-part of your life. Pictures ÷ active months is the discriminator that volume alone is
-not, and it is what picks out `event`. The other three come from how many months, how
-long a span, and how continuously present:
+Tiers use the number of active months, the span of the record and how often the person appears.
+A dense burst can indicate an event guest; repeated appearances over years suggest continuity.
+Neither proves a real relationship.
 
 | tier | shape |
 |---|---|
-| `inner` | dozens of active months, years of span, and present in at least a third of the months between |
+| `inner` | at least 24 active months across 3 years, present in at least 35% of the months between |
 | `recurring` | a dozen months or more, but failing one of the `inner` conditions |
 | `episodic` | everything that is not one of the other three: no span condition of its own |
 | `event` | four active months or fewer at twenty-plus pictures each: a burst |
@@ -41,36 +37,27 @@ months inside the following year. One picture in 2011 and a real presence from 2
 the onset 2018, not 2011. Anything stamped before 2003 is dropped as broken EXIF rather
 than treated as an appearance.
 
-**Tight dyads.** Two people who are each a quarter or more of *each other's* pictures.
-Mutual is the whole point: everybody in a household appears in the busiest person's
-frames, so a one-sided overlap says only that the other person is busy. It is called a
-tight dyad and not a couple on purpose: a parent and a small child make the same shape,
-and telling those apart needs cues this pass does not have.
+**Tight dyads.** Each person appears in at least a quarter of the other's pictures.
+That can fit partners, a parent and child, or other close relationships; it is not labelled
+as a couple.
 
 **Twins.** Two people with the same family name and the same birth date. Worth flagging
 because face recognition merges identical faces: one twin's record ends up holding nearly
 every picture and the other a handful of hand-tagged ones. Neither count means anything
 alone, so the graph reads the pair as one unit and marks both `counts_reliable: false`.
 
-**Duplicates.** One name on two person records is a split face cluster in Immich. The
-graph cannot fix it: it flags it so you can merge them where they live.
+**Duplicates.** Repeated names are flagged for review in Immich. They may be split face
+records or different people with the same name; check before merging.
 
 A birth date changes the reading. Someone born after your library started cannot have a
 span longer than their age, so span ≈ age means they have been here since day one; if
 they also appear in most months since, they are inner circle regardless of how short the
-span is. That is a two-year-old, not a friend you met two years ago.
+span is. This lets a young child qualify without requiring a long history.
 
 ## Who holds the camera
 
-Co-occurrence undercounts every pair containing you, because you are behind the camera.
-Measured on a real library: in the quarter the owner met their partner, the partner
-appears twenty-five times and they share **zero** frames. The first shared frame comes
-months later, when somebody else takes the picture.
-
-So co-appearance is not how the owner's closest person is found. The pairs are still
-queried like everyone else's; what changes is that the dyad heuristic ignores the answer
-and reads month curves instead: somebody present at the owner's own scale whose active
-months track the owner's from the day they arrive.
+The library owner may be missing from pictures they took. For pairs involving the owner,
+the heuristic uses overlapping month curves rather than shared-frame counts.
 
 The owner is identified three ways, in descending order of certainty, and the file records
 which one was used:
@@ -125,7 +112,7 @@ people:
 Everything under `inferred:` is the scan's reading and gets recomputed every time you run
 it. Everything under `confirmed:` is yours.
 
-The contract, which the builder is not allowed to break:
+For a valid existing file:
 
 - a refresh **never** writes into a `confirmed:` field, whatever it now thinks;
 - a person carrying anything confirmed is **never** dropped by a refresh, even if they
@@ -133,8 +120,11 @@ The contract, which the builder is not allowed to break:
   to delete an answer you gave;
 - where the two disagree, consumers are to prefer `confirmed:`.
 
-Fill `confirmed:` by editing the file, or from the settings page below. Both write the
-same schema, through the same writer.
+Fill `confirmed:` by editing the file, or from the settings page below. Both use the same schema.
+
+Back up `people.yaml` before hand-editing it. An unreadable or malformed file is currently treated
+as empty; a subsequent scan or save can replace it and lose confirmations. If the command logs
+"starting fresh", repair or restore the file before saving again.
 
 ## The editor
 
@@ -166,10 +156,10 @@ belongs in Immich.
 
 ## What uses it
 
-The editor. Every cut loads `people.yaml` and renders a `people` block onto the wall the
-text model reads: id, name, relationship, where that relationship came from, birth date,
-first appearance, onset and tier. So who somebody is to you is part of what the model
-weighs, not just a label in a settings page.
+The model editor loads `people.yaml` from its default path and includes a `people` block in
+its text input: id, name, relationship, where that relationship came from, birth date,
+first appearance, onset and tier. Confirmed relationships and labelled derived relationships give the model context. A scan
+written with `--out` elsewhere is not picked up automatically by the editor.
 
 What does not read it yet: selection weights, tie-breaks between two equally good moments,
 person-rotation fairness and the automation's person priors.

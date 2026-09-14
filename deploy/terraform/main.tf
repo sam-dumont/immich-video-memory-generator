@@ -26,12 +26,16 @@ locals {
   # the same way docker-compose does it. Secrets live in the Secret (envFrom).
   env = merge(
     {
-      IMMICH_MEMORIES_OUTPUT__DIRECTORY  = local.output_dir
-      IMMICH_MEMORIES_OUTPUT__RESOLUTION = var.output_resolution
+      IMMICH_MEMORIES_TRIAGE__ENCODER                            = "/models/triage/dinov2-small.onnx"
+      IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR = "/models/huggingface"
+      IMMICH_MEMORIES_EDITORIAL__PREPARATION__MARQO_ONNX         = "/models/detectors/nsfw-marqo-384.onnx"
+      HF_HOME                                                    = "/models/huggingface"
+      IMMICH_MEMORIES_OUTPUT__DIRECTORY                          = local.output_dir
+      IMMICH_MEMORIES_OUTPUT__RESOLUTION                         = var.output_resolution
     },
     var.llm_base_url != "" ? {
-      IMMICH_MEMORIES_LLM__BASE_URL             = var.llm_base_url
-      IMMICH_MEMORIES_LLM__MODEL                = var.llm_model
+      IMMICH_MEMORIES_LLM__BASE_URL = var.llm_base_url
+      IMMICH_MEMORIES_LLM__MODEL    = var.llm_model
     } : {},
     var.musicgen_enabled ? {
       IMMICH_MEMORIES_MUSICGEN__ENABLED  = "true"
@@ -128,6 +132,28 @@ resource "kubernetes_persistent_volume_claim_v1" "cache" {
   depends_on = [kubernetes_namespace_v1.this]
 }
 
+# The pinned encoder and detector artifacts are separate from app state.
+resource "kubernetes_persistent_volume_claim_v1" "models" {
+  metadata {
+    name      = "immich-memories-models"
+    namespace = var.namespace
+    labels    = local.labels
+  }
+
+  spec {
+    access_modes       = ["ReadWriteOnce"]
+    storage_class_name = var.storage_class_name
+    resources {
+      requests = {
+        storage = var.models_storage_size
+      }
+    }
+  }
+
+  wait_until_bound = false
+  depends_on       = [kubernetes_namespace_v1.this]
+}
+
 # Deployment
 resource "kubernetes_deployment_v1" "this" {
   metadata {
@@ -141,7 +167,7 @@ resource "kubernetes_deployment_v1" "this" {
     replicas = var.replicas
 
     strategy {
-      type = "Recreate" # both PVCs are ReadWriteOnce
+      type = "Recreate" # the PVCs are ReadWriteOnce
     }
 
     selector {
@@ -177,9 +203,7 @@ resource "kubernetes_deployment_v1" "this" {
 
           security_context {
             allow_privilege_escalation = false
-            # Sessions now live on the data volume, but ~/.cache still needs
-            # a writable mount before this can flip to true (#445).
-            read_only_root_filesystem = true
+            read_only_root_filesystem  = true
 
             capabilities {
               drop = ["ALL"]
@@ -234,8 +258,20 @@ resource "kubernetes_deployment_v1" "this" {
           }
 
           volume_mount {
-            name       = "tmp"
+            name       = "models"
+            mount_path = "/models"
+          }
+
+          volume_mount {
+            name       = "data"
+            mount_path = "/home/immich/.cache"
+            sub_path   = "library-cache"
+          }
+
+          volume_mount {
+            name       = "data"
             mount_path = "/tmp"
+            sub_path   = "scratch"
           }
 
           # /health/live only says the process is up.
@@ -277,11 +313,10 @@ resource "kubernetes_deployment_v1" "this" {
           }
         }
 
-        # FFmpeg intermediates: 2Gi is enough for 1080p, use 8Gi for 4K.
         volume {
-          name = "tmp"
-          empty_dir {
-            size_limit = var.tmp_size
+          name = "models"
+          persistent_volume_claim {
+            claim_name = kubernetes_persistent_volume_claim_v1.models.metadata[0].name
           }
         }
 
@@ -302,6 +337,7 @@ resource "kubernetes_deployment_v1" "this" {
     kubernetes_secret_v1.this,
     kubernetes_persistent_volume_claim_v1.output,
     kubernetes_persistent_volume_claim_v1.cache,
+    kubernetes_persistent_volume_claim_v1.models,
   ]
 }
 

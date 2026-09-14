@@ -142,11 +142,23 @@ def test_config_directory_is_a_writable_persistent_volume() -> None:
         output_mount = mounts[OUTPUT_DIR]
         assert "persistentVolumeClaim" in volumes[output_mount["name"]], label
 
-        tmp = volumes[mounts["/tmp"]["name"]]["emptyDir"]
-        assert re.fullmatch(r"([2-9]|\d{2,})Gi", tmp["sizeLimit"]), label
-
         assert not any(path.startswith("/home/appuser") for path in mounts), label
         assert "/output" not in mounts, label
+
+
+def test_app_scratch_and_library_cache_are_writable_persistent_storage() -> None:
+    """Large intermediates and downloaded models must survive pod replacement on disk."""
+    for label, pod in _pod_specs():
+        container = pod["containers"][0]
+        mounts = {mount["mountPath"]: mount for mount in container["volumeMounts"]}
+        volumes = {volume["name"]: volume for volume in pod["volumes"]}
+        assert container["securityContext"]["readOnlyRootFilesystem"] is True, label
+        for path in ("/tmp", "/home/immich/.cache"):
+            assert path in mounts, f"{label}: {path} has no writable mount"
+            mount = mounts[path]
+            assert not mount.get("readOnly"), label
+            assert "persistentVolumeClaim" in volumes[mount["name"]], label
+        assert mounts["/tmp"] != mounts["/home/immich/.cache"], label
 
 
 def test_pods_write_output_to_the_mounted_directory() -> None:
@@ -293,6 +305,26 @@ def test_terraform_examples_only_set_declared_variables() -> None:
         assert module_args - {"source"} <= declared, f"{example}: {sorted(module_args - declared)}"
 
 
+def test_terraform_persists_scratch_library_cache_and_models() -> None:
+    """The Terraform pod needs the same writable paths as the Kustomize app."""
+    main = (TF_DIR / "main.tf").read_text()
+    mounts = re.findall(r"volume_mount \{(.*?)\n          \}", main, re.S)
+    for path in ("/tmp", "/home/immich/.cache"):
+        mount = next((block for block in mounts if f'"{path}"' in block), None)
+        assert mount, f"{path} has no volume mount"
+        assert re.search(r'name\s*=\s*"data"', mount)
+        assert "sub_path" in mount
+    assert "empty_dir" not in main
+    assert '"kubernetes_persistent_volume_claim_v1" "models"' in main
+    for key in (
+        "IMMICH_MEMORIES_TRIAGE__ENCODER",
+        "IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR",
+        "IMMICH_MEMORIES_EDITORIAL__PREPARATION__MARQO_ONNX",
+        "HF_HOME",
+    ):
+        assert re.search(rf'{key}\s*=\s*"/models/', main), key
+
+
 @pytest.mark.skipif(shutil.which("kubectl") is None, reason="kubectl not installed")
 @pytest.mark.parametrize("target", ["base", "overlays/gpu"])
 def test_kustomize_renders_with_a_secret_created_from_the_example(
@@ -361,7 +393,7 @@ def test_the_inference_pod_can_write_everywhere_it_downloads_to(target: str) -> 
 
     assert container["securityContext"]["readOnlyRootFilesystem"] is True
     assert env["TMPDIR"] == "/tmp"
-    assert "emptyDir" in volumes[mounts["/tmp"]]
+    assert "persistentVolumeClaim" in volumes[mounts["/tmp"]]
     # One variable covers the hub, xet and assets caches: huggingface_hub derives
     # all three from HF_HOME unless each is named separately.
     assert env["HF_HOME"] == "/cache/huggingface"
@@ -394,6 +426,10 @@ def test_every_pod_can_reach_the_pinned_encoder_and_the_detector_cache() -> None
         assert env["IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR"].startswith(
             f"{MODELS_DIR}/"
         ), label
+        assert env["IMMICH_MEMORIES_EDITORIAL__PREPARATION__MARQO_ONNX"].startswith(
+            f"{MODELS_DIR}/"
+        ), label
+        assert env["HF_HOME"].startswith(f"{MODELS_DIR}/"), label
 
 
 def test_network_policy_allows_the_caption_endpoint() -> None:

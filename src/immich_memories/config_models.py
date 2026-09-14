@@ -108,7 +108,6 @@ class CacheConfig(BaseModel):
 
     directory: str = Field(default="~/.immich-memories/cache")
     database: str = Field(default="~/.immich-memories/cache.db")
-    max_age_days: int = Field(default=30, ge=1, le=365)
 
     # Video file cache settings
     video_cache_enabled: bool = Field(

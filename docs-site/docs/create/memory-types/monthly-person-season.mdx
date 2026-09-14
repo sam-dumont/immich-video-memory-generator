@@ -89,7 +89,7 @@ Default duration: the same one-minute-per-month rule as Person Spotlight, capped
 at 10 minutes. Title screens and default filenames say whether the people are
 joined by AND or OR, so the two runs cannot overwrite one another.
 
-**Best for:** couples, families, friend groups. The co-occurrence filter means you'll get clips where they're actually together, not separate appearances.
+**Best for:** couples, families and friend groups. Choose AND for shared appearances or OR for a broader group memory.
 
 The same AND default applies wherever you name several people. Repeating
 `--person` on any CLI memory type can be changed to a union with
@@ -143,11 +143,11 @@ anniversary to look back from:
 immich-memories generate --memory-type on_this_day --day 2026-08-31 --years-back 20
 ```
 
-Same day, same years, same cut, so the run can be repeated, compared against an earlier
-one, or handed to someone else. Without the flag nothing changes: the run covers the day
-it fires.
+This fixes the source windows for a repeatable request. Library changes, settings or model
+decisions can still change the cut. Without the flag, the run uses the day it fires.
 
-**Best for:** daily nostalgia, "what were we doing last year" moments. Works best if you've been shooting video for 3+ years. Can be combined with the scheduler for an automatic daily memory.
+**Best for:** looking back across several years of photos and video. See
+[automation](../cli/auto.md) for scheduled memories.
 
 ## One UI and CLI default still disagrees
 

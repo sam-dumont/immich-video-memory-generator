@@ -5,55 +5,43 @@ title: Apple Silicon
 
 # Apple Silicon
 
-Apple Silicon Macs (M1, M2, M3, M4, M5) are probably the best platform for this tool: video encoding, GPU title rendering and local model inference all accelerate, and unified memory means the reader's 17 GB of weights and the render share one pool instead of copying between two.
+A native macOS install can use VideoToolbox for video encoding and Metal for title kernels.
+The reader and caption services can also run locally, provided there is enough memory for them.
+The [self-hosting guide](../self-hosting.md) covers the tested model setup.
 
-## What you get
+## Install
 
-- **VideoToolbox encoding**: uses the dedicated media engine on the chip instead of the CPU cores.
-- **Unified memory**: no CPU/GPU transfer overhead. Frames stay in the same memory pool whether the CPU, GPU, or Neural Engine is working on them.
-- **A place to put the editor's models**: the graded reader and the caption server both run here,
-  on Metal, which is why this is the only single-machine layout anyone has run end to end. The
-  graded stack is oMLX serving `Qwen3-VL-30B-A3B-Instruct-4bit`; mlx-vlm is the other MLX server
-  people use, and its Qwen support may not reach that model. No API costs, no data leaving your
-  machine. Standing both up is [step 3 and step 4 of the self-hosting
-  guide](../self-hosting.md#3-serve-the-reader), and this page does not replace it.
-
-## Installation
+Install FFmpeg first, then:
 
 ```bash
 uv tool install "immich-memories[all-mac]"
 ```
 
-`all-mac` is the one that can actually cut: it brings the inference dependencies the six context
-heads and the two detectors need, on top of everything below. The `mac` extra on its own is the
-pyobjc bindings (Quartz, Metal, Vision) and nothing else, so a `mac`-only install stops at the
-heads stage on the first cut.
-
-## Configuration
+`all-mac` includes Apple framework bindings, editorial preparation, bundled music and Demucs.
+OIDC needs the separate `auth` extra. The smaller `mac` extra supplies framework bindings only;
+use `editorial` too for local preparation on `full` or `no_captions`.
 
 ```yaml
 hardware:
   enabled: true
-  encoder_preset: "balanced"   # fast turns on VideoToolbox's speed-priority mode
+  encoder_preset: balanced
 ```
 
-Nothing to select: VideoToolbox is found automatically on macOS.
+VideoToolbox is detected automatically. `hardware.enabled: false` selects software video encoding;
+it does not disable Metal titles or a separately running model server.
 
-## Supported chips
+## Memory
 
-All Apple Silicon chips are supported:
+The tested model reader uses about 17 GB for weights, plus context and server overhead. The
+caption service and app need their own room. The documented all-local model setup uses a 32 GB
+Mac; smaller machines can run the app with the rules reader or use remote model services.
+Unified memory does not make those allocations free.
 
-- M1, M1 Pro, M1 Max, M1 Ultra
-- M2, M2 Pro, M2 Max, M2 Ultra
-- M3, M3 Pro, M3 Max, M3 Ultra
-- M4, M4 Pro, M4 Max, M4 Ultra
-- M5 and newer
+## Titles and photos
 
-The media engine and Neural Engine get faster with each generation, and a base M1 renders
-comfortably. The models are the constraint, not the chip: the reader's weights alone are around
-17 GB resident, so a single-machine Mac wants 32 GB. An 8 or 16 GB M1 is an app host that needs a
-second box for the models.
+Quadrants ships with the base package on supported macOS arm64 Python versions and can render
+animated titles on Metal. No GPU extra is needed. An Intel Mac uses PIL because the pinned
+kernel package has no wheel for that platform. See [Title kernels](./cpu-only.md#title-kernels).
 
-## Title rendering
-
-GPU title rendering runs on Quadrants, which has wheels for Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 on Python 3.11-3.13. On macOS x86_64 and on Python 3.14 there is none, and title screens fall back to the PIL renderer (static gradient and text, no animated kernels, no SDF text); `immich-memories preflight` says which you will get. See [Title kernels](./cpu-only.md#title-kernels). Apple Silicon is one of the four platforms with a wheel; an Intel Mac is the one that is not.
+Photo pans use the face boxes already returned by Immich. The app does not run a separate
+Apple Vision face detector for this path.

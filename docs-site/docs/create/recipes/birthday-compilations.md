@@ -5,13 +5,14 @@ title: Birthday Compilations
 
 # Birthday Compilations
 
-A birthday compilation is the year of someone's life that **ends** on the birthday you are celebrating, plus that birthday in earlier years. For a 21 July birthday and `--year 2025` it runs 22 July 2024 through 21 July 2025: the party itself is in the video, and last year's party belongs to last year's video.
+A birthday compilation is the year of someone's life that **ends** on the birthday you are celebrating, plus that birthday in earlier years. For a 21 July birthday and `--year 2025` it runs 22 July 2024 through 21 July 2025: the scope includes the birthday being celebrated. Selection still decides which pictures
+make the video.
 
 ## Set the birth date in Immich
 
-Immich is where the date lives. Open **People**, pick the person, edit, and fill in the birth date. Every birthday memory then anchors on it (the CLI, the Memory page and the nightly automation alike), and you never type it again.
+Immich is where the date lives. Open **People**, pick the person, edit, and fill in the birth date. The CLI, Memory page and automation can all use that date.
 
-Without one, a birthday memory refuses rather than guessing a date and quietly rendering the wrong twelve months.
+If the date is missing, set it in Immich or pass a one-run override below.
 
 ## What the video covers
 
@@ -20,9 +21,10 @@ Without one, a birthday memory refuses rather than guessing a date and quietly r
 | The rolling year | day after the previous birthday → the birthday | The year being celebrated |
 | Each earlier birthday | ±1 day around it | The "look how small you were" cutaways |
 
-Five earlier birthdays by default, the same reach On This Day and Holiday use. `--years-back` changes it, and nothing caps it.
+Five earlier birthdays by default. `--years-back` changes that reach. On This Day has a
+different default: 30 years.
 
-Most of those single days hold nothing, and that is expected: the run prints one summary line for them (`history: 2 of 5 earlier windows hold material`) instead of a warning per year. An empty **rolling year** does still get a warning: that one means something is wrong.
+Most of those single days hold nothing, and that is expected: the run prints one summary line for them (`history: 2 of 5 earlier windows hold material`) instead of a warning per year. An empty **rolling year** gets a warning; check the dates, person and available material.
 
 ## CLI
 
@@ -65,9 +67,8 @@ There is no "Birthday" memory type. Two paths get you a birthday-anchored range:
 
 See [the Memory page](../web-ui/memory.mdx#memory-types-and-their-parameters).
 
-## Tips
+## Before showing it
 
-- **10 minutes** (600 seconds) is a good target duration for a party slideshow. Long enough to feel complete, short enough that people don't lose interest.
-- **Enable music** if you've set up a backend. A soundtrack makes birthday videos way more watchable.
-- **Run analysis ahead of time** so you're not waiting at the party. Generate the video the night before.
-- If the person has a common name in your Immich library, double-check the face recognition is matching the right person before generating.
+The default target is 600 seconds. Adjust `--duration` for your audience, and render ahead of
+time so you can check the excerpts and music. If names are duplicated in Immich, confirm the
+selected face record before generating.

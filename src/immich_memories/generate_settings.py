@@ -185,7 +185,6 @@ def _build_title_settings(
         month_divider_threshold=config.title_screens.month_divider_threshold,
         use_first_name_only=config.title_screens.use_first_name_only,
         animated_background=config.title_screens.animated_background,
-        show_decorative_lines=config.title_screens.show_decorative_lines,
         memory_type=params.memory_type,
         trip_locations=trip_locations,
         trip_location_names=trip_location_names,

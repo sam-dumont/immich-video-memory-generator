@@ -13,7 +13,7 @@ from typing import Any
 
 import yaml
 
-from immich_memories.config_loader import _TIER2_SECTIONS, Config
+from immich_memories.config_loader import _TIER2_SECTIONS, Config, _drop_removed_keys
 from immich_memories.config_presets import PRESETS
 
 
@@ -34,10 +34,8 @@ DROP = _Drop()
 def _section(data: dict, name: str) -> dict:
     """The dict a pin's first path segment names, wherever the file happens to keep it.
 
-    WHY the walk: a tier-2 section may sit at top level (legacy) or under
-    `advanced:`, and the loader resolves the clash with `if key not in data` --
-    top level wins. Writing the modern spelling into a config using the old one
-    leaves the edit inert.
+    Tier-2 sections can sit at top level or under `advanced:`. A top-level
+    value wins for the same setting, so write the pin there when it exists.
     """
     if name in data:
         return data[name]
@@ -111,6 +109,10 @@ def pinned_config(source: Path | None, dest: Path, pins: dict) -> Path:
             "for its Immich credentials. Pass --config explicitly."
         )
     data = yaml.safe_load(source.read_text()) or {}
+    _drop_removed_keys(data, source)
+    advanced = data.get("advanced")
+    if isinstance(advanced, dict):
+        _drop_removed_keys(advanced, source)
 
     if "preset" in pins:
         _clear_preset_fields(data, pins["preset"])
@@ -143,7 +145,6 @@ def remote_path_pins(*, out: str, models: str) -> dict[str, str]:
         # about the file naming no directory of the operator's, not about music.
         "audio.local_music_dir": f"{out}/music",
         "triage.encoder": f"{models}/triage/dinov2-small.onnx",
-        "triage.bundle": "",
         "editorial.preparation.head_bundle": "",
         "editorial.preparation.detector_python": "",
         "editorial.preparation.detector_cache_dir": f"{models}/huggingface",

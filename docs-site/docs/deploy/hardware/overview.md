@@ -5,35 +5,30 @@ title: Hardware Acceleration Overview
 
 # Hardware Acceleration Overview
 
-A GPU buys three things here: animated title screens, faster encoding, and on Apple Silicon face
-detection on the Neural Engine. Every feature has a CPU fallback. What a media accelerator does
-not buy is the editor's models: NVENC, Quick Sync and VAAPI decode, scale and encode, they do not
-run inference. The reader and the caption server are separate services with their own hardware
-([Running modes](../running-modes.md)); an NVIDIA card can run the encoder and the detectors, but
-through CUDA in the [inference service](../installation/inference-service.md).
-
-The encode is not where a run spends its time. On a CPU-only box the title screens are: measured
-at `--cpus=2`, 263 s of a 339 s assembly ([CPU-only](./cpu-only.md)). A GPU earns its keep on
-titles first.
+A GPU can accelerate title rendering and video encoding. Preparation and the reader have their
+own device choices: Quick Sync, VAAPI and NVENC do not run model inference. The optional
+[inference service](../installation/inference-service.md) has a CUDA image; reader and caption
+servers run separately. See [Running modes](../running-modes.md) before sizing those services.
 
 ## Backends
 
-| Backend | Platform | Encode | Decode | GPU scaling | Face detection |
-|---|---|---|---|---|---|
-| NVIDIA NVENC | Linux (Windows untested) | h264_nvenc, hevc_nvenc | NVDEC | scale_cuda | CPU (YuNet) |
-| Apple VideoToolbox | macOS | h264_videotoolbox, hevc_videotoolbox | VideoToolbox | none | Vision framework (Neural Engine) |
-| Intel QSV | Linux (Windows untested) | h264_qsv, hevc_qsv | QSV | scale_qsv | CPU (YuNet) |
-| AMD VAAPI | Linux | h264_vaapi, hevc_vaapi | VAAPI | scale_vaapi | CPU (YuNet) |
-| Software | everywhere | libx264, libx265 | FFmpeg | swscale | CPU (YuNet) |
+| Backend | Platform | Encode | Decode | GPU scaling |
+|---|---|---|---|---|
+| NVIDIA NVENC | Linux (Windows untested) | h264_nvenc, hevc_nvenc | NVDEC | scale_cuda |
+| Apple VideoToolbox | macOS | h264_videotoolbox, hevc_videotoolbox | VideoToolbox | none |
+| Intel QSV | Linux (Windows untested) | h264_qsv, hevc_qsv | QSV | scale_qsv |
+| AMD VAAPI | Linux | h264_vaapi, hevc_vaapi | VAAPI | scale_vaapi |
+| Software | everywhere | libx264, libx265 | FFmpeg | swscale |
 
 The backend is probed in the order NVIDIA, Apple, Intel QSV, VAAPI, and the first one whose
 one-frame test encode succeeds is used. An FFmpeg that merely lists a backend (Debian's does,
 inside the image too) does not send a GPU-less box down the hardware path. There is no switch to
-pick a backend; `hardware.enabled: false` forces software encoding.
+pick a backend; `hardware.enabled: false` forces software video encoding. Title kernels and model servers
+select their devices separately; it does not disable every GPU probe.
 
 ```yaml
 hardware:
-  enabled: true                # false = software encoding, no GPU probing
+  enabled: true                # false = software video encoding
   encoder_preset: "balanced"   # fast | balanced | quality
   gpu_decode: true
 ```
@@ -58,8 +53,9 @@ runs as uid 1000 and `/dev/dri/renderD128` is group-only; see the per-backend pa
 ## Quality: one dial, calibrated per encoder
 
 `output.quality` (or an explicit `output.crf`) is on libx265's CRF scale, the reference because
-libx265 is on every machine. Every other encoder is calibrated to reproduce that picture, measured
-by SSIM on real 1080p60 film. Constant-quality modes throughout, never bitrate targets.
+libx265 is on every machine. Encoder families map that scale to their own quality controls. The anchors below were measured
+on one 1080p60 clip; QSV borrows the VAAPI anchors rather than a separate sweep. These are
+constant-quality controls for H.264/H.265. ProRes uses its profile instead.
 
 | `quality` | reference CRF | SSIM | software bitrate | per minute |
 |---|---|---|---|---|
@@ -70,7 +66,6 @@ by SSIM on real 1080p60 film. Constant-quality modes throughout, never bitrate t
 There is no tier below `balanced`: the obvious candidate bands on sky and skin, and a preset that
 visibly breaks a gradient is not worth a few megabytes. `fast` keeps the balanced picture and buys
 speed from the encoder preset (setting `quality: fast` overrides `hardware.encoder_preset`).
-`medium` and `low` still load and resolve to `balanced` and `fast`.
 
 | | `high` | `balanced` |
 |---|---|---|
@@ -111,4 +106,5 @@ one-frame probe catches it and the run falls back to software, naming the cause.
 
 ## Title rendering
 
-GPU title rendering runs on Quadrants, which has wheels for Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 on Python 3.11-3.13. On macOS x86_64 and on Python 3.14 there is none, and title screens fall back to the PIL renderer (static gradient and text, no animated kernels, no SDF text); `immich-memories preflight` says which you will get. See [Title kernels](./cpu-only.md#title-kernels).
+Title rendering uses Quadrants on a supported GPU or CPU backend, with PIL as the fallback.
+See [Title kernels](./cpu-only.md#title-kernels) for platform support and limitations.

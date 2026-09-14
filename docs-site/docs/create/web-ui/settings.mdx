@@ -14,8 +14,9 @@ shows what it inferred and gives you one place to answer.
 
 **Start with a scan.** A fresh install shows "No people file yet" under the two buttons that fix it. Press **Rescan the library**:
 it reads the counts, writes the file and draws the roster. Rescan again whenever the library has
-changed. Everything under `inferred:` is recomputed by a scan; everything you confirm on this page
-is written under `confirmed:` and a scan never touches it. Confirmed beats inferred.
+changed. A scan recomputes `inferred:` and preserves `confirmed:` from a valid existing file.
+Back up the file before editing it by hand: malformed or unreadable YAML is treated as empty,
+and a later scan or save can replace it. If the log says "starting fresh", fix or restore it first.
 
 **The roster** lists people 20 to a page, inner circle first, busiest first within a tier. **Find a name** above the pager narrows it to the names containing what you type. Each
 card carries the tier the scan gave (`inner`, `recurring`, `episodic`, `event`) and the evidence
@@ -42,9 +43,14 @@ relationship redraws the roster in place and keeps your place on the page.
 **Curation** at the top lists what only Immich can fix: two records with one name, or a person
 split across records. Each flag links to the record in Immich.
 
-## Config: what is actually running
+## Config: viewing the saved settings
 
-`/settings/config` is a **read-only viewer**. It shows the merged, live configuration: what `~/.immich-memories/config.yaml` holds, after environment overrides and after any active preset has filled in the knobs you did not set. It is the answer to "the docs say the default is X, but is X what this install is using?"
+`/settings/config` is a **read-only viewer** of the default config file, with environment
+overrides and preset defaults applied. It reloads `~/.immich-memories/config.yaml` when opened.
+
+It is not a complete view of an existing Memory session: that session retains settings loaded
+earlier. The viewer also does not follow a custom `--config` path used to launch the UI. For
+consistent results after changing config, restart the UI and start a new session.
 
 Each config section is a collapsible panel with its key count. `immich`, `analysis`, `output` and `defaults` are open on arrival; the rest start collapsed.
 
@@ -52,13 +58,14 @@ If a preset is active, the page names it and says it is filling the values you h
 
 ### Secrets are masked
 
-Any key named `api_key`, `api_keys`, `client_secret`, `password`, `secret`, `token`, `trigger_token` or `urls` renders as `***`: a full mask, not a partial one. An earlier version showed the first and last few characters of every secret, `auth.password` included, which is a preview of a password rather than a redaction.
-
-This matters if you screenshot the page for a bug report: the masking is server-side, so what you see is all there is to leak.
+Known secret fields are masked server-side, including API keys, `caption_api_key`, passwords,
+trigger tokens and notification URLs. Names, hostnames and other configuration values remain
+visible; review the page before sharing a screenshot.
 
 ### The two actions
 
-- **Reload from Disk** re-reads `config.yaml` and refreshes the page. Use it after editing the file by hand: the running process holds the config in memory and will not otherwise notice.
+- **Reload from Disk** re-reads the default config file and refreshes this viewer. It does not
+  reset settings already held by a Memory session.
 - The **config file path** is printed beside the button, so you know which file you are editing.
 
 :::note There is no Save button on this page
@@ -80,19 +87,19 @@ Two exceptions to "everything is written":
 
 ## Cache: what is on disk, and getting rid of it
 
-`/settings/cache` lists four caches with their current size, each with its own **Clear** button, plus a clear-everything action.
+`/settings/cache` lists three media caches with their current size and a **Clear** button.
+**Clear media caches** clears all three.
 
 | Cache | Holds | Cost of clearing |
 |-------|-------|------------------|
-| **Analysis** | a SQLite table the retired clip scorer used to fill | nothing: no code writes it any more |
 | **Video** | downloaded source videos | re-download from Immich; bounded by the cache size limit and evicted automatically |
 | **Thumbnail** | Immich previews, read back for pixel facts, the context heads, contact sheets, captions and the clip review grid | re-fetched from Immich on demand, and re-captioned where a banked caption failure no longer matches |
 | **Preview** | the `.mp4` previews the review page plays back | regenerated when you next preview |
 
 The expensive thing on disk is not in that list and not behind those buttons: the editor's banks
 live in `annotations.sqlite` under the cache directory, and hold every caption, head answer,
-detector verdict and reading. **Clear all caches** does not touch it, which is the right default.
-If you do delete it, the next cut re-reads your library from scratch.
+detector verdict and reading. **Clear media caches** leaves it and the run history intact.
+If you delete it, the next cut must rebuild annotations for its scope.
 
 Of what the page does clear: nothing generated is lost, every one is rebuildable from Immich plus
 compute. Clear the **video** or **thumbnail** caches when you want the disk back.

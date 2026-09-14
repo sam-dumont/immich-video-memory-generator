@@ -18,7 +18,7 @@ the convention. `<SECTION>` is always the flat runtime name (`LLM`, `AUTH`, `EDI
 `ADVANCED__LLM`, even for sections that live under `advanced:` in the YAML file.
 
 List- and dict-valued fields must be given as JSON. That includes `auth.trusted_proxies`,
-`auth.allowed_emails`, `auth.allowed_domains`, `notifications.urls`, `scheduler.schedules`,
+`auth.allowed_emails`, `auth.allowed_domains`, `notifications.urls`,
 `analysis.exclude_filename_patterns`, `llm.drop_params`, `llm.extra_params`,
 `llm.thinking_params` and `editorial.head_versions`:
 
@@ -50,8 +50,8 @@ export IMMICH_MEMORIES_ANALYSIS__EXCLUDE_STILLS_WITHOUT_CAMERA_EXIF="true"
 ```
 
 The scene-detection and segment-length knobs that used to live here went with the clip scorer.
-A config file that still names one is refused at startup; the environment-variable form is
-ignored in silence instead, so delete both.
+A config file that still names one logs a warning and ignores it; the environment-variable form
+is ignored silently. Delete both forms when upgrading.
 
 ### LLM provider
 
@@ -136,8 +136,7 @@ A few common variables are also supported without the full prefix, for convenien
 
 :::caution Shorthand vars are skipped with an explicit config path, except in the UI
 The shorthand table is applied only when the app loads its default config path
-(`~/.immich-memories/config.yaml`). `immich-memories --config PATH generate …` and a scheduler
-daemon started with an explicit config file ignore every row above, including the basic-auth
+(`~/.immich-memories/config.yaml`). `immich-memories --config PATH generate …` ignores every row above, including the basic-auth
 shortcut.
 
 `immich-memories --config PATH ui` is the exception, and it cuts the other way: the server reloads
@@ -152,7 +151,7 @@ Not config fields, but read by the app:
 
 | Variable | Effect |
 |----------|--------|
-| `IMMICH_MEMORIES_STORAGE_SECRET` | Secret for the web UI session store. Priority: this var > `~/.immich-memories/.storage_secret` file > generated on first start. Set it in Docker so sessions survive container recreation. |
+| `IMMICH_MEMORIES_STORAGE_SECRET` | Secret for the web UI session store. Priority: this var > `~/.immich-memories/.storage_secret` file > generated on first start. The shipped Docker config volume already persists this file. |
 | `IMMICH_MEMORIES_LOG_FORMAT` | `text` (default) or `json`. |
 | `IMMICH_MEMORIES_LOG_LEVEL` | `INFO` (default), `DEBUG`, `WARNING` or `ERROR`. The CLI flags `-v` and `--log-level` win over it for one run. |
 | `IMMICH_MEMORIES_LOG_FILE` | When set, logs are written to this file in addition to stdout. |
@@ -161,8 +160,6 @@ Not config fields, but read by the app:
 | `ACESTEP_MLX_VAE_CHUNK` | ACE-Step `lib` mode on Apple Silicon: VAE decode chunk size in latent frames (minimum 192). Lower it if MLX runs out of memory. |
 | `IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32` | ACE-Step `lib` mode on Apple Silicon: `1` keeps the MLX decoder in fp32 instead of casting to bf16 (roughly doubles decoder memory). |
 | `FORWARDED_ALLOW_IPS` | uvicorn: proxies whose `X-Forwarded-*` headers are trusted. Wins over `auth.trusted_proxies` when set. See [Authentication](authentication.mdx). |
-
-There is no environment variable for the log *level*.
 
 :::caution Scheduled jobs do not inherit your shell
 A launchd or cron job starts from a login-less environment, so nothing you `export` interactively

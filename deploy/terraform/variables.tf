@@ -40,9 +40,9 @@ variable "immich_api_key" {
   sensitive   = true
 }
 
-# LLM clip content analysis (any OpenAI-compatible API; optional)
+# Optional story reader (an OpenAI-compatible vision model)
 variable "llm_base_url" {
-  description = "LLM endpoint, e.g. http://ollama.ollama.svc.cluster.local:11434/v1. Empty disables LLM analysis"
+  description = "LLM endpoint, e.g. http://ollama.ollama.svc.cluster.local:11434/v1. Leave model blank to use the rules reader"
   type        = string
   default     = ""
 }
@@ -123,7 +123,7 @@ variable "runtime_class_name" {
 
 # Resources
 variable "resources" {
-  description = "Resource requests and limits (idle ~100 MB; analysis 2-4 GB; FFmpeg assembly 4-8 GB)"
+  description = "Starting requests and limits; size for source media and preparation tier"
   type = object({
     requests = object({
       memory = string
@@ -146,12 +146,6 @@ variable "resources" {
   }
 }
 
-variable "tmp_size" {
-  description = "emptyDir size for /tmp (FFmpeg intermediates): 2Gi is enough for 1080p, 8Gi for 4K"
-  type        = string
-  default     = "4Gi"
-}
-
 # Storage
 variable "output_storage_size" {
   description = "Size of the output PVC (generated videos, /app/output)"
@@ -160,9 +154,15 @@ variable "output_storage_size" {
 }
 
 variable "cache_storage_size" {
-  description = "Size of the cache/state PVC (/home/immich/.immich-memories: config, cache.db, video cache)"
+  description = "Size of the state PVC: databases, downloads, previews, library cache and FFmpeg scratch"
   type        = string
-  default     = "20Gi"
+  default     = "50Gi"
+}
+
+variable "models_storage_size" {
+  description = "Size of the model PVC (/models: pinned encoder and detector artifacts)"
+  type        = string
+  default     = "5Gi"
 }
 
 variable "storage_class_name" {

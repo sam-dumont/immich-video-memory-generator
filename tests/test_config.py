@@ -372,20 +372,20 @@ class TestConfig:
         assert "analysis" not in raw
         assert raw["advanced"]["analysis"]["max_album_assets"] == 3000
 
-    def test_triage_is_a_tier2_section_off_by_default(self, tmp_path):
+    def test_triage_is_a_tier2_section(self, tmp_path):
         config_path = tmp_path / "config.yaml"
-        config_path.write_text("advanced:\n  triage:\n    enabled: true\n")
+        config_path.write_text("advanced:\n  triage:\n    provider: cpu\n")
 
-        assert Config().triage.enabled is False
+        assert Config().triage.provider == "auto"
         loaded = Config.from_yaml(config_path)
-        assert loaded.triage.enabled is True
+        assert loaded.triage.provider == "cpu"
 
         loaded.save_yaml(config_path)
         import yaml
 
         raw = yaml.safe_load(config_path.read_text())
         assert "triage" not in raw
-        assert raw["advanced"]["triage"]["enabled"] is True
+        assert raw["advanced"]["triage"]["provider"] == "cpu"
 
     def test_tiered_roundtrip(self, tmp_path):
         """Config survives save (tiered) → load cycle."""

@@ -5,13 +5,8 @@
 # Reaching it from another machine is a deliberate two-step change — see the ports block.
 # The stateful UI supports one user flow in one replica.
 #
-# Resource requirements for THIS container:
-#   Idle (UI):    ~100MB RAM
-#   Preparation:  2-4GB RAM, 2+ cores (Immich previews, the ONNX heads, two CPU detectors)
-#   Encoding:     4-8GB RAM, 4+ cores (FFmpeg assembly, depends on resolution)
-#
-# For GPU-accelerated title rendering or 4K output, increase limits.
-# For GPU acceleration, see the hardware docs.
+# The limits below are a starting budget. Preparation tier, source resolution
+# and title duration change the peak; measure before increasing concurrency.
 #
 # Which mode this file starts in: no LLM model is set below, so the app cuts with
 # its rules reader, and that one needs nothing outside this container. It gives
@@ -41,11 +36,13 @@ services:
       - "127.0.0.1:8080:8080"
     volumes:
       - immich-memories-config:/home/immich/.immich-memories
+      - immich-memories-library-cache:/home/immich/.cache
+      - immich-memories-scratch:/tmp
       - ./output:/app/output
     environment:
       IMMICH_URL: "${IMMICH_URL:-http://immich-server:2283}"
       IMMICH_API_KEY: "${IMMICH_API_KEY}"
-      # Optional: session secret (auto-generated if not set; set to preserve sessions on restart)
+      # Optional: session secret (otherwise persisted in the config volume)
       # IMMICH_MEMORIES_STORAGE_SECRET: "${IMMICH_MEMORIES_STORAGE_SECRET}"
       # The model editor's vision reader. Left unset, as it ships, the rules
       # reader cuts instead. Set both keys to switch.
@@ -56,8 +53,8 @@ services:
       # Pinned here rather than left to the code default, which is full, so that
       # a first `up` with only IMMICH_URL and IMMICH_API_KEY set finishes a cut
       # with no second service. Given up against full: the caption per picture,
-      # so the audience gate refuses what full refuses but can never clear a
-      # unit, because eight findings are only named by a description. On a NAS
+      # so detector checks remain but description-based findings are absent.
+      # This tier cannot clear a unit for sendable output. On a NAS
       # the first pass is 3h41 for a 10,793-picture library against 4 days on
       # full. Either tier wants `models fetch` run inside the container first;
       # metadata_only fetches nothing and cannot export as sendable.
@@ -96,19 +93,15 @@ services:
 
     # ── Security hardening (uncomment for production) ──────────────────
     # Prevents privilege escalation, drops all capabilities, and makes
-    # the root filesystem read-only. Writes go to tmpfs and volumes.
+    # the root filesystem read-only. Writes go to the disk volumes above.
     #
     # security_opt:
     #   - no-new-privileges:true
     # cap_drop:
     #   - ALL
     # read_only: true
-    # tmpfs:
-    #   - /tmp:size=2G
-    #   - /home/immich/.cache:size=1G
-    #
-    # For 4K encoding, increase /tmp to 8G or remove the tmpfs entry
-    # and let the container write to disk.
+    # Scratch shares the Docker host's disk budget. Failed runs can leave files
+    # behind; inspect and clean scratch while this service is stopped.
 
   # ── Optional: the inference service ───────────────────────────────────
   # The encoder, the six public heads and the two detectors behind one port,
@@ -139,6 +132,7 @@ services:
       - "127.0.0.1:8092:8092"
     volumes:
       - immich-memories-model-cache:/cache
+      - immich-memories-inference-scratch:/tmp
     environment:
       # A cold cache fetches the pinned encoder, the pinned Marqo export and the
       # Docling snapshot once, on first use.
@@ -169,4 +163,7 @@ services:
 
 volumes:
   immich-memories-config:
+  immich-memories-library-cache:
+  immich-memories-scratch:
+  immich-memories-inference-scratch:
   immich-memories-model-cache:

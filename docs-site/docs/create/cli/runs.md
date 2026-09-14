@@ -77,7 +77,8 @@ What a run decided about one picture: the passes it survived, the pass that drop
 immich-memories runs why 3f1c9a2e-... --run 20260913_08   # --run defaults to the latest completed run
 ```
 
-Every run since 0.78 writes its decision log (`selection-trace.private.json`) beside its plan, so this works without `--trace-selection`. Runs made before that answer "left no decision log".
+Cuts write a decision log (`selection-trace.private.json`) beside their plan, so this works
+without `--trace-selection`. If the attempt files are missing, the command cannot explain the cut.
 
 Both commands find the run through the run id, which the CLI and the web UI share: a memory cut on the page can be read from the terminal and the other way round.
 
@@ -89,17 +90,19 @@ Aggregate statistics across all your runs:
 immich-memories runs stats
 ```
 
-Shows total runs, completed and failed as raw counts, total video generated, total and average processing time, and average and total clips processed. No completion rate: divide it yourself if you want one.
+Shows total runs, completed and failed as raw counts, total video generated, total and average processing time, and average and total clips processed.
 
 ## runs delete
 
-Delete a run record and optionally its output video:
+Delete a run record and its **entire output folder**, including intermediate files. If the
+output is outside a folder named for the run, only the video file is removed. `--keep-output`
+keeps the files and deletes only the record:
 
 ```bash
-# Delete the run and its output file
+# Delete the run and its output folder
 immich-memories runs delete 20260105_143052_a7b3
 
-# Delete the record but keep the video
+# Delete the record but keep the files
 immich-memories runs delete 20260105_143052_a7b3 --keep-output
 
 # Skip the confirmation prompt (scripts)

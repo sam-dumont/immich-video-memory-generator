@@ -17,42 +17,31 @@ Never finished it.
 
 The problem isn't storage (Immich handles that) or finding clips (search works). The problem is the 4-8 hours between "I have 400 clips" and "here's a 3-minute video I'd actually show my family."
 
-## What exists out there
-
-Tools that do parts of this exist. Cloud photo services generate annual recaps automatically, which is the right idea, but the music is pre-canned and the clip selection is a black box. Some phone platforms have beat-synced transitions and face awareness, but the output stays locked in their ecosystem. Activity trackers make beautiful GPS flyovers for bike rides and hikes, but they only work for tracked activities (not "my kid's year").
-
-Each tool does one piece well. None of them combine clip selection, custom music, trip maps, title screens, and video assembly in a single pipeline. And none of them run on your own server or let you control what goes in and what doesn't.
-
-If you're running Immich, you already made the decision to own your data. This tool gives you something to do with it.
-
 ## What I built instead
 
-A tool that does the boring part for me. It connects to Immich (read-only by default; `--upload-to-immich` is the one thing that writes back), looks at a time period I pick, and figures out which clips are worth keeping. Nothing is scored. A small vision model writes one description per picture, once. A text model then reads the whole period, decides what the stories in it are, weighs them against each other and hands each story the pictures it earns, with a written reason for every one. Then it assembles the result into a video with title screens, transitions, and music.
+A tool that connects to Immich, reads a period I choose, and builds a video with titles,
+transitions and music. I can review the selection before rendering and exclude pictures I do
+not want.
 
-The key: I still get to review what it picked and remove anything I don't want. But I'm reviewing 30 pre-selected clips instead of scrolling through 400.
+The model reader groups the period into stories and writes a reason for each selected picture.
+The rules reader works without that model, using dates, places, favourites, people and available
+image facts. [Running modes](../deploy/running-modes.md) explains the tradeoffs.
 
-## Why every feature exists
+## What it handles
 
-Every feature traces back to "remove a manual step from making a memory video":
-
-- **An editor, not a scorer**: so I don't have to watch 400 clips to find the 25 that tell the story
-- **Face recognition**: so I can ask for a memory of one person and get one, and so a photo's Ken Burns move lands on a face rather than a wall
-- **Sameness, judged**: so I don't get three versions of the same moment from a held shutter or a re-import
-- **Live photo stitching**: so those 3-second iPhone live photos get merged into usable clips
-- **AI music generation**: so I don't spend 45 minutes on YouTube Audio Library looking for a track that fits
-- **Audio ducking**: so music drops under the clip's own sound instead of talking over it
-- **Title screens**: so the output looks like something, not just "clip 1, clip 2, clip 3"
-- **Trip maps**: so a travel video starts with an animated satellite zoom showing where we went
-- **Photo support**: so still photos get mixed in with video (Ken Burns, blur background, face-aware pan)
-- **Scheduled generation**: so monthly highlights just appear on the 1st without me doing anything
-
-The result is a video that looks like I spent a weekend in Premiere Pro, except I spent 5 minutes reviewing clips and hit "generate."
+- Person filters using Immich's face tags, and face-aware framing for photos.
+- Duplicate grouping, photos, video and Live Photo motion in the same cut.
+- A music file, bundled tracks or optional generated music, with ducking under source audio.
+- Titles and trip maps.
+- Daily automation through `auto run`, which chooses an eligible memory or retries a delivery.
 
 ## Limitations
 
-- **No mobile app.** Web UI and CLI. Works in mobile browsers but there's no native app.
-- **Not instant, and the wait is reading rather than encoding.** The first cut over a period captions and measures every picture in it and has the text model read the period; both are cached, so a second cut over the same period is mostly the render. Batch process.
-- **Not a video editor.** Select/deselect clips and adjust segments, but no timeline.
-- **Requires Immich.** Companion tool, not a standalone photo manager.
+- **Requires Immich.** It does not manage a standalone photo library.
+- **Web UI and CLI.** There is no native mobile app or editing timeline.
+- **Preparation takes time.** Wider periods need more previews and image analysis. Compatible
+  saved facts are reused, but changing models or settings can require more work.
+- **Selection needs review.** It can miss a moment, keep a poor picture or misclassify sensitive
+  material. This is a beta product.
 
 <ThemedScreenshot name="memory-story" alt="The story the editor cut, with a reason for every picture" />

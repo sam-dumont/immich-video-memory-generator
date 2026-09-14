@@ -1,4 +1,4 @@
-"""SQLite-based cache for video analysis results."""
+"""SQLite connection and schema initialization for run and automation state."""
 
 from __future__ import annotations
 
@@ -6,17 +6,13 @@ import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from immich_memories.cache.schema_migrator import SchemaMigrator
 from immich_memories.cache.versions import SCHEMA_VERSION
 
-if TYPE_CHECKING:
-    pass
-
 
 class VideoAnalysisCache:
-    """SQLite-based cache for video analysis results."""
+    """SQLite connection and schema initialization for run and automation state."""
 
     def __init__(self, db_path: Path):
         self.db_path = Path(db_path)
@@ -40,47 +36,3 @@ class VideoAnalysisCache:
             yield conn
         finally:
             conn.close()
-
-    # =========================================================================
-    # Core CRUD Methods
-    # =========================================================================
-
-    def clear_all(self) -> int:
-        with self._get_connection() as conn:
-            cursor = conn.execute("DELETE FROM video_analysis")
-            count = cursor.rowcount
-            conn.commit()
-            return count
-
-    # =========================================================================
-    # Query Methods (from DatabaseQueryMixin)
-    # =========================================================================
-
-    def get_stats(self) -> dict:
-        with self._get_connection() as conn:
-            total = conn.execute("SELECT COUNT(*) FROM video_analysis").fetchone()[0]
-
-            with_hash = conn.execute(
-                "SELECT COUNT(*) FROM video_analysis WHERE perceptual_hash IS NOT NULL"
-            ).fetchone()[0]
-
-            total_segments = conn.execute("SELECT COUNT(*) FROM video_segments").fetchone()[0]
-
-            oldest = conn.execute("SELECT MIN(analysis_timestamp) FROM video_analysis").fetchone()[
-                0
-            ]
-
-            newest = conn.execute("SELECT MAX(analysis_timestamp) FROM video_analysis").fetchone()[
-                0
-            ]
-
-            return {
-                "total_videos": total,
-                "videos_with_hash": with_hash,
-                "total_segments": total_segments,
-                "oldest_analysis": oldest,
-                "newest_analysis": newest,
-                "database_size_bytes": (
-                    self.db_path.stat().st_size if self.db_path.exists() else 0
-                ),
-            }

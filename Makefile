@@ -2,7 +2,7 @@
 # Uses uv for fast Python package management
 export PYTHONUNBUFFERED=1
 
-.PHONY: docs-voice notices notices-check help install dev dev-ci dev-test run preflight parity docs-cli-check docs-config-check test test-extras test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-audio-mixing test-integration-titles test-fast benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell compose-check file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci integration-coverage-for-diff ci critique ensure-dev commitlint privacy-gate pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots demo-output demo-output-trip diagrams capability-matrix
+.PHONY: docs-voice notices notices-check help install dev dev-ci dev-test run preflight parity docs-cli-check docs-config-check test test-extras test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-audio-mixing test-integration-titles test-fast benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-all build build-check docker docker-run docker-shell compose-check file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci integration-coverage-for-diff ci critique ensure-dev commitlint privacy-gate pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots demo-output demo-output-trip diagrams capability-matrix
 
 # Default target
 help:
@@ -49,14 +49,12 @@ help:
 	@echo "  compose-check Check docker-compose.yml parses on its own, with nothing beside it"
 	@echo ""
 	@echo "Cache Management:"
-	@echo "  cache-stats           Show analysis cache stats"
 	@echo "  video-cache-stats     Show video download cache stats"
 	@echo "  thumbnail-cache-stats Show thumbnail cache stats"
-	@echo "  all-cache-stats       Show all cache stats"
-	@echo "  clean-cache           Clear analysis cache (SQLite)"
+	@echo "  all-cache-stats       Show media cache stats"
 	@echo "  clean-video-cache     Clear video file cache"
 	@echo "  clean-thumbnail-cache Clear thumbnail cache"
-	@echo "  clean-all-cache       Clear all caches"
+	@echo "  clean-all-cache       Clear downloaded media caches"
 	@echo ""
 	@echo "Documentation:"
 	@echo "  docs-install Install docs site dependencies"
@@ -735,10 +733,6 @@ clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
 
-clean-cache:
-	rm -f ~/.immich-memories/cache.db
-	@echo "Analysis cache cleared"
-
 clean-video-cache:
 	rm -rf ~/.immich-memories/cache/video-cache
 	@echo "Video cache cleared"
@@ -751,8 +745,8 @@ clean-preview-cache:
 	rm -rf ~/.immich-memories/cache/preview-cache
 	@echo "Preview cache cleared"
 
-clean-all-cache: clean-cache clean-video-cache clean-thumbnail-cache clean-preview-cache
-	@echo "All caches cleared"
+clean-all-cache: clean-video-cache clean-thumbnail-cache clean-preview-cache
+	@echo "Downloaded media caches cleared; annotations and run history kept"
 
 clean-all: clean clean-all-cache
 	rm -rf .venv/
@@ -776,10 +770,6 @@ info:
 db:
 	sqlite3 ~/.immich-memories/cache.db
 
-# Show analysis cache stats
-cache-stats:
-	@uv run python -c "from immich_memories.cache import VideoAnalysisCache; c = VideoAnalysisCache(); import json; print(json.dumps(c.get_stats(), indent=2))"
-
 # Show video cache stats
 video-cache-stats:
 	@uv run python -c "from immich_memories.cache import VideoDownloadCache; c = VideoDownloadCache(); import json; print(json.dumps(c.get_stats(), indent=2, default=str))"
@@ -788,8 +778,8 @@ video-cache-stats:
 thumbnail-cache-stats:
 	@uv run python -c "from immich_memories.cache import ThumbnailCache; c = ThumbnailCache(); import json; print(json.dumps(c.get_stats(), indent=2, default=str))"
 
-# Show all cache stats
-all-cache-stats: cache-stats video-cache-stats thumbnail-cache-stats
+# Show media cache stats
+all-cache-stats: video-cache-stats thumbnail-cache-stats
 
 # Generate version info
 version:

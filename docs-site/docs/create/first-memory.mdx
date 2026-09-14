@@ -7,8 +7,8 @@ import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
 
 # Your First Memory
 
-One month, start to finish. A month is the right first cut: one minute of video, and the slow
-part (reading every picture once) is bounded by what one month holds.
+Start with one month and a one-minute target. That limits how much of the library needs
+preparation and gives you a short result to review.
 
 ## Before you start
 
@@ -16,11 +16,10 @@ part (reading every picture once) is bounded by what one month holds.
   access to assets, people, albums, timeline and search, plus upload and album rights if you want
   the video back in Immich).
 - **Docker**, or **Python 3.11 or later**.
-- About **22 GB of disk** for the caches at their default budgets (10 GB of downloaded video kept
-  7 days, 10 GB of previews, 2 GB of clip previews).
-- One of the three ways to run: rules only needs nothing else; the classifiers need
-  `immich-memories models fetch`; the model reader needs a caption server and a reader. The
-  [self-hosting guide](../deploy/self-hosting.md) stands them up in order.
+- Space for output videos, model files and caches. The three media-cache budgets total about
+  **22 GB** by default; this is not a limit on all disk use.
+- A running mode and its dependencies. The [self-hosting guide](../deploy/self-hosting.md)
+  explains rules-only selection, local classifiers and model readers. Start there before a large cut.
 
 ## Launch
 
@@ -60,8 +59,7 @@ on.
 
 Press **Cut**. The page shows one row per phase (finding media, loading thumbnails, reading the
 pictures, editing, done). Stages that count their work draw a bar with an estimate, and the
-reading passes show the last pictures they finished. If a model server is not answering, the
-Editing row says so within a second, with its address. Reloading the page mid-cut lands on the
+reading passes show the last pictures they finished. If a model request fails, the Editing row reports the endpoint and retry state. Reloading the page mid-cut lands on the
 same rows.
 
 <ThemedScreenshot name="memory-cutting" alt="The cut in progress" />
@@ -93,8 +91,8 @@ album you named.
 
 The app fetched the month's metadata and previews, prepared facts for every eligible picture,
 read the stories those pictures show, gave each story the pictures its weight earned, and
-assembled them in chronological order with FFmpeg, titles and music. Everything it read is
-banked, so the second cut over the same month is mostly the render. Every attempt is kept under
+assembled them in chronological order with FFmpeg, titles and music. Matching facts and model answers are cached. Later cuts reuse them, though new media or
+changed settings can require more preparation and reading. Every attempt is kept under
 the cache directory with the plan and the reason for every picture, and `immich-memories runs
 story` prints the same storyboard in the terminal.
 

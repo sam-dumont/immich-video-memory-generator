@@ -24,7 +24,7 @@ pip install "immich-memories[editorial]"      # ONNX Runtime and Hugging Face Hu
 pip install "immich-memories[editorial-cuda]" # instead of editorial, on a CUDA host
 ```
 
-`all` and `all-mac` include `editorial`. Never install both: `onnxruntime-gpu` already contains
+`all` and `all-mac` include `editorial`. Never install `editorial` and `editorial-cuda` together: `onnxruntime-gpu` already contains
 the CPU provider and the two distributions own the same import name.
 
 ## Configuration
@@ -72,8 +72,10 @@ training coefficients, no library photographs, no owner-trained heads.
 
 ## Detectors
 
-Two ONNX graphs on ONNX Runtime's CPU provider. The worker reads previews locally and commits each
-batch; nothing is uploaded to Hugging Face.
+Both detector graphs run on CPU, including in the CUDA inference service. CUDA accelerates the
+DINOv2 encoder used by the heads; it does not change detector execution.
+Local workers read previews and commit each batch; using the inference service sends it the
+preview bytes. Nothing is uploaded to Hugging Face.
 
 | Producer | Artifact | Pinned by | Facts |
 |---|---|---|---|
@@ -96,7 +98,7 @@ labels on a Celeron J4125; the extended-optimization graph is what `det-v2` name
 portable across that CPU and arm64. For `nsfw_marqo`, the ONNX export replaced a timm model under
 torch: a different artifact is a different producer. It is not faster (0.469 s a picture against
 torch's 0.440 s on that CPU); it removes 920 MB of dependencies and 11 s of start-up from a CPU
-image. Saved `det-v1` facts migrate on load and are recomputed on the next run.
+image. Older detector facts are invalidated and recomputed when needed.
 
 A separate `detector_python` needs `onnxruntime`, `huggingface-hub`, `numpy` and `Pillow`, and no
 part of the torch family.
@@ -129,8 +131,8 @@ pointed at a hosted VLM has no business carrying the reader's credential. `title
 works the same way. A 401 or 403 names `caption_api_key` rather than reporting the endpoint as
 unreachable, because the URL is fine and the credential is what is missing.
 
-`caption_api_key: ${MY_KEY}` reads the value out of the environment, so the file can be committed
-and the token cannot. An unset variable leaves the key empty rather than the literal `${MY_KEY}`,
+`caption_api_key: ${MY_KEY}` reads the value from the environment. Keep other secrets and private
+configuration out of version control too. An unset variable leaves the key empty rather than the literal `${MY_KEY}`,
 which would otherwise be sent as a bearer token and come back as a 401 that looks like the wrong
 key. Save writes the `${MY_KEY}` form back either way.
 

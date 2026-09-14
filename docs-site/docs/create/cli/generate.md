@@ -8,15 +8,16 @@ title: generate
 `immich-memories generate` pulls pictures and video from your Immich library, reads the period
 as a story, keeps the pictures that carry it, and renders a cut. It prepares missing facts for the
 whole period first (previews, pixel facts, detectors, captions when the tier asks for them), so the
-first run over a period is the slow one: the second is mostly the render. The audience is always
+first run over a period usually takes longer. Later runs reuse matching cached facts and model
+answers; new media, changed settings or producer versions can require more work. The audience is always
 "family": that is a fixed part of the request, not a setting.
 
 ```bash
 immich-memories generate [OPTIONS]
 ```
 
-The tables below are the flags as `--help` prints them. The [CLI reference](../../reference/cli-reference.md)
-is generated from the same source and wins on any disagreement.
+The tables group the options by task. Use `immich-memories generate --help` or the generated
+[CLI reference](../../reference/cli-reference.md) for their complete definitions.
 
 ## Flags
 
@@ -30,7 +31,7 @@ is generated from the same source and wins on any disagreement.
 | `--period` | n/a | string | n/a | Length from `--start`: `30d`, `2w`, `6m`, `1y` |
 | `--month` | n/a | int | n/a | Month 1 to 12 (with `--year`); with `--memory-type trip` it selects the trip by month |
 | `--day` | n/a | `YYYY-MM-DD` | today | The day the memory is about. `special_day`: a catalogued day. `on_this_day`: the anniversary to look back from |
-| `--years-back` | n/a | int | per type | `on_this_day`: all years (30 max) unless set. `holiday` and `--birthday`: 5 |
+| `--years-back` | n/a | int | per type | `on_this_day`: 30 years unless set. `holiday` and `--birthday`: 5 |
 
 Dates are `YYYY-MM-DD`, always. `--birthday` also takes `MM-DD`. Slashed or day-first forms are
 refused with an error naming the format, never guessed.
@@ -76,9 +77,9 @@ refused with an error naming the format, never guessed.
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--include-photos` / `--no-photos` | n/a | flag pair | on | Photos as animated clips beside the videos |
-| `--photo-duration` | n/a | float | `4.0` | Seconds per photo |
-| `--include-live-photos` / `--no-live-photos` | n/a | flag pair | on | Live Photo clips, merged when burst-captured |
+| `--include-photos` / `--no-photos` | n/a | flag pair | config (on) | Photos as animated clips beside the videos |
+| `--photo-duration` | n/a | float | config (`4.0`) | Seconds per photo |
+| `--include-live-photos` / `--no-live-photos` | n/a | flag pair | config (on) | Allow Live Photo motion; the editor chooses still or motion |
 | `--music` | `-m` | path or `auto` | config | A file, or `auto` to generate from config |
 | `--no-music` | n/a | flag | off | No music at all |
 | `--music-volume` | n/a | float | `0.5` | 0.0 to 1.0 |
@@ -101,6 +102,10 @@ refused with an error naming the format, never guessed.
 When `--resolution` is omitted, the command uses `output.resolution` from the config (1080p by
 default); pass `--resolution auto` to let the sources choose. `--quality` changes the effective CRF,
 mapped onto each hardware encoder's own scale.
+
+Live Photo motion needs both `--include-live-photos` and
+`analysis.include_live_photos: true` in the effective config. The flag currently cannot override
+a false config value. `--no-photos` also removes Live Photo stills from the source pool.
 
 Two root options go before `generate`: `-v` (or `--log-level DEBUG`) for verbose logs, and
 `--preset fast` for the CPU-only profile (1080p, H.264, medium quality, static title backgrounds)
@@ -196,7 +201,8 @@ If the reader stops answering, the line says so instead of going quiet:
 Three drops, two then four seconds apart, and the last line says what to do: `Gave up on the
 reader at omlx.local:9999 after 3 dropped connections: fix the server and cut again`. The run then
 fails naming the same endpoint. A model
-server that is restarting survives that; one that is off is named within a second.
+server that returns during those retries can recover. Connection failures name the endpoint;
+a server that accepts a connection but stalls may wait until its configured timeout.
 
 ## What a run leaves behind
 
@@ -219,21 +225,29 @@ The two timings are wall-clock around the calls as they happen. `runs story <run
 whole cut again later, `runs why <asset id>` says where one picture passed or where it was
 dropped and why, and `runs show <run>` has the model spend (calls, cache hits, tokens). See
 [runs](./runs.md). The reasons are written for every run; `--trace-selection` only adds a copy of
-the funnel at a path you choose.
+the funnel at a path you choose:
+
+```bash
+immich-memories generate --year 2024 --month 6 --no-render --trace-selection selection.txt
+```
+
+This writes the text report and a JSON companion. It is an explanation of selection, not a
+project file that can be edited and imported.
 
 ## Output
 
-`--output` names the file you want, not the path you get. Every run writes into its own folder,
-named after the file plus the run id, so a rerun never overwrites an earlier result:
+`--output` sets the base filename. Selection adds a recipe hash, then the render writes into
+a folder with that name and the run id:
 
 ```bash
 immich-memories generate --year 2025 --output ~/Videos/summer.mp4
-# writes ~/Videos/summer_20260105_143052_a7b3/summer.mp4
+# for example: ~/Videos/summer_<hash>_20260105_143052_a7b3/summer_<hash>.mp4
 ```
 
 Without `--output` the file lands in the configured output directory (`~/Videos/Memories/` by
-default) as `{person}_{memory-type}_{date}.mp4`. Nothing prunes those folders; `runs delete`
-removes a run and its output.
+default). Its name is built from the people, memory type and dates, with the recipe hash.
+Use the final path printed by the command. Nothing prunes these output folders;
+[`runs delete`](./runs.md#runs-delete) removes the run record and its output folder.
 
 ## Upload
 
@@ -251,6 +265,6 @@ period still needs (which producers are missing, how many pictures have no facts
 selected, so there is nothing to trace.
 
 `--no-render` selects for real, with every reading and every gate, and stops at the encode. The
-pictures it lists are the pictures it would have shipped, and the run is on record like any
-other. Use it to compare settings, or to time selection without paying for an encode you will
-delete.
+pictures it lists are the selected cut. It saves an editorial attempt but does not create the
+completed render record used by bare `runs story`. Add `--trace-selection selection.txt` to
+inspect that selection, or pass its attempt directory to `runs story`.

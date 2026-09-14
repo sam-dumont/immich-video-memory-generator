@@ -39,7 +39,7 @@ module "immich_memories" {
   immich_url     = var.immich_url
   immich_api_key = var.immich_api_key
 
-  # LLM clip content analysis
+  # Story reader
   llm_base_url = var.llm_base_url
   llm_model    = var.llm_model
   llm_api_key  = var.llm_api_key
@@ -80,7 +80,6 @@ module "immich_memories" {
       cpu    = "8000m"
     }
   }
-  tmp_size = "8Gi"
 
   # Storage
   output_storage_size = "200Gi"

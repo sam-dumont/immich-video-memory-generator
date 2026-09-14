@@ -48,7 +48,7 @@ def _get_options_table(cmd: click.Command) -> str:
 
     lines = ["| Flag | Type | Default | Description |", "| --- | --- | --- | --- |"]
     for param in params:
-        names = ", ".join(f"`{d}`" for d in param.opts)
+        names = ", ".join(f"`{d}`" for d in (*param.opts, *param.secondary_opts))
         param_type = _format_type(param.type)
         default = param.default
         # Click >= 8.3 uses a Sentinel (UNSET) instead of None for "no default"
@@ -106,14 +106,24 @@ def generate_reference(group: click.Group) -> str:
     """Generate the full CLI reference Markdown."""
     lines = [
         "---",
-        "title: CLI Reference (Auto-Generated)",
+        "title: CLI Reference",
         "sidebar_label: Reference",
         "---",
         "",
         "# CLI Reference",
         "",
-        "This page is auto-generated from the Click command definitions.",
-        "Run `make docs-cli` to regenerate.",
+        "Options for the installed command-line interface, grouped by command.",
+        "Use `immich-memories COMMAND --help` for help in the terminal.",
+        "",
+        "## Global options",
+        "",
+        "Place these before the command:",
+        "",
+        "```text",
+        "immich-memories [GLOBAL OPTIONS] COMMAND [OPTIONS]",
+        "```",
+        "",
+        _get_options_table(group),
         "",
     ]
 

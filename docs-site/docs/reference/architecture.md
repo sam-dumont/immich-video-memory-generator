@@ -5,131 +5,95 @@ sidebar_label: Architecture
 
 # Codebase Architecture
 
-How the code is organized, why it's built this way, and where to make changes.
+The CLI, Memory page and automation use one editorial route. Automation decides which
+memory to request; the editor decides which sources appear in it. Rendering consumes that
+plan. The module-by-module map is in [ARCHITECTURE.md](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/ARCHITECTURE.md).
 
-## Composition over Inheritance
+## Selection before rendering
 
-The codebase used to split large classes into mixins. That worked for a while, but mixins create implicit coupling: you can't understand a mixin without knowing what `self` looks like on the host class. When `VideoAssembler` hit 11 mixins, it was time to refactor.
+```mermaid
+flowchart TD
+    entry[CLI generate or Memory page Cut] --> runtime[build_smart_pipeline]
+    runtime --> source[Source metadata and preparation]
+    source --> reading[Event evidence and period account]
+    reading --> planning[Structure and story planners]
+    planning --> timing[Validate selected source timing]
+    timing --> generation[generate_memory]
+    generation --> output[Render, music and delivery]
+```
 
-Now the four main orchestrators compose smaller service objects via constructor injection. The lifecycle a run reports is the `OperationalPhase` enum in `operations/phases.py` (discovery → download → analysis → selection → render → music → delivery → complete), and it spans two entry points, not one. Selection runs first, as the story-first editorial route: `generate` (or the Memory page's Cut) → `build_smart_pipeline(editorial_context)` in `analysis/editorial_runtime.py` → `SmartPipeline.run_editorial_source()` → `RuntimeEditorialPlanner.plan_source()`, which runs preparation, the two readings, the structure planner and the story planner, and certifies the timing. `generate_memory()` in `generate.py` takes over from there and does extract → assemble → music → upload. Hand it no clips and it raises rather than going to find some.
+`analysis/editorial_runtime.py` builds a `RuntimeEditorialPlanner` and injects it into
+`SmartPipeline`. The planner prepares the requested sources, reads the period, chooses the
+stories and carriers, then certifies their timing. `SmartPipeline` projects the result into
+a `PipelineResult`; it does not score or rank clips itself.
 
-| Orchestrator | Services | What it does |
-|---|---|---|
-| **VideoAssembler** | FFmpegProber, ClipEncoder, AssemblyEngine, AudioMixerService, TitleInserter | Assembles clips into final video |
-| **SmartPipeline** | RuntimeEditorialPlanner (from `build_smart_pipeline`) | Runs the story-first selection and projects its plan into a `PipelineResult` |
-| **ImmichClient** | SearchService, AllAssetsService, AssetService, PersonService, AlbumService | Talks to the Immich API |
-| **TitleScreenGenerator** | RenderingService, EndingService, TripService | Creates title/ending screens |
+The model and rules readers share source preparation, timing and rendering. Preparation
+tier is configured separately: rules mode with the default full tier still needs the
+caption and inference producers.
 
-Each service is a standalone class you can test in isolation. The orchestrator wires them together in `__init__` and delegates work.
+`generate_memory()` takes selected clips and handles download, extraction, assembly, music
+and optional upload. An empty clip list is an error. The outer lifecycle is
+`OperationalPhase` in `operations/phases.py`: discovery, download, analysis, selection,
+render, music, delivery and complete.
 
-The editorial route has its own seams rather than services: `EditorialRuntimePorts` (the production providers and the people loader), `ProductionPostCardBackend` (the structure planner behind the text orchestration), `StructurePlannerPorts` (the judges the structure planner calls out to; the bank directory and the audience come in on `StructurePlanningInput` beside it), and `EditorialAttempt` in `operations/` (the durable attempt tree with its OS lease). Every attempt lives under `<cache>/editorial-runs/<key>/attempts/<id>/`; the annotation store is `<cache>/annotations.sqlite`.
+## Main boundaries
 
-## CI Pipeline Structure
+| Boundary | Responsibility |
+|---|---|
+| `EditorialRuntimePorts` | Provider and people-loader dependencies |
+| `ProductionPostCardBackend` | Connect text orchestration to structure planning |
+| `StructurePlannerPorts` | Judgments called by the structure planner; source, banks and audience arrive in `StructurePlanningInput` |
+| `EditorialAttempt` | Durable status, requests, plan and process lease |
+| `VideoAssembler` | Compose probing, clip encoding, assembly, audio mixing and title insertion |
+| `ImmichClient` | Compose search, all-assets, asset, person and album API services |
+| `TitleScreenGenerator` | Compose rendering, endings and trip screens |
 
-CI runs in tiers, cheap to expensive. If lint fails in 10 seconds, there's no point waiting 3 minutes for tests to tell you the same thing.
+Attempts live under `<cache>/editorial-runs/<key>/attempts/<id>/`. Facts and readings use
+`annotations.sqlite`; structure judgments and motion facts also use `structure-banks/`.
+The Memory page and `runs` commands read these records. They can contain private library
+information.
 
-**Tier 0: Cache setup** (every job that installs the project waits on it; the docs build doesn't)
+The streaming assembler decodes a clip at a time, blends frames and pipes them into FFmpeg.
+`EncodingPlan` supplies one output contract; `output_contract.py` validates the finished
+file before publishing it. Photo animation, certified Live Photo motion and title screens
+feed this same assembly path. Quadrants supplies kernel title rendering on a working GPU
+or CPU backend, with PIL as the fallback.
 
-**Tier 1: Cheap quality gates**; one job, run as steps in order. Each carries `if: !cancelled()`,
-so the first failure doesn't hide the ones behind it and you get the whole list from one run:
-- Ruff lint + format check
-- CLI and config reference drift (the generated pages must match the Click tree and the pydantic schema)
-- mypy type checking
-- Dead code detection (Vulture)
-- Cyclomatic complexity (Xenon grade C)
-- Cognitive complexity (complexipy)
-- File length (800-line soft limit warns, 1000-line hard limit fails)
-- Refurb modernization checks
-- Dependency hygiene (deptry)
-- Architecture layer enforcement (import-linter)
-- Code duplication detection (jscpd)
-- AI code critique
-- Commit message linting (Conventional Commits), on pull requests only
+## The inference service
 
-**Tier 2: Security** (parallel with Tier 1):
-- Bandit static analysis
-- Semgrep rules
-- pip-audit dependency CVEs
-- Gitleaks secret detection
-- Hadolint Dockerfile linting
+`services/inference/immich_memories_inference/` serves `/ping`, `/health` and `/facts` in
+its own image. It imports the app's inference implementations; the app talks to it over
+HTTP. Encoder device selection and detector execution are separate: the detector
+constructors currently use CPU ONNX sessions.
 
-**Tier 3: Tests** (runs after both Tier 1 and Tier 2 pass):
-- Full test suite (Ubuntu on 3.11/3.12/3.13; macOS on 3.13 for a pull request, all three on main)
-- `make test-extras`: only the tests marked `extras`, which are what the torch family
-  (demucs/editorial) unlocks. Note that the CI job installs `audio` and `gpu` and not those two,
-  so what runs there is the subset that survives without torch; the rest is a local target
+## Dependency rules
 
-**Tier 4: Build + Docker** (runs after tests pass):
-- Package build verification
-- Docker image build
+`make arch-check` reads the contracts in `pyproject.toml`:
 
-Two jobs sit outside the tiers. The docs site build depends on nothing and starts immediately. The
-hermetic launch check runs on pull requests off the cache setup alone, in parallel with the tests:
-CI calls `make launch-check-ci`, which is the Playwright e2e run against a fake Immich. The local
-`make launch-check` is the bigger one that also does `check`, `build`, and the docs build.
+- Analysis, processing, titles, people, store, triage and operations cannot import UI.
+- Those packages and audio cannot import CLI.
+- The app cannot import the inference service package.
+- The inference service cannot import UI or CLI.
 
-`make ci` runs the same gates locally, plus the unit tests; the Makefile is the list. CI adds the checks that need a remote or a diff (commitlint, pip-audit, gitleaks, hadolint), then the build, Docker and docs jobs and the launch check. Every PR must pass all of them.
+Use constructor injection and Protocol contracts for service dependencies. The import
+checker covers the listed package directions; it does not enforce every naming convention
+or private-module boundary.
 
-## Quality Gates Overview
+## Where to add a change
 
-| Gate | Tool | What it catches |
-|---|---|---|
-| Lint + format | Ruff | Style issues, import ordering, unused imports |
-| Type check | mypy | Type mismatches, missing annotations |
-| Complexity | Xenon | Functions too complex to reason about (grade C max) |
-| File length | Makefile script | Files over 800 lines warn, over 1000 fail (split into services) |
-| Dead code | Vulture | Unused functions, variables, imports |
-| Duplication | jscpd | Copy-pasted code blocks (≤5%) |
-| Security | Bandit + Semgrep | Common vulnerability patterns |
-| Secrets | Gitleaks | Accidentally committed API keys |
-| Dependencies | pip-audit + deptry | Known CVEs; unused, missing or transitive imports |
-| Architecture | import-linter | Forbidden-import contracts: the core packages (`analysis`, `processing`, `titles`, `people`, `store`, `triage`, `operations`) must not import `ui`, and they plus `audio` must not import `cli`. The dependency runs one way: UI and CLI import core, never the reverse |
-| Commits | commitizen | Non-conventional commit messages |
-| Docs | docs-voice, docs-cli-check, docs-config-check, notices-check | Chatbot prose and em dashes; drift between the generated references and the code; drift in THIRD_PARTY_NOTICES |
-| Tests | pytest | the unit suite in CI; integration and e2e locally and on the GPU runner |
+| Change | Files to start with |
+|---|---|
+| Immich API operation | The matching service in `api/`, then the delegating method in `api/immich.py` |
+| Editorial decision | `analysis/editorial_runtime.py`, the relevant reader or planner, and its contract |
+| Rendering behavior | `processing/encoding_plan.py`, the assembler or the relevant photo/title renderer |
+| Memory type | `memory_types/registry.py`, a `@register_preset` factory and any date builder |
+| CLI command | A module under `cli/`, registered in `cli/__init__.py` |
+| Documentation page | `docs-site/docs/`, then its page ID in `docs-site/sidebars.ts` |
 
-## How to Add a New Feature
+`OFFERED_MEMORY_TYPES` in `registry.py` supplies the CLI and Memory page's offered types.
+A new type needs a preset registration and an entry there. Regenerate the CLI reference and update the configuration reference when their public
+interfaces change; drift gates check both against the code.
 
-### Adding a new processing capability
-
-1. Create a service class in the relevant package (e.g., `processing/my_service.py`)
-2. Keep it under 800 lines (soft limit; 1000 is the hard CI failure). If it needs more, split into a service + helpers file
-3. Inject it into the orchestrator's `__init__` in `video_assembler.py`
-4. Add tests in `tests/test_my_service.py`
-5. Run `make ci` before committing; `make check` is the fast subset (lint, format, typecheck, file length, complexity, tests) and skips everything else: cognitive complexity, dead code, refurb, dep-check, arch-check, critique, duplication, the drift gates and every security scan
-
-### Adding a new API endpoint
-
-1. Add the method to the relevant service in `api/` (e.g., `search_service.py`)
-2. Add a delegating method on `ImmichClient` in `api/immich.py`
-3. Add the model to `api/models.py` if needed
-4. Test against a mock HTTP client
-
-### Adding a new memory type
-
-1. Add the value to the `MemoryType` enum in `memory_types/registry.py`
-2. Write a factory function in `memory_types/factory.py` and decorate it with `@register_preset`: the decorator *is* the registration, there is no second list to edit there
-3. Add date builder logic if the type needs its own, in `memory_types/date_builders.py`
-4. Add it to `OFFERED_MEMORY_TYPES` in `memory_types/registry.py`: `--memory-type` and the Memory page's select both read that tuple, in that order
-5. Add a page under `docs-site/docs/create/memory-types/`
-
-### Adding a new CLI command
-
-1. Create a new file in `cli/` (e.g., `cli/my_cmd.py`)
-2. Register the command group in `cli/__init__.py`
-3. Add corresponding docs in `docs-site/docs/`
-
-### Adding a docs page
-
-1. Create the markdown file in the appropriate `docs-site/docs/` subdirectory
-2. Add the page ID to `docs-site/sidebars.ts`
-3. Run `make docs-build` to verify it compiles
-
-## File Naming Conventions
-
-- `_prefixed.py`: private helpers, meant for their own package. Nothing enforces that (import-linter only guards the core/UI and core/CLI directions), and one cross-package import has leaked in (`generate_privacy.py` reaching into `titles._trip_titles`)
-- `*_service.py`: composed service classes
-- `*_models.py`: data models (Pydantic or dataclass)
-- `*_helpers.py`: standalone helper functions
-- `*.py` (no prefix): public modules and standalone classes. Re-export shims belong in
-  `__init__.py` and nowhere else
+Use `make ci` for the local gates and `make docs-build` for documentation changes. The
+[testing guide](../contribute/testing.md) covers the test matrix, integration suites and
+checks that run only in GitHub Actions.

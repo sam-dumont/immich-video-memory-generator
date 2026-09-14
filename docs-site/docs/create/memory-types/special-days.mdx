@@ -4,19 +4,13 @@ sidebar_label: "Special Days"
 
 # Special Days
 
-The other nine memory types cover something you named: a year, a month, a person, a
-trip, an album. A special day is the one you did not name. It is a day out of your own
-library that a scan flagged as an occasion, wrote down, and offers back years later when
-its anniversary comes round. In the web UI the type is called **Surprise me**; on the
-CLI the type is `special_day`.
+A special-day memory uses an occasion recorded by the library scan and can return on
+a later anniversary. In the web UI the type is called **Surprise me**; on the CLI it is
+`special_day`.
 
-Nothing searches for it. There is no query, no "find me the wedding".
-[`discover-days`](../cli/discover-days.md) walks the library a month at a time, keeps the
-days that stayed alive for hours rather than the days that merely shot a lot, and asks
-the local model whether anything actually happened. That is
-[The Curator](../pipeline/the-curator.md)'s *emergent, not queried* rule at the
-granularity of a single day, and it is why the scan finds the day that mattered with 30
-photos and skips the one with 413 pictures of a street performer.
+[`discover-days`](../cli/discover-days.md) scans the library month by month. It filters
+for days with enough photographs spread across enough hours, then asks the configured
+model whether they show an occasion. No search phrase is required.
 
 ## The life of a day
 
@@ -38,12 +32,9 @@ anniversary falls within three days of today, roundest first.
 
 Automation is the strict one, because it interrupts you.
 [`SpecialDayDetector`](../cli/auto.md#how-a-candidate-is-chosen)
-proposes a day only on its anniversary, and scores it by how round that anniversary is.
-For a 200-photo day never generated before, that lands at **0.893** for a decade,
-**0.759** for a half-decade and **0.536** for anything else: a decade goes ahead of every
-other detector, and a seventh anniversary competes with the monthly review rather than
-pre-empting it. At most one special day per run: the per-type cap is 1, because a queue
-of surprises is not a surprise.
+proposes days within the anniversary window. Decades receive a larger score boost than
+five-year anniversaries, and ordinary anniversaries receive less. Other scheduling
+scores and eligibility checks still apply. At most one special-day candidate is selected per run.
 
 The Memory page is the loose one. You picked the type, so it lists everything in the
 catalogue, due or not. See
@@ -58,9 +49,9 @@ covers the whole calendar day, midnight to midnight. The window shrinks, it neve
 if there is not enough usable footage inside it the memory gets shorter rather than
 widening back out to the rest of the day.
 
-Length comes from the same evidence the scan already measured: **30 seconds plus 6
-seconds per active hour, held between 60 and 180 seconds**. Anything under five active
-hours takes the 60-second floor; 25 hours or more takes the 180-second ceiling. Pass
+Length is **30 seconds plus 6 seconds per hour, held between 60 and 180 seconds**.
+When the catalogue provides an event window, its elapsed duration supplies the hours;
+otherwise the stored activity span supplies them. Pass
 `--duration`, or turn off **Auto duration** on the Memory page, to set it yourself.
 
 One occasion means one opening card. Special days get no month dividers.
@@ -72,7 +63,7 @@ a day that should not be rendered, so four cases error instead:
 
 - `--memory-type special_day` with no `--day`
 - `--day` with a memory type that has no day: only `special_day` and
-  [`on_this_day`](./monthly-person-season#pinning-the-day) take one
+  [`on_this_day`](./monthly-person-season.mdx#pinning-the-day) take one
 - a `--day` the catalogue has never heard of: the error names the file it read
 - a catalogued entry with neither a title nor a description of what the day was
 
@@ -83,12 +74,13 @@ not fall back to a random day.
 ## A day can come back
 
 Automation keys its proposal by the anniversary as well as the date (`special_day:2016-06-12:2016-06-12::10y`, with an empty people segment), so a day that got its memory at ten years can
-get another at fifteen. It is a different cut: five more years of library have been
-analysed since, and the round number is the reason it is worth interrupting you again.
+get another at fifteen. Both use the original occasion's window. A later anniversary
+does not add five more years of footage to that memory.
 
 ## What never travels
 
-Catalogue titles name real people and places. Two rules keep them out of anything durable.
+Catalogue titles can name real people and places. Automation keeps them out of its
+command arguments and candidate metadata; this is not full anonymization of generated artifacts.
 
 **Titles are never on the command line.** Automation passes `--day 2016-06-12` and
 nothing else; `generate` re-reads the catalogue itself for the name. argv is logged in
@@ -123,4 +115,4 @@ immich-memories generate --memory-type special_day --day 2016-06-12
 ```
 
 It needs an LLM configured under `llm:`, and a vision model is worth having: see
-[`discover-days`](../cli/discover-days.md#what-you-need).
+[`discover-days`](../cli/discover-days.md#scope-and-cost).

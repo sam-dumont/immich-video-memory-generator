@@ -10,38 +10,6 @@ For Kubernetes clusters with GPU nodes. This is the most advanced setup: if you'
 
 You run a Kubernetes cluster with NVIDIA GPU nodes (on-prem, cloud, or hybrid). You want Immich Memories as a scheduled workload with GPU-accelerated encoding and optional music generation pods.
 
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────┐
-│ Kubernetes Cluster                                  │
-│                                                     │
-│  ┌──────────────────────────────────────────────┐   │
-│  │ namespace: immich-memories                    │   │
-│  │                                               │   │
-│  │  ┌────────────┐  ┌────────────┐              │   │
-│  │  │ Deployment  │  │ Job        │              │   │
-│  │  │ (UI/API)    │  │ (batch     │              │   │
-│  │  │ port 8080   │  │  generate) │              │   │
-│  │  │ GPU: 1      │  │ GPU: 1     │              │   │
-│  │  └────────────┘  └────────────┘              │   │
-│  │                                               │   │
-│  │  Secret: IMMICH_URL, IMMICH_API_KEY           │   │
-│  │  PVCs: cache 20Gi, output 50Gi, models 5Gi    │   │
-│  └──────────────────────────────────────────────┘   │
-│                                                     │
-│  ┌─────────────────┐                                │
-│  │ GPU Operator     │  (manages nvidia.com/gpu)     │
-│  └─────────────────┘                                │
-└─────────────────────────────────────────────────────┘
-         │
-    ┌────┴─────────┐
-    │ Immich server │ (same cluster or external)
-    └──────────────┘
-```
-
-![Kubernetes setup diagram](/img/diagrams/setup-k8s.png)
-
 ## Prerequisites
 
 1. **NVIDIA GPU Operator** installed:
@@ -140,17 +108,17 @@ Default PVC sizes:
 
 | Volume | Size | Purpose |
 |-----|------|---------|
-| Cache PVC | 20Gi | mounted at `/home/immich/.immich-memories`: `config.yaml`, `cache.db` (analysis scores), video cache, projects, automation history |
+| State PVC | 50Gi | `~/.immich-memories`: configuration, banks, run history, downloads and previews; `~/.cache` and `/tmp` use separate subPaths |
 | Output PVC | 50Gi | mounted at `/app/output`: generated videos |
-| Models PVC | 5Gi | mounted at `/models`: the pinned DINOv2 export and the detector Hugging Face cache, both written by `immich-memories models fetch`. Every pod binds it: skip it and nothing starts |
+| Models PVC | 5Gi | mounted at `/models`: the pinned DINOv2 export and the detector Hugging Face cache, written by `immich-memories models fetch` |
 
 There is no ConfigMap: connection details come from the Secret, everything else from
 `IMMICH_MEMORIES_*` env vars or the UI settings page (which writes `config.yaml` on the PVC).
 
 `cache/annotations.sqlite` on the cache PVC holds every caption, head answer, detector verdict and
 reading the editor has banked. That is the valuable data: losing it means re-reading your whole
-library. Back up the PVC. Do not use `immich-memories cache backup` for this: it copies
-`cache.db`, which holds run history and the retired scorer's table, not the banks.
+library. Stop writers before copying or snapshotting the state PVC. `cache backup` copies
+`cache.db` only, which holds run history and automation state, not the annotation banks.
 
 ## Secrets management
 
@@ -171,12 +139,12 @@ kubectl apply -f base/sealed-secret.yaml
   "configuration": "configured",
   "immich_reachable": true,
   "last_successful_run": "2025-12-15T10:30:00",
-  "version": "0.59.2"
+  "version": "X.Y.Z"
 }
 ```
 
 `/health/live` only says the process is up. `/health` returns the same JSON as `/health/ready` but
-always with HTTP `200` (`status: ok`), so it is useless as a probe: the manifests use
+always with HTTP `200` (`ready` is rewritten to `ok`, degraded stays degraded), so it is useless as a probe: the manifests use
 `/health/live` for liveness and `/health/ready` for readiness.
 
 Point your monitoring (Uptime Kuma, Prometheus blackbox exporter, etc.) at `/health/ready` on port 8080.
@@ -185,16 +153,16 @@ Point your monitoring (Uptime Kuma, Prometheus blackbox exporter, etc.) at `/hea
 
 Same as the [Linux + NVIDIA](./linux-nvidia.md) setup: the card does NVENC encoding and GPU titles, and nothing else in this pod runs on it. The Kubernetes layer adds scheduling and PVC-based storage, not scaling: the UI is single-replica.
 
-## Performance
+## Sizing and validation
 
-Same as bare-metal Linux + NVIDIA.
+The defaults are starting requests, not per-resolution guarantees. The state PVC must fit
+10 GB of thumbnails, 10 GB of videos and 2 GB of previews at configured defaults, plus banks,
+active files and FFmpeg scratch. Scratch persists across pod restarts; clean it only while app
+and batch writers are stopped. See [storage details](../installation/kubernetes.md#how-the-pod-is-wired).
 
-Do not size the cluster around the encoder. Once NVENC is doing the encode, what you wait for is
-preparation and the editor's readings: a caption, six heads and two detectors per candidate
-picture, then the text model over the period. None of that runs on this card, and none of it has
-been measured here: the [NAS numbers](./nas-only.md#preparation-tiers-what-the-nas-pays) are the only ones
-there are. Immich API throughput and reader
-latency are the numbers to watch.
+The tests render Kustomize; they do not apply the manifests to a live cluster. Use
+[Running modes](../running-modes.md) for recorded selection timings and measure your own render
+and peak memory before sizing a GPU node around them.
 
 ## Further reading
 

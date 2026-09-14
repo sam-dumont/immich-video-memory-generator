@@ -25,22 +25,22 @@ Hardware encoders (Quick Sync, VAAPI, NVENC) only change the render; none of the
 |---|---|---|---|
 | `rules` | Nothing beyond the app | The ten standard memory types, cut from dates, places, favourites, known people and whatever image facts the tier produced. Repeatable: 72 runs across 12 cases, stable across hash seeds, zero model requests | No story thesis. Custom free-text subjects are refused. No model reranking, no Live Photo motion choice. It can drop an occasion, over-select repeated portraits on a trip, or let a mundane object take a slot in a month or year recap |
 | `model`, local | A vision model with a 32k context on a machine you own. Graded on a 30B model at 4-bit, about 17 GB resident, oMLX on an Apple Silicon Mac with 32 GB | The full editor: the period read as a story, pictures weighed in words, a reason under every picture | Time and a second machine. One monthly selection with warm facts took 1,451.9 s on the local reader |
-| `model`, hosted | An OpenAI-compatible endpoint and a key | The same editor, faster: the same monthly selection took 537.4 s on GPT-4.1 mini, about $0.256 in tokens | Your annotation text and 800 px picture tiles leave your network. One monthly is the only hosted price measured; do not extrapolate it to years or trips |
+| `model`, hosted | An OpenAI-compatible endpoint and a key | The same editor; one recorded monthly selection took 537.4 s on GPT-4.1 mini, about $0.256 in estimated token cost | Your annotation text and 800 px picture tiles leave your network. One monthly is the only hosted price measured; do not extrapolate it to years or trips |
 
-Rules and both model readers cost $0 in API fees except the hosted row. Electricity and hardware
-were not metered.
+The rules reader and a reader you host yourself have no reader API charge. Optional captions,
+LLM titles and music use their own configured services. Electricity and hardware were not metered.
+The hosted cost is a historical benchmark estimate, not a current price quote. [Recorded costs](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/docs/research/2026-09-12-deployment-costs.md).
 
 ## The preparation tier
 
 | `tier` | What runs on every picture in scope | First pass, about ten thousand pictures on a Celeron J4125 NAS | What the gate can do |
 |---|---|---|---|
 | `metadata_only` | Previews and pixel measurements. No ONNX, no captions | Minutes | Nothing to judge with: every unit stays at family viewing, `sendable` export refused |
-| `no_captions` | Pixels, the DINOv2 encoder with six context heads, the sensitive-content and document detectors | 3 h 41 min (1.23 s per picture) | Refuses what it would refuse on `full`. Cannot clear a unit: eight findings (bathing, toileting, medical procedures, identifying records and the rest) are only named by a description |
-| `full` | All of the above plus one caption per picture from a 500M vision model | About four days (30.9 s per caption) | Everything. A sentence under each picture instead of the facts that funded it |
+| `no_captions` | Pixels, the DINOv2 encoder with six context heads, the sensitive-content and document detectors | 3 h 41 min (1.23 s per picture) | Uses detector positives and review flags to hold units for family viewing. Cannot clear a unit for `sendable`: findings such as bathing, medical procedures and identifying records require a description |
+| `full` | All of the above plus one caption per picture from a 500M vision model | About four days (30.9 s per caption) | Caption-assisted checks for all supported findings, plus a sentence under each picture; still review the result |
 
 Facts are banked per picture and per producer. Changing tiers erases nothing, and a `no_captions`
-library can add captions later, a month at a time. The second cut over a prepared period pays
-only a preview check.
+library can add captions later, a month at a time. Later cuts reuse matching preparation facts; the reader and render can still take time.
 
 ## Combinations that were measured
 
@@ -87,19 +87,23 @@ season, year) are where the model's interpretation earns its cost. Classifiers a
 upgrade: the season cut with classifiers filled its target but chose more household objects and was
 judged less focused than the shorter metadata cut.
 
-## What leaves your network, per mode
+## Where preparation and selection send pictures
 
-| Mode | To the caption server | To the reader | Elsewhere |
-|---|---|---|---|
-| rules + `metadata_only` | nothing | nothing | Immich reads; Nominatim for trip GPS; map tiles for title screens |
-| rules + `no_captions` | nothing | nothing | same |
-| any reader + `full` | a 400 px JPEG of every picture in the period, once | (see next rows) | same |
-| `model`, local | as above on `full` | 800 px tiles of a few dozen candidates, plus their annotation lines with people and place names, to a box you own | same |
-| `model`, hosted | as above on `full` | the same tiles and lines to the provider | same |
+| Mode | To the caption server | To the reader |
+|---|---|---|
+| rules + `metadata_only` | nothing | nothing |
+| rules + `no_captions` | nothing | nothing |
+| any reader + `full` | a 400 px JPEG of every eligible picture in the period when its caption is missing | depends on the reader below |
+| `model`, local | as above on `full` | 800 px candidate tiles and annotation lines with people and place names, to a box you own |
+| `model`, hosted | as above on `full` | the same tiles and lines to the provider |
 
-The caption and reader endpoints default to `localhost`. Pointing either at another host is the
-consent step; nothing asks twice. The complete list, with the switch for each destination, is on
-[Network & Privacy](./configuration/network-and-privacy.md).
+The optional inference service also receives previews when `advanced.inference.facts_base_url`
+is set, on either `no_captions` or `full`. Initial model downloads, Immich access, trip geocoding,
+map tiles, fonts, optional title generation and music are separate from these reader calls.
+[Network & Privacy](./configuration/network-and-privacy.md) lists every destination and its switch.
+
+The caption and reader endpoints default to `localhost`. Pointing either at another host sends
+that host the pictures and prompts; the app does not ask again.
 
 ## Not measured
 
@@ -114,7 +118,7 @@ share it.
 
 ## Pick one
 
-- One Apple Silicon Mac with 32 GB or more: `reader: model`, `tier: full`, everything local. The only end-to-end configuration that has been graded.
+- One Apple Silicon Mac with 32 GB or more: `reader: model`, `tier: full`, with the reader and caption server on the Mac. This is the local model route used for the recorded quality review.
 - A NAS and nothing else: `reader: rules`, `tier: metadata_only` today; `no_captions` once `models fetch` has run. See [NAS + a model box](./common-setups/nas-only.md).
 - A NAS plus a machine that holds the model: the app on the NAS on `no_captions`, `llm.base_url` pointing at the other box.
 - A hosted reader: the same as above with a provider URL and key, and the privacy table above read once.
@@ -123,4 +127,6 @@ The whole stand-up, in order, is the [self-hosting guide](./self-hosting.md).
 
 ## Title rendering
 
-Every mode above renders title screens the same way: on the GPU kernels where they exist, and with PIL where they do not. GPU title rendering runs on Quadrants, which has wheels for Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 on Python 3.11-3.13. On macOS x86_64 and on Python 3.14 there is none, and title screens fall back to the PIL renderer (static gradient and text, no animated kernels, no SDF text); `immich-memories preflight` says which you will get. See [Title kernels](./hardware/cpu-only.md#title-kernels).
+Every mode uses the same title backend selection: Quadrants on a usable GPU or CPU backend,
+then PIL if kernels are unavailable. PIL retains text animation and simpler backgrounds but
+not particles, SDF effects or animated slow-motion deblur. See [Title kernels](./hardware/cpu-only.md#title-kernels).

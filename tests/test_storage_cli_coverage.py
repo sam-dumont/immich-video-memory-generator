@@ -304,30 +304,6 @@ class TestRunDatabasePhaseStats:
         assert phase.extra_metrics == {"cache_hits": 10}
 
 
-class TestRunDatabaseStaleRuns:
-    """mark_stale_runs_as_interrupted behavior."""
-
-    @pytest.fixture
-    def db(self, tmp_path):
-        return RunDatabase(tmp_path / "runs.db")
-
-    def test_marks_running_as_interrupted(self, db):
-        """All 'running' runs become 'interrupted'."""
-        db.save_run(_make_run(run_id="r1", status="running"))
-        db.save_run(_make_run(run_id="r2", status="running"))
-        db.save_run(_make_run(run_id="r3", status="completed"))
-        count = db.mark_stale_runs_as_interrupted()
-        assert count == 2
-        assert db.get_run("r1").status == "interrupted"
-        assert db.get_run("r2").status == "interrupted"
-        assert db.get_run("r3").status == "completed"
-
-    def test_no_stale_runs(self, db):
-        """Returns 0 when nothing is 'running'."""
-        db.save_run(_make_run(run_id="r1", status="completed"))
-        assert db.mark_stale_runs_as_interrupted() == 0
-
-
 class TestRunDatabaseAggregateStats:
     """get_aggregate_stats behavior."""
 

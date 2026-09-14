@@ -9,7 +9,7 @@ Title screens are the intro cards, month dividers, and ending screens that get i
 
 ## Date and place captions
 
-`generate --date-overlay --place-overlay` adds small, translucent context to clips:
+`generate --add-date --add-place` adds small, translucent context to clips:
 48 px on a 1080p frame, at 85% opacity. Date and place appear independently when
 they change. Missing metadata does not restart a repeated caption.
 
@@ -80,7 +80,8 @@ immich-memories titles test --year 2024 --locale fr --style vintage_charm
 
 Manage the fonts that ship for title screens. All five are OFL-1.1 licensed and live inside the package (`titles/bundled_fonts/`); anything downloaded on top comes from the Fontsource CDN and is cached in `~/.immich-memories/fonts/`.
 
-Worth knowing before you spend time here: titles are Montserrat. Every preset and every mood-derived style hardcodes it, and Outfit is used only for the date and place captions burned onto clips. Raleway, Josefin Sans and Quicksand ship and are never selected.
+Title presets and mood-derived styles use Montserrat. Date and place captions use Outfit.
+Raleway, Josefin Sans and Quicksand are bundled but not selected by these styles.
 
 ```bash
 # List fonts and their status (bare command or --list)
@@ -94,6 +95,8 @@ immich-memories titles fonts --download
 immich-memories titles fonts --clear
 ```
 
-You do not have to run any of this. Titles render correctly on a fresh install with no network, because `get_font_path()` checks the bundled copies before the cache and the bundle already carries every weight the renderer asks for. `--download` mirrors the same files from the CDN into `~/.immich-memories/fonts/`; it is there for inspecting what ships, not for making titles work, and not for replacing them: for any of the five known families the bundled file wins before the cache is consulted, so a TTF you drop in there is never loaded.
+Fonts work offline from the bundled files. `--download` adds copies to the cache; it does not
+replace bundled fonts, which take precedence. `--clear` removes only those cached copies.
 
-The listing reads the cache directory only, so on a fresh install it says **Not downloaded** for all five while titles render perfectly from the bundle. Read that column as "is there a copy in the cache", not as "will this work" and not as "is this what renders".
+The listing checks the cache, so **Not downloaded** on a fresh install is expected. It does
+not mean a font is missing from the package.

@@ -14,31 +14,34 @@ with identical files. Nothing else is written.
 
 **What leaves my machine?**
 
-By default nothing but requests to your Immich server. The caption server and the reader can
-receive pictures and annotation text; both default to `localhost` and only send when you point
-them elsewhere. Trip detection geocodes GPS clusters at Nominatim, and satellite title screens
-fetch map tiles. [Running modes](../deploy/running-modes.md) has the table per mode and
-[Network & Privacy](../deploy/configuration/network-and-privacy.md) the switch for each.
+The app contacts your configured Immich server. Model endpoints can receive pictures and
+annotation text. Place-name lookup uses Nominatim, satellite titles fetch map tiles, and model
+installation downloads artifacts. See [Network & Privacy](../deploy/configuration/network-and-privacy.md)
+for destinations and settings.
 
 **Do I need a model?**
 
-No. With `reader: rules` (the default when no `llm.model` is set) the ten standard memory types
+The rules reader needs no language model, but preparation is a separate choice. Use
+`metadata_only` for no model producers, or `no_captions` for local image classifiers without a
+caption server. The default native `full` tier needs that server even with rules.
+
+With `reader: rules` (the default when no `llm.model` is set) the ten standard memory types
 are cut from dates, places, favourites, people and whatever image facts the tier produced. It is
 a simpler editor: no thesis, and it can miss an occasion in a broad recap. What it keeps per
 memory type, measured against the model editor, is on [Rules mode](../create/pipeline/rules-mode.md).
 
 **How long does a cut take?**
 
-The first cut over a period reads every eligible picture once and banks it; the second is
-mostly the render. Measured for a 60-second month of 1,440 pictures, selection only: 55 s cold and
-1.4 s warm on a workstation with rules; 279 s cold and 11 s warm on a Celeron NAS; about 16 to
-25 minutes with a model reader. The per-host table is on [Running modes](../deploy/running-modes.md).
+Preparation scales with the number of candidate assets and the chosen tier. Later runs reuse
+compatible saved facts and readings. A model change, changed inputs or a cleared cache can
+require new work. [Running modes](../deploy/running-modes.md) has measured timings per host.
 
 **How much disk?**
 
-The caches are bounded by config, not by the library: 10 GB of downloaded video (evicted after
-7 days), 10 GB of Immich previews, 2 GB of clip previews, plus the annotation store. One measured
-62-second 1080p H.264 output was 87 MB, or 30 MB under `preset: fast`.
+Default media cache budgets total about 22 GB. Active files can exceed those budgets; add room
+for model files, annotations, saved attempts, temporary renders and exports. Use
+`immich-memories runs storage` to inspect usage. Kubernetes examples use PVCs, including for
+scratch space. See [storage and backups](../deploy/maintenance/health-logs-cache.md).
 
 **Can I generate for several people at once?**
 
@@ -48,7 +51,8 @@ the same picture, not the same afternoon. The Memory page has the same field.
 
 **Can I use it without face recognition?**
 
-Yes. Without a person, a period covers everyone. Face recognition only narrows the pool.
+Yes. A period without a person filter can use untagged assets. Person filters need Immich face
+tags; those tags also help the editor group people and frame photos.
 
 **What about Live Photos?**
 
@@ -59,8 +63,9 @@ but have not been tested first-hand. See [Live Photos](../create/pipeline/live-p
 
 **Which formats?**
 
-Anything FFmpeg decodes. Output is MP4 or MOV with H.264, H.265 or ProRes; HDR sources stay HDR
-in H.265 and ProRes (H.264 has no HDR).
+Output is MP4 or MOV with H.264, H.265 or ProRes. HDR export requires H.265; H.264 and ProRes
+exports are SDR. ProRes requires MOV. Source decoding depends on your FFmpeg build. See
+[HDR](../create/pipeline/hdr.md) for tone mapping and mixed-source behaviour.
 
 **Can I run it headless?**
 
@@ -75,9 +80,6 @@ judgments vary. Review a cut before showing it at a family party.
 
 **Does it work on Apple Silicon?**
 
-Yes. VideoToolbox is auto-detected for the encode, ACE-Step runs through MLX, and oMLX is the
-tested local server for the caption model and the reader.
-
-**How big should my PR be?**
-
-About 300 lines of diff, one concern per PR. See [CONTRIBUTING.md](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/CONTRIBUTING.md).
+Yes. A native install can use VideoToolbox for encoding and supported local model services.
+Docker on macOS runs in a Linux VM and does not expose VideoToolbox or Metal to the app. See
+[Apple Silicon](../deploy/hardware/apple-silicon.md).

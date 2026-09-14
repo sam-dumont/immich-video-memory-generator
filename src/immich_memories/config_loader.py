@@ -41,7 +41,6 @@ from immich_memories.config_models_soundtrack import ACEStepConfig, AudioConfig,
 from immich_memories.config_models_triage import TriageConfig
 from immich_memories.config_presets import PresetName, apply_preset
 from immich_memories.logging_config import install_secret_redaction
-from immich_memories.scheduling.models import SchedulerConfig
 from immich_memories.security import (
     CREDENTIAL_FIELD_NAMES,
     configured_secret_values,
@@ -75,10 +74,13 @@ _REMOVED_TOP_LEVEL_SECTIONS = {
 
 _WENT_WITH_THE_SCORER = "went with the legacy clip scorer; story-first selection never read it"
 
-# Keys that went with the legacy clip scorer. Unlike the sections above these are
-# refused, not dropped: section models ignore unknown keys, so a file that still
-# sets one would keep loading while the setting silently did nothing.
+# Retired keys are dropped with a warning so upgrades name obsolete settings.
 _REMOVED_CONFIG_KEYS: dict[str, str] = {
+    "scheduler": "the standalone daemon is retired; use auto or an external timer",
+    "title_screens.show_decorative_lines": "shipped title styles do not draw line accents",
+    "cache.max_age_days": "the active annotation store has no age-based expiry",
+    "triage.enabled": "preparation is controlled by editorial.preparation.tier",
+    "triage.bundle": "head weights are configured by editorial.preparation.head_bundle",
     "content_analysis": _WENT_WITH_THE_SCORER,
     "audio_content": _WENT_WITH_THE_SCORER,
     "speech": "speech boundaries " + _WENT_WITH_THE_SCORER + " (the speech extra is gone)",
@@ -293,7 +295,7 @@ class Config(BaseSettings):
                            cache, upload, trips, photos
       Tier 2 (advanced:):  analysis, hardware, llm, musicgen, ace_step,
                            server, auth, automation, notifications, triage, editorial, inference
-      Tier 3 (internal):   scheduler, title_llm
+      Tier 3 (internal):   title_llm
 
     At runtime, ALL sections are flat fields on Config (config.analysis, etc.).
     The tier grouping only affects YAML serialization.
@@ -328,7 +330,6 @@ class Config(BaseSettings):
     title_screens: TitleScreenConfig = Field(default_factory=TitleScreenConfig)
     upload: UploadConfig = Field(default_factory=UploadConfig)
     photos: PhotoConfig = Field(default_factory=PhotoConfig)
-    scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
     trips: TripsConfig = Field(default_factory=TripsConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
     automation: AutomationConfig = Field(default_factory=AutomationConfig)

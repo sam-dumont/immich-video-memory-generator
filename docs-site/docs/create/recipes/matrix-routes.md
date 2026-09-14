@@ -5,10 +5,9 @@ title: Render a Matrix of Routes
 
 # Render a Matrix of Routes
 
-When selection changes, one film tells you almost nothing. You need one of each kind (a month, a
-person, a trip, a year, an album) rendered the same way, uploaded to the same place, watched back
-to back. `scripts/matrix_routes.py` is the driver that does that through the public CLI. It adds no
-selection logic of its own: every case is an ordinary `immich-memories generate` call.
+For testing changes to selection, `scripts/matrix_routes.py` renders one case per memory type
+through the public CLI and compares the saved plans. This is a repository workflow for checking
+a batch of results; ordinary generation does not need it.
 
 ## Two files, and why
 
@@ -36,8 +35,8 @@ becomes reproducible:
  "scope": {"years_back": "@years_back", "day": "@on_this_day_date"}}
 ```
 
-Pick a day the bank already holds and the route replays with no provider calls, like the other
-ten. `day` is [`generate`'s own `--day`](../memory-types/monthly-person-season#on-this-day), so the
+A fixed date allows matching cached preparation and model answers to be reused. Changed
+settings or missing cache entries can still trigger provider calls. `day` is [`generate`'s own `--day`](../memory-types/monthly-person-season#on-this-day), so the
 pin is one flag and the run is filed under the same name as an unpinned one.
 
 **The values are private.** Which year, which person, which album: those never enter the
@@ -65,9 +64,8 @@ repository. They live in an overlay file of your own, anywhere outside it:
 }
 ```
 
-A placeholder with no value in the overlay is a hard error at `build` time. It is never skipped:
-rendering nine routes and quietly dropping the tenth is how you end up grading a matrix that has a
-hole in it and not knowing.
+Fill values for every route in the example file. A missing placeholder fails at `build` time;
+the shortened overlay above is not a complete batch configuration.
 
 The `reference` block is optional and holds what you already approved: the plan hash of the
 accepted run, and ideally the attempt directory it was written in. `report` compares against it.
@@ -90,8 +88,7 @@ renders each route's full argument list. Every flag it produces is checked again
 tree for `generate`, so a renamed option fails here rather than three hours into a batch.
 
 Every case gets the same fixed flags: `--include-photos --include-live-photos --add-date
---add-place --quiet --resolution 1080p --format h265`. The only thing that varies between films is
-the route.
+--add-place --quiet --resolution 1080p --format h265`. Scope, duration and music come from each route.
 
 `run` is serial and resumable. It holds an exclusive lock on the manifest, re-checks the frozen
 config's SHA-256 before every case, refuses to start below the free-disk floor (50 GiB unless the overlay sets `min_free_gib`), and writes each case's log
@@ -99,13 +96,12 @@ next to its film. A case that already produced a film is skipped, but only after
 digest still matches, so an artifact that changed under you is an error, not a silent skip. Add
 `--only <id>` for one route, `--retry-failed` to pick up the ones that broke.
 
-`collect` decides whether a film is watchable, and never trusts the exit code. Per case: exactly
+`collect` verifies the files and delivery record after rendering. Per case: exactly
 one `.mp4` in the case's own directory, 1920×1080, an audio stream present, the
 `Audio mixed successfully` line in the run log, and a full `ffmpeg -xerror … -f null -` decode of
 both streams. Then it harvests the run's editorial attempt (carriers, content seconds, duration
 realization, LLM calls, plan hash) and the tracked run row. **If the batch asked for an upload and
-no Immich asset id was recorded, the case is `failed`, not `ready`**: a film nobody can find in
-Immich has not been delivered.
+no Immich asset id was recorded, the case is `failed`, not `ready`**.
 
 On its own, `collect` verifies whatever `run` has just rendered. `--only <id>` re-verifies one case
 whatever state it is in: that is how you retry a verification that failed.
@@ -133,14 +129,14 @@ The first table is what came out: carriers, content seconds, whether the duratio
 (`near_target`, `search_limited`, `editorial_shortfall`), LLM calls over cache hits, film length,
 and whether Immich took it.
 
-The second is the one that decides anything:
+The second compares selection plans:
 
 | Verdict | Means |
 |---|---|
-| `identical` | The plan bytes match the accepted run. Your previous grade still stands; you do not need to watch it again. |
-| `same-carriers` | Different plan, same clips in the same order. Something around selection moved; the cut did not. |
+| `identical` | The plan hash matches the reference. This does not verify identical rendered pixels or audio. |
+| `same-carriers` | Different plan, same source assets in the same order. Excerpts, timing or rendering choices may differ. |
 | `changed; owner approval not transferred` | A different cut. Watch it. |
-| `no reference` | Nothing banked for this route yet. |
+| `no reference` | No comparison reference supplied for this route. |
 | `not collected` | `collect` has not run, or it failed. |
 
 Alongside the verdict: how many carriers were added, how many removed, how the content seconds

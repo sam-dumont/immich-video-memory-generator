@@ -161,7 +161,17 @@ def test_the_model_cache_is_a_volume_the_service_user_can_write() -> None:
     # Everything fetched lands on the one volume, detector snapshots included,
     # or a restart re-downloads them.
     assert "IMMICH_MEMORIES_INFERENCE_DETECTOR_CACHE_DIR=/cache/huggingface" in prod
-    assert compose_service()["volumes"] == ["immich-memories-model-cache:/cache"]
+    assert "USER immich" in prod
+    compose = yaml.safe_load(COMPOSE.read_text())
+    cache_mounts = [
+        mount
+        for mount in compose["services"][SERVICE]["volumes"]
+        if mount.split(":")[1] == "/cache" or mount.split(":")[1].startswith("/cache/")
+    ]
+    # Scratch may use a separate mount, but nothing can replace or shadow the
+    # writable model cache (including with a read-only or anonymous volume).
+    assert cache_mounts == ["immich-memories-model-cache:/cache"]
+    assert "immich-memories-model-cache" in compose["volumes"]
 
 
 def test_compose_keeps_the_hugging_face_caches_on_the_model_volume() -> None:
@@ -213,8 +223,8 @@ def test_the_compose_service_publishes_inference_on_loopback_only() -> None:
 
 
 def test_the_quickstart_does_not_start_a_service_nothing_uses_yet() -> None:
-    # The app has no facts_base_url switch until W8, and the models are a
-    # ~500 MB fetch: `docker compose up` must stay one container.
+    # The app runs preparation itself unless facts_base_url is set, so
+    # `docker compose up` must not start an unused inference service.
     assert compose_service()["profiles"] == ["inference"]
 
 

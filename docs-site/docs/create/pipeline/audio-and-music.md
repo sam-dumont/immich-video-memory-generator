@@ -24,7 +24,8 @@ notification, so a dead backend does not sound like working music forever.
 
 ## The bundled tracks
 
-A plain install renders silent videos unless you supply a file. The `music` extra ships 28
+A plain install adds no soundtrack unless you supply or generate one; source clip audio remains.
+The `music` extra ships 28
 royalty-free tracks (the Docker image and the `all` extra include it), used when no generator is
 configured:
 
@@ -33,9 +34,8 @@ pip install "immich-memories[music]"
 ```
 
 Five moods (calm, energetic, happy, nostalgic, tender) in acoustic and electronic styles, about
-30 s each, looped with a crossfade to fill longer videos. They were generated locally with
-ACE-Step 1.5 from nothing sampled, so there is no attribution requirement; the settings and each
-track's tempo, key and seed are in `LICENSE-MUSIC` inside the package. The pick follows the
+30 s each, looped with a crossfade to fill longer videos. The package releases them under the MIT license. `LICENSE-MUSIC` records their local
+ACE-Step 1.5 generation settings and each track's tempo, key and seed. The pick follows the
 memory's mood when the pipeline has one; today the per-clip emotion field the mood aggregation
 reads is not written by anything, so the choice is whole-library and random.
 
@@ -59,7 +59,7 @@ ace_step:
   enabled: true
   mode: "lib"
   api_url: "http://localhost:8000"
-  model_variant: "acestep-v15-xl-turbo"   # 4B, 8 steps: the production soundtrack model
+  model_variant: "acestep-v15-xl-turbo"   # 4B, 8 steps; an XL example, not the default
   lm_model_size: "4B"
   use_lm: false
   num_versions: 3
@@ -67,12 +67,10 @@ ace_step:
 
 The variants: `turbo` and `base` (2B, 8 and 50 steps), `acestep-v15-xl-turbo` (4B, 8 steps),
 `acestep-v15-xl-sft` and `acestep-v15-xl-base` (4B, 50 steps, for tuning and extract workflows).
-On v0.1.8 the non-turbo XL models inherit DCW on and can produce garbled audio on Apple Silicon;
-use `xl-turbo` for automation.
+The default variant is `turbo`; the example above selects the larger XL model.
 
-`use_lm` is off by default: with it on, ACE-Step's language model rewrites the caption before the
-audio model sees it, pulls instrumental briefs off target, and takes a 60 s track from about 17 s
-to 45 s. The prompts this project ships are already written the way ACE-Step's guides recommend.
+`use_lm` is off by default. Turning it on lets ACE-Step's language model rewrite the
+music brief and adds memory use and generation work. It can also change the requested genre.
 
 When the memory holds photos, the requested tempo is nudged so a photo lasts a whole number of
 beats, measured against the interval between visible cuts (3.5 s at the default 4 s photo and
@@ -81,13 +79,14 @@ never re-timed.
 
 ### Running it in-process on Apple Silicon
 
-`lib` mode checks free memory against the weights the profile keeps resident and refuses with a
-named shortfall rather than letting macOS kill the process mid-render: about 29 GB for XL with the
-4B planner, 21 GB for XL without it, 11 GB and 7 GB for the 2B profiles. A refusal is a normal
-backend failure: MusicGen next, then a bundled track. The MLX buffer cache is capped at 4 GiB and
-the DiT copy runs in bf16 (7.8 GB instead of 15.5 GB for XL); set
-`IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32=1` to keep fp32. Models are dropped after each batch, so the
-process falls back to about 1 GB between generations.
+`lib` mode checks available memory before loading: 29 GiB for XL with the 4B planner,
+21 GiB for XL without it, 11 GiB for 2B with the 1.7B planner, or 7 GiB for 2B without it.
+These are admission floors based on weights, not peak-memory guarantees. Leave room for
+generation, FFmpeg and other services. A refusal falls through to MusicGen, then a bundled
+track when available.
+
+The MLX buffer cache is capped at 4 GiB. Models are released after each batch, but actual
+process memory depends on the libraries and other work sharing the process.
 
 Install the pinned release into the app's Python 3.12 environment without its UI dependencies:
 
@@ -116,28 +115,21 @@ With ACE-Step enabled, MusicGen is the fallback. With it disabled, MusicGen gene
 
 ## Ducking and stems
 
-The CLI masters the full mix and ducks that with a sidechain compressor (threshold 0.02, ratio
-4.0, 100 ms attack, 2.5 s release, 2 s fade in, 3 s fade out); `--music-volume` maps 0.0 to
-1.0 onto −20 dB to 0 dB before ducking. The web UI's mixer is a different path: it separates the
-clip audio into stems with [Demucs](https://github.com/facebookresearch/demucs) and ducks the
-four stems independently (slider −40 dB to 0 dB, default 0.7, ratio 6.0, 50 ms attack, 500 ms
-release). Demucs comes from `pip install 'immich-memories[demucs]'` (an 80 MB model on first use)
-or from MusicGen's remote `/separate` endpoint; without either, ducking uses plain energy
-detection on the mixed audio. The CLI asks for no separation.
+CLI generation and web UI export use the shared soundtrack mixer. It masters the music
+and ducks the full track against the source audio. `--music-volume` maps 0.0–1.0 onto
+−20 dB–0 dB before ducking; use `--no-music` to omit the soundtrack.
+
+The UI's music-preview generator can separate the generated soundtrack into stems using
+Demucs or MusicGen's remote separation endpoint. It does not separate your source clips,
+and ordinary final export does not require stems.
 
 None of the ducking constants has a config key; `audio:` holds only `local_music_dir`
 (`~/Music/Memories`), which the [`music` command](../cli/music.md) reads. For custom fades or a
 dB level, run `immich-memories music add` on the finished file.
 
-## Disk
+## Model storage
 
-| Model | Location | Size |
-|---|---|---|
-| ACE-Step 2B (turbo, base) | `~/.cache/ace-step/checkpoints/` | about 4.5 GB each |
-| ACE-Step XL-turbo (4B) | same | about 19 GB |
-| ACE-Step planners (0.6B, 1.7B, 4B) | same | 1.2, 3.4, 7.8 GB |
-| Shared VAE and embedding | same | about 1.4 GB |
-| Demucs htdemucs | `~/.cache/torch/hub/` | about 80 MB |
-
-The XL production profile with the 4B planner is about 28 GB on disk. Old checkpoints are not
-removed automatically.
+In-process ACE-Step stores checkpoints under `~/.cache/ace-step/checkpoints/`. Demucs uses
+its Torch model cache under `~/.cache/torch/hub/`. These sit outside the app's media-cache
+budget. Changing a model does not automatically remove older checkpoints, so check these
+directories when accounting for disk use.

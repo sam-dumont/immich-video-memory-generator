@@ -1,25 +1,28 @@
 ---
-title: CLI Reference (Auto-Generated)
+title: CLI Reference
 sidebar_label: Reference
 ---
 
 # CLI Reference
 
-This page is auto-generated from the Click command definitions.
-Run `make docs-cli` to regenerate.
+Options for the installed command-line interface, grouped by command.
+Use `immich-memories COMMAND --help` for help in the terminal.
 
-## `analyze`
+## Global options
 
-Analyze videos and cache metadata.
+Place these before the command:
 
-```bash
-immich-memories analyze [OPTIONS]
+```text
+immich-memories [GLOBAL OPTIONS] COMMAND [OPTIONS]
 ```
 
 | Flag | Type | Default | Description |
 | --- | --- | --- | --- |
-| `--year`, `-y` | integer | - | Year to analyze |
-| `--force`, `-f` | boolean | false | Force re-analysis of cached videos |
+| `--version` | boolean | false | Show the version and exit. |
+| `--config`, `-c` | path | - | Path to config file |
+| `--preset` | choice: `fast` | - | Config preset for this run: fast = lower-cost render settings (1080p h264, balanced picture quality, fast encoder preset, static title backgrounds). It changes nothing about what the editor reads. Anything you set explicitly wins |
+| `--verbose`, `-v` | boolean | false | Log at DEBUG level. Shorthand for --log-level DEBUG |
+| `--log-level` | choice: `DEBUG` \| `INFO` \| `WARNING` \| `ERROR` | - | Log level for this run (default: IMMICH_MEMORIES_LOG_LEVEL or INFO) |
 
 ## `auto`
 
@@ -110,7 +113,7 @@ immich-memories auto test-notification [OPTIONS]
 
 ## `cache`
 
-Manage the analysis cache (LLM scores, video metadata).
+Back up the database containing run history and automation state.
 
 ```bash
 immich-memories cache [OPTIONS]
@@ -118,7 +121,7 @@ immich-memories cache [OPTIONS]
 
 ### `cache backup`
 
-Backup the entire cache DB (safe SQLite backup API).
+Back up cache.db; excludes the separate annotation store and media files.
 
 ```bash
 immich-memories cache backup [OPTIONS]
@@ -126,36 +129,6 @@ immich-memories cache backup [OPTIONS]
 
 **Arguments:**
 - `output_path` (path)
-
-### `cache export`
-
-Export asset scores to JSON (safe, lock-aware).
-
-```bash
-immich-memories cache export [OPTIONS]
-```
-
-**Arguments:**
-- `output_path` (path)
-
-### `cache import`
-
-Import asset scores from JSON backup.
-
-```bash
-immich-memories cache import [OPTIONS]
-```
-
-**Arguments:**
-- `input_path` (path)
-
-### `cache stats`
-
-Show cache statistics.
-
-```bash
-immich-memories cache stats [OPTIONS]
-```
 
 ## `config`
 
@@ -214,20 +187,6 @@ immich-memories discover-days [OPTIONS]
 | `--also-skip` | text | - | A holiday name or MM-DD this library keeps that the defaults miss |
 | `--out` | file | ~/.immich-memories/special-days.json | Where to write the catalogue |
 | `--rescan` | boolean | false | Start over, ignoring and replacing the existing catalogue |
-
-## `export-project`
-
-Export project state for later editing.
-
-```bash
-immich-memories export-project [OPTIONS]
-```
-
-| Flag | Type | Default | Description |
-| --- | --- | --- | --- |
-| `--year`, `-y` | integer | - | Year |
-| `--person`, `-p` | text | - | Person name |
-| `--output`, `-o` | path | - | Output JSON file |
 
 ## `generate`
 
@@ -296,8 +255,8 @@ immich-memories generate [OPTIONS]
 | `--title` | text | - | Override video title text |
 | `--llm-title` | boolean | false | Ask the LLM for the title instead of using a template (--title still wins) |
 | `--subtitle` | text | - | Override video subtitle text |
-| `--include-live-photos` | boolean | - | Include Live Photo video clips (3s iPhone clips, merged when burst-captured) |
-| `--include-photos` | boolean | - | Include photos as animated Ken Burns clips (blur background, face-aware pan) |
+| `--include-live-photos`, `--no-live-photos` | boolean | - | Include Live Photo video clips (3s iPhone clips, merged when burst-captured) |
+| `--include-photos`, `--no-photos` | boolean | - | Include photos as animated Ken Burns clips (blur background, face-aware pan) |
 | `--accept-any-provenance` | boolean | false | Keep forwarded and re-encoded media for this memory; date, person, privacy, and Live Photo boundaries still apply |
 | `--photo-duration` | float | - | Duration per photo clip in seconds (default: 4.0) |
 | `--trip-index` | integer | - | Select a specific trip by index (use with --memory-type trip) |
@@ -335,7 +294,7 @@ immich-memories models fetch [OPTIONS]
 | Flag | Type | Default | Description |
 | --- | --- | --- | --- |
 | `--force` | boolean | false | Re-download even when the file is already right |
-| `--detectors` | boolean | true | Also fetch the pinned detector export and warm the pinned detector snapshot |
+| `--detectors`, `--no-detectors` | boolean | true | Also fetch the pinned detector export and warm the pinned detector snapshot |
 
 ## `music`
 
@@ -622,42 +581,6 @@ immich-memories runs why [OPTIONS]
 **Arguments:**
 - `asset_id` (text)
 
-## `scheduler`
-
-Manage scheduled automatic memory generation.
-
-```bash
-immich-memories scheduler [OPTIONS]
-```
-
-### `scheduler list`
-
-List all configured schedules.
-
-```bash
-immich-memories scheduler list [OPTIONS]
-```
-
-### `scheduler start`
-
-Start the scheduler daemon.
-
-```bash
-immich-memories scheduler start [OPTIONS]
-```
-
-| Flag | Type | Default | Description |
-| --- | --- | --- | --- |
-| `--foreground` | boolean | false | Run in foreground (don't daemonize) |
-
-### `scheduler status`
-
-Show scheduler status.
-
-```bash
-immich-memories scheduler status [OPTIONS]
-```
-
 ## `titles`
 
 Title screen generation and testing commands.
@@ -746,7 +669,7 @@ immich-memories ui [OPTIONS]
 | --- | --- | --- | --- |
 | `--port`, `-p` | integer | - | Port to run the UI on (default: config or 8080) |
 | `--host`, `-h` | text | - | Host to bind to (default: config or 0.0.0.0) |
-| `--reload` | boolean | false | Enable hot reload (for development only) |
+| `--reload`, `--no-reload` | boolean | false | Enable hot reload (for development only) |
 
 ## `years`
 

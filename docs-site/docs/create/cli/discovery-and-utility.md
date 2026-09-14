@@ -4,54 +4,31 @@ sidebar_label: "Discovery & utility"
 
 # Discovery and utility commands
 
-Four small commands that exist mostly to answer questions before you generate anything. They were reachable only through `--help` and the generated [CLI reference](../../reference/cli-reference.md) until now.
+Use these before a cut to check what Immich exposes or prepare a period's annotations.
 
-## `people`: who Immich knows
+## `people`: names you can select
 
 ```bash
 immich-memories people
 ```
 
-Lists every named person in your Immich library. Useful because `--person` matches on the name Immich holds, and "Emma" versus "Emma S." is the difference between a memory and an empty pool.
+Lists named people in your Immich library. Use those names with `generate --person`.
+[`people scan` and `people show`](./people.md) build and review relationship context for the editor.
 
-`people` also has subcommands now: `people scan` and `people show` build and read the
-[people graph](./people.md), which works out who is who from counts and dates. Calling
-`immich-memories people` on its own still does exactly what it did before.
-
-## `years`: where the material is
+## `years`: years containing video
 
 ```bash
 immich-memories years
 ```
 
-Lists the years that actually contain video, so you are not guessing at `--year`. On a library imported from old backups this is often surprising.
+Lists years containing videos. Photo-only years do not appear here; their absence does not mean
+that a photo memory would be empty.
 
-## `analyze`: counts videos, nothing more
+## Prepare or inspect a cut
 
-```bash
-immich-memories analyze --year 2024
-```
+- [`prepare --year 2024 --month 6`](./prepare.md) fills missing annotations for the month without selecting or rendering.
+- [`generate --year 2024 --month 6 --dry-run`](./generate.md#two-ways-to-skip-the-video) discovers the source and reports missing preparation, without doing it.
+- `generate --year 2024 --month 6 --no-render` runs selection and stops before rendering.
+- [`runs story` and `runs why`](./runs.md#runs-story) explain a saved cut. `generate --trace-selection selection.txt` also writes a text report and JSON companion at a chosen path.
 
-It fetches the videos for a year and prints how many there are. It does not prepare annotations,
-it does not warm any bank, and it never looks at photos. `--force` is accepted and ignored.
-
-To pre-warm the editor's banks without rendering anything, use [`prepare`](./prepare.md). That is
-the command for "do the expensive half overnight, a month at a time".
-
-## `export-project`: a snapshot of what a scope contains
-
-```bash
-immich-memories export-project --year 2024 --output project.json
-immich-memories export-project --year 2024 --person "Emma" --output project.json
-```
-
-Writes a JSON file describing the **videos** in scope (photos are not included): the year, the person if you named one, and every clip with its asset id, filename, date, duration and a full-length `segment`, each marked `selected: true` because no selection ran.
-
-:::note Nothing reads this file back
-There is no import command and no flag that consumes the JSON. `export-project` is a one-way
-snapshot: useful for inspecting or scripting against what a scope contains, not for editing a
-selection and feeding it back in. Treat "for later editing" in its help text as an
-aspiration rather than a description.
-:::
-
-If you want to see how a selection was actually *reached* (including which stage dropped what), use [`generate --trace-selection`](./generate.md#what-a-run-leaves-behind) instead. That reports on a real run.
+For connection and hardware checks, see [Health, logs and cache](../../deploy/maintenance/health-logs-cache.md).

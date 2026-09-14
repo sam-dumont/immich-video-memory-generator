@@ -25,17 +25,19 @@ single-user, single-replica; do not scale the deployment beyond one pod.
 
 ## What it creates
 
-Namespace (optional), Secret, two `ReadWriteOnce` PVCs, Deployment, Service, Ingress (optional).
+Namespace (optional), Secret, three `ReadWriteOnce` PVCs, Deployment, Service, Ingress (optional).
 
 The image runs as user `immich`, UID/GID 1000, `HOME=/home/immich` (`run_as_user` / `fs_group`
 1000, all capabilities dropped, `RuntimeDefault` seccomp, `read_only_root_filesystem = true`).
-These three mounts are the only writable paths:
+The writable mounts are:
 
 | Mount | Backed by | Holds |
 |-------|-----------|-------|
 | `/home/immich/.immich-memories` | cache PVC (writable) | `config.yaml`, `cache/annotations.sqlite` (the editor's banks), `cache.db` (run history and automation state), video cache, projects |
 | `/app/output` | output PVC | generated videos (`IMMICH_MEMORIES_OUTPUT__DIRECTORY=/app/output`) |
-| `/tmp` | emptyDir (`tmp_size`, 4Gi) | FFmpeg intermediates: 8Gi for 4K |
+| `/models` | model PVC | pinned encoder, detectors and Hugging Face caches |
+| `/home/immich/.cache` | cache PVC, `library-cache` subPath | library caches and optional music models |
+| `/tmp` | cache PVC, `scratch` subPath | FFmpeg intermediates and temporary files |
 
 There is no ConfigMap. `immich_url` / `immich_api_key` (plus `llm_api_key`, `musicgen_api_key` and
 anything in `secret_env`) land in the Secret and reach the pod through `envFrom`; every other
@@ -102,14 +104,28 @@ module "immich_memories" {
 
 Also configure [editorial annotation preparation](../configuration/editorial-preparation.md)
 through the module's `env` map. Its compact-caption endpoint and pinned encoder/detector artifacts
-are separate from `llm_base_url`; an uncached generation requires both preparation and story
-providers.
+are separate from `llm_base_url`; the selected tier decides which preparation providers are required, and `llm_model` selects
+the model reader. The rules reader needs no language model.
 
-Unlike the Kustomize manifests, this module creates **no models PVC and no `/models` mount**, and
-the root filesystem is read-only. The encoder and the Hugging Face detector cache therefore have
-to land under `/home/immich/.immich-memories`, which is where their defaults already point. If you
-override `IMMICH_MEMORIES_TRIAGE__ENCODER` or the detector cache directory to a path outside that
-mount, `models fetch` fails and so does the first cut.
+Run `immich-memories models fetch` inside the pod before the first cut on `full` or `no_captions`:
+
+```bash
+kubectl exec -n immich-memories deployment/immich-memories -- immich-memories models fetch
+```
+
+The module points the encoder, both detectors and `HF_HOME` at `/models`. Keep overrides on a
+writable mount. It does not deploy a reader, caption server or inference service. Choose
+`no_captions` in `env` to run without a caption server; leave `llm_model` blank for the rules reader.
+
+The default 50Gi state claim shares space between databases, downloads, previews, library caches
+and scratch. Cache defaults alone allow 10 GB of thumbnails, 10 GB of videos and 2 GB of clip
+previews; active files, annotation banks and FFmpeg intermediates need room beyond that. The 50Gi
+output and 5Gi preparation-model claims are separate. Size all three for your library and retention.
+
+The storage driver must support write access for `fsGroup: 1000`. Scratch persists across restarts;
+clean abandoned files only while app and batch writers are stopped. For existing claims, inspect
+storage expansion support and the Terraform plan before changing sizes. A larger default does not
+by itself establish that the existing volume expanded. See [upgrading](../maintenance/upgrading.md).
 
 ## Variables
 
@@ -130,7 +146,6 @@ mount, `models fetch` fails and so does the first cut.
 | `image_tag` | Image tag, no `v` prefix, so release `vX.Y.Z` is tag `X.Y.Z` | `string` | `"latest"` |
 | `replicas` | Replica count: keep at 1; the UI is single-replica | `number` | `1` |
 | `resources` | Requests/limits object (`requests.memory/cpu`, `limits.memory/cpu`) | `object` | `2Gi/1000m` – `8Gi/4000m` |
-| `tmp_size` | `/tmp` emptyDir for FFmpeg intermediates (8Gi for 4K) | `string` | `"4Gi"` |
 | `env` | Extra env vars, typically `IMMICH_MEMORIES_<SECTION>__<KEY>` (plain names like `TZ` work too) | `map(string)` | `{}` |
 | `secret_env` | Extra env vars stored in the Secret (auth password, storage secret) | `map(string)` | `{}` |
 | `labels` | Extra labels on every resource | `map(string)` | `{}` |
@@ -149,7 +164,8 @@ mount, `models fetch` fails and so does the first cut.
 | Name | Description | Type | Default |
 |------|-------------|------|---------|
 | `output_storage_size` | Size of the output PVC | `string` | `"50Gi"` |
-| `cache_storage_size` | Size of the cache/state PVC | `string` | `"20Gi"` |
+| `cache_storage_size` | State, caches and scratch PVC | `string` | `"50Gi"` |
+| `models_storage_size` | Preparation-model PVC | `string` | `"5Gi"` |
 | `storage_class_name` | Storage class for PVCs | `string` | `null` (cluster default) |
 
 ### Ingress

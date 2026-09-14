@@ -7,56 +7,14 @@ sidebar_label: "Linux + NVIDIA"
 For Linux servers with NVIDIA GPUs. Docker with nvidia-container-toolkit for NVENC encoding, CUDA scaling, GPU title rendering, and optional AI music generation.
 
 Complete [editorial annotation setup](../configuration/editorial-preparation.md) before the
-first uncached generation. The pinned public context encoder, detector weights, compact-caption
-endpoint and story model are separate requirements from NVENC and the music backends below.
+first uncached generation. The tier decides whether classifiers or captions are required; the rules reader needs no
+language model. These choices are separate from NVENC and music.
 
 ## Who this is for
 
-You have a Linux server (Ubuntu, Debian, Fedora) with an NVIDIA GPU. NVENC has shipped since Kepler, so almost any card of the last decade encodes; a GTX 1050 is a safe floor. You want hardware-accelerated encoding and optionally want to run MusicGen or ACE-Step for AI-generated background music.
-
-## Architecture
-
-```
-┌──────────────────────────────────────────────────────┐
-│ Linux Server (NVIDIA GPU)                            │
-│                                                      │
-│  ┌────────────────────────────────────────────────┐  │
-│  │ Docker (nvidia-container-toolkit)              │  │
-│  │                                                │  │
-│  │  ┌──────────────────┐  ┌────────────────────┐ │  │
-│  │  │ Immich Memories   │  │  MusicGen API      │ │  │
-│  │  │ NVENC encoding   │  │  (optional)        │ │  │
-│  │  │ GPU titles       │  │  port 8000         │ │  │
-│  │  │ port 8080        │  │                    │ │  │
-│  │  └──────────────────┘  └────────────────────┘ │  │
-│  └────────────────────────────────────────────────┘  │
-│                     │                                 │
-│            ┌────────┴─────────┐                       │
-│            │  Immich server   │                       │
-│            └──────────────────┘                       │
-└──────────────────────────────────────────────────────┘
-```
-
-![Linux setup diagram](/img/diagrams/setup-linux.png)
-
-## Prerequisites
-
-Install the NVIDIA container toolkit:
-
-```bash
-# Ubuntu/Debian
-distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
-curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
-  sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list | \
-  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
-  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
-sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
-sudo nvidia-ctk runtime configure --runtime=docker
-sudo systemctl restart docker
-```
-
-Verify with: `docker run --rm --gpus all nvidia/cuda:12.4.0-base-ubuntu22.04 nvidia-smi`
+This setup runs the app on a Linux server with an NVIDIA GPU that supports the required NVENC
+codec. Install a compatible driver and follow the [NVIDIA Container Toolkit instructions](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+for your distribution. The vendor guide also covers configuring Docker and testing GPU access.
 
 ## Docker Compose
 
@@ -69,10 +27,13 @@ services:
       - "127.0.0.1:8080:8080"        # loopback only: see below to reach it remotely
     volumes:
       - immich-memories-config:/home/immich/.immich-memories
+      - immich-memories-library-cache:/home/immich/.cache
+      - immich-memories-scratch:/tmp
       - ./output:/app/output          # mkdir + chown to the container UID first, see below
     environment:
       IMMICH_URL: "${IMMICH_URL}"
       IMMICH_API_KEY: "${IMMICH_API_KEY}"
+      IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER: "no_captions"
       NVIDIA_DRIVER_CAPABILITIES: compute,video,utility   # `video` = NVENC/NVDEC libraries
     restart: unless-stopped
     deploy:
@@ -87,6 +48,8 @@ services:
 
 volumes:
   immich-memories-config:
+  immich-memories-library-cache:
+  immich-memories-scratch:
 ```
 
 The port is published on loopback only. A GPU box is usually headless, so either tunnel
@@ -104,7 +67,7 @@ One thing the compose file cannot do for you:
 ## .env file
 
 ```bash
-IMMICH_URL=http://immich-server:2283
+IMMICH_URL=http://your-immich-server:2283
 IMMICH_API_KEY=your-api-key-here
 ```
 
@@ -117,23 +80,20 @@ IMMICH_API_KEY=your-api-key-here
 
 ## What doesn't work
 
-- **The reader on a small card**: the graded reader is 30B parameters at 4 bits, so roughly 17 GB of weights stay resident for as long as the server is up. A 24 GB card (3090, 4090) holds that; what a smaller one does about the overflow is up to whichever serving stack you pick, and nobody has measured it here. Below 24 GB, point `llm.base_url` at a box that can: there is no cut without a reader.
+- **The reader on a small card**: the graded reader is 30B parameters at 4 bits, so roughly 17 GB of weights must fit while it is loaded, plus context and runtime overhead. A 24 GB card (3090, 4090) holds that; what a smaller one does about the overflow is up to whichever serving stack you pick, and nobody has measured it here. Use a remote reader or `reader: rules` if it does not fit.
 - **A graded NVIDIA configuration**: there isn't one. The approved matrix ran on Apple Silicon MLX, for both the reader and the captions. Any OpenAI-compatible vision model with a 32k context is expected to work here; nobody has compared its output to the graded run.
 
-## Performance expectations
+## First run and sizing
 
-No GPU run of this pipeline has been measured end to end, so there is no table here. The one
-measured run is CPU-only ([NAS-only](./nas-only.md#preparation-tiers-what-the-nas-pays)), and only its render
-column still describes this product: 2.7 minutes of a 10 minute run, most of it title screens
-rather than the encode. A CUDA kernel backend is what shortens those.
+```bash
+docker compose exec immich-memories immich-memories models fetch
+docker compose exec immich-memories immich-memories preflight
+```
 
-The rest of a run is preparation and the editor's readings, and that has
-[been measured on a NAS](./nas-only.md#preparation-tiers-what-the-nas-pays) and nowhere else. What is true by
-construction: it is bounded by your Immich server and your two model services rather than by this
-card, and every producer banks its answer, so a second cut over the same period skips it.
-
-If you measure a run on your own box, [an issue](https://github.com/sam-dumont/immich-video-memory-generator/issues)
-with the numbers is welcome.
+The example uses the rules reader and `no_captions`. Configure a reader separately below, or
+use `metadata_only` to skip classifiers. The 8 GB memory limit is a starting budget, not a
+measurement for every workload. The [running-mode measurements](../running-modes.md) distinguish
+selection from rendering; measure peak RAM and VRAM on your own media.
 
 ## Pointing the reader at this box
 
@@ -142,8 +102,7 @@ sent an 800 px tile of the candidates whose facts the edit demands, a few dozen 
 this seat needs vision and at least a 32k context. The
 one graded configuration is `mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit` on oMLX, which is
 Apple Silicon only. On NVIDIA, serve an equivalent vision model with vLLM or Ollama and treat the
-quality as your own measurement. The older Qwen3.6 pair was exercised against the retired per-clip
-scorer, not this route.
+quality as your own measurement.
 
 Whatever you run, it has to answer `/v1/chat/completions` with images and honour
 `response_format: json_schema`. Then point the app at it:
@@ -156,8 +115,7 @@ advanced:
     model: the-tag-your-server-reports
 ```
 
-`model` has to be what the server reports at `/v1/models`, exactly. Smaller vision models will
-run; none of them has been graded on this route, so treat the output as your own experiment.
+`model` has to be what the server reports at `/v1/models`, exactly. Other vision models must satisfy the same contract; their quality needs testing on your media.
 
 ## Adding AI music
 

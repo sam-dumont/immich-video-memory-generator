@@ -128,15 +128,14 @@ RUN --mount=type=bind,from=builder,source=/wheels,target=/wheels \
     pip install --no-cache-dir /wheels/*.whl
 
 # Create non-root user for security. UID/GID 1000 on purpose: it matches the first
-# Linux user on most home servers (bind mounts of ./output and ./config are
-# writable without chown) and the shipped Kubernetes/Terraform manifests
-# (runAsUser: 1000).
+# Linux user on many home servers and the shipped Kubernetes/Terraform manifests.
+# Host bind mounts still need write permission for UID/GID 1000.
 RUN groupadd -g 1000 immich && useradd -u 1000 -g immich -d /home/immich -m immich
 
 # Create config, cache, and NiceGUI state directories with correct ownership
 RUN mkdir -p /home/immich/.immich-memories/cache /home/immich/.immich-memories/.nicegui \
-      /app/output && \
-    chown -R immich:immich /home/immich/.immich-memories /app/output
+      /home/immich/.cache /app/output && \
+    chown -R immich:immich /home/immich/.immich-memories /home/immich/.cache /app/output
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1

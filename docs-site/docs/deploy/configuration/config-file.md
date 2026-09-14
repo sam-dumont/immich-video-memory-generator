@@ -36,7 +36,8 @@ llm:
   model: "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"
 ```
 
-Everything else has a default. With `codec: h265` and `hdr_mode: auto`, HLG or PQ material gives a
+Before the first cut, choose a [preparation tier](editorial-preparation.md) and fetch the model
+artifacts it needs. The default `full` tier also needs a caption server. With `codec: h265` and `hdr_mode: auto`, HLG or PQ material gives a
 10-bit HDR video and SDR clips, photos and titles are converted to the same transfer; H.264 is
 always SDR and tone-maps HDR sources.
 
@@ -53,17 +54,15 @@ normal upgrade step.
 ## Tiers
 
 Everyday sections stay at the top level (`immich`, `defaults`, `output`, `audio`, `title_screens`,
-`title_llm`, `cache`, `upload`, `trips`, `photos`, `scheduler`). Tuning sections go under
+`title_llm`, `cache`, `upload`, `trips`, `photos`). Tuning sections go under
 `advanced:` (`analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `server`, `auth`, `automation`,
 `notifications`, `triage`, `editorial`, `inference`). When the app writes the file it groups them
 that way; when reading, both placements work and are merged setting by setting; if the same
 setting appears in both, the top-level value wins.
 
-Unknown keys inside a section are ignored, with one exception: the keys of the removed per-clip
-scorer (`content_analysis`, `audio_content`, `speech`, `transcription`, `description_llm`,
-`analysis.max_refinement_passes`, `photos.max_ratio` and the rest of that family) are refused at
-startup by name, so an old file cannot keep loading while its settings do nothing. Unknown
-top-level keys and invalid values (`codec: av1`) fail with a validation error.
+Unknown keys inside a section are ignored. Recognised retired keys log a warning naming them
+and are dropped; remove them from your file. Unknown top-level keys and invalid values
+(`codec: av1`) fail validation. See [upgrading](../maintenance/upgrading.md) for current removals.
 
 ## Footage the camera roll did not shoot
 
@@ -117,7 +116,7 @@ These fields expand `${VAR_NAME}` at load time:
 | `ace_step` | `api_url`, `api_key` |
 | `auth` | `password`, `client_secret`, `issuer_url`, `client_id` |
 | `editorial` | `annotation_database` |
-| `editorial.preparation` | `head_bundle`, `detector_python`, `detector_cache_dir` |
+| `editorial.preparation` | `head_bundle`, `detector_python`, `detector_cache_dir`, `marqo_onnx`, `caption_api_key` |
 
 Only the braced form expands. A bare `$VAR` is left as written, because a `$` in a password is
 ordinary; a warning says so at load time if it matches a variable you have set. Every other string

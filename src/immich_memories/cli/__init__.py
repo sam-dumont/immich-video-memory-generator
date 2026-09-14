@@ -53,7 +53,7 @@ def _warn_about_unauthenticated_external_bind(config: Config, host: str) -> None
     "--preset",
     type=click.Choice(["fast"]),
     default=None,
-    help="Config preset for this run: fast = CPU-only/NAS profile (1080p h264, medium quality, "
+    help="Config preset for this run: fast = lower-cost render settings (1080p h264, balanced picture quality, "
     "fast encoder preset, static title backgrounds). It changes nothing about what the editor "
     "reads. Anything you set explicitly wins",
 )
@@ -156,7 +156,6 @@ from immich_memories.cli.music_cmd import register_music_commands  # noqa: E402
 from immich_memories.cli.people_cmd import register_people_commands  # noqa: E402
 from immich_memories.cli.prepare_cmd import register_prepare_commands  # noqa: E402
 from immich_memories.cli.runs import register_runs_commands  # noqa: E402
-from immich_memories.cli.scheduler_cmd import register_scheduler_commands  # noqa: E402
 from immich_memories.cli.special_days_cmd import register_special_day_commands  # noqa: E402
 from immich_memories.cli.titles import register_titles_commands  # noqa: E402
 
@@ -166,7 +165,6 @@ register_hardware_commands(main)
 register_titles_commands(main)
 register_music_commands(main)
 register_runs_commands(main)
-register_scheduler_commands(main)
 register_special_day_commands(main)
 register_people_commands(main)
 register_prepare_commands(main)

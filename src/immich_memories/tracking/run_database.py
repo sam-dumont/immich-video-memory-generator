@@ -435,22 +435,6 @@ class RunDatabase:
             raise KeyError(f"Unknown pipeline run: {run_id}")
         return updated
 
-    def mark_stale_runs_as_interrupted(self) -> int:
-        """Mark any 'running' runs as 'interrupted' (startup cleanup)."""
-        with self._get_connection() as conn:
-            cursor = conn.execute(
-                """
-                UPDATE pipeline_runs
-                SET status = 'interrupted'
-                WHERE status = 'running'
-                """
-            )
-            conn.commit()
-            count = cursor.rowcount
-            if count > 0:
-                logger.info(f"Marked {count} stale run(s) as interrupted")
-            return count
-
     def get_oldest_pending_delivery(self, source: str) -> RunMetadata | None:
         """Return the oldest completed pending delivery for one source."""
         with self._get_connection() as conn:

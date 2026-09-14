@@ -25,14 +25,6 @@ class TestSqliteBusyTimeout:
             result = conn.execute("PRAGMA busy_timeout").fetchone()
             assert result[0] == 5000
 
-    def test_asset_score_cache_sets_busy_timeout(self, temp_db):
-        from immich_memories.cache.asset_score_cache import AssetScoreCache
-
-        cache = AssetScoreCache(temp_db)
-        with cache._get_connection() as conn:
-            result = conn.execute("PRAGMA busy_timeout").fetchone()
-            assert result[0] == 5000
-
     def test_run_database_sets_busy_timeout(self, temp_db):
         from immich_memories.tracking.run_database import RunDatabase
 

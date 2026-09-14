@@ -1,7 +1,5 @@
 import type {ReactNode} from 'react';
-import clsx from 'clsx';
 import Link from '@docusaurus/Link';
-import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import useBaseUrl from '@docusaurus/useBaseUrl';
 import Layout from '@theme/Layout';
 import Heading from '@theme/Heading';
@@ -18,9 +16,8 @@ function HeroSection() {
             </Heading>
             <p className={styles.heroSubtitle}>
               Point it at your Immich server. Pick a year, a person, or a trip.
-              An editor reads the period, weighs its stories and writes down why every
-              picture is in. Then it renders: animated maps, generated music, title
-              screens. Self-hosted. No subscription.
+              Review the selected pictures and their reasons before exporting. Add titles,
+              trip maps and music. The app is self-hosted and in beta.
             </p>
             <div className={styles.heroCtas}>
               <Link className={styles.ctaPrimary} to="/docs/welcome/quick-start">
@@ -50,7 +47,7 @@ function QuickstartSection() {
     <section className={styles.quickstart}>
       <div className="container">
         <Heading as="h2" className={styles.sectionTitle}>
-          What it takes to stand up
+          Start with Docker Compose
         </Heading>
         <div className={styles.quickstartGrid}>
           <div className={styles.quickstartCode}>
@@ -62,27 +59,21 @@ function QuickstartSection() {
                 <span className={styles.codeLabel}>terminal</span>
               </div>
               <pre className={styles.codeContent}>
-{`# 1. The app itself
+{`curl -O https://raw.githubusercontent.com/sam-dumont/immich-video-memory-generator/main/docker-compose.yml
 export IMMICH_URL=https://photos.example.com
 export IMMICH_API_KEY=your-key-here
+mkdir -p output
 docker compose up -d
-
-# 2. The model files it checks at every run:
-#    a pinned ONNX encoder and two CPU detectors
-immich-memories models fetch
-
-# 3. Two model servers on hardware you own:
-#    a vision reader (~17 GB resident at 4-bit) and a
-#    caption endpoint. Point config.yaml at both, then:
-immich-memories preflight`}
+docker compose exec immich-memories immich-memories models fetch
+docker compose exec immich-memories immich-memories preflight`}
               </pre>
             </div>
             <p className={styles.quickstartAlt}>
-              Step 3 is the real cost: the editor reads your pictures before it cuts them, and it
-              refuses to guess without them. The cheapest thing anyone has run end to end is one
-              32 GB Apple Silicon Mac. The{' '}
-              <Link to="/docs/deploy/self-hosting">self-hosting guide</Link> walks all of it in
-              order.
+              Open localhost:8080 after preflight passes. The shipped setup uses rules and local
+              image classifiers; a separate model server is optional. On Linux, the output folder
+              must be writable by UID/GID 1000. The{' '}
+              <Link to="/docs/welcome/quick-start">quick start</Link> covers permissions and access
+              from another machine.
             </p>
           </div>
           <div className={styles.quickstartSteps}>
@@ -100,7 +91,7 @@ immich-memories preflight`}
               <span className={styles.stepNumber}>2</span>
               <div>
                 <strong>Cut</strong>
-                <p>The editor reads the period and weighs its stories</p>
+                <p>The reader selects pictures within the available duration</p>
               </div>
             </div>
             <div className={styles.step}>
@@ -139,20 +130,20 @@ const showcaseItems: ShowcaseItem[] = [
     alt: 'The brief: memory type, its parameters and the duration line',
   },
   {
-    title: 'A curator, not a filter',
-    description: 'A small vision model captions every picture once. A text model then reads the period as a story, weighs its stories in words and grants each the pictures it earns, with a written reason for every one, favourites as indicators, and strictly chronological order. The editor is the product.',
+    title: 'Review the selection',
+    description: 'Read the storyboard and the reason for each selected picture. Exclude a shot and cut again, or inspect why a missing picture was dropped. Use rules for metadata-based selection or configure a model reader for stories and custom subjects.',
     image: '/img/screenshots/memory-story.png',
     alt: 'The story the cut produced, with a reason for every picture',
   },
   {
-    title: 'Cinematic title screens',
+    title: 'Titles and trip maps',
     description: 'Animated gradients, particle systems, satellite trip maps. Two renderers: GPU kernels if they find a Metal, CUDA or Vulkan backend, PIL everywhere else. The log says which one actually ran.',
     image: '/img/screenshots/memory-options.png',
     alt: 'Generation options with title and music settings',
   },
   {
-    title: 'AI music generation',
-    description: 'A vision LLM detects the mood of your clips. ACE-Step or MusicGen creates an original soundtrack. A sidechain compressor ducks the music under the clip\'s own audio.',
+    title: 'Choose the music',
+    description: 'Use a music file, a bundled track or an optional ACE-Step or MusicGen server. The mixer lowers music under the source audio. Generation can also run without background music.',
     image: '/img/screenshots/memory-options.png',
     alt: 'Music preview and generation options',
   },
@@ -197,8 +188,8 @@ function ValuesSection() {
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
               </svg>
             </div>
-            <strong>Your data stays home</strong>
-            <p>No telemetry, no account. Runs on your hardware; the only outbound calls are the ones you configure (LLM, music server, notifications) plus map tiles and geocoding for trip maps. The Immich API key never leaves your network.</p>
+            <strong>Know where data goes</strong>
+            <p>Remote model endpoints can receive pictures and annotations. Trip maps use external geocoding and tiles, and installing models downloads files. <Link to="/docs/deploy/configuration/network-and-privacy">Network &amp; Privacy</Link> lists the destinations and settings.</p>
           </div>
           <div className={styles.value}>
             <div className={styles.valueIcon}>
@@ -215,8 +206,8 @@ function ValuesSection() {
                 <circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
               </svg>
             </div>
-            <strong>Cinematic title screens</strong>
-            <p>Satellite map fly-overs, particle systems, 5 visual styles. Not "clip 1, clip 2, clip 3": actual production polish.</p>
+            <strong>Titles and trip maps</strong>
+            <p>Opening titles, month dividers and animated trip maps. GPU kernels handle supported systems; PIL provides a fallback. Effects and render time depend on the backend.</p>
           </div>
           <div className={styles.value}>
             <div className={styles.valueIcon}>
@@ -238,10 +229,10 @@ function CtaSection() {
     <section className={styles.finalCta}>
       <div className="container">
         <Heading as="h2" className={styles.ctaTitle}>
-          Your videos deserve better than a camera roll
+          Try one month or a small album
         </Heading>
         <p className={styles.ctaDescription}>
-          Three services, all of them yours. The self-hosting guide is one page, in order.
+          Review the first cut before setting up automation. The guide explains storage, model choices and their limits.
         </p>
         <div className={styles.heroCtas}>
           <Link className={styles.ctaPrimary} to="/docs/welcome/quick-start">
@@ -260,7 +251,7 @@ export default function Home(): ReactNode {
   return (
     <Layout
       title="Home"
-      description="Turn your Immich photo library into video memories. An editor reads the period and writes down why every picture is in. Animated maps, generated music, title screens. Self-hosted, no cloud API.">
+      description="Turn your Immich photo library into video memories. An editor reads the period and writes down why every picture is in. Animated maps, generated music, title screens. Self-hosted, with rules or an optional model reader.">
       <HeroSection />
       <QuickstartSection />
       <ShowcaseSection />

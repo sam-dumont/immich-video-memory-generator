@@ -68,7 +68,7 @@ spec:
             - name: HF_HOME
               value: "/cache/huggingface"
             # Same reason for anything that writes a temporary file: /tmp is the
-            # emptyDir below, not the read-only image.
+            # scratch subdirectory on this service's own cache PVC.
             - name: TMPDIR
               value: "/tmp"
             # Drop the weights after five idle minutes. The process stays up.
@@ -97,8 +97,9 @@ spec:
             # (on the CUDA image) the driver's JIT cache.
             - name: cache
               mountPath: /cache
-            - name: tmp
+            - name: cache
               mountPath: /tmp
+              subPath: scratch
 
           # /ping is the whole question: the process answers or it does not.
           # Weights load on first request, so there is no separate ready state,
@@ -125,6 +126,3 @@ spec:
         - name: cache
           persistentVolumeClaim:
             claimName: immich-memories-inference-cache
-        - name: tmp
-          emptyDir:
-            sizeLimit: 1Gi

@@ -1,8 +1,8 @@
 """Configuration for what the source model admits and how long a clip is expected to run.
 
 The knobs the legacy clip scorer read (scene detection, segment lengths, audio
-boundaries, subject quotas) went with it; `config_loader` refuses a file that
-still names one.
+boundaries, subject quotas) went with it; `config_loader` warns and drops those settings
+when loading an older file.
 """
 
 from __future__ import annotations

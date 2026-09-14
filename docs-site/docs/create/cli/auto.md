@@ -28,14 +28,13 @@ top one is generated.
 | Trip | GPS trips in the trailing year, 7 days after coming home | up to 0.75 | length up to 14 days × pictures up to 200 |
 | Person spotlight | the five most-pictured people | 0.6 | that person's share of the top person's count, floor 0.2 |
 | Multi-person | pairs who appear together | 0.55 | estimated shared pictures up to 500, 50 minimum |
-| On this day | dates with content in 5+ years | 0.35 | how many years the same month has content, up to 10 |
+| On this day | the current month has content in 5+ years (a proxy for today) | 0.35 | how many years the same month has content, up to 10 |
 | Special day | a catalogued day whose anniversary is within 3 days | 0.8 | 1.0 for a decade, 0.85 for a half-decade, 0.6 otherwise |
 
-Then the scorer applies, in this order: rotation, a 1.2× boost for a memory that does not exist
-yet, recency (linear decay over 365 days from when the memory is timely, floor 0.5), content
-richness (up to 30 % of the score, on a log scale), a same-type cooldown (0.3× for 7 days, 0.7×
-for 30 days after the same type ran), per-type caps (3 per type; 1 for on-this-day and special
-day; 2 for multi-person), and dedup by memory key.
+After backoff and rotation checks, scoring applies a 1.2× boost for an unmade memory,
+recency decay over 365 days (floor 0.5), content richness and a same-type cooldown
+(0.3× for 7 days, 0.7× for 30 days). Candidates are deduplicated by memory key, ranked,
+then capped at 3 per type: 1 for on-this-day and special day, 2 for multi-person.
 
 The rotation rules are hard. If every candidate is rejected the run is skipped, and nothing
 relaxes a rule to get another video out:
@@ -77,7 +76,8 @@ run's start with 30 minutes of tolerance, so a daily timer at 24 fires every day
 
 The typed outcomes are `skipped`, `dry_run`, `completed` and `failed`; the first three exit 0.
 Quiet output is a stable JSON object with `runtime` as its first key. Key a wrapper on `outcome`,
-not on `action`, which is `generation` on every path:
+and check `action` when needed: it can be `generation`, `delivery_retry`, or `null` when no
+action was chosen. Example dry run (the `runtime` object is omitted here):
 
 ```json
 {
@@ -105,13 +105,22 @@ with a notification carrying the original error; the video stays on disk.
 immich-memories auto install [--hour 9] [--minute 0] [--cooldown 24] [--show] [--uninstall] [--force]
 ```
 
-Writes a launcher at `~/.immich-memories/bin/immich-memories-auto` and schedules it: a launchd
-plist on macOS, a systemd user timer on Linux, a crontab line to paste elsewhere. The launcher
-looks `immich-memories` up on every fire, so an upgrade in place is picked up without
-reinstalling the schedule. `--uninstall` removes both.
+Writes a launcher at `~/.immich-memories/bin/immich-memories-auto` and the schedule files:
+a launchd plist on macOS, a systemd user timer on Linux, or a crontab line elsewhere.
+**Run the printed `Activate` command** to enable the job. Writing the files does not start it.
+On Linux this is:
+
+```bash
+systemctl --user enable --now immich-memories-auto.timer
+immich-memories auto status
+```
+
+The launcher resolves `immich-memories` on each run, so an upgrade in place is picked up.
+To remove the schedule, first run the printed `Deactivate` command, then
+`immich-memories auto install --uninstall`. Uninstall removes files; it does not stop a loaded job.
 
 In Docker, or when the web UI process should do it, skip this command and set
-`automation.enabled: true` with `automation.daily_at`; the UI runs `auto run` once a day
+`advanced.automation.enabled: true` with `advanced.automation.daily_at`; the UI runs `auto run` once a day
 itself. See [Automated generation](../recipes/automated-generation.md).
 
 Three things about a scheduled job:
@@ -157,6 +166,9 @@ advanced:
     attach_thumbnail: false
     cooldown_hours: 24       # pause after any notification failure
 ```
+
+`detect_person_spotlight: false` also disables multi-person and birthday proposals because
+that switch controls fetching the people roster.
 
 A notification failure pauses notifications for the cooldown; it never stops generation. The
 full key list is in the [config reference](../../reference/config-reference.md).

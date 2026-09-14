@@ -282,10 +282,9 @@ def test_local_docker_commands_use_docker_owned_volumes(target: str) -> None:
     assert "--mount type=volume,source=immich-memories-output,target=/app/output" in command
     assert "mkdir -p" not in command
     assert " -v " not in command
-    assert (
-        "chown -R immich:immich /home/immich/.immich-memories /app/output"
-        in _logical_instructions(_dockerfile())
-    )
+    ownership = re.search(r"chown -R immich:immich ([^\n]+)", _logical_instructions(_dockerfile()))
+    assert ownership
+    assert {"/home/immich/.immich-memories", "/app/output"} <= set(ownership.group(1).split())
 
 
 @pytest.mark.parametrize("target", ["docker-run", "docker-shell"])
@@ -390,6 +389,24 @@ def test_quickstart_compose_publishes_the_ui_on_loopback_only() -> None:
     published = [str(p) for p in compose["services"]["immich-memories"]["ports"]]
 
     assert published == ["127.0.0.1:8080:8080"], published
+
+
+def test_compose_keeps_downloaded_models_and_scratch_on_disk_volumes() -> None:
+    """Recreating a container must not discard models or put FFmpeg work in RAM."""
+    compose = yaml.safe_load((REPO_ROOT / "docker-compose.yml").read_text())
+    for service, paths in (
+        ("immich-memories", ("/home/immich/.cache", "/tmp")),
+        ("immich-memories-inference", ("/cache", "/tmp")),
+    ):
+        config = compose["services"][service]
+        mounts = {entry.split(":")[1]: entry.split(":")[0] for entry in config["volumes"]}
+        for path in paths:
+            assert path in mounts, f"{service}: {path} is not persistent"
+            assert mounts[path] in compose["volumes"], f"{service}: {path} is not a named volume"
+        assert not config.get("tmpfs")
+    dockerfile = _logical_instructions(_dockerfile())
+    assert re.search(r"RUN mkdir -p [^\n]*/home/immich/\.cache", dockerfile)
+    assert re.search(r"chown -R immich:immich [^\n]*/home/immich/\.cache", dockerfile)
 
 
 def test_quickstart_compose_pins_a_tier_that_needs_no_second_service() -> None:

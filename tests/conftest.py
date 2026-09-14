@@ -112,18 +112,27 @@ def pytest_unconfigure(config: pytest.Config) -> None:
 
 
 @pytest.fixture(autouse=True)
-def isolated_user_paths() -> Iterator[Path]:
+def isolated_user_paths(request: pytest.FixtureRequest) -> Iterator[Path]:
     """Reset cached settings and assert tests never resolve user directories."""
     assert _TEST_ROOT is not None
-    config_loader._config = None
-    yield _TEST_ROOT
-    config_loader._config = None
+    original_home = Path.home()
+    with (
+        tempfile.TemporaryDirectory(prefix="home-", dir=_TEST_ROOT) as test_home,
+        pytest.MonkeyPatch.context() as patch,
+    ):
+        # Unit tests must not read or initialize the developer's default config.
+        # Integration and E2E suites manage their own configuration sources.
+        if not any(request.node.get_closest_marker(mark) for mark in ("integration", "e2e")):
+            patch.setenv("HOME", test_home)
+        config_loader._config = None
+        yield _TEST_ROOT
+        config_loader._config = None
 
     config = Config()
     normal_user_paths = {
-        Path.home() / ".immich-memories" / "cache.db",
-        Path.home() / ".immich-memories" / "cache",
-        Path.home() / "Videos" / "Memories",
+        original_home / ".immich-memories" / "cache.db",
+        original_home / ".immich-memories" / "cache",
+        original_home / "Videos" / "Memories",
     }
     resolved_paths = {
         config.cache.database_path,

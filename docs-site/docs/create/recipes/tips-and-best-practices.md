@@ -5,46 +5,50 @@ title: Tips & Best Practices
 
 # Tips & Best Practices
 
-Things that save time and produce better results.
+## Start with a month
 
-## Warm the banks with a real cut
+A one-minute monthly memory is quick to review. A shorter target reduces rendering work, but
+preparation still covers every eligible picture in the period. Narrow the dates when testing
+settings on a large library.
 
-Preparation is the slow part on a cold library, and there is no command that does it on its own:
-`analyze` counts videos, it does not prepare anything. The only thing that fills the banks is a
-cut. So on a NAS, run the cut you want overnight rather than trying to pre-warm it, and take
-advantage of the fact that a second cut over the same period, or an overlapping one, skips the
-work. See [Editorial annotation setup](../../deploy/configuration/editorial-preparation.md).
+## Prepare once, reuse the work
 
-## Use Hardware Acceleration
+On a slow machine, prepare a month overnight:
 
-If you have a GPU, use it. The tool auto-detects NVIDIA (NVENC), Apple (VideoToolbox), Intel (QSV), and AMD (VAAPI). Check what's available:
+```bash
+immich-memories prepare --year 2024 --month 6
+```
+
+[`prepare`](../cli/prepare.md) fills missing annotations without selecting or rendering. Later
+cuts reuse matching records. New pictures, changed producer versions or changed model inputs can
+require more work. Choose the [running mode](../../deploy/self-hosting.md) and configure its
+producers before starting a large preparation job.
+
+## Check hardware before rendering
 
 ```bash
 immich-memories hardware
+immich-memories preflight
 ```
 
-The one measured run is in the [NAS guide](../../deploy/common-setups/nas-only.md#preparation-tiers-what-the-nas-pays): a 14-clip monthly on four cores with no GPU, 2.7 minutes of render under `preset: fast`. Most of that is title screens, which is the part a GPU actually shortens.
+Encoding acceleration is detected automatically when supported. It reduces rendering time;
+it does not make a slow caption or reader server faster. `--preset fast` applies a CPU-friendly
+profile to settings you have not explicitly set.
 
-## Start with Shorter Durations
+## Review the pool and the result
 
-Your first video should be 3-5 minutes, not 30. Shorter durations mean:
+Open **Media pool** before cutting to exclude material you do not want used. After a cut, the
+checkboxes show its picks: untick one to exclude it, or tick a dropped picture to request its
+inclusion, then **Cut again**. The family-viewing gate can still refuse a requested picture.
 
-- Faster generation
-- Easier to review
-- Less wasted time if your settings are off
+In the terminal, inspect selection without making a video:
 
-Once you're happy with the results, scale up.
+```bash
+immich-memories generate --year 2024 --month 6 --no-render --trace-selection selection.txt
+```
 
-## Exclude Before You Cut
+Read `selection.txt` or its JSON companion. For a completed render, `runs story` and
+`runs why ASSET_ID` explain the latest cut.
 
-The media pool (**Media pool** in the sidebar) exists for a reason. Spend 2 minutes unticking what may never be used: the accidental recording of your pocket, the 45-second clip of a wall. The editor judges twins and bursts itself; what it cannot know is what you would never show.
-
-## Set Up the Annotation Producers First
-
-The story-first route needs its caption endpoint, the pinned encoder and the two detectors before its first cut; a missing producer stops the run with a count rather than quietly narrowing what the editor sees. Do the [Editorial annotation setup](../../deploy/configuration/editorial-preparation.md) once, then forget about it.
-
-## Nothing Reads the 4K Source Until the Render
-
-Captions are read from 400 px tiles and pixel facts from one fixed JPEG recipe; the editor
-never needs full-resolution frames to know what a picture shows. The originals are downloaded
-once, for the clips that made the cut, at render time.
+Watch the first rendered result before scheduling more. Check names, dates, excerpts, music
+volume and whether the length suits the material.

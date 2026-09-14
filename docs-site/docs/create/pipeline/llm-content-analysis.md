@@ -5,16 +5,15 @@ title: LLM Titles and Mood
 
 # LLM Titles and Mood
 
-The `llm` section names one OpenAI-compatible model and three things read it: the editor's
-period readings (see [The Curator](./the-curator.md) and
-[Editorial annotation setup](../../deploy/configuration/editorial-preparation.md)), the trip
-titles below, and the mood detection the music pipeline uses. This page covers the last two.
+The `llm` section names the model used by the editor's
+period readings and optional title generation. This page covers title settings; see
+[The Curator](./the-curator.md) and [Editorial annotation setup](../../deploy/configuration/editorial-preparation.md)
+for preparation and selection.
 
 ## Any OpenAI-compatible API
 
 Five provider values, three code paths. `ollama` speaks Ollama's native API, `anthropic` speaks
-`/v1/messages`, and `openai-compatible` and `openai` speak `/v1/chat/completions`, so anything that
-serves that endpoint works: mlx-vlm, [oMLX](https://github.com/jundot/omlx), vLLM, Ollama's
+`/v1/messages`, and `openai-compatible` and `openai` speak `/v1/chat/completions`, with compatible servers such as mlx-vlm, [oMLX](https://github.com/jundot/omlx), vLLM, Ollama's
 compatibility layer, Groq, OpenAI itself. `zai` picks one of those last two from its `base_url`
 path, because z.ai serves both: `.../api/anthropic` gets `/v1/messages`, everything else gets
 `/chat/completions`.
@@ -29,18 +28,17 @@ app's own port, so set it.
 
 :::warning The reader needs eyes
 The model named in `llm` is sent pictures: 800 px JPEG tiles of the candidates whose facts the
-edit demands, plus contact sheets. A text-only model will not do the picture pass, and the run
-does not degrade politely into one that can. See
+edit demands, plus contact sheets. The model reader requires image support; a text-only model cannot complete its picture pass. See
 [the self-hosting guide](../../deploy/self-hosting.md#what-has-been-tested).
 :::
 
 ## LLM Title Generation
 
-Instead of generic "TWO WEEKS IN SPAIN, SUMMER 2025" template titles, the app hands a local LLM a day-by-day summary of where the trip went and gets back something like "Sous les falaises de grès" or "Odyssée le long de la côte". English and French are the two locales the app ships; it classifies the trip pattern at the same time.
+For a trip, the web UI can send a day-by-day location summary to the configured model for a title, subtitle and trip classification. English and French are supported. The model may run locally or on a remote service.
 
 ### What the LLM gets
 
-The model never sees coordinates. The selected material's GPS points are clustered greedily within 5 km, each cluster is reverse-geocoded to a city name, and what goes into the prompt is one line per day: the place names and how many of the selected pictures fell at each. From that it works out the travel pattern (base camp? road trip? hiking trail?) and writes a title and subtitle in your locale.
+The trip-title prompt uses place names rather than raw coordinates. Other model requests, including editorial evidence and special-day discovery, have different inputs. The selected material's GPS points are clustered greedily within 5 km, each cluster is reverse-geocoded to a city name, and what goes into the prompt is one line per day: the place names and how many of the selected pictures fell at each. From that it works out the travel pattern (base camp? road trip? hiking trail?) and writes a title and subtitle in your locale.
 
 ### What it produces
 
@@ -49,73 +47,56 @@ The model never sees coordinates. The selected material's GPS points are cluster
 - **Map mode** recommendation for the animated map intro
 - A one-line **reason** explaining why it picked that classification
 
-You see everything on the Generation Options page and can edit before rendering. Hit the regenerate button to try again with the same GPS data.
+The Generation Options page shows the suggestion and lets you edit or regenerate it. The returned map mode does not change the renderer.
 
-### Thinking mode has to be off
+On the CLI, model titles are opt-in with `--llm-title`; an explicit `--title` wins. If title generation fails, the CLI uses its template title.
 
-On a server whose chat template reasons by default, a bulk call reasons at its small token budget,
-truncates mid-thought and returns nothing parseable. That is what `llm.no_thinking_params` is for,
-and its default is already the Qwen dialect:
+### Reasoning settings
+
+`llm.thinking` allows supported text-only calls to request reasoning. Requests carrying
+images disable that switch in the shared query path. Provider-specific fields still
+matter: some servers reason by default unless explicitly told otherwise.
 
 ```yaml
 llm:
-  thinking: false                 # default
-  no_thinking_params:             # merged into every non-thinking call
+  thinking: false
+  no_thinking_params:
     chat_template_kwargs:
       enable_thinking: false
 ```
 
-A server that reasons only when asked wants `no_thinking_params: {}` instead. Turning `thinking:
-true` back on runs two calls in reasoning mode (title generation and the special-day question in
-`discover-days`), while everything else stays fast, and it is refused outright alongside images; `thinking_params` carries the fields those calls send, defaulting to the
-same Qwen dialect. OpenAI's reasoning models want `{"reasoning_effort": "medium"}` there, which
-`provider: openai` fills in for you.
+These defaults use the Qwen request dialect. Use `no_thinking_params: {}` for a server
+that needs no such field. The `openai` and `zai` provider presets supply their own
+reasoning fields; an explicit matching key takes precedence. Check the server's response
+and logs if requests fail or exhaust their token budget.
 
-### Which model
+### Choosing a model
 
-The only configuration whose output has been graded is
-`mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit` on oMLX. Everything else is expected to work and
-ungraded: there is no per-model speed or reliability table here, because nobody has measured one
-on this route and inventing one would be worse than saying so.
+The model reader needs image support as well as reliable structured answers. Use the
+[current self-hosting guide](../../deploy/self-hosting.md#what-has-been-tested) for tested
+configurations. API compatibility alone does not establish model quality or reliability.
 
-## Mood Detection for Music
+## Mood and music
 
-The music pipeline needs a vision LLM to analyze video keyframes and detect mood. Any server that speaks the OpenAI `/v1/chat/completions` endpoint works: it just needs to handle image inputs.
-
-### LLM Setup
-
-**mlx-vlm (Recommended on Apple Silicon)**:
-
-```bash
-uvx --python 3.12 --from mlx-vlm --with torch --with torchvision \
-  mlx_vlm.server --port 8080
-```
-
-**Ollama**:
-
-```bash
-ollama pull llava
-ollama serve
-```
-
-**Cloud APIs (Groq, OpenAI, etc.)**: any cloud API that supports vision and speaks the OpenAI chat completions format works.
+A vision model is not required to add music. The current generation path uses existing
+clip emotions when available and falls back to a calm generation timeline when they are
+absent. Bundled track selection can fall back to the whole library. See [Audio & Music](./audio-and-music.md).
 
 ## Configuration
 
-One section names the model; the editor, titles and mood detection all read it.
+The editor and optional title generation share this model unless you configure a title override.
 
 ```yaml
 advanced:
   llm:
     base_url: "http://localhost:8000/v1"   # example: oMLX. The default is 8080, the app's own port
     model: "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"
-    api_key: ""                            # local servers ignore it
+    api_key: ""                            # set if the server requires authentication
     provider: "openai-compatible"          # or ollama | openai | zai | anthropic
     timeout_seconds: 300                   # the default
 ```
 
-`model` has to be the string the server reports at `GET /v1/models`, not the name you typed
-somewhere else.
+Use the model ID accepted by your server. OpenAI-compatible servers commonly list these at `GET /v1/models`.
 
 A separate `title_llm` section can point trip titles at a different model:
 
@@ -131,5 +112,4 @@ advanced:
 **Fields do not fall back to `llm`.** The switch is all-or-nothing on `title_llm.model`: set it
 and the whole `title_llm` block is used, with every field you left out taking its *built-in*
 default; `provider: openai-compatible`, `base_url: http://localhost:8080/v1`, empty `api_key`.
-Leave `title_llm.model` empty and `llm` is used instead. Write out every field you care about, or
-the two-line version above silently resets five others.
+Leave `title_llm.model` empty and `llm` is used instead. Set the provider, endpoint and credentials explicitly when the title model needs different values.

@@ -36,7 +36,6 @@ const sidebars: SidebarsConfig = {
             'create/cli/auto',
             'create/cli/music',
             'create/cli/titles',
-            'create/cli/scheduler',
             'create/cli/runs',
             'create/cli/discover-days',
             'create/cli/people',

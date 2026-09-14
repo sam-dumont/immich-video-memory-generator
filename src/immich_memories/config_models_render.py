@@ -152,10 +152,6 @@ class TitleScreenConfig(BaseModel):
         default=True,
         description="Enable subtle background animations (gradient shift, color pulse)",
     )
-    show_decorative_lines: bool = Field(
-        default=False,
-        description="Show decorative line accents on title screens",
-    )
 
     # Month dividers
     show_month_dividers: bool = Field(

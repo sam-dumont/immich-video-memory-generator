@@ -10,7 +10,7 @@ Covers an entire calendar year and creates a video with monthly title dividers: 
 
 ## What it does
 
-Covers a calendar year and reads it as a story: the editor prepares a description and facts for every eligible picture in the year, weighs the year's stories against each other in words, and grants each the pictures its weight earns, capped by the moments it actually holds. The year is partitioned by month, and a plan that leaves a month with worthy material silent is reported back as incomplete. The default target duration is 10 minutes.
+Covers a calendar year and reads it as a story: the editor prepares the facts required by your preparation tier for every eligible picture, weighs the year's stories, and allocates pictures to their distinct moments. The year is partitioned by month, and a plan that leaves a month with worthy material silent is reported back as incomplete. The default target duration is 10 minutes.
 
 ## CLI
 
@@ -38,18 +38,18 @@ Its optional **Only with** box narrows the year to one or more people:
 the same thing `--person` does above. A second name brings up a **Together /
 Any of these people** toggle, the UI's word for `--person-match`. When the
 condition is neither a flat AND nor a flat OR, **Advanced people condition**
-under the picker takes `'"Riley" AND ("Casey" OR "Bob")'`, the same string as
+under the picker takes `"Riley" AND ("Casey" OR "Bob")`, the same string as
 `--people-expression`.
 
 ## What makes it special
 
-- **Monthly title dividers**: a divider screen (e.g., "January", "February") is inserted wherever the month changes between clips, so the video is split into sections. Dividers only appear when the range spans four or more months: `get_divider_mode()` returns "none" for anything shorter, so a February-to-March video has no dividers at all.
+- **Monthly title dividers**: when enabled, dividers mark month changes within the available title budget. The first month uses the opening card. Ranges shorter than four months get no monthly dividers; see [Title Screens & Maps](../pipeline/title-screens-and-maps.md).
 - **Every month has to have a voice**: the year is partitioned by month, and the plan is checked against those partitions afterwards. A month with worthy material that ends up with nothing raises an uncovered-partition violation and the run's verdict becomes `coverage_incomplete`. There is no per-month reservation doing this up front; it is a requirement in the brief and a check on the result.
 - **Full year coverage**: the date range is exactly January 1 through December 31. You can narrow to a single month with `--month` or override the date range entirely with `--start/--end`. `--birthday` does **not** apply here: it is read only for `--memory-type person_spotlight` (and for a bare `--year --birthday` with no memory type). See [Person Spotlight](./monthly-person-season.mdx).
 
 ## Tips
 
-- It wants a year that actually spans a year. If everything you have is one summer trip, a [Season](./monthly-person-season.mdx) or [Trip](./trip-memories.mdx) memory fits the material better, and the coverage check will stop complaining.
-- The first cut over a year is the slow one: every eligible picture gets its description and facts prepared once. The second cut reuses them: see [Editorial annotation setup](../../deploy/configuration/editorial-preparation.md).
+- If most of the year's material comes from one trip, a [Trip](./trip-memories.mdx) memory can give that occasion a more suitable scope and duration.
+- The first cut prepares the required facts for the whole eligible year. Later cuts reuse compatible facts and readings: see [Editorial annotation setup](../../deploy/configuration/editorial-preparation.md).
 - The default target is 10 minutes. A thin year will not fill it: the cut reports how much it found and how far short it landed rather than padding. `--duration 300` asks for five instead.
 - Combining `--person` with Year in Review creates a "Your Year With Riley" style video: only pictures containing that person, but still with monthly structure. Naming two people narrows it to the pictures holding both unless the CLI explicitly uses `--person-match or`.

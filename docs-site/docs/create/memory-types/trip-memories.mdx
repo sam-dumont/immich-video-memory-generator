@@ -41,8 +41,8 @@ Three stages, no clustering:
    trip.
 3. **Discard the short ones**: a group survives if the number of *nights* it spans, the difference
    between its first and last calendar date, is at least `min_duration_days` (default: 2). At the
-   default that means three calendar days. Set it to `1` for a weekend and `0` to keep single-day
-   excursions.
+   default that means three calendar days. Set it to `1` for a trip spanning two dates.
+   The minimum accepted value is `1`; same-day excursions are not supported by trip detection.
 
 The trip's location name comes from reverse geocoding the centroid of all GPS coordinates in the cluster (via Nominatim/OpenStreetMap).
 
@@ -83,7 +83,7 @@ those.
 
 - **Animated satellite map**: the video opens with a satellite map that zooms between your trip locations. If you visited multiple cities, the map animates the route.
 - **Location-aware title**: the title screen shows the trip destination name, pulled from reverse geocoding.
-- **Auto duration stays watchable**: Auto starts at 30 seconds plus 10 seconds per active day, bounded to 60–300 seconds when there is enough material. Seven dense days produce about 1:40; 12 dense days produce 2:30. It then checks the selected media's usable excerpts and shortens sparse trips instead of promising time it cannot fill. Turn off the **Auto duration** switch on the Memory page (or pass `--duration` on the CLI) when you want an exact runtime.
+- **Auto duration stays watchable**: Auto starts at 30 seconds plus 10 seconds per active day, bounded to 60–300 seconds when there is enough material. Seven dense days produce about 1:40; 12 dense days produce 2:30. It then checks the selected media's usable excerpts and shortens sparse trips instead of promising time it cannot fill. Turn off the **Auto duration** switch on the Memory page (or pass `--duration` on the CLI) to set your own target runtime.
 
 ## Configuration
 
@@ -102,8 +102,8 @@ The homebase coordinates are required. Without them, the algorithm can't determi
 
 ## Tips
 
-- **GPS data is required.** If your videos don't have GPS metadata (some cameras strip it, screen recordings never have it), trip detection won't find anything. iPhones and Android phones embed GPS by default.
+- **GPS data is required.** Detection needs coordinates in the assets it examines. Camera location permissions and upload metadata determine whether they are available.
 - **Set your homebase accurately.** The algorithm filters everything within `min_distance_km` of your home. If your coordinates are wrong, local trips might show up or real trips might get filtered out.
 - **Lower `min_distance_km` for local trips.** Default is 50 km. If you want to capture weekend drives to a nearby city, try 20 km.
-- **`min_duration_days` counts nights, not days.** The default of 2 needs a trip spanning three calendar dates. `1` catches a weekend away; `0` catches single-day excursions.
-- **`--person` narrows trip *detection*, not the finished video.** `--person "Their Name"` looks for trips among the assets that person appears in: useful when one person's photos are the ones carrying GPS. Each video is then built from everything shot in that window, so the rest of the group is still in it.
+- **`min_duration_days` counts the difference between calendar dates.** The default of 2 needs three dates; `1` needs two. For a same-day outing, use an album or an explicit date range.
+- **`--person` narrows trip *detection*, not the finished video.** `--person "Their Name"` looks for trips among the assets that person appears in: useful when one person's photos are the ones carrying GPS. Each video then draws from the whole trip window, so other people's appearances remain eligible.

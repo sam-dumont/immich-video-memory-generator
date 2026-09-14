@@ -5,9 +5,7 @@ title: Title Screens & Maps
 
 # Title Screens & Maps
 
-This is where the output stops looking like "FFmpeg concat" and starts looking like something you'd actually want to show people.
-
-Title screens are the structural connective tissue: animated intro cards, month dividers, satellite map fly-overs, and ending sequences. Same kind of polish as Relive, but running on your own hardware with your own data.
+Title screens add an opening card, date dividers and an ending. Trip memories can open with a satellite map showing the route.
 
 ## What gets generated
 
@@ -23,17 +21,14 @@ Depending on the memory type, title screens include some or all of:
 
 | Backend | When it's used | What it does well |
 |---------|---------------|------------------|
-| **GPU kernels** | The kernel library imports and initialises: Metal, CUDA or Vulkan; it will also run on its own CPU backend and say so in the log | Bokeh particle systems over a content-backed card. SDF text exists in the tree but both production call sites pin it off. |
-| **PIL** | The kernel library has no wheel for this platform, or fails to initialise | Static gradients, clean text rendering. Still looks good, just no animation. |
+| **Quadrants kernels** | The library passes its isolated probe and initialises on Metal, CUDA, Vulkan or its CPU backend | Animated backgrounds, bokeh particles and slow-motion source footage |
+| **PIL** | The kernel library is unavailable or its probe or initialization fails | Animated text and simpler gradients; source-footage backgrounds use a static frame |
 
 The choice is automatic and there is nothing to configure. `--no-animated-background` is a
 different switch: it stays on whichever backend you have and turns off the gradient rotation,
 colour pulse and vignette pulse. On the shipped default it changes nothing, because a
 content-backed title zeroes all three anyway; it only bites if you have turned content backgrounds
 off. It does not send you to PIL.
-
-There is a third renderer in the tree, `titles/renderer_ffmpeg.py`, that draws titles with
-`drawtext`. Nothing in the product imports it: only tests do. Treat it as unwired.
 
 ## Content-backed backgrounds
 
@@ -76,8 +71,7 @@ By default (`style_mode: auto`), the system picks the style based on the video's
 | peaceful | deep_teal | slow_fade |
 | exciting | cinematic_dark | smooth_slide |
 
-There is no font column because there is no font choice: every title is Montserrat. The style
-definitions carry a `preferred_fonts` list that nothing reads.
+The styles use the bundled Montserrat font.
 
 Four color palettes are available: `cinematic_dark` (deep navy), `warm_dark` (warm stone/charcoal), `deep_teal` (ocean blue/teal), `midnight` (slate). All use white or near-white text.
 
@@ -106,15 +100,7 @@ Satellite imagery comes from ArcGIS World Imagery tiles: no API key required. Ti
 
 ### Map styles
 
-The static map renderer supports three styles, used for pin-and-label map frames (not the fly-over animation):
-
-| Key | Source | Notes |
-|-----|--------|-------|
-| `satellite` | ArcGIS World Imagery | Default. Used for the fly-over. |
-| `osm` | OpenStreetMap | Clean street map, good for city-level |
-| `topo` | OpenTopoMap | Topographic, useful for hiking trips |
-
-`osm` and `topo` are internal options today. `map_style` is a parameter on the renderer functions in `titles/map_renderer.py`, not a `title_screens` key, so a generate run always gets satellite.
+Generated memories use satellite tiles. There is no public map-style setting.
 
 ## Trip Classification
 
@@ -141,7 +127,6 @@ title_screens:
   animated_background: true     # gradient shift, colour pulse, vignette; off on content-backed cards
   title_duration: 3.5           # seconds per title card
   locale: auto                  # auto, en, or fr
-  show_decorative_lines: false  # inert: every style and every card pins line accents off
   show_month_dividers: true     # month dividers in yearly memories
   use_first_name_only: true     # "Riley" instead of "Riley Martin"
 ```

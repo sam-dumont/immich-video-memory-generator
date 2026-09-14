@@ -1,11 +1,11 @@
 # CLI batch jobs. Optional: uncomment `- job.yaml` in kustomization.yaml or
 # `kubectl apply -f job.yaml`.
 #
-# The jobs share the two PVCs with the Deployment. With ReadWriteOnce storage a
+# The jobs share the three PVCs with the Deployment. With ReadWriteOnce storage a
 # job pod can only start on the node that already has the volumes mounted, so
 # either use ReadWriteMany storage or scale the Deployment to 0 first. If you
 # only want scheduled memories, prefer the in-process daily timer instead
-# (IMMICH_MEMORIES_AUTOMATION__ENABLED=true on the Deployment) — no job needed.
+# (IMMICH_MEMORIES_AUTOMATION__ENABLED=true on the Deployment): no job needed.
 #
 # CPU by default. For GPU nodes add the fields from ../overlays/gpu/deployment-gpu.yaml
 # (runtimeClassName, nvidia.com/gpu resources, nodeSelector, tolerations, NVIDIA_* env).
@@ -71,6 +71,10 @@ spec:
               value: /models/triage/dinov2-small.onnx
             - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR
               value: /models/huggingface
+            - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__MARQO_ONNX
+              value: /models/detectors/nsfw-marqo-384.onnx
+            - name: HF_HOME
+              value: /models/huggingface
 
           resources:
             requests:
@@ -87,8 +91,12 @@ spec:
               mountPath: /app/output
             - name: models
               mountPath: /models
-            - name: tmp
+            - name: data
+              mountPath: /home/immich/.cache
+              subPath: library-cache
+            - name: data
               mountPath: /tmp
+              subPath: scratch
 
       volumes:
         - name: data
@@ -100,9 +108,6 @@ spec:
         - name: models
           persistentVolumeClaim:
             claimName: immich-memories-models
-        - name: tmp
-          emptyDir:
-            sizeLimit: 4Gi
 ---
 # CronJob: last month's highlights, 5 minutes, on the 1st of each month.
 apiVersion: batch/v1
@@ -170,6 +175,10 @@ spec:
                   value: /models/triage/dinov2-small.onnx
                 - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR
                   value: /models/huggingface
+                - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__MARQO_ONNX
+                  value: /models/detectors/nsfw-marqo-384.onnx
+                - name: HF_HOME
+                  value: /models/huggingface
 
               resources:
                 requests:
@@ -186,8 +195,12 @@ spec:
                   mountPath: /app/output
                 - name: models
                   mountPath: /models
-                - name: tmp
+                - name: data
+                  mountPath: /home/immich/.cache
+                  subPath: library-cache
+                - name: data
                   mountPath: /tmp
+                  subPath: scratch
 
           volumes:
             - name: data
@@ -199,9 +212,6 @@ spec:
             - name: models
               persistentVolumeClaim:
                 claimName: immich-memories-models
-            - name: tmp
-              emptyDir:
-                sizeLimit: 4Gi
 ---
 # CronJob: smart automation. `auto run` picks the best candidate (monthly,
 # yearly, trip, person spotlight...), skips duplicates and respects cooldown.
@@ -266,6 +276,10 @@ spec:
                   value: /models/triage/dinov2-small.onnx
                 - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR
                   value: /models/huggingface
+                - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__MARQO_ONNX
+                  value: /models/detectors/nsfw-marqo-384.onnx
+                - name: HF_HOME
+                  value: /models/huggingface
 
               resources:
                 requests:
@@ -282,8 +296,12 @@ spec:
                   mountPath: /app/output
                 - name: models
                   mountPath: /models
-                - name: tmp
+                - name: data
+                  mountPath: /home/immich/.cache
+                  subPath: library-cache
+                - name: data
                   mountPath: /tmp
+                  subPath: scratch
 
           volumes:
             - name: data
@@ -295,6 +313,3 @@ spec:
             - name: models
               persistentVolumeClaim:
                 claimName: immich-memories-models
-            - name: tmp
-              emptyDir:
-                sizeLimit: 4Gi

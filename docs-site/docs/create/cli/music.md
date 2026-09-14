@@ -37,7 +37,8 @@ raise it.
 
 ## music analyze
 
-Analyzes a video file to determine its mood. Uses your configured LLM to extract keyframes and figure out the overall vibe: energy level, color palette, tempo suggestion, genre recommendations.
+Analyzes a video file to determine its mood. Extracts keyframes and sends them to the configured LLM to estimate energy, color palette,
+tempo and suitable genres. These are model suggestions, not measured audio properties.
 
 ```bash
 immich-memories music analyze VIDEO_PATH [OPTIONS]
@@ -45,7 +46,7 @@ immich-memories music analyze VIDEO_PATH [OPTIONS]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--ollama-url` | string | from config | Override Ollama API URL |
+| `--ollama-url` | string | from config | Override the configured provider's base URL |
 | `--ollama-model` | string | from config | Override vision model |
 
 Example:
@@ -78,15 +79,9 @@ read your `llm` config: it asks an OpenAI-compatible endpoint at `http://localho
 empty model name. With nothing listening there the command fails rather than falling back to a
 random track. Pass `--music` explicitly, or run `music search` first and pick one.
 
-Examples:
+Example with an explicit track:
 
 ```bash
-# Specific music file
-immich-memories music add compilation.mp4 output.mp4 --music ~/Music/track.mp3
-
-# Auto-select with custom fade
-immich-memories music add compilation.mp4 output.mp4 --fade-in 3 --fade-out 5
-
-# Override mood for selection
-immich-memories music add compilation.mp4 output.mp4 --mood energetic --volume -3
+immich-memories music add compilation.mp4 output.mp4 \
+  --music ~/Music/track.mp3 --fade-in 3 --fade-out 5
 ```

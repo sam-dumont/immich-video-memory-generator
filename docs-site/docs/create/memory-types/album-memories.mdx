@@ -5,8 +5,9 @@ sidebar_label: "Album Memories"
 # Album Memories
 
 Generate a memory from one Immich album instead of a date range. The album *is* the
-selection: nothing outside it is considered, and nothing inside it is filtered out by
-date.
+source pool: nothing outside it is considered, and its assets are not filtered by a
+separate date range. Eligibility checks, duplicate removal and editing still decide
+which assets appear.
 
 This is the right mode when you have already curated the moments: a birthday, a wedding,
 a single trip, a school year.
@@ -37,7 +38,7 @@ immich-memories generate --from-album 59080965-22f0-46a4-be67-135692a9f584
 ```
 
 The video is titled after the album, and named `album_<slug>.mp4` in your output
-directory. `--title` still overrides the title if you want something else.
+directory with the default MP4 format. Other output formats use their own extension. `--title` still overrides the title if you want something else.
 
 `--from-album` already makes this an album memory, so `--memory-type album` is
 optional: it is accepted, and it is the only memory type that can accompany the
@@ -54,12 +55,12 @@ works as usual.
 | Asset in the album | How it is used |
 |---|---|
 | Video | Read and cut like any other source |
-| Live Photo | Bursts merged into one moving clip (as everywhere else) |
+| Live Photo | Selected as a photograph; eligible bursts can supply motion when its measurement supports it |
 | Photo | Animated still, held for the seconds the editor grants it |
 | A Live Photo's video component | Ignored: it is already part of the merged clip |
 
-With Live Photo merging turned off, a Live Photo is used as a still rather than being
-dropped: you picked these assets by hand, so nothing silently disappears.
+With Live Photo merging turned off, its still remains eligible. It is not guaranteed
+a place in the cut.
 
 ## Shared albums
 
@@ -90,8 +91,7 @@ Error: 6 albums are named 'Récentes'. Pass the ID instead:
 
 ## Very large albums
 
-Smart albums like *Recents* or *Favorites* can hold tens of thousands of assets. Reading
-one costs roughly 9 KB of memory per asset, so album mode reads at most
+Smart albums like *Recents* or *Favorites* can hold tens of thousands of assets. Album mode reads at most
 `advanced.analysis.max_album_assets` assets **per media type** (default `10000`).
 
 Immich returns newest assets first, so a larger album is truncated to its most recent
@@ -110,5 +110,4 @@ advanced:
     max_album_assets: 25000
 ```
 
-The 9 KB is the measured figure; multiply it by your album size for the memory. The read times
-that used to be quoted here had no provenance, so they are gone.
+Larger pools need more memory and preparation work; asset count alone does not predict peak use.

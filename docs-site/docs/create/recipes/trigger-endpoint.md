@@ -5,18 +5,13 @@ title: Trigger from Immich or Anything Else
 
 # Trigger from Immich or Anything Else
 
-The server accepts one POST that starts a memory. It takes no parameters: it runs exactly the
-decision `immich-memories auto run` would have made: same detectors, same variety rules, same
-cooldown, same history. You are choosing *when*, not *what*.
-
-That makes it the piece Immich Workflows was missing. A workflow that fires when an album fills
-up, a cron on another box, a phone shortcut, a Home Assistant automation: anything that can make
-an HTTP request can now start a memory.
+Send `POST /api/trigger` to request the same decision as `immich-memories auto run`.
+It accepts no memory parameters and keeps the normal cooldown and variety rules. Use it from
+a workflow, phone shortcut or another service that can send an HTTP request.
 
 ## Turn it on
 
-The endpoint is **not served at all** unless something can authenticate the caller. This process
-holds your Immich API key, so an anonymous request that could spend it is not a thing that exists.
+The endpoint requires authentication or a trigger token. Without either, it returns **404**.
 
 | `auth.enabled` | `server.trigger_token` | `POST /api/trigger` |
 |---|---|---|
@@ -32,12 +27,13 @@ environment rather than in `config.yaml`:
 export IMMICH_MEMORIES_SERVER__TRIGGER_TOKEN="$(openssl rand -hex 32)"
 ```
 
-Writing it into the file works too:
+Set the same variable on the running server and keep its value for callers. Writing a token
+into the config file also works:
 
 ```yaml
 advanced:
   server:
-    trigger_token: "0f3c…"
+    trigger_token: "replace-with-your-generated-token"
 ```
 
 but `server` is not one of the sections that expand a `${VAR}` reference: put `"${SOMETHING}"`
@@ -46,7 +42,7 @@ time and redacted from logs, `/health`, and the config viewer like every other s
 
 The token is a shared secret over whatever transport your server already uses. If the UI is
 reachable from outside your LAN, put it behind the same HTTPS reverse proxy you use for the web
-interface: a token sent over plain HTTP is a token you have published.
+interface so the token is encrypted in transit.
 
 ## Start a run
 
@@ -63,8 +59,8 @@ curl -X POST https://memories.example.com/api/trigger \
 }
 ```
 
-`202 Accepted`, not `200 OK`: a generation takes minutes to hours, so the call returns the moment
-the run is booked. `Authorization: Bearer <token>` works in place of `x-api-key` if your caller
+The response is **202 Accepted**. Generation runs in the background; acceptance is not a
+guarantee that a video will be generated. `Authorization: Bearer <token>` works in place of `x-api-key` if your caller
 prefers it.
 
 **409 Conflict** means a run is already going, and the body names it:
@@ -74,7 +70,7 @@ prefers it.
 ```
 
 One automation decision runs at a time, enforced by the same lock the nightly timer and
-`immich-memories auto run` use. A trigger cannot make two generations fight over your GPU.
+`immich-memories auto run` use. A busy installation rejects another trigger instead of starting a second automatic run.
 
 ## Poll for progress
 

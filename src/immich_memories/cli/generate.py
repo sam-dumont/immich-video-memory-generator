@@ -666,6 +666,3 @@ def register_generate_commands(main: click.Group) -> None:
             sys.exit(1)
 
     # Register analyze and export-project commands from separate module
-    from immich_memories.cli._analyze_export import register_analyze_export_commands
-
-    register_analyze_export_commands(main)

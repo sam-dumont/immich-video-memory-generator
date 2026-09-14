@@ -19,7 +19,7 @@ immich-memories config test
 It prints one line and exits 1 on failure. `URL not configured` and `API key not configured` mean
 the setting never reached the process.
 
-- The URL needs its protocol (`https://`) and no trailing slash.
+- The URL needs its protocol (`http://` or `https://`).
 - A `403 Forbidden` means the key exists but lacks rights: recreate it with **All**, or the read
   plus upload plus album scopes the quick start lists.
 - Immich must be v2 or v3. Immich 1.x is refused at connect time.
@@ -53,8 +53,8 @@ logs. API keys are redacted.
 
 The model server is not answering. The run retries three times, two then four seconds apart,
 and fails naming the endpoint. Start the server (or fix `llm.base_url`), then **Cut again** or
-rerun the command; everything already read is banked. Without a model, set `reader: rules` to cut
-anyway.
+rerun the command; compatible saved readings can be reused. To use rules, set `editorial.reader: rules`.
+Preparation still follows its own tier; `full` also needs a caption server.
 
 ## A picture I expected is not in the cut
 
@@ -63,7 +63,8 @@ immich-memories runs why <asset id> --run <run id>
 ```
 
 says where it passed and where it was dropped, with the reason. On the Memory page, tick it on
-the pool page and **Cut again**: a tick outranks the editor. On the CLI, `--include <asset id>`.
+the pool page and **Cut again**. On the CLI, use `--include <asset id>`. Inclusion
+requests do not bypass missing media or audience restrictions; read the resulting decision.
 
 ## No Videos Found
 
@@ -83,14 +84,13 @@ the directory makes the next cut cold again). Measured numbers per host are on R
 
 ## Out of memory
 
-Almost always the reader: a 30B model at 4-bit holds about 17 GB for as long as its server is up.
-If the same box also renders or generates music, that is the collision: stop the model servers
-before a music-heavy run, or move them to their own machine. With ACE-Step's language model on
-(`ace_step.use_lm`, off by default), set `lm_model_size: "0.6B"` or switch it off.
+Check which process was killed and its memory limit: the app, reader, caption server and
+music generator have different budgets. A large model can hold most of a host's RAM while the
+app also needs space to decode frames and render titles.
 
-If audio mixing dies at the end of a long album on a small container, that is the memory limit.
-Update to the newest release: the mixer runs one FFmpeg process per clip and merges in bounded
-groups, and a failure names the clip and the exit reason.
+Try a smaller source period or lower output resolution. Move model services to another machine,
+or use rules with `no_captions` if the model workload is too large. In containers, inspect the
+exit reason and resource usage before raising limits. See [hardware requirements](../deploy/hardware/overview.md).
 
 ## FFmpeg not found
 

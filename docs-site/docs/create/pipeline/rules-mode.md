@@ -7,14 +7,25 @@ title: Rules mode
 
 Set `advanced.editorial.reader: rules` (or leave it on `auto` with no `llm.model`) and the
 editor runs the same six stages with a rule answering each question a model would answer. Same
-stages, same records, same storyboard; the answerer is different. It costs nothing in API fees
-and runs on a 4-core NAS.
+stages, same records, same storyboard; the answerer is different.
+
+The reader and preparation are separate settings. `reader: rules` removes the editor's
+model requests, but the default `full` preparation tier still requests captions. For a
+run without caption or reader models:
+
+```yaml
+advanced:
+  editorial:
+    reader: rules
+    preparation:
+      tier: metadata_only
+```
 
 ## What the rules do
 
 | Question | Rule |
 |---|---|
-| Is this happening memory-worthy? | Remarkable when the day holds at least four times the median photographed day, or when its pictures are away from the usual cities (or more than 10 km from `trips.homebase_*`). Maybe when a favourite, a close family member, or a video is in it. Background otherwise |
+| Is this happening memory-worthy? | Album sources qualify directly. Otherwise a high capture count, an unusual location, favourites, family tags and video are evidence for keeping an occasion; required date partitions also matter |
 | How do days group into stories? | A run of consecutive photographed days is a story; a day splits into two episodes when more than 90 minutes pass and the dominant place changes |
 | What is the story called? | Templated from facts: the activity at the place, or the place, or the date. Never retitled, never joined |
 | How much does a story weigh? | From the gate: remarkable seeds `minor`, maybe seeds `glimpse`, background gets nothing; three favourites raise a story to `major`. `dominant` exists only for single-occasion products (trip, holiday, album, special day) |
@@ -36,10 +47,8 @@ know which reader spoke.
   earns the clip).
 - Clearing a flagged-but-innocent picture for sending: it stays family-only until you clear it.
 
-Measured against the model editor's reference cut over the same periods, the rules reader kept
-100 % of the known occasions for a special day, on-this-day and album, 94 % for a person, 86 % for
-several people, 67 % for a trip, and between 43 % and 62 % for a month, a season or a year. The
-per-type table and the timings are on [Running modes](../../deploy/running-modes.md).
+The per-type evaluation and timings are on [Running modes](../../deploy/running-modes.md).
+Those measurements describe the evaluated library, not a coverage guarantee for yours.
 
 ## What it needs
 

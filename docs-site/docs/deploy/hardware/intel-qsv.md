@@ -5,7 +5,8 @@ title: Intel Quick Sync
 
 # Intel Quick Sync
 
-Intel Quick Sync Video (QSV) is built into most Intel CPUs with integrated graphics (6th gen Skylake and newer). If you're running on an Intel NUC, a mini PC, or a server with an Intel CPU, you probably have it.
+Quick Sync uses the Intel integrated GPU for video encoding. Check the exact CPU, enabled
+render device and codec support; an Intel CPU alone does not guarantee an encoder.
 
 ## What you get
 
@@ -21,10 +22,8 @@ Intel Quick Sync Video (QSV) is built into most Intel CPUs with integrated graph
 
 On Linux, you'll need the `intel-media-va-driver` (or `intel-media-va-driver-non-free` for newer chips) and `libmfx` or `libvpl`.
 
-**The Docker image installs these** (amd64 only), and that fix is not in a release yet. Every
-published image up to and including 0.76.1, the newest tag, ships FFmpeg with QSV compiled in and
-no VA-API driver at all, so `vaInitialize` fails with `-542398533` and every run silently encodes
-in software. Build from `main`, or wait for the next release.
+The amd64 Docker image includes Intel VA-API drivers. Pass through the render device and its
+owning group as shown below.
 
 Check availability:
 
@@ -42,10 +41,9 @@ docker compose exec immich-memories vainfo
 ### Not every chip encodes every codec
 
 `vainfo` lists profiles per codec. On Gemini Lake (J4125 and friends, the Synology/mini-PC chip),
-H.264 has an encode entrypoint and HEVC does not, while the project's default output codec is
-H.265. That combination is handled: the backend encodes what it can and the rest goes to
-libx265, with `vaapi cannot encode h265 on this device; encoding it in software` in the log.
-Set `output.codec: h264` if you want the whole run on the GPU.
+H.264 can have an encode entrypoint where HEVC does not. The default
+`output.codec_policy: prefer_hardware` can choose H.264 for SDR output. With `strict`, an
+unavailable hardware codec falls back to software. HDR does not substitute H.264.
 
 ## Configuration
 
@@ -79,16 +77,17 @@ services:
 
 ## Good for headless servers
 
-QSV is common in home server setups: Intel NUCs, older desktops repurposed as media servers. It takes the encode off the CPU cores without needing a discrete graphics card. That is the larger half of a CPU-only assembly again, now that the title blur has been fixed: see [CPU-Only Mode](./cpu-only.md#title-rendering-used-to-be-the-bottleneck) for the measured split. Titles are the other half, and the kernel library installs with the app and tries the Vulkan backend on the integrated GPU.
+QSV can move encoding off the CPU without a discrete card. Titles select their backend
+separately; Vulkan support is probed rather than assumed from Quick Sync availability.
 
 ## Quality
 
-QSV takes the configured CRF as `-global_quality` on the same 0-51 quantiser scale, in ICQ mode,
-never a bitrate target. Before 0.76.1 it got no rate-control flag at all and the driver's default
-decided quality. See [the overview](./overview.md#quality-one-dial-calibrated-per-encoder) for what
-the dial costs on each backend, and note that a hardware encoder needs more bits than libx264 for
-the same picture.
+The configured CRF uses the common libx265 reference scale. QSV receives a calibrated
+`-global_quality`: reference CRF 18 maps to 20, and CRF 24 maps to 22. The mapping currently
+borrows the VAAPI measurements; there is no separate QSV quality sweep. See
+[the overview](./overview.md#quality-one-dial-calibrated-per-encoder).
 
 ## Title rendering
 
-GPU title rendering runs on Quadrants, which has wheels for Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 on Python 3.11-3.13. On macOS x86_64 and on Python 3.14 there is none, and title screens fall back to the PIL renderer (static gradient and text, no animated kernels, no SDF text); `immich-memories preflight` says which you will get. See [Title kernels](./cpu-only.md#title-kernels).
+Title rendering uses Quadrants on a supported GPU or CPU backend, with PIL as the fallback.
+See [Title kernels](./cpu-only.md#title-kernels) for platform support and limitations.

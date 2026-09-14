@@ -4,9 +4,8 @@ sidebar_label: "Holiday"
 
 # Holiday
 
-A memory type that does **not** cover one continuous stretch of time. It builds a separate window per year, and the pipeline queries every one of them: a Holiday memory across five years asks Immich for five windows around that holiday, not for the five years between them.
-
-That is the whole reason it exists. A year in review is a period; this is a **recurrence**: the same occasion, across the years. Christmas 2022, 2023, 2024, 2025 and 2026 in one video.
+A Holiday memory combines the same occasion across several years. Each year contributes
+a separate date window, so five Christmases do not include the months between them.
 
 ```bash
 immich-memories generate --memory-type holiday --holiday christmas --years-back 5
@@ -31,7 +30,8 @@ Ten names the pipeline resolves for any year:
 | `christmas` | 25 December |
 | `new_years_eve` | 31 December |
 
-The moving ones are calculated rather than tabulated, so they stay correct in years nobody has thought about yet.
+These are fixed calendar conventions; Mother's Day, Father's Day and Thanksgiving may
+fall on different dates in your country.
 
 Anything else is read as **`MM-DD`**, which is how a household's own occasion works:
 
@@ -62,11 +62,12 @@ immich-memories generate --memory-type holiday --holiday christmas --years-back 
 
 ## When to use it
 
-When the material exists **because** of the date. A holiday is the day a library reliably has something every single year, which is what makes it worth spanning years rather than covering one occasion. If a year is missing photos, that year simply contributes nothing.
+Use it for a recurring celebration or household anniversary. A year without matching
+material contributes nothing.
 
 ## In the web UI
 
-Pick **Holiday** on the [Memory page](../web-ui/memory.mdx#memory-types-and-their-parameters). It takes the holiday, the most recent year to include, how many years to span, and an optional **Only with** people filter. The editor reads every window as part of one period, so a year with nothing in it costs nothing.
+Pick **Holiday** on the [Memory page](../web-ui/memory.mdx#memory-types-and-their-parameters). It takes the holiday, the most recent year to include, how many years to span, and an optional **Only with** people filter. The editor reads the available windows as one period.
 
 ## Titles
 

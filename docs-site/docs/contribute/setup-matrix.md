@@ -5,13 +5,10 @@ title: Setup matrix
 
 # Running the setup matrix
 
-The capability matrix varies what the product is asked for. The setup matrix varies the machine it
-runs on: ten setups, one memory each, the same month of the same library. It answers one question,
-"how do the same pictures come out under each mode, and what does each mode tax", and the answer is
-a table of preparation, selection and render seconds, peak memory, the pictures each setup chose,
-the overlap against the reference cut, and the film.
-
-`scripts/setup_matrix.yaml` holds the ten cells. `scripts/setup_matrix.py` runs them.
+`scripts/setup_matrix.py` compares one monthly memory across ten setups defined in
+`scripts/setup_matrix.yaml`. Each cell prepares the same scope twice, then selects and renders
+it. The report includes timings, peak memory, selected pictures and overlap with `mac-local`.
+These are single observations, not a quality benchmark.
 
 | Cell | Lane | Reader | Picture facts | Tier |
 |---|---|---|---|---|
@@ -26,326 +23,136 @@ the overlap against the reference cut, and the film.
 | `k8s-hosted-zai` | Kubernetes | hosted | inference service | no_captions |
 | `k8s-rules-local` | Kubernetes | rules | in process | no_captions |
 
-"Picture facts" is where the detectors and the encoder run, in process or in the inference service.
-Captions are a third endpoint again, set per cell by `editorial.preparation.caption_base_url`, and
-only tier `full` asks for any: a cell can read its facts in process and still send its captions out.
-Only the two Mac cells caption at all.
+Picture facts are the encoder, context heads and detector results. The two `full` cells also
+need a caption server. The inference service serves picture facts; it is not a caption server.
 
-## One cache per cell
+## Preview the plan
 
-Every cell banks in an editorial cache of its own. The runner pins `cache.directory`,
-`cache.database` and the annotation bank under them per cell, so nothing one cell derived and
-nothing one cell decided reaches the next.
-
-This is not a tidiness rule. The first real Mac lane run shared the operator's own cache across
-both cells, and `mac-rules` published losses in the model's words ("remembered verdict culled
-birthday-candles-01") because `mac-local` had filled the bank minutes earlier. Its cold preparation
-came in at one second, against fifteen for the cell that actually paid for the captions. Both rows
-were the second cell reading the first one's work.
-
-| Lane | Cache | Models |
-|---|---|---|
-| Mac | `<out>/<cell>/cache`, beside the cell's logs | wherever the operator's own config keeps them |
-| NAS | `$MATRIX_NAS_OUT/<cell>/cache`, mounted at `/cache` | `$MATRIX_NAS_CACHE` at `/models`, shared |
-| Kubernetes | subPath `cache/<cell>` of `setup-matrix-data` at `/cache` | subPath `models` of the same claim, shared |
-
-Model files are the opposite case and stay shared, so no detector is downloaded once per cell. The
-NAS cell's cache is not pulled back with its results: it is previews and thumbnails by the
-gigabyte, it means nothing off the NAS, and leaving it there is what makes a re-run of that cell
-warm.
-
-`prepare_cache_primed` follows from this. It is true when the cell's own cache already held a run,
-which is to say the cell has run before, and the record then says that its cold preparation is a
-re-read rather than a first derivation.
-
-## Cold numbers need `--fresh-cache`
-
-A cell's bank survives the run that filled it, so the second time a cell runs, its cold preparation
-is a replay of what the first one derived and its selection is answers read back rather than asked
-for. Both hosted Melious cells made zero completions on the run that found this, and published
-`selection 2s` and `selection 7s` next to `prep cold 0s`. `--fresh-cache` empties each cell's own
-cache before it prepares, so `prepare_cache_primed` is false by construction and the record carries
-`fresh_cache: true`. Each lane does it where that directory lives: the Mac's is removed outright,
-the NAS's is emptied over ssh before docker binds it, and the cluster's is a subPath only the
-container can reach, so the Job carries `MATRIX_FRESH_CACHE=1` and the script empties `/cache` on
-its way in. `/models` is never touched on any of them, because re-fetching the model files measures
-a network rather than a setup. It is off by default: warm numbers are the point of the second
-prepare of the same run, and a fresh cache pays for every caption and every verdict again.
-
-Each lane answers that from somewhere different, because on two of the three the directory being
-there proves nothing. The Mac cell's cache is created by the run itself, so the runner looks before
-it starts. The NAS cell's is created by `make-remote-dir` a moment before the container starts, so
-that step looks first and prints `primed` or `cold` before its own `mkdir -p`. The cluster's is a
-subPath the kubelet creates before the container is even scheduled, so the container leaves a
-marker file of its own (`/cache/.setup-matrix-cell`) and reports on the way in. Remote cells used to
-leave the field null: `k8s-hosted-melious` published a 0 s cold preparation over an already-warm
-bank with nothing under `unmeasured` to say it was a re-read.
-
-## A remote cell's config names container roots only
-
-A cell's config is a copy of the operator's own, for its Immich credentials, with the axes the
-sweep varies written over the top. Every path-valued field comes along with that copy, and on a
-NAS or in a pod none of them exist: the second real remote run pushed
-`advanced.editorial.preparation.detector_python: /Users/…/venv-detectors/bin/python` to the NAS and
-`nas-rules-local` died in `detectors: FileNotFoundError` with 133 pictures still missing their
-heads, having reported no cut at all.
-
-So every remote cell gets each of those fields re-pinned to a root its container actually has
-(`/out`, `/cache`, `/models`), or blanked where blank is the field's own "work it out here"
-default: `output.directory`, `audio.local_music_dir`, `triage.encoder`, `triage.bundle`,
-`editorial.preparation.head_bundle`, `editorial.preparation.detector_python`,
-`editorial.preparation.detector_cache_dir` and `editorial.preparation.marqo_onnx`, on top of the
-cache trio every lane already gets. `~` counts as a local path here too: HOME is `/models` on the
-NAS and `/home/immich` in the Job, a directory that goes away with the pod.
-
-## Start with the dry run
+From the repository root, after `make dev`:
 
 ```bash
 uv run python scripts/setup_matrix.py --dry-run --serve-fixture
 ```
 
-That prints every command and every manifest, touches nothing, and names every cell it would skip
-and why. It is also what to paste into a pull request: the transcript carries variable names, never
-their values, so no host, path or key is in it.
+This prints commands, pinned settings, manifests and skipped cells without running them or
+starting the fixture server. Environment values stay as variable references, but local output
+paths can appear. Review a transcript before sharing it.
 
-## What it needs
+## Configure the machines
 
-Two files outside the repo, neither of them tracked:
+The runner reads these files by default, outside the repository:
 
-| File | Holds |
+| File | Variables |
 |---|---|
 | `~/.immich-memories-matrix/.env` | `MELIOUS_AI_BASE_URL`, `MELIOUS_AI_KEY`, `ZAI_API_KEY`, `ZAI_BASE_URL` |
-| `~/.immich-memories-matrix/matrix.env` | `MATRIX_NAS_SSH`, `MATRIX_NAS_DOCKER`, `MATRIX_NAS_CACHE`, `MATRIX_NAS_OUT`, `MATRIX_NAS_DOCKER_LIMITS`, `MATRIX_K8S_CONTEXT`, `MATRIX_K8S_NAMESPACE`, `MATRIX_OMLX_BASE_URL`, `MATRIX_CAPTION_BASE_URL` |
+| `~/.immich-memories-matrix/matrix.env` | `MATRIX_NAS_SSH`, `MATRIX_NAS_DOCKER`, `MATRIX_NAS_CACHE`, `MATRIX_NAS_OUT`, `MATRIX_K8S_CONTEXT`, `MATRIX_K8S_NAMESPACE`, `MATRIX_OMLX_BASE_URL`, `MATRIX_CAPTION_BASE_URL` |
 
-`MATRIX_NAS_DOCKER_LIMITS` and `MATRIX_INFERENCE_BASE_URL` are the two optional entries: see below.
-`ZAI_BASE_URL` names z.ai's Anthropic-compatible endpoint, and both zai cells pin it. The account
-behind `ZAI_API_KEY` is a coding plan, which is served there and nowhere else: the preset's own
-`/api/paas/v4` answers a coding plan `429 {"code":"1113","msg":"Insufficient balance"}` whatever the
-request says. `provider: zai` picks its adapter from the base URL's path, so a `/api/anthropic` base
-gets `/v1/messages`. The runner drops `llm.base_url` and `llm.no_thinking_params` out of a hosted
-cell's copied config, because the operator's own values would otherwise outrank the provider preset,
-and a cell that names either field gets the one it named.
+Use repeatable `--env-file PATH` options to read different files. Cells missing a required
+variable are reported as skipped. The local cells also need `OPENAI_API_KEY`, which the manifest
+uses for the reader or caption endpoint.
 
-Point at others with `--env-file`, repeatable. The Mac cells also want `OPENAI_API_KEY` in the
-shell, which is the alias the config loader maps to `llm.api_key`.
+The local and NAS configs start from your saved config; `--config PATH` selects another file.
+The current Kubernetes lane does not carry those Immich credentials into a real-library Job;
+use the demo fixture or another lane until the
+[credential fix](https://github.com/sam-dumont/immich-video-memory-generator/pull/927) is merged.
+That pending change also restricts and removes the copied NAS config.
+Remote paths are replaced with container paths under `/out`, `/cache` and `/models`.
+Hosted reader cells replace the local reader's URL and thinking parameters. Set `ZAI_BASE_URL`
+to the endpoint supported by the account behind the key; the manifest's ZAI cells use the
+`zai` adapter, which selects the API protocol from that URL.
 
-`MATRIX_NAS_SSH` is an ssh destination, not an ssh command line. The runner puts it where ssh
-expects `[user@]host`, so `ssh -i key admin@nas` in there reaches ssh as a username and the first
-step dies with "remote username contains invalid characters". Best is a `Host` alias in
-`~/.ssh/config` that carries the key, the user, `BatchMode yes` and a `ConnectTimeout`, with only
-the alias name in the variable. The runner refuses a value with whitespace in it, dry run included.
+- **NAS connection:** `MATRIX_NAS_SSH` must be an SSH destination such as `admin@nas` or a
+  `Host` alias from `~/.ssh/config`. Put key paths and SSH options in that config, not in the
+  variable. Files travel over tar and SSH; SFTP is not required.
+- **NAS limits:** `MATRIX_NAS_DOCKER_LIMITS` defaults to `--cpus 4 --memory 4g`. On a host that
+  rejects CFS quotas, use a supported cpuset such as `--cpuset-cpus 0-3 --memory 4g`. Only
+  resource-limit flags are accepted. The NAS containers run as root to write the mounted share.
+- **Caption server:** `MATRIX_CAPTION_BASE_URL` points to an OpenAI-compatible server serving
+  the configured caption model. It receives pictures and the configured caption key.
+- **Inference service:** `MATRIX_INFERENCE_BASE_URL` can point NAS cells at a reachable service.
+  Otherwise the runner creates the `inference-lan` Service and waits for a LoadBalancer address.
+  A cluster-internal address such as `http://inference:8092` cannot serve a NAS outside it.
 
-The NAS lane moves its files with tar over ssh rather than `scp`. A Synology runs an OpenSSH 8.2
-server with the SFTP subsystem off, and a modern `scp` client speaks SFTP, so every copy closed
-the connection. tar asks the far side for nothing but a shell.
+In the manifest, `$env:NAME` is resolved by the runner. `${NAME}` remains in the pinned config
+for credential fields that the app expands when loading. NAS credentials are sent in a temporary
+mode-0600 environment file, excluded from result collection and removed afterwards; cluster
+hosted-provider credentials use a Secret. The copied NAS `config.yaml` can also contain
+credentials from the operator config and remains after the run; keep it private and remove
+that copy when finished.
 
-`MATRIX_NAS_DOCKER_LIMITS` is what the NAS container is capped at, and it defaults to
-`--cpus 4 --memory 4g`. `--cpus` is a CFS quota, and a kernel built without the CFS bandwidth
-controller, which is what a Synology on cgroup v1 runs, answers the run with `NanoCPUs can not be
-set, as your kernel does not support CPU CFS scheduler or the cgroup is not mounted`. Such a host
-wants a cpuset pin instead: `--cpuset-cpus 0-3 --memory 4g` gives the cell the same four cores and
-starts. The value is split the way a shell would and every flag in it has to be a resource cap
-(`--cpus`, `--cpuset-cpus`, `--memory`, `--memory-swap` and their kin), because it is rendered
-verbatim into a command the NAS runs as root. Whatever it comes to is written into each NAS cell's
-`timing.json` as `container_limits`, so a row can say what its container actually had.
-
-`MATRIX_CAPTION_BASE_URL` is where the caption pass sends its pictures: whichever
-OpenAI-compatible server holds `smolvlm2-500m`. On the owner's Mac that is oMLX, which serves the
-caption model beside the reader, so the same URL goes in both variables. Elsewhere it is
-[the inference service](../deploy/installation/inference-service.md) on `localhost:8092`, or a
-remote one. The Mac cells send `OPENAI_API_KEY` to that endpoint as
-`editorial.preparation.caption_api_key`, and to no other.
-
-The NAS cells that read picture facts from the inference service need an address the NAS can reach,
-and `http://inference:8092` is not one: it resolves inside the cluster only. The runner handles it.
-It applies [the `inference-lan` overlay](../deploy/installation/inference-service.md), waits up to
-180 s for the load-balancer controller to hand out an address, writes `http://<that>:8092` into
-those cells' configs, and deletes the Service at the end. Set `MATRIX_INFERENCE_BASE_URL` to pin an
-address instead, which is how to point at a service the matrix did not start. A dry run prints
-`<derived at run time>` rather than an address, because there is none yet and a transcript should
-not carry one.
-
-A variable a cell needs and cannot find is not a crash. The cell stays in the table with a
-`skip_reason` and is listed under `unmeasured` in the published record, because a lane that could
-not run is a result.
-
-## Two ways a variable is written
-
-`$env:NAME` in the YAML is resolved by the runner before it executes, and is for anything the app
-will not expand itself: a base URL, an ssh destination, a path on the NAS.
-
-`${NAME}` is written into the pinned config verbatim and expanded by the app when it loads.
-That spelling is for credentials only: `llm.api_key` is one of the fields the loader expands, so a
-key is never written to a file.
-
-## The library
-
-`--library demo` is the stock June 2024 fixture library, which is public and needs no anonymising.
-`--serve-fixture` puts it on `0.0.0.0:8078` so the NAS and the cluster can read it over the LAN,
-and prints the URL the remote cells are pointed at.
-
-`--library february` is the owner's own month. It is private, so the runner refuses to write a
-summary for it without `--anonymize`, which turns asset ids into positional handles and drops every
-piece of text the reader wrote. Overlap stays computable after the strip; nothing else survives.
-
-## Lanes
-
-Lanes run at the same time. Inside a lane cells run one at a time, because a lane is one host and
-everything the matrix publishes is a timing taken on it. The Mac is the only lane allowed to call
-the local model server: one machine, one resident model, and it panicked under parallel load. The
-NAS pins each cell to 4 CPUs and has exactly 4, and the cluster cells share one inference service
-and can land on the same node, so a second cell there would measure contention rather than the
-setup.
+## Run and compare
 
 ```bash
-uv run python scripts/setup_matrix.py --lane mac --library demo --serve-fixture
-uv run python scripts/setup_matrix.py --lane nas --lane k8s --library demo --out <the same dir>
+uv run python scripts/setup_matrix.py --library demo --serve-fixture \
+  --out output/setup-matrix/review --fresh-cache --image-tag YOUR_TEST_TAG
 ```
 
-Point the second invocation at the first one's `--out` and the table covers both: every invocation
-reads the cell records already there and republishes one summary over all of them. `--summarize-only`
-does that and nothing else, which is how to rebuild the table after a lane was rerun by hand.
+Replace `YOUR_TEST_TAG` with the image you intend to test. The script's default is a fixed tag,
+currently `0.84.1`; it does not discover the latest release. `--inference-tag` defaults to the
+same tag. Record matching app and inference versions when comparing results.
 
-`--cell <id>` is repeatable and narrows further. `--image-tag` picks the published image the remote
-lanes pull; it defaults to the last published tag rather than the source version, because the
-version in `pyproject.toml` is often ahead of anything on a registry.
+`--serve-fixture` serves the public June 2024 stock library on `0.0.0.0:8078` for the duration of
+this invocation. Remote hosts must be able to reach it. Repeat the flag on later invocations,
+or supply `MATRIX_FIXTURE_BASE_URL` for a fixture server you keep running separately.
 
-The cells that use the inference service bring
-[the inference overlay](../deploy/installation/inference-service.md) up first and take it down at
-the end, plus `inference-lan` when a NAS cell is in the run. `--inference-device` picks CPU or CUDA, and `auto` asks the cluster whether a node carries
-the GPU operator's label. `--keep-service` leaves it running.
+Use `--lane mac`, `--lane nas`, or `--lane k8s` to limit the run; `--lane` and `--cell ID` are
+repeatable. Lanes run concurrently, with one cell at a time inside each lane. Reuse `--out` to
+combine their saved records. Rebuild the table without running cells with:
 
-`--inference-tag` is what the service runs, and it defaults to `--image-tag` so the service under
-test is the release the cells are. The committed overlays pin a release of their own, and a pin
-ages: the first cluster lane ran a `0.85.0-cuda` service against a `0.86.2` app image, so those
-rows measured a service two releases behind the code they were published as. The runner does not
-edit the overlay. It renders it with `kubectl kustomize`, rewrites the inference image reference to
-the tag it was given, and applies the result, which leaves the committed files as the thing a
-reader applies by hand. The resolved image is printed by the dry run and recorded in
-`summary.data.json` as `inference_image`.
+```bash
+uv run python scripts/setup_matrix.py --summarize-only --out output/setup-matrix/review
+```
 
-A rolled-out Deployment is not yet a service that can decide a picture. The models land in its
-cache on the first request that wants them, and until they are there every `/facts` call comes back
-503, which the first cell to run would have measured as its own preparation time. So before any
-cell starts, the runner sends the service one real facts request: a 200 px JPEG out of the fixture
-library, retried with a widening wait until it answers 200, bounded at fifteen minutes. How long
-the service took to answer is published as `inference_warmup_s`, and a service that never answers
-stops the run with the body it replied with, which is the only thing that names the model it is
-missing.
+`--library february` uses the configured private library and requires `--anonymize`. That option
+strips identifiers and selected text fields from the summary. It does not anonymize the videos,
+pinned configs, logs or raw cell records; keep the output directory private.
 
-Getting to the service is its own problem. `kubectl apply` returns as soon as the API server has
-the manifest, so when the tag has changed the Deployment is still pulling, and a Service with no
-ready endpoint answers nothing at all: a port-forward to one never even gets a local listener. A
-run once died sixty seconds after printing the overlay line, before a single facts request was
-made. So the runner waits out `kubectl rollout status deployment/immich-memories-inference
---timeout=10m` first, and stops there with what the rollout said rather than spending the warm-up's
-budget on an image pull. The forward itself is then disposable: if it never comes up, or comes up
-and drops, it is killed and replaced on the same fifteen minutes, and the give-up says which of the
-two it was (`the port-forward never answered` against `facts answered 503: ...`). NAS cells hand
-the warm-up a LAN address, which is reachable from here as well, so those runs skip the forward
-entirely.
+## Cold and warm runs
 
-The NAS container runs as `--user 0:0`, because the share is mounted with an ownership the image's
-uid 1000 cannot write to, and the ssh user who tars the results back is not root. `cp -a` carried
-the app's own 0700 across onto the copied attempt directory, `pull-results` exited 2 on
-`tar: ./attempts/nas-rules-local: Cannot open: Permission denied`, and the cell published an empty
-`selected_asset_ids` beside a film that had come back intact. So the container's last act is
-`chmod -R a+rX` over what the pull reads: the attempts, the logs, the counter files and the film
-directory. The credentials file and the cell's own cache sit in that same directory on the NAS and
-are named nowhere in it.
+Every cell has its own annotation database, previews and selection records. Model files are
+shared within the remote lane. Cells running local classifiers fetch missing pinned models
+before preparation, and report that time separately as `models_fetch_s`.
 
-A NAS cell's credentials go over in a file. `docker run -e NAME` takes the value from the
-environment of the shell running docker, and a non-interactive ssh session carries none of the
-runner's variables: both NAS hosted cells reached their provider with an empty key, and Melious
-answered 401 while the same key worked from the cluster, where the runner makes a Secret out of its
-own environment. `push-env` pipes `NAME=value` into `<remote>/env` under `umask 077`, the run uses
-`--env-file`, `pull-results` excludes it and `drop-env` removes it whether or not the cell worked.
-Nothing is written on this machine, the values never reach the NAS's command line, and the dry run
-prints `NAME=$NAME`.
+| Lane | Cell cache | Shared models |
+|---|---|---|
+| Mac | `<out>/<cell>/cache` | Paths from the local config |
+| NAS | `$MATRIX_NAS_OUT/<cell>/cache`, mounted at `/cache` | `$MATRIX_NAS_CACHE`, mounted at `/models` |
+| Kubernetes | `cache/<cell>` subPath of `setup-matrix-data`, mounted at `/cache` | `models` subPath of that claim, mounted at `/models` |
 
-## The cluster lane
+`--fresh-cache` clears each cell's cache before its first preparation, preserving shared model
+files. Without it, a repeated cell can reuse prior work; `prepare_cache_primed` marks that its
+first preparation was already warm. The second preparation in each run measures cache reuse.
+Remote annotation caches stay on their host; only this run's attempt records are copied back.
 
-The matrix makes two claims of its own, `setup-matrix-data` and `setup-matrix-output`, before it
-applies a Job, and applying them again changes nothing. It never mounts the app's claims: those are
-`ReadWriteOnce` and stay attached to the running Deployment on whichever node holds it, so a Job
-asking for them sits in Multi-Attach forever, and `immich-memories-models` does not exist at all in
-a namespace older than `deploy/kubernetes/base/pvc.yaml`.
+## Service and cluster lifecycle
 
-`setup-matrix-data` carries both halves of what a cell wants kept: the model files on subPath
-`models`, mounted at `/models` and shared by every cell, and one editorial cache per cell on
-subPath `cache/<cell>`, mounted at `/cache`. It is kept between cells and between runs, because a
-warm bank is the difference between a cold preparation and an afternoon of them. `--purge-claims`
-deletes it at the end of the run. The output claim is deleted per cell once the collector has
-copied the results to this machine.
+For service cells, the runner applies the inference overlay, waits for rollout, then sends a
+real fixture picture until `/facts` succeeds or the 15-minute warmup limit is reached. Warmup
+is reported separately as `inference_warmup_s`. `--inference-device` accepts `cpu`, `cuda` or
+`auto`; auto checks the cluster's GPU label. `--keep-service` leaves the deployed service running.
 
-The collector mounts that claim on the same subPath and at the same path the Job wrote to, `/out`,
-and the copy is `kubectl exec <collector> -- tar -C /out -cf - . | tar -C <cell dir> -xf -`, the
-same tar over a pipe the NAS lane pulls with. `kubectl cp` used to do it and ended its stream early:
-`k8s-rules-service` lost its film, its attempt and every per-phase log to `error: unexpected EOF`,
-twice in one run with three retries spent on it. Rooting the archive at `/out` also settles where
-the source is. `kubectl cp` runs `tar` inside the container and the image's WORKDIR is `/app`, so a
-source relative to the claim root was `tar: setup-matrix/<cell>: Cannot stat` on the second real
-run, with everything the cell produced left on the volume.
+The cluster lane uses its own `setup-matrix-data` and `setup-matrix-output` claims. The data
+claim retains models and cell caches across runs; **`--purge-claims` deletes them**. The output
+claim is removed after each cell's collection. Jobs request 2 CPUs and 4 GiB, with limits of
+4 CPUs and 4 GiB.
 
-A zero exit is still not proof the copy finished, so it is tried up to three times with a pause
-between, and what it is judged on is the file the run named: the loop stops as soon as that file is
-on this machine, and if three tries do not bring it back the cell records
-`the film. The copy-out failed after 3 attempts` under `unmeasured` rather than a blank column.
+A failed Job stops its cell instead of waiting for success indefinitely. The runner records
+pod diagnostics, copies results through a collector using tar, and retries missing-film
+collection up to three times. A failed copy is listed under `unmeasured`; available timings can
+still be recovered from stdout.
 
-A cell waits twice: five minutes for its pod to be scheduled, then up to three hours for the Job to
-finish. A pod that cannot be scheduled, for a claim that does not exist or a node with no room, is
-Pending and never completes, and the single long wait used to watch one for three hours. The second
-wait is a poll of the Job's own counters rather than `kubectl wait --for=condition=complete`: with
-`backoffLimit: 0` a cell that fails leaves a Job in `Failed`, a state that condition never reaches,
-so the runner used to sit on a dead cell for the whole three hours. It now asks for `succeeded` and
-`failed` every 15 s and stops on either, under the same ceiling. When a step gives up, the runner
-runs `kubectl describe pod` for that Job and puts the tail of its events in the cell's record and on
-the terminal, then removes what the cell created so the next one is not blocked behind its claim.
+## Read the output
 
-The Job requests 2 CPU and 4 GB, because this cluster already answered a 1-CPU pod with
-`Insufficient cpu` and a cell running on scraps is not a measurement. Its limit is 4 CPU and 4 GB,
-which is exactly the NAS cell's default docker cap, so the two rows in the table can be read
-against each other.
+The default directory is `output/setup-matrix/<library>/<timestamp>/`. Each cell gets its pinned
+config, logs, film, attempt files, probe results and `timing.json`. At the top:
 
-## What lands in the output
+- `summary.data.json`: machine-readable data, schema `setup-matrix-v1`.
+- `summary.md`: the comparison table and `unmeasured` list.
 
-Everything goes under `output/setup-matrix/<library>/<timestamp>/`, which is gitignored because a
-real run carries real footage. Per cell: the pinned config, every command's stdout and stderr, the
-video and its `ffprobe` read, and `timing.json`, which is that cell's own record. A cell dir
-holding a `timing.json` is a cell that ran, which is what lets separate lane invocations add up.
-
-Two files at the top: `summary.data.json` (schema `setup-matrix-v1`, shaped like the research data
-files under `docs/research/`) and `summary.md`, the one table a person reads.
-
-Nothing in either is estimated. A number the run did not report stays null and earns a line under
-`unmeasured`. Three of those are there by construction: no provider in the matrix returns a price
-with a completion, so the cost column is empty; token counts at or above 1000 are rounded to the
-nearest 100 by the end-of-run summary; and a cell re-run over its own cache reports a re-read
-rather than a first derivation, which the record says out loud.
-
-The cut itself comes back the same way on every lane. The editorial cache holds the attempt (the
-plan, the projection, the selection trace) and that cache is never pulled off a NAS or a cluster,
-so a remote cell's container copies its own memory's `editorial-runs/<cell>` into `/out/attempts/`
-on the way out and the copy-out brings that back with everything else. Only that memory's directory:
-the bank beside it is every fact the library ever derived. The capture then reads the attempt with
-the same reader the Mac lane uses, off a different root. Before this, both cluster cells that
-finished published `selected_asset_ids: []` and `#kept 0` next to a film that plainly had pictures
-in it.
-
-A remote cell that cut a film and failed to copy it back still reports its numbers. The container
-tees every phase into its output volume, but the run's own stdout came back with the step that ran
-it (`kubectl logs` for a cluster cell, the ssh session for a NAS one), and the end-of-run block and
-both prepare tables are read from there when the volume's copy never arrived. Cold and warm are
-split apart before either is read: the rate table has the same shape in both, so reading the pair as
-one stream returns the cell's producers twice. What did not come back is named under `unmeasured`:
-the film, and whichever per-phase timings were only ever written to the volume.
-
-Peak memory is measured per step, by running each local step under `/usr/bin/time` and taking the
-largest of the three. The kernel's own counter is the maximum over every child the runner has
-reaped, which is the lane and not the cell, and it handed both Mac cells the same figure to the
-decimal. A host carrying neither `/usr/bin/time -l` nor `-v` leaves the field null with that
-sentence under `unmeasured`. Remote cells keep their cgroup readings, which are already per
-container.
+Missing measurements stay null. Provider prices are not supplied, so the cost column is empty.
+Token counts from the CLI summary are rounded at 1,000 and above. Local peak memory comes from
+`/usr/bin/time`; remote cells use cgroup counters. Selection overlap measures shared source
+pictures, not whether viewers prefer the resulting film.
 
 ## Tests
 
@@ -356,10 +163,5 @@ make test-one T=tests/test_setup_matrix_summary.py
 make test-one T=tests/test_setup_matrix_readiness.py
 ```
 
-The plan tests are the real gate: the ten cells never run in CI, so what is asserted is that the
-plan they would run is the right one, that it is identical between calls, and that no value from
-the environment reaches the rendered text. The readiness tests stand in for the two things that
-cannot be reproduced without a cluster: a fake `kubectl` for a Job that fails, and a fake service
-that answers 503 before it answers facts. The capture tests feed the parsers output built by the
-renderers the CLI actually prints with, so a change to either format fails there instead of quietly
-publishing a plausible wrong number.
+These check generated commands, credential handling, result parsing and failure handling with
+fake services. CI does not run the ten real machine setups.

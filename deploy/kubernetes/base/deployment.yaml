@@ -10,7 +10,7 @@ spec:
   # Single-user, single-replica: workflow state lives in-process.
   replicas: 1
   strategy:
-    type: Recreate  # both PVCs are ReadWriteOnce
+    type: Recreate  # all three PVCs are ReadWriteOnce
   selector:
     matchLabels:
       app.kubernetes.io/name: immich-memories
@@ -36,8 +36,6 @@ spec:
 
           securityContext:
             allowPrivilegeEscalation: false
-            # Sessions now live on the `data` volume, but ~/.cache still
-            # needs a writable mount before this can flip to true (#445).
             readOnlyRootFilesystem: true
             capabilities:
               drop:
@@ -60,12 +58,15 @@ spec:
               value: /models/triage/dinov2-small.onnx
             - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR
               value: /models/huggingface
-            # Optional: LLM clip content analysis (any OpenAI-compatible API)
+            - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__MARQO_ONNX
+              value: /models/detectors/nsfw-marqo-384.onnx
+            - name: HF_HOME
+              value: /models/huggingface
+            # Optional: story reader (an OpenAI-compatible vision model)
             # - name: IMMICH_MEMORIES_LLM__BASE_URL
             #   value: "http://your-llm.llm.svc.cluster.local:8080/v1"
             # - name: IMMICH_MEMORIES_LLM__MODEL
             #   value: "qwen2.5-vl"
-            #   value: "true"
             # Optional: daily automation inside the pod (no CronJob needed)
             # - name: IMMICH_MEMORIES_AUTOMATION__ENABLED
             #   value: "true"
@@ -74,7 +75,7 @@ spec:
             # - name: TZ
             #   value: "Europe/Brussels"
 
-          # Idle ~100 MB; analysis 2-4 GB; FFmpeg assembly 4-8 GB (more for 4K).
+          # Starting limits; size for your source media and preparation tier.
           resources:
             requests:
               memory: "2Gi"
@@ -84,15 +85,19 @@ spec:
               cpu: "4000m"
 
           volumeMounts:
-            # config.yaml, cache.db, video cache, projects, automation history
+            # config.yaml, cache.db, annotation banks, media caches and run state
             - name: data
               mountPath: /home/immich/.immich-memories
             - name: output
               mountPath: /app/output
             - name: models
               mountPath: /models
-            - name: tmp
+            - name: data
+              mountPath: /home/immich/.cache
+              subPath: library-cache
+            - name: data
               mountPath: /tmp
+              subPath: scratch
 
           livenessProbe:
             httpGet:
@@ -124,7 +129,3 @@ spec:
         - name: models
           persistentVolumeClaim:
             claimName: immich-memories-models
-        # FFmpeg intermediates: 2Gi is enough for 1080p, use 8Gi for 4K.
-        - name: tmp
-          emptyDir:
-            sizeLimit: 4Gi

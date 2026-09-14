@@ -68,6 +68,8 @@ services:
       - "127.0.0.1:8080:8080"        # loopback only, see below
     volumes:
       - immich-memories-config:/home/immich/.immich-memories
+      - immich-memories-library-cache:/home/immich/.cache
+      - immich-memories-scratch:/tmp
       - ./output:/app/output          # mkdir it first; chown 1000:1000 if your user is not 1000
     environment:
       IMMICH_URL: "${IMMICH_URL}"
@@ -83,10 +85,11 @@ services:
       resources:
         limits:
           memory: 4G
-          cpus: "4"
 
 volumes:
   immich-memories-config:
+  immich-memories-library-cache:
+  immich-memories-scratch:
 ```
 
 `llm.model` must be the exact string the reader reports at `GET /v1/models`. On the `full` tier
@@ -118,7 +121,7 @@ docker compose exec immich-memories immich-memories generate --type monthly --du
 ```
 
 `models fetch` writes the two digest-pinned ONNX exports (the 88 MB DINOv2-small encoder and the
-22.5 MB sensitive-content detector) and warms the document classifier's snapshot into the config
+22.5 MB sensitive-content detector) and warms the document classifier's snapshot into the library-cache
 volume. All three run on the CPU. A producer that cannot load its model says so by name in the
 first seconds of the detector stage, and names the command that fixes it.
 
@@ -143,10 +146,9 @@ tier to `full` once you are caught up. There is no background backfill job.
 
 ## Encoding on an Intel NAS
 
-Intel Gemini Lake (the J4125 class) has an H.264 encode entrypoint and no HEVC one, and the
-default output codec is H.265. The backend encodes what the chip can and sends the rest to
-libx265, with `vaapi cannot encode h265 on this device; encoding it in software` in the log. So
-set `output.codec: h264`, or turn on `preset: fast`, and pass the device through:
+On an Intel NAS, check `vainfo` for the codecs the device can encode. The default
+`codec_policy: prefer_hardware` can choose H.264 when HEVC hardware encoding is unavailable for
+an SDR render. `strict` keeps the requested codec and uses software if needed. Pass the device through:
 
 ```yaml
     devices:
@@ -167,29 +169,35 @@ VA-API drivers ship in the amd64 image only. Details on [Intel Quick Sync](../ha
 title backgrounds. Five keys, nothing about what the editor reads. Any value you set explicitly
 still wins, and the Generation Options page shows a banner while the preset is active.
 
+## CPU limits on NAS kernels
+
+The example above leaves the CPU quota unset. Some Synology kernels reject Compose's
+`deploy.resources.limits.cpus` with `NanoCPUs can not be set`. If you downloaded the repository's
+Compose file instead, remove that entry from both services on an affected host. Keep memory
+limits. A `cpuset` using CPU IDs that exist on your NAS is an alternative when you need to
+restrict scheduling. [PR #929](https://github.com/sam-dumont/immich-video-memory-generator/pull/929)
+updates the shipped defaults; it is pending at the time of this review.
+
 ## Memory and disk
 
 The 4 GB limit in the compose file is the one the measured runs used. The streaming assembler
-blends one clip at a time, so render memory does not grow with clip count. 4K on NAS hardware is
+processes clips sequentially, reducing the peak compared with loading all clips together.
+Resolution, title settings and source decoding still affect memory. 4K on NAS hardware is
 not recommended; raise the limit if you try.
 
-The video cache keeps downloaded Immich clips (10 GB, 7 days by default). The preview cache is the
-one to size by library: one Immich preview is about 315 KB, so budget
-`thumbnail_cache_max_size_mb ≈ 0.35 × pictures a memory's scope can reach`; the 10 GB default
-covers about 31,000 previews. Too small and the next overlapping memory re-downloads every preview
-and re-captions the pictures whose banked caption failure no longer matches, which on a NAS is the
-slow part. A run that does not fit logs one `WARNING` naming the setting.
+Default media cache budgets total about 22 GB. Active files can exceed those budgets, and
+annotations, attempts, models, temporary renders and exports need more space. A thumbnail
+working set that does not fit produces a warning and can require downloads again on later runs.
+Use `runs storage` to inspect usage and keep the configured cache directory on persistent disk.
 
-## What the NAS cannot do
+## Limits to check
 
-- Hold the 30B reader. Use another machine or `reader: rules`. A configured model reader that
-  cannot be reached stops the run; `no_captions` does not turn it off.
-- Generate music: MusicGen and ACE-Step want GPU servers. Upload your own track instead.
-- Animated title screens on the GPU: they fall back to the PIL renderer, without the particle
-  effects and animated gradients. On a CPU with no AVX, the J4125 in the tested DS423+ included,
-  the kernel renderer is out entirely: it dies with SIGILL on the first kernel it compiles, a
-  child-process probe catches that at startup, and every title is PIL-rendered. See
-  [CPUs without AVX](../hardware/cpu-only.md#cpus-without-avx).
+- A small NAS cannot hold the tested 30B reader. Use another machine or `reader: rules`.
+  `no_captions` alone does not turn a configured reader off.
+- Local music models need their own memory budget. A supplied or bundled track avoids that cost.
+- Title rendering depends on the CPU and available kernel backend. On the tested J4125, the
+  kernel library crashes during loading; a child-process probe catches it and selects PIL.
+  PIL keeps text animation and simpler backgrounds. See [CPUs without AVX](../hardware/cpu-only.md#cpus-without-avx).
 
 ## NAS notes
 

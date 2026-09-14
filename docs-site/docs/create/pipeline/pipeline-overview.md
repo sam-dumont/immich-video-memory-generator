@@ -34,19 +34,21 @@ what happens without a model is in [Rules mode](./rules-mode.md).
 
 ## The stages of a cut
 
-The stage names are what the run reports (a row on the Memory page, a line in the terminal).
+The run reports these stages on the Memory page and in the terminal. This table describes
+the model reader with full preparation. The rules reader runs locally, and reduced
+preparation tiers skip some producers.
 
 | Stage | What runs | Class |
 |---|---|---|
-| **Reading dates, places and people** | The source model: every eligible source with its provenance, duration, Live companion and exclusion reason, per window. Then preparation, counted per producer: previews, pixel facts, the encoder with six context heads, the two detectors, and on the `full` tier one caption per picture that has none. Nothing banked is produced twice | `network` for previews; captions `remotable`; heads, detectors, pixels `local-only` |
+| **Reading dates, places and people** | The source model: every eligible source with its provenance, duration, Live companion and exclusion reason, per window. Then preparation, counted per producer: previews, pixel facts, the encoder with six context heads, the two detectors, and on the `full` tier one caption per picture that has none. Matching banked facts are reused | `network` for previews; captions `remotable`; heads, detectors, pixels `local-only` |
 | **Reading event evidence: i/n** | Paged episode reading over the annotation lines, the cull asked inside each episode. Banked per group and evidence key | `remotable`; `cheap` when banked |
 | **Reading the period account** | The period read as an account with a thesis, one bounded repair if malformed. Banked | `remotable`; `cheap` when banked |
 | **Building editorial cards** | One card per moment, rendered into the wall the planner reads | `cheap` |
 | **Editing the memory: n pictures into …** | The structure and story planners: the memory-worthy gate, the story weighing, the moment picks, the standing gate, the audience checks; each a banked question, the gates asked in two orders. Motion is measured for the chosen Live carriers | `remotable`; motion `local-only` |
 | **Validating selected source timing** | Intervals bound to their sources, duration realised | `cheap` |
 
-If the reader stops answering, the Editing stage reports *Waiting for the reader at host:port*
-and retries three times before failing.
+Required reader requests have bounded recovery. If they still fail, the cut reports a
+failed stage. A configured model that fails is not silently replaced with the rules reader.
 
 ### What a cut leaves behind
 
@@ -60,8 +62,7 @@ reuses are not in the attempt: they are in `annotations.sqlite` and `structure-b
 
 ### Where the time goes
 
-A cold cut pays for every picture never read and every reading of a period nobody has cut. A
-warm cut over the same period is mostly the render. There is no depth knob and no shortlist at
+A cold cut prepares missing facts and readings. Later cuts reuse compatible work. There is no depth knob and no shortlist at
 the source: every eligible picture is prepared, because a picture the editor never saw is one it
 cannot weigh. The levers: put the caption server and the reader where they are fast, prepare a
 library ahead with [`prepare`](../cli/prepare.md), and keep the cache. If the render is the slow
@@ -78,11 +79,11 @@ encoder, a lower resolution and fewer clips.
 - **Photos** render frame by frame in Python: Ken Burns is one `cv2.warpAffine` per frame at
   30 fps for the seconds granted, over a blurred background when the aspect differs. HEIC decode
   and gain-map HDR happen here; sources are capped at 1.5× the output size.
-- **Title screens** render on the GPU when the kernel library initialises, PIL otherwise, and
-  encode with the final video's encoder.
+- **Title screens** use Quadrants on a working GPU or CPU backend, with PIL as the fallback.
+  They encode with the final video's encoder.
 - **Assembly and encode** stream: one FFmpeg decode per clip at a time, crossfades blended into
-  one preallocated buffer, raw frames piped into one encode process. Memory stays flat with clip
-  count, which is what makes 4K output possible.
+  one preallocated buffer, raw frames piped into one encode process. This limits the number
+  of decoded frames held at once; resolution and title rendering still affect memory use.
 
 Encoder selection is a real probe: NVIDIA, then Apple, then QSV, then VAAPI, each having to encode
 one 256×256 frame before it is used (VideoToolbox is taken on FFmpeg's listing). A hardware

@@ -1,4 +1,4 @@
-"""Cache management section for Step 1 configuration page."""
+"""Media cache controls for the Settings page."""
 
 from __future__ import annotations
 
@@ -12,8 +12,12 @@ from immich_memories.ui.nicegui_compat import io_bound_result
 
 logger = logging.getLogger(__name__)
 
-# Preview cache path (not managed by a dedicated class)
-_PREVIEW_CACHE_DIR = Path("~/.immich-memories/cache/preview-cache").expanduser()
+
+def _preview_cache_dir() -> Path:
+    """Use the same configured directory as the clip preview writer."""
+    from immich_memories.config import get_config
+
+    return get_config().cache.cache_path / "preview-cache"
 
 
 def _format_size(size_bytes: int) -> str:
@@ -29,20 +33,22 @@ def _format_size(size_bytes: int) -> str:
 
 def _get_preview_cache_stats() -> dict:
     """Get preview cache stats (no dedicated cache class)."""
-    if not _PREVIEW_CACHE_DIR.exists():
+    preview_dir = _preview_cache_dir()
+    if not preview_dir.exists():
         return {"file_count": 0, "total_size_bytes": 0}
-    files = list(_PREVIEW_CACHE_DIR.glob("*.mp4"))
+    files = list(preview_dir.glob("*.mp4"))
     total = sum(f.stat().st_size for f in files)
     return {"file_count": len(files), "total_size_bytes": total}
 
 
 def _clear_preview_cache() -> int:
     """Clear preview cache directory."""
-    if not _PREVIEW_CACHE_DIR.exists():
+    preview_dir = _preview_cache_dir()
+    if not preview_dir.exists():
         return 0
-    files = list(_PREVIEW_CACHE_DIR.glob("*.mp4"))
+    files = list(preview_dir.glob("*.mp4"))
     count = len(files)
-    shutil.rmtree(_PREVIEW_CACHE_DIR)
+    shutil.rmtree(preview_dir)
     return count
 
 
@@ -78,20 +84,17 @@ def render_cache_management() -> None:
             def _gather():
                 from immich_memories.cache import (
                     ThumbnailCache,
-                    VideoAnalysisCache,
                     VideoDownloadCache,
                 )
                 from immich_memories.config import get_config
 
                 _cfg = get_config()
-                analysis = VideoAnalysisCache(db_path=_cfg.cache.database_path)
                 video = VideoDownloadCache(cache_dir=_cfg.cache.video_cache_path)
                 thumbnail = ThumbnailCache(
                     cache_dir=_cfg.cache.cache_path / "thumbnails",
                     max_size_mb=_cfg.cache.thumbnail_cache_max_size_mb,
                 )
                 return {
-                    "analysis": analysis.get_stats(),
                     "video": video.get_stats(),
                     "thumbnail": thumbnail.get_stats(),
                     "preview": _get_preview_cache_stats(),
@@ -100,23 +103,6 @@ def render_cache_management() -> None:
             all_stats = await io_bound_result(_gather)
 
             with stats_container:
-                # Analysis cache
-                a = all_stats["analysis"]
-                a_text = f"{a['total_videos']} videos, {_format_size(a['database_size_bytes'])}"
-
-                async def clear_analysis():
-                    from immich_memories.cache import VideoAnalysisCache
-                    from immich_memories.config import get_config
-
-                    _cfg = get_config()
-                    count = await io_bound_result(
-                        VideoAnalysisCache(db_path=_cfg.cache.database_path).clear_all
-                    )
-                    ui.notify(f"Cleared {count} analysis entries", type="positive")
-                    await refresh_stats()
-
-                _render_cache_row("Analysis cache", "analytics", a_text, clear_analysis)
-
                 # Video download cache
                 v = all_stats["video"]
                 v_text = (
@@ -171,13 +157,12 @@ def render_cache_management() -> None:
 
                 _render_cache_row("Preview cache", "play_circle", p_text, clear_preview)
 
-                # Clear all button
                 ui.separator().classes("my-2")
+                ui.label("Annotation records and run history are kept.").classes("text-sm")
 
                 async def clear_all():
                     from immich_memories.cache import (
                         ThumbnailCache,
-                        VideoAnalysisCache,
                         VideoDownloadCache,
                     )
 
@@ -185,21 +170,20 @@ def render_cache_management() -> None:
                         from immich_memories.config import get_config
 
                         _cfg = get_config()
-                        a = VideoAnalysisCache(db_path=_cfg.cache.database_path).clear_all()
                         v = VideoDownloadCache(cache_dir=_cfg.cache.video_cache_path).clear()
                         t = ThumbnailCache(
                             cache_dir=_cfg.cache.cache_path / "thumbnails",
                             max_size_mb=_cfg.cache.thumbnail_cache_max_size_mb,
                         ).clear()
                         p = _clear_preview_cache()
-                        return a + v + t + p
+                        return v + t + p
 
                     total = await io_bound_result(_do_clear_all)
-                    ui.notify(f"Cleared all caches ({total} items)", type="positive")
+                    ui.notify(f"Cleared media caches ({total} items)", type="positive")
                     await refresh_stats()
 
                 with ui.row().classes("w-full justify-end"):
-                    ui.button("Clear all caches", on_click=clear_all, icon="delete_sweep").props(
+                    ui.button("Clear media caches", on_click=clear_all, icon="delete_sweep").props(
                         "outline color=negative"
                     )
 

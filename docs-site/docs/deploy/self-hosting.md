@@ -18,7 +18,7 @@ loses is on [Running modes](./running-modes.md).
 
 | Piece | What it does | Listens on | Resident |
 |---|---|---|---|
-| The app | Talks to Immich, prepares facts, renders, serves the web UI | `8080` | 2 to 4 GB |
+| The app | Talks to Immich, prepares facts, renders, serves the web UI | `8080` | workload-dependent; Compose starts with a 4 GB limit |
 | The reader (skip with `reader: rules`) | Reads the period as a story, weighs it, and is sent an 800 px tile of the few dozen candidates whose facts the edit asks about | wherever you serve it; oMLX defaults to `8000` | about 17 GB at 4-bit |
 | The caption server (`full` tier only) | One 140-token description per picture, once, then banked | `8092` by default | 1 to 2 GB |
 
@@ -35,7 +35,7 @@ worse than a stop.
 - Immich v2 or v3 and an API key (Account Settings, API Keys): read on assets, people, albums,
   timeline and search; add upload and album create/update for upload-back.
 - Python 3.11 or later, or Docker, for the app.
-- For a model reader, a machine that holds it for as long as its server is up.
+- For a model reader, a machine with room for the model weights, context and runtime while it is loaded.
 
 ## 1. Install the app
 
@@ -45,10 +45,12 @@ Docker:
 curl -O https://raw.githubusercontent.com/sam-dumont/immich-video-memory-generator/main/docker-compose.yml
 export IMMICH_URL="http://your-immich-server:2283"
 export IMMICH_API_KEY="your-api-key"
+mkdir -p output   # must be writable by UID/GID 1000; see the Docker guide
 docker compose up -d
 ```
 
-Or natively, with the ONNX dependencies the heads and detectors need:
+Or natively, after installing FFmpeg on your PATH, with the ONNX dependencies the heads and
+detectors need:
 
 ```bash
 uv tool install "immich-memories[editorial]"     # or [all-mac] on Apple Silicon
@@ -60,14 +62,19 @@ library. Both routes are on the [Docker page](./installation/docker.md).
 
 ## 2. Fetch the model files
 
-Skip on `tier: metadata_only`.
+Skip on `tier: metadata_only`. The commands below use a native installation. For Docker, prefix
+app commands with `docker compose exec immich-memories`; for example:
+
+```bash
+docker compose exec immich-memories immich-memories models fetch
+```
 
 ```bash
 immich-memories models fetch
 ```
 
 That writes the encoder to `~/.immich-memories/models/triage/dinov2-small.onnx` after checking its
-SHA-256 (`478164cd…`), writes the 22.5 MB sensitive-content detector next to it, and warms the
+SHA-256 (`478164cd…`), writes the 22.5 MB sensitive-content detector under `models/detectors/`, and warms the
 document classifier's snapshot into the Hugging Face cache. With them cached,
 `allow_model_downloads` stays `false` and means it. The encoder digest is checked at every run; no
 other ONNX conversion passes, because ONNX exports are not byte-reproducible across torch versions.
@@ -121,7 +128,9 @@ advanced:
 ```
 
 `llm.model` must be the string the server reports at `GET /v1/models`. `llm.base_url` defaults to
-`http://localhost:8080/v1`, the app's own port: set it. Every key has an env var
+`http://localhost:8080/v1`, the app's own port: set it. In Docker, replace `localhost` with hostnames reachable from the container. The Compose
+preparation-tier environment variable overrides the YAML value, so change both consistently.
+Every key has an env var
 (`IMMICH_MEMORIES_LLM__BASE_URL`, `IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER`, and so on):
 [Environment variables](./configuration/environment-variables.md).
 
@@ -144,7 +153,7 @@ immich-memories generate --memory-type monthly_highlights --year 2024 --month 6
 ```
 
 The cold pass runs every producer the tier asks for over every eligible picture and banks the
-answers by producer and exact input; the second cut of that month is mostly the render. Measured
+answers by producer and exact input; matching later runs skip that preparation work. Reader calls and rendering can still take time. Measured
 on a four-core Celeron NAS: 1.23 s per picture for every producer except the caption, 30.9 s for
 the caption. That is the whole reason `editorial.preparation.tier` exists.
 
@@ -191,4 +200,4 @@ scale and encode; none of them runs inference.
 - [Your first memory](../create/first-memory.mdx): the same thing through the web UI
 - [Editorial annotation setup](./configuration/editorial-preparation.md): every pin and contract
 - [Title kernels](./hardware/cpu-only.md#title-kernels): GPU title rendering runs on Quadrants (Linux x86_64, Linux aarch64, macOS arm64, Windows AMD64, Python 3.11-3.13). An Intel Mac or Python 3.14 has no wheel and renders titles with PIL instead: same text and timing, no animated kernels and no SDF text. `immich-memories preflight` prints which one your machine will use.
-- [CPU-only](./hardware/cpu-only.md): why the title screens, not the encoder, decide render time
+- [CPU-only](./hardware/cpu-only.md): software encoding and title fallbacks

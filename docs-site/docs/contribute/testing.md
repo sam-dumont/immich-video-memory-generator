@@ -4,248 +4,141 @@ title: Testing Guide
 
 # Testing Guide
 
-Immich Memories has 7,461 tests: 6,838 fast unit tests that run everywhere, and 623 integration and E2E tests that need real services (FFmpeg, Immich, a browser).
+Use the Makefile targets so local checks use the repository's test selection and coverage
+settings. Start with [Development Setup](./development-setup.md).
 
-## Testing Tiers
+## Test suites
 
-| Tier | Where it runs | Command | What it needs |
-|------|--------------|---------|---------------|
-| **Unit tests** | CI (Linux + macOS) + local | `make test` | Nothing external |
-| **Extras** | CI + local | `make test-extras` | The torch-family extras (demucs/editorial); CI's job installs `audio`+`gpu` only, so the torch paths are effectively a local tier |
-| **Integration tests** | Local + self-hosted Linux GPU runner | `make test-integration` | FFmpeg + Immich server |
-| **E2E (Playwright)** | CI launch check + local | `make e2e` (`make e2e-full` for the generation flow) | `make playwright-install`, no Immich (fake server) |
+| Suite | Command | Requirements |
+|---|---|---|
+| Default tests | `make test` | Python dependencies and FFmpeg for the tests that render media; no live Immich required |
+| One file or node | `make test-one T=tests/test_config.py` | Depends on the selected tests |
+| Optional backend tests | `make test-extras` | Tests marked `extras`; dependencies vary by test |
+| Integration | `make test-integration` | FFmpeg; some suites also read from a configured Immich server |
+| Browser launch | `make e2e` | Playwright Chromium and FFmpeg; uses a fake Immich server |
+| Full browser suite | `make e2e-full` | Broader browser and optional visual flows |
 
-### Unit tests
+`make test` excludes tests marked `integration` and `e2e`. Most of the remaining tests
+exercise logic or replace external boundaries, but some encode real media. For example,
+`TestPhotoPlaceCaption` in `tests/test_processing_coverage.py` renders a photograph before
+checking its location caption. “Unit test” does not mean FFmpeg is never called.
 
-Cover pure logic: selection rules, config parsing, data models, assembly settings, helper functions. No FFmpeg, no Immich, no network.
+`make test-extras` selects the `extras` marker. CI currently installs `dev,audio` on Linux
+and `dev,mac,audio` on macOS for this job. That does not include Demucs or the editorial
+extra, so a green job does not establish that every optional backend ran. Read the skips.
+
+Install the browser once with `make playwright-install`. `make launch-check` combines
+local checks, package validation, the docs build and the browser launch test.
+`make launch-check-ci` runs the browser portion because CI has separate jobs for the rest.
+
+## Integration tests
+
+The aggregate `make test-integration` runs these suites:
+
+| Target suffix | Exercises | External requirements |
+|---|---|---|
+| `auth` | Authentication boundaries | No external service |
+| `assembly` | Assembly and transitions | FFmpeg |
+| `audio-mixing` | Soundtrack mixing and loop seams | FFmpeg |
+| `processing` | Probing, filters and subprocess handling | FFmpeg |
+| `titles` | Title rendering and pixel checks | FFmpeg; backend-specific tests may skip |
+| `photos` | Photo decoding and animation | FFmpeg |
+| `pipeline` | Generation from library assets | FFmpeg and Immich; test-specific backends |
+| `live-photos` | Live Photo material and merging | FFmpeg and Immich |
+
+Run one with, for example, `make test-integration-photos`.
+
+Two additional targets are outside the aggregate: `make test-integration-cli` runs CLI
+pipeline tests, and `make test-integration-audio` needs its audio backend packages. The
+`automation` folder has no dedicated target; use the existing focused-test entry point:
 
 ```bash
-make test          # Run all unit tests (~3 min on an M-series Mac, slower on CI)
-make test-fast     # Skip slow tests
+make test-one T="tests/integration/automation -m integration"
 ```
 
-### Integration tests
+Immich fixtures load the default configuration and look for suitable short clips. Availability
+markers and fixtures skip tests when their requirements are absent. A skip means that path
+was not checked. Once prerequisites are present, authentication, rendering or assertion
+errors can still fail a test.
 
-Cover the real pipeline: download from Immich, FFmpeg assembly, video output validation, music mixing. They **read** from Immich (no writes) and skip gracefully if services aren't available.
+Integration tests should read real media and replace upload or mutation boundaries. Keep
+fixtures small, write outputs under the test's temporary directory and verify the behavior
+the test names. Use pixel or duration assertions when those properties are the contract;
+allow the tolerance required by frame quantization or encoding.
 
-```bash
-make test-integration            # Every suite except cli, audio and automation
-make test-integration-assembly   # One suite: assembly, audio, audio-mixing, auth, cli, live-photos, photos, pipeline, processing, titles
-```
+For software-only tests, select a software encoder at the relevant boundary. Do not assume
+FFmpeg listing a hardware encoder means the CI runner can use it. The photo-caption test
+forces its SDR software path; HDR tests need their own explicit encoding setup.
 
-Each suite is a folder under `tests/integration/`, and most have their own `make test-integration-<suite>` target with a rough runtime (see the table in `CLAUDE.md`). Three are not in the aggregate target: `cli`, because it re-runs the full pipeline that `pipeline` already covers and is the slowest suite in the tree (`make help` prints its estimate); `audio`, because it wants the demucs and ACE-Step packages; and `automation`, which has no target at all. Run it with `pytest tests/integration/automation` until one exists.
+## CI and local checks
 
-**What's tested:**
-- Real FFmpeg assembly (single clip, crossfade, smart transitions)
-- Real Immich API reads (asset fetching, video download)
-- `generate_memory()` end-to-end pipeline
-- Music file mixing into assembled video
-- Clip segment trimming (custom start/end times)
-- Upload-back to Immich (mocked write, real everything else)
-- CLI `generate` command with real Immich
-- Selection over real video frames
+`.github/workflows/ci.yml` defines the current matrix:
 
-**What's needed:**
-- FFmpeg installed (`brew install ffmpeg` or `apt install ffmpeg`)
-- Immich server reachable (configured in `~/.immich-memories/config.yaml`)
-- At least 2 short video clips (under 30s) in your Immich library
+- Pull requests: Ubuntu on Python 3.11, 3.12 and 3.13; macOS on Python 3.13.
+- Main: Ubuntu and macOS on all three Python versions.
+- Separate jobs cover optional extras, package and Docker builds, documentation and the
+  browser launch test. Quality and security jobs gate the main test jobs.
 
-Tests skip gracefully if services aren't available: you won't get failures, just skips.
+The private GPU mirror runs integration suites and reports their coverage separately.
+The public CI workflow also runs selected FFmpeg integration suites for diff coverage.
+
+`make check` runs lint, formatting, types, file length, cyclomatic complexity and the default
+tests. `make ci` adds cognitive complexity, dead code, Bandit, Semgrep, modernization,
+dependency/import checks, duplication, critique, reference drift, docs voice, notices and
+Compose validation. It does not reproduce every GitHub Actions job or platform.
 
 ## Coverage and diff-cover
 
-### How coverage works
+CI uploads default-suite coverage under the `unittests` flag. The private GPU runner uses
+`integration-linux`. Per-suite coverage and JUnit XML files under `tests/` are generated
+artifacts and are gitignored.
 
-CI runs unit tests and uploads `coverage.xml` to Codecov under the `unittests` flag. The self-hosted GPU runner runs the integration suites and uploads its coverage under the `integration-linux` flag; Codecov merges the two. The per-suite XMLs that `make test-integration` writes locally (`tests/*-coverage.xml`, `tests/*-junit.xml`) are gitignored: they are for your own inspection, not for committing.
+The CI diff gate requires 80% coverage on changed lines. It skips diffs with fewer than
+10 or more than 1000 changed Python source lines, excluding tests from that count.
+`analysis/apple_vision*.py` is excluded from the coverage comparison.
 
-### Workflow when you change code
-
-1. Write your code
-2. Run `make test` (unit tests, always)
-3. If you changed `src/immich_memories/processing/`, `analysis/`, `titles/`, or `generate.py`, run the matching integration suite locally (`make test-integration-processing`, `make test-integration-titles`, ...) so you catch FFmpeg regressions before the GPU runner does
-4. Commit and push: CI runs unit tests + diff-cover, the GPU runner runs integration
-
-### Check coverage locally before pushing
-
-```bash
-make diff-cover-local   # Runs unit tests + checks diff coverage at 80%
-```
-
-### Why 80% threshold?
-
-We require 80% coverage on changed lines. Not 95% (forces testing trivial code) and not 50% (too lenient). The remaining 20% covers error handling, CLI glue, and code paths that need real external services.
-
-## Writing integration tests
-
-### Rules
-
-1. **Mock WRITES, not READS**: use real Immich for fetching assets, real FFmpeg for encoding. Only mock upload/mutation operations.
-2. **Use short clips**: filter to clips under 30s, limit to 2-3 per test. Full pipeline tests should complete in under 2 minutes.
-3. **Skip gracefully**: use `requires_ffmpeg` and `requires_immich` markers. Tests skip (not fail) when services are unavailable.
-4. **Assert properties, not content**: verify "valid video exists" and "duration > 0", not specific pixel values or exact durations. Content is non-deterministic.
-5. **Log during tests**: `make test-integration` shows live logs (`--log-cli-level=INFO`). Use this to debug slow or failing tests.
-
-### Example
-
-```python
-@requires_immich
-class TestMyFeature:
-    def test_real_pipeline(self, immich_short_clips, tmp_path):
-        clips, config, client = immich_short_clips
-        config.title_screens.enabled = False  # Skip for speed
-
-        params = GenerationParams(
-            clips=clips[:2],
-            output_path=tmp_path / "test.mp4",
-            config=config,
-            client=client,
-            upload_enabled=False,  # NO WRITES
-        )
-
-        result = generate_memory(params)
-        assert result.exists()
-        assert get_duration(ffprobe_json(result)) > 0
-```
-
-## Test files overview
-
-```
-tests/
-├── test_*.py                # Unit tests (CI + local)
-├── benchmarks/, performance/ # Timing benchmarks (make benchmark*)
-├── e2e/                     # Playwright E2E against a fake Immich server (make e2e, make screenshots)
-└── integration/
-    ├── conftest.py          # FFmpeg fixtures, requires_ffmpeg marker
-    ├── immich_fixtures.py   # requires_immich, short-clip fixtures
-    ├── assembly/            # make test-integration-assembly   (FFmpeg only)
-    ├── audio/               # make test-integration-audio      (demucs/acestep packages)
-    ├── audio_mixing/        # make test-integration-audio-mixing (FFmpeg only, loop seams)
-    ├── auth/                # make test-integration-auth       (no external deps)
-    ├── automation/          # auto suggest/run (no dedicated target yet)
-    ├── cli/                 # make test-integration-cli        (full pipeline, slow)
-    ├── live_photos/         # make test-integration-live-photos (FFmpeg + Immich)
-    ├── photos/              # make test-integration-photos     (FFmpeg only)
-    ├── pipeline/            # make test-integration-pipeline   (FFmpeg + Immich)
-    ├── processing/          # make test-integration-processing (FFmpeg only)
-    └── titles/              # make test-integration-titles     (FFmpeg only, pixel tests)
-```
-
-## When CI fails but nothing failed
-
-A red `Test (Python 3.12, ubuntu-latest)` usually reads as *your code broke on
-Linux*. Often it means the runner was taken away mid-suite. The two look
-identical on the PR page and are easy to separate one API call down.
-
-### Read the step, not the log
+For supported paths, `make integration-coverage-for-diff` runs the matching FFmpeg suites
+before the coverage check. The mapping is in the Makefile: titles, processing, photos,
+audio and top-level generation modules. This selects suites; it does not guarantee those
+suites exercise every changed line.
 
 ```bash
-gh api repos/<owner>/<repo>/actions/jobs/<job-id> \
-  -q '.steps[] | select(.conclusion=="cancelled" or .conclusion=="failure") | "\(.name) -> \(.conclusion)"'
+make integration-coverage-for-diff
+make diff-cover-local
 ```
 
-`Run tests with coverage -> cancelled`, with everything downstream `skipped`, is
-the signature of a runner that died. No assertion ever ran.
+Both compare against `origin/main`. The integration selector uses `origin/main...HEAD`,
+so uncommitted edits do not change its suite selection. Run the relevant suite explicitly
+while working. `diff-cover-local` reruns default tests and merges available integration
+reports; unlike `diff-cover-ci`, it does not apply the small/large-diff skips or Apple Vision
+exclusion. Use fresh reports so old results do not hide missing coverage.
 
-`gh run view --log-failed` returns **nothing** in this case: precisely because
-nothing failed. An empty failure log is evidence, not a broken tool.
+When coverage is missing, inspect the lines and choose a test at the boundary that can
+exercise them. FFmpeg behavior often needs an integration test; subprocess error handling
+can be checked with a fake process. `tests/test_ffmpeg_pipe.py` shows the latter pattern.
+Do not add tests merely to repeat constants or force a percentage.
 
-### Check how far it got
+## Interrupted CI jobs
+
+Read the job annotations and full log before blaming an assertion or dismissing a failure.
+`cancelled` can mean a superseded run, a manual cancellation or an interrupted runner.
+Exit 137 indicates SIGKILL, which can come from resource limits or a terminated runner.
+Neither tells you whether the code is correct.
 
 ```bash
-gh api repos/<owner>/<repo>/actions/jobs/<job-id> \
-  -q '.steps[] | select(.name=="Run tests with coverage") | "\(.started_at) -> \(.completed_at)"'
+gh run view <run-id>
+gh run view <run-id> --log
+gh run list --branch <branch>
 ```
 
-Four minutes against a suite that takes eleven means it never finished. A real
-failure stops at the assertion; a reclaimed runner stops at an arbitrary point.
+An empty `--log-failed` result is inconclusive. Compare the matrix cells for clues, then
+check the actual failing step. A single failing Python version can still expose a real
+version-specific bug.
 
-### Use the matrix as a control group
+The current `CI Success` aggregator accepts `success`, `skipped` and `cancelled` job
+results. Check that required jobs completed for the commit being reviewed; the aggregate
+alone does not prove that a cancelled job has a successful replacement.
 
-The test matrix runs identical code on several Python versions and two operating
-systems. That is a built-in control:
-
-- **one cell red, siblings green on the same OS** → the runner died. The test in
-  flight gets the blame it does not deserve.
-- **every Linux cell red, macOS green** → a real platform difference.
-
-The matrix is a hint, not the verdict. Two cells can be reclaimed at once when
-the host is under memory pressure, which looks like a platform difference and is
-not. The log decides: `FAILED` lines mean a real failure, while `Error 137`
-after a run of `PASSED` lines means the runner was killed. Check the log before
-concluding from the pattern.
-
-This settled a real case: a photo-caption test appeared to fail on Python 3.12
-with `Error 137` (SIGKILL/OOM), and passed on 3.11 and 3.13 in the *same run* on
-the *same image*. The test was correct. It was simply the slowest thing running
-when the runner was killed.
-
-### Heavy tests attract the blame
-
-The OOM lands on whatever is running, which skews toward the slow tests. Two
-have been trimmed for this reason rather than because they were wrong: the
-loudnorm fixtures (thirty FFmpeg calls to one) and the photo-caption test (120
-encoded frames to 30, to assert one string).
-
-If a unit test renders video to check metadata, shrink the render. Weight is
-what makes a test the victim.
-
-### `cancelled` is not always ignorable
-
-The `CI Success` gate tolerates `cancelled` because the concurrency group
-cancels superseded runs. That is safe: a runner death produces
-`conclusion=failure` on the *job* (`make` returns 137) even though the step
-reads `cancelled`. So an OOM still fails the gate, and only genuinely superseded
-runs pass through. Check `gh run list --branch <branch>` to confirm a newer run
-covered the cancelled one.
-
-### A reclaimed job is an unverified job
-
-This is the one that costs real time, so it goes before the mechanics.
-
-A cancelled job is a scheduling artefact, and it is tempting to treat it as
-noise to re-run at leisure. It is not noise. **It is a job that did not run**, so
-merging while one is outstanding means merging on the strength of whichever jobs
-happened to survive.
-
-That is not hypothetical. `TestPhotoPlaceCaption` reached `main` broken and
-stayed there through two PRs:
-
-| PR | macOS job | merged |
-|---|---|---|
-| introduced the test | **failure** | yes |
-| shortened the test | **all three cancelled, never ran** | yes |
-| next merge | n/a | failure finally surfaced on main |
-
-The test had never once passed on a macOS runner. Nothing reported it, because
-the job was either red-and-ignored or reclaimed, and every branch cut from main
-afterwards inherited a red macOS job that was nobody's own change.
-
-Before merging, check that each job **ran**, not just that nothing is red.
-
-### Hardware encoders are absent on CI
-
-`_render_single_photo` picks its encoder from `check_zscale_available()`: with
-zscale it uses `hevc_videotoolbox`, without it `libx264`. VideoToolbox writes no
-file inside CI's macOS VM, and the function returns `None` when encoding
-produces nothing, so the failure surfaces as whatever the test asserted next,
-not as an encoder error.
-
-Any unit test that reaches the photo encoder needs the software path forced:
-
-```python
-monkeypatch.setattr(
-    "immich_memories.processing.hdr_utilities.check_zscale_available", lambda: False
-)
-```
-
-It passes on a real Mac either way, which is what makes this one easy to merge
-and hard to notice.
-
-### Re-running
-
-`gh run rerun <run-id> --failed` is rejected while any job in the run is still
-in progress ("cannot be rerun; its workflow file may be broken": the message is
-misleading). Wait for the run to complete, then re-run.
-
-If the same cell is reclaimed three times, stop re-running and treat it as a
-resource problem rather than luck.
+After the run completes, `gh run rerun <run-id> --failed` retries failed jobs. Repeated
+kills need investigation: reduce an unnecessarily large fixture or find the resource
+limit instead of treating repeated reruns as validation.

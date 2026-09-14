@@ -7,7 +7,7 @@ import Video from '@site/src/components/Video';
 
 # Live Photos
 
-Every iPhone photo secretly records ~3 seconds of video. Most people have thousands of these clips sitting in their library without knowing it. immich-memories can pull them from Immich and use them in your memory videos.
+A Live Photo combines a still image with a short video. Immich Memories can use the still or, when nearby captures provide useful motion, merge the burst into a clip.
 
 ## Demo: What burst merging looks like
 
@@ -31,96 +31,41 @@ Here's what happens when you rapid-fire 3 photos of an Italian hilltop. Each Liv
 
 <Video src="/demos/live-photos/bike_race/merged.mp4" width={720} controls />
 
-## A Live Photo is a photograph
+## How selection works
 
-That is the whole model. A Live Photo's still arrives with the photographs and
-competes as one. Whether its burst is worth showing **as motion** is a rendering
-question, asked afterwards, about an asset that has already won its place.
+Live Photo stills enter the photograph pool. Their linked video components are removed
+from the ordinary video pool so the same capture does not compete twice.
 
-It used to work the other way round: Live Photos were fetched separately, turned
-into clips in a pool of their own, and their stills were removed from the photo
-pool so the same instant would not ship twice. Anything that pool refused (a
-burst too short to be worth stitching), then belonged to no pool at all and was
-invisible to selection. That was the bug worth fixing; the counts that used to be
-quoted here had no provenance and are gone.
+Photos captured close together can form a burst. One photograph represents it: a favourite
+when available, otherwise the highest-quality frame. Its siblings stay attached to that
+burst and are not independently selectable.
 
-## How it works
-
-1. **Discovery**: Live Photo stills come back with the photographs. Under a person
-   filter, only stills carrying the requested Immich person tag enter the pool
-2. **Video components**: the video half of a Live Photo is dropped from the video pool; it is part of a photograph, not footage somebody shot
-3. **Clustering**: photos taken within a configurable window (default 10.0s) form a burst
-4. **Rendering choice**: a burst that stitches to at least `live_photo_min_clip_seconds` (default 3.5s) renders as motion; anything shorter renders as the photograph it is
-5. **One carrier per burst**: a burst collapses to a single unit before the editor ever chooses. One photograph carries it (the favourite if there is one, otherwise the sharpest, best-exposed), and the siblings are not separately selectable
-6. **Spectrogram alignment**: cross-correlates audio between overlapping clips to find the temporal offset, quantised to the STFT hop, about 5 ms
-7. **Burst merging**: stitches clips with shutter-centered cuts, exposure normalization, and 30ms audio fade at boundaries
-
-## Why 3.5 seconds
-
-A lone Live Photo stitches to exactly 3.0s (the raw clip, with nothing merged),
-while the smallest genuine merge of two reaches 4.0s. The threshold sits between
-them, so a burst of one never displaces the photograph it would have shipped as.
-
-Motion magnitude is deliberately **not** part of this. Measured over 64 real
-bursts it correlates with something having happened (median 2.04 against 0.48)
-but does not separate it: a baby's mouth closing scored 0.31 while the same
-instant twice with a camera shift scored 0.63. Duration is structural and free;
-motion is a signal for later, never a gate.
+A burst must reach `analysis.live_photo_min_clip_seconds` (default 3.5 seconds) to offer
+motion. That is only the first check. The editor also measures motion for selected
+candidates; weak or unavailable motion leaves the photograph as a still. Motion units
+are capped at six seconds before the cut's duration allocation. Quiet movement can therefore
+remain a photograph even when its burst is long enough.
 
 :::note Person-filtered memories
-The person tag is the source boundary. An untagged Live Photo does not enter a
-person memory merely because it was shot beside a tagged one. That can leave a
-tagged frame without enough tagged neighbours to render as motion; it remains
-selectable as a photograph instead of widening the memory to unrelated assets.
+Only stills carrying the requested Immich person tags enter the pool. Untagged neighboring
+frames are not added to complete a burst. This can leave a tagged frame without enough
+motion, while keeping it eligible as a photograph.
 :::
 
-## Burst merging: spectrogram-aligned shutter-centered cuts
+## How bursts are rendered
 
-When you rapid-fire photos, each Live Photo's video overlaps with the next. The merger uses **audio spectrogram fingerprinting** to find the exact overlap, then cuts at the midpoint between consecutive shutter presses.
+The editor records which source videos and shutter-based intervals belong to a selected
+burst. Rendering uses those intervals, with frame-boundary rounding, and validates the
+result against the selected material. It does not shift the cuts using a second audio
+alignment pass.
 
-### How the merged file is encoded
+The merge normalizes exposure and fades audio at joins when every source has audio.
+A missing required source or invalid interval fails the render rather than silently
+substituting different footage.
 
-Bursts are merged while clips are still downloading, before the run has resolved the encoding plan
-for its final video. The merge resolves its own: your hardware encoder if `hardware.enabled` is on
-and a real test encode succeeded, software otherwise, at CRF 18.
-
-It deliberately does not adopt the run's output settings. The merged file is an intermediate that
-gets re-encoded during assembly, and an HLG burst in a memory you asked to output as SDR H.264 would
-be tone-mapped here: before anything had decided to. So HDR bursts stay H.265 10-bit with their
-transfer intact, and the assembler decides what to do with them later.
-
-### Why audio alignment?
-
-Timestamps alone aren't precise enough: each clip's video doesn't start at exactly `shutter_time - 1.5s`, and the drift is tens of milliseconds. On rapid bursts, that's enough to cause audible clicks and gaps.
-
-The spectrogram (Short-Time Fourier Transform) creates a unique frequency fingerprint at every 5ms window. Even with repetitive beat-heavy music, the exact mix of frequencies is unique at each moment. Cross-correlating these fingerprints between clips gives an offset accurate to the hop size, about 5 ms. There is no confidence value: the best correlation wins.
-
-### The algorithm
-
-1. Extract 48kHz mono audio from each clip
-2. Compute STFT spectrogram (1024-sample window, 256 hop)
-3. For each consecutive pair: correlate first 100ms of clip B against clip A to find where B's audio starts in A's timeline
-4. Compute shutter-centered handoff points (midpoint between consecutive shutters)
-5. Gap-aware: if a handoff falls before the next clip starts, extend the current clip to cover the hole
-6. Build FFmpeg filter: trim each clip at its handoff points, normalize exposure, 30ms audio fade at boundaries, concatenate
-
-### Example
-
-3 photos at t=0, t=0.5s, t=2s (each clip ~3s):
-
-| Clip | Plays from | Plays to | Duration |
-|------|-----------|----------|----------|
-| Photo 1 | start | midpoint(0, 0.5) = 0.25s | ~1.75s |
-| Photo 2 | shutter-centered start | midpoint(0.5, 2.0) = 1.25s | ~1.5s |
-| Photo 3 | shutter-centered start | end | ~1.5s |
-
-Non-overlapping clips (gap > clip duration) are NOT merged: they stay as separate clips.
-
-### Works for any phone with audio
-
-The algorithm uses audio fingerprinting, not Apple metadata. It works for iPhone, Samsung, or any camera that records audio with video. The only requirement: overlapping clips with shared ambient audio.
-
-For devices without audio (like Google Pixel Motion Photos), spectrogram alignment is automatically skipped and clips are kept individual. See the [Device support](#device-support) section for details.
+The intermediate uses a working hardware encoder when `hardware.enabled` is on, software
+otherwise. HDR transfer is retained in that intermediate; final assembly applies the
+requested output codec and HDR mode. See [HDR](./hdr.md).
 
 ## Configuration
 
@@ -131,8 +76,7 @@ analysis:
   live_photo_min_clip_seconds: 3.5         # Shorter than this, it ships as a photograph
 ```
 
-Two Live Photos inside that window are already a burst: pairs are common for quick
-reactions, and there is no minimum-count key to raise.
+Two sufficiently close captures can form a burst. There is no configurable minimum count.
 
 In the web UI it is the **Include Live Photos** switch under Advanced on the Memory page. Via CLI:
 
@@ -142,30 +86,10 @@ immich-memories generate --include-live-photos --year 2024
 
 ## Device support
 
-Immich normalizes Live Photos / Motion Photos across device types using the `livePhotoVideoId` field. The only device-specific branch in the code is for Google: a Pixel gets a shorter assumed clip duration for overlap detection. Everything else takes the Apple path, Samsung included.
+Immich exposes linked motion through `livePhotoVideoId`. Actual companion durations
+are read from Immich metadata and validated against downloaded media. When duration
+metadata is unavailable, the photograph can remain eligible without a motion offer.
 
-| Feature | Apple iPhone and everything else | Google Pixel |
-|---------|----------------------------------|--------------|
-| Assumed clip duration for overlap | ~3.0s | 1.5s |
-| Audio track | usually | **None** |
-| Spectrogram alignment | Works | Skipped (no audio) |
-| Burst merging | Overlapping clips merged | Each clip stays individual |
-
-Real durations and frame rates are probed from the files themselves, not assumed per device.
-Samsung Motion Photos take the Apple path and appear to work; nobody here owns one to check.
-
-### Google Pixel (Motion Photos)
-
-Google Pixel Motion Photos are fundamentally different: very short clips (0.7-1.3 seconds), no audio track, and no temporal overlap between consecutive shots. immich-memories detects Pixel clips via EXIF and:
-
-1. **Uses a shorter clip duration** (1.5s instead of 3.0s) for overlap detection
-2. **Skips spectrogram alignment**: no audio means no spectral fingerprint to correlate
-3. **Doesn't force-merge rapid bursts**: Pixel clips taken 2+ seconds apart are treated as individual clips, not concatenated into a single burst
-
-This means 4 rapid-fire Pixel photos become 4 individual clips in your memory video, not one merged blob with jarring cuts between unrelated 0.7-second segments.
-
-## When to enable
-
-Live Photos are most useful when your library has lots of photos and relatively few videos. Burst merging is particularly effective for events where you took rapid-fire photos (birthdays, travel, kids playing): those bursts become one continuous clip, capped at 6 seconds in the cut, which carries the moment better than any single frame of it.
-
-If your library already has plenty of video, live photos won't add much.
+Audio, duration and overlap vary by file. Do not assume that every iPhone, Samsung or
+Pixel capture supplies the same length or an audio track. Short or non-overlapping
+captures often remain stills; enabling Live Photos does not guarantee motion in the cut.

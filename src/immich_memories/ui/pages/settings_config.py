@@ -68,7 +68,6 @@ def _section_icon(section: str) -> str:
         "ace_step": "piano",
         "title_screens": "title",
         "upload": "cloud_upload",
-        "scheduler": "schedule",
     }.get(section, "settings")
 
 

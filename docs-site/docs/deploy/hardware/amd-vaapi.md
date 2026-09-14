@@ -5,13 +5,12 @@ title: AMD VAAPI
 
 # AMD VAAPI
 
-VAAPI (Video Acceleration API) provides hardware-accelerated video encoding on AMD GPUs under Linux. If you have a Radeon GPU and you're on Linux, this is your backend.
+VAAPI (Video Acceleration API) provides hardware-accelerated video encoding on AMD GPUs under Linux. Support depends on the GPU, driver and codec.
 
 ## What you get
 
 - **VAAPI encoding**: h264_vaapi, hevc_vaapi. Hardware-accelerated encoding.
 - **VAAPI scaling**: `scale_vaapi` resizes frames on the GPU.
-- **Face detection**: falls back to CPU (OpenCV YuNet). AMD doesn't expose a GPU-accelerated face detection path.
 
 ## Requirements
 
@@ -20,9 +19,8 @@ VAAPI (Video Acceleration API) provides hardware-accelerated video encoding on A
 - Mesa VA drivers installed (`mesa-va-drivers` on Debian/Ubuntu, `libva-mesa-driver` on Arch)
 - FFmpeg built with VAAPI support
 
-**In the Docker image the drivers are already installed** (amd64 only). Images up to 0.76.1
-shipped FFmpeg with VAAPI compiled in but no VA-API driver at all, so `vaInitialize` failed with
-`-542398533` and every run silently encoded in software. If you are on an older image, upgrade.
+The amd64 Docker image includes Mesa VA-API drivers. Device access still needs the mount and
+permissions below.
 
 Check availability:
 
@@ -78,21 +76,19 @@ docker compose exec immich-memories vainfo
 ## Limitations
 
 - **Linux only**: VAAPI isn't available on macOS or Windows
-- **No GPU face detection**: face-aware cropping uses CPU OpenCV, which is slower but still functional
-- Encoding quality varies by GPU generation. Newer RDNA chips produce better output than older GCN cards at the same bitrate.
-- A backend that encodes H.264 but not HEVC falls back to libx265 for the H.265 half only, and
-  says so in the log. `vainfo` tells you which profiles have an encode entrypoint.
+- Encoding support and quality vary by GPU and driver; test representative source media.
+- With `codec_policy: prefer_hardware`, SDR output can switch to an available hardware codec.
+  `strict` keeps the requested codec and falls back to software if needed. `vainfo` lists profiles.
 
 ## Quality
 
-VAAPI takes the configured CRF as `-rc_mode CQP -qp`, offset by the measured +2 that makes
-`crf: 18` land on the quality libx264 gives at CRF 18. `-qp` on its own is ignored unless CQP is
-selected, which is why this needs both flags. Before 0.76.1 neither was emitted and the driver's
-default decided quality.
-
-Reaching software quality costs roughly 2.2x the bits, see
+VAAPI uses `-rc_mode CQP -qp` with the calibrated quality mapping: reference CRF 18 gives
+QP 20, and CRF 24 gives QP 22, interpolated between those points. It is not a fixed offset.
+The recorded 2.2x bitrate comparison came from an Intel J4125 using VAAPI, not an AMD GPU;
+measure your card before treating it as a size estimate. See
 [the measured table](./overview.md#quality-one-dial-calibrated-per-encoder).
 
 ## Title rendering
 
-GPU title rendering runs on Quadrants, which has wheels for Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 on Python 3.11-3.13. On macOS x86_64 and on Python 3.14 there is none, and title screens fall back to the PIL renderer (static gradient and text, no animated kernels, no SDF text); `immich-memories preflight` says which you will get. See [Title kernels](./cpu-only.md#title-kernels).
+Title rendering uses Quadrants on a supported GPU or CPU backend, with PIL as the fallback.
+See [Title kernels](./cpu-only.md#title-kernels) for platform support and limitations.

@@ -29,19 +29,22 @@ breaks.
   the storyboard shows the video in the order it plays before you render it.
 - Title screens, month dividers, and for a trip an animated satellite map from home to where you went.
 - Music: your own file, one of 28 bundled tracks, or a generated one (ACE-Step or MusicGen).
-- Photos, videos and Live Photos in one cut, HDR kept end to end.
+- Photos, videos and Live Photos in one cut. H.265 supports HDR; the default H.264 export is SDR.
 
 <ThemedScreenshot name="memory-story" alt="The storyboard: the cut in the order it plays, one shot per picture with its day, story and reason" />
 
 ## What it talks to
 
-Your Immich server, over your LAN. No cloud, no account, no telemetry. Three ways to run it:
+Your configured Immich server, plus the model services you choose. Remote models receive
+pictures and annotations; geocoding, map tiles and model downloads also use external services.
+There is no app telemetry. See [Network & Privacy](../deploy/configuration/network-and-privacy.md).
+Three ways to run it:
 
 | | What you need | What you get |
 |---|---|---|
-| Rules only | the app alone; a 4-core NAS is enough | all ten memory types from dates, places, favourites and people; simpler cuts |
+| Rules only | the app and FFmpeg, with `metadata_only` preparation | all ten memory types from dates, places, favourites and people; simpler cuts |
 | Rules plus classifiers | about 500 MB of pinned ONNX models | the sensitive-content and document detectors, so the family-viewing gate has evidence |
-| Model reader | a machine that holds a vision model with a 32k context, or a hosted one | the full editor: it reads the period as a story and argues for each picture |
+| Model reader | a machine that holds a vision model with a 32k context, or a hosted one | story-based selection and custom free-text subjects |
 
 The caption server and the reader can live on another machine, and the classifiers can run in
 their own container. What leaves your box in each mode, and what each mode loses in the cut, is

@@ -6,16 +6,15 @@ title: Inference service
 # The inference service
 
 The encoder, the six public heads and the two detectors behind one HTTP port, in their own
-container, with their own device variant. It is modelled on `immich-machine-learning` and reads
-the same way: one image per backend, weights in a cache volume, weights dropped when idle.
+container, with their own device variant. Weights live in a persistent cache and unload after the configured idle period.
 
 It is **optional**. Leave it out and the app runs the same producers in process, which is what a
 laptop wants. Run it when the models belong somewhere other than the box running the app: a GPU
 machine, a Kubernetes node, or simply a container you can restart without restarting the app.
 
 :::note
-The port is `8092`, the same port `caption_base_url` already defaults to. The captioner moves into
-this service later; today it serves `/facts` only.
+The port is `8092`, the same port `caption_base_url` already defaults to. It does not serve captions. If both run on the same host, give them different published ports;
+`facts_base_url` takes this service's URL and `caption_base_url` takes the caption server's URL.
 :::
 
 ## The two images
@@ -23,7 +22,7 @@ this service later; today it serves `/facts` only.
 | Tag | Platforms | Provider |
 |---|---|---|
 | `:X.Y.Z` | `linux/amd64`, `linux/arm64` | CPU |
-| `:X.Y.Z-cuda` | `linux/amd64` | CUDA, falling back to CPU |
+| `:X.Y.Z-cuda` | `linux/amd64` | CUDA encoder, falling back to CPU; detectors stay on CPU |
 
 `openvino`, `armnn` and `rocm` are not shipped. Quick Sync, VAAPI and NVENC decode, scale and
 encode: they do not run inference, and that stays true on every page here.
@@ -80,14 +79,18 @@ there is nothing to write for it, and the CUDA one is the block above. From a ch
 `docker/hwaccel.inference.yml` instead, which holds both as `extends:` targets.
 
 `/health` names the provider a session is on, or the one it would open on if nothing is loaded yet.
-If it says `CPUExecutionProvider` on a GPU host, the reservation did not reach the container or the
-image is the CPU one: those are the only two causes.
+If it says `CPUExecutionProvider` on a GPU host, check the image tag, GPU reservation, explicit
+`PROVIDER` setting and driver/runtime availability. A GPU reservation alone does not establish
+that ONNX Runtime opened a CUDA session.
 
 ## On Kubernetes
 
 `deploy/kubernetes/overlays/inference` is the service on its own: a Deployment, a ClusterIP
 Service on 8092, a 10Gi model-cache PVC and a NetworkPolicy. It does not pull in `base/`, so it
-needs no Secret and no Immich, and it runs in a cluster where the app itself does not.
+needs no Secret and no Immich. The PVC holds both `/cache` and `/tmp` through a `scratch`
+subPath. Keep it separate from the app's model PVC so `ReadWriteOnce` does not tie them to one
+node. Model download, extraction and scratch share its 10Gi budget; monitor free space and clean
+abandoned scratch with the service stopped. The storage driver must grant `fsGroup: 1000` write access.
 
 ```bash
 kubectl create namespace immich-memories                     # base/ creates it too
@@ -101,7 +104,7 @@ toleration for the `nvidia.com/gpu` taint, and the `-cuda` image tag. It sits in
 directory because kustomize reads an overlay nested inside its own base as a cycle.
 
 Each overlay pins its tag in an `images:` entry, the CUDA one with `-cuda` on the end. Bump both
-together, and check the pin against the releases page first: it trails the current release.
+together, and check the pin against the release you intend to deploy.
 
 Port-forward and read the provider back:
 
@@ -111,7 +114,7 @@ curl -s localhost:8092/health
 ```
 
 `CUDAExecutionProvider` on the CUDA overlay, `CPUExecutionProvider` on the other. If the CUDA one
-says CPU, the card did not reach the pod or the tag is not the `-cuda` one.
+says CPU, check its tag, device access, configured provider and driver/runtime logs.
 
 Then point the app at it, in `config.yaml` or as an env var on the app Deployment:
 
@@ -130,20 +133,20 @@ the service's own settings above take one. The base NetworkPolicy already allows
 
 A fresh PVC is empty, and that is all right. Both overlays set `ALLOW_MODEL_DOWNLOADS=true`, and on
 that setting the service fetches what it is missing the first time something asks for it: the
-pinned DINOv2 export (88 MB), the pinned Marqo export (22.5 MB) and the Docling snapshot, each
-checked against the same digest `immich-memories models fetch` pins. The first `/facts` call
-after a cold start waits for the download. Nothing after it does.
+pinned DINOv2 export (88 MB), the pinned Marqo export (22.5 MB) and the Docling snapshot, The two exports are digest-checked; the Docling snapshot is revision-pinned. The first request
+for each missing producer waits for its download. Later requests reuse the files while they
+remain available.
 
-To fill the volume yourself instead, `kubectl cp` the two ONNX exports into `/cache`, or run
-`immich-memories models fetch` in a Job that mounts the same claim. With
-`ALLOW_MODEL_DOWNLOADS=false` that is the only way in, and a request for a producer whose file is
-absent answers 503 naming the file and the path it wants it at.
+To pre-seed an offline service, copy the two pinned exports to the service paths listed below
+and populate its detector cache. A Job running the app's `models fetch` must explicitly use
+those same encoder, Marqo and detector paths; the app defaults are different. With downloads
+disabled, a request for an absent producer returns 503 naming the missing file.
 
 The pod's root filesystem is read-only, so everything written at runtime has to point at a volume.
 The overlay sets `HF_HOME=/cache/huggingface` and `TMPDIR=/tmp` for that reason. Without them the
 Hugging Face download has nowhere to put its temporary files, fails with `Read-only file system (os
-error 30)`, and every `/facts` request answers 503 until the pod is restarted. Keep both if you
-write your own manifests.
+error 30)`. Failed loads retry with backoff after the underlying path is fixed. Keep both
+variables if you write your own manifests.
 
 ### Reach the service from outside the cluster
 
@@ -169,9 +172,8 @@ advanced:
     facts_base_url: http://<the address>:8092
 ```
 
-Nothing here checks a credential: whatever reaches port 8092 gets an answer. On a home LAN behind
-a router that is the same exposure your NAS and your desktop already have to each other. Do not
-give it a routable address, and take it back with
+Nothing here checks a credential: whatever reaches port 8092 gets an answer. Restrict it to trusted
+callers on a private network, and take it back with
 `kubectl delete -k deploy/kubernetes/overlays/inference-lan` when you are done.
 
 The setup matrix does this on its own: the NAS cells apply the overlay, wait for the address, use
@@ -186,8 +188,8 @@ it and delete it. See [Setup matrix](../../contribute/setup-matrix.md).
 | `POST /facts` | one picture in: what do the frozen classifiers say about it |
 
 ```bash
-curl -s localhost:8092/facts -H 'content-type: application/json' \
-  -d "{\"image\": \"$(base64 -i photo.jpg)\", \"producers\": [\"heads\"]}"
+python -c 'import base64,json,sys; print(json.dumps({"image": base64.b64encode(open(sys.argv[1], "rb").read()).decode(), "producers": ["heads"]}))' photo.jpg | \
+  curl -s http://localhost:8092/facts -H 'content-type: application/json' --data-binary @-
 ```
 
 ```json
@@ -203,8 +205,7 @@ that failed is retried on a later request, backing off from 10 s to 2 minutes, s
 does not need a restart.
 
 A fact on the wire is the bank row without its asset id. The client stores what it is handed,
-verbatim, which is the whole point: **a fact's identity is the artifact that produced it, never the
-machine that ran it.** The same picture through the `cpu` and the `cuda` image lands on one row:
+verbatim. Fact identity comes from the producing artifact and input, not the machine. The same picture through the `cpu` and the `cuda` image uses the same fact identity:
 no URL, hostname, device or execution-provider name enters any key. Facts are label-identical
 across providers rather than byte-identical; confidences move in the last few decimal places.
 
@@ -219,7 +220,7 @@ Every setting is an environment variable prefixed `IMMICH_MEMORIES_INFERENCE_`:
 | `ENCODER` | `$CACHE_DIR/dinov2-small.onnx` | the pinned DINOv2 export, digest-verified on load |
 | `MARQO_ONNX` | `$CACHE_DIR/nsfw-marqo-384.onnx` | the pinned sensitive-content ONNX export |
 | `BUNDLE` | the packaged public bundle | head bundle `.npz` |
-| `PROVIDER` | `auto` | `auto`, `cpu`, `cuda` or `coreml`. `auto` takes CUDA where the provider is present and CPU otherwise |
+| `PROVIDER` | `auto` | `auto`, `cpu`, `cuda` or `coreml`. `auto` takes CUDA where available for the encoder, otherwise CPU. Both detectors stay on CPU |
 | `REQUEST_THREADS` | `4` | the thread pool in front of ONNX Runtime |
 | `IDLE_UNLOAD_SECONDS` | `300` | drop idle weights; `0` holds them |
 | `PRELOAD` | `false` | load every producer at boot instead of on first use |
@@ -227,9 +228,8 @@ Every setting is an environment variable prefixed `IMMICH_MEMORIES_INFERENCE_`:
 | `ALLOW_MODEL_DOWNLOADS` | `false` | let a cold cache fetch the pinned exports and the Docling snapshot itself |
 | `MAX_IMAGE_BYTES` | `16777216` | refuse anything larger |
 
-Idle unload drops the weights and **keeps the process**: the next request reloads them.
-`immich-machine-learning` sends itself SIGINT after the same idle period; on a NAS a restart loop
-costs more than a resident idle process, so that half is deliberately not copied.
+Idle unload drops the weights and keeps the process running. The next request reloads them.
+Compose uses separate named disk volumes for the service's model cache and scratch.
 
 ## Why `auto` does not take CoreML
 
@@ -255,8 +255,7 @@ request, and `fallback_to_local` says what happens when the service is down: the
 against the endpoint either way, and with the fallback on the app's own producers take over. The
 keys are in the [config reference](../../reference/config-reference.md#inference-service).
 
-## Not yet
+## Captions
 
-- The captioner is not in the image yet, so `/v1/chat/completions` is still your own caption server.
-
-For an image check before a release, dispatch the Release workflow with `inference_only: true`. It builds commit-tagged CPU and CUDA images without creating a version or moving `latest`; the CUDA base account is reused at UID/GID 1000 so the cache volume has the same ownership as the CPU image.
+This image has no captioner or `/v1/chat/completions` route. The `full` preparation tier still
+needs a separate [caption server](../configuration/editorial-preparation.md#captions).

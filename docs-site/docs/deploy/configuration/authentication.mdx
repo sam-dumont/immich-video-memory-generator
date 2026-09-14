@@ -26,8 +26,8 @@ workflow state lives in the process; a shared secret or volume does not make rep
 ## Basic auth
 
 ```bash
-IMMICH_MEMORIES_AUTH_USERNAME=admin
-IMMICH_MEMORIES_AUTH_PASSWORD=your-password-here
+export IMMICH_MEMORIES_AUTH_USERNAME=admin
+export IMMICH_MEMORIES_AUTH_PASSWORD=your-password-here
 ```
 
 Set both; one alone is ignored. Setting both turns auth on with `provider: basic`. Passwords are

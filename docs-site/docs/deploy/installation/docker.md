@@ -5,9 +5,9 @@ title: Docker
 
 # Install with Docker
 
-Pull the image, set two env vars, done, for the app. The editor's models are not in this image:
-which ones you need, and what each one costs, is on [Running modes](../running-modes.md). The
-container itself wants 2 to 4 GB.
+Docker Compose runs the app with the rules reader and the `no_captions` preparation tier.
+Fetch the preparation models once before the first cut. The optional reader and caption servers
+run separately; [Running modes](../running-modes.md) explains what each adds.
 
 ## Quick start
 
@@ -27,6 +27,7 @@ with copies. Without the delete permission you get a warning per run and the old
 
 ```bash
 curl -O https://raw.githubusercontent.com/sam-dumont/immich-video-memory-generator/main/docker-compose.yml
+mkdir -p output                         # give UID/GID 1000 write access, see below
 docker compose up -d
 ```
 
@@ -46,14 +47,13 @@ tunnel instead: `ssh -L 8080:localhost:8080 your-server`.
 The volume at `/home/immich/.immich-memories` must stay writable: config, caches, run history and
 automation state live there.
 
-:::caution Who owns ./output
+## Output directory permissions
+
 The image writes to `/app/output` (`IMMICH_MEMORIES_OUTPUT__DIRECTORY` is set in the Dockerfile, so
 it beats `output.directory` in `config.yaml`) and the compose file mounts `./output` there. The
 container runs as UID/GID 1000. Create the folder yourself before the first `up`; if Docker
-creates it, it is owned by root. If your user is not 1000: `sudo chown 1000:1000 output`, or set
-`user: "<uid>:<gid>"` on the service and chown the config volume the same way, or use a named
+creates it, it is owned by root. If your user is not 1000: `sudo chown 1000:1000 output`, or use a named
 volume (`immich-memories-output:/app/output`) and `docker cp` the files out.
-:::
 
 ## Before the first cut
 
@@ -65,7 +65,8 @@ docker compose exec immich-memories immich-memories preflight      # Immich, the
 The compose file pins `IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER: "no_captions"`, so `models
 fetch` is part of the first run: that tier wants the encoder and both detectors. It is the richest
 tier the app serves on its own, and what it gives up against `full` is the caption under every
-picture, which means the audience gate refuses what `full` refuses but can never clear a unit. Drop
+picture. Detector evidence remains, but description-based findings are unavailable and the
+tier cannot clear a unit for sendable output. Drop
 the key to `metadata_only` and nothing needs fetching; raise it to `full` once a caption server
 answers, and set `IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL` with it. See
 [Running modes](../running-modes.md).
@@ -73,22 +74,25 @@ answers, and set `IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL` with
 Model endpoints must be reachable from inside the container, and `localhost` there is the
 container: give them real hostnames.
 
-## Resources
+## Resources and storage
 
-| Phase | RAM | CPU |
+The shipped app limit is 4 GB and 4 CPUs. This is a starting budget, not a measured ceiling for
+all media. If a NAS rejects startup with `NanoCPUs can not be set`, remove the `cpus` quota
+from both services; see [NAS CPU limits](../common-setups/nas-only.md#cpu-limits-on-nas-kernels).
+Large source frames, title resolution and optional local music models can raise the
+peak. Monitor a representative run before increasing parallelism or rendering 4K.
+
+| Mount | Backing | Keep it for |
 |---|---|---|
-| Idle, UI running | small | minimal |
-| Preparation (previews, heads, detectors) | 2 to 4 GB | 2+ cores |
-| Assembly (title screens + FFmpeg encode) | 4 to 8 GB | 4+ cores |
+| `/home/immich/.immich-memories` | config volume | settings, annotation banks, run history, downloads and previews |
+| `/home/immich/.cache` | library-cache volume | Hugging Face snapshots, downloaded music and optional music models |
+| `/tmp` | scratch volume | FFmpeg intermediates and temporary files |
+| `/app/output` | `./output` | finished videos |
 
-Those are the working sizes the compose limits (`memory: 4G`, `cpus: 4`) were set around, not a
-profile of this image. Fine for 1080p; for 4K, give it 8 GB. On a CPU-only box the title screens
-cost more than the encode: at `--cpus=2`, 263 s of a 339 s assembly. See
-[CPU-only](../hardware/cpu-only.md).
-
-The image is 2.37 GB on disk with `INSTALL_EXTRAS=all` on arm64, down from 7.08 GB, because
-torch comes from the CPU wheel index and the detectors are ONNX graphs. The reader and the caption
-server run outside it, on whatever host `llm.base_url` and `caption_base_url` point to.
+The cache defaults allow 10 GB of thumbnails, 10 GB of videos and 2 GB of previews. Databases,
+active files and scratch need additional space, and named volumes share the Docker host's disk.
+Scratch survives restarts; inspect and clean abandoned files with the app stopped. The optional
+inference service has its own model-cache and scratch volumes.
 
 ## Standalone `docker run`
 
@@ -98,7 +102,10 @@ docker run -d \
   -p 127.0.0.1:8080:8080 \
   -e IMMICH_URL=https://photos.example.com \
   -e IMMICH_API_KEY=your-api-key-here \
+  -e IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER=no_captions \
   -v immich-memories-config:/home/immich/.immich-memories \
+  -v immich-memories-library-cache:/home/immich/.cache \
+  -v immich-memories-scratch:/tmp \
   -v ./output:/app/output \
   ghcr.io/sam-dumont/immich-video-memory-generator:latest
 ```
@@ -116,17 +123,22 @@ services:
     environment:
       - IMMICH_URL=http://immich-server:2283
       - IMMICH_API_KEY=${IMMICH_API_KEY}
+      - IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER=no_captions
     volumes:
       - immich-memories-config:/home/immich/.immich-memories
+      - immich-memories-library-cache:/home/immich/.cache
+      - immich-memories-scratch:/tmp
       - ./output:/app/output   # pre-create and chown, see above
     depends_on:
       - immich-server
 
 volumes:
   immich-memories-config:
+  immich-memories-library-cache:
+  immich-memories-scratch:
 ```
 
-`immich-server` listens on 2283 in every Immich v2 and v3 release. From a separate stack, use the
+The example uses Immich's default port, 2283. From a separate stack, use the
 URL you open Immich with in your browser. Immich v2 and v3 are supported; an unknown major stops
 the run (see [Immich API compatibility](../configuration/config-file.md#immich-api-compatibility)).
 
@@ -156,15 +168,12 @@ The root `docker-compose.yml` carries this block commented out; uncomment it:
     cap_drop:
       - ALL
     read_only: true
-    tmpfs:
-      - /tmp:size=2G
-      - /home/immich/.cache:size=1G
 ```
 
 The web UI keeps its session storage under `/home/immich/.immich-memories/.nicegui` on the config
 volume (the image sets `NICEGUI_STORAGE_PATH`), so logins survive a read-only root and a restart.
-Do not repoint that variable at a tmpfs. For 4K, FFmpeg intermediates can exceed 2 GB of `/tmp`:
-raise it to 8 GB or drop the tmpfs entry.
+The named disk volumes above also keep `/tmp` and `~/.cache` writable; do not replace them
+with memory-backed scratch for large renders.
 
 ## Daily automation
 
@@ -197,9 +206,9 @@ docker inspect --format='{{.State.Health.Status}}' immich-memories
 The expensive file is `~/.immich-memories/cache/annotations.sqlite`: every caption, head answer,
 detector verdict and reading the editor has banked. Lose it and the next cut re-reads the library.
 `cache.db` beside it holds run history and automation state. Both sit on the config volume, so
-moving to a new host means copying that volume. Do not use `immich-memories cache backup|export|import`
-for it: those three commands move the retired per-clip scorer's table, which nothing writes any
-more, and leave the banks behind.
+moving to a new host means stopping the app and copying that volume and the output directory.
+`immich-memories cache backup` covers `cache.db` only, not the annotation banks. Copy the
+library-cache volume too if you want to avoid model downloads. See [backups and rollback](../maintenance/upgrading.md).
 
 ## Custom music
 
@@ -223,4 +232,5 @@ docker compose pull
 docker compose up -d
 ```
 
-Config and videos live in the volume and the bind mount; nothing is lost on recreate.
+Normal recreation keeps the named volumes and output bind mount. `docker compose down -v`
+deletes named volumes. Back up before upgrading; see [Upgrading](../maintenance/upgrading.md).

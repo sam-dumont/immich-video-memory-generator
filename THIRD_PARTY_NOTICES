@@ -238,7 +238,7 @@ of public domain, BSD and GPL parts. Nothing here changes the project's MIT
 licence for its own code, but a downstream that vendors the environment
 should know.
 
-136 packages, computed from uv.lock: everything reachable from
+132 packages, computed from uv.lock: everything reachable from
 immich-memories through the runtime extras (never the dev tools). Regenerate
 with `make notices`; `make notices-check` fails when this list is stale.
 
@@ -313,10 +313,6 @@ cloudpickle 3.1.2
 colorama 0.4.6
   License: BSD
   URL: https://github.com/tartley/colorama
-
-croniter 6.0.0
-  License: MIT
-  URL: http://github.com/kiorky/croniter
 
 cryptography 50.0.0
   License: Apache-2.0 OR BSD-3-Clause
@@ -638,10 +634,6 @@ pyobjc-framework-vision 12.1
   License: MIT
   URL: https://github.com/ronaldoussoren/pyobjc
 
-python-dateutil 2.9.0.post0
-  License: BSD; Apache-2.0
-  URL: https://github.com/dateutil/dateutil
-
 python-dotenv 1.2.2
   License: BSD-3-Clause
   URL: https://github.com/theskumar/python-dotenv
@@ -657,10 +649,6 @@ python-multipart 0.0.32
 python-socketio 5.16.4
   License: MIT
   URL: https://github.com/miguelgrinberg/python-socketio
-
-pytz 2026.1.post1
-  License: MIT
-  URL: http://pythonhosted.org/pytz
 
 pyyaml 6.0.3
   License: MIT
@@ -693,10 +681,6 @@ setuptools 84.0.0
 simple-websocket 1.1.0
   License: MIT
   URL: https://github.com/miguelgrinberg/simple-websocket
-
-six 1.17.0
-  License: MIT
-  URL: https://github.com/benjaminp/six
 
 starlette 1.6.0
   License: BSD-3-Clause

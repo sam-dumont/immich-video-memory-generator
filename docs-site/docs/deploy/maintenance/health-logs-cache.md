@@ -12,15 +12,16 @@ sidebar_label: "Health, Logs & Cache"
 | `GET /health/ready` | `200` with `status: ready` when configuration and authenticated Immich access work; `503` with `status: degraded` otherwise | readiness probe, Uptime Kuma, blackbox exporter |
 | `GET /health` | always `200`; a ready payload is rewritten to `ok` | compatibility only, not a probe |
 
-`GET /health` always returns HTTP `200` for compatibility and rewrites a ready payload to `ok`; it
-is not a readiness probe. An abridged readiness payload:
+Health endpoints are unauthenticated, including when login is enabled. Keep them private if
+run timestamps and automation status are sensitive. Results are cached briefly; a degraded
+response does not stop the UI. An abridged readiness payload:
 
 ```json
-{"status": "ready", "immich_reachable": true, "last_successful_run": "2025-12-15T10:30:00", "version": "0.77.2"}
+{"status": "ready", "immich_reachable": true, "last_successful_run": "2025-12-15T10:30:00", "version": "X.Y.Z"}
 ```
 
 The readiness payload also carries `immich_reachable`, `last_successful_run` (from the run
-database), `version`, and the automation, pending-delivery and scheduler blocks. The Immich probe
+database), `version`, and the automation, pending-delivery and in-process timer blocks. The Immich probe
 is bounded at 5 seconds. A degraded status does not stop the app: the UI still serves.
 
 ## Logging
@@ -38,7 +39,8 @@ same lines to a file as well as stdout; in Docker, point it at a mounted path.
 
 ## Caches
 
-Everything lives under `~/.immich-memories/cache/` (or `cache.directory`):
+The app's source caches and annotation bank normally live under `~/.immich-memories/cache/`
+(or `cache.directory`):
 
 | Directory or file | What it holds | Cap |
 |---|---|---|
@@ -46,7 +48,7 @@ Everything lives under `~/.immich-memories/cache/` (or `cache.directory`):
 | `thumbnails/` | one Immich preview per candidate a memory's scope can reach | `thumbnail_cache_max_size_mb`, 10 GB |
 | `video-cache/` | downloaded Immich clips | `video_cache_max_size_gb` 10 GB, `video_cache_max_age_days` 7 |
 | `preview-cache/`, `previews/` | clip previews for the web UI | `preview_cache_max_size_mb`, 2 GB |
-| `../cache.db` (one level up) | run history, automation state, and the retired scorer's table | none |
+| `../cache.db` (one level up) | run history and automation state | none |
 
 ```yaml
 cache:
@@ -59,7 +61,8 @@ cache:
   preview_cache_max_size_mb: 2000
 ```
 
-`cache.max_age_days` is still accepted and nothing reads it.
+Library model/music caches use `~/.cache` separately. Kubernetes and Terraform place preparation
+models on `/models`; the inference service uses its own `/cache` volume.
 
 ### The preview cache scales with your library
 
@@ -70,8 +73,7 @@ about 31,000. Previews the current run uses are never evicted, so a run that doe
 the cap rather than losing facts. The price lands on the next overlapping run, which re-downloads
 every preview and re-captions the pictures whose banked caption failure no longer matches the
 bytes it was recorded against. One `WARNING` per run says how far over you are and names the
-setting. The clip and video caches hold one cut's worth of files however big the library is, so
-their caps are plain caps.
+setting. The video cache also protects files in active use, so its size can temporarily exceed its cap.
 
 ### Video cache mechanics
 
@@ -96,11 +98,12 @@ rm -rf ~/.immich-memories/cache/thumbnails
 Do not point `rm -rf` at `~/.immich-memories/cache` itself: `annotations.sqlite` is inside it, and
 deleting it re-asks the model everything about your library.
 
-### The CLI cache commands are not for the banks
+### Backups
 
-`immich-memories cache stats|backup|export|import` read and write `asset_scores`, the retired
-per-clip scorer's table, which nothing writes any more. They do not touch `annotations.sqlite`.
-To move an installation, copy `~/.immich-memories` (Docker: the config volume).
+`immich-memories cache backup /path/to/cache-backup.db` uses SQLite's backup API to copy
+`cache.db`, including run history and automation state. It does not include `annotations.sqlite`,
+configuration, source caches or output videos. For a complete backup, stop writers and copy the
+state directory and outputs; [Upgrading](./upgrading.md) covers the order.
 
 `cache.db` has a versioned schema migrator that runs when it is first opened. `annotations.sqlite`
 creates tables when missing and adds columns additively. Neither runs at process start.
