@@ -126,6 +126,92 @@ def test_llm_preflight_reports_missing_chat_route() -> None:
     assert "localhost:9999" not in (result.details or "")
 
 
+def _messages_host(models=None, probe_status=200, probe_body=None):
+    """A Messages API host: what it lists, and what a one-token ask gets back."""
+    # WHY: the LLM server is the external boundary; this stands in for its two routes.
+    listing = MagicMock()
+    listing.status_code = 200 if models is not None else 404
+    listing.json.return_value = {"data": models} if models is not None else {}
+    probe = MagicMock()
+    probe.status_code = probe_status
+    probe.json.return_value = probe_body or {"content": [{"type": "text", "text": "h"}]}
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = False
+    client.get.return_value = listing
+    client.post.return_value = probe
+    return client
+
+
+def test_llm_preflight_reports_the_model_list_an_anthropic_host_publishes() -> None:
+    config = Config(llm={"provider": "anthropic", "model": "claude-sonnet-4-5", "api_key": "k"})
+    client = _messages_host([{"id": "claude-sonnet-4-5"}, {"id": "claude-opus-4-1"}])
+
+    with patch("immich_memories.preflight.httpx.Client", return_value=client):
+        result = check_llm(config)
+
+    assert result.status is CheckStatus.OK
+    assert result.message == "Connected (anthropic, 2 models)"
+    assert client.get.call_args[0][0] == "https://api.anthropic.com/v1/models"
+    client.post.assert_not_called()
+
+
+def test_llm_preflight_names_a_model_the_anthropic_host_does_not_serve() -> None:
+    config = Config(llm={"provider": "anthropic", "model": "claude-retired", "api_key": "k"})
+    client = _messages_host([{"id": "claude-sonnet-4-5"}])
+
+    with patch("immich_memories.preflight.httpx.Client", return_value=client):
+        result = check_llm(config)
+
+    assert result.status is CheckStatus.WARNING
+    assert result.message == "Connected but missing model: claude-retired"
+
+
+def test_llm_preflight_falls_back_to_one_token_where_no_catalogue_is_served() -> None:
+    """A gateway that serves only /v1/messages is still reachable, and says so."""
+    config = Config(
+        llm={
+            "provider": "anthropic",
+            "base_url": "https://gateway.example.invalid/anthropic",
+            "model": "some-model",
+            "api_key": "k",
+        }
+    )
+    client = _messages_host(models=None)
+
+    with patch("immich_memories.preflight.httpx.Client", return_value=client):
+        result = check_llm(config)
+
+    assert result.status is CheckStatus.OK
+    assert result.message == "Connected (anthropic)"
+    (url,) = client.post.call_args[0]
+    assert url == "https://gateway.example.invalid/anthropic/v1/messages"
+    assert client.post.call_args[1]["json"]["max_tokens"] == 1
+
+
+def test_llm_preflight_reports_a_rejected_key_on_the_messages_route() -> None:
+    config = Config(llm={"provider": "anthropic", "model": "claude-sonnet-4-5", "api_key": "bad"})
+    client = _messages_host(models=None, probe_status=401, probe_body={"error": {"type": "auth"}})
+
+    with patch("immich_memories.preflight.httpx.Client", return_value=client):
+        result = check_llm(config)
+
+    assert result.status is CheckStatus.ERROR
+    assert result.message == "Authentication failed"
+
+
+def test_llm_preflight_checks_the_route_a_named_preset_actually_uses() -> None:
+    """`zai` resolves to the Messages API, so the check must not probe the other one."""
+    config = Config(llm={"provider": "zai", "model": "glm-5.3-flash", "api_key": "k"})
+    client = _messages_host([{"id": "glm-5.3-flash"}])
+
+    with patch("immich_memories.preflight.httpx.Client", return_value=client):
+        result = check_llm(config)
+
+    assert result.status is CheckStatus.OK
+    assert client.get.call_args[0][0] == "https://api.z.ai/api/anthropic/v1/models"
+
+
 def test_notification_preflight_warns_on_sanitized_failure_cooldown(tmp_path) -> None:
     from immich_memories.automation.notification_state import (
         NotificationFailureCategory,
@@ -409,3 +495,42 @@ def test_a_path_the_app_will_create_itself_is_not_a_missing_host_path(tmp_path: 
     result = check_host_paths(config)
 
     assert result.status is CheckStatus.OK
+
+
+def test_hardware_row_names_the_nvidia_video_capability_when_a_card_is_present() -> None:
+    """A GPU node that encodes in software is a misconfiguration, and preflight is
+    where a self-hoster should meet it rather than after a long run (#936)."""
+    from immich_memories.preflight import check_hardware
+    from immich_memories.processing.hardware import HWAccelBackend, HWAccelCapabilities
+
+    with (
+        # WHY: no test may probe real ffmpeg encoders; this is the detection boundary
+        patch(
+            "immich_memories.processing.hardware.detect_hardware_acceleration",
+            return_value=HWAccelCapabilities(backend=HWAccelBackend.NONE),
+        ),
+        # WHY: the container runtime's own marker that a card was handed to this pod
+        patch.dict("os.environ", {"NVIDIA_VISIBLE_DEVICES": "all"}),
+    ):
+        result = check_hardware()
+
+    assert result.status is CheckStatus.WARNING
+    assert "NVIDIA_DRIVER_CAPABILITIES=compute,video,utility" in result.message
+
+
+def test_hardware_row_says_nothing_about_nvidia_on_a_card_less_host() -> None:
+    from immich_memories.preflight import check_hardware
+    from immich_memories.processing.hardware import HWAccelBackend, HWAccelCapabilities
+
+    with (
+        patch(
+            "immich_memories.processing.hardware.detect_hardware_acceleration",
+            return_value=HWAccelCapabilities(backend=HWAccelBackend.NONE),
+        ),
+        # WHY: nvidia-smi is the second witness; a GPU-less host has no such binary
+        patch("subprocess.run", side_effect=FileNotFoundError),
+        patch.dict("os.environ", {"NVIDIA_VISIBLE_DEVICES": ""}),
+    ):
+        result = check_hardware()
+
+    assert result.message == "No GPU acceleration"

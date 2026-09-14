@@ -60,6 +60,12 @@ from setup_matrix_capture import (  # noqa: E402
 )
 from setup_matrix_plan import (  # noqa: E402
     CACHE_PRIMED_FILE,
+    CAPTIONER_DEPLOYMENT,
+    CAPTIONER_OVERLAY,
+    CAPTIONER_PORT,
+    CAPTIONER_ROLLOUT,
+    CAPTIONER_ROLLOUT_TIMEOUT,
+    CAPTIONER_SERVICE,
     COPY_OUT,
     DERIVED_ADDRESS,
     EDITORIAL_RUNS,
@@ -101,6 +107,7 @@ from setup_matrix_plan import (  # noqa: E402
     retag_inference,
 )
 from setup_matrix_readiness import (  # noqa: E402
+    await_captions_via_forward,
     await_facts,
     await_facts_via_forward,
     await_job,
@@ -957,8 +964,7 @@ def _execute(
     served = inference_image(opts.inference_tag or opts.image_tag, device=device) if overlay else ""
     warmup: float | None = None
     served_on: str | None = None
-    for path in declared:
-        _apply_overlay(plan, path, up=True)
+    caption_warmup = _bring_up_declared(plan, declared)
     if overlay:
         print(f"inference overlay: {overlay_path(device)} running {served}")
         bring_up_inference(plan, overlay_path(device), served, opts.inference_node_product)
@@ -1014,7 +1020,9 @@ def _execute(
     if opts.purge_claims and any(item.cell.lane == "k8s" for item in plan.runnable):
         _run_bare(purge_claims_command(), plan)
 
-    _publish_summary(plan, opts, out_dir, _collect_rows(out_dir, records), warmup, served_on)
+    _publish_summary(
+        plan, opts, out_dir, _collect_rows(out_dir, records), warmup, served_on, caption_warmup
+    )
     _report_skips(plan)
     return 0 if all(row.get("error") is None for row in records) else 1
 
@@ -1046,6 +1054,7 @@ def _publish_summary(
     rows: list[dict],
     warmup: float | None = None,
     inference_gpu_product: str | None = None,
+    captioner_warmup: float | None = None,
 ) -> None:
     summary = build_summary(
         library=plan.library,
@@ -1054,6 +1063,7 @@ def _publish_summary(
         rows=rows,
         inference_warmup_s=warmup,
         inference_gpu_product=inference_gpu_product,
+        captioner_warmup_s=captioner_warmup,
     )
     if opts.anonymize:
         summary = anonymize(summary)
@@ -1102,6 +1112,43 @@ def _query(plan: Plan, command: tuple[str, ...]) -> str:
         check=False,
     )
     return proc.stdout.strip() if proc.returncode == 0 else ""
+
+
+def _bring_up_declared(plan: Plan, declared: tuple[str, ...]) -> float | None:
+    """Apply the overlays the cells declared, and wait on the one with a server behind it.
+
+    Applying the captioner overlay is not the same as having it, and it is the
+    only declared overlay that serves anything: the rest are up the moment `apply`
+    returns. Returns how long the caption server took, or None when no cell in
+    this run asked for one.
+    """
+    for path in declared:
+        _apply_overlay(plan, path, up=True)
+    if CAPTIONER_OVERLAY not in declared:
+        return None
+    warmup = bring_up_captioner(plan)
+    print(f"captioner answered a caption request after {warmup:.0f}s")
+    return warmup
+
+
+def bring_up_captioner(plan: Plan) -> float:
+    """Wait out the captioner's rollout, then make it caption something.
+
+    Two waits because there are two things to wait for, and neither implies the
+    other. The init container fetches half a gigabyte of GGUF onto a claim that is
+    empty the first time a cluster runs the full tier, which is what `rollout
+    status` sits through. Then llama.cpp maps the weights, and only after that is
+    there an endpoint advertising the alias a `tier: full` cell refuses to work
+    without. Without either, `--cell k8s-full-rules` on its own asked for a
+    caption before the server existed and died on its first picture.
+    """
+    if _run_bare(CAPTIONER_ROLLOUT, plan).returncode != 0:
+        raise SystemExit(
+            f"{CAPTIONER_DEPLOYMENT} never rolled out within {CAPTIONER_ROLLOUT_TIMEOUT}, so "
+            "the full-tier cells would have asked an absent server for every caption."
+        )
+    kubectl = tuple(_substitute(part, plan.environment) for part in KUBECTL)
+    return await_captions_via_forward(kubectl, CAPTIONER_SERVICE, CAPTIONER_PORT)
 
 
 def bring_up_inference(plan: Plan, path: str, image: str, node_product: str = "") -> None:
