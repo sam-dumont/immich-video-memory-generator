@@ -10,10 +10,13 @@ FFmpeg rather than stubbing it.
 from __future__ import annotations
 
 import io
+import json
 import os
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
@@ -58,6 +61,120 @@ def _init_repo(path: Path) -> None:
     _run(["git", "init", "-q"], path)
     _run(["git", "config", "user.email", "test@example.com"], path)
     _run(["git", "config", "user.name", "Test Bot"], path)
+
+
+def test_research_scene_is_rejected_even_without_private_terms(tmp_path, monkeypatch, capsys):
+    _init_repo(tmp_path)
+    research = tmp_path / "docs/research/2026-09-12-costs.data.json"
+    research.parent.mkdir(parents=True)
+    source = (
+        Path(__file__).resolve().parents[1] / "docs/research/2026-09-12-deployment-costs.data.json"
+    )
+    payload = json.loads(source.read_text())
+    payload["scene"] = "A fictional household at the zorblax picnic"
+    research.write_text(json.dumps(payload))
+    _run(["git", "add", "."], tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("TEST_ABSENT_TERMS", raising=False)
+
+    assert main(["--staged", "--terms-env", "TEST_ABSENT_TERMS"]) == EXIT_HITS_FOUND
+    output = capsys.readouterr().out
+    assert "research" in output
+    assert "zorblax" not in output
+
+
+@pytest.mark.parametrize("stem", ["capability-matrix", "phase5-readiness", "deployment-costs"])
+def test_reviewed_aggregate_documents_pass_without_private_terms(tmp_path, monkeypatch, stem):
+    _init_repo(tmp_path)
+    relative = f"docs/research/2026-09-12-{stem}.data.json"
+    research = tmp_path / relative
+    research.parent.mkdir(parents=True)
+    research.write_text((Path(__file__).resolve().parents[1] / relative).read_text())
+    _run(["git", "add", "."], tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("TEST_ABSENT_TERMS", raising=False)
+
+    assert main(["--staged", "--terms-env", "TEST_ABSENT_TERMS"]) == EXIT_OK
+
+
+def test_range_rejects_research_leaked_then_removed_in_an_intermediate_commit(
+    tmp_path, monkeypatch
+):
+    _init_repo(tmp_path)
+    _run(["git", "commit", "--allow-empty", "-qm", "baseline"], tmp_path)
+    research = tmp_path / "docs/research/leaked.data.json"
+    research.parent.mkdir(parents=True)
+    research.write_text('{"scene": "A fictional zorblax picnic"}')
+    _run(["git", "add", "."], tmp_path)
+    _run(["git", "commit", "-qm", "add research"], tmp_path)
+    _run(["git", "rm", str(research)], tmp_path)
+    _run(["git", "commit", "-qm", "remove research"], tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("TEST_ABSENT_TERMS", raising=False)
+
+    assert main(["--range", "HEAD~2..HEAD", "--terms-env", "TEST_ABSENT_TERMS"]) == EXIT_HITS_FOUND
+
+
+def test_research_rejects_a_private_value_hidden_by_a_duplicate_key():
+    from research_data_schema import valid_research_data
+
+    source = (
+        Path(__file__).resolve().parents[1] / "docs/research/2026-09-12-deployment-costs.data.json"
+    )
+    content = source.read_text().replace('"scope":', '"scope": "zorblax picnic", "scope":', 1)
+
+    assert not valid_research_data(content)
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("benchmark_date", "2001-02-03"),
+        ("scope", "zorblax picnic"),
+        ("capture_date", "2001-02-03"),
+        ("machine", "zorblax-nas.local"),
+        ("rules_model_api_fee_usd", "12.50"),
+        ("rules_model_api_fee_usd", True),
+        ("rules_model_api_fee_usd", float("nan")),
+        ("rules_model_api_fee_usd", -1),
+    ],
+)
+def test_research_rejects_unapproved_dates_prose_and_non_numeric_aggregates(key, value):
+    from research_data_schema import valid_research_data
+
+    source = (
+        Path(__file__).resolve().parents[1] / "docs/research/2026-09-12-deployment-costs.data.json"
+    )
+    payload = json.loads(source.read_text())
+    payload[key] = value
+    assert not valid_research_data(json.dumps(payload))
+
+
+def test_research_validates_the_index_not_the_clean_working_copy(tmp_path, monkeypatch):
+    _init_repo(tmp_path)
+    research = tmp_path / "docs/research/costs.data.json"
+    research.parent.mkdir(parents=True)
+    source = (
+        Path(__file__).resolve().parents[1] / "docs/research/2026-09-12-deployment-costs.data.json"
+    )
+    payload = json.loads(source.read_text())
+    payload["reader_comparison"]["hosted_model"] = "zorblax-private-host"
+    research.write_text(json.dumps(payload))
+    _run(["git", "add", "."], tmp_path)
+    research.write_text(source.read_text())
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["--research-data"]) == EXIT_HITS_FOUND
+
+
+def test_research_mode_does_not_override_an_explicit_require_terms(tmp_path, monkeypatch):
+    _init_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("TEST_ABSENT_TERMS", raising=False)
+    assert (
+        main(["--research-data", "--require-terms", "--terms-env", "TEST_ABSENT_TERMS"])
+        == EXIT_MISCONFIGURED
+    )
 
 
 # --- mask() ------------------------------------------------------------------
