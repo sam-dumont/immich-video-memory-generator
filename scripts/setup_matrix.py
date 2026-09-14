@@ -58,6 +58,7 @@ from setup_matrix_capture import (  # noqa: E402
 )
 from setup_matrix_plan import (  # noqa: E402
     CACHE_PRIMED_FILE,
+    COPY_OUT,
     DERIVED_ADDRESS,
     EDITORIAL_RUNS,
     FIXTURE_ENV,
@@ -273,8 +274,10 @@ def run_local_cell(item: CellPlan, plan: Plan, out_dir: Path) -> dict:
     cell_dir.mkdir(parents=True, exist_ok=True)
     cache = Path(_substitute(item.cache_dir, plan.environment)).expanduser()
     # A cache of this cell's own, so an existing one means this cell has run
-    # before and its `cold` preparation is a re-read of what it banked then.
-    record = _new_record(item, primed=cache.is_dir())
+    # before and its `cold` preparation is a re-read of what it banked then. A
+    # run that asked for a fresh cache is cold by construction: the first step
+    # takes that directory away before `prepare` is called.
+    record = _new_record(item, primed=False if item.fresh_cache else cache.is_dir())
     before_cpu = _child_cpu_seconds()
     peaks: list[float] = []
 
@@ -292,7 +295,7 @@ def run_local_cell(item: CellPlan, plan: Plan, out_dir: Path) -> dict:
             _apply_prepared(record, text)
         elif step.name == "prepare-warm":
             record["timing"]["prepare_warm_s"] = parse_prepare_seconds(text) or round(elapsed, 2)
-        else:
+        elif step.name == "generate":
             _apply_run_summary(record, text, cell_dir)
         if proc.returncode != 0:
             record["error"] = f"{step.name} exited {proc.returncode}"
@@ -312,12 +315,11 @@ def run_local_cell(item: CellPlan, plan: Plan, out_dir: Path) -> dict:
 _K8S_POLLS = {"wait-created": await_pod, "wait": await_job}
 
 
-COPY_OUT = "copy-out"
-# `kubectl cp` streams a tar out of the collector, and that stream ends early
-# often enough to cost a cell everything it produced: `k8s-rules-service`
-# finished its cut and lost its film, its attempt and every per-phase log to one
-# `error: unexpected EOF`. The claim is still there and still mounted, so trying
-# again is cheap next to re-running the cell.
+# The copy-out streams a tar out of the collector, and a stream ends early often
+# enough to cost a cell everything it produced: `k8s-rules-service` finished its
+# cut and lost its film, its attempt and every per-phase log to `error:
+# unexpected EOF`. The claim is still there and still mounted, so trying again is
+# cheap next to re-running the cell.
 COPY_OUT_ATTEMPTS = 3
 COPY_OUT_PAUSE_S = 5
 COPY_OUT_LOST = (
@@ -490,6 +492,9 @@ def _new_record(item: CellPlan, *, primed: bool | None) -> dict:
         "hosted": cell.hosted,
         "skip_reason": item.skip_reason,
         "prepare_cache_primed": primed,
+        # Whether the run emptied this cell's bank before it prepared, which is
+        # the difference between a cold number and a replay of the last run's.
+        "fresh_cache": item.fresh_cache,
         # What the container was actually pinned to, which is not the same on
         # every NAS: a kernel with no CFS controller takes a cpuset, not a quota.
         "container_limits": item.container_limits or None,
@@ -760,6 +765,12 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--serve-fixture", action="store_true", help="serve the fixture library on the LAN"
     )
+    parser.add_argument(
+        "--fresh-cache",
+        action="store_true",
+        help="empty each cell's editorial cache before it prepares, so prepare_cold_s is a"
+        " first derivation rather than a replay. The shared models are never touched.",
+    )
     parser.add_argument("--image-tag", default=DEFAULT_IMAGE_TAG)
     parser.add_argument(
         "--inference-tag",
@@ -831,6 +842,7 @@ def main(argv: list[str] | None = None) -> int:
             out_dir=out_dir,
             image=f"{IMAGE_REPO}:{opts.image_tag}",
             environment=environment,
+            fresh_cache=opts.fresh_cache,
         )
     except PlanError as error:
         print(f"error: {error}", file=sys.stderr)

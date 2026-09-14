@@ -58,6 +58,20 @@ warm.
 which is to say the cell has run before, and the record then says that its cold preparation is a
 re-read rather than a first derivation.
 
+## Cold numbers need `--fresh-cache`
+
+A cell's bank survives the run that filled it, so the second time a cell runs, its cold preparation
+is a replay of what the first one derived and its selection is answers read back rather than asked
+for. Both hosted Melious cells made zero completions on the run that found this, and published
+`selection 2s` and `selection 7s` next to `prep cold 0s`. `--fresh-cache` empties each cell's own
+cache before it prepares, so `prepare_cache_primed` is false by construction and the record carries
+`fresh_cache: true`. Each lane does it where that directory lives: the Mac's is removed outright,
+the NAS's is emptied over ssh before docker binds it, and the cluster's is a subPath only the
+container can reach, so the Job carries `MATRIX_FRESH_CACHE=1` and the script empties `/cache` on
+its way in. `/models` is never touched on any of them, because re-fetching the model files measures
+a network rather than a setup. It is off by default: warm numbers are the point of the second
+prepare of the same run, and a fresh cache pays for every caption and every verdict again.
+
 Each lane answers that from somewhere different, because on two of the three the directory being
 there proves nothing. The Mac cell's cache is created by the run itself, so the runner looks before
 it starts. The NAS cell's is created by `make-remote-dir` a moment before the container starts, so
@@ -229,6 +243,15 @@ two it was (`the port-forward never answered` against `facts answered 503: ...`)
 the warm-up a LAN address, which is reachable from here as well, so those runs skip the forward
 entirely.
 
+The NAS container runs as `--user 0:0`, because the share is mounted with an ownership the image's
+uid 1000 cannot write to, and the ssh user who tars the results back is not root. `cp -a` carried
+the app's own 0700 across onto the copied attempt directory, `pull-results` exited 2 on
+`tar: ./attempts/nas-rules-local: Cannot open: Permission denied`, and the cell published an empty
+`selected_asset_ids` beside a film that had come back intact. So the container's last act is
+`chmod -R a+rX` over what the pull reads: the attempts, the logs, the counter files and the film
+directory. The credentials file and the cell's own cache sit in that same directory on the NAS and
+are named nowhere in it.
+
 A NAS cell's credentials go over in a file. `docker run -e NAME` takes the value from the
 environment of the shell running docker, and a non-interactive ssh session carries none of the
 runner's variables: both NAS hosted cells reached their provider with an empty key, and Melious
@@ -254,15 +277,17 @@ deletes it at the end of the run. The output claim is deleted per cell once the 
 copied the results to this machine.
 
 The collector mounts that claim on the same subPath and at the same path the Job wrote to, `/out`,
-and `kubectl cp` is given that absolute path. `kubectl cp` runs `tar` inside the container, and the
-image's WORKDIR is `/app`: a source relative to the claim root was
-`tar: setup-matrix/<cell>: Cannot stat` on the second real run, and the film, the attempt and every
-per-step log stayed on the volume while the cell published an empty row.
+and the copy is `kubectl exec <collector> -- tar -C /out -cf - . | tar -C <cell dir> -xf -`, the
+same tar over a pipe the NAS lane pulls with. `kubectl cp` used to do it and ended its stream early:
+`k8s-rules-service` lost its film, its attempt and every per-phase log to `error: unexpected EOF`,
+twice in one run with three retries spent on it. Rooting the archive at `/out` also settles where
+the source is. `kubectl cp` runs `tar` inside the container and the image's WORKDIR is `/app`, so a
+source relative to the claim root was `tar: setup-matrix/<cell>: Cannot stat` on the second real
+run, with everything the cell produced left on the volume.
 
-That copy is also flaky, and a zero exit is not proof it finished. `k8s-rules-service` lost its film
-to `error: unexpected EOF` on a copy that reported nothing else wrong. So the copy is tried up to
-three times with a pause between, and what it is judged on is the file the run named: the loop stops
-as soon as that file is on this machine, and if three tries do not bring it back the cell records
+A zero exit is still not proof the copy finished, so it is tried up to three times with a pause
+between, and what it is judged on is the file the run named: the loop stops as soon as that file is
+on this machine, and if three tries do not bring it back the cell records
 `the film. The copy-out failed after 3 attempts` under `unmeasured` rather than a blank column.
 
 A cell waits twice: five minutes for its pod to be scheduled, then up to three hours for the Job to

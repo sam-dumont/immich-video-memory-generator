@@ -35,6 +35,7 @@ def _cell_plan(
     steps: tuple[Step, ...] = (),
     cache_dir: str = "",
     container_limits: str = "",
+    fresh_cache: bool = False,
 ) -> CellPlan:
     cell = Cell(
         id=cell_id,
@@ -55,6 +56,7 @@ def _cell_plan(
         manifests={},
         app_credentials=(),
         cache_dir=cache_dir,
+        fresh_cache=fresh_cache,
         container_limits=container_limits,
     )
 
@@ -98,6 +100,27 @@ def test_a_cell_is_cold_unless_its_own_cache_is_already_on_disk(tmp_path) -> Non
 
     assert fresh["prepare_cache_primed"] is False
     assert rerun["prepare_cache_primed"] is True
+
+
+def test_a_cell_that_emptied_its_bank_is_cold_over_a_cache_that_was_there(tmp_path) -> None:
+    """`--fresh-cache` makes the cold number a first derivation, and the record says so.
+
+    Both hosted Melious cells made 0 completions on the last real run: a bank
+    left over from an earlier one answered every question, and `selection 2s`
+    published as this run's cost.
+    """
+    cache = tmp_path / "cache"
+    cache.mkdir(parents=True)
+    item = _replayed_mac_cell(cache)
+    fresh = _cell_plan("mac-local", "mac", steps=item.steps, cache_dir=str(cache), fresh_cache=True)
+
+    record = setup_matrix.run_local_cell(fresh, _plan_of(fresh), tmp_path / "out")
+    warm = setup_matrix.run_local_cell(item, _plan_of(item), tmp_path / "out")
+
+    assert record["fresh_cache"] is True
+    assert record["prepare_cache_primed"] is False
+    assert warm["fresh_cache"] is False
+    assert warm["prepare_cache_primed"] is True
 
 
 def test_a_local_cell_reads_back_what_its_prepare_and_its_generate_printed(tmp_path) -> None:

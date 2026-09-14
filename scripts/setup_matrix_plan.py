@@ -116,9 +116,25 @@ CACHE_MARKER = ".setup-matrix-cell"
 CACHE_PRIMED_FILE = "cache-primed.txt"
 PRIMED = "primed"
 COLD = "cold"
+# `--fresh-cache` empties the cell's own bank before it prepares, so a cold
+# preparation is a first derivation rather than a replay of what the last run
+# banked. The cluster is the lane that needs a switch: its cache is a subPath
+# mount, so only the container can empty it, and the Job carries this variable
+# when the run asked for it. The NAS empties its own cache directory over ssh,
+# before docker binds it, and the Mac's is a plain directory beside the logs.
+FRESH_CACHE_ENV = "MATRIX_FRESH_CACHE"
+# `*` alone leaves the marker file behind, and the cell would then call itself
+# primed one line after being emptied. An unmatched glob reaches `rm -f` as its
+# own text, which is a path that does not exist and so nothing at all.
+_WIPE_GLOBS = ("*", ".[!.]*")
 # The NAS lane looks for itself, in the one step that runs before the directory
 # it would be looking for exists. Read back out of this step's stdout.
 MAKE_REMOTE_DIR = "make-remote-dir"
+# The Mac lane's wipe is a step of its own, so `--dry-run --fresh-cache` shows
+# the directory that is about to go.
+FRESH_CACHE = "fresh-cache"
+# The step the runner retries and then judges on the film being here.
+COPY_OUT = "copy-out"
 
 
 class PlanError(RuntimeError):
@@ -183,6 +199,8 @@ class CellPlan:
     manifests: dict[str, str]
     app_credentials: tuple[str, ...]
     cache_dir: str
+    # Whether this cell empties its own bank before it prepares.
+    fresh_cache: bool = False
     # Only a NAS cell has any: the other two lanes are not capped by a container.
     container_limits: str = ""
     skip_reason: str | None = None
@@ -316,7 +334,9 @@ def _scope(month: str) -> list[str]:
     return ["--year", year, "--month", number]
 
 
-def _mac_steps(cell: Cell, memory: dict, month: str, out_dir: Path) -> tuple[Step, ...]:
+def _mac_steps(
+    cell: Cell, memory: dict, month: str, out_dir: Path, *, fresh: bool
+) -> tuple[Step, ...]:
     """Three local invocations. Cold, warm, then the cut, each timed by the runner."""
     cell_dir = out_dir / cell.id
     root = ["uv", "run", "immich-memories", "--config", str(cell_dir / "config.yaml")]
@@ -337,7 +357,11 @@ def _mac_steps(cell: Cell, memory: dict, month: str, out_dir: Path) -> tuple[Ste
         "--quiet",
     ]
     prepare = [*root, "prepare", *_scope(month)]
+    # The whole directory, because the Mac's cache is the runner's own to make:
+    # nothing is mounted on it and `prepare` creates it again on its way past.
+    wipe = (Step(FRESH_CACHE, ("rm", "-rf", str(cell_dir / CELL_CACHE_DIR))),) if fresh else ()
     return (
+        *wipe,
         Step("prepare-cold", tuple(prepare)),
         Step("prepare-warm", tuple(prepare)),
         Step("generate", tuple(generate)),
@@ -368,6 +392,54 @@ def _cache_marker_lines() -> list[str]:
     ]
 
 
+def _wipe_cache(directory: str) -> str:
+    """Empty an editorial cache, dotfiles included, without removing the directory itself.
+
+    The directory stays because something is mounted on it: a bind on the NAS, a
+    subPath on the cluster. `/models` is never named here — the model files are
+    shared by the whole matrix and re-fetching them measures a network, not a setup.
+    """
+    return "rm -rf " + " ".join(f"{directory}/{glob}" for glob in _WIPE_GLOBS)
+
+
+def _fresh_cache_lines(*, fresh: bool) -> list[str]:
+    """Empty this cell's bank, on the switch the Job carries.
+
+    Only the cluster's cells come through here. A cluster cell's cache is a
+    subPath mount, so the container is the only thing that can empty it, and the
+    Job says so in its own `env` block. The NAS cell's cache is a directory on
+    the NAS, emptied over ssh before docker ever binds it.
+    """
+    if not fresh:
+        return []
+    return [f'[ "${{{FRESH_CACHE_ENV}:-0}}" = 1 ] && {_wipe_cache(REMOTE_CACHE)} || true']
+
+
+def _readable_lines(memory_key: str) -> list[str]:
+    """Let the user who pulls the results read what the container wrote as root.
+
+    The NAS container runs `--user 0:0`, because the share is mounted with an
+    ownership the image's uid 1000 cannot write to. Everything it leaves behind
+    belongs to root, and `cp -a` carries the app's own 0700 across onto the
+    attempt directory: `pull-results` exited 2 on
+    `tar: ./attempts/<cell>: Cannot open: Permission denied`, and the cell
+    published an empty cut beside a film that had come back intact.
+
+    Named paths rather than `/out`, because on the NAS that directory also holds
+    the credentials file and the cell's own cache, and neither is opened up.
+    """
+    targets = " ".join(
+        [
+            f"{REMOTE_OUT}/{REMOTE_ATTEMPTS}",
+            f"{REMOTE_OUT}/*.txt",
+            f"{REMOTE_OUT}/*.log",
+            f"{REMOTE_OUT}/*.mp4",
+            f"{REMOTE_OUT}/{memory_key}_*",
+        ]
+    )
+    return [f"chmod -R a+rX {targets} 2>/dev/null || true"]
+
+
 def _copy_attempt_lines(memory_key: str) -> list[str]:
     """Bring this memory's attempts out of the cache and into what the copy-out pulls back.
 
@@ -382,7 +454,7 @@ def _copy_attempt_lines(memory_key: str) -> list[str]:
     ]
 
 
-def _container_script(cell: Cell, memory: dict, month: str) -> str:
+def _container_script(cell: Cell, memory: dict, month: str, *, fresh: bool = False) -> str:
     """What a remote container runs: fetch, prepare twice, cut, then report its own cost.
 
     The published image is `python:3.11-slim` underneath, which carries no
@@ -394,7 +466,8 @@ def _container_script(cell: Cell, memory: dict, month: str) -> str:
 
     The attempt is copied after `rc` has been taken, not before: `$PIPESTATUS`
     describes the last pipeline that ran, and anything between the cut and that
-    read would be reporting its own exit code as the run's.
+    read would be reporting its own exit code as the run's. The last thing it
+    does is make what it wrote readable to whoever comes to collect it.
     """
     scope = " ".join(_scope(month))
     root = f"immich-memories --config {REMOTE_CONFIG}"
@@ -406,6 +479,7 @@ def _container_script(cell: Cell, memory: dict, month: str) -> str:
     return "; ".join(
         [
             "set -u",
+            *_fresh_cache_lines(fresh=fresh),
             *_cache_marker_lines(),
             *(_models_fetch_lines(root) if fetches_models(cell) else []),
             f"{root} prepare {scope} 2>&1 | tee {REMOTE_OUT}/{PREPARE_COLD_LOG}",
@@ -417,6 +491,7 @@ def _container_script(cell: Cell, memory: dict, month: str) -> str:
             f"2>/dev/null | head -1 > {REMOTE_OUT}/{PEAK_RSS_FILE}",
             f"cat /sys/fs/cgroup/cpu.stat /sys/fs/cgroup/cpuacct/cpuacct.usage "
             f"2>/dev/null > {REMOTE_OUT}/{CPU_FILE}",
+            *_readable_lines(cell.id),
             "exit $rc",
         ]
     )
@@ -480,8 +555,29 @@ def nas_docker_limits(environment: dict[str, str]) -> tuple[str, ...]:
     return tuple(tokens)
 
 
+def _nas_cache_probe(remote: str, *, fresh: bool) -> str:
+    """What the first ssh says about this cell's cache, and what it does to it.
+
+    The look has to come before the `mkdir -p`, which is what would make the
+    answer "yes" on every run after the first line of it. A run that asked for a
+    fresh cache does not look at all: it empties the directory and the answer is
+    cold because this step just made it so.
+    """
+    cache = f"{remote}/{CELL_CACHE_DIR}"
+    if fresh:
+        return f"{_wipe_cache(cache)}; echo {COLD}; "
+    return f"test -d {cache} && echo {PRIMED} || echo {COLD}; "
+
+
 def _nas_steps(
-    cell: Cell, memory: dict, month: str, out_dir: Path, image: str, limits: tuple[str, ...]
+    cell: Cell,
+    memory: dict,
+    month: str,
+    out_dir: Path,
+    image: str,
+    limits: tuple[str, ...],
+    *,
+    fresh: bool,
 ) -> tuple[Step, ...]:
     """ssh, one docker run, and the results tarred back.
 
@@ -527,15 +623,13 @@ def _nas_steps(
     # that is not there is "Bind mount failed: ... does not exist", and the whole
     # cell dies before the container starts.
     return (
-        # The look has to come before the `mkdir -p`, which is what would make the
-        # answer "yes" on every run after the first line of it.
         Step(
             MAKE_REMOTE_DIR,
             (
                 "ssh",
                 "$MATRIX_NAS_SSH",
-                f"test -d {remote}/{CELL_CACHE_DIR} && echo {PRIMED} || echo {COLD}; "
-                f"mkdir -p {remote} {remote}/{CELL_CACHE_DIR}",
+                _nas_cache_probe(remote, fresh=fresh)
+                + f"mkdir -p {remote} {remote}/{CELL_CACHE_DIR}",
             ),
         ),
         Step(
@@ -652,15 +746,24 @@ def _k8s_steps(cell: Cell, out_dir: Path) -> tuple[Step, ...]:
             "wait-collector",
             (*context, "wait", f"pod/{collector}", "--for=condition=ready", "--timeout=5m"),
         ),
-        # WHY the absolute path: `kubectl cp` runs `tar cf - <source>` inside the
-        # container, and the image's WORKDIR is /app. A source relative to the
-        # claim root was `tar: setup-matrix/<cell>: Cannot stat` on the second
-        # real run — the film, the attempt and every per-step log stayed on the
-        # volume and the cell published an empty row. The collector now mounts
-        # the cell's own subPath at the same place the Job wrote it, so this is
-        # the path the container script tees into and nothing has to agree about
-        # a working directory.
-        Step("copy-out", (*context, "cp", f"{collector}:{REMOTE_OUT}", str(local))),
+        # WHY exec and tar rather than `kubectl cp`: cp wraps the same tar in its
+        # own copy loop, and that loop ends the stream early often enough to cost
+        # a cell everything it produced. `k8s-rules-service` lost its film, its
+        # attempt and every per-phase log to `error: unexpected EOF` twice in one
+        # run, three retries and all. This is the pipe the NAS lane already pulls
+        # through, so the bytes go from the remote tar to the local one with
+        # nothing in between deciding when they have stopped.
+        #
+        # WHY `-C /out .`: the collector mounts the cell's own subPath at the path
+        # the Job wrote to, so the archive is rooted where the container script
+        # tees and nothing has to agree about a working directory. The image's
+        # WORKDIR is /app, and a relative source resolved against it was
+        # `tar: setup-matrix/<cell>: Cannot stat` on the second real run.
+        Step(
+            COPY_OUT,
+            (*context, "exec", collector, "--", "tar", "-C", REMOTE_OUT, "-cf", "-", "."),
+            pipe_to=("tar", "-C", str(local), "-xf", "-"),
+        ),
         Step("delete-collector", (*context, "delete", "pod", collector, "--ignore-not-found")),
         Step("delete", (*context, "delete", "job", name, "--ignore-not-found")),
         # The results are on this machine by now, and the next cell's apply makes
@@ -841,7 +944,7 @@ def inference_overlay_steps(*, device: str, keep: bool, lan: bool, tag: str) -> 
 
 
 def _k8s_manifests(
-    cell: Cell, memory: dict, month: str, image: str, config_yaml: str
+    cell: Cell, memory: dict, month: str, image: str, config_yaml: str, *, fresh: bool
 ) -> dict[str, str]:
     """A ConfigMap with the pinned config, a Job that mounts it, and the collector.
 
@@ -852,12 +955,20 @@ def _k8s_manifests(
     name = f"setup-matrix-{cell.id}"
     config_block = "\n".join(f"    {line}" for line in config_yaml.splitlines())
     script = "\n".join(
-        f"                {part}" for part in _container_script(cell, memory, month).split("; ")
+        f"                {part}"
+        for part in _container_script(cell, memory, month, fresh=fresh).split("; ")
     )
     _, credentials = _variables(cell.config)
     secret_block = (
         f"          envFrom:\n            - secretRef:\n                name: {name}-secrets\n"
         if credentials
+        else ""
+    )
+    # The switch the container script reads. Absent unless the run asked for it,
+    # so the Job manifest says on its face whether this cell started from nothing.
+    fresh_block = (
+        f'          env:\n            - name: {FRESH_CACHE_ENV}\n              value: "1"\n'
+        if fresh
         else ""
     )
     return {
@@ -870,6 +981,7 @@ def _k8s_manifests(
             config=REMOTE_CONFIG,
             out=REMOTE_OUT,
             cache=REMOTE_CACHE,
+            fresh=fresh_block,
             secrets=secret_block,
             subpath=f"{OUTPUT_SUBPATH}/{cell.id}",
             models_subpath=MODELS_SUBPATH,
@@ -970,7 +1082,7 @@ spec:
             - -lc
             - |
 {script}
-{secrets}          volumeMounts:
+{fresh}{secrets}          volumeMounts:
             - name: config
               mountPath: {config}
               subPath: config.yaml
@@ -1065,6 +1177,7 @@ def build_cell_plan(
     out_dir: Path,
     image: str,
     environment: dict[str, str],
+    fresh_cache: bool = False,
 ) -> CellPlan:
     """One cell's commands, manifests and pins, with no value from `environment` inside."""
     pins = _pins_for(cell, manifest, library)
@@ -1082,14 +1195,14 @@ def build_cell_plan(
     diagnostics: tuple[Step, ...] = ()
     container_limits = ""
     if cell.lane == "mac":
-        steps = _mac_steps(cell, memory, month, out_dir)
+        steps = _mac_steps(cell, memory, month, out_dir, fresh=fresh_cache)
     elif cell.lane == "nas":
         limits = nas_docker_limits(environment)
-        steps = _nas_steps(cell, memory, month, out_dir, image, limits)
+        steps = _nas_steps(cell, memory, month, out_dir, image, limits, fresh=fresh_cache)
         container_limits = " ".join(limits)
     elif cell.lane == "k8s":
         steps = _k8s_steps(cell, out_dir)
-        manifests = _k8s_manifests(cell, memory, month, image, config_yaml)
+        manifests = _k8s_manifests(cell, memory, month, image, config_yaml, fresh=fresh_cache)
         diagnostics = k8s_diagnostics(cell)
     else:
         raise PlanError(f"{cell.id}: unknown lane {cell.lane!r}")
@@ -1102,6 +1215,7 @@ def build_cell_plan(
         manifests=manifests,
         app_credentials=credentials,
         cache_dir=cache,
+        fresh_cache=fresh_cache,
         container_limits=container_limits,
         skip_reason=skip,
         diagnostics=diagnostics,
@@ -1154,6 +1268,7 @@ def build_plan(
     out_dir: Path,
     image: str,
     environment: dict[str, str],
+    fresh_cache: bool = False,
 ) -> Plan:
     """The whole request as a plan, skipped cells included."""
     _check_ssh_destination(environment)
@@ -1192,6 +1307,7 @@ def build_plan(
                 out_dir=out_dir,
                 image=image,
                 environment=environment,
+                fresh_cache=fresh_cache,
             )
             for cell in chosen
         ),

@@ -114,6 +114,7 @@ def _plan(manifest: dict, tmp_path: Path, environment: dict, **overrides):
         out_dir=tmp_path,
         image="ghcr.io/example/app:0.84.1",
         environment=environment,
+        fresh_cache=overrides.get("fresh_cache", False),
     )
 
 
@@ -663,7 +664,7 @@ def test_a_hosted_cell_does_not_inherit_the_operators_llm_dialect(
 def test_the_collector_copies_from_the_directory_the_job_wrote_to(
     manifest: dict, tmp_path: Path
 ) -> None:
-    """`kubectl cp` runs tar inside the pod, and the image's WORKDIR is /app.
+    """The archive is rooted where the Job wrote, not where the image's WORKDIR is.
 
     A source relative to the claim root was `tar: setup-matrix/<cell>: Cannot
     stat` on the second real run: the film, the attempt and every per-step log
@@ -676,15 +677,57 @@ def test_the_collector_copies_from_the_directory_the_job_wrote_to(
     collector = yaml.safe_load(item.manifests["collector.yaml"])["spec"]["containers"][0]
     written = _output_mount(container)
     read_back = _output_mount(collector)
-    pod, _, source = str(
-        next(step for step in item.steps if step.name == "copy-out").command[-2]
-    ).partition(":")
+    copy_out = next(step for step in item.steps if step.name == "copy-out")
+    source = copy_out.command[copy_out.command.index("-C") + 1]
 
     assert source.startswith("/"), "a relative source resolves against the image's WORKDIR"
     assert source == written["mountPath"] == read_back["mountPath"]
     assert written["subPath"] == read_back["subPath"] == f"setup-matrix/{item.cell.id}"
-    assert pod.endswith("-collect")
+    assert copy_out.command[copy_out.command.index("exec") + 1].endswith("-collect")
     assert f"tee {source}/generate.log" in container["command"][-1]
+
+
+def test_a_cluster_cell_pulls_its_results_through_a_pipe_not_kubectl_cp(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """`kubectl cp` ends its stream early, and `k8s-rules-service` paid for it twice in one run.
+
+    Both copies reported `error: unexpected EOF` with the three retries spent, and
+    the cell published no film, no attempt and no per-phase log. This is the same
+    tar-over-a-pipe the NAS lane pulls with: the remote tar writes, the local one
+    reads, and nothing in between decides the bytes have stopped.
+    """
+    item = _k8s_cell(manifest, tmp_path)
+    copy_out = next(step for step in item.steps if step.name == "copy-out")
+
+    assert "cp" not in copy_out.command
+    assert copy_out.command[:4] == ("kubectl", "--context", "$MATRIX_K8S_CONTEXT", "-n")
+    assert copy_out.command[-7:] == ("--", "tar", "-C", "/out", "-cf", "-", ".")
+    assert copy_out.pipe_to[0] == "tar"
+    assert copy_out.pipe_to[-2:] == ("-xf", "-")
+    assert str(copy_out).count(" | ") == 1
+
+
+def test_a_remote_cell_leaves_what_it_pulls_back_readable(manifest: dict, tmp_path: Path) -> None:
+    """The NAS container runs as root, and the ssh user who tars the results back does not.
+
+    `cp -a` carried the app's own 0700 onto the copied attempt directory and
+    `pull-results` exited 2 on `tar: ./attempts/nas-rules-local: Cannot open:
+    Permission denied`, so the cell published an empty cut beside a film that had
+    come back intact.
+    """
+    script = _container_command(_k8s_cell(manifest, tmp_path))
+    chmod = next(line for line in script.splitlines() if line.startswith("chmod"))
+
+    assert "-R a+rX" in chmod
+    for opened in ("/out/attempts", "/out/*.txt", "/out/*.log", "/out/k8s-rules-local_*"):
+        assert opened in chmod
+    # The NAS binds the same directory that holds the credentials file and the
+    # cell's own cache, and neither is anyone else's to read.
+    assert "/out/env" not in chmod
+    assert "/cache" not in chmod
+    assert script.index("cp -a /cache/editorial-runs") < script.index("chmod")
+    assert script.index("/out/cpu.txt") < script.index("chmod")
 
 
 def test_a_remote_cell_copies_its_own_attempt_out_of_a_cache_nothing_pulls_back(
@@ -713,6 +756,89 @@ def test_a_remote_cell_records_whether_its_cache_already_held_a_run(
     assert "[ -e /cache/.setup-matrix-cell ] && echo primed > /out/cache-primed.txt" in script
     assert "touch /cache/.setup-matrix-cell" in script
     assert script.index("cache-primed.txt") < script.index("prepare")
+
+
+def _lane_cells(manifest: dict, tmp_path: Path, **overrides):
+    """One cell of each lane, so a switch can be asserted on all three at once."""
+    plan = _plan(manifest, tmp_path, FULL_ENV, **overrides)
+    wanted = {"mac-rules", "nas-rules-local", "k8s-rules-local"}
+    return {item.cell.id: item for item in plan.cells if item.cell.id in wanted}
+
+
+def _removals(item) -> list[str]:
+    """Every `rm -rf` this cell runs, wherever it runs it, one command per entry."""
+    text = " ".join(str(step) for step in item.steps)
+    text += " " + (_container_command(item) if item.manifests else "")
+    return [match.group(0).strip() for match in re.finditer(r"rm -rf [^;\n|&]*", text)]
+
+
+def test_a_cell_keeps_its_bank_unless_the_run_asks_for_a_fresh_one(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """Warm is the default: a bank kept between runs is what makes a re-run affordable."""
+    for item in _lane_cells(manifest, tmp_path).values():
+        assert item.fresh_cache is False
+        assert _removals(item) == [], item.cell.id
+    cluster = _lane_cells(manifest, tmp_path)["k8s-rules-local"]
+    assert "MATRIX_FRESH_CACHE" not in cluster.manifests["job.yaml"]
+
+
+def test_a_fresh_cache_run_empties_every_lanes_bank_and_no_models(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """Both hosted Melious cells made 0 completions and replayed a bank two runs old.
+
+    `selection 2s` and `selection 7s` were warm replays published as this run's
+    numbers, and `prep cold 0s` beside them. Each lane empties its own cache a
+    different way, because on each one a different thing owns that directory.
+    """
+    cells = _lane_cells(manifest, tmp_path, fresh_cache=True)
+    assert all(item.fresh_cache for item in cells.values())
+
+    mac = next(step for step in cells["mac-rules"].steps if step.name == "fresh-cache")
+    assert str(mac).startswith("rm -rf ") and str(mac).endswith("/mac-rules/cache")
+    assert [step.name for step in cells["mac-rules"].steps][0] == "fresh-cache"
+
+    nas = str(
+        next(step for step in cells["nas-rules-local"].steps if step.name == "make-remote-dir")
+    )
+    assert "rm -rf $MATRIX_NAS_OUT/nas-rules-local/cache/*" in nas
+    assert nas.index("rm -rf") < nas.index("mkdir -p")
+
+    job = yaml.safe_load(cells["k8s-rules-local"].manifests["job.yaml"])
+    container = job["spec"]["template"]["spec"]["containers"][0]
+    assert container["env"] == [{"name": "MATRIX_FRESH_CACHE", "value": "1"}]
+    script = _container_command(cells["k8s-rules-local"])
+    assert '[ "${MATRIX_FRESH_CACHE:-0}" = 1 ] && rm -rf /cache/*' in script
+
+    # The model files are the whole matrix's, shared across every cell, and
+    # re-fetching them would measure a network rather than a setup.
+    for item in cells.values():
+        removals = _removals(item)
+        assert removals, item.cell.id
+        assert all("/models" not in removal for removal in removals), removals
+        assert all("cache" in removal for removal in removals), removals
+
+
+def test_a_fresh_cache_cell_reports_itself_cold_rather_than_looking(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """The wipe and the answer are the same step, so there is nothing left to look at.
+
+    Both remote lanes report `prepare_cache_primed` out of what they printed: the
+    NAS from this ssh, the cluster from a marker file the container leaves. The
+    marker is a dotfile, which `rm -rf <cache>/*` on its own would walk straight
+    past.
+    """
+    cells = _lane_cells(manifest, tmp_path, fresh_cache=True)
+    nas = str(
+        next(step for step in cells["nas-rules-local"].steps if step.name == "make-remote-dir")
+    )
+    script = _container_command(cells["k8s-rules-local"])
+
+    assert "echo cold" in nas and "echo primed" not in nas
+    assert "/cache/.[!.]*" in script
+    assert script.index("rm -rf /cache") < script.index("/cache/.setup-matrix-cell")
 
 
 def test_a_nas_cell_looks_at_its_cache_before_it_creates_it(manifest: dict, tmp_path: Path) -> None:
