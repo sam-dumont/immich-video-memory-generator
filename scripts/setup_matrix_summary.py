@@ -130,6 +130,7 @@ def build_summary(
     inference_warmup_s: float | None = None,
     inference_gpu_product: str | None = None,
     captioner_warmup_s: float | None = None,
+    captioner_device: str | None = None,
 ) -> dict:
     """The record, with every row's overlap against the reference cut worked out."""
     reference = next(
@@ -182,6 +183,11 @@ def build_summary(
         # call: weights onto a cold claim plus the first completion, paid once
         # by the run rather than by whichever cell happened to go first.
         "captioner_warmup_s": captioner_warmup_s,
+        # Which device wrote the captions, because a full-tier row is mostly
+        # preparation and preparation is mostly captions: 3.5 s a picture on the
+        # CPU image against tenths of a second on a card. Null when no cell in
+        # this run asked for a caption server.
+        "captioner_device": captioner_device,
         "reference_cell": REFERENCE_CELL,
         "scope": f"One monthly memory over {month}, run once per setup.",
         "conditions": list(CONDITIONS),

@@ -1,0 +1,48 @@
+# The caption server on a card:  kubectl apply -k overlays/captioner-cuda
+#
+# Same weights, same alias, same port as overlays/captioner. What changes is
+# where the layers run. Measured on the cluster this was written for: 3.5 s a
+# picture on the CPU image in a 2-CPU pod, 8 minutes for the 133 pictures of one
+# month. The same request answered off a Mac's GPU takes 0.08 to 0.23 s.
+#
+# A sibling directory rather than overlays/captioner/cuda, for the reason
+# overlays/inference-cuda gives: kustomize reads an overlay nested inside its own
+# base as a cycle and refuses to build it.
+#
+# Needs the GPU Operator, same as overlays/gpu and overlays/inference-cuda:
+# RuntimeClass `nvidia` and the nvidia.com/gpu.present node label.
+#
+# The tag floats on `server-cuda` because overlays/captioner floats on `server`,
+# and the two have to be one llama.cpp build. ggml-org publishes the pair per
+# build, so pinning means `server-bNNNNN` there and `server-cuda-bNNNNN` here:
+# both or neither.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../captioner
+
+patches:
+  - path: deployment-cuda.yaml
+
+  # Appended rather than restated. `args` is a plain list, so a strategic-merge
+  # patch naming it replaces the whole thing, and the alias, the projector path
+  # and the context size would then live in two files that can disagree about
+  # what this server serves.
+  - target:
+      kind: Deployment
+      name: immich-memories-captioner
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: "--n-gpu-layers"
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: "99"
+
+# Both containers, which is what this transformer does and what is wanted here:
+# the init container only curls and hashes, but pulling the CPU build for it
+# would put a second llama.cpp image on the node for no reason.
+images:
+  - name: ghcr.io/ggml-org/llama.cpp
+    newTag: server-cuda

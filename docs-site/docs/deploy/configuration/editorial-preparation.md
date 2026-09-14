@@ -42,7 +42,7 @@ advanced:
       caption_base_url: http://localhost:8092/v1
       caption_api_key: ""    # bearer token, if the server asks for one
       caption_timeout_seconds: 90
-      caption_concurrency: 4
+      caption_concurrency: 1 # one CPU captioner cannot do four at once
       batch_size: 32
       head_bundle: ""        # the packaged public six-head bundle
       detector_python: ""    # a separate detector environment, if you want one

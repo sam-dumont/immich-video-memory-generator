@@ -158,6 +158,10 @@ cells:
       editorial.preparation.caption_base_url: $env:MATRIX_CAPTION_BASE_URL
       # Sent to the caption endpoint and nowhere else.
       editorial.preparation.caption_api_key: ${OPENAI_API_KEY}
+      # Four, against the shipped default of one. One is for a CPU captioner,
+      # where four image encodes share the threads of one. This endpoint is an
+      # MLX server on this Mac's GPU, and four at once is worth about 1.5x.
+      editorial.preparation.caption_concurrency: 4
 
   - id: mac-rules
     lane: mac
@@ -171,6 +175,10 @@ cells:
       editorial.preparation.caption_base_url: $env:MATRIX_CAPTION_BASE_URL
       # Sent to the caption endpoint and nowhere else.
       editorial.preparation.caption_api_key: ${OPENAI_API_KEY}
+      # Four, against the shipped default of one. One is for a CPU captioner,
+      # where four image encodes share the threads of one. This endpoint is an
+      # MLX server on this Mac's GPU, and four at once is worth about 1.5x.
+      editorial.preparation.caption_concurrency: 4
 
   # Every NAS cell below runs under MATRIX_NAS_DOCKER_LIMITS, which defaults to
   # `--cpus 4 --memory 4g`. A kernel with no CFS bandwidth controller (a Synology

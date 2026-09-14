@@ -18,6 +18,8 @@ overlays/gpu/          adds runtimeClassName nvidia, nvidia.com/gpu, node select
 overlays/inference/    the inference service alone: Deployment, Service on 8092, cache PVC, policy
 overlays/inference-cuda/ the same service on an NVIDIA card (patch + `-cuda` image tag)
 overlays/inference-lan/  a second Service, type LoadBalancer, for callers outside the cluster
+overlays/captioner/    the caption server `tier: full` needs: llama.cpp, SmolVLM2, weights PVC
+overlays/captioner-cuda/ the same server with its layers on an NVIDIA card
 ```
 
 ## Prerequisites
@@ -128,6 +130,15 @@ Deployment to `http://inference:8092`, or
 `http://inference.immich-memories.svc.cluster.local:8092` from another namespace. The base
 NetworkPolicy already allows egress on 8092. The encoder and Marqo ONNX exports have to be on the
 cache PVC; `ALLOW_MODEL_DOWNLOADS=true` in the overlay only covers the detector snapshots.
+
+`overlays/captioner` is the caption server `tier: full` refuses to run without: llama.cpp serving
+the pinned SmolVLM2-500M GGUF under the alias the app checks for, a ClusterIP Service named
+`captioner` on 8092, and a 2Gi claim an init container fills with the two digest-pinned files.
+`overlays/captioner-cuda` is the same thing with `--n-gpu-layers 99` appended and the `server-cuda`
+image, which is worth 3.5 s a picture against tenths of a second. It asks for no `nvidia.com/gpu`
+resource on purpose, because a time-sliced card has one allocatable slot and the inference
+Deployment holds it: see docs/deploy/installation/caption-server.md for when to put the request
+back.
 
 `overlays/inference-lan` is for callers that are not in the cluster: a NAS, a laptop, the setup
 matrix. It adds a second Service, `inference-lan`, type LoadBalancer, on the same pods and port,

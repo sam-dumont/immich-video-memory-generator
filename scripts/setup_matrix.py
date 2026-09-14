@@ -61,7 +61,7 @@ from setup_matrix_capture import (  # noqa: E402
 from setup_matrix_plan import (  # noqa: E402
     CACHE_PRIMED_FILE,
     CAPTIONER_DEPLOYMENT,
-    CAPTIONER_OVERLAY,
+    CAPTIONER_OVERLAYS,
     CAPTIONER_PORT,
     CAPTIONER_ROLLOUT,
     CAPTIONER_ROLLOUT_TIMEOUT,
@@ -90,6 +90,8 @@ from setup_matrix_plan import (  # noqa: E402
     PlanError,
     Step,
     build_plan,
+    declared_for_device,
+    declared_overlay_steps,
     dry_run_text,
     fetches_models,
     inference_image,
@@ -102,7 +104,6 @@ from setup_matrix_plan import (  # noqa: E402
     pin_inference_node,
     purge_claims_command,
     read_cells,
-    required_overlay_steps,
     required_overlays,
     retag_inference,
 )
@@ -921,10 +922,8 @@ def main(argv: list[str] | None = None) -> int:
     declared = required_overlays(tuple(item.cell for item in plan.runnable))
 
     if opts.dry_run:
-        declared_steps = tuple(
-            step
-            for path in declared
-            for step in required_overlay_steps(path, keep=opts.keep_service)
+        declared_steps = declared_overlay_steps(
+            declared, device=opts.inference_device, keep=opts.keep_service
         )
         print(dry_run_text(plan, overlay=(*overlay, *declared_steps)))
         _report_skips(plan)
@@ -964,6 +963,10 @@ def _execute(
     served = inference_image(opts.inference_tag or opts.image_tag, device=device) if overlay else ""
     warmup: float | None = None
     served_on: str | None = None
+    # The captioner runs on whatever the probe found for the inference service:
+    # one card in the cluster, and no cell asked for a device of its own.
+    declared = declared_for_device(declared, device)
+    caption_device = device if any(path in CAPTIONER_OVERLAYS for path in declared) else None
     caption_warmup = _bring_up_declared(plan, declared)
     if overlay:
         print(f"inference overlay: {overlay_path(device)} running {served}")
@@ -1021,7 +1024,14 @@ def _execute(
         _run_bare(purge_claims_command(), plan)
 
     _publish_summary(
-        plan, opts, out_dir, _collect_rows(out_dir, records), warmup, served_on, caption_warmup
+        plan,
+        opts,
+        out_dir,
+        _collect_rows(out_dir, records),
+        warmup,
+        served_on,
+        caption_warmup,
+        caption_device,
     )
     _report_skips(plan)
     return 0 if all(row.get("error") is None for row in records) else 1
@@ -1055,6 +1065,7 @@ def _publish_summary(
     warmup: float | None = None,
     inference_gpu_product: str | None = None,
     captioner_warmup: float | None = None,
+    captioner_device: str | None = None,
 ) -> None:
     summary = build_summary(
         library=plan.library,
@@ -1064,6 +1075,7 @@ def _publish_summary(
         inference_warmup_s=warmup,
         inference_gpu_product=inference_gpu_product,
         captioner_warmup_s=captioner_warmup,
+        captioner_device=captioner_device,
     )
     if opts.anonymize:
         summary = anonymize(summary)
@@ -1124,8 +1136,10 @@ def _bring_up_declared(plan: Plan, declared: tuple[str, ...]) -> float | None:
     """
     for path in declared:
         _apply_overlay(plan, path, up=True)
-    if CAPTIONER_OVERLAY not in declared:
+    captioner = next((path for path in declared if path in CAPTIONER_OVERLAYS), "")
+    if not captioner:
         return None
+    print(f"captioner overlay: {captioner}")
     warmup = bring_up_captioner(plan)
     print(f"captioner answered a caption request after {warmup:.0f}s")
     return warmup

@@ -18,7 +18,9 @@ deploy/kubernetes/
 │   └── ingress.yaml.example optional Ingress, only after enabling authentication
 ├── overlays/gpu/            + runtimeClassName nvidia, nvidia.com/gpu, node selector, tolerations
 ├── overlays/inference/      the inference service alone: Deployment, Service on 8092, cache PVC
-└── overlays/inference-cuda/ the same service on an NVIDIA card
+├── overlays/inference-cuda/ the same service on an NVIDIA card
+├── overlays/captioner/      the caption server `tier: full` needs, on CPU
+└── overlays/captioner-cuda/ the same caption server on an NVIDIA card
 ```
 
 ## Prerequisites

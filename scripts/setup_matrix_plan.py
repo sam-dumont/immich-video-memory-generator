@@ -929,6 +929,9 @@ INFERENCE_ROLLOUT = (
 )
 
 CAPTIONER_OVERLAY = "deploy/kubernetes/overlays/captioner"
+# Same Deployment, same alias, same claim, with the layers offloaded to a card.
+CAPTIONER_CUDA_OVERLAY = "deploy/kubernetes/overlays/captioner-cuda"
+CAPTIONER_OVERLAYS = (CAPTIONER_OVERLAY, CAPTIONER_CUDA_OVERLAY)
 CAPTIONER_DEPLOYMENT = "deployment/immich-memories-captioner"
 CAPTIONER_SERVICE = "captioner"
 CAPTIONER_PORT = 8092
@@ -959,6 +962,25 @@ def overlay_path(device: str) -> str:
     if device not in {"cpu", "cuda"}:
         raise PlanError(f"inference device must be cpu or cuda by now, got {device!r}")
     return CPU_OVERLAY if device == "cpu" else CUDA_OVERLAY
+
+
+def captioner_overlay_path(device: str) -> str:
+    """Which captioner overlay a device choice applies. `auto` is resolved before this."""
+    if device not in {"cpu", "cuda"}:
+        raise PlanError(f"captioner device must be cpu or cuda by now, got {device!r}")
+    return CAPTIONER_OVERLAY if device == "cpu" else CAPTIONER_CUDA_OVERLAY
+
+
+def declared_for_device(paths: tuple[str, ...], device: str) -> tuple[str, ...]:
+    """The overlays the cells declared, with the captioner pointed at the card.
+
+    A cell declares a caption server, never a device: which one it gets is the
+    answer `probe-gpu` already gave the inference service. One probe, one device,
+    one run, and no second row in the manifest saying the same thing twice.
+    """
+    return tuple(
+        captioner_overlay_path(device) if path == CAPTIONER_OVERLAY else path for path in paths
+    )
 
 
 def inference_image(tag: str, *, device: str) -> str:
@@ -1013,7 +1035,7 @@ def required_overlay_steps(path: str, *, keep: bool) -> tuple[Step, ...]:
     """
     name = Path(path).name
     steps = [Step(f"apply-{name}", (*KUBECTL, "apply", "-k", path))]
-    if path == CAPTIONER_OVERLAY:
+    if path in CAPTIONER_OVERLAYS:
         steps += [
             Step(f"wait-{name}", CAPTIONER_ROLLOUT),
             Step(f"warm-{name}", CAPTIONER_FORWARD),
@@ -1021,6 +1043,28 @@ def required_overlay_steps(path: str, *, keep: bool) -> tuple[Step, ...]:
     if not keep:
         steps.append(Step(f"delete-{name}", (*KUBECTL, "delete", "-k", path, "--ignore-not-found")))
     return tuple(steps)
+
+
+CAPTIONER_AUTO = (
+    f"captioner overlay: {CAPTIONER_OVERLAY}, "
+    f"or {CAPTIONER_CUDA_OVERLAY} when probe-gpu finds a card"
+)
+
+
+def declared_overlay_steps(paths: tuple[str, ...], *, device: str, keep: bool) -> tuple[Step, ...]:
+    """Every declared overlay as steps, with the captioner's device named up front.
+
+    `auto` is not resolved here. A dry run asks no cluster anything, so it prints
+    the rule and the cpu answer under it, the way the inference overlay prints
+    its probe rather than the probe's answer.
+    """
+    resolved = paths if device == "auto" else declared_for_device(paths, device)
+    note = (
+        (Step("captioner-device", ("echo", CAPTIONER_AUTO)),)
+        if device == "auto" and CAPTIONER_OVERLAY in paths
+        else ()
+    )
+    return (*note, *(step for path in resolved for step in required_overlay_steps(path, keep=keep)))
 
 
 def pin_inference_node(rendered: str, product: str) -> str:
