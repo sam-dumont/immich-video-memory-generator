@@ -38,11 +38,22 @@ _SAVED = re.compile(r"Video saved to:(?:[ \t]+(\S.*?))?[ \t]*$", re.MULTILINE)
 # `prepare` prints a rate table whose `total` row ends in `human_duration`:
 # "total  133  0.4812  100%  64 s" / "... 12 min" / "... 1 h 4 min".
 _ELAPSED = r"(?:(\d+) h )?(?:([\d.]+) min|([\d.]+) s)"
-_PREPARE_TOTAL = re.compile(rf"^total\s+[\d,]+\s+[\d.]+\s+100%\s+{_ELAPSED}\s*$", re.MULTILINE)
+# ...unless something else did the work, in which case `elapsed` is not the last
+# column. `preparation_report.rate_report` adds `service s/pic` to the right of
+# it as soon as any producer reports what another machine charged itself: a rate
+# for the rows that ran there, an em dash for the rows that ran here. A pattern
+# anchored to the end of `elapsed` stops matching the day that column appears,
+# and `k8s-gpu-t1000` published a null `prepare_cold_s` and no producers at all
+# over a table that was sitting in its log, complete, the whole time.
+_SERVICE_RATE = r"(?:\s+(?:[\d.]+|—))?"
+_PREPARE_TOTAL = re.compile(
+    rf"^total\s+[\d,]+\s+[\d.]+\s+100%\s+{_ELAPSED}{_SERVICE_RATE}\s*$", re.MULTILINE
+)
 # One producer's row of the same table. `share` is an em dash when the pass cost
 # no measurable time at all, and `total` is excluded because it is not a producer.
 _PREPARE_ROW = re.compile(
-    rf"^(?!total\b)([a-z][\w-]*)\s+([\d,]+)\s+([\d.]+)\s+(?:([\d.]+)%|\S)\s+{_ELAPSED}\s*$",
+    rf"^(?!total\b)([a-z][\w-]*)\s+([\d,]+)\s+([\d.]+)\s+(?:([\d.]+)%|\S)\s+"
+    rf"{_ELAPSED}{_SERVICE_RATE}\s*$",
     re.MULTILINE,
 )
 # Not anchored: `print_success` prints a tick in front of this line, and under
@@ -484,6 +495,43 @@ def read_contract_health(attempt_dir: Path | None, log_text: str) -> dict:
     # lane carries the same stdout in more than one file and both are read.
     reasons = {match.group(1) for match in _EPISODE_REFUSED.finditer(log_text)}
     return {"rejections": repairs + unrecovered + len(reasons), "repairs": repairs}
+
+
+# What a run fetched to cut with, and how many clips the film was made of. Both
+# are read off the run's own log, and both are only ever asked for when the
+# attempt directory did not come back: `k8s-gpu-t1000` published an empty cut
+# beside a 54.5 s film because a truncated tar left the attempt on the volume.
+#
+# `asset_service` builds the original's URL, and a preview is `/thumbnail`, so
+# `/original` is exactly the set of pictures the cut downloaded. The order is the
+# order they were FETCHED, which is not the order they play: the videos go first
+# and concurrently. Nothing here claims otherwise.
+# What a record says when its cut came out of a log rather than out of the
+# editor's own attempt. Read by the summary, which will not publish a running
+# order for one: a fetch order is not a play order.
+CUT_FROM_LOG = "generate log"
+_DOWNLOADED = re.compile(r"/api/assets/([^/\s\"']+)/original")
+_DOWNLOAD_START = "Downloading clips"
+# `generate._log_pipeline_timing` counts the clips the film is made of, which is
+# the cut without the title and ending screens the assembler adds.
+_FILM_CLIPS = re.compile(r"ipeline timing \((\d+) clips,")
+
+
+def downloaded_asset_ids(text: str) -> list[str]:
+    """Every picture the run downloaded to cut with, first fetch first.
+
+    Only the lines after the download phase begins, so the thumbnails preparation
+    pulled for the whole month are not mistaken for the cut.
+    """
+    start = text.find(_DOWNLOAD_START)
+    body = text[start:] if start >= 0 else text
+    return list(dict.fromkeys(_DOWNLOADED.findall(body)))
+
+
+def film_clip_count(text: str) -> int | None:
+    """How many clips the film was assembled from, as the run counted them."""
+    matches = _FILM_CLIPS.findall(text)
+    return int(matches[-1]) if matches else None
 
 
 def latest_attempt(runs_dir: Path, memory_key: str) -> Path | None:
