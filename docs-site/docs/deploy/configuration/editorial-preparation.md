@@ -104,16 +104,22 @@ part of the torch family.
 ## Captions
 
 The endpoint at `caption_base_url` must advertise `smolvlm2-500m-base-public` at `/models` and
-serve the accepted weights:
+serve one of the two accepted artifacts:
 
-| Artifact | Value |
-|---|---|
-| Repository | `mlx-community/SmolVLM2-500M-Video-Instruct-mlx` |
-| Revision | `fa57db46815177fbdfd65cc85a2b3416a8332268` |
-| Weights SHA-256 | `a9839c8f79ecc93e54a00dc73cc0e68ba477debcd065d50c1c289fbb1075f981` |
+| Format | Repository | Revision | Digest |
+|---|---|---|---|
+| MLX, Apple Silicon | `mlx-community/SmolVLM2-500M-Video-Instruct-mlx` | `fa57db46815177fbdfd65cc85a2b3416a8332268` | `a9839c8f79ecc93e54a00dc73cc0e68ba477debcd065d50c1c289fbb1075f981` |
+| GGUF Q8_0, llama.cpp | `ggml-org/SmolVLM2-500M-Video-Instruct-GGUF` | `ccd7aae53bcb1997355c2f094959e72b3642ce17` | `6f67b8036b2469fcd71728702720c6b51aebd759b78137a8120733b4d66438bc` plus `921dc7e259f308e5b027111fa185efcbf33db13f6e35749ddf7f5cdb60ef520b` for the projector |
 
-The app enforces the alias and three synthetic schema controls before it sends a library preview;
-the revision and digest record what the banked descriptions came from. The server must accept the
+Copy-paste recipes for both, plus a compose profile and a Kubernetes overlay, are on
+[Caption server](../installation/caption-server.md).
+
+The app enforces the alias and three synthetic schema controls before it sends a library preview.
+It records nothing about which of the two answered: the bank keys on
+`smolvlm2-500m-base-public@envelope-v3-compact`, which carries no format and no digest. Swapping
+one server for the other therefore re-captions nothing and refuses nothing. The revisions above
+record what the banked descriptions came from, and the two builds word `setting` differently, so a
+library captioned by both holds a mix with nothing marking the seam. The server must accept the
 compact description/setting JSON schema at temperature zero, repetition penalty 1.1 and a 140-token
 cap. Captions are sent as 400 px JPEG tiles at quality 90; pixel measurements keep their own
 `pixel-facts-v1` quality-85 recipe. Two invalid completions produce a banked `caption unavailable`

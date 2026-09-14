@@ -1,0 +1,40 @@
+# This selects `app.kubernetes.io/name: immich-memories-captioner`; the base
+# policy selects `immich-memories`. Different value, so the two never both
+# apply to one pod and nothing here changes the app's traffic.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: immich-memories-captioner
+  namespace: immich-memories
+  labels:
+    app.kubernetes.io/name: immich-memories-captioner
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: immich-memories-captioner
+  policyTypes:
+    - Ingress
+    - Egress
+
+  ingress:
+    # /health, /v1/models, /v1/chat/completions. Nothing checks a credential:
+    # whatever reaches the port gets an answer, and what it gets is a 400 px
+    # tile of somebody's picture described back. ClusterIP for that reason.
+    - ports:
+        - port: 8092
+          protocol: TCP
+
+  egress:
+    # DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+
+    # HTTPS, for the init container's one fetch of the two GGUF files. Drop
+    # this rule once the claim is warm: the serving container never dials out.
+    - ports:
+        - port: 443
+          protocol: TCP

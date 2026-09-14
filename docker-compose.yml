@@ -62,8 +62,13 @@ services:
       # full. Either tier wants `models fetch` run inside the container first;
       # metadata_only fetches nothing and cannot export as sendable.
       IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER: "no_captions"
-      # Raise the tier to "full" with this, once a caption server answers:
-      # IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL: "http://your-model-box:8092/v1"
+      # Raise the tier to "full" with this, once a caption server answers.
+      # The captioner profile below is one, and it is this compose network:
+      # IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL: "http://immich-memories-captioner:8092/v1"
+      # Against a CPU captioner, ask for one picture at a time. Measured on 136
+      # pictures: 36 s at 1, 461 s at the default 4, same server. Four image
+      # encodes share the threads of one, and none of them finishes sooner.
+      # IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_CONCURRENCY: "1"
       # Optional: run the heads and detectors in the inference service below
       # instead of in this container (start it with --profile inference).
       # IMMICH_MEMORIES_INFERENCE__FACTS_BASE_URL: "http://immich-memories-inference:8092"
@@ -167,6 +172,109 @@ services:
         #       capabilities:
         #         - gpu
 
+  # ── Optional: the caption server ──────────────────────────────────────
+  # `tier: full` writes one 140-token description under every picture, once,
+  # and banks it. It needs an OpenAI-compatible endpoint that advertises
+  # `smolvlm2-500m-base-public` at /models. Nothing else in this file provides
+  # one, so here it is: llama.cpp serving the pinned SmolVLM2-500M GGUF under
+  # that alias. Recipes for Apple Silicon and Kubernetes, and the whole
+  # contract, are on docs/deploy/installation/caption-server.md.
+  #
+  #   docker compose --profile captioner up -d
+  #   curl -s localhost:8092/v1/models
+  #
+  # Then set the tier to full and point the app at it (both lines above).
+  #
+  # This publishes host port 8092, which the inference profile publishes too.
+  # Running both means changing one of the two left-hand sides; inside the
+  # compose network they are different service names on the same port, so only
+  # a curl from the host cares.
+  immich-memories-caption-models:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: immich-memories-caption-models
+    profiles:
+      - captioner
+    # Pinned to one revision of ggml-org/SmolVLM2-500M-Video-Instruct-GGUF and
+    # checked by digest, because llama-server takes whatever file is at the
+    # path. `--model-url` is not the shortcut it looks like: build b10920
+    # ignores it, starts in router mode with zero models, and /v1/models comes
+    # back empty, which reads as "wrong model" rather than "no download".
+    entrypoint: ["/bin/sh", "-euc"]
+    # One list entry, not a block string: compose word-splits a string command,
+    # so the script arrived as `sh -euc cd /models cat` and exited 0 having
+    # downloaded nothing.
+    command:
+      - |
+        cd /models
+        {
+          echo "6f67b8036b2469fcd71728702720c6b51aebd759b78137a8120733b4d66438bc  SmolVLM2-500M-Video-Instruct-Q8_0.gguf"
+          echo "921dc7e259f308e5b027111fa185efcbf33db13f6e35749ddf7f5cdb60ef520b  mmproj-SmolVLM2-500M-Video-Instruct-Q8_0.gguf"
+        } > SHA256SUMS
+        if sha256sum -c SHA256SUMS >/dev/null 2>&1; then
+          echo "caption weights already present"
+          exit 0
+        fi
+        base=https://huggingface.co/ggml-org/SmolVLM2-500M-Video-Instruct-GGUF/resolve/ccd7aae53bcb1997355c2f094959e72b3642ce17
+        curl -fL --retry 3 -o SmolVLM2-500M-Video-Instruct-Q8_0.gguf "$$base/SmolVLM2-500M-Video-Instruct-Q8_0.gguf"
+        curl -fL --retry 3 -o mmproj-SmolVLM2-500M-Video-Instruct-Q8_0.gguf "$$base/mmproj-SmolVLM2-500M-Video-Instruct-Q8_0.gguf"
+        sha256sum -c SHA256SUMS
+    volumes:
+      - immich-memories-caption-models:/models
+    restart: "no"
+
+  immich-memories-captioner:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: immich-memories-captioner
+    profiles:
+      - captioner
+    depends_on:
+      immich-memories-caption-models:
+        condition: service_completed_successfully
+    # Localhost only, as with the UI. The captioner holds no credential and
+    # answers whatever reaches the port.
+    ports:
+      - "127.0.0.1:8092:8092"
+    volumes:
+      - immich-memories-caption-models:/models:ro
+    command:
+      - "--model"
+      - "/models/SmolVLM2-500M-Video-Instruct-Q8_0.gguf"
+      # Without the projector the model loads and serves the alias, blind:
+      # the three synthetic control tiles fail and no picture is ever sent.
+      - "--mmproj"
+      - "/models/mmproj-SmolVLM2-500M-Video-Instruct-Q8_0.gguf"
+      # The alias is the contract. The app refuses an endpoint that advertises
+      # anything else at /models, whatever weights are behind it.
+      - "--alias"
+      - "smolvlm2-500m-base-public"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8092"
+      # Already the default on build b10920. Named anyway, so the recipe keeps
+      # working against a build where it is not.
+      - "--jinja"
+      - "--ctx-size"
+      - "8192"
+      # Threads, not a CPU quota: Synology's DSM kernel has no CFS bandwidth
+      # controller, so `cpus:` fails there with `NanoCPUs can not be set`.
+      - "--threads"
+      - "4"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8092/health"]
+      interval: 30s
+      timeout: 5s
+      # Weights load at boot, and a cold NAS takes a while over it.
+      start_period: 180s
+      retries: 3
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          # 1.4 GB resident with the weights mapped and an 8k context.
+          memory: 3G
+
 volumes:
   immich-memories-config:
   immich-memories-model-cache:
+  immich-memories-caption-models:

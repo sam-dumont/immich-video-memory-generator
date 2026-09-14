@@ -15,6 +15,7 @@ from immich_memories.analysis.editorial_description_contract import API_MODEL
 from immich_memories.api.immich import ImmichAPIError
 from immich_memories.config_loader import Config
 from immich_memories.preflight import (
+    CAPTION_SETUP_PAGE,
     CheckResult,
     CheckStatus,
     check_caption_endpoint,
@@ -360,3 +361,24 @@ def test_caption_check_names_the_key_when_the_endpoint_refuses() -> None:
 
     assert result.status is CheckStatus.ERROR
     assert "caption_api_key" in (result.details or "")
+
+
+def test_caption_check_names_the_setup_page_when_no_server_answers() -> None:
+    config = Config(editorial={"preparation": {"caption_base_url": "http://127.0.0.1:1/v1"}})
+
+    result = check_caption_endpoint(config)
+
+    assert result.status is CheckStatus.ERROR
+    assert CAPTION_SETUP_PAGE in (result.details or "")
+
+
+def test_caption_check_names_the_setup_page_when_the_alias_is_missing() -> None:
+    endpoint = _CaptionEndpoint(["some-other-vlm"])
+    try:
+        config = Config(editorial={"preparation": {"caption_base_url": endpoint.base_url}})
+        result = check_caption_endpoint(config)
+    finally:
+        endpoint.close()
+
+    assert result.status is CheckStatus.ERROR
+    assert CAPTION_SETUP_PAGE in (result.details or "")

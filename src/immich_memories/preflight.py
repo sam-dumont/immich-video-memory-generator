@@ -496,12 +496,20 @@ def check_detector_export(config: Config) -> CheckResult:
     )
 
 
+# Nothing ships a captioner, so a failing row has to say where the recipes are.
+# A path, not a URL: the docs travel with the checkout and with the image.
+CAPTION_SETUP_PAGE = "docs/deploy/installation/caption-server.md"
+
+
 def _caption_endpoint_unreachable(base_url: str, error: Exception) -> CheckResult:
     return CheckResult(
         name="Captions",
         status=CheckStatus.ERROR,
         message="Caption endpoint unreachable",
-        details=f"{base_url}: {sanitize_error_message(str(error))}",
+        details=(
+            f"{base_url}: {sanitize_error_message(str(error))}; "
+            f"set one up with {CAPTION_SETUP_PAGE}"
+        ),
     )
 
 
@@ -547,7 +555,10 @@ def check_caption_endpoint(config: Config) -> CheckResult:
             name="Captions",
             status=CheckStatus.ERROR,
             message="Caption endpoint serves another model",
-            details=f"{base_url} advertises {sorted(map(str, served))}, not {API_MODEL}",
+            details=(
+                f"{base_url} advertises {sorted(map(str, served))}, not {API_MODEL}; "
+                f"serve it under that alias as in {CAPTION_SETUP_PAGE}"
+            ),
         )
     return CheckResult(
         name="Captions",

@@ -28,6 +28,13 @@ IMMICH_PORT = 2283
 # The caption server default (editorial.preparation.caption_base_url).
 CAPTION_PORT = 8092
 MODELS_DIR = "/models"
+# ggml-org/SmolVLM2-500M-Video-Instruct-GGUF, the revision and file digests the
+# captioner overlay downloads. Docs and manifest must not drift apart.
+CAPTION_GGUF_REVISION = "ccd7aae53bcb1997355c2f094959e72b3642ce17"
+CAPTION_GGUF_SHA256 = (
+    "6f67b8036b2469fcd71728702720c6b51aebd759b78137a8120733b4d66438bc",
+    "921dc7e259f308e5b027111fa185efcbf33db13f6e35749ddf7f5cdb60ef520b",
+)
 
 
 def _yaml_docs(path: Path) -> list[dict]:
@@ -121,6 +128,8 @@ def test_only_the_kustomization_pin_names_a_concrete_version() -> None:
     for name, text in _deploy_texts().items():
         if name.endswith("kustomization.yaml"):
             text = re.sub(r"(?m)^\s*newTag:.*$", "", text)
+        # A dotted quad is an address, not a release: the captioner binds 0.0.0.0.
+        text = re.sub(r"\b\d{1,3}(?:\.\d{1,3}){3}\b", "", text)
         if found := re.findall(r"\d+\.\d+\.\d+", text):
             offenders[name] = found
 
@@ -404,3 +413,52 @@ def test_network_policy_allows_the_caption_endpoint() -> None:
     }
 
     assert {CAPTION_PORT, 11434} <= egress_ports
+
+
+@pytest.mark.skipif(shutil.which("kubectl") is None, reason="kubectl not installed")
+def test_the_captioner_overlay_serves_the_alias_the_app_demands() -> None:
+    """`tier: full` refuses any endpoint that advertises something else at /models.
+
+    Three flags carry the whole contract, and each has a failure that looks like
+    something else: no `--alias` and preflight reads "serves another model", no
+    `--mmproj` and every picture is described as if it were blank.
+    """
+    from immich_memories.analysis.editorial_description_contract import API_MODEL
+
+    rendered = _kustomize(K8S_ROOT / "overlays/captioner")
+
+    assert "Secret" not in {doc["kind"] for doc in rendered}
+    deployment = next(doc for doc in rendered if doc["kind"] == "Deployment")
+    pod = deployment["spec"]["template"]["spec"]
+    container = pod["containers"][0]
+    args = container["args"]
+
+    assert container["ports"][0]["containerPort"] == CAPTION_PORT
+    assert args[args.index("--alias") + 1] == API_MODEL
+    assert args[args.index("--mmproj") + 1].startswith(f"{MODELS_DIR}/mmproj-")
+    assert "--jinja" in args
+    assert "nvidia.com/gpu" not in container["resources"]["limits"]
+
+    service = next(doc for doc in rendered if doc["kind"] == "Service")
+    assert service["spec"]["type"] == "ClusterIP"
+    assert service["spec"]["ports"][0]["port"] == CAPTION_PORT
+
+
+@pytest.mark.skipif(shutil.which("kubectl") is None, reason="kubectl not installed")
+def test_the_captioner_init_container_pins_the_weights_it_downloads() -> None:
+    """llama-server serves whatever file is at the path, so the digest is the only pin."""
+    rendered = _kustomize(K8S_ROOT / "overlays/captioner")
+    deployment = next(doc for doc in rendered if doc["kind"] == "Deployment")
+    pod = deployment["spec"]["template"]["spec"]
+    init = pod["initContainers"][0]
+    script = "\n".join(init["args"])
+
+    assert CAPTION_GGUF_REVISION in script
+    for digest in CAPTION_GGUF_SHA256:
+        assert digest in script
+    assert "sha256sum -c" in script
+    # The serving container mounts the same claim read-only: nothing rewrites a
+    # verified file after the check.
+    assert next(m for m in pod["containers"][0]["volumeMounts"] if m["name"] == "models")[
+        "readOnly"
+    ]
