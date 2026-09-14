@@ -6,7 +6,7 @@ title: Setup matrix
 # Running the setup matrix
 
 The capability matrix varies what the product is asked for. The setup matrix varies the machine it
-runs on: twenty setups, one memory each, the same month of the same library. It answers one
+runs on: twenty-one setups, one memory each, the same month of the same library. It answers one
 question, "how do the same pictures come out under each mode, and what does each mode tax", and the
 answer is a table of preparation, selection and render seconds, peak memory, the pictures each setup
 chose, the overlap against the reference cut, and the film.
@@ -17,11 +17,12 @@ chose, the overlap against the reference cut, and the film.
 |---|---|---|---|---|---|
 | `mac-local` | Mac | local model | in process | full | The reference cut. |
 | `mac-rules` | Mac | rules | in process | full | What the editorial model is worth. |
-| `mac-hosted-melious-qwen3-30b` | Mac | hosted | in process | full | The reader the remote lanes measured, here. |
 | `mac-hosted-melious-deepseek-v4.1-flash` | Mac | hosted | in process | full | A very large model at the cheap end. |
 | `mac-hosted-melious-gemma-4-31b` | Mac | hosted | in process | full | Weights a workstation can hold. |
 | `mac-hosted-melious-muse-glimmer-30b` | Mac | hosted | in process | full | The other self-hostable candidate. |
 | `mac-hosted-melious-glm-5.3-flash` | Mac | hosted | in process | full | The zai model from the other shop. |
+| `mac-hosted-openai-luna` | Mac | hosted | in process | full | The same price at a name everybody knows. |
+| `mac-hosted-openai-terra` | Mac | hosted | in process | full | What paying ten times more buys. |
 | `mac-local-alt-<model>` | Mac | local model | in process | full | One per id in `MATRIX_MAC_ALT_MODELS`. |
 | `nas-rules-local` | NAS | rules | in process | no_captions | The shipped NAS default. |
 | `nas-rules-service` | NAS | rules | inference service | no_captions | What the classifiers cost a NAS. |
@@ -48,18 +49,37 @@ memory. Each one is `mac-local` with a single line moved. Same lane, same tier `
 caption endpoint, the same picture facts derived in process, so the reader is the only variable and
 the overlap column is a straight comparison against the reference cut.
 
-| Cell | Reader | API model id | Vision | Context | EUR/1M in | EUR/1M out | Weights |
+| Cell | Reader | API model id | Vision | Context | Per 1M in | Per 1M out | Weights |
 |---|---|---|---|---|---|---|---|
 | `mac-local` | oMLX, resident | what the operator's config names | | | | | on the desk |
 | `mac-local-alt-<model>` | oMLX, resident | each id in `MATRIX_MAC_ALT_MODELS` | | | | | on the desk |
-| `mac-hosted-melious-qwen3-30b` | Melious | `qwen3-30b-a3b-instruct` | no | 262K | 0.10 | 0.30 | Apache 2.0 |
-| `mac-hosted-melious-deepseek-v4.1-flash` | Melious | `deepseek-v4.1-flash` | yes | 1M | 0.20 | 1.00 | MIT |
-| `mac-hosted-melious-gemma-4-31b` | Melious | `gemma-4-31b` | yes | 256K | 0.10 | 0.30 | Apache 2.0 |
-| `mac-hosted-melious-muse-glimmer-30b` | Melious | `muse-glimmer` | yes | 128K | 0.20 | 1.00 | Apache 2.0 |
-| `mac-hosted-melious-glm-5.3-flash` | Melious | `glm-5.3-flash` | yes | 1M | 0.10 | 0.40 | MIT |
+| `mac-hosted-melious-gemma-4-31b` | Melious | `gemma-4-31b` | yes | 256K | EUR 0.10 | EUR 0.30 | Apache 2.0 |
+| `mac-hosted-melious-glm-5.3-flash` | Melious | `glm-5.3-flash` | yes | 1M | EUR 0.10 | EUR 0.40 | MIT |
+| `mac-hosted-melious-deepseek-v4.1-flash` | Melious | `deepseek-v4.1-flash` | yes | 1M | EUR 0.20 | EUR 1.00 | MIT |
+| `mac-hosted-melious-muse-glimmer-30b` | Melious | `muse-glimmer` | yes | 128K | EUR 0.20 | EUR 1.00 | Apache 2.0 |
+| `mac-hosted-openai-luna` | OpenAI | `gpt-5.6-luna` | yes | 1.05M | USD 0.20 | USD 1.20 | closed |
+| `mac-hosted-openai-terra` | OpenAI | `gpt-5.6-terra` | yes | 1.05M | USD 2.00 | USD 12.00 | closed |
 
 Prices and licences are what the model pages carried on 2026-09-14, and the same figures sit in
-`pricing:` in the manifest with the page each one came from.
+`pricing:` in the manifest with the page each one came from. Nothing converts between the two
+currencies: a rate is a number nobody measured.
+
+The question behind the whole table is what somebody who self-hosts gets out of a cheap model, so
+the cheap ones are the ones in it. `qwen3-30b-a3b-instruct` was in an earlier draft and is retired
+everywhere, hosted cells on the other lanes included, because Melious lists it as text only and this
+reader looks at pictures. The hosted cells on the NAS and the cluster read with `gemma-4-31b` now.
+
+The OpenAI pair is the ballpark check. `gpt-5.6-luna` at USD 0.20 / 1.20 is the Melious picks' price
+with a dollar sign on it, which is the row worth having. `gpt-5.6-terra` at USD 2.00 / 12.00 is ten
+times Luna and it is in the table to answer "what does paying more buy" rather than as a cheap
+option. `gpt-5.6-sol` (USD 4.00 / 20.00) and `gpt-6-astra` (USD 10.00 / 50.00) are not in the
+comparison at all. Both cells need `OPENAI_KEY`, the real platform key in the matrix env file,
+which is not the `OPENAI_API_KEY` the other Mac cells use: that one is the bearer token the
+operator's own oMLX wants, and it still pays for the captions in these cells too. That account holds
+single-digit dollars, so run Luna first and read `est_cost` off its row before pointing Terra at a
+real month. The flagship pricing table says the `gpt-5.6` family takes no
+image input and the model pages say it takes text and image; the model pages are what the manifest
+was written from.
 
 The reader needs a vision-capable model with a 32k context. Most of what it is handed is annotation
 lines, and then the structure pass demands 800 px tiles for the few dozen pictures a month it cannot
@@ -81,7 +101,7 @@ a cell named after a model carries that model's name in its own id.
 different string, so every id in the manifest was confirmed against
 `GET $MELIOUS_AI_BASE_URL/models` before it was written down.
 
-Two of the five hosted models ship weights anybody can download and serve: `gemma-4-31b` (Apache
+Two of the six hosted models ship weights anybody can download and serve: `gemma-4-31b` (Apache
 2.0, 31B dense) and `muse-glimmer` (Apache 2.0, 29.6B dense with a 1.8B perception encoder). Put
 either of those on the local server and name it in `MATRIX_MAC_ALT_MODELS`, and the pair of rows
 prices the hosted convenience against the electricity.
@@ -132,7 +152,8 @@ because a price with no token count is a price list and a token count with no pr
 
 The table is keyed by reader as well as by model id, because `glm-5.3-flash` is sold by two shops at
 two prices. Only the Melious one has a page in the manifest, so the two zai cells stay unpriced and
-say so.
+say so. Each shop names its own currency beside its models and no figure is ever converted, so a
+euro row and a dollar row stay two numbers.
 
 The estimate carries the run summary's rounding with it. A run that reported 125.4k prompt tokens is
 125,400 in the arithmetic and somewhere between 125,350 and 125,449 in fact, so read the euro figure
@@ -339,7 +360,7 @@ Two files outside the repo, neither of them tracked:
 
 | File | Holds |
 |---|---|
-| `~/.immich-memories-matrix/.env` | `MELIOUS_AI_BASE_URL`, `MELIOUS_AI_KEY`, `ZAI_API_KEY`, `ZAI_BASE_URL` |
+| `~/.immich-memories-matrix/.env` | `MELIOUS_AI_BASE_URL`, `MELIOUS_AI_KEY`, `ZAI_API_KEY`, `ZAI_BASE_URL`, `OPENAI_KEY` |
 | `~/.immich-memories-matrix/matrix.env` | `MATRIX_NAS_SSH`, `MATRIX_NAS_DOCKER`, `MATRIX_NAS_CACHE`, `MATRIX_NAS_OUT`, `MATRIX_NAS_DOCKER_LIMITS`, `MATRIX_K8S_CONTEXT`, `MATRIX_K8S_NAMESPACE`, `MATRIX_OMLX_BASE_URL`, `MATRIX_CAPTION_BASE_URL`, `MATRIX_MAC_ALT_MODELS` |
 
 `MATRIX_NAS_DOCKER_LIMITS` and `MATRIX_INFERENCE_BASE_URL` are the two optional entries: see below.

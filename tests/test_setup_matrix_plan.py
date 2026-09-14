@@ -18,7 +18,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from matrix_pinned_config import pinned_config, read_operator_immich  # noqa: E402
+from matrix_pinned_config import DROP, pinned_config, read_operator_immich  # noqa: E402
 from setup_matrix_plan import (  # noqa: E402
     DERIVED_ADDRESS,
     FROM_OPERATOR_CONFIG,
@@ -62,6 +62,7 @@ FULL_ENV = {
     "MATRIX_K8S_NAMESPACE": "private-namespace",
     "MELIOUS_AI_BASE_URL": "https://hosted.invalid/v1",
     "MELIOUS_AI_KEY": "secret-melious-key",
+    "OPENAI_KEY": "secret-platform-key",
     "ZAI_API_KEY": "secret-zai-key",
     "ZAI_BASE_URL": "https://api.z.ai.invalid/api/anthropic",
     "MATRIX_FIXTURE_BASE_URL": "http://a-fixture.invalid:8078",
@@ -135,23 +136,23 @@ def _plan(manifest: dict, tmp_path: Path, environment: dict, **overrides):
     )
 
 
-def test_the_manifest_holds_the_twenty_setups(manifest: dict) -> None:
+def test_the_manifest_holds_the_twenty_one_setups(manifest: dict) -> None:
     cells = read_cells(manifest)
-    assert len(cells) == 20
+    assert len(cells) == 21
     assert {cell.lane for cell in cells} == {"mac", "nas", "k8s"}
     assert [cell.id for cell in cells][0] == "mac-local", "the reference cut must come first"
 
 
 def test_a_full_environment_skips_nothing(manifest: dict, tmp_path: Path) -> None:
-    """Every variable present and every overlay in the tree, so all twenty run.
+    """Every variable present and every overlay in the tree, so all twenty-one run.
 
     The two full-tier cluster cells were the last holdout: they were declared
     against a tree that did not yet carry the captioner overlay they name.
     """
     plan = _plan(manifest, tmp_path, FULL_ENV)
     assert plan.skipped == ()
-    # Twenty rows in the manifest, and the alternative-reader template is two.
-    assert len(plan.runnable) == 21
+    # Twenty-one rows in the manifest, and the alternative-reader template is two.
+    assert len(plan.runnable) == 22
 
 
 def test_the_nas_service_cells_need_no_hand_set_inference_address(
@@ -393,7 +394,7 @@ def test_no_two_cells_write_into_the_same_editorial_cache(manifest: dict, tmp_pa
     # The remote lanes reach their own cache at one container path, so it is the
     # mount behind it that has to differ; each lane's own test asserts that.
     mac = [item.pins["cache.directory"] for item in plan.cells if item.cell.lane == "mac"]
-    assert len(set(mac)) == len(mac) == 9
+    assert len(set(mac)) == len(mac) == 10
 
 
 def test_a_mac_cell_banks_beside_its_own_logs(manifest: dict, tmp_path: Path) -> None:
@@ -1475,11 +1476,18 @@ def _cell(manifest: dict, tmp_path: Path, cell_id: str):
 # provider's own /models answers with, which is not always the slug its model page
 # is served at: the Muse Glimmer 30B page is `muse-glimmer` over the API.
 READER_CELLS = {
-    "mac-hosted-melious-qwen3-30b": "qwen3-30b-a3b-instruct",
     "mac-hosted-melious-deepseek-v4.1-flash": "deepseek-v4.1-flash",
     "mac-hosted-melious-gemma-4-31b": "gemma-4-31b",
     "mac-hosted-melious-muse-glimmer-30b": "muse-glimmer",
     "mac-hosted-melious-glm-5.3-flash": "glm-5.3-flash",
+}
+
+# The same question at a name everybody knows. These reach api.openai.com through
+# the provider preset rather than naming it, and they pay with a key of their own:
+# OPENAI_API_KEY on this Mac is the local server's bearer token.
+OPENAI_CELLS = {
+    "mac-hosted-openai-luna": "gpt-5.6-luna",
+    "mac-hosted-openai-terra": "gpt-5.6-terra",
 }
 
 # What a reader cell has to hold identical to the reference cut, or its overlap
@@ -1512,6 +1520,32 @@ def test_each_hosted_reader_cell_pins_its_own_model_and_changes_nothing_else(
         assert item.pins["editorial.reader"] == "model"
         for key in _ONLY_THE_READER:
             assert item.pins[key] == reference.pins[key], f"{cell_id}: {key}"
+
+
+def test_the_openai_cells_take_their_endpoint_from_the_preset_and_a_key_of_their_own(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """`OPENAI_API_KEY` on this Mac is the local server's bearer token, not a platform key."""
+    cells = _cells_by_id(manifest, tmp_path)
+    reference = cells["mac-local"]
+    for cell_id, model in OPENAI_CELLS.items():
+        item = cells[cell_id]
+        assert item.pins["llm.model"] == model
+        assert item.pins["llm.provider"] == "openai"
+        assert item.pins["llm.api_key"] == "${OPENAI_KEY}"
+        # The hosted drop hands base_url back to the preset, and no cell here names one.
+        assert item.pins["llm.base_url"] is DROP
+        # The captions still go to the local server, and still pay for it that way.
+        assert item.pins["editorial.preparation.caption_api_key"] == "${OPENAI_API_KEY}"
+        for key in _ONLY_THE_READER:
+            assert item.pins[key] == reference.pins[key], f"{cell_id}: {key}"
+
+
+def test_no_cell_reads_with_the_retired_hosted_qwen(manifest: dict) -> None:
+    """Melious lists it text only, and this table is about what a cheap reader sees."""
+    models = {cell.config.get("llm.model") for cell in read_cells(manifest)}
+    assert "qwen3-30b-a3b-instruct" not in models
+    assert "qwen3-30b-a3b-instruct" not in manifest["pricing"]["hosted_melious"]
 
 
 def test_one_local_cell_per_model_the_operator_named(manifest: dict, tmp_path: Path) -> None:
@@ -1607,10 +1641,13 @@ def test_every_priced_model_is_one_some_cell_actually_reads_with(manifest: dict)
     }
     priced = manifest["pricing"]
     assert priced, "the cost column has nothing to multiply tokens by"
-    for reader, models in priced.items():
-        for model, price in models.items():
+    for reader, shop in priced.items():
+        assert shop["currency"], f"{reader} prices in nothing, and no rate is ever applied"
+        for model, price in shop.items():
+            if model == "currency":
+                continue
             assert (reader, model) in pinned, f"{reader}/{model} is priced and never read with"
             assert price["source"].startswith("https://")
             assert price["retrieved"]
-            assert price["input_per_million_eur"] > 0
-            assert price["output_per_million_eur"] > 0
+            assert price["input_per_million"] > 0
+            assert price["output_per_million"] > 0

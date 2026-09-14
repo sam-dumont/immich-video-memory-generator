@@ -82,9 +82,11 @@ class HostedUsage:
     # Tiles the run actually sent a model. Not on the LLM line: the end-of-run
     # block counts calls and tokens, and this is read off the attempt's own plan.
     images_sent: int | None = None
-    # No provider in this tree returns a price with its completion, so this is
-    # None everywhere and the summary says so out loud.
-    est_cost_eur: float | None = None
+    # No provider in this tree returns a price with its completion, so the capture
+    # leaves this empty and the summary fills it from the manifest's price list,
+    # in whatever currency that shop publishes in.
+    est_cost: float | None = None
+    cost_currency: str | None = None
 
     def as_dict(self) -> dict:
         return {
@@ -95,7 +97,8 @@ class HostedUsage:
             "counted_exactly": self.counted_exactly,
             "wall_seconds": self.wall_seconds,
             "images_sent": self.images_sent,
-            "est_cost_eur": self.est_cost_eur,
+            "est_cost": self.est_cost,
+            "cost_currency": self.cost_currency,
         }
 
 

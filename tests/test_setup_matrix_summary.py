@@ -11,7 +11,7 @@ from setup_matrix_summary import (  # noqa: E402
     REFERENCE_CELL,
     build_markdown,
     build_summary,
-    estimated_cost_eur,
+    estimated_cost,
     jaccard,
     order_kept,
     render_device,
@@ -92,11 +92,11 @@ def test_a_hosted_cell_declares_that_no_price_was_measured() -> None:
             _row(
                 "k8s-hosted-zai",
                 hosted=True,
-                hosted_usage={"tokens_in": 100, "tokens_out": 10, "est_cost_eur": None},
+                hosted_usage={"tokens_in": 100, "tokens_out": 10, "est_cost": None},
             ),
         ]
     )
-    assert any("API cost in euro" in line for line in summary["unmeasured"])
+    assert any("what the API cost" in line for line in summary["unmeasured"])
 
 
 def test_a_missing_timing_is_named_not_filled_in() -> None:
@@ -207,12 +207,13 @@ def test_the_record_says_which_card_answered_the_facts_requests() -> None:
 
 PRICES = {
     "hosted_melious": {
+        "currency": "EUR",
         "gemma-4-31b": {
-            "input_per_million_eur": 0.10,
-            "output_per_million_eur": 0.30,
+            "input_per_million": 0.10,
+            "output_per_million": 0.30,
             "source": "https://melious.ai/hub/models/gemma-4-31b",
             "retrieved": "2026-09-14",
-        }
+        },
     }
 }
 
@@ -239,15 +240,16 @@ def test_a_priced_row_multiplies_the_list_by_the_tokens_it_measured() -> None:
             "tokens_in": 125_400,
             "tokens_out": 8_300,
             "images_sent": 36,
-            "est_cost_eur": None,
+            "est_cost": None,
         },
     )
     summary = _priced([_row(REFERENCE_CELL), row])
 
     usage = summary["cells"][1]["hosted_usage"]
-    assert usage["est_cost_eur"] == 0.015  # 125_400 in at 0.10 plus 8_300 out at 0.30
+    assert usage["est_cost"] == 0.015  # 125_400 in at 0.10 plus 8_300 out at 0.30
+    assert usage["cost_currency"] == "EUR"
     assert usage["price_source"] == "https://melious.ai/hub/models/gemma-4-31b"
-    assert not any("API cost in euro" in line for line in summary["unmeasured"])
+    assert not any("what the API cost" in line for line in summary["unmeasured"])
     table = build_markdown(summary)
     assert "list price times measured tokens" in table
     assert "42 calls, 125.4k in / 8.3k out, 36 tiles" in table
@@ -260,22 +262,22 @@ def test_a_model_with_no_price_row_stays_unmeasured() -> None:
         hosted=True,
         reader="hosted_zai",
         reader_model="glm-5.3-flash",
-        hosted_usage={"tokens_in": 100, "tokens_out": 10, "est_cost_eur": None},
+        hosted_usage={"tokens_in": 100, "tokens_out": 10, "est_cost": None},
     )
     summary = _priced([_row(REFERENCE_CELL), row])
-    assert summary["cells"][1]["hosted_usage"]["est_cost_eur"] is None
-    assert any("API cost in euro" in line for line in summary["unmeasured"])
+    assert summary["cells"][1]["hosted_usage"]["est_cost"] is None
+    assert any("what the API cost" in line for line in summary["unmeasured"])
 
 
 def test_a_price_with_no_token_count_buys_nothing() -> None:
     price = PRICES["hosted_melious"]["gemma-4-31b"]
-    assert estimated_cost_eur({"tokens_in": None, "tokens_out": None}, price) is None
-    assert estimated_cost_eur({"tokens_in": 10, "tokens_out": 1}, None) is None
+    assert estimated_cost({"tokens_in": None, "tokens_out": None}, price) is None
+    assert estimated_cost({"tokens_in": 10, "tokens_out": 1}, None) is None
 
 
 def test_the_contract_column_carries_the_rejections_and_the_repairs() -> None:
     row = _row(
-        "mac-hosted-melious-qwen3-30b",
+        "mac-hosted-melious-glm-5.3-flash",
         reader="hosted_melious",
         contract={"rejections": 3, "repairs": 2},
     )

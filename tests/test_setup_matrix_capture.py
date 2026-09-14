@@ -96,7 +96,7 @@ def test_a_hosted_run_reports_its_tokens_and_says_how_exact_they_are() -> None:
     assert usage.wall_seconds == 310
     # The capture never prices anything: the list price lives in the manifest and
     # the summary is what multiplies it by these counts.
-    assert usage.est_cost_eur is None
+    assert usage.est_cost is None
 
 
 def test_small_token_counts_are_reported_exactly() -> None:

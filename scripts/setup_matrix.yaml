@@ -1,4 +1,4 @@
-# The setup matrix (#873): ONE memory, twenty setups.
+# The setup matrix (#873): ONE memory, twenty-one setups.
 #
 # This is not the capability matrix. That one varies what the product is asked
 # for (ten memory types, seeds, replays) on one machine. This one varies the
@@ -133,13 +133,16 @@ cells:
   # same in-process picture facts, so a difference in the cut is a difference in
   # the reader and not in what the reader was handed.
   #
-  # Five of them read off Melious. The reader wants a vision-capable model with a
-  # 32k context: most of what it is handed is annotation lines, and the structure
-  # pass then demands 800 px tiles for the few dozen pictures a month it cannot
-  # settle on paper (36 on the demo month, 40 on a month of 13,552), with the pair
-  # confirmer and the story-motion check asking for more. Two of the five carry
-  # weights anybody can download and serve, which is what makes the table worth
-  # printing for a self-hoster instead of for a shopping list.
+  # Four of them read off Melious, and all four take pictures. The reader wants a
+  # vision-capable model with a 32k context: most of what it is handed is
+  # annotation lines, and the structure pass then demands 800 px tiles for the few
+  # dozen pictures a month it cannot settle on paper (36 on the demo month, 40 on
+  # a month of 13,552), with the pair confirmer and the story-motion check asking
+  # for more. That is why `qwen3-30b-a3b-instruct` is retired everywhere, the
+  # other lanes' hosted cells included: Melious lists it text only, and a reader
+  # that cannot take the tiles is not a reader this table is about. Two of the
+  # four carry weights anybody can download and serve, which is the whole point:
+  # what somebody who hosts their own gets out of a cheap model.
   #
   # The ids below are what `GET $MELIOUS_AI_BASE_URL/models` answers with, not the
   # slug the model page is served at: the Muse Glimmer 30B page lives at
@@ -150,24 +153,6 @@ cells:
   # this combination, so `seed_cache_from` copies its bank in and empties every
   # table in it that holds a model's answer. The per-cell cache rule is unbroken:
   # what crosses is captions, heads, pixel facts and motion, and no verdict.
-  - id: mac-hosted-melious-qwen3-30b
-    lane: mac
-    seed_cache_from: mac-local
-    reader: hosted_melious
-    facts: local
-    tier: full
-    why: "The reader both remote lanes already measured, on the Mac. Apache 2.0 weights, self-hostable, and the only one here that cannot take the tiles."
-    requires_env:
-      [MATRIX_CAPTION_BASE_URL, OPENAI_API_KEY, MELIOUS_AI_BASE_URL, MELIOUS_AI_KEY]
-    config:
-      editorial.reader: model
-      llm.provider: openai-compatible
-      llm.base_url: $env:MELIOUS_AI_BASE_URL
-      llm.model: qwen3-30b-a3b-instruct
-      llm.api_key: ${MELIOUS_AI_KEY}
-      editorial.preparation.caption_base_url: $env:MATRIX_CAPTION_BASE_URL
-      editorial.preparation.caption_api_key: ${OPENAI_API_KEY}
-
   - id: mac-hosted-melious-deepseek-v4.1-flash
     lane: mac
     seed_cache_from: mac-local
@@ -240,6 +225,56 @@ cells:
       editorial.preparation.caption_base_url: $env:MATRIX_CAPTION_BASE_URL
       editorial.preparation.caption_api_key: ${OPENAI_API_KEY}
 
+  # Two OpenAI cells, to put a name everybody knows next to the cheap ones. The
+  # reader calls need `OPENAI_KEY`, the real platform key in the matrix env file.
+  # That is NOT `OPENAI_API_KEY`, which is the bearer token the operator's own
+  # oMLX wants and is still what pays for the captions in these two cells.
+  #
+  # Luna is the ballpark match, at $0.20/$1.20 against the Melious picks' EUR
+  # 0.10-0.20 in and 0.30-1.00 out. Terra is ten times Luna, and it is in the
+  # table to answer "what does paying more buy" rather than as a cheap pick. Sol
+  # at $4.00/$20.00 and gpt-6-astra at $10.00/$50.00 are not in the comparison at
+  # all. Both of these hold 1,050,000 tokens and take pictures.
+  #
+  # The account behind OPENAI_KEY holds single-digit dollars, so run Luna first
+  # and read `est_cost` off its row before pointing Terra at a real month: Terra
+  # is ten times the price on input and ten times on output.
+  - id: mac-hosted-openai-luna
+    lane: mac
+    seed_cache_from: mac-local
+    reader: hosted_openai
+    facts: local
+    tier: full
+    why: The cheap end of a name everybody knows, at the price the Melious picks charge.
+    requires_env:
+      [MATRIX_CAPTION_BASE_URL, OPENAI_API_KEY, OPENAI_KEY]
+    config:
+      editorial.reader: model
+      # The preset owns the base URL: api.openai.com is not a thing a cell should
+      # be able to get wrong, and the hosted drop hands the field back to it.
+      llm.provider: openai
+      llm.model: gpt-5.6-luna
+      llm.api_key: ${OPENAI_KEY}
+      editorial.preparation.caption_base_url: $env:MATRIX_CAPTION_BASE_URL
+      editorial.preparation.caption_api_key: ${OPENAI_API_KEY}
+
+  - id: mac-hosted-openai-terra
+    lane: mac
+    seed_cache_from: mac-local
+    reader: hosted_openai
+    facts: local
+    tier: full
+    why: "Ten times Luna's price, on the same pictures: the row that says what that buys."
+    requires_env:
+      [MATRIX_CAPTION_BASE_URL, OPENAI_API_KEY, OPENAI_KEY]
+    config:
+      editorial.reader: model
+      llm.provider: openai
+      llm.model: gpt-5.6-terra
+      llm.api_key: ${OPENAI_KEY}
+      editorial.preparation.caption_base_url: $env:MATRIX_CAPTION_BASE_URL
+      editorial.preparation.caption_api_key: ${OPENAI_API_KEY}
+
   # The local half of the same question, one cell per model the operator names in
   # MATRIX_MAC_ALT_MODELS (comma separated). The story-first reader needs a
   # vision-capable model with a 32k context: it looks at a few dozen pictures a
@@ -306,7 +341,7 @@ cells:
     reader: hosted_melious
     facts: service
     tier: no_captions
-    why: A NAS that pays for judgement instead of running it.
+    why: A NAS that pays for judgement instead of running it, on the cheapest hosted pick.
     requires_env:
       [MATRIX_NAS_SSH, MATRIX_NAS_DOCKER, MATRIX_NAS_CACHE, MATRIX_NAS_OUT,
        MELIOUS_AI_BASE_URL, MELIOUS_AI_KEY]
@@ -314,7 +349,7 @@ cells:
       editorial.reader: model
       llm.provider: openai-compatible
       llm.base_url: $env:MELIOUS_AI_BASE_URL
-      llm.model: qwen3-30b-a3b-instruct
+      llm.model: gemma-4-31b
       llm.api_key: ${MELIOUS_AI_KEY}
       inference.facts_base_url: $env:MATRIX_INFERENCE_BASE_URL
       inference.fallback_to_local: false
@@ -369,7 +404,7 @@ cells:
       editorial.reader: model
       llm.provider: openai-compatible
       llm.base_url: $env:MELIOUS_AI_BASE_URL
-      llm.model: qwen3-30b-a3b-instruct
+      llm.model: gemma-4-31b
       llm.api_key: ${MELIOUS_AI_KEY}
       inference.facts_base_url: http://inference:8092
       inference.fallback_to_local: false
@@ -506,7 +541,7 @@ cells:
       editorial.reader: model
       llm.provider: openai-compatible
       llm.base_url: $env:MELIOUS_AI_BASE_URL
-      llm.model: qwen3-30b-a3b-instruct
+      llm.model: gemma-4-31b
       llm.api_key: ${MELIOUS_AI_KEY}
       inference.facts_base_url: http://inference:8092
       inference.fallback_to_local: false
@@ -517,34 +552,54 @@ cells:
 # as an estimate, labelled as one. Nothing in the matrix asks a provider what a
 # completion cost, because no provider in it answers.
 #
+# Each shop is priced in the currency it publishes in, and nothing here converts
+# between them: a rate is a number nobody measured, and a table that quietly
+# applied one would be inventing the very figure it is meant to report.
+#
 # Keyed by reader as well as model id, because `glm-5.3-flash` is sold by two
 # shops at two prices and the row has to know which one it bought from. A reader
 # with no table here (`hosted_zai`) prices nothing, and its cells keep saying so
 # under `unmeasured`.
 pricing:
   hosted_melious:
-    qwen3-30b-a3b-instruct:
-      input_per_million_eur: 0.10
-      output_per_million_eur: 0.30
-      source: https://melious.ai/hub/models/qwen3-30b-a3b-instruct
-      retrieved: "2026-09-14"
+    currency: EUR
     deepseek-v4.1-flash:
-      input_per_million_eur: 0.20
-      output_per_million_eur: 1.00
+      input_per_million: 0.20
+      output_per_million: 1.00
       source: https://melious.ai/hub/models/deepseek-v4.1-flash
       retrieved: "2026-09-14"
     gemma-4-31b:
-      input_per_million_eur: 0.10
-      output_per_million_eur: 0.30
+      input_per_million: 0.10
+      output_per_million: 0.30
       source: https://melious.ai/hub/models/gemma-4-31b
       retrieved: "2026-09-14"
     muse-glimmer:
-      input_per_million_eur: 0.20
-      output_per_million_eur: 1.00
+      input_per_million: 0.20
+      output_per_million: 1.00
       source: https://melious.ai/hub/models/muse-glimmer-30b
       retrieved: "2026-09-14"
     glm-5.3-flash:
-      input_per_million_eur: 0.10
-      output_per_million_eur: 0.40
+      input_per_million: 0.10
+      output_per_million: 0.40
       source: https://melious.ai/hub/models/glm-5.3-flash
+      retrieved: "2026-09-14"
+  hosted_openai:
+    currency: USD
+    # The ballpark check the owner asked for. Luna is the one that belongs in a
+    # table about cheap readers: at 0.20/1.20 it is the Melious picks' price with
+    # a dollar sign on it. Terra is ten times Luna on input and ten times the
+    # cheapest Melious pick on output, and it is here to answer "what does paying
+    # more actually buy", not as a cheap option. Sol (4.00/20.00) and
+    # gpt-6-astra (10.00/50.00) are off the table entirely. Both of these take
+    # pictures, which the flagship pricing table gets wrong and the model pages
+    # get right: 1,050,000 context, text and image in.
+    gpt-5.6-luna:
+      input_per_million: 0.20
+      output_per_million: 1.20
+      source: https://developers.openai.com/api/docs/models/gpt-5.6-luna
+      retrieved: "2026-09-14"
+    gpt-5.6-terra:
+      input_per_million: 2.00
+      output_per_million: 12.00
+      source: https://developers.openai.com/api/docs/models/gpt-5.6-terra
       retrieved: "2026-09-14"

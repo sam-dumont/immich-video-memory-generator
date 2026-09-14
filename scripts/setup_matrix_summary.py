@@ -41,7 +41,8 @@ CONDITIONS = (
     "The cost column is list price times measured tokens: the price list in the manifest, at"
     " the date each row of it names, multiplied by the tokens the run reported. It is an"
     " estimate and it carries that rounding with it. Nothing here asks a provider what a"
-    " completion cost, because none of them answers.",
+    " completion cost, because none of them answers, and nothing here converts between"
+    " currencies: each figure is in the one its shop publishes in.",
     "A seeded cell prepared nothing. Preparation is a fact about the host, the tier and"
     " where the picture facts come from, so cells that vary only the reader take the"
     " named cell's bank with every model answer removed from it, and its prepare"
@@ -106,9 +107,9 @@ def _usage_gaps(row: dict) -> list[str]:
     if not row.get("hosted"):
         return []
     gaps = []
-    if usage.get("est_cost_eur") is None:
+    if usage.get("est_cost") is None:
         gaps.append(
-            f"{row['id']}: API cost in euro. The provider returns no price with a completion and"
+            f"{row['id']}: what the API cost. The provider returns no price with a completion and"
             " the manifest holds no list price for this reader and model, so there is nothing to"
             " multiply the tokens by."
         )
@@ -129,7 +130,11 @@ def _contract_gaps(row: dict) -> list[str]:
     return []
 
 
-def estimated_cost_eur(usage: dict, price: dict | None) -> float | None:
+# The key a shop's own currency sits under, beside its models.
+CURRENCY = "currency"
+
+
+def estimated_cost(usage: dict, price: dict | None) -> float | None:
     """List price times measured tokens, or None when either half is missing.
 
     Not a bill. No provider in the matrix returns a price with a completion, so
@@ -139,23 +144,27 @@ def estimated_cost_eur(usage: dict, price: dict | None) -> float | None:
     tokens_in, tokens_out = usage.get("tokens_in"), usage.get("tokens_out")
     if not price or tokens_in is None or tokens_out is None:
         return None
-    spent = tokens_in * float(price["input_per_million_eur"])
-    spent += tokens_out * float(price["output_per_million_eur"])
+    spent = tokens_in * float(price["input_per_million"])
+    spent += tokens_out * float(price["output_per_million"])
     return round(spent / 1_000_000, 4)
 
 
 def _apply_price(row: dict, pricing: dict) -> None:
-    """Put a euro figure on a row that measured tokens and has a price to multiply them by.
+    """Put a figure on a row that measured tokens and has a price to multiply them by.
 
     Keyed by reader as well as model id: `glm-5.3-flash` is sold by two shops at
-    two prices, and only one of them has a page in the manifest.
+    two prices, and only one of them has a page in the manifest. The currency is
+    the shop's own and is never converted, so two rows bought in two currencies
+    stay two figures rather than becoming one made up out of a rate.
     """
     usage = row.get("hosted_usage") or {}
-    price = (pricing.get(row.get("reader") or "") or {}).get(row.get("reader_model") or "")
-    cost = estimated_cost_eur(usage, price)
+    shop = pricing.get(row.get("reader") or "") or {}
+    price = shop.get(row.get("reader_model") or "")
+    cost = estimated_cost(usage, price if isinstance(price, dict) else None)
     if cost is None:
         return
-    usage["est_cost_eur"] = cost
+    usage["est_cost"] = cost
+    usage["cost_currency"] = shop.get(CURRENCY)
     usage["price_source"] = price.get("source")
     usage["price_retrieved"] = price.get("retrieved")
 
@@ -297,6 +306,12 @@ def _prepared(row: dict, value: Any) -> str:
     return f"= {row['seeded_from']}" if row.get("seeded_from") else _seconds(value)
 
 
+def _money(usage: dict) -> str:
+    """An estimate with the currency it was priced in, which is never converted."""
+    cost = usage.get("est_cost")
+    return "-" if cost is None else f"{usage.get('cost_currency') or '?'} {cost:.3f}"
+
+
 def _contract(row: dict) -> str:
     """`rejections/repairs`, or a dash for a cell that asked no model anything."""
     contract = row.get("contract") or {}
@@ -324,7 +339,7 @@ def _row_cells(row: dict) -> list[str]:
         _seconds(timing.get("render_s")),
         render_device(row),
         _megabytes(timing.get("peak_rss_mb")),
-        "-" if usage.get("est_cost_eur") is None else f"EUR {usage['est_cost_eur']:.3f}",
+        _money(usage),
         str(len(row.get("selected_asset_ids") or [])),
         _fraction(row.get("overlap_vs_cell_1")),
         _contract(row),
@@ -360,8 +375,9 @@ def _render_devices(rows: list[dict]) -> list[str]:
 _COST_LEAD = (
     "The cost column is list price times measured tokens: the price list in"
     " `scripts/setup_matrix.yaml`, at the date each row of it names, multiplied by the token"
-    " counts the run printed. It is an estimate of what the run would cost at list, and the"
-    " counts it multiplies are rounded at or above 1000. What each row is made of:"
+    " counts the run printed. It is an estimate of what the run would cost at list, the counts"
+    " it multiplies are rounded at or above 1000, and each figure is in the currency its shop"
+    " publishes in with no rate applied between them. What each row is made of:"
 )
 
 
@@ -373,7 +389,8 @@ def _cost_line(row: dict) -> str:
     """One row's bill, and the arithmetic behind it, so nobody has to take it on faith."""
     usage = row["hosted_usage"]
     return (
-        f"- `{row['id']}` EUR {usage['est_cost_eur']:.4f} for `{row['reader_model']}`:"
+        f"- `{row['id']}` {usage.get('cost_currency') or '?'} {usage['est_cost']:.4f}"
+        f" for `{row['reader_model']}`:"
         f" {usage.get('calls') or 0} calls, {_thousands(usage.get('tokens_in'))} in /"
         f" {_thousands(usage.get('tokens_out'))} out, {usage.get('images_sent') or 0} tiles,"
         f" at {usage['price_source']}"
@@ -386,7 +403,7 @@ def _cost_basis(rows: list[dict]) -> list[str]:
     priced = [
         row
         for row in rows
-        if (row.get("hosted_usage") or {}).get("est_cost_eur") is not None
+        if (row.get("hosted_usage") or {}).get("est_cost") is not None
         and row["hosted_usage"].get("price_source")
     ]
     if not priced:
