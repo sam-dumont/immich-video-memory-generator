@@ -3323,24 +3323,20 @@
       {
         "name": "RunDatabase::update_run_status",
         "complexity": 18,
-        "line_start": 223,
-        "line_end": 284,
+        "line_start": 227,
+        "line_end": 288,
         "line_complexities": [
           {
-            "line": 238,
-            "complexity": 0
-          },
-          {
-            "line": 239,
-            "complexity": 0
-          },
-          {
-            "line": 240,
-            "complexity": 0
-          },
-          {
             "line": 242,
-            "complexity": 2
+            "complexity": 0
+          },
+          {
+            "line": 243,
+            "complexity": 0
+          },
+          {
+            "line": 244,
+            "complexity": 0
           },
           {
             "line": 246,
@@ -3373,69 +3369,73 @@
           {
             "line": 274,
             "complexity": 2
+          },
+          {
+            "line": 278,
+            "complexity": 2
           }
         ]
       },
       {
         "name": "RunDatabase::update_operational_phase",
         "complexity": 21,
-        "line_start": 133,
-        "line_end": 166,
+        "line_start": 134,
+        "line_end": 170,
         "line_complexities": [
-          {
-            "line": 135,
-            "complexity": 0
-          },
           {
             "line": 136,
             "complexity": 0
           },
           {
-            "line": 140,
-            "complexity": 2
+            "line": 137,
+            "complexity": 0
           },
           {
             "line": 141,
-            "complexity": 0
+            "complexity": 2
           },
           {
             "line": 142,
-            "complexity": 2
+            "complexity": 0
           },
           {
             "line": 143,
-            "complexity": 3
+            "complexity": 2
           },
           {
             "line": 144,
-            "complexity": 0
+            "complexity": 3
           },
           {
-            "line": 149,
+            "line": 145,
             "complexity": 0
-          },
-          {
-            "line": 150,
-            "complexity": 2
           },
           {
             "line": 151,
             "complexity": 0
           },
           {
-            "line": 154,
+            "line": 152,
+            "complexity": 2
+          },
+          {
+            "line": 153,
+            "complexity": 0
+          },
+          {
+            "line": 156,
             "complexity": 3
           },
           {
-            "line": 155,
+            "line": 157,
             "complexity": 4
           },
           {
-            "line": 160,
+            "line": 162,
             "complexity": 5
           },
           {
-            "line": 166,
+            "line": 170,
             "complexity": 0
           }
         ]
