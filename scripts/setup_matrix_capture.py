@@ -79,6 +79,9 @@ class HostedUsage:
     tokens_out: int | None = None
     counted_exactly: bool | None = None
     wall_seconds: float | None = None
+    # Tiles the run actually sent a model. Not on the LLM line: the end-of-run
+    # block counts calls and tokens, and this is read off the attempt's own plan.
+    images_sent: int | None = None
     # No provider in this tree returns a price with its completion, so this is
     # None everywhere and the summary says so out loud.
     est_cost_eur: float | None = None
@@ -91,6 +94,7 @@ class HostedUsage:
             "tokens_out": self.tokens_out,
             "counted_exactly": self.counted_exactly,
             "wall_seconds": self.wall_seconds,
+            "images_sent": self.images_sent,
             "est_cost_eur": self.est_cost_eur,
         }
 
@@ -415,6 +419,68 @@ def read_losses(attempt_dir: Path) -> dict:
         "dropped": dropped,
         "lost_favourites": None if trace.lost_favourites is None else len(trace.lost_favourites),
     }
+
+
+# The reading contracts leave two kinds of trace. A repair is a second question
+# with the rejection spelled out, and the judge writes one request transcript per
+# question, so the `-repair` stages ARE the repairs. An answer nothing recovered
+# leaves a failure transcript instead. The episode reader has neither: it warns,
+# once per distinct reason (#913), and only into the run log.
+CALLS = "calls"
+_REPAIR_ASKED = "*-repair*.request.private.txt"
+_ANSWER_REFUSED = "*.failure.private.json"
+_ANSWER_UNREADABLE = "*json-failure*.private.json"
+_EPISODE_REFUSED = re.compile(r"(text episode provider failed \([^)]*\): .+?)\s*$", re.MULTILINE)
+
+
+PLAN_FILE = "plan.private.json"
+
+
+def read_images_sent(attempt_dir: Path) -> int | None:
+    """Tiles this run sent a model, summed over the metrics blocks the plan keeps.
+
+    The story-first reader is mostly text and mostly is not never: the structure
+    pass demands 800 px tiles for the pictures it cannot settle on paper, a few
+    dozen in a month, and the pair confirmer and the story-motion check ask for
+    more. Those are image tokens somebody is billed for, so the cost line says how
+    many there were rather than implying the bill was all prose.
+    """
+    plan = attempt_dir / PLAN_FILE
+    if not plan.is_file():
+        return None
+    try:
+        record = json.loads(plan.read_text())
+    except ValueError:
+        return None
+    counted = [
+        block["images_sent"]
+        for block in record.values()
+        if isinstance(block, dict) and isinstance(block.get("images_sent"), int)
+    ]
+    return sum(counted) if counted else None
+
+
+def read_contract_health(attempt_dir: Path | None, log_text: str) -> dict:
+    """How often a reading contract refused this cell's reader, and how often it asked again.
+
+    Overlap says which pictures a reader chose. This says what it took to get an
+    answer out of it in the shape the contract asked for, which is the other half
+    of whether a model is any good: a hosted qwen3-30b once answered a pick with
+    the whole offered row, twice, and killed a run with nothing in the table to
+    show for it.
+
+    A cell that never called a model leaves no transcripts at all, and reports
+    null rather than a zero that would read as a clean reader.
+    """
+    calls = attempt_dir / CALLS if attempt_dir else None
+    if calls is None or not calls.is_dir():
+        return {"rejections": None, "repairs": None}
+    repairs = len(list(calls.glob(_REPAIR_ASKED)))
+    unrecovered = len(list(calls.glob(_ANSWER_REFUSED))) + len(list(calls.glob(_ANSWER_UNREADABLE)))
+    # Deduplicated on the reason, the way the reader itself reports it: a remote
+    # lane carries the same stdout in more than one file and both are read.
+    reasons = {match.group(1) for match in _EPISODE_REFUSED.finditer(log_text)}
+    return {"rejections": repairs + unrecovered + len(reasons), "repairs": repairs}
 
 
 def latest_attempt(runs_dir: Path, memory_key: str) -> Path | None:

@@ -38,6 +38,17 @@ CONDITIONS = (
     "Selection and render seconds are the run's own measured-this-run block, not a wall clock"
     " around the process.",
     "Token counts come from the end-of-run summary, which rounds at or above 1000.",
+    "The cost column is list price times measured tokens: the price list in the manifest, at"
+    " the date each row of it names, multiplied by the tokens the run reported. It is an"
+    " estimate and it carries that rounding with it. Nothing here asks a provider what a"
+    " completion cost, because none of them answers.",
+    "A seeded cell prepared nothing. Preparation is a fact about the host, the tier and"
+    " where the picture facts come from, so cells that vary only the reader take the"
+    " named cell's bank with every model answer removed from it, and its prepare"
+    " columns point at the cell that measured them.",
+    "The contract column is rejections/repairs: how many answers a reading contract refused,"
+    " and how many of those the run asked again with the rejection spelled out. A rules cell"
+    " never asked a model anything and shows a dash.",
     "The render device column is two answers, because they are two pieces of silicon:"
     " what drew the title screens and what encoded the film. Both are read off lines"
     " the run printed, and a cell that printed neither shows a dash rather than a"
@@ -97,12 +108,56 @@ def _usage_gaps(row: dict) -> list[str]:
     gaps = []
     if usage.get("est_cost_eur") is None:
         gaps.append(
-            f"{row['id']}: API cost in euro. The provider returns no price with a completion,"
-            " so a figure here would be a price list, not a measurement."
+            f"{row['id']}: API cost in euro. The provider returns no price with a completion and"
+            " the manifest holds no list price for this reader and model, so there is nothing to"
+            " multiply the tokens by."
         )
     if usage.get("counted_exactly") is False:
         gaps.append(f"{row['id']}: exact token counts. The run summary rounds at or above 1000.")
     return gaps
+
+
+def _contract_gaps(row: dict) -> list[str]:
+    """A reader that called a model and left no transcripts to count."""
+    if row.get("reader") == "rules":
+        return []
+    if (row.get("contract") or {}).get("rejections") is None:
+        return [
+            f"{row['id']}: contract health. This cell kept no call transcripts, so how often a"
+            " reading contract refused its reader was never counted."
+        ]
+    return []
+
+
+def estimated_cost_eur(usage: dict, price: dict | None) -> float | None:
+    """List price times measured tokens, or None when either half is missing.
+
+    Not a bill. No provider in the matrix returns a price with a completion, so
+    this is the published price list multiplied by what the run counted, and it
+    carries the run summary's own rounding with it.
+    """
+    tokens_in, tokens_out = usage.get("tokens_in"), usage.get("tokens_out")
+    if not price or tokens_in is None or tokens_out is None:
+        return None
+    spent = tokens_in * float(price["input_per_million_eur"])
+    spent += tokens_out * float(price["output_per_million_eur"])
+    return round(spent / 1_000_000, 4)
+
+
+def _apply_price(row: dict, pricing: dict) -> None:
+    """Put a euro figure on a row that measured tokens and has a price to multiply them by.
+
+    Keyed by reader as well as model id: `glm-5.3-flash` is sold by two shops at
+    two prices, and only one of them has a page in the manifest.
+    """
+    usage = row.get("hosted_usage") or {}
+    price = (pricing.get(row.get("reader") or "") or {}).get(row.get("reader_model") or "")
+    cost = estimated_cost_eur(usage, price)
+    if cost is None:
+        return
+    usage["est_cost_eur"] = cost
+    usage["price_source"] = price.get("source")
+    usage["price_retrieved"] = price.get("retrieved")
 
 
 def write_cell_record(out_dir: Path, row: dict) -> None:
@@ -129,6 +184,7 @@ def build_summary(
     rows: list[dict],
     inference_warmup_s: float | None = None,
     inference_gpu_product: str | None = None,
+    pricing: dict | None = None,
 ) -> dict:
     """The record, with every row's overlap against the reference cut worked out."""
     reference = next(
@@ -147,10 +203,15 @@ def build_summary(
         if row.get("skip_reason"):
             unmeasured.append(f"{row['id']}: not run. {row['skip_reason']}")
             continue
+        _apply_price(row, pricing or {})
         unmeasured.extend(_timing_gaps(row))
         unmeasured.extend(_artifact_gaps(row))
         unmeasured.extend(_usage_gaps(row))
-        if row.get("prepare_cache_primed"):
+        unmeasured.extend(_contract_gaps(row))
+        # `is True` on purpose: a seeded cell puts a sentence in this field, and
+        # its preparation is not a re-read of its own last run, it is another
+        # cell's measurement, named under `unmeasured` by that cell's own reason.
+        if row.get("prepare_cache_primed") is True:
             unmeasured.append(
                 f"{row['id']}: a true cold preparation. This cell's own cache was already"
                 " there, so prepare_cold_s is a re-read, not a first derivation."
@@ -200,6 +261,7 @@ _HEADERS = (
     "cost",
     "#kept",
     "overlap",
+    "contract",
     "film",
 )
 
@@ -230,6 +292,19 @@ def render_device(row: dict) -> str:
     return f"{titles or '?'} titles / {encoder or '?'}"
 
 
+def _prepared(row: dict, value: Any) -> str:
+    """A preparation second, or the cell that measured it for this one."""
+    return f"= {row['seeded_from']}" if row.get("seeded_from") else _seconds(value)
+
+
+def _contract(row: dict) -> str:
+    """`rejections/repairs`, or a dash for a cell that asked no model anything."""
+    contract = row.get("contract") or {}
+    if contract.get("rejections") is None:
+        return "-"
+    return f"{contract['rejections']}/{contract.get('repairs') or 0}"
+
+
 def _row_cells(row: dict) -> list[str]:
     timing = row.get("timing") or {}
     usage = row.get("hosted_usage") or {}
@@ -243,8 +318,8 @@ def _row_cells(row: dict) -> list[str]:
         row["reader"],
         row["facts"],
         _seconds(timing.get("models_fetch_s")),
-        _seconds(timing.get("prepare_cold_s")),
-        _seconds(timing.get("prepare_warm_s")),
+        _prepared(row, timing.get("prepare_cold_s")),
+        _prepared(row, timing.get("prepare_warm_s")),
         _seconds(timing.get("selection_s")),
         _seconds(timing.get("render_s")),
         render_device(row),
@@ -252,6 +327,7 @@ def _row_cells(row: dict) -> list[str]:
         "-" if usage.get("est_cost_eur") is None else f"EUR {usage['est_cost_eur']:.3f}",
         str(len(row.get("selected_asset_ids") or [])),
         _fraction(row.get("overlap_vs_cell_1")),
+        _contract(row),
         _seconds(video.get("duration_s")),
     ]
 
@@ -279,6 +355,45 @@ def _render_devices(rows: list[dict]) -> list[str]:
     ]
 
 
+# What the cost column is, said where the cost column is. Anybody reading a euro
+# figure off a table assumes somebody was billed it, and nobody was.
+_COST_LEAD = (
+    "The cost column is list price times measured tokens: the price list in"
+    " `scripts/setup_matrix.yaml`, at the date each row of it names, multiplied by the token"
+    " counts the run printed. It is an estimate of what the run would cost at list, and the"
+    " counts it multiplies are rounded at or above 1000. What each row is made of:"
+)
+
+
+def _thousands(count: Any) -> str:
+    return "?" if count is None else f"{int(count) / 1000:.1f}k" if count >= 1000 else str(count)
+
+
+def _cost_line(row: dict) -> str:
+    """One row's bill, and the arithmetic behind it, so nobody has to take it on faith."""
+    usage = row["hosted_usage"]
+    return (
+        f"- `{row['id']}` EUR {usage['est_cost_eur']:.4f} for `{row['reader_model']}`:"
+        f" {usage.get('calls') or 0} calls, {_thousands(usage.get('tokens_in'))} in /"
+        f" {_thousands(usage.get('tokens_out'))} out, {usage.get('images_sent') or 0} tiles,"
+        f" at {usage['price_source']}"
+        f" ({usage['price_retrieved']})"
+    )
+
+
+def _cost_basis(rows: list[dict]) -> list[str]:
+    """Which rows carry a euro figure, what it was made of, and which published price."""
+    priced = [
+        row
+        for row in rows
+        if (row.get("hosted_usage") or {}).get("est_cost_eur") is not None
+        and row["hosted_usage"].get("price_source")
+    ]
+    if not priced:
+        return []
+    return ["", "## Cost", "", _COST_LEAD, "", *[_cost_line(row) for row in priced]]
+
+
 def build_markdown(summary: dict) -> str:
     """The table, plus the list of what this run did not measure."""
     lines = [
@@ -292,6 +407,7 @@ def build_markdown(summary: dict) -> str:
     ]
     lines += ["| " + " | ".join(_row_cells(row)) + " |" for row in summary["cells"]]
     lines += _render_devices(summary["cells"])
+    lines += _cost_basis(summary["cells"])
     order_breaks = [row["id"] for row in summary["cells"] if row.get("order_kept") is False]
     if order_breaks:
         lines += [
