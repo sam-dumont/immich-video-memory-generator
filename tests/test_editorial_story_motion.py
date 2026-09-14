@@ -8,7 +8,7 @@ import pytest
 
 from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
 from immich_memories.analysis.editorial_story_motion import StoryMotionFacts
-from immich_memories.analysis.llm_query import LLMTransportAttempt
+from immich_memories.analysis.llm_wire import LLMTransportAttempt
 from immich_memories.analysis.selection_trace import Trace
 from immich_memories.api.models import AssetType
 from immich_memories.config_models_llm import LLMConfig

@@ -16,6 +16,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 from setup_matrix_capture import (  # noqa: E402
     anonymize,
     clock_seconds,
+    downloaded_asset_ids,
+    film_clip_count,
     parse_cache_primed,
     parse_cgroup_cpu_seconds,
     parse_cgroup_peak_rss_mb,
@@ -249,6 +251,25 @@ def test_a_real_cold_prepare_yields_its_count_and_every_producer_row() -> None:
     ]
 
 
+def test_a_cell_whose_facts_came_off_the_service_still_reports_its_rate_table() -> None:
+    """The table gains a `service s/pic` column, and `elapsed` stops being the last one.
+
+    `k8s-gpu-t1000` published `prepare_cold_s: null` and no producers beside a
+    table that named every one of them: the patterns ended at `elapsed`, and the
+    column `rate_report` adds the moment another machine charges itself for a
+    producer pushed the end of the line past them.
+    """
+    text = (FIXTURES / "prepare-cold-service.stdout.txt").read_text()
+
+    assert parse_prepare_seconds(text) == 68.0
+    assert parse_prepared_pictures(text) == (133, 0.5096)
+    assert [(row["producer"], row["seconds"]) for row in parse_prepared_producers(text)] == [
+        ("previews", 5.0),
+        ("pixels", 4.0),
+        ("remote_facts", 60.0),
+    ]
+
+
 def test_the_two_prepares_of_one_remote_stdout_are_read_apart() -> None:
     """A container tees each phase into a file AND prints both into one stream.
 
@@ -424,3 +445,48 @@ def test_a_plan_that_counted_no_tiles_reports_nothing(tmp_path: Path) -> None:
     (tmp_path / "plan.private.json").write_text(json.dumps({"tiers": {}}))
     assert read_images_sent(tmp_path) is None
     assert read_images_sent(tmp_path / "no-attempt-here") is None
+
+
+# What a run leaves in its log about which pictures it actually cut with, for a
+# cell whose attempt directory never came back. `k8s-gpu-t1000` published
+# `selected_asset_ids: []` beside a 54.5 s film it had plainly made out of
+# something: the copy-out truncated, the attempt stayed on the volume, and the
+# download lines were sitting in the log the whole time.
+
+
+def _download_log(asset_ids: list[str], *, clips: int) -> str:
+    """The lines a run really leaves: httpx on the URL `asset_service` builds, then the timing."""
+    base = "http://a-fixture.invalid:8078"
+    head = "2026-09-14 11:21:45,475 [INFO] httpx [-]: HTTP Request: GET "
+    lines = ["2026-09-14 11:21:45,000 [INFO] immich_memories.progress [-]: Downloading clips..."]
+    lines += [
+        f'{head}{base}/api/assets/{asset_id}/original "HTTP/1.1 200 OK"' for asset_id in asset_ids
+    ]
+    lines.append(
+        f"2026-09-14 11:25:35,849 [INFO] immich_memories.generate [-]: Pipeline timing "
+        f"({clips} clips, 230.4s total): download=135.2s (59%), assembly=78.4s (34%)"
+    )
+    return "\n".join(lines) + "\n"
+
+
+def test_the_pictures_a_run_fetched_are_read_back_off_its_log() -> None:
+    text = _download_log(["garden-cake", "lake-sunset", "garden-cake"], clips=2)
+
+    assert downloaded_asset_ids(text) == ["garden-cake", "lake-sunset"]
+
+
+def test_a_thumbnail_is_not_a_picture_the_run_cut_with() -> None:
+    """Preparation pulls a thumbnail for all 133; the cut downloads the originals."""
+    text = _download_log(["garden-cake"], clips=1).replace(
+        "Downloading clips...",
+        "Preparing\n2026-09-14 11:00:00,000 [INFO] httpx [-]: HTTP Request: GET "
+        'http://a-fixture.invalid:8078/api/assets/never-cut/thumbnail?size=preview "HTTP/1.1 200 OK"',
+    )
+
+    assert downloaded_asset_ids(text) == ["garden-cake"]
+
+
+def test_the_film_says_how_many_clips_it_was_made_of() -> None:
+    """The count is the film's own; the decoder lines name photos by id and videos by a hash."""
+    assert film_clip_count(_download_log(["garden-cake"], clips=14)) == 14
+    assert film_clip_count("a log from a run that never assembled anything") is None

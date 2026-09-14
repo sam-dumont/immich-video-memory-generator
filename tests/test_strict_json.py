@@ -8,6 +8,7 @@ from immich_memories.analysis.strict_json import (
     bounded_model_text,
     final_json_object,
     is_safe_model_text,
+    model_text_rows,
 )
 
 # Verbatim from the local model during the 2026-08-26 Selects probes. Nothing
@@ -88,3 +89,24 @@ def test_trailing_prose_is_accepted_only_when_the_caller_asked_for_it() -> None:
         "keep": [1]
     }
     assert final_json_object('{"keep":[1]} see {later}', allow_trailing_commentary=True) is None
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    (
+        (["one", "two"], ["one", "two"]),
+        ([], []),
+        ("one", ["one"]),
+        ("", []),
+        ("   ", []),
+    ),
+)
+def test_a_bare_string_is_read_as_the_one_row_it_says(value: object, expected: list) -> None:
+    """Measured on a local 35B: a one-sentence answer to a list-of-sentences field."""
+    assert model_text_rows(value) == expected
+
+
+@pytest.mark.parametrize("value", (None, 12, True, {"one": 1}, ("one",)))
+def test_widening_the_container_does_not_widen_its_contents(value: object) -> None:
+    """Only a list and a string are shapes this field can have; the rest still fail closed."""
+    assert model_text_rows(value) is None

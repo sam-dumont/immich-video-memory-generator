@@ -411,7 +411,7 @@ Two files outside the repo, neither of them tracked:
 
 | File | Holds |
 |---|---|
-| `~/.immich-memories-matrix/.env` | `MELIOUS_AI_BASE_URL`, `MELIOUS_AI_KEY`, `ZAI_API_KEY`, `ZAI_BASE_URL`, `OPENAI_KEY` |
+| `~/.immich-memories-matrix/.env` | `MELIOUS_AI_BASE_URL`, `MELIOUS_AI_KEY`, `ZAI_API_KEY`, `ZAI_BASE_URL`, `OPENAI_KEY`, `MATRIX_HOMEBASE_LATITUDE`, `MATRIX_HOMEBASE_LONGITUDE` |
 | `~/.immich-memories-matrix/matrix.env` | `MATRIX_NAS_SSH`, `MATRIX_NAS_DOCKER`, `MATRIX_NAS_CACHE`, `MATRIX_NAS_OUT`, `MATRIX_NAS_DOCKER_LIMITS`, `MATRIX_K8S_CONTEXT`, `MATRIX_K8S_NAMESPACE`, `MATRIX_OMLX_BASE_URL`, `MATRIX_CAPTION_BASE_URL`, `MATRIX_MAC_ALT_MODELS` |
 
 `MATRIX_NAS_DOCKER_LIMITS` is the one optional entry in the table above.
@@ -466,6 +466,27 @@ address instead, which is how to point at a service the matrix did not start. A 
 `<derived at run time>` rather than an address, because there is none yet and a transcript should
 not carry one.
 
+`MATRIX_HOMEBASE_LATITUDE` and `MATRIX_HOMEBASE_LONGITUDE` are where home is, and every cell of
+every lane is pinned to them. They sit in the credentials file rather than `matrix.env` because
+they are the operator's own coordinates: `baseline_config` names them as `$env:` references, so
+what a dry run prints and what a pull request carries is the variable name.
+
+They are not optional and they are the one variable pair whose absence is a crash. Selection
+measures each happening against `trips.homebase_latitude` and `trips.homebase_longitude`, and the
+schema's default for both is `0.0`. A Mac or NAS cell copies the operator's config and inherits a
+real home; a cluster cell's ConfigMap is built from the pins alone, so before this was pinned the
+eight k8s cells of run 1 ran at Null Island. Every Brussels happening came out 5,500 km from home
+and the reader graded the whole month as time away: `mac-rules`, `nas-rules-local` and
+`nas-rules-service` each wrote 22 "No occasion indicator" rows into their memory-worthy gate, and
+every cluster cell wrote none. The table published a different cut with no column saying why. The runner now refuses to start a
+run, dry run included, when either variable is missing. `--summarize-only` and `--recapture` are
+exempt: they read records already on disk and open no config.
+
+The demo library wants the same pair. `tests/e2e/fake_library.py` sets its story in Brussels too,
+around a `HOME` that is a public landmark, so one home is right for both libraries. Each cell's
+`timing.json` records `homebase: pinned`, a word and never the coordinates, which is how the
+published table can say the lanes agreed about where home was.
+
 A variable a cell needs and cannot find is not a crash. The cell stays in the table with a
 `skip_reason` and is listed under `unmeasured` in the published record, because a lane that could
 not run is a result.
@@ -506,6 +527,20 @@ uv run python scripts/setup_matrix.py --lane nas --lane k8s --library demo --out
 Point the second invocation at the first one's `--out` and the table covers both: every invocation
 reads the cell records already there and republishes one summary over all of them. `--summarize-only`
 does that and nothing else, which is how to rebuild the table after a lane was rerun by hand.
+
+`--recapture --cell <id>` goes one step further and reads that cell's own directory again, rebuilding
+its record from the logs, the film and the attempt that are in it. Nothing is run and nothing is
+asked of a cluster. The capture is the half of the runner that keeps changing, a parser learns to
+read something the last one could not, and a cluster cell costs hours to run again to apply it. It
+rewrites the records it touches, so it insists on `--cell` or `--lane`, and it keeps the two numbers
+only the running process could have counted, peak memory and CPU seconds, from the record already
+there.
+
+That is what `k8s-gpu-t1000` was for. Its preparation rate table gains a `service s/pic` column the
+moment a producer runs somewhere else and charges itself for it, and `elapsed` stops being the last
+column on the line. The patterns that read the table ended there, so the cell published a null cold
+preparation and no producers at all over a table that named every one of them. Re-reading the
+directory put both back without asking the cluster for anything.
 
 `--cell <id>` is repeatable and narrows further. `--image-tag` picks the published image the remote
 lanes pull. Its default is a constant in `scripts/setup_matrix.py` (`DEFAULT_IMAGE_TAG`) rather
@@ -593,8 +628,11 @@ deletes it at the end of the run. The output claim is deleted per cell once the 
 copied the results to this machine.
 
 The collector mounts that claim on the same subPath and at the same path the Job wrote to, `/out`,
-and the copy is `kubectl exec <collector> -- tar -C /out -cf - . | tar -C <cell dir> -xf -`, the
-same tar over a pipe the NAS lane pulls with. `kubectl cp` used to do it and ended its stream early:
+and the copy is
+`kubectl exec <collector> -- tar -C /out --exclude=*.wav -cf - . | tar -C <cell dir> -xf -`, the
+same tar over a pipe the NAS lane pulls with. The exclude is the mastered track: it is a render
+intermediate, already muxed into the film by the time it is written, it is the biggest file in the
+directory, and on `k8s-gpu-t1000` it was the member the stream broke on. `kubectl cp` used to do it and ended its stream early:
 `k8s-rules-service` lost its film, its attempt and every per-phase log to `error: unexpected EOF`,
 twice in one run with three retries spent on it. Rooting the archive at `/out` also settles where
 the source is. `kubectl cp` runs `tar` inside the container and the image's WORKDIR is `/app`, so a
@@ -605,6 +643,12 @@ A zero exit is still not proof the copy finished, so it is tried up to three tim
 between, and what it is judged on is the file the run named: the loop stops as soon as that file is
 on this machine, and if three tries do not bring it back the cell records
 `the film. The copy-out failed after 3 attempts` under `unmeasured` rather than a blank column.
+
+A stream that broke on one member is a different failure and is treated as one. tar exits non-zero
+and stops where the break was, so the film can be here and everything archived behind it gone.
+`k8s-gpu-t1000` published `error: copy-out exited 1` and an empty cut over a 54.5 s film sitting in
+its own directory. A truncated stream now gets one more try for what it skipped, and then the row is
+kept: the copy is a note under `unmeasured` saying what tar said, not the loss of the cell.
 
 A cell waits twice: five minutes for its pod to be scheduled, then up to three hours for the Job to
 finish. A pod that cannot be scheduled, for a claim that does not exist or a node with no room, is
@@ -649,6 +693,45 @@ on it. So the mechanism that puts a render on a card here is `runtimeClassName: 
 countable resource is part of. The record carries `gpu_resource_requested` so a row can say which
 it did.
 
+### A card on a node the default storage class cannot reach
+
+`k8s-gpu-1070` then sat in a second FailedScheduling, and no request the pod could make would have
+fixed this one:
+
+```
+0/6 nodes are available: 1 node(s) didn't match PersistentVolume's node affinity,
+4 node(s) didn't match Pod's node affinity/selector.
+```
+
+The cluster's default class provisions volumes with a node affinity of their own, a region and a
+zone, and the node holding the 1070 is in a different zone from the other two GPU nodes. The
+storage is what cannot follow the pod. So a cell can name the class its claims are made under, and
+ask for claims of its own:
+
+```yaml
+  - id: k8s-gpu-1070
+    k8s:
+      storage_class: $env:MATRIX_K8S_1070_STORAGE_CLASS
+      claim_mode: own
+```
+
+`storage_class` is a `$env:` reference like every other one: the value names somebody's cluster and
+not this repo, the dry run prints the reference, and a cell whose variable is unset is skipped with
+that variable named rather than run into the same wall on the default class. Pick a class every node
+can reach, which on a home cluster usually means one of the NFS ones.
+
+`claim_mode` is `shared` by default, which is the matrix's one pair of `setup-matrix-data` and
+`setup-matrix-output`. `own` makes `setup-matrix-<cell>-data` and `setup-matrix-<cell>-output`
+instead, and a cell naming a class of its own always gets them: the shared pair is already bound
+under the default class, and a bound claim's class is not something `apply` can change. The cell's
+Job, its collector and its per-cell tear-down all name the same two, and `--purge-claims` deletes
+them along with the shared pair.
+
+The collector is pinned too. It mounts the claim the Job wrote to, so it has to be somewhere that
+claim can follow it: a cell with a node selector hands the same selector and the same GPU toleration
+to its collector, and the copy then runs beside the volume rather than wherever the scheduler had
+room.
+
 ## What lands in the output
 
 Everything goes under `output/setup-matrix/<library>/<timestamp>/`, which is gitignored because a
@@ -683,6 +766,14 @@ both prepare tables are read from there when the volume's copy never arrived. Co
 split apart before either is read: the rate table has the same shape in both, so reading the pair as
 one stream returns the cell's producers twice. What did not come back is named under `unmeasured`:
 the film, and whichever per-phase timings were only ever written to the volume.
+
+A cell whose attempt never came back still says which pictures it kept. `generate` names every
+asset it downloaded to cut with, one `/api/assets/<id>/original` line each, and the film counts its
+own clips, so a record with no attempt behind it takes the ids off its own log and marks them
+`cut_source: generate log`. That is a set of pictures and not a running order: the videos are
+fetched first and concurrently, so the table publishes the count and the overlap for such a row and
+leaves `order_kept` null rather than reporting a chronological break off a fetch order. The reasons
+the editor wrote are gone either way, and the row says so under `unmeasured`.
 
 Peak memory is measured per step, by running each local step under `/usr/bin/time` and taking the
 largest of the three. The kernel's own counter is the maximum over every child the runner has

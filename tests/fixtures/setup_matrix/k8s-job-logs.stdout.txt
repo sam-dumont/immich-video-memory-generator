@@ -18,6 +18,21 @@ At this rate 1,000 pictures would take 0 s.
 ✓ 133 pictures prepared at 0.0000 s/picture.
 2026-09-14 01:03:37,736 [INFO] immich_memories.progress [-]: Connecting to Immich...
 2026-09-14 01:03:37,736 [INFO] immich_memories.progress [-]: Done: Connecting to Immich...
+2026-09-14 06:41:26,536 [INFO] immich_memories.progress [20260914_064119_a995]: Downloading clips...
+2026-09-14 06:41:26,555 [INFO] httpx [-]: HTTP Request: GET http://10.2.254.76:8078/api/assets/home-bike-park-01/original "HTTP/1.1 200 OK"
+2026-09-14 06:41:26,559 [INFO] httpx [-]: HTTP Request: GET http://10.2.254.76:8078/api/assets/trip-kayak-01/original "HTTP/1.1 200 OK"
+2026-09-14 06:41:26,559 [INFO] httpx [-]: HTTP Request: GET http://10.2.254.76:8078/api/assets/garden-table/original "HTTP/1.1 200 OK"
+2026-09-14 06:41:26,721 [INFO] httpx [20260914_064119_a995]: HTTP Request: GET http://10.2.254.76:8078/api/assets/home-breakfast-02/original "HTTP/1.1 200 OK"
+2026-09-14 06:41:36,792 [INFO] httpx [20260914_064119_a995]: HTTP Request: GET http://10.2.254.76:8078/api/assets/garden-cake/original "HTTP/1.1 200 OK"
+2026-09-14 06:41:44,198 [INFO] httpx [20260914_064119_a995]: HTTP Request: GET http://10.2.254.76:8078/api/assets/home-shoes-door-02/original "HTTP/1.1 200 OK"
+2026-09-14 06:41:55,118 [INFO] httpx [20260914_064119_a995]: HTTP Request: GET http://10.2.254.76:8078/api/assets/woods-tall-trees-01/original "HTTP/1.1 200 OK"
+2026-09-14 06:42:13,626 [INFO] httpx [20260914_064119_a995]: HTTP Request: GET http://10.2.254.76:8078/api/assets/woods-hamper/original "HTTP/1.1 200 OK"
+2026-09-14 06:42:22,266 [INFO] httpx [20260914_064119_a995]: HTTP Request: GET http://10.2.254.76:8078/api/assets/home-drawing-03/original "HTTP/1.1 200 OK"
+2026-09-14 06:42:31,907 [INFO] httpx [20260914_064119_a995]: HTTP Request: GET http://10.2.254.76:8078/api/assets/home-suitcase-02/original "HTTP/1.1 200 OK"
+2026-09-14 06:42:46,903 [INFO] httpx [20260914_064119_a995]: HTTP Request: GET http://10.2.254.76:8078/api/assets/trip-lake-jetty-01/original "HTTP/1.1 200 OK"
+2026-09-14 06:42:59,474 [INFO] httpx [20260914_064119_a995]: HTTP Request: GET http://10.2.254.76:8078/api/assets/lake-sunset/original "HTTP/1.1 200 OK"
+2026-09-14 06:43:07,965 [INFO] httpx [20260914_064119_a995]: HTTP Request: GET http://10.2.254.76:8078/api/assets/home-pancakes-01/original "HTTP/1.1 200 OK"
+2026-09-14 06:43:22,004 [INFO] httpx [20260914_064119_a995]: HTTP Request: GET http://10.2.254.76:8078/api/assets/home-sunday-park-01/original "HTTP/1.1 200 OK"
 2026-09-14 01:08:51,220 [INFO] immich_memories.progress [20260914_010338_1500]: Delivery not requested
 2026-09-14 01:08:51,220 [INFO] immich_memories.generate [20260914_010338_1500]: Pipeline timing (14 clips, 307.9s total): download=134.9s (44%), assembly=155.5s (50%), music=12.4s (4%)
 2026-09-14 01:08:51,220 [INFO] immich_memories.progress [20260914_010338_1500]: Complete!

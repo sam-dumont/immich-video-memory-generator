@@ -53,6 +53,26 @@ baseline_config:
   inference.fallback_to_local: true
   editorial.preparation.tier: no_captions
 
+  # Where home is, for every lane. `_near_home_test` measures each happening
+  # against these two and `worthiness` grades anything over 10 km "away", and
+  # the schema's default for both is 0.0. A Mac or NAS cell copies the
+  # operator's config and inherits a real home; a cluster cell's ConfigMap is
+  # built from the pins ALONE and inherited Null Island, so in run 1 every
+  # Brussels happening came out 5,500 km from home and the cluster cells graded
+  # the whole month as time away. Measured: each of `mac-rules`,
+  # `nas-rules-local` and `nas-rules-service` wrote 22 "No occasion indicator"
+  # rows into its memory-worthy gate, and every k8s cell wrote none. The cut
+  # differed for a reason no column in the table named.
+  #
+  # `$env:` and never a literal: coordinates are the owner's home and belong in
+  # ~/.immich-memories-matrix/.env, not in a file this repo tracks. The runner
+  # refuses to start a run when either variable is missing, so a Null-Island run
+  # cannot be started by forgetting one. The demo library wants the same pair:
+  # tests/e2e/fake_library.py sets its story in Brussels too (HOME, a public
+  # landmark), so one home is right for both libraries.
+  trips.homebase_latitude: $env:MATRIX_HOMEBASE_LATITUDE
+  trips.homebase_longitude: $env:MATRIX_HOMEBASE_LONGITUDE
+
   # Every field the timeline plan reads, at the values run 1 was measured with.
   #
   # WHY pinned at all: a Mac or NAS cell copies the operator's config and writes
@@ -61,8 +81,9 @@ baseline_config:
   # schema's on the third, and the lanes stop being comparable with nothing in
   # the table saying so. `title_screens.ending_duration` is how that surfaced:
   # 4.0 s in the operator's config against 7.0 s on the schema, and those three
-  # seconds of ending screen are the whole reason every cluster cell planned 14
-  # shots while every other cell planned 15.
+  # seconds of ending screen cost every cluster cell a shot. Not the only reason
+  # those rows came out at 14 to everybody else's 15: the homebase pins above are
+  # the other half of the same story, and they were found the same way.
   #
   # WHY these values and not the schema's: `mac-local` is the reference cut every
   # other row's overlap is measured against, and it already ran at `locale: fr`
@@ -200,6 +221,14 @@ cells:
   # slug the model page is served at: the Muse Glimmer 30B page lives at
   # /hub/models/muse-glimmer-30b and its API id is `muse-glimmer`.
   #
+  # All four reason on every call whether or not anybody asked, and bill that
+  # thinking inside `max_tokens`, which is why run 1's reads came back HTTP 200
+  # with content "". `llm.always_reasons: true` funds it from the first call
+  # instead of paying for one empty answer per endpoint to learn the same thing.
+  # Measured 2026-09-14 on the demo month's 17 KB episode read, asked for the
+  # cheapest reasoning on offer: glm-5.3-flash 245 thinking tokens, gemma-4-31b
+  # 4,126, deepseek-v4.1-flash 6,256, muse-glimmer 13,469.
+  #
   # None of them prepares. Preparation is a fact about the host, the tier and
   # where the picture facts come from, and `mac-local` already measures it for
   # this combination, so `seed_cache_from` copies its bank in and empties every
@@ -220,6 +249,7 @@ cells:
       llm.base_url: $env:MELIOUS_AI_BASE_URL
       llm.model: deepseek-v4.1-flash
       llm.api_key: ${MELIOUS_AI_KEY}
+      llm.always_reasons: true
       editorial.preparation.caption_base_url: $env:MATRIX_CAPTION_BASE_URL
       editorial.preparation.caption_api_key: ${OPENAI_API_KEY}
 
@@ -238,6 +268,7 @@ cells:
       llm.base_url: $env:MELIOUS_AI_BASE_URL
       llm.model: gemma-4-31b
       llm.api_key: ${MELIOUS_AI_KEY}
+      llm.always_reasons: true
       editorial.preparation.caption_base_url: $env:MATRIX_CAPTION_BASE_URL
       editorial.preparation.caption_api_key: ${OPENAI_API_KEY}
 
@@ -256,6 +287,7 @@ cells:
       llm.base_url: $env:MELIOUS_AI_BASE_URL
       llm.model: muse-glimmer
       llm.api_key: ${MELIOUS_AI_KEY}
+      llm.always_reasons: true
       editorial.preparation.caption_base_url: $env:MATRIX_CAPTION_BASE_URL
       editorial.preparation.caption_api_key: ${OPENAI_API_KEY}
 
@@ -274,6 +306,7 @@ cells:
       llm.base_url: $env:MELIOUS_AI_BASE_URL
       llm.model: glm-5.3-flash
       llm.api_key: ${MELIOUS_AI_KEY}
+      llm.always_reasons: true
       editorial.preparation.caption_base_url: $env:MATRIX_CAPTION_BASE_URL
       editorial.preparation.caption_api_key: ${OPENAI_API_KEY}
 
@@ -539,6 +572,21 @@ cells:
     inference_overlay: true
     k8s:
       gpu_product: NVIDIA-GeForce-GTX-1070-SHARED
+      # The card is on a node in another zone, and the cluster's default class
+      # provisions volumes with a node affinity of its own. This cell sat in
+      # FailedScheduling for "1 node(s) didn't match PersistentVolume's node
+      # affinity ... 4 node(s) didn't match Pod's node affinity/selector": no
+      # request the pod can make fixes that, because it is the storage that
+      # cannot follow the pod. The owner decides which class to lend — one that
+      # every node can reach — and names it in the environment, because a class
+      # is a fact about somebody's cluster and not about this repo. Unset, the
+      # cell is skipped with that variable named rather than run into the same
+      # wall on the default class.
+      storage_class: $env:MATRIX_K8S_1070_STORAGE_CLASS
+      # Its own data and output claims. The shared pair is already bound under
+      # the default class, on volumes pinned to the other zone, and a class is
+      # not something `apply` can change on a claim that is bound.
+      claim_mode: own
       # One CPU, not the default two. The encode is on the card and the pod
       # only feeds it, and the node holding a card also runs the live web
       # Deployment: `k8s-gpu-1070` sat in FailedScheduling for

@@ -1,0 +1,11 @@
+2026-09-14 11:20:26,133 [INFO] httpx [-]: HTTP Request: POST http://a-fixture.invalid:8078/api/search/metadata "HTTP/1.1 200 OK"
+ℹ Preparing 133 pictures over 1 window(s)
+2026-09-14 11:21:35,058 [INFO] httpx [-]: HTTP Request: POST http://inference:8092/facts "HTTP/1.1 200 OK"
+producer        pending   s/picture   share    elapsed  service s/pic
+previews            133      0.0339    6.7%        5 s              —
+pixels              133      0.0275    5.4%        4 s              —
+remote_facts        133      0.4482   87.9%       60 s         2.9665
+total               133      0.5096    100%       68 s         2.9665
+
+At this rate 1,000 pictures would take 8 min.
+✓ 133 pictures prepared at 0.5096 s/picture.

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from immich_memories.analysis.contact_sheets import ContactSheetPage, TileRef
-from immich_memories.analysis.llm_query import LLMTransportAttempt
+from immich_memories.analysis.llm_wire import LLMTransportAttempt
 from immich_memories.analysis.selection_trace import Trace
 from immich_memories.analysis.visual_request_planner import VisionRequestLimits
 from immich_memories.config_models_llm import LLMConfig
@@ -51,7 +51,7 @@ def test_gateway_attaches_exact_page_bytes_and_traces_the_same_hash(tmp_path) ->
     captured: dict[str, object] = {}
 
     async def _answer(prompt, config, **kwargs):
-        from immich_memories.analysis.llm_query import LLMTransportAttempt
+        from immich_memories.analysis.llm_wire import LLMTransportAttempt
 
         captured["images"] = kwargs["images"]
         kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
@@ -79,7 +79,7 @@ def test_gateway_sends_the_exact_grounded_annotations_used_by_cache_identity(tmp
     from dataclasses import replace
 
     from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
-    from immich_memories.analysis.llm_query import LLMTransportAttempt
+    from immich_memories.analysis.llm_wire import LLMTransportAttempt
 
     prompts: list[str] = []
 
@@ -137,7 +137,7 @@ def test_gateway_returns_its_physical_trace_and_uses_explicit_request_budget(tmp
     captured: dict[str, object] = {}
 
     async def _answer(_prompt, _config, **kwargs):
-        from immich_memories.analysis.llm_query import LLMTransportAttempt
+        from immich_memories.analysis.llm_wire import LLMTransportAttempt
 
         captured.update(kwargs)
         kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
@@ -169,7 +169,7 @@ def test_visual_request_budget_changes_cache_identity(tmp_path) -> None:
     from dataclasses import replace
 
     from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
-    from immich_memories.analysis.llm_query import LLMTransportAttempt
+    from immich_memories.analysis.llm_wire import LLMTransportAttempt
 
     calls: list[None] = []
 
@@ -246,7 +246,7 @@ def test_gateway_reuses_banked_answer_with_original_and_reuse_provenance(tmp_pat
     calls: list[None] = []
 
     async def _answer(*_args, **_kwargs):
-        from immich_memories.analysis.llm_query import LLMTransportAttempt
+        from immich_memories.analysis.llm_wire import LLMTransportAttempt
 
         calls.append(None)
         _kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
@@ -322,7 +322,7 @@ def test_gateway_traces_each_null_content_retry_as_a_wire_attempt(tmp_path) -> N
 
 def test_gateway_rejects_whitespace_without_banking_the_real_post(tmp_path) -> None:
     from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
-    from immich_memories.analysis.llm_query import LLMTransportAttempt
+    from immich_memories.analysis.llm_wire import LLMTransportAttempt
 
     trace = Trace()
     gateway = VisualEditorialGateway(
@@ -373,7 +373,7 @@ def test_gateway_traces_an_invalid_provider_response_as_one_real_post(tmp_path) 
 def test_gateway_failure_carries_the_exact_recorded_request_trace(tmp_path) -> None:
     """A fail-open pass can retain failed-pack provenance without searching a shared ledger."""
     from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
-    from immich_memories.analysis.llm_query import LLMTransportAttempt
+    from immich_memories.analysis.llm_wire import LLMTransportAttempt
 
     trace = Trace()
     gateway = VisualEditorialGateway(
@@ -401,7 +401,7 @@ def test_gateway_failure_carries_the_exact_recorded_request_trace(tmp_path) -> N
 @pytest.mark.asyncio
 async def test_gateway_works_inside_an_active_event_loop(tmp_path) -> None:
     from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
-    from immich_memories.analysis.llm_query import LLMTransportAttempt
+    from immich_memories.analysis.llm_wire import LLMTransportAttempt
 
     gateway = VisualEditorialGateway(
         llm_config=LLMConfig(model="vision-test"),
