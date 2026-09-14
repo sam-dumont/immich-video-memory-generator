@@ -178,13 +178,14 @@ work (previews, pixel facts, detectors, the reader's requests) turns the spinner
 an estimate:
 
 ```text
-⠿ Preparing previews: 352/9814 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━   3%
-  ⏱ 0:41 elapsed, ~20:12 remaining
+⠿ Preparing previews: 352/9814 · ~19m left in this stage ━━━━━━━━━━━   3%
+  ⏱ 0:41 elapsed
 ```
 
-The estimate is elapsed time scaled by the fraction done. It appears once a stage is past 5 %
-and is only as good as the pass is even. Stages with nothing to count keep the spinner and the
-elapsed time.
+The estimate uses the items completed since this stage's first update. It appears after
+another update advances the count and resets when the stage changes. It estimates this pass,
+not the whole cut; slow items can change it. The page reads the same saved estimate, including
+after a reload. Stages with nothing to count keep the spinner and elapsed time.
 
 If the reader stops answering, the line says so instead of going quiet:
 

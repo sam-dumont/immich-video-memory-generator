@@ -22,6 +22,9 @@ _STAGE_WORDS = {
     "period": "the period read",
     "story-weighing": "the story weighing",
     "cull": "the cull",
+    "pass-1-cull": "the first cull",
+    "source-eligibility": "the source check",
+    "editorial final cut": "the final cut",
     "trim": "the timing trim",
     "structure": "the structure pass",
 }

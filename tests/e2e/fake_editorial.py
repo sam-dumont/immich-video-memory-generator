@@ -382,7 +382,7 @@ class _FakeEditorialPipeline:
                     update = StageUpdate(
                         label, ANALYSIS_PHASE if label.startswith("Preparing") else "selection"
                     )
-                    attempt.stage(update)
+                    update = attempt.stage(update)
                     report_stage(update)
                     time.sleep(self._stage_seconds)
                     check_cancelled()
@@ -420,7 +420,7 @@ class _FakeEditorialPipeline:
         for index, source in enumerate(sources, 1):
             live.note_asset(_asset_of(source).id)
             update = live.publish(PREVIEW_STAGE, index, total)
-            attempt.stage(update)
+            update = attempt.stage(update)
             report_stage(update)
             time.sleep(pause)
             check_cancelled()

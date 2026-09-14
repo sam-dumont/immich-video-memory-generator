@@ -403,6 +403,7 @@ src/immich_memories/
 │   └── system_scheduler.py     # OS scheduler integration (launchd/systemd/cron)
 │
 ├── operations/                 # Public lifecycle contract + read-only ops reports
+│   ├── candidate_fates.py       # Saved pool outcomes + decision-log reader shared with runs why
 │   ├── phases.py               # OperationalPhase / PhaseEvent: stable outer lifecycle
 │   └── storage_report.py       # build_storage_report(): output + cache storage inventory (`runs storage`)
 │
