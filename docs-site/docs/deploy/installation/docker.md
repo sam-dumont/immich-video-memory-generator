@@ -11,7 +11,14 @@ container itself wants 2 to 4 GB.
 
 ## Quick start
 
-Create a `.env` next to your `docker-compose.yml`:
+From an empty directory:
+
+```bash
+mkdir -p immich-memories/output && cd immich-memories
+curl -O https://raw.githubusercontent.com/sam-dumont/immich-video-memory-generator/main/docker-compose.yml
+```
+
+Then a `.env` beside it:
 
 ```bash
 IMMICH_URL=https://photos.example.com
@@ -26,7 +33,6 @@ the same recipe in that album is moved to Immich's trash (recoverable) so the al
 with copies. Without the delete permission you get a warning per run and the old copies stay.
 
 ```bash
-curl -O https://raw.githubusercontent.com/sam-dumont/immich-video-memory-generator/main/docker-compose.yml
 docker compose up -d
 ```
 
@@ -50,7 +56,8 @@ automation state live there.
 The image writes to `/app/output` (`IMMICH_MEMORIES_OUTPUT__DIRECTORY` is set in the Dockerfile, so
 it beats `output.directory` in `config.yaml`) and the compose file mounts `./output` there. The
 container runs as UID/GID 1000. Create the folder yourself before the first `up`; if Docker
-creates it, it is owned by root. If your user is not 1000: `sudo chown 1000:1000 output`, or set
+already created it as root, `sudo chown -R 1000:1000 output` fixes it in place and nothing is
+lost. If your user is not 1000: `sudo chown 1000:1000 output`, or set
 `user: "<uid>:<gid>"` on the service and chown the config volume the same way, or use a named
 volume (`immich-memories-output:/app/output`) and `docker cp` the files out.
 :::
@@ -61,6 +68,22 @@ volume (`immich-memories-output:/app/output`) and `docker cp` the files out.
 docker compose exec immich-memories immich-memories models fetch   # the pinned encoder and both detectors
 docker compose exec immich-memories immich-memories preflight      # Immich, the reader, the digests
 ```
+
+:::caution Put the detector snapshot on the volume first
+Two of the three artifacts `models fetch` writes land under `~/.immich-memories`, which is the
+config volume. The third, the document classifier's Hugging Face snapshot, goes wherever
+`huggingface_hub` puts it, and with `detector_cache_dir` blank that is
+`/home/immich/.cache/huggingface` inside the container: the writable layer, which a
+`docker compose pull && up -d` throws away. Add this to the service's `environment:` before the
+first fetch and it lands on the volume with the rest:
+
+```yaml
+      IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR: "/home/immich/.immich-memories/models/huggingface"
+```
+
+Without it, `models fetch` has to be re-run after every recreate, and under the read-only
+hardening below (`/home/immich/.cache` on a tmpfs) after every restart.
+:::
 
 The compose file pins `IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER: "no_captions"`, so `models
 fetch` is part of the first run: that tier wants the encoder and both detectors. It is the richest

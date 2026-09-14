@@ -92,7 +92,7 @@ tags: [GitHub releases](https://github.com/sam-dumont/immich-video-memory-genera
 then pull and recreate:
 
 ```yaml
-image: ghcr.io/sam-dumont/immich-video-memory-generator:0.59.2   # image tags have no `v` prefix
+image: ghcr.io/sam-dumont/immich-video-memory-generator:X.Y.Z   # image tags have no `v` prefix
 ```
 
 ```bash
@@ -100,11 +100,17 @@ docker compose pull
 docker compose up -d
 ```
 
-**uv/pip:**
+**uv/pip:** keep the extras, or the install comes back without the ONNX runtime:
+
 ```bash
-uv tool install immich-memories==0.59.2
+uv tool install --force "immich-memories[editorial]==X.Y.Z"
 # or
-pip install immich-memories==0.59.2
+pip install "immich-memories[editorial]==X.Y.Z"
 ```
 
-Your caches and config are preserved across version changes. The only thing that might need attention is config field names if the version you're rolling back to used different names.
+Config and caches are kept across version changes, and both databases migrate forward only: a
+schema an older build does not know about is not migrated back. So a rollback across a schema
+change reads the new file with the old code, which is not a case anyone has tested. Copy
+`~/.immich-memories` before you upgrade if you expect to go back. Config field names are the other
+thing to check: a key renamed in the meantime is the version you are rolling back to not knowing
+the new one.
