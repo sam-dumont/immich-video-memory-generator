@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -52,7 +53,7 @@ class TestAnthropicProvider:
         assert payload["messages"] == [{"role": "user", "content": "Judge this cut"}]
 
     @pytest.mark.asyncio
-    async def test_thinking_uses_the_native_budget_and_default_temperature(self):
+    async def test_thinking_sends_the_hosts_own_switch_and_the_default_temperature(self):
         from immich_memories.analysis.llm_query import query_llm
 
         config = LLMConfig(
@@ -68,9 +69,31 @@ class TestAnthropicProvider:
             await query_llm("Judge this cut", config, thinking=True)
 
         payload = mock_post.call_args[1]["json"]
-        assert payload["thinking"]["type"] == "enabled"
-        assert payload["thinking"]["budget_tokens"] < payload["max_tokens"]
+        assert payload["thinking"] == {"type": "adaptive"}
+        assert payload["max_tokens"] >= 4000, "reasoning needs room to finish"
         assert "temperature" not in payload, "thinking requires the default temperature"
+
+    @pytest.mark.asyncio
+    async def test_the_older_budget_dialect_is_written_out_by_hand(self):
+        """A host still on `enabled` plus a budget is reached without code changes."""
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(
+            provider="anthropic",
+            base_url="https://gateway.example.invalid/anthropic",
+            model="older-claude",
+            api_key="k",
+            thinking=True,
+            thinking_params={"thinking": {"type": "enabled", "budget_tokens": 2048}},
+        )
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", return_value=_anthropic_response()) as mock_post:
+            await query_llm("Judge this cut", config, thinking=True)
+
+        payload = mock_post.call_args[1]["json"]
+        assert payload["thinking"] == {"type": "enabled", "budget_tokens": 2048}
+        assert payload["max_tokens"] > 2048, "the budget has to fit under the ceiling"
 
     @pytest.mark.asyncio
     async def test_compatible_gateway_can_explicitly_disable_default_thinking(self):
@@ -90,7 +113,7 @@ class TestAnthropicProvider:
 
         payload = mock_post.call_args.kwargs["json"]
         assert payload["thinking"] == {"type": "disabled"}
-        assert payload["temperature"] == 0.0
+        assert "temperature" not in payload, "Claude refuses a sampling parameter outright"
 
     @pytest.mark.asyncio
     async def test_native_anthropic_does_not_receive_qwen_default_params(self):
@@ -103,7 +126,7 @@ class TestAnthropicProvider:
             await query_llm("Describe this wall", config, thinking=False)
 
         payload = mock_post.call_args.kwargs["json"]
-        assert "thinking" not in payload
+        assert payload["thinking"] == {"type": "disabled"}, "bulk calls must not reason"
         assert "chat_template_kwargs" not in payload
 
     @pytest.mark.asyncio
@@ -124,36 +147,46 @@ class TestAnthropicProvider:
             result = await query_llm("Judge this cut", config, thinking=True)
 
         assert result == '{"drop": "B"}'
-        assert "thinking" not in mock_post.call_args_list[1][1]["json"]
+        assert mock_post.call_args_list[1][1]["json"]["thinking"] == {"type": "disabled"}
 
 
 class TestProviderPresets:
     """provider: openai / zai = the generic adapter plus the provider's dialect."""
 
     @pytest.mark.asyncio
-    async def test_zai_preset_fills_url_and_thinking_dialect(self):
+    async def test_zai_preset_fills_the_anthropic_route_and_its_level(self):
         from immich_memories.analysis.llm_query import query_llm
 
         config = LLMConfig(provider="zai", model="glm-5.3", api_key="k", thinking=True)
 
-        def _ok(url, json):  # noqa: A002
-            response = AsyncMock()
-            response.status_code = 200
-            response.json = MagicMock(
-                return_value={"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]}
-            )
-            response.raise_for_status = lambda: None
-            return response
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", return_value=_anthropic_response()) as mock_post:
+            await query_llm("Judge this cut", config, thinking=True)
+
+        assert mock_post.call_args[0][0] == "https://api.z.ai/api/anthropic/v1/messages"
+        payload = mock_post.call_args[1]["json"]
+        assert payload["thinking"] == {"type": "high"}
+        assert "chat_template_kwargs" not in payload
+
+    @pytest.mark.asyncio
+    async def test_zai_on_its_openai_route_still_speaks_chat_completions(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(
+            provider="zai",
+            base_url="https://api.z.ai/api/paas/v4",
+            model="glm-5.3",
+            api_key="k",
+            thinking=True,
+        )
 
         # WHY: the LLM server is the external boundary this request reaches.
-        with patch("httpx.AsyncClient.post", side_effect=_ok) as mock_post:
+        with patch("httpx.AsyncClient.post", side_effect=_completion) as mock_post:
             await query_llm("Judge this cut", config, thinking=True)
 
         url = mock_post.call_args[0][0] if mock_post.call_args[0] else mock_post.call_args[1]["url"]
-        assert url.startswith("https://api.z.ai/api/paas/v4")
-        payload = mock_post.call_args[1]["json"]
-        assert payload["thinking"] == {"type": "enabled"}
-        assert "chat_template_kwargs" not in payload
+        assert url == "https://api.z.ai/api/paas/v4/chat/completions"
+        assert mock_post.call_args[1]["json"]["thinking"] == {"type": "high"}
 
     @pytest.mark.asyncio
     async def test_openai_preset_fills_url_and_reasoning_dialect(self):
@@ -227,6 +260,7 @@ class TestProviderPresets:
 
         config = LLMConfig(
             provider="zai",
+            base_url="https://api.z.ai/api/paas/v4",
             model="glm-5.3-flash",
             api_key="k",
             no_thinking_params={
@@ -253,6 +287,161 @@ class TestProviderPresets:
         assert payload["repetition_penalty"] == 1.05
 
 
+class TestAnthropicIsAGenericProvider:
+    """`provider: anthropic` is Claude's own API and every host that copies it."""
+
+    @pytest.mark.asyncio
+    async def test_the_preset_fills_anthropics_own_url_and_pins_the_version(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(provider="anthropic", model="claude-sonnet-4-5", api_key="k")
+        seen: list[tuple] = []
+
+        # WHY: the LLM server is the external boundary; autospec hands the test
+        # the client that would have made the request, headers and all.
+        async def _post(client, url, json=None):  # noqa: A002
+            seen.append((dict(client.headers), url, json))
+            return _anthropic_response()
+
+        with patch("httpx.AsyncClient.post", autospec=True, side_effect=_post):
+            await query_llm("Judge this cut", config, max_tokens=600)
+
+        headers, url, payload = seen[0]
+        assert url == "https://api.anthropic.com/v1/messages"
+        assert headers["anthropic-version"] == "2023-06-01"
+        assert headers["x-api-key"] == "k"
+        assert payload["model"] == "claude-sonnet-4-5"
+        assert "temperature" not in payload, "Claude refuses a sampling parameter outright"
+
+    @pytest.mark.asyncio
+    async def test_any_messages_api_host_is_reached_by_naming_its_base_url(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(
+            provider="anthropic",
+            base_url="https://gateway.example.invalid/anthropic/",
+            model="some-model",
+            api_key="k",
+        )
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", return_value=_anthropic_response()) as mock_post:
+            await query_llm("Judge this cut", config, max_tokens=600)
+
+        assert mock_post.call_args[0][0] == "https://gateway.example.invalid/anthropic/v1/messages"
+
+    @pytest.mark.asyncio
+    async def test_the_reader_sends_its_tiles_as_base64_blocks(self):
+        import base64
+
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(provider="anthropic", model="claude-sonnet-4-5", api_key="k")
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", return_value=_anthropic_response()) as mock_post:
+            await query_llm("Describe these", config, images=[b"\xff\xd8one", b"\xff\xd8two"])
+
+        content = mock_post.call_args.kwargs["json"]["messages"][0]["content"]
+        assert content[0] == {"type": "text", "text": "Describe these"}
+        assert [base64.b64decode(block["source"]["data"]) for block in content[1:]] == [
+            b"\xff\xd8one",
+            b"\xff\xd8two",
+        ]
+        assert {block["source"]["media_type"] for block in content[1:]} == {"image/jpeg"}
+
+
+class TestThinkingIsALevel:
+    """One control, mapped to what each host takes: an effort here, a level there."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("level", ["low", "high", "max"])
+    async def test_a_level_reaches_claude_as_the_effort_it_maps_to(self, level: str):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(
+            provider="anthropic", model="claude-sonnet-4-5", api_key="k", thinking=level
+        )
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", return_value=_anthropic_response()) as mock_post:
+            await query_llm("Judge this cut", config, thinking=True)
+
+        payload = mock_post.call_args.kwargs["json"]
+        assert payload["thinking"] == {"type": "adaptive"}
+        assert payload["output_config"] == {"effort": level}
+
+    @pytest.mark.asyncio
+    async def test_auto_sends_no_reasoning_field_in_either_direction(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(
+            provider="anthropic", model="claude-sonnet-4-5", api_key="k", thinking="auto"
+        )
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", return_value=_anthropic_response()) as mock_post:
+            await query_llm("Judge this cut", config, thinking=True)
+            asked = mock_post.call_args.kwargs["json"]
+            await query_llm("Describe this wall", config, thinking=False)
+            bulk = mock_post.call_args.kwargs["json"]
+
+        assert "thinking" not in asked
+        assert "thinking" not in bulk
+
+    @pytest.mark.asyncio
+    async def test_auto_leaves_a_chat_completions_server_to_its_own_default(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(
+            provider="openai-compatible",
+            base_url="http://localhost:8080/v1",
+            model="qwen",
+            thinking="auto",
+        )
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", side_effect=_completion) as mock_post:
+            await query_llm("Describe this wall", config, thinking=False)
+
+        assert "chat_template_kwargs" not in mock_post.call_args.kwargs["json"]
+
+    @pytest.mark.asyncio
+    async def test_disabled_refuses_to_reason_even_where_the_caller_asks(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(
+            provider="anthropic", model="claude-sonnet-4-5", api_key="k", thinking="disabled"
+        )
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", return_value=_anthropic_response()) as mock_post:
+            await query_llm("Judge this cut", config, max_tokens=140, thinking=True)
+
+        payload = mock_post.call_args.kwargs["json"]
+        assert payload["thinking"] == {"type": "disabled"}
+        assert "output_config" not in payload, "nothing to spend effort on"
+        assert payload["max_tokens"] == 140, "a host told not to reason keeps the caller's cap"
+
+    @pytest.mark.asyncio
+    async def test_zai_gets_its_own_vocabulary_for_the_same_level(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(provider="zai", model="glm-5.3", api_key="k", thinking="max")
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", return_value=_anthropic_response()) as mock_post:
+            await query_llm("Judge this cut", config, thinking=True)
+
+        assert mock_post.call_args.kwargs["json"]["thinking"] == {"type": "max"}
+
+    def test_the_switch_this_field_used_to_be_is_still_read(self):
+        assert LLMConfig(thinking=True).thinking == "high"
+        assert LLMConfig(thinking=False).thinking == "disabled"
+        assert LLMConfig(thinking="true").reasons
+        assert not LLMConfig(thinking="false").reasons
+
+
 def _completion(url=None, json=None):  # noqa: A002
     # WHY: the LLM server is the external boundary; the fake stands in for a
     # plain accepted completion so the test can read what was posted to it.
@@ -272,7 +461,12 @@ class TestZaiThinkingLevel:
     async def test_a_model_that_always_reasons_gets_the_cheapest_level_it_accepts(self):
         from immich_memories.analysis.llm_query import query_llm
 
-        config = LLMConfig(provider="zai", model="glm-5.3-flash", api_key="k")
+        config = LLMConfig(
+            provider="zai",
+            base_url="https://api.z.ai/api/paas/v4",
+            model="glm-5.3-flash",
+            api_key="k",
+        )
 
         # WHY: the LLM server is the external boundary this request reaches.
         with patch("httpx.AsyncClient.post", side_effect=_completion) as mock_post:
@@ -284,7 +478,12 @@ class TestZaiThinkingLevel:
     async def test_a_model_that_can_be_told_not_to_reason_still_gets_disabled(self):
         from immich_memories.analysis.llm_query import query_llm
 
-        config = LLMConfig(provider="zai", model="glm-4.6", api_key="k")
+        config = LLMConfig(
+            provider="zai",
+            base_url="https://api.z.ai/api/paas/v4",
+            model="glm-4.6",
+            api_key="k",
+        )
 
         # WHY: the LLM server is the external boundary this request reaches.
         with patch("httpx.AsyncClient.post", side_effect=_completion) as mock_post:
@@ -298,6 +497,7 @@ class TestZaiThinkingLevel:
 
         config = LLMConfig(
             provider="zai",
+            base_url="https://api.z.ai/api/paas/v4",
             model="glm-5.3-flash",
             api_key="k",
             no_thinking_params={"thinking": {"type": "high"}},
@@ -318,7 +518,12 @@ class TestZaiThinkingLevel:
         # A line the preset has never heard of, so it starts from "disabled".
         # A model name of its own too: the dialect a call negotiates is
         # remembered for the rest of the process, per server and model.
-        config = LLMConfig(provider="zai", model="glm-6.1-unreleased", api_key="k")
+        config = LLMConfig(
+            provider="zai",
+            base_url="https://api.z.ai/api/paas/v4",
+            model="glm-6.1-unreleased",
+            api_key="k",
+        )
         refusal = httpx.Response(
             400,
             json={
@@ -551,13 +756,39 @@ class TestAnthropicReasoningBlocks:
         assert mock_post.call_args_list[1].kwargs["json"]["thinking"] == {"type": "low"}
 
 
-class TestLiveZaiAnthropicRoute:
-    """One real call, so a change of shape at z.ai's end fails here and not in a run."""
+_LIVE = pytest.mark.skipif(
+    not (os.environ.get("ZAI_API_KEY") and os.environ.get("ZAI_BASE_URL")),
+    reason="needs a z.ai coding-plan key and its Anthropic base; absent in CI",
+)
 
-    @pytest.mark.skipif(
-        not (os.environ.get("ZAI_API_KEY") and os.environ.get("ZAI_BASE_URL")),
-        reason="needs a z.ai coding-plan key and its Anthropic base; absent in CI",
-    )
+
+class TestLiveAnthropicCompatibleHost:
+    """Real calls, so a change of shape at the host's end fails here and not in a run."""
+
+    @_LIVE
+    @pytest.mark.asyncio
+    async def test_the_generic_provider_reaches_a_compatible_host(self):
+        """`provider: anthropic` plus somebody else's base URL is the whole promise."""
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(
+            provider="anthropic",
+            base_url=os.environ["ZAI_BASE_URL"],
+            model="glm-5.3-flash",
+            api_key="${ZAI_API_KEY}",
+            timeout_seconds=120,
+        )
+
+        answer = await query_llm(
+            'Reply with only this JSON object and nothing else: {"ok": true}',
+            config,
+            max_tokens=140,
+            timeout_seconds=120,
+        )
+
+        assert json.loads(answer.strip()) == {"ok": True}
+
+    @_LIVE
     @pytest.mark.asyncio
     async def test_a_small_json_ask_comes_back_as_a_text_block(self):
         from immich_memories.analysis.llm_query import query_llm

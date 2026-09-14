@@ -18,12 +18,19 @@ it never gets a local listener at all, so the one that used to be built around t
 warm-up ended a whole run in sixty seconds with none of the warm-up's own budget
 spent. The forward is disposable here instead: it is replaced whenever it stops
 answering, on the same fifteen minutes.
+
+The caption server is the same shape again and slower to arrive: its init
+container fetches 546 MB of GGUF onto a claim that is empty the first time a
+cluster runs the full tier, and llama.cpp maps the weights before it answers
+anything. A `--cell k8s-full-rules` run on its own used to ask for a caption
+while that was still happening and die on its first picture.
 """
 
 from __future__ import annotations
 
 import base64
 import io
+import json
 import socket
 import subprocess
 import time
@@ -31,6 +38,10 @@ from collections.abc import Callable
 from pathlib import Path
 
 import httpx
+from PIL import Image
+
+from immich_memories.analysis.editorial_description_contract import API_MODEL, validate_envelope
+from immich_memories.analysis.editorial_description_wire import request_payload, tile_preview
 
 POD_POLL_S = 3.0
 # Creating the pod is the controller's first act on a Job it has just been given,
@@ -57,6 +68,11 @@ WARMUP_LISTENER_TIMEOUT_S = 20.0
 # Small enough to decide in a moment, real enough to pull every model the cells
 # will ask for. The service is given the picture, not a synthetic square.
 WARMUP_IMAGE_PX = 200
+# The caption control is the opposite case: a flat square is what
+# `editorial_preparation_captions.check_provider` sends, because what it tests is
+# the schema rather than the subject.
+CAPTION_CONTROL_PX = 400
+CAPTION_CONTROL_RGB = (128, 128, 128)
 
 
 def await_listener(port: int, timeout_s: float = 15.0) -> None:
@@ -155,8 +171,6 @@ def await_job(probe: Callable[[], subprocess.CompletedProcess]) -> subprocess.Co
 
 def warmup_picture(source: Path) -> bytes:
     """One fixture picture at 200 px, as the JPEG bytes a facts request carries."""
-    from PIL import Image
-
     with Image.open(source) as picture:
         picture.thumbnail((WARMUP_IMAGE_PX, WARMUP_IMAGE_PX))
         buffer = io.BytesIO()
@@ -174,7 +188,7 @@ def await_facts(base_url: str, image: bytes, producers: tuple[str, ...]) -> floa
     """
     url = f"{base_url.rstrip('/')}/facts"
     payload = _facts_payload(image, producers)
-    return _keep_asking(lambda: _direct_facts(url, payload), reached=url)
+    return _keep_asking(lambda: _direct_facts(url, payload), reached=url, wanted="a facts request")
 
 
 def _direct_facts(url: str, payload: dict[str, object]) -> str | None:
@@ -203,7 +217,11 @@ def await_facts_via_forward(
     payload = _facts_payload(image, producers)
     forward = _Forward(kubectl, service, port)
     try:
-        return _keep_asking(lambda: _forwarded_facts(forward, payload), reached=f"svc/{service}")
+        return _keep_asking(
+            lambda: _forwarded_facts(forward, payload),
+            reached=f"svc/{service}",
+            wanted="a facts request",
+        )
     finally:
         forward.stop()
 
@@ -212,7 +230,7 @@ def _facts_payload(image: bytes, producers: tuple[str, ...]) -> dict[str, object
     return {"image": base64.b64encode(image).decode("ascii"), "producers": list(producers)}
 
 
-def _keep_asking(attempt: Callable[[], str | None], *, reached: str) -> float:
+def _keep_asking(attempt: Callable[[], str | None], *, reached: str, wanted: str) -> float:
     """Retry `attempt` on the one warm-up budget, widening the wait, and time the success.
 
     `attempt` answers with a sentence naming what went wrong this time, or None
@@ -231,7 +249,7 @@ def _keep_asking(attempt: Callable[[], str | None], *, reached: str) -> float:
         said = failure
         if time.monotonic() + wait >= deadline:
             raise SystemExit(
-                f"{reached} never answered a facts request within "
+                f"{reached} never answered {wanted} within "
                 f"{WARMUP_TIMEOUT_S / 60:.0f} min. Last failure: {said}"
             )
         time.sleep(wait)
@@ -243,10 +261,7 @@ class _Unreachable(RuntimeError):
 
 
 def _ask_facts(url: str, payload: dict[str, object]) -> str | None:
-    try:
-        response = httpx.post(url, json=payload, timeout=WARMUP_REQUEST_TIMEOUT_S)
-    except httpx.HTTPError as exc:
-        raise _Unreachable(f"the request never got an answer: {exc}") from None
+    response = _post(url, payload, "the request")
     if response.status_code == 200:
         return None
     return f"facts answered {response.status_code}: {_body(response)}"
@@ -264,6 +279,100 @@ def _forwarded_facts(forward: _Forward, payload: dict[str, object]) -> str | Non
         # the tunnel carried a real answer, so that forward is kept.
         forward.stop()
         return str(unreachable)
+
+
+def await_captions_via_forward(kubectl: tuple[str, ...], service: str, port: int) -> float:
+    """Ask the caption server for a caption until it gives one, and say how long that took.
+
+    The same disposable forward and the same fifteen minutes the facts warm-up
+    runs on. `rollout status` has already waited the weights onto the claim by
+    the time this starts, and it is still not the same thing as a server that can
+    caption: llama.cpp answers `/health` once the model is mapped, and the cells
+    need an endpoint that advertises the alias AND returns the envelope.
+    """
+    forward = _Forward(kubectl, service, port)
+    try:
+        return _keep_asking(
+            lambda: _forwarded_captions(forward),
+            reached=f"svc/{service}",
+            wanted="a caption request",
+        )
+    finally:
+        forward.stop()
+
+
+def _forwarded_captions(forward: _Forward) -> str | None:
+    base = forward.address()
+    if base is None:
+        return f"the port-forward never answered within {WARMUP_LISTENER_TIMEOUT_S:.0f}s"
+    try:
+        return _ask_captions(f"{base}/v1")
+    except _Unreachable as unreachable:
+        forward.stop()
+        return str(unreachable)
+
+
+def _ask_captions(base_url: str) -> str | None:
+    """Both halves of what a `tier: full` cell checks before it sends a library picture.
+
+    The inventory has to name the alias, and one control tile has to come back an
+    envelope. A server that lists the alias and cannot caption a flat square was
+    started without its projector: it serves, it is blind, and the cell would
+    find that out one picture in.
+    """
+    response = _get(f"{base_url}/models", "the models request")
+    if response.status_code != 200:
+        return f"models answered {response.status_code}: {_body(response)}"
+    if API_MODEL not in _advertised(response):
+        return f"models does not advertise {API_MODEL}: {_body(response)}"
+    return _one_caption(base_url)
+
+
+def _one_caption(base_url: str) -> str | None:
+    response = _post(
+        f"{base_url}/chat/completions", request_payload(_control_tile()), "the caption request"
+    )
+    if response.status_code != 200:
+        return f"chat/completions answered {response.status_code}: {_body(response)}"
+    try:
+        content = response.json()["choices"][0]["message"]["content"]
+        validate_envelope(json.loads(content))
+    except (KeyError, IndexError, TypeError, ValueError) as exc:
+        return f"the caption is not a compact-v3 envelope: {exc}"
+    return None
+
+
+def _control_tile() -> bytes:
+    """A flat square, through the same tiling a caption request puts a preview through."""
+    buffer = io.BytesIO()
+    size = (CAPTION_CONTROL_PX, CAPTION_CONTROL_PX)
+    Image.new("RGB", size, CAPTION_CONTROL_RGB).save(buffer, "JPEG", quality=90)
+    return tile_preview(buffer.getvalue())
+
+
+def _advertised(response: httpx.Response) -> set[str]:
+    try:
+        payload = response.json()
+    except ValueError:
+        return set()
+    rows = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(rows, list):
+        return set()
+    return {row["id"] for row in rows if isinstance(row, dict) and isinstance(row.get("id"), str)}
+
+
+def _get(url: str, what: str) -> httpx.Response:
+    try:
+        return httpx.get(url, timeout=WARMUP_REQUEST_TIMEOUT_S)
+    except httpx.HTTPError as exc:
+        raise _Unreachable(f"{what} never got an answer: {exc}") from None
+
+
+def _post(url: str, payload: dict[str, object], what: str) -> httpx.Response:
+    try:
+        return httpx.post(url, json=payload, timeout=WARMUP_REQUEST_TIMEOUT_S)
+    except httpx.HTTPError as exc:
+        raise _Unreachable(f"{what} never got an answer: {exc}") from None
 
 
 def _body(response: httpx.Response) -> str:

@@ -315,7 +315,7 @@ class LiveDisplay:
             state = self._tasks.get(self._active_task_id)
             if state and not state.done:
                 parts.append(self._progress)
-                time_line = self._build_time_line(state)
+                time_line = self._build_time_line()
                 if time_line:
                     parts.append(time_line)
 
@@ -327,17 +327,11 @@ class LiveDisplay:
 
         return Group(*parts)
 
-    def _build_time_line(self, state: _TaskState) -> Text | None:
+    def _build_time_line(self) -> Text | None:
         if self._start_time is None:
             return None
         elapsed = time.monotonic() - self._start_time
         time_text = f"  ⏱ {_format_duration(elapsed)} elapsed"
-        if state.total is not None and self._active_task_id is not None:
-            rich_task = self._progress.tasks[self._active_task_id]
-            pct = rich_task.percentage
-            if pct and pct > 5:
-                remaining = elapsed * (100 - pct) / pct
-                time_text += f", ~{_format_duration(remaining)} remaining"
         return Text(time_text, style="dim")
 
     def render_final(self) -> RenderableType:

@@ -55,11 +55,19 @@ from setup_matrix_capture import (  # noqa: E402
     parse_title_backend,
     prepare_phases,
     probe_video,
+    read_contract_health,
     read_cut,
+    read_images_sent,
     read_losses,
 )
 from setup_matrix_plan import (  # noqa: E402
     CACHE_PRIMED_FILE,
+    CAPTIONER_DEPLOYMENT,
+    CAPTIONER_OVERLAY,
+    CAPTIONER_PORT,
+    CAPTIONER_ROLLOUT,
+    CAPTIONER_ROLLOUT_TIMEOUT,
+    CAPTIONER_SERVICE,
     COPY_OUT,
     DERIVED_ADDRESS,
     EDITORIAL_RUNS,
@@ -85,10 +93,12 @@ from setup_matrix_plan import (  # noqa: E402
     Step,
     build_plan,
     dry_run_text,
+    expand_cells,
     fetches_models,
     inference_image,
     inference_node_command,
     inference_overlay_steps,
+    job_requests,
     load_manifest,
     needs_lan_address,
     node_product_command,
@@ -101,6 +111,7 @@ from setup_matrix_plan import (  # noqa: E402
     retag_inference,
 )
 from setup_matrix_readiness import (  # noqa: E402
+    await_captions_via_forward,
     await_facts,
     await_facts_via_forward,
     await_job,
@@ -205,6 +216,20 @@ NO_FETCH_REASON = (
 )
 
 
+def _seeded_reasons(source: str) -> dict[str, str]:
+    """Why a seeded cell has no preparation number, and where the one it would have is.
+
+    Preparation depends on the host, the tier and where the picture facts come
+    from, none of which this cell changed. Running it again would publish one
+    measurement under every name that copied it.
+    """
+    reason = (
+        f"preparation. This cell's bank was seeded from `{source}`, which measures it"
+        " for this host, this tier and this facts source. Only the reader differs."
+    )
+    return {"prepare_cold_s": reason, "prepare_warm_s": reason}
+
+
 def _run_step(
     step: Step, plan: Plan, item: CellPlan, *, measure: bool = False
 ) -> subprocess.CompletedProcess:
@@ -290,7 +315,11 @@ def run_local_cell(item: CellPlan, plan: Plan, out_dir: Path) -> dict:
     # before and its `cold` preparation is a re-read of what it banked then. A
     # run that asked for a fresh cache is cold by construction: the first step
     # takes that directory away before `prepare` is called.
-    record = _new_record(item, primed=False if item.fresh_cache else cache.is_dir())
+    record = _new_record(
+        item,
+        primed=False if item.fresh_cache else cache.is_dir(),
+        model=_reader_model(item, plan),
+    )
     before_cpu = _child_cpu_seconds()
     peaks: list[float] = []
 
@@ -318,7 +347,7 @@ def run_local_cell(item: CellPlan, plan: Plan, out_dir: Path) -> dict:
     if not peaks:
         record["measurement_notes"]["peak_rss_mb"] = NO_TIME_REASON
     record["timing"]["cpu_s"] = round(_child_cpu_seconds() - before_cpu, 2)
-    _apply_attempt(record, cache / EDITORIAL_RUNS, item.cell.id)
+    _apply_attempt(record, cache / EDITORIAL_RUNS, item.cell.id, cell_dir)
     return record
 
 
@@ -386,7 +415,7 @@ def run_remote_cell(item: CellPlan, plan: Plan, out_dir: Path) -> dict:
     """The NAS and cluster lanes: push, run, pull, then read the same artifacts back."""
     cell_dir = out_dir / item.cell.id
     cell_dir.mkdir(parents=True, exist_ok=True)
-    record = _new_record(item, primed=None)
+    record = _new_record(item, primed=None, model=_reader_model(item, plan))
     for step in item.steps:
         proc = _run_or_poll(step, plan, item, record, cell_dir)
         (cell_dir / f"{step.name}.stdout.log").write_text(proc.stdout or "")
@@ -401,7 +430,7 @@ def run_remote_cell(item: CellPlan, plan: Plan, out_dir: Path) -> dict:
         _finish_failed_cell(item, plan, cell_dir)
     _read_remote_artifacts(record, cell_dir)
     _apply_stranded_summary(record, cell_dir)
-    _apply_attempt(record, cell_dir / REMOTE_ATTEMPTS, item.cell.id)
+    _apply_attempt(record, cell_dir / REMOTE_ATTEMPTS, item.cell.id, cell_dir)
     return record
 
 
@@ -494,7 +523,7 @@ def _apply_prepared(record: dict, text: str) -> None:
     }
 
 
-def _new_record(item: CellPlan, *, primed: bool | None) -> dict:
+def _new_record(item: CellPlan, *, primed: bool | None, model: str | None = None) -> dict:
     cell = item.cell
     return {
         "id": cell.id,
@@ -504,6 +533,11 @@ def _new_record(item: CellPlan, *, primed: bool | None) -> dict:
         "tier": cell.tier,
         "why": cell.why,
         "hosted": cell.hosted,
+        # Which model this cell's reader actually used, with any `$env:` reference
+        # resolved. The price table is keyed by it, and five Mac cells differ in
+        # nothing else, so a row with no model id is a row nothing can price or
+        # tell apart.
+        "reader_model": model,
         # The card this cell rendered on. It is the label the Job selects on, so
         # the pod could not have run anywhere else: a node without it does not
         # match, and the cell would have failed Pending rather than moved.
@@ -516,13 +550,31 @@ def _new_record(item: CellPlan, *, primed: bool | None) -> dict:
         "title_backend": None,
         "encoder": None,
         "skip_reason": item.skip_reason,
-        "prepare_cache_primed": primed,
+        # The cell this one's bank came from, and what that makes of the
+        # "was the cache already warm" field: a seeded cell is neither cold nor
+        # a re-read of its own last run, so it says which it is in words.
+        "seeded_from": cell.seed_cache_from or None,
+        "prepare_cache_primed": f"seeded from {cell.seed_cache_from}"
+        if cell.seed_cache_from
+        else primed,
         # Whether the run emptied this cell's bank before it prepared, which is
         # the difference between a cold number and a replay of the last run's.
         "fresh_cache": item.fresh_cache,
         # What the container was actually pinned to, which is not the same on
         # every NAS: a kernel with no CFS controller takes a cpuset, not a quota.
         "container_limits": item.container_limits or None,
+        # What a cluster cell's Job asked the scheduler for. Not always the
+        # default: a cell whose work is on a card asks for less so it can be
+        # scheduled beside whatever else that node is already running.
+        "job_requests": dict(zip(("cpu", "memory"), job_requests(cell), strict=True))
+        if cell.lane == "k8s"
+        else None,
+        # Whether the Job asked the device plugin for a card, which is not the
+        # same question as whether it rendered on one: the node's own runtime
+        # exposes the card to every pod on it.
+        "gpu_resource_requested": bool(cell.gpu_product and cell.gpu_resource)
+        if cell.lane == "k8s"
+        else None,
         "timing": {
             "models_fetch_s": None,
             "prepare_cold_s": None,
@@ -535,15 +587,30 @@ def _new_record(item: CellPlan, *, primed: bool | None) -> dict:
         },
         # Why a field the run did not report is missing, where "the run did not
         # report it" is not the whole story. Read by the summary's unmeasured list.
-        "measurement_notes": {} if fetches_models(cell) else {"models_fetch_s": NO_FETCH_REASON},
+        "measurement_notes": ({} if fetches_models(cell) else {"models_fetch_s": NO_FETCH_REASON})
+        | (_seeded_reasons(cell.seed_cache_from) if cell.seed_cache_from else {}),
         "prepared": {},
         "hosted_usage": {},
+        # How often a reading contract refused this cell's reader, and how often
+        # the run asked again. Overlap says which pictures a reader chose; this
+        # says what it took to get an answer in the shape the contract asked for.
+        "contract": {"rejections": None, "repairs": None},
         "selected_asset_ids": [],
         "cut": {},
         "losses": {},
         "video": {},
         "error": None,
     }
+
+
+def _reader_model(item: CellPlan, plan: Plan) -> str | None:
+    """The model id a cell's reader will use, with a `$env:` reference resolved.
+
+    None for the cells that pin none: `mac-local` deliberately reads with whatever
+    the operator's own config names resident, and a rules cell reads with nothing.
+    """
+    pinned = item.pins.get("llm.model")
+    return _substitute(pinned, plan.environment) if isinstance(pinned, str) else None
 
 
 def _apply_render_device(record: dict, text: str) -> None:
@@ -657,7 +724,24 @@ def _locate_video(shown: str, cell_dir: Path) -> Path:
     return next((path for path in candidates if path.is_file()), candidates[0])
 
 
-def _apply_attempt(record: dict, runs_dir: Path, memory_key: str) -> None:
+# Wherever a lane left what `generate` printed. The mac lane splits it in two
+# because it captured the streams separately; a remote one has the volume's copy
+# and the session's copy of the same text. Reading every one of them is safe: the
+# episode reader warns once per distinct reason and the count deduplicates on it.
+_GENERATE_OUTPUT = (
+    "generate.log",
+    "generate.stdout.log",
+    "generate.stderr.log",
+    *STDOUT_OF_THE_RUN.values(),
+)
+
+
+def _generate_output(cell_dir: Path) -> str:
+    paths = (cell_dir / name for name in _GENERATE_OUTPUT)
+    return "\n".join(path.read_text() for path in paths if path.is_file())
+
+
+def _apply_attempt(record: dict, runs_dir: Path, memory_key: str, cell_dir: Path) -> None:
     attempt = latest_attempt(runs_dir, memory_key)
     if attempt is None:
         return
@@ -665,6 +749,8 @@ def _apply_attempt(record: dict, runs_dir: Path, memory_key: str) -> None:
     record["cut"] = cut
     record["selected_asset_ids"] = [shot["asset_id"] for shot in cut["selected"]]
     record["losses"] = read_losses(attempt)
+    record["contract"] = read_contract_health(attempt, _generate_output(cell_dir))
+    record.setdefault("hosted_usage", {})["images_sent"] = read_images_sent(attempt)
 
 
 def _resolve_device(device: str, plan: Plan) -> str:
@@ -841,7 +927,7 @@ def _lanes(requested: list[str]) -> tuple[str, ...]:
     return () if not requested or "all" in requested else tuple(dict.fromkeys(requested))
 
 
-def _chosen_cells(manifest: dict, opts: argparse.Namespace) -> tuple:
+def _chosen_cells(manifest: dict, opts: argparse.Namespace, environment: dict[str, str]) -> tuple:
     """The cells this request covers, before a plan exists.
 
     Needed early: whether the LoadBalancer address has to be derived decides what
@@ -850,7 +936,7 @@ def _chosen_cells(manifest: dict, opts: argparse.Namespace) -> tuple:
     lanes, ids = _lanes(opts.lane), tuple(opts.cell)
     return tuple(
         cell
-        for cell in read_cells(manifest)
+        for cell in expand_cells(read_cells(manifest), environment)
         if (not lanes or cell.lane in lanes) and (not ids or cell.id in ids)
     )
 
@@ -872,7 +958,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"fixture library serving at {url} (api key: fake-immich-api-key)")
 
     manifest = load_manifest()
-    chosen = _chosen_cells(manifest, opts)
+    chosen = _chosen_cells(manifest, opts, environment)
     lan = needs_lan_address(chosen)
     if lan and not (environment.get(INFERENCE_ENV) or "").strip():
         # A placeholder, so the cell is runnable rather than skipped for a
@@ -957,8 +1043,7 @@ def _execute(
     served = inference_image(opts.inference_tag or opts.image_tag, device=device) if overlay else ""
     warmup: float | None = None
     served_on: str | None = None
-    for path in declared:
-        _apply_overlay(plan, path, up=True)
+    caption_warmup = _bring_up_declared(plan, declared)
     if overlay:
         print(f"inference overlay: {overlay_path(device)} running {served}")
         bring_up_inference(plan, overlay_path(device), served, opts.inference_node_product)
@@ -1014,12 +1099,20 @@ def _execute(
     if opts.purge_claims and any(item.cell.lane == "k8s" for item in plan.runnable):
         _run_bare(purge_claims_command(), plan)
 
-    _publish_summary(plan, opts, out_dir, _collect_rows(out_dir, records), warmup, served_on)
+    _publish_summary(
+        plan,
+        opts,
+        out_dir,
+        _collect_rows(out_dir, records, plan.environment),
+        warmup,
+        served_on,
+        caption_warmup,
+    )
     _report_skips(plan)
     return 0 if all(row.get("error") is None for row in records) else 1
 
 
-def _collect_rows(out_dir: Path, fresh: list[dict]) -> list[dict]:
+def _collect_rows(out_dir: Path, fresh: list[dict], environment: dict[str, str]) -> list[dict]:
     """This invocation's cells, merged with every cell an earlier one left behind.
 
     One lane is one invocation into the same `--out`, so a table built from this
@@ -1031,7 +1124,7 @@ def _collect_rows(out_dir: Path, fresh: list[dict]) -> list[dict]:
             write_cell_record(out_dir, row)
     rows = {row["id"]: row for row in fresh if row.get("skip_reason")}
     rows.update({row["id"]: row for row in read_cell_records(out_dir)})
-    order = [cell.id for cell in read_cells(load_manifest())]
+    order = [cell.id for cell in expand_cells(read_cells(load_manifest()), environment)]
     return sorted(rows.values(), key=lambda row: _manifest_rank(order, row["id"]))
 
 
@@ -1046,6 +1139,7 @@ def _publish_summary(
     rows: list[dict],
     warmup: float | None = None,
     inference_gpu_product: str | None = None,
+    captioner_warmup: float | None = None,
 ) -> None:
     summary = build_summary(
         library=plan.library,
@@ -1054,6 +1148,8 @@ def _publish_summary(
         rows=rows,
         inference_warmup_s=warmup,
         inference_gpu_product=inference_gpu_product,
+        pricing=load_manifest().get("pricing") or {},
+        captioner_warmup_s=captioner_warmup,
     )
     if opts.anonymize:
         summary = anonymize(summary)
@@ -1064,7 +1160,7 @@ def _publish_summary(
 
 def _summarize(plan: Plan, opts: argparse.Namespace, out_dir: Path) -> int:
     """Rebuild the two published files from the cells already on disk, running nothing."""
-    rows = _collect_rows(out_dir, [])
+    rows = _collect_rows(out_dir, [], plan.environment)
     if not rows:
         print(f"error: no cell has run under {out_dir}", file=sys.stderr)
         return 2
@@ -1102,6 +1198,43 @@ def _query(plan: Plan, command: tuple[str, ...]) -> str:
         check=False,
     )
     return proc.stdout.strip() if proc.returncode == 0 else ""
+
+
+def _bring_up_declared(plan: Plan, declared: tuple[str, ...]) -> float | None:
+    """Apply the overlays the cells declared, and wait on the one with a server behind it.
+
+    Applying the captioner overlay is not the same as having it, and it is the
+    only declared overlay that serves anything: the rest are up the moment `apply`
+    returns. Returns how long the caption server took, or None when no cell in
+    this run asked for one.
+    """
+    for path in declared:
+        _apply_overlay(plan, path, up=True)
+    if CAPTIONER_OVERLAY not in declared:
+        return None
+    warmup = bring_up_captioner(plan)
+    print(f"captioner answered a caption request after {warmup:.0f}s")
+    return warmup
+
+
+def bring_up_captioner(plan: Plan) -> float:
+    """Wait out the captioner's rollout, then make it caption something.
+
+    Two waits because there are two things to wait for, and neither implies the
+    other. The init container fetches half a gigabyte of GGUF onto a claim that is
+    empty the first time a cluster runs the full tier, which is what `rollout
+    status` sits through. Then llama.cpp maps the weights, and only after that is
+    there an endpoint advertising the alias a `tier: full` cell refuses to work
+    without. Without either, `--cell k8s-full-rules` on its own asked for a
+    caption before the server existed and died on its first picture.
+    """
+    if _run_bare(CAPTIONER_ROLLOUT, plan).returncode != 0:
+        raise SystemExit(
+            f"{CAPTIONER_DEPLOYMENT} never rolled out within {CAPTIONER_ROLLOUT_TIMEOUT}, so "
+            "the full-tier cells would have asked an absent server for every caption."
+        )
+    kubectl = tuple(_substitute(part, plan.environment) for part in KUBECTL)
+    return await_captions_via_forward(kubectl, CAPTIONER_SERVICE, CAPTIONER_PORT)
 
 
 def bring_up_inference(plan: Plan, path: str, image: str, node_product: str = "") -> None:

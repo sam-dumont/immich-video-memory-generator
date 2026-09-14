@@ -14,12 +14,12 @@ from pathlib import Path
 
 import click
 
-from immich_memories.analysis.selection_trace import ClipStory, Trace
+from immich_memories.analysis.selection_trace import ClipStory
 from immich_memories.cli._helpers import console, print_error
+from immich_memories.operations.candidate_fates import read_trace
 from immich_memories.operations.reader_words import stage_words
 from immich_memories.operations.run_index import attempt_dir_for_run
 from immich_memories.operations.storyboard import (
-    TRACE_FILE,
     Storyboard,
     read_storyboard,
     storyboard_lines,
@@ -74,16 +74,6 @@ def storyboard_text(run_id: str, board: Storyboard | None) -> str:
     lines.append("")
     lines.extend(storyboard_lines(board))
     return "\n".join(lines)
-
-
-def read_trace(attempt_dir: Path) -> Trace | None:
-    """The decision log the run wrote beside its plan, or None when it left none."""
-    import json
-
-    path = Path(attempt_dir) / TRACE_FILE
-    if not path.is_file():
-        return None
-    return Trace.from_dict(json.loads(path.read_text()))
 
 
 def why_text(

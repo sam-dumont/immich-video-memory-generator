@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from dataclasses import asdict
 from pathlib import Path
 
@@ -220,11 +221,21 @@ def test_launch_flow_renders_real_video(
     assert launch_config["advanced"]["ace_step"]["enabled"] is False
 
     _drive_to_step4(page, launch_app_url)
+    page.evaluate("""() => {
+        window.exportProgress = [];
+        new MutationObserver(() => {
+            const bar = document.querySelector('.q-linear-progress[role="progressbar"]');
+            if (bar) window.exportProgress.push(Number(bar.getAttribute('aria-valuenow')));
+        }).observe(document.body, {subtree: true, attributes: true, attributeFilter: ['aria-valuenow']});
+    }""")
     page.get_by_role("button", name="Generate Video").click()
 
     expect(page.get_by_text("Your memory video is ready!", exact=True)).to_be_visible(
         timeout=600_000
     )
+    fractions = page.evaluate("window.exportProgress")
+    assert len(set(fractions)) > 2
+    assert fractions == sorted(fractions)
 
     outputs = sorted(launch_workspace.output_dir.rglob("*.mp4"))
     assert len(outputs) == 1
@@ -253,6 +264,52 @@ def test_launch_flow_renders_real_video(
     assert len(completed) == 1
     assert Path(completed[0].output_path or "") == output_path
     assert database.list_runs(status="running") == []
+    assert any(event["elapsed_seconds"] > 0 for event in completed[0].phase_events)
+    assert completed[0].phase_events[-1]["phase"] == "complete"
+    _verify_cli_timing(launch_workspace, database)
+
+
+def _verify_cli_timing(workspace, database: RunDatabase) -> None:
+    """Run the same June cut through the terminal and retain its durable timing evidence."""
+    from tests.e2e.test_demo_assets import _TRIP_CLI_BOOTSTRAP
+
+    root = Path(__file__).resolve().parents[2]
+    result = subprocess.run(
+        [
+            str(root / ".venv/bin/python"),
+            "-c",
+            _TRIP_CLI_BOOTSTRAP,
+            str(workspace.config_path),
+            str(workspace.root / "state"),
+            "generate",
+            "--memory-type",
+            "monthly_highlights",
+            "--year",
+            "2024",
+            "--month",
+            "6",
+            "--no-music",
+            "--quiet",
+        ],
+        cwd=root,
+        env=_build_launch_environment(workspace.root),
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    transcript = result.stdout + result.stderr
+    evidence = root / "test-results"
+    evidence.mkdir(exist_ok=True)
+    (evidence / "phase-timing-cli.txt").write_text(
+        transcript.replace(str(workspace.root), "<fixture-workspace>")
+    )
+    assert result.returncode == 0, transcript
+    runs = database.list_runs(status="completed", order_by_completion=True)
+    assert len(runs) == 2
+    assert runs[0].clips_selected == runs[1].clips_selected
+    for run in runs:
+        assert any(event["elapsed_seconds"] > 0 for event in run.phase_events)
+        assert run.phase_events[-1]["phase"] == "complete"
 
 
 def test_reload_during_generation_recovers_the_finished_video(

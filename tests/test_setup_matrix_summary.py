@@ -11,6 +11,7 @@ from setup_matrix_summary import (  # noqa: E402
     REFERENCE_CELL,
     build_markdown,
     build_summary,
+    estimated_cost,
     jaccard,
     order_kept,
     render_device,
@@ -91,11 +92,11 @@ def test_a_hosted_cell_declares_that_no_price_was_measured() -> None:
             _row(
                 "k8s-hosted-zai",
                 hosted=True,
-                hosted_usage={"tokens_in": 100, "tokens_out": 10, "est_cost_eur": None},
+                hosted_usage={"tokens_in": 100, "tokens_out": 10, "est_cost": None},
             ),
         ]
     )
-    assert any("API cost in euro" in line for line in summary["unmeasured"])
+    assert any("what the API cost" in line for line in summary["unmeasured"])
 
 
 def test_a_missing_timing_is_named_not_filled_in() -> None:
@@ -202,3 +203,115 @@ def test_the_record_says_which_card_answered_the_facts_requests() -> None:
     )
     assert summary["inference_gpu_product"] == "NVIDIA-T1000-8GB-SHARED"
     assert _summary([_row(REFERENCE_CELL)])["inference_gpu_product"] is None
+
+
+PRICES = {
+    "hosted_melious": {
+        "currency": "EUR",
+        "gemma-4-31b": {
+            "input_per_million": 0.10,
+            "output_per_million": 0.30,
+            "source": "https://melious.ai/hub/models/gemma-4-31b",
+            "retrieved": "2026-09-14",
+        },
+    }
+}
+
+
+def _priced(rows: list[dict]) -> dict:
+    return build_summary(
+        library="demo",
+        month="2024-06",
+        image="ghcr.io/example/app:0.84.1",
+        rows=rows,
+        pricing=PRICES,
+    )
+
+
+def test_a_priced_row_multiplies_the_list_by_the_tokens_it_measured() -> None:
+    row = _row(
+        "mac-hosted-melious-gemma-4-31b",
+        hosted=True,
+        reader="hosted_melious",
+        reader_model="gemma-4-31b",
+        contract={"rejections": 0, "repairs": 0},
+        hosted_usage={
+            "calls": 42,
+            "tokens_in": 125_400,
+            "tokens_out": 8_300,
+            "images_sent": 36,
+            "est_cost": None,
+        },
+    )
+    summary = _priced([_row(REFERENCE_CELL), row])
+
+    usage = summary["cells"][1]["hosted_usage"]
+    assert usage["est_cost"] == 0.015  # 125_400 in at 0.10 plus 8_300 out at 0.30
+    assert usage["cost_currency"] == "EUR"
+    assert usage["price_source"] == "https://melious.ai/hub/models/gemma-4-31b"
+    assert not any("what the API cost" in line for line in summary["unmeasured"])
+    table = build_markdown(summary)
+    assert "list price times measured tokens" in table
+    assert "42 calls, 125.4k in / 8.3k out, 36 tiles" in table
+
+
+def test_a_model_with_no_price_row_stays_unmeasured() -> None:
+    """A token count with no price is not money, and the table has to keep saying so."""
+    row = _row(
+        "nas-hosted-zai",
+        hosted=True,
+        reader="hosted_zai",
+        reader_model="glm-5.3-flash",
+        hosted_usage={"tokens_in": 100, "tokens_out": 10, "est_cost": None},
+    )
+    summary = _priced([_row(REFERENCE_CELL), row])
+    assert summary["cells"][1]["hosted_usage"]["est_cost"] is None
+    assert any("what the API cost" in line for line in summary["unmeasured"])
+
+
+def test_a_price_with_no_token_count_buys_nothing() -> None:
+    price = PRICES["hosted_melious"]["gemma-4-31b"]
+    assert estimated_cost({"tokens_in": None, "tokens_out": None}, price) is None
+    assert estimated_cost({"tokens_in": 10, "tokens_out": 1}, None) is None
+
+
+def test_the_contract_column_carries_the_rejections_and_the_repairs() -> None:
+    row = _row(
+        "mac-hosted-melious-glm-5.3-flash",
+        reader="hosted_melious",
+        contract={"rejections": 3, "repairs": 2},
+    )
+    assert "| 3/2 |" in build_markdown(_summary([_row(REFERENCE_CELL), row]))
+
+
+def test_a_reader_that_left_no_transcripts_says_so_rather_than_claiming_zero() -> None:
+    summary = _summary([_row(REFERENCE_CELL, reader="local_model")])
+    assert any("contract health" in line for line in summary["unmeasured"])
+
+
+def test_a_rules_cell_is_not_asked_about_contracts_it_never_had() -> None:
+    assert not any(
+        "contract health" in line for line in _summary([_row(REFERENCE_CELL)])["unmeasured"]
+    )
+
+
+def test_a_seeded_cell_points_at_the_cell_that_measured_its_preparation() -> None:
+    """Preparation is a fact about the host and the tier, and six rows of it is six copies."""
+    row = _row(
+        "mac-local-gemma4",
+        reader="local_model",
+        seeded_from="mac-local",
+        prepare_cache_primed="seeded from mac-local",
+        measurement_notes={
+            "prepare_cold_s": "preparation. This cell's bank was seeded from `mac-local`.",
+            "prepare_warm_s": "preparation. This cell's bank was seeded from `mac-local`.",
+        },
+        contract={"rejections": 0, "repairs": 0},
+    )
+    row["timing"]["prepare_cold_s"] = None
+    row["timing"]["prepare_warm_s"] = None
+    summary = _summary([_row(REFERENCE_CELL), row])
+
+    assert "| = mac-local |" in build_markdown(summary)
+    assert any("seeded from `mac-local`" in line for line in summary["unmeasured"])
+    assert not any("a true cold preparation" in line for line in summary["unmeasured"])
