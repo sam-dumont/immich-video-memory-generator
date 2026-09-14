@@ -160,3 +160,17 @@ advanced:
 
 A notification failure pauses notifications for the cooldown; it never stops generation. The
 full key list is in the [config reference](../../reference/config-reference.md).
+
+## Run a specific suggestion
+
+`immich-memories auto suggest --json` includes each suggestion's `memory_key`.
+Pass that exact key to `immich-memories auto run --candidate 'KEY' --dry-run`
+to check it, then omit `--dry-run` to generate it. The runner checks eligibility
+again. A stale key fails with an explanation; it never substitutes another memory.
+Cooldown, repetition rules and failure backoff still apply. `--force` only skips
+cooldown.
+
+The complete child stdout and stderr are retained under the configured cache at
+`automation-output/<attempt-id>.private.log`, including successful runs. Files are
+readable only by their owner, with configured credentials redacted. Older runs
+may have no log.

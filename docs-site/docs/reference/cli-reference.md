@@ -60,7 +60,7 @@ immich-memories auto install [OPTIONS]
 
 ### `auto run`
 
-Generate the top-scoring memory candidate.
+Generate the chosen eligible candidate, or the highest-scoring one.
 
 ```bash
 immich-memories auto run [OPTIONS]
@@ -68,6 +68,7 @@ immich-memories auto run [OPTIONS]
 
 | Flag | Type | Default | Description |
 | --- | --- | --- | --- |
+| `--candidate` | text | - | Exact memory_key from auto suggest --json |
 | `--dry-run` | boolean | false | Show what would be generated |
 | `--force` | boolean | false | Skip cooldown check |
 | `--cooldown` | integer | - | Min hours since last auto-run |

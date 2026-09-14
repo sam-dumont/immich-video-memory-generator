@@ -399,6 +399,7 @@ src/immich_memories/
 │   └── system_scheduler.py     # OS scheduler integration (launchd/systemd/cron)
 │
 ├── operations/                 # Public lifecycle contract + read-only ops reports
+│   ├── auto_output.py           # Private complete child transcripts, addressed by automation attempt
 │   ├── phases.py               # OperationalPhase / PhaseEvent: stable outer lifecycle
 │   └── storage_report.py       # build_storage_report(): output + cache storage inventory (`runs storage`)
 │

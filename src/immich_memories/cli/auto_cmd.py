@@ -208,6 +208,7 @@ def suggest(ctx: click.Context, as_json: bool, limit: int, memory_type: str | No
 
 
 @auto.command("run")
+@click.option("--candidate", "candidate_key", help="Exact memory_key from auto suggest --json")
 @click.option("--dry-run", is_flag=True, help="Show what would be generated")
 @click.option("--force", is_flag=True, help="Skip cooldown check")
 @click.option("--cooldown", type=int, default=None, help="Min hours since last auto-run")
@@ -225,8 +226,9 @@ def run_cmd(
     cooldown: int | None,
     upload: bool,
     quiet: bool,
+    candidate_key: str | None,
 ) -> None:
-    """Generate the top-scoring memory candidate."""
+    """Generate the chosen eligible candidate, or the highest-scoring one."""
     from immich_memories.automation import runtime_provenance as provenance_module
     from immich_memories.automation.runner import AutoRunner
 
@@ -242,7 +244,11 @@ def run_cmd(
             # where nobody is watching. Staleness must reach the error log by itself.
             click.echo(f"warning: scheduled code is stale — {provenance.describe()}", err=True)
         result = AutoRunner(config, config_path=ctx.obj["config_path"]).run_one(
-            force=force, cooldown_hours=cooldown, upload=upload, dry_run=dry_run
+            force=force,
+            cooldown_hours=cooldown,
+            upload=upload,
+            dry_run=dry_run,
+            candidate_key=candidate_key,
         )
     finally:
         if quiet:
